@@ -1,3 +1,6 @@
+#![feature(alloc_system)]
+extern crate alloc_system;
+
 extern {
     static mut COLS : i32;
     static mut LINES : i32;
