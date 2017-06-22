@@ -42,10 +42,22 @@ pub enum ldat {
 
 static mut ver
     : *mut u8
+    = 0 as *mut u8;
+
+fn _init_ver() {
+  unsafe {
+    ver
     = (*b"1.7320508.406\0").as_ptr() as (*mut u8);
+  }
+}
 
 static mut messages
     : [*mut u8; 406]
+    = [0 as *mut u8; 406];
+
+fn _init_messages() {
+  unsafe {
+    messages
     = [   (*b"\"I pity the fool who mistakes me for kitten!\", sez Mr. T.\0").as_ptr(
           ) as (*mut u8),
           (*b"That\'s just an old tin can.\0").as_ptr() as (*mut u8),
@@ -717,6 +729,8 @@ static mut messages
           (*b"The spectre of Sherlock Holmes wills you onwards.\0").as_ptr(
           ) as (*mut u8)
       ];
+  }
+}
 
 #[derive(Copy)]
 #[repr(C)]
@@ -1295,6 +1309,10 @@ pub unsafe extern fn initialize_screen() {
 
 fn main() {
     use ::std::os::unix::ffi::OsStringExt;
+
+    _init_ver();
+    _init_messages();
+
     let mut argv_storage
         = ::std::env::args_os().map(
               |str| {
