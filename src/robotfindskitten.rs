@@ -37,7 +37,7 @@ extern {
     fn wrefresh(arg1 : *mut _win_st) -> i32;
 }
 
-enum ldat {
+pub enum ldat {
 }
 
 static mut ver
