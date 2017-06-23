@@ -20,6 +20,7 @@ use syntax::ptr::P;
 mod driver;
 mod matcher;
 mod matcher_impls;
+mod replacer;
 
 
 enum NodeType {
@@ -81,6 +82,6 @@ fn main() {
     let (krate, sess) = driver::parse_crate(remaining_args);
     println!("krate = {:?}", krate);
 
-    let mcx = matcher::match_first_expr(&pattern, &krate);
-    println!("mcx = {:?}", mcx);
+    let krate2 = replacer::find_and_replace_expr(&pattern, &repl, &krate);
+    println!("krate2 = {:?}", krate2);
 }

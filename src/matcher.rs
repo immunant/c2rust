@@ -24,8 +24,8 @@ pub enum Error {
 
 #[derive(Debug)]
 pub struct MatchCtxt {
-    cap_idents: HashMap<Symbol, P<Ident>>,
-    cap_exprs: HashMap<Symbol, P<Expr>>,
+    pub cap_idents: HashMap<Symbol, P<Ident>>,
+    pub cap_exprs: HashMap<Symbol, P<Expr>>,
 }
 
 impl MatchCtxt {
@@ -69,7 +69,7 @@ impl MatchCtxt {
         Self::try_capture(&mut self.cap_idents, sym, ident)
     }
 
-    fn expr_capture_sym(pat: &Expr) -> Option<Symbol> {
+    pub fn expr_capture_sym(pat: &Expr) -> Option<Symbol> {
         if let ExprKind::Path(None, ref path) = pat.node {
             if path.segments.len() == 1 && path.segments[0].parameters.is_none() {
                 return Some(path.segments[0].identifier.name);
