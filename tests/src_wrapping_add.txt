@@ -1,0 +1,4 @@
+fn main() {
+    let sum = 1_u8.wrapping_add(1);
+    println!("1 + 1 = {}", sum);
+}
