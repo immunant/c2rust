@@ -58,6 +58,14 @@ macro_rules! variant_rewrite {
      text $text:expr;
      span $span:expr;
      $( $Variant:ident ( $($field1:ident $op:tt $field2:ident),* ), )*) => {
+
+        // Exhaustiveness check
+        match $lhs {
+            $(
+                &$Variant( $(ref $field1),* ) => {},
+            )*
+        }
+
         match ($lhs, $rhs) {
             $(
                 (&$Variant( $(ref $field1),* ),
@@ -91,6 +99,8 @@ impl<'ast> Rewrite<'ast> for ItemKind {
 
             ExternCrate(name1 == name2),
             Use(vp1 ~ vp2),
+            Static(ty1 ~ ty2, mut1 == mut2, init1 ~ init2),
+            Const(ty1 ~ ty2, init1 ~ init2),
             Fn(decl1 ~ decl2, unsafe1 == unsafe2, const1 ~ const2, abi1 == abi2,
                generics1 ~ generics2, block1 ~ block2),
             Mod(mod1 ~ mod2),
