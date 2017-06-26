@@ -14,7 +14,9 @@ use std::fs::File;
 use std::io::Read;
 use rustc_errors::{Diagnostic, ColorConfig};
 use syntax::ast::{Expr, Crate};
+use syntax::codemap::DUMMY_SP;
 use syntax::parse::{self, ParseSess};
+use syntax::print::pprust;
 use syntax::ptr::P;
 
 
@@ -84,13 +86,15 @@ fn main() {
     let repl = parse_expr(&repl_src).unwrap();
 
     let (krate, sess) = driver::parse_crate(remaining_args);
-    println!("krate = {:?}", krate);
+    println!("krate:\n ===\n{}\n ===\n",
+             pprust::to_string(|s| s.print_mod(&krate.module, &[])));
 
     let krate2 = replacer::find_and_replace_expr(&pattern, &repl, &krate);
-    println!("krate2 = {:?}", krate2);
+    println!("krate2:\n ===\n{}\n ===\n",
+             pprust::to_string(|s| s.print_mod(&krate2.module, &[])));
 
     let mut rw = rewriter::RewriteCtxt::new();
-    rw.rewrite(&krate, &krate2);
+    rw.rewrite(DUMMY_SP, &krate, &krate2);
     println!("rw = {:?}", rw);
 
     file_rewrite::rewrite_files(sess.codemap(), rw.rewrites());

@@ -24,8 +24,8 @@ impl RewriteCtxt {
         self.rewrites.push((sp, new_text));
     }
 
-    pub fn rewrite<R: Rewrite>(&mut self, old: &R, new: &R) {
-        old.rewrite(new, self);
+    pub fn rewrite<R: Rewrite>(&mut self, sp: Span, old: &R, new: &R) {
+        old.rewrite(sp, new, self);
     }
 
     pub fn rewrites(&self) -> &[(Span, String)] {
@@ -35,5 +35,5 @@ impl RewriteCtxt {
 
 
 pub trait Rewrite {
-    fn rewrite(&self, new: &Self, rcx: &mut RewriteCtxt);
+    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt);
 }

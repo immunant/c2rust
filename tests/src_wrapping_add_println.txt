@@ -1,0 +1,3 @@
+fn main() {
+    println!("1 + 1 = {}", 1_u8.wrapping_add(1));
+}
