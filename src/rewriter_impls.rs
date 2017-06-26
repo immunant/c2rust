@@ -9,48 +9,20 @@ use syntax::codemap::DUMMY_SP;
 use rewriter::{self, Rewrite, RewriteCtxt};
 
 
-impl<'ast> Rewrite<'ast> for Crate {
-    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
-        rcx.rewrite(&self.module, &new.module);
-    }
-}
-
-impl<'ast> Rewrite<'ast> for Mod {
-    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
-        rcx.rewrite(&self.items, &new.items);
-    }
-}
-
-impl<'ast> Rewrite<'ast> for Item {
-    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
-        rcx.rewrite_in_item(self, &self.node, &new.node);
-    }
-}
-
-macro_rules! eq_or_true {
-    ($lhs:ident == $rhs:ident) => {
-        $lhs == $rhs
-    };
-    ($lhs:ident ~ $rhs:ident) => {
-        true
-    };
-    ($lhs:ident _ $rhs:ident) => {
-        true
-    };
-}
-
-macro_rules! rewrite_or_unit {
-    ($rcx:expr; $lhs:ident == $rhs:ident) => {
-        ()
-    };
-    ($rcx:expr; $lhs:ident ~ $rhs:ident) => {
-        $rcx.rewrite($lhs, $rhs)
-    };
-    ($rcx:expr; $lhs:ident _ $rhs:ident) => {
-        ()
-    };
-}
-
+/// Generate a match statement for rewriting a pair of enum values.  If `$lhs` and `$rhs` are built
+/// from the same enum variant, it recursively rewrites their corresponding fields.  If they are
+/// different variants, it records a rewrite in `$rcx` with the given`$span` and `$text`.
+/// Syntax for variants looks like this:
+///
+///     VariantName(a1 ~ a2, b1 ~ b2, c1 ~ c2, ...),
+///
+/// The provided idents (`a1` etc.) will be used for the LHS and RHS instances of the field.  The
+/// operator between them can be either `~`, meaning we should recursively rewrite those fields,
+/// `==`, meaning we should require those fields to be equal (otherwise behave as if the LHS and
+/// RHS are different variants entirely), or `_`, meaning we should ignore those fields.
+///
+/// In general, `~` is used for fields whose values have their own `Span`s, and `==` is used for
+/// other fields (mostly enums, such as `Mutability` or `Constness`).
 macro_rules! variant_rewrite {
     (lhs $lhs:expr;
      rhs $rhs:expr;
@@ -82,6 +54,49 @@ macro_rules! variant_rewrite {
             },
         }
     };
+}
+
+macro_rules! eq_or_true {
+    ($lhs:ident == $rhs:ident) => {
+        $lhs == $rhs
+    };
+    ($lhs:ident ~ $rhs:ident) => {
+        true
+    };
+    ($lhs:ident _ $rhs:ident) => {
+        true
+    };
+}
+
+macro_rules! rewrite_or_unit {
+    ($rcx:expr; $lhs:ident == $rhs:ident) => {
+        ()
+    };
+    ($rcx:expr; $lhs:ident ~ $rhs:ident) => {
+        $rcx.rewrite($lhs, $rhs)
+    };
+    ($rcx:expr; $lhs:ident _ $rhs:ident) => {
+        ()
+    };
+}
+
+
+impl<'ast> Rewrite<'ast> for Crate {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        rcx.rewrite(&self.module, &new.module);
+    }
+}
+
+impl<'ast> Rewrite<'ast> for Mod {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        rcx.rewrite(&self.items, &new.items);
+    }
+}
+
+impl<'ast> Rewrite<'ast> for Item {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        rcx.rewrite_in_item(self, &self.node, &new.node);
+    }
 }
 
 impl<'ast> Rewrite<'ast> for ItemKind {
