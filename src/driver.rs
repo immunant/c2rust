@@ -50,13 +50,10 @@ fn parse_crate_for_session(sess: &Session, cstore: Rc<CStore>) -> Crate {
     let in_path = sess.local_crate_source_file.as_ref().unwrap().clone();
 
     let krate = parse::parse_crate_from_file(&in_path, &sess.parse_sess).unwrap();
-    println!("parsed");
 
     let crate_name = link::find_crate_name(Some(&sess), &krate.attrs, &Input::File(in_path.clone()));
-    println!("name = {}", crate_name);
 
     let (mut krate, features) = syntax::config::features(krate, &sess.parse_sess, sess.opts.test);
-    println!("features");
 
     // these need to be set "early" so that expansion sees `quote` if enabled.
     *sess.features.borrow_mut() = features;
@@ -66,7 +63,6 @@ fn parse_crate_for_session(sess: &Session, cstore: Rc<CStore>) -> Crate {
 
     let alt_std_name = sess.opts.alt_std_name.clone();
     let krate = syntax::std_inject::maybe_inject_crates_ref(krate, alt_std_name);
-    println!("injected std");
 
     // TODO: if we ever want to support #[plugin(..)], this is the place to do it.
     // Look for the "plugin loading" timed pass in rustc_driver::driver.
@@ -83,7 +79,6 @@ fn parse_crate_for_session(sess: &Session, cstore: Rc<CStore>) -> Crate {
                                      &mut crate_loader,
                                      &resolver_arenas);
     syntax_ext::register_builtins(&mut resolver, syntax_exts, sess.features.borrow().quote);
-    println!("registered builtins");
 
     let features = sess.features.borrow();
     let cfg = syntax::ext::expand::ExpansionConfig {
@@ -97,9 +92,7 @@ fn parse_crate_for_session(sess: &Session, cstore: Rc<CStore>) -> Crate {
     let mut ecx = ExtCtxt::new(&sess.parse_sess, cfg, &mut resolver);
     let err_count = ecx.parse_sess.span_diagnostic.err_count();
 
-    println!("expanding...");
     let krate = ecx.monotonic_expander().expand_crate(krate);
-    println!("done");
 
     krate
 }

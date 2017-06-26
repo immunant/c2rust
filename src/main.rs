@@ -7,6 +7,7 @@ extern crate rustc_resolve;
 extern crate rustc_trans;
 extern crate syntax;
 extern crate syntax_ext;
+extern crate syntax_pos;
 
 use std::env;
 use std::fs::File;
@@ -21,6 +22,9 @@ mod driver;
 mod matcher;
 mod matcher_impls;
 mod replacer;
+mod rewriter;
+mod rewriter_impls;
+mod file_rewrite;
 
 
 enum NodeType {
@@ -84,4 +88,10 @@ fn main() {
 
     let krate2 = replacer::find_and_replace_expr(&pattern, &repl, &krate);
     println!("krate2 = {:?}", krate2);
+
+    let mut rw = rewriter::RewriteCtxt::new();
+    rw.rewrite(&krate, &krate2);
+    println!("rw = {:?}", rw);
+
+    file_rewrite::rewrite_files(sess.codemap(), rw.rewrites());
 }

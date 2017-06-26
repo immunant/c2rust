@@ -44,7 +44,6 @@ impl MatchCtxt {
 
     pub fn try_match<T: TryMatch>(&mut self, pat: &T, target: &T) -> Result {
         let r = pat.try_match(target, self);
-        println!("match {:?} <- {:?}? {:?}", pat, target, r);
         r
     }
 
@@ -114,7 +113,6 @@ impl<'a, 'p> Visitor<'a> for FirstExprVisitor<'p> {
     }
 
     fn visit_expr(&mut self, e: &'a Expr) {
-        println!("consider: {:?}", e);
         if self.result.is_some() {
             return;
         }
