@@ -95,7 +95,7 @@ impl<'ast> Rewrite<'ast> for Mod {
 
 impl<'ast> Rewrite<'ast> for Item {
     fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
-        rcx.rewrite_in_item(self, &self.node, &new.node);
+        rcx.rewrite_in_item(self, new, &self.node, &new.node);
     }
 }
 
@@ -145,7 +145,7 @@ impl<'ast> Rewrite<'ast> for Block {
 
 impl<'ast> Rewrite<'ast> for Stmt {
     fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
-        rcx.rewrite_in_stmt(self, &self.node, &new.node);
+        rcx.rewrite_in_stmt(self, new, &self.node, &new.node);
     }
 }
 
@@ -176,7 +176,7 @@ impl<'ast> Rewrite<'ast> for Local {
 
 impl<'ast> Rewrite<'ast> for Expr {
     fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
-        rcx.rewrite_in_expr(self, &self.node, &new.node);
+        rcx.rewrite_in_expr(self, new, &self.node, &new.node);
     }
 }
 
