@@ -94,7 +94,7 @@ fn main() {
              pprust::to_string(|s| s.print_mod(&krate2.module, &[])));
 
     let mut rw = rewriter::RewriteCtxt::new();
-    rw.rewrite(DUMMY_SP, &krate, &krate2);
+    rw.rewrite(&krate, &krate2);
     println!("rw = {:?}", rw);
 
     file_rewrite::rewrite_files(sess.codemap(), rw.rewrites());

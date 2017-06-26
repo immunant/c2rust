@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use syntax::codemap::{CodeMap, Span};
+use syntax::codemap::{CodeMap, Span, DUMMY_SP};
 use syntax_pos::hygiene::SyntaxContext;
 
 pub fn rewrite_files(cm: &CodeMap, rewrites: &[(Span, String)]) {
@@ -17,6 +17,12 @@ pub fn rewrite_files(cm: &CodeMap, rewrites: &[(Span, String)]) {
                 continue;
             },
         };
+
+        if sp == &DUMMY_SP {
+            println!("warning: rewrite targets dummy span (new text: {:?})",
+                     text);
+            continue;
+        }
 
         if lo.fm.abs_path != hi.fm.abs_path {
             println!("warning: span covers multiple files: {:?} != {:?} (new text: {:?})",

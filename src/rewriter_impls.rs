@@ -9,21 +9,21 @@ use syntax::codemap::DUMMY_SP;
 use rewriter::{self, Rewrite, RewriteCtxt};
 
 
-impl Rewrite for Crate {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
-        rcx.rewrite(self.span, &self.module, &new.module);
+impl<'ast> Rewrite<'ast> for Crate {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        rcx.rewrite(&self.module, &new.module);
     }
 }
 
-impl Rewrite for Mod {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
-        rcx.rewrite(self.inner, &self.items, &new.items);
+impl<'ast> Rewrite<'ast> for Mod {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        rcx.rewrite(&self.items, &new.items);
     }
 }
 
-impl Rewrite for Item {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
-        rcx.rewrite(self.span, &self.node, &new.node);
+impl<'ast> Rewrite<'ast> for Item {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        rcx.rewrite_in_item(self, &self.node, &new.node);
     }
 }
 
@@ -40,13 +40,13 @@ macro_rules! eq_or_true {
 }
 
 macro_rules! rewrite_or_unit {
-    ($rcx:expr; $sp:expr; $lhs:ident == $rhs:ident) => {
+    ($rcx:expr; $lhs:ident == $rhs:ident) => {
         ()
     };
-    ($rcx:expr; $sp:expr; $lhs:ident ~ $rhs:ident) => {
-        $rcx.rewrite($sp, $lhs, $rhs)
+    ($rcx:expr; $lhs:ident ~ $rhs:ident) => {
+        $rcx.rewrite($lhs, $rhs)
     };
-    ($rcx:expr; $sp:expr; $lhs:ident _ $rhs:ident) => {
+    ($rcx:expr; $lhs:ident _ $rhs:ident) => {
         ()
     };
 }
@@ -55,27 +55,29 @@ macro_rules! variant_rewrite {
     (lhs $lhs:expr;
      rhs $rhs:expr;
      rcx $rcx:expr;
-     sp $sp:expr;
      text $text:expr;
+     span $span:expr;
      $( $Variant:ident ( $($field1:ident $op:tt $field2:ident),* ), )*) => {
         match ($lhs, $rhs) {
             $(
                 (&$Variant( $(ref $field1),* ),
                  &$Variant( $(ref $field2),* ))
                         if $( eq_or_true!($field1 $op $field2) && )* true => {
-                    $( rewrite_or_unit!($rcx; $sp; $field1 $op $field2); )*
+                    $( rewrite_or_unit!($rcx; $field1 $op $field2); )*
                 },
             )*
 
             (_, _) => {
-                $rcx.record($sp, $text);
+                let text = $text;
+                let span = $span;
+                $rcx.record(span, text);
             },
         }
     };
 }
 
-impl Rewrite for ItemKind {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
+impl<'ast> Rewrite<'ast> for ItemKind {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
         use syntax::ast::ItemKind::*;
         // Some variants have fields that have no spans of their own.  This means we can't easily
         // rewrite just those fields.  If there is a mismatch on such a field, we rewrite the whole
@@ -84,8 +86,8 @@ impl Rewrite for ItemKind {
             lhs self;
             rhs new;
             rcx rcx;
-            sp sp;
-            text "<<NYI>>".to_owned();
+            text pprust::item_to_string(rcx.parent_as_item());
+            span rcx.parent_span();
 
             ExternCrate(name1 == name2),
             Use(vp1 ~ vp2),
@@ -110,27 +112,27 @@ impl Rewrite for ItemKind {
     }
 }
 
-impl Rewrite for Block {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
-        rcx.rewrite(self.span, &self.stmts, &new.stmts);
+impl<'ast> Rewrite<'ast> for Block {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        rcx.rewrite(&self.stmts, &new.stmts);
     }
 }
 
-impl Rewrite for Stmt {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
-        rcx.rewrite(self.span, &self.node, &new.node);
+impl<'ast> Rewrite<'ast> for Stmt {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        rcx.rewrite_in_stmt(self, &self.node, &new.node);
     }
 }
 
-impl Rewrite for StmtKind {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
+impl<'ast> Rewrite<'ast> for StmtKind {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
         use syntax::ast::StmtKind::*;
         variant_rewrite!(
             lhs self;
             rhs new;
             rcx rcx;
-            sp sp;
-            text "<<NYI>>".to_owned();
+            text pprust::stmt_to_string(rcx.parent_as_stmt());
+            span rcx.parent_span();
 
             Local(local1 ~ local2),
             Item(item1 ~ item2),
@@ -141,33 +143,28 @@ impl Rewrite for StmtKind {
     }
 }
 
-impl Rewrite for Local {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
-        rcx.rewrite(self.span, &self.init, &new.init);
+impl<'ast> Rewrite<'ast> for Local {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        rcx.rewrite(&self.init, &new.init);
     }
 }
 
-impl Rewrite for Expr {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
-        rcx.rewrite(self.span, &self.node, &new.node);
+impl<'ast> Rewrite<'ast> for Expr {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        rcx.rewrite_in_expr(self, &self.node, &new.node);
     }
 }
 
-impl Rewrite for ExprKind {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
+impl<'ast> Rewrite<'ast> for ExprKind {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
         use syntax::ast::ExprKind::*;
         // TODO: handle attrs
         variant_rewrite!(
             lhs self;
             rhs new;
             rcx rcx;
-            sp sp;
-            text pprust::expr_to_string(&Expr {
-                id: NodeId::new(0),
-                node: new.clone(),
-                span: DUMMY_SP,
-                attrs: ThinVec::new(),
-            });
+            text pprust::expr_to_string(rcx.parent_as_expr());
+            span rcx.parent_span();
 
             Box(expr1 ~ expr2),
             InPlace(place1 ~ place2, expr1 ~ expr2),
@@ -215,8 +212,8 @@ impl Rewrite for ExprKind {
 macro_rules! rewrite_nyi {
     ($($ty:ty,)*) => {
         $(
-            impl Rewrite for $ty {
-                fn rewrite(&self, _sp: Span, _new: &Self, _rcx: &mut RewriteCtxt) {
+            impl<'ast> Rewrite<'ast> for $ty {
+                fn rewrite(&'ast self, _new: &'ast Self, _rcx: &mut RewriteCtxt<'ast>) {
                     println!(concat!(" ** NYI: rewriting of ", stringify!($ty)));
                 }
             }
@@ -254,47 +251,47 @@ rewrite_nyi! {
 }
 
 
-impl<T: Rewrite> Rewrite for [T] {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
+impl<'ast, T: Rewrite<'ast>> Rewrite<'ast> for [T] {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
         assert!(self.len() == new.len(),
                 "not sure how to handle different-length vecs of rewritables");
 
         for i in 0 .. self.len() {
-            rcx.rewrite(sp, &self[i], &new[i]);
+            rcx.rewrite(&self[i], &new[i]);
         }
     }
 }
 
-impl<T: Rewrite> Rewrite for Vec<T> {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
-        <[T] as Rewrite>::rewrite(self, sp, new, rcx)
+impl<'ast, T: Rewrite<'ast>> Rewrite<'ast> for Vec<T> {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        <[T] as Rewrite<'ast>>::rewrite(self, new, rcx)
     }
 }
 
-impl<T: Rewrite> Rewrite for ThinVec<T> {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
-        <[T] as Rewrite>::rewrite(self, sp, new, rcx)
+impl<'ast, T: Rewrite<'ast>> Rewrite<'ast> for ThinVec<T> {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        <[T] as Rewrite<'ast>>::rewrite(self, new, rcx)
     }
 }
 
-impl<T: Rewrite> Rewrite for P<T> {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
-        <T as Rewrite>::rewrite(self, sp, new, rcx)
+impl<'ast, T: Rewrite<'ast>> Rewrite<'ast> for P<T> {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        <T as Rewrite<'ast>>::rewrite(self, new, rcx)
     }
 }
 
-impl<T: Rewrite> Rewrite for Spanned<T> {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
-        rcx.rewrite(sp, &self.node, &new.node)
+impl<'ast, T: Rewrite<'ast>> Rewrite<'ast> for Spanned<T> {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
+        rcx.rewrite(&self.node, &new.node)
     }
 }
 
-impl<T: Rewrite> Rewrite for Option<T> {
-    fn rewrite(&self, sp: Span, new: &Self, rcx: &mut RewriteCtxt) {
+impl<'ast, T: Rewrite<'ast>> Rewrite<'ast> for Option<T> {
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) {
         match (self, new) {
             (&Some(ref x1),
              &Some(ref x2)) => {
-                rcx.rewrite(sp, x1, x2);
+                rcx.rewrite(x1, x2);
             }
             (&None, &None) => {},
             (_, _) => {}, //TODO
