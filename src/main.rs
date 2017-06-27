@@ -1,4 +1,8 @@
-#![feature(rustc_private)]
+#![feature(
+    i128_type,
+    rustc_private,
+    trace_macros,
+)]
 extern crate rustc;
 extern crate rustc_driver;
 extern crate rustc_errors;
@@ -20,6 +24,9 @@ use syntax::print::pprust;
 use syntax::ptr::P;
 
 
+mod bindings;
+mod ast_equiv;
+mod util;
 mod driver;
 mod matcher;
 mod matcher_impls;

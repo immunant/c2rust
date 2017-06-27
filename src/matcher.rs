@@ -1,10 +1,13 @@
 use std::collections::hash_map::{HashMap, Entry};
 use std::fmt::Debug;
 use std::result;
-use syntax::ast::{Ident, Expr, ExprKind, Stmt, Item, Crate, Mac};
+use syntax::ast::{Ident, Expr, Pat, Stmt, Item, Crate, Mac};
 use syntax::symbol::Symbol;
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
+
+use bindings::Bindings;
+
 
 pub type Result = result::Result<(), Error>;
 
@@ -15,8 +18,6 @@ pub enum Error {
     LengthMismatch,
     SymbolMismatch,
 
-    NotCapturing,
-
     // For nonlinear patterns, it's possible that the 2nd+ occurrence of the variable in the
     // pattern matches a different ident/expr/stmt than the 1st occurrence.
     NonlinearMismatch,
@@ -24,15 +25,13 @@ pub enum Error {
 
 #[derive(Debug)]
 pub struct MatchCtxt {
-    pub cap_idents: HashMap<Symbol, P<Ident>>,
-    pub cap_exprs: HashMap<Symbol, P<Expr>>,
+    pub bindings: Bindings,
 }
 
 impl MatchCtxt {
     pub fn new() -> MatchCtxt {
         MatchCtxt {
-            cap_idents: HashMap::new(),
-            cap_exprs: HashMap::new(),
+            bindings: Bindings::new(),
         }
     }
 
@@ -47,42 +46,24 @@ impl MatchCtxt {
         r
     }
 
-    fn try_capture<T>(cap_nodes: &mut HashMap<Symbol, P<T>>, sym: Symbol, node: &T) -> Result
-            where T: Clone+Eq+'static {
-        match cap_nodes.entry(sym) {
-            Entry::Vacant(e) => {
-                e.insert(P(node.clone()));
-                Ok(())
-            },
-            Entry::Occupied(e) => {
-                if &**e.get() != node {
-                    Err(Error::NonlinearMismatch)
-                } else {
-                    Ok(())
-                }
-            },
-        }
-    }
-
     pub fn try_capture_ident(&mut self, sym: Symbol, ident: &Ident) -> Result {
-        Self::try_capture(&mut self.cap_idents, sym, ident)
+        let ok = self.bindings.try_add_ident(sym, ident.clone());
+        if ok { Ok(()) } else { Err(Error::NonlinearMismatch) }
     }
 
-    pub fn expr_capture_sym(pat: &Expr) -> Option<Symbol> {
-        if let ExprKind::Path(None, ref path) = pat.node {
-            if path.segments.len() == 1 && path.segments[0].parameters.is_none() {
-                return Some(path.segments[0].identifier.name);
-            }
-        }
-        None
+    pub fn try_capture_expr(&mut self, sym: Symbol, expr: &P<Expr>) -> Result {
+        let ok = self.bindings.try_add_expr(sym, expr.clone());
+        if ok { Ok(()) } else { Err(Error::NonlinearMismatch) }
     }
 
-    pub fn try_capture_expr(&mut self, pat: &Expr, expr: &Expr) -> Result {
-        if let Some(sym) = Self::expr_capture_sym(pat) {
-            Self::try_capture(&mut self.cap_exprs, sym, expr)
-        } else {
-            Err(Error::NotCapturing)
-        }
+    pub fn try_capture_pat(&mut self, sym: Symbol, pat: &P<Pat>) -> Result {
+        let ok = self.bindings.try_add_pat(sym, pat.clone());
+        if ok { Ok(()) } else { Err(Error::NonlinearMismatch) }
+    }
+
+    pub fn try_capture_stmt(&mut self, sym: Symbol, stmt: &P<Stmt>) -> Result {
+        let ok = self.bindings.try_add_stmt(sym, stmt.clone());
+        if ok { Ok(()) } else { Err(Error::NonlinearMismatch) }
     }
 }
 

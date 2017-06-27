@@ -3,6 +3,7 @@ use syntax::codemap::Spanned;
 use syntax::ptr::P;
 
 use matcher::{self, TryMatch, MatchCtxt};
+use util;
 
 
 impl TryMatch for Attribute {
@@ -41,8 +42,10 @@ impl TryMatch for Name {
 
 impl TryMatch for Expr {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
-        if let Ok(()) = mcx.try_capture_expr(self, target) {
-            return Ok(());
+        if let Some(sym) = util::expr_sym(self) {
+            if let Ok(()) = mcx.try_capture_expr(sym, &P(target.clone())) {
+                return Ok(());
+            }
         }
 
         mcx.try_match(&self.node, &target.node)?;

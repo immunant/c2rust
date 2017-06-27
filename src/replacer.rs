@@ -6,29 +6,31 @@ use syntax::fold::{self, Folder};
 use syntax::symbol::Symbol;
 use syntax::ptr::P;
 
+use bindings::Bindings;
 use matcher::MatchCtxt;
+use util;
 
 #[derive(Debug)]
 pub struct ReplaceCtxt {
-    pub idents: HashMap<Symbol, P<Ident>>,
-    pub exprs: HashMap<Symbol, P<Expr>>,
+    pub bindings: Bindings,
 }
 
 impl ReplaceCtxt {
     pub fn from_match_ctxt(mcx: MatchCtxt) -> ReplaceCtxt {
         ReplaceCtxt {
-            idents: mcx.cap_idents,
-            exprs: mcx.cap_exprs,
+            bindings: mcx.bindings,
         }
     }
 
     pub fn try_replace_ident(&self, ident: &Ident) -> Option<P<Ident>> {
-        self.idents.get(&ident.name).map(|x| x.clone())
+        util::ident_sym(ident)
+            .and_then(|sym| self.bindings.get_ident(sym))
+            .map(|x| P(x.clone()))
     }
 
     pub fn try_replace_expr(&self, expr: &Expr) -> Option<P<Expr>> {
-        MatchCtxt::expr_capture_sym(expr)
-            .and_then(|sym| self.exprs.get(&sym))
+        util::expr_sym(expr)
+            .and_then(|sym| self.bindings.get_expr(sym))
             .map(|x| x.clone())
     }
 }
