@@ -1,0 +1,297 @@
+
+
+struct Crate { module, attrs, span }
+struct Mod { inner, items }
+
+
+struct Item { ident, attrs, id, node, vis, span }
+enum ItemKind {
+    ExternCrate(name),
+    Use(vp),
+    Static(ty, mut, init),
+    Const(ty, init),
+    Fn(decl, unsafe, const, abi,
+       generics, block),
+    Mod(mod),
+    ForeignMod(fm),
+    GlobalAsm(asm),
+    Ty(ty, generics),
+    Enum(def, generics),
+    Struct(vd, generics),
+    Union(vd, generics),
+    Trait(unsafe, generics,
+          bounds, items),
+    DefaultImpl(unsafe, trait_ref),
+    Impl(unsafe, polarity,
+         generics, trait_ref,
+         ty, items),
+    Mac(mac),
+    MacroDef(tts),
+}
+
+struct TraitItem { id, ident, attrs, node, span }
+enum TraitItemKind {
+    Const(ty, init),
+    Method(sig, body),
+    Type(bounds, ty),
+    Macro(mac),
+}
+
+struct ImplItem { id, ident, vis, defaultness, attrs, node, span }
+enum ImplItemKind {
+    Const(ty, init),
+    Method(sig, body),
+    Type(ty),
+    Macro(mac),
+}
+
+struct TraitRef { path, ref_id }
+
+struct EnumDef { variants }
+struct Variant_ { name, attrs, data, disr_expr }
+enum VariantData {
+    Struct(fields, id),
+    Tuple(fields, id),
+    Unit(id),
+}
+
+struct StructField { span, ident, vis, id, ty, attrs }
+
+struct MethodSig { unsafety, constness, abi, decl, generics }
+
+struct ForeignMod { abi, items }
+struct ForeignItem { ident, attrs, node, id, span, vis }
+enum ForeignItemKind {
+    Fn(decl, generics),
+    Static(ty, mut),
+}
+
+
+struct Generics { lifetimes, ty_params, where_clause, span }
+struct TyParam { attrs, ident, id, bounds, default, span }
+struct LifetimeDef { attrs, lifetime, bounds }
+struct WhereClause { id, predicates }
+enum WherePredicate {
+    BoundPredicate(pred),
+    RegionPredicate(pred),
+    EqPredicate(pred),
+}
+
+struct WhereBoundPredicate { span, bound_lifetimes, bounded_ty, bounds }
+struct WhereRegionPredicate { span, lifetime, bounds }
+struct WhereEqPredicate { id, span, lhs_ty, rhs_ty }
+flag TraitBoundModifier;
+
+enum ViewPath_ {
+    ViewPathSimple(name, path),
+    ViewPathGlob(path),
+    ViewPathList(path, list),
+}
+
+struct PathListItem_ { name, rename, id }
+
+enum Visibility {
+    Public(),
+    Crate(span),
+    Restricted { path, id },
+    Inherited(),
+}
+
+
+struct Ty { id, node, span }
+struct MutTy {ty, mutbl}
+enum TyKind {
+    Slice(ty),
+    Array(ty, len),
+    Ptr(mty),
+    Rptr(lt, mty),
+    BareFn(ty),
+    Never(),
+    Tup(tys),
+    Path(qself, path),
+    TraitObject(bounds),
+    ImplTrait(bounds),
+    Paren(ty),
+    Typeof(expr),
+    Infer(),
+    ImplicitSelf(),
+    Mac(mac),
+    Err(),
+}
+
+
+flag LitIntType;
+flag FloatTy;
+
+struct BareFnTy { unsafety, abi, lifetimes, decl }
+struct Lifetime { id, span, name }
+enum TyParamBound {
+    TraitTyParamBound(poly, mod),
+    RegionTyParamBound(lt),
+}
+
+struct PolyTraitRef { bound_lifetimes, trait_ref, span }
+
+struct FnDecl { inputs, output, variadic }
+struct Arg { ty, pat, id }
+enum FunctionRetTy {
+    Default(sp),
+    Ty(ty),
+}
+
+
+struct TypeBinding { id, ident, ty, span }
+
+
+struct Stmt { id, node, span }
+enum StmtKind {
+    Local(local),
+    Item(item),
+    Expr(expr),
+    Semi(expr),
+    Mac(mac),
+}
+
+struct Local { pat, ty, init, id, span, attrs }
+
+
+struct Expr { id, node, span, attrs }
+enum ExprKind {
+    Box(expr),
+    InPlace(place, expr),
+    Array(elems),
+    Call(func, args),
+    MethodCall(ident, tys, args),
+    Tup(elems),
+    Binary(op, a, b),
+    Unary(op, a),
+    Lit(lit),
+    Cast(expr, ty),
+    Type(expr, ty),
+    If(cond, then, else),
+    IfLet(pat, expr, then, else),
+    While(cond, body, label),
+    WhileLet(pat, expr, body, label),
+    ForLoop(pat, iter, body, label),
+    Loop(body, label),
+    Match(target, arms),
+    Closure(cap, decl, body, span),
+    Block(body),
+    Catch(body),
+    Assign(lhs, rhs),
+    AssignOp(op, lhs, rhs),
+    Field(expr, ident),
+    TupField(expr, idx),
+    Index(arr, idx),
+    Range(lo, hi, limits),
+    Path(self, path),
+    AddrOf(mut, expr),
+    Break(label, expr),
+    Continue(label),
+    Ret(expr),
+    InlineAsm(asm),
+    Mac(mac),
+    Struct(path, fields, base),
+    Repeat(item, count),
+    Paren(expr),
+    Try(expr),
+}
+
+
+flag UnOp;
+flag BinOpKind;
+struct Field { ident, expr, span, is_shorthand, attrs }
+struct Arm { attrs, pats, guard, body }
+struct Block { stmts, id, rules, span }
+
+
+struct Pat { id, node, span }
+enum PatKind {
+    Wild(),
+    Ident(mode, id, pat),
+    Struct(path, fields, dotdot),
+    TupleStruct(path, fields, dotdot),
+    Path(qself, path),
+    Tuple(pats, dotdot),
+    Box(pat),
+    Ref(pat, mut),
+    Lit(expr),
+    Range(lo, hi, end),
+    Slice(start, mid, end),
+    Mac(mac),
+}
+
+struct FieldPat { ident, pat, is_shorthand, attrs }
+
+
+enum LitKind {
+    Str(sym, style),
+    ByteStr(bytes),
+    Byte(x),
+    Char(x),
+    Int(x, type),
+    Float(sym, type),
+    FloatUnsuffixed(sym),
+    Bool(x),
+}
+
+
+
+flag Defaultness;
+flag Constness;
+flag ImplPolarity;
+flag Unsafety;
+flag Abi;
+flag Mutability;
+flag RangeEnd;
+flag BindingMode;
+flag CaptureBy;
+flag BlockCheckMode;
+flag StrStyle;
+flag AsmDialect;
+flag RangeLimits;
+
+
+struct Attribute { id, style, path, tokens, is_sugared_doc, span }
+flag AttrStyle;
+
+
+struct Path { span, segments }
+struct PathSegment { identifier, span, parameters }
+enum PathParameters {
+    AngleBracketed(abpd),
+    Parenthesized(ppd),
+}
+
+struct AngleBracketedParameterData { lifetimes, types, bindings }
+struct ParenthesizedParameterData { span, inputs, output }
+struct QSelf { ty, position }
+
+
+struct Mac_ { path, tts }
+flag MacStmtStyle;
+flag TokenStream;
+flag ThinTokenStream;
+
+
+struct InlineAsm {
+asm, asm_str_style, outputs, inputs, clobbers,
+volatile, alignstack, dialect, ctxt
+}
+struct GlobalAsm { asm, ctxt }
+struct InlineAsmOutput { constraint, expr, is_rw, is_indirect }
+
+
+flag Ident;
+flag Name;
+flag SyntaxContext;
+
+#[equiv_mode=ignore] flag Span;
+#[equiv_mode=ignore] flag NodeId;
+#[equiv_mode=ignore] flag AttrId;
+
+flag usize;
+flag bool;
+flag u128;
+flag u8;
+flag char;
