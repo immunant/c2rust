@@ -1,54 +1,19 @@
 from datetime import datetime
-import functools
 from textwrap import indent, dedent
 
 from ast import *
-
-
-def linewise(f):
-    @functools.wraps(f)
-    def g(*args, **kwargs):
-        return '\n'.join(f(*args, **kwargs))
-    return g
-
-def comma_sep(f):
-    @functools.wraps(f)
-    def g(*args, **kwargs):
-        return ', '.join(f(*args, **kwargs))
-    return g
-
-def wordwise(f):
-    @functools.wraps(f)
-    def g(*args, **kwargs):
-        return ' '.join(f(*args, **kwargs))
-    return g
-
-RUST_KEYWORDS = (
-        'const',
-        'else',
-        'mod',
-        'mut',
-        'self',
-        'type',
-        'unsafe',
-        )
-
-def safe_name(*args):
-    name = ''.join(args)
-    if name in RUST_KEYWORDS:
-        name += '_'
-    return name
+from util import *
 
 
 @comma_sep
 def struct_fields(fields, suffix):
     for f in fields:
-        yield '%s: ref %s' % (f.name, safe_name(f.name, suffix))
+        yield '%s: ref %s%s' % (f.name, f.name, suffix)
 
 @comma_sep
 def tuple_fields(fields, suffix):
     for f in fields:
-        yield 'ref %s' % safe_name(f.name, suffix)
+        yield 'ref %s%s' % (f.name, suffix)
 
 def struct_pattern(s, path, suffix=''):
     if not s.is_tuple:
@@ -73,8 +38,8 @@ def comparison(se, target1, target2):
         yield '  (&%s,' % struct_pattern(v, path, '1')
         yield '   &%s) => {' % struct_pattern(v, path, '2')
         for f in v.fields:
-            yield '    AstEquiv::ast_equiv(%s, %s) &&' % \
-                    (safe_name(f.name, '1'), safe_name(f.name, '2'))
+            yield '    AstEquiv::ast_equiv(%s1, %s2) &&' % \
+                    (f.name, f.name)
         yield '    true'
         yield '  }'
     yield '  (_, _) => false,'

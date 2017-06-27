@@ -8,21 +8,21 @@ struct Item { ident, attrs, id, node, vis, span }
 enum ItemKind {
     ExternCrate(name),
     Use(vp),
-    Static(ty, mut, init),
+    Static(ty, mutbl, init),
     Const(ty, init),
-    Fn(decl, unsafe, const, abi,
+    Fn(decl, unsafety, constness, abi,
        generics, block),
-    Mod(mod),
+    Mod(module),
     ForeignMod(fm),
     GlobalAsm(asm),
     Ty(ty, generics),
     Enum(def, generics),
     Struct(vd, generics),
     Union(vd, generics),
-    Trait(unsafe, generics,
+    Trait(unsafety, generics,
           bounds, items),
-    DefaultImpl(unsafe, trait_ref),
-    Impl(unsafe, polarity,
+    DefaultImpl(unsafety, trait_ref),
+    Impl(unsafety, polarity,
          generics, trait_ref,
          ty, items),
     Mac(mac),
@@ -63,7 +63,7 @@ struct ForeignMod { abi, items }
 struct ForeignItem { ident, attrs, node, id, span, vis }
 enum ForeignItemKind {
     Fn(decl, generics),
-    Static(ty, mut),
+    Static(ty, mutbl),
 }
 
 
@@ -126,7 +126,7 @@ flag FloatTy;
 struct BareFnTy { unsafety, abi, lifetimes, decl }
 struct Lifetime { id, span, name }
 enum TyParamBound {
-    TraitTyParamBound(poly, mod),
+    TraitTyParamBound(poly, module),
     RegionTyParamBound(lt),
 }
 
@@ -168,8 +168,8 @@ enum ExprKind {
     Lit(lit),
     Cast(expr, ty),
     Type(expr, ty),
-    If(cond, then, else),
-    IfLet(pat, expr, then, else),
+    If(cond, then_body, else_body),
+    IfLet(pat, expr, then_body, else_body),
     While(cond, body, label),
     WhileLet(pat, expr, body, label),
     ForLoop(pat, iter, body, label),
@@ -184,8 +184,8 @@ enum ExprKind {
     TupField(expr, idx),
     Index(arr, idx),
     Range(lo, hi, limits),
-    Path(self, path),
-    AddrOf(mut, expr),
+    Path(qself, path),
+    AddrOf(mutbl, expr),
     Break(label, expr),
     Continue(label),
     Ret(expr),
@@ -214,7 +214,7 @@ enum PatKind {
     Path(qself, path),
     Tuple(pats, dotdot),
     Box(pat),
-    Ref(pat, mut),
+    Ref(pat, mutbl),
     Lit(expr),
     Range(lo, hi, end),
     Slice(start, mid, end),
@@ -229,8 +229,8 @@ enum LitKind {
     ByteStr(bytes),
     Byte(x),
     Char(x),
-    Int(x, type),
-    Float(sym, type),
+    Int(x, ty),
+    Float(sym, ty),
     FloatUnsuffixed(sym),
     Bool(x),
 }
