@@ -30,7 +30,7 @@ mod util;
 mod driver;
 mod matcher;
 mod matcher_impls;
-mod replacer;
+mod subst;
 mod rewriter;
 mod rewriter_impls;
 mod file_rewrite;
