@@ -1,28 +1,26 @@
+'''This module generates `AstEquiv` impls for each AST node type.
+
+- Two struct values are equivalent if their fields are equivalent.
+- Two enum values are equivalent if they are built with the same variant and
+  they have equivalent values in their corresponding fields.
+- Two flag values are equivalent if they are equivalent under `==`.
+
+Attributes:
+
+- `#[equiv_mode=eq]`: On a type declaration, generate a trivial `impl` that compares
+  values using `==`.
+
+- `#[equiv_mode=ignore]`: On a type declaration, generate a trivial `impl` that
+  always returns `true`.  The effect is that comparisons will ignore fields of
+  this type.
+'''
+
 from datetime import datetime
 from textwrap import indent, dedent
 
 from ast import *
 from util import *
 
-
-@comma_sep
-def struct_fields(fields, suffix):
-    for f in fields:
-        yield '%s: ref %s%s' % (f.name, f.name, suffix)
-
-@comma_sep
-def tuple_fields(fields, suffix):
-    for f in fields:
-        yield 'ref %s%s' % (f.name, suffix)
-
-def struct_pattern(s, path, suffix=''):
-    if not s.is_tuple:
-        return '%s { %s }' % (path, struct_fields(s.fields, suffix))
-    else:
-        if len(s.fields) == 0:
-            return path
-        else:
-            return '%s(%s)' % (path, tuple_fields(s.fields, suffix))
 
 @linewise
 def exhaustiveness_check(se, target):

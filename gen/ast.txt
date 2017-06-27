@@ -1,3 +1,22 @@
+// This file describes nearly all Rust AST types.  It is used by gen/process_ast.py to generate
+// impls of various traits for all AST nodes.
+//
+// There are three types of declarations that can appear in this file.
+//  - `struct`s: Similar to Rust struct declarations, except that only field names are given, not
+//    their types.  Both "normal" and tuple structs are supported.  In normal structs declarations,
+//    the field names must match the actual names of the fields.  For tuple structs, names must
+//    still be provided, but they can be chosen arbitrarily (except they must be valid Rust
+//    identifiers, i.e., not keywords).
+//  - `enum`s: Similar to Rust enum declarations.  Each variant follows the same format as a struct
+//    declaration.  Both tuple-like and struct-like variants are supported.
+//  - `flag`s: These indicate types with no interesting internal structure, such as `Mutability` (an
+//    enum with two nullary variants, `Mutable` and `Immutable`).  The code generators will either
+//    ignore these or use a simple default implementation.
+//
+// Top-level declarations, enum variants, and struct/variant fields may all be prefixed with
+// attributes.  The attribute format is `#[attr]` or `#[key=value]` (where `value` is a single
+// word).  Consult the doc comments for the code generator modules for information on the supported
+// attributes and their effects.
 
 
 struct Crate { module, attrs, span }
@@ -91,10 +110,10 @@ enum ViewPath_ {
 struct PathListItem_ { name, rename, id }
 
 enum Visibility {
-    Public(),
+    Public,
     Crate(span),
     Restricted { path, id },
-    Inherited(),
+    Inherited,
 }
 
 
@@ -106,17 +125,17 @@ enum TyKind {
     Ptr(mty),
     Rptr(lt, mty),
     BareFn(ty),
-    Never(),
+    Never,
     Tup(tys),
     Path(qself, path),
     TraitObject(bounds),
     ImplTrait(bounds),
     Paren(ty),
     Typeof(expr),
-    Infer(),
-    ImplicitSelf(),
+    Infer,
+    ImplicitSelf,
     Mac(mac),
-    Err(),
+    Err,
 }
 
 
@@ -155,6 +174,7 @@ enum StmtKind {
 struct Local { pat, ty, init, id, span, attrs }
 
 
+#[match=custom]
 struct Expr { id, node, span, attrs }
 enum ExprKind {
     Box(expr),
@@ -207,7 +227,7 @@ struct Block { stmts, id, rules, span }
 
 struct Pat { id, node, span }
 enum PatKind {
-    Wild(),
+    Wild,
     Ident(mode, id, pat),
     Struct(path, fields, dotdot),
     TupleStruct(path, fields, dotdot),
@@ -246,7 +266,8 @@ flag Mutability;
 flag RangeEnd;
 flag BindingMode;
 flag CaptureBy;
-flag BlockCheckMode;
+// Distinguish `{ ... }` from `unsafe { ... }`.
+#[match=eq] flag BlockCheckMode;
 flag StrStyle;
 flag AsmDialect;
 flag RangeLimits;
@@ -282,9 +303,9 @@ struct GlobalAsm { asm, ctxt }
 struct InlineAsmOutput { constraint, expr, is_rw, is_indirect }
 
 
-flag Ident;
-flag Name;
-flag SyntaxContext;
+#[match=custom] flag Ident;
+#[match=eq] flag Name;
+#[match=eq] flag SyntaxContext;
 
 #[equiv_mode=ignore] flag Span;
 #[equiv_mode=ignore] flag NodeId;

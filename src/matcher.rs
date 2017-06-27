@@ -1,5 +1,4 @@
 use std::collections::hash_map::{HashMap, Entry};
-use std::fmt::Debug;
 use std::result;
 use syntax::ast::{Ident, Expr, Pat, Stmt, Item, Crate, Mac};
 use syntax::symbol::Symbol;
@@ -67,7 +66,7 @@ impl MatchCtxt {
     }
 }
 
-pub trait TryMatch: Debug {
+pub trait TryMatch {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> Result;
 }
 

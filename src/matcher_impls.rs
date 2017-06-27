@@ -1,37 +1,24 @@
+use std::rc::Rc;
 use syntax::ast::*;
-use syntax::codemap::Spanned;
+use syntax::abi::Abi;
+use syntax::ast::*;
+use syntax::codemap::{Span, Spanned};
+use syntax::ext::hygiene::SyntaxContext;
 use syntax::ptr::P;
+use syntax::tokenstream::{TokenStream, ThinTokenStream};
 
 use matcher::{self, TryMatch, MatchCtxt};
 use util;
 
 
-impl TryMatch for Attribute {
-    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
-        Err(matcher::Error::NotImplemented)
-    }
-}
-
-impl TryMatch for Ty {
-    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
-        Err(matcher::Error::NotImplemented)
-    }
-}
-
 impl TryMatch for Ident {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
-        if self.name.as_str().starts_with("__") {
-            mcx.try_capture_ident(self.name, target)?;
-            return Ok(());
+        if let Some(sym) = util::ident_sym(self) {
+            if let Ok(()) = mcx.try_capture_ident(sym, &target.clone()) {
+                return Ok(());
+            }
         }
 
-        mcx.try_match(&self.name, &target.name)?;
-        Ok(())
-    }
-}
-
-impl TryMatch for Name {
-    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
         if self == target {
             Ok(())
         } else {
@@ -48,31 +35,7 @@ impl TryMatch for Expr {
             }
         }
 
-        mcx.try_match(&self.node, &target.node)?;
-        mcx.try_match(&self.attrs, &target.attrs)?;
-        Ok(())
-    }
-}
-
-impl TryMatch for ExprKind {
-    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
-        match (self, target) {
-            (&ExprKind::Call(ref func1, ref args1),
-             &ExprKind::Call(ref func2, ref args2)) => {
-                mcx.try_match(func1, func2)?;
-                mcx.try_match(args1, args2)?;
-            },
-
-            (&ExprKind::MethodCall(ref id1, ref tys1, ref args1),
-             &ExprKind::MethodCall(ref id2, ref tys2, ref args2)) => {
-                mcx.try_match(id1, id2)?;
-                mcx.try_match(tys1, tys2)?;
-                mcx.try_match(args1, args2)?;
-            },
-
-            (_, _) => return Err(matcher::Error::VariantMismatch),
-        }
-        Ok(())
+        default_try_match_expr(self, target, mcx)
     }
 }
 
@@ -107,9 +70,44 @@ impl<T: TryMatch> TryMatch for P<T> {
     }
 }
 
+impl<T: TryMatch> TryMatch for Rc<T> {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
+        mcx.try_match(&**self, &**target)
+    }
+}
+
 impl<T: TryMatch> TryMatch for Spanned<T> {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
         mcx.try_match(&self.node, &target.node)
     }
 }
 
+impl<T: TryMatch> TryMatch for Option<T> {
+    fn try_match(&self, target: &Option<T>, mcx: &mut MatchCtxt) -> matcher::Result {
+        match (self, target) {
+            (&Some(ref x), &Some(ref y)) => mcx.try_match(x, y),
+            (&None, &None) => Ok(()),
+            (_, _) => Err(matcher::Error::VariantMismatch),
+        }
+    }
+}
+
+impl<A: TryMatch, B: TryMatch> TryMatch for (A, B) {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
+        mcx.try_match(&self.0, &target.0)?;
+        mcx.try_match(&self.1, &target.1)?;
+        Ok(())
+    }
+}
+
+impl<A: TryMatch, B: TryMatch, C: TryMatch> TryMatch for (A, B, C) {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
+        mcx.try_match(&self.0, &target.0)?;
+        mcx.try_match(&self.1, &target.1)?;
+        mcx.try_match(&self.2, &target.2)?;
+        Ok(())
+    }
+}
+
+
+include!("matcher_impls_gen.inc.rs");

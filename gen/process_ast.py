@@ -15,7 +15,7 @@ TOKEN_RE = re.compile(r'''
         (?P<ident> [a-zA-Z_0-9]* )
         ''', re.VERBOSE)
 
-SPACE_RE = re.compile(r'\s*')
+SPACE_RE = re.compile(r'(\s|//[^\n]*)*')
 
 Keyword = namedtuple('Keyword', ('text'))
 Symbol = namedtuple('Symbol', ('text'))
@@ -107,7 +107,7 @@ class Parser:
         attrs = self.parse_attrs()
         kw = self.take_keyword()
         if kw == 'struct':
-            return self.parse_struct(attrs)
+            return self.parse_struct(attrs, top_level=True)
         elif kw == 'enum':
             return self.parse_enum(attrs)
         elif kw == 'flag':
@@ -134,13 +134,28 @@ class Parser:
             attrs[key] = value
         return attrs
 
-    def parse_struct(self, attrs):
+    def parse_struct(self, attrs, top_level=False):
         name = self.take_ident()
-        start_delim = self.take_symbol_from('{(')
-        end_delim = '}' if start_delim == '{' else ')'
+
+        start_delim = self.peek_symbol()
+        if start_delim == '(':
+            self.take()
+            end_delim = ')'
+            is_tuple = True
+        elif start_delim == '{':
+            self.take()
+            end_delim = '}'
+            is_tuple = False
+        else:
+            # Nullary tuple struct, with no parens
+            return Struct(name, [], True, attrs)
+
         fields = self.parse_fields(end_delim)
         self.take_symbol_from(end_delim)
-        return Struct(name, fields, start_delim == '(', attrs)
+        if top_level and is_tuple:
+            self.take_symbol_from(';')
+
+        return Struct(name, fields, is_tuple, attrs)
 
     def parse_enum(self, attrs):
         name = self.take_ident()
@@ -190,6 +205,9 @@ if __name__ == '__main__':
     if mode == 'ast_equiv':
         import ast_equiv
         text = ast_equiv.generate(decls)
+    elif mode == 'matcher':
+        import matcher
+        text = matcher.generate(decls)
     else:
         raise ValueError('unknown mode: %r' % mode)
 
