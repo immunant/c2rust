@@ -112,3 +112,10 @@ impl<'ast> RewriteCtxt<'ast> {
 pub trait Rewrite<'ast> {
     fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) -> bool;
 }
+
+
+pub fn rewrite<'ast, T: Rewrite<'ast>>(old: &'ast T, new: &'ast T) -> Vec<(Span, String)> {
+    let mut rcx = RewriteCtxt::new();
+    assert!(rcx.rewrite(old, new), "rewriting failed");
+    rcx.rewrites
+}

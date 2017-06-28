@@ -136,20 +136,28 @@ fn mk_diagnostic(msg: &str) -> Diagnostic {
     diag
 }
 
-pub fn parse_stmt(sess: &Session, src: &str) -> Result<Stmt, Diagnostic> {
+pub fn parse_stmts(sess: &Session, src: &str) -> Result<Vec<Stmt>, Diagnostic> {
     let mut p = make_parser(sess, "<stmt>", src);
-    match p.parse_full_stmt(false) {
-        Ok(Some(stmt)) => Ok(stmt),
-        Ok(None) => Err(mk_diagnostic("parsing found no stmt")),
-        Err(e) => Err(e.into_diagnostic()),
+    let mut stmts = Vec::new();
+    loop {
+        match p.parse_full_stmt(false) {
+            Ok(Some(stmt)) => stmts.push(stmt),
+            Ok(None) => break,
+            Err(e) => return Err(e.into_diagnostic()),
+        }
     }
+    Ok(stmts)
 }
 
-pub fn parse_item(sess: &Session, src: &str) -> Result<P<Item>, Diagnostic> {
+pub fn parse_items(sess: &Session, src: &str) -> Result<Vec<P<Item>>, Diagnostic> {
     let mut p = make_parser(sess, "<stmt>", src);
-    match p.parse_item() {
-        Ok(Some(item)) => Ok(item),
-        Ok(None) => Err(mk_diagnostic("parsing found no item")),
-        Err(e) => Err(e.into_diagnostic()),
+    let mut items = Vec::new();
+    loop {
+        match p.parse_item() {
+            Ok(Some(item)) => items.push(item),
+            Ok(None) => break,
+            Err(e) => return Err(e.into_diagnostic()),
+        }
     }
+    Ok(items)
 }

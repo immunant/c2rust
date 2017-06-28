@@ -7,11 +7,7 @@ use syntax::util::small_vector::SmallVector;
 // Helper functions for extracting the `Symbol` from a pattern AST.
 
 pub fn ident_sym(i: &Ident) -> Option<Symbol> {
-    if i.name.as_str().starts_with("__") {
-        Some(i.name)
-    } else {
-        None
-    }
+    Some(i.name)
 }
 
 pub fn path_sym(p: &Path) -> Option<Symbol> {

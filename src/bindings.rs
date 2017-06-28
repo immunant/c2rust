@@ -6,7 +6,7 @@ use syntax::symbol::Symbol;
 use ast_equiv::AstEquiv;
 
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Bindings {
     map: HashMap<Symbol, Value>,
 }
@@ -42,6 +42,11 @@ macro_rules! define_binding_values {
             $( $Thing($Repr), )*
         }
 
+        #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+        pub enum Type {
+            $( $Thing, )*
+        }
+
         impl Bindings {
             $(
                 pub fn $add_thing<S: IntoSymbol>(&mut self, name: S, val: $Repr) {
@@ -75,6 +80,14 @@ macro_rules! define_binding_values {
                     }
                 }
             )*
+
+            pub fn get_type<S: IntoSymbol>(&self, name: S) -> Option<Type> {
+                self.map.get(&name.into_symbol()).map(|v| {
+                    match v {
+                        $( &Value::$Thing(_) => Type::$Thing, )*
+                    }
+                })
+            }
         }
 
         impl AstEquiv for Value {
@@ -97,7 +110,7 @@ define_binding_values! {
     Ident(Ident), add_ident, try_add_ident, ident, get_ident;
     Expr(P<Expr>), add_expr, try_add_expr, expr, get_expr;
     Pat(P<Pat>), add_pat, try_add_pat, pat, get_pat;
-    Stmt(P<Stmt>), add_stmt, try_add_stmt, stmt, get_stmt;
+    Stmt(Stmt), add_stmt, try_add_stmt, stmt, get_stmt;
     Item(P<Item>), add_item, try_add_item, item, get_item;
 }
 

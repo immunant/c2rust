@@ -1,0 +1,5 @@
+let mut __i = __low;
+while __i < __high {
+    __body;
+    __i += 1;
+}

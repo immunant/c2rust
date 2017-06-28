@@ -75,9 +75,15 @@ fn main() {
         },
 
         "stmt" => {
-            let pattern = driver::parse_stmt(&sess, &pattern_src).unwrap();
-            let repl = driver::parse_stmt(&sess, &repl_src).unwrap();
-            matcher::fold_match(pattern, krate.clone(), |_, bnd| {
+            let pattern = driver::parse_stmts(&sess, &pattern_src).unwrap();
+            let repl = driver::parse_stmts(&sess, &repl_src).unwrap();
+            println!("pat = {:?}", pattern);
+            println!("repl = {:?}", repl);
+
+            let mut init_mcx = matcher::MatchCtxt::new();
+            init_mcx.set_type("__i", bindings::Type::Ident);
+
+            matcher::fold_match_with(init_mcx, pattern, krate.clone(), |_, bnd| {
                 repl.clone().subst(&bnd)
             })
         },
@@ -90,9 +96,8 @@ fn main() {
 
 
 
-    let mut rw = rewrite::RewriteCtxt::new();
-    rw.rewrite(&krate, &krate2);
-    println!("rw = {:?}", rw);
+    let rws = rewrite::rewrite(&krate, &krate2);
+    println!("rws = {:?}", rws);
 
-    file_rewrite::rewrite_files(sess.codemap(), rw.rewrites());
+    file_rewrite::rewrite_files(sess.codemap(), &rws);
 }

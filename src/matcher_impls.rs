@@ -8,15 +8,12 @@ use syntax::ptr::P;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
 
 use matcher::{self, TryMatch, MatchCtxt};
-use util;
 
 
 impl TryMatch for Ident {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
-        if let Some(sym) = util::ident_sym(self) {
-            if let Ok(()) = mcx.try_capture_ident(sym, &target.clone()) {
-                return Ok(());
-            }
+        if mcx.maybe_capture_ident(self, target)? {
+            return Ok(());
         }
 
         if self == target {
@@ -29,10 +26,8 @@ impl TryMatch for Ident {
 
 impl TryMatch for Expr {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
-        if let Some(sym) = util::expr_sym(self) {
-            if let Ok(()) = mcx.try_capture_expr(sym, &P(target.clone())) {
-                return Ok(());
-            }
+        if mcx.maybe_capture_expr(self, target)? {
+            return Ok(());
         }
 
         default_try_match_expr(self, target, mcx)
@@ -41,10 +36,8 @@ impl TryMatch for Expr {
 
 impl TryMatch for Pat {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
-        if let Some(sym) = util::pat_sym(self) {
-            if let Ok(()) = mcx.try_capture_pat(sym, &P(target.clone())) {
-                return Ok(());
-            }
+        if mcx.maybe_capture_pat(self, target)? {
+            return Ok(());
         }
 
         default_try_match_pat(self, target, mcx)
