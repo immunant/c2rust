@@ -52,28 +52,6 @@ fn mk_diagnostic(msg: &str) -> Diagnostic {
     diag
 }
 
-fn parse_crate(src: &str) -> Result<Crate, Diagnostic> {
-    let sess = ParseSess::new();
-    let name = "<string>".to_owned();
-    let src = src.to_owned();
-    let r = match parse::parse_crate_from_source_str(name, src, &sess) {
-        Ok(krate) => Ok(krate),
-        Err(e) => Err(e.into_diagnostic()),
-    };
-    r
-}
-
-fn parse_expr(src: &str) -> Result<P<Expr>, Diagnostic> {
-    let sess = ParseSess::new();
-    let name = "<string>".to_owned();
-    let src = src.to_owned();
-    let r = match parse::parse_expr_from_source_str(name, src, &sess) {
-        Ok(expr) => Ok(expr),
-        Err(e) => Err(e.into_diagnostic()),
-    };
-    r
-}
-
 fn read_file(path: &str) -> String {
     println!("reading {}", path);
     let mut f = File::open(path).unwrap();
@@ -90,21 +68,25 @@ fn main() {
     let remaining_args = &args[3..];
     println!("remaining args = {:?}", remaining_args);
 
-    let pattern_src = read_file(&pattern_file);
-    let pattern = parse_expr(&pattern_src).unwrap();
-
-    let repl_src = read_file(&repl_file);
-    let repl = parse_expr(&repl_src).unwrap();
-
     let (krate, sess) = driver::parse_crate(remaining_args);
     println!("krate:\n ===\n{}\n ===\n",
              pprust::to_string(|s| s.print_mod(&krate.module, &[])));
+
+
+
+    let pattern_src = read_file(&pattern_file);
+    let pattern = driver::parse_expr(&sess, &pattern_src).unwrap();
+
+    let repl_src = read_file(&repl_file);
+    let repl = driver::parse_expr(&sess, &repl_src).unwrap();
 
     let krate2 = matcher::fold_match(pattern, krate.clone(), |e, bnd| {
         repl.clone().subst(&bnd)
     });
     println!("krate2:\n ===\n{}\n ===\n",
              pprust::to_string(|s| s.print_mod(&krate2.module, &[])));
+
+
 
     let mut rw = rewriter::RewriteCtxt::new();
     rw.rewrite(&krate, &krate2);

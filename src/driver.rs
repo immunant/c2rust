@@ -7,15 +7,18 @@ use rustc::dep_graph::DepGraph;
 use rustc::session::{self, Session};
 use rustc::session::config::Input;
 use rustc_driver;
+use rustc_errors::{Diagnostic, ColorConfig, Handler};
 use rustc_metadata::creader::CrateLoader;
 use rustc_metadata::cstore::CStore;
 use rustc_resolve::{Resolver, MakeGlobMap};
 use rustc_trans::back::link;
 use syntax;
-use syntax::ast::Crate;
+use syntax::ast::{Crate, Expr, Pat, Stmt, Item};
 use syntax::codemap::{CodeMap, RealFileLoader};
 use syntax::ext::base::ExtCtxt;
 use syntax::parse;
+use syntax::parse::parser::Parser;
+use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax_ext;
 
@@ -103,4 +106,50 @@ pub fn parse_crate(args: &[String]) -> (Crate, Session) {
     let (sess, cstore) = build_session(args);
     let krate = parse_crate_for_session(&sess, cstore);
     (krate, sess)
+}
+
+fn make_parser<'a>(sess: &'a Session, name: &str, src: &str) -> Parser<'a> {
+    parse::new_parser_from_source_str(&sess.parse_sess,
+                                      name.to_owned(),
+                                      src.to_owned())
+}
+
+pub fn parse_expr(sess: &Session, src: &str) -> Result<P<Expr>, Diagnostic> {
+    let mut p = make_parser(sess, "<expr>", src);
+    match p.parse_expr() {
+        Ok(expr) => Ok(expr),
+        Err(e) => Err(e.into_diagnostic()),
+    }
+}
+
+pub fn parse_pat(sess: &Session, src: &str) -> Result<P<Pat>, Diagnostic> {
+    let mut p = make_parser(sess, "<pat>", src);
+    match p.parse_pat() {
+        Ok(pat) => Ok(pat),
+        Err(e) => Err(e.into_diagnostic()),
+    }
+}
+
+fn mk_diagnostic(msg: &str) -> Diagnostic {
+    let h = Handler::with_tty_emitter(ColorConfig::Auto, true, false, None);
+    let diag = h.struct_err(msg).into_diagnostic();
+    diag
+}
+
+pub fn parse_stmt(sess: &Session, src: &str) -> Result<Stmt, Diagnostic> {
+    let mut p = make_parser(sess, "<stmt>", src);
+    match p.parse_full_stmt(false) {
+        Ok(Some(stmt)) => Ok(stmt),
+        Ok(None) => Err(mk_diagnostic("parsing found no stmt")),
+        Err(e) => Err(e.into_diagnostic()),
+    }
+}
+
+pub fn parse_item(sess: &Session, src: &str) -> Result<P<Item>, Diagnostic> {
+    let mut p = make_parser(sess, "<stmt>", src);
+    match p.parse_item() {
+        Ok(Some(item)) => Ok(item),
+        Ok(None) => Err(mk_diagnostic("parsing found no item")),
+        Err(e) => Err(e.into_diagnostic()),
+    }
 }
