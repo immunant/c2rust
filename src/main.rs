@@ -23,10 +23,14 @@ use syntax::parse::{self, ParseSess};
 use syntax::print::pprust;
 use syntax::ptr::P;
 
+use subst::Subst;
+
 
 mod bindings;
 mod ast_equiv;
 mod util;
+mod fold;
+
 mod driver;
 mod matcher;
 mod matcher_impls;
@@ -96,7 +100,9 @@ fn main() {
     println!("krate:\n ===\n{}\n ===\n",
              pprust::to_string(|s| s.print_mod(&krate.module, &[])));
 
-    let krate2 = replacer::find_and_replace_expr(&pattern, &repl, &krate);
+    let krate2 = matcher::fold_match(pattern, krate.clone(), |e, bnd| {
+        repl.clone().subst(&bnd)
+    });
     println!("krate2:\n ===\n{}\n ===\n",
              pprust::to_string(|s| s.print_mod(&krate2.module, &[])));
 

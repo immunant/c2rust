@@ -1,90 +1,82 @@
 use std::collections::hash_map::{HashMap, Entry};
 use std::fmt::Debug;
 use std::result;
-use syntax::ast::{Ident, Expr, ExprKind, Stmt, Item, Crate, Mac};
+use syntax::ast::{Ident, Expr, Pat, Stmt, Item, Crate, Mac};
 use syntax::fold::{self, Folder};
 use syntax::symbol::Symbol;
 use syntax::ptr::P;
+use syntax::util::small_vector::SmallVector;
 
 use bindings::Bindings;
+use fold::Fold;
 use matcher::MatchCtxt;
 use util;
 
-#[derive(Debug)]
-pub struct ReplaceCtxt {
-    pub bindings: Bindings,
+
+struct SubstFolder<'a> {
+    bindings: &'a Bindings,
 }
 
-impl ReplaceCtxt {
-    pub fn from_match_ctxt(mcx: MatchCtxt) -> ReplaceCtxt {
-        ReplaceCtxt {
-            bindings: mcx.bindings,
-        }
-    }
-
-    pub fn try_replace_ident(&self, ident: &Ident) -> Option<P<Ident>> {
-        util::ident_sym(ident)
-            .and_then(|sym| self.bindings.get_ident(sym))
-            .map(|x| P(x.clone()))
-    }
-
-    pub fn try_replace_expr(&self, expr: &Expr) -> Option<P<Expr>> {
-        util::expr_sym(expr)
-            .and_then(|sym| self.bindings.get_expr(sym))
-            .map(|x| x.clone())
-    }
-}
-
-
-struct BuildReplacementFolder<'p> {
-    rcx: &'p ReplaceCtxt,
-}
-
-impl<'p> Folder for BuildReplacementFolder<'p> {
+impl<'a> Folder for SubstFolder<'a> {
     fn fold_ident(&mut self, i: Ident) -> Ident {
-        if let Some(repl) = self.rcx.try_replace_ident(&i) {
-            (*repl).clone()
+        if let Some(sym) = util::ident_sym(&i) {
+            self.bindings.ident(sym).clone()
         } else {
             fold::noop_fold_ident(i, self)
         }
     }
 
     fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
-        if let Some(repl) = self.rcx.try_replace_expr(&e) {
-            repl
+        if let Some(sym) = util::expr_sym(&e) {
+            self.bindings.expr(sym).clone()
         } else {
             e.map(|e| fold::noop_fold_expr(e, self))
+        }
+    }
+
+    fn fold_pat(&mut self, p: P<Pat>) -> P<Pat> {
+        if let Some(sym) = util::pat_sym(&p) {
+            self.bindings.pat(sym).clone()
+        } else {
+            fold::noop_fold_pat(p, self)
+        }
+    }
+
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
+        if let Some(sym) = util::stmt_sym(&s) {
+            SmallVector::one((**self.bindings.stmt(sym)).clone())
+        } else {
+            fold::noop_fold_stmt(s, self)
+        }
+    }
+
+    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+        if let Some(sym) = util::item_sym(&i) {
+            SmallVector::one(self.bindings.item(sym).clone())
+        } else {
+            fold::noop_fold_item(i, self)
         }
     }
 }
 
 
-fn build_replacement_expr(mcx: MatchCtxt, repl: &Expr) -> P<Expr> {
-    let rcx = ReplaceCtxt::from_match_ctxt(mcx);
-    let mut f = BuildReplacementFolder { rcx: &rcx };
-    f.fold_expr(P(repl.clone()))
+pub trait Subst: Fold {
+    fn subst(self, bindings: &Bindings) -> <Self as Fold>::Result;
 }
 
-struct FindAndReplaceExpr<'p> {
-    pat: &'p Expr,
-    repl: &'p Expr,
-}
-
-impl<'p> Folder for FindAndReplaceExpr<'p> {
-    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
-        let e =
-            MatchCtxt::from_match(self.pat, &e).ok()
-                .map(|mcx| build_replacement_expr(mcx, self.repl))
-                .unwrap_or(e);
-        e.map(|e| fold::noop_fold_expr(e, self))
-    }
-}
-
-pub fn find_and_replace_expr(pat: &Expr, repl: &Expr, krate: &Crate) -> Crate {
-    let mut f = FindAndReplaceExpr {
-        pat: pat,
-        repl: repl,
+macro_rules! subst_impl {
+    ($ty:ty, $fold_func:ident) => {
+        impl Subst for $ty {
+            fn subst(self, bindings: &Bindings) -> <$ty as Fold>::Result {
+                let mut f = SubstFolder { bindings: bindings };
+                f.$fold_func(self)
+            }
+        }
     };
-    f.fold_crate(krate.clone())
 }
 
+subst_impl!(Ident, fold_ident);
+subst_impl!(P<Expr>, fold_expr);
+subst_impl!(P<Pat>, fold_pat);
+subst_impl!(Stmt, fold_stmt);
+subst_impl!(P<Item>, fold_item);

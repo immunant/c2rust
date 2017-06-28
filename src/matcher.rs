@@ -2,10 +2,12 @@ use std::collections::hash_map::{HashMap, Entry};
 use std::result;
 use syntax::ast::{Ident, Expr, Pat, Stmt, Item, Crate, Mac};
 use syntax::symbol::Symbol;
+use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
 use bindings::Bindings;
+use fold::Fold;
 
 
 pub type Result = result::Result<(), Error>;
@@ -72,6 +74,57 @@ pub trait TryMatch {
 
 
 
+pub trait Pattern<'a, F>: TryMatch+Fold+Sized
+        where F: FnMut(Self, Bindings) -> <Self as Fold>::Result + 'a {
+    type Folder: Folder;
+    fn make_folder(self, callback: F) -> Self::Folder;
+}
+
+pub struct ExprPatternFolder<F>
+        where F: FnMut(P<Expr>, Bindings) -> P<Expr> {
+    pattern: P<Expr>,
+    callback: F,
+}
+
+impl<'a, F> Folder for ExprPatternFolder<F>
+        where F: FnMut(P<Expr>, Bindings) -> P<Expr> + 'a {
+    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
+        let e =
+            if let Ok(mcx) = MatchCtxt::from_match(&self.pattern, &e) {
+                (self.callback)(e, mcx.bindings)
+            } else {
+                e
+            };
+
+        e.map(|e| fold::noop_fold_expr(e, self))
+    }
+}
+
+impl<'a, F> Pattern<'a, F> for P<Expr>
+        where F: FnMut(P<Expr>, Bindings) -> P<Expr> + 'a {
+    type Folder = ExprPatternFolder<F>;
+    fn make_folder(self, callback: F) -> Self::Folder {
+        ExprPatternFolder {
+            pattern: self,
+            callback: callback,
+        }
+    }
+}
+
+/// Find every match for `pattern` within `target`, and rewrite each one by invoking `callback`.
+pub fn fold_match<'a, P, T, F>(pattern: P, target: T, callback: F) -> <T as Fold>::Result
+        where P: Pattern<'a, F>,
+              T: Fold,
+              F: FnMut(P, Bindings) -> <P as Fold>::Result + 'a {
+    let mut f = pattern.make_folder(callback);
+    target.fold(&mut f)
+}
+
+
+
+
+
+
 struct FirstExprVisitor<'p> {
     pat: &'p Expr,
     result: Option<MatchCtxt>,
@@ -117,4 +170,8 @@ pub fn match_first_expr(pat: &Expr, ast: &Crate) -> Option<MatchCtxt> {
     visit::walk_crate(&mut v, ast);
     v.result
 }
+
+
+
+
 
