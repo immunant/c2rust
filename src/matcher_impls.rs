@@ -39,6 +39,18 @@ impl TryMatch for Expr {
     }
 }
 
+impl TryMatch for Pat {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
+        if let Some(sym) = util::pat_sym(self) {
+            if let Ok(()) = mcx.try_capture_pat(sym, &P(target.clone())) {
+                return Ok(());
+            }
+        }
+
+        default_try_match_pat(self, target, mcx)
+    }
+}
+
 
 impl<T: TryMatch> TryMatch for [T] {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {

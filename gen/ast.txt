@@ -225,6 +225,7 @@ struct Arm { attrs, pats, guard, body }
 struct Block { stmts, id, rules, span }
 
 
+#[match=custom]
 struct Pat { id, node, span }
 enum PatKind {
     Wild,

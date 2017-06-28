@@ -11,6 +11,7 @@ use bindings::Bindings;
 use fold::Fold;
 use matcher::MatchCtxt;
 use util;
+use util::Lone;
 
 
 struct SubstFolder<'a> {
@@ -60,16 +61,17 @@ impl<'a> Folder for SubstFolder<'a> {
 }
 
 
-pub trait Subst: Fold {
-    fn subst(self, bindings: &Bindings) -> <Self as Fold>::Result;
+pub trait Subst {
+    fn subst(self, bindings: &Bindings) -> Self;
 }
 
 macro_rules! subst_impl {
     ($ty:ty, $fold_func:ident) => {
         impl Subst for $ty {
-            fn subst(self, bindings: &Bindings) -> <$ty as Fold>::Result {
+            fn subst(self, bindings: &Bindings) -> Self {
                 let mut f = SubstFolder { bindings: bindings };
-                f.$fold_func(self)
+                let result = self.fold(&mut f);
+                result.lone()
             }
         }
     };

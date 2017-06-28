@@ -46,12 +46,6 @@ enum NodeType {
     Expr,
 }
 
-fn mk_diagnostic(msg: &str) -> Diagnostic {
-    let h = rustc_errors::Handler::with_tty_emitter(ColorConfig::Auto, true, false, None);
-    let diag = h.struct_err(msg).into_diagnostic();
-    diag
-}
-
 fn read_file(path: &str) -> String {
     println!("reading {}", path);
     let mut f = File::open(path).unwrap();
@@ -63,9 +57,10 @@ fn read_file(path: &str) -> String {
 
 fn main() {
     let args = env::args().collect::<Vec<_>>();
-    let pattern_file = &args[1];
-    let repl_file = &args[2];
-    let remaining_args = &args[3..];
+    let mode = &args[1];
+    let pattern_file = &args[2];
+    let repl_file = &args[3];
+    let remaining_args = &args[4..];
     println!("remaining args = {:?}", remaining_args);
 
     let (krate, sess) = driver::parse_crate(remaining_args);
@@ -73,16 +68,29 @@ fn main() {
              pprust::to_string(|s| s.print_mod(&krate.module, &[])));
 
 
-
     let pattern_src = read_file(&pattern_file);
-    let pattern = driver::parse_expr(&sess, &pattern_src).unwrap();
-
     let repl_src = read_file(&repl_file);
-    let repl = driver::parse_expr(&sess, &repl_src).unwrap();
 
-    let krate2 = matcher::fold_match(pattern, krate.clone(), |e, bnd| {
-        repl.clone().subst(&bnd)
-    });
+    let krate2 = match mode as &str {
+        "expr" => {
+            let pattern = driver::parse_expr(&sess, &pattern_src).unwrap();
+            let repl = driver::parse_expr(&sess, &repl_src).unwrap();
+            matcher::fold_match(pattern, krate.clone(), |_, bnd| {
+                repl.clone().subst(&bnd)
+            })
+        },
+
+        "stmt" => {
+            let pattern = driver::parse_stmt(&sess, &pattern_src).unwrap();
+            let repl = driver::parse_stmt(&sess, &repl_src).unwrap();
+            matcher::fold_match(pattern, krate.clone(), |_, bnd| {
+                repl.clone().subst(&bnd)
+            })
+        },
+
+        _ => panic!("unknown mode: {}", mode),
+    };
+
     println!("krate2:\n ===\n{}\n ===\n",
              pprust::to_string(|s| s.print_mod(&krate2.module, &[])));
 

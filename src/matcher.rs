@@ -5,6 +5,7 @@ use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
+use syntax::util::small_vector::SmallVector;
 
 use bindings::Bindings;
 use fold::Fold;
@@ -74,104 +75,85 @@ pub trait TryMatch {
 
 
 
-pub trait Pattern<'a, F>: TryMatch+Fold+Sized
-        where F: FnMut(Self, Bindings) -> <Self as Fold>::Result + 'a {
+pub trait Pattern<'a, F>: TryMatch+Sized
+        where F: FnMut(Self, Bindings) -> Self + 'a {
     type Folder: Folder;
     fn make_folder(self, callback: F) -> Self::Folder;
 }
 
-pub struct ExprPatternFolder<F>
-        where F: FnMut(P<Expr>, Bindings) -> P<Expr> {
-    pattern: P<Expr>,
-    callback: F,
+
+macro_rules! gen_pattern_impl {
+    (
+        pattern = $Pat:ty;
+        folder = $PatternFolder:ident;
+
+        $(
+            // Capture the ident "self" from the outer context, so it can be used in the `finish`
+            // expression.
+            fn $fold_thing:ident ( &mut $slf:ident , $arg:ident : $ArgTy:ty ) -> $RetTy:ty {
+                $finish:expr
+            }
+        )*
+    ) => {
+        pub struct $PatternFolder<F>
+                where F: FnMut($Pat, Bindings) -> $Pat {
+            pattern: $Pat,
+            callback: F,
+        }
+
+        impl<'a, F> Folder for $PatternFolder<F>
+                where F: FnMut($Pat, Bindings) -> $Pat + 'a {
+            $(
+                fn $fold_thing(&mut $slf, $arg: $ArgTy) -> $RetTy {
+                    let $arg =
+                        if let Ok(mcx) = MatchCtxt::from_match(&$slf.pattern, &$arg) {
+                            ($slf.callback)($arg, mcx.bindings)
+                        } else {
+                            $arg
+                        };
+
+                    $finish
+                }
+            )*
+        }
+
+        impl<'a, F> Pattern<'a, F> for $Pat
+                where F: FnMut($Pat, Bindings) -> $Pat + 'a {
+            type Folder = $PatternFolder<F>;
+            fn make_folder(self, callback: F) -> Self::Folder {
+                $PatternFolder {
+                    pattern: self,
+                    callback: callback,
+                }
+            }
+        }
+    };
 }
 
-impl<'a, F> Folder for ExprPatternFolder<F>
-        where F: FnMut(P<Expr>, Bindings) -> P<Expr> + 'a {
-    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
-        let e =
-            if let Ok(mcx) = MatchCtxt::from_match(&self.pattern, &e) {
-                (self.callback)(e, mcx.bindings)
-            } else {
-                e
-            };
+gen_pattern_impl! {
+    pattern = P<Expr>;
+    folder = ExprPatternFolder;
 
+    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
         e.map(|e| fold::noop_fold_expr(e, self))
     }
 }
 
-impl<'a, F> Pattern<'a, F> for P<Expr>
-        where F: FnMut(P<Expr>, Bindings) -> P<Expr> + 'a {
-    type Folder = ExprPatternFolder<F>;
-    fn make_folder(self, callback: F) -> Self::Folder {
-        ExprPatternFolder {
-            pattern: self,
-            callback: callback,
-        }
+gen_pattern_impl! {
+    pattern = Stmt;
+    folder = StmtPatternFolder;
+
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
+        fold::noop_fold_stmt(s, self)
     }
 }
+
 
 /// Find every match for `pattern` within `target`, and rewrite each one by invoking `callback`.
 pub fn fold_match<'a, P, T, F>(pattern: P, target: T, callback: F) -> <T as Fold>::Result
         where P: Pattern<'a, F>,
               T: Fold,
-              F: FnMut(P, Bindings) -> <P as Fold>::Result + 'a {
+              F: FnMut(P, Bindings) -> P + 'a {
     let mut f = pattern.make_folder(callback);
     target.fold(&mut f)
 }
-
-
-
-
-
-
-struct FirstExprVisitor<'p> {
-    pat: &'p Expr,
-    result: Option<MatchCtxt>,
-}
-
-impl<'a, 'p> Visitor<'a> for FirstExprVisitor<'p> {
-    fn visit_item(&mut self, i: &'a Item) {
-        if self.result.is_some() {
-            return;
-        }
-        visit::walk_item(self, i);
-    }
-
-    fn visit_stmt(&mut self, s: &'a Stmt) {
-        if self.result.is_some() {
-            return;
-        }
-        visit::walk_stmt(self, s);
-    }
-
-    fn visit_expr(&mut self, e: &'a Expr) {
-        if self.result.is_some() {
-            return;
-        }
-
-        if let Ok(mcx) = MatchCtxt::from_match(self.pat, e) {
-            self.result = Some(mcx);
-        } else {
-            visit::walk_expr(self, e);
-        }
-    }
-
-    fn visit_mac(&mut self, mac: &'a Mac) {
-        // TODO
-    }
-}
-
-pub fn match_first_expr(pat: &Expr, ast: &Crate) -> Option<MatchCtxt> {
-    let mut v = FirstExprVisitor {
-        pat: pat,
-        result: None
-    };
-    visit::walk_crate(&mut v, ast);
-    v.result
-}
-
-
-
-
-

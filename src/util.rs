@@ -1,6 +1,7 @@
 use syntax::ast::*;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
+use syntax::util::small_vector::SmallVector;
 
 
 // Helper functions for extracting the `Symbol` from a pattern AST.
@@ -86,4 +87,22 @@ pub fn trait_item_sym(i: &TraitItem) -> Option<Symbol> {
         _ => return None,
     };
     mac_sym(m)
+}
+
+
+pub trait Lone<T> {
+    fn lone(self) -> T;
+}
+
+impl<T> Lone<T> for T {
+    fn lone(self) -> T {
+        self
+    }
+}
+
+impl<T> Lone<T> for SmallVector<T> {
+    fn lone(mut self) -> T {
+        assert!(self.len() == 1);
+        self.pop().unwrap()
+    }
 }
