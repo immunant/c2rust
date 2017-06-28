@@ -66,7 +66,7 @@ def ignore_impl(d):
 @linewise
 def custom_impl(se):
     yield 'fn default_try_match_%s(this: &%s, target: &%s, mcx: &mut MatchCtxt) -> matcher::Result {' % \
-            (camel(se.name), se.name, se.name)
+            (snake(se.name), se.name, se.name)
     yield indent(do_match(se, 'this', 'target'), '  ')
     yield '}'
 

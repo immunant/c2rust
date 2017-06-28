@@ -35,16 +35,10 @@ mod driver;
 mod matcher;
 mod matcher_impls;
 mod subst;
-mod rewriter;
-mod rewriter_impls;
+mod rewrite;
+mod rewrite_impls;
 mod file_rewrite;
 
-
-enum NodeType {
-    Item,
-    Stmt,
-    Expr,
-}
 
 fn read_file(path: &str) -> String {
     println!("reading {}", path);
@@ -96,7 +90,7 @@ fn main() {
 
 
 
-    let mut rw = rewriter::RewriteCtxt::new();
+    let mut rw = rewrite::RewriteCtxt::new();
     rw.rewrite(&krate, &krate2);
     println!("rw = {:?}", rw);
 

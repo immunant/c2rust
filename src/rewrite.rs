@@ -29,46 +29,40 @@ impl<'ast> RewriteCtxt<'ast> {
         }
     }
 
+    pub fn mark(&self) -> usize {
+        self.rewrites.len()
+    }
+
+    pub fn rewind(&mut self, i: usize) {
+        self.rewrites.truncate(i);
+    }
+
     pub fn record(&mut self, sp: Span, new_text: String) {
         self.rewrites.push((sp, new_text));
     }
 
-    pub fn rewrite<R: Rewrite<'ast>>(&mut self, old: &'ast R, new: &'ast R) {
-        old.rewrite(new, self);
+
+    pub fn rewrite<R: Rewrite<'ast>>(&mut self, old: &'ast R, new: &'ast R) -> bool {
+        old.rewrite(new, self)
     }
 
-    fn rewrite_in_context<R: Rewrite<'ast>>(&mut self,
-                                            context: Context<'ast>,
-                                            old: &'ast R,
-                                            new: &'ast R) {
+    fn in_context<F>(&mut self,
+                     context: Context<'ast>,
+                     f: F) -> bool
+            where F: FnOnce(&mut RewriteCtxt<'ast>) -> bool {
         self.stack.push(context);
-        old.rewrite(new, self);
+        let result = f(self);
         self.stack.pop();
+        result
     }
 
 
-    pub fn rewrite_in_expr<R: Rewrite<'ast>>(&mut self,
-                                             old_expr: &'ast Expr,
-                                             new_expr: &'ast Expr,
-                                             old: &'ast R,
-                                             new: &'ast R) {
-        self.rewrite_in_context(Context::Expr(old_expr, new_expr), old, new);
-    }
-
-    pub fn rewrite_in_stmt<R: Rewrite<'ast>>(&mut self,
-                                             old_stmt: &'ast Stmt,
-                                             new_stmt: &'ast Stmt,
-                                             old: &'ast R,
-                                             new: &'ast R) {
-        self.rewrite_in_context(Context::Stmt(old_stmt, new_stmt), old, new);
-    }
-
-    pub fn rewrite_in_item<R: Rewrite<'ast>>(&mut self,
-                                             old_item: &'ast Item,
-                                             new_item: &'ast Item,
-                                             old: &'ast R,
-                                             new: &'ast R) {
-        self.rewrite_in_context(Context::Item(old_item, new_item), old, new);
+    pub fn in_expr<F>(&mut self,
+                      old_expr: &'ast Expr,
+                      new_expr: &'ast Expr,
+                      f: F) -> bool
+            where F: FnOnce(&mut RewriteCtxt<'ast>) -> bool {
+        self.in_context(Context::Expr(old_expr, new_expr), f)
     }
 
 
@@ -116,5 +110,5 @@ impl<'ast> RewriteCtxt<'ast> {
 
 
 pub trait Rewrite<'ast> {
-    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>);
+    fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) -> bool;
 }

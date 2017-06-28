@@ -162,6 +162,7 @@ enum FunctionRetTy {
 struct TypeBinding { id, ident, ty, span }
 
 
+#[rewrite_recover=recover_stmt]
 struct Stmt { id, node, span }
 enum StmtKind {
     Local(local),
@@ -174,7 +175,7 @@ enum StmtKind {
 struct Local { pat, ty, init, id, span, attrs }
 
 
-#[match=custom]
+#[match=custom] #[rewrite_context] #[rewrite_recover=recover_expr]
 struct Expr { id, node, span, attrs }
 enum ExprKind {
     Box(expr),

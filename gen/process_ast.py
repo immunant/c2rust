@@ -208,6 +208,9 @@ if __name__ == '__main__':
     elif mode == 'matcher':
         import matcher
         text = matcher.generate(decls)
+    elif mode == 'rewrite':
+        import rewrite
+        text = rewrite.generate(decls)
     else:
         raise ValueError('unknown mode: %r' % mode)
 

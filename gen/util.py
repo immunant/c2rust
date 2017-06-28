@@ -43,7 +43,7 @@ def struct_pattern(s, path, suffix=''):
 
 CAPS_RE = re.compile(r'[A-Z]')
 
-def camel(s):
+def snake(s):
     s = CAPS_RE.sub(lambda m: '_' + m.group().lower(), s)
     if s.startswith('_'):
         s = s[1:]
