@@ -1,0 +1,11 @@
+
+fn f() -> i32 {
+    1
+}
+
+fn main() {
+    5.wrapping_add({
+        println!("1 + 1 = {}", f(/*comment*/).wrapping_add(f()));
+        5
+    });
+}

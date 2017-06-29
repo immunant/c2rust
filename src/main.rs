@@ -18,10 +18,13 @@ use std::fs::File;
 use std::io::Read;
 use rustc_errors::{Diagnostic, ColorConfig};
 use syntax::ast::{Expr, Crate};
-use syntax::codemap::DUMMY_SP;
 use syntax::parse::{self, ParseSess};
 use syntax::print::pprust;
 use syntax::ptr::P;
+
+use syntax::ast::{Pat, Stmt, Item};
+use syntax::codemap::{CodeMap, Span, DUMMY_SP};
+use syntax::visit::Visitor;
 
 use subst::Subst;
 
@@ -30,6 +33,7 @@ mod bindings;
 mod ast_equiv;
 mod util;
 mod fold;
+mod visit;
 
 mod driver;
 mod matcher;
@@ -38,6 +42,59 @@ mod subst;
 mod rewrite;
 mod rewrite_impls;
 mod file_rewrite;
+
+
+struct PrintSpanVisitor<'a> {
+    cm: &'a CodeMap,
+}
+
+impl<'a> PrintSpanVisitor<'a> {
+    fn span_desc(&self, span: Span) -> String {
+        if span == DUMMY_SP {
+            return "DUMMY_SP".to_owned();
+        }
+
+        let lo = self.cm.lookup_byte_offset(span.lo);
+        let hi = self.cm.lookup_byte_offset(span.hi);
+        let mut s = format!("{}: {} .. {}", lo.fm.name, lo.pos.0, hi.pos.0);
+
+        let span2 = span.source_callsite();
+        if span2 != span {
+            s.push_str(" < ");
+            s.push_str(&self.span_desc(span2));
+        }
+
+        s
+    }
+}
+
+
+impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
+    fn visit_expr(&mut self, x: &'a Expr) {
+        println!("[EXPR] {}: {}",
+                 self.span_desc(x.span), pprust::expr_to_string(x));
+        syntax::visit::walk_expr(self, x);
+    }
+
+    fn visit_pat(&mut self, x: &'a Pat) {
+        println!("[PAT] {}: {}",
+                 self.span_desc(x.span), pprust::pat_to_string(x));
+        syntax::visit::walk_pat(self, x);
+    }
+
+    fn visit_stmt(&mut self, x: &'a Stmt) {
+        println!("[STMT] {}: {}",
+                 self.span_desc(x.span), pprust::stmt_to_string(x));
+        syntax::visit::walk_stmt(self, x);
+    }
+
+    fn visit_item(&mut self, x: &'a Item) {
+        println!("[ITEM] {}: {}",
+                 self.span_desc(x.span), pprust::item_to_string(x));
+        syntax::visit::walk_item(self, x);
+    }
+}
+
 
 
 fn read_file(path: &str) -> String {
@@ -55,7 +112,6 @@ fn main() {
     let pattern_file = &args[2];
     let repl_file = &args[3];
     let remaining_args = &args[4..];
-    println!("remaining args = {:?}", remaining_args);
 
     let (krate, sess) = driver::parse_crate(remaining_args);
     println!("krate:\n ===\n{}\n ===\n",
@@ -69,6 +125,9 @@ fn main() {
         "expr" => {
             let pattern = driver::parse_expr(&sess, &pattern_src).unwrap();
             let repl = driver::parse_expr(&sess, &repl_src).unwrap();
+            (PrintSpanVisitor {
+                cm: sess.codemap(),
+            }).visit_expr(&repl);
             matcher::fold_match(pattern, krate.clone(), |_, bnd| {
                 repl.clone().subst(&bnd)
             })
@@ -93,10 +152,15 @@ fn main() {
 
     println!("krate2:\n ===\n{}\n ===\n",
              pprust::to_string(|s| s.print_mod(&krate2.module, &[])));
+    /*
+    visit::walk_crate(&mut PrintSpanVisitor {
+        cm: sess.codemap(),
+    }, &krate2);
+    */
 
 
 
-    let rws = rewrite::rewrite(&krate, &krate2);
+    let rws = rewrite::rewrite(&sess, &krate, &krate2);
     println!("rws = {:?}", rws);
 
     file_rewrite::rewrite_files(sess.codemap(), &rws);

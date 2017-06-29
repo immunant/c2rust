@@ -3,7 +3,7 @@ RUSTC = ~/install/rust/build/x86_64-unknown-linux-gnu/stage1/bin/rustc
 GEN_SRCS = \
 		   src/ast_equiv_gen.inc.rs \
 		   src/matcher_impls_gen.inc.rs \
-		   src/rewrite_impls_gen.inc.rs \
+		   src/rewrite_impls_gen.inc.rs
 
 idiomize idiomize.d: $(GEN_SRCS)
 	 $(RUSTC) src/main.rs -C rpath --crate-name idiomize --emit link,dep-info

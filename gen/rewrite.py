@@ -15,14 +15,15 @@ with the `RewriteCtxt`.
 
 Attributes:
 
-- `#[rewrite_recover=func]`: If this node would fail to rewrite, instead invoke
-  `func(old, new, rcx)` and succeed.
-
-- `#[rewrite_context]`: Push a context entry onto the `rcx` stack upon entering
-  this node, and pop it upon leaving.
+- `#[rewrite_splice]`: This node type is a "splice point": if needed, the
+  rewriting process can cut out the node's source text and replace it with
+  other text.  In recycled mode, if the node or its children require rewriting,
+  then `rewrite_recycled` will call `splice_recycled_[node]` and return `true`
+  instead of `false`.  In fresh mode, `rewrite_fresh` will check this node's
+  span and call `splice_fresh_[node]` if it has old source text available.
 
 - `#[rewrite=ignore]`: Ignore nodes of this type.  Perform no side effects and
-  always return success.
+  always return success, in both `rewrite_recycled` and `rewrite_fresh`.
 '''
 
 from datetime import datetime
@@ -33,20 +34,20 @@ from util import *
 
 
 @linewise
-def do_match(se, target1, target2):
+def do_recycled_match(se, target1, target2):
     yield 'match (%s, %s) {' % (target1, target2)
     for v, path in variants_paths(se):
         yield '  (&%s,' % struct_pattern(v, path, '1')
         yield '   &%s) => {' % struct_pattern(v, path, '2')
         for f in v.fields:
-            yield '    rcx.rewrite(%s1, %s2) &&' % (f.name, f.name)
-        yield '    true'
+            yield '    Rewrite::rewrite_recycled(%s1, %s2, rcx.borrow()) ||' % (f.name, f.name)
+        yield '    false'
         yield '  }'
-    yield '  (_, _) => false,'
+    yield '  (_, _) => true,'
     yield '}'
 
 @linewise
-def do_fn_body(d):
+def do_recycled_body(d):
     mode = d.attrs.get('rewrite')
     if mode is None:
         if isinstance(d, (Struct, Enum)):
@@ -54,45 +55,68 @@ def do_fn_body(d):
         else:
             mode = 'eq'
 
-    recover = d.attrs.get('rewrite_recover')
-    context = 'rewrite_context' in d.attrs
+    splice = 'rewrite_splice' in d.attrs
 
-    if recover:
+    if splice:
         # We only need the mark if we might recover.
         yield 'let mark = rcx.mark();'
 
     # Make recursive calls
-    yield 'let result ='
-    if context:
-        yield '  rcx.in_%s(self, new, |rcx| {' % snake(d.name)
+    yield 'let need_rewrite ='
     if mode == 'ignore':
-        yield '  true'
+        yield '  false'
     elif mode == 'eq':
-        yield '  self == new'
+        yield '  self != old'
     elif mode == 'compare':
-        yield indent(do_match(d, 'self', 'new'), '  ')
-    if context:
-        yield '  })'
+        yield indent(do_recycled_match(d, 'self', 'old'), '  ')
     yield ';'
 
     # Maybe recover, then return the final result
-    yield 'if !result {'
-    if recover:
+    yield 'if need_rewrite {'
+    if splice:
         # Drop any rewrites pushed before the failure, then recover.
         yield '  rcx.rewind(mark);'
-        yield '  %s(self, new, rcx);' % recover
-        yield '  true'
-    else:
+        yield '  splice_recycled_%s(self, old, rcx);' % snake(d.name)
         yield '  false'
+    else:
+        yield '  true'
     yield '} else {'
-    yield '  true'
+    yield '  false'
     yield '}'
 
 @linewise
+def do_fresh_match(se, target1, target2):
+    yield 'match (%s, %s) {' % (target1, target2)
+    for v, path in variants_paths(se):
+        yield '  (&%s,' % struct_pattern(v, path, '1')
+        yield '   &%s) => {' % struct_pattern(v, path, '2')
+        for f in v.fields:
+            yield '    Rewrite::rewrite_fresh(%s1, %s2, rcx.borrow());' % (f.name, f.name)
+        yield '  }'
+    yield '  (_, _) => panic!("new and reparsed AST differ"),'
+    yield '}'
+
+@linewise
+def do_fresh_body(d):
+    splice = 'rewrite_splice' in d.attrs
+
+    if splice:
+        # We only need the mark if we might recover.
+        yield 'if splice_fresh_%s(self, reparsed, rcx.borrow()) {' % snake(d.name)
+        yield '  return;'
+        yield '}'
+
+    if isinstance(d, (Struct, Enum)):
+        yield do_fresh_match(d, 'self', 'reparsed')
+
+@linewise
 def do_impl(d):
-    yield "impl<'ast> Rewrite<'ast> for %s {" % d.name
-    yield "  fn rewrite(&'ast self, new: &'ast Self, rcx: &mut RewriteCtxt<'ast>) -> bool {"
-    yield indent(do_fn_body(d), '    ')
+    yield "impl Rewrite for %s {" % d.name
+    yield "  fn rewrite_recycled(&self, old: &Self, mut rcx: RewriteCtxtRef) -> bool {"
+    yield indent(do_recycled_body(d), '    ')
+    yield '  }'
+    yield "  fn rewrite_fresh(&self, reparsed: &Self, mut rcx: RewriteCtxtRef) {"
+    yield indent(do_fresh_body(d), '    ')
     yield '  }'
     yield '}'
 
