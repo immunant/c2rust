@@ -18,9 +18,9 @@ Attributes:
 - `#[rewrite_splice]`: This node type is a "splice point": if needed, the
   rewriting process can cut out the node's source text and replace it with
   other text.  In recycled mode, if the node or its children require rewriting,
-  then `rewrite_recycled` will call `splice_recycled_[node]` and return `true`
+  then `rewrite_recycled` will call `Splice::splice_recycled` and return `true`
   instead of `false`.  In fresh mode, `rewrite_fresh` will check this node's
-  span and call `splice_fresh_[node]` if it has old source text available.
+  span and call `Splice::splice_fresh` if it has old source text available.
 
 - `#[rewrite=ignore]`: Ignore nodes of this type.  Perform no side effects and
   always return success, in both `rewrite_recycled` and `rewrite_fresh`.
@@ -76,7 +76,7 @@ def do_recycled_body(d):
     if splice:
         # Drop any rewrites pushed before the failure, then recover.
         yield '  rcx.rewind(mark);'
-        yield '  splice_recycled_%s(self, old, rcx);' % snake(d.name)
+        yield '  <%s as Splice>::splice_recycled(self, old, rcx);' % d.name
         yield '  false'
     else:
         yield '  true'
@@ -102,7 +102,7 @@ def do_fresh_body(d):
 
     if splice:
         # We only need the mark if we might recover.
-        yield 'if splice_fresh_%s(self, reparsed, rcx.borrow()) {' % snake(d.name)
+        yield 'if <%s as Splice>::splice_fresh(self, reparsed, rcx.borrow()) {' % d.name
         yield '  return;'
         yield '}'
 

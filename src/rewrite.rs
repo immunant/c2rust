@@ -38,10 +38,11 @@
 
 use std::collections::hash_map::{HashMap, Entry};
 use std::fmt::Debug;
+use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::result;
 use rustc::session::Session;
-use syntax::ast::{Ident, Expr, ExprKind, Stmt, Item, Crate, Mac};
+use syntax::ast::{Ident, Expr, ExprKind, Stmt, Item, Crate, Mac, NodeId};
 use syntax::codemap::{Span, Spanned, DUMMY_SP};
 use syntax::symbol::Symbol;
 use syntax::ptr::P;
@@ -73,45 +74,140 @@ pub struct TextRewrite {
 }
 
 
-struct SpanMap<'s> {
-    exprs: HashMap<Span, &'s Expr>,
+/// A table of nodes, each of which may or may not be "valid" according to some predicate.
+pub struct NodeTable<'s, T: ?Sized+'s> {
+    nodes: HashMap<NodeId, &'s T>,
+    //validate_results: HashMap<NodeId, bool>,
 }
 
-impl<'s> SpanMap<'s> {
-    fn new() -> SpanMap<'s> {
-        SpanMap {
-            exprs: HashMap::new(),
+impl<'s, T: ?Sized> NodeTable<'s, T> {
+    pub fn new() -> NodeTable<'s, T> {
+        NodeTable {
+            nodes: HashMap::new(),
+            //validate_results: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, id: NodeId, node: &'s T) {
+        assert!(!self.nodes.contains_key(&id));
+        self.nodes.insert(id, node);
+    }
+
+    pub fn get(&self, id: NodeId) -> Option<&'s T> {
+        self.nodes.get(&id).map(|&x| x)
+    }
+
+    /*
+    /// Get a node, but only if it is valid according to the function `validate`.  Returns `None`
+    /// if the node is missing or invalid.
+    pub fn get_valid<F: FnOnce(&'s T) -> bool>(&mut self,
+                                               id: NodeId,
+                                               validate: F) -> Option<&'s T> {
+        match self.validate_results.entry(id) {
+            Entry::Vacant(e) => {
+                if let Some(&node) = self.nodes.get(&id) {
+                    let v = validate(node);
+                    e.insert(v);
+                    if v { Some(node) } else { None }
+                } else {
+                    None
+                }
+            },
+
+            Entry::Occupied(e) => {
+                if *e.get() {
+                    Some(*self.nodes.get(&id).unwrap())
+                } else {
+                    None
+                }
+            },
+        }
+    }
+    */
+}
+
+
+
+struct OldNodes<'s> {
+    exprs: NodeTable<'s, Expr>,
+    stmts: NodeTable<'s, Stmt>,
+    items: NodeTable<'s, Item>,
+}
+
+impl<'s> OldNodes<'s> {
+    fn new() -> OldNodes<'s> {
+        OldNodes {
+            exprs: NodeTable::new(),
+            stmts: NodeTable::new(),
+            items: NodeTable::new(),
         }
     }
 }
 
 
-struct SpanMapVisitor<'s> {
-    sm: SpanMap<'s>,
+struct OldNodesVisitor<'s> {
+    map: OldNodes<'s>,
 }
 
-impl<'s> Visitor<'s> for SpanMapVisitor<'s> {
+impl<'s> Visitor<'s> for OldNodesVisitor<'s> {
     fn visit_expr(&mut self, x: &'s Expr) {
-        if !self.sm.exprs.contains_key(&x.span) {
-            self.sm.exprs.insert(x.span, x);
-        }
+        self.map.exprs.insert(x.id, x);
         visit::walk_expr(self, x);
+    }
+
+    fn visit_stmt(&mut self, x: &'s Stmt) {
+        self.map.stmts.insert(x.id, x);
+        visit::walk_stmt(self, x);
+    }
+
+    fn visit_item(&mut self, x: &'s Item) {
+        self.map.items.insert(x.id, x);
+        visit::walk_item(self, x);
     }
 }
 
 
 pub struct RewriteCtxt<'s> {
     sess: &'s Session,
-    span_map: SpanMap<'s>,
+    old_nodes: OldNodes<'s>,
+
+    /// The span of the new AST the last time we entered "fresh" mode.  This lets us avoid infinite
+    /// recursion - see comment in `splice_fresh`.
+    fresh_start: Span,
 }
 
 impl<'s> RewriteCtxt<'s> {
+    fn new(sess: &'s Session, old_nodes: OldNodes<'s>) -> RewriteCtxt<'s> {
+        RewriteCtxt {
+            sess: sess,
+            old_nodes: old_nodes,
+
+            fresh_start: DUMMY_SP,
+        }
+    }
+
     pub fn session(&self) -> &'s Session {
         self.sess
     }
 
-    pub fn get_expr(&self, span: Span) -> Option<&'s Expr> {
-        self.span_map.exprs.get(&span).map(|&x| x)
+    pub fn old_exprs(&mut self) -> &mut NodeTable<'s, Expr> {
+        &mut self.old_nodes.exprs
+    }
+
+    pub fn old_stmts(&mut self) -> &mut NodeTable<'s, Stmt> {
+        &mut self.old_nodes.stmts
+    }
+
+    pub fn old_items(&mut self) -> &mut NodeTable<'s, Item> {
+        &mut self.old_nodes.items
+    }
+
+    pub fn fresh_start(&self) -> Span {
+        self.fresh_start
+    }
+
+    pub fn replace_fresh_start(&mut self, span: Span) -> Span {
+        mem::replace(&mut self.fresh_start, span)
     }
 }
 
@@ -172,13 +268,10 @@ impl<'s, 'a> RewriteCtxtRef<'s, 'a> {
 
 
 pub fn rewrite<T: Rewrite+Visit>(sess: &Session, old: &T, new: &T) -> Vec<TextRewrite> {
-    let mut smv = SpanMapVisitor { sm: SpanMap::new() };
-    old.visit(&mut smv);
+    let mut v = OldNodesVisitor { map: OldNodes::new() };
+    old.visit(&mut v);
 
-    let mut rcx = RewriteCtxt {
-        sess: sess,
-        span_map: smv.sm,
-    };
+    let mut rcx = RewriteCtxt::new(sess, v.map);
     let mut rewrites = Vec::new();
     {
         let mut rcx_ref = RewriteCtxtRef {

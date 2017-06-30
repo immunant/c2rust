@@ -44,6 +44,16 @@ impl TryMatch for Pat {
     }
 }
 
+impl TryMatch for Stmt {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {
+        if mcx.maybe_capture_stmt(self, target)? {
+            return Ok(());
+        }
+
+        default_try_match_stmt(self, target, mcx)
+    }
+}
+
 
 impl<T: TryMatch> TryMatch for [T] {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {

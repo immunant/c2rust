@@ -1,4 +1,5 @@
 use syntax::ast::*;
+use syntax::codemap::{CodeMap, Span};
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::small_vector::SmallVector;
@@ -101,4 +102,17 @@ impl<T> Lone<T> for SmallVector<T> {
         assert!(self.len() == 1);
         self.pop().unwrap()
     }
+}
+
+
+pub fn with_span_text<F: FnOnce(&str)>(cm: &CodeMap, span: Span, callback: F) -> bool {
+    let lo = cm.lookup_byte_offset(span.lo);
+    let hi = cm.lookup_byte_offset(span.hi);
+    let file_src = match lo.fm.src.as_ref() {
+        Some(x) => x,
+        None => return false,
+    };
+    let node_src = &file_src[lo.pos.0 as usize .. hi.pos.0 as usize];
+    callback(node_src);
+    true
 }

@@ -124,6 +124,22 @@ impl MatchCtxt {
         let ok = self.bindings.try_add_pat(sym, P(target.clone()));
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
+
+    pub fn maybe_capture_stmt(&mut self, pattern: &Stmt, target: &Stmt) -> Result<bool> {
+        let sym = match util::stmt_sym(pattern) {
+            Some(x) => x,
+            None => return Ok(false),
+        };
+
+        match self.types.get(&sym) {
+            Some(&bindings::Type::Stmt) => {},
+            None if sym.as_str().starts_with("__") => {},
+            _ => return Ok(false),
+        }
+
+        let ok = self.bindings.try_add_stmt(sym, target.clone());
+        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+    }
 }
 
 pub trait TryMatch {

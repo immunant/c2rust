@@ -42,6 +42,7 @@ mod subst;
 mod rewrite;
 mod rewrite_impls;
 mod file_rewrite;
+mod span_fix;
 
 
 struct PrintSpanVisitor<'a> {
@@ -116,6 +117,13 @@ fn main() {
     let (krate, sess) = driver::parse_crate(remaining_args);
     println!("krate:\n ===\n{}\n ===\n",
              pprust::to_string(|s| s.print_mod(&krate.module, &[])));
+
+    let krate = span_fix::fix_spans(&sess, krate);
+
+    syntax::visit::walk_crate(&mut PrintSpanVisitor {
+        cm: sess.codemap(),
+    }, &krate);
+    //return;
 
 
     let pattern_src = read_file(&pattern_file);

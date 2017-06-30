@@ -23,7 +23,7 @@ struct Crate { module, attrs, span }
 struct Mod { inner, items }
 
 
-//#[rewrite_splice]
+#[rewrite_splice]
 struct Item { ident, attrs, id, node, vis, span }
 enum ItemKind {
     ExternCrate(name),
@@ -163,7 +163,7 @@ enum FunctionRetTy {
 struct TypeBinding { id, ident, ty, span }
 
 
-//#[rewrite_splice]
+#[match=custom] #[rewrite_splice]
 struct Stmt { id, node, span }
 enum StmtKind {
     Local(local),
