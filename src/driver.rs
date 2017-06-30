@@ -114,12 +114,14 @@ fn make_parser<'a>(sess: &'a Session, name: &str, src: &str) -> Parser<'a> {
                                       src.to_owned())
 }
 
+
 fn mk_diagnostic(msg: &str) -> Diagnostic {
     let h = Handler::with_tty_emitter(ColorConfig::Auto, true, false, None);
     let diag = h.struct_err(msg).into_diagnostic();
     diag
 }
 
+// Helper functions for parsing source code in an existing `Session`.
 pub fn parse_expr(sess: &Session, src: &str) -> Result<P<Expr>, Diagnostic> {
     let mut p = make_parser(sess, "<expr>", src);
     match p.parse_expr() {

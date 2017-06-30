@@ -38,7 +38,7 @@ def do_match(se, target1, target2):
 @linewise
 def compare_impl(se):
     yield 'impl TryMatch for %s {' % se.name
-    yield '  fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result {'
+    yield '  fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {'
     yield indent(do_match(se, 'self', 'target'), '    ')
     yield '  }'
     yield '}'
@@ -46,7 +46,7 @@ def compare_impl(se):
 @linewise
 def eq_impl(d):
     yield 'impl TryMatch for %s {' % d.name
-    yield '  fn try_match(&self, target: &Self, _mcx: &mut MatchCtxt) -> matcher::Result {'
+    yield '  fn try_match(&self, target: &Self, _mcx: &mut MatchCtxt) -> matcher::Result<()> {'
     yield '    if self == target {'
     yield '      Ok(())'
     yield '    } else {'
@@ -58,14 +58,14 @@ def eq_impl(d):
 @linewise
 def ignore_impl(d):
     yield 'impl TryMatch for %s {' % d.name
-    yield '  fn try_match(&self, target: &Self, _mcx: &mut MatchCtxt) -> matcher::Result {'
+    yield '  fn try_match(&self, target: &Self, _mcx: &mut MatchCtxt) -> matcher::Result<()> {'
     yield '    Ok(())'
     yield '  }'
     yield '}'
 
 @linewise
 def custom_impl(se):
-    yield 'fn default_try_match_%s(this: &%s, target: &%s, mcx: &mut MatchCtxt) -> matcher::Result {' % \
+    yield 'fn default_try_match_%s(this: &%s, target: &%s, mcx: &mut MatchCtxt) -> matcher::Result<()> {' % \
             (snake(se.name), se.name, se.name)
     yield indent(do_match(se, 'this', 'target'), '  ')
     yield '}'

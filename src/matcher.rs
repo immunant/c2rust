@@ -12,7 +12,7 @@ use fold::Fold;
 use util;
 
 
-pub type Result<T = ()> = result::Result<T, Error>;
+pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Error {
@@ -50,7 +50,7 @@ impl MatchCtxt {
         Self::new().clone_match(pat, target)
     }
 
-    pub fn try_match<T: TryMatch>(&mut self, pat: &T, target: &T) -> Result {
+    pub fn try_match<T: TryMatch>(&mut self, pat: &T, target: &T) -> Result<()> {
         let r = pat.try_match(target, self);
         r
     }
@@ -143,7 +143,7 @@ impl MatchCtxt {
 }
 
 pub trait TryMatch {
-    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> Result;
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> Result<()>;
 }
 
 

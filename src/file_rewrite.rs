@@ -6,13 +6,8 @@ use syntax_pos::hygiene::SyntaxContext;
 
 use rewrite::TextRewrite;
 
-pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite]) {
-    /*
-    for rw in rewrites {
-        print_rewrite(rw, 0);
-    }
-    */
 
+pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite]) {
     let mut by_file = HashMap::new();
 
     for rw in rewrites {

@@ -77,14 +77,12 @@ pub struct TextRewrite {
 /// A table of nodes, each of which may or may not be "valid" according to some predicate.
 pub struct NodeTable<'s, T: ?Sized+'s> {
     nodes: HashMap<NodeId, &'s T>,
-    //validate_results: HashMap<NodeId, bool>,
 }
 
 impl<'s, T: ?Sized> NodeTable<'s, T> {
     pub fn new() -> NodeTable<'s, T> {
         NodeTable {
             nodes: HashMap::new(),
-            //validate_results: HashMap::new(),
         }
     }
 
@@ -96,36 +94,7 @@ impl<'s, T: ?Sized> NodeTable<'s, T> {
     pub fn get(&self, id: NodeId) -> Option<&'s T> {
         self.nodes.get(&id).map(|&x| x)
     }
-
-    /*
-    /// Get a node, but only if it is valid according to the function `validate`.  Returns `None`
-    /// if the node is missing or invalid.
-    pub fn get_valid<F: FnOnce(&'s T) -> bool>(&mut self,
-                                               id: NodeId,
-                                               validate: F) -> Option<&'s T> {
-        match self.validate_results.entry(id) {
-            Entry::Vacant(e) => {
-                if let Some(&node) = self.nodes.get(&id) {
-                    let v = validate(node);
-                    e.insert(v);
-                    if v { Some(node) } else { None }
-                } else {
-                    None
-                }
-            },
-
-            Entry::Occupied(e) => {
-                if *e.get() {
-                    Some(*self.nodes.get(&id).unwrap())
-                } else {
-                    None
-                }
-            },
-        }
-    }
-    */
 }
-
 
 
 struct OldNodes<'s> {

@@ -91,38 +91,29 @@ trait Splice: Rewrite+AstEquiv+::std::fmt::Debug+'static {
         // (because `old != new`), but `splice_fresh` wants to replace the printed text with the
         // old text (because `new` still has a source span covering the old text).  It's always
         // safe to use printed text instead of old text, so we bail out here if we detect this.
-        println!("looking at {} = {:?}", describe(rcx.session(), new.span()), new);
         if new.span() == rcx.fresh_start() {
-            println!("   skipping: fresh start");
             return false;
         }
 
         let old = match Self::get_node(rcx.borrow(), new.id()) {
             Some(x) => x,
             None => {
-                println!("   skipping: no valid node with id {:?}", new.id());
                 return false;
             },
         };
 
-        println!("    old is {} = {:?}", describe(rcx.session(), old.span()), old);
 
         if old.span() == DUMMY_SP {
-            println!("   skipping: dummy_sp");
             return false;
         }
 
         let fm = rcx.session().codemap().lookup_byte_offset(old.span().lo).fm;
         if fm.abs_path.is_none() {
-            println!("   skipping: file has no abs_path");
             return false;
         }
 
         println!("REWRITE(F) {}", describe(rcx.session(), reparsed.span()));
         println!("      INTO {}", describe(rcx.session(), old.span()));
-
-        println!("new = {:?}", new);
-        println!("rp = {:?}", reparsed);
 
         let mut rewrites = Vec::new();
         let mark = rcx.mark();

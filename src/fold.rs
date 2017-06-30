@@ -16,21 +16,6 @@ pub trait Fold {
     fn fold<F: Folder>(self, f: &mut F) -> Self::Result;
 }
 
-/// A trait for building a `Folder` that modifies nodes of a specific type.
-pub trait FoldSearch<'a>: Fold+Sized {
-    type Folder: Folder;
-    fn make_folder<F>(callback: F) -> Self::Folder
-            where F: FnMut(Self) -> <Self as Fold>::Result + 'a;
-}
-
-
-/// Fold over `target`, rewriting every node of type `A` using `callback`.
-pub fn fold_search<'a, A, T, F>(target: T, callback: F) -> <T as Fold>::Result
-        where A: FoldSearch<'a>, T: Fold, F: FnMut(A) -> <A as Fold>::Result + 'a {
-    let mut f = A::make_folder(callback);
-    target.fold(&mut f)
-}
-
 // This macro takes as input the definition of `syntax::fold::Folder` as it appears the libsyntax
 // docs, and emits a `Fold` impl for each method it finds.
 macro_rules! gen_folder_impls {

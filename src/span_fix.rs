@@ -121,7 +121,6 @@ impl Folder for FixMacros {
         e = e.map(|e| fold::noop_fold_expr(e, self));
 
         if !was_in_macro && self.in_macro {
-            println!("found topmost (expr): {:?}", e);
             // This is the topmost node in a macro expansion.  Set its span to the span of the
             // macro invocation.
 
@@ -145,7 +144,6 @@ impl Folder for FixMacros {
         s = fold::noop_fold_stmt(s, self).lone();
 
         if !was_in_macro && self.in_macro {
-            println!("found topmost (stmt): {:?}", s);
             // This is the topmost node in a macro expansion.  Set its span to the span of the
             // macro invocation.
 
@@ -159,6 +157,8 @@ impl Folder for FixMacros {
 
         SmallVector::one(s)
     }
+
+    // TODO: more syntax types
 
     fn new_span(&mut self, sp: Span) -> Span {
         if sp.ctxt != SyntaxContext::empty() {
