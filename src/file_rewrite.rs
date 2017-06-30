@@ -1,11 +1,47 @@
 use std::collections::HashMap;
-use syntax::codemap::CodeMap;
+use std::fs::File;
+use std::io::Write;
+use std::rc::Rc;
+use syntax::codemap::{CodeMap, FileMap};
 use syntax_pos::BytePos;
 
 use rewrite::TextRewrite;
 
 
-pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite]) {
+pub enum RewriteMode {
+    InPlace,
+    Alongside,
+    Print,
+}
+
+pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite], mode: RewriteMode) {
+    rewrite_files_with(cm, rewrites, |fm, s| {
+        let path = match fm.abs_path.as_ref() {
+            Some(x) => x,
+            None => return,
+        };
+
+        match mode {
+            RewriteMode::InPlace => {
+                println!("writing to {}", path);
+                let mut f = File::create(path).unwrap();
+                f.write_all(s.as_bytes()).unwrap();
+            },
+            RewriteMode::Alongside => {
+                let new_path = format!("{}.new", path);
+                println!("writing to {}", new_path);
+                let mut f = File::create(&new_path).unwrap();
+                f.write_all(s.as_bytes()).unwrap();
+            },
+            RewriteMode::Print => {
+                println!(" ==== {} ====\n{}\n =========", fm.name, s);
+            },
+        }
+    });
+}
+
+pub fn rewrite_files_with<F>(cm: &CodeMap, rewrites: &[TextRewrite], mut callback: F)
+        where F: FnMut(Rc<FileMap>, &str) {
     let mut by_file = HashMap::new();
 
     for rw in rewrites {
@@ -18,7 +54,7 @@ pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite]) {
         let mut buf = String::new();
         rewrites.sort_by_key(|rw| rw.old_span.lo.0);
         rewrite_range(cm, fm.start_pos, fm.end_pos, &mut rewrites, &mut |s| buf.push_str(s));
-        println!(" ==== {} ====\n{}\n =========", fm.name, buf);
+        callback(fm, &buf);
     }
 }
 

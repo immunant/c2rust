@@ -36,18 +36,26 @@ mod transform;
 
 fn main() {
     let args = std::env::args().collect::<Vec<_>>();
-    let mode = &args[1];
-    let remaining_args = &args[2..];
+    let transform_name = &args[1];
+    let rewrite_mode_str = &args[2];
+    let remaining_args = &args[3..];
+
+    let rewrite_mode = match &rewrite_mode_str as &str {
+        "inplace" => file_rewrite::RewriteMode::InPlace,
+        "alongside" => file_rewrite::RewriteMode::Alongside,
+        "print" => file_rewrite::RewriteMode::Print,
+        _ => panic!("unknown rewrite mode {:?}", rewrite_mode_str),
+    };
 
     let (krate, sess) = driver::parse_crate(remaining_args);
     let krate = span_fix::fix_spans(&sess, krate);
 
-    let krate2 = transform::get_transform(mode).transform(krate.clone(), &sess);
+    let krate2 = transform::get_transform(transform_name).transform(krate.clone(), &sess);
 
     let rws = rewrite::rewrite(&sess, &krate, &krate2);
     if rws.len() == 0 {
         println!("(no files to rewrite)");
     } else {
-        file_rewrite::rewrite_files(sess.codemap(), &rws);
+        file_rewrite::rewrite_files(sess.codemap(), &rws, rewrite_mode);
     }
 }
