@@ -40,30 +40,6 @@ trait Splice: Rewrite+AstEquiv+::std::fmt::Debug+'static {
     fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self>;
 
 
-    /*
-    fn get_valid<'a, 's>(mut rcx: RewriteCtxtRef<'s, 'a>, id: NodeId) -> Option<&'s Self> {
-        let sess = rcx.session();
-        let cm = sess.codemap();
-        Self::node_table(&mut rcx).get_valid(id, |node| {
-            // Extract the text under the span and check if it's equal to the actual node.
-            let lo = cm.lookup_byte_offset(node.span().lo);
-            let hi = cm.lookup_byte_offset(node.span().hi);
-            let file_src = match lo.fm.src.as_ref() {
-                Some(x) => x,
-                None => return false,
-            };
-            let node_src = &file_src[lo.pos.0 as usize .. hi.pos.0 as usize];
-
-            let parsed = Self::parse(sess, &node_src);
-            println!("COMPARE {:?}", node);
-            println!("   WITH {:?}", &parsed as &Self);
-            let v = node.ast_equiv(&parsed);
-            println!(" VALID? {}", if v { "yes" } else { " *** NO ***" });
-            v
-        })
-    }
-    */
-
     fn get_node<'a, 's>(mut rcx: RewriteCtxtRef<'s, 'a>, id: NodeId) -> Option<&'s Self> {
         Self::node_table(&mut rcx).get(id)
     }

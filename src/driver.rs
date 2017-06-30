@@ -22,6 +22,10 @@ use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax_ext;
 
+use remove_paren::remove_paren;
+use util::Lone;
+
+
 fn build_session(args: &[String]) -> (Session, Rc<CStore>) {
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
@@ -101,9 +105,13 @@ fn parse_crate_for_session(sess: &Session, cstore: Rc<CStore>) -> Crate {
 
 
 
+// For consistency, all parsing functions run `remove_paren` on the result.  See the comments in
+// `remove_paren.rs` for why this is necessary.
+
 pub fn parse_crate(args: &[String]) -> (Crate, Session) {
     let (sess, cstore) = build_session(args);
     let krate = parse_crate_for_session(&sess, cstore);
+    let krate = remove_paren(krate);
     (krate, sess)
 }
 
@@ -118,7 +126,7 @@ fn make_parser<'a>(sess: &'a Session, name: &str, src: &str) -> Parser<'a> {
 pub fn parse_expr(sess: &Session, src: &str) -> Result<P<Expr>, Diagnostic> {
     let mut p = make_parser(sess, "<expr>", src);
     match p.parse_expr() {
-        Ok(expr) => Ok(expr),
+        Ok(expr) => Ok(remove_paren(expr)),
         Err(e) => Err(e.into_diagnostic()),
     }
 }
@@ -126,7 +134,7 @@ pub fn parse_expr(sess: &Session, src: &str) -> Result<P<Expr>, Diagnostic> {
 pub fn parse_pat(sess: &Session, src: &str) -> Result<P<Pat>, Diagnostic> {
     let mut p = make_parser(sess, "<pat>", src);
     match p.parse_pat() {
-        Ok(pat) => Ok(pat),
+        Ok(pat) => Ok(remove_paren(pat)),
         Err(e) => Err(e.into_diagnostic()),
     }
 }
@@ -136,7 +144,7 @@ pub fn parse_stmts(sess: &Session, src: &str) -> Result<Vec<Stmt>, Diagnostic> {
     let mut stmts = Vec::new();
     loop {
         match p.parse_full_stmt(false) {
-            Ok(Some(stmt)) => stmts.push(stmt),
+            Ok(Some(stmt)) => stmts.push(remove_paren(stmt).lone()),
             Ok(None) => break,
             Err(e) => return Err(e.into_diagnostic()),
         }
@@ -149,7 +157,7 @@ pub fn parse_items(sess: &Session, src: &str) -> Result<Vec<P<Item>>, Diagnostic
     let mut items = Vec::new();
     loop {
         match p.parse_item() {
-            Ok(Some(item)) => items.push(item),
+            Ok(Some(item)) => items.push(remove_paren(item).lone()),
             Ok(None) => break,
             Err(e) => return Err(e.into_diagnostic()),
         }

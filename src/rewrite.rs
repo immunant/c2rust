@@ -40,7 +40,8 @@ use std::collections::HashMap;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use rustc::session::Session;
-use syntax::ast::{Expr, Pat, Stmt, Item, NodeId};
+use syntax::ast::{Expr, ExprKind, Pat, Stmt, Item};
+use syntax::ast::{NodeId, DUMMY_NODE_ID};
 use syntax::codemap::{Span, DUMMY_SP};
 use syntax::visit::{self, Visitor};
 
@@ -75,7 +76,7 @@ pub struct NodeTable<'s, T: ?Sized+'s> {
     nodes: HashMap<NodeId, &'s T>,
 }
 
-impl<'s, T: ?Sized> NodeTable<'s, T> {
+impl<'s, T: ?Sized+::std::fmt::Debug> NodeTable<'s, T> {
     pub fn new() -> NodeTable<'s, T> {
         NodeTable {
             nodes: HashMap::new(),
@@ -83,6 +84,9 @@ impl<'s, T: ?Sized> NodeTable<'s, T> {
     }
 
     pub fn insert(&mut self, id: NodeId, node: &'s T) {
+        if id == DUMMY_NODE_ID {
+            return;
+        }
         assert!(!self.nodes.contains_key(&id));
         self.nodes.insert(id, node);
     }
@@ -118,7 +122,12 @@ struct OldNodesVisitor<'s> {
 
 impl<'s> Visitor<'s> for OldNodesVisitor<'s> {
     fn visit_expr(&mut self, x: &'s Expr) {
-        self.map.exprs.insert(x.id, x);
+        if let ExprKind::Paren(_) = x.node {
+            // Ignore.  `Paren` nodes cause problems because they have the same NodeId as the inner
+            // expression.
+        } else {
+            self.map.exprs.insert(x.id, x);
+        }
         visit::walk_expr(self, x);
     }
 
