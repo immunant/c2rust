@@ -36,16 +36,12 @@
 //! the new node's source information in a precomputed table.
 
 
-use std::collections::hash_map::{HashMap, Entry};
-use std::fmt::Debug;
+use std::collections::HashMap;
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use std::result;
 use rustc::session::Session;
-use syntax::ast::{Ident, Expr, ExprKind, Stmt, Item, Crate, Mac, NodeId};
-use syntax::codemap::{Span, Spanned, DUMMY_SP};
-use syntax::symbol::Symbol;
-use syntax::ptr::P;
+use syntax::ast::{Expr, Pat, Stmt, Item, NodeId};
+use syntax::codemap::{Span, DUMMY_SP};
 use syntax::visit::{self, Visitor};
 
 use visit::Visit;
@@ -99,6 +95,7 @@ impl<'s, T: ?Sized> NodeTable<'s, T> {
 
 struct OldNodes<'s> {
     exprs: NodeTable<'s, Expr>,
+    pats: NodeTable<'s, Pat>,
     stmts: NodeTable<'s, Stmt>,
     items: NodeTable<'s, Item>,
 }
@@ -107,6 +104,7 @@ impl<'s> OldNodes<'s> {
     fn new() -> OldNodes<'s> {
         OldNodes {
             exprs: NodeTable::new(),
+            pats: NodeTable::new(),
             stmts: NodeTable::new(),
             items: NodeTable::new(),
         }
@@ -122,6 +120,11 @@ impl<'s> Visitor<'s> for OldNodesVisitor<'s> {
     fn visit_expr(&mut self, x: &'s Expr) {
         self.map.exprs.insert(x.id, x);
         visit::walk_expr(self, x);
+    }
+
+    fn visit_pat(&mut self, x: &'s Pat) {
+        self.map.pats.insert(x.id, x);
+        visit::walk_pat(self, x);
     }
 
     fn visit_stmt(&mut self, x: &'s Stmt) {
@@ -163,6 +166,10 @@ impl<'s> RewriteCtxt<'s> {
         &mut self.old_nodes.exprs
     }
 
+    pub fn old_pats(&mut self) -> &mut NodeTable<'s, Pat> {
+        &mut self.old_nodes.pats
+    }
+
     pub fn old_stmts(&mut self) -> &mut NodeTable<'s, Stmt> {
         &mut self.old_nodes.stmts
     }
@@ -177,6 +184,15 @@ impl<'s> RewriteCtxt<'s> {
 
     pub fn replace_fresh_start(&mut self, span: Span) -> Span {
         mem::replace(&mut self.fresh_start, span)
+    }
+
+    pub fn with_rewrites<'b>(&'b mut self,
+                             rewrites: &'b mut Vec<TextRewrite>)
+                             -> RewriteCtxtRef<'s, 'b> {
+        RewriteCtxtRef {
+            rewrites: rewrites,
+            cx: self,
+        }
     }
 }
 
@@ -235,20 +251,13 @@ impl<'s, 'a> RewriteCtxtRef<'s, 'a> {
 }
 
 
-
 pub fn rewrite<T: Rewrite+Visit>(sess: &Session, old: &T, new: &T) -> Vec<TextRewrite> {
     let mut v = OldNodesVisitor { map: OldNodes::new() };
     old.visit(&mut v);
 
     let mut rcx = RewriteCtxt::new(sess, v.map);
     let mut rewrites = Vec::new();
-    {
-        let mut rcx_ref = RewriteCtxtRef {
-            rewrites: &mut rewrites,
-            cx: &mut rcx,
-        };
-        let need_rewrite = Rewrite::rewrite_recycled(new, old, rcx_ref);
-        assert!(!need_rewrite, "rewriting did not complete");
-    }
+    let need_rewrite = Rewrite::rewrite_recycled(new, old, rcx.with_rewrites(&mut rewrites));
+    assert!(!need_rewrite, "rewriting did not complete");
     rewrites
 }

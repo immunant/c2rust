@@ -1,22 +1,20 @@
-use std::collections::hash_map::{HashMap, Entry};
+use std::collections::hash_map::HashMap;
 use std::result;
-use syntax::ast::{Ident, Expr, Pat, Stmt, Block, Item, Crate, Mac};
+use syntax::ast::{Ident, Expr, Pat, Stmt, Block};
 use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::visit::{self, Visitor};
 use syntax::util::small_vector::SmallVector;
 
 use bindings::{self, Bindings, IntoSymbol};
 use fold::Fold;
-use util;
+use util::AsSymbol;
 
 
 pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Error {
-    NotImplemented,
     VariantMismatch,
     LengthMismatch,
     SymbolMismatch,
@@ -40,19 +38,16 @@ impl MatchCtxt {
         }
     }
 
+    pub fn try_match<T: TryMatch>(&mut self, pat: &T, target: &T) -> Result<()> {
+        let r = pat.try_match(target, self);
+        r
+    }
+
+    /// Clone this context and try to perform a match in the clone, returning `Ok` if it succeeds.
     pub fn clone_match<T: TryMatch>(&self, pat: &T, target: &T) -> Result<MatchCtxt> {
         let mut m = self.clone();
         m.try_match(pat, target)?;
         Ok(m)
-    }
-
-    pub fn from_match<T: TryMatch>(pat: &T, target: &T) -> Result<MatchCtxt> {
-        Self::new().clone_match(pat, target)
-    }
-
-    pub fn try_match<T: TryMatch>(&mut self, pat: &T, target: &T) -> Result<()> {
-        let r = pat.try_match(target, self);
-        r
     }
 
 
@@ -76,7 +71,7 @@ impl MatchCtxt {
 
 
     pub fn maybe_capture_ident(&mut self, pattern: &Ident, target: &Ident) -> Result<bool> {
-        let sym = match util::ident_sym(pattern) {
+        let sym = match pattern.as_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };
@@ -94,7 +89,7 @@ impl MatchCtxt {
     }
 
     pub fn maybe_capture_expr(&mut self, pattern: &Expr, target: &Expr) -> Result<bool> {
-        let sym = match util::expr_sym(pattern) {
+        let sym = match pattern.as_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };
@@ -110,7 +105,7 @@ impl MatchCtxt {
     }
 
     pub fn maybe_capture_pat(&mut self, pattern: &Pat, target: &Pat) -> Result<bool> {
-        let sym = match util::pat_sym(pattern) {
+        let sym = match pattern.as_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };
@@ -126,7 +121,7 @@ impl MatchCtxt {
     }
 
     pub fn maybe_capture_stmt(&mut self, pattern: &Stmt, target: &Stmt) -> Result<bool> {
-        let sym = match util::stmt_sym(pattern) {
+        let sym = match pattern.as_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };

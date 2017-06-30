@@ -7,7 +7,7 @@ use rustc::dep_graph::DepGraph;
 use rustc::session::{self, Session};
 use rustc::session::config::Input;
 use rustc_driver;
-use rustc_errors::{Diagnostic, ColorConfig, Handler};
+use rustc_errors::Diagnostic;
 use rustc_metadata::creader::CrateLoader;
 use rustc_metadata::cstore::CStore;
 use rustc_resolve::{Resolver, MakeGlobMap};
@@ -26,7 +26,7 @@ fn build_session(args: &[String]) -> (Session, Rc<CStore>) {
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
 
-    let (sopts, cfg) = session::config::build_session_options_and_crate_config(&matches);
+    let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
 
     let descriptions = rustc_driver::diagnostics_registry();
 
@@ -56,7 +56,7 @@ fn parse_crate_for_session(sess: &Session, cstore: Rc<CStore>) -> Crate {
 
     let crate_name = link::find_crate_name(Some(&sess), &krate.attrs, &Input::File(in_path.clone()));
 
-    let (mut krate, features) = syntax::config::features(krate, &sess.parse_sess, sess.opts.test);
+    let (krate, features) = syntax::config::features(krate, &sess.parse_sess, sess.opts.test);
 
     // these need to be set "early" so that expansion sees `quote` if enabled.
     *sess.features.borrow_mut() = features;
@@ -93,7 +93,6 @@ fn parse_crate_for_session(sess: &Session, cstore: Rc<CStore>) -> Crate {
     };
 
     let mut ecx = ExtCtxt::new(&sess.parse_sess, cfg, &mut resolver);
-    let err_count = ecx.parse_sess.span_diagnostic.err_count();
 
     let krate = ecx.monotonic_expander().expand_crate(krate);
 
@@ -114,12 +113,6 @@ fn make_parser<'a>(sess: &'a Session, name: &str, src: &str) -> Parser<'a> {
                                       src.to_owned())
 }
 
-
-fn mk_diagnostic(msg: &str) -> Diagnostic {
-    let h = Handler::with_tty_emitter(ColorConfig::Auto, true, false, None);
-    let diag = h.struct_err(msg).into_diagnostic();
-    diag
-}
 
 // Helper functions for parsing source code in an existing `Session`.
 pub fn parse_expr(sess: &Session, src: &str) -> Result<P<Expr>, Diagnostic> {

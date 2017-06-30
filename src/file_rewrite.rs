@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use std::rc::Rc;
-use syntax::codemap::{CodeMap, Span, DUMMY_SP};
+use syntax::codemap::CodeMap;
 use syntax_pos::BytePos;
-use syntax_pos::hygiene::SyntaxContext;
 
 use rewrite::TextRewrite;
 
@@ -24,6 +22,7 @@ pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite]) {
     }
 }
 
+#[allow(dead_code)] // Helper function for debugging
 fn print_rewrite(rw: &TextRewrite, depth: usize) {
     for _ in 0 .. depth {
         print!("  ");

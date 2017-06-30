@@ -1,16 +1,11 @@
-use std::collections::hash_map::{HashMap, Entry};
-use std::fmt::Debug;
-use std::result;
-use syntax::ast::{Ident, Expr, Pat, Stmt, Item, Crate, Mac};
+use syntax::ast::{Ident, Expr, Pat, Stmt, Item};
 use syntax::fold::{self, Folder};
-use syntax::symbol::Symbol;
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
 
 use bindings::Bindings;
 use fold::Fold;
-use matcher::MatchCtxt;
-use util;
+use util::AsSymbol;
 use util::Lone;
 
 
@@ -26,11 +21,11 @@ impl<'a> Folder for SubstFolder<'a> {
         // lower-level construct to try.  So we report an error if a binding exists at this point
         // but is not an `Ident`.
 
-        if let Some(sym) = util::ident_sym(&i) {
+        if let Some(sym) = i.as_symbol() {
             if let Some(ident) = self.bindings.get_ident(sym) {
                 return ident.clone();
             } else if let Some(ty) = self.bindings.get_type(sym) {
-                panic!("binding {:?} has wrong type for hole", sym);
+                panic!("binding {:?} (of type {:?}) has wrong type for hole", sym, ty);
             }
             // Otherwise, fall through
         }
@@ -38,7 +33,7 @@ impl<'a> Folder for SubstFolder<'a> {
     }
 
     fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
-        if let Some(expr) = util::expr_sym(&e).and_then(|sym| self.bindings.get_expr(sym)) {
+        if let Some(expr) = e.as_symbol().and_then(|sym| self.bindings.get_expr(sym)) {
             expr.clone()
         } else {
             e.map(|e| fold::noop_fold_expr(e, self))
@@ -46,7 +41,7 @@ impl<'a> Folder for SubstFolder<'a> {
     }
 
     fn fold_pat(&mut self, p: P<Pat>) -> P<Pat> {
-        if let Some(pat) = util::pat_sym(&p).and_then(|sym| self.bindings.get_pat(sym)) {
+        if let Some(pat) = p.as_symbol().and_then(|sym| self.bindings.get_pat(sym)) {
             pat.clone()
         } else {
             fold::noop_fold_pat(p, self)
@@ -54,7 +49,7 @@ impl<'a> Folder for SubstFolder<'a> {
     }
 
     fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
-        if let Some(stmt) = util::stmt_sym(&s).and_then(|sym| self.bindings.get_stmt(sym)) {
+        if let Some(stmt) = s.as_symbol().and_then(|sym| self.bindings.get_stmt(sym)) {
             SmallVector::one(stmt.clone())
         } else {
             fold::noop_fold_stmt(s, self)
@@ -62,7 +57,7 @@ impl<'a> Folder for SubstFolder<'a> {
     }
 
     fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
-        if let Some(item) = util::item_sym(&i).and_then(|sym| self.bindings.get_item(sym)) {
+        if let Some(item) = i.as_symbol().and_then(|sym| self.bindings.get_item(sym)) {
             SmallVector::one(item.clone())
         } else {
             fold::noop_fold_item(i, self)

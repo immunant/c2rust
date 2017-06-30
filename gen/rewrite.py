@@ -1,17 +1,13 @@
 '''This module generates `Rewrite` impls for each AST node type.
 
-- Rewrite struct vaules by rewriting their corresponding fields.  If any field
-  fails to rewrite, the whole struct fails to rewrite.
-- Rewrite two enum values of the same variant as with structs.  For two enum
-  values of different variants, rewriting fails.
-- Rewriting of flag values succeeds if the values are equal and fails if they
-  are not.  It otherwise has no effect.
-
-Note that no actual rewriting happens in the default implementations above.
-Rewriting is handled by "recovery" actions: if a node would fail to rewrite
-(due a failure among its children, for example), instead the recovery action
-runs, and it succeeds.  The recovery action will typically record a rewrite
-with the `RewriteCtxt`.
+By default, the generated impls simply walk recursively over their two input
+ASTs, checking for differences (in the `rewrite_recycled` case) but otherwise
+having no side effects.  Rewriting is accomplished by marking some AST node
+types as "splice points" with the `#[rewrite_splice]`, and then implementing
+the `Splice` trait for those types.  The generated impls will call `Splice`
+methods to perform the actual rewriting when needed (for `rewrite_recycled`,
+when a difference is detected between ASTs; for `rewrite_fresh`, when a node is
+found to originate in the old code).
 
 Attributes:
 
@@ -111,11 +107,12 @@ def do_fresh_body(d):
 
 @linewise
 def do_impl(d):
-    yield "impl Rewrite for %s {" % d.name
-    yield "  fn rewrite_recycled(&self, old: &Self, mut rcx: RewriteCtxtRef) -> bool {"
+    yield '#[allow(unused)]'
+    yield 'impl Rewrite for %s {' % d.name
+    yield '  fn rewrite_recycled(&self, old: &Self, mut rcx: RewriteCtxtRef) -> bool {'
     yield indent(do_recycled_body(d), '    ')
     yield '  }'
-    yield "  fn rewrite_fresh(&self, reparsed: &Self, mut rcx: RewriteCtxtRef) {"
+    yield '  fn rewrite_fresh(&self, reparsed: &Self, mut rcx: RewriteCtxtRef) {'
     yield indent(do_fresh_body(d), '    ')
     yield '  }'
     yield '}'

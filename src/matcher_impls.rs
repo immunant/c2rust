@@ -1,7 +1,6 @@
 use std::rc::Rc;
 use syntax::ast::*;
 use syntax::abi::Abi;
-use syntax::ast::*;
 use syntax::codemap::{Span, Spanned};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::ptr::P;

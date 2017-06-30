@@ -1,13 +1,5 @@
 use syntax;
-use syntax::abi::Abi;
 use syntax::ast::*;
-use syntax::codemap::{Span, Spanned};
-use syntax::ext::hygiene::SyntaxContext;
-use syntax::fold::Folder;
-use syntax::ptr::P;
-use syntax::parse::token::{Token, Nonterminal};
-use syntax::tokenstream::{TokenTree, TokenStream, ThinTokenStream};
-use syntax::util::small_vector::SmallVector;
 use syntax::visit::Visitor;
 
 

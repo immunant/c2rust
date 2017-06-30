@@ -7,83 +7,100 @@ use syntax::util::small_vector::SmallVector;
 
 // Helper functions for extracting the `Symbol` from a pattern AST.
 
-pub fn ident_sym(i: &Ident) -> Option<Symbol> {
-    Some(i.name)
+pub trait AsSymbol {
+    fn as_symbol(&self) -> Option<Symbol>;
 }
 
-pub fn path_sym(p: &Path) -> Option<Symbol> {
-    if p.segments.len() != 1 {
-        return None;
+impl AsSymbol for Ident {
+    fn as_symbol(&self) -> Option<Symbol> {
+        Some(self.name)
     }
-    let seg = &p.segments[0];
-    if seg.parameters.is_some() {
-        return None;
+}
+
+impl AsSymbol for Path {
+    fn as_symbol(&self) -> Option<Symbol> {
+        if self.segments.len() != 1 {
+            return None;
+        }
+        let seg = &self.segments[0];
+        if seg.parameters.is_some() {
+            return None;
+        }
+        seg.identifier.as_symbol()
     }
-    ident_sym(&seg.identifier)
 }
 
-pub fn expr_sym(e: &Expr) -> Option<Symbol> {
-    let path = match e.node {
-        ExprKind::Path(None, ref p) => p,
-        _ => return None,
-    };
-    path_sym(path)
-}
-
-pub fn stmt_sym(s: &Stmt) -> Option<Symbol> {
-    let e = match s.node {
-        StmtKind::Semi(ref e) => e,
-        _ => return None,
-    };
-    expr_sym(&e)
-}
-
-pub fn pat_sym(p: &Pat) -> Option<Symbol> {
-    let i = match p.node {
-        PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
-                       ref i, None) => i,
-        _ => return None,
-    };
-    ident_sym(&i.node)
-}
-
-pub fn ty_sym(t: &Ty) -> Option<Symbol> {
-    let path = match t.node {
-        TyKind::Path(None, ref p) => p,
-        _ => return None,
-    };
-    path_sym(path)
-}
-
-pub fn mac_sym(m: &Mac) -> Option<Symbol> {
-    if m.node.tts != ThinTokenStream::from(TokenStream::empty()) {
-        return None;
+impl AsSymbol for Expr {
+    fn as_symbol(&self) -> Option<Symbol> {
+        match self.node {
+            ExprKind::Path(None, ref p) => p.as_symbol(),
+            _ => None,
+        }
     }
-    path_sym(&m.node.path)
 }
 
-pub fn item_sym(i: &Item) -> Option<Symbol> {
-    let m = match i.node {
-        ItemKind::Mac(ref m) => m,
-        _ => return None,
-    };
-    mac_sym(m)
+impl AsSymbol for Stmt {
+    fn as_symbol(&self) -> Option<Symbol> {
+        match self.node {
+            StmtKind::Semi(ref e) => e.as_symbol(),
+            _ => None,
+        }
+    }
 }
 
-pub fn impl_item_sym(i: &ImplItem) -> Option<Symbol> {
-    let m = match i.node {
-        ImplItemKind::Macro(ref m) => m,
-        _ => return None,
-    };
-    mac_sym(m)
+impl AsSymbol for Pat {
+    fn as_symbol(&self) -> Option<Symbol> {
+        match self.node {
+            PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
+                           ref i, None) => i.node.as_symbol(),
+            _ => None,
+        }
+    }
 }
 
-pub fn trait_item_sym(i: &TraitItem) -> Option<Symbol> {
-    let m = match i.node {
-        TraitItemKind::Macro(ref m) => m,
-        _ => return None,
-    };
-    mac_sym(m)
+impl AsSymbol for Ty {
+    fn as_symbol(&self) -> Option<Symbol> {
+        match self.node {
+            TyKind::Path(None, ref p) => p.as_symbol(),
+            _ => None,
+        }
+    }
+}
+
+impl AsSymbol for Mac {
+    fn as_symbol(&self) -> Option<Symbol> {
+        if self.node.tts != ThinTokenStream::from(TokenStream::empty()) {
+            return None;
+        }
+        self.node.path.as_symbol()
+    }
+}
+
+impl AsSymbol for Item {
+    fn as_symbol(&self) -> Option<Symbol> {
+        match self.node {
+            ItemKind::Mac(ref m) => m.as_symbol(),
+            _ => None,
+        }
+    }
+}
+
+impl AsSymbol for ImplItem {
+    fn as_symbol(&self) -> Option<Symbol> {
+        match self.node {
+            ImplItemKind::Macro(ref m) => m.as_symbol(),
+            _ => None,
+        }
+    }
+}
+
+impl AsSymbol for TraitItem {
+    fn as_symbol(&self) -> Option<Symbol> {
+        match self.node {
+            TraitItemKind::Macro(ref m) => m.as_symbol(),
+            _ => None,
+        }
+    }
 }
 
 

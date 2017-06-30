@@ -16,15 +16,6 @@ extern crate syntax_pos;
 use std::env;
 use std::fs::File;
 use std::io::Read;
-use rustc_errors::{Diagnostic, ColorConfig};
-use syntax::ast::{Expr, Crate};
-use syntax::parse::{self, ParseSess};
-use syntax::print::pprust;
-use syntax::ptr::P;
-
-use syntax::ast::{Pat, Stmt, Item};
-use syntax::codemap::{CodeMap, Span, DUMMY_SP};
-use syntax::visit::Visitor;
 
 use subst::Subst;
 

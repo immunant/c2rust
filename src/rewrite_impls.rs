@@ -3,7 +3,6 @@ use std::rc::Rc;
 use rustc::session::Session;
 use syntax::ast::*;
 use syntax::abi::Abi;
-use syntax::ast::*;
 use syntax::codemap::{Span, Spanned, DUMMY_SP};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::print::pprust;
@@ -12,7 +11,7 @@ use syntax::tokenstream::{TokenStream, ThinTokenStream};
 
 use ast_equiv::AstEquiv;
 use driver;
-use rewrite::{self, Rewrite, RewriteCtxt, RewriteCtxtRef, NodeTable};
+use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, NodeTable};
 
 
 fn describe(sess: &Session, span: Span) -> String {
@@ -157,6 +156,29 @@ impl Splice for Expr {
 
     fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
         rcx.old_exprs()
+    }
+}
+
+impl Splice for Pat {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn id(&self) -> NodeId {
+        self.id
+    }
+
+    fn to_string(&self) -> String {
+        pprust::pat_to_string(self)
+    }
+
+    type Parsed = P<Pat>;
+    fn parse(sess: &Session, src: &str) -> Self::Parsed {
+        driver::parse_pat(sess, src).unwrap()
+    }
+
+    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
+        rcx.old_pats()
     }
 }
 

@@ -31,7 +31,6 @@ impl<'a> PrintSpanVisitor<'a> {
     }
 }
 
-
 impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
     fn visit_expr(&mut self, x: &'a Expr) {
         println!("[EXPR] {}: {}",
@@ -56,4 +55,9 @@ impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
                  self.span_desc(x.span), pprust::item_to_string(x));
         syntax::visit::walk_item(self, x);
     }
+}
+
+#[allow(dead_code)] // Helper function for debugging
+pub fn print_spans<T: Visit>(x: &T, cm: &CodeMap) {
+    x.visit(&mut PrintSpanVisitor { cm: cm });
 }

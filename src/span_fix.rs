@@ -10,7 +10,7 @@
 
 use rustc::session::Session;
 use syntax::ast::*;
-use syntax::codemap::{Span, Spanned, DUMMY_SP, CodeMap};
+use syntax::codemap::{Span, DUMMY_SP, CodeMap};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
