@@ -178,6 +178,7 @@ struct Local { pat, ty, init, id, span, attrs }
 
 #[match=custom] #[rewrite_splice]
 struct Expr { id, node, span, attrs }
+#[rewrite_default_step_kind=Expr]
 enum ExprKind {
     Box(expr),
     InPlace(place, expr),
@@ -185,7 +186,9 @@ enum ExprKind {
     Call(func, args),
     MethodCall(ident, tys, args),
     Tup(elems),
-    Binary(op, a, b),
+    Binary(op,
+        #[rewrite_step_kind=ExprLeft] a,
+        #[rewrite_step_kind=ExprRight] b),
     Unary(op, a),
     Lit(lit),
     Cast(expr, ty),

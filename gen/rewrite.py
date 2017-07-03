@@ -30,13 +30,31 @@ from util import *
 
 
 @linewise
+def do_record_step_kind(se, v, f):
+    kind = f.attrs.get('rewrite_step_kind') or \
+            v.attrs.get('rewrite_default_step_kind') or \
+            se.attrs.get('rewrite_default_step_kind') or \
+            'Other'
+
+    if kind in ('Other',):
+        yield 'rcx.push_step(VisitStep::Other);'
+    else:
+        yield 'rcx.push_step(VisitStep::%s(P(self.clone())));' % kind
+
+@linewise
 def do_recycled_match(se, target1, target2):
     yield 'match (%s, %s) {' % (target1, target2)
     for v, path in variants_paths(se):
         yield '  (&%s,' % struct_pattern(v, path, '1')
         yield '   &%s) => {' % struct_pattern(v, path, '2')
         for f in v.fields:
-            yield '    Rewrite::rewrite_recycled(%s1, %s2, rcx.borrow()) ||' % (f.name, f.name)
+            yield '    ({'
+            yield indent(do_record_step_kind(se, v, f), '      ')
+            yield '      let ok = Rewrite::rewrite_recycled(%s1, %s2, rcx.borrow());' % \
+                    (f.name, f.name)
+            yield '      rcx.pop_step();'
+            yield '      ok'
+            yield '    }) ||'
         yield '    false'
         yield '  }'
     yield '  (_, _) => true,'
@@ -87,7 +105,11 @@ def do_fresh_match(se, target1, target2):
         yield '  (&%s,' % struct_pattern(v, path, '1')
         yield '   &%s) => {' % struct_pattern(v, path, '2')
         for f in v.fields:
-            yield '    Rewrite::rewrite_fresh(%s1, %s2, rcx.borrow());' % (f.name, f.name)
+            yield '    {'
+            yield indent(do_record_step_kind(se, v, f), '      ')
+            yield '      Rewrite::rewrite_fresh(%s1, %s2, rcx.borrow());' % (f.name, f.name)
+            yield '      rcx.pop_step();'
+            yield '    }'
         yield '  }'
     yield '  (_, _) => panic!("new and reparsed AST differ"),'
     yield '}'

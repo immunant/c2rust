@@ -43,6 +43,7 @@ use rustc::session::Session;
 use syntax::ast::{Expr, ExprKind, Pat, Stmt, Item};
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
 use syntax::codemap::{Span, DUMMY_SP};
+use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
 use visit::Visit;
@@ -155,6 +156,46 @@ impl<'s> Visitor<'s> for OldNodesVisitor<'s> {
 }
 
 
+/// A record of a single step in the AST traversal.  We care mainly about the nesting of
+/// `ExprKind`s, since it affects parenthesization of expressions.
+#[derive(Clone, Debug)]
+pub enum VisitStep {
+    /// Stepped from an `ExprKind` into one of its children.
+    Expr(P<ExprKind>),
+    /// Stepped from an `ExprKind` into its left child.
+    ExprLeft(P<ExprKind>),
+    /// Stepped from an `ExprKind` into its right child.
+    ExprRight(P<ExprKind>),
+    /// Stepped from some other node into one of its children.
+    Other,
+}
+
+impl VisitStep {
+    pub fn get_expr_kind(&self) -> Option<&ExprKind> {
+        match *self {
+            VisitStep::Expr(ref k) => Some(k),
+            VisitStep::ExprLeft(ref k) => Some(k),
+            VisitStep::ExprRight(ref k) => Some(k),
+            _ => None,
+        }
+    }
+
+    pub fn is_left(&self) -> bool {
+        match *self {
+            VisitStep::ExprLeft(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_right(&self) -> bool {
+        match *self {
+            VisitStep::ExprRight(_) => true,
+            _ => false,
+        }
+    }
+}
+
+
 pub struct RewriteCtxt<'s> {
     sess: &'s Session,
     old_nodes: OldNodes<'s>,
@@ -162,6 +203,8 @@ pub struct RewriteCtxt<'s> {
     /// The span of the new AST the last time we entered "fresh" mode.  This lets us avoid infinite
     /// recursion - see comment in `splice_fresh`.
     fresh_start: Span,
+
+    visit_steps: Vec<VisitStep>,
 }
 
 impl<'s> RewriteCtxt<'s> {
@@ -171,6 +214,7 @@ impl<'s> RewriteCtxt<'s> {
             old_nodes: old_nodes,
 
             fresh_start: DUMMY_SP,
+            visit_steps: Vec::new(),
         }
     }
 
@@ -209,6 +253,18 @@ impl<'s> RewriteCtxt<'s> {
             rewrites: rewrites,
             cx: self,
         }
+    }
+
+    pub fn push_step(&mut self, step: VisitStep) {
+        self.visit_steps.push(step);
+    }
+
+    pub fn pop_step(&mut self) {
+        self.visit_steps.pop();
+    }
+
+    pub fn parent_step(&self) -> Option<&VisitStep> {
+        self.visit_steps.last()
     }
 }
 

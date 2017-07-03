@@ -8,10 +8,11 @@ use syntax::ext::hygiene::SyntaxContext;
 use syntax::print::pprust;
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
+use syntax::util::parser::{AssocOp, Fixity};
 
 use ast_equiv::AstEquiv;
 use driver;
-use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, NodeTable, TextAdjust};
+use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, VisitStep, NodeTable, TextAdjust};
 
 
 fn describe(sess: &Session, span: Span) -> String {
@@ -140,8 +141,44 @@ impl Splice for Expr {
         rcx.old_exprs()
     }
 
-    fn get_adjustment(&self, _rcx: &RewriteCtxt) -> TextAdjust {
-        TextAdjust::Parenthesize
+    fn get_adjustment(&self, rcx: &RewriteCtxt) -> TextAdjust {
+        // Check for cases where we can safely omit parentheses.
+        let can_omit_parens = if let Some(parent_step) = rcx.parent_step() {
+            println!("Checking {:?} against parent {:?}", self, parent_step);
+            if let Some(parent) = parent_step.get_expr_kind() {
+                let current = &self.node;
+                match (parent, current) {
+                    (&ExprKind::Binary(parent_op, _, _),
+                     &ExprKind::Binary(current_op, _, _)) => {
+                        let parent_assoc = AssocOp::from_ast_binop(parent_op.node);
+                        let current_assoc = AssocOp::from_ast_binop(current_op.node);
+                        if current_assoc.precedence() > parent_assoc.precedence() {
+                            true
+                        } else if current_assoc.precedence() == parent_assoc.precedence() {
+                            match parent_assoc.fixity() {
+                                Fixity::Left => parent_step.is_left(),
+                                Fixity::Right => parent_step.is_right(),
+                                _ => false,
+                            }
+                        } else {
+                            false
+                        }
+                    },
+                    (_, _) => false,
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if can_omit_parens {
+            println!("note: omitting parens around {:?}", self);
+            TextAdjust::None
+        } else {
+            TextAdjust::Parenthesize
+        }
     }
 }
 

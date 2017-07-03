@@ -157,7 +157,7 @@ class Parser:
 
         return Struct(name, fields, is_tuple, attrs)
 
-    def parse_enum(self, attrs):
+    def parse_enum(self, enum_attrs):
         name = self.take_ident()
         self.take_symbol_from('{')
 
@@ -172,7 +172,7 @@ class Parser:
 
         self.take_symbol_from('}')
 
-        return Enum(name, variants, attrs)
+        return Enum(name, variants, enum_attrs)
 
     def parse_flag(self, attrs):
         name = self.take_ident()
