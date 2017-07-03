@@ -178,10 +178,13 @@ pub trait TryMatch {
 
 
 
-pub trait Pattern<'a, F>: TryMatch+Sized
-        where F: FnMut(Self, Bindings) -> Self + 'a {
-    type Folder: Folder;
-    fn make_folder(self, init_mcx: MatchCtxt, callback: F) -> Self::Folder;
+pub trait Pattern: TryMatch+Sized {
+    fn apply_folder<T, F>(self,
+                          init_mcx: MatchCtxt,
+                          callback: F,
+                          target: T) -> <T as Fold>::Result
+        where T: Fold,
+              F: FnMut(Self, Bindings) -> Self;
 }
 
 
@@ -205,8 +208,8 @@ macro_rules! gen_pattern_impl {
             callback: F,
         }
 
-        impl<'a, F> Folder for $PatternFolder<F>
-                where F: FnMut($Pat, Bindings) -> $Pat + 'a {
+        impl<F> Folder for $PatternFolder<F>
+                where F: FnMut($Pat, Bindings) -> $Pat {
             $(
                 fn $fold_thing(&mut $slf, $arg: $ArgTy) -> $RetTy {
                     let $arg =
@@ -221,15 +224,19 @@ macro_rules! gen_pattern_impl {
             )*
         }
 
-        impl<'a, F> Pattern<'a, F> for $Pat
-                where F: FnMut($Pat, Bindings) -> $Pat + 'a {
-            type Folder = $PatternFolder<F>;
-            fn make_folder(self, init_mcx: MatchCtxt, callback: F) -> Self::Folder {
-                $PatternFolder {
+        impl Pattern for $Pat {
+            fn apply_folder<T, F>(self,
+                                  init_mcx: MatchCtxt,
+                                  callback: F,
+                                  target: T) -> <T as Fold>::Result
+                where T: Fold,
+                      F: FnMut(Self, Bindings) -> Self {
+                let mut f = $PatternFolder {
                     pattern: self,
                     init_mcx: init_mcx,
                     callback: callback,
-                }
+                };
+                target.fold(&mut f)
             }
         }
     };
@@ -260,7 +267,7 @@ pub struct MultiStmtPatternFolder<F>
     callback: F,
 }
 
-impl<'a, F> Folder for MultiStmtPatternFolder<F>
+impl<F> Folder for MultiStmtPatternFolder<F>
         where F: FnMut(Vec<Stmt>, Bindings) -> Vec<Stmt> {
     fn fold_block(&mut self, b: P<Block>) -> P<Block> {
         assert!(self.pattern.len() > 0);
@@ -364,35 +371,38 @@ fn is_multi_stmt_glob(mcx: &MatchCtxt, pattern: &Stmt) -> bool {
     true
 }
 
-impl<'a, F> Pattern<'a, F> for Vec<Stmt>
-        where F: FnMut(Vec<Stmt>, Bindings) -> Vec<Stmt> + 'a {
-    type Folder = MultiStmtPatternFolder<F>;
-    fn make_folder(self, init_mcx: MatchCtxt, callback: F) -> Self::Folder {
-        MultiStmtPatternFolder {
+impl Pattern for Vec<Stmt> {
+    fn apply_folder<T, F>(self,
+                          init_mcx: MatchCtxt,
+                          callback: F,
+                          target: T) -> <T as Fold>::Result
+        where T: Fold,
+              F: FnMut(Self, Bindings) -> Self {
+        let mut f = MultiStmtPatternFolder {
             pattern: self,
             init_mcx: init_mcx,
             callback: callback,
-        }
+        };
+        target.fold(&mut f)
     }
 }
 
 
 /// Find every match for `pattern` within `target`, and rewrite each one by invoking `callback`.
-pub fn fold_match<'a, P, T, F>(pattern: P, target: T, callback: F) -> <T as Fold>::Result
-        where P: Pattern<'a, F>,
+pub fn fold_match<P, T, F>(pattern: P, target: T, callback: F) -> <T as Fold>::Result
+        where P: Pattern,
               T: Fold,
-              F: FnMut(P, Bindings) -> P + 'a {
+              F: FnMut(P, Bindings) -> P {
     fold_match_with(MatchCtxt::new(), pattern, target, callback)
 }
 
 /// Find every match for `pattern` within `target`, and rewrite each one by invoking `callback`.
-pub fn fold_match_with<'a, P, T, F>(init_mcx: MatchCtxt,
-                                    pattern: P,
-                                    target: T,
-                                    callback: F) -> <T as Fold>::Result
-        where P: Pattern<'a, F>,
+pub fn fold_match_with<P, T, F>(init_mcx: MatchCtxt,
+                                pattern: P,
+                                target: T,
+                                callback: F) -> <T as Fold>::Result
+        where P: Pattern,
               T: Fold,
-              F: FnMut(P, Bindings) -> P + 'a {
-    let mut f = pattern.make_folder(init_mcx, callback);
-    target.fold(&mut f)
+              F: FnMut(P, Bindings) -> P {
+    pattern.apply_folder(init_mcx, callback, target)
 }

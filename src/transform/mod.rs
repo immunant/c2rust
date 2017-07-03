@@ -14,6 +14,7 @@ pub fn get_transform(name: &str, args: &[String]) -> Box<Transform> {
     match name {
         "reconstruct_while" => Box::new(control_flow::ReconstructWhile),
         "reconstruct_for_range" => Box::new(control_flow::ReconstructForRange),
+        "remove_unused_labels" => Box::new(control_flow::RemoveUnusedLabels),
 
         "test_one_plus_one" => Box::new(test::OnePlusOne),
         "test_f_plus_one" => Box::new(test::FPlusOne),

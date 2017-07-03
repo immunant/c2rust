@@ -35,6 +35,19 @@ macro_rules! gen_folder_impls {
     };
 }
 
+// This code is generic, but a Vec<T> impl would conflict with more specific impls below, like
+// Vec<P<Expr>>.
+impl Fold for Vec<Stmt> {
+    type Result = Vec<<Stmt as Fold>::Result>;
+    fn fold<F: Folder>(self, f: &mut F) -> Self::Result {
+        let mut results = Vec::with_capacity(self.len());
+        for x in self {
+            results.push(x.fold(f));
+        }
+        results
+    }
+}
+
 gen_folder_impls! {
     // Copy-pasted from the syntax::fold::Folder docs.  Changes are noted below.
     pub trait Folder: Sized {
