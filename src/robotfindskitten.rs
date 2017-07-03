@@ -1100,13 +1100,11 @@ pub unsafe extern "C" fn initialize_arrays() {
     screen = malloc(
         ((::std::mem::size_of::<*mut i32>()) * (((COLS - 1i32 + 1i32) as (usize)))),
     ) as (*mut *mut i32);
-    i = 0i32;
-    'loop1: while (i < COLS - 1i32 + 1i32) {
+    'loop1: for i in (0i32)..(COLS - 1i32 + 1i32) {
         *screen.offset(i as (isize)) = malloc(
             ((::std::mem::size_of::<i32>()) *
                  (((LINES - 1i32 + 1i32) as (usize)))),
         ) as (*mut i32);
-        i = i + 1;
     }
     empty.x = -1i32;
     empty.y = -1i32;
@@ -1122,12 +1120,10 @@ pub unsafe extern "C" fn initialize_arrays() {
         }
         counter = counter + 1;
     }
-    counter = 0i32;
-    'loop5: while (counter < 406i32) {
+    'loop5: for counter in (0i32)..(406i32) {
         used_messages[counter as (usize)] = 0i32;
         bogus_messages[counter as (usize)] = 0i32;
         bogus[counter as (usize)] = empty;
-        counter = counter + 1;
     }
 }
 
@@ -1187,8 +1183,7 @@ pub unsafe extern "C" fn initialize_kitten() {
 pub unsafe extern "C" fn initialize_bogus() {
     let mut counter: i32 = ::std::mem::uninitialized();
     let mut index: i32 = ::std::mem::uninitialized();
-    counter = 0i32;
-    'loop1: while (counter < num_bogus) {
+    'loop1: for counter in (0i32)..(num_bogus) {
         bogus[counter as (usize)].color = rand() % 6i32 + 1i32;
         bogus[counter as (usize)].bold = if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0;
         'loop4: loop {
@@ -1217,7 +1212,6 @@ pub unsafe extern "C" fn initialize_bogus() {
         }
         bogus_messages[counter as (usize)] = index;
         used_messages[index as (usize)] = 1i32;
-        counter = counter + 1;
     }
 }
 
@@ -1230,10 +1224,8 @@ pub unsafe extern "C" fn initialize_screen() {
         printw((*b"%c\0").as_ptr(), 95i32);
         counter = counter + 1;
     }
-    counter = 0i32;
-    'loop3: while (counter < num_bogus) {
+    'loop3: for counter in (0i32)..(num_bogus) {
         draw(bogus[counter as (usize)]);
-        counter = counter + 1;
     }
     draw(kitten);
     draw(robot);
