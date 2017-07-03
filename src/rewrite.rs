@@ -173,6 +173,8 @@ pub enum VisitStep {
     ExprLeft(P<ExprKind>),
     /// Stepped from an `ExprKind` into its right child.
     ExprRight(P<ExprKind>),
+    /// Stepped from a `StmtKind::Expr` or `StmtKind::Semi` into its `Expr`.
+    StmtExpr,
     /// Stepped from some other node into one of its children.
     Other,
 }

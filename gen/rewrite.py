@@ -36,8 +36,8 @@ def do_record_step_kind(se, v, f):
             se.attrs.get('rewrite_default_step_kind') or \
             'Other'
 
-    if kind in ('Other',):
-        yield 'rcx.push_step(VisitStep::Other);'
+    if kind in ('Other', 'StmtExpr'):
+        yield 'rcx.push_step(VisitStep::%s);' % kind
     else:
         yield 'rcx.push_step(VisitStep::%s(P(self.clone())));' % kind
 

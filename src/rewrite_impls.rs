@@ -144,7 +144,9 @@ impl Splice for Expr {
     fn get_adjustment(&self, rcx: &RewriteCtxt) -> TextAdjust {
         // Check for cases where we can safely omit parentheses.
         let can_omit_parens = if let Some(parent_step) = rcx.parent_step() {
-            if let Some(parent) = parent_step.get_expr_kind() {
+            if let &VisitStep::StmtExpr = parent_step {
+                true
+            } else if let Some(parent) = parent_step.get_expr_kind() {
                 let current = &self.node;
                 match (parent, current) {
                     (&ExprKind::Binary(parent_op, _, _),

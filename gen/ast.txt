@@ -169,8 +169,8 @@ struct Stmt { id, node, span }
 enum StmtKind {
     Local(local),
     Item(item),
-    Expr(expr),
-    Semi(expr),
+    Expr(#[rewrite_step_kind=StmtExpr] expr),
+    Semi(#[rewrite_step_kind=StmtExpr] expr),
     Mac(mac),
 }
 
