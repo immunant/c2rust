@@ -852,8 +852,7 @@ pub unsafe extern "C" fn full_draw(mut o: Struct1, mut in_place: bool) {
     }
     if &mut dummy as (*mut i16) != 0i32 as (*mut ::std::os::raw::c_void) as (*mut i16) {
         *(&mut dummy as (*mut i16)) = if !stdscr.is_null() {
-            (((*stdscr)._attrs & (1usize << 8i32).wrapping_sub(1usize) << 0i32 + 8i32) >> 8i32) as
-                (i32)
+            (((*stdscr)._attrs & ((1usize << 8i32)) - (1usize) << 0i32 + 8i32) >> 8i32) as (i32)
         } else {
             0i32
         } as (i16);
@@ -1104,19 +1103,18 @@ pub unsafe extern "C" fn initialize_arrays() {
     let mut counter2: i32 = ::std::mem::uninitialized();
     let mut empty: Struct1 = ::std::mem::uninitialized();
     let mut i: i32 = 0i32;
-    screen = malloc(::std::mem::size_of::<*mut i32>().wrapping_mul(
-        (COLS - 1i32 + 1i32) as
-            (usize),
-    )) as (*mut *mut i32);
+    screen = malloc(
+        ((::std::mem::size_of::<*mut i32>()) * (((COLS - 1i32 + 1i32) as (usize)))),
+    ) as (*mut *mut i32);
     i = 0i32;
     'loop1: loop {
         if !(i < COLS - 1i32 + 1i32) {
             break;
         }
-        *screen.offset(i as (isize)) = malloc(::std::mem::size_of::<i32>().wrapping_mul(
-            (LINES - 1i32 + 1i32) as
-                (usize),
-        )) as (*mut i32);
+        *screen.offset(i as (isize)) = malloc(
+            ((::std::mem::size_of::<i32>()) *
+                 (((LINES - 1i32 + 1i32) as (usize)))),
+        ) as (*mut i32);
         i = i + 1;
     }
     empty.x = -1i32;
