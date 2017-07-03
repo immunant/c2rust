@@ -59,6 +59,9 @@ impl<'a> Folder for SubstFolder<'a> {
     fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
         if let Some(stmt) = s.as_symbol().and_then(|sym| self.bindings.get_stmt(sym)) {
             SmallVector::one(stmt.clone())
+        } else if let Some(stmts) = s.as_symbol()
+                .and_then(|sym| self.bindings.get_multi_stmt(sym)) {
+            SmallVector::many(stmts.clone())
         } else {
             fold::noop_fold_stmt(s, self)
         }
@@ -90,6 +93,21 @@ macro_rules! subst_impl {
     };
 }
 
+macro_rules! multi_subst_impl {
+    ($ty:ty, $fold_func:ident) => {
+        impl Subst for Vec<$ty> {
+            fn subst(self, bindings: &Bindings) -> Self {
+                let mut f = SubstFolder { bindings: bindings };
+                let mut results = Vec::with_capacity(self.len());
+                for x in self {
+                    results.extend_from_slice(&x.fold(&mut f));
+                }
+                results
+            }
+        }
+    };
+}
+
 subst_impl!(Ident, fold_ident);
 subst_impl!(P<Expr>, fold_expr);
 subst_impl!(P<Pat>, fold_pat);
@@ -97,8 +115,5 @@ subst_impl!(P<Ty>, fold_ty);
 subst_impl!(Stmt, fold_stmt);
 subst_impl!(P<Item>, fold_item);
 
-impl<T: Subst> Subst for Vec<T> {
-    fn subst(self, bindings: &Bindings) -> Vec<T> {
-        self.into_iter().map(|x| x.subst(bindings)).collect()
-    }
-}
+multi_subst_impl!(Stmt, fold_stmt);
+multi_subst_impl!(P<Item>, fold_item);

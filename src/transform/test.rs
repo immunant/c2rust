@@ -29,3 +29,13 @@ impl Transform for FPlusOne {
         krate
     }
 }
+
+
+pub struct ReplaceStmts(pub String, pub String);
+
+impl Transform for ReplaceStmts {
+    fn transform(&self, krate: Crate, sess: &Session) -> Crate {
+        let krate = replace_stmts(sess, krate, &self.0, &self.1);
+        krate
+    }
+}

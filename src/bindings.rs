@@ -114,6 +114,7 @@ define_binding_values! {
     Pat(P<Pat>), add_pat, try_add_pat, pat, get_pat;
     Ty(P<Ty>), add_ty, try_add_ty, ty, get_ty;
     Stmt(Stmt), add_stmt, try_add_stmt, stmt, get_stmt;
+    MultiStmt(Vec<Stmt>), add_multi_stmt, try_add_multi_stmt, multi_stmt, get_multi_stmt;
     Item(P<Item>), add_item, try_add_item, item, get_item;
 }
 

@@ -9,10 +9,11 @@ pub mod test;
 pub mod vars;
 pub mod wrapping_arith;
 
-pub fn get_transform(name: &str) -> Box<Transform> {
+pub fn get_transform(name: &str, args: &[String]) -> Box<Transform> {
     match name {
         "test_one_plus_one" => Box::new(test::OnePlusOne),
         "test_f_plus_one" => Box::new(test::FPlusOne),
+        "test_replace_stmts" => Box::new(test::ReplaceStmts(args[0].clone(), args[1].clone())),
 
         "let_x_uninitialized" => Box::new(vars::LetXUninitialized),
 

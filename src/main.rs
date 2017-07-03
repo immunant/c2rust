@@ -34,11 +34,21 @@ mod api;
 mod transform;
 
 
+fn split_args<'a>(args: &'a [String]) -> (&'a [String], &'a [String]) {
+    for i in 0 .. args.len() {
+        if &args[i] == "--" {
+            return (&args[..i], &args[i..]);
+        }
+    }
+    (args, &[])
+}
+
 fn main() {
     let args = std::env::args().collect::<Vec<_>>();
-    let transform_name = &args[1];
-    let rewrite_mode_str = &args[2];
-    let remaining_args = &args[3..];
+    let (my_args, rustc_args) = split_args(&args[1..]);
+    let rewrite_mode_str = &my_args[0];
+    let transform_name = &my_args[1];
+    let transform_args = &my_args[2..];
 
     let rewrite_mode = match &rewrite_mode_str as &str {
         "inplace" => file_rewrite::RewriteMode::InPlace,
@@ -47,10 +57,11 @@ fn main() {
         _ => panic!("unknown rewrite mode {:?}", rewrite_mode_str),
     };
 
-    let (krate, sess) = driver::parse_crate(remaining_args);
+    let (krate, sess) = driver::parse_crate(rustc_args);
     let krate = span_fix::fix_spans(&sess, krate);
 
-    let krate2 = transform::get_transform(transform_name).transform(krate.clone(), &sess);
+    let krate2 = transform::get_transform(transform_name, transform_args)
+        .transform(krate.clone(), &sess);
 
     let rws = rewrite::rewrite(&sess, &krate, &krate2);
     if rws.len() == 0 {

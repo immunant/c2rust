@@ -1,4 +1,5 @@
 use std::collections::hash_map::HashMap;
+use std::cmp;
 use std::result;
 use syntax::ast::{Ident, Expr, Pat, Ty, Stmt, Block};
 use syntax::symbol::Symbol;
@@ -246,50 +247,103 @@ impl<'a, F> Folder for MultiStmtPatternFolder<F>
     fn fold_block(&mut self, b: P<Block>) -> P<Block> {
         assert!(self.pattern.len() > 0);
 
-        let mut stmts = b.stmts.clone();
+        let mut new_stmts = Vec::with_capacity(b.stmts.len());
+        let mut last = 0;
+
         let mut i = 0;
-        let mut any_matched = false;
-        'top: while i < stmts.len() {
-            let mut mcx = match self.init_mcx.clone_match(&self.pattern[0], &stmts[i]) {
-                Ok(x) => x,
-                Err(_) => { i += 1; continue; },
+        while i < b.stmts.len() {
+            let mut mcx = self.init_mcx.clone();
+            let result = match_multi_stmt(&mut mcx, &self.pattern, &b.stmts[i..]);
+            if let Some(consumed) = result {
+                new_stmts.extend_from_slice(&b.stmts[last .. i]);
+
+                let consumed_stmts = b.stmts[i .. i + consumed].to_owned();
+                let mut replacement = (self.callback)(consumed_stmts, mcx.bindings);
+                new_stmts.append(&mut replacement);
+
+                i += cmp::max(consumed, 1);
+                last = i;
+            } else {
+                // If the pattern starts with a glob, then trying to match it at `i + 1` will fail
+                // just the same as at `i`.
+                if self.pattern.len() > 0 && is_multi_stmt_glob(&self.init_mcx, &self.pattern[0]) {
+                    break;
+                } else {
+                    i += 1;
+                }
+            }
+        }
+
+        let b =
+            if last == 0 {
+                b
+            } else {
+                new_stmts.extend_from_slice(&b.stmts[last ..]);
+                b.map(|b| Block { stmts: new_stmts, ..b })
             };
 
-            // The first pattern matched at `i`.  Now try to match the rest, under the same `mcx`.
-            if i + self.pattern.len() > stmts.len() {
-                i += 1;
-                continue;
-            }
+        fold::noop_fold_block(b, self)
+    }
+}
 
-            for j in 1 .. self.pattern.len() {
-                match mcx.try_match(&self.pattern[j], &stmts[i + j]) {
-                    Ok(()) => {},
-                    Err(_) => { i += 1; continue 'top; },
+fn match_multi_stmt(mcx: &mut MatchCtxt, pattern: &[Stmt], target: &[Stmt]) -> Option<usize> {
+    if pattern.len() == 0 {
+        return Some(0);
+    }
+
+    if is_multi_stmt_glob(mcx, &pattern[0]) {
+        let name = pattern[0].as_symbol().unwrap();
+        for i in (0 .. target.len() + 1).rev() {
+            let orig_mcx = mcx.clone();
+            if let Some(consumed) = match_multi_stmt(mcx, &pattern[1..], &target[i..]) {
+                let ok = mcx.bindings.try_add_multi_stmt(name, target[..i].to_owned());
+                if ok {
+                    return Some(i + consumed);
+                }
+            }
+            *mcx = orig_mcx;
+        }
+        None
+    } else {
+        let mut i = 0;
+        while i < pattern.len() {
+            if is_multi_stmt_glob(mcx, &pattern[i]) {
+                // Stop current processing, and go match a glob instead.
+                match match_multi_stmt(mcx, &pattern[i..], &target[i..]) {
+                    Some(consumed) => return Some(i + consumed),
+                    None => return None,
                 }
             }
 
-            // Successfully matched all the stmts, producing `mcx`.  Now replace a chunk of `stmts`
-            // with the result of running the callback.
-            any_matched = true;
+            if i >= target.len() {
+                return None;
+            }
 
-            // Split `stmts` into `stmts`, `old`, and `rest`.
-            let mut old = stmts.split_off(i);
-            let mut rest = old.split_off(self.pattern.len());
-
-            let mut new = (self.callback)(old, mcx.bindings);
-
-            // Reassemble `stmts`, placing `new` at the end of the substituted region.
-            stmts.append(&mut new);
-            i = stmts.len();
-            stmts.append(&mut rest);
+            let r = mcx.try_match(&pattern[i], &target[i]);
+            match r {
+                Ok(_) => {},
+                Err(_) => return None,
+            }
+            i += 1;
         }
-
-        if any_matched {
-            b.map(|b| Block { stmts: stmts, ..b })
-        } else {
-            b
-        }
+        assert!(i == pattern.len());
+        Some(pattern.len())
     }
+}
+
+fn is_multi_stmt_glob(mcx: &MatchCtxt, pattern: &Stmt) -> bool {
+    let sym = match pattern.as_symbol() {
+        Some(x) => x,
+        None => return false,
+    };
+
+    match mcx.types.get(&sym) {
+        Some(&bindings::Type::MultiStmt) => {},
+        None if sym.as_str().starts_with("__m_") => {},
+        _ => return false,
+    }
+
+    true
 }
 
 impl<'a, F> Pattern<'a, F> for Vec<Stmt>
