@@ -846,9 +846,9 @@ impl Clone for _win_st {
 
 #[no_mangle]
 pub unsafe extern fn full_draw(mut o : Struct1, mut in_place : bool) {
-    let mut old : usize;
-    let mut dummy : i16;
-    let mut new : usize;
+    let mut old: usize = ::std::mem::uninitialized();
+    let mut dummy: i16 = ::std::mem::uninitialized();
+    let mut new: usize = ::std::mem::uninitialized();
     if &mut old as (*mut usize) != 0i32 as (*mut ::std::os::raw::c_void) as (*mut usize) {
         *(&mut old as (*mut usize)) = if !stdscr.is_null() {
                                           (*stdscr)._attrs
@@ -923,7 +923,7 @@ pub unsafe extern fn message(mut message : *mut u8) {
 pub unsafe extern fn play_game() {
     let mut old_x : i32 = robot.x;
     let mut old_y : i32 = robot.y;
-    let mut input : i32;
+    let mut input: i32 = ::std::mem::uninitialized();
     input = wgetch(stdscr);
     'loop1: loop {
         if !(input != 27i32 && (input != b'q' as (i32)) && (input != b'Q' as (i32))) {
@@ -1036,7 +1036,7 @@ pub unsafe extern fn validchar(mut a : u8) -> i32 {
 
 #[no_mangle]
 pub unsafe extern fn play_animation(mut input : i32) {
-    let mut counter : i32;
+    let mut counter: i32 = ::std::mem::uninitialized();
     counter = 4i32;
     'loop1: loop {
         if !(counter > 0i32) {
@@ -1080,7 +1080,7 @@ pub unsafe extern fn play_animation(mut input : i32) {
 
 #[no_mangle]
 pub unsafe extern fn instructions() {
-    let mut dummy : u8;
+    let mut dummy: u8 = ::std::mem::uninitialized();
     mvprintw(0i32,0i32,(*b"robotfindskitten v%s\n\0").as_ptr(),ver);
     printw(
         (*b"By the illustrious Leonard Richardson (C) 1997, 2000\n\0").as_ptr(
@@ -1119,9 +1119,9 @@ pub unsafe extern fn instructions() {
 
 #[no_mangle]
 pub unsafe extern fn initialize_arrays() {
-    let mut counter : i32;
-    let mut counter2 : i32;
-    let mut empty : Struct1;
+    let mut counter: i32 = ::std::mem::uninitialized();
+    let mut counter2: i32 = ::std::mem::uninitialized();
+    let mut empty: Struct1 = ::std::mem::uninitialized();
     let mut i : i32 = 0i32;
     screen = malloc(
                  ::std::mem::size_of::<*mut i32>().wrapping_mul(
@@ -1235,8 +1235,8 @@ pub unsafe extern fn initialize_kitten() {
 
 #[no_mangle]
 pub unsafe extern fn initialize_bogus() {
-    let mut counter : i32;
-    let mut index : i32;
+    let mut counter: i32 = ::std::mem::uninitialized();
+    let mut index: i32 = ::std::mem::uninitialized();
     counter = 0i32;
     'loop1: loop {
         if !(counter < num_bogus) {
@@ -1284,7 +1284,7 @@ pub unsafe extern fn initialize_bogus() {
 
 #[no_mangle]
 pub unsafe extern fn initialize_screen() {
-    let mut counter : i32;
+    let mut counter: i32 = ::std::mem::uninitialized();
     mvprintw(0i32,0i32,(*b"robotfindskitten v%s\n\n\0").as_ptr(),ver);
     counter = 0i32;
     'loop1: loop {
