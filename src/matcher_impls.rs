@@ -13,6 +13,8 @@ impl TryMatch for Ident {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         if mcx.maybe_capture_ident(self, target)? {
             return Ok(());
+        } else if mcx.maybe_capture_label(self, target)? {
+            return Ok(());
         }
 
         if self == target {
@@ -60,6 +62,21 @@ impl TryMatch for Stmt {
         }
 
         default_try_match_stmt(self, target, mcx)
+    }
+}
+
+impl TryMatch for Block {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        mcx.try_match(&self.id, &target.id)?;
+        mcx.try_match(&self.rules, &target.rules)?;
+        mcx.try_match(&self.span, &target.span)?;
+
+        if let Some(consumed) = matcher::match_multi_stmt(mcx, &self.stmts, &target.stmts) {
+            if consumed == target.stmts.len() {
+                return Ok(());
+            }
+        }
+        Err(matcher::Error::LengthMismatch)
     }
 }
 

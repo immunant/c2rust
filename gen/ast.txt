@@ -228,6 +228,7 @@ flag UnOp;
 flag BinOpKind;
 struct Field { ident, expr, span, is_shorthand, attrs }
 struct Arm { attrs, pats, guard, body }
+#[match=custom]
 struct Block { stmts, id, rules, span }
 
 

@@ -144,7 +144,6 @@ impl Splice for Expr {
     fn get_adjustment(&self, rcx: &RewriteCtxt) -> TextAdjust {
         // Check for cases where we can safely omit parentheses.
         let can_omit_parens = if let Some(parent_step) = rcx.parent_step() {
-            println!("Checking {:?} against parent {:?}", self, parent_step);
             if let Some(parent) = parent_step.get_expr_kind() {
                 let current = &self.node;
                 match (parent, current) {
@@ -174,7 +173,6 @@ impl Splice for Expr {
         };
 
         if can_omit_parens {
-            println!("note: omitting parens around {:?}", self);
             TextAdjust::None
         } else {
             TextAdjust::Parenthesize

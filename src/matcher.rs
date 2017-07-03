@@ -89,6 +89,24 @@ impl MatchCtxt {
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
+    pub fn maybe_capture_label(&mut self, pattern: &Ident, target: &Ident) -> Result<bool> {
+        let sym = match pattern.as_symbol() {
+            Some(x) => x,
+            None => return Ok(false),
+        };
+
+        // Labels use lifetime syntax, but are `Ident`s instead of `Lifetime`s.
+        // TODO: should probably distinguish idents, labels, and lifetimes at some point
+        match self.types.get(&sym) {
+            Some(&bindings::Type::Ident) => {},
+            None if sym.as_str().starts_with("'__") => {},
+            _ => return Ok(false),
+        }
+
+        let ok = self.bindings.try_add_ident(sym, target.clone());
+        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+    }
+
     pub fn maybe_capture_expr(&mut self, pattern: &Expr, target: &Expr) -> Result<bool> {
         let sym = match pattern.as_symbol() {
             Some(x) => x,
@@ -286,7 +304,7 @@ impl<'a, F> Folder for MultiStmtPatternFolder<F>
     }
 }
 
-fn match_multi_stmt(mcx: &mut MatchCtxt, pattern: &[Stmt], target: &[Stmt]) -> Option<usize> {
+pub fn match_multi_stmt(mcx: &mut MatchCtxt, pattern: &[Stmt], target: &[Stmt]) -> Option<usize> {
     if pattern.len() == 0 {
         return Some(0);
     }
