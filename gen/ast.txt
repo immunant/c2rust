@@ -224,7 +224,9 @@ enum ExprKind {
 }
 
 
+#[match=eq]
 flag UnOp;
+#[match=eq]
 flag BinOpKind;
 struct Field { ident, expr, span, is_shorthand, attrs }
 struct Arm { attrs, pats, guard, body }
