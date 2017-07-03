@@ -40,7 +40,7 @@ use std::collections::HashMap;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use rustc::session::Session;
-use syntax::ast::{Expr, ExprKind, Pat, Stmt, Item};
+use syntax::ast::{Expr, ExprKind, Pat, Ty, Stmt, Item};
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
 use syntax::codemap::{Span, DUMMY_SP};
 use syntax::ptr::P;
@@ -108,6 +108,7 @@ impl<'s, T: ?Sized+::std::fmt::Debug> NodeTable<'s, T> {
 struct OldNodes<'s> {
     exprs: NodeTable<'s, Expr>,
     pats: NodeTable<'s, Pat>,
+    tys: NodeTable<'s, Ty>,
     stmts: NodeTable<'s, Stmt>,
     items: NodeTable<'s, Item>,
 }
@@ -117,6 +118,7 @@ impl<'s> OldNodes<'s> {
         OldNodes {
             exprs: NodeTable::new(),
             pats: NodeTable::new(),
+            tys: NodeTable::new(),
             stmts: NodeTable::new(),
             items: NodeTable::new(),
         }
@@ -142,6 +144,11 @@ impl<'s> Visitor<'s> for OldNodesVisitor<'s> {
     fn visit_pat(&mut self, x: &'s Pat) {
         self.map.pats.insert(x.id, x);
         visit::walk_pat(self, x);
+    }
+
+    fn visit_ty(&mut self, x: &'s Ty) {
+        self.map.tys.insert(x.id, x);
+        visit::walk_ty(self, x);
     }
 
     fn visit_stmt(&mut self, x: &'s Stmt) {
@@ -228,6 +235,10 @@ impl<'s> RewriteCtxt<'s> {
 
     pub fn old_pats(&mut self) -> &mut NodeTable<'s, Pat> {
         &mut self.old_nodes.pats
+    }
+
+    pub fn old_tys(&mut self) -> &mut NodeTable<'s, Ty> {
+        &mut self.old_nodes.tys
     }
 
     pub fn old_stmts(&mut self) -> &mut NodeTable<'s, Stmt> {

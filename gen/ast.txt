@@ -118,6 +118,7 @@ enum Visibility {
 }
 
 
+#[match=custom] #[rewrite_splice]
 struct Ty { id, node, span }
 struct MutTy {ty, mutbl}
 enum TyKind {

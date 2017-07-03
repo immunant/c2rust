@@ -205,6 +205,29 @@ impl Splice for Pat {
     }
 }
 
+impl Splice for Ty {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn id(&self) -> NodeId {
+        self.id
+    }
+
+    fn to_string(&self) -> String {
+        pprust::ty_to_string(self)
+    }
+
+    type Parsed = P<Ty>;
+    fn parse(sess: &Session, src: &str) -> Self::Parsed {
+        driver::parse_ty(sess, src).unwrap()
+    }
+
+    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
+        rcx.old_tys()
+    }
+}
+
 impl Splice for Stmt {
     fn span(&self) -> Span {
         self.span

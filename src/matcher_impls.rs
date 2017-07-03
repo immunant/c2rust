@@ -43,6 +43,16 @@ impl TryMatch for Pat {
     }
 }
 
+impl TryMatch for Ty {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        if mcx.maybe_capture_ty(self, target)? {
+            return Ok(());
+        }
+
+        default_try_match_ty(self, target, mcx)
+    }
+}
+
 impl TryMatch for Stmt {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         if mcx.maybe_capture_stmt(self, target)? {

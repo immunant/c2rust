@@ -1,4 +1,4 @@
-use syntax::ast::{Ident, Expr, Pat, Stmt, Item};
+use syntax::ast::{Ident, Expr, Pat, Ty, Stmt, Item};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
@@ -48,6 +48,14 @@ impl<'a> Folder for SubstFolder<'a> {
         }
     }
 
+    fn fold_ty(&mut self, ty: P<Ty>) -> P<Ty> {
+        if let Some(ty) = ty.as_symbol().and_then(|sym| self.bindings.get_ty(sym)) {
+            ty.clone()
+        } else {
+            fold::noop_fold_ty(ty, self)
+        }
+    }
+
     fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
         if let Some(stmt) = s.as_symbol().and_then(|sym| self.bindings.get_stmt(sym)) {
             SmallVector::one(stmt.clone())
@@ -85,6 +93,7 @@ macro_rules! subst_impl {
 subst_impl!(Ident, fold_ident);
 subst_impl!(P<Expr>, fold_expr);
 subst_impl!(P<Pat>, fold_pat);
+subst_impl!(P<Ty>, fold_ty);
 subst_impl!(Stmt, fold_stmt);
 subst_impl!(P<Item>, fold_item);
 

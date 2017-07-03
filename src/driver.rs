@@ -13,7 +13,7 @@ use rustc_metadata::cstore::CStore;
 use rustc_resolve::{Resolver, MakeGlobMap};
 use rustc_trans::back::link;
 use syntax;
-use syntax::ast::{Crate, Expr, Pat, Stmt, Item};
+use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item};
 use syntax::codemap::{CodeMap, RealFileLoader};
 use syntax::ext::base::ExtCtxt;
 use syntax::parse;
@@ -135,6 +135,14 @@ pub fn parse_pat(sess: &Session, src: &str) -> Result<P<Pat>, Diagnostic> {
     let mut p = make_parser(sess, "<pat>", src);
     match p.parse_pat() {
         Ok(pat) => Ok(remove_paren(pat)),
+        Err(e) => Err(e.into_diagnostic()),
+    }
+}
+
+pub fn parse_ty(sess: &Session, src: &str) -> Result<P<Ty>, Diagnostic> {
+    let mut ty = make_parser(sess, "<ty>", src);
+    match ty.parse_ty() {
+        Ok(ty) => Ok(remove_paren(ty)),
         Err(e) => Err(e.into_diagnostic()),
     }
 }

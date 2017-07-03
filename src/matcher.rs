@@ -1,6 +1,6 @@
 use std::collections::hash_map::HashMap;
 use std::result;
-use syntax::ast::{Ident, Expr, Pat, Stmt, Block};
+use syntax::ast::{Ident, Expr, Pat, Ty, Stmt, Block};
 use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
@@ -117,6 +117,22 @@ impl MatchCtxt {
         }
 
         let ok = self.bindings.try_add_pat(sym, P(target.clone()));
+        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+    }
+
+    pub fn maybe_capture_ty(&mut self, pattern: &Ty, target: &Ty) -> Result<bool> {
+        let sym = match pattern.as_symbol() {
+            Some(x) => x,
+            None => return Ok(false),
+        };
+
+        match self.types.get(&sym) {
+            Some(&bindings::Type::Ty) => {},
+            None if sym.as_str().starts_with("__") => {},
+            _ => return Ok(false),
+        }
+
+        let ok = self.bindings.try_add_ty(sym, P(target.clone()));
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
