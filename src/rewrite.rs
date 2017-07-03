@@ -63,11 +63,18 @@ pub trait Rewrite {
 }
 
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TextAdjust {
+    None,
+    Parenthesize,
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TextRewrite {
     pub old_span: Span,
     pub new_span: Span,
     pub rewrites: Vec<TextRewrite>,
+    pub adjust: TextAdjust,
 }
 
 
@@ -250,11 +257,16 @@ impl<'s, 'a> RewriteCtxtRef<'s, 'a> {
         self.rewrites.truncate(mark);
     }
 
-    pub fn record(&mut self, old_span: Span, new_span: Span, rewrites: Vec<TextRewrite>) {
+    pub fn record(&mut self,
+                  old_span: Span,
+                  new_span: Span,
+                  rewrites: Vec<TextRewrite>,
+                  adjust: TextAdjust) {
         self.rewrites.push(TextRewrite {
             old_span: old_span,
             new_span: new_span,
             rewrites: rewrites,
+            adjust: adjust,
         });
     }
 }

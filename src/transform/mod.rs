@@ -13,6 +13,7 @@ pub fn get_transform(name: &str) -> Box<Transform> {
         "wrapping_arith_to_normal" => Box::new(wrapping_arith::WrappingToNormal),
 
         "test_one_plus_one" => Box::new(test::OnePlusOne),
+        "test_f_plus_one" => Box::new(test::FPlusOne),
 
         _ => panic!("unknown transform {:?}", name),
     }

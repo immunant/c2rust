@@ -11,7 +11,7 @@ use syntax::tokenstream::{TokenStream, ThinTokenStream};
 
 use ast_equiv::AstEquiv;
 use driver;
-use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, NodeTable};
+use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, NodeTable, TextAdjust};
 
 
 fn describe(sess: &Session, span: Span) -> String {
@@ -39,6 +39,10 @@ trait Splice: Rewrite+AstEquiv+::std::fmt::Debug+'static {
 
     fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self>;
 
+    fn get_adjustment(&self, _rcx: &RewriteCtxt) -> TextAdjust {
+        TextAdjust::None
+    }
+
 
     fn get_node<'a, 's>(mut rcx: RewriteCtxtRef<'s, 'a>, id: NodeId) -> Option<&'s Self> {
         Self::node_table(&mut rcx).get(id)
@@ -56,7 +60,8 @@ trait Splice: Rewrite+AstEquiv+::std::fmt::Debug+'static {
         Rewrite::rewrite_fresh(new, &reparsed, rcx.with_rewrites(&mut rewrites));
         rcx.replace_fresh_start(old_fs);
 
-        rcx.record(old.span(), reparsed.span(), rewrites);
+        let adj = new.get_adjustment(&rcx);
+        rcx.record(old.span(), reparsed.span(), rewrites, adj);
     }
 
     fn splice_fresh(new: &Self, reparsed: &Self, mut rcx: RewriteCtxtRef) -> bool {
@@ -98,7 +103,8 @@ trait Splice: Rewrite+AstEquiv+::std::fmt::Debug+'static {
             return false;
         }
 
-        rcx.record(reparsed.span(), old.span(), rewrites);
+        let adj = new.get_adjustment(&rcx);
+        rcx.record(reparsed.span(), old.span(), rewrites, adj);
         true
     }
 }
@@ -132,6 +138,10 @@ impl Splice for Expr {
 
     fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
         rcx.old_exprs()
+    }
+
+    fn get_adjustment(&self, _rcx: &RewriteCtxt) -> TextAdjust {
+        TextAdjust::Parenthesize
     }
 }
 

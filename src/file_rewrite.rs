@@ -5,7 +5,7 @@ use std::rc::Rc;
 use syntax::codemap::{CodeMap, FileMap};
 use syntax_pos::BytePos;
 
-use rewrite::TextRewrite;
+use rewrite::{TextRewrite, TextAdjust};
 
 
 pub enum RewriteMode {
@@ -80,12 +80,24 @@ fn rewrite_range(cm: &CodeMap,
         if rw.old_span.lo != cur {
             emit_chunk(cm, cur, rw.old_span.lo, |s| callback(s));
         }
+
+        match rw.adjust {
+            TextAdjust::None => {},
+            TextAdjust::Parenthesize => callback("("),
+        }
+
         if rw.rewrites.len() == 0 {
             emit_chunk(cm, rw.new_span.lo, rw.new_span.hi, |s| callback(s));
         } else {
             rw.rewrites.sort_by_key(|rw| rw.old_span.lo.0);
             rewrite_range(cm, rw.new_span.lo, rw.new_span.hi, &mut rw.rewrites, callback);
         }
+
+        match rw.adjust {
+            TextAdjust::None => {},
+            TextAdjust::Parenthesize => callback(")"),
+        }
+
         cur = rw.old_span.hi;
     }
 
