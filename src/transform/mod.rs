@@ -6,10 +6,14 @@ pub trait Transform {
 }
 
 pub mod wrapping_arith;
+pub mod test;
 
 pub fn get_transform(name: &str) -> Box<Transform> {
-    Box::new(match name {
-        "wrapping_arith_to_normal" => wrapping_arith::WrappingToNormal,
+    match name {
+        "wrapping_arith_to_normal" => Box::new(wrapping_arith::WrappingToNormal),
+
+        "test_one_plus_one" => Box::new(test::OnePlusOne),
+
         _ => panic!("unknown transform {:?}", name),
-    })
+    }
 }
