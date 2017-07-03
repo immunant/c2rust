@@ -315,7 +315,7 @@ struct InlineAsmOutput { constraint, expr, is_rw, is_indirect }
 #[equiv_mode=ignore] flag AttrId;
 
 flag usize;
-flag bool;
-flag u128;
-flag u8;
-flag char;
+#[match=eq] flag bool;
+#[match=eq] flag u128;
+#[match=eq] flag u8;
+#[match=eq] flag char;
