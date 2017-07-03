@@ -915,10 +915,7 @@ pub unsafe extern "C" fn play_game() {
     let mut old_y: i32 = robot.y;
     let mut input: i32 = ::std::mem::uninitialized();
     input = wgetch(stdscr);
-    'loop1: loop {
-        if !(input != 27i32 && (input != b'q' as (i32)) && (input != b'Q' as (i32))) {
-            break;
-        }
+    'loop1: while (input != 27i32 && (input != b'q' as (i32)) && (input != b'Q' as (i32))) {
         process_input(input);
         if !(old_x == robot.x && (old_y == robot.y)) {
             if wmove(stdscr, old_y, old_x) == -1i32 {
@@ -1025,10 +1022,7 @@ pub unsafe extern "C" fn validchar(mut a: u8) -> i32 {
 pub unsafe extern "C" fn play_animation(mut input: i32) {
     let mut counter: i32 = ::std::mem::uninitialized();
     counter = 4i32;
-    'loop1: loop {
-        if !(counter > 0i32) {
-            break;
-        }
+    'loop1: while (counter > 0i32) {
         if wmove(stdscr, 1i32, 50i32 + counter + 1i32) == -1i32 {
             -1i32;
         } else {
@@ -1107,10 +1101,7 @@ pub unsafe extern "C" fn initialize_arrays() {
         ((::std::mem::size_of::<*mut i32>()) * (((COLS - 1i32 + 1i32) as (usize)))),
     ) as (*mut *mut i32);
     i = 0i32;
-    'loop1: loop {
-        if !(i < COLS - 1i32 + 1i32) {
-            break;
-        }
+    'loop1: while (i < COLS - 1i32 + 1i32) {
         *screen.offset(i as (isize)) = malloc(
             ((::std::mem::size_of::<i32>()) *
                  (((LINES - 1i32 + 1i32) as (usize)))),
@@ -1123,25 +1114,16 @@ pub unsafe extern "C" fn initialize_arrays() {
     empty.bold = false;
     empty.character = b' ';
     counter = 0i32;
-    'loop3: loop {
-        if !(counter <= COLS - 1i32) {
-            break;
-        }
+    'loop3: while (counter <= COLS - 1i32) {
         counter2 = 0i32;
-        'loop10: loop {
-            if !(counter2 <= LINES - 1i32) {
-                break;
-            }
+        'loop10: while (counter2 <= LINES - 1i32) {
             *(*screen.offset(counter as (isize))).offset(counter2 as (isize)) = -1i32;
             counter2 = counter2 + 1;
         }
         counter = counter + 1;
     }
     counter = 0i32;
-    'loop5: loop {
-        if !(counter < 406i32) {
-            break;
-        }
+    'loop5: while (counter < 406i32) {
         used_messages[counter as (usize)] = 0i32;
         bogus_messages[counter as (usize)] = 0i32;
         bogus[counter as (usize)] = empty;
@@ -1206,10 +1188,7 @@ pub unsafe extern "C" fn initialize_bogus() {
     let mut counter: i32 = ::std::mem::uninitialized();
     let mut index: i32 = ::std::mem::uninitialized();
     counter = 0i32;
-    'loop1: loop {
-        if !(counter < num_bogus) {
-            break;
-        }
+    'loop1: while (counter < num_bogus) {
         bogus[counter as (usize)].color = rand() % 6i32 + 1i32;
         bogus[counter as (usize)].bold = if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0;
         'loop4: loop {
@@ -1247,18 +1226,12 @@ pub unsafe extern "C" fn initialize_screen() {
     let mut counter: i32 = ::std::mem::uninitialized();
     mvprintw(0i32, 0i32, (*b"robotfindskitten v%s\n\n\0").as_ptr(), ver);
     counter = 0i32;
-    'loop1: loop {
-        if !(counter <= COLS - 1i32) {
-            break;
-        }
+    'loop1: while (counter <= COLS - 1i32) {
         printw((*b"%c\0").as_ptr(), 95i32);
         counter = counter + 1;
     }
     counter = 0i32;
-    'loop3: loop {
-        if !(counter < num_bogus) {
-            break;
-        }
+    'loop3: while (counter < num_bogus) {
         draw(bogus[counter as (usize)]);
         counter = counter + 1;
     }
