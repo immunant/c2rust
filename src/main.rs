@@ -20,6 +20,7 @@ mod fold;
 mod visit;
 mod print_spans;
 mod remove_paren;
+mod cursor;
 
 mod bindings;
 mod driver;
