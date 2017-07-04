@@ -21,11 +21,11 @@ fn main() {
     }
 
 
-    'a: while let () = () {
+    'a: while let Some(_) = Some(()) {
         println!("a");
     }
 
-    'b: while let () = () {
+    'b: while let Some(_) = Some(()) {
         println!("b");
         break 'b;
         println!("b");

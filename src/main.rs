@@ -3,6 +3,7 @@
     rustc_private,
     trace_macros,
 )]
+extern crate arena;
 extern crate rustc;
 extern crate rustc_driver;
 extern crate rustc_errors;
@@ -57,16 +58,18 @@ fn main() {
         _ => panic!("unknown rewrite mode {:?}", rewrite_mode_str),
     };
 
-    let (krate, sess) = driver::parse_crate(rustc_args);
-    let krate = span_fix::fix_spans(&sess, krate);
+    let transform = transform::get_transform(transform_name, transform_args);
 
-    let krate2 = transform::get_transform(transform_name, transform_args)
-        .transform(krate.clone(), &sess);
 
-    let rws = rewrite::rewrite(&sess, &krate, &krate2);
-    if rws.len() == 0 {
-        println!("(no files to rewrite)");
-    } else {
-        file_rewrite::rewrite_files(sess.codemap(), &rws, rewrite_mode);
-    }
+    driver::with_crate_and_context(rustc_args, transform.min_phase(), |krate, cx| {
+        let krate = span_fix::fix_spans(cx.session(), krate);
+        let krate2 = transform.transform(krate.clone(), cx);
+
+        let rws = rewrite::rewrite(cx.session(), &krate, &krate2);
+        if rws.len() == 0 {
+            println!("(no files to rewrite)");
+        } else {
+            file_rewrite::rewrite_files(cx.session().codemap(), &rws, rewrite_mode);
+        }
+    });
 }

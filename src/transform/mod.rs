@@ -1,8 +1,14 @@
-use rustc::session::Session;
 use syntax::ast::Crate;
 
+use driver::{self, Phase};
+
 pub trait Transform {
-    fn transform(&self, krate: Crate, sess: &Session) -> Crate;
+    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate;
+
+    fn min_phase(&self) -> Phase {
+        // Most transforms should run on expanded code.
+        Phase::Phase2
+    }
 }
 
 pub mod control_flow;

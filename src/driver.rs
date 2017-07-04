@@ -1,12 +1,16 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
 //! `librustc_driver::driver::compile_input`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use arena::DroplessArena;
 use rustc::dep_graph::DepGraph;
+use rustc::hir::map as hir_map;
+use rustc::ty::{TyCtxt, GlobalArenas};
 use rustc::session::{self, Session};
-use rustc::session::config::Input;
+use rustc::session::config::{Input, Options};
 use rustc_driver;
+use rustc_driver::driver;
 use rustc_errors::Diagnostic;
 use rustc_metadata::creader::CrateLoader;
 use rustc_metadata::cstore::CStore;
@@ -26,23 +30,126 @@ use remove_paren::remove_paren;
 use util::Lone;
 
 
-fn build_session(args: &[String]) -> (Session, Rc<CStore>) {
+pub struct Ctxt<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
+    sess: &'a Session,
+    map: Option<&'a hir_map::Map<'hir>>,
+    tcx: Option<TyCtxt<'a, 'gcx, 'tcx>>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Phase {
+    Phase1,
+    Phase2,
+    Phase3,
+}
+
+impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
+    fn new_phase_1(sess: &'a Session) -> Ctxt<'a, 'hir, 'gcx, 'tcx> {
+        Ctxt {
+            sess: sess,
+            map: None,
+            tcx: None,
+        }
+    }
+
+    fn new_phase_2(sess: &'a Session,
+                   map: &'a hir_map::Map<'hir>) -> Ctxt<'a, 'hir, 'gcx, 'tcx> {
+        Ctxt {
+            sess: sess,
+            map: Some(map),
+            tcx: None,
+        }
+    }
+
+    fn new_phase_3(sess: &'a Session,
+                   map: &'a hir_map::Map<'hir>,
+                   tcx: TyCtxt<'a, 'gcx, 'tcx>) -> Ctxt<'a, 'hir, 'gcx, 'tcx> {
+        Ctxt {
+            sess: sess,
+            map: Some(map),
+            tcx: Some(tcx),
+        }
+    }
+
+    pub fn session(&self) -> &'a Session {
+        self.sess
+    }
+
+    pub fn hir_map(&self) -> &'a hir_map::Map<'hir> {
+        self.map.unwrap()
+    }
+
+    pub fn ty_ctxt(&self) -> &TyCtxt<'a, 'gcx, 'tcx> {
+        self.tcx.as_ref().unwrap()
+    }
+}
+
+
+pub fn with_crate_and_context<F>(args: &[String],
+                                 phase: Phase,
+                                 func: F)
+        where F: FnOnce(Crate, &Ctxt) {
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
-
     let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
 
-    let descriptions = rustc_driver::diagnostics_registry();
+    assert!(matches.free.len() == 1,
+           "expected exactly one input file");
+    let in_path = Some(Path::new(&matches.free[0]).to_owned());
+    let input = Input::File(in_path.as_ref().unwrap().clone());
 
+    let (sess, cstore) = build_session(sopts, in_path);
+
+    // Start of `compile_input` code
+    let krate = driver::phase_1_parse_input(&sess, &input).unwrap();
+    // Leave parens in place until after expansion, unless we're stopping at phase 1.
+
+    if phase == Phase::Phase1 {
+        let krate = remove_paren(krate);
+        let cx = Ctxt::new_phase_1(&sess);
+        func(krate, &cx);
+        return;
+    }
+
+    let crate_name = link::find_crate_name(Some(&sess), &krate.attrs, &input);
+    let mut expand_result = driver::phase_2_configure_and_expand(
+        &sess, &cstore, krate, /*registry*/ None, &crate_name,
+        /*addl_plugins*/ None, MakeGlobMap::No, |_| Ok(())).unwrap();
+    let krate = expand_result.expanded_crate;
+    let krate = remove_paren(krate);
+
+    let arena = DroplessArena::new();
+    let arenas = GlobalArenas::new();
+
+    let hir_map = hir_map::map_crate(&mut expand_result.hir_forest, expand_result.defs);
+
+    if phase == Phase::Phase2 {
+        let cx = Ctxt::new_phase_2(&sess, &hir_map);
+        func(krate, &cx);
+        return;
+    }
+
+    driver::phase_3_run_analysis_passes(
+        // TODO: probably shouldn't be cloning hir_map... it ought to be accessible through the tcx
+        // somehow
+        &sess, hir_map.clone(), expand_result.analysis, expand_result.resolutions,
+        &arena, &arenas, &crate_name,
+        |tcx, analysis, incremental_hashes_map, result| {
+            if phase == Phase::Phase3 {
+                let cx = Ctxt::new_phase_3(&sess, &hir_map, tcx);
+                func(krate, &cx);
+                return;
+            }
+        }).unwrap();
+}
+
+fn build_session(sopts: Options,
+                 in_path: Option<PathBuf>) -> (Session, Rc<CStore>) {
+    // Corresponds roughly to `run_compiler`.
+    let descriptions = rustc_driver::diagnostics_registry();
     let dep_graph = DepGraph::new(sopts.build_dep_graph());
     let cstore = Rc::new(CStore::new(&dep_graph));
-
     let codemap = Rc::new(CodeMap::with_file_loader(Box::new(RealFileLoader)));
-
-    assert!(matches.free.len() == 1,
-            "expected exactly 1 input file");
-    let in_path = Some(Path::new(&matches.free[0]).to_owned());
-
     let emitter_dest = None;
 
     let sess = session::build_session_with_codemap(
@@ -53,74 +160,11 @@ fn build_session(args: &[String]) -> (Session, Rc<CStore>) {
 }
 
 
-fn parse_crate_for_session(sess: &Session, cstore: Rc<CStore>) -> Crate {
-    let in_path = sess.local_crate_source_file.as_ref().unwrap().clone();
-
-    let krate = parse::parse_crate_from_file(&in_path, &sess.parse_sess).unwrap();
-
-    let crate_name = link::find_crate_name(Some(&sess), &krate.attrs, &Input::File(in_path.clone()));
-
-    let (krate, features) = syntax::config::features(krate, &sess.parse_sess, sess.opts.test);
-
-    // these need to be set "early" so that expansion sees `quote` if enabled.
-    *sess.features.borrow_mut() = features;
-
-    *sess.crate_types.borrow_mut() = rustc_driver::driver::collect_crate_types(sess, &krate.attrs);
-    *sess.crate_disambiguator.borrow_mut() = Symbol::intern(&rustc_driver::driver::compute_crate_disambiguator(sess));
-
-    let alt_std_name = sess.opts.alt_std_name.clone();
-    let krate = syntax::std_inject::maybe_inject_crates_ref(krate, alt_std_name);
-
-    // TODO: if we ever want to support #[plugin(..)], this is the place to do it.
-    // Look for the "plugin loading" timed pass in rustc_driver::driver.
-    let syntax_exts = Vec::new();
-
-    let _ignore = sess.dep_graph.in_ignore();
-    let mut crate_loader = CrateLoader::new(sess, &cstore, &crate_name);
-    crate_loader.preprocess(&krate);
-    let resolver_arenas = Resolver::arenas();
-    let mut resolver = Resolver::new(sess,
-                                     &krate,
-                                     &crate_name,
-                                     MakeGlobMap::No,
-                                     &mut crate_loader,
-                                     &resolver_arenas);
-    syntax_ext::register_builtins(&mut resolver, syntax_exts, sess.features.borrow().quote);
-
-    let features = sess.features.borrow();
-    let cfg = syntax::ext::expand::ExpansionConfig {
-        features: Some(&features),
-        recursion_limit: sess.recursion_limit.get(),
-        trace_mac: sess.opts.debugging_opts.trace_macros,
-        should_test: sess.opts.test,
-        ..syntax::ext::expand::ExpansionConfig::default(crate_name.to_string())
-    };
-
-    let mut ecx = ExtCtxt::new(&sess.parse_sess, cfg, &mut resolver);
-
-    let krate = ecx.monotonic_expander().expand_crate(krate);
-
-    krate
-}
-
-
-
-// For consistency, all parsing functions run `remove_paren` on the result.  See the comments in
-// `remove_paren.rs` for why this is necessary.
-
-pub fn parse_crate(args: &[String]) -> (Crate, Session) {
-    let (sess, cstore) = build_session(args);
-    let krate = parse_crate_for_session(&sess, cstore);
-    let krate = remove_paren(krate);
-    (krate, sess)
-}
-
 fn make_parser<'a>(sess: &'a Session, name: &str, src: &str) -> Parser<'a> {
     parse::new_parser_from_source_str(&sess.parse_sess,
                                       name.to_owned(),
                                       src.to_owned())
 }
-
 
 // Helper functions for parsing source code in an existing `Session`.
 pub fn parse_expr(sess: &Session, src: &str) -> Result<P<Expr>, Diagnostic> {

@@ -2,15 +2,16 @@ use rustc::session::Session;
 use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind};
 
 use api::*;
+use driver;
 use transform::Transform;
 
 
 pub struct ReconstructWhile;
 
 impl Transform for ReconstructWhile {
-    fn transform(&self, krate: Crate, sess: &Session) -> Crate {
+    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
         let krate = replace_expr(
-            sess, krate,
+            cx.session(), krate,
             r#"
                 '__label: loop {
                     if !(__cond) {
@@ -32,8 +33,8 @@ impl Transform for ReconstructWhile {
 pub struct ReconstructForRange;
 
 impl Transform for ReconstructForRange {
-    fn transform(&self, krate: Crate, sess: &Session) -> Crate {
-        let pat = parse_stmts(sess, r#"
+    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+        let pat = parse_stmts(cx.session(), r#"
             __i = __start;
             '__label: while __i < __end {
                 __m_body;
@@ -41,13 +42,13 @@ impl Transform for ReconstructForRange {
             }
         "#).unwrap();
 
-        let repl_step_one = parse_stmts(sess, r#"
+        let repl_step_one = parse_stmts(cx.session(), r#"
             '__label: for __i in __start .. __end {
                 __m_body;
             }
         "#).unwrap();
 
-        let repl_step_more = parse_stmts(sess, r#"
+        let repl_step_more = parse_stmts(cx.session(), r#"
             '__label: for __i in (__start .. __end).step_by(__step) {
                 __m_body;
             }
@@ -85,9 +86,9 @@ fn is_one_lit(l: &Lit) -> bool {
 pub struct RemoveUnusedLabels;
 
 fn remove_unused_labels_from_loop_kind(krate: Crate,
-                                   sess: &Session,
-                                   pat: &str,
-                                   repl: &str) -> Crate {
+                                       sess: &Session,
+                                       pat: &str,
+                                       repl: &str) -> Crate {
     let pat = parse_expr(sess, pat).unwrap();
     let repl = parse_expr(sess, repl).unwrap();
 
@@ -110,17 +111,17 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
 }
 
 impl Transform for RemoveUnusedLabels {
-    fn transform(&self, krate: Crate, sess: &Session) -> Crate {
-        let krate = remove_unused_labels_from_loop_kind(krate, sess,
+    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+        let krate = remove_unused_labels_from_loop_kind(krate, cx.session(),
                 "'__label: loop { __m_body; }",
                 "loop { __m_body; }");
-        let krate = remove_unused_labels_from_loop_kind(krate, sess,
+        let krate = remove_unused_labels_from_loop_kind(krate, cx.session(),
                 "'__label: while __cond { __m_body; }",
                 "while __cond { __m_body; }");
-        let krate = remove_unused_labels_from_loop_kind(krate, sess,
+        let krate = remove_unused_labels_from_loop_kind(krate, cx.session(),
                 "'__label: while let __pat = __expr { __m_body; }",
                 "while let __pat = __expr { __m_body; }");
-        let krate = remove_unused_labels_from_loop_kind(krate, sess,
+        let krate = remove_unused_labels_from_loop_kind(krate, cx.session(),
                 "'__label: for __pat in __iter { __m_body; }",
                 "for __pat in __iter { __m_body; }");
         krate
