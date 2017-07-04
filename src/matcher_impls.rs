@@ -25,6 +25,16 @@ impl TryMatch for Ident {
     }
 }
 
+impl TryMatch for Path {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        if mcx.maybe_capture_path(self, target)? {
+            return Ok(());
+        }
+
+        default_try_match_path(self, target, mcx)
+    }
+}
+
 impl TryMatch for Expr {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         if mcx.maybe_capture_expr(self, target)? {

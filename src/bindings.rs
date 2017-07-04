@@ -1,5 +1,5 @@
 use std::collections::hash_map::{HashMap, Entry};
-use syntax::ast::{Ident, Expr, Pat, Ty, Stmt, Item};
+use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Item};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
@@ -110,6 +110,7 @@ macro_rules! define_binding_values {
 
 define_binding_values! {
     Ident(Ident), add_ident, try_add_ident, ident, get_ident;
+    Path(Path), add_path, try_add_path, path, get_path;
     Expr(P<Expr>), add_expr, try_add_expr, expr, get_expr;
     Pat(P<Pat>), add_pat, try_add_pat, pat, get_pat;
     Ty(P<Ty>), add_ty, try_add_ty, ty, get_ty;

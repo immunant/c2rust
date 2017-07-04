@@ -13,7 +13,7 @@ pub struct AssignToUpdate;
 impl Transform for AssignToUpdate {
     fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
         let pat = parse_expr(cx.session(), "__x.__f = __y").unwrap();
-        let repl = parse_expr(cx.session(), "__x = __rhs").unwrap();
+        let repl = parse_expr(cx.session(), "__x = __s { __f: __y, .. __x }").unwrap();
 
         fold_match(pat, krate, |orig, mut bnd| {
             let x = bnd.expr("__x").clone();
@@ -24,26 +24,7 @@ impl Transform for AssignToUpdate {
             };
             let struct_path = cx.def_path(struct_def_id);
 
-            // TODO: adding a Path binding type should let us simplify this
-            let field = Field {
-                ident: Spanned {
-                    node: bnd.ident("__f").clone(),
-                    span: DUMMY_SP,
-                },
-                expr: bnd.expr("__y").clone(),
-                span: DUMMY_SP,
-                is_shorthand: false,
-                attrs: ThinVec::new(),
-            };
-
-            let struct_expr = Expr {
-                id: DUMMY_NODE_ID,
-                node: ExprKind::Struct(struct_path, vec![field], Some(x)),
-                span: DUMMY_SP,
-                attrs: ThinVec::new(),
-            };
-
-            bnd.add_expr("__rhs", P(struct_expr));
+            bnd.add_path("__s", struct_path);
             repl.clone().subst(&bnd)
         })
     }

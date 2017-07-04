@@ -1,7 +1,7 @@
 use std::collections::hash_map::HashMap;
 use std::cmp;
 use std::result;
-use syntax::ast::{Ident, Expr, Pat, Ty, Stmt, Block};
+use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Block};
 use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
@@ -104,6 +104,22 @@ impl MatchCtxt {
         }
 
         let ok = self.bindings.try_add_ident(sym, target.clone());
+        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+    }
+
+    pub fn maybe_capture_path(&mut self, pattern: &Path, target: &Path) -> Result<bool> {
+        let sym = match pattern.as_symbol() {
+            Some(x) => x,
+            None => return Ok(false),
+        };
+
+        match self.types.get(&sym) {
+            Some(&bindings::Type::Path) => {},
+            None if sym.as_str().starts_with("__") => {},
+            _ => return Ok(false),
+        }
+
+        let ok = self.bindings.try_add_path(sym, target.clone());
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 

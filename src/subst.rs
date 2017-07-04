@@ -1,4 +1,4 @@
-use syntax::ast::{Ident, Expr, Pat, Ty, Stmt, Item};
+use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Item};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
@@ -30,6 +30,14 @@ impl<'a> Folder for SubstFolder<'a> {
             // Otherwise, fall through
         }
         fold::noop_fold_ident(i, self)
+    }
+
+    fn fold_path(&mut self, p: Path) -> Path {
+        if let Some(path) = p.as_symbol().and_then(|sym| self.bindings.get_path(sym)) {
+            path.clone()
+        } else {
+            fold::noop_fold_path(p, self)
+        }
     }
 
     fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
