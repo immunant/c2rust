@@ -12,6 +12,7 @@ pub trait Transform {
 }
 
 pub mod control_flow;
+pub mod structs;
 pub mod test;
 pub mod vars;
 pub mod wrapping_arith;
@@ -21,6 +22,8 @@ pub fn get_transform(name: &str, args: &[String]) -> Box<Transform> {
         "reconstruct_while" => Box::new(control_flow::ReconstructWhile),
         "reconstruct_for_range" => Box::new(control_flow::ReconstructForRange),
         "remove_unused_labels" => Box::new(control_flow::RemoveUnusedLabels),
+
+        "struct_assign_to_update" => Box::new(structs::AssignToUpdate),
 
         "test_one_plus_one" => Box::new(test::OnePlusOne),
         "test_f_plus_one" => Box::new(test::FPlusOne),

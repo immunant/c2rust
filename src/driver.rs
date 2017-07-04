@@ -79,8 +79,8 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
         self.map.unwrap()
     }
 
-    pub fn ty_ctxt(&self) -> &TyCtxt<'a, 'gcx, 'tcx> {
-        self.tcx.as_ref().unwrap()
+    pub fn ty_ctxt(&self) -> TyCtxt<'a, 'gcx, 'tcx> {
+        self.tcx.unwrap()
     }
 }
 
