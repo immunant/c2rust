@@ -871,7 +871,10 @@ pub unsafe extern "C" fn full_draw(mut o: Struct1, mut in_place: bool) {
         new = new | 1usize << 13i32 + 8i32;
     }
     if !stdscr.is_null() {
-        (*stdscr)._attrs = new;
+        (*stdscr) = ::_win_st {
+            _attrs: (new),
+            ..(*stdscr)
+        };
         0i32;
     } else {
         -1i32;
@@ -883,7 +886,10 @@ pub unsafe extern "C" fn full_draw(mut o: Struct1, mut in_place: bool) {
         wmove(stdscr, o.y, o.x);
     }
     if !stdscr.is_null() {
-        (*stdscr)._attrs = old;
+        (*stdscr) = ::_win_st {
+            _attrs: (old),
+            ..(*stdscr)
+        };
         0i32;
     } else {
         -1i32;
@@ -997,8 +1003,14 @@ pub unsafe extern "C" fn process_input(mut input: i32) {
             }
         }
     } else {
-        robot.x = check_x;
-        robot.y = check_y;
+        (robot) = ::Struct1 {
+            x: (check_x),
+            ..(robot)
+        };
+        (robot) = ::Struct1 {
+            y: (check_y),
+            ..(robot)
+        };
     }
 }
 
@@ -1106,11 +1118,26 @@ pub unsafe extern "C" fn initialize_arrays() {
                  (((LINES - 1i32 + 1i32) as (usize)))),
         ) as (*mut i32);
     }
-    empty.x = -1i32;
-    empty.y = -1i32;
-    empty.color = 0i32;
-    empty.bold = false;
-    empty.character = b' ';
+    (empty) = ::Struct1 {
+        x: (-1i32),
+        ..(empty)
+    };
+    (empty) = ::Struct1 {
+        y: (-1i32),
+        ..(empty)
+    };
+    (empty) = ::Struct1 {
+        color: (0i32),
+        ..(empty)
+    };
+    (empty) = ::Struct1 {
+        bold: (false),
+        ..(empty)
+    };
+    (empty) = ::Struct1 {
+        character: (b' '),
+        ..(empty)
+    };
     counter = 0i32;
     while (counter <= COLS - 1i32) {
         counter2 = 0i32;
@@ -1151,32 +1178,62 @@ pub unsafe extern "C" fn initialize_ncurses() {
 
 #[no_mangle]
 pub unsafe extern "C" fn initialize_robot() {
-    robot.x = rand() % (COLS - 1i32) + 1i32;
-    robot.y = rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32;
-    robot.character = b'#';
-    robot.color = 0i32;
-    robot.bold = false;
+    (robot) = ::Struct1 {
+        x: (rand() % (COLS - 1i32) + 1i32),
+        ..(robot)
+    };
+    (robot) = ::Struct1 {
+        y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
+        ..(robot)
+    };
+    (robot) = ::Struct1 {
+        character: (b'#'),
+        ..(robot)
+    };
+    (robot) = ::Struct1 {
+        color: (0i32),
+        ..(robot)
+    };
+    (robot) = ::Struct1 {
+        bold: (false),
+        ..(robot)
+    };
     *(*screen.offset(robot.x as (isize))).offset(robot.y as (isize)) = 0i32;
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn initialize_kitten() {
     loop {
-        kitten.x = rand() % (COLS - 1i32) + 1i32;
-        kitten.y = rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32;
+        (kitten) = ::Struct1 {
+            x: (rand() % (COLS - 1i32) + 1i32),
+            ..(kitten)
+        };
+        (kitten) = ::Struct1 {
+            y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
+            ..(kitten)
+        };
         if !(*(*screen.offset(kitten.x as (isize))).offset(kitten.y as (isize)) != -1i32) {
             break;
         }
     }
     loop {
-        kitten.character = (rand() % (126i32 - b'!' as (i32) + 1i32) + b'!' as (i32)) as (u8);
+        (kitten) = ::Struct1 {
+            character: ((rand() % (126i32 - b'!' as (i32) + 1i32) + b'!' as (i32)) as (u8)),
+            ..(kitten)
+        };
         if !(validchar(kitten.character) == 0) {
             break;
         }
     }
     *(*screen.offset(kitten.x as (isize))).offset(kitten.y as (isize)) = 1i32;
-    kitten.color = rand() % 6i32 + 1i32;
-    kitten.bold = if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0;
+    (kitten) = ::Struct1 {
+        color: (rand() % 6i32 + 1i32),
+        ..(kitten)
+    };
+    (kitten) = ::Struct1 {
+        bold: (if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0),
+        ..(kitten)
+    };
 }
 
 #[no_mangle]
@@ -1184,18 +1241,32 @@ pub unsafe extern "C" fn initialize_bogus() {
     let mut counter: i32 = ::std::mem::uninitialized();
     let mut index: i32 = ::std::mem::uninitialized();
     for counter in ((0i32)..(num_bogus)) {
-        bogus[counter as (usize)].color = rand() % 6i32 + 1i32;
-        bogus[counter as (usize)].bold = if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0;
+        (bogus[counter as (usize)]) = ::Struct1 {
+            color: (rand() % 6i32 + 1i32),
+            ..(bogus[counter as (usize)])
+        };
+        (bogus[counter as (usize)]) = ::Struct1 {
+            bold: (if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0),
+            ..(bogus[counter as (usize)])
+        };
         loop {
-            bogus[counter as (usize)].character =
-                (rand() % (126i32 - b'!' as (i32) + 1i32) + b'!' as (i32)) as (u8);
+            (bogus[counter as (usize)]) = ::Struct1 {
+                character: ((rand() % (126i32 - b'!' as (i32) + 1i32) + b'!' as (i32)) as (u8)),
+                ..(bogus[counter as (usize)])
+            };
             if !(validchar(bogus[counter as (usize)].character) == 0) {
                 break;
             }
         }
         loop {
-            bogus[counter as (usize)].x = rand() % (COLS - 1i32) + 1i32;
-            bogus[counter as (usize)].y = rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32;
+            (bogus[counter as (usize)]) = ::Struct1 {
+                x: (rand() % (COLS - 1i32) + 1i32),
+                ..(bogus[counter as (usize)])
+            };
+            (bogus[counter as (usize)]) = ::Struct1 {
+                y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
+                ..(bogus[counter as (usize)])
+            };
             if !(*(*screen.offset(bogus[counter as (usize)].x as (isize)))
                      .offset(bogus[counter as (usize)].y as (isize)) != -1i32)
             {
