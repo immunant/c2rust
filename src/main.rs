@@ -27,6 +27,7 @@ mod driver;
 mod span_fix;
 mod matcher;
 mod matcher_impls;
+mod seq_edit;
 mod subst;
 mod rewrite;
 mod rewrite_impls;

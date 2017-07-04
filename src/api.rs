@@ -13,6 +13,7 @@ pub use matcher::{fold_match, fold_match_with};
 pub use driver::{parse_expr, parse_pat, parse_stmts, parse_items};
 pub use subst::Subst;
 pub use bindings::Type as BindingType;
+pub use seq_edit::{fold_blocks, fold_modules};
 
 use bindings::Bindings;
 use bindings::IntoSymbol;
