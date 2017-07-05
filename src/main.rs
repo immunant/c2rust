@@ -38,7 +38,9 @@ mod api;
 mod transform;
 
 
+use std::str::FromStr;
 use std::mem;
+
 
 
 struct Options {
@@ -46,6 +48,7 @@ struct Options {
     transform_name: String,
     transform_args: Vec<String>,
     rustc_args: Vec<String>,
+    cursors: Vec<(String, u32, u32)>,
 }
 
 fn find<T: PartialEq<U>, U: ?Sized>(xs: &[T], x: &U) -> Option<usize> {
@@ -77,6 +80,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
             "", HasArg::No, Occur::Optional),
     ];
 
+
     // Separate idiomize args from rustc args
     let (local_args, mut rustc_args) = match find(&argv, "--") {
         Some(idx) => {
@@ -90,6 +94,10 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
             return None;
         },
     };
+
+    // Replace "--" with the program name
+    rustc_args[0] = "rustc".to_owned();
+
 
     // Parse idiomize args
     let prog = &local_args[0];
@@ -107,6 +115,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         return None;
     }
 
+    // Parse rewrite mode
     let rewrite_mode = match m.opt_str("rewrite-mode") {
         Some(mode_str) => match &mode_str as &str {
             "inplace" => file_rewrite::RewriteMode::InPlace,
@@ -120,6 +129,36 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         None => file_rewrite::RewriteMode::Print,
     };
 
+    // Parse cursors
+    let cursor_strs = m.opt_strs("cursor");
+    let mut cursors = Vec::with_capacity(cursor_strs.len());
+    for s in &cursor_strs {
+        let parts = s.split(':').collect::<Vec<_>>();
+        if parts.len() != 3 {
+            println!("Bad cursor position string: {:?}", s);
+            return None;
+        }
+
+        let name = parts[0];
+        let line = match u32::from_str(&parts[1]) {
+            Ok(x) => x,
+            Err(_) => {
+                println!("Bad cursor line number: {:?}", parts[1]);
+                return None;
+            },
+        };
+        let col = match u32::from_str(&parts[2]) {
+            Ok(x) => x,
+            Err(_) => {
+                println!("Bad cursor column number: {:?}", parts[2]);
+                return None;
+            },
+        };
+
+        cursors.push((name.to_owned(), line, col));
+    }
+
+    // Parse transform name + args
     if m.free.len() < 1 {
         println!("Missing transform name");
         return None;
@@ -128,14 +167,12 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     let transform_name = iter.next().unwrap();
     let transform_args = iter.collect();
 
-    // Replace "--" with the program name
-    rustc_args[0] = "rustc".to_owned();
-
     Some(Options {
         rewrite_mode,
         transform_name,
         transform_args,
         rustc_args,
+        cursors,
     })
 }
 
