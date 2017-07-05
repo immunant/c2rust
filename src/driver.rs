@@ -114,7 +114,6 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             return;
         }
 
-        println!("placed cursor at {:?}", lo + BytePos(col - 1));
         self.cursors.push(lo + BytePos(col - 1));
     }
 
