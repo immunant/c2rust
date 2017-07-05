@@ -120,7 +120,7 @@ impl<T> Cursor<T> {
         self.next_mark += 1;
 
         self.left_marks.push(MarkData {
-            name: self.next_mark,
+            name: name,
             depth: 0,
         });
         Mark(name)
@@ -255,6 +255,37 @@ impl<T> Cursor<T> {
         let new = func(old);
         self.insert_multi(new);
     }
+
+    pub fn advance_until_match<F, R>(&mut self, func: F) -> Option<R>
+            where F: FnMut(&T) -> Option<R> {
+        let (n, result) =
+            if let Some((n, r)) = find_matching_result_rev(&self.right, func) {
+                (n, Some(r))
+            } else {
+                (self.right.len(), None)
+            };
+
+        self.advance_by(n);
+        result
+    }
+
+    pub fn debug(&self) {
+        let pos = self.left.len();
+        let len = self.left.len() + self.right.len();
+        println!("cursor debug: at position {} / {}", pos, len);
+
+        let mut depth = 0;
+        for m in &self.left_marks {
+            depth += m.depth;
+            println!("  mark {} at (L) {} / {}",
+                     m.name, pos - depth as usize, len);
+        }
+        for m in &self.right_marks {
+            depth += m.depth;
+            println!("  mark {} at (R) {} / {}",
+                     m.name, pos + depth as usize, len);
+        }
+    }
 }
 
 fn find_mark_depth(marks: &[MarkData], m: Mark) -> Option<usize> {
@@ -282,6 +313,16 @@ fn find_matching_rev<T, F: FnMut(&T) -> bool>(buf: &[T], mut pred: F) -> Option<
     for (i, x) in buf.iter().rev().enumerate() {
         if pred(x) {
             return Some(i);
+        }
+    }
+    None
+}
+
+fn find_matching_result_rev<T, F, R>(buf: &[T], mut func: F) -> Option<(usize, R)>
+        where F: FnMut(&T) -> Option<R> {
+    for (i, x) in buf.iter().rev().enumerate() {
+        if let Some(r) = func(x) {
+            return Some((i, r));
         }
     }
     None
