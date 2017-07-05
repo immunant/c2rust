@@ -8,6 +8,7 @@ use syntax_pos::BytePos;
 use rewrite::{TextRewrite, TextAdjust};
 
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RewriteMode {
     InPlace,
     Alongside,
