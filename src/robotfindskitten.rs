@@ -1005,9 +1005,6 @@ pub unsafe extern "C" fn process_input(mut input: i32) {
     } else {
         (robot) = ::Struct1 {
             x: (check_x),
-            ..(robot)
-        };
-        (robot) = ::Struct1 {
             y: (check_y),
             ..(robot)
         };
@@ -1120,21 +1117,9 @@ pub unsafe extern "C" fn initialize_arrays() {
     }
     (empty) = ::Struct1 {
         x: (-1i32),
-        ..(empty)
-    };
-    (empty) = ::Struct1 {
         y: (-1i32),
-        ..(empty)
-    };
-    (empty) = ::Struct1 {
         color: (0i32),
-        ..(empty)
-    };
-    (empty) = ::Struct1 {
         bold: (false),
-        ..(empty)
-    };
-    (empty) = ::Struct1 {
         character: (b' '),
         ..(empty)
     };
@@ -1180,21 +1165,9 @@ pub unsafe extern "C" fn initialize_ncurses() {
 pub unsafe extern "C" fn initialize_robot() {
     (robot) = ::Struct1 {
         x: (rand() % (COLS - 1i32) + 1i32),
-        ..(robot)
-    };
-    (robot) = ::Struct1 {
         y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
-        ..(robot)
-    };
-    (robot) = ::Struct1 {
         character: (b'#'),
-        ..(robot)
-    };
-    (robot) = ::Struct1 {
         color: (0i32),
-        ..(robot)
-    };
-    (robot) = ::Struct1 {
         bold: (false),
         ..(robot)
     };
@@ -1206,9 +1179,6 @@ pub unsafe extern "C" fn initialize_kitten() {
     loop {
         (kitten) = ::Struct1 {
             x: (rand() % (COLS - 1i32) + 1i32),
-            ..(kitten)
-        };
-        (kitten) = ::Struct1 {
             y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
             ..(kitten)
         };
@@ -1228,9 +1198,6 @@ pub unsafe extern "C" fn initialize_kitten() {
     *(*screen.offset(kitten.x as (isize))).offset(kitten.y as (isize)) = 1i32;
     (kitten) = ::Struct1 {
         color: (rand() % 6i32 + 1i32),
-        ..(kitten)
-    };
-    (kitten) = ::Struct1 {
         bold: (if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0),
         ..(kitten)
     };
@@ -1243,9 +1210,6 @@ pub unsafe extern "C" fn initialize_bogus() {
     for counter in ((0i32)..(num_bogus)) {
         (bogus[counter as (usize)]) = ::Struct1 {
             color: (rand() % 6i32 + 1i32),
-            ..(bogus[counter as (usize)])
-        };
-        (bogus[counter as (usize)]) = ::Struct1 {
             bold: (if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0),
             ..(bogus[counter as (usize)])
         };
@@ -1261,9 +1225,6 @@ pub unsafe extern "C" fn initialize_bogus() {
         loop {
             (bogus[counter as (usize)]) = ::Struct1 {
                 x: (rand() % (COLS - 1i32) + 1i32),
-                ..(bogus[counter as (usize)])
-            };
-            (bogus[counter as (usize)]) = ::Struct1 {
                 y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
                 ..(bogus[counter as (usize)])
             };
