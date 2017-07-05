@@ -48,13 +48,23 @@ impl Transform for MergeUpdates {
                 if curs.eof() {
                     break;
                 }
+                println!("found initial struct update: {:?}", curs.next());
                 let (path, mut fields, base) = unpack_struct_update(curs.remove());
 
                 // Collect additional updates to the same struct.
                 while !curs.eof() && is_struct_update_for(curs.next(), &base) {
+                    println!("  found another struct update (for {:?}): {:?}",
+                             base, curs.next());
                     let (_, mut more_fields, _) = unpack_struct_update(curs.remove());
                     fields.append(&mut more_fields)
                 }
+                if curs.eof() {
+                    println!("  found a non-update (for {:?}): <eof>", base);
+                } else {
+                    println!("  found a non-update (for {:?}): {:?}",
+                             base, curs.next());
+                }
+                println!("  collected {} fields for {:?}", fields.len(), base);
 
                 // Build a new struct update and store it.
                 curs.insert(build_struct_update(path, fields, base))
@@ -66,15 +76,24 @@ impl Transform for MergeUpdates {
 fn is_struct_update(s: &Stmt) -> bool {
     let e = match s.node {
         StmtKind::Semi(ref e) => e,
-        _ => return false,
+        _ => { println!("{:?}: not a Semi", s); return false },
     };
     let (lhs, rhs) = match e.node {
         ExprKind::Assign(ref lhs, ref rhs) => (lhs, rhs),
-        _ => return false,
+        _ => { println!("{:?}: not an Assign", s); return false },
     };
     match rhs.node {
-        ExprKind::Struct(_, _, Some(ref base)) => lhs.ast_equiv(base),
-        _ => return false,
+        ExprKind::Struct(_, _, Some(ref base)) =>
+            if lhs.ast_equiv(base) {
+                println!("{:?}: FOUND A STRUCT UPDATE", s);
+                true
+            } else {
+                println!("{:?}: lhs ({:?}) not equiv to rhs base ({:?})", s, lhs, base);
+                return false
+            },
+        //ExprKind::Struct(_, _, Some(ref base)) => lhs.ast_equiv(base),
+        _ => { println!("{:?}: not a Struct", s); return false },
+        //_ => return false,
     }
 }
 

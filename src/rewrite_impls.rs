@@ -143,36 +143,39 @@ impl Splice for Expr {
 
     fn get_adjustment(&self, rcx: &RewriteCtxt) -> TextAdjust {
         // Check for cases where we can safely omit parentheses.
-        let can_omit_parens = if let Some(parent_step) = rcx.parent_step() {
-            if let &VisitStep::StmtExpr = parent_step {
+        let can_omit_parens =
+            if let ExprKind::Block(_) = self.node {
                 true
-            } else if let Some(parent) = parent_step.get_expr_kind() {
-                let current = &self.node;
-                match (parent, current) {
-                    (&ExprKind::Binary(parent_op, _, _),
-                     &ExprKind::Binary(current_op, _, _)) => {
-                        let parent_assoc = AssocOp::from_ast_binop(parent_op.node);
-                        let current_assoc = AssocOp::from_ast_binop(current_op.node);
-                        if current_assoc.precedence() > parent_assoc.precedence() {
-                            true
-                        } else if current_assoc.precedence() == parent_assoc.precedence() {
-                            match parent_assoc.fixity() {
-                                Fixity::Left => parent_step.is_left(),
-                                Fixity::Right => parent_step.is_right(),
-                                _ => false,
+            } else if let Some(parent_step) = rcx.parent_step() {
+                if let &VisitStep::StmtExpr = parent_step {
+                    true
+                } else if let Some(parent) = parent_step.get_expr_kind() {
+                    let current = &self.node;
+                    match (parent, current) {
+                        (&ExprKind::Binary(parent_op, _, _),
+                         &ExprKind::Binary(current_op, _, _)) => {
+                            let parent_assoc = AssocOp::from_ast_binop(parent_op.node);
+                            let current_assoc = AssocOp::from_ast_binop(current_op.node);
+                            if current_assoc.precedence() > parent_assoc.precedence() {
+                                true
+                            } else if current_assoc.precedence() == parent_assoc.precedence() {
+                                match parent_assoc.fixity() {
+                                    Fixity::Left => parent_step.is_left(),
+                                    Fixity::Right => parent_step.is_right(),
+                                    _ => false,
+                                }
+                            } else {
+                                false
                             }
-                        } else {
-                            false
-                        }
-                    },
-                    (_, _) => false,
+                        },
+                        (_, _) => false,
+                    }
+                } else {
+                    false
                 }
             } else {
                 false
-            }
-        } else {
-            false
-        };
+            };
 
         if can_omit_parens {
             TextAdjust::None

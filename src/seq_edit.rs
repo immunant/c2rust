@@ -19,12 +19,13 @@ struct BlockFolder<F: FnMut(&mut Cursor<Stmt>)> {
 
 impl<F: FnMut(&mut Cursor<Stmt>)> Folder for BlockFolder<F> {
     fn fold_block(&mut self, b: P<Block>) -> P<Block> {
-        b.map(|mut b| {
+        let b = b.map(|mut b| {
             let mut stmt_cursor = Cursor::from_vec(b.stmts);
             (self.f)(&mut stmt_cursor);
             b.stmts = stmt_cursor.into_vec();
             b
-        })
+        });
+        fold::noop_fold_block(b, self)
     }
 }
 
@@ -44,7 +45,7 @@ impl<F: FnMut(&mut Cursor<P<Item>>)> Folder for ModuleFolder<F> {
         let mut curs = Cursor::from_vec(m.items);
         (self.f)(&mut curs);
         m.items = curs.into_vec();
-        m
+        fold::noop_fold_mod(m, self)
     }
 }
 

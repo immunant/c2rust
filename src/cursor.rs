@@ -210,7 +210,7 @@ impl<T> Cursor<T> {
     }
 
     pub fn next(&self) -> &T {
-        self.right.first().expect("peek: at end of buffer")
+        self.right.last().expect("peek: at end of buffer")
     }
 
     /// Advance until an element matches `pred`.  The cursor is left pointing just before the
