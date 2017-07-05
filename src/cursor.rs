@@ -64,8 +64,8 @@ impl<T> Cursor<T> {
     }
 
 
-    pub fn advance(&mut self) {
-        let x = self.left.pop().expect("advance: already at start of buffer");
+    pub fn retract(&mut self) {
+        let x = self.left.pop().expect("retract: already at start of buffer");
         self.right.push(x);
 
         while self.left_marks.last().map_or(false, |m| m.depth == 0) {
@@ -82,15 +82,15 @@ impl<T> Cursor<T> {
         }
     }
 
-    pub fn advance_by(&mut self, n: usize) {
+    pub fn retract_by(&mut self, n: usize) {
         // TODO: optimize
         for _ in 0 .. n {
-            self.advance();
+            self.retract();
         }
     }
 
-    pub fn retract(&mut self) {
-        let x = self.right.pop().expect("retract: already at end of buffer");
+    pub fn advance(&mut self) {
+        let x = self.right.pop().expect("advance: already at end of buffer");
         self.left.push(x);
 
         while self.right_marks.last().map_or(false, |m| m.depth == 0) {
@@ -107,10 +107,10 @@ impl<T> Cursor<T> {
         }
     }
 
-    pub fn retract_by(&mut self, steps: usize) {
+    pub fn advance_by(&mut self, steps: usize) {
         // TODO: optimize
         for _ in 0 .. steps {
-            self.retract();
+            self.advance();
         }
     }
 
@@ -207,6 +207,10 @@ impl<T> Cursor<T> {
         }
 
         xs
+    }
+
+    pub fn next(&self) -> &T {
+        self.right.first().expect("peek: at end of buffer")
     }
 
     /// Advance until an element matches `pred`.  The cursor is left pointing just before the

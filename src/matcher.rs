@@ -44,6 +44,12 @@ impl MatchCtxt {
         r
     }
 
+    pub fn from_match<T: TryMatch>(pat: &T, target: &T) -> Result<MatchCtxt> {
+        let mut m = MatchCtxt::new();
+        m.try_match(pat, target)?;
+        Ok(m)
+    }
+
     /// Clone this context and try to perform a match in the clone, returning `Ok` if it succeeds.
     pub fn clone_match<T: TryMatch>(&self, pat: &T, target: &T) -> Result<MatchCtxt> {
         let mut m = self.clone();
