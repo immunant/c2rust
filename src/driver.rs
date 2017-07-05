@@ -25,7 +25,9 @@ use syntax::parse::parser::Parser;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax_ext;
+use syntax_pos::{BytePos, Span};
 
+use get_span::GetSpan;
 use remove_paren::remove_paren;
 use util::Lone;
 
@@ -34,6 +36,7 @@ pub struct Ctxt<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
     sess: &'a Session,
     map: Option<&'a hir_map::Map<'hir>>,
     tcx: Option<TyCtxt<'a, 'gcx, 'tcx>>,
+    cursors: Vec<BytePos>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -49,6 +52,8 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             sess: sess,
             map: None,
             tcx: None,
+
+            cursors: Vec::new(),
         }
     }
 
@@ -58,6 +63,8 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             sess: sess,
             map: Some(map),
             tcx: None,
+
+            cursors: Vec::new(),
         }
     }
 
@@ -68,6 +75,8 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             sess: sess,
             map: Some(map),
             tcx: Some(tcx),
+
+            cursors: Vec::new(),
         }
     }
 
@@ -82,13 +91,52 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
     pub fn ty_ctxt(&self) -> TyCtxt<'a, 'gcx, 'tcx> {
         self.tcx.unwrap()
     }
+
+    pub fn add_cursor(&mut self, file: &str, line: u32, col: u32) {
+        let fm = match self.sess.codemap().get_filemap(file) {
+            Some(x) => x,
+            None => {
+                println!("warning: cursor lies in nonexistent file {:?}", file);
+                return;
+            },
+        };
+
+        if line == 0 || line as usize - 1 >= fm.lines.borrow().len() {
+            println!("warning: line {} is outside the bounds of {}", line, file);
+            return;
+        };
+        let (lo, hi) = fm.line_bounds(line as usize - 1);
+
+        let line_len = hi.0 - lo.0;
+        if col == 0 || col - 1 >= line_len {
+            println!("warning: column {} is outside the bounds of {} line {}",
+                     col, file, line);
+            return;
+        }
+
+        println!("placed cursor at {:?}", lo + BytePos(col - 1));
+        self.cursors.push(lo + BytePos(col - 1));
+    }
+
+    pub fn span_has_cursor(&self, sp: Span) -> bool {
+        for &c in &self.cursors {
+            if sp.lo <= c && c < sp.hi {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn has_cursor<T: GetSpan>(&self, x: &T) -> bool {
+        self.span_has_cursor(x.get_span())
+    }
 }
 
 
 pub fn with_crate_and_context<F>(args: &[String],
                                  phase: Phase,
                                  func: F)
-        where F: FnOnce(Crate, &Ctxt) {
+        where F: FnOnce(Crate, Ctxt) {
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
     let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
@@ -107,7 +155,7 @@ pub fn with_crate_and_context<F>(args: &[String],
     if phase == Phase::Phase1 {
         let krate = remove_paren(krate);
         let cx = Ctxt::new_phase_1(&sess);
-        func(krate, &cx);
+        func(krate, cx);
         return;
     }
 
@@ -125,7 +173,7 @@ pub fn with_crate_and_context<F>(args: &[String],
 
     if phase == Phase::Phase2 {
         let cx = Ctxt::new_phase_2(&sess, &hir_map);
-        func(krate, &cx);
+        func(krate, cx);
         return;
     }
 
@@ -137,7 +185,7 @@ pub fn with_crate_and_context<F>(args: &[String],
         |tcx, analysis, incremental_hashes_map, result| {
             if phase == Phase::Phase3 {
                 let cx = Ctxt::new_phase_3(&sess, &hir_map, tcx);
-                func(krate, &cx);
+                func(krate, cx);
                 return;
             }
         }).unwrap();

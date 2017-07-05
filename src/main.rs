@@ -22,6 +22,7 @@ mod visit;
 mod print_spans;
 mod remove_paren;
 mod cursor;
+mod get_span;
 
 mod bindings;
 mod driver;
@@ -185,9 +186,13 @@ fn main() {
 
     let transform = transform::get_transform(&opts.transform_name, &opts.transform_args);
 
-    driver::with_crate_and_context(&opts.rustc_args, transform.min_phase(), |krate, cx| {
+    driver::with_crate_and_context(&opts.rustc_args, transform.min_phase(), |krate, mut cx| {
+        for &(ref file, line, col) in &opts.cursors {
+            cx.add_cursor(file, line, col);
+        }
+
         let krate = span_fix::fix_spans(cx.session(), krate);
-        let krate2 = transform.transform(krate.clone(), cx);
+        let krate2 = transform.transform(krate.clone(), &cx);
 
         let rws = rewrite::rewrite(cx.session(), &krate, &krate2);
         if rws.len() == 0 {

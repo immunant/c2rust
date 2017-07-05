@@ -211,9 +211,9 @@ if __name__ == '__main__':
     elif mode == 'rewrite':
         import rewrite
         text = rewrite.generate(decls)
-    elif mode == 'node_span':
-        import node_span
-        text = node_span.generate(decls)
+    elif mode == 'get_span':
+        import get_span
+        text = get_span.generate(decls)
     else:
         raise ValueError('unknown mode: %r' % mode)
 
