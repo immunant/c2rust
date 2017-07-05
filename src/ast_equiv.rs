@@ -87,4 +87,4 @@ impl<A: AstEquiv, B: AstEquiv, C: AstEquiv> AstEquiv for (A, B, C) {
 }
 
 
-include!("ast_equiv_gen.inc.rs");
+include!(concat!(env!("OUT_DIR"), "/ast_equiv_gen.inc.rs"));

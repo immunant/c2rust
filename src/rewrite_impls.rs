@@ -408,4 +408,4 @@ impl<A: Rewrite, B: Rewrite, C: Rewrite> Rewrite for (A, B, C) {
     }
 }
 
-include!("rewrite_impls_gen.inc.rs");
+include!(concat!(env!("OUT_DIR"), "/rewrite_impls_gen.inc.rs"));

@@ -2,3 +2,4 @@
 /idiomize.d
 __pycache__/
 *.inc.rs
+target

@@ -25,4 +25,4 @@ impl<T> GetSpan for Spanned<T> {
     }
 }
 
-include!("get_span_gen.inc.rs");
+include!(concat!(env!("OUT_DIR"), "/get_span_gen.inc.rs"));

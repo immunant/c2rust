@@ -1,0 +1,12 @@
+[package]
+name = "idiomize"
+version = "0.1.0"
+authors = ["Stuart Pernsteiner <spernsteiner@galois.com>"]
+build = "build.rs"
+
+[dependencies]
+diff = "0.1.10"
+
+[lib]
+name = "idiomize"
+path = "src/lib.rs"
