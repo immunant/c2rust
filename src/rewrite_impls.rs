@@ -1,5 +1,6 @@
 use std::ops::Deref;
 use std::rc::Rc;
+use diff;
 use rustc::session::Session;
 use syntax::ast::*;
 use syntax::abi::Abi;
@@ -12,6 +13,8 @@ use syntax::util::parser::{AssocOp, Fixity};
 
 use ast_equiv::AstEquiv;
 use driver;
+use get_node_id;
+use get_span;
 use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, VisitStep, NodeTable, TextAdjust};
 
 
@@ -29,7 +32,7 @@ fn describe(sess: &Session, span: Span) -> String {
 }
 
 
-trait Splice: Rewrite+AstEquiv+::std::fmt::Debug+'static {
+trait Splice: Rewrite+'static {
     fn span(&self) -> Span;
     fn id(&self) -> NodeId;
 
@@ -49,12 +52,17 @@ trait Splice: Rewrite+AstEquiv+::std::fmt::Debug+'static {
         Self::node_table(&mut rcx).get(id)
     }
 
-    fn splice_recycled(new: &Self, old: &Self, mut rcx: RewriteCtxtRef) {
+    fn splice_recycled_span(new: &Self, old_span: Span, mut rcx: RewriteCtxtRef) {
         let printed = new.to_string();
         let reparsed = Self::parse(rcx.session(), &printed);
 
-        println!("REWRITE(R) {}", describe(rcx.session(), old.span()));
-        println!("      INTO {}", describe(rcx.session(), reparsed.span()));
+        if old_span.lo != old_span.hi {
+            println!("REWRITE {}", describe(rcx.session(), old_span));
+            println!("   INTO {}", describe(rcx.session(), reparsed.span()));
+        } else {
+            println!("INSERT AT {}", describe(rcx.session(), old_span));
+            println!("     TEXT {}", describe(rcx.session(), reparsed.span()));
+        }
 
         let mut rewrites = Vec::new();
         let old_fs = rcx.replace_fresh_start(new.span());
@@ -62,7 +70,11 @@ trait Splice: Rewrite+AstEquiv+::std::fmt::Debug+'static {
         rcx.replace_fresh_start(old_fs);
 
         let adj = new.get_adjustment(&rcx);
-        rcx.record(old.span(), reparsed.span(), rewrites, adj);
+        rcx.record(old_span, reparsed.span(), rewrites, adj);
+    }
+
+    fn splice_recycled(new: &Self, old: &Self, rcx: RewriteCtxtRef) {
+        Splice::splice_recycled_span(new, old.span(), rcx);
     }
 
     fn splice_fresh(new: &Self, reparsed: &Self, mut rcx: RewriteCtxtRef) -> bool {
@@ -93,8 +105,8 @@ trait Splice: Rewrite+AstEquiv+::std::fmt::Debug+'static {
             return false;
         }
 
-        println!("REWRITE(F) {}", describe(rcx.session(), reparsed.span()));
-        println!("      INTO {}", describe(rcx.session(), old.span()));
+        println!("REVERT {}", describe(rcx.session(), reparsed.span()));
+        println!("    TO {}", describe(rcx.session(), old.span()));
 
         let mut rewrites = Vec::new();
         let mark = rcx.mark();
@@ -282,6 +294,58 @@ impl Splice for Item {
 }
 
 
+trait SeqItem {
+    #[inline]
+    fn supported() -> bool { false }
+
+    fn get_span(&self) -> Span { unimplemented!() }
+    fn get_id(&self) -> NodeId { unimplemented!() }
+
+    fn splice_recycled_span(new: &Self, old_span: Span, mut rcx: RewriteCtxtRef) {
+        unimplemented!()
+    }
+}
+
+impl<T: SeqItem> SeqItem for P<T> {
+    #[inline]
+    fn supported() -> bool { <T as SeqItem>::supported() }
+
+    fn get_span(&self) -> Span {
+        <T as SeqItem>::get_span(self)
+    }
+
+    fn get_id(&self) -> NodeId {
+        <T as SeqItem>::get_id(self)
+    }
+
+    fn splice_recycled_span(new: &Self, old_span: Span, rcx: RewriteCtxtRef) {
+        <T as SeqItem>::splice_recycled_span(new, old_span, rcx);
+    }
+}
+
+impl<T: SeqItem> SeqItem for Rc<T> {
+    #[inline]
+    fn supported() -> bool { <T as SeqItem>::supported() }
+
+    fn get_span(&self) -> Span {
+        <T as SeqItem>::get_span(self)
+    }
+
+    fn get_id(&self) -> NodeId {
+        <T as SeqItem>::get_id(self)
+    }
+
+    fn splice_recycled_span(new: &Self, old_span: Span, rcx: RewriteCtxtRef) {
+        <T as SeqItem>::splice_recycled_span(new, old_span, rcx);
+    }
+}
+
+// Stub impls
+impl<T: SeqItem> SeqItem for Spanned<T> {}
+impl<T: SeqItem> SeqItem for Option<T> {}
+impl<A: SeqItem, B: SeqItem> SeqItem for (A, B) {}
+impl<A: SeqItem, B: SeqItem, C: SeqItem> SeqItem for (A, B, C) {}
+
 
 impl<T: Rewrite> Rewrite for P<T> {
     fn rewrite_recycled(&self, old: &Self, rcx: RewriteCtxtRef) -> bool {
@@ -310,49 +374,6 @@ impl<T: Rewrite> Rewrite for Spanned<T> {
 
     fn rewrite_fresh(&self, reparsed: &Self, rcx: RewriteCtxtRef) {
         <T as Rewrite>::rewrite_fresh(&self.node, &reparsed.node, rcx);
-    }
-}
-
-impl<T: Rewrite> Rewrite for [T] {
-    fn rewrite_recycled(&self, old: &Self, mut rcx: RewriteCtxtRef) -> bool {
-        if self.len() != old.len() {
-            return true;
-        }
-
-        for i in 0 .. self.len() {
-            if Rewrite::rewrite_recycled(&self[i], &old[i], rcx.borrow()) {
-                return true;
-            }
-        }
-        false
-    }
-
-    fn rewrite_fresh(&self, reparsed: &Self, mut rcx: RewriteCtxtRef) {
-        assert!(self.len() == reparsed.len());
-
-        for i in 0 .. self.len() {
-            Rewrite::rewrite_fresh(&self[i], &reparsed[i], rcx.borrow());
-        }
-    }
-}
-
-impl<T: Rewrite> Rewrite for Vec<T> {
-    fn rewrite_recycled(&self, old: &Self, rcx: RewriteCtxtRef) -> bool {
-        <[T] as Rewrite>::rewrite_recycled(&self, &old, rcx)
-    }
-
-    fn rewrite_fresh(&self, reparsed: &Self, rcx: RewriteCtxtRef) {
-        <[T] as Rewrite>::rewrite_fresh(&self, &reparsed, rcx);
-    }
-}
-
-impl<T: Rewrite> Rewrite for ThinVec<T> {
-    fn rewrite_recycled(&self, old: &Self, rcx: RewriteCtxtRef) -> bool {
-        <[T] as Rewrite>::rewrite_recycled(&self, &old, rcx)
-    }
-
-    fn rewrite_fresh(&self, reparsed: &Self, rcx: RewriteCtxtRef) {
-        <[T] as Rewrite>::rewrite_fresh(&self, &reparsed, rcx);
     }
 }
 
@@ -407,5 +428,108 @@ impl<A: Rewrite, B: Rewrite, C: Rewrite> Rewrite for (A, B, C) {
         <C as Rewrite>::rewrite_fresh(&self.2, &reparsed.2, rcx.borrow());
     }
 }
+
+
+impl<T: Rewrite+SeqItem> Rewrite for [T] {
+    fn rewrite_recycled(&self, old: &Self, mut rcx: RewriteCtxtRef) -> bool {
+        if !<T as SeqItem>::supported() {
+            if self.len() != old.len() {
+                return true;
+            }
+
+            for i in 0 .. self.len() {
+                if Rewrite::rewrite_recycled(&self[i], &old[i], rcx.borrow()) {
+                    return true;
+                }
+            }
+            false
+        } else {
+            if old.len() == 0 && self.len() != 0 {
+                // We can't handle this case because it provides us with no span information about
+                // the `old` side.  We need the spans so we know where to splice in any new items.
+                return true;
+            }
+
+            let new_ids = self.iter().map(|x| x.get_id()).collect::<Vec<_>>();
+            let old_ids = old.iter().map(|x| x.get_id()).collect::<Vec<_>>();
+
+            let mut i = 0;
+            let mut j = 0;
+
+            for step in diff::slice(&old_ids, &new_ids) {
+                match step {
+                    diff::Result::Left(_) => {
+                        // There's an item on the left corresponding to nothing on the right.
+                        // Delete the item from the left.
+                        println!("DELETE {}", describe(rcx.session(), old[i].get_span()));
+                        rcx.record(old[i].get_span(), DUMMY_SP, vec![], TextAdjust::None);
+                        i += 1;
+                    },
+                    diff::Result::Right(_) => {
+                        // There's an item on the right corresponding to nothing on the left.
+                        // Insert the item before the current item on the left, rewriting
+                        // recursively.
+                        let old_span =
+                            if i > 0 {
+                                let s = old[i - 1].get_span();
+                                Span {
+                                    lo: s.hi,
+                                    hi: s.hi,
+                                    ctxt: s.ctxt,
+                                }
+                            } else {
+                                let s = old[0].get_span();
+                                Span {
+                                    lo: s.lo,
+                                    hi: s.lo,
+                                    ctxt: s.ctxt,
+                                }
+                            };
+                        SeqItem::splice_recycled_span(&self[j], old_span, rcx.borrow());
+                        j += 1;
+                    },
+                    diff::Result::Both(_, _) => {
+                        if Rewrite::rewrite_recycled(&self[j], &old[i], rcx.borrow()) {
+                            return true;
+                        }
+                        i += 1;
+                        j += 1;
+                    },
+                }
+            }
+
+            false
+        }
+    }
+
+    fn rewrite_fresh(&self, reparsed: &Self, mut rcx: RewriteCtxtRef) {
+        assert!(self.len() == reparsed.len());
+
+        for i in 0 .. self.len() {
+            Rewrite::rewrite_fresh(&self[i], &reparsed[i], rcx.borrow());
+        }
+    }
+}
+
+impl<T: Rewrite+SeqItem> Rewrite for Vec<T> {
+    fn rewrite_recycled(&self, old: &Self, rcx: RewriteCtxtRef) -> bool {
+        <[T] as Rewrite>::rewrite_recycled(&self, &old, rcx)
+    }
+
+    fn rewrite_fresh(&self, reparsed: &Self, rcx: RewriteCtxtRef) {
+        <[T] as Rewrite>::rewrite_fresh(&self, &reparsed, rcx);
+    }
+}
+
+impl<T: Rewrite+SeqItem> Rewrite for ThinVec<T> {
+    fn rewrite_recycled(&self, old: &Self, rcx: RewriteCtxtRef) -> bool {
+        <[T] as Rewrite>::rewrite_recycled(&self, &old, rcx)
+    }
+
+    fn rewrite_fresh(&self, reparsed: &Self, rcx: RewriteCtxtRef) {
+        <[T] as Rewrite>::rewrite_fresh(&self, &reparsed, rcx);
+    }
+}
+
 
 include!(concat!(env!("OUT_DIR"), "/rewrite_impls_gen.inc.rs"));

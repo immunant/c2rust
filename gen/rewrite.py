@@ -18,6 +18,11 @@ Attributes:
   instead of `false`.  In fresh mode, `rewrite_fresh` will check this node's
   span and call `Splice::splice_fresh` if it has old source text available.
 
+- `#[rewrite_seq_item]`: Give the node type a complete (non-stub) `SeqItem`
+  impl.  This allows the use of smarter rewriting (based on edit distance) for
+  sequences of this node type.  This only works for types supporting
+  `GetNodeId` and `GetSpan`.
+
 - `#[rewrite=ignore]`: Ignore nodes of this type.  Perform no side effects and
   always return success, in both `rewrite_recycled` and `rewrite_fresh`.
 '''
@@ -140,6 +145,30 @@ def do_impl(d):
     yield '}'
 
 @linewise
+def do_full_seq_item_impl(d):
+    yield '#[allow(unused)]'
+    yield 'impl SeqItem for %s {' % d.name
+    yield '  #[inline]'
+    yield '  fn supported() -> bool { true }'
+    yield ''
+    yield '  fn get_span(&self) -> Span {'
+    yield '    <Self as get_span::GetSpan>::get_span(self)'
+    yield '  }'
+    yield ''
+    yield '  fn get_id(&self) -> NodeId {'
+    yield '    <Self as get_node_id::GetNodeId>::get_node_id(self)'
+    yield '  }'
+    yield ''
+    yield '  fn splice_recycled_span(new: &Self, old_span: Span, rcx: RewriteCtxtRef) {'
+    yield '    <Self as Splice>::splice_recycled_span(new, old_span, rcx);'
+    yield '  }'
+    yield '}'
+
+@linewise
+def do_stub_seq_item_impl(d):
+    yield 'impl SeqItem for %s {}' % d.name
+
+@linewise
 def generate(decls):
     yield '// AUTOMATICALLY GENERATED - DO NOT EDIT'
     yield '// Produced %s by process_ast.py' % (datetime.now(),)
@@ -147,3 +176,7 @@ def generate(decls):
 
     for d in decls:
         yield do_impl(d)
+        if 'rewrite_seq_item' in d.attrs:
+            yield do_full_seq_item_impl(d)
+        else:
+            yield do_stub_seq_item_impl(d)

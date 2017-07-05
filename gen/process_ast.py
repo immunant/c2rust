@@ -214,6 +214,9 @@ if __name__ == '__main__':
     elif mode == 'get_span':
         import get_span
         text = get_span.generate(decls)
+    elif mode == 'get_node_id':
+        import get_node_id
+        text = get_node_id.generate(decls)
     else:
         raise ValueError('unknown mode: %r' % mode)
 

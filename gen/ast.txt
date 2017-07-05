@@ -23,7 +23,7 @@ struct Crate { module, attrs, span }
 struct Mod { inner, items }
 
 
-#[rewrite_splice]
+#[rewrite_splice] #[rewrite_seq_item]
 struct Item { ident, attrs, id, node, vis, span }
 enum ItemKind {
     ExternCrate(name),
@@ -164,7 +164,7 @@ enum FunctionRetTy {
 struct TypeBinding { id, ident, ty, span }
 
 
-#[match=custom] #[rewrite_splice]
+#[match=custom] #[rewrite_splice] #[rewrite_seq_item]
 struct Stmt { id, node, span }
 enum StmtKind {
     Local(local),
@@ -283,6 +283,7 @@ flag AsmDialect;
 flag RangeLimits;
 
 
+#[no_node_id]
 struct Attribute { id, style, path, tokens, is_sugared_doc, span }
 flag AttrStyle;
 

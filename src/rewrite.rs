@@ -84,7 +84,7 @@ pub struct NodeTable<'s, T: ?Sized+'s> {
     nodes: HashMap<NodeId, &'s T>,
 }
 
-impl<'s, T: ?Sized+::std::fmt::Debug> NodeTable<'s, T> {
+impl<'s, T: ?Sized> NodeTable<'s, T> {
     pub fn new() -> NodeTable<'s, T> {
         NodeTable {
             nodes: HashMap::new(),

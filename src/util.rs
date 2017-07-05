@@ -114,6 +114,13 @@ impl<T> Lone<T> for T {
     }
 }
 
+impl<T> Lone<T> for Vec<T> {
+    fn lone(mut self) -> T {
+        assert!(self.len() == 1);
+        self.pop().unwrap()
+    }
+}
+
 impl<T> Lone<T> for SmallVector<T> {
     fn lone(mut self) -> T {
         assert!(self.len() == 1);

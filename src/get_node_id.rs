@@ -15,20 +15,14 @@ use driver;
 use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, VisitStep, NodeTable, TextAdjust};
 
 
-pub trait GetSpan {
-    fn get_span(&self) -> Span;
+pub trait GetNodeId {
+    fn get_node_id(&self) -> NodeId;
 }
 
-impl<T> GetSpan for Spanned<T> {
-    fn get_span(&self) -> Span {
-        self.span
+impl<T: GetNodeId> GetNodeId for P<T> {
+    fn get_node_id(&self) -> NodeId {
+        <T as GetNodeId>::get_node_id(self)
     }
 }
 
-impl<T: GetSpan> GetSpan for P<T> {
-    fn get_span(&self) -> Span {
-        <T as GetSpan>::get_span(self)
-    }
-}
-
-include!(concat!(env!("OUT_DIR"), "/get_span_gen.inc.rs"));
+include!(concat!(env!("OUT_DIR"), "/get_node_id_gen.inc.rs"));

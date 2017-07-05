@@ -4,6 +4,7 @@
     trace_macros,
 )]
 extern crate arena;
+extern crate diff;
 extern crate rustc;
 extern crate rustc_driver;
 extern crate rustc_errors;
@@ -21,6 +22,7 @@ mod visit;
 mod print_spans;
 mod remove_paren;
 mod cursor;
+mod get_node_id;
 mod get_span;
 
 mod bindings;
