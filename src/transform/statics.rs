@@ -22,8 +22,7 @@ pub struct CollectToStruct {
 
 impl Transform for CollectToStruct {
     fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
-        let static_pat: P<Item> = parse_items(cx.session(), "static __x: __t = __init;")
-            .unwrap().lone();
+        let static_pat: P<Item> = parse_items(cx.session(), "static __x: __t = __init;").lone();
 
 
         // Map from Symbol (the name) to the DefId of the old `static`.
@@ -65,8 +64,8 @@ impl Transform for CollectToStruct {
             }
         });
 
-        let ident_pat = parse_expr(cx.session(), "__x").unwrap();
-        let ident_repl = parse_expr(cx.session(), "__s.__x").unwrap();
+        let ident_pat = parse_expr(cx.session(), "__x");
+        let ident_repl = parse_expr(cx.session(), "__s.__x");
         let mut init_mcx = MatchCtxt::new();
         init_mcx.set_type("__x", BindingType::Ident);
         init_mcx.bindings.add_ident(

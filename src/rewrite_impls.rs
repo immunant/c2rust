@@ -16,6 +16,7 @@ use driver;
 use get_node_id;
 use get_span;
 use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, VisitStep, NodeTable, TextAdjust};
+use util::Lone;
 
 
 fn describe(sess: &Session, span: Span) -> String {
@@ -146,7 +147,7 @@ impl Splice for Expr {
 
     type Parsed = P<Expr>;
     fn parse(sess: &Session, src: &str) -> Self::Parsed {
-        driver::parse_expr(sess, src).unwrap()
+        driver::parse_expr(sess, src)
     }
 
     fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
@@ -212,7 +213,7 @@ impl Splice for Pat {
 
     type Parsed = P<Pat>;
     fn parse(sess: &Session, src: &str) -> Self::Parsed {
-        driver::parse_pat(sess, src).unwrap()
+        driver::parse_pat(sess, src)
     }
 
     fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
@@ -235,7 +236,7 @@ impl Splice for Ty {
 
     type Parsed = P<Ty>;
     fn parse(sess: &Session, src: &str) -> Self::Parsed {
-        driver::parse_ty(sess, src).unwrap()
+        driver::parse_ty(sess, src)
     }
 
     fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
@@ -258,9 +259,8 @@ impl Splice for Stmt {
 
     type Parsed = SelfDeref<Stmt>;
     fn parse(sess: &Session, src: &str) -> Self::Parsed {
-        let mut stmts = driver::parse_stmts(sess, src).unwrap();
-        assert!(stmts.len() == 1);
-        SelfDeref(stmts.pop().unwrap())
+        let stmt = driver::parse_stmts(sess, src).lone();
+        SelfDeref(stmt)
     }
 
     fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
@@ -283,9 +283,7 @@ impl Splice for Item {
 
     type Parsed = P<Item>;
     fn parse(sess: &Session, src: &str) -> Self::Parsed {
-        let mut items = driver::parse_items(sess, src).unwrap();
-        assert!(items.len() == 1);
-        items.pop().unwrap()
+        driver::parse_items(sess, src).lone()
     }
 
     fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {

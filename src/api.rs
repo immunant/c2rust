@@ -25,8 +25,8 @@ pub fn replace_expr<T: Fold>(sess: &Session,
                              ast: T,
                              pat: &str,
                              repl: &str) -> <T as Fold>::Result {
-    let pat = parse_expr(sess, pat).unwrap();
-    let repl = parse_expr(sess, repl).unwrap();
+    let pat = parse_expr(sess, pat);
+    let repl = parse_expr(sess, repl);
     fold_match(pat, ast, |_, bnd| repl.clone().subst(&bnd))
 }
 
@@ -34,8 +34,8 @@ pub fn replace_stmts<T: Fold>(sess: &Session,
                               ast: T,
                               pat: &str,
                               repl: &str) -> <T as Fold>::Result {
-    let pat = parse_stmts(sess, pat).unwrap();
-    let repl = parse_stmts(sess, repl).unwrap();
+    let pat = parse_stmts(sess, pat);
+    let repl = parse_stmts(sess, repl);
     fold_match(pat, ast, |_, bnd| repl.clone().subst(&bnd))
 }
 

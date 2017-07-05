@@ -66,11 +66,7 @@ impl<'a> Folder for FixFormat<'a> {
                 // the outer one.  Not a big problem at the moment, but it is a little odd.
                 let mut parsed = None;
                 util::with_span_text(self.codemap, e.span, |s| {
-                    let e = match driver::parse_expr(self.sess, s) {
-                        Ok(x) => x,
-                        Err(_) => return,
-                    };
-                    parsed = Some(e);
+                    parsed = Some(driver::parse_expr(self.sess, s));
                 });
                 if let Some(parsed) = parsed {
                     if parsed.ast_equiv(&e) {

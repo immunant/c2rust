@@ -214,52 +214,52 @@ fn make_parser<'a>(sess: &'a Session, name: &str, src: &str) -> Parser<'a> {
 }
 
 // Helper functions for parsing source code in an existing `Session`.
-pub fn parse_expr(sess: &Session, src: &str) -> Result<P<Expr>, Diagnostic> {
+pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
     let mut p = make_parser(sess, "<expr>", src);
     match p.parse_expr() {
-        Ok(expr) => Ok(remove_paren(expr)),
-        Err(e) => Err(e.into_diagnostic()),
+        Ok(expr) => remove_paren(expr),
+        Err(e) => panic!("error parsing expr: {:?}", e.into_diagnostic()),
     }
 }
 
-pub fn parse_pat(sess: &Session, src: &str) -> Result<P<Pat>, Diagnostic> {
+pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
     let mut p = make_parser(sess, "<pat>", src);
     match p.parse_pat() {
-        Ok(pat) => Ok(remove_paren(pat)),
-        Err(e) => Err(e.into_diagnostic()),
+        Ok(pat) => remove_paren(pat),
+        Err(e) => panic!("error parsing pat: {:?}", e.into_diagnostic()),
     }
 }
 
-pub fn parse_ty(sess: &Session, src: &str) -> Result<P<Ty>, Diagnostic> {
+pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
     let mut ty = make_parser(sess, "<ty>", src);
     match ty.parse_ty() {
-        Ok(ty) => Ok(remove_paren(ty)),
-        Err(e) => Err(e.into_diagnostic()),
+        Ok(ty) => remove_paren(ty),
+        Err(e) => panic!("error parsing ty: {:?}", e.into_diagnostic()),
     }
 }
 
-pub fn parse_stmts(sess: &Session, src: &str) -> Result<Vec<Stmt>, Diagnostic> {
+pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
     let mut p = make_parser(sess, "<stmt>", src);
     let mut stmts = Vec::new();
     loop {
         match p.parse_full_stmt(false) {
             Ok(Some(stmt)) => stmts.push(remove_paren(stmt).lone()),
             Ok(None) => break,
-            Err(e) => return Err(e.into_diagnostic()),
+            Err(e) => panic!("error parsing stmts: {:?}", e.into_diagnostic()),
         }
     }
-    Ok(stmts)
+    stmts
 }
 
-pub fn parse_items(sess: &Session, src: &str) -> Result<Vec<P<Item>>, Diagnostic> {
+pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
     let mut p = make_parser(sess, "<stmt>", src);
     let mut items = Vec::new();
     loop {
         match p.parse_item() {
             Ok(Some(item)) => items.push(remove_paren(item).lone()),
             Ok(None) => break,
-            Err(e) => return Err(e.into_diagnostic()),
+            Err(e) => panic!("error parsing items: {:?}", e.into_diagnostic()),
         }
     }
-    Ok(items)
+    items
 }

@@ -40,19 +40,19 @@ impl Transform for ReconstructForRange {
                 __m_body;
                 __i = __i + __step;
             }
-        "#).unwrap();
+        "#);
 
         let repl_step_one = parse_stmts(cx.session(), r#"
             '__label: for __i in __start .. __end {
                 __m_body;
             }
-        "#).unwrap();
+        "#);
 
         let repl_step_more = parse_stmts(cx.session(), r#"
             '__label: for __i in (__start .. __end).step_by(__step) {
                 __m_body;
             }
-        "#).unwrap();
+        "#);
 
         let mut mcx = MatchCtxt::new();
         mcx.set_type("__i", BindingType::Ident);
@@ -89,12 +89,12 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
                                        sess: &Session,
                                        pat: &str,
                                        repl: &str) -> Crate {
-    let pat = parse_expr(sess, pat).unwrap();
-    let repl = parse_expr(sess, repl).unwrap();
+    let pat = parse_expr(sess, pat);
+    let repl = parse_expr(sess, repl);
 
-    let find_continue = parse_expr(sess, "continue '__label").unwrap();
-    let find_break = parse_expr(sess, "break '__label").unwrap();
-    let find_break_expr = parse_expr(sess, "break '__label __expr").unwrap();
+    let find_continue = parse_expr(sess, "continue '__label");
+    let find_break = parse_expr(sess, "break '__label");
+    let find_break_expr = parse_expr(sess, "break '__label __expr");
 
     fold_match(pat, krate, |orig, bnd| {
         let body = bnd.multi_stmt("__m_body");

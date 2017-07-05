@@ -14,8 +14,8 @@ pub struct AssignToUpdate;
 
 impl Transform for AssignToUpdate {
     fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
-        let pat = parse_expr(cx.session(), "__x.__f = __y").unwrap();
-        let repl = parse_expr(cx.session(), "__x = __s { __f: __y, .. __x }").unwrap();
+        let pat = parse_expr(cx.session(), "__x.__f = __y");
+        let repl = parse_expr(cx.session(), "__x = __s { __f: __y, .. __x }");
 
         fold_match(pat, krate, |orig, mut bnd| {
             let x = bnd.expr("__x").clone();
