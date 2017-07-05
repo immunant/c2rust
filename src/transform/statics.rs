@@ -1,7 +1,10 @@
+use std::collections::HashMap;
 use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Spanned};
 use syntax::ptr::P;
 use syntax::util::ThinVec;
+use rustc::hir;
+use rustc::hir::def::Def;
 
 use api::*;
 use ast_equiv::AstEquiv;
@@ -22,6 +25,10 @@ impl Transform for CollectToStruct {
         let static_pat: P<Item> = parse_items(cx.session(), "static __x: __t = __init;")
             .unwrap().lone();
 
+
+        // Map from Symbol (the name) to the DefId of the old `static`.
+        let mut old_statics = HashMap::new();
+
         let krate = fold_modules(krate, |curs| {
             let mut matches = Vec::new();
             let mut insert_point = None;
@@ -29,26 +36,25 @@ impl Transform for CollectToStruct {
             while let Some(bnd) = curs.advance_until_match(
                     |i| MatchCtxt::from_match(&static_pat, &i)
                             .ok().map(|mcx| mcx.bindings)) {
-                curs.debug();
-                println!("found {:?}: {:?}", bnd.ident("__x"), bnd.ty("__t"));
                 if !cx.has_cursor(curs.next()) {
-                    println!("  skipping due to missing cursor");
                     curs.advance();
                     continue;
                 }
+                println!("found {:?}: {:?}", bnd.ident("__x"), bnd.ty("__t"));
 
-                curs.debug();
+                // Record this static
+                let node_id = curs.next().id;
+                let def_id = cx.hir_map().local_def_id(node_id);
+                old_statics.insert(bnd.ident("__x").name, def_id);
+
                 if insert_point.is_none() {
                     insert_point = Some(curs.mark());
                 }
-                curs.debug();
                 curs.remove();
-                curs.debug();
-                println!(" =====");
                 matches.push(bnd);
             }
 
-            println!("  found {} matching statics", matches.len());
+            println!("collected {} matching statics", matches.len());
 
             if let Some(insert_point) = insert_point {
                 curs.seek(insert_point);
@@ -57,6 +63,33 @@ impl Transform for CollectToStruct {
                                                   &self.instance_name,
                                                   &matches));
             }
+        });
+
+        let ident_pat = parse_expr(cx.session(), "__x").unwrap();
+        let ident_repl = parse_expr(cx.session(), "__s.__x").unwrap();
+        let mut init_mcx = MatchCtxt::new();
+        init_mcx.set_type("__x", BindingType::Ident);
+        init_mcx.bindings.add_ident(
+            "__s", Ident::with_empty_ctxt((&self.instance_name as &str).into_symbol()));
+
+        let krate = fold_match_with(init_mcx, ident_pat, krate, |orig, bnd| {
+            let static_id = match old_statics.get(&bnd.ident("__x").name) {
+                Some(&x) => x,
+                None => return orig,
+            };
+
+            let def = match cx.hir_map().expect_expr(orig.id).node {
+                hir::ExprPath(hir::QPath::Resolved(_, ref path)) => &path.def,
+                _ => return orig,
+            };
+
+            if def.def_id() != static_id {
+                return orig;
+            }
+
+            // This really is a reference to one of the collected statics.  Replace it with a
+            // reference to the generated struct.
+            ident_repl.clone().subst(&bnd)
         });
 
         krate
