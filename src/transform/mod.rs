@@ -31,6 +31,7 @@ pub fn get_transform(name: &str, args: &[String]) -> Box<Transform> {
 
         "struct_assign_to_update" => Box::new(structs::AssignToUpdate),
         "struct_merge_updates" => Box::new(structs::MergeUpdates),
+        "rename_struct" => Box::new(structs::Rename(args[0].clone())),
 
         "test_one_plus_one" => Box::new(test::OnePlusOne),
         "test_f_plus_one" => Box::new(test::FPlusOne),

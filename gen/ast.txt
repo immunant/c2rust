@@ -169,6 +169,7 @@ struct TypeBinding { id, ident, ty, span }
 
 #[match=custom] #[rewrite_splice] #[rewrite_seq_item]
 struct Stmt { id, node, span }
+#[no_debug]
 enum StmtKind {
     Local(local),
     Item(item),

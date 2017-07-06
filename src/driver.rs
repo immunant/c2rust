@@ -85,11 +85,13 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
     }
 
     pub fn hir_map(&self) -> &'a hir_map::Map<'hir> {
-        self.map.unwrap()
+        self.map
+            .expect("hir map is not available in this context (requires phase 2)")
     }
 
     pub fn ty_ctxt(&self) -> TyCtxt<'a, 'gcx, 'tcx> {
-        self.tcx.unwrap()
+        self.tcx
+            .expect("ty ctxt is not available in this context (requires phase 3)")
     }
 
     pub fn add_cursor(&mut self, file: &str, line: u32, col: u32) {
@@ -197,6 +199,9 @@ fn build_session(sopts: Options,
     let dep_graph = DepGraph::new(sopts.build_dep_graph());
     let cstore = Rc::new(CStore::new(&dep_graph));
     let codemap = Rc::new(CodeMap::with_file_loader(Box::new(RealFileLoader)));
+    // Put a dummy file at the beginning of the codemap, so that no real `Span` will accidentally
+    // collide with `DUMMY_SP` (which is `0 .. 0`).
+    codemap.new_filemap_and_lines("<dummy>", None, " ");
     let emitter_dest = None;
 
     let sess = session::build_session_with_codemap(

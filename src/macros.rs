@@ -18,3 +18,9 @@ macro_rules! expect {
                            stringify!($($arm_pat),*))))
     };
 }
+
+macro_rules! unpack {
+    ([$e:expr] $enum_:ident :: $variant:ident ( $($arg:ident),* )) => {
+        let ($($arg),*) = expect!([$e] $enum_::$variant($($arg),*) => ($($arg),*));
+    };
+}

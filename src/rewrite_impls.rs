@@ -271,7 +271,6 @@ impl Splice for Stmt {
 
 impl Splice for Item {
     fn span(&self) -> Span {
-        println!("checking span of item {:?}", self);
         util::extended_span(self.span, &self.attrs)
     }
 

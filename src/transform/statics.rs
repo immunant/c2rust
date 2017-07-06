@@ -43,7 +43,7 @@ impl Transform for CollectToStruct {
 
                 // Record this static
                 old_statics.insert(bnd.ident("__x").name,
-                                   cx.node_def_id(curs.next()));
+                                   cx.node_def_id(curs.next().id));
 
                 if insert_point.is_none() {
                     insert_point = Some(curs.mark());

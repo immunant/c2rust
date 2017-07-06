@@ -1,10 +1,14 @@
+use rustc::hir;
 use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Spanned};
 use syntax::ptr::P;
 use syntax::util::ThinVec;
+use syntax::util::small_vector::SmallVector;
+
 
 use api::*;
 use ast_equiv::AstEquiv;
+use bindings::IntoSymbol;
 use driver::{self, Phase};
 use transform::Transform;
 use util::Lone;
@@ -91,4 +95,59 @@ fn build_struct_update(path: Path, fields: Vec<Field>, base: P<Expr>) -> Stmt {
         mk().assign_expr(
             &base,
             mk().struct_expr_base(path, fields, Some(&base))))
+}
+
+
+pub struct Rename(pub String);
+
+impl Transform for Rename {
+    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+        let new_ident = Ident::with_empty_ctxt((&self.0 as &str).into_symbol());
+        let mut target_def_id = None;
+
+        // Find the struct definition and rename it.
+        let krate = fold_nodes(krate, |i: P<Item>| {
+            if target_def_id.is_some() || !cx.has_cursor(&i) {
+                return SmallVector::one(i);
+            }
+
+            // Make sure this is actually a struct declaration, and not, say, the target
+            // declaration's containing module.
+            match_or!([struct_item_id(&i)] Some(x) => x; return SmallVector::one(i));
+            target_def_id = Some(cx.node_def_id(i.id));
+
+            SmallVector::one(i.map(|i| {
+                Item {
+                    ident: new_ident.clone(),
+                    .. i
+                }
+            }))
+        });
+
+        // Find uses of the struct and rewrite them.  We need to check everywhere a Path may
+        // appear, since the struct name may be used as a scope for methods or other associated
+        // items.
+
+        let target_def_id = target_def_id
+            .expect("found no struct to rename");
+
+        let krate = fold_resolved_paths(krate, cx, |qself, mut path, def_id| {
+            if def_id == target_def_id {
+                path.segments.last_mut().unwrap().identifier = new_ident;
+            }
+            (qself, path)
+        });
+
+        krate
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
+fn struct_item_id(i: &Item) -> Option<NodeId> {
+    let vd = match_or!([i.node] ItemKind::Struct(ref vd, _) => vd; return None);
+    let id = match_or!([*vd] VariantData::Struct(_, id) => id; return None);
+    Some(id)
 }

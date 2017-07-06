@@ -44,6 +44,12 @@ impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
         syntax::visit::walk_pat(self, x);
     }
 
+    fn visit_ty(&mut self, x: &'a Ty) {
+        println!("[TY] {}: {}",
+                 self.span_desc(x.span), pprust::ty_to_string(x));
+        syntax::visit::walk_ty(self, x);
+    }
+
     fn visit_stmt(&mut self, x: &'a Stmt) {
         println!("[STMT] {}: {}",
                  self.span_desc(x.span), pprust::stmt_to_string(x));

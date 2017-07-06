@@ -147,12 +147,8 @@ pub fn extended_span(mut s: Span, attrs: &[Attribute]) -> Span {
     for attr in attrs {
         // Not sure these checks are exactly right, but it seems to work for now.
         if attr.span.ctxt == s.ctxt && attr.span.lo < s.lo {
-            println!("extend {:?} to cover {:?}", s, attr.span);
             s.lo = attr.span.lo;
         }
-    }
-    if attrs.len() > 0 {
-        println!("extended span: {:?}", s);
     }
     s
 }

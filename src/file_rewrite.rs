@@ -47,7 +47,7 @@ pub fn rewrite_files_with<F>(cm: &CodeMap, rewrites: &[TextRewrite], mut callbac
 
     for rw in rewrites {
         let fm = cm.lookup_byte_offset(rw.old_span.lo).fm;
-        let ptr = &fm as *const _;
+        let ptr = (&fm as &FileMap) as *const _;
         by_file.entry(ptr).or_insert_with(|| (Vec::new(), fm)).0.push(rw.clone());
     }
 
@@ -67,6 +67,13 @@ fn print_rewrite(rw: &TextRewrite, depth: usize) {
     println!("{:?} -> {:?}", rw.old_span, rw.new_span);
     for rw in &rw.rewrites {
         print_rewrite(rw, depth + 1);
+    }
+}
+
+fn print_rewrites(rws: &[TextRewrite]) {
+    println!("{} rewrites:", rws.len());
+    for rw in rws {
+        println!("    {:?} -> {:?} (+{} children)", rw.old_span, rw.new_span, rw.rewrites.len());
     }
 }
 

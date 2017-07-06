@@ -116,7 +116,11 @@ def do_fresh_match(se, target1, target2):
             yield '      rcx.pop_step();'
             yield '    }'
         yield '  }'
-    yield '  (_, _) => panic!("new and reparsed AST differ"),'
+    yield '  (_, _) => panic!("new and reparsed AST differ ({:?}  !=  {:?})",'
+    if 'no_debug' not in se.attrs:
+        yield '                   %s, %s),' % (target1, target2)
+    else:
+        yield '                   "<%s>", "<%s>"),' % (se.name, se.name)
     yield '}'
 
 @linewise

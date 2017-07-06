@@ -20,13 +20,15 @@ extern crate syntax_pos;
 mod util;
 mod ast_equiv;
 mod fold;
+mod fold_node;
 mod visit;
-mod print_spans;
-mod remove_paren;
+pub mod print_spans;
+pub mod remove_paren;
 mod cursor;
 mod get_node_id;
 mod get_span;
 mod make_ast;
+pub mod path_edit;
 
 mod bindings;
 pub mod driver;

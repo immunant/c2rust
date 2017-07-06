@@ -1,4 +1,5 @@
 use rustc::hir;
+use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
 use rustc::session::Session;
 use rustc::ty::Ty;
@@ -17,6 +18,8 @@ pub use subst::Subst;
 pub use bindings::Type as BindingType;
 pub use seq_edit::{fold_blocks, fold_modules};
 pub use make_ast::mk;
+pub use fold_node::fold_nodes;
+pub use path_edit::{self, fold_resolved_paths};
 
 use bindings::Bindings;
 use bindings::IntoSymbol;
@@ -69,7 +72,7 @@ pub trait DriverCtxtExt<'gcx> {
     fn node_type(&self, id: NodeId) -> Ty<'gcx>;
     fn def_path(&self, id: DefId) -> Path;
 
-    fn node_def_id<T: GetNodeId>(&self, x: &T) -> DefId;
+    fn node_def_id(&self, id: NodeId) -> DefId;
     fn resolve_expr(&self, e: &Expr) -> DefId;
 }
 
@@ -99,8 +102,8 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
     }
 
     /// Obtain the `DefId` of a definition node, such as a `fn` item.
-    fn node_def_id<T: GetNodeId>(&self, x: &T) -> DefId {
-        match self.hir_map().opt_local_def_id(x.get_node_id()) {
+    fn node_def_id(&self, id: NodeId) -> DefId {
+        match self.hir_map().opt_local_def_id(id) {
             Some(x) => x,
             None => panic!("not a definition node"),
         }

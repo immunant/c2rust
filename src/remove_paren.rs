@@ -12,10 +12,13 @@ struct RemoveParen;
 
 impl Folder for RemoveParen {
     fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
-        let e = match e.node {
-            ExprKind::Paren(ref inner) => inner.clone(),
-            _ => e.clone(),
-        };
+        let mut e = e;
+        while let ExprKind::Paren(_) = e.node {
+            match e.unwrap().node {
+                ExprKind::Paren(inner) => { e = inner; },
+                _ => unreachable!(),
+            }
+        }
         e.map(|e| fold::noop_fold_expr(e, self))
     }
 }
