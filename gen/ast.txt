@@ -23,7 +23,7 @@ struct Crate { module, attrs, span }
 struct Mod { inner, items }
 
 
-#[rewrite_splice] #[rewrite_seq_item]
+#[rewrite_splice] #[rewrite_seq_item] #[extend_span]
 struct Item { ident, attrs, id, node, vis, span }
 enum ItemKind {
     ExternCrate(name),
@@ -49,6 +49,7 @@ enum ItemKind {
     MacroDef(tts),
 }
 
+#[extend_span]
 struct TraitItem { id, ident, attrs, node, span }
 enum TraitItemKind {
     Const(ty, init),
@@ -57,6 +58,7 @@ enum TraitItemKind {
     Macro(mac),
 }
 
+#[extend_span]
 struct ImplItem { id, ident, vis, defaultness, attrs, node, span }
 enum ImplItemKind {
     Const(ty, init),
@@ -177,7 +179,7 @@ enum StmtKind {
 struct Local { pat, ty, init, id, span, attrs }
 
 
-#[match=custom] #[rewrite_splice]
+#[match=custom] #[rewrite_splice] #[extend_span]
 struct Expr { id, node, span, attrs }
 #[rewrite_default_step_kind=Expr]
 enum ExprKind {

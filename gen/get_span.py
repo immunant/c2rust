@@ -12,6 +12,10 @@ Attributes:
 
 - `#[no_span]`: On a struct, causes no impl to be generated, even if the struct
   has a field named `span`.
+
+- `#[extend_span=field_name]`: Indicates that the struct's span should be
+  extended to cover its attributes, which are stored in the indicated field.
+  The field name can be omitted, in which case it defaults to `attrs`.
 '''
 
 from datetime import datetime
@@ -25,7 +29,11 @@ from util import *
 def do_impl(s, field_name):
     yield 'impl GetSpan for %s {' % s.name
     yield '  fn get_span(&self) -> Span {'
-    yield '    self.%s' % field_name
+    if 'extend_span' not in s.attrs:
+        yield '    self.%s' % field_name
+    else:
+        attr_field = s.attrs['extend_span'] or 'attrs'
+        yield '    util::extended_span(self.%s, &self.%s)' % (field_name, attr_field)
     yield '  }'
     yield '}'
 

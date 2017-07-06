@@ -140,3 +140,19 @@ pub fn with_span_text<F: FnOnce(&str)>(cm: &CodeMap, span: Span, callback: F) ->
     callback(node_src);
     true
 }
+
+
+pub fn extended_span(mut s: Span, attrs: &[Attribute]) -> Span {
+    // Extend `s` backward to cover all the attrs
+    for attr in attrs {
+        // Not sure these checks are exactly right, but it seems to work for now.
+        if attr.span.ctxt == s.ctxt && attr.span.lo < s.lo {
+            println!("extend {:?} to cover {:?}", s, attr.span);
+            s.lo = attr.span.lo;
+        }
+    }
+    if attrs.len() > 0 {
+        println!("extended span: {:?}", s);
+    }
+    s
+}

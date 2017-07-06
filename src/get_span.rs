@@ -13,6 +13,7 @@ use syntax::util::parser::{AssocOp, Fixity};
 use ast_equiv::AstEquiv;
 use driver;
 use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, VisitStep, NodeTable, TextAdjust};
+use util;
 
 
 pub trait GetSpan {

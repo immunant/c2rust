@@ -16,6 +16,7 @@ use driver;
 use get_node_id;
 use get_span;
 use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, VisitStep, NodeTable, TextAdjust};
+use util;
 use util::Lone;
 
 
@@ -134,7 +135,7 @@ impl<T> Deref for SelfDeref<T> {
 
 impl Splice for Expr {
     fn span(&self) -> Span {
-        self.span
+        util::extended_span(self.span, &self.attrs)
     }
 
     fn id(&self) -> NodeId {
@@ -270,7 +271,8 @@ impl Splice for Stmt {
 
 impl Splice for Item {
     fn span(&self) -> Span {
-        self.span
+        println!("checking span of item {:?}", self);
+        util::extended_span(self.span, &self.attrs)
     }
 
     fn id(&self) -> NodeId {
