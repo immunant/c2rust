@@ -15,6 +15,8 @@ extern crate syntax;
 extern crate syntax_ext;
 extern crate syntax_pos;
 
+#[macro_use] mod macros;
+
 mod util;
 mod ast_equiv;
 mod fold;
@@ -24,6 +26,7 @@ mod remove_paren;
 mod cursor;
 mod get_node_id;
 mod get_span;
+mod make_ast;
 
 mod bindings;
 pub mod driver;

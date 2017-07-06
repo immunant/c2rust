@@ -42,9 +42,8 @@ impl Transform for CollectToStruct {
                 println!("found {:?}: {:?}", bnd.ident("__x"), bnd.ty("__t"));
 
                 // Record this static
-                let node_id = curs.next().id;
-                let def_id = cx.hir_map().local_def_id(node_id);
-                old_statics.insert(bnd.ident("__x").name, def_id);
+                old_statics.insert(bnd.ident("__x").name,
+                                   cx.node_def_id(curs.next()));
 
                 if insert_point.is_none() {
                     insert_point = Some(curs.mark());
@@ -77,12 +76,7 @@ impl Transform for CollectToStruct {
                 None => return orig,
             };
 
-            let def = match cx.hir_map().expect_expr(orig.id).node {
-                hir::ExprPath(hir::QPath::Resolved(_, ref path)) => &path.def,
-                _ => return orig,
-            };
-
-            if def.def_id() != static_id {
+            if cx.resolve_expr(&orig) != static_id {
                 return orig;
             }
 
@@ -96,71 +90,17 @@ impl Transform for CollectToStruct {
 }
 
 fn build_collected_struct(name: &str, matches: &[Bindings]) -> P<Item> {
-    let fields = matches.iter().map(|bnd| StructField {
-        span: DUMMY_SP,
-        ident: Some(bnd.ident("__x").clone()),
-        vis: Visibility::Inherited,
-        id: DUMMY_NODE_ID,
-        ty: bnd.ty("__t").clone(),
-        attrs: Vec::new(),
-    }).collect::<Vec<_>>();
-
-    let var_data = VariantData::Struct(fields, DUMMY_NODE_ID);
-
-    P(Item {
-        ident: Ident::with_empty_ctxt(name.into_symbol()),
-        attrs: Vec::new(),
-        id: DUMMY_NODE_ID,
-        node: ItemKind::Struct(var_data, Generics::default()),
-        vis: Visibility::Inherited,
-        span: DUMMY_SP,
-    })
+    let fields = matches.iter().map(
+        |bnd| mk().struct_field(bnd.ident("__x"), bnd.ty("__t"))).collect::<Vec<_>>();
+    mk().struct_item(name, fields)
 }
 
 fn build_struct_instance(struct_name: &str,
                          instance_name: &str,
                          matches: &[Bindings]) -> P<Item> {
-    let path = Path {
-        span: DUMMY_SP,
-        segments: vec![
-            PathSegment {
-                identifier: Ident::with_empty_ctxt(struct_name.into_symbol()),
-                span: DUMMY_SP,
-                parameters: None,
-            },
-        ],
-    };
-
-    let ty = P(Ty {
-        id: DUMMY_NODE_ID,
-        node: TyKind::Path(None, path.clone()),
-        span: DUMMY_SP,
-    });
-
-    let fields = matches.iter().map(|bnd| Field {
-        ident: Spanned {
-            node: bnd.ident("__x").clone(),
-            span: DUMMY_SP,
-        },
-        expr: bnd.expr("__init").clone(),
-        span: DUMMY_SP,
-        is_shorthand: false,
-        attrs: ThinVec::new(),
-    }).collect::<Vec<_>>();
-
-    let init = P(Expr {
-        id: DUMMY_NODE_ID,
-        node: ExprKind::Struct(path, fields, None),
-        span: DUMMY_SP,
-        attrs: ThinVec::new(),
-    });
-
-    P(Item {
-        ident: Ident::with_empty_ctxt(instance_name.into_symbol()),
-        attrs: Vec::new(),
-        id: DUMMY_NODE_ID,
-        node: ItemKind::Static(ty, Mutability::Mutable, init),
-        vis: Visibility::Inherited,
-        span: DUMMY_SP,
-    })
+    let fields = matches.iter().map(
+        |bnd| mk().field(bnd.ident("__x"), bnd.expr("__init"))).collect::<Vec<_>>();
+    mk().static_item(instance_name,
+                     mk().path_ty(vec![struct_name]),
+                     mk().struct_expr(vec![struct_name], fields))
 }

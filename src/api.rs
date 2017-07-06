@@ -1,8 +1,10 @@
+use rustc::hir;
 use rustc::hir::def_id::DefId;
 use rustc::session::Session;
 use rustc::ty::Ty;
 use rustc::ty::item_path::{ItemPathBuffer, RootMode};
 use syntax::ast::NodeId;
+use syntax::ast::{Expr};
 use syntax::ast::{Path, PathSegment, Ident};
 use syntax::codemap::DUMMY_SP;
 use syntax::symbol::Symbol;
@@ -14,11 +16,13 @@ pub use driver::{parse_expr, parse_pat, parse_stmts, parse_items};
 pub use subst::Subst;
 pub use bindings::Type as BindingType;
 pub use seq_edit::{fold_blocks, fold_modules};
+pub use make_ast::mk;
 
 use bindings::Bindings;
 use bindings::IntoSymbol;
 use driver;
 use fold::Fold;
+use get_node_id::GetNodeId;
 use matcher::Pattern;
 
 pub fn replace_expr<T: Fold>(sess: &Session,
@@ -64,9 +68,13 @@ pub fn find_first<P, T>(pattern: P,
 pub trait DriverCtxtExt<'gcx> {
     fn node_type(&self, id: NodeId) -> Ty<'gcx>;
     fn def_path(&self, id: DefId) -> Path;
+
+    fn node_def_id<T: GetNodeId>(&self, x: &T) -> DefId;
+    fn resolve_expr(&self, e: &Expr) -> DefId;
 }
 
 impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 'tcx> {
+    /// Get the `ty::Ty` computed for a node.
     fn node_type(&self, id: NodeId) -> Ty<'gcx> {
         let parent = self.hir_map().get_parent(id);
         let parent_body = self.hir_map().body_owned_by(parent);
@@ -74,6 +82,7 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
         tables.node_id_to_type(id)
     }
 
+    /// Construct a `Path` AST suitable for referring to a definition.
     fn def_path(&self, id: DefId) -> Path {
         let root = PathSegment {
             identifier: keywords::CrateRoot.ident(),
@@ -87,6 +96,21 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
             span: DUMMY_SP,
             segments: buf.1,
         }
+    }
+
+    /// Obtain the `DefId` of a definition node, such as a `fn` item.
+    fn node_def_id<T: GetNodeId>(&self, x: &T) -> DefId {
+        match self.hir_map().opt_local_def_id(x.get_node_id()) {
+            Some(x) => x,
+            None => panic!("not a definition node"),
+        }
+    }
+
+    /// Obtain the `DefId` referenced by a path `Expr`.
+    fn resolve_expr(&self, e: &Expr) -> DefId {
+        let e = self.hir_map().expect_expr(e.id);
+        let qpath = expect!([e.node] hir::ExprPath(ref q) => q);
+        expect!([*qpath] hir::QPath::Resolved(_, ref path) => path.def.def_id())
     }
 }
 
