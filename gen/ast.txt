@@ -24,7 +24,7 @@ struct Mod { inner, items }
 
 
 #[rewrite_splice] #[rewrite_seq_item] #[extend_span]
-struct Item { ident, attrs, id, node, vis, span }
+struct Item { ident, #[match=ignore] attrs, id, node, vis, span }
 enum ItemKind {
     ExternCrate(name),
     Use(vp),
@@ -50,7 +50,7 @@ enum ItemKind {
 }
 
 #[extend_span]
-struct TraitItem { id, ident, attrs, node, span }
+struct TraitItem { id, ident, #[match=ignore] attrs, node, span }
 enum TraitItemKind {
     Const(ty, init),
     Method(sig, body),
@@ -59,7 +59,7 @@ enum TraitItemKind {
 }
 
 #[extend_span]
-struct ImplItem { id, ident, vis, defaultness, attrs, node, span }
+struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, node, span }
 enum ImplItemKind {
     Const(ty, init),
     Method(sig, body),
@@ -70,19 +70,19 @@ enum ImplItemKind {
 struct TraitRef { path, ref_id }
 
 struct EnumDef { variants }
-struct Variant_ { name, attrs, data, disr_expr }
+struct Variant_ { name, #[match=ignore] attrs, data, disr_expr }
 enum VariantData {
     Struct(fields, id),
     Tuple(fields, id),
     Unit(id),
 }
 
-struct StructField { span, ident, vis, id, ty, attrs }
+struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs }
 
 struct MethodSig { unsafety, constness, abi, decl, generics }
 
 struct ForeignMod { abi, items }
-struct ForeignItem { ident, attrs, node, id, span, vis }
+struct ForeignItem { ident, #[match=ignore] attrs, node, id, span, vis }
 enum ForeignItemKind {
     Fn(decl, generics),
     Static(ty, mutbl),
@@ -112,6 +112,7 @@ enum ViewPath_ {
 
 struct PathListItem_ { name, rename, id }
 
+#[match=ignore]
 enum Visibility {
     Public,
     Crate(span),
@@ -176,11 +177,11 @@ enum StmtKind {
     Mac(mac),
 }
 
-struct Local { pat, ty, init, id, span, attrs }
+struct Local { pat, ty, init, id, span, #[match=ignore] attrs }
 
 
 #[match=custom] #[rewrite_splice] #[extend_span]
-struct Expr { id, node, span, attrs }
+struct Expr { id, node, span, #[match=ignore] attrs }
 #[rewrite_default_step_kind=Expr]
 enum ExprKind {
     Box(expr),

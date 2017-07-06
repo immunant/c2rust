@@ -22,7 +22,7 @@ pub struct CollectToStruct {
 
 impl Transform for CollectToStruct {
     fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
-        let static_pat: P<Item> = parse_items(cx.session(), "#[no_mangle] static __x: __t = __init;").lone();
+        let static_pat: P<Item> = parse_items(cx.session(), "static __x: __t = __init;").lone();
 
 
         // Map from Symbol (the name) to the DefId of the old `static`.

@@ -12,6 +12,9 @@ Attributes:
   fact be a capturing pattern.
 
 - `#[match=eq]`: On a top-level declaration, generate an `impl` that dispatches to `==`.
+
+- `#[match=ignore]`: On a top-level declaration, generate a trivial impl that
+  always returns true.  On a field, don't recurse on this field when matching.
 '''
 
 from datetime import datetime
@@ -28,8 +31,9 @@ def do_match(se, target1, target2):
         yield '  (&%s,' % struct_pattern(v, path, '1')
         yield '   &%s) => {' % struct_pattern(v, path, '2')
         for f in v.fields:
-            yield '    mcx.try_match(%s1, %s2)?;' % \
-                    (f.name, f.name)
+            if f.attrs.get('match') != 'ignore':
+                yield '    mcx.try_match(%s1, %s2)?;' % \
+                        (f.name, f.name)
         yield '    Ok(())'
         yield '  }'
     yield '  (_, _) => Err(matcher::Error::VariantMismatch),'
