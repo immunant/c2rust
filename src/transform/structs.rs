@@ -64,67 +64,31 @@ impl Transform for MergeUpdates {
 }
 
 fn is_struct_update(s: &Stmt) -> bool {
-    let e = match s.node {
-        StmtKind::Semi(ref e) => e,
-        _ => return false,
-    };
-    let (lhs, rhs) = match e.node {
-        ExprKind::Assign(ref lhs, ref rhs) => (lhs, rhs),
-        _ => return false,
-    };
-    match rhs.node {
-        ExprKind::Struct(_, _, Some(ref base)) => lhs.ast_equiv(base),
-        _ => return false,
-    }
+    let e = match_or!([s.node] StmtKind::Semi(ref e) => e; return false);
+    let (lhs, rhs) = match_or!([e.node] ExprKind::Assign(ref lhs, ref rhs) => (lhs, rhs);
+                               return false);
+    match_or!([rhs.node] ExprKind::Struct(_, _, Some(ref base)) => lhs.ast_equiv(base);
+              return false)
 }
 
 fn is_struct_update_for(s: &Stmt, base1: &Expr) -> bool {
-    let e = match s.node {
-        StmtKind::Semi(ref e) => e,
-        _ => return false,
-    };
-    let (lhs, rhs) = match e.node {
-        ExprKind::Assign(ref lhs, ref rhs) => (lhs, rhs),
-        _ => return false,
-    };
-    match rhs.node {
-        ExprKind::Struct(_, _, Some(ref base)) => base1.ast_equiv(base),
-        _ => return false,
-    }
+    let e = match_or!([s.node] StmtKind::Semi(ref e) => e; return false);
+    let (lhs, rhs) = match_or!([e.node] ExprKind::Assign(ref lhs, ref rhs) => (lhs, rhs);
+                               return false);
+    match_or!([rhs.node] ExprKind::Struct(_, _, Some(ref base)) => base1.ast_equiv(base);
+              return false)
 }
 
 fn unpack_struct_update(s: Stmt) -> (Path, Vec<Field>, P<Expr>) {
-    let e = match s.node {
-        StmtKind::Semi(e) => e,
-        _ => unreachable!(),
-    };
-    let (lhs, rhs) = match e.unwrap().node {
-        ExprKind::Assign(lhs, rhs) => (lhs, rhs),
-        _ => unreachable!(),
-    };
-    match rhs.unwrap().node {
-        ExprKind::Struct(path, fields, Some(base)) => (path, fields, base),
-        _ => unreachable!(),
-    }
+    let e = expect!([s.node] StmtKind::Semi(e) => e);
+    let (lhs, rhs) = expect!([e.unwrap().node] ExprKind::Assign(lhs, rhs) => (lhs, rhs));
+    expect!([rhs.unwrap().node]
+            ExprKind::Struct(path, fields, Some(base)) => (path, fields, base))
 }
 
 fn build_struct_update(path: Path, fields: Vec<Field>, base: P<Expr>) -> Stmt {
-    let lhs = base.clone();
-    let rhs = Expr {
-        id: DUMMY_NODE_ID,
-        node: ExprKind::Struct(path, fields, Some(base)),
-        span: DUMMY_SP,
-        attrs: ThinVec::new(),
-    };
-    let e = Expr {
-        id: DUMMY_NODE_ID,
-        node: ExprKind::Assign(lhs, P(rhs)),
-        span: DUMMY_SP,
-        attrs: ThinVec::new(),
-    };
-    Stmt {
-        id: DUMMY_NODE_ID,
-        node: StmtKind::Semi(P(e)),
-        span: DUMMY_SP,
-    }
+    mk().semi_stmt(
+        mk().assign_expr(
+            &base,
+            mk().struct_expr_base(path, fields, Some(&base))))
 }

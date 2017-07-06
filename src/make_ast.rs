@@ -157,13 +157,13 @@ impl Builder {
         })
     }
 
-    pub fn struct_expr_base<Pa, E>(self, path: Pa, fields: Vec<Field>, base: E) -> P<Expr>
+    pub fn struct_expr_base<Pa, E>(self, path: Pa, fields: Vec<Field>, base: Option<E>) -> P<Expr>
             where Pa: Make<Path>, E: Make<P<Expr>> {
         let path = path.make(&self);
-        let base = base.make(&self);
+        let base = base.map(|e| e.make(&self));
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Struct(path, fields, Some(base)),
+            node: ExprKind::Struct(path, fields, base),
             span: DUMMY_SP,
             attrs: ThinVec::new(),
         })
@@ -182,6 +182,28 @@ impl Builder {
             vis: self.vis,
             span: DUMMY_SP,
         })
+    }
+
+    pub fn assign_expr<E1, E2>(self, lhs: E1, rhs: E2) -> P<Expr>
+            where E1: Make<P<Expr>>, E2: Make<P<Expr>> {
+        let lhs = lhs.make(&self);
+        let rhs = rhs.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Assign(lhs, rhs),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
+    pub fn semi_stmt<E>(self, expr: E) -> Stmt
+            where E: Make<P<Expr>> {
+        let expr = expr.make(&self);
+        Stmt {
+            id: DUMMY_NODE_ID,
+            node: StmtKind::Semi(expr),
+            span: DUMMY_SP,
+        }
     }
 }
 
