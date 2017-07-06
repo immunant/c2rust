@@ -100,7 +100,8 @@ fn build_struct_instance(struct_name: &str,
                          matches: &[Bindings]) -> P<Item> {
     let fields = matches.iter().map(
         |bnd| mk().field(bnd.ident("__x"), bnd.expr("__init"))).collect::<Vec<_>>();
-    mk().static_item(instance_name,
+    mk().mutbl()
+        .static_item(instance_name,
                      mk().path_ty(vec![struct_name]),
                      mk().struct_expr(vec![struct_name], fields))
 }
