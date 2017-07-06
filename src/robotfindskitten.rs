@@ -728,7 +728,7 @@ fn _init_messages() {
 
 #[derive(Copy)]
 #[repr(C)]
-pub struct Struct1 {
+pub struct screen_object {
     pub x: i32,
     pub y: i32,
     pub color: i32,
@@ -736,7 +736,7 @@ pub struct Struct1 {
     pub character: u8,
 }
 
-impl Clone for Struct1 {
+impl Clone for screen_object {
     fn clone(&self) -> Self {
         *self
     }
@@ -755,37 +755,37 @@ impl Clone for Struct1 {
 
 
 struct State {
-    robot: Struct1,
-    kitten: Struct1,
+    robot: screen_object,
+    kitten: screen_object,
     num_bogus: i32,
-    bogus: [Struct1; 406],
+    bogus: [screen_object; 406],
     bogus_messages: [i32; 406],
     used_messages: [i32; 406],
     screen: *mut *mut i32,
 }
 static mut S: State = State {
-    robot: (Struct1 {
-                x: 0i32,
-                y: 0i32,
-                color: 0i32,
-                bold: false,
-                character: 0u8,
-            }),
-    kitten: (Struct1 {
-                 x: 0i32,
-                 y: 0i32,
-                 color: 0i32,
-                 bold: false,
-                 character: 0u8,
-             }),
+    robot: ((screen_object {
+                 x: (0i32),
+                 y: (0i32),
+                 color: (0i32),
+                 bold: (false),
+                 character: (0u8),
+             })),
+    kitten: ((screen_object {
+                  x: (0i32),
+                  y: (0i32),
+                  color: (0i32),
+                  bold: (false),
+                  character: (0u8),
+              })),
     num_bogus: (0i32),
-    bogus: ([Struct1 {
-                x: 0i32,
-                y: 0i32,
-                color: 0i32,
-                bold: false,
-                character: 0u8,
-            }; 406]),
+    bogus: ([(screen_object {
+                  x: (0i32),
+                  y: (0i32),
+                  color: (0i32),
+                  bold: (false),
+                  character: (0u8),
+              }); 406]),
     bogus_messages: ([0i32; 406]),
     used_messages: ([0i32; 406]),
     screen: (0i32 as (*mut ::std::os::raw::c_void) as (*mut *mut i32)),
@@ -847,7 +847,7 @@ impl Clone for _win_st {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn full_draw(mut o: Struct1, mut in_place: bool) {
+pub unsafe extern "C" fn full_draw(mut o: screen_object, mut in_place: bool) {
     let mut old: usize = ::std::mem::uninitialized();
     let mut dummy: i16 = ::std::mem::uninitialized();
     let mut new: usize = ::std::mem::uninitialized();
@@ -907,12 +907,12 @@ pub unsafe extern "C" fn full_draw(mut o: Struct1, mut in_place: bool) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn draw(mut o: Struct1) {
+pub unsafe extern "C" fn draw(mut o: screen_object) {
     full_draw(o, false);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn draw_in_place(mut o: Struct1) {
+pub unsafe extern "C" fn draw_in_place(mut o: screen_object) {
     full_draw(o, true);
 }
 
@@ -1012,11 +1012,11 @@ pub unsafe extern "C" fn process_input(mut input: i32) {
             }
         }
     } else {
-        ((S.robot)) = ::Struct1 {
-            x: (check_x),
-            y: (check_y),
-            ..((S.robot))
-        };
+        ((S.robot)) = (::screen_object {
+                           x: (check_x),
+                           y: (check_y),
+                           ..(S.robot)
+                       });
     }
 }
 
@@ -1113,7 +1113,7 @@ pub unsafe extern "C" fn instructions() {
 pub unsafe extern "C" fn initialize_arrays() {
     let mut counter: i32 = ::std::mem::uninitialized();
     let mut counter2: i32 = ::std::mem::uninitialized();
-    let mut empty: Struct1 = ::std::mem::uninitialized();
+    let mut empty: screen_object = ::std::mem::uninitialized();
     let mut i: i32 = 0i32;
     (S.screen) = malloc(
         ((::std::mem::size_of::<*mut i32>()) * (((COLS - 1i32 + 1i32) as (usize)))),
@@ -1124,14 +1124,14 @@ pub unsafe extern "C" fn initialize_arrays() {
                  (((LINES - 1i32 + 1i32) as (usize)))),
         ) as (*mut i32);
     }
-    (empty) = ::Struct1 {
-        x: (-1i32),
-        y: (-1i32),
-        color: (0i32),
-        bold: (false),
-        character: (b' '),
-        ..(empty)
-    };
+    (empty) = (::screen_object {
+                   x: (-1i32),
+                   y: (-1i32),
+                   color: (0i32),
+                   bold: (false),
+                   character: (b' '),
+                   ..(empty)
+               });
     counter = 0i32;
     while (counter <= COLS - 1i32) {
         counter2 = 0i32;
@@ -1172,25 +1172,25 @@ pub unsafe extern "C" fn initialize_ncurses() {
 
 #[no_mangle]
 pub unsafe extern "C" fn initialize_robot() {
-    ((S.robot)) = ::Struct1 {
-        x: (rand() % (COLS - 1i32) + 1i32),
-        y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
-        character: (b'#'),
-        color: (0i32),
-        bold: (false),
-        ..((S.robot))
-    };
+    ((S.robot)) = (::screen_object {
+                       x: (rand() % (COLS - 1i32) + 1i32),
+                       y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
+                       character: (b'#'),
+                       color: (0i32),
+                       bold: (false),
+                       ..(S.robot)
+                   });
     *(*(S.screen).offset((S.robot).x as (isize))).offset((S.robot).y as (isize)) = 0i32;
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn initialize_kitten() {
     loop {
-        ((S.kitten)) = ::Struct1 {
-            x: (rand() % (COLS - 1i32) + 1i32),
-            y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
-            ..((S.kitten))
-        };
+        ((S.kitten)) = (::screen_object {
+                            x: (rand() % (COLS - 1i32) + 1i32),
+                            y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
+                            ..(S.kitten)
+                        });
         if !(*(*(S.screen).offset((S.kitten).x as (isize))).offset((S.kitten).y as (isize)) !=
                  -1i32)
         {
@@ -1198,20 +1198,21 @@ pub unsafe extern "C" fn initialize_kitten() {
         }
     }
     loop {
-        ((S.kitten)) = ::Struct1 {
-            character: ((rand() % (126i32 - b'!' as (i32) + 1i32) + b'!' as (i32)) as (u8)),
-            ..((S.kitten))
-        };
+        ((S.kitten)) =
+            (::screen_object {
+                 character: ((rand() % (126i32 - b'!' as (i32) + 1i32) + b'!' as (i32)) as (u8)),
+                 ..(S.kitten)
+             });
         if !(validchar((S.kitten).character) == 0) {
             break;
         }
     }
     *(*(S.screen).offset((S.kitten).x as (isize))).offset((S.kitten).y as (isize)) = 1i32;
-    ((S.kitten)) = ::Struct1 {
-        color: (rand() % 6i32 + 1i32),
-        bold: (if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0),
-        ..((S.kitten))
-    };
+    ((S.kitten)) = (::screen_object {
+                        color: (rand() % 6i32 + 1i32),
+                        bold: (if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0),
+                        ..(S.kitten)
+                    });
 }
 
 #[no_mangle]
@@ -1219,26 +1220,30 @@ pub unsafe extern "C" fn initialize_bogus() {
     let mut counter: i32 = ::std::mem::uninitialized();
     let mut index: i32 = ::std::mem::uninitialized();
     for counter in ((0i32)..((S.num_bogus))) {
-        ((S.bogus)[counter as (usize)]) = ::Struct1 {
-            color: (rand() % 6i32 + 1i32),
-            bold: (if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0),
-            ..((S.bogus)[counter as (usize)])
-        };
+        ((S.bogus)[counter as (usize)]) =
+            (::screen_object {
+                 color: (rand() % 6i32 + 1i32),
+                 bold: (if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0),
+                 ..((S.bogus)[counter as (usize)])
+             });
         loop {
-            ((S.bogus)[counter as (usize)]) = ::Struct1 {
-                character: ((rand() % (126i32 - b'!' as (i32) + 1i32) + b'!' as (i32)) as (u8)),
-                ..((S.bogus)[counter as (usize)])
-            };
+            ((S.bogus)[counter as (usize)]) =
+                (::screen_object {
+                     character: ((rand() % (126i32 - b'!' as (i32) + 1i32) + b'!' as (i32)) as
+                         (u8)),
+                     ..((S.bogus)[counter as (usize)])
+                 });
             if !(validchar((S.bogus)[counter as (usize)].character) == 0) {
                 break;
             }
         }
         loop {
-            ((S.bogus)[counter as (usize)]) = ::Struct1 {
-                x: (rand() % (COLS - 1i32) + 1i32),
-                y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
-                ..((S.bogus)[counter as (usize)])
-            };
+            ((S.bogus)[counter as (usize)]) = (::screen_object {
+                                                   x: (rand() % (COLS - 1i32) + 1i32),
+                                                   y: (rand() % (LINES - 1i32 - 3i32 + 1i32) +
+                                                       3i32),
+                                                   ..((S.bogus)[counter as (usize)])
+                                               });
             if !(*(*(S.screen).offset((S.bogus)[counter as (usize)].x as (isize)))
                      .offset((S.bogus)[counter as (usize)].y as (isize)) != -1i32)
             {
