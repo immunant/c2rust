@@ -754,7 +754,7 @@ impl Clone for screen_object {
 
 
 
-struct State {
+pub struct State {
     robot: screen_object,
     kitten: screen_object,
     num_bogus: i32,
