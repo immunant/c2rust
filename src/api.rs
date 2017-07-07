@@ -20,6 +20,7 @@ pub use seq_edit::{fold_blocks, fold_modules};
 pub use make_ast::mk;
 pub use fold_node::fold_nodes;
 pub use path_edit::{self, fold_resolved_paths};
+pub use fn_edit::fold_fns;
 
 use bindings::Bindings;
 use bindings::IntoSymbol;
@@ -27,6 +28,7 @@ use driver;
 use fold::Fold;
 use get_node_id::GetNodeId;
 use matcher::Pattern;
+use util::HirDefExt;
 
 pub fn replace_expr<T: Fold>(sess: &Session,
                              ast: T,
@@ -73,6 +75,7 @@ pub trait DriverCtxtExt<'gcx> {
     fn def_path(&self, id: DefId) -> Path;
 
     fn node_def_id(&self, id: NodeId) -> DefId;
+    fn try_resolve_expr(&self, e: &Expr) -> Option<DefId>;
     fn resolve_expr(&self, e: &Expr) -> DefId;
 }
 
@@ -110,10 +113,22 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
     }
 
     /// Obtain the `DefId` referenced by a path `Expr`.
+    fn try_resolve_expr(&self, e: &Expr) -> Option<DefId> {
+        let node = match_or!([self.hir_map().find(e.id)] Some(x) => x;
+                             return None);
+        let e = match_or!([node] hir::map::NodeExpr(e) => e;
+                          return None);
+        let qpath = match_or!([e.node] hir::ExprPath(ref q) => q;
+                              return None);
+        let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
+                             return None);
+        path.def.opt_def_id()
+    }
+
+    /// Obtain the `DefId` referenced by a path `Expr`.
     fn resolve_expr(&self, e: &Expr) -> DefId {
-        let e = self.hir_map().expect_expr(e.id);
-        let qpath = expect!([e.node] hir::ExprPath(ref q) => q);
-        expect!([*qpath] hir::QPath::Resolved(_, ref path) => path.def.def_id())
+        self.try_resolve_expr(e)
+            .unwrap_or_else(|| panic!("expr does not resolve to a def: {:?}", e))
     }
 }
 

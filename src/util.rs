@@ -1,3 +1,5 @@
+use rustc::hir::def::Def;
+use rustc::hir::def_id::DefId;
 use syntax::ast::*;
 use syntax::codemap::{CodeMap, Span};
 use syntax::symbol::Symbol;
@@ -151,4 +153,41 @@ pub fn extended_span(mut s: Span, attrs: &[Attribute]) -> Span {
         }
     }
     s
+}
+
+
+pub trait HirDefExt {
+    fn opt_def_id(&self) -> Option<DefId>;
+}
+
+impl HirDefExt for Def {
+    fn opt_def_id(&self) -> Option<DefId> {
+        match *self {
+            Def::Mod(did) |
+            Def::Struct(did) |
+            Def::Union(did) |
+            Def::Enum(did) |
+            Def::Variant(did) |
+            Def::Trait(did) |
+            Def::TyAlias(did) |
+            Def::AssociatedTy(did) |
+            Def::TyParam(did) |
+            Def::Fn(did) |
+            Def::Const(did) |
+            Def::Static(did, _) |
+            Def::StructCtor(did, _) |
+            Def::VariantCtor(did, _) |
+            Def::Method(did) |
+            Def::AssociatedConst(did) |
+            Def::Local(did) |
+            Def::Upvar(did, _, _) |
+            Def::Macro(did, _) |
+            Def::GlobalAsm(did) => Some(did),
+
+            Def::PrimTy(_) |
+            Def::SelfTy(_, _) |
+            Def::Label(_) |
+            Def::Err => None
+        }
+    }
 }

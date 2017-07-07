@@ -38,6 +38,27 @@ impl<'a> Make<Visibility> for &'a str {
     }
 }
 
+impl<'a> Make<Mutability> for &'a str {
+    fn make(self, _mk: &Builder) -> Mutability {
+        match self {
+            "" | "imm" | "immut" | "immutable" => Mutability::Immutable,
+            "mut" | "mutable" => Mutability::Mutable,
+            _ => panic!("unrecognized string for Mutability: {:?}", self),
+        }
+    }
+}
+
+impl<'a> Make<UnOp> for &'a str {
+    fn make(self, _mk: &Builder) -> UnOp {
+        match self {
+            "deref" | "*" => UnOp::Deref,
+            "not" | "!" => UnOp::Not,
+            "neg" | "-" => UnOp::Neg,
+            _ => panic!("unrecognized string for UnOp: {:?}", self),
+        }
+    }
+}
+
 
 impl<I: Make<Ident>> Make<PathSegment> for I {
     fn make(self, mk: &Builder) -> PathSegment {
@@ -84,11 +105,16 @@ impl Builder {
         }
     }
 
-    pub fn mutbl(self) -> Self {
+    pub fn set_mutbl<M: Make<Mutability>>(self, mutbl: M) -> Self {
+        let mutbl = mutbl.make(&self);
         Builder {
-            mutbl: Mutability::Mutable,
+            mutbl: mutbl,
             .. self
         }
+    }
+
+    pub fn mutbl(self) -> Self {
+        self.set_mutbl(Mutability::Mutable)
     }
 
 
@@ -204,6 +230,78 @@ impl Builder {
             node: StmtKind::Semi(expr),
             span: DUMMY_SP,
         }
+    }
+
+    pub fn ref_ty<T>(self, ty: T) -> P<Ty>
+            where T: Make<P<Ty>> {
+        let ty = ty.make(&self);
+        P(Ty {
+            id: DUMMY_NODE_ID,
+            node: TyKind::Rptr(None, MutTy { ty: ty, mutbl: self.mutbl }),
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn ident_pat<I>(self, name: I) -> P<Pat>
+            where I: Make<Ident> {
+        let name = name.make(&self);
+        P(Pat {
+            id: DUMMY_NODE_ID,
+            node: PatKind::Ident(BindingMode::ByValue(self.mutbl),
+                                 Spanned { node: name, span: DUMMY_SP },
+                                 None),
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn arg<T, Pt>(self, ty: T, pat: Pt) -> Arg
+            where T: Make<P<Ty>>, Pt: Make<P<Pat>> {
+        let ty = ty.make(&self);
+        let pat = pat.make(&self);
+        Arg {
+            ty: ty,
+            pat: pat,
+            id: DUMMY_NODE_ID,
+        }
+    }
+
+    pub fn path_expr<Pa>(self, path: Pa) -> P<Expr>
+            where Pa: Make<Path> {
+        let path = path.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Path(None, path),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
+    pub fn ident_expr<I>(self, name: I) -> P<Expr>
+            where I: Make<Ident> {
+        self.path_expr(vec![name])
+    }
+
+    pub fn unary_expr<O, E>(self, op: O, a: E) -> P<Expr>
+            where O: Make<UnOp>, E: Make<P<Expr>> {
+        let op = op.make(&self);
+        let a = a.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Unary(op, a),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
+    pub fn addr_of_expr<E>(self, e: E) -> P<Expr>
+            where E: Make<P<Expr>> {
+        let e = e.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::AddrOf(self.mutbl, e),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
     }
 }
 

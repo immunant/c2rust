@@ -29,6 +29,8 @@ mod get_node_id;
 mod get_span;
 mod make_ast;
 pub mod path_edit;
+mod fn_edit;
+mod dataflow;
 
 mod bindings;
 pub mod driver;

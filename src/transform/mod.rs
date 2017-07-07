@@ -28,6 +28,7 @@ pub fn get_transform(name: &str, args: &[String]) -> Box<Transform> {
             struct_name: args[0].clone(),
             instance_name: args[1].clone(),
         }),
+        "static_to_local_ref" => Box::new(statics::Localize),
 
         "struct_assign_to_update" => Box::new(structs::AssignToUpdate),
         "struct_merge_updates" => Box::new(structs::MergeUpdates),

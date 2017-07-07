@@ -11,43 +11,7 @@ use syntax::tokenstream::{TokenStream, ThinTokenStream};
 
 use driver;
 use fold::Fold;
-
-
-pub trait HirDefExt {
-    fn opt_def_id(&self) -> Option<DefId>;
-}
-
-impl HirDefExt for Def {
-    fn opt_def_id(&self) -> Option<DefId> {
-        match *self {
-            Def::Mod(did) |
-            Def::Struct(did) |
-            Def::Union(did) |
-            Def::Enum(did) |
-            Def::Variant(did) |
-            Def::Trait(did) |
-            Def::TyAlias(did) |
-            Def::AssociatedTy(did) |
-            Def::TyParam(did) |
-            Def::Fn(did) |
-            Def::Const(did) |
-            Def::Static(did, _) |
-            Def::StructCtor(did, _) |
-            Def::VariantCtor(did, _) |
-            Def::Method(did) |
-            Def::AssociatedConst(did) |
-            Def::Local(did) |
-            Def::Upvar(did, _, _) |
-            Def::Macro(did, _) |
-            Def::GlobalAsm(did) => Some(did),
-
-            Def::PrimTy(_) |
-            Def::SelfTy(_, _) |
-            Def::Label(_) |
-            Def::Err => None
-        }
-    }
-}
+use util::HirDefExt;
 
 
 

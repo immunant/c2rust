@@ -37,8 +37,8 @@ macro_rules! gen_folder_impls {
 
 // This code is generic, but a Vec<T> impl would conflict with more specific impls below, like
 // Vec<P<Expr>>.
-impl Fold for Vec<Stmt> {
-    type Result = Vec<<Stmt as Fold>::Result>;
+impl<T: Fold> Fold for Vec<T> {
+    type Result = Vec<<T as Fold>::Result>;
     fn fold<F: Folder>(self, f: &mut F) -> Self::Result {
         let mut results = Vec::with_capacity(self.len());
         for x in self {
@@ -48,11 +48,20 @@ impl Fold for Vec<Stmt> {
     }
 }
 
+impl<T: Fold> Fold for Option<T> {
+    type Result = Option<<T as Fold>::Result>;
+    fn fold<F: Folder>(self, f: &mut F) -> Self::Result {
+        self.map(|x| x.fold(f))
+    }
+}
+
 gen_folder_impls! {
-    // Copy-pasted from the syntax::fold::Folder docs.  Changes are noted below.
+    // Copy-pasted from the syntax::fold::Folder docs.  Omit functions that take Vec<T> or
+    // Option<T>, so we can write the generic impls above without conflicts.  Additional changes
+    // are noted below.
     pub trait Folder: Sized {
         fn fold_crate(&mut self, c: Crate) -> Crate { ... }
-        fn fold_meta_items(&mut self, meta_items: Vec<MetaItem>) -> Vec<MetaItem> { ... }
+        //fn fold_meta_items(&mut self, meta_items: Vec<MetaItem>) -> Vec<MetaItem> { ... }
         fn fold_meta_list_item(
             &mut self, 
             list_item: NestedMetaItem
@@ -75,7 +84,7 @@ gen_folder_impls! {
         fn fold_range_end(&mut self, re: RangeEnd) -> RangeEnd { ... }
         // Skip this method.  We already have an impl for P<Expr>, from fold_expr above
         //fn fold_opt_expr(&mut self, e: P<Expr>) -> Option<P<Expr>> { ... }
-        fn fold_exprs(&mut self, es: Vec<P<Expr>>) -> Vec<P<Expr>> { ... }
+        //fn fold_exprs(&mut self, es: Vec<P<Expr>>) -> Vec<P<Expr>> { ... }
         fn fold_ty(&mut self, t: P<Ty>) -> P<Ty> { ... }
         fn fold_ty_binding(&mut self, t: TypeBinding) -> TypeBinding { ... }
         fn fold_mod(&mut self, m: Mod) -> Mod { ... }
@@ -104,20 +113,20 @@ gen_folder_impls! {
         fn fold_trait_ref(&mut self, p: TraitRef) -> TraitRef { ... }
         fn fold_poly_trait_ref(&mut self, p: PolyTraitRef) -> PolyTraitRef { ... }
         fn fold_variant_data(&mut self, vdata: VariantData) -> VariantData { ... }
-        fn fold_lifetimes(&mut self, lts: Vec<Lifetime>) -> Vec<Lifetime> { ... }
-        fn fold_lifetime_defs(&mut self, lts: Vec<LifetimeDef>) -> Vec<LifetimeDef> { ... }
+        //fn fold_lifetimes(&mut self, lts: Vec<Lifetime>) -> Vec<Lifetime> { ... }
+        //fn fold_lifetime_defs(&mut self, lts: Vec<LifetimeDef>) -> Vec<LifetimeDef> { ... }
         fn fold_ty_param(&mut self, tp: TyParam) -> TyParam { ... }
-        fn fold_ty_params(&mut self, tps: Vec<TyParam>) -> Vec<TyParam> { ... }
+        //fn fold_ty_params(&mut self, tps: Vec<TyParam>) -> Vec<TyParam> { ... }
         fn fold_tt(&mut self, tt: TokenTree) -> TokenTree { ... }
         fn fold_tts(&mut self, tts: TokenStream) -> TokenStream { ... }
         fn fold_token(&mut self, t: Token) -> Token { ... }
         fn fold_interpolated(&mut self, nt: Nonterminal) -> Nonterminal { ... }
-        fn fold_opt_lifetime(&mut self, o_lt: Option<Lifetime>) -> Option<Lifetime> { ... }
-        fn fold_opt_bounds(
-            &mut self, 
-            b: Option<TyParamBounds>
-        ) -> Option<TyParamBounds> { ... }
-        fn fold_bounds(&mut self, b: TyParamBounds) -> TyParamBounds { ... }
+        //fn fold_opt_lifetime(&mut self, o_lt: Option<Lifetime>) -> Option<Lifetime> { ... }
+        //fn fold_opt_bounds(
+        //    &mut self, 
+        //    b: Option<TyParamBounds>
+        //) -> Option<TyParamBounds> { ... }
+        //fn fold_bounds(&mut self, b: TyParamBounds) -> TyParamBounds { ... }
         fn fold_ty_param_bound(&mut self, tpb: TyParamBound) -> TyParamBound { ... }
         fn fold_mt(&mut self, mt: MutTy) -> MutTy { ... }
         fn fold_field(&mut self, field: Field) -> Field { ... }
