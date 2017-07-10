@@ -48,6 +48,16 @@ impl<'a> Make<Mutability> for &'a str {
     }
 }
 
+impl<'a> Make<Unsafety> for &'a str {
+    fn make(self, _mk: &Builder) -> Unsafety {
+        match self {
+            "" | "safe" | "normal" => Unsafety::Normal,
+            "unsafe" => Unsafety::Unsafe,
+            _ => panic!("unrecognized string for Unsafety: {:?}", self),
+        }
+    }
+}
+
 impl<'a> Make<UnOp> for &'a str {
     fn make(self, _mk: &Builder) -> UnOp {
         match self {
@@ -85,6 +95,7 @@ pub struct Builder {
     vis: Visibility,
     mutbl: Mutability,
     generics: Generics,
+    unsafety: Unsafety,
 }
 
 impl Builder {
@@ -93,6 +104,7 @@ impl Builder {
             vis: Visibility::Inherited,
             mutbl: Mutability::Immutable,
             generics: Generics::default(),
+            unsafety: Unsafety::Normal,
         }
     }
 
@@ -115,6 +127,18 @@ impl Builder {
 
     pub fn mutbl(self) -> Self {
         self.set_mutbl(Mutability::Mutable)
+    }
+
+    pub fn unsafety<U: Make<Unsafety>>(self, unsafety: U) -> Self {
+        let unsafety = unsafety.make(&self);
+        Builder {
+            unsafety: unsafety,
+            .. self
+        }
+    }
+
+    pub fn unsafe_(self) -> Self {
+        self.unsafety(Unsafety::Unsafe)
     }
 
 
@@ -232,6 +256,16 @@ impl Builder {
         }
     }
 
+    pub fn expr_stmt<E>(self, expr: E) -> Stmt
+            where E: Make<P<Expr>> {
+        let expr = expr.make(&self);
+        Stmt {
+            id: DUMMY_NODE_ID,
+            node: StmtKind::Expr(expr),
+            span: DUMMY_SP,
+        }
+    }
+
     pub fn ref_ty<T>(self, ty: T) -> P<Ty>
             where T: Make<P<Ty>> {
         let ty = ty.make(&self);
@@ -324,6 +358,31 @@ impl Builder {
             node: x,
             span: DUMMY_SP,
         }
+    }
+
+    pub fn block_expr<B>(self, blk: B) -> P<Expr>
+            where B: Make<P<Block>> {
+        let blk = blk.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Block(blk),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
+    pub fn block<S>(self, stmts: Vec<S>) -> P<Block>
+            where S: Make<Stmt> {
+        let stmts = stmts.into_iter().map(|s| s.make(&self)).collect();
+        P(Block {
+            stmts: stmts,
+            id: DUMMY_NODE_ID,
+            rules: match self.unsafety {
+                Unsafety::Unsafe => BlockCheckMode::Unsafe(UnsafeSource::UserProvided),
+                Unsafety::Normal => BlockCheckMode::Default,
+            },
+            span: DUMMY_SP,
+        })
     }
 }
 

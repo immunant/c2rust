@@ -6,6 +6,7 @@ use rustc::ty::TypeVariants;
 use syntax::abi::Abi;
 use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Spanned};
+use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::util::ThinVec;
@@ -17,11 +18,13 @@ use bindings::Bindings;
 use bindings::IntoSymbol;
 use dataflow;
 use driver::{self, Phase};
+use fold::Fold;
 use fn_edit::FnLike;
 use transform::Transform;
 use util::Lone;
 
 
+/// Turn free functions into methods in an impl.  
 pub struct ToMethod;
 
 impl Transform for ToMethod {
@@ -247,6 +250,7 @@ impl Transform for ToMethod {
 }
 
 
+/// Find unused `unsafe` blocks and turn them into ordinary blocks.
 pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
@@ -271,3 +275,41 @@ impl Transform for FixUnusedUnsafe {
     }
 }
 
+
+/// Turn `unsafe fn f() { ... }` into `fn f() { unsafe { ... } }`.
+pub struct SinkUnsafe;
+
+struct SinkUnsafeFolder<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
+    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+}
+
+impl<'a, 'hir, 'gcx, 'tcx> Folder for SinkUnsafeFolder<'a, 'hir, 'gcx, 'tcx> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+        let i =
+            if self.cx.has_cursor(&i) &&
+               matches!([i.node] ItemKind::Fn(_, Unsafety::Unsafe, _, _, _, _)) {
+                i.map(|mut i| {
+                    match i.node {
+                        ItemKind::Fn(_, ref mut unsafety, _, _, _, ref mut block) => {
+                            *unsafety = Unsafety::Normal;
+                            *block = mk().block(vec![
+                                mk().expr_stmt(mk().block_expr(mk().unsafe_().block(
+                                            block.stmts.clone())))]);
+                        },
+                        _ => unreachable!(),
+                    }
+                    i
+                })
+            } else {
+                i
+            };
+
+        fold::noop_fold_item(i, self)
+    }
+}
+
+impl Transform for SinkUnsafe {
+    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+        krate.fold(&mut SinkUnsafeFolder { cx })
+    }
+}
