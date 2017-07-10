@@ -791,6 +791,9 @@ static mut S: State = State {
     screen: (0i32 as (*mut ::std::os::raw::c_void) as (*mut *mut i32)),
 };
 
+impl State {
+}
+
 #[derive(Copy)]
 #[repr(C)]
 pub struct pdat {
