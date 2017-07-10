@@ -73,6 +73,14 @@ gen_fold_node_impl! {
     }
 }
 
+gen_fold_node_impl! {
+    node = P<Block>;
+    folder = BlockNodeFolder;
+    fn fold_block(&mut self, b: P<Block>) -> P<Block> {
+        fold::noop_fold_block(b, self)
+    }
+}
+
 pub fn fold_nodes<N, T, F>(target: T, callback: F) -> <T as Fold>::Result
         where N: FoldNode,
               T: Fold,

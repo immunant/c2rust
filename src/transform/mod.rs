@@ -26,6 +26,7 @@ pub fn get_transform(name: &str, args: &[String]) -> Box<Transform> {
         "remove_unused_labels" => Box::new(control_flow::RemoveUnusedLabels),
 
         "func_to_method" => Box::new(funcs::ToMethod),
+        "fix_unused_unsafe" => Box::new(funcs::FixUnusedUnsafe),
 
         "static_collect_to_struct" => Box::new(statics::CollectToStruct {
             struct_name: args[0].clone(),

@@ -246,3 +246,28 @@ impl Transform for ToMethod {
     }
 }
 
+
+pub struct FixUnusedUnsafe;
+
+impl Transform for FixUnusedUnsafe {
+    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+        let krate = fold_nodes(krate, |b: P<Block>| {
+            if b.rules == BlockCheckMode::Unsafe(UnsafeSource::UserProvided) &&
+               !cx.ty_ctxt().used_unsafe.borrow().contains(&b.id) {
+                b.map(|b| Block {
+                    rules: BlockCheckMode::Default,
+                    .. b
+                })
+            } else {
+                b
+            }
+        });
+
+        krate
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
