@@ -792,6 +792,340 @@ static mut S: State = State {
 };
 
 impl State {
+    #[no_mangle]
+    pub unsafe extern "C" fn message(&mut self, mut message: *mut u8) {
+        wmove(stdscr, 1i32, 0i32);
+        wclrtoeol(stdscr);
+        mvprintw(1i32, 0i32, (*b"%.*s\0").as_ptr(), COLS, message);
+        wmove(stdscr, ((*(self)).robot).y, ((*(self)).robot).x);
+        wrefresh(stdscr);
+    }
+    #[no_mangle]
+    pub unsafe extern "C" fn play_game(&mut self) {
+        let mut old_x: i32 = ((*(self)).robot).x;
+        let mut old_y: i32 = ((*(self)).robot).y;
+        let mut input: i32 = ::std::mem::uninitialized();
+        input = wgetch(stdscr);
+        while (input != 27i32 && (input != b'q' as (i32)) && (input != b'Q' as (i32))) {
+            ((self)).process_input((input));
+            if !(old_x == ((*(self)).robot).x && (old_y == ((*(self)).robot).y)) {
+                if wmove(stdscr, old_y, old_x) == -1i32 {
+                    -1i32;
+                } else {
+                    waddch(stdscr, b' ' as (usize));
+                }
+                *(*((*(self)).screen).offset(old_x as (isize))).offset(old_y as (isize)) = -1i32;
+                draw(((*(self)).robot));
+                wrefresh(stdscr);
+                *(*((*(self)).screen).offset(((*(self)).robot).x as (isize)))
+                    .offset(((*(self)).robot).y as (isize)) = 0i32;
+                old_x = ((*(self)).robot).x;
+                old_y = ((*(self)).robot).y;
+            }
+            input = wgetch(stdscr);
+        }
+        ((self)).message(((*b"Bye!\0").as_ptr() as (*mut u8)));
+        wrefresh(stdscr);
+        finish(0i32);
+    }
+    #[no_mangle]
+    pub unsafe extern "C" fn process_input(&mut self, mut input: i32) {
+        let mut check_x: i32 = ((*(self)).robot).x;
+        let mut check_y: i32 = ((*(self)).robot).y;
+        if !(input == 0i32) {
+            if input == b'F' as (i32) - 64i32 || input == b'L' as (i32) ||
+                input == b'l' as (i32) || input == 0o405i32
+            {
+                check_x = check_x + 1;
+            } else if input == b'B' as (i32) - 64i32 || input == b'H' as (i32) ||
+                       input == b'h' as (i32) || input == 0o404i32
+            {
+                check_x = check_x - 1;
+            } else if input == b'N' as (i32) || input == b'n' as (i32) || input == 0o522i32 {
+                check_x = check_x + 1;
+                check_y = check_y + 1;
+            } else if input == b'B' as (i32) || input == b'b' as (i32) || input == 0o550i32 {
+                check_x = check_x - 1;
+                check_y = check_y + 1;
+            } else if input == b'N' as (i32) - 64i32 || input == b'J' as (i32) ||
+                       input == b'j' as (i32) || input == 0o402i32
+            {
+                check_y = check_y + 1;
+            } else if input == b'U' as (i32) || input == b'u' as (i32) || input == 0o523i32 {
+                check_x = check_x + 1;
+                check_y = check_y - 1;
+            } else if input == b'Y' as (i32) || input == b'y' as (i32) || input == 0o406i32 {
+                check_x = check_x - 1;
+                check_y = check_y - 1;
+            } else if input == b'P' as (i32) - 64i32 || input == b'K' as (i32) ||
+                       input == b'k' as (i32) || input == 0o403i32
+            {
+                check_y = check_y - 1;
+            } else if input == b'L' as (i32) - 64i32 {
+                wrefresh(curscr);
+            } else {
+                ((self)).message(
+                    ((*b"Invalid input: Use direction keys or Esc.\0").as_ptr() as (*mut u8)),
+                );
+                return;
+            }
+        }
+        if check_y < 3i32 || check_y > LINES - 1i32 || check_x < 0i32 || check_x > COLS - 1i32 {
+        } else if *(*((*(self)).screen).offset(check_x as (isize))).offset(check_y as (isize)) !=
+                   -1i32
+        {
+            let switch2 =
+                *(*((*(self)).screen).offset(check_x as (isize))).offset(check_y as (isize));
+            if !(switch2 == 0i32) {
+                if switch2 == 1i32 {
+                    wmove(stdscr, 1i32, 0i32);
+                    wclrtoeol(stdscr);
+                    ((self)).play_animation((input));
+                } else {
+                    ((self)).message(
+                        (messages[((*(self)).bogus_messages)[(*(*((*(self)).screen).offset(
+                            check_x as
+                                (isize),
+                        )).offset(check_y as (isize)) -
+                                                                  2i32) as
+                                                                 (usize)] as
+                                      (usize)]),
+                    );
+                }
+            }
+        } else {
+            (((*(self)).robot)) = (::screen_object {
+                                       x: (check_x),
+                                       y: (check_y),
+                                       ..((*(self)).robot)
+                                   });
+        }
+    }
+    #[no_mangle]
+    pub unsafe extern "C" fn play_animation(&mut self, mut input: i32) {
+        let mut counter: i32 = ::std::mem::uninitialized();
+        counter = 4i32;
+        while (counter > 0i32) {
+            if wmove(stdscr, 1i32, 50i32 + counter + 1i32) == -1i32 {
+                -1i32;
+            } else {
+                waddch(stdscr, b' ' as (usize));
+            }
+            wmove(stdscr, 1i32, 50i32 + counter);
+            if input == 0o405i32 || input == 0o402i32 || input == 0o540i32 || input == 0o535i32 {
+                draw_in_place(((*(self)).kitten));
+            } else {
+                draw_in_place(((*(self)).robot));
+            }
+            if wmove(stdscr, 1i32, 50i32 - counter) == -1i32 {
+                -1i32;
+            } else {
+                waddch(stdscr, b' ' as (usize));
+            }
+            wmove(stdscr, 1i32, 50i32 - counter + 1i32);
+            if input == 0o405i32 || input == 0o402i32 || input == 0o540i32 || input == 0o535i32 {
+                draw_in_place(((*(self)).robot));
+            } else {
+                draw_in_place(((*(self)).kitten));
+            }
+            wrefresh(stdscr);
+            sleep(1u32);
+            counter = counter - 1;
+        }
+        wmove(stdscr, 1i32, 0i32);
+        waddnstr(
+            stdscr,
+            (*b"You found kitten! Way to go, robot!\0").as_ptr(),
+            -1i32,
+        );
+        wrefresh(stdscr);
+        finish(0i32);
+    }
+    #[no_mangle]
+    pub unsafe extern "C" fn instructions(&mut self) {
+        let mut dummy: u8 = ::std::mem::uninitialized();
+        mvprintw(0i32, 0i32, (*b"robotfindskitten v%s\n\0").as_ptr(), ver);
+        printw(
+            (*b"By the illustrious Leonard Richardson (C) 1997, 2000\n\0").as_ptr(),
+        );
+        printw(
+            (*b"Written originally for the Nerth Pork robotfindskitten contest\n\n\0").as_ptr(),
+        );
+        printw((*b"In this game, you are robot (\0").as_ptr());
+        draw_in_place(((*(self)).robot));
+        printw((*b"). Your job is to find kitten. This task\n\0").as_ptr());
+        printw(
+            (*b"is complicated by the existence of various things which are not kitten.\n\0")
+                .as_ptr(),
+        );
+        printw(
+            (*b"Robot must touch items to determine if they are kitten or not. The game\n\0")
+                .as_ptr(),
+        );
+        printw(
+            (*b"ends when robotfindskitten. Alternatively, you may end the game by hitting\n\0")
+                .as_ptr(),
+        );
+        printw(
+            (*b"the Esc key. See the documentation for more information.\n\n\0").as_ptr(),
+        );
+        printw((*b"Press any key to start.\n\0").as_ptr());
+        wrefresh(stdscr);
+        dummy = wgetch(stdscr) as (u8);
+        wclear(stdscr);
+    }
+    #[no_mangle]
+    pub unsafe extern "C" fn initialize_arrays(&mut self) {
+        let mut counter: i32 = ::std::mem::uninitialized();
+        let mut counter2: i32 = ::std::mem::uninitialized();
+        let mut empty: screen_object = ::std::mem::uninitialized();
+        let mut i: i32 = 0i32;
+        ((*(self)).screen) = malloc(
+            ((::std::mem::size_of::<*mut i32>()) *
+                 (((COLS - 1i32 + 1i32) as (usize)))),
+        ) as (*mut *mut i32);
+        for i in ((0i32)..(COLS - 1i32 + 1i32)) {
+            *((*(self)).screen).offset(i as (isize)) =
+                malloc(
+                    ((::std::mem::size_of::<i32>()) * (((LINES - 1i32 + 1i32) as (usize)))),
+                ) as (*mut i32);
+        }
+        (empty) = (::screen_object {
+                       x: (-1i32),
+                       y: (-1i32),
+                       color: (0i32),
+                       bold: (false),
+                       character: (b' '),
+                       ..(empty)
+                   });
+        counter = 0i32;
+        while (counter <= COLS - 1i32) {
+            counter2 = 0i32;
+            while (counter2 <= LINES - 1i32) {
+                *(*((*(self)).screen).offset(counter as (isize))).offset(counter2 as (isize)) =
+                    -1i32;
+                counter2 = counter2 + 1;
+            }
+            counter = counter + 1;
+        }
+        for counter in ((0i32)..(406i32)) {
+            ((*(self)).used_messages)[counter as (usize)] = 0i32;
+            ((*(self)).bogus_messages)[counter as (usize)] = 0i32;
+            ((*(self)).bogus)[counter as (usize)] = empty;
+        }
+    }
+    #[no_mangle]
+    pub unsafe extern "C" fn initialize_robot(&mut self) {
+        (((*(self)).robot)) = (::screen_object {
+                                   x: (rand() % (COLS - 1i32) + 1i32),
+                                   y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
+                                   character: (b'#'),
+                                   color: (0i32),
+                                   bold: (false),
+                                   ..((*(self)).robot)
+                               });
+        *(*((*(self)).screen).offset(((*(self)).robot).x as (isize)))
+            .offset(((*(self)).robot).y as (isize)) = 0i32;
+    }
+    #[no_mangle]
+    pub unsafe extern "C" fn initialize_kitten(&mut self) {
+        loop {
+            (((*(self)).kitten)) = (::screen_object {
+                                        x: (rand() % (COLS - 1i32) + 1i32),
+                                        y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
+                                        ..((*(self)).kitten)
+                                    });
+            if !(*(*((*(self)).screen).offset(((*(self)).kitten).x as (isize)))
+                     .offset(((*(self)).kitten).y as (isize)) != -1i32)
+            {
+                break;
+            }
+        }
+        loop {
+            (((*(self)).kitten)) = (::screen_object {
+                                        character: ((rand() % (126i32 - b'!' as (i32) + 1i32) +
+                                                         b'!' as (i32)) as
+                                                        (u8)),
+                                        ..((*(self)).kitten)
+                                    });
+            if !(validchar(((*(self)).kitten).character) == 0) {
+                break;
+            }
+        }
+        *(*((*(self)).screen).offset(((*(self)).kitten).x as (isize)))
+            .offset(((*(self)).kitten).y as (isize)) = 1i32;
+        (((*(self)).kitten)) = (::screen_object {
+                                    color: (rand() % 6i32 + 1i32),
+                                    bold: (if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0),
+                                    ..((*(self)).kitten)
+                                });
+    }
+    #[no_mangle]
+    pub unsafe extern "C" fn initialize_bogus(&mut self) {
+        let mut counter: i32 = ::std::mem::uninitialized();
+        let mut index: i32 = ::std::mem::uninitialized();
+        for counter in ((0i32)..(((*(self)).num_bogus))) {
+            (((*(self)).bogus)[counter as (usize)]) =
+                (::screen_object {
+                     color: (rand() % 6i32 + 1i32),
+                     bold: (if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0),
+                     ..(((*(self)).bogus)[counter as (usize)])
+                 });
+            loop {
+                (((*(self)).bogus)[counter as (usize)]) =
+                    (::screen_object {
+                         character: ((rand() % (126i32 - b'!' as (i32) + 1i32) + b'!' as (i32)) as
+                                         (u8)),
+                         ..(((*(self)).bogus)[counter as (usize)])
+                     });
+                if !(validchar(((*(self)).bogus)[counter as (usize)].character) == 0) {
+                    break;
+                }
+            }
+            loop {
+                (((*(self)).bogus)[counter as (usize)]) =
+                    (::screen_object {
+                         x: (rand() % (COLS - 1i32) + 1i32),
+                         y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
+                         ..(((*(self)).bogus)[counter as (usize)])
+                     });
+                if !(*(*((*(self)).screen).offset(
+                    ((*(self)).bogus)[counter as (usize)]
+                        .x as (isize),
+                )).offset(((*(self)).bogus)[counter as (usize)].y as (isize)) !=
+                         -1i32)
+                {
+                    break;
+                }
+            }
+            *(*((*(self)).screen).offset(((*(self)).bogus)[counter as (usize)].x as (isize)))
+                .offset(((*(self)).bogus)[counter as (usize)].y as (isize)) = counter + 2i32;
+            loop {
+                index = rand() % 406i32;
+                if !(((*(self)).used_messages)[index as (usize)] != 0i32) {
+                    break;
+                }
+            }
+            ((*(self)).bogus_messages)[counter as (usize)] = index;
+            ((*(self)).used_messages)[index as (usize)] = 1i32;
+        }
+    }
+    #[no_mangle]
+    pub unsafe extern "C" fn initialize_screen(&mut self) {
+        let mut counter: i32 = ::std::mem::uninitialized();
+        mvprintw(0i32, 0i32, (*b"robotfindskitten v%s\n\n\0").as_ptr(), ver);
+        counter = 0i32;
+        while (counter <= COLS - 1i32) {
+            printw((*b"%c\0").as_ptr(), 95i32);
+            counter = counter + 1;
+        }
+        for counter in ((0i32)..(((*(self)).num_bogus))) {
+            draw(((*(self)).bogus)[counter as (usize)]);
+        }
+        draw(((*(self)).kitten));
+        draw(((*(self)).robot));
+        wrefresh(stdscr);
+    }
 }
 
 #[derive(Copy)]
@@ -919,115 +1253,11 @@ pub unsafe extern "C" fn draw_in_place(mut o: screen_object) {
     full_draw(o, true);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn message(mut message: *mut u8, S_: &mut State) {
-    wmove(stdscr, 1i32, 0i32);
-    wclrtoeol(stdscr);
-    mvprintw(1i32, 0i32, (*b"%.*s\0").as_ptr(), COLS, message);
-    wmove(stdscr, ((*S_).robot).y, ((*S_).robot).x);
-    wrefresh(stdscr);
-}
 
-#[no_mangle]
-pub unsafe extern "C" fn play_game(S_: &mut State) {
-    let mut old_x: i32 = ((*S_).robot).x;
-    let mut old_y: i32 = ((*S_).robot).y;
-    let mut input: i32 = ::std::mem::uninitialized();
-    input = wgetch(stdscr);
-    while (input != 27i32 && (input != b'q' as (i32)) && (input != b'Q' as (i32))) {
-        (process_input)((input), S_);
-        if !(old_x == ((*S_).robot).x && (old_y == ((*S_).robot).y)) {
-            if wmove(stdscr, old_y, old_x) == -1i32 {
-                -1i32;
-            } else {
-                waddch(stdscr, b' ' as (usize));
-            }
-            *(*((*S_).screen).offset(old_x as (isize))).offset(old_y as (isize)) = -1i32;
-            draw(((*S_).robot));
-            wrefresh(stdscr);
-            *(*((*S_).screen).offset(((*S_).robot).x as (isize)))
-                .offset(((*S_).robot).y as (isize)) = 0i32;
-            old_x = ((*S_).robot).x;
-            old_y = ((*S_).robot).y;
-        }
-        input = wgetch(stdscr);
-    }
-    (message)(((*b"Bye!\0").as_ptr() as (*mut u8)), S_);
-    wrefresh(stdscr);
-    finish(0i32);
-}
 
-#[no_mangle]
-pub unsafe extern "C" fn process_input(mut input: i32, S_: &mut State) {
-    let mut check_x: i32 = ((*S_).robot).x;
-    let mut check_y: i32 = ((*S_).robot).y;
-    if !(input == 0i32) {
-        if input == b'F' as (i32) - 64i32 || input == b'L' as (i32) || input == b'l' as (i32) ||
-            input == 0o405i32
-        {
-            check_x = check_x + 1;
-        } else if input == b'B' as (i32) - 64i32 || input == b'H' as (i32) ||
-                   input == b'h' as (i32) || input == 0o404i32
-        {
-            check_x = check_x - 1;
-        } else if input == b'N' as (i32) || input == b'n' as (i32) || input == 0o522i32 {
-            check_x = check_x + 1;
-            check_y = check_y + 1;
-        } else if input == b'B' as (i32) || input == b'b' as (i32) || input == 0o550i32 {
-            check_x = check_x - 1;
-            check_y = check_y + 1;
-        } else if input == b'N' as (i32) - 64i32 || input == b'J' as (i32) ||
-                   input == b'j' as (i32) || input == 0o402i32
-        {
-            check_y = check_y + 1;
-        } else if input == b'U' as (i32) || input == b'u' as (i32) || input == 0o523i32 {
-            check_x = check_x + 1;
-            check_y = check_y - 1;
-        } else if input == b'Y' as (i32) || input == b'y' as (i32) || input == 0o406i32 {
-            check_x = check_x - 1;
-            check_y = check_y - 1;
-        } else if input == b'P' as (i32) - 64i32 || input == b'K' as (i32) ||
-                   input == b'k' as (i32) || input == 0o403i32
-        {
-            check_y = check_y - 1;
-        } else if input == b'L' as (i32) - 64i32 {
-            wrefresh(curscr);
-        } else {
-            (message)(
-                ((*b"Invalid input: Use direction keys or Esc.\0").as_ptr() as (*mut u8)),
-                S_,
-            );
-            return;
-        }
-    }
-    if check_y < 3i32 || check_y > LINES - 1i32 || check_x < 0i32 || check_x > COLS - 1i32 {
-    } else if *(*((*S_).screen).offset(check_x as (isize))).offset(check_y as (isize)) != -1i32 {
-        let switch2 = *(*((*S_).screen).offset(check_x as (isize))).offset(check_y as (isize));
-        if !(switch2 == 0i32) {
-            if switch2 == 1i32 {
-                wmove(stdscr, 1i32, 0i32);
-                wclrtoeol(stdscr);
-                (play_animation)((input), S_);
-            } else {
-                (message)(
-                    (messages[((*S_).bogus_messages)[(*(*((*S_).screen).offset(
-                        check_x as (isize),
-                    )).offset(check_y as (isize)) -
-                                                          2i32) as
-                                                         (usize)] as
-                                  (usize)]),
-                    S_,
-                );
-            }
-        }
-    } else {
-        (((*S_).robot)) = (::screen_object {
-                               x: (check_x),
-                               y: (check_y),
-                               ..((*S_).robot)
-                           });
-    }
-}
+
+
+
 
 #[no_mangle]
 pub unsafe extern "C" fn finish(mut sig: i32) {
@@ -1045,118 +1275,11 @@ pub unsafe extern "C" fn validchar(mut a: u8) -> i32 {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn play_animation(mut input: i32, S_: &mut State) {
-    let mut counter: i32 = ::std::mem::uninitialized();
-    counter = 4i32;
-    while (counter > 0i32) {
-        if wmove(stdscr, 1i32, 50i32 + counter + 1i32) == -1i32 {
-            -1i32;
-        } else {
-            waddch(stdscr, b' ' as (usize));
-        }
-        wmove(stdscr, 1i32, 50i32 + counter);
-        if input == 0o405i32 || input == 0o402i32 || input == 0o540i32 || input == 0o535i32 {
-            draw_in_place(((*S_).kitten));
-        } else {
-            draw_in_place(((*S_).robot));
-        }
-        if wmove(stdscr, 1i32, 50i32 - counter) == -1i32 {
-            -1i32;
-        } else {
-            waddch(stdscr, b' ' as (usize));
-        }
-        wmove(stdscr, 1i32, 50i32 - counter + 1i32);
-        if input == 0o405i32 || input == 0o402i32 || input == 0o540i32 || input == 0o535i32 {
-            draw_in_place(((*S_).robot));
-        } else {
-            draw_in_place(((*S_).kitten));
-        }
-        wrefresh(stdscr);
-        sleep(1u32);
-        counter = counter - 1;
-    }
-    wmove(stdscr, 1i32, 0i32);
-    waddnstr(
-        stdscr,
-        (*b"You found kitten! Way to go, robot!\0").as_ptr(),
-        -1i32,
-    );
-    wrefresh(stdscr);
-    finish(0i32);
-}
 
-#[no_mangle]
-pub unsafe extern "C" fn instructions(S_: &mut State) {
-    let mut dummy: u8 = ::std::mem::uninitialized();
-    mvprintw(0i32, 0i32, (*b"robotfindskitten v%s\n\0").as_ptr(), ver);
-    printw(
-        (*b"By the illustrious Leonard Richardson (C) 1997, 2000\n\0").as_ptr(),
-    );
-    printw(
-        (*b"Written originally for the Nerth Pork robotfindskitten contest\n\n\0").as_ptr(),
-    );
-    printw((*b"In this game, you are robot (\0").as_ptr());
-    draw_in_place(((*S_).robot));
-    printw((*b"). Your job is to find kitten. This task\n\0").as_ptr());
-    printw(
-        (*b"is complicated by the existence of various things which are not kitten.\n\0").as_ptr(),
-    );
-    printw(
-        (*b"Robot must touch items to determine if they are kitten or not. The game\n\0").as_ptr(),
-    );
-    printw(
-        (*b"ends when robotfindskitten. Alternatively, you may end the game by hitting\n\0")
-            .as_ptr(),
-    );
-    printw(
-        (*b"the Esc key. See the documentation for more information.\n\n\0").as_ptr(),
-    );
-    printw((*b"Press any key to start.\n\0").as_ptr());
-    wrefresh(stdscr);
-    dummy = wgetch(stdscr) as (u8);
-    wclear(stdscr);
-}
 
-#[no_mangle]
-pub unsafe extern "C" fn initialize_arrays(S_: &mut State) {
-    let mut counter: i32 = ::std::mem::uninitialized();
-    let mut counter2: i32 = ::std::mem::uninitialized();
-    let mut empty: screen_object = ::std::mem::uninitialized();
-    let mut i: i32 = 0i32;
-    ((*S_).screen) = malloc(
-        ((::std::mem::size_of::<*mut i32>()) *
-            (((COLS - 1i32 + 1i32) as (usize)))),
-    ) as (*mut *mut i32);
-    for i in ((0i32)..(COLS - 1i32 + 1i32)) {
-        *((*S_).screen).offset(i as (isize)) = malloc(
-            ((::std::mem::size_of::<i32>()) *
-                 (((LINES - 1i32 + 1i32) as (usize)))),
-        ) as (*mut i32);
-    }
-    (empty) = (::screen_object {
-                   x: (-1i32),
-                   y: (-1i32),
-                   color: (0i32),
-                   bold: (false),
-                   character: (b' '),
-                   ..(empty)
-               });
-    counter = 0i32;
-    while (counter <= COLS - 1i32) {
-        counter2 = 0i32;
-        while (counter2 <= LINES - 1i32) {
-            *(*((*S_).screen).offset(counter as (isize))).offset(counter2 as (isize)) = -1i32;
-            counter2 = counter2 + 1;
-        }
-        counter = counter + 1;
-    }
-    for counter in ((0i32)..(406i32)) {
-        ((*S_).used_messages)[counter as (usize)] = 0i32;
-        ((*S_).bogus_messages)[counter as (usize)] = 0i32;
-        ((*S_).bogus)[counter as (usize)] = empty;
-    }
-}
+
+
+
 
 #[no_mangle]
 pub unsafe extern "C" fn initialize_ncurses() {
@@ -1180,117 +1303,13 @@ pub unsafe extern "C" fn initialize_ncurses() {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn initialize_robot(S_: &mut State) {
-    (((*S_).robot)) = (::screen_object {
-                           x: (rand() % (COLS - 1i32) + 1i32),
-                           y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
-                           character: (b'#'),
-                           color: (0i32),
-                           bold: (false),
-                           ..((*S_).robot)
-                       });
-    *(*((*S_).screen).offset(((*S_).robot).x as (isize))).offset(((*S_).robot).y as (isize)) = 0i32;
-}
 
-#[no_mangle]
-pub unsafe extern "C" fn initialize_kitten(S_: &mut State) {
-    loop {
-        (((*S_).kitten)) = (::screen_object {
-                                x: (rand() % (COLS - 1i32) + 1i32),
-                                y: (rand() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
-                                ..((*S_).kitten)
-                            });
-        if !(*(*((*S_).screen).offset(((*S_).kitten).x as (isize)))
-                 .offset(((*S_).kitten).y as (isize)) != -1i32)
-        {
-            break;
-        }
-    }
-    loop {
-        (((*S_).kitten)) =
-            (::screen_object {
-                 character: ((rand() % (126i32 - b'!' as (i32) + 1i32) + b'!' as (i32)) as (u8)),
-                 ..((*S_).kitten)
-             });
-        if !(validchar(((*S_).kitten).character) == 0) {
-            break;
-        }
-    }
-    *(*((*S_).screen).offset(((*S_).kitten).x as (isize))).offset(((*S_).kitten).y as (isize)) =
-        1i32;
-    (((*S_).kitten)) = (::screen_object {
-                            color: (rand() % 6i32 + 1i32),
-                            bold: (if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0),
-                            ..((*S_).kitten)
-                        });
-}
 
-#[no_mangle]
-pub unsafe extern "C" fn initialize_bogus(S_: &mut State) {
-    let mut counter: i32 = ::std::mem::uninitialized();
-    let mut index: i32 = ::std::mem::uninitialized();
-    for counter in ((0i32)..(((*S_).num_bogus))) {
-        (((*S_).bogus)[counter as (usize)]) =
-            (::screen_object {
-                 color: (rand() % 6i32 + 1i32),
-                 bold: (if rand() % 2i32 != 0 { 1i32 } else { 0i32 } != 0),
-                 ..(((*S_).bogus)[counter as (usize)])
-             });
-        loop {
-            (((*S_).bogus)[counter as (usize)]) =
-                (::screen_object {
-                     character: ((rand() % (126i32 - b'!' as (i32) + 1i32) + b'!' as (i32)) as
-                         (u8)),
-                     ..(((*S_).bogus)[counter as (usize)])
-                 });
-            if !(validchar(((*S_).bogus)[counter as (usize)].character) == 0) {
-                break;
-            }
-        }
-        loop {
-            (((*S_).bogus)[counter as (usize)]) = (::screen_object {
-                                                       x: (rand() % (COLS - 1i32) + 1i32),
-                                                       y: (rand() % (LINES - 1i32 - 3i32 + 1i32) +
-                                                               3i32),
-                                                       ..(((*S_).bogus)[counter as (usize)])
-                                                   });
-            if !(*(*((*S_).screen).offset(((*S_).bogus)[counter as (usize)].x as (isize)))
-                     .offset(((*S_).bogus)[counter as (usize)].y as (isize)) !=
-                     -1i32)
-            {
-                break;
-            }
-        }
-        *(*((*S_).screen).offset(((*S_).bogus)[counter as (usize)].x as (isize)))
-            .offset(((*S_).bogus)[counter as (usize)].y as (isize)) = counter + 2i32;
-        loop {
-            index = rand() % 406i32;
-            if !(((*S_).used_messages)[index as (usize)] != 0i32) {
-                break;
-            }
-        }
-        ((*S_).bogus_messages)[counter as (usize)] = index;
-        ((*S_).used_messages)[index as (usize)] = 1i32;
-    }
-}
 
-#[no_mangle]
-pub unsafe extern "C" fn initialize_screen(S_: &mut State) {
-    let mut counter: i32 = ::std::mem::uninitialized();
-    mvprintw(0i32, 0i32, (*b"robotfindskitten v%s\n\n\0").as_ptr(), ver);
-    counter = 0i32;
-    while (counter <= COLS - 1i32) {
-        printw((*b"%c\0").as_ptr(), 95i32);
-        counter = counter + 1;
-    }
-    for counter in ((0i32)..(((*S_).num_bogus))) {
-        draw(((*S_).bogus)[counter as (usize)]);
-    }
-    draw(((*S_).kitten));
-    draw(((*S_).robot));
-    wrefresh(stdscr);
-}
+
+
+
+
 
 fn main() {
     use std::os::unix::ffi::OsStringExt;
@@ -1331,12 +1350,12 @@ pub unsafe extern "C" fn _c_main(mut argc: i32, mut argv: *mut *mut u8) -> i32 {
     srand(time(0i32 as (*mut isize)) as (u32));
     printf((*b"%c%c%c\0").as_ptr(), 27i32, b'(' as (i32), b'U' as (i32));
     initialize_ncurses();
-    (initialize_arrays)(&mut S);
-    (initialize_robot)(&mut S);
-    (initialize_kitten)(&mut S);
-    (initialize_bogus)(&mut S);
-    (instructions)(&mut S);
-    (initialize_screen)(&mut S);
-    (play_game)(&mut S);
+    ((&mut S)).initialize_arrays();
+    ((&mut S)).initialize_robot();
+    ((&mut S)).initialize_kitten();
+    ((&mut S)).initialize_bogus();
+    ((&mut S)).instructions();
+    ((&mut S)).initialize_screen();
+    ((&mut S)).play_game();
     0
 }
