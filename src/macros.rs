@@ -24,3 +24,12 @@ macro_rules! unpack {
         let ($($arg),*) = expect!([$e] $enum_::$variant($($arg),*) => ($($arg),*));
     };
 }
+
+macro_rules! matches {
+    ([$e:expr] $($pat:pat),*) => {
+        match $e {
+            $( $pat => true, )*
+            _ => false,
+        }
+    };
+}

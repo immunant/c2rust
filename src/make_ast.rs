@@ -265,6 +265,11 @@ impl Builder {
         }
     }
 
+    pub fn path<Pa>(self, path: Pa) -> Path
+            where Pa: Make<Path> {
+        path.make(&self)
+    }
+
     pub fn path_expr<Pa>(self, path: Pa) -> P<Expr>
             where Pa: Make<Path> {
         let path = path.make(&self);
@@ -302,6 +307,23 @@ impl Builder {
             span: DUMMY_SP,
             attrs: ThinVec::new(),
         })
+    }
+
+    pub fn self_arg<S>(self, kind: S) -> Arg
+            where S: Make<SelfKind> {
+        let kind = kind.make(&self);
+        let eself = Spanned { node: kind, span: DUMMY_SP };
+        let ident = Spanned { node: "self".make(&self), span: DUMMY_SP };
+        Arg::from_self(eself, ident)
+    }
+
+    pub fn spanned<T, U>(self, x: U) -> Spanned<T>
+            where U: Make<T> {
+        let x = x.make(&self);
+        Spanned {
+            node: x,
+            span: DUMMY_SP,
+        }
     }
 }
 

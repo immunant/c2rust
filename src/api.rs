@@ -72,6 +72,7 @@ pub fn find_first<P, T>(pattern: P,
 
 pub trait DriverCtxtExt<'gcx> {
     fn node_type(&self, id: NodeId) -> Ty<'gcx>;
+    fn def_type(&self, id: DefId) -> Ty<'gcx>;
     fn def_path(&self, id: DefId) -> Path;
 
     fn node_def_id(&self, id: NodeId) -> DefId;
@@ -86,6 +87,10 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
         let parent_body = self.hir_map().body_owned_by(parent);
         let tables = self.ty_ctxt().body_tables(parent_body);
         tables.node_id_to_type(id)
+    }
+
+    fn def_type(&self, id: DefId) -> Ty<'gcx> {
+        self.ty_ctxt().item_type(id)
     }
 
     /// Construct a `Path` AST suitable for referring to a definition.

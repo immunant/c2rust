@@ -12,6 +12,7 @@ pub trait Transform {
 }
 
 pub mod control_flow;
+pub mod funcs;
 pub mod statics;
 pub mod structs;
 pub mod test;
@@ -23,6 +24,8 @@ pub fn get_transform(name: &str, args: &[String]) -> Box<Transform> {
         "reconstruct_while" => Box::new(control_flow::ReconstructWhile),
         "reconstruct_for_range" => Box::new(control_flow::ReconstructForRange),
         "remove_unused_labels" => Box::new(control_flow::RemoveUnusedLabels),
+
+        "func_to_method" => Box::new(funcs::ToMethod),
 
         "static_collect_to_struct" => Box::new(statics::CollectToStruct {
             struct_name: args[0].clone(),

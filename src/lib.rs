@@ -20,7 +20,7 @@ extern crate syntax_pos;
 mod util;
 mod ast_equiv;
 mod fold;
-mod fold_node;
+pub mod fold_node;
 mod visit;
 pub mod print_spans;
 pub mod remove_paren;
