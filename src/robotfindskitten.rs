@@ -882,15 +882,13 @@ impl State {
                     wclrtoeol(stdscr);
                     ((self)).play_animation((input));
                 } else {
-                    ((self)).message(
-                        (messages[((*(self)).bogus_messages)[(*(*((*(self)).screen).offset(
-                            check_x as
-                                (isize),
+                    let index =
+                        ((*(self)).bogus_messages)[(*(*((*(self)).screen).offset(
+                            check_x as (isize),
                         )).offset(check_y as (isize)) -
-                                                                  2i32) as
-                                                                 (usize)] as
-                                      (usize)]),
-                    );
+                                                        2i32) as
+                                                       (usize)] as (usize);
+                    ((self)).message((messages[index]));
                 }
             }
         } else {
