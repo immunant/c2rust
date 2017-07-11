@@ -3,11 +3,13 @@ extern crate getopts;
 extern crate idiomize;
 extern crate syntax;
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::str::FromStr;
 use syntax::ast::NodeId;
 
 use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node, mark_adjust};
+
+use idiomize::bindings::IntoSymbol;
 
 
 
@@ -253,9 +255,10 @@ fn main() {
         None => return,
     };
 
-    let mut marks = HashMap::new();
+    let mut marks = HashSet::new();
     for m in &opts.marks {
-        marks.insert(NodeId::new(m.id), m.label.as_ref().map_or("target", |s| s).to_owned());
+        let label = m.label.as_ref().map_or("target", |s| s).into_symbol();
+        marks.insert((NodeId::new(m.id), label));
     }
 
     if opts.cursors.len() > 0 {
@@ -281,11 +284,11 @@ fn main() {
                     },
                 };
 
-                let label = c.label.as_ref().map_or("target", |s| s).to_owned();
+                let label = c.label.as_ref().map_or("target", |s| s).into_symbol();
 
                 println!("label {:?} as {:?}", id, label);
 
-                marks.insert(id, label);
+                marks.insert((id, label));
             }
         });
     }
@@ -316,8 +319,8 @@ fn main() {
             let mut marks = marks.iter().collect::<Vec<_>>();
             marks.sort();
 
-            for (&id, label) in marks {
-                println!("{}:{}", id.as_usize(), label);
+            for &(id, label) in marks {
+                println!("{}:{}", id.as_usize(), label.as_str());
             }
         } else if &cmd.name == "mark_uses" {
             let phase = driver::Phase::Phase2;

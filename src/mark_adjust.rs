@@ -7,8 +7,10 @@ use rustc::hir::def_id::DefId;
 use syntax::ast::*;
 use syntax::codemap::{Span, BytePos};
 use syntax::ext::hygiene::SyntaxContext;
+use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
+use bindings::IntoSymbol;
 use driver;
 use util::HirDefExt;
 use visit::Visit;
@@ -18,7 +20,7 @@ use visit::Visit;
 struct MarkUseVisitor<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
     cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
     uses: HashSet<NodeId>,
-    label: &'a str,
+    label: Symbol,
 }
 
 impl<'a, 'hir, 'gcx, 'tcx> MarkUseVisitor<'a, 'hir, 'gcx, 'tcx> {
@@ -68,7 +70,7 @@ pub fn find_mark_uses<T: Visit>(target: &T, cx: &driver::Ctxt, label: &str) -> H
     let mut v = MarkUseVisitor {
         cx: cx,
         uses: HashSet::new(),
-        label: label,
+        label: label.into_symbol(),
     };
     target.visit(&mut v);
     v.uses
@@ -76,12 +78,12 @@ pub fn find_mark_uses<T: Visit>(target: &T, cx: &driver::Ctxt, label: &str) -> H
 
 pub fn mark_uses_command(krate: &Crate,
                          cx: &driver::Ctxt,
-                         label: &str) -> HashMap<NodeId, String> {
+                         label: &str) -> HashSet<(NodeId, Symbol)> {
     let uses = find_mark_uses(krate, cx, label);
     let mut new_marks = cx.marks().clone().into_iter()
-                          .filter(|&(_, ref v)| v != label).collect::<HashMap<_, _>>();
+                          .filter(|&(_, v)| v.as_str() != label).collect::<HashSet<_>>();
     for id in uses {
-        new_marks.insert(id, label.to_owned());
+        new_marks.insert((id, label.into_symbol()));
     }
     new_marks
 }

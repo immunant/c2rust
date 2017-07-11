@@ -1,7 +1,7 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
 //! `librustc_driver::driver::compile_input`.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use arena::DroplessArena;
@@ -28,6 +28,7 @@ use syntax::symbol::Symbol;
 use syntax_ext;
 use syntax_pos::{BytePos, Span};
 
+use bindings::IntoSymbol;
 use get_span::GetSpan;
 use remove_paren::remove_paren;
 use util::Lone;
@@ -37,7 +38,7 @@ pub struct Ctxt<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
     sess: &'a Session,
     map: Option<&'a hir_map::Map<'hir>>,
     tcx: Option<TyCtxt<'a, 'gcx, 'tcx>>,
-    marks: HashMap<NodeId, String>,
+    marks: HashSet<(NodeId, Symbol)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -54,7 +55,7 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             map: None,
             tcx: None,
 
-            marks: HashMap::new(),
+            marks: HashSet::new(),
         }
     }
 
@@ -65,7 +66,7 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             map: Some(map),
             tcx: None,
 
-            marks: HashMap::new(),
+            marks: HashSet::new(),
         }
     }
 
@@ -77,7 +78,7 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             map: Some(map),
             tcx: Some(tcx),
 
-            marks: HashMap::new(),
+            marks: HashSet::new(),
         }
     }
 
@@ -95,20 +96,16 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }
 
-    pub fn marks(&self) -> &HashMap<NodeId, String> {
+    pub fn marks(&self) -> &HashSet<(NodeId, Symbol)> {
         &self.marks
     }
 
-    pub fn set_marks(&mut self, marks: HashMap<NodeId, String>) {
+    pub fn set_marks(&mut self, marks: HashSet<(NodeId, Symbol)>) {
         self.marks = marks;
     }
 
-    pub fn marked(&self, id: NodeId, mark: &str) -> bool {
-        self.marks.get(&id).map_or(false, |s| s == mark)
-    }
-
-    pub fn any_mark(&self, id: NodeId) -> bool {
-        self.marks.contains_key(&id)
+    pub fn marked<S: IntoSymbol>(&self, id: NodeId, mark: S) -> bool {
+        self.marks.contains(&(id, mark.into_symbol()))
     }
 }
 

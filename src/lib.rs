@@ -35,7 +35,7 @@ mod dataflow;
 pub mod pick_node;
 pub mod mark_adjust;
 
-mod bindings;
+pub mod bindings;
 pub mod driver;
 pub mod span_fix;
 mod matcher;

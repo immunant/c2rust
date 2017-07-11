@@ -141,3 +141,9 @@ impl IntoSymbol for String {
         Symbol::intern(&self)
     }
 }
+
+impl<'a> IntoSymbol for &'a String {
+    fn into_symbol(self) -> Symbol {
+        <&str as IntoSymbol>::into_symbol(self)
+    }
+}
