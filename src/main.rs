@@ -312,6 +312,14 @@ fn main() {
                 let krate = span_fix::fix_spans(cx.session(), krate);
                 idiomize::pick_node::pick_node_command(&krate, &cx, &cmd.args);
             });
+        } else if &cmd.name == "print_marks" {
+            let mut marks = marks.iter().collect::<Vec<_>>();
+            marks.sort();
+
+            for (&id, label) in marks {
+                println!("{}:{}", id.as_usize(), label);
+            }
+
         } else {
             panic!("unknown command: {:?}", cmd.name);
         }
