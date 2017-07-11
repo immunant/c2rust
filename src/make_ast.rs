@@ -1,7 +1,8 @@
 use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Spanned};
 use syntax::ptr::P;
-use bindings::IntoSymbol;
+
+use util::IntoSymbol;
 
 
 pub trait Make<T> {

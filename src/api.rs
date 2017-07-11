@@ -23,12 +23,12 @@ pub use path_edit::{self, fold_resolved_paths};
 pub use fn_edit::fold_fns;
 
 use bindings::Bindings;
-use bindings::IntoSymbol;
 use driver;
 use fold::Fold;
 use get_node_id::GetNodeId;
 use matcher::Pattern;
 use util::HirDefExt;
+use util::IntoSymbol;
 
 pub fn replace_expr<T: Fold>(sess: &Session,
                              ast: T,

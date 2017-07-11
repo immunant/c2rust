@@ -4,6 +4,7 @@ use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
 use ast_equiv::AstEquiv;
+use util::IntoSymbol;
 
 
 #[derive(Clone, Debug)]
@@ -117,33 +118,4 @@ define_binding_values! {
     Stmt(Stmt), add_stmt, try_add_stmt, stmt, get_stmt;
     MultiStmt(Vec<Stmt>), add_multi_stmt, try_add_multi_stmt, multi_stmt, get_multi_stmt;
     Item(P<Item>), add_item, try_add_item, item, get_item;
-}
-
-
-pub trait IntoSymbol {
-    fn into_symbol(self) -> Symbol;
-}
-
-impl IntoSymbol for Symbol {
-    fn into_symbol(self) -> Symbol {
-        self
-    }
-}
-
-impl<'a> IntoSymbol for &'a str {
-    fn into_symbol(self) -> Symbol {
-        Symbol::intern(self)
-    }
-}
-
-impl IntoSymbol for String {
-    fn into_symbol(self) -> Symbol {
-        Symbol::intern(&self)
-    }
-}
-
-impl<'a> IntoSymbol for &'a String {
-    fn into_symbol(self) -> Symbol {
-        <&str as IntoSymbol>::into_symbol(self)
-    }
 }

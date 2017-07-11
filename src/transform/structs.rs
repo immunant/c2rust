@@ -8,9 +8,9 @@ use syntax::util::small_vector::SmallVector;
 
 use api::*;
 use ast_equiv::AstEquiv;
-use bindings::IntoSymbol;
 use driver::{self, Phase};
 use transform::Transform;
+use util::IntoSymbol;
 use util::Lone;
 
 

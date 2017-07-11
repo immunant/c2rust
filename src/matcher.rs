@@ -7,9 +7,10 @@ use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
 
-use bindings::{self, Bindings, IntoSymbol};
+use bindings::{self, Bindings};
 use fold::Fold;
 use util::AsSymbol;
+use util::IntoSymbol;
 
 
 pub type Result<T> = result::Result<T, Error>;

@@ -9,7 +9,7 @@ use syntax::ast::NodeId;
 
 use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node, mark_adjust};
 
-use idiomize::bindings::IntoSymbol;
+use idiomize::util::IntoSymbol;
 
 
 

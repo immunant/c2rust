@@ -28,9 +28,9 @@ use syntax::symbol::Symbol;
 use syntax_ext;
 use syntax_pos::{BytePos, Span};
 
-use bindings::IntoSymbol;
 use get_span::GetSpan;
 use remove_paren::remove_paren;
+use util::IntoSymbol;
 use util::Lone;
 
 

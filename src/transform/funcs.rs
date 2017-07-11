@@ -15,12 +15,12 @@ use syntax::util::small_vector::SmallVector;
 use api::*;
 use ast_equiv::AstEquiv;
 use bindings::Bindings;
-use bindings::IntoSymbol;
 use dataflow;
 use driver::{self, Phase};
 use fold::Fold;
 use fn_edit::FnLike;
 use transform::Transform;
+use util::IntoSymbol;
 use util::Lone;
 
 

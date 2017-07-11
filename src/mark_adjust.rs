@@ -10,9 +10,9 @@ use syntax::ext::hygiene::SyntaxContext;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
-use bindings::IntoSymbol;
 use driver;
 use util::HirDefExt;
+use util::IntoSymbol;
 use visit::Visit;
 
 
