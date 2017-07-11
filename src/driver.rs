@@ -1,6 +1,7 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
 //! `librustc_driver::driver::compile_input`.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use arena::DroplessArena;
@@ -17,7 +18,7 @@ use rustc_metadata::cstore::CStore;
 use rustc_resolve::{Resolver, MakeGlobMap};
 use rustc_trans::back::link;
 use syntax;
-use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item};
+use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, NodeId};
 use syntax::codemap::{CodeMap, RealFileLoader};
 use syntax::ext::base::ExtCtxt;
 use syntax::parse;
@@ -36,7 +37,7 @@ pub struct Ctxt<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
     sess: &'a Session,
     map: Option<&'a hir_map::Map<'hir>>,
     tcx: Option<TyCtxt<'a, 'gcx, 'tcx>>,
-    cursors: Vec<BytePos>,
+    marks: HashMap<NodeId, String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -53,7 +54,7 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             map: None,
             tcx: None,
 
-            cursors: Vec::new(),
+            marks: HashMap::new(),
         }
     }
 
@@ -64,7 +65,7 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             map: Some(map),
             tcx: None,
 
-            cursors: Vec::new(),
+            marks: HashMap::new(),
         }
     }
 
@@ -76,7 +77,7 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             map: Some(map),
             tcx: Some(tcx),
 
-            cursors: Vec::new(),
+            marks: HashMap::new(),
         }
     }
 
@@ -94,42 +95,20 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }
 
-    pub fn add_cursor(&mut self, file: &str, line: u32, col: u32) {
-        let fm = match self.sess.codemap().get_filemap(file) {
-            Some(x) => x,
-            None => {
-                println!("warning: cursor lies in nonexistent file {:?}", file);
-                return;
-            },
-        };
-
-        if line == 0 || line as usize - 1 >= fm.lines.borrow().len() {
-            println!("warning: line {} is outside the bounds of {}", line, file);
-            return;
-        };
-        let (lo, hi) = fm.line_bounds(line as usize - 1);
-
-        let line_len = hi.0 - lo.0;
-        if col == 0 || col - 1 >= line_len {
-            println!("warning: column {} is outside the bounds of {} line {}",
-                     col, file, line);
-            return;
-        }
-
-        self.cursors.push(lo + BytePos(col - 1));
+    pub fn marks(&self) -> &HashMap<NodeId, String> {
+        &self.marks
     }
 
-    pub fn span_has_cursor(&self, sp: Span) -> bool {
-        for &c in &self.cursors {
-            if sp.lo <= c && c < sp.hi {
-                return true;
-            }
-        }
-        false
+    pub fn set_marks(&mut self, marks: HashMap<NodeId, String>) {
+        self.marks = marks;
     }
 
-    pub fn has_cursor<T: GetSpan>(&self, x: &T) -> bool {
-        self.span_has_cursor(x.get_span())
+    pub fn marked(&self, id: NodeId, mark: &str) -> bool {
+        self.marks.get(&id).map_or(false, |s| s == mark)
+    }
+
+    pub fn any_mark(&self, id: NodeId) -> bool {
+        self.marks.contains_key(&id)
     }
 }
 

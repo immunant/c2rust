@@ -21,6 +21,11 @@ impl Folder for RemoveParen {
         }
         e.map(|e| fold::noop_fold_expr(e, self))
     }
+
+    // Need a no-op implementation to avoid "fold_mac disabled by default" error.
+    fn fold_mac(&mut self, mac: Mac) -> Mac {
+        fold::noop_fold_mac(mac, self)
+    }
 }
 
 pub fn remove_paren<T: Fold>(x: T) -> <T as Fold>::Result {

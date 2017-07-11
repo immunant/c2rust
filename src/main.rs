@@ -1,19 +1,36 @@
 #![feature(rustc_private)]
 extern crate getopts;
 extern crate idiomize;
+extern crate syntax;
 
+use std::collections::HashMap;
 use std::str::FromStr;
+use syntax::ast::NodeId;
 
-use idiomize::{file_rewrite, driver, transform, span_fix, rewrite};
+use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node};
 
 
+
+struct Cursor {
+    file: String,
+    line: u32,
+    col: u32,
+    label: Option<String>,
+    kind: Option<String>,
+}
+
+struct Mark {
+    id: usize,
+    label: Option<String>,
+}
 
 struct Options {
     rewrite_mode: file_rewrite::RewriteMode,
     command: String,
     command_args: Vec<String>,
     rustc_args: Vec<String>,
-    cursors: Vec<(String, u32, u32)>,
+    cursors: Vec<Cursor>,
+    marks: Vec<Mark>,
 }
 
 fn find<T: PartialEq<U>, U: ?Sized>(xs: &[T], x: &U) -> Option<usize> {
@@ -37,10 +54,13 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
             "output rewritten code `inplace`, `alongside` the original, \
                or `print` to screen? (default: print)",
             "MODE", HasArg::Yes, Occur::Optional),
-        opt("c", "cursor", 
+        opt("c", "cursor",
             "a cursor position, used to filter some rewrite operations",
-            "FILE:LINE:COL", HasArg::Yes, Occur::Multi),
-        opt("h", "help", 
+            "FILE:LINE:COL[:LABEL[:KIND]]", HasArg::Yes, Occur::Multi),
+        opt("m", "mark",
+            "a marked node indicated by its ID, and a label for that mark",
+            "ID[:LABEL]", HasArg::Yes, Occur::Multi),
+        opt("h", "help",
             "display usage information",
             "", HasArg::No, Occur::Optional),
     ];
@@ -98,29 +118,92 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     let cursor_strs = m.opt_strs("cursor");
     let mut cursors = Vec::with_capacity(cursor_strs.len());
     for s in &cursor_strs {
-        let parts = s.split(':').collect::<Vec<_>>();
-        if parts.len() != 3 {
-            println!("Bad cursor position string: {:?}", s);
+        let mut parts = s.split(':');
+
+        let file = match parts.next() {
+            Some(x) => x.to_owned(),
+            None => {
+                println!("Bad cursor string: {:?}", s);
+                return None;
+            },
+        };
+
+        let line = match parts.next().map(|s| u32::from_str(s).map_err(|_| s)) {
+            Some(Ok(x)) => x,
+            Some(Err(s)) => {
+                println!("Bad cursor line number: {:?}", s);
+                return None;
+            },
+            None => {
+                println!("Bad cursor string: {:?}", s);
+                return None;
+            }
+        };
+
+        let col = match parts.next().map(|s| u32::from_str(s).map_err(|_| s)) {
+            Some(Ok(x)) => x,
+            Some(Err(s)) => {
+                println!("Bad cursor column number: {:?}", s);
+                return None;
+            },
+            None => {
+                println!("Bad cursor string: {:?}", s);
+                return None;
+            }
+        };
+
+        let label = match parts.next() {
+            Some(s) if s.len() > 0 => Some(s.to_owned()),
+            _ => None,
+        };
+
+        let kind = parts.next().map(|s| s.to_owned());
+
+        if parts.next().is_some() {
+            println!("Bad cursor string: {:?}", s);
             return None;
         }
 
-        let name = parts[0];
-        let line = match u32::from_str(&parts[1]) {
-            Ok(x) => x,
-            Err(_) => {
-                println!("Bad cursor line number: {:?}", parts[1]);
+
+        cursors.push(Cursor {
+            file: file,
+            line: line,
+            col: col,
+            label: label,
+            kind: kind,
+        });
+    }
+
+    // Parse marks
+    let mark_strs = m.opt_strs("mark");
+    let mut marks = Vec::with_capacity(mark_strs.len());
+    for s in &mark_strs {
+        let mut parts = s.split(':');
+
+        let id = match parts.next().map(|s| usize::from_str(s).map_err(|_| s)) {
+            Some(Ok(x)) => x,
+            Some(Err(s)) => {
+                println!("Bad mark node ID: {:?}", s);
                 return None;
             },
-        };
-        let col = match u32::from_str(&parts[2]) {
-            Ok(x) => x,
-            Err(_) => {
-                println!("Bad cursor column number: {:?}", parts[2]);
+            None => {
+                println!("Bad mark string: {:?}", s);
                 return None;
-            },
+            }
         };
 
-        cursors.push((name.to_owned(), line, col));
+        let label = parts.next().map(|s| s.to_owned());
+
+        if parts.next().is_some() {
+            println!("Bad mark string: {:?}", s);
+            return None;
+        }
+
+
+        marks.push(Mark {
+            id: id,
+            label: label,
+        });
     }
 
     // Parse transform name + args
@@ -138,6 +221,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         command_args,
         rustc_args,
         cursors,
+        marks,
     })
 }
 
@@ -148,12 +232,47 @@ fn main() {
         None => return,
     };
 
+    let mut marks = HashMap::new();
+    for m in &opts.marks {
+        marks.insert(NodeId::new(m.id), m.label.as_ref().map_or("target", |s| s).to_owned());
+    }
+
+    if opts.cursors.len() > 0 {
+        driver::with_crate_and_context(&opts.rustc_args, driver::Phase::Phase2, |krate, cx| {
+            for c in &opts.cursors {
+                let kind_result = c.kind.clone().map_or(Ok(pick_node::NodeKind::Any),
+                                                        |s| pick_node::NodeKind::from_str(&s));
+                let kind = match kind_result {
+                    Ok(k) => k,
+                    Err(_) => {
+                        println!("Bad cursor kind: {:?}", c.kind.as_ref().unwrap());
+                        continue;
+                    },
+                };
+
+                let id = match pick_node::pick_node_at_loc(
+                        &krate, &cx, kind, &c.file, c.line, c.col) {
+                    Some(info) => info.id,
+                    None => {
+                        println!("Failed to find {:?} at {}:{}:{}",
+                                 kind, c.file, c.line, c.col);
+                        continue;
+                    },
+                };
+
+                let label = c.label.as_ref().map_or("target", |s| s).to_owned();
+
+                println!("label {:?} as {:?}", id, label);
+
+                marks.insert(id, label);
+            }
+        });
+    }
+
     let opt_transform = transform::get_transform(&opts.command, &opts.command_args);
     if let Some(transform) = opt_transform {
         driver::with_crate_and_context(&opts.rustc_args, transform.min_phase(), |krate, mut cx| {
-            for &(ref file, line, col) in &opts.cursors {
-                cx.add_cursor(file, line, col);
-            }
+            cx.set_marks(marks);
 
             let krate = span_fix::fix_spans(cx.session(), krate);
             let krate2 = transform.transform(krate.clone(), &cx);

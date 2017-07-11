@@ -40,7 +40,7 @@ impl Transform for CollectToStruct {
             while let Some(bnd) = curs.advance_until_match(
                     |i| MatchCtxt::from_match(&static_pat, &i)
                             .ok().map(|mcx| mcx.bindings)) {
-                if !cx.has_cursor(curs.next()) {
+                if !cx.marked(curs.next().id, "target") {
                     curs.advance();
                     continue;
                 }
@@ -127,7 +127,7 @@ impl Transform for Localize {
         let mut statics = HashMap::new();
 
         let krate = fold_nodes(krate, |i: P<Item>| {
-            if !cx.has_cursor(&i) {
+            if !cx.marked(i.id, "target") {
                 return SmallVector::one(i);
             }
 
@@ -155,7 +155,7 @@ impl Transform for Localize {
         // Collect all outgoing references from marked functions.
         let mut fn_refs = HashMap::new();
         let krate = fold_fns(krate, |mut fl| {
-            if !cx.span_has_cursor(fl.span) {
+            if !cx.marked(fl.id, "user") {
                 return fl;
             }
 

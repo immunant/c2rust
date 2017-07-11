@@ -35,7 +35,7 @@ impl Transform for ToMethod {
 
         let krate = fold_nodes(krate, |i: P<Item>| {
             // We're looking for an inherent impl (no `TraitRef`) marked with a cursor.
-            if !cx.has_cursor(&i) ||
+            if !cx.marked(i.id, "dest") ||
                !matches!([i.node] ItemKind::Impl(_, _, _, None, _, _)) {
                 return SmallVector::one(i);
             }
@@ -73,14 +73,9 @@ impl Transform for ToMethod {
         let krate = fold_modules(krate, |curs| {
             while let Some(arg_idx) = curs.advance_until_match(|i| {
                 // Find the argument under the cursor.
-                if !cx.has_cursor(&i) {
-                    return None;
-                }
                 let decl = match_or!([i.node] ItemKind::Fn(ref decl, ..) => decl; return None);
                 for (idx, arg) in decl.inputs.iter().enumerate() {
-                    if cx.has_cursor(&arg.pat) || cx.has_cursor(&arg.ty) ||
-                       (arg.pat.span.ctxt == arg.ty.span.ctxt &&
-                        cx.span_has_cursor(arg.pat.span.between(arg.ty.span))) {
+                    if cx.marked(arg.id, "target") {
                         return Some(idx);
                     }
                 }
@@ -286,7 +281,7 @@ struct SinkUnsafeFolder<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
 impl<'a, 'hir, 'gcx, 'tcx> Folder for SinkUnsafeFolder<'a, 'hir, 'gcx, 'tcx> {
     fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
         let i =
-            if self.cx.has_cursor(&i) &&
+            if self.cx.marked(i.id, "target") &&
                matches!([i.node] ItemKind::Fn(_, Unsafety::Unsafe, _, _, _, _)) {
                 i.map(|mut i| {
                     match i.node {

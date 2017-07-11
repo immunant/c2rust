@@ -107,7 +107,7 @@ impl Transform for Rename {
 
         // Find the struct definition and rename it.
         let krate = fold_nodes(krate, |i: P<Item>| {
-            if target_def_id.is_some() || !cx.has_cursor(&i) {
+            if target_def_id.is_some() || !cx.marked(i.id, "target") {
                 return SmallVector::one(i);
             }
 

@@ -27,7 +27,7 @@ impl<'a> Visitor<'a> for PickVisitor {
         // the function and not its containing module, for example.
         visit::walk_item(self, x);
         if self.node_info.is_none() &&
-           self.kind == NodeKind::Item &&
+           self.kind.includes(NodeKind::Item) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -36,7 +36,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     fn visit_stmt(&mut self, x: &'a Stmt) {
         visit::walk_stmt(self, x);
         if self.node_info.is_none() &&
-           self.kind == NodeKind::Stmt &&
+           self.kind.includes(NodeKind::Stmt) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -45,7 +45,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     fn visit_expr(&mut self, x: &'a Expr) {
         visit::walk_expr(self, x);
         if self.node_info.is_none() &&
-           self.kind == NodeKind::Expr &&
+           self.kind.includes(NodeKind::Expr) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -54,7 +54,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     fn visit_pat(&mut self, x: &'a Pat) {
         visit::walk_pat(self, x);
         if self.node_info.is_none() &&
-           self.kind == NodeKind::Pat &&
+           self.kind.includes(NodeKind::Pat) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -63,7 +63,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     fn visit_ty(&mut self, x: &'a Ty) {
         visit::walk_ty(self, x);
         if self.node_info.is_none() &&
-           self.kind == NodeKind::Ty &&
+           self.kind.includes(NodeKind::Ty) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -74,7 +74,7 @@ impl<'a> Visitor<'a> for PickVisitor {
         visit::walk_fn(self, fk, fd, s);
 
         if self.node_info.is_none() &&
-           self.kind == NodeKind::Arg {
+           self.kind.includes(NodeKind::Arg) {
             for arg in &fd.inputs {
                 if arg.ty.span.contains(self.target) ||
                    arg.pat.span.contains(self.target) ||
@@ -88,16 +88,45 @@ impl<'a> Visitor<'a> for PickVisitor {
             }
         }
     }
+
+    fn visit_mac(&mut self, mac: &'a Mac) {
+        visit::walk_mac(self, mac);
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NodeKind {
+    Any,
     Item,
     Stmt,
     Expr,
     Pat,
     Ty,
     Arg,
+}
+
+impl NodeKind {
+    fn includes(self, other: NodeKind) -> bool {
+        self == NodeKind::Any || other == self
+    }
+}
+
+impl FromStr for NodeKind {
+    type Err = ();
+    fn from_str(s: &str) -> Result<NodeKind, ()> {
+        let kind =
+            match s {
+                "any" => NodeKind::Any,
+                "item" => NodeKind::Item,
+                "stmt" => NodeKind::Stmt,
+                "expr" => NodeKind::Expr,
+                "pat" => NodeKind::Pat,
+                "ty" => NodeKind::Ty,
+                "arg" => NodeKind::Arg,
+                s => return Err(()),
+            };
+        Ok(kind)
+    }
 }
 
 pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo> {
@@ -110,22 +139,12 @@ pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo
     v.node_info
 }
 
-pub fn pick_node_command(krate: &Crate, cx: &driver::Ctxt, args: &[String]) {
-    let kind = match &args[0] as &str {
-        "item" => NodeKind::Item,
-        "stmt" => NodeKind::Stmt,
-        "expr" => NodeKind::Expr,
-        "pat" => NodeKind::Pat,
-        "ty" => NodeKind::Ty,
-        "arg" => NodeKind::Arg,
-        s => panic!("unrecognized node kind: {:?}", s),
-    };
-
-    let file = &args[1];
-    let line = u32::from_str(&args[2]).unwrap();
-    let col = u32::from_str(&args[3]).unwrap();
-
-
+pub fn pick_node_at_loc(krate: &Crate,
+                        cx: &driver::Ctxt,
+                        kind: NodeKind,
+                        file: &str,
+                        line: u32,
+                        col: u32) -> Option<NodeInfo> {
     let fm = match cx.session().codemap().get_filemap(file) {
         Some(x) => x,
         None => {
@@ -143,12 +162,19 @@ pub fn pick_node_command(krate: &Crate, cx: &driver::Ctxt, args: &[String]) {
         panic!("column {} is outside the bounds of {} line {}", col, file, line);
     }
 
+    // TODO: make this work when the line contains multibyte characters
     let pos = lo + BytePos(col - 1);
 
+    pick_node(krate, kind, pos)
+}
 
-    let result = pick_node(krate, kind, pos);
+pub fn pick_node_command(krate: &Crate, cx: &driver::Ctxt, args: &[String]) {
+    let kind = NodeKind::from_str(&args[0]).unwrap();
+    let file = &args[1];
+    let line = u32::from_str(&args[2]).unwrap();
+    let col = u32::from_str(&args[3]).unwrap();
 
-
+    let result = pick_node_at_loc(krate, cx, kind, file, line, col);
 
     if let Some(ref result) = result {
         let lo_loc = cx.session().codemap().lookup_char_pos(result.span.lo);
