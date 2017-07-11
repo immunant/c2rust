@@ -7,20 +7,19 @@ use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::small_vector::SmallVector;
 
 
-// Helper functions for extracting the `Symbol` from a pattern AST.
-
-pub trait AsSymbol {
-    fn as_symbol(&self) -> Option<Symbol>;
+/// Extract the symbol from a pattern-like AST.
+pub trait PatternSymbol {
+    fn pattern_symbol(&self) -> Option<Symbol>;
 }
 
-impl AsSymbol for Ident {
-    fn as_symbol(&self) -> Option<Symbol> {
+impl PatternSymbol for Ident {
+    fn pattern_symbol(&self) -> Option<Symbol> {
         Some(self.name)
     }
 }
 
-impl AsSymbol for Path {
-    fn as_symbol(&self) -> Option<Symbol> {
+impl PatternSymbol for Path {
+    fn pattern_symbol(&self) -> Option<Symbol> {
         if self.segments.len() != 1 {
             return None;
         }
@@ -28,78 +27,78 @@ impl AsSymbol for Path {
         if seg.parameters.is_some() {
             return None;
         }
-        seg.identifier.as_symbol()
+        seg.identifier.pattern_symbol()
     }
 }
 
-impl AsSymbol for Expr {
-    fn as_symbol(&self) -> Option<Symbol> {
+impl PatternSymbol for Expr {
+    fn pattern_symbol(&self) -> Option<Symbol> {
         match self.node {
-            ExprKind::Path(None, ref p) => p.as_symbol(),
+            ExprKind::Path(None, ref p) => p.pattern_symbol(),
             _ => None,
         }
     }
 }
 
-impl AsSymbol for Stmt {
-    fn as_symbol(&self) -> Option<Symbol> {
+impl PatternSymbol for Stmt {
+    fn pattern_symbol(&self) -> Option<Symbol> {
         match self.node {
-            StmtKind::Semi(ref e) => e.as_symbol(),
+            StmtKind::Semi(ref e) => e.pattern_symbol(),
             _ => None,
         }
     }
 }
 
-impl AsSymbol for Pat {
-    fn as_symbol(&self) -> Option<Symbol> {
+impl PatternSymbol for Pat {
+    fn pattern_symbol(&self) -> Option<Symbol> {
         match self.node {
             PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
-                           ref i, None) => i.node.as_symbol(),
+                           ref i, None) => i.node.pattern_symbol(),
             _ => None,
         }
     }
 }
 
-impl AsSymbol for Ty {
-    fn as_symbol(&self) -> Option<Symbol> {
+impl PatternSymbol for Ty {
+    fn pattern_symbol(&self) -> Option<Symbol> {
         match self.node {
-            TyKind::Path(None, ref p) => p.as_symbol(),
+            TyKind::Path(None, ref p) => p.pattern_symbol(),
             _ => None,
         }
     }
 }
 
-impl AsSymbol for Mac {
-    fn as_symbol(&self) -> Option<Symbol> {
+impl PatternSymbol for Mac {
+    fn pattern_symbol(&self) -> Option<Symbol> {
         if self.node.tts != ThinTokenStream::from(TokenStream::empty()) {
             return None;
         }
-        self.node.path.as_symbol()
+        self.node.path.pattern_symbol()
     }
 }
 
-impl AsSymbol for Item {
-    fn as_symbol(&self) -> Option<Symbol> {
+impl PatternSymbol for Item {
+    fn pattern_symbol(&self) -> Option<Symbol> {
         match self.node {
-            ItemKind::Mac(ref m) => m.as_symbol(),
+            ItemKind::Mac(ref m) => m.pattern_symbol(),
             _ => None,
         }
     }
 }
 
-impl AsSymbol for ImplItem {
-    fn as_symbol(&self) -> Option<Symbol> {
+impl PatternSymbol for ImplItem {
+    fn pattern_symbol(&self) -> Option<Symbol> {
         match self.node {
-            ImplItemKind::Macro(ref m) => m.as_symbol(),
+            ImplItemKind::Macro(ref m) => m.pattern_symbol(),
             _ => None,
         }
     }
 }
 
-impl AsSymbol for TraitItem {
-    fn as_symbol(&self) -> Option<Symbol> {
+impl PatternSymbol for TraitItem {
+    fn pattern_symbol(&self) -> Option<Symbol> {
         match self.node {
-            TraitItemKind::Macro(ref m) => m.as_symbol(),
+            TraitItemKind::Macro(ref m) => m.pattern_symbol(),
             _ => None,
         }
     }

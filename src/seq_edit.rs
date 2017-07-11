@@ -10,7 +10,7 @@ use syntax::util::small_vector::SmallVector;
 use bindings::{self, Bindings};
 use cursor::Cursor;
 use fold::Fold;
-use util::AsSymbol;
+use util::PatternSymbol;
 use util::IntoSymbol;
 
 

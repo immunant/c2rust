@@ -9,7 +9,7 @@ use syntax::util::small_vector::SmallVector;
 
 use bindings::{self, Bindings};
 use fold::Fold;
-use util::AsSymbol;
+use util::PatternSymbol;
 use util::IntoSymbol;
 
 
@@ -79,7 +79,7 @@ impl MatchCtxt {
 
 
     pub fn maybe_capture_ident(&mut self, pattern: &Ident, target: &Ident) -> Result<bool> {
-        let sym = match pattern.as_symbol() {
+        let sym = match pattern.pattern_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };
@@ -97,7 +97,7 @@ impl MatchCtxt {
     }
 
     pub fn maybe_capture_label(&mut self, pattern: &Ident, target: &Ident) -> Result<bool> {
-        let sym = match pattern.as_symbol() {
+        let sym = match pattern.pattern_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };
@@ -115,7 +115,7 @@ impl MatchCtxt {
     }
 
     pub fn maybe_capture_path(&mut self, pattern: &Path, target: &Path) -> Result<bool> {
-        let sym = match pattern.as_symbol() {
+        let sym = match pattern.pattern_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };
@@ -131,7 +131,7 @@ impl MatchCtxt {
     }
 
     pub fn maybe_capture_expr(&mut self, pattern: &Expr, target: &Expr) -> Result<bool> {
-        let sym = match pattern.as_symbol() {
+        let sym = match pattern.pattern_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };
@@ -147,7 +147,7 @@ impl MatchCtxt {
     }
 
     pub fn maybe_capture_pat(&mut self, pattern: &Pat, target: &Pat) -> Result<bool> {
-        let sym = match pattern.as_symbol() {
+        let sym = match pattern.pattern_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };
@@ -163,7 +163,7 @@ impl MatchCtxt {
     }
 
     pub fn maybe_capture_ty(&mut self, pattern: &Ty, target: &Ty) -> Result<bool> {
-        let sym = match pattern.as_symbol() {
+        let sym = match pattern.pattern_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };
@@ -179,7 +179,7 @@ impl MatchCtxt {
     }
 
     pub fn maybe_capture_stmt(&mut self, pattern: &Stmt, target: &Stmt) -> Result<bool> {
-        let sym = match pattern.as_symbol() {
+        let sym = match pattern.pattern_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };
@@ -340,7 +340,7 @@ pub fn match_multi_stmt(mcx: &mut MatchCtxt, pattern: &[Stmt], target: &[Stmt]) 
     }
 
     if is_multi_stmt_glob(mcx, &pattern[0]) {
-        let name = pattern[0].as_symbol().unwrap();
+        let name = pattern[0].pattern_symbol().unwrap();
         for i in (0 .. target.len() + 1).rev() {
             let orig_mcx = mcx.clone();
             if let Some(consumed) = match_multi_stmt(mcx, &pattern[1..], &target[i..]) {
@@ -380,7 +380,7 @@ pub fn match_multi_stmt(mcx: &mut MatchCtxt, pattern: &[Stmt], target: &[Stmt]) 
 }
 
 fn is_multi_stmt_glob(mcx: &MatchCtxt, pattern: &Stmt) -> bool {
-    let sym = match pattern.as_symbol() {
+    let sym = match pattern.pattern_symbol() {
         Some(x) => x,
         None => return false,
     };
