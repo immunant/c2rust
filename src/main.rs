@@ -11,6 +11,7 @@ use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node};
 
 
 
+#[derive(Clone, Debug)]
 struct Cursor {
     file: String,
     line: u32,
@@ -19,15 +20,21 @@ struct Cursor {
     kind: Option<String>,
 }
 
+#[derive(Clone, Debug)]
 struct Mark {
     id: usize,
     label: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+struct Command {
+    name: String,
+    args: Vec<String>,
+}
+
 struct Options {
     rewrite_mode: file_rewrite::RewriteMode,
-    command: String,
-    command_args: Vec<String>,
+    commands: Vec<Command>,
     rustc_args: Vec<String>,
     cursors: Vec<Cursor>,
     marks: Vec<Mark>,
@@ -206,19 +213,33 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         });
     }
 
-    // Parse transform name + args
-    if m.free.len() < 1 {
-        println!("Missing transform name");
-        return None;
+    // Parse command names + args
+    let mut commands = Vec::new();
+    let mut cur_command = None;
+    for arg in m.free {
+        if &arg == ";" {
+            if let Some(cmd) = cur_command.take() {
+                commands.push(cmd);
+            } else {
+                println!("Expected command before ';'");
+                return None;
+            }
+        } else if cur_command.is_none() {
+            cur_command = Some(Command {
+                name: arg,
+                args: Vec::new(),
+            });
+        } else {
+            cur_command.as_mut().unwrap().args.push(arg);
+        }
     }
-    let mut iter = m.free.clone().into_iter();
-    let command = iter.next().unwrap();
-    let command_args = iter.collect();
+    if let Some(cmd) = cur_command.take() {
+        commands.push(cmd);
+    }
 
     Some(Options {
         rewrite_mode,
-        command,
-        command_args,
+        commands,
         rustc_args,
         cursors,
         marks,
@@ -269,27 +290,30 @@ fn main() {
         });
     }
 
-    let opt_transform = transform::get_transform(&opts.command, &opts.command_args);
-    if let Some(transform) = opt_transform {
-        driver::with_crate_and_context(&opts.rustc_args, transform.min_phase(), |krate, mut cx| {
-            cx.set_marks(marks);
+    for cmd in opts.commands.clone() {
+        let opt_transform = transform::get_transform(&cmd.name, &cmd.args);
+        if let Some(transform) = opt_transform {
+            let phase = transform.min_phase();
+            driver::with_crate_and_context(&opts.rustc_args, phase, |krate, mut cx| {
+                cx.set_marks(marks.clone());
 
-            let krate = span_fix::fix_spans(cx.session(), krate);
-            let krate2 = transform.transform(krate.clone(), &cx);
+                let krate = span_fix::fix_spans(cx.session(), krate);
+                let krate2 = transform.transform(krate.clone(), &cx);
 
-            let rws = rewrite::rewrite(cx.session(), &krate, &krate2);
-            if rws.len() == 0 {
-                println!("(no files to rewrite)");
-            } else {
-                file_rewrite::rewrite_files(cx.session().codemap(), &rws, opts.rewrite_mode);
-            }
-        });
-    } else if &opts.command == "pick_node" {
-        driver::with_crate_and_context(&opts.rustc_args, driver::Phase::Phase2, |krate, cx| {
-            let krate = span_fix::fix_spans(cx.session(), krate);
-            idiomize::pick_node::pick_node_command(&krate, &cx, &opts.command_args);
-        });
-    } else {
-        panic!("unknown command: {:?}", opts.command);
+                let rws = rewrite::rewrite(cx.session(), &krate, &krate2);
+                if rws.len() == 0 {
+                    println!("(no files to rewrite)");
+                } else {
+                    file_rewrite::rewrite_files(cx.session().codemap(), &rws, opts.rewrite_mode);
+                }
+            });
+        } else if &cmd.name == "pick_node" {
+            driver::with_crate_and_context(&opts.rustc_args, driver::Phase::Phase2, |krate, cx| {
+                let krate = span_fix::fix_spans(cx.session(), krate);
+                idiomize::pick_node::pick_node_command(&krate, &cx, &cmd.args);
+            });
+        } else {
+            panic!("unknown command: {:?}", cmd.name);
+        }
     }
 }
