@@ -3,7 +3,6 @@ extern crate getopts;
 extern crate idiomize;
 
 use std::str::FromStr;
-use std::mem;
 
 use idiomize::{file_rewrite, driver, transform, span_fix, rewrite};
 
@@ -11,8 +10,8 @@ use idiomize::{file_rewrite, driver, transform, span_fix, rewrite};
 
 struct Options {
     rewrite_mode: file_rewrite::RewriteMode,
-    transform_name: String,
-    transform_args: Vec<String>,
+    command: String,
+    command_args: Vec<String>,
     rustc_args: Vec<String>,
     cursors: Vec<(String, u32, u32)>,
 }
@@ -130,13 +129,13 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         return None;
     }
     let mut iter = m.free.clone().into_iter();
-    let transform_name = iter.next().unwrap();
-    let transform_args = iter.collect();
+    let command = iter.next().unwrap();
+    let command_args = iter.collect();
 
     Some(Options {
         rewrite_mode,
-        transform_name,
-        transform_args,
+        command,
+        command_args,
         rustc_args,
         cursors,
     })
@@ -149,21 +148,29 @@ fn main() {
         None => return,
     };
 
-    let transform = transform::get_transform(&opts.transform_name, &opts.transform_args);
+    let opt_transform = transform::get_transform(&opts.command, &opts.command_args);
+    if let Some(transform) = opt_transform {
+        driver::with_crate_and_context(&opts.rustc_args, transform.min_phase(), |krate, mut cx| {
+            for &(ref file, line, col) in &opts.cursors {
+                cx.add_cursor(file, line, col);
+            }
 
-    driver::with_crate_and_context(&opts.rustc_args, transform.min_phase(), |krate, mut cx| {
-        for &(ref file, line, col) in &opts.cursors {
-            cx.add_cursor(file, line, col);
-        }
+            let krate = span_fix::fix_spans(cx.session(), krate);
+            let krate2 = transform.transform(krate.clone(), &cx);
 
-        let krate = span_fix::fix_spans(cx.session(), krate);
-        let krate2 = transform.transform(krate.clone(), &cx);
-
-        let rws = rewrite::rewrite(cx.session(), &krate, &krate2);
-        if rws.len() == 0 {
-            println!("(no files to rewrite)");
-        } else {
-            file_rewrite::rewrite_files(cx.session().codemap(), &rws, opts.rewrite_mode);
-        }
-    });
+            let rws = rewrite::rewrite(cx.session(), &krate, &krate2);
+            if rws.len() == 0 {
+                println!("(no files to rewrite)");
+            } else {
+                file_rewrite::rewrite_files(cx.session().codemap(), &rws, opts.rewrite_mode);
+            }
+        });
+    } else if &opts.command == "pick_node" {
+        driver::with_crate_and_context(&opts.rustc_args, driver::Phase::Phase2, |krate, cx| {
+            let krate = span_fix::fix_spans(cx.session(), krate);
+            idiomize::pick_node::pick_node_command(&krate, &cx, &opts.command_args);
+        });
+    } else {
+        panic!("unknown command: {:?}", opts.command);
+    }
 }

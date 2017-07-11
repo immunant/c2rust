@@ -19,34 +19,40 @@ pub mod test;
 pub mod vars;
 pub mod wrapping_arith;
 
-pub fn get_transform(name: &str, args: &[String]) -> Box<Transform> {
-    match name {
-        "reconstruct_while" => Box::new(control_flow::ReconstructWhile),
-        "reconstruct_for_range" => Box::new(control_flow::ReconstructForRange),
-        "remove_unused_labels" => Box::new(control_flow::RemoveUnusedLabels),
+fn mk_box<T: Transform + 'static>(x: T) -> Box<Transform> {
+    Box::new(x)
+}
 
-        "func_to_method" => Box::new(funcs::ToMethod),
-        "fix_unused_unsafe" => Box::new(funcs::FixUnusedUnsafe),
-        "sink_unsafe" => Box::new(funcs::SinkUnsafe),
+pub fn get_transform(name: &str, args: &[String]) -> Option<Box<Transform>> {
+    let tform =
+        match name {
+            "reconstruct_while" => mk_box(control_flow::ReconstructWhile),
+            "reconstruct_for_range" => mk_box(control_flow::ReconstructForRange),
+            "remove_unused_labels" => mk_box(control_flow::RemoveUnusedLabels),
 
-        "static_collect_to_struct" => Box::new(statics::CollectToStruct {
-            struct_name: args[0].clone(),
-            instance_name: args[1].clone(),
-        }),
-        "static_to_local_ref" => Box::new(statics::Localize),
+            "func_to_method" => mk_box(funcs::ToMethod),
+            "fix_unused_unsafe" => mk_box(funcs::FixUnusedUnsafe),
+            "sink_unsafe" => mk_box(funcs::SinkUnsafe),
 
-        "struct_assign_to_update" => Box::new(structs::AssignToUpdate),
-        "struct_merge_updates" => Box::new(structs::MergeUpdates),
-        "rename_struct" => Box::new(structs::Rename(args[0].clone())),
+            "static_collect_to_struct" => mk_box(statics::CollectToStruct {
+                struct_name: args[0].clone(),
+                instance_name: args[1].clone(),
+            }),
+            "static_to_local_ref" => mk_box(statics::Localize),
 
-        "test_one_plus_one" => Box::new(test::OnePlusOne),
-        "test_f_plus_one" => Box::new(test::FPlusOne),
-        "test_replace_stmts" => Box::new(test::ReplaceStmts(args[0].clone(), args[1].clone())),
+            "struct_assign_to_update" => mk_box(structs::AssignToUpdate),
+            "struct_merge_updates" => mk_box(structs::MergeUpdates),
+            "rename_struct" => mk_box(structs::Rename(args[0].clone())),
 
-        "let_x_uninitialized" => Box::new(vars::LetXUninitialized),
+            "test_one_plus_one" => mk_box(test::OnePlusOne),
+            "test_f_plus_one" => mk_box(test::FPlusOne),
+            "test_replace_stmts" => mk_box(test::ReplaceStmts(args[0].clone(), args[1].clone())),
 
-        "wrapping_arith_to_normal" => Box::new(wrapping_arith::WrappingToNormal),
+            "let_x_uninitialized" => mk_box(vars::LetXUninitialized),
 
-        _ => panic!("unknown transform {:?}", name),
-    }
+            "wrapping_arith_to_normal" => mk_box(wrapping_arith::WrappingToNormal),
+
+            _ => return None,
+        };
+    Some(tform)
 }

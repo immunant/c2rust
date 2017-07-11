@@ -32,6 +32,8 @@ pub mod path_edit;
 mod fn_edit;
 mod dataflow;
 
+pub mod pick_node;
+
 mod bindings;
 pub mod driver;
 pub mod span_fix;
