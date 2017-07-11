@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use syntax::ast::NodeId;
 
-use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node};
+use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node, mark_adjust};
 
 
 
@@ -319,7 +319,12 @@ fn main() {
             for (&id, label) in marks {
                 println!("{}:{}", id.as_usize(), label);
             }
-
+        } else if &cmd.name == "mark_uses" {
+            let phase = driver::Phase::Phase2;
+            driver::with_crate_and_context(&opts.rustc_args, phase, |krate, mut cx| {
+                cx.set_marks(marks.clone());
+                marks = mark_adjust::mark_uses_command(&krate, &cx, &cmd.args[0]);
+            });
         } else {
             panic!("unknown command: {:?}", cmd.name);
         }
