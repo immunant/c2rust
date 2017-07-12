@@ -44,7 +44,7 @@ impl Transform for CollectToStruct {
                     curs.advance();
                     continue;
                 }
-                println!("found {:?}: {:?}", bnd.ident("__x"), bnd.ty("__t"));
+                info!("found {:?}: {:?}", bnd.ident("__x"), bnd.ty("__t"));
 
                 // Record this static
                 old_statics.insert(bnd.ident("__x").name,
@@ -57,7 +57,7 @@ impl Transform for CollectToStruct {
                 matches.push(bnd);
             }
 
-            println!("collected {} matching statics", matches.len());
+            info!("collected {} matching statics", matches.len());
 
             if let Some(insert_point) = insert_point {
                 curs.seek(insert_point);

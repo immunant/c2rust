@@ -59,11 +59,11 @@ trait Splice: Rewrite+'static {
         let reparsed = Self::parse(rcx.session(), &printed);
 
         if old_span.lo != old_span.hi {
-            println!("REWRITE {}", describe(rcx.session(), old_span));
-            println!("   INTO {}", describe(rcx.session(), reparsed.span()));
+            info!("REWRITE {}", describe(rcx.session(), old_span));
+            info!("   INTO {}", describe(rcx.session(), reparsed.span()));
         } else {
-            println!("INSERT AT {}", describe(rcx.session(), old_span));
-            println!("     TEXT {}", describe(rcx.session(), reparsed.span()));
+            info!("INSERT AT {}", describe(rcx.session(), old_span));
+            info!("     TEXT {}", describe(rcx.session(), reparsed.span()));
         }
 
         let mut rewrites = Vec::new();
@@ -107,8 +107,8 @@ trait Splice: Rewrite+'static {
             return false;
         }
 
-        println!("REVERT {}", describe(rcx.session(), reparsed.span()));
-        println!("    TO {}", describe(rcx.session(), old.span()));
+        info!("REVERT {}", describe(rcx.session(), reparsed.span()));
+        info!("    TO {}", describe(rcx.session(), old.span()));
 
         let mut rewrites = Vec::new();
         let mark = rcx.mark();
@@ -460,7 +460,7 @@ impl<T: Rewrite+SeqItem> Rewrite for [T] {
                     diff::Result::Left(_) => {
                         // There's an item on the left corresponding to nothing on the right.
                         // Delete the item from the left.
-                        println!("DELETE {}", describe(rcx.session(), old[i].get_span()));
+                        info!("DELETE {}", describe(rcx.session(), old[i].get_span()));
                         rcx.record(old[i].get_span(), DUMMY_SP, vec![], TextAdjust::None);
                         i += 1;
                     },

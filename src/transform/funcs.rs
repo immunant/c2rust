@@ -343,9 +343,9 @@ impl Transform for WrapExtern {
             }
         });
 
-        println!("found {} fns", fns.len());
+        info!("found {} fns", fns.len());
         for i in &fns {
-            println!("  {:?}", i);
+            info!("  {:?}", i);
         }
 
         // (2) Generate wrappers in the destination module.
@@ -356,7 +356,7 @@ impl Transform for WrapExtern {
             }
 
             if dest_path.is_some() {
-                println!("warning: found multiple \"dest\" marks");
+                info!("warning: found multiple \"dest\" marks");
                 return SmallVector::one(i);
             }
             dest_path = Some(cx.def_path(cx.node_def_id(i.id)));
@@ -394,7 +394,7 @@ impl Transform for WrapExtern {
         });
 
         if dest_path.is_none() {
-            println!("warning: found no \"dest\" mark");
+            info!("warning: found no \"dest\" mark");
             return krate;
         }
         let dest_path = dest_path.unwrap();

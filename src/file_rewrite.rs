@@ -24,13 +24,13 @@ pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite], mode: RewriteMode) 
 
         match mode {
             RewriteMode::InPlace => {
-                println!("writing to {}", path);
+                info!("writing to {}", path);
                 let mut f = File::create(path).unwrap();
                 f.write_all(s.as_bytes()).unwrap();
             },
             RewriteMode::Alongside => {
                 let new_path = format!("{}.new", path);
-                println!("writing to {}", new_path);
+                info!("writing to {}", new_path);
                 let mut f = File::create(&new_path).unwrap();
                 f.write_all(s.as_bytes()).unwrap();
             },
@@ -64,16 +64,16 @@ fn print_rewrite(rw: &TextRewrite, depth: usize) {
     for _ in 0 .. depth {
         print!("  ");
     }
-    println!("{:?} -> {:?}", rw.old_span, rw.new_span);
+    info!("{:?} -> {:?}", rw.old_span, rw.new_span);
     for rw in &rw.rewrites {
         print_rewrite(rw, depth + 1);
     }
 }
 
 fn print_rewrites(rws: &[TextRewrite]) {
-    println!("{} rewrites:", rws.len());
+    info!("{} rewrites:", rws.len());
     for rw in rws {
-        println!("    {:?} -> {:?} (+{} children)", rw.old_span, rw.new_span, rw.rewrites.len());
+        info!("    {:?} -> {:?} (+{} children)", rw.old_span, rw.new_span, rw.rewrites.len());
     }
 }
 

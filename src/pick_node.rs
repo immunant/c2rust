@@ -227,13 +227,13 @@ pub fn pick_node_command(krate: &Crate, cx: &driver::Ctxt, args: &[String]) {
     if let Some(ref result) = result {
         let lo_loc = cx.session().codemap().lookup_char_pos(result.span.lo);
         let hi_loc = cx.session().codemap().lookup_char_pos(result.span.hi - BytePos(1));
-        println!("{{ \
+        info!("{{ \
             found: true, \
             node_id: {}, \
             span_lo: [{}, {}], \
             span_hi: [{}, {}] \
             }}", result.id, lo_loc.line, lo_loc.col.0 + 1, hi_loc.line, hi_loc.col.0 + 1);
     } else {
-        println!("{{ found: false }}");
+        info!("{{ found: false }}");
     }
 }

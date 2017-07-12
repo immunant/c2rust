@@ -19,7 +19,7 @@ impl<K> DepMap<K>
     }
 
     fn insert(&self, src: K, dest: K) {
-        println!(" * record dep: {:?} -> {:?}", src, dest);
+        info!(" * record dep: {:?} -> {:?}", src, dest);
         unsafe {
             (*self.map.get()).entry(src).or_insert_with(HashSet::new).insert(dest);
         }
@@ -90,7 +90,7 @@ pub fn iterate<K, V, F>(data: &mut HashMap<K, V>, mut update: F)
     while pending.len() > 0 {
         let cur = pending.iter().next().unwrap().clone();
         pending.remove(&cur);
-        println!("DF: update {:?}", cur);
+        info!("DF: update {:?}", cur);
 
         let changed = {
             let (ctxt, val) = Ctxt::new(&rev_deps, data, cur.clone());
@@ -98,9 +98,9 @@ pub fn iterate<K, V, F>(data: &mut HashMap<K, V>, mut update: F)
         };
 
         if changed {
-            println!("  changed; queueing updates...");
+            info!("  changed; queueing updates...");
             rev_deps.for_each(&cur, |other| {
-                println!("    queue {:?}", other);
+                info!("    queue {:?}", other);
                 pending.insert(other.clone());
             });
         }

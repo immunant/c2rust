@@ -272,17 +272,17 @@ impl<T> Cursor<T> {
     pub fn debug(&self) {
         let pos = self.left.len();
         let len = self.left.len() + self.right.len();
-        println!("cursor debug: at position {} / {}", pos, len);
+        info!("cursor debug: at position {} / {}", pos, len);
 
         let mut depth = 0;
         for m in &self.left_marks {
             depth += m.depth;
-            println!("  mark {} at (L) {} / {}",
+            info!("  mark {} at (L) {} / {}",
                      m.name, pos - depth as usize, len);
         }
         for m in &self.right_marks {
             depth += m.depth;
-            println!("  mark {} at (R) {} / {}",
+            info!("  mark {} at (R) {} / {}",
                      m.name, pos + depth as usize, len);
         }
     }

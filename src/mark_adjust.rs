@@ -63,14 +63,14 @@ impl<'a, 'hir, 'gcx, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'hir, 'gcx, 't
         match x.node {
             ExprKind::Path(_, _) => {
                 expect!([hir.node] hir::ExprPath(ref hp) => {
-                    println!("looking at ExprPath {:?}", x);
+                    info!("looking at ExprPath {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             },
 
             ExprKind::Struct(_, _, _) => {
                 expect!([hir.node] hir::ExprStruct(ref hp, _, _) => {
-                    println!("looking at ExprStruct {:?}", x);
+                    info!("looking at ExprStruct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             },
@@ -93,21 +93,21 @@ impl<'a, 'hir, 'gcx, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'hir, 'gcx, 't
         match x.node {
             PatKind::Struct(_, _, _) => {
                 expect!([hir.node] hir::PatKind::Struct(ref hp, _, _) => {
-                    println!("looking at PatStruct {:?}", x);
+                    info!("looking at PatStruct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             },
 
             PatKind::TupleStruct(_, _, _) => {
                 expect!([hir.node] hir::PatKind::TupleStruct(ref hp, _, _) => {
-                    println!("looking at PatTupleStruct {:?}", x);
+                    info!("looking at PatTupleStruct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             },
 
             PatKind::Path(_, _) => {
                 expect!([hir.node] hir::PatKind::Path(ref hp) => {
-                    println!("looking at PatPath {:?}", x);
+                    info!("looking at PatPath {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             },
@@ -129,7 +129,7 @@ impl<'a, 'hir, 'gcx, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'hir, 'gcx, 't
         match x.node {
             TyKind::Path(_, _) => {
                 expect!([hir.node] hir::TyPath(ref hp) => {
-                    println!("looking at TyPath {:?}", x);
+                    info!("looking at TyPath {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             },

@@ -1,6 +1,8 @@
 #![feature(rustc_private)]
+extern crate env_logger;
 extern crate getopts;
 extern crate idiomize;
+#[macro_use] extern crate log;
 extern crate syntax;
 
 use std::collections::HashSet;
@@ -83,7 +85,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
             (argv, rest)
         },
         None => {
-            println!("Expected `--` followed by rustc arguments");
+            info!("Expected `--` followed by rustc arguments");
             print_usage(&argv[0], opts);
             return None;
         },
@@ -99,7 +101,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     let m = match getopts::getopts(&local_args[1..], opts) {
         Ok(m) => m,
         Err(e) => {
-            println!("{}", e.to_string());
+            info!("{}", e.to_string());
             return None;
         },
     };
@@ -116,7 +118,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
             "alongside" => file_rewrite::RewriteMode::Alongside,
             "print" => file_rewrite::RewriteMode::Print,
             _ => {
-                println!("Unknown rewrite mode: {}", mode_str);
+                info!("Unknown rewrite mode: {}", mode_str);
                 return None;
             },
         },
@@ -132,7 +134,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         let file = match parts.next() {
             Some(x) => x.to_owned(),
             None => {
-                println!("Bad cursor string: {:?}", s);
+                info!("Bad cursor string: {:?}", s);
                 return None;
             },
         };
@@ -140,11 +142,11 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         let line = match parts.next().map(|s| u32::from_str(s).map_err(|_| s)) {
             Some(Ok(x)) => x,
             Some(Err(s)) => {
-                println!("Bad cursor line number: {:?}", s);
+                info!("Bad cursor line number: {:?}", s);
                 return None;
             },
             None => {
-                println!("Bad cursor string: {:?}", s);
+                info!("Bad cursor string: {:?}", s);
                 return None;
             }
         };
@@ -152,11 +154,11 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         let col = match parts.next().map(|s| u32::from_str(s).map_err(|_| s)) {
             Some(Ok(x)) => x,
             Some(Err(s)) => {
-                println!("Bad cursor column number: {:?}", s);
+                info!("Bad cursor column number: {:?}", s);
                 return None;
             },
             None => {
-                println!("Bad cursor string: {:?}", s);
+                info!("Bad cursor string: {:?}", s);
                 return None;
             }
         };
@@ -169,7 +171,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         let kind = parts.next().map(|s| s.to_owned());
 
         if parts.next().is_some() {
-            println!("Bad cursor string: {:?}", s);
+            info!("Bad cursor string: {:?}", s);
             return None;
         }
 
@@ -192,11 +194,11 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         let id = match parts.next().map(|s| usize::from_str(s).map_err(|_| s)) {
             Some(Ok(x)) => x,
             Some(Err(s)) => {
-                println!("Bad mark node ID: {:?}", s);
+                info!("Bad mark node ID: {:?}", s);
                 return None;
             },
             None => {
-                println!("Bad mark string: {:?}", s);
+                info!("Bad mark string: {:?}", s);
                 return None;
             }
         };
@@ -204,7 +206,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         let label = parts.next().map(|s| s.to_owned());
 
         if parts.next().is_some() {
-            println!("Bad mark string: {:?}", s);
+            info!("Bad mark string: {:?}", s);
             return None;
         }
 
@@ -223,7 +225,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
             if let Some(cmd) = cur_command.take() {
                 commands.push(cmd);
             } else {
-                println!("Expected command before ';'");
+                info!("Expected command before ';'");
                 return None;
             }
         } else if cur_command.is_none() {
@@ -249,6 +251,8 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
 }
 
 fn main() {
+    env_logger::init().unwrap();
+
     let args = std::env::args().collect::<Vec<_>>();
     let opts = match parse_opts(args) {
         Some(x) => x,
@@ -269,7 +273,7 @@ fn main() {
                 let kind = match kind_result {
                     Ok(k) => k,
                     Err(_) => {
-                        println!("Bad cursor kind: {:?}", c.kind.as_ref().unwrap());
+                        info!("Bad cursor kind: {:?}", c.kind.as_ref().unwrap());
                         continue;
                     },
                 };
@@ -278,7 +282,7 @@ fn main() {
                         &krate, &cx, kind, &c.file, c.line, c.col) {
                     Some(info) => info.id,
                     None => {
-                        println!("Failed to find {:?} at {}:{}:{}",
+                        info!("Failed to find {:?} at {}:{}:{}",
                                  kind, c.file, c.line, c.col);
                         continue;
                     },
@@ -286,7 +290,7 @@ fn main() {
 
                 let label = c.label.as_ref().map_or("target", |s| s).into_symbol();
 
-                println!("label {:?} as {:?}", id, label);
+                info!("label {:?} as {:?}", id, label);
 
                 marks.insert((id, label));
             }
@@ -305,7 +309,7 @@ fn main() {
 
                 let rws = rewrite::rewrite(cx.session(), &krate, &krate2);
                 if rws.len() == 0 {
-                    println!("(no files to rewrite)");
+                    info!("(no files to rewrite)");
                 } else {
                     file_rewrite::rewrite_files(cx.session().codemap(), &rws, opts.rewrite_mode);
                 }
@@ -320,7 +324,7 @@ fn main() {
             marks.sort();
 
             for &(id, label) in marks {
-                println!("{}:{}", id.as_usize(), label.as_str());
+                info!("{}:{}", id.as_usize(), label.as_str());
             }
         } else if &cmd.name == "mark_uses" {
             let phase = driver::Phase::Phase2;
