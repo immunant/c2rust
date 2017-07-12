@@ -8,6 +8,7 @@ build = "build.rs"
 diff = "0.1.10"
 log = "0.3.8"
 env_logger = "0.4.3"
+json = "0.11.8"
 
 [lib]
 name = "idiomize"

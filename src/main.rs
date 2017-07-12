@@ -10,6 +10,7 @@ use std::str::FromStr;
 use syntax::ast::NodeId;
 
 use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node, mark_adjust};
+use idiomize::interact;
 
 use idiomize::util::IntoSymbol;
 
@@ -332,6 +333,8 @@ fn main() {
                 cx.set_marks(marks.clone());
                 marks = mark_adjust::mark_uses_command(&krate, &cx, &cmd.args[0]);
             });
+        } else if &cmd.name == "interact" {
+            interact::interact_command(&cmd.args, opts.rustc_args.clone());
         } else {
             panic!("unknown command: {:?}", cmd.name);
         }

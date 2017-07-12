@@ -5,6 +5,7 @@
 )]
 extern crate arena;
 extern crate diff;
+#[macro_use] extern crate json;
 #[macro_use] extern crate log;
 extern crate rustc;
 extern crate rustc_driver;
@@ -36,6 +37,7 @@ mod dataflow;
 
 pub mod pick_node;
 pub mod mark_adjust;
+pub mod interact;
 
 mod bindings;
 pub mod driver;

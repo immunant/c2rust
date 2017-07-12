@@ -14,12 +14,12 @@ pub struct NodeInfo {
     pub span: Span,
 }
 
+
 struct PickVisitor {
     node_info: Option<NodeInfo>,
     kind: NodeKind,
     target: Span,
 }
-
 
 impl<'a> Visitor<'a> for PickVisitor {
     fn visit_item(&mut self, x: &'a Item) {
@@ -121,6 +121,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     }
 }
 
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NodeKind {
     Any,
@@ -149,6 +150,22 @@ impl NodeKind {
                 _ => false,
             },
             _ => self == other,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match *self {
+            NodeKind::Any => "any",
+            NodeKind::ItemLike => "itemlike",
+            NodeKind::Item => "item",
+            NodeKind::TraitItem => "trait_item",
+            NodeKind::ImplItem => "impl_item",
+            NodeKind::ForeignItem => "foreign_item",
+            NodeKind::Stmt => "stmt",
+            NodeKind::Expr => "expr",
+            NodeKind::Pat => "pat",
+            NodeKind::Ty => "ty",
+            NodeKind::Arg => "arg",
         }
     }
 }

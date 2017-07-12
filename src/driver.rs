@@ -19,7 +19,8 @@ use rustc_resolve::{Resolver, MakeGlobMap};
 use rustc_trans::back::link;
 use syntax;
 use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, NodeId};
-use syntax::codemap::{CodeMap, RealFileLoader};
+use syntax::codemap::CodeMap;
+use syntax::codemap::{FileLoader, RealFileLoader};
 use syntax::ext::base::ExtCtxt;
 use syntax::parse;
 use syntax::parse::parser::Parser;
@@ -110,10 +111,11 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
 }
 
 
-pub fn with_crate_and_context<F>(args: &[String],
-                                 phase: Phase,
-                                 func: F)
-        where F: FnOnce(Crate, Ctxt) {
+pub fn run_compiler<F, R>(args: &[String],
+                          file_loader: Option<Box<FileLoader>>,
+                          phase: Phase,
+                          func: F) -> R
+        where F: FnOnce(Crate, Ctxt) -> R {
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
     let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
@@ -123,7 +125,7 @@ pub fn with_crate_and_context<F>(args: &[String],
     let in_path = Some(Path::new(&matches.free[0]).to_owned());
     let input = Input::File(in_path.as_ref().unwrap().clone());
 
-    let (sess, cstore) = build_session(sopts, in_path);
+    let (sess, cstore) = build_session(sopts, in_path, file_loader);
 
     // Start of `compile_input` code
     let krate = driver::phase_1_parse_input(&sess, &input).unwrap();
@@ -132,8 +134,7 @@ pub fn with_crate_and_context<F>(args: &[String],
     if phase == Phase::Phase1 {
         let krate = remove_paren(krate);
         let cx = Ctxt::new_phase_1(&sess);
-        func(krate, cx);
-        return;
+        return func(krate, cx);
     }
 
     let crate_name = link::find_crate_name(Some(&sess), &krate.attrs, &input);
@@ -150,8 +151,7 @@ pub fn with_crate_and_context<F>(args: &[String],
 
     if phase == Phase::Phase2 {
         let cx = Ctxt::new_phase_2(&sess, &hir_map);
-        func(krate, cx);
-        return;
+        return func(krate, cx);
     }
 
     driver::phase_3_run_analysis_passes(
@@ -162,19 +162,28 @@ pub fn with_crate_and_context<F>(args: &[String],
         |tcx, analysis, incremental_hashes_map, result| {
             if phase == Phase::Phase3 {
                 let cx = Ctxt::new_phase_3(&sess, &hir_map, tcx);
-                func(krate, cx);
-                return;
+                return func(krate, cx);
             }
-        }).unwrap();
+            unreachable!();
+        }).unwrap()
+}
+
+pub fn with_crate_and_context<F, R>(args: &[String],
+                                    phase: Phase,
+                                    func: F) -> R
+        where F: FnOnce(Crate, Ctxt) -> R {
+    run_compiler(args, None, phase, func)
 }
 
 fn build_session(sopts: Options,
-                 in_path: Option<PathBuf>) -> (Session, Rc<CStore>) {
+                 in_path: Option<PathBuf>,
+                 file_loader: Option<Box<FileLoader>>) -> (Session, Rc<CStore>) {
     // Corresponds roughly to `run_compiler`.
     let descriptions = rustc_driver::diagnostics_registry();
     let dep_graph = DepGraph::new(sopts.build_dep_graph());
     let cstore = Rc::new(CStore::new(&dep_graph));
-    let codemap = Rc::new(CodeMap::with_file_loader(Box::new(RealFileLoader)));
+    let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
+    let codemap = Rc::new(CodeMap::with_file_loader(file_loader));
     // Put a dummy file at the beginning of the codemap, so that no real `Span` will accidentally
     // collide with `DUMMY_SP` (which is `0 .. 0`).
     codemap.new_filemap_and_lines("<dummy>", None, " ");
