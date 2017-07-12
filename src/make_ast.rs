@@ -1,3 +1,4 @@
+//! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
 use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Spanned};
 use syntax::ptr::P;
@@ -92,7 +93,11 @@ impl<S: Make<PathSegment>> Make<Path> for Vec<S> {
 }
 
 
+#[derive(Clone)]
 pub struct Builder {
+    // The builder holds a set of "modifiers", such as visibility and mutability.  Functions for
+    // building AST nodes don't take arguments of these types, but instead use any applicable
+    // modifiers from the builder to set the node's visibility, mutability, etc.
     vis: Visibility,
     mutbl: Mutability,
     generics: Generics,
@@ -109,6 +114,8 @@ impl Builder {
         }
     }
 
+
+    // Modifier updates.
 
     pub fn vis<V: Make<Visibility>>(self, vis: V) -> Self {
         let vis = vis.make(&self);
@@ -143,41 +150,111 @@ impl Builder {
     }
 
 
-    pub fn struct_field<I, T>(self, ident: I, ty: T) -> StructField
-            where I: Make<Ident>, T: Make<P<Ty>> {
-        let ident = ident.make(&self);
-        let ty = ty.make(&self);
-        StructField {
+    // Simple nodes
+
+    pub fn path<Pa>(self, path: Pa) -> Path
+            where Pa: Make<Path> {
+        path.make(&self)
+    }
+
+    pub fn spanned<T, U>(self, x: U) -> Spanned<T>
+            where U: Make<T> {
+        let x = x.make(&self);
+        Spanned {
+            node: x,
             span: DUMMY_SP,
-            ident: Some(ident),
-            vis: self.vis,
-            id: DUMMY_NODE_ID,
-            ty: ty,
-            attrs: Vec::new(),
         }
     }
 
-    pub fn struct_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
-            where I: Make<Ident> {
-        let name = name.make(&self);
-        P(Item {
-            ident: name,
-            attrs: Vec::new(),
+
+    // Exprs
+    // These are sorted in the same order as the corresponding ExprKind variants, with additional
+    // variant-specific details following each variant.
+
+    pub fn unary_expr<O, E>(self, op: O, a: E) -> P<Expr>
+            where O: Make<UnOp>, E: Make<P<Expr>> {
+        let op = op.make(&self);
+        let a = a.make(&self);
+        P(Expr {
             id: DUMMY_NODE_ID,
-            node: ItemKind::Struct(VariantData::Struct(fields, DUMMY_NODE_ID),
-                                   self.generics),
-            vis: self.vis,
+            node: ExprKind::Unary(op, a),
             span: DUMMY_SP,
+            attrs: ThinVec::new(),
         })
     }
 
-    pub fn path_ty<Pa>(self, path: Pa) -> P<Ty>
+    pub fn block_expr<B>(self, blk: B) -> P<Expr>
+            where B: Make<P<Block>> {
+        let blk = blk.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Block(blk),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
+    pub fn assign_expr<E1, E2>(self, lhs: E1, rhs: E2) -> P<Expr>
+            where E1: Make<P<Expr>>, E2: Make<P<Expr>> {
+        let lhs = lhs.make(&self);
+        let rhs = rhs.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Assign(lhs, rhs),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
+    pub fn path_expr<Pa>(self, path: Pa) -> P<Expr>
             where Pa: Make<Path> {
         let path = path.make(&self);
-        P(Ty {
+        P(Expr {
             id: DUMMY_NODE_ID,
-            node: TyKind::Path(None, path),
+            node: ExprKind::Path(None, path),
             span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
+    // Special case of path_expr
+    pub fn ident_expr<I>(self, name: I) -> P<Expr>
+            where I: Make<Ident> {
+        self.path_expr(vec![name])
+    }
+
+    pub fn addr_of_expr<E>(self, e: E) -> P<Expr>
+            where E: Make<P<Expr>> {
+        let e = e.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::AddrOf(self.mutbl, e),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
+    pub fn struct_expr<Pa>(self, path: Pa, fields: Vec<Field>) -> P<Expr>
+            where Pa: Make<Path> {
+        let path = path.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Struct(path, fields, None),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
+    // struct_expr, but with optional base expression
+    pub fn struct_expr_base<Pa, E>(self, path: Pa, fields: Vec<Field>, base: Option<E>) -> P<Expr>
+            where Pa: Make<Path>, E: Make<P<Expr>> {
+        let path = path.make(&self);
+        let base = base.map(|e| e.make(&self));
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Struct(path, fields, base),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
         })
     }
 
@@ -197,28 +274,69 @@ impl Builder {
         }
     }
 
-    pub fn struct_expr<Pa>(self, path: Pa, fields: Vec<Field>) -> P<Expr>
-            where Pa: Make<Path> {
-        let path = path.make(&self);
-        P(Expr {
+
+    // Patterns
+
+    pub fn ident_pat<I>(self, name: I) -> P<Pat>
+            where I: Make<Ident> {
+        let name = name.make(&self);
+        P(Pat {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Struct(path, fields, None),
+            node: PatKind::Ident(BindingMode::ByValue(self.mutbl),
+                                 Spanned { node: name, span: DUMMY_SP },
+                                 None),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
         })
     }
 
-    pub fn struct_expr_base<Pa, E>(self, path: Pa, fields: Vec<Field>, base: Option<E>) -> P<Expr>
-            where Pa: Make<Path>, E: Make<P<Expr>> {
-        let path = path.make(&self);
-        let base = base.map(|e| e.make(&self));
-        P(Expr {
+
+    // Types
+
+    pub fn ref_ty<T>(self, ty: T) -> P<Ty>
+            where T: Make<P<Ty>> {
+        let ty = ty.make(&self);
+        P(Ty {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Struct(path, fields, base),
+            node: TyKind::Rptr(None, MutTy { ty: ty, mutbl: self.mutbl }),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
         })
     }
+
+    pub fn path_ty<Pa>(self, path: Pa) -> P<Ty>
+            where Pa: Make<Path> {
+        let path = path.make(&self);
+        P(Ty {
+            id: DUMMY_NODE_ID,
+            node: TyKind::Path(None, path),
+            span: DUMMY_SP,
+        })
+    }
+
+
+    // Stmts
+
+    pub fn expr_stmt<E>(self, expr: E) -> Stmt
+            where E: Make<P<Expr>> {
+        let expr = expr.make(&self);
+        Stmt {
+            id: DUMMY_NODE_ID,
+            node: StmtKind::Expr(expr),
+            span: DUMMY_SP,
+        }
+    }
+
+    pub fn semi_stmt<E>(self, expr: E) -> Stmt
+            where E: Make<P<Expr>> {
+        let expr = expr.make(&self);
+        Stmt {
+            id: DUMMY_NODE_ID,
+            node: StmtKind::Semi(expr),
+            span: DUMMY_SP,
+        }
+    }
+
+
+    // Items
 
     pub fn static_item<I, T, E>(self, name: I, ty: T, init: E) -> P<Item>
             where I: Make<Ident>, T: Make<P<Ty>>, E: Make<P<Expr>> {
@@ -235,56 +353,47 @@ impl Builder {
         })
     }
 
-    pub fn assign_expr<E1, E2>(self, lhs: E1, rhs: E2) -> P<Expr>
-            where E1: Make<P<Expr>>, E2: Make<P<Expr>> {
-        let lhs = lhs.make(&self);
-        let rhs = rhs.make(&self);
-        P(Expr {
-            id: DUMMY_NODE_ID,
-            node: ExprKind::Assign(lhs, rhs),
-            span: DUMMY_SP,
-            attrs: ThinVec::new(),
-        })
-    }
-
-    pub fn semi_stmt<E>(self, expr: E) -> Stmt
-            where E: Make<P<Expr>> {
-        let expr = expr.make(&self);
-        Stmt {
-            id: DUMMY_NODE_ID,
-            node: StmtKind::Semi(expr),
-            span: DUMMY_SP,
-        }
-    }
-
-    pub fn expr_stmt<E>(self, expr: E) -> Stmt
-            where E: Make<P<Expr>> {
-        let expr = expr.make(&self);
-        Stmt {
-            id: DUMMY_NODE_ID,
-            node: StmtKind::Expr(expr),
-            span: DUMMY_SP,
-        }
-    }
-
-    pub fn ref_ty<T>(self, ty: T) -> P<Ty>
-            where T: Make<P<Ty>> {
-        let ty = ty.make(&self);
-        P(Ty {
-            id: DUMMY_NODE_ID,
-            node: TyKind::Rptr(None, MutTy { ty: ty, mutbl: self.mutbl }),
-            span: DUMMY_SP,
-        })
-    }
-
-    pub fn ident_pat<I>(self, name: I) -> P<Pat>
+    pub fn struct_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
             where I: Make<Ident> {
         let name = name.make(&self);
-        P(Pat {
+        P(Item {
+            ident: name,
+            attrs: Vec::new(),
             id: DUMMY_NODE_ID,
-            node: PatKind::Ident(BindingMode::ByValue(self.mutbl),
-                                 Spanned { node: name, span: DUMMY_SP },
-                                 None),
+            node: ItemKind::Struct(VariantData::Struct(fields, DUMMY_NODE_ID),
+                                   self.generics),
+            vis: self.vis,
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn struct_field<I, T>(self, ident: I, ty: T) -> StructField
+            where I: Make<Ident>, T: Make<P<Ty>> {
+        let ident = ident.make(&self);
+        let ty = ty.make(&self);
+        StructField {
+            span: DUMMY_SP,
+            ident: Some(ident),
+            vis: self.vis,
+            id: DUMMY_NODE_ID,
+            ty: ty,
+            attrs: Vec::new(),
+        }
+    }
+
+
+    // Misc nodes
+
+    pub fn block<S>(self, stmts: Vec<S>) -> P<Block>
+            where S: Make<Stmt> {
+        let stmts = stmts.into_iter().map(|s| s.make(&self)).collect();
+        P(Block {
+            stmts: stmts,
+            id: DUMMY_NODE_ID,
+            rules: match self.unsafety {
+                Unsafety::Unsafe => BlockCheckMode::Unsafe(UnsafeSource::UserProvided),
+                Unsafety::Normal => BlockCheckMode::Default,
+            },
             span: DUMMY_SP,
         })
     }
@@ -300,90 +409,12 @@ impl Builder {
         }
     }
 
-    pub fn path<Pa>(self, path: Pa) -> Path
-            where Pa: Make<Path> {
-        path.make(&self)
-    }
-
-    pub fn path_expr<Pa>(self, path: Pa) -> P<Expr>
-            where Pa: Make<Path> {
-        let path = path.make(&self);
-        P(Expr {
-            id: DUMMY_NODE_ID,
-            node: ExprKind::Path(None, path),
-            span: DUMMY_SP,
-            attrs: ThinVec::new(),
-        })
-    }
-
-    pub fn ident_expr<I>(self, name: I) -> P<Expr>
-            where I: Make<Ident> {
-        self.path_expr(vec![name])
-    }
-
-    pub fn unary_expr<O, E>(self, op: O, a: E) -> P<Expr>
-            where O: Make<UnOp>, E: Make<P<Expr>> {
-        let op = op.make(&self);
-        let a = a.make(&self);
-        P(Expr {
-            id: DUMMY_NODE_ID,
-            node: ExprKind::Unary(op, a),
-            span: DUMMY_SP,
-            attrs: ThinVec::new(),
-        })
-    }
-
-    pub fn addr_of_expr<E>(self, e: E) -> P<Expr>
-            where E: Make<P<Expr>> {
-        let e = e.make(&self);
-        P(Expr {
-            id: DUMMY_NODE_ID,
-            node: ExprKind::AddrOf(self.mutbl, e),
-            span: DUMMY_SP,
-            attrs: ThinVec::new(),
-        })
-    }
-
     pub fn self_arg<S>(self, kind: S) -> Arg
             where S: Make<SelfKind> {
         let kind = kind.make(&self);
         let eself = Spanned { node: kind, span: DUMMY_SP };
         let ident = Spanned { node: "self".make(&self), span: DUMMY_SP };
         Arg::from_self(eself, ident)
-    }
-
-    pub fn spanned<T, U>(self, x: U) -> Spanned<T>
-            where U: Make<T> {
-        let x = x.make(&self);
-        Spanned {
-            node: x,
-            span: DUMMY_SP,
-        }
-    }
-
-    pub fn block_expr<B>(self, blk: B) -> P<Expr>
-            where B: Make<P<Block>> {
-        let blk = blk.make(&self);
-        P(Expr {
-            id: DUMMY_NODE_ID,
-            node: ExprKind::Block(blk),
-            span: DUMMY_SP,
-            attrs: ThinVec::new(),
-        })
-    }
-
-    pub fn block<S>(self, stmts: Vec<S>) -> P<Block>
-            where S: Make<Stmt> {
-        let stmts = stmts.into_iter().map(|s| s.make(&self)).collect();
-        P(Block {
-            stmts: stmts,
-            id: DUMMY_NODE_ID,
-            rules: match self.unsafety {
-                Unsafety::Unsafe => BlockCheckMode::Unsafe(UnsafeSource::UserProvided),
-                Unsafety::Normal => BlockCheckMode::Default,
-            },
-            span: DUMMY_SP,
-        })
     }
 }
 
