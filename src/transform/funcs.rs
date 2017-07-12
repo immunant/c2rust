@@ -308,3 +308,113 @@ impl Transform for SinkUnsafe {
         krate.fold(&mut SinkUnsafeFolder { cx })
     }
 }
+
+
+pub struct WrapExtern;
+
+impl Transform for WrapExtern {
+    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+        // (1) Collect the marked externs.
+        #[derive(Debug)]
+        struct FuncInfo {
+            id: NodeId,
+            def_id: DefId,
+            ident: Ident,
+            decl: P<FnDecl>,
+        }
+        let mut fns = Vec::new();
+
+        visit_nodes(&krate, |fi: &ForeignItem| {
+            if !cx.marked(fi.id, "target") {
+                return;
+            }
+
+            match fi.node {
+                ForeignItemKind::Fn(ref decl, _) => {
+                    fns.push(FuncInfo {
+                        id: fi.id,
+                        def_id: cx.node_def_id(fi.id),
+                        ident: fi.ident.clone(),
+                        decl: decl.clone(),
+                    });
+                },
+
+                _ => {},
+            }
+        });
+
+        println!("found {} fns", fns.len());
+        for i in &fns {
+            println!("  {:?}", i);
+        }
+
+        // (2) Generate wrappers in the destination module.
+        let mut dest_path = None;
+        let krate = fold_nodes(krate, |i: P<Item>| {
+            if !cx.marked(i.id, "dest") {
+                return SmallVector::one(i);
+            }
+
+            if dest_path.is_some() {
+                println!("warning: found multiple \"dest\" marks");
+                return SmallVector::one(i);
+            }
+            dest_path = Some(cx.def_path(cx.node_def_id(i.id)));
+
+            SmallVector::one(i.map(|i| {
+                unpack!([i.node] ItemKind::Mod(m));
+                let mut m = m;
+
+                for f in &fns {
+                    let func_path = cx.def_path(cx.node_def_id(f.id));
+                    let arg_exprs = f.decl.inputs.iter().map(|arg| {
+                        // TODO: match_arg("__i: __t", arg).ident("__i")
+                        match arg.pat.node {
+                            PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
+                                           Spanned { node: ident, .. },
+                                           None) => {
+                                mk().ident_expr(ident)
+                            },
+                            _ => panic!("bad pattern in {:?}: {:?}", f.ident, arg.pat),
+                        }
+                    }).collect();
+                    let body = mk().block(vec![
+                            mk().expr_stmt(mk().call_expr(
+                                    mk().path_expr(func_path),
+                                    arg_exprs))]);
+                    m.items.push(mk().pub_().unsafe_().fn_item(&f.ident, &f.decl, body));
+
+                }
+
+                Item {
+                    node: ItemKind::Mod(m),
+                    .. i
+                }
+            }))
+        });
+
+        if dest_path.is_none() {
+            println!("warning: found no \"dest\" mark");
+            return krate;
+        }
+        let dest_path = dest_path.unwrap();
+
+        // (3) Rewrite call sites to use the new wrappers.
+        let ident_map = fns.iter().map(|f| (f.def_id, f.ident)).collect::<HashMap<_, _>>();
+        let krate = fold_resolved_paths(krate, cx, |qself, path, def_id| {
+            if let Some(ident) = ident_map.get(&def_id) {
+                let mut new_path = dest_path.clone();
+                new_path.segments.push(mk().path_segment(ident));
+                (qself, new_path)
+            } else {
+                (qself, path)
+            }
+        });
+
+        krate
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}

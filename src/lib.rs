@@ -22,6 +22,7 @@ mod ast_equiv;
 mod fold;
 pub mod fold_node;
 mod visit;
+pub mod visit_node;
 pub mod print_spans;
 pub mod remove_paren;
 mod cursor;

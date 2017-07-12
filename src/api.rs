@@ -19,6 +19,7 @@ pub use bindings::Type as BindingType;
 pub use seq_edit::{fold_blocks, fold_modules};
 pub use make_ast::mk;
 pub use fold_node::fold_nodes;
+pub use visit_node::visit_nodes;
 pub use path_edit::{self, fold_resolved_paths};
 pub use fn_edit::fold_fns;
 
@@ -103,9 +104,14 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
         let mut buf = ItemPathVec(RootMode::Local, vec![root]);
         self.ty_ctxt().push_item_path(&mut buf, id);
 
+        let mut segs = buf.1;
+        // If `id` refers to an `extern` item, there will be an entry in the path for the `extern`
+        // block (`ItemKind::ForeignMod`), with an empty ident.  Filter it out.
+        segs.retain(|seg| seg.identifier.name.as_str() != "");
+
         Path {
             span: DUMMY_SP,
-            segments: buf.1,
+            segments: segs,
         }
     }
 

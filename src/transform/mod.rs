@@ -33,6 +33,7 @@ pub fn get_transform(name: &str, args: &[String]) -> Option<Box<Transform>> {
             "func_to_method" => mk_box(funcs::ToMethod),
             "fix_unused_unsafe" => mk_box(funcs::FixUnusedUnsafe),
             "sink_unsafe" => mk_box(funcs::SinkUnsafe),
+            "wrap_extern" => mk_box(funcs::WrapExtern),
 
             "static_collect_to_struct" => mk_box(statics::CollectToStruct {
                 struct_name: args[0].clone(),

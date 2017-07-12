@@ -1,4 +1,5 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
+use syntax::abi::Abi;
 use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Spanned};
 use syntax::ptr::P;
@@ -60,6 +61,16 @@ impl<'a> Make<Unsafety> for &'a str {
     }
 }
 
+impl<'a> Make<Constness> for &'a str {
+    fn make(self, _mk: &Builder) -> Constness {
+        match self {
+            "" | "normal" | "not-const" => Constness::NotConst,
+            "const" => Constness::Const,
+            _ => panic!("unrecognized string for Constness: {:?}", self),
+        }
+    }
+}
+
 impl<'a> Make<UnOp> for &'a str {
     fn make(self, _mk: &Builder) -> UnOp {
         match self {
@@ -102,6 +113,8 @@ pub struct Builder {
     mutbl: Mutability,
     generics: Generics,
     unsafety: Unsafety,
+    constness: Constness,
+    abi: Abi,
 }
 
 impl Builder {
@@ -111,6 +124,8 @@ impl Builder {
             mutbl: Mutability::Immutable,
             generics: Generics::default(),
             unsafety: Unsafety::Normal,
+            constness: Constness::NotConst,
+            abi: Abi::Rust,
         }
     }
 
@@ -123,6 +138,10 @@ impl Builder {
             vis: vis,
             .. self
         }
+    }
+
+    pub fn pub_(self) -> Self {
+        self.vis(Visibility::Public)
     }
 
     pub fn set_mutbl<M: Make<Mutability>>(self, mutbl: M) -> Self {
@@ -149,8 +168,33 @@ impl Builder {
         self.unsafety(Unsafety::Unsafe)
     }
 
+    pub fn constness<C: Make<Constness>>(self, constness: C) -> Self {
+        let constness = constness.make(&self);
+        Builder {
+            constness: constness,
+            .. self
+        }
+    }
+
+    pub fn const_(self) -> Self {
+        self.constness(Constness::Const)
+    }
+
+    pub fn abi<A: Make<Abi>>(self, abi: A) -> Self {
+        let abi = abi.make(&self);
+        Builder {
+            abi: abi,
+            .. self
+        }
+    }
+
 
     // Simple nodes
+
+    pub fn path_segment<S>(self, seg: S) -> PathSegment
+            where S: Make<PathSegment> {
+        seg.make(&self)
+    }
 
     pub fn path<Pa>(self, path: Pa) -> Path
             where Pa: Make<Path> {
@@ -170,6 +214,18 @@ impl Builder {
     // Exprs
     // These are sorted in the same order as the corresponding ExprKind variants, with additional
     // variant-specific details following each variant.
+
+    pub fn call_expr<F, A>(self, func: F, args: Vec<A>) -> P<Expr>
+            where F: Make<P<Expr>>, A: Make<P<Expr>> {
+        let func = func.make(&self);
+        let args = args.into_iter().map(|a| a.make(&self)).collect();
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Call(func, args),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
 
     pub fn unary_expr<O, E>(self, op: O, a: E) -> P<Expr>
             where O: Make<UnOp>, E: Make<P<Expr>> {
@@ -348,6 +404,26 @@ impl Builder {
             attrs: Vec::new(),
             id: DUMMY_NODE_ID,
             node: ItemKind::Static(ty, self.mutbl, init),
+            vis: self.vis,
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn fn_item<I, D, B>(self, name: I, decl: D, block: B) -> P<Item>
+            where I: Make<Ident>, D: Make<P<FnDecl>>, B: Make<P<Block>> {
+        let name = name.make(&self);
+        let decl = decl.make(&self);
+        let block = block.make(&self);
+        P(Item {
+            ident: name,
+            attrs: Vec::new(),
+            id: DUMMY_NODE_ID,
+            node: ItemKind::Fn(decl,
+                               self.unsafety,
+                               Spanned { span: DUMMY_SP, node: self.constness },
+                               self.abi,
+                               self.generics,
+                               block),
             vis: self.vis,
             span: DUMMY_SP,
         })

@@ -33,6 +33,33 @@ impl<'a> Visitor<'a> for PickVisitor {
         }
     }
 
+    fn visit_trait_item(&mut self, x: &'a TraitItem) {
+        visit::walk_trait_item(self, x);
+        if self.node_info.is_none() &&
+           self.kind.includes(NodeKind::TraitItem) &&
+           x.span.contains(self.target) {
+            self.node_info = Some(NodeInfo { id: x.id, span: x.span });
+        }
+    }
+
+    fn visit_impl_item(&mut self, x: &'a ImplItem) {
+        visit::walk_impl_item(self, x);
+        if self.node_info.is_none() &&
+           self.kind.includes(NodeKind::ImplItem) &&
+           x.span.contains(self.target) {
+            self.node_info = Some(NodeInfo { id: x.id, span: x.span });
+        }
+    }
+
+    fn visit_foreign_item(&mut self, x: &'a ForeignItem) {
+        visit::walk_foreign_item(self, x);
+        if self.node_info.is_none() &&
+           self.kind.includes(NodeKind::ForeignItem) &&
+           x.span.contains(self.target) {
+            self.node_info = Some(NodeInfo { id: x.id, span: x.span });
+        }
+    }
+
     fn visit_stmt(&mut self, x: &'a Stmt) {
         visit::walk_stmt(self, x);
         if self.node_info.is_none() &&
@@ -97,7 +124,12 @@ impl<'a> Visitor<'a> for PickVisitor {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NodeKind {
     Any,
+    ItemLike,
+
     Item,
+    TraitItem,
+    ImplItem,
+    ForeignItem,
     Stmt,
     Expr,
     Pat,
@@ -107,7 +139,17 @@ pub enum NodeKind {
 
 impl NodeKind {
     fn includes(self, other: NodeKind) -> bool {
-        self == NodeKind::Any || other == self
+        match self {
+            NodeKind::Any => true,
+            NodeKind::ItemLike => match other {
+                NodeKind::Item |
+                NodeKind::TraitItem |
+                NodeKind::ImplItem |
+                NodeKind::ForeignItem => true,
+                _ => false,
+            },
+            _ => self == other,
+        }
     }
 }
 
@@ -117,12 +159,18 @@ impl FromStr for NodeKind {
         let kind =
             match s {
                 "any" => NodeKind::Any,
+                "itemlike" => NodeKind::ItemLike,
+
                 "item" => NodeKind::Item,
+                "trait_item" => NodeKind::TraitItem,
+                "impl_item" => NodeKind::ImplItem,
+                "foreign_item" => NodeKind::ForeignItem,
                 "stmt" => NodeKind::Stmt,
                 "expr" => NodeKind::Expr,
                 "pat" => NodeKind::Pat,
                 "ty" => NodeKind::Ty,
                 "arg" => NodeKind::Arg,
+
                 s => return Err(()),
             };
         Ok(kind)
