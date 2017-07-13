@@ -36,6 +36,7 @@ pub mod path_edit;
 mod fn_edit;
 mod dataflow;
 pub mod command;
+mod contains_mark;
 
 pub mod pick_node;
 pub mod mark_adjust;
