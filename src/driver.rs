@@ -35,11 +35,11 @@ use util::IntoSymbol;
 use util::Lone;
 
 
+#[derive(Clone)]
 pub struct Ctxt<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
     sess: &'a Session,
     map: Option<&'a hir_map::Map<'hir>>,
     tcx: Option<TyCtxt<'a, 'gcx, 'tcx>>,
-    marks: HashSet<(NodeId, Symbol)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -55,8 +55,6 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             sess: sess,
             map: None,
             tcx: None,
-
-            marks: HashSet::new(),
         }
     }
 
@@ -66,8 +64,6 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             sess: sess,
             map: Some(map),
             tcx: None,
-
-            marks: HashSet::new(),
         }
     }
 
@@ -78,8 +74,6 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             sess: sess,
             map: Some(map),
             tcx: Some(tcx),
-
-            marks: HashSet::new(),
         }
     }
 
@@ -95,18 +89,6 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
     pub fn ty_ctxt(&self) -> TyCtxt<'a, 'gcx, 'tcx> {
         self.tcx
             .expect("ty ctxt is not available in this context (requires phase 3)")
-    }
-
-    pub fn marks(&self) -> &HashSet<(NodeId, Symbol)> {
-        &self.marks
-    }
-
-    pub fn set_marks(&mut self, marks: HashSet<(NodeId, Symbol)>) {
-        self.marks = marks;
-    }
-
-    pub fn marked<S: IntoSymbol>(&self, id: NodeId, mark: S) -> bool {
-        self.marks.contains(&(id, mark.into_symbol()))
     }
 }
 

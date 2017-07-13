@@ -12,6 +12,7 @@ use syntax::util::small_vector::SmallVector;
 use api::*;
 use ast_equiv::AstEquiv;
 use bindings::Bindings;
+use command::CommandState;
 use dataflow;
 use driver::{self, Phase};
 use fn_edit::FnLike;
@@ -26,7 +27,7 @@ pub struct CollectToStruct {
 }
 
 impl Transform for CollectToStruct {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let static_pat: P<Item> = parse_items(cx.session(), "static __x: __t = __init;").lone();
 
 
@@ -40,7 +41,7 @@ impl Transform for CollectToStruct {
             while let Some(bnd) = curs.advance_until_match(
                     |i| MatchCtxt::from_match(&static_pat, &i)
                             .ok().map(|mcx| mcx.bindings)) {
-                if !cx.marked(curs.next().id, "target") {
+                if !st.marked(curs.next().id, "target") {
                     curs.advance();
                     continue;
                 }
@@ -115,7 +116,7 @@ fn build_struct_instance(struct_name: &str,
 pub struct Localize;
 
 impl Transform for Localize {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         // (1) Collect all marked statics.
 
         struct StaticInfo {
@@ -127,7 +128,7 @@ impl Transform for Localize {
         let mut statics = HashMap::new();
 
         let krate = fold_nodes(krate, |i: P<Item>| {
-            if !cx.marked(i.id, "target") {
+            if !st.marked(i.id, "target") {
                 return SmallVector::one(i);
             }
 
@@ -155,7 +156,7 @@ impl Transform for Localize {
         // Collect all outgoing references from marked functions.
         let mut fn_refs = HashMap::new();
         let krate = fold_fns(krate, |mut fl| {
-            if !cx.marked(fl.id, "user") {
+            if !st.marked(fl.id, "user") {
                 return fl;
             }
 

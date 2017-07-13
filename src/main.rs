@@ -9,9 +9,10 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use syntax::ast::NodeId;
 
-use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node, mark_adjust};
-use idiomize::interact;
+use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node};
+use idiomize::{interact, command};
 
+use idiomize::command::CommandState;
 use idiomize::util::IntoSymbol;
 
 
@@ -298,45 +299,46 @@ fn main() {
         });
     }
 
-    for cmd in opts.commands.clone() {
-        let opt_transform = transform::get_transform(&cmd.name, &cmd.args);
-        if let Some(transform) = opt_transform {
-            let phase = transform.min_phase();
-            driver::with_crate_and_context(&opts.rustc_args, phase, |krate, mut cx| {
-                cx.set_marks(marks.clone());
 
-                let krate = span_fix::fix_spans(cx.session(), krate);
-                let krate2 = transform.transform(krate.clone(), &cx);
+    let mut cmd_reg = command::Registry::new();
+    command::register_misc_commands(&mut cmd_reg);
+    transform::register_transform_commands(&mut cmd_reg);
 
-                let rws = rewrite::rewrite(cx.session(), &krate, &krate2);
-                if rws.len() == 0 {
-                    info!("(no files to rewrite)");
-                } else {
-                    file_rewrite::rewrite_files(cx.session().codemap(), &rws, opts.rewrite_mode);
-                }
-            });
-        } else if &cmd.name == "pick_node" {
-            driver::with_crate_and_context(&opts.rustc_args, driver::Phase::Phase2, |krate, cx| {
-                let krate = span_fix::fix_spans(cx.session(), krate);
-                idiomize::pick_node::pick_node_command(&krate, &cx, &cmd.args);
-            });
-        } else if &cmd.name == "print_marks" {
-            let mut marks = marks.iter().collect::<Vec<_>>();
-            marks.sort();
+    if opts.commands.len() == 1 && opts.commands[0].name == "interact" {
+        interact::interact_command(&opts.commands[0].args,
+                                   opts.rustc_args,
+                                   cmd_reg);
+    } else {
+        for cmd in opts.commands.clone() {
+            if &cmd.name == "interact" {
+                panic!("`interact` must be the only command");
+            } else {
+                let mut cmd = cmd_reg.get_command(&cmd.name, &cmd.args);
+                let phase = cmd.min_phase();
+                driver::with_crate_and_context(&opts.rustc_args, phase, |krate, cx| {
+                    let krate = span_fix::fix_spans(cx.session(), krate);
 
-            for &(id, label) in marks {
-                info!("{}:{}", id.as_usize(), label.as_str());
+                    let mut cmd_state = CommandState::new(krate.clone(),
+                                                          marks.clone());
+
+                    cmd.run(&mut cmd_state, &cx);
+
+                    if cmd_state.krate_changed() {
+                        let rws = rewrite::rewrite(cx.session(), &krate, &cmd_state.krate());
+                        if rws.len() == 0 {
+                            info!("(no files to rewrite)");
+                        } else {
+                            file_rewrite::rewrite_files(cx.session().codemap(),
+                                                        &rws,
+                                                        opts.rewrite_mode);
+                        }
+                    }
+
+                    if cmd_state.marks_changed() {
+                        marks = cmd_state.marks().clone();
+                    }
+                });
             }
-        } else if &cmd.name == "mark_uses" {
-            let phase = driver::Phase::Phase2;
-            driver::with_crate_and_context(&opts.rustc_args, phase, |krate, mut cx| {
-                cx.set_marks(marks.clone());
-                marks = mark_adjust::mark_uses_command(&krate, &cx, &cmd.args[0]);
-            });
-        } else if &cmd.name == "interact" {
-            interact::interact_command(&cmd.args, opts.rustc_args.clone());
-        } else {
-            panic!("unknown command: {:?}", cmd.name);
         }
     }
 }

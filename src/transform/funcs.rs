@@ -15,6 +15,7 @@ use syntax::util::small_vector::SmallVector;
 use api::*;
 use ast_equiv::AstEquiv;
 use bindings::Bindings;
+use command::CommandState;
 use dataflow;
 use driver::{self, Phase};
 use fold::Fold;
@@ -28,14 +29,14 @@ use util::Lone;
 pub struct ToMethod;
 
 impl Transform for ToMethod {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         // (1) Find the impl we're inserting into.
 
         let mut dest = None;
 
         let krate = fold_nodes(krate, |i: P<Item>| {
             // We're looking for an inherent impl (no `TraitRef`) marked with a cursor.
-            if !cx.marked(i.id, "dest") ||
+            if !st.marked(i.id, "dest") ||
                !matches!([i.node] ItemKind::Impl(_, _, _, None, _, _)) {
                 return SmallVector::one(i);
             }
@@ -75,7 +76,7 @@ impl Transform for ToMethod {
                 // Find the argument under the cursor.
                 let decl = match_or!([i.node] ItemKind::Fn(ref decl, ..) => decl; return None);
                 for (idx, arg) in decl.inputs.iter().enumerate() {
-                    if cx.marked(arg.id, "target") {
+                    if st.marked(arg.id, "target") {
                         return Some(idx);
                     }
                 }
@@ -249,7 +250,7 @@ impl Transform for ToMethod {
 pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = fold_nodes(krate, |b: P<Block>| {
             if b.rules == BlockCheckMode::Unsafe(UnsafeSource::UserProvided) &&
                !cx.ty_ctxt().used_unsafe.borrow().contains(&b.id) {
@@ -274,14 +275,14 @@ impl Transform for FixUnusedUnsafe {
 /// Turn `unsafe fn f() { ... }` into `fn f() { unsafe { ... } }`.
 pub struct SinkUnsafe;
 
-struct SinkUnsafeFolder<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
-    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+struct SinkUnsafeFolder<'a> {
+    st: &'a CommandState,
 }
 
-impl<'a, 'hir, 'gcx, 'tcx> Folder for SinkUnsafeFolder<'a, 'hir, 'gcx, 'tcx> {
+impl<'a> Folder for SinkUnsafeFolder<'a> {
     fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
         let i =
-            if self.cx.marked(i.id, "target") &&
+            if self.st.marked(i.id, "target") &&
                matches!([i.node] ItemKind::Fn(_, Unsafety::Unsafe, _, _, _, _)) {
                 i.map(|mut i| {
                     match i.node {
@@ -304,8 +305,8 @@ impl<'a, 'hir, 'gcx, 'tcx> Folder for SinkUnsafeFolder<'a, 'hir, 'gcx, 'tcx> {
 }
 
 impl Transform for SinkUnsafe {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
-        krate.fold(&mut SinkUnsafeFolder { cx })
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        krate.fold(&mut SinkUnsafeFolder { st })
     }
 }
 
@@ -313,7 +314,7 @@ impl Transform for SinkUnsafe {
 pub struct WrapExtern;
 
 impl Transform for WrapExtern {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         // (1) Collect the marked externs.
         #[derive(Debug)]
         struct FuncInfo {
@@ -325,7 +326,7 @@ impl Transform for WrapExtern {
         let mut fns = Vec::new();
 
         visit_nodes(&krate, |fi: &ForeignItem| {
-            if !cx.marked(fi.id, "target") {
+            if !st.marked(fi.id, "target") {
                 return;
             }
 
@@ -351,7 +352,7 @@ impl Transform for WrapExtern {
         // (2) Generate wrappers in the destination module.
         let mut dest_path = None;
         let krate = fold_nodes(krate, |i: P<Item>| {
-            if !cx.marked(i.id, "dest") {
+            if !st.marked(i.id, "dest") {
                 return SmallVector::one(i);
             }
 

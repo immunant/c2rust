@@ -1,6 +1,7 @@
 use syntax::ast::Crate;
 
 use api::*;
+use command::CommandState;
 use driver;
 use transform::Transform;
 
@@ -8,7 +9,7 @@ use transform::Transform;
 pub struct LetXUninitialized;
 
 impl Transform for LetXUninitialized {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = replace_stmts(cx.session(), krate,
                                   "let __pat;",
                                   "let __pat = ::std::mem::uninitialized();");

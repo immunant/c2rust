@@ -1,9 +1,11 @@
 use syntax::ast::Crate;
 
+use command::{Command, CommandState, Registry};
 use driver::{self, Phase};
 
+
 pub trait Transform {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate;
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate;
 
     fn min_phase(&self) -> Phase {
         // Most transforms should run on expanded code.
@@ -11,49 +13,62 @@ pub trait Transform {
     }
 }
 
-pub mod control_flow;
-pub mod funcs;
-pub mod statics;
-pub mod structs;
-pub mod test;
-pub mod vars;
-pub mod wrapping_arith;
 
-fn mk_box<T: Transform + 'static>(x: T) -> Box<Transform> {
-    Box::new(x)
+struct TransformCommand<T: Transform>(T);
+
+impl<T: Transform> Command for TransformCommand<T> {
+    fn run(&mut self, st: &CommandState, cx: &driver::Ctxt) {
+        st.map_krate(|krate| {
+            self.0.transform(krate, st, cx)
+        });
+    }
+
+    fn min_phase(&self) -> Phase {
+        self.0.min_phase()
+    }
 }
 
-pub fn get_transform(name: &str, args: &[String]) -> Option<Box<Transform>> {
-    let tform =
-        match name {
-            "reconstruct_while" => mk_box(control_flow::ReconstructWhile),
-            "reconstruct_for_range" => mk_box(control_flow::ReconstructForRange),
-            "remove_unused_labels" => mk_box(control_flow::RemoveUnusedLabels),
 
-            "func_to_method" => mk_box(funcs::ToMethod),
-            "fix_unused_unsafe" => mk_box(funcs::FixUnusedUnsafe),
-            "sink_unsafe" => mk_box(funcs::SinkUnsafe),
-            "wrap_extern" => mk_box(funcs::WrapExtern),
 
-            "static_collect_to_struct" => mk_box(statics::CollectToStruct {
-                struct_name: args[0].clone(),
-                instance_name: args[1].clone(),
-            }),
-            "static_to_local_ref" => mk_box(statics::Localize),
+mod control_flow;
+mod funcs;
+mod statics;
+mod structs;
+mod test;
+mod vars;
+mod wrapping_arith;
 
-            "struct_assign_to_update" => mk_box(structs::AssignToUpdate),
-            "struct_merge_updates" => mk_box(structs::MergeUpdates),
-            "rename_struct" => mk_box(structs::Rename(args[0].clone())),
 
-            "test_one_plus_one" => mk_box(test::OnePlusOne),
-            "test_f_plus_one" => mk_box(test::FPlusOne),
-            "test_replace_stmts" => mk_box(test::ReplaceStmts(args[0].clone(), args[1].clone())),
+pub fn register_transform_commands(reg: &mut Registry) {
+    fn mk<T: Transform + 'static>(t: T) -> Box<Command> {
+        Box::new(TransformCommand(t))
+    }
 
-            "let_x_uninitialized" => mk_box(vars::LetXUninitialized),
+    reg.register("reconstruct_while", |_args| mk(control_flow::ReconstructWhile));
+    reg.register("reconstruct_for_range", |_args| mk(control_flow::ReconstructForRange));
+    reg.register("remove_unused_labels", |_args| mk(control_flow::RemoveUnusedLabels));
 
-            "wrapping_arith_to_normal" => mk_box(wrapping_arith::WrappingToNormal),
+    reg.register("func_to_method", |_args| mk(funcs::ToMethod));
+    reg.register("fix_unused_unsafe", |_args| mk(funcs::FixUnusedUnsafe));
+    reg.register("sink_unsafe", |_args| mk(funcs::SinkUnsafe));
+    reg.register("wrap_extern", |_args| mk(funcs::WrapExtern));
 
-            _ => return None,
-        };
-    Some(tform)
+    reg.register("static_collect_to_struct", |args| mk(statics::CollectToStruct {
+        struct_name: args[0].clone(),
+        instance_name: args[1].clone(),
+    }));
+    reg.register("static_to_local_ref", |_args| mk(statics::Localize));
+
+    reg.register("struct_assign_to_update", |_args| mk(structs::AssignToUpdate));
+    reg.register("struct_merge_updates", |_args| mk(structs::MergeUpdates));
+    reg.register("rename_struct", |args| mk(structs::Rename(args[0].clone())));
+
+    reg.register("test_one_plus_one", |_args| mk(test::OnePlusOne));
+    reg.register("test_f_plus_one", |_args| mk(test::FPlusOne));
+    reg.register("test_replace_stmts", |args| mk(
+            test::ReplaceStmts(args[0].clone(), args[1].clone())));
+
+    reg.register("let_x_uninitialized", |_args| mk(vars::LetXUninitialized));
+
+    reg.register("wrapping_arith_to_normal", |_args| mk(wrapping_arith::WrappingToNormal));
 }

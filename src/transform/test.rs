@@ -3,6 +3,7 @@
 use syntax::ast::Crate;
 
 use api::*;
+use command::CommandState;
 use driver;
 use transform::Transform;
 
@@ -12,7 +13,7 @@ use transform::Transform;
 pub struct OnePlusOne;
 
 impl Transform for OnePlusOne {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = replace_expr(cx.session(), krate, "2", "1 + 1");
         krate
     }
@@ -24,7 +25,7 @@ impl Transform for OnePlusOne {
 pub struct FPlusOne;
 
 impl Transform for FPlusOne {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = replace_expr(cx.session(), krate, "f(__x)", "__x + 1");
         krate
     }
@@ -34,7 +35,7 @@ impl Transform for FPlusOne {
 pub struct ReplaceStmts(pub String, pub String);
 
 impl Transform for ReplaceStmts {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = replace_stmts(cx.session(), krate, &self.0, &self.1);
         krate
     }
@@ -47,7 +48,7 @@ impl Transform for ReplaceStmts {
 pub struct LetZeroInline;
 
 impl Transform for LetZeroInline {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         krate
     }
 }

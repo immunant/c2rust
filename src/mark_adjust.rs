@@ -10,6 +10,7 @@ use syntax::ext::hygiene::SyntaxContext;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
+use command::CommandState;
 use driver;
 use util::HirDefExt;
 use util::IntoSymbol;
@@ -18,8 +19,8 @@ use visit::Visit;
 
 /// Find all nodes that refer to marked nodes.
 struct MarkUseVisitor<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
+    st: &'a CommandState,
     cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
-    uses: HashSet<NodeId>,
     label: Symbol,
 }
 
@@ -29,16 +30,16 @@ impl<'a, 'hir, 'gcx, 'tcx> MarkUseVisitor<'a, 'hir, 'gcx, 'tcx> {
             &hir::QPath::Resolved(_, ref path) => {
                 if let Some(def_id) = path.def.opt_def_id() {
                     if let Some(id) = self.cx.hir_map().as_local_node_id(def_id) {
-                        if self.cx.marked(id, self.label) {
-                            self.uses.insert(use_id);
+                        if self.st.marked(id, self.label) {
+                            self.st.add_mark(use_id, self.label);
                         }
 
                         // For struct and node constructors, also check the parent item
                         if matches!([path.def] Def::StructCtor(..)) ||
                            matches!([path.def] Def::VariantCtor(..)) {
                             let parent_id = self.cx.hir_map().get_parent(id);
-                            if self.cx.marked(parent_id, self.label) {
-                                self.uses.insert(use_id);
+                            if self.st.marked(parent_id, self.label) {
+                                self.st.add_mark(use_id, self.label);
                             }
                         }
                     }
@@ -141,24 +142,25 @@ impl<'a, 'hir, 'gcx, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'hir, 'gcx, 't
     }
 }
 
-pub fn find_mark_uses<T: Visit>(target: &T, cx: &driver::Ctxt, label: &str) -> HashSet<NodeId> {
+pub fn find_mark_uses<T: Visit>(target: &T,
+                                st: &CommandState,
+                                cx: &driver::Ctxt,
+                                label: &str) {
+    let old_ids = st.marks().iter().filter(|&&(_, l)| l == label)
+        .map(|&(id, _)| id).collect::<Vec<_>>();
+
     let mut v = MarkUseVisitor {
+        st: st,
         cx: cx,
-        uses: HashSet::new(),
         label: label.into_symbol(),
     };
     target.visit(&mut v);
-    v.uses
+
+    for id in old_ids {
+        st.remove_mark(id, label);
+    }
 }
 
-pub fn mark_uses_command(krate: &Crate,
-                         cx: &driver::Ctxt,
-                         label: &str) -> HashSet<(NodeId, Symbol)> {
-    let uses = find_mark_uses(krate, cx, label);
-    let mut new_marks = cx.marks().clone().into_iter()
-                          .filter(|&(_, v)| v.as_str() != label).collect::<HashSet<_>>();
-    for id in uses {
-        new_marks.insert((id, label.into_symbol()));
-    }
-    new_marks
+pub fn find_mark_uses_command(st: &CommandState, cx: &driver::Ctxt, label: &str) {
+    find_mark_uses(&*st.krate(), st, cx, label);
 }

@@ -8,6 +8,7 @@ use syntax::util::small_vector::SmallVector;
 
 use api::*;
 use ast_equiv::AstEquiv;
+use command::CommandState;
 use driver::{self, Phase};
 use transform::Transform;
 use util::IntoSymbol;
@@ -17,7 +18,7 @@ use util::Lone;
 pub struct AssignToUpdate;
 
 impl Transform for AssignToUpdate {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let pat = parse_expr(cx.session(), "__x.__f = __y");
         let repl = parse_expr(cx.session(), "__x = __s { __f: __y, .. __x }");
 
@@ -44,7 +45,7 @@ impl Transform for AssignToUpdate {
 pub struct MergeUpdates;
 
 impl Transform for MergeUpdates {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         fold_blocks(krate, |curs| {
             loop {
                 // Find a struct update.
@@ -101,13 +102,13 @@ fn build_struct_update(path: Path, fields: Vec<Field>, base: P<Expr>) -> Stmt {
 pub struct Rename(pub String);
 
 impl Transform for Rename {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let new_ident = Ident::with_empty_ctxt((&self.0 as &str).into_symbol());
         let mut target_def_id = None;
 
         // Find the struct definition and rename it.
         let krate = fold_nodes(krate, |i: P<Item>| {
-            if target_def_id.is_some() || !cx.marked(i.id, "target") {
+            if target_def_id.is_some() || !st.marked(i.id, "target") {
                 return SmallVector::one(i);
             }
 

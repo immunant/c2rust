@@ -1,6 +1,7 @@
 use syntax::ast::Crate;
 
 use api::*;
+use command::CommandState;
 use driver;
 use transform::Transform;
 
@@ -8,7 +9,7 @@ use transform::Transform;
 pub struct WrappingToNormal;
 
 impl Transform for WrappingToNormal {
-    fn transform(&self, krate: Crate, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = replace_expr(cx.session(), krate,
                                  "__x.wrapping_add(__y)",
                                  "__x + __y");

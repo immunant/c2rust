@@ -10,11 +10,15 @@ use syntax::ast::{NodeId, Crate};
 use syntax::codemap::{FileLoader, RealFileLoader};
 use syntax::symbol::Symbol;
 
+use command::{self, CommandState};
 use driver;
+use file_rewrite::{self, RewriteMode};
 use interact::{ToServer, ToClient};
 use interact::WrapSender;
 use interact::{plain_backend, vim8_backend};
 use pick_node;
+use rewrite;
+use span_fix;
 use util::IntoSymbol;
 
 
@@ -27,20 +31,27 @@ struct InteractState {
     rustc_args: Vec<String>,
     to_main: Sender<ToMainThread>,
     to_client: Sender<ToClient>,
+
+    registry: command::Registry,
     current_marks: HashSet<(NodeId, Symbol)>,
+
     buffers_available: HashSet<PathBuf>,
     pending_files: HashMap<PathBuf, Sender<String>>,
 }
 
 impl InteractState {
     fn new(rustc_args: Vec<String>,
+           registry: command::Registry,
            to_main: Sender<ToMainThread>,
            to_client: Sender<ToClient>) -> InteractState {
         InteractState {
             rustc_args: rustc_args,
             to_main: to_main,
             to_client: to_client,
+
+            registry: registry,
             current_marks: HashSet::new(),
+
             buffers_available: HashSet::new(),
             pending_files: HashMap::new(),
         }
@@ -53,13 +64,17 @@ impl InteractState {
         }
     }
 
-    fn run_compiler<F, R>(&self, phase: driver::Phase, func: F) -> R
-            where F: FnOnce(Crate, driver::Ctxt) -> R {
-        let file_loader = Box::new(InteractiveFileLoader {
+    fn make_file_loader(&self) -> Box<FileLoader> {
+        Box::new(InteractiveFileLoader {
             buffers_available: self.buffers_available.clone(),
             to_main: self.to_main.clone(),
             real: RealFileLoader,
-        });
+        })
+    }
+
+    fn run_compiler<F, R>(&self, phase: driver::Phase, func: F) -> R
+            where F: FnOnce(Crate, driver::Ctxt) -> R {
+        let file_loader = self.make_file_loader();
         driver::run_compiler(&self.rustc_args, Some(file_loader), phase, func)
     }
 
@@ -157,7 +172,43 @@ impl InteractState {
             },
 
             InputMessage(RunCommand { name, args }) => {
+                info!("getting command {} with args {:?}", name, args);
+                let mut cmd = self.registry.get_command(&name, &args);
+                let file_loader = self.make_file_loader();
+                let phase = cmd.min_phase();
+                info!("starting driver");
+                driver::run_compiler(&self.rustc_args.clone(),
+                                     Some(file_loader),
+                                     phase,
+                                     |krate, cx| {
+                    let krate = span_fix::fix_spans(cx.session(), krate);
 
+                    let mut cmd_state = CommandState::new(krate.clone(),
+                                                          self.current_marks.clone());
+                    info!("running command...");
+                    cmd.run(&mut cmd_state, &cx);
+                    info!("changes: {}, {}",
+                          cmd_state.krate_changed(),
+                          cmd_state.marks_changed());
+
+                    if cmd_state.krate_changed() {
+                        let rws = rewrite::rewrite(cx.session(), &krate, &cmd_state.krate());
+                        file_rewrite::rewrite_files_with(cx.session().codemap(), &rws, |fm, s| {
+                            if fm.name.starts_with("<") {
+                                return;
+                            }
+
+                            self.to_client.send(NewBufferText {
+                                file: fm.name.clone(),
+                                content: s.to_owned(),
+                            }).unwrap();
+                        });
+                    }
+
+                    if cmd_state.marks_changed() {
+                        self.current_marks = cmd_state.marks().clone();
+                    }
+                });
             },
 
             NeedFile(path, send) => {
@@ -171,7 +222,9 @@ impl InteractState {
     }
 }
 
-pub fn interact_command(args: &[String], rustc_args: Vec<String>) {
+pub fn interact_command(args: &[String],
+                        rustc_args: Vec<String>,
+                        registry: command::Registry) {
     let (main_send, main_recv) = mpsc::channel();
 
     let server_send = WrapSender::new(main_send.clone(), ToMainThread::InputMessage);
@@ -179,7 +232,7 @@ pub fn interact_command(args: &[String], rustc_args: Vec<String>) {
         if args.len() > 0 && &args[0] == "vim8" { vim8_backend::init(server_send) }
         else { plain_backend::init(server_send) };
 
-    InteractState::new(rustc_args, main_send, to_client)
+    InteractState::new(rustc_args, registry, main_send, to_client)
         .run_loop(main_recv);
 }
 

@@ -4,6 +4,7 @@
     trace_macros,
 )]
 extern crate arena;
+extern crate libc;
 extern crate diff;
 #[macro_use] extern crate json;
 #[macro_use] extern crate log;
@@ -34,6 +35,7 @@ mod make_ast;
 pub mod path_edit;
 mod fn_edit;
 mod dataflow;
+pub mod command;
 
 pub mod pick_node;
 pub mod mark_adjust;

@@ -87,6 +87,10 @@ impl<'a> Folder for FixFormat<'a> {
             sp
         }
     }
+
+    fn fold_mac(&mut self, mac: Mac) -> Mac {
+        fold::noop_fold_mac(mac, self)
+    }
 }
 
 
@@ -162,6 +166,10 @@ impl Folder for FixMacros {
         } else {
             sp
         }
+    }
+
+    fn fold_mac(&mut self, mac: Mac) -> Mac {
+        fold::noop_fold_mac(mac, self)
     }
 }
 
