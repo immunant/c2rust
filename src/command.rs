@@ -181,4 +181,12 @@ pub fn register_misc_commands(reg: &mut Registry) {
             mark_adjust::find_mark_uses_command(st, cx, &arg);
         }))
     });
+
+    reg.register("rename_marks", |args| {
+        let old = (&args[0]).into_symbol();
+        let new = (&args[1]).into_symbol();
+        Box::new(FuncCommand::new(Phase::Phase2, move |st, cx| {
+            mark_adjust::rename_marks(st, old, new);
+        }))
+    });
 }

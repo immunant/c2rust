@@ -164,3 +164,14 @@ pub fn find_mark_uses<T: Visit>(target: &T,
 pub fn find_mark_uses_command(st: &CommandState, cx: &driver::Ctxt, label: &str) {
     find_mark_uses(&*st.krate(), st, cx, label);
 }
+
+
+pub fn rename_marks(st: &CommandState, old: Symbol, new: Symbol) {
+    let mut marks = st.marks_mut();
+    let mut nodes = marks.iter().filter(|&&(_, label)| label == old)
+        .map(|&(id, _)| id).collect::<Vec<_>>();
+    for id in nodes {
+        marks.remove(&(id, old));
+        marks.insert((id, new));
+    }
+}
