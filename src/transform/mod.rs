@@ -32,6 +32,7 @@ impl<T: Transform> Command for TransformCommand<T> {
 
 mod control_flow;
 mod funcs;
+mod rewrite;
 mod statics;
 mod structs;
 mod test;
@@ -52,6 +53,11 @@ pub fn register_transform_commands(reg: &mut Registry) {
     reg.register("fix_unused_unsafe", |_args| mk(funcs::FixUnusedUnsafe));
     reg.register("sink_unsafe", |_args| mk(funcs::SinkUnsafe));
     reg.register("wrap_extern", |_args| mk(funcs::WrapExtern));
+
+    reg.register("rewrite_expr", |args| mk(rewrite::RewriteExpr {
+        pat: args[0].clone(),
+        repl: args[1].clone(),
+    }));
 
     reg.register("static_collect_to_struct", |args| mk(statics::CollectToStruct {
         struct_name: args[0].clone(),
