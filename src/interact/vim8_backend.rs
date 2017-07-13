@@ -1,4 +1,4 @@
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, Write};
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 use json::{self, JsonValue};
@@ -19,6 +19,8 @@ pub fn init<U, F>(to_server: WrapSender<ToServer, U, F>) -> Sender<ToClient>
         for msg in client_recv.iter() {
             let json = encode_message(msg);
             json.write(&mut out).unwrap();
+            out.write_all(b"\n").unwrap();
+            out.flush().unwrap();
         }
     });
 
@@ -170,7 +172,7 @@ fn decode_message(json: JsonValue) -> Result<ToServer, String> {
         "run-command" => {
             ToServer::RunCommand {
                 name: get_conv!(obj, "name", take_string),
-                args: get_conv_array!(obj, "files", take_string),
+                args: get_conv_array!(obj, "args", take_string),
             }
         },
 

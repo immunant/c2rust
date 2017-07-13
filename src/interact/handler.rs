@@ -194,6 +194,7 @@ impl InteractState {
                     if cmd_state.krate_changed() {
                         let rws = rewrite::rewrite(cx.session(), &krate, &cmd_state.krate());
                         file_rewrite::rewrite_files_with(cx.session().codemap(), &rws, |fm, s| {
+                            info!("got new text for {:?}", fm.name);
                             if fm.name.starts_with("<") {
                                 return;
                             }
