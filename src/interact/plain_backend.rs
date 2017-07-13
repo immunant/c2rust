@@ -70,6 +70,9 @@ fn encode_message(msg: ToClient) -> String {
 
         ToClient::NewBufferText { file, content } =>
             format!("new-buffer-text {}\n{}\n.\n", file, content),
+
+        ToClient::Error { text } =>
+            format!("error {}", text),
     }
 }
 

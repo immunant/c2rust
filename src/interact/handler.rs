@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{self, BufRead};
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::mpsc::{self, Sender, Receiver};
@@ -60,7 +61,18 @@ impl InteractState {
     fn run_loop(&mut self,
                 main_recv: Receiver<ToMainThread>) {
         for msg in main_recv.iter() {
-            self.handle_one(msg);
+            let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                self.handle_one(msg);
+            }));
+
+            if let Err(e) = result {
+                let text =
+                    if let Some(s) = e.downcast_ref::<String>() { s.clone() }
+                    else {
+                        "An error occurred of unknown type".to_owned()
+                    };
+                self.to_client.send(ToClient::Error { text }).unwrap();
+            }
         }
     }
 

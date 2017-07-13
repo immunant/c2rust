@@ -78,6 +78,13 @@ fn encode_message(msg: ToClient) -> JsonValue {
                 "content" => content
             }
         },
+
+        ToClient::Error { text } => {
+            object! {
+                "msg" => "error",
+                "text" => text
+            }
+        },
     }
 }
 

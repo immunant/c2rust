@@ -78,7 +78,11 @@ pub enum ToClient {
     NewBufferText {
         file: String,
         content: String,
-    }
+    },
+
+    Error {
+        text: String,
+    },
 }
 
 

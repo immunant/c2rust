@@ -22,6 +22,9 @@ endfunction
 
 function! s:ModeEnd()
     echo "mode end!"
+    if !s:active
+        return
+    endif
     call job_stop(s:job)
     let s:job = 0
     let s:channel = 0
@@ -118,6 +121,11 @@ function! IdiomizeOutputHandler(channel, msg)
                 exec cur_line
             endif
         endif
+    elseif json["msg"] == "error"
+        redraw
+        echohl ErrorMsg
+        echom json["text"]
+        echohl None
     else
         echo "unrecognized message type" json["msg"]
     endif
