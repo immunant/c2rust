@@ -2,6 +2,7 @@ use syntax::ast::Crate;
 
 use command::{Command, CommandState, Registry};
 use driver::{self, Phase};
+use util::IntoSymbol;
 
 
 pub trait Transform {
@@ -57,6 +58,7 @@ pub fn register_transform_commands(reg: &mut Registry) {
     reg.register("rewrite_expr", |args| mk(rewrite::RewriteExpr {
         pat: args[0].clone(),
         repl: args[1].clone(),
+        filter: if args.len() >= 3 { Some((&args[2]).into_symbol()) } else { None },
     }));
 
     reg.register("static_collect_to_struct", |args| mk(statics::CollectToStruct {

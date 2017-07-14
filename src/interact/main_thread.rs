@@ -17,49 +17,41 @@ use file_rewrite::{self, RewriteMode};
 use interact::{ToServer, ToClient};
 use interact::WrapSender;
 use interact::{plain_backend, vim8_backend};
+use interact::worker::{self, ToWorker};
 use pick_node;
 use rewrite;
 use span_fix;
 use util::IntoSymbol;
 
 
-enum ToMainThread {
-    InputMessage(ToServer),
-    NeedFile(PathBuf, Sender<String>),
-}
-
 struct InteractState {
     rustc_args: Vec<String>,
-    to_main: Sender<ToMainThread>,
+    to_worker: Sender<ToWorker>,
     to_client: Sender<ToClient>,
+    buffers_available: HashSet<PathBuf>,
 
     registry: command::Registry,
     current_marks: HashSet<(NodeId, Symbol)>,
-
-    buffers_available: HashSet<PathBuf>,
-    pending_files: HashMap<PathBuf, Sender<String>>,
 }
 
 impl InteractState {
     fn new(rustc_args: Vec<String>,
            registry: command::Registry,
-           to_main: Sender<ToMainThread>,
+           to_worker: Sender<ToWorker>,
            to_client: Sender<ToClient>) -> InteractState {
         InteractState {
             rustc_args: rustc_args,
-            to_main: to_main,
+            to_worker: to_worker,
             to_client: to_client,
+            buffers_available: HashSet::new(),
 
             registry: registry,
             current_marks: HashSet::new(),
-
-            buffers_available: HashSet::new(),
-            pending_files: HashMap::new(),
         }
     }
 
     fn run_loop(&mut self,
-                main_recv: Receiver<ToMainThread>) {
+                main_recv: Receiver<ToServer>) {
         for msg in main_recv.iter() {
             let result = panic::catch_unwind(AssertUnwindSafe(|| {
                 self.handle_one(msg);
@@ -79,7 +71,7 @@ impl InteractState {
     fn make_file_loader(&self) -> Box<FileLoader> {
         Box::new(InteractiveFileLoader {
             buffers_available: self.buffers_available.clone(),
-            to_main: self.to_main.clone(),
+            to_worker: self.to_worker.clone(),
             real: RealFileLoader,
         })
     }
@@ -90,13 +82,12 @@ impl InteractState {
         driver::run_compiler(&self.rustc_args, Some(file_loader), phase, func)
     }
 
-    fn handle_one(&mut self, msg: ToMainThread) {
-        use self::ToMainThread::*;
+    fn handle_one(&mut self, msg: ToServer) {
         use super::ToServer::*;
         use super::ToClient::*;
 
         match msg {
-            InputMessage(AddMark { file, line, col, kind, label }) => {
+            AddMark { file, line, col, kind, label } => {
                 let kind = pick_node::NodeKind::from_str(&kind).unwrap();
                 let label = label.into_symbol();
 
@@ -124,11 +115,11 @@ impl InteractState {
                 self.to_client.send(msg).unwrap();
             },
 
-            InputMessage(RemoveMark { id }) => {
+            RemoveMark { id } => {
                 self.current_marks.retain(|&(mark_id, _)| mark_id.as_usize() != id);
             },
 
-            InputMessage(GetMarkInfo { id }) => {
+            GetMarkInfo { id } => {
                 let id = NodeId::new(id);
 
                 let mut labels = Vec::new();
@@ -156,7 +147,7 @@ impl InteractState {
                 self.to_client.send(msg).unwrap();
             },
 
-            InputMessage(GetNodeList) => {
+            GetNodeList => {
                 let mut nodes = Vec::with_capacity(self.current_marks.len());
                 for &(id, _) in &self.current_marks {
                     nodes.push(id.as_usize());
@@ -165,25 +156,13 @@ impl InteractState {
                 self.to_client.send(NodeList { nodes });
             },
 
-            InputMessage(SetBuffersAvailable { files }) => {
+            SetBuffersAvailable { files } => {
                 self.buffers_available = files.into_iter()
-                    .map(|x| fs::canonicalize(&x).unwrap())
+                    .filter_map(|x| fs::canonicalize(&x).ok())
                     .collect();
             },
 
-            InputMessage(BufferText { file, content }) => {
-                let path = fs::canonicalize(&file).unwrap();
-                let send = match self.pending_files.remove(&path) {
-                    Some(x) => x,
-                    None => {
-                        warn!("got file {:?}, but no request for it is pending", path);
-                        return;
-                    },
-                };
-                send.send(content).unwrap();
-            },
-
-            InputMessage(RunCommand { name, args }) => {
+            RunCommand { name, args } => {
                 info!("getting command {} with args {:?}", name, args);
                 let mut cmd = self.registry.get_command(&name, &args);
                 let file_loader = self.make_file_loader();
@@ -224,13 +203,8 @@ impl InteractState {
                 });
             },
 
-            NeedFile(path, send) => {
-                assert!(!self.pending_files.contains_key(&path));
-                self.to_client.send(GetBufferText {
-                    file: path.to_string_lossy().into_owned(),
-                }).unwrap();
-                self.pending_files.insert(path, send);
-            },
+            // Other messages are handled by the worker thread
+            BufferText { .. } => unreachable!(),
         }
     }
 }
@@ -238,21 +212,27 @@ impl InteractState {
 pub fn interact_command(args: &[String],
                         rustc_args: Vec<String>,
                         registry: command::Registry) {
-    let (main_send, main_recv) = mpsc::channel();
+    let (to_main, main_recv) = mpsc::channel();
+    let (to_worker, worker_recv) = mpsc::channel();
 
-    let server_send = WrapSender::new(main_send.clone(), ToMainThread::InputMessage);
+    let backend_to_worker = WrapSender::new(to_worker.clone(), ToWorker::InputMessage);
     let to_client =
-        if args.len() > 0 && &args[0] == "vim8" { vim8_backend::init(server_send) }
-        else { plain_backend::init(server_send) };
+        if args.len() > 0 && &args[0] == "vim8" { vim8_backend::init(backend_to_worker) }
+        else { plain_backend::init(backend_to_worker) };
 
-    InteractState::new(rustc_args, registry, main_send, to_client)
+    let to_client_ = to_client.clone();
+    thread::spawn(move || {
+        worker::run_worker(worker_recv, to_client_, to_main);
+    });
+
+    InteractState::new(rustc_args, registry, to_worker, to_client)
         .run_loop(main_recv);
 }
 
 
 struct InteractiveFileLoader {
     buffers_available: HashSet<PathBuf>,
-    to_main: Sender<ToMainThread>,
+    to_worker: Sender<ToWorker>,
     real: RealFileLoader,
 }
 
@@ -270,7 +250,7 @@ impl FileLoader for InteractiveFileLoader {
 
         if self.buffers_available.contains(&canon) {
             let (send, recv) = mpsc::channel();
-            self.to_main.send(ToMainThread::NeedFile(canon, send)).unwrap();
+            self.to_worker.send(ToWorker::NeedFile(canon, send)).unwrap();
             Ok(recv.recv().unwrap())
         } else {
             self.real.read_file(&canon)

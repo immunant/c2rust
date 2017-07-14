@@ -14,7 +14,18 @@ function! s:ModeBegin()
 
     let s:job = job_start("./run-interact.sh",
                 \ {"out_cb": "IdiomizeOutputHandler",
-                \  "err_cb": "IdiomizeErrorHandler"})
+                \  "err_cb": "IdiomizeErrorHandler",
+                \
+                \  "out_io": "buffer",
+                \  "out_name": "<stdout>",
+                \  "out_modifiable": 0,
+                \  "out_msg": 1,
+                \
+                \  "err_io": "buffer",
+                \  "err_name": "<stderr>",
+                \  "err_modifiable": 0,
+                \  "err_msg": 1,
+                \  })
     let s:channel = job_getchannel(s:job)
     let s:active = 1
     echo "opened" s:channel
@@ -37,6 +48,7 @@ nnoremap <Leader>q :call <SID>ModeEnd()<CR>
 nnoremap <Leader>m :call <SID>DoMark()<CR>
 nnoremap <Leader>M :call <SID>DoMarkNamed()<CR>
 nnoremap <Leader>c :call <SID>DoCommand()<CR>
+nnoremap <Leader>f :call <SID>DoFormat()<CR>
 nnoremap <Leader>s :source %<CR>
 
 function! s:Send(json)
@@ -61,6 +73,7 @@ function! s:Mark(kind, label)
                 \ })
 endfunction
 
+
 function! s:DoMark()
     call s:Mark("any", "target")
 endfunction
@@ -78,12 +91,28 @@ function! s:DoCommand()
     let cmd = input("Command: ")
     let parts = split(cmd)
 
+    let buf_files = []
+    for info in getbufinfo()
+        call add(buf_files, info["name"])
+    endfor
+    call s:Send({
+                \ "msg": "set-buffers-available",
+                \ "files": buf_files,
+                \ })
+
     call s:Send({
                 \ "msg": "run-command",
                 \ "name": parts[0],
                 \ "args": parts[1:],
                 \ })
 endfunction
+
+function! s:DoFormat()
+    let cur_line = line(".")
+    %!./run-fmt.sh
+    exec cur_line
+endfunction
+
 
 function! s:SetMark(mark, file, line, col)
     let nr = bufnr(a:file)
@@ -101,6 +130,14 @@ function! IdiomizeOutputHandler(channel, msg)
         call s:SetMark("'>", json["file"], json["end_line"], json["end_col"])
         "normal gv
         echo "Marked node as " . join(json["labels"], ", ")
+    elseif json["msg"] == "get-buffer-text"
+        let nr = bufnr(json["file"])
+        let lines = getbufline(nr, 1, "$")
+        call s:Send({
+                    \ "msg": "buffer-text",
+                    \ "file": json["file"],
+                    \ "content": join(lines, "\n"),
+                    \ })
     elseif json["msg"] == "new-buffer-text"
         let nr = bufnr(json["file"])
         let lines = split(json["content"], "\n")
@@ -132,5 +169,7 @@ function! IdiomizeOutputHandler(channel, msg)
 endfunction
 
 function! IdiomizeErrorHandler(channel, msg)
-    echo a:msg
+    "echohl WarningMsg
+    "echom a:msg
+    "echohl None
 endfunction

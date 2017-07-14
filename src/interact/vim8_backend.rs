@@ -17,6 +17,7 @@ pub fn init<U, F>(to_server: WrapSender<ToServer, U, F>) -> Sender<ToClient>
         let mut out = out.lock();
 
         for msg in client_recv.iter() {
+            info!("sending: {:?}", msg);
             let json = encode_message(msg);
             json.write(&mut out).unwrap();
             out.write_all(b"\n").unwrap();
@@ -32,6 +33,7 @@ pub fn init<U, F>(to_server: WrapSender<ToServer, U, F>) -> Sender<ToClient>
         while let Ok(_) = in_.read_line(&mut line) {
             let json = json::parse(&line).unwrap();
             let msg = decode_message(json).unwrap();
+            info!("received: {:?}", msg);
             line.clear();
             to_server.send(msg);
         }

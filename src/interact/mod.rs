@@ -3,13 +3,15 @@ use std::sync::mpsc::{self, Sender, SendError};
 
 use pick_node;
 
-mod handler;
 mod plain_backend;
 mod vim8_backend;
+mod worker;
+mod main_thread;
 
-pub use self::handler::interact_command;
+pub use self::main_thread::interact_command;
 
 
+#[derive(Clone, Debug)]
 pub enum ToServer {
     AddMark {
         file: String,
@@ -50,6 +52,7 @@ pub enum ToServer {
     },
 }
 
+#[derive(Clone, Debug)]
 pub enum ToClient {
     /// Details about an existing mark.
     MarkInfo {

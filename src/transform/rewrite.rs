@@ -1,4 +1,5 @@
 use syntax::ast::Crate;
+use syntax::symbol::Symbol;
 
 use api::*;
 use command::CommandState;
@@ -10,6 +11,7 @@ use transform::Transform;
 pub struct RewriteExpr {
     pub pat: String,
     pub repl: String,
+    pub filter: Option<Symbol>,
 }
 
 impl Transform for RewriteExpr {
@@ -38,8 +40,10 @@ impl Transform for RewriteExpr {
         init_mcx.set_type("__c", BindingType::Item);
 
         fold_match_with(init_mcx, pat, krate, |ast, bnd| {
-            if !contains_mark(&*ast, "target", st) {
-                return ast;
+            if let Some(filter) = self.filter {
+                if !contains_mark(&*ast, filter, st) {
+                    return ast;
+                }
             }
 
             repl.clone().subst(&bnd)
