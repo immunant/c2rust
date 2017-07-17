@@ -1,0 +1,132 @@
+json-c (0.12.1-1.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * debian/control: Fix Vcs-Browser URL
+  * debian/libjson-c-dev.links: Fix library symlinks to not collide between
+    /lib/ and /usr/lib/ (Closes: #843145, LP: #1629552)
+
+ -- Martin Pitt <mpitt@debian.org>  Mon, 14 Nov 2016 11:33:17 +0100
+
+json-c (0.12.1-1) unstable; urgency=medium
+
+  * Imported Upstream version 0.12.1
+  * Rebase patches on top of 0.12.1 release
+  * Workaround the unused variables in tests
+
+ -- Ondřej Surý <ondrej@debian.org>  Fri, 02 Sep 2016 10:28:57 +0200
+
+json-c (0.12-3) unstable; urgency=medium
+
+  * Fix the .so links in the -dev package (Closes: #821768)
+
+ -- Ondřej Surý <ondrej@debian.org>  Tue, 19 Apr 2016 09:44:04 +0200
+
+json-c (0.12-2) unstable; urgency=medium
+
+  * Upload to unstable
+  * wrap-and-sort -a debian/ directory
+
+ -- Ondřej Surý <ondrej@debian.org>  Mon, 18 Apr 2016 21:19:20 +0200
+
+json-c (0.12-1) experimental; urgency=medium
+
+  [ Andreas Beckmann ]
+  * libjson-c-dev: Ship /usr/lib/<triplet>/libjson-c.so.2 symlink that would
+    otherwise become a dangling link (initially created by ldconfig) after
+    package removal.  (Closes: #792177)
+
+  [ Ondřej Surý ]
+  * New upstream version 0.12
+    + [CVE-2013-6371]: hash collision denial of service
+    + [CVE-2013-6370]: buffer overflow if size_t is larger than int
+  * Remove all upstream-merged patches
+  * Add patch to fix variable set but not used [-Werror=unused-but-set-variable]
+  * Update libjson-c2 symbols file
+    + The new upstream release misses two symbols, upload to experimental
+      first if it poses any real problem or not.
+  * Migrate to automatic dbgsym
+  * Add autotools-dev dh addon
+  * Bump standards to 3.9.7 (no change)
+  * Bump SOVERSION as interfaces has been removed from 0.12 release
+  * Library transition from libjson-c2 to libjson-c3 as interfaces has
+    been removed
+
+ -- Ondřej Surý <ondrej@debian.org>  Thu, 17 Apr 2014 10:53:37 +0200
+
+json-c (0.11-4) unstable; urgency=low
+
+  * Add upstream patch to fix two security vulnerabilities (Closes: #744008)
+    + [CVE-2013-6371]: hash collision denial of service
+    + [CVE-2013-6370]: buffer overflow if size_t is larger than int
+
+ -- Ondřej Surý <ondrej@debian.org>  Thu, 17 Apr 2014 12:02:59 +0200
+
+json-c (0.11-3) unstable; urgency=low
+
+  * Repository is not at anonscam.debian.org :)
+  * Merge git changes from 0.11 and not-yet-merged pull request #94 needed
+    for new php5-json
+
+ -- Ondřej Surý <ondrej@debian.org>  Tue, 27 Aug 2013 12:37:59 +0200
+
+json-c (0.11-2) unstable; urgency=low
+
+  * Fix compat symlinks in libjson0 and libjson0-dev
+
+ -- Ondřej Surý <ondrej@debian.org>  Thu, 06 Jun 2013 20:05:57 +0200
+
+json-c (0.11-1) unstable; urgency=low
+
+  * Imported Upstream version 0.11
+  * Transition from libjson to libjson-c reflecting upstream library name
+    change
+  * Add very thin symlink-based compatibility layer from libjson.so.0 to
+    libjson-c.so.2
+  * Remove debian/patches/fix-format-string-in-test.patch; merged upstream
+  * Move documentation to SONAME agnostic package libjson-c-doc
+  * Rename dbg symbols package to libjson-c2-dbg
+  * Update watch file (Closes: #693518)
+  * Update homepage location (Closes: #704918)
+
+ -- Ondřej Surý <ondrej@debian.org>  Mon, 13 May 2013 10:29:21 +0200
+
+json-c (0.10-1.2) unstable; urgency=medium
+
+  * Medium-urgency upload for RC bugfix.
+  * Non-maintainer upload, with approval of the maintainer.
+  * Install libjson to /lib instead of /usr/lib, since upstart 1.6 needs it.
+    Closes: #695566.
+
+ -- Steve Langasek <vorlon@debian.org>  Fri, 14 Dec 2012 16:28:07 -0800
+
+json-c (0.10-1.1) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * Include the missing json_object_iterator.h header in
+    libjson0-dev. (Closes: #685714)
+
+ -- Gergely Nagy <algernon@madhouse-project.org>  Mon, 27 Aug 2012 12:56:32 +0200
+
+json-c (0.10-1) unstable; urgency=low
+
+  * New upstream release (Closes: #684058)
+  * Change watch file to target on github json-c repository.
+  * Add patch fixing compilation warning in tests/test_printbuf.c.
+  * Update to standards-version 3.9.3.0.
+  * Update copyright information.
+
+ -- fabien boucher <fabien.dot.boucher@gmail.com>  Fri, 17 Aug 2012 16:40:10 +0000
+
+json-c (0.9-1.1) unstable; urgency=low
+
+  * Non-maintainer upload
+  * Build for multiarch, closes: #637621
+   (Patch from Steve Langasek)
+
+ -- Riku Voipio <riku.voipio@linaro.org>  Fri, 18 May 2012 17:21:25 +0300
+
+json-c (0.9-1) unstable; urgency=low
+
+  * Initial release (Closes: #557788)
+
+ -- fabien boucher <fabien.dot.boucher@gmail.com>  Wed, 11 Nov 2009 16:34:13 +0100

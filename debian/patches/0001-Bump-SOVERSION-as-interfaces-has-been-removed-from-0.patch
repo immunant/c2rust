@@ -1,0 +1,21 @@
+From: =?utf-8?q?Ond=C5=99ej_Sur=C3=BD?= <ondrej@sury.org>
+Date: Fri, 15 Apr 2016 10:26:31 +0200
+Subject: Bump SOVERSION as interfaces has been removed from 0.12 release
+
+---
+ Makefile.am | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile.am b/Makefile.am
+index e511a36..5e7752f 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -31,7 +31,7 @@ libjson_cinclude_HEADERS = \
+ #libjsonx_include_HEADERS = \
+ #	json_config.h
+ 
+-libjson_c_la_LDFLAGS = -version-info 2:2:0 -no-undefined @JSON_BSYMBOLIC_LDFLAGS@
++libjson_c_la_LDFLAGS = -version-info 3:1:0 -no-undefined @JSON_BSYMBOLIC_LDFLAGS@
+ 
+ libjson_c_la_SOURCES = \
+ 	arraylist.c \

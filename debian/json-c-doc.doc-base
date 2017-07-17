@@ -1,0 +1,9 @@
+Document: json-c-doc
+Title: JSON-C (libjson-c) manual
+Author: Metaparadigm Pte Ltd
+Abstract: This manual describe the JSON-C API.
+Section: Programming
+
+Format: HTML
+Index: /usr/share/doc/json-c-doc/html/index.html
+Files: /usr/share/doc/json-c-doc/html/*.html
