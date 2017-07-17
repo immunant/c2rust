@@ -32,8 +32,9 @@ struct MarkData {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct Mark(usize);
+pub struct Mark(usize);
 
+#[allow(dead_code)]
 impl<T> Cursor<T> {
     pub fn new() -> Cursor<T> {
         Cursor {
@@ -203,7 +204,6 @@ impl<T> Cursor<T> {
 
         if let Some(m) = self.right_marks.last_mut() {
             m.depth -= mark_moves;
-            mark_moves = 0;
         }
 
         xs
@@ -269,6 +269,7 @@ impl<T> Cursor<T> {
         result
     }
 
+    #[allow(dead_code)] // Helper function for debugging
     pub fn debug(&self) {
         let pos = self.left.len();
         let len = self.left.len() + self.right.len();

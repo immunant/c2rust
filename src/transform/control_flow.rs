@@ -10,7 +10,7 @@ use transform::Transform;
 pub struct ReconstructWhile;
 
 impl Transform for ReconstructWhile {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = replace_expr(
             cx.session(), krate,
             r#"
@@ -34,7 +34,7 @@ impl Transform for ReconstructWhile {
 pub struct ReconstructForRange;
 
 impl Transform for ReconstructForRange {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let pat = parse_stmts(cx.session(), r#"
             __i = __start;
             '__label: while __i < __end {
@@ -112,7 +112,7 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
 }
 
 impl Transform for RemoveUnusedLabels {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = remove_unused_labels_from_loop_kind(krate, cx.session(),
                 "'__label: loop { __m_body; }",
                 "loop { __m_body; }");

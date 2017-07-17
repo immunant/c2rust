@@ -1,26 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
-use std::io::{self, BufRead};
-use std::panic::{self, AssertUnwindSafe};
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
-use std::sync::mpsc::{self, Sender, Receiver};
-use std::thread;
-use json::{self, JsonValue};
-use syntax::ast::{NodeId, Crate};
-use syntax::codemap::{FileLoader, RealFileLoader};
-use syntax::symbol::Symbol;
+use std::path::PathBuf;
+use std::sync::mpsc::{Sender, Receiver};
 
-use command::{self, CommandState};
-use driver;
-use file_rewrite::{self, RewriteMode};
 use interact::{ToServer, ToClient};
-use interact::WrapSender;
-use interact::{plain_backend, vim8_backend};
-use pick_node;
-use rewrite;
-use span_fix;
-use util::IntoSymbol;
 
 
 pub enum ToWorker {

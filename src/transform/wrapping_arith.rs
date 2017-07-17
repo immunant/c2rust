@@ -9,7 +9,7 @@ use transform::Transform;
 pub struct WrappingToNormal;
 
 impl Transform for WrappingToNormal {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = replace_expr(cx.session(), krate,
                                  "__x.wrapping_add(__y)",
                                  "__x + __y");

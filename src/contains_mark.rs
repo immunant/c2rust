@@ -1,10 +1,5 @@
 use syntax::ast::*;
-use syntax::codemap::Span;
-use syntax::ptr::P;
-use syntax::parse::token::{Token, Nonterminal};
 use syntax::symbol::Symbol;
-use syntax::tokenstream::{TokenTree, TokenStream};
-use syntax::util::small_vector::SmallVector;
 use syntax::visit::{self, Visitor};
 
 use command::CommandState;

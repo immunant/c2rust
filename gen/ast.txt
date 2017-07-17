@@ -39,12 +39,9 @@ enum ItemKind {
     Enum(def, generics),
     Struct(vd, generics),
     Union(vd, generics),
-    Trait(unsafety, generics,
-          bounds, items),
+    Trait(unsafety, generics, bounds, items),
     DefaultImpl(unsafety, trait_ref),
-    Impl(unsafety, polarity,
-         generics, trait_ref,
-         ty, items),
+    Impl(unsafety, polarity, generics, defaultness, trait_ref, ty, items),
     Mac(mac),
     MacroDef(tts),
 }
@@ -148,7 +145,7 @@ flag LitIntType;
 flag FloatTy;
 
 struct BareFnTy { unsafety, abi, lifetimes, decl }
-struct Lifetime { id, span, name }
+struct Lifetime { id, span, ident }
 enum TyParamBound {
     TraitTyParamBound(poly, module),
     RegionTyParamBound(lt),
@@ -189,7 +186,7 @@ enum ExprKind {
     InPlace(place, expr),
     Array(elems),
     Call(func, args),
-    MethodCall(ident, tys, args),
+    MethodCall(path_seg, args),
     Tup(elems),
     Binary(op,
         #[rewrite_step_kind=ExprLeft] a,
@@ -309,6 +306,7 @@ struct Mac_ { path, tts }
 flag MacStmtStyle;
 flag TokenStream;
 flag ThinTokenStream;
+struct MacroDef { tokens, legacy }
 
 
 struct InlineAsm {

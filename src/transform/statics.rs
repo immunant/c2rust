@@ -1,21 +1,15 @@
 use std::collections::{HashMap, HashSet};
-use rustc::hir;
-use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
 use syntax::ast::*;
-use syntax::codemap::{DUMMY_SP, Spanned};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::util::ThinVec;
 use syntax::util::small_vector::SmallVector;
 
 use api::*;
-use ast_equiv::AstEquiv;
 use bindings::Bindings;
 use command::CommandState;
 use dataflow;
-use driver::{self, Phase};
-use fn_edit::FnLike;
+use driver;
 use transform::Transform;
 use util::IntoSymbol;
 use util::Lone;
@@ -133,7 +127,7 @@ impl Transform for Localize {
             }
 
             match i.node {
-                ItemKind::Static(ref ty, mutbl, ref init) => {
+                ItemKind::Static(ref ty, mutbl, _) => {
                     let def_id = cx.node_def_id(i.id);
                     let arg_name_str = format!("{}_", i.ident.name.as_str());
                     let arg_name = (&arg_name_str as &str).into_symbol();

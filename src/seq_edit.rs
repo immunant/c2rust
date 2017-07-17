@@ -1,17 +1,9 @@
-use std::collections::hash_map::HashMap;
-use std::cmp;
-use std::result;
 use syntax::ast::{Block, Stmt, Item, Mod};
-use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
 
-use bindings::{self, Bindings};
 use cursor::Cursor;
 use fold::Fold;
-use util::PatternSymbol;
-use util::IntoSymbol;
 
 
 struct BlockFolder<F: FnMut(&mut Cursor<Stmt>)> {

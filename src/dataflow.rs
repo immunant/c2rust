@@ -53,7 +53,7 @@ impl<'a, K, V> Ctxt<'a, K, V>
         unsafe {
             let data: &'a HashMap<K, UnsafeCell<V>> = mem::transmute(init);
 
-            let cur_val = unsafe { &mut *data[&cur].get() };
+            let cur_val = &mut *data[&cur].get();
 
             let ctxt = Ctxt {
                 rev_deps: rev_deps,
@@ -72,9 +72,7 @@ impl<'a, K, V> Index<K> for Ctxt<'a, K, V>
     type Output = V;
     fn index(&self, key: K) -> &V {
         assert!(key != self.cur, "tried to access current node");
-        unsafe {
-            self.rev_deps.insert(key.clone(), self.cur.clone());
-        }
+        self.rev_deps.insert(key.clone(), self.cur.clone());
         unsafe {
             &*self.data[&key].get()
         }

@@ -17,19 +17,18 @@ pub enum RewriteMode {
 
 pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite], mode: RewriteMode) {
     rewrite_files_with(cm, rewrites, |fm, s| {
-        let path = match fm.abs_path.as_ref() {
-            Some(x) => x,
-            None => return,
-        };
+        if fm.name.starts_with("<") {
+            return;
+        }
 
         match mode {
             RewriteMode::InPlace => {
-                info!("writing to {}", path);
-                let mut f = File::create(path).unwrap();
+                info!("writing to {}", fm.name);
+                let mut f = File::create(&fm.name).unwrap();
                 f.write_all(s.as_bytes()).unwrap();
             },
             RewriteMode::Alongside => {
-                let new_path = format!("{}.new", path);
+                let new_path = format!("{}.new", fm.name);
                 info!("writing to {}", new_path);
                 let mut f = File::create(&new_path).unwrap();
                 f.write_all(s.as_bytes()).unwrap();
@@ -70,6 +69,7 @@ fn print_rewrite(rw: &TextRewrite, depth: usize) {
     }
 }
 
+#[allow(dead_code)] // Helper function for debugging
 fn print_rewrites(rws: &[TextRewrite]) {
     info!("{} rewrites:", rws.len());
     for rw in rws {

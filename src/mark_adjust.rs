@@ -1,15 +1,10 @@
 //! This module implements commands for manipulating the current set of marked nodes.
-use std::collections::{HashMap, HashSet};
-use std::str::FromStr;
 use rustc::hir;
 use rustc::hir::def::Def;
-use rustc::hir::def_id::DefId;
 use rustc::ty::TypeVariants;
 use syntax::ast::*;
-use syntax::codemap::{Span, BytePos};
-use syntax::ext::hygiene::SyntaxContext;
 use syntax::symbol::Symbol;
-use syntax::visit::{self, Visitor, FnKind};
+use syntax::visit::{self, Visitor};
 
 use api::DriverCtxtExt;
 use command::CommandState;
@@ -218,7 +213,7 @@ pub fn find_field_uses_command(st: &CommandState, cx: &driver::Ctxt, field: &str
 
 pub fn rename_marks(st: &CommandState, old: Symbol, new: Symbol) {
     let mut marks = st.marks_mut();
-    let mut nodes = marks.iter().filter(|&&(_, label)| label == old)
+    let nodes = marks.iter().filter(|&&(_, label)| label == old)
         .map(|&(id, _)| id).collect::<Vec<_>>();
     for id in nodes {
         marks.remove(&(id, old));
