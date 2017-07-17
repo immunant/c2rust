@@ -52,12 +52,18 @@ const char *json_hex_chars = "0123456789abcdefABCDEF";
 static void json_object_generic_delete(struct json_object* jso);
 static struct json_object* json_object_new(enum json_type o_type);
 
-static json_object_to_json_string_fn json_object_object_to_json_string;
-static json_object_to_json_string_fn json_object_boolean_to_json_string;
-static json_object_to_json_string_fn json_object_int_to_json_string;
-static json_object_to_json_string_fn json_object_double_to_json_string;
-static json_object_to_json_string_fn json_object_string_to_json_string;
-static json_object_to_json_string_fn json_object_array_to_json_string;
+static int json_object_object_to_json_string(
+        struct json_object* jso, struct printbuf *pb, int level, int flags);
+static int json_object_boolean_to_json_string(
+        struct json_object* jso, struct printbuf *pb, int level, int flags);
+static int json_object_int_to_json_string(
+        struct json_object* jso, struct printbuf *pb, int level, int flags);
+static int json_object_double_to_json_string(
+        struct json_object* jso, struct printbuf *pb, int level, int flags);
+static int json_object_string_to_json_string(
+        struct json_object* jso, struct printbuf *pb, int level, int flags);
+static int json_object_array_to_json_string(
+        struct json_object* jso, struct printbuf *pb, int level, int flags);
 
 
 /* ref count debugging */
@@ -185,7 +191,7 @@ static struct json_object* json_object_new(enum json_type o_type)
   if(!jso) return NULL;
   jso->o_type = o_type;
   jso->_ref_count = 1;
-  jso->_delete = &json_object_generic_delete;
+  jso->_delete = json_object_generic_delete;
 #ifdef REFCOUNT_DEBUG
   lh_table_insert(json_object_table, jso, jso);
   MC_DEBUG("json_object_new_%s: %p\n", json_type_to_name(jso->o_type), jso);
@@ -213,7 +219,7 @@ enum json_type json_object_get_type(struct json_object *jso)
 /* set a custom conversion to string */
 
 void json_object_set_serializer(json_object *jso,
-	json_object_to_json_string_fn to_string_func,
+	json_object_to_json_string_fn *to_string_func,
 	void *userdata,
 	json_object_delete_fn *user_delete)
 {
@@ -234,22 +240,22 @@ void json_object_set_serializer(json_object *jso,
 			jso->_to_json_string = NULL;
 			break;
 		case json_type_boolean:
-			jso->_to_json_string = &json_object_boolean_to_json_string;
+			jso->_to_json_string = json_object_boolean_to_json_string;
 			break;
 		case json_type_double:
-			jso->_to_json_string = &json_object_double_to_json_string;
+			jso->_to_json_string = json_object_double_to_json_string;
 			break;
 		case json_type_int:
-			jso->_to_json_string = &json_object_int_to_json_string;
+			jso->_to_json_string = json_object_int_to_json_string;
 			break;
 		case json_type_object:
-			jso->_to_json_string = &json_object_object_to_json_string;
+			jso->_to_json_string = json_object_object_to_json_string;
 			break;
 		case json_type_array:
-			jso->_to_json_string = &json_object_array_to_json_string;
+			jso->_to_json_string = json_object_array_to_json_string;
 			break;
 		case json_type_string:
-			jso->_to_json_string = &json_object_string_to_json_string;
+			jso->_to_json_string = json_object_string_to_json_string;
 			break;
 		}
 		return;
@@ -359,10 +365,10 @@ struct json_object* json_object_new_object(void)
 {
   struct json_object *jso = json_object_new(json_type_object);
   if(!jso) return NULL;
-  jso->_delete = &json_object_object_delete;
-  jso->_to_json_string = &json_object_object_to_json_string;
+  jso->_delete = json_object_object_delete;
+  jso->_to_json_string = json_object_object_to_json_string;
   jso->o.c_object = lh_kchar_table_new(JSON_OBJECT_DEF_HASH_ENTRIES,
-					NULL, &json_object_lh_entry_free);
+					NULL, json_object_lh_entry_free);
   return jso;
 }
 
@@ -448,7 +454,7 @@ struct json_object* json_object_new_boolean(json_bool b)
 {
   struct json_object *jso = json_object_new(json_type_boolean);
   if(!jso) return NULL;
-  jso->_to_json_string = &json_object_boolean_to_json_string;
+  jso->_to_json_string = json_object_boolean_to_json_string;
   jso->o.c_boolean = b;
   return jso;
 }
@@ -485,7 +491,7 @@ struct json_object* json_object_new_int(int32_t i)
 {
   struct json_object *jso = json_object_new(json_type_int);
   if(!jso) return NULL;
-  jso->_to_json_string = &json_object_int_to_json_string;
+  jso->_to_json_string = json_object_int_to_json_string;
   jso->o.c_int64 = i;
   return jso;
 }
@@ -533,7 +539,7 @@ struct json_object* json_object_new_int64(int64_t i)
 {
   struct json_object *jso = json_object_new(json_type_int);
   if(!jso) return NULL;
-  jso->_to_json_string = &json_object_int_to_json_string;
+  jso->_to_json_string = json_object_int_to_json_string;
   jso->o.c_int64 = i;
   return jso;
 }
@@ -573,7 +579,9 @@ static int json_object_double_to_json_string(struct json_object* jso,
      how to handle these cases as strings */
   if(isnan(jso->o.c_double))
     size = snprintf(buf, sizeof(buf), "NaN");
-  else if(isinf(jso->o.c_double))
+  // GCC's `isinf` actually expands to __builtin_isinf_sign, which has no Rust
+  // equivalent.
+  else if(__builtin_isinf(jso->o.c_double))
     if(jso->o.c_double > 0)
       size = snprintf(buf, sizeof(buf), "Infinity");
     else
@@ -606,7 +614,7 @@ struct json_object* json_object_new_double(double d)
 	struct json_object *jso = json_object_new(json_type_double);
 	if (!jso)
 		return NULL;
-	jso->_to_json_string = &json_object_double_to_json_string;
+	jso->_to_json_string = json_object_double_to_json_string;
 	jso->o.c_double = d;
 	return jso;
 }
@@ -675,7 +683,7 @@ double json_object_get_double(struct json_object *jso)
      *
      * See CERT guideline ERR30-C
      */
-    if ((HUGE_VAL == cdouble || -HUGE_VAL == cdouble) &&
+    if (((1.0 / 0.0) == cdouble || -(1.0 / 0.0) == cdouble) &&
         (ERANGE == errno))
             cdouble = 0.0;
     return cdouble;
@@ -708,8 +716,8 @@ struct json_object* json_object_new_string(const char *s)
 {
   struct json_object *jso = json_object_new(json_type_string);
   if(!jso) return NULL;
-  jso->_delete = &json_object_string_delete;
-  jso->_to_json_string = &json_object_string_to_json_string;
+  jso->_delete = json_object_string_delete;
+  jso->_to_json_string = json_object_string_to_json_string;
   jso->o.c_string.str = strdup(s);
   jso->o.c_string.len = strlen(s);
   return jso;
@@ -719,8 +727,8 @@ struct json_object* json_object_new_string_len(const char *s, int len)
 {
   struct json_object *jso = json_object_new(json_type_string);
   if(!jso) return NULL;
-  jso->_delete = &json_object_string_delete;
-  jso->_to_json_string = &json_object_string_to_json_string;
+  jso->_delete = json_object_string_delete;
+  jso->_to_json_string = json_object_string_to_json_string;
   jso->o.c_string.str = (char*)malloc(len + 1);
   memcpy(jso->o.c_string.str, (void *)s, len);
   jso->o.c_string.str[len] = '\0';
@@ -809,9 +817,9 @@ struct json_object* json_object_new_array(void)
 {
   struct json_object *jso = json_object_new(json_type_array);
   if(!jso) return NULL;
-  jso->_delete = &json_object_array_delete;
-  jso->_to_json_string = &json_object_array_to_json_string;
-  jso->o.c_array = array_list_new(&json_object_array_entry_free);
+  jso->_delete = json_object_array_delete;
+  jso->_to_json_string = json_object_array_to_json_string;
+  jso->o.c_array = array_list_new(json_object_array_entry_free);
   return jso;
 }
 

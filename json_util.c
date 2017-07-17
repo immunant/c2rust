@@ -276,7 +276,7 @@ void* rpl_realloc(void* p, size_t n)
 #endif
 
 #define NELEM(a)        (sizeof(a) / sizeof(a[0]))
-static const char* json_type_name[] = {
+static const char* json_type_name[7] = {
   /* If you change this, be sure to update the enum json_type definition too */
   "null",
   "boolean",

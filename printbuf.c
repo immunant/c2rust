@@ -149,6 +149,7 @@ static int vasprintf(char **buf, const char *fmt, va_list ap)
 }
 #endif /* !HAVE_VASPRINTF */
 
+#ifndef CORRODE
 int sprintbuf(struct printbuf *p, const char *msg, ...)
 {
   va_list ap;
@@ -176,6 +177,7 @@ int sprintbuf(struct printbuf *p, const char *msg, ...)
     return size;
   }
 }
+#endif
 
 void printbuf_reset(struct printbuf *p)
 {

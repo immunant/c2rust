@@ -41,6 +41,7 @@ extern void mc_set_syslog(int syslog)
   _syslog = syslog;
 }
 
+#ifndef CORRODE
 void mc_debug(const char *msg, ...)
 {
   va_list ap;
@@ -81,3 +82,4 @@ void mc_info(const char *msg, ...)
 		vfprintf(stderr, msg, ap);
   va_end(ap);
 }
+#endif

@@ -55,18 +55,18 @@
 #define NAN nan("")
 #endif /* !NAN */
 
-static const char json_null_str[] = "null";
+static const char json_null_str[5] = "null";
 static const int json_null_str_len = sizeof(json_null_str) - 1;
-static const char json_inf_str[] = "Infinity";
+static const char json_inf_str[9] = "Infinity";
 static const int json_inf_str_len = sizeof(json_inf_str) - 1;
-static const char json_nan_str[] = "NaN";
+static const char json_nan_str[4] = "NaN";
 static const int json_nan_str_len = sizeof(json_nan_str) - 1;
-static const char json_true_str[] = "true";
+static const char json_true_str[5] = "true";
 static const int json_true_str_len = sizeof(json_true_str) - 1;
-static const char json_false_str[] = "false";
+static const char json_false_str[6] = "false";
 static const int json_false_str_len = sizeof(json_false_str) - 1;
 
-static const char* json_tokener_errors[] = {
+static const char* json_tokener_errors[15] = {
   "success",
   "continue",
   "nesting too deep",
@@ -370,7 +370,7 @@ struct json_object* json_tokener_parse_ex(struct json_tokener *tok,
 	{
 		if (tok->st_pos == json_inf_str_len)
 		{
-			current = json_object_new_double(is_negative ? -INFINITY : INFINITY); 
+			current = json_object_new_double(is_negative ? -(1.0f / 0.0f) : (1.0f / 0.0f)); 
 			saved_state = json_tokener_state_finish;
 			state = json_tokener_state_eatws;
 			goto redo_char;
@@ -407,7 +407,7 @@ struct json_object* json_tokener_parse_ex(struct json_tokener *tok,
 	{
 		if (tok->st_pos == json_nan_str_len)
 		{
-			current = json_object_new_double(NAN);
+			current = json_object_new_double(0.0f / 0.0f);
 			saved_state = json_tokener_state_finish;
 			state = json_tokener_state_eatws;
 			goto redo_char;

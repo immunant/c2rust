@@ -24,6 +24,9 @@
 #include "random_seed.h"
 #include "linkhash.h"
 
+#ifdef CORRODE
+void lh_abort(const char *msg, ...);
+#else
 void lh_abort(const char *msg, ...)
 {
 	va_list ap;
@@ -32,6 +35,7 @@ void lh_abort(const char *msg, ...)
 	va_end(ap);
 	exit(1);
 }
+#endif
 
 unsigned long lh_ptr_hash(const void *k)
 {
@@ -405,14 +409,8 @@ unsigned long lh_char_hash(const void *k)
 		int seed;
 		/* we can't use -1 as it is the unitialized sentinel */
 		while ((seed = json_c_get_random_seed()) == -1);
-#if defined __GNUC__
-		__sync_val_compare_and_swap(&random_seed, -1, seed);
-#elif defined _MSC_VER
-		InterlockedCompareExchange(&random_seed, seed, -1);
-#else
-#warning "racy random seed initializtion if used by multiple threads"
+/*#warning "racy random seed initializtion if used by multiple threads"*/
 		random_seed = seed; /* potentially racy */
-#endif
 	}
 
 	return hashlittle((const char*)k, strlen((const char*)k), random_seed); 
