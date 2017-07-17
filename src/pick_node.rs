@@ -223,12 +223,12 @@ pub fn pick_node_at_loc(krate: &Crate,
     let (lo, hi) = fm.line_bounds(line as usize - 1);
 
     let line_len = hi.0 - lo.0;
-    if col == 0 || col - 1 >= line_len {
+    if col >= line_len {
         panic!("column {} is outside the bounds of {} line {}", col, file, line);
     }
 
     // TODO: make this work when the line contains multibyte characters
-    let pos = lo + BytePos(col - 1);
+    let pos = lo + BytePos(col);
 
     pick_node(krate, kind, pos)
 }

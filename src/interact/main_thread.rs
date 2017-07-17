@@ -199,6 +199,13 @@ impl InteractState {
 
                     if cmd_state.marks_changed() {
                         self.current_marks = cmd_state.marks().clone();
+
+                        let mut nodes = Vec::with_capacity(self.current_marks.len());
+                        for &(id, _) in &self.current_marks {
+                            nodes.push(id.as_usize());
+                        }
+                        nodes.sort();
+                        self.to_client.send(NodeList { nodes });
                     }
                 });
             },
