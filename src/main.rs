@@ -55,28 +55,27 @@ fn find<T: PartialEq<U>, U: ?Sized>(xs: &[T], x: &U) -> Option<usize> {
     None
 }
 
-fn print_usage(prog: &str, opts: &[getopts::OptGroup]) {
+fn print_usage(prog: &str, opts: &getopts::Options) {
     let brief = format!("Usage: {} [options] transform [args...] -- [rustc args...]", prog);
-    print!("{}", getopts::usage(&brief, opts));
+    print!("{}", opts.usage(&brief));
 }
 
 fn parse_opts(argv: Vec<String>) -> Option<Options> {
-    use getopts::{opt, HasArg, Occur};
-    let opts = &[
-        opt("r", "rewrite-mode",
-            "output rewritten code `inplace`, `alongside` the original, \
-               or `print` to screen? (default: print)",
-            "MODE", HasArg::Yes, Occur::Optional),
-        opt("c", "cursor",
-            "a cursor position, used to filter some rewrite operations",
-            "FILE:LINE:COL[:LABEL[:KIND]]", HasArg::Yes, Occur::Multi),
-        opt("m", "mark",
-            "a marked node indicated by its ID, and a label for that mark",
-            "ID[:LABEL]", HasArg::Yes, Occur::Multi),
-        opt("h", "help",
-            "display usage information",
-            "", HasArg::No, Occur::Optional),
-    ];
+    use getopts::{HasArg, Occur};
+    let mut opts = getopts::Options::new();
+    opts.opt("r", "rewrite-mode",
+        "output rewritten code `inplace`, `alongside` the original, \
+           or `print` to screen? (default: print)",
+        "MODE", HasArg::Yes, Occur::Optional);
+    opts.opt("c", "cursor",
+        "a cursor position, used to filter some rewrite operations",
+        "FILE:LINE:COL[:LABEL[:KIND]]", HasArg::Yes, Occur::Multi);
+    opts.opt("m", "mark",
+        "a marked node indicated by its ID, and a label for that mark",
+        "ID[:LABEL]", HasArg::Yes, Occur::Multi);
+    opts.opt("h", "help",
+        "display usage information",
+        "", HasArg::No, Occur::Optional);
 
 
     // Separate idiomize args from rustc args
@@ -88,7 +87,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         },
         None => {
             info!("Expected `--` followed by rustc arguments");
-            print_usage(&argv[0], opts);
+            print_usage(&argv[0], &opts);
             return None;
         },
     };
@@ -100,7 +99,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     // Parse idiomize args
     let prog = &local_args[0];
 
-    let m = match getopts::getopts(&local_args[1..], opts) {
+    let m = match opts.parse(&local_args[1..]) {
         Ok(m) => m,
         Err(e) => {
             info!("{}", e.to_string());
@@ -109,7 +108,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     };
 
     if m.opt_present("h") {
-        print_usage(prog, opts);
+        print_usage(prog, &opts);
         return None;
     }
 

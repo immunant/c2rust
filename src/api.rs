@@ -96,7 +96,7 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
         let parent = self.hir_map().get_parent(id);
         let parent_body = self.hir_map().body_owned_by(parent);
         let tables = self.ty_ctxt().body_tables(parent_body);
-        if let Some(adj) = tables.adjustments.get(&id) {
+        if let Some(adj) = tables.adjustments.get(&id).and_then(|adjs| adjs.last()) {
             adj.target
         } else {
             tables.node_id_to_type(id)
@@ -104,7 +104,7 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
     }
 
     fn def_type(&self, id: DefId) -> Ty<'gcx> {
-        self.ty_ctxt().item_type(id)
+        self.ty_ctxt().type_of(id)
     }
 
     /// Construct a `Path` AST suitable for referring to a definition.

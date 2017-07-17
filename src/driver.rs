@@ -16,6 +16,7 @@ use rustc_errors::Diagnostic;
 use rustc_metadata::creader::CrateLoader;
 use rustc_metadata::cstore::CStore;
 use rustc_resolve::{Resolver, MakeGlobMap};
+use rustc_trans;
 use rustc_trans::back::link;
 use syntax;
 use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, NodeId};
@@ -163,12 +164,12 @@ fn build_session(sopts: Options,
     // Corresponds roughly to `run_compiler`.
     let descriptions = rustc_driver::diagnostics_registry();
     let dep_graph = DepGraph::new(sopts.build_dep_graph());
-    let cstore = Rc::new(CStore::new(&dep_graph));
+    let cstore = Rc::new(CStore::new(&dep_graph, Box::new(rustc_trans::LlvmMetadataLoader)));
     let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
-    let codemap = Rc::new(CodeMap::with_file_loader(file_loader));
+    let codemap = Rc::new(CodeMap::with_file_loader(file_loader, sopts.file_path_mapping()));
     // Put a dummy file at the beginning of the codemap, so that no real `Span` will accidentally
     // collide with `DUMMY_SP` (which is `0 .. 0`).
-    codemap.new_filemap_and_lines("<dummy>", None, " ");
+    codemap.new_filemap_and_lines("<dummy>", " ");
     let emitter_dest = None;
 
     let sess = session::build_session_with_codemap(

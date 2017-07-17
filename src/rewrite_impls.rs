@@ -103,7 +103,7 @@ trait Splice: Rewrite+'static {
         }
 
         let fm = rcx.session().codemap().lookup_byte_offset(old.span().lo).fm;
-        if fm.abs_path.is_none() {
+        if fm.name.starts_with("<") {
             return false;
         }
 

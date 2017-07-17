@@ -37,7 +37,7 @@ impl Transform for ToMethod {
         let krate = fold_nodes(krate, |i: P<Item>| {
             // We're looking for an inherent impl (no `TraitRef`) marked with a cursor.
             if !st.marked(i.id, "dest") ||
-               !matches!([i.node] ItemKind::Impl(_, _, _, None, _, _)) {
+               !matches!([i.node] ItemKind::Impl(_, _, _, _, None, _, _)) {
                 return SmallVector::one(i);
             }
 
@@ -177,7 +177,7 @@ impl Transform for ToMethod {
 
             SmallVector::one(i.map(|i| {
                 unpack!([i.node] ItemKind::Impl(
-                        unsafety, polarity, generics, trait_ref, ty, items));
+                        unsafety, polarity, generics, defaultness, trait_ref, ty, items));
                 let mut items = items;
                 let fns = fns.take().unwrap();
                 items.extend(fns.into_iter().map(|f| {
@@ -200,7 +200,7 @@ impl Transform for ToMethod {
                 }));
                 Item {
                     node: ItemKind::Impl(
-                              unsafety, polarity, generics, trait_ref, ty, items),
+                              unsafety, polarity, generics, defaultness, trait_ref, ty, items),
                     .. i
                 }
             }))
@@ -228,8 +228,7 @@ impl Transform for ToMethod {
             e.map(|e| {
                 Expr {
                     node: ExprKind::MethodCall(
-                              mk().spanned(info.ident.clone()),
-                              vec![],
+                              mk().path_segment(info.ident.clone()),
                               args),
                     .. e
                 }

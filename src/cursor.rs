@@ -32,7 +32,7 @@ struct MarkData {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct Mark(usize);
+pub struct Mark(usize);
 
 impl<T> Cursor<T> {
     pub fn new() -> Cursor<T> {
