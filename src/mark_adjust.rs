@@ -4,17 +4,20 @@ use std::str::FromStr;
 use rustc::hir;
 use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
+use rustc::ty::TypeVariants;
 use syntax::ast::*;
 use syntax::codemap::{Span, BytePos};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
+use api::DriverCtxtExt;
 use command::CommandState;
 use driver;
 use util::HirDefExt;
 use util::IntoSymbol;
 use visit::Visit;
+use visit_node::visit_nodes;
 
 
 /// Find all nodes that refer to marked nodes.
@@ -163,6 +166,53 @@ pub fn find_mark_uses<T: Visit>(target: &T,
 
 pub fn find_mark_uses_command(st: &CommandState, cx: &driver::Ctxt, label: &str) {
     find_mark_uses(&*st.krate(), st, cx, label);
+}
+
+
+pub fn find_field_uses<T: Visit>(target: &T,
+                                 st: &CommandState,
+                                 cx: &driver::Ctxt,
+                                 field: &str,
+                                 label: &str) {
+    let field = field.into_symbol();
+    let label = label.into_symbol();
+
+    let old_ids = st.marks().iter().filter(|&&(_, l)| l == label)
+        .map(|&(id, _)| id).collect::<Vec<_>>();
+
+    // Fields can only appear in exprs, so we don't need a whole Visitor impl.
+    visit_nodes(target, |e: &Expr| {
+        match e.node {
+            ExprKind::Field(ref obj, ref ident) => {
+                if ident.node.name != field {
+                    return;
+                }
+
+                // Use the adjusted type to catch field accesses through autoderef.
+                let ty = cx.adjusted_node_type(obj.id);
+                let def = match_or!([ty.sty] TypeVariants::TyAdt(def, _) => def; return);
+                if let Some(id) = cx.hir_map().as_local_node_id(def.did) {
+                    if st.marked(id, label) {
+                        st.add_mark(e.id, label);
+                    }
+                }
+            },
+
+            // TODO: ExprKind::Struct
+            // (This case is more complicated since we need to resolve the `Path` and also deal
+            // with the fact that `Field` (field uses) do not have NodeIds.)
+
+            _ => {},
+        }
+    });
+
+    for id in old_ids {
+        st.remove_mark(id, label);
+    }
+}
+
+pub fn find_field_uses_command(st: &CommandState, cx: &driver::Ctxt, field: &str, label: &str) {
+    find_field_uses(&*st.krate(), st, cx, field, label);
 }
 
 

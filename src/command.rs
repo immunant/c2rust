@@ -182,6 +182,14 @@ pub fn register_misc_commands(reg: &mut Registry) {
         }))
     });
 
+    reg.register("mark_field_uses", |args| {
+        let field = args[0].clone();
+        let label = args[1].clone();
+        Box::new(FuncCommand::new(Phase::Phase3, move |st, cx| {
+            mark_adjust::find_field_uses_command(st, cx, &field, &label);
+        }))
+    });
+
     reg.register("rename_marks", |args| {
         let old = (&args[0]).into_symbol();
         let new = (&args[1]).into_symbol();

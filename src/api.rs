@@ -13,7 +13,7 @@ use syntax::symbol::keywords;
 
 pub use matcher::MatchCtxt;
 pub use matcher::{fold_match, fold_match_with};
-pub use driver::{parse_expr, parse_pat, parse_stmts, parse_items};
+pub use driver::{parse_expr, parse_pat, parse_ty, parse_stmts, parse_items};
 pub use subst::Subst;
 pub use bindings::Type as BindingType;
 pub use seq_edit::{fold_blocks, fold_modules};
@@ -73,6 +73,7 @@ pub fn find_first<P, T>(pattern: P,
 
 pub trait DriverCtxtExt<'gcx> {
     fn node_type(&self, id: NodeId) -> Ty<'gcx>;
+    fn adjusted_node_type(&self, id: NodeId) -> Ty<'gcx>;
     fn def_type(&self, id: DefId) -> Ty<'gcx>;
     fn def_path(&self, id: DefId) -> Path;
 
@@ -88,6 +89,18 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
         let parent_body = self.hir_map().body_owned_by(parent);
         let tables = self.ty_ctxt().body_tables(parent_body);
         tables.node_id_to_type(id)
+    }
+
+    /// Get the `ty::Ty` computed for a node, taking into account any adjustments that were applied.
+    fn adjusted_node_type(&self, id: NodeId) -> Ty<'gcx> {
+        let parent = self.hir_map().get_parent(id);
+        let parent_body = self.hir_map().body_owned_by(parent);
+        let tables = self.ty_ctxt().body_tables(parent_body);
+        if let Some(adj) = tables.adjustments.get(&id) {
+            adj.target
+        } else {
+            tables.node_id_to_type(id)
+        }
     }
 
     fn def_type(&self, id: DefId) -> Ty<'gcx> {
