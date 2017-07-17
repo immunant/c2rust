@@ -1,13 +1,8 @@
 use rustc::hir;
-use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
 use syntax::ast::*;
-use syntax::abi::Abi;
-use syntax::codemap::{Span, Spanned, DUMMY_SP};
-use syntax::ext::hygiene::SyntaxContext;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
 
 use driver;
 use fold::Fold;

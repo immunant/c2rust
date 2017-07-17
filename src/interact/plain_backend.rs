@@ -2,7 +2,6 @@ use std::io::{self, BufRead, Write};
 use std::str::FromStr;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
-use json::{self, JsonValue};
 
 use interact::{ToServer, ToClient};
 use interact::WrapSender;
@@ -34,7 +33,7 @@ pub fn init<U, F>(to_server: WrapSender<ToServer, U, F>) -> Sender<ToClient>
             let end = line.len() - 1;
             let msg = decode_message(&line[..end]).unwrap();
             line.clear();
-            to_server.send(msg);
+            to_server.send(msg).unwrap();
         }
     });
 

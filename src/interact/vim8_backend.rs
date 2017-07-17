@@ -35,7 +35,7 @@ pub fn init<U, F>(to_server: WrapSender<ToServer, U, F>) -> Sender<ToClient>
             let msg = decode_message(json).unwrap();
             info!("received: {:?}", msg);
             line.clear();
-            to_server.send(msg);
+            to_server.send(msg).unwrap();
         }
     });
 

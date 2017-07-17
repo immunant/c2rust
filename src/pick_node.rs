@@ -97,7 +97,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     }
 
     // There's no `visit_arg`, unfortunately, so we have to do this instead.
-    fn visit_fn(&mut self, fk: FnKind<'a>, fd: &'a FnDecl, s: Span, id: NodeId) {
+    fn visit_fn(&mut self, fk: FnKind<'a>, fd: &'a FnDecl, s: Span, _id: NodeId) {
         visit::walk_fn(self, fk, fd, s);
 
         if self.node_info.is_none() &&
@@ -188,7 +188,7 @@ impl FromStr for NodeKind {
                 "ty" => NodeKind::Ty,
                 "arg" => NodeKind::Arg,
 
-                s => return Err(()),
+                _ => return Err(()),
             };
         Ok(kind)
     }

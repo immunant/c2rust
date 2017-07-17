@@ -1,15 +1,11 @@
 use std::cell::{self, Cell, RefCell};
-use std::collections::HashSet;
-use std::collections::hash_map::{HashMap, Entry};
-use std::ffi::{CString, CStr};
+use std::collections::{HashMap, HashSet};
 use std::mem;
-use libc::{dlopen, dlsym, RTLD_LAZY};
 use syntax::ast::{NodeId, Crate, Mod};
 use syntax::codemap::DUMMY_SP;
 use syntax::symbol::Symbol;
 
 use driver::{self, Phase};
-use rewrite::TextRewrite;
 use util::IntoSymbol;
 
 
@@ -164,8 +160,8 @@ pub fn register_misc_commands(reg: &mut Registry) {
         }))
     });
 
-    reg.register("print_marks", |args| {
-        Box::new(FuncCommand::new(Phase::Phase2, move |st, cx| {
+    reg.register("print_marks", |_| {
+        Box::new(FuncCommand::new(Phase::Phase2, move |st, _cx| {
             let mut marks = st.marks().iter().map(|&x| x).collect::<Vec<_>>();
             marks.sort();
 
@@ -193,7 +189,7 @@ pub fn register_misc_commands(reg: &mut Registry) {
     reg.register("rename_marks", |args| {
         let old = (&args[0]).into_symbol();
         let new = (&args[1]).into_symbol();
-        Box::new(FuncCommand::new(Phase::Phase2, move |st, cx| {
+        Box::new(FuncCommand::new(Phase::Phase2, move |st, _cx| {
             mark_adjust::rename_marks(st, old, new);
         }))
     });

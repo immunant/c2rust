@@ -1,7 +1,5 @@
 use std::marker::PhantomData;
-use std::sync::mpsc::{self, Sender, SendError};
-
-use pick_node;
+use std::sync::mpsc::{Sender, SendError};
 
 mod plain_backend;
 mod vim8_backend;

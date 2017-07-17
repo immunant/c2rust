@@ -117,6 +117,7 @@ pub struct Builder {
     abi: Abi,
 }
 
+#[allow(dead_code)]
 impl Builder {
     pub fn new() -> Builder {
         Builder {

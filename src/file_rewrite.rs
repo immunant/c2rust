@@ -69,6 +69,7 @@ fn print_rewrite(rw: &TextRewrite, depth: usize) {
     }
 }
 
+#[allow(dead_code)] // Helper function for debugging
 fn print_rewrites(rws: &[TextRewrite]) {
     info!("{} rewrites:", rws.len());
     for rw in rws {

@@ -1,19 +1,18 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
-use std::io::{self, BufRead};
+use std::io;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::mpsc::{self, Sender, Receiver};
 use std::thread;
-use json::{self, JsonValue};
 use syntax::ast::{NodeId, Crate};
 use syntax::codemap::{FileLoader, RealFileLoader};
 use syntax::symbol::Symbol;
 
 use command::{self, CommandState};
 use driver;
-use file_rewrite::{self, RewriteMode};
+use file_rewrite;
 use interact::{ToServer, ToClient};
 use interact::WrapSender;
 use interact::{plain_backend, vim8_backend};
@@ -130,7 +129,7 @@ impl InteractState {
                 }
                 labels.sort();
 
-                let msg = self.run_compiler(driver::Phase::Phase2, |krate, cx| {
+                let msg = self.run_compiler(driver::Phase::Phase2, |_krate, cx| {
                     let span = cx.hir_map().span(id);
                     let lo = cx.session().codemap().lookup_char_pos(span.lo);
                     let hi = cx.session().codemap().lookup_char_pos(span.hi);
@@ -153,7 +152,7 @@ impl InteractState {
                     nodes.push(id.as_usize());
                 }
                 nodes.sort();
-                self.to_client.send(NodeList { nodes });
+                self.to_client.send(NodeList { nodes }).unwrap();
             },
 
             SetBuffersAvailable { files } => {
@@ -205,7 +204,7 @@ impl InteractState {
                             nodes.push(id.as_usize());
                         }
                         nodes.sort();
-                        self.to_client.send(NodeList { nodes });
+                        self.to_client.send(NodeList { nodes }).unwrap();
                     }
                 });
             },

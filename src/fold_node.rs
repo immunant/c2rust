@@ -1,9 +1,6 @@
 use syntax::ast::*;
-use syntax::codemap::Span;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::parse::token::{Token, Nonterminal};
-use syntax::tokenstream::{TokenTree, TokenStream};
 use syntax::util::small_vector::SmallVector;
 
 use fold::Fold;

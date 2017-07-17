@@ -1,28 +1,18 @@
-use std::collections::{HashMap, HashSet};
-use rustc::hir;
-use rustc::hir::def::Def;
+use std::collections::HashMap;
 use rustc::hir::def_id::DefId;
 use rustc::ty::TypeVariants;
 use syntax::abi::Abi;
 use syntax::ast::*;
-use syntax::codemap::{DUMMY_SP, Spanned};
+use syntax::codemap::Spanned;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::symbol::Symbol;
-use syntax::util::ThinVec;
 use syntax::util::small_vector::SmallVector;
 
 use api::*;
-use ast_equiv::AstEquiv;
-use bindings::Bindings;
 use command::CommandState;
-use dataflow;
 use driver::{self, Phase};
 use fold::Fold;
-use fn_edit::FnLike;
 use transform::Transform;
-use util::IntoSymbol;
-use util::Lone;
 
 
 /// Turn free functions into methods in an impl.  
@@ -98,7 +88,7 @@ impl Transform for ToMethod {
             ident: Ident,
             arg_idx: usize,
         }
-        let mut fn_ref_info = fns.iter().map(|f| {
+        let fn_ref_info = fns.iter().map(|f| {
             (cx.node_def_id(f.item.id),
              FnRefInfo {
                  ident: f.item.ident.clone(),
@@ -114,8 +104,8 @@ impl Transform for ToMethod {
             // Remove the marked arg and inspect it.
             let arg = inputs.remove(f.arg_idx);
 
-            let (mode, ident) = match arg.pat.node {
-                PatKind::Ident(mode, ident, _) => (mode, ident),
+            let mode = match arg.pat.node {
+                PatKind::Ident(mode, _, _) => mode,
                 _ => panic!("unsupported argument pattern (expected ident): {:?}", arg.pat),
             };
 
@@ -132,7 +122,7 @@ impl Transform for ToMethod {
                     }
                 } else {
                     match pat_ty.sty {
-                        TypeVariants::TyRef(rgn, tym) if tym.ty == self_ty => {
+                        TypeVariants::TyRef(_, tym) if tym.ty == self_ty => {
                             match arg.ty.node {
                                 TyKind::Rptr(ref lt, ref mty) =>
                                     Some(SelfKind::Region(lt.clone(), mty.mutbl)),
@@ -249,7 +239,7 @@ impl Transform for ToMethod {
 pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = fold_nodes(krate, |b: P<Block>| {
             if b.rules == BlockCheckMode::Unsafe(UnsafeSource::UserProvided) &&
                !cx.ty_ctxt().used_unsafe.borrow().contains(&b.id) {
@@ -304,7 +294,7 @@ impl<'a> Folder for SinkUnsafeFolder<'a> {
 }
 
 impl Transform for SinkUnsafe {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
         krate.fold(&mut SinkUnsafeFolder { st })
     }
 }

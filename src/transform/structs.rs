@@ -1,8 +1,5 @@
-use rustc::hir;
 use syntax::ast::*;
-use syntax::codemap::{DUMMY_SP, Spanned};
 use syntax::ptr::P;
-use syntax::util::ThinVec;
 use syntax::util::small_vector::SmallVector;
 
 
@@ -12,13 +9,12 @@ use command::CommandState;
 use driver::{self, Phase};
 use transform::Transform;
 use util::IntoSymbol;
-use util::Lone;
 
 
 pub struct AssignToUpdate;
 
 impl Transform for AssignToUpdate {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let pat = parse_expr(cx.session(), "__x.__f = __y");
         let repl = parse_expr(cx.session(), "__x = __s { __f: __y, .. __x }");
 
@@ -45,7 +41,7 @@ impl Transform for AssignToUpdate {
 pub struct MergeUpdates;
 
 impl Transform for MergeUpdates {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, _cx: &driver::Ctxt) -> Crate {
         fold_blocks(krate, |curs| {
             loop {
                 // Find a struct update.
@@ -78,15 +74,15 @@ fn is_struct_update(s: &Stmt) -> bool {
 
 fn is_struct_update_for(s: &Stmt, base1: &Expr) -> bool {
     let e = match_or!([s.node] StmtKind::Semi(ref e) => e; return false);
-    let (lhs, rhs) = match_or!([e.node] ExprKind::Assign(ref lhs, ref rhs) => (lhs, rhs);
-                               return false);
+    let rhs = match_or!([e.node] ExprKind::Assign(_, ref rhs) => rhs;
+                        return false);
     match_or!([rhs.node] ExprKind::Struct(_, _, Some(ref base)) => base1.ast_equiv(base);
               return false)
 }
 
 fn unpack_struct_update(s: Stmt) -> (Path, Vec<Field>, P<Expr>) {
     let e = expect!([s.node] StmtKind::Semi(e) => e);
-    let (lhs, rhs) = expect!([e.unwrap().node] ExprKind::Assign(lhs, rhs) => (lhs, rhs));
+    let rhs = expect!([e.unwrap().node] ExprKind::Assign(_, rhs) => rhs);
     expect!([rhs.unwrap().node]
             ExprKind::Struct(path, fields, Some(base)) => (path, fields, base))
 }

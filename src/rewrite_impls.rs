@@ -11,7 +11,6 @@ use syntax::ptr::P;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::parser::{AssocOp, Fixity};
 
-use ast_equiv::AstEquiv;
 use driver;
 use get_node_id;
 use get_span;
@@ -293,14 +292,14 @@ impl Splice for Item {
 }
 
 
-trait SeqItem {
+pub trait SeqItem {
     #[inline]
     fn supported() -> bool { false }
 
     fn get_span(&self) -> Span { unimplemented!() }
     fn get_id(&self) -> NodeId { unimplemented!() }
 
-    fn splice_recycled_span(new: &Self, old_span: Span, mut rcx: RewriteCtxtRef) {
+    fn splice_recycled_span(_new: &Self, _old_span: Span, _rcx: RewriteCtxtRef) {
         unimplemented!()
     }
 }

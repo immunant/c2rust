@@ -1,7 +1,6 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
 //! `librustc_driver::driver::compile_input`.
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use arena::DroplessArena;
@@ -12,27 +11,18 @@ use rustc::session::{self, Session};
 use rustc::session::config::{Input, Options};
 use rustc_driver;
 use rustc_driver::driver;
-use rustc_errors::Diagnostic;
-use rustc_metadata::creader::CrateLoader;
 use rustc_metadata::cstore::CStore;
-use rustc_resolve::{Resolver, MakeGlobMap};
+use rustc_resolve::MakeGlobMap;
 use rustc_trans;
 use rustc_trans::back::link;
-use syntax;
-use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, NodeId};
+use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item};
 use syntax::codemap::CodeMap;
 use syntax::codemap::{FileLoader, RealFileLoader};
-use syntax::ext::base::ExtCtxt;
 use syntax::parse;
 use syntax::parse::parser::Parser;
 use syntax::ptr::P;
-use syntax::symbol::Symbol;
-use syntax_ext;
-use syntax_pos::{BytePos, Span};
 
-use get_span::GetSpan;
 use remove_paren::remove_paren;
-use util::IntoSymbol;
 use util::Lone;
 
 
@@ -142,7 +132,7 @@ pub fn run_compiler<F, R>(args: &[String],
         // somehow
         &sess, hir_map.clone(), expand_result.analysis, expand_result.resolutions,
         &arena, &arenas, &crate_name,
-        |tcx, analysis, incremental_hashes_map, result| {
+        |tcx, _analysis, _incremental_hashes_map, _result| {
             if phase == Phase::Phase3 {
                 let cx = Ctxt::new_phase_3(&sess, &hir_map, tcx);
                 return func(krate, cx);

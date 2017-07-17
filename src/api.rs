@@ -1,5 +1,4 @@
 use rustc::hir;
-use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
 use rustc::session::Session;
 use rustc::ty::Ty;
@@ -8,7 +7,6 @@ use syntax::ast::NodeId;
 use syntax::ast::{Expr};
 use syntax::ast::{Path, PathSegment, Ident};
 use syntax::codemap::DUMMY_SP;
-use syntax::symbol::Symbol;
 use syntax::symbol::keywords;
 
 pub use matcher::MatchCtxt;
@@ -26,7 +24,6 @@ pub use fn_edit::fold_fns;
 use bindings::Bindings;
 use driver;
 use fold::Fold;
-use get_node_id::GetNodeId;
 use matcher::Pattern;
 use util::HirDefExt;
 use util::IntoSymbol;
