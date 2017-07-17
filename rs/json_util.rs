@@ -206,7 +206,7 @@ pub unsafe extern fn json_parse_double(
 }
 
 unsafe extern fn sscanf_is_broken_test() {
-    let mut num64 : i32;
+    let mut num64 : i64;
     let mut ret_errno : i32;
     let mut is_int64_min : i32;
     let mut ret_errno2 : i32;
@@ -214,17 +214,17 @@ unsafe extern fn sscanf_is_broken_test() {
     sscanf(
         (*b" -01234567890123456789012345\0").as_ptr(),
         (*b"%ld\0").as_ptr(),
-        &mut num64 as (*mut i32)
+        &mut num64 as (*mut i64)
     );
     ret_errno = *__errno_location();
-    is_int64_min = (num64 as (i64) == -9223372036854775807i64 - 1i64) as (i32);
+    is_int64_min = (num64 == -9223372036854775807i64 - 1i64) as (i32);
     sscanf(
         (*b" 01234567890123456789012345\0").as_ptr(),
         (*b"%ld\0").as_ptr(),
-        &mut num64 as (*mut i32)
+        &mut num64 as (*mut i64)
     );
     ret_errno2 = *__errno_location();
-    is_int64_max = (num64 as (i64) == 9223372036854775807i64) as (i32);
+    is_int64_max = (num64 == 9223372036854775807i64) as (i32);
     if ret_errno != 34i32 || is_int64_min == 0 || ret_errno2 != 34i32 || is_int64_max == 0 {
         if false {
             mc_debug(
@@ -238,9 +238,9 @@ unsafe extern fn sscanf_is_broken_test() {
 
 #[no_mangle]
 pub unsafe extern fn json_parse_int64(
-    mut buf : *const u8, mut retval : *mut i32
+    mut buf : *const u8, mut retval : *mut i64
 ) -> i32 {
-    let mut num64 : i32;
+    let mut num64 : i64;
     let mut buf_sig_digits : *const u8;
     let mut orig_has_neg : i32;
     let mut saved_errno : i32;
@@ -258,7 +258,7 @@ pub unsafe extern fn json_parse_int64(
     if sscanf(
            buf,
            (*b"%ld\0").as_ptr(),
-           &mut num64 as (*mut i32)
+           &mut num64 as (*mut i64)
        ) != 1i32 {
         if false {
             mc_debug((*b"Failed to parse, sscanf != 1\n\0").as_ptr());
@@ -287,7 +287,7 @@ pub unsafe extern fn json_parse_int64(
                 }
                 buf_sig_digits = buf_sig_digits.offset(1isize);
             }
-            if num64 == 0i32 {
+            if num64 == 0i64 {
                 orig_has_neg = 0i32;
             }
             snprintf(
@@ -317,9 +317,9 @@ pub unsafe extern fn json_parse_int64(
         }
         if saved_errno == 34i32 {
             if orig_has_neg != 0 {
-                num64 = (-9223372036854775807i64 - 1i64) as (i32);
+                num64 = -9223372036854775807i64 - 1i64;
             } else {
-                num64 = 9223372036854775807i32;
+                num64 = 9223372036854775807i64;
             }
         }
         *retval = num64;

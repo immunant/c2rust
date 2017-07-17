@@ -18,7 +18,7 @@ extern {
     fn json_object_new_double_s(
         d : f64, ds : *const u8
     ) -> *mut json_object;
-    fn json_object_new_int64(i : i32) -> *mut json_object;
+    fn json_object_new_int64(i : i64) -> *mut json_object;
     fn json_object_new_object() -> *mut json_object;
     fn json_object_new_string_len(
         s : *const u8, len : i32
@@ -28,7 +28,7 @@ extern {
     );
     fn json_object_put(obj : *mut json_object) -> i32;
     fn json_parse_double(buf : *const u8, retval : *mut f64) -> i32;
-    fn json_parse_int64(buf : *const u8, retval : *mut i32) -> i32;
+    fn json_parse_int64(buf : *const u8, retval : *mut i64) -> i32;
     fn mc_debug(msg : *const u8, ...);
     fn memcpy(
         __dest : *mut ::std::os::raw::c_void,
@@ -639,11 +639,11 @@ pub unsafe extern fn json_tokener_parse_ex(
                                       (*tok).depth as (isize)
                                   )).state = json_tokener_state::json_tokener_state_inf;
                             } else {
-                                let mut num64 : i32;
+                                let mut num64 : i64;
                                 let mut numd : f64;
                                 if (*tok).is_double == 0 && (json_parse_int64(
                                                                  (*(*tok).pb).buf as (*const u8),
-                                                                 &mut num64 as (*mut i32)
+                                                                 &mut num64 as (*mut i64)
                                                              ) == 0i32) {
                                     if num64 != 0 && (*(*(*tok).pb).buf.offset(
                                                            0isize

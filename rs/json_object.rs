@@ -26,7 +26,7 @@ extern {
         __nmemb : u64, __size : u64
     ) -> *mut ::std::os::raw::c_void;
     fn free(__ptr : *mut ::std::os::raw::c_void);
-    fn json_parse_int64(buf : *const u8, retval : *mut i32) -> i32;
+    fn json_parse_int64(buf : *const u8, retval : *mut i64) -> i32;
     fn lh_kchar_table_new(
         size : i32,
         name : *const u8,
@@ -174,7 +174,7 @@ impl Clone for Struct1 {
 pub union data {
     pub c_boolean : i32,
     pub c_double : f64,
-    pub c_int64 : i32,
+    pub c_int64 : i64,
     pub c_object : *mut lh_table,
     pub c_array : *mut array_list,
     pub c_string : Struct1,
@@ -697,7 +697,7 @@ pub unsafe extern fn json_object_get_boolean(
          } else if switch5 as (i32) == json_type::json_type_double as (i32) {
              ((*jso).o.c_double != 0i32 as (f64)) as (i32)
          } else if switch5 as (i32) == json_type::json_type_int as (i32) {
-             ((*jso).o.c_int64 != 0i32) as (i32)
+             ((*jso).o.c_int64 != 0i64) as (i32)
          } else if switch5 as (i32) == json_type::json_type_boolean as (i32) {
              (*jso).o.c_boolean
          } else {
@@ -726,7 +726,7 @@ pub unsafe extern fn json_object_new_int(
         0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
     } else {
         (*jso)._to_json_string = json_object_int_to_json_string as (unsafe extern fn(*mut json_object, *mut printbuf, i32, i32) -> i32);
-        (*jso).o.c_int64 = i;
+        (*jso).o.c_int64 = i as (i64);
         jso
     }
 }
@@ -735,7 +735,7 @@ pub unsafe extern fn json_object_new_int(
 pub unsafe extern fn json_object_get_int(
     mut jso : *mut json_object
 ) -> i32 {
-    let mut cint64 : i32;
+    let mut cint64 : i64;
     let mut o_type : json_type;
     if jso.is_null() {
         0i32
@@ -745,7 +745,7 @@ pub unsafe extern fn json_object_get_int(
         if o_type as (i32) == json_type::json_type_string as (i32) {
             if json_parse_int64(
                    (*jso).o.c_string.str as (*const u8),
-                   &mut cint64 as (*mut i32)
+                   &mut cint64 as (*mut i64)
                ) != 0i32 {
                 return 0i32;
             } else {
@@ -757,12 +757,12 @@ pub unsafe extern fn json_object_get_int(
          } else if o_type as (i32) == json_type::json_type_double as (i32) {
              (*jso).o.c_double as (i32)
          } else if o_type as (i32) == json_type::json_type_int as (i32) {
-             (if cint64 <= -2147483647i32 - 1i32 {
+             (if cint64 <= (-2147483647i32 - 1i32) as (i64) {
                   -2147483647i32 - 1i32
-              } else if cint64 >= 2147483647i32 {
+              } else if cint64 >= 2147483647i64 {
                   2147483647i32
               } else {
-                  cint64
+                  cint64 as (i32)
               })
          } else {
              0i32
@@ -772,7 +772,7 @@ pub unsafe extern fn json_object_get_int(
 
 #[no_mangle]
 pub unsafe extern fn json_object_new_int64(
-    mut i : i32
+    mut i : i64
 ) -> *mut json_object {
     let mut jso
         : *mut json_object
@@ -789,27 +789,27 @@ pub unsafe extern fn json_object_new_int64(
 #[no_mangle]
 pub unsafe extern fn json_object_get_int64(
     mut jso : *mut json_object
-) -> i32 {
-    let mut cint : i32;
+) -> i64 {
+    let mut cint : i64;
     if jso.is_null() {
-        0i32
+        0i64
     } else {
         let switch6 = (*jso).o_type;
         if switch6 as (i32) == json_type::json_type_string as (i32) {
             if json_parse_int64(
                    (*jso).o.c_string.str as (*const u8),
-                   &mut cint as (*mut i32)
+                   &mut cint as (*mut i64)
                ) == 0i32 {
                 return cint;
             }
         } else if switch6 as (i32) == json_type::json_type_boolean as (i32) {
-            return (*jso).o.c_boolean;
+            return (*jso).o.c_boolean as (i64);
         } else if switch6 as (i32) == json_type::json_type_double as (i32) {
-            return (*jso).o.c_double as (i32);
+            return (*jso).o.c_double as (i64);
         } else if switch6 as (i32) == json_type::json_type_int as (i32) {
             return (*jso).o.c_int64;
         }
-        0i32
+        0i64
     }
 }
 
