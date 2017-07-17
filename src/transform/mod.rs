@@ -60,6 +60,11 @@ pub fn register_transform_commands(reg: &mut Registry) {
         repl: args[1].clone(),
         filter: if args.len() >= 3 { Some((&args[2]).into_symbol()) } else { None },
     }));
+    reg.register("rewrite_ty", |args| mk(rewrite::RewriteTy {
+        pat: args[0].clone(),
+        repl: args[1].clone(),
+        filter: if args.len() >= 3 { Some((&args[2]).into_symbol()) } else { None },
+    }));
 
     reg.register("static_collect_to_struct", |args| mk(statics::CollectToStruct {
         struct_name: args[0].clone(),

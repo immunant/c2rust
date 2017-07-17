@@ -22,6 +22,17 @@ impl Folder for RemoveParen {
         e.map(|e| fold::noop_fold_expr(e, self))
     }
 
+    fn fold_ty(&mut self, t: P<Ty>) -> P<Ty> {
+        let mut t = t;
+        while let TyKind::Paren(_) = t.node {
+            match t.unwrap().node {
+                TyKind::Paren(inner) => { t = inner; },
+                _ => unreachable!(),
+            }
+        }
+        fold::noop_fold_ty(t, self)
+    }
+
     // Need a no-op implementation to avoid "fold_mac disabled by default" error.
     fn fold_mac(&mut self, mac: Mac) -> Mac {
         fold::noop_fold_mac(mac, self)

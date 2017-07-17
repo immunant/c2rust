@@ -275,6 +275,15 @@ gen_pattern_impl! {
 }
 
 gen_pattern_impl! {
+    pattern = P<Ty>;
+    folder = TyPatternFolder;
+
+    fn fold_ty(&mut self, t: P<Ty>) -> P<Ty> {
+        fold::noop_fold_ty(t, self)
+    }
+}
+
+gen_pattern_impl! {
     pattern = Stmt;
     folder = StmtPatternFolder;
 

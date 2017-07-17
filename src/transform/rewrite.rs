@@ -8,6 +8,31 @@ use driver;
 use transform::Transform;
 
 
+fn make_init_mcx() -> MatchCtxt {
+    let mut init_mcx = MatchCtxt::new();
+    init_mcx.set_type("__i", BindingType::Ident);
+    init_mcx.set_type("__j", BindingType::Ident);
+
+    init_mcx.set_type("__e", BindingType::Expr);
+    init_mcx.set_type("__f", BindingType::Expr);
+
+    init_mcx.set_type("__p", BindingType::Pat);
+    init_mcx.set_type("__q", BindingType::Pat);
+
+    init_mcx.set_type("__t", BindingType::Ty);
+    init_mcx.set_type("__u", BindingType::Ty);
+
+    init_mcx.set_type("__s", BindingType::Stmt);
+    init_mcx.set_type("__r", BindingType::Stmt);
+
+    // "d" for "definition"
+    init_mcx.set_type("__d", BindingType::Item);
+    init_mcx.set_type("__c", BindingType::Item);
+
+    init_mcx
+}
+
+
 pub struct RewriteExpr {
     pub pat: String,
     pub repl: String,
@@ -19,27 +44,31 @@ impl Transform for RewriteExpr {
         let pat = parse_expr(cx.session(), &self.pat);
         let repl = parse_expr(cx.session(), &self.repl);
 
-        let mut init_mcx = MatchCtxt::new();
-        init_mcx.set_type("__i", BindingType::Ident);
-        init_mcx.set_type("__j", BindingType::Ident);
+        fold_match_with(make_init_mcx(), pat, krate, |ast, bnd| {
+            if let Some(filter) = self.filter {
+                if !contains_mark(&*ast, filter, st) {
+                    return ast;
+                }
+            }
 
-        init_mcx.set_type("__e", BindingType::Expr);
-        init_mcx.set_type("__f", BindingType::Expr);
+            repl.clone().subst(&bnd)
+        })
+    }
+}
 
-        init_mcx.set_type("__p", BindingType::Pat);
-        init_mcx.set_type("__q", BindingType::Pat);
 
-        init_mcx.set_type("__t", BindingType::Ty);
-        init_mcx.set_type("__u", BindingType::Ty);
+pub struct RewriteTy {
+    pub pat: String,
+    pub repl: String,
+    pub filter: Option<Symbol>,
+}
 
-        init_mcx.set_type("__s", BindingType::Stmt);
-        init_mcx.set_type("__r", BindingType::Stmt);
+impl Transform for RewriteTy {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let pat = parse_ty(cx.session(), &self.pat);
+        let repl = parse_ty(cx.session(), &self.repl);
 
-        // "d" for "definition"
-        init_mcx.set_type("__d", BindingType::Item);
-        init_mcx.set_type("__c", BindingType::Item);
-
-        fold_match_with(init_mcx, pat, krate, |ast, bnd| {
+        fold_match_with(make_init_mcx(), pat, krate, |ast, bnd| {
             if let Some(filter) = self.filter {
                 if !contains_mark(&*ast, filter, st) {
                     return ast;
