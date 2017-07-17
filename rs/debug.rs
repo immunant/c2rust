@@ -1,8 +1,10 @@
 #![feature(untagged_unions)]
 
-static mut _syslog : i32 = 0i32;
+#[no_mangle]
+pub static mut _syslog : i32 = 0i32;
 
-static mut _debug : i32 = 0i32;
+#[no_mangle]
+pub static mut _debug : i32 = 0i32;
 
 #[no_mangle]
 pub unsafe extern fn mc_set_debug(mut debug : i32) {

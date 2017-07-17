@@ -129,7 +129,7 @@ impl Clone for json_object {
 pub unsafe extern fn json_object_iter_begin(
     mut obj : *mut json_object
 ) -> json_object_iterator {
-    let mut iter : json_object_iterator;
+    let mut iter : json_object_iterator = ::std::mem::uninitialized();
     let mut pTable : *mut lh_table;
     pTable = json_object_get_object(
                  obj as (*mut json_object)
@@ -142,7 +142,7 @@ pub unsafe extern fn json_object_iter_begin(
 pub unsafe extern fn json_object_iter_end(
     mut obj : *const json_object
 ) -> json_object_iterator {
-    let mut iter : json_object_iterator;
+    let mut iter : json_object_iterator = ::std::mem::uninitialized();
     iter.opaque_ = kObjectEndIterValue;
     iter
 }
@@ -179,7 +179,7 @@ pub unsafe extern fn json_object_iter_equal(
 #[no_mangle]
 pub unsafe extern fn json_object_iter_init_default(
 ) -> json_object_iterator {
-    let mut iter : json_object_iterator;
+    let mut iter : json_object_iterator = ::std::mem::uninitialized();
     iter.opaque_ = 0i32 as (*mut ::std::os::raw::c_void) as (*const ::std::os::raw::c_void);
     iter
 }

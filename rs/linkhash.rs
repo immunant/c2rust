@@ -50,7 +50,7 @@ unsafe extern fn hashlittle(
     let mut a : u32;
     let mut b : u32;
     let mut c : u32;
-    let mut u : Union1;
+    let mut u : Union1 = ::std::mem::uninitialized();
     a = {
             b = {
                     c = 0xdeadbeefu32.wrapping_add(length as (u32)).wrapping_add(
@@ -598,7 +598,7 @@ pub unsafe extern fn lh_table_resize(
     new_t = lh_table_new(
                 new_size,
                 (*t).name,
-                0i32 as (*mut ::std::os::raw::c_void) as (unsafe extern fn(*mut lh_entry)),
+                ::std::mem::transmute(0_usize),
                 (*t).hash_fn,
                 (*t).equal_fn
             );
@@ -627,7 +627,7 @@ pub unsafe extern fn lh_table_free(mut t : *mut lh_table) {
         if !(c != 0i32 as (*mut ::std::os::raw::c_void) as (*mut lh_entry)) {
             break;
         }
-        if (*t).free_fn != 0 {
+        if (*t).free_fn as usize != 0 {
             ((*t).free_fn)(c as (*mut lh_entry));
         }
         c = (*c).next as (*mut lh_entry);
@@ -756,7 +756,7 @@ pub unsafe extern fn lh_table_lookup_entry(
 pub unsafe extern fn lh_table_lookup(
     mut t : *mut lh_table, mut k : *const ::std::os::raw::c_void
 ) -> *const ::std::os::raw::c_void {
-    let mut result : *mut ::std::os::raw::c_void;
+    let mut result : *mut ::std::os::raw::c_void = ::std::mem::uninitialized();
     lh_table_lookup_ex(
         t,
         k,
@@ -804,7 +804,7 @@ pub unsafe extern fn lh_table_delete_entry(
         -1i32
     } else {
         (*t).count = (*t).count - 1;
-        if (*t).free_fn != 0 {
+        if (*t).free_fn as usize != 0 {
             ((*t).free_fn)(e as (*mut lh_entry));
         }
         (*(*t).table.offset(

@@ -77,13 +77,27 @@ extern {
 
 #[no_mangle]
 pub static mut json_number_chars
-    : *const u8
+    : *const u8 = 0 as *const _;
+
+unsafe extern "C" fn _init_json_number_chars() {
+    json_number_chars
     = (*b"0123456789.+-eE\0").as_ptr();
+}
+
+#[link_section = ".ctors"]
+pub static INIT_JSON_NUMBER_CHARS: unsafe extern "C" fn() = _init_json_number_chars;
 
 #[no_mangle]
 pub static mut json_hex_chars
-    : *const u8
+    : *const u8 = 0 as *const _;
+
+unsafe extern "C" fn _init_json_hex_chars() {
+    json_hex_chars
     = (*b"0123456789abcdefABCDEF\0").as_ptr();
+}
+
+#[link_section = ".ctors"]
+pub static INIT_JSON_HEX_CHARS: unsafe extern "C" fn() = _init_json_hex_chars;
 
 #[derive(Clone, Copy)]
 #[repr(i32)]
@@ -218,7 +232,7 @@ pub unsafe extern fn json_object_put(
     if !jso.is_null() {
         (*jso)._ref_count = (*jso)._ref_count - 1;
         if (*jso)._ref_count == 0 {
-            if (*jso)._user_delete != 0 {
+            if (*jso)._user_delete as usize != 0 {
                 ((*jso)._user_delete)(jso as (*mut json_object),(*jso)._userdata);
             }
             ((*jso)._delete)(jso as (*mut json_object));
@@ -263,11 +277,11 @@ pub unsafe extern fn json_object_set_serializer(
     :
     unsafe extern fn(*mut json_object, *mut ::std::os::raw::c_void)
 ) {
-    if (*jso)._user_delete != 0 {
+    if (*jso)._user_delete as usize != 0 {
         ((*jso)._user_delete)(jso,(*jso)._userdata);
     }
     (*jso)._userdata = 0i32 as (*mut ::std::os::raw::c_void);
-    (*jso)._user_delete = 0i32 as (*mut ::std::os::raw::c_void) as (unsafe extern fn(*mut json_object, *mut ::std::os::raw::c_void));
+    (*jso)._user_delete = ::std::mem::transmute(0_usize);
     if to_string_func as (*mut ::std::os::raw::c_void) == 0i32 as (*mut ::std::os::raw::c_void) {
         let switch2 = (*jso).o_type;
         if switch2 as (i32) == json_type::json_type_string as (i32) {
@@ -283,7 +297,7 @@ pub unsafe extern fn json_object_set_serializer(
         } else if switch2 as (i32) == json_type::json_type_boolean as (i32) {
             (*jso)._to_json_string = json_object_boolean_to_json_string as (unsafe extern fn(*mut json_object, *mut printbuf, i32, i32) -> i32);
         } else if switch2 as (i32) == json_type::json_type_null as (i32) {
-            (*jso)._to_json_string = 0i32 as (*mut ::std::os::raw::c_void) as (unsafe extern fn(*mut json_object, *mut printbuf, i32, i32) -> i32);
+            (*jso)._to_json_string = ::std::mem::transmute(0_usize);
         }
     } else {
         (*jso)._to_json_string = to_string_func;
@@ -429,7 +443,7 @@ unsafe extern fn json_object_object_to_json_string(
     mut flags : i32
 ) -> i32 {
     let mut had_children : i32 = 0i32;
-    let mut iter : json_object_iter;
+    let mut iter : json_object_iter = ::std::mem::uninitialized();
     sprintbuf(pb,(*b"{\0").as_ptr());
     if flags & 1i32 << 1i32 != 0 {
         sprintbuf(pb,(*b"\n\0").as_ptr());
@@ -790,7 +804,7 @@ pub unsafe extern fn json_object_new_int64(
 pub unsafe extern fn json_object_get_int64(
     mut jso : *mut json_object
 ) -> i64 {
-    let mut cint : i64;
+    let mut cint : i64 = ::std::mem::uninitialized();
     if jso.is_null() {
         0i64
     } else {
@@ -819,7 +833,7 @@ unsafe extern fn json_object_double_to_json_string(
     mut level : i32,
     mut flags : i32
 ) -> i32 {
-    let mut buf : [u8; 128];
+    let mut buf : [u8; 128] = ::std::mem::uninitialized();
     let mut p : *mut u8;
     let mut q : *mut u8;
     let mut size : i32;

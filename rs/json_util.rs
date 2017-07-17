@@ -57,7 +57,7 @@ pub unsafe extern fn json_object_from_file(
 ) -> *mut json_object {
     let mut pb : *mut printbuf;
     let mut obj : *mut json_object;
-    let mut buf : [u8; 4096];
+    let mut buf : [u8; 4096] = ::std::mem::uninitialized();
     let mut fd : i32;
     let mut ret : i32;
     if {
@@ -206,7 +206,7 @@ pub unsafe extern fn json_parse_double(
 }
 
 unsafe extern fn sscanf_is_broken_test() {
-    let mut num64 : i64;
+    let mut num64 : i64 = ::std::mem::uninitialized();
     let mut ret_errno : i32;
     let mut is_int64_min : i32;
     let mut ret_errno2 : i32;
@@ -240,7 +240,7 @@ unsafe extern fn sscanf_is_broken_test() {
 pub unsafe extern fn json_parse_int64(
     mut buf : *const u8, mut retval : *mut i64
 ) -> i32 {
-    let mut num64 : i64;
+    let mut num64 : i64 = ::std::mem::uninitialized();
     let mut buf_sig_digits : *const u8;
     let mut orig_has_neg : i32;
     let mut saved_errno : i32;
@@ -273,7 +273,7 @@ pub unsafe extern fn json_parse_int64(
             orig_has_neg = 1i32;
         }
         if sscanf_is_broken != 0 && (saved_errno != 34i32) {
-            let mut buf_cmp : [u8; 100];
+            let mut buf_cmp : [u8; 100] = ::std::mem::uninitialized();
             let mut buf_cmp_start : *mut u8 = buf_cmp.as_mut_ptr();
             let mut recheck_has_neg : i32 = 0i32;
             let mut buf_cmp_len : i32;
@@ -328,7 +328,9 @@ pub unsafe extern fn json_parse_int64(
 }
 
 static mut json_type_name
-    : [*const u8; 7]
+    : [*const u8; 7] = [0 as *const _; 7];
+unsafe extern "C" fn _init_json_type_name() {
+    json_type_name
     = [   (*b"null\0").as_ptr(),
           (*b"boolean\0").as_ptr(),
           (*b"double\0").as_ptr(),
@@ -337,6 +339,9 @@ static mut json_type_name
           (*b"array\0").as_ptr(),
           (*b"string\0").as_ptr()
       ];
+}
+#[link_section = ".ctors"]
+static _INIT_JSON_TYPE_NAME: unsafe extern "C" fn() = _init_json_type_name;
 
 #[derive(Clone, Copy)]
 #[repr(i32)]

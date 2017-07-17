@@ -55,37 +55,24 @@ pub enum json_object {
 }
 
 static mut json_null_str : [u8; 5] = *b"null\0";
-
-static json_null_str_len
-    : i32
-    = ::std::mem::size_of::<[u8; 5]>().wrapping_sub(1usize) as (i32);
+static json_null_str_len : i32 = 4;
 
 static mut json_inf_str : [u8; 9] = *b"Infinity\0";
-
-static json_inf_str_len
-    : i32
-    = ::std::mem::size_of::<[u8; 9]>().wrapping_sub(1usize) as (i32);
+static json_inf_str_len : i32 = 8;
 
 static mut json_nan_str : [u8; 4] = *b"NaN\0";
-
-static json_nan_str_len
-    : i32
-    = ::std::mem::size_of::<[u8; 4]>().wrapping_sub(1usize) as (i32);
+static json_nan_str_len : i32 = 3;
 
 static mut json_true_str : [u8; 5] = *b"true\0";
-
-static json_true_str_len
-    : i32
-    = ::std::mem::size_of::<[u8; 5]>().wrapping_sub(1usize) as (i32);
+static json_true_str_len : i32 = 4;
 
 static mut json_false_str : [u8; 6] = *b"false\0";
-
-static json_false_str_len
-    : i32
-    = ::std::mem::size_of::<[u8; 6]>().wrapping_sub(1usize) as (i32);
+static json_false_str_len : i32 = 5;
 
 static mut json_tokener_errors
-    : [*const u8; 15]
+    : [*const u8; 15] = [0 as *const _; 15];
+unsafe extern "C" fn _init_json_tokener_errors() {
+    json_tokener_errors
     = [   (*b"success\0").as_ptr(),
           (*b"continue\0").as_ptr(),
           (*b"nesting too deep\0").as_ptr(),
@@ -102,6 +89,9 @@ static mut json_tokener_errors
           (*b"expected comment\0").as_ptr(),
           (*b"buffer size overflow\0").as_ptr()
       ];
+}
+#[link_section = ".ctors"]
+static _INIT_JSON_TOKENER_ERRORS: unsafe extern "C" fn() = _init_json_tokener_errors;
 
 #[derive(Clone, Copy)]
 #[repr(i32)]
@@ -317,7 +307,7 @@ pub unsafe extern fn json_tokener_reset(mut tok : *mut json_tokener) {
 pub unsafe extern fn json_tokener_parse(
     mut str : *const u8
 ) -> *mut json_object {
-    let mut jerr_ignored : json_tokener_error;
+    let mut jerr_ignored : json_tokener_error = ::std::mem::uninitialized();
     let mut obj : *mut json_object;
     obj = json_tokener_parse_verbose(
               str,
@@ -353,6 +343,10 @@ pub unsafe extern fn json_tokener_parse_verbose(
 pub unsafe extern fn json_tokener_parse_ex(
     mut tok : *mut json_tokener, mut str : *const u8, mut len : i32
 ) -> *mut json_object {
+    let mut unescaped_utf : [u8; 4] = ::std::mem::uninitialized();
+    let mut case_start : *const u8 = ::std::mem::uninitialized();
+    let mut case_len : i32 = ::std::mem::uninitialized();
+    let mut got_hi_surrogate : u32 = ::std::mem::uninitialized();
     let mut _currentBlock;
     let mut obj
         : *mut json_object
@@ -577,8 +571,8 @@ pub unsafe extern fn json_tokener_parse_ex(
                             (*tok).depth = (*tok).depth + 1;
                             json_tokener_reset_level(tok,(*tok).depth);
                         } else if switch1 as (i32) == json_tokener_state::json_tokener_state_number as (i32) {
-                            let mut case_start : *const u8 = str;
-                            let mut case_len : i32 = 0i32;
+                            case_start = str;
+                            case_len = 0i32;
                             'loop169: loop {
                                 if !(c != 0 && !strchr(json_number_chars,c as (i32)).is_null()) {
                                     break;
@@ -639,8 +633,8 @@ pub unsafe extern fn json_tokener_parse_ex(
                                       (*tok).depth as (isize)
                                   )).state = json_tokener_state::json_tokener_state_inf;
                             } else {
-                                let mut num64 : i64;
-                                let mut numd : f64;
+                                let mut num64 : i64 = ::std::mem::uninitialized();
+                                let mut numd : f64 = ::std::mem::uninitialized();
                                 if (*tok).is_double == 0 && (json_parse_int64(
                                                                  (*(*tok).pb).buf as (*const u8),
                                                                  &mut num64 as (*mut i64)
@@ -1242,7 +1236,7 @@ pub unsafe extern fn json_tokener_parse_ex(
                 }
                 _currentBlock = 301;
             } else if _currentBlock == 98 {
-                let mut got_hi_surrogate : u32 = 0u32;
+                got_hi_surrogate = 0u32;
                 'loop99: loop {
                     if strchr(json_hex_chars,c as (i32)).is_null() {
                         _currentBlock = 100;
@@ -1260,7 +1254,6 @@ pub unsafe extern fn json_tokener_parse_ex(
                                                                 }) * 4i32
                                       );
                     if (*tok).st_pos == 4i32 {
-                        let mut unescaped_utf : [u8; 4];
                         if got_hi_surrogate != 0 {
                             if (*tok).ucs_char & 0xfc00u32 == 0xdc00u32 {
                                 (*tok).ucs_char = ((got_hi_surrogate & 0x3ffu32) << 10i32).wrapping_add(
