@@ -851,33 +851,6 @@ pub struct State {
     used_messages: [i32; 406],
     screen: *mut *mut i32,
 }
-static mut S: State = State {
-    robot: ((screen_object {
-                 x: (0i32),
-                 y: (0i32),
-                 color: (0i32),
-                 bold: (false),
-                 character: (0u8),
-             })),
-    kitten: ((screen_object {
-                  x: (0i32),
-                  y: (0i32),
-                  color: (0i32),
-                  bold: (false),
-                  character: (0u8),
-              })),
-    num_bogus: (0i32),
-    bogus: ([(screen_object {
-                  x: (0i32),
-                  y: (0i32),
-                  color: (0i32),
-                  bold: (false),
-                  character: (0u8),
-              }); 406]),
-    bogus_messages: ([0i32; 406]),
-    used_messages: ([0i32; 406]),
-    screen: (0i32 as (*mut ::std::os::raw::c_void) as (*mut *mut i32)),
-};
 
 impl State {
     #[no_mangle]
@@ -1437,6 +1410,34 @@ fn main() {
 
 #[no_mangle]
 pub unsafe extern "C" fn _c_main(mut argc: i32, mut argv: *mut *mut u8) -> i32 {
+    let mut S = State {
+        robot: ((screen_object {
+                     x: (0i32),
+                     y: (0i32),
+                     color: (0i32),
+                     bold: (false),
+                     character: (0u8),
+                 })),
+        kitten: ((screen_object {
+                      x: (0i32),
+                      y: (0i32),
+                      color: (0i32),
+                      bold: (false),
+                      character: (0u8),
+                  })),
+        num_bogus: (0i32),
+        bogus: ([(screen_object {
+                      x: (0i32),
+                      y: (0i32),
+                      color: (0i32),
+                      bold: (false),
+                      character: (0u8),
+                  }); 406]),
+        bogus_messages: ([0i32; 406]),
+        used_messages: ([0i32; 406]),
+        screen: (0i32 as (*mut ::std::os::raw::c_void) as (*mut *mut i32)),
+    };
+
     if argc == 1i32 {
         (S.num_bogus) = 20i32;
     } else {
