@@ -82,6 +82,7 @@ pub fn register_transform_commands(reg: &mut Registry) {
             test::ReplaceStmts(args[0].clone(), args[1].clone())));
 
     reg.register("let_x_uninitialized", |_args| mk(vars::LetXUninitialized));
+    reg.register("sink_lets", |_args| mk(vars::SinkLets));
 
     reg.register("wrapping_arith_to_normal", |_args| mk(wrapping_arith::WrappingToNormal));
 }

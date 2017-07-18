@@ -78,6 +78,14 @@ gen_visit_node_impl! {
 }
 
 gen_visit_node_impl! {
+    node = Local;
+    visitor = LocalNodeVisitor;
+    fn visit_local(&mut self, l: &'ast Local) {
+        visit::walk_local(self, l)
+    }
+}
+
+gen_visit_node_impl! {
     node = ForeignItem;
     visitor = ForeignItemNodeVisitor;
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem) {

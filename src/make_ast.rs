@@ -372,6 +372,16 @@ impl Builder {
 
     // Stmts
 
+    pub fn local_stmt<L>(self, local: L) -> Stmt
+            where L: Make<P<Local>> {
+        let local = local.make(&self);
+        Stmt {
+            id: DUMMY_NODE_ID,
+            node: StmtKind::Local(local),
+            span: DUMMY_SP,
+        }
+    }
+
     pub fn expr_stmt<E>(self, expr: E) -> Stmt
             where E: Make<P<Expr>> {
         let expr = expr.make(&self);

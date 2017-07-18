@@ -245,6 +245,14 @@ impl<T> Cursor<T> {
         self.remove_multi(depth)
     }
 
+    pub fn replace<F>(&mut self, func: F)
+            where F: FnOnce(T) -> T {
+        // Don't use `remove` / `insert` to ensure that marks remain in place.
+        let old = self.right.pop().expect("replace: at end of buffer");
+        let new = func(old);
+        self.right.push(new);
+    }
+
     /// Extract the elements between `start` and `end`, transform them using `func`, and insert the
     /// results in their place.  Afterward, the cursor points past the end of the replacement
     /// sequnece.
