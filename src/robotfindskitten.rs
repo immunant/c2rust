@@ -849,7 +849,7 @@ pub struct State {
     bogus: [screen_object; 406],
     bogus_messages: [i32; 406],
     used_messages: [i32; 406],
-    screen: *mut *mut i32,
+    screen: Box<[Box<[i32]>]>,
 }
 
 impl State {
@@ -875,11 +875,14 @@ impl State {
                 } else {
                     (::wrap::waddch)((b' ' as (usize)));
                 }
-                *(*((*(self)).screen).offset(old_x as (isize))).offset(old_y as (isize)) = -1i32;
+                (((*(self)).screen)[(old_x as (isize)) as usize][(old_y as (isize)) as usize]) =
+                    -1i32;
                 draw(((*(self)).robot));
                 (::wrap::wrefresh)();
-                *(*((*(self)).screen).offset(((*(self)).robot).x as (isize)))
-                    .offset(((*(self)).robot).y as (isize)) = 0i32;
+                (((*(self)).screen)[(((*(self)).robot).x as (isize)) as usize][(((*(self)).robot)
+                                                                                    .y as
+                                                                                    (isize)) as
+                                                                                   usize]) = 0i32;
                 old_x = ((*(self)).robot).x;
                 old_y = ((*(self)).robot).y;
             }
@@ -932,11 +935,12 @@ impl State {
             }
         }
         if check_y < 3i32 || check_y > LINES - 1i32 || check_x < 0i32 || check_x > COLS - 1i32 {
-        } else if *(*((*(self)).screen).offset(check_x as (isize))).offset(check_y as (isize)) !=
+        } else if (((*(self)).screen)[(check_x as (isize)) as usize][(check_y as (isize)) as
+                                                                         usize]) !=
                    -1i32
         {
-            let switch2 =
-                *(*((*(self)).screen).offset(check_x as (isize))).offset(check_y as (isize));
+            let switch2 = (((*(self)).screen)[(check_x as (isize)) as usize][(check_y as (isize)) as
+                                                                                 usize]);
             if !(switch2 == 0i32) {
                 if switch2 == 1i32 {
                     (::wrap::wmove)((1i32), (0i32));
@@ -944,9 +948,9 @@ impl State {
                     ((self)).play_animation((input));
                 } else {
                     let index =
-                        ((*(self)).bogus_messages)[(*(*((*(self)).screen).offset(
-                            check_x as (isize),
-                        )).offset(check_y as (isize)) -
+                        ((*(self)).bogus_messages)[((((*(self)).screen)[(check_x as (isize)) as
+                                                                            usize]
+                                                         [(check_y as (isize)) as usize]) -
                                                         2i32) as
                                                        (usize)] as (usize);
                     ((self)).message((messages[index]));
@@ -1038,16 +1042,14 @@ impl State {
         let mut counter2: i32 = ::std::mem::uninitialized();
         let mut empty: screen_object = ::std::mem::uninitialized();
         let mut i: i32 = 0i32;
-        ((*(self)).screen) = (::wrap::malloc)(
-            ((::std::mem::size_of::<*mut i32>()) *
-                 (((COLS - 1i32 + 1i32) as (usize)))),
-        ) as (*mut *mut i32);
-        for i in ((0i32)..(COLS - 1i32 + 1i32)) {
-            *((*(self)).screen).offset(i as (isize)) =
-                (::wrap::malloc)(
-                    ((::std::mem::size_of::<i32>()) * (((LINES - 1i32 + 1i32) as (usize)))),
-                ) as (*mut i32);
-        }
+
+        ((*(self)).screen) = (0..COLS)
+            .map(|_| {
+                (0..LINES).map(|_| 0).collect::<Vec<_>>().into_boxed_slice()
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+
         (empty) = (::screen_object {
                        x: (-1i32),
                        y: (-1i32),
@@ -1060,8 +1062,8 @@ impl State {
         while (counter <= COLS - 1i32) {
             counter2 = 0i32;
             while (counter2 <= LINES - 1i32) {
-                *(*((*(self)).screen).offset(counter as (isize))).offset(counter2 as (isize)) =
-                    -1i32;
+                (((*(self)).screen)[(counter as (isize)) as usize][(counter2 as (isize)) as
+                                                                       usize]) = -1i32;
                 counter2 = counter2 + 1;
             }
             counter = counter + 1;
@@ -1082,8 +1084,9 @@ impl State {
                                    bold: (false),
                                    ..((*(self)).robot)
                                });
-        *(*((*(self)).screen).offset(((*(self)).robot).x as (isize)))
-            .offset(((*(self)).robot).y as (isize)) = 0i32;
+        (((*(self)).screen)[(((*(self)).robot).x as (isize)) as usize][(((*(self)).robot).y as
+                                                                            (isize)) as
+                                                                           usize]) = 0i32;
     }
     #[no_mangle]
     pub unsafe extern "C" fn initialize_kitten(&mut self) {
@@ -1093,8 +1096,12 @@ impl State {
                                         y: ((::wrap::rand)() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
                                         ..((*(self)).kitten)
                                     });
-            if !(*(*((*(self)).screen).offset(((*(self)).kitten).x as (isize)))
-                     .offset(((*(self)).kitten).y as (isize)) != -1i32)
+            if !((((*(self)).screen)[(((*(self)).kitten).x as (isize)) as usize][(((*(self))
+                                                                                       .kitten)
+                                                                                      .y as
+                                                                                      (isize)) as
+                                                                                     usize]) !=
+                     -1i32)
             {
                 break;
             }
@@ -1110,8 +1117,9 @@ impl State {
                 break;
             }
         }
-        *(*((*(self)).screen).offset(((*(self)).kitten).x as (isize)))
-            .offset(((*(self)).kitten).y as (isize)) = 1i32;
+        (((*(self)).screen)[(((*(self)).kitten).x as (isize)) as usize][(((*(self)).kitten).y as
+                                                                             (isize)) as
+                                                                            usize]) = 1i32;
         (((*(self)).kitten)) = (::screen_object {
                                     color: ((::wrap::rand)() % 6i32 + 1i32),
                                     bold: (if (::wrap::rand)() % 2i32 != 0 {
@@ -1156,17 +1164,16 @@ impl State {
                          y: ((::wrap::rand)() % (LINES - 1i32 - 3i32 + 1i32) + 3i32),
                          ..(((*(self)).bogus)[counter as (usize)])
                      });
-                if !(*(*((*(self)).screen).offset(
-                    ((*(self)).bogus)[counter as (usize)]
-                        .x as (isize),
-                )).offset(((*(self)).bogus)[counter as (usize)].y as (isize)) !=
+                if !((((*(self)).screen)[(((*(self)).bogus)[counter as (usize)].x as (isize)) as
+                                             usize]
+                          [(((*(self)).bogus)[counter as (usize)].y as (isize)) as usize]) !=
                          -1i32)
                 {
                     break;
                 }
             }
-            *(*((*(self)).screen).offset(((*(self)).bogus)[counter as (usize)].x as (isize)))
-                .offset(((*(self)).bogus)[counter as (usize)].y as (isize)) = counter + 2i32;
+            (((*(self)).screen)[(((*(self)).bogus)[counter as (usize)].x as (isize)) as usize]
+                 [(((*(self)).bogus)[counter as (usize)].y as (isize)) as usize]) = counter + 2i32;
             loop {
                 index = (::wrap::rand)() % 406i32;
                 if !(((*(self)).used_messages)[index as (usize)] != 0i32) {
@@ -1435,7 +1442,7 @@ pub unsafe extern "C" fn _c_main(mut argc: i32, mut argv: *mut *mut u8) -> i32 {
                   }); 406]),
         bogus_messages: ([0i32; 406]),
         used_messages: ([0i32; 406]),
-        screen: (0i32 as (*mut ::std::os::raw::c_void) as (*mut *mut i32)),
+        screen: Box::new([]),
     };
 
     if argc == 1i32 {
