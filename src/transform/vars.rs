@@ -75,7 +75,7 @@ impl Transform for SinkLets {
             Other,
         }
 
-        struct StmtLocalsVisitor<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a> {
+        struct BlockLocalsVisitor<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a> {
             cur: HashMap<DefId, UseKind>,
             block_locals: HashMap<NodeId, HashMap<DefId, UseKind>>,
 
@@ -83,7 +83,7 @@ impl Transform for SinkLets {
             locals: &'a HashMap<DefId, LocalInfo>,
         }
 
-        impl<'a, 'hir, 'gcx, 'tcx> StmtLocalsVisitor<'a, 'hir, 'gcx, 'tcx> {
+        impl<'a, 'hir, 'gcx, 'tcx> BlockLocalsVisitor<'a, 'hir, 'gcx, 'tcx> {
             fn record_use(&mut self, id: DefId) {
                 self.cur.insert(id, UseKind::Other);
             }
@@ -97,7 +97,7 @@ impl Transform for SinkLets {
         }
 
         impl<'a, 'hir, 'gcx, 'tcx, 'ast> Visitor<'ast>
-                for StmtLocalsVisitor<'a, 'hir, 'gcx, 'tcx> {
+                for BlockLocalsVisitor<'a, 'hir, 'gcx, 'tcx> {
             fn visit_expr(&mut self, e: &'ast Expr) {
                 if let Some(def_id) = self.cx.try_resolve_expr(e) {
                     if self.locals.contains_key(&def_id) {
@@ -127,7 +127,7 @@ impl Transform for SinkLets {
         }
 
         let block_locals = {
-            let mut v = StmtLocalsVisitor {
+            let mut v = BlockLocalsVisitor {
                 cur: HashMap::new(),
                 block_locals: HashMap::new(),
                 cx: cx,
@@ -136,7 +136,7 @@ impl Transform for SinkLets {
             visit::walk_crate(&mut v, &krate);
             v.block_locals
         };
-        
+
         // (3) Place new locals in the appropriate locations.
 
         let mut placed_locals = HashSet::new();
@@ -205,5 +205,159 @@ impl Transform for SinkLets {
 fn is_uninit_call(e: &Expr) -> bool {
     // TODO: check if cstore.crate_name(cnum) == "std" && path == "mem::uninitialized"
     false
+}
+
+
+
+/// Fold `let x; ...; x = 10;` into `...; let x = 10;`, if there are no intervening uses of `x`.
+///
+/// This pass only takes effect when the `let` and the assignment are in the same block.  Running
+/// `SinkLets` first will move `let`s into the correct block if it is legal to do so.
+pub struct FoldLetAssign;
+
+impl Transform for FoldLetAssign {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        // (1) Find all locals that might be foldable.
+
+        let mut locals: HashMap<DefId, P<Local>> = HashMap::new();
+        visit_nodes(&krate, |l: &Local| {
+            if let PatKind::Ident(BindingMode::ByValue(_), ref ident, None) = l.pat.node {
+                if l.init.is_none() || is_uninit_call(l.init.as_ref().unwrap()) {
+                    let def_id = cx.node_def_id(l.pat.id);
+                    locals.insert(def_id, P(l.clone()));
+                }
+            }
+        });
+
+        // (2) Compute the set of foldable locals that are used in each statement.
+
+        struct StmtLocalsVisitor<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a> {
+            cur: HashSet<DefId>,
+            stmt_locals: HashMap<NodeId, HashSet<DefId>>,
+
+            cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+            locals: &'a HashMap<DefId, P<Local>>,
+        }
+
+        impl<'a, 'hir, 'gcx, 'tcx, 'ast> Visitor<'ast>
+                for StmtLocalsVisitor<'a, 'hir, 'gcx, 'tcx> {
+            fn visit_expr(&mut self, e: &'ast Expr) {
+                if let Some(def_id) = self.cx.try_resolve_expr(e) {
+                    if self.locals.contains_key(&def_id) {
+                        self.cur.insert(def_id);
+                    }
+                }
+                visit::walk_expr(self, e);
+            }
+
+            fn visit_stmt(&mut self, s: &'ast Stmt) {
+                let old_cur = mem::replace(&mut self.cur, HashSet::new());
+                visit::walk_stmt(self, s);
+                let uses = mem::replace(&mut self.cur, old_cur);
+                for &id in &uses {
+                    self.cur.insert(id);
+                }
+                info!("record uses {:?} for {:?}", uses, s);
+                self.stmt_locals.insert(s.id, uses);
+            }
+
+            fn visit_item(&mut self, i: &'ast Item) {
+                let old_cur = mem::replace(&mut self.cur, HashSet::new());
+                visit::walk_item(self, i);
+                let uses = mem::replace(&mut self.cur, old_cur);
+                // Discard collected uses.  They aren't meaningful outside the item body.
+            }
+        }
+
+        let stmt_locals = {
+            let mut v = StmtLocalsVisitor {
+                cur: HashSet::new(),
+                stmt_locals: HashMap::new(),
+                cx: cx,
+                locals: &locals,
+            };
+            visit::walk_crate(&mut v, &krate);
+            v.stmt_locals
+        };
+
+
+        // (3) Walk through blocks, looking for non-initializing `let`s and assignment statements,
+        // and rewriting them when found.
+
+        // Map from node ID to def ID, for known locals.
+        let local_node_def = locals.iter().map(|(did, l)| (l.id, did)).collect::<HashMap<_, _>>();
+
+        // Map from def ID to a Mark, giving the position of the local so we can delete it later.
+        // If a local gets used before we reach the assignment, we delete it from this map.
+        let mut local_pos = HashMap::new();
+
+        fold_blocks(krate, |mut curs| {
+            while !curs.eof() {
+                // Is it a local declaration?  If so, mark it.
+                let mark_did = match curs.next().node {
+                    StmtKind::Local(ref l) => {
+                        if let Some(&did) = local_node_def.get(&l.id) {
+                            Some(did)
+                        } else {
+                            None
+                        }
+                    },
+                    _ => None,
+                };
+                if let Some(did) = mark_did {
+                    local_pos.insert(did, curs.mark());
+                }
+
+                // Is it an assignment to a local?
+                let assign_info = match curs.next().node {
+                    StmtKind::Semi(ref e) => {
+                        match e.node {
+                            ExprKind::Assign(ref lhs, ref rhs) => {
+                                if let Some(def_id) = cx.try_resolve_expr(&lhs) {
+                                    if local_pos.contains_key(&def_id) {
+                                        Some((def_id, rhs.clone()))
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            },
+                            _ => None,
+                        }
+                    },
+                    _ => None,
+                };
+                if let Some((def_id, init)) = assign_info {
+                    let local = &locals[&def_id];
+                    let local_mark = local_pos.remove(&def_id).unwrap();
+                    let l = local.clone().map(|l| {
+                        Local {
+                            init: Some(init),
+                            .. l
+                        }
+                    });
+                    curs.replace(|_| mk().local_stmt(l));
+
+                    let here = curs.mark();
+                    curs.seek(local_mark);
+                    curs.remove();
+                    curs.seek(here);
+                }
+
+                // Does it access some locals?
+                if let Some(locals) = stmt_locals.get(&curs.next().id) {
+                    for &def_id in locals {
+                        // This local is being accessed before its first recognized assignment.
+                        // That means we can't fold the `let` with the later assignment.
+                        local_pos.remove(&def_id);
+                    }
+                }
+
+
+                curs.advance();
+            }
+        })
+    }
 }
 
