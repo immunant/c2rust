@@ -1,5 +1,8 @@
-#![feature(alloc_system)]
+#![feature(alloc_system, allocator_api, global_allocator)]
 extern crate alloc_system;
+#[global_allocator]
+static ALLOC: alloc_system::System = alloc_system::System;
+
 
 extern "C" {
     static mut COLS: i32;
