@@ -95,8 +95,8 @@ mod wrap {
     pub fn start_color() -> i32 {
         unsafe { ::start_color() }
     }
-    pub unsafe fn time(__timer: *mut isize) -> isize {
-        ::time(__timer)
+    pub unsafe fn time() -> isize {
+        ::time(::std::ptr::null_mut())
     }
     pub fn waddch(arg2: usize) -> i32 {
         unsafe { ::waddch(::stdscr, arg2) }
@@ -1449,7 +1449,7 @@ pub unsafe extern "C" fn _c_main(mut argc: i32, mut argv: *mut *mut u8) -> i32 {
             (::wrap::exit)(0i32);
         }
     }
-    (::wrap::srand)((::wrap::time)(0i32 as (*mut isize)) as (u32));
+    (::wrap::srand)((::wrap::time)() as (u32));
     printf((*b"%c%c%c\0").as_ptr(), 27i32, b'(' as (i32), b'U' as (i32));
     initialize_ncurses();
     ((&mut S)).initialize_arrays();
