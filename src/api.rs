@@ -160,7 +160,8 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
             return None;
         }
         let parent = self.hir_map().get_parent(e.id);
-        let parent_body = self.hir_map().body_owned_by(parent);
+        let parent_body = match_or!([self.hir_map().maybe_body_owned_by(parent)]
+                                    Some(x) => x; return None);
         let tables = self.ty_ctxt().body_tables(parent_body);
 
         match e.node {

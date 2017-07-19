@@ -2,6 +2,7 @@ use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
+use syntax::util::move_map::MoveMap;
 
 use fold::Fold;
 
@@ -17,9 +18,9 @@ macro_rules! gen_fold_node_impl {
         node = $Node:ty;
         folder = $NodeFolder:ident;
 
-        fn $fold_thing:ident ( &mut $slf:ident , $arg:ident : $ArgTy:ty ) -> $RetTy:ty {
-            $finish:expr
-        }
+        fn $fold_thing:ident ( &mut $slf:ident , $arg:ident : $ArgTy:ty ) -> $RetTy:ty;
+        walk = $walk:expr;
+        map = $map:expr;
     ) => {
         struct $NodeFolder<F>
                 where F: FnMut($ArgTy) -> $RetTy {
@@ -29,8 +30,8 @@ macro_rules! gen_fold_node_impl {
         impl<F> Folder for $NodeFolder<F>
                 where F: FnMut($ArgTy) -> $RetTy {
             fn $fold_thing(&mut $slf, $arg: $ArgTy) -> $RetTy {
-                let $arg = ($slf.callback)($arg);
-                $finish
+                let $arg = $walk;
+                $map
             }
         }
 
@@ -48,44 +49,45 @@ macro_rules! gen_fold_node_impl {
 gen_fold_node_impl! {
     node = P<Expr>;
     folder = ExprNodeFolder;
-    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
-        e.map(|e| fold::noop_fold_expr(e, self))
-    }
+    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr>;
+    walk = e.map(|e| fold::noop_fold_expr(e, self));
+    map = (self.callback)(e);
 }
 
 gen_fold_node_impl! {
     node = P<Item>;
     folder = ItemNodeFolder;
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
-        // Note that `i` has been rebound as a SmallVector<P<Item>> by this point.
-        SmallVector::many(i.into_iter().flat_map(|i| fold::noop_fold_item(i, self)))
-    }
+    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>>;
+    walk = fold::noop_fold_item(i, self);
+    map = i.move_flat_map(|i| (self.callback)(i));
 }
 
 gen_fold_node_impl! {
     node = Path;
     folder = PathNodeFolder;
-    fn fold_path(&mut self, p: Path) -> Path {
-        fold::noop_fold_path(p, self)
-    }
+    fn fold_path(&mut self, p: Path) -> Path;
+    walk = fold::noop_fold_path(p, self);
+    map = (self.callback)(p);
 }
 
 gen_fold_node_impl! {
     node = P<Block>;
     folder = BlockNodeFolder;
-    fn fold_block(&mut self, b: P<Block>) -> P<Block> {
-        fold::noop_fold_block(b, self)
-    }
+    fn fold_block(&mut self, b: P<Block>) -> P<Block>;
+    walk = fold::noop_fold_block(b, self);
+    map = (self.callback)(b);
 }
 
 gen_fold_node_impl! {
     node = P<Local>;
     folder = LocalNodeFolder;
-    fn fold_local(&mut self, l: P<Local>) -> P<Local> {
-        fold::noop_fold_local(l, self)
-    }
+    fn fold_local(&mut self, l: P<Local>) -> P<Local>;
+    walk = fold::noop_fold_local(l, self);
+    map = (self.callback)(l);
 }
 
+/// Fold over nodes of the callback's argument type within `target`.  This function performs a
+/// postorder traversal.
 pub fn fold_nodes<N, T, F>(target: T, callback: F) -> <T as Fold>::Result
         where N: FoldNode,
               T: Fold,

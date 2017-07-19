@@ -5,6 +5,7 @@ use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Block};
 use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
+use syntax::util::move_map::MoveMap;
 use syntax::util::small_vector::SmallVector;
 
 use bindings::{self, Bindings};
@@ -216,13 +217,10 @@ macro_rules! gen_pattern_impl {
         pattern = $Pat:ty;
         folder = $PatternFolder:ident;
 
-        $(
-            // Capture the ident "self" from the outer context, so it can be used in the `finish`
-            // expression.
-            fn $fold_thing:ident ( &mut $slf:ident , $arg:ident : $ArgTy:ty ) -> $RetTy:ty {
-                $finish:expr
-            }
-        )*
+        // Capture the ident "self" from the outer context, so it can be used in the expressions.
+        fn $fold_thing:ident ( &mut $slf:ident , $arg:ident : $ArgTy:ty ) -> $RetTy:ty;
+        walk = $walk:expr;
+        map($match_one:ident) = $map:expr;
     ) => {
         pub struct $PatternFolder<F>
                 where F: FnMut($Pat, Bindings) -> $Pat {
@@ -233,18 +231,17 @@ macro_rules! gen_pattern_impl {
 
         impl<F> Folder for $PatternFolder<F>
                 where F: FnMut($Pat, Bindings) -> $Pat {
-            $(
-                fn $fold_thing(&mut $slf, $arg: $ArgTy) -> $RetTy {
-                    let $arg =
-                        if let Ok(mcx) = $slf.init_mcx.clone_match(&$slf.pattern, &$arg) {
-                            ($slf.callback)($arg, mcx.bindings)
-                        } else {
-                            $arg
-                        };
-
-                    $finish
-                }
-            )*
+            fn $fold_thing(&mut $slf, $arg: $ArgTy) -> $RetTy {
+                let $arg = $walk;
+                let mut $match_one = |x| {
+                    if let Ok(mcx) = $slf.init_mcx.clone_match(&$slf.pattern, &x) {
+                        ($slf.callback)(x, mcx.bindings)
+                    } else {
+                        x
+                    }
+                };
+                $map
+            }
         }
 
         impl Pattern for $Pat {
@@ -269,27 +266,27 @@ gen_pattern_impl! {
     pattern = P<Expr>;
     folder = ExprPatternFolder;
 
-    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
-        e.map(|e| fold::noop_fold_expr(e, self))
-    }
+    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr>;
+    walk = e.map(|e| fold::noop_fold_expr(e, self));
+    map(match_one) = match_one(e);
 }
 
 gen_pattern_impl! {
     pattern = P<Ty>;
     folder = TyPatternFolder;
 
-    fn fold_ty(&mut self, t: P<Ty>) -> P<Ty> {
-        fold::noop_fold_ty(t, self)
-    }
+    fn fold_ty(&mut self, t: P<Ty>) -> P<Ty>;
+    walk = fold::noop_fold_ty(t, self);
+    map(match_one) = match_one(t);
 }
 
 gen_pattern_impl! {
     pattern = Stmt;
     folder = StmtPatternFolder;
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
-        fold::noop_fold_stmt(s, self)
-    }
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt>;
+    walk = fold::noop_fold_stmt(s, self);
+    map(match_one) = s.move_map(match_one);
 }
 
 pub struct MultiStmtPatternFolder<F>
@@ -303,6 +300,8 @@ impl<F> Folder for MultiStmtPatternFolder<F>
         where F: FnMut(Vec<Stmt>, Bindings) -> Vec<Stmt> {
     fn fold_block(&mut self, b: P<Block>) -> P<Block> {
         assert!(self.pattern.len() > 0);
+
+        let b = fold::noop_fold_block(b, self);
 
         let mut new_stmts = Vec::with_capacity(b.stmts.len());
         let mut last = 0;
@@ -331,15 +330,12 @@ impl<F> Folder for MultiStmtPatternFolder<F>
             }
         }
 
-        let b =
-            if last == 0 {
-                b
-            } else {
-                new_stmts.extend_from_slice(&b.stmts[last ..]);
-                b.map(|b| Block { stmts: new_stmts, ..b })
-            };
-
-        fold::noop_fold_block(b, self)
+        if last == 0 {
+            b
+        } else {
+            new_stmts.extend_from_slice(&b.stmts[last ..]);
+            b.map(|b| Block { stmts: new_stmts, ..b })
+        }
     }
 }
 

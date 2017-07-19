@@ -139,11 +139,15 @@ impl Transform for SinkLets {
             v.block_locals
         };
 
-        // (3) Place new locals in the appropriate locations.
+        // (3) Compute where to place every local.
 
+        // Map from block NodeId to DefIds of locals to place in the block.
+        let mut local_placement = HashMap::new();
         let mut placed_locals = HashSet::new();
 
-        let krate = fold_nodes(krate, |b: P<Block>| {
+        // This is separate from the actual rewrite because we need to do a preorder traversal, but
+        // folds are always postorder to avoid infinite recursion.
+        visit_nodes(&krate, |b: &Block| {
             let used_locals = &block_locals[&b.id];
 
             // Check if there are any locals we should place in this block.  We place a local here
@@ -158,17 +162,24 @@ impl Transform for SinkLets {
             // Put the new locals in the same order as they appeared in the original source.
             place_here.sort_by_key(|&id| locals[&id].old_node_id);
 
-            if place_here.len() == 0 {
-                return b;
-            }
-
             for &id in &place_here {
                 placed_locals.insert(id);
             }
 
+            if place_here.len() > 0 {
+                local_placement.insert(b.id, place_here);
+            }
+        });
+
+        // (4) Place new locals in the appropriate locations.
+
+        let krate = fold_nodes(krate, |b: P<Block>| {
+            let place_here = match_or!([local_placement.get(&b.id)]
+                                       Some(x) => x; return b);
+
             b.map(|mut b| {
-                let mut new_stmts = place_here.into_iter()
-                    .map(|id| mk().local_stmt(&locals[&id].local))
+                let mut new_stmts = place_here.iter()
+                    .map(|&id| mk().local_stmt(&locals[&id].local))
                     .collect::<Vec<_>>();
                 new_stmts.append(&mut b.stmts);
                 Block {
@@ -178,7 +189,7 @@ impl Transform for SinkLets {
             })
         });
 
-        // (4) Remove old locals
+        // (5) Remove old locals
 
         // Note that we don't check for locals that we failed to place.  The only way we can fail
         // to place a local is if it is never used anywhere.  Otherwise we would, at worst, place

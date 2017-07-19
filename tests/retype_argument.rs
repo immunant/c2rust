@@ -29,6 +29,10 @@ impl S {
     }
 }
 
+struct Dummy {
+    array: [u8; 10],
+}
+
 fn main() {
     println!("1 + 1 = {}", f(1, 1));
     println!("1 + 1 = {}", S::g(1, 1));
