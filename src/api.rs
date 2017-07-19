@@ -3,8 +3,8 @@ use rustc::hir::def_id::DefId;
 use rustc::session::Session;
 use rustc::ty::Ty;
 use rustc::ty::item_path::{ItemPathBuffer, RootMode};
-use syntax::ast::NodeId;
-use syntax::ast::{Expr};
+use syntax::ast::{NodeId, DUMMY_NODE_ID};
+use syntax::ast::{Expr, ExprKind};
 use syntax::ast::{Path, PathSegment, Ident};
 use syntax::codemap::DUMMY_SP;
 use syntax::symbol::keywords;
@@ -77,6 +77,8 @@ pub trait DriverCtxtExt<'gcx> {
     fn node_def_id(&self, id: NodeId) -> DefId;
     fn try_resolve_expr(&self, e: &Expr) -> Option<DefId>;
     fn resolve_expr(&self, e: &Expr) -> DefId;
+    fn opt_callee(&self, e: &Expr) -> Option<DefId>;
+    fn callee(&self, e: &Expr) -> DefId;
 }
 
 impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 'tcx> {
@@ -150,6 +152,36 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
     fn resolve_expr(&self, e: &Expr) -> DefId {
         self.try_resolve_expr(e)
             .unwrap_or_else(|| panic!("expr does not resolve to a def: {:?}", e))
+    }
+
+    /// Obtain the `DefId` of the function being called, if `e` is a function or method call.
+    fn opt_callee(&self, e: &Expr) -> Option<DefId> {
+        if e.id == DUMMY_NODE_ID {
+            return None;
+        }
+        let parent = self.hir_map().get_parent(e.id);
+        let parent_body = self.hir_map().body_owned_by(parent);
+        let tables = self.ty_ctxt().body_tables(parent_body);
+
+        match e.node {
+            ExprKind::Call(ref func, _) => {
+                // Only type-dependent methods (as in `T::f()`) show up in `type_dependent_defs`.
+                // Regular functions (`f()`) aren't present there, but they are resolvable by
+                // `try_resolve_expr`.
+                if let Some(def_id) = self.try_resolve_expr(func) {
+                    return Some(def_id);
+                } else {
+                    tables.type_dependent_defs.get(&func.id).and_then(|d| d.opt_def_id())
+                }
+            },
+            ExprKind::MethodCall(..) =>
+                tables.type_dependent_defs.get(&e.id).and_then(|d| d.opt_def_id()),
+            _ => None,
+        }
+    }
+
+    fn callee(&self, e: &Expr) -> DefId {
+        self.opt_callee(e).expect("callee: expr is not a call")
     }
 }
 

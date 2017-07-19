@@ -270,26 +270,44 @@ struct SinkUnsafeFolder<'a> {
 
 impl<'a> Folder for SinkUnsafeFolder<'a> {
     fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
-        let i =
-            if self.st.marked(i.id, "target") &&
-               matches!([i.node] ItemKind::Fn(_, Unsafety::Unsafe, _, _, _, _)) {
-                i.map(|mut i| {
-                    match i.node {
-                        ItemKind::Fn(_, ref mut unsafety, _, _, _, ref mut block) => {
-                            *unsafety = Unsafety::Normal;
-                            *block = mk().block(vec![
-                                mk().expr_stmt(mk().block_expr(mk().unsafe_().block(
-                                            block.stmts.clone())))]);
-                        },
-                        _ => unreachable!(),
-                    }
-                    i
-                })
-            } else {
+        let i = if self.st.marked(i.id, "target") {
+            i.map(|mut i| {
+                match i.node {
+                    ItemKind::Fn(_, ref mut unsafety, _, _, _, ref mut block) => {
+                        sink_unsafe(unsafety, block);
+                    },
+                    _ => {},
+                }
                 i
-            };
+            })
+        } else {
+            i
+        };
+
 
         fold::noop_fold_item(i, self)
+    }
+
+    fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVector<ImplItem> {
+        if self.st.marked(i.id, "target") {
+            match i.node {
+                ImplItemKind::Method(MethodSig { ref mut unsafety, .. }, ref mut block) => {
+                    sink_unsafe(unsafety, block);
+                },
+                _ => {},
+            }
+        }
+
+        fold::noop_fold_impl_item(i, self)
+    }
+}
+
+fn sink_unsafe(unsafety: &mut Unsafety, block: &mut P<Block>) {
+    if *unsafety == Unsafety::Unsafe {
+        *unsafety = Unsafety::Normal;
+        *block = mk().block(vec![
+            mk().expr_stmt(mk().block_expr(mk().unsafe_().block(
+                        block.stmts.clone())))]);
     }
 }
 

@@ -33,6 +33,7 @@ impl<T: Transform> Command for TransformCommand<T> {
 
 mod control_flow;
 mod funcs;
+mod retype;
 mod rewrite;
 mod statics;
 mod structs;
@@ -54,6 +55,12 @@ pub fn register_transform_commands(reg: &mut Registry) {
     reg.register("fix_unused_unsafe", |_args| mk(funcs::FixUnusedUnsafe));
     reg.register("sink_unsafe", |_args| mk(funcs::SinkUnsafe));
     reg.register("wrap_extern", |_args| mk(funcs::WrapExtern));
+
+    reg.register("retype_argument", |args| mk(retype::RetypeArgument {
+        new_ty: args[0].clone(),
+        wrap: args[1].clone(),
+        unwrap: args[2].clone(),
+    }));
 
     reg.register("rewrite_expr", |args| mk(rewrite::RewriteExpr {
         pat: args[0].clone(),
