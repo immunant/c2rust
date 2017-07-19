@@ -2,6 +2,7 @@ use std::collections::hash_map::{HashMap, Entry};
 use std::collections::HashSet;
 use std::mem;
 use rustc::hir::def_id::DefId;
+use rustc::middle::cstore::CrateStore;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
@@ -46,7 +47,7 @@ impl Transform for SinkLets {
         let mut locals: HashMap<DefId, LocalInfo> = HashMap::new();
         visit_nodes(&krate, |l: &Local| {
             if let PatKind::Ident(BindingMode::ByValue(_), ref ident, None) = l.pat.node {
-                if l.init.is_none() || is_uninit_call(l.init.as_ref().unwrap()) {
+                if l.init.is_none() || is_uninit_call(cx, l.init.as_ref().unwrap()) {
                     let def_id = cx.node_def_id(l.pat.id);
                     locals.insert(def_id, LocalInfo {
                         local: P(Local {
@@ -202,9 +203,16 @@ impl Transform for SinkLets {
     }
 }
 
-fn is_uninit_call(e: &Expr) -> bool {
-    // TODO: check if cstore.crate_name(cnum) == "std" && path == "mem::uninitialized"
-    false
+fn is_uninit_call(cx: &driver::Ctxt, e: &Expr) -> bool {
+    let func = match_or!([e.node] ExprKind::Call(ref func, _) => func; return false);
+    let def_id = cx.resolve_expr(func);
+    let crate_name = cx.session().cstore.crate_name(def_id.krate);
+    let path = cx.session().cstore.def_path(def_id);
+
+    (crate_name.as_str() == "std" || crate_name.as_str() == "core") &&
+    path.data.len() == 2 &&
+    path.data[0].data.get_opt_name().map_or(false, |sym| sym.as_str() == "mem") &&
+    path.data[1].data.get_opt_name().map_or(false, |sym| sym.as_str() == "uninitialized")
 }
 
 
@@ -222,7 +230,7 @@ impl Transform for FoldLetAssign {
         let mut locals: HashMap<DefId, P<Local>> = HashMap::new();
         visit_nodes(&krate, |l: &Local| {
             if let PatKind::Ident(BindingMode::ByValue(_), ref ident, None) = l.pat.node {
-                if l.init.is_none() || is_uninit_call(l.init.as_ref().unwrap()) {
+                if l.init.is_none() || is_uninit_call(cx, l.init.as_ref().unwrap()) {
                     let def_id = cx.node_def_id(l.pat.id);
                     locals.insert(def_id, P(l.clone()));
                 }

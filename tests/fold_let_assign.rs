@@ -38,7 +38,13 @@ fn main() {
         x = 5;
         let y;
         y = 5;
-        let x;
+        let mut x = ::std::mem::uninitialized();
+        x = 10;
+    }
+
+    {
+        let mut x = ::std::mem::uninitialized();
+        ::std::mem::drop(&mut x);
         x = 10;
     }
 }
