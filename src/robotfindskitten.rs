@@ -44,9 +44,10 @@ extern "C" {
 }
 
 mod wrap {
+    use std::ffi::CStr;
     use super::_win_st;
-    pub unsafe fn atoi(__nptr: *const u8) -> i32 {
-        ::atoi(__nptr)
+    pub fn atoi(__nptr: &CStr) -> i32 {
+        unsafe { ::atoi(((__nptr).as_ptr() as *mut u8)) }
     }
     pub fn cbreak() -> i32 {
         unsafe { ::cbreak() }
@@ -1469,7 +1470,9 @@ pub unsafe extern "C" fn _c_main(mut argc: i32, mut argv: *mut *mut u8) -> i32 {
     if argc == 1i32 {
         (S.num_bogus) = 20i32;
     } else {
-        (S.num_bogus) = (::wrap::atoi)(*argv.offset(1isize) as (*const u8));
+        (S.num_bogus) = (::wrap::atoi)(
+            (CStr::from_ptr((*argv.offset(1isize) as (*const u8)) as *const c_char)),
+        );
         if (S.num_bogus) < 0i32 || (S.num_bogus) > 406i32 {
             printf(
                 (*b"Run-time parameter must be between 0 and %d.\n\0").as_ptr(),
