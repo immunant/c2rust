@@ -1,7 +1,7 @@
 use syntax::ast::Crate;
 
 use api::*;
-use command::CommandState;
+use command::{CommandState, Registry};
 use driver;
 use transform::Transform;
 
@@ -39,4 +39,11 @@ impl Transform for WrappingToNormal {
                                  "__x.abs()");
         krate
     }
+}
+
+
+pub fn register_commands(reg: &mut Registry) {
+    use super::mk;
+
+    reg.register("wrapping_arith_to_normal", |_args| mk(WrappingToNormal));
 }

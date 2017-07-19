@@ -9,7 +9,7 @@ use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
 use api::*;
-use command::CommandState;
+use command::{CommandState, Registry};
 use cursor::Mark;
 use driver::{self, Phase};
 use transform::Transform;
@@ -419,3 +419,13 @@ impl Transform for UninitToDefault {
     }
 }
 
+
+
+pub fn register_commands(reg: &mut Registry) {
+    use super::mk;
+
+    reg.register("let_x_uninitialized", |_args| mk(LetXUninitialized));
+    reg.register("sink_lets", |_args| mk(SinkLets));
+    reg.register("fold_let_assign", |_args| mk(FoldLetAssign));
+    reg.register("uninit_to_default", |_args| mk(UninitToDefault));
+}

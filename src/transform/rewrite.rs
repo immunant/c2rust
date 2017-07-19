@@ -2,10 +2,11 @@ use syntax::ast::Crate;
 use syntax::symbol::Symbol;
 
 use api::*;
-use command::CommandState;
+use command::{CommandState, Registry};
 use contains_mark::contains_mark;
 use driver;
 use transform::Transform;
+use util::IntoSymbol;
 
 
 fn make_init_mcx() -> MatchCtxt {
@@ -78,4 +79,20 @@ impl Transform for RewriteTy {
             repl.clone().subst(&bnd)
         })
     }
+}
+
+
+pub fn register_commands(reg: &mut Registry) {
+    use super::mk;
+
+    reg.register("rewrite_expr", |args| mk(RewriteExpr {
+        pat: args[0].clone(),
+        repl: args[1].clone(),
+        filter: if args.len() >= 3 { Some((&args[2]).into_symbol()) } else { None },
+    }));
+    reg.register("rewrite_ty", |args| mk(RewriteTy {
+        pat: args[0].clone(),
+        repl: args[1].clone(),
+        filter: if args.len() >= 3 { Some((&args[2]).into_symbol()) } else { None },
+    }));
 }

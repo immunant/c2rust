@@ -7,7 +7,7 @@ use syntax::util::small_vector::SmallVector;
 
 use api::*;
 use bindings::Bindings;
-use command::CommandState;
+use command::{CommandState, Registry};
 use dataflow;
 use driver;
 use transform::Transform;
@@ -303,3 +303,14 @@ impl Transform for Localize {
 }
 
 
+
+
+pub fn register_commands(reg: &mut Registry) {
+    use super::mk;
+
+    reg.register("static_collect_to_struct", |args| mk(CollectToStruct {
+        struct_name: args[0].clone(),
+        instance_name: args[1].clone(),
+    }));
+    reg.register("static_to_local_ref", |_args| mk(Localize));
+}

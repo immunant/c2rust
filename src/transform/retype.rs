@@ -10,7 +10,7 @@ use syntax::util::small_vector::SmallVector;
 
 use api::*;
 use bindings::Bindings;
-use command::CommandState;
+use command::{CommandState, Registry};
 use driver::{self, Phase};
 use fold::Fold;
 use transform::Transform;
@@ -125,3 +125,13 @@ impl Transform for RetypeArgument {
     }
 }
 
+
+pub fn register_commands(reg: &mut Registry) {
+    use super::mk;
+
+    reg.register("retype_argument", |args| mk(RetypeArgument {
+        new_ty: args[0].clone(),
+        wrap: args[1].clone(),
+        unwrap: args[2].clone(),
+    }));
+}

@@ -9,7 +9,7 @@ use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
 
 use api::*;
-use command::CommandState;
+use command::{CommandState, Registry};
 use driver::{self, Phase};
 use fold::Fold;
 use transform::Transform;
@@ -425,4 +425,14 @@ impl Transform for WrapExtern {
     fn min_phase(&self) -> Phase {
         Phase::Phase3
     }
+}
+
+
+pub fn register_commands(reg: &mut Registry) {
+    use super::mk;
+
+    reg.register("func_to_method", |_args| mk(ToMethod));
+    reg.register("fix_unused_unsafe", |_args| mk(FixUnusedUnsafe));
+    reg.register("sink_unsafe", |_args| mk(SinkUnsafe));
+    reg.register("wrap_extern", |_args| mk(WrapExtern));
 }

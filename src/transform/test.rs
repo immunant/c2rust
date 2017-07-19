@@ -3,7 +3,7 @@
 use syntax::ast::Crate;
 
 use api::*;
-use command::CommandState;
+use command::{CommandState, Registry};
 use driver;
 use transform::Transform;
 
@@ -39,4 +39,14 @@ impl Transform for ReplaceStmts {
         let krate = replace_stmts(cx.session(), krate, &self.0, &self.1);
         krate
     }
+}
+
+
+pub fn register_commands(reg: &mut Registry) {
+    use super::mk;
+
+    reg.register("test_one_plus_one", |_args| mk(OnePlusOne));
+    reg.register("test_f_plus_one", |_args| mk(FPlusOne));
+    reg.register("test_replace_stmts", |args| mk(
+            ReplaceStmts(args[0].clone(), args[1].clone())));
 }

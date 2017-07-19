@@ -2,7 +2,7 @@ use rustc::session::Session;
 use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind};
 
 use api::*;
-use command::CommandState;
+use command::{CommandState, Registry};
 use driver;
 use transform::Transform;
 
@@ -127,4 +127,13 @@ impl Transform for RemoveUnusedLabels {
                 "for __pat in __iter { __m_body; }");
         krate
     }
+}
+
+
+pub fn register_commands(reg: &mut Registry) {
+    use super::mk;
+
+    reg.register("reconstruct_while", |_args| mk(ReconstructWhile));
+    reg.register("reconstruct_for_range", |_args| mk(ReconstructForRange));
+    reg.register("remove_unused_labels", |_args| mk(RemoveUnusedLabels));
 }

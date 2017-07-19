@@ -5,7 +5,7 @@ use syntax::util::small_vector::SmallVector;
 
 use api::*;
 use ast_equiv::AstEquiv;
-use command::CommandState;
+use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
 use util::IntoSymbol;
@@ -147,4 +147,13 @@ fn struct_item_id(i: &Item) -> Option<NodeId> {
     let vd = match_or!([i.node] ItemKind::Struct(ref vd, _) => vd; return None);
     let id = match_or!([*vd] VariantData::Struct(_, id) => id; return None);
     Some(id)
+}
+
+
+pub fn register_commands(reg: &mut Registry) {
+    use super::mk;
+
+    reg.register("struct_assign_to_update", |_args| mk(AssignToUpdate));
+    reg.register("struct_merge_updates", |_args| mk(MergeUpdates));
+    reg.register("rename_struct", |args| mk(Rename(args[0].clone())));
 }
