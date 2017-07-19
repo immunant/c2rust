@@ -1,5 +1,9 @@
 #![feature(alloc_system, allocator_api, global_allocator)]
 extern crate alloc_system;
+
+use std::ffi::CStr;
+use std::os::raw::c_char;
+
 #[global_allocator]
 static ALLOC: alloc_system::System = alloc_system::System;
 
@@ -854,10 +858,16 @@ pub struct State {
 
 impl State {
     #[no_mangle]
-    pub unsafe extern "C" fn message(&mut self, mut message: *mut u8) {
+    pub unsafe extern "C" fn message(&mut self, mut message: &CStr) {
         (::wrap::wmove)((1i32), (0i32));
         (::wrap::wclrtoeol)();
-        mvprintw(1i32, 0i32, (*b"%.*s\0").as_ptr(), COLS, message);
+        mvprintw(
+            1i32,
+            0i32,
+            (*b"%.*s\0").as_ptr(),
+            COLS,
+            ((message).as_ptr() as *mut u8),
+        );
         (::wrap::wmove)((((*(self)).robot).y), (((*(self)).robot).x));
         (::wrap::wrefresh)();
     }
@@ -889,7 +899,9 @@ impl State {
             }
             input = ((::wrap::wgetch)());
         }
-        ((self)).message(((*b"Bye!\0").as_ptr() as (*mut u8)));
+        ((self)).message(
+            ((CStr::from_ptr(((*b"Bye!\0").as_ptr() as (*mut u8)) as *const c_char))),
+        );
         (::wrap::wrefresh)();
         finish(0i32);
     }
@@ -930,7 +942,10 @@ impl State {
                 (::wrap::wrefresh_curscr)();
             } else {
                 ((self)).message(
-                    ((*b"Invalid input: Use direction keys or Esc.\0").as_ptr() as (*mut u8)),
+                    ((CStr::from_ptr(
+                        ((*b"Invalid input: Use direction keys or Esc.\0").as_ptr() as
+                             (*mut u8)) as *const c_char,
+                    ))),
                 );
                 return;
             }
@@ -954,7 +969,7 @@ impl State {
                                                          [(check_y as (isize)) as usize]) -
                                                         2i32) as
                                                        (usize)] as (usize);
-                    ((self)).message((messages[index]));
+                    ((self)).message(((CStr::from_ptr((messages[index]) as *const c_char))));
                 }
             }
         } else {
