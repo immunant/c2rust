@@ -47,6 +47,7 @@ macro_rules! transform_modules {
 
 transform_modules! {
     control_flow,
+    format,
     funcs,
     retype,
     rewrite,

@@ -3,6 +3,7 @@ use syntax::abi::Abi;
 use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Spanned};
 use syntax::ptr::P;
+use syntax::tokenstream::{TokenTree, TokenStream, ThinTokenStream};
 
 use util::IntoSymbol;
 
@@ -136,6 +137,19 @@ impl<S: Make<PathSegment>> Make<Path> for Vec<S> {
             span: DUMMY_SP,
             segments: self.into_iter().map(|s| s.make(mk)).collect(),
         }
+    }
+}
+
+
+impl Make<ThinTokenStream> for TokenStream {
+    fn make(self, _mk: &Builder) -> ThinTokenStream {
+        self.into()
+    }
+}
+
+impl Make<ThinTokenStream> for Vec<TokenTree> {
+    fn make(self, _mk: &Builder) -> ThinTokenStream {
+        self.into_iter().collect::<TokenStream>().into()
     }
 }
 
@@ -333,6 +347,17 @@ impl Builder {
         P(Expr {
             id: DUMMY_NODE_ID,
             node: ExprKind::AddrOf(self.mutbl, e),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
+    pub fn mac_expr<M>(self, mac: M) -> P<Expr>
+            where M: Make<Mac> {
+        let mac = mac.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Mac(mac),
             span: DUMMY_SP,
             attrs: ThinVec::new(),
         })
@@ -592,6 +617,19 @@ impl Builder {
         let eself = Spanned { node: kind, span: DUMMY_SP };
         let ident = Spanned { node: "self".make(&self), span: DUMMY_SP };
         Arg::from_self(eself, ident)
+    }
+
+    pub fn mac<Pa, Ts>(self, path: Pa, tts: Ts) -> Mac
+            where Pa: Make<Path>, Ts: Make<ThinTokenStream> {
+        let path = path.make(&self);
+        let tts = tts.make(&self);
+        Spanned {
+            node: Mac_ {
+                path: path,
+                tts: tts,
+            },
+            span: DUMMY_SP,
+        }
     }
 }
 

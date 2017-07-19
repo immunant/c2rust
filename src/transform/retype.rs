@@ -63,8 +63,6 @@ impl Transform for RetypeArgument {
                 return fl;
             }
 
-            info!("changed args: {:?}", changed_args);
-
             // An argument was changed, so we need to rewrite uses of that argument inside the
             // function body.
 
@@ -87,18 +85,13 @@ impl Transform for RetypeArgument {
             fl
         });
 
-        info!("modified fns: {:?}", mod_fns);
-
         // (2) Rewrite callsites of modified functions.
 
         // We don't need any protection against infinite recursion here, because it doesn't make
         // sense for `wrap` to call the function whose args we're changing.
         let krate = fold_nodes(krate, |e: P<Expr>| {
-            info!("look: {:?}", e);
             let callee = match_or!([cx.opt_callee(&e)] Some(x) => x; return e);
-            info!(" ** found call to {:?}", callee);
             let mod_args = match_or!([mod_fns.get(&callee)] Some(x) => x; return e);
-            info!(" ** ... with mod_args {:?}", mod_args);
             e.map(|mut e| {
                 {
                     let args: &mut [P<Expr>] =
