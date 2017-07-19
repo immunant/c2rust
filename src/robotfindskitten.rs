@@ -140,684 +140,414 @@ fn _init_ver() {
     }
 }
 
-static mut messages: [*mut u8; 406] = [0 as *mut u8; 406];
-
-fn _init_messages() {
-    unsafe {
-        messages
-    = [   (*b"\"I pity the fool who mistakes me for kitten!\", sez Mr. T.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"That\'s just an old tin can.\0").as_ptr() as (*mut u8),
-          (*b"It\'s an altar to the horse god.\0").as_ptr() as (*mut u8),
-          (*b"A box of dancing mechanical pencils. They dance! They sing!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s an old Duke Ellington record.\0").as_ptr() as (*mut u8),
-          (*b"A box of fumigation pellets.\0").as_ptr() as (*mut u8),
-          (*b"A digital clock. It\'s stuck at 2:17 PM.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"That\'s just a charred human corpse.\0").as_ptr() as (*mut u8),
-          (*b"I don\'t know what that is, but it\'s not kitten.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"An empty shopping bag. Paper or plastic?\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Could it be... a big ugly bowling trophy?\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A coat hanger hovers in thin air. Odd.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Not kitten, just a packet of Kool-Aid(tm).\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A freshly-baked pumpkin pie.\0").as_ptr() as (*mut u8),
-          (*b"A lone, forgotten comma, sits here, sobbing.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"ONE HUNDRED THOUSAND CARPET FIBERS!!!!!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s Richard Nixon\'s nose!\0").as_ptr() as (*mut u8),
-          (*b"It\'s Lucy Ricardo. \"Aaaah, Ricky!\", she says.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"You stumble upon Bill Gates\' stand-up act.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Just an autographed copy of the Kama Sutra.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the Will Rogers Highway. Who was Will Rogers, anyway?\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s another robot, more advanced in design than you but strangely immobile.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Leonard Richardson is here, asking people to lick him.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a stupid mask, fashioned after a beagle.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Your State Farm Insurance(tm) representative!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the local draft board.\0").as_ptr() as (*mut u8),
-          (*b"Seven 1/4\" screws and a piece of plastic.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"An 80286 machine.\0").as_ptr() as (*mut u8),
-          (*b"One of those stupid \"Homes of the Stars\" maps.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A signpost saying \"TO KITTEN\". It points in no particular direction.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A hammock stretched between a tree and a volleyball pole.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A Texas Instruments of Destruction calculator.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a dark, amphorous blob of matter.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Just a pincushion.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a mighty zombie talking about some love and prosperity.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"Dear robot, you may have already won our 10 MILLION DOLLAR prize...\"\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s just an object.\0").as_ptr() as (*mut u8),
-          (*b"A mere collection of pixels.\0").as_ptr() as (*mut u8),
-          (*b"A badly dented high-hat cymbal lies on its side here.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A marijuana brownie.\0").as_ptr() as (*mut u8),
-          (*b"A plush Chewbacca.\0").as_ptr() as (*mut u8),
-          (*b"Daily hunger conditioner from Australasia\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Just some stuff.\0").as_ptr() as (*mut u8),
-          (*b"Why are you touching this when you should be finding kitten?\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A glorious fan of peacock feathers.\0").as_ptr() as (*mut u8),
-          (*b"It\'s some compromising photos of Babar the Elephant.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A copy of the Weekly World News. Watch out for the chambered nautilus!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the proverbial wet blanket.\0").as_ptr() as (*mut u8),
-          (*b"A \"Get Out of Jail Free\" card.\0").as_ptr() as (*mut u8),
-          (*b"An incredibly expensive \"Mad About You\" collector plate.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Paul Moyer\'s necktie.\0").as_ptr() as (*mut u8),
-          (*b"A haircut and a real job. Now you know where to get one!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"An automated robot-hater. It frowns disapprovingly at you.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"An automated robot-liker. It smiles at you.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a black hole. Don\'t fall in!\0").as_ptr() as (*mut u8),
-          (*b"Just a big brick wall.\0").as_ptr() as (*mut u8),
-          (*b"You found kitten! No, just kidding.\0").as_ptr() as (*mut u8),
-          (*b"Heart of Darkness brand pistachio nuts.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A smoking branding iron shaped like a 24-pin connector.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a Java applet.\0").as_ptr() as (*mut u8),
-          (*b"An abandoned used-car lot.\0").as_ptr() as (*mut u8),
-          (*b"A shameless plug for Crummy: http://www.crummy.com/\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A shameless plug for the UCLA Linux Users Group: http://linux.ucla.edu/\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A can of Spam Lite.\0").as_ptr() as (*mut u8),
-          (*b"This is another fine mess you\'ve gotten us into, Stanley.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s scenery for \"Waiting for Godot\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This grain elevator towers high above you.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A Mentos wrapper.\0").as_ptr() as (*mut u8),
-          (*b"It\'s the constellation Pisces.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a fly on the wall. Hi, fly!\0").as_ptr() as (*mut u8),
-          (*b"This kind of looks like kitten, but it\'s not.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a banana! Oh, joy!\0").as_ptr() as (*mut u8),
-          (*b"A helicopter has crashed here.\0").as_ptr() as (*mut u8),
-          (*b"Carlos Tarango stands here, doing his best impression of Pat Smear.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A patch of mushrooms grows here.\0").as_ptr() as (*mut u8),
-          (*b"A patch of grape jelly grows here.\0").as_ptr() as (*mut u8),
-          (*b"A spindle, and a grindle, and a bucka-wacka-woom!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A geyser sprays water high into the air.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A toenail? What good is a toenail?\0").as_ptr() as (*mut u8),
-          (*b"You\'ve found the fish! Not that it does you much good in this game.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A Buttertonsils bar.\0").as_ptr() as (*mut u8),
-          (*b"One of the few remaining discoes.\0").as_ptr() as (*mut u8),
-          (*b"Ah, the uniform of a Revolutionary-era minuteman.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A punch bowl, filled with punch and lemon slices.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s nothing but a G-thang, baby.\0").as_ptr() as (*mut u8),
-          (*b"IT\'S ALIVE! AH HA HA HA HA!\0").as_ptr() as (*mut u8),
-          (*b"This was no boating accident!\0").as_ptr() as (*mut u8),
-          (*b"Wait! This isn\'t the poker chip! You\'ve been tricked! DAMN YOU, MENDEZ!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A livery stable! Get your livery!\0").as_ptr() as (*mut u8),
-          (*b"It\'s a perpetual immobility machine.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"On this spot in 1962, Henry Winkler was sick.\"\0").as_ptr(
-          ) as (*mut u8),
-          (*b"There\'s nothing here; it\'s just an optical illusion.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The World\'s Biggest Motzah Ball!\0").as_ptr() as (*mut u8),
-          (*b"A tribe of cannibals lives here. They eat Malt-O-Meal for breakfast, you know.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This appears to be a rather large stack of trashy romance novels.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Look out! Exclamation points!\0").as_ptr() as (*mut u8),
-          (*b"A herd of wild coffee mugs slumbers here.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a limbo bar! How low can you go?\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the horizon. Now THAT\'S weird.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A vase full of artificial flowers is stuck to the floor here.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A large snake bars your way.\0").as_ptr() as (*mut u8),
-          (*b"A pair of saloon-style doors swing slowly back and forth here.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s an ordinary bust of Beethoven... but why is it painted green?\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s TV\'s lovable wisecracking Crow! \"Bite me!\", he says.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Hey, look, it\'s war. What is it good for? Absolutely nothing. Say it again.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the amazing self-referential thing that\'s not kitten.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A flamboyant feather boa. Now you can dress up like Carol Channing!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"Sure hope we get some rain soon,\" says Farmer Joe.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"How in heck can I wash my neck if it ain\'t gonna rain no more?\" asks Farmer Al.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"Topsoil\'s all gone, ma,\" weeps Lil\' Greg.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This is a large brown bear. Oddly enough, it\'s currently peeing in the woods.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A team of arctic explorers is camped here.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This object here appears to be Louis Farrakhan\'s bow tie.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This is the world-famous Chain of Jockstraps.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A trash compactor, compacting away.\0").as_ptr() as (*mut u8),
-          (*b"This toaster strudel is riddled with bullet holes!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a hologram of a crashed helicopter.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This is a television. On screen you see a robot strangely similar to yourself.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This balogna has a first name, it\'s R-A-N-C-I-D.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A salmon hatchery? Look again. It\'s merely a single salmon.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a rim shot. Ba-da-boom!\0").as_ptr() as (*mut u8),
-          (*b"It\'s creepy and it\'s kooky, mysterious and spooky. It\'s also somewhat ooky.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This is an anagram.\0").as_ptr() as (*mut u8),
-          (*b"This object is like an analogy.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a symbol. You see in it a model for all symbols everywhere.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The object pushes back at you.\0").as_ptr() as (*mut u8),
-          (*b"A traffic signal. It appears to have been recently vandalized.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"There is no kitten!\" cackles the old crone. You are shocked by her blasphemy.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This is a Lagrange point. Don\'t come too close now.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The dirty old tramp bemoans the loss of his harmonica.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Look, it\'s Fanny the Irishman!\0").as_ptr() as (*mut u8),
-          (*b"What in blazes is this?\0").as_ptr() as (*mut u8),
-          (*b"It\'s the instruction manual for a previous version of this game.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A brain cell. Oddly enough, it seems to be functioning.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Tea and/or crumpets.\0").as_ptr() as (*mut u8),
-          (*b"This jukebox has nothing but Cliff Richards albums in it.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a Quaker Oatmeal tube, converted into a drum.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This is a remote control. Being a robot, you keep a wide berth.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a roll of industrial-strength copper wire.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Oh boy! Grub! Er, grubs.\0").as_ptr() as (*mut u8),
-          (*b"A puddle of mud, where the mudskippers play.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Plenty of nothing.\0").as_ptr() as (*mut u8),
-          (*b"Look at that, it\'s the Crudmobile.\0").as_ptr() as (*mut u8),
-          (*b"Just Walter Mattheau and Jack Lemmon.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Two crepes, two crepes in a box.\0").as_ptr() as (*mut u8),
-          (*b"An autographed copy of \"Primary Colors\", by Anonymous.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Another rabbit? That\'s three today!\0").as_ptr() as (*mut u8),
-          (*b"It\'s a segmentation fault. Core dumped, by the way.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A historical marker showing the actual location of /dev/null.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Thar\'s Mobius Dick, the convoluted whale. Arrr!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a charcoal briquette, smoking away.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A pizza, melting in the sun.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a \"HOME ALONE 2: Lost in New York\" novelty cup.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A stack of 7 inch floppies wobbles precariously.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s nothing but a corrupted floppy. Coaster anyone?\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A section of glowing phosphor cells sings a song of radiation to you.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This TRS-80 III is eerily silent.\0").as_ptr() as (*mut u8),
-          (*b"A toilet bowl occupies this space.\0").as_ptr() as (*mut u8),
-          (*b"This peg-leg is stuck in a knothole!\0").as_ptr() as (*mut u8),
-          (*b"It\'s a solitary vacuum tube.\0").as_ptr() as (*mut u8),
-          (*b"This corroded robot is clutching a mitten.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"Hi, I\'m Anson Williams, TV\'s \'Potsy\'.\"\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This subwoofer was blown out in 1974.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Three half-pennies and a wooden nickel.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the missing chapter to \"A Clockwork Orange\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a burrito stand flyer. \"Taqueria El Ranchito\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This smiling family is happy because they eat LARD.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Roger Avery, persona un famoso de los Estados Unidos.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Ne\'er but a potted plant.\0").as_ptr() as (*mut u8),
-          (*b"A parrot, kipping on its back.\0").as_ptr() as (*mut u8),
-          (*b"A forgotten telephone switchboard.\0").as_ptr() as (*mut u8),
-          (*b"A forgotten telephone switchboard operator.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s an automated robot-disdainer. It pretends you\'re not there.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a portable hole. A sign reads: \"Closed for the winter\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Just a moldy loaf of bread.\0").as_ptr() as (*mut u8),
-          (*b"A little glass tub of Carmex. ($.89) Too bad you have no lips.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A Swiss-Army knife. All of its appendages are out. (toothpick lost)\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a zen simulation, trapped within an ASCII character.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a copy of \"The Rubaiyat of Spike Schudy\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s \"War and Peace\" (unabridged, very small print).\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A willing, ripe tomato bemoans your inability to digest fruit.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A robot comedian. You feel amused.\0").as_ptr() as (*mut u8),
-          (*b"It\'s KITT, the talking car.\0").as_ptr() as (*mut u8),
-          (*b"Here\'s Pete Peterson. His batteries seem to have long gone dead.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"Blup, blup, blup\", says the mud pot.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"More grist for the mill.\0").as_ptr() as (*mut u8),
-          (*b"Grind \'em up, spit \'em out, they\'re twigs.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The boom box cranks out an old Ethel Merman tune.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s \"Finding kitten\", published by O\'Reilly and Associates.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Pumpkin pie spice.\0").as_ptr() as (*mut u8),
-          (*b"It\'s the Bass-Matic \'76! Mmm, that\'s good bass!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"Lend us a fiver \'til Thursday\", pleas Andy Capp.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a tape of \'70s rock. All original hits! All original artists!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"You\'ve found the fabled America Online disk graveyard!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Empty jewelboxes litter the landscape.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the astounding meta-object.\0").as_ptr() as (*mut u8),
-          (*b"Ed McMahon stands here, lost in thought. Seeing you, he bellows, \"YES SIR!\"\0").as_ptr(
-          ) as (*mut u8),
-          (*b"...thingy???\0").as_ptr() as (*mut u8),
-          (*b"It\'s 1000 secrets the government doesn\'t want you to know!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The letters O and R.\0").as_ptr() as (*mut u8),
-          (*b"A magical... magic thing.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a moment of silence.\0").as_ptr() as (*mut u8),
-          (*b"It\'s Sirhan-Sirhan, looking guilty.\0").as_ptr() as (*mut u8),
-          (*b"It\'s \"Chicken Soup for the Kitten-seeking Soulless Robot.\"\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It is a set of wind-up chatter teeth.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It is a cloud shaped like an ox.\0").as_ptr() as (*mut u8),
-          (*b"You see a snowflake here, melting slowly.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a big block of ice. Something seems to be frozen inside it.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Vladimir Lenin\'s casket rests here.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a copy of \"Zen and The Art of Robot Maintenance\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This invisible box contains a pantomime horse.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A mason jar lies here open. It\'s label reads: \"do not open!\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A train of thought chugs through here.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This jar of pickles expired in 1957.\0").as_ptr() as (*mut u8),
-          (*b"Someone\'s identity disk lies here.\0").as_ptr() as (*mut u8),
-          (*b"\"Yes!\" says the bit.\0").as_ptr() as (*mut u8),
-          (*b"\"No!\" says the bit.\0").as_ptr() as (*mut u8),
-          (*b"A dodecahedron bars your way.\0").as_ptr() as (*mut u8),
-          (*b"Mr. Hooper is here, surfing.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a big smoking fish.\0").as_ptr() as (*mut u8),
-          (*b"You have new mail in /var/spool/robot\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Just a monitor with the blue element burnt out.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A pile of coaxial plumbing lies here.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a rotten old shoe.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a hundred-dollar bill.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a Dvorak keyboard.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a cardboard box full of 8-tracks.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Just a broken hard drive containg the archives of Nerth Pork.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A broken metronome sits here, it\'s needle off to one side.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A sign reads: \"Go home!\"\0").as_ptr() as (*mut u8),
-          (*b"A sign reads: \"No robots allowed!\"\0").as_ptr() as (*mut u8),
-          (*b"It\'s the handheld robotfindskitten game, by Tiger.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This particular monstrosity appears to be ENIAC.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This is a tasty-looking banana creme pie.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A wireframe model of a hot dog rotates in space here.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Just the empty husk of a locust.\0").as_ptr() as (*mut u8),
-          (*b"You disturb a murder of crows.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a copy of the robotfindskitten EULA.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s Death.\0").as_ptr() as (*mut u8),
-          (*b"It\'s an autographed copy of \"Secondary Colors,\" by Bob Ross.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It is a marzipan dreadnought that appears to have melted and stuck.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a DVD of \"Crouching Monkey, Hidden Kitten\", region encoded for the moon.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s Kieran Hervold.  Damn dyslexia!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A non-descript box of crackers.\0").as_ptr() as (*mut u8),
-          (*b"Carbonated Water, High Fructose Corn Syrup, Color, Phosphoric Acid, Flavors, Caffeine.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"Move along! Nothing to see here!\"\0").as_ptr() as (*mut u8),
-          (*b"It\'s the embalmed corpse of Vladimir Lenin.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A coupon for one free steak-fish at your local family diner.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A set of keys to a 2001 Rolls Royce. Worthless.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A gravestone stands here.  \"Izchak Miller, ascended.\"\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Someone has written \"ad aerarium\" on the ground here.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A large blue eye floats in midair.\0").as_ptr() as (*mut u8),
-          (*b"This appears to be a statue of Perseus.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"There is an opulent throne here.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a squad of Keystone Kops.\0").as_ptr() as (*mut u8),
-          (*b"This seems to be junk mail addressed to the finder of the Eye of Larn.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A wondrous and intricate golden amulet.  Too bad you have no neck.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The swampy ground around you seems to stink with disease.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"An animate blob of acid.  Being metallic, you keep well away.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a copy of Knuth with the chapter on kitten-search algorithms torn out.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A crowd of people, and at the center, a popular misconception.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a blind man. When you touch, he exclaims \"It\'s a kitten prospecting robot!\"\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a lost wallet. It\'s owner didn\'t have pets, so you discard it.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This place is called Antarctica. There is no kitten here.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a mousetrap, baited with soap.\0").as_ptr() as (*mut u8),
-          (*b"A book with \"Don\'t Panic\" in large friendly letters across the cover.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A compendium of haiku about metals.\0").as_ptr() as (*mut u8),
-          (*b"A discredited cosmology, relic of a bygone era.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A hollow voice says \"Plugh\".\0").as_ptr() as (*mut u8),
-          (*b"A knight who says \"Either I am an insane knave, or you will find kitten.\"\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A neural net -- maybe it\'s trying to recognize kitten.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A screwdriver.\0").as_ptr() as (*mut u8),
-          (*b"A statue of a girl holding a goose like the one in Gottingen, Germany.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A tetradrachm dated \"42 B.C.\"\0").as_ptr() as (*mut u8),
-          (*b"A voice booms out \"Onward, kitten soldiers...\"\0").as_ptr(
-          ) as (*mut u8),
-          (*b"An eminently forgettable zahir.\0").as_ptr() as (*mut u8),
-          (*b"Apparently, it\'s Edmund Burke.\0").as_ptr() as (*mut u8),
-          (*b"For a moment, you feel something in your hands, but it disappears!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Here is a book about Robert Kennedy.\0").as_ptr() as (*mut u8),
-          (*b"Hey, robot, leave those lists alone.\0").as_ptr() as (*mut u8),
-          (*b"Ho hum.  Another synthetic a posteriori.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s Asimov\'s Laws of Robotics.  You feel a strange affinity for them.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s Bach\'s Mass in B-minor!\0").as_ptr() as (*mut u8),
-          (*b"It\'s a bug.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a synthetic a priori truth!  Immanuel would be so pleased!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the Tiki Room.\0").as_ptr() as (*mut u8),
-          (*b"Just some old play by a Czech playwright, and you can\'t read Czech.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Kitten is the letter \'Q\'.  Oh, wait, maybe not.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Quidquid Latine dictum sit, kitten non est.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Sutro Tower is visible at some distance through the fog.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The Digital Millennium Copyright Act of 1998.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The United States Court of Appeals for the Federal Circuit.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The non-kitten item like this but with \"false\" and \"true\" switched is true.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The non-kitten item like this but with \"true\" and \"false\" switched is false.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This is the chapter called \"A Map of the Cat?\" from Feynman\'s autobiography.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This is the forest primeval.\0").as_ptr() as (*mut u8),
-          (*b"Werner\'s \"Pocket Field Guide to Things That Are Not Kitten\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"You found nettik, but that\'s backwards.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"You have found some zinc, but you must not stop here, for you must find kitten.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"50 Years Among the Non-Kitten Items\", by Ann Droyd.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"Robot may not injure kitten, or, through inaction, ...\"\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"Address Allocation for Private Internets\" by Yakov Rekhter et al.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"Mail Routing and the Domain System\" by Craig Partridge.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"The Theory and Practice of Oligarchical Collectivism\" by Emmanuel Goldstein.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"\"201 Kitten Verbs, Fully Conjugated\".  You look for \"find\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A card shark sits here, practicing his Faro shuffle.  He ignores you.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A copy of DeCSS.  They\'re a dime a dozen these days.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A demonic voice proclaims \"There is no kitten, only Zuul\".  You flee.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A lotus.  You make an interesting pair.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A milk carton, with a black and white picture of kitten on the side.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Any ordinary robot could see from a mile away that this wasn\'t kitten.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A stegosaurus, escaped from the stegosaurusfindsrobot game.  It finds you.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Baling wire and chewing gum.\0").as_ptr() as (*mut u8),
-          (*b"Chewing gum and baling wire.\0").as_ptr() as (*mut u8),
-          (*b"Here is no kitten but only rock, rock and no kitten and the sandy road.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Hey, I bet you thought this was kitten.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It is an ancient mariner, and he stoppeth one of three.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It pleases you to be kind to what appears to be kitten -- but it\'s not!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a blatant plug for Ogg Vorbis, http://www.vorbis.com/\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a business plan for a new startup, kitten.net.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a revised business plan for a new startup, my.kitten.net.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a square.\0").as_ptr() as (*mut u8),
-          (*b"It seems to be a copy of \"A Tail of Two Kitties\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the Donation of Constantine!\0").as_ptr() as (*mut u8),
-          (*b"It\'s this message, nothing more.\0").as_ptr() as (*mut u8),
-          (*b"Lysine, an essential amino acid.  Well, maybe not for robots.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"No kitten here.\0").as_ptr() as (*mut u8),
-          (*b"The score for a Czech composer\'s \"Kitten-Finding Symphony in C\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This looks like Bradley\'s \"Appearance and Reality\", but it\'s really not.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This non-kitten item no verb.\0").as_ptr() as (*mut u8),
-          (*b"You feel strangely unfulfilled.\0").as_ptr() as (*mut u8),
-          (*b"You hit the non-kitten item.  The non-kitten item fails to yowl.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"You suddenly yearn for your distant homeland.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"You\'ve found the snows of yesteryear!  So that\'s where they all went to.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Approaching.  One car.  J.  Followed by.  Two car.  M, M.  In five. Minutes.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Free Jon Johansen!\0").as_ptr() as (*mut u8),
-          (*b"Free Dmitry Sklyarov!\0").as_ptr() as (*mut u8),
-          (*b"One person shouts \"What do we want?\" The crowd answers \"Free Dmitry!\"\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Judith Platt insults librarians.\0").as_ptr() as (*mut u8),
-          (*b"This map is not the territory.\0").as_ptr() as (*mut u8),
-          (*b"\"Go back to Libraria!\", says Pat Schroeder.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This is a porcelain kitten-counter.  0, 0, 0, 0, 0...\0").as_ptr(
-          ) as (*mut u8),
-          (*b"An old bootable business card, unfortunately cracked down the middle.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A kitten sink, for washing kitten (if only kitten liked water).\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A kitten source (to match the kitten sink).\0").as_ptr(
-          ) as (*mut u8),
-          (*b"If it\'s one thing, it\'s not another.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"If it\'s not one thing, it\'s another.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A caboodle.\0").as_ptr() as (*mut u8),
-          (*b"A grin.\0").as_ptr() as (*mut u8),
-          (*b"A hedgehog.  It looks like it knows something important.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"You\'ve found... Oh wait, that\'s just a cat.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Robot should not be touching that.\0").as_ptr() as (*mut u8),
-          (*b"Air Guitar!!!  NA na NA na!!\0").as_ptr() as (*mut u8),
-          (*b"An aromatherapy candle burns with healing light.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"You find a bright shiny penny.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a free Jon Johansen!\0").as_ptr() as (*mut u8),
-          (*b"It\'s a free Dmitry Sklyarov!\0").as_ptr() as (*mut u8),
-          (*b"The rothe hits!  The rothe hits!\0").as_ptr() as (*mut u8),
-          (*b"It\'s an Internet chain letter about sodium laureth sulfate.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Ed Witten sits here, pondering string theory.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Something is written here in the dust.  You read: \"rJbotf ndQkttten\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"We wish you a merry kitten, and a happy New Year!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Run away!  Run away!\0").as_ptr() as (*mut u8),
-          (*b"You can see right through this copy of Brin\'s \"Transparent Society\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This copy of \"Steal This Book\" has been stolen from a bookstore.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s Roya Naini.\0").as_ptr() as (*mut u8),
-          (*b"This kit is the fourteenth in a series of kits named with Roman letters.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This is the tenth key you\'ve found so far.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"You find a fraud scheme in which loans are used as security for other loans.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the phrase \"and her\", written in ancient Greek.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the author of \"Randomness and Mathematical Proof\".\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the crusty exoskeleton of an arthropod!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s Emporer Shaddam the 4th\'s planet!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s the triangle leg adjacent to an angle divided by the leg opposite it.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a bottle of nail polish remover.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"You found netkit! Way to go, robot!\0").as_ptr() as (*mut u8),
-          (*b"It\'s the ASCII Floating Head of Seth David Schoen!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A frosted pink party-cake, half eaten.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A bitchin\' homemade tesla coil.\0").as_ptr() as (*mut u8),
-          (*b"Conan O\'Brian, sans jawbone.\0").as_ptr() as (*mut u8),
-          (*b"It\'s either a mirror, or another soulless kitten-seeking robot.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Preoccupation with finding kitten prevents you from investigating further.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Fonzie sits here, mumbling incoherently about a shark and a pair of waterskis.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The ghost of your dance instructor, his face a paper-white mask of evil.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A bag of groceries taken off the shelf before the expiration date.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A book: Feng Shui, Zen: the art of randomly arranging items that are not kitten.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This might be the fountain of youth, but you\'ll never know.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Tigerbot Hesh.\0").as_ptr() as (*mut u8),
-          (*b"Stimutacs.\0").as_ptr() as (*mut u8),
-          (*b"A canister of pressurized whipped cream, sans whipped cream.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The non-kitten item bites!\0").as_ptr() as (*mut u8),
-          (*b"A chain hanging from two posts reminds you of the Gateway Arch.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A mathematician calculates the halting probability of a Turing machine.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A number of short theatrical productions are indexed 1, 2, 3, ... n.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"A technical university in Australia.\0").as_ptr() as (*mut u8),
-          (*b"It is -- I just feel something wonderful is about to happen.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s a Cat 5 cable.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a U.S. president.\0").as_ptr() as (*mut u8),
-          (*b"It\'s a piece of cloth used to cover a stage in between performances.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"The ionosphere seems charged with meaning.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"This tomography is like, hella axial, man!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s your favorite game -- robotfindscatan!\0").as_ptr(
-          ) as (*mut u8),
-          (*b"Just a man selling an albatross.\0").as_ptr() as (*mut u8),
-          (*b"The intermission from a 1930s silent movie.\0").as_ptr(
-          ) as (*mut u8),
-          (*b"It\'s an inverted billiard ball!\0").as_ptr() as (*mut u8),
-          (*b"The spectre of Sherlock Holmes wills you onwards.\0").as_ptr(
-          ) as (*mut u8)
+static mut messages: [&[u8]; 406]
+    = [   (b"\"I pity the fool who mistakes me for kitten!\", sez Mr. T.\x00"),
+          (b"That\'s just an old tin can.\x00"),
+          (b"It\'s an altar to the horse god.\x00"),
+          (b"A box of dancing mechanical pencils. They dance! They sing!\x00"),
+          (b"It\'s an old Duke Ellington record.\x00"),
+          (b"A box of fumigation pellets.\x00"),
+          (b"A digital clock. It\'s stuck at 2:17 PM.\x00"),
+          (b"That\'s just a charred human corpse.\x00"),
+          (b"I don\'t know what that is, but it\'s not kitten.\x00"),
+          (b"An empty shopping bag. Paper or plastic?\x00"),
+          (b"Could it be... a big ugly bowling trophy?\x00"),
+          (b"A coat hanger hovers in thin air. Odd.\x00"),
+          (b"Not kitten, just a packet of Kool-Aid(tm).\x00"),
+          (b"A freshly-baked pumpkin pie.\x00"),
+          (b"A lone, forgotten comma, sits here, sobbing.\x00"),
+          (b"ONE HUNDRED THOUSAND CARPET FIBERS!!!!!\x00"),
+          (b"It\'s Richard Nixon\'s nose!\x00"),
+          (b"It\'s Lucy Ricardo. \"Aaaah, Ricky!\", she says.\x00"),
+          (b"You stumble upon Bill Gates\' stand-up act.\x00"),
+          (b"Just an autographed copy of the Kama Sutra.\x00"),
+          (b"It\'s the Will Rogers Highway. Who was Will Rogers, anyway?\x00"),
+          (b"It\'s another robot, more advanced in design than you but strangely immobile.\x00"),
+          (b"Leonard Richardson is here, asking people to lick him.\x00"),
+          (b"It\'s a stupid mask, fashioned after a beagle.\x00"),
+          (b"Your State Farm Insurance(tm) representative!\x00"),
+          (b"It\'s the local draft board.\x00"),
+          (b"Seven 1/4\" screws and a piece of plastic.\x00"),
+          (b"An 80286 machine.\x00"),
+          (b"One of those stupid \"Homes of the Stars\" maps.\x00"),
+          (b"A signpost saying \"TO KITTEN\". It points in no particular direction.\x00"),
+          (b"A hammock stretched between a tree and a volleyball pole.\x00"),
+          (b"A Texas Instruments of Destruction calculator.\x00"),
+          (b"It\'s a dark, amphorous blob of matter.\x00"),
+          (b"Just a pincushion.\x00"),
+          (b"It\'s a mighty zombie talking about some love and prosperity.\x00"),
+          (b"\"Dear robot, you may have already won our 10 MILLION DOLLAR prize...\"\x00"),
+          (b"It\'s just an object.\x00"),
+          (b"A mere collection of pixels.\x00"),
+          (b"A badly dented high-hat cymbal lies on its side here.\x00"),
+          (b"A marijuana brownie.\x00"),
+          (b"A plush Chewbacca.\x00"),
+          (b"Daily hunger conditioner from Australasia\x00"),
+          (b"Just some stuff.\x00"),
+          (b"Why are you touching this when you should be finding kitten?\x00"),
+          (b"A glorious fan of peacock feathers.\x00"),
+          (b"It\'s some compromising photos of Babar the Elephant.\x00"),
+          (b"A copy of the Weekly World News. Watch out for the chambered nautilus!\x00"),
+          (b"It\'s the proverbial wet blanket.\x00"),
+          (b"A \"Get Out of Jail Free\" card.\x00"),
+          (b"An incredibly expensive \"Mad About You\" collector plate.\x00"),
+          (b"Paul Moyer\'s necktie.\x00"),
+          (b"A haircut and a real job. Now you know where to get one!\x00"),
+          (b"An automated robot-hater. It frowns disapprovingly at you.\x00"),
+          (b"An automated robot-liker. It smiles at you.\x00"),
+          (b"It\'s a black hole. Don\'t fall in!\x00"),
+          (b"Just a big brick wall.\x00"),
+          (b"You found kitten! No, just kidding.\x00"),
+          (b"Heart of Darkness brand pistachio nuts.\x00"),
+          (b"A smoking branding iron shaped like a 24-pin connector.\x00"),
+          (b"It\'s a Java applet.\x00"),
+          (b"An abandoned used-car lot.\x00"),
+          (b"A shameless plug for Crummy: http://www.crummy.com/\x00"),
+          (b"A shameless plug for the UCLA Linux Users Group: http://linux.ucla.edu/\x00"),
+          (b"A can of Spam Lite.\x00"),
+          (b"This is another fine mess you\'ve gotten us into, Stanley.\x00"),
+          (b"It\'s scenery for \"Waiting for Godot\".\x00"),
+          (b"This grain elevator towers high above you.\x00"),
+          (b"A Mentos wrapper.\x00"),
+          (b"It\'s the constellation Pisces.\x00"),
+          (b"It\'s a fly on the wall. Hi, fly!\x00"),
+          (b"This kind of looks like kitten, but it\'s not.\x00"),
+          (b"It\'s a banana! Oh, joy!\x00"),
+          (b"A helicopter has crashed here.\x00"),
+          (b"Carlos Tarango stands here, doing his best impression of Pat Smear.\x00"),
+          (b"A patch of mushrooms grows here.\x00"),
+          (b"A patch of grape jelly grows here.\x00"),
+          (b"A spindle, and a grindle, and a bucka-wacka-woom!\x00"),
+          (b"A geyser sprays water high into the air.\x00"),
+          (b"A toenail? What good is a toenail?\x00"),
+          (b"You\'ve found the fish! Not that it does you much good in this game.\x00"),
+          (b"A Buttertonsils bar.\x00"),
+          (b"One of the few remaining discoes.\x00"),
+          (b"Ah, the uniform of a Revolutionary-era minuteman.\x00"),
+          (b"A punch bowl, filled with punch and lemon slices.\x00"),
+          (b"It\'s nothing but a G-thang, baby.\x00"),
+          (b"IT\'S ALIVE! AH HA HA HA HA!\x00"),
+          (b"This was no boating accident!\x00"),
+          (b"Wait! This isn\'t the poker chip! You\'ve been tricked! DAMN YOU, MENDEZ!\x00"),
+          (b"A livery stable! Get your livery!\x00"),
+          (b"It\'s a perpetual immobility machine.\x00"),
+          (b"\"On this spot in 1962, Henry Winkler was sick.\"\x00"),
+          (b"There\'s nothing here; it\'s just an optical illusion.\x00"),
+          (b"The World\'s Biggest Motzah Ball!\x00"),
+          (b"A tribe of cannibals lives here. They eat Malt-O-Meal for breakfast, you know.\x00"),
+          (b"This appears to be a rather large stack of trashy romance novels.\x00"),
+          (b"Look out! Exclamation points!\x00"),
+          (b"A herd of wild coffee mugs slumbers here.\x00"),
+          (b"It\'s a limbo bar! How low can you go?\x00"),
+          (b"It\'s the horizon. Now THAT\'S weird.\x00"),
+          (b"A vase full of artificial flowers is stuck to the floor here.\x00"),
+          (b"A large snake bars your way.\x00"),
+          (b"A pair of saloon-style doors swing slowly back and forth here.\x00"),
+          (b"It\'s an ordinary bust of Beethoven... but why is it painted green?\x00"),
+          (b"It\'s TV\'s lovable wisecracking Crow! \"Bite me!\", he says.\x00"),
+          (b"Hey, look, it\'s war. What is it good for? Absolutely nothing. Say it again.\x00"),
+          (b"It\'s the amazing self-referential thing that\'s not kitten.\x00"),
+          (b"A flamboyant feather boa. Now you can dress up like Carol Channing!\x00"),
+          (b"\"Sure hope we get some rain soon,\" says Farmer Joe.\x00"),
+          (b"\"How in heck can I wash my neck if it ain\'t gonna rain no more?\" asks Farmer Al.\x00"),
+          (b"\"Topsoil\'s all gone, ma,\" weeps Lil\' Greg.\x00"),
+          (b"This is a large brown bear. Oddly enough, it\'s currently peeing in the woods.\x00"),
+          (b"A team of arctic explorers is camped here.\x00"),
+          (b"This object here appears to be Louis Farrakhan\'s bow tie.\x00"),
+          (b"This is the world-famous Chain of Jockstraps.\x00"),
+          (b"A trash compactor, compacting away.\x00"),
+          (b"This toaster strudel is riddled with bullet holes!\x00"),
+          (b"It\'s a hologram of a crashed helicopter.\x00"),
+          (b"This is a television. On screen you see a robot strangely similar to yourself.\x00"),
+          (b"This balogna has a first name, it\'s R-A-N-C-I-D.\x00"),
+          (b"A salmon hatchery? Look again. It\'s merely a single salmon.\x00"),
+          (b"It\'s a rim shot. Ba-da-boom!\x00"),
+          (b"It\'s creepy and it\'s kooky, mysterious and spooky. It\'s also somewhat ooky.\x00"),
+          (b"This is an anagram.\x00"),
+          (b"This object is like an analogy.\x00"),
+          (b"It\'s a symbol. You see in it a model for all symbols everywhere.\x00"),
+          (b"The object pushes back at you.\x00"),
+          (b"A traffic signal. It appears to have been recently vandalized.\x00"),
+          (b"\"There is no kitten!\" cackles the old crone. You are shocked by her blasphemy.\x00"),
+          (b"This is a Lagrange point. Don\'t come too close now.\x00"),
+          (b"The dirty old tramp bemoans the loss of his harmonica.\x00"),
+          (b"Look, it\'s Fanny the Irishman!\x00"),
+          (b"What in blazes is this?\x00"),
+          (b"It\'s the instruction manual for a previous version of this game.\x00"),
+          (b"A brain cell. Oddly enough, it seems to be functioning.\x00"),
+          (b"Tea and/or crumpets.\x00"),
+          (b"This jukebox has nothing but Cliff Richards albums in it.\x00"),
+          (b"It\'s a Quaker Oatmeal tube, converted into a drum.\x00"),
+          (b"This is a remote control. Being a robot, you keep a wide berth.\x00"),
+          (b"It\'s a roll of industrial-strength copper wire.\x00"),
+          (b"Oh boy! Grub! Er, grubs.\x00"),
+          (b"A puddle of mud, where the mudskippers play.\x00"),
+          (b"Plenty of nothing.\x00"),
+          (b"Look at that, it\'s the Crudmobile.\x00"),
+          (b"Just Walter Mattheau and Jack Lemmon.\x00"),
+          (b"Two crepes, two crepes in a box.\x00"),
+          (b"An autographed copy of \"Primary Colors\", by Anonymous.\x00"),
+          (b"Another rabbit? That\'s three today!\x00"),
+          (b"It\'s a segmentation fault. Core dumped, by the way.\x00"),
+          (b"A historical marker showing the actual location of /dev/null.\x00"),
+          (b"Thar\'s Mobius Dick, the convoluted whale. Arrr!\x00"),
+          (b"It\'s a charcoal briquette, smoking away.\x00"),
+          (b"A pizza, melting in the sun.\x00"),
+          (b"It\'s a \"HOME ALONE 2: Lost in New York\" novelty cup.\x00"),
+          (b"A stack of 7 inch floppies wobbles precariously.\x00"),
+          (b"It\'s nothing but a corrupted floppy. Coaster anyone?\x00"),
+          (b"A section of glowing phosphor cells sings a song of radiation to you.\x00"),
+          (b"This TRS-80 III is eerily silent.\x00"),
+          (b"A toilet bowl occupies this space.\x00"),
+          (b"This peg-leg is stuck in a knothole!\x00"),
+          (b"It\'s a solitary vacuum tube.\x00"),
+          (b"This corroded robot is clutching a mitten.\x00"),
+          (b"\"Hi, I\'m Anson Williams, TV\'s \'Potsy\'.\"\x00"),
+          (b"This subwoofer was blown out in 1974.\x00"),
+          (b"Three half-pennies and a wooden nickel.\x00"),
+          (b"It\'s the missing chapter to \"A Clockwork Orange\".\x00"),
+          (b"It\'s a burrito stand flyer. \"Taqueria El Ranchito\".\x00"),
+          (b"This smiling family is happy because they eat LARD.\x00"),
+          (b"Roger Avery, persona un famoso de los Estados Unidos.\x00"),
+          (b"Ne\'er but a potted plant.\x00"),
+          (b"A parrot, kipping on its back.\x00"),
+          (b"A forgotten telephone switchboard.\x00"),
+          (b"A forgotten telephone switchboard operator.\x00"),
+          (b"It\'s an automated robot-disdainer. It pretends you\'re not there.\x00"),
+          (b"It\'s a portable hole. A sign reads: \"Closed for the winter\".\x00"),
+          (b"Just a moldy loaf of bread.\x00"),
+          (b"A little glass tub of Carmex. ($.89) Too bad you have no lips.\x00"),
+          (b"A Swiss-Army knife. All of its appendages are out. (toothpick lost)\x00"),
+          (b"It\'s a zen simulation, trapped within an ASCII character.\x00"),
+          (b"It\'s a copy of \"The Rubaiyat of Spike Schudy\".\x00"),
+          (b"It\'s \"War and Peace\" (unabridged, very small print).\x00"),
+          (b"A willing, ripe tomato bemoans your inability to digest fruit.\x00"),
+          (b"A robot comedian. You feel amused.\x00"),
+          (b"It\'s KITT, the talking car.\x00"),
+          (b"Here\'s Pete Peterson. His batteries seem to have long gone dead.\x00"),
+          (b"\"Blup, blup, blup\", says the mud pot.\x00"),
+          (b"More grist for the mill.\x00"),
+          (b"Grind \'em up, spit \'em out, they\'re twigs.\x00"),
+          (b"The boom box cranks out an old Ethel Merman tune.\x00"),
+          (b"It\'s \"Finding kitten\", published by O\'Reilly and Associates.\x00"),
+          (b"Pumpkin pie spice.\x00"),
+          (b"It\'s the Bass-Matic \'76! Mmm, that\'s good bass!\x00"),
+          (b"\"Lend us a fiver \'til Thursday\", pleas Andy Capp.\x00"),
+          (b"It\'s a tape of \'70s rock. All original hits! All original artists!\x00"),
+          (b"You\'ve found the fabled America Online disk graveyard!\x00"),
+          (b"Empty jewelboxes litter the landscape.\x00"),
+          (b"It\'s the astounding meta-object.\x00"),
+          (b"Ed McMahon stands here, lost in thought. Seeing you, he bellows, \"YES SIR!\"\x00"),
+          (b"...thingy???\x00"),
+          (b"It\'s 1000 secrets the government doesn\'t want you to know!\x00"),
+          (b"The letters O and R.\x00"),
+          (b"A magical... magic thing.\x00"),
+          (b"It\'s a moment of silence.\x00"),
+          (b"It\'s Sirhan-Sirhan, looking guilty.\x00"),
+          (b"It\'s \"Chicken Soup for the Kitten-seeking Soulless Robot.\"\x00"),
+          (b"It is a set of wind-up chatter teeth.\x00"),
+          (b"It is a cloud shaped like an ox.\x00"),
+          (b"You see a snowflake here, melting slowly.\x00"),
+          (b"It\'s a big block of ice. Something seems to be frozen inside it.\x00"),
+          (b"Vladimir Lenin\'s casket rests here.\x00"),
+          (b"It\'s a copy of \"Zen and The Art of Robot Maintenance\".\x00"),
+          (b"This invisible box contains a pantomime horse.\x00"),
+          (b"A mason jar lies here open. It\'s label reads: \"do not open!\".\x00"),
+          (b"A train of thought chugs through here.\x00"),
+          (b"This jar of pickles expired in 1957.\x00"),
+          (b"Someone\'s identity disk lies here.\x00"),
+          (b"\"Yes!\" says the bit.\x00"),
+          (b"\"No!\" says the bit.\x00"),
+          (b"A dodecahedron bars your way.\x00"),
+          (b"Mr. Hooper is here, surfing.\x00"),
+          (b"It\'s a big smoking fish.\x00"),
+          (b"You have new mail in /var/spool/robot\x00"),
+          (b"Just a monitor with the blue element burnt out.\x00"),
+          (b"A pile of coaxial plumbing lies here.\x00"),
+          (b"It\'s a rotten old shoe.\x00"),
+          (b"It\'s a hundred-dollar bill.\x00"),
+          (b"It\'s a Dvorak keyboard.\x00"),
+          (b"It\'s a cardboard box full of 8-tracks.\x00"),
+          (b"Just a broken hard drive containg the archives of Nerth Pork.\x00"),
+          (b"A broken metronome sits here, it\'s needle off to one side.\x00"),
+          (b"A sign reads: \"Go home!\"\x00"),
+          (b"A sign reads: \"No robots allowed!\"\x00"),
+          (b"It\'s the handheld robotfindskitten game, by Tiger.\x00"),
+          (b"This particular monstrosity appears to be ENIAC.\x00"),
+          (b"This is a tasty-looking banana creme pie.\x00"),
+          (b"A wireframe model of a hot dog rotates in space here.\x00"),
+          (b"Just the empty husk of a locust.\x00"),
+          (b"You disturb a murder of crows.\x00"),
+          (b"It\'s a copy of the robotfindskitten EULA.\x00"),
+          (b"It\'s Death.\x00"),
+          (b"It\'s an autographed copy of \"Secondary Colors,\" by Bob Ross.\x00"),
+          (b"It is a marzipan dreadnought that appears to have melted and stuck.\x00"),
+          (b"It\'s a DVD of \"Crouching Monkey, Hidden Kitten\", region encoded for the moon.\x00"),
+          (b"It\'s Kieran Hervold.  Damn dyslexia!\x00"),
+          (b"A non-descript box of crackers.\x00"),
+          (b"Carbonated Water, High Fructose Corn Syrup, Color, Phosphoric Acid, Flavors, Caffeine.\x00"),
+          (b"\"Move along! Nothing to see here!\"\x00"),
+          (b"It\'s the embalmed corpse of Vladimir Lenin.\x00"),
+          (b"A coupon for one free steak-fish at your local family diner.\x00"),
+          (b"A set of keys to a 2001 Rolls Royce. Worthless.\x00"),
+          (b"A gravestone stands here.  \"Izchak Miller, ascended.\"\x00"),
+          (b"Someone has written \"ad aerarium\" on the ground here.\x00"),
+          (b"A large blue eye floats in midair.\x00"),
+          (b"This appears to be a statue of Perseus.\x00"),
+          (b"There is an opulent throne here.\x00"),
+          (b"It\'s a squad of Keystone Kops.\x00"),
+          (b"This seems to be junk mail addressed to the finder of the Eye of Larn.\x00"),
+          (b"A wondrous and intricate golden amulet.  Too bad you have no neck.\x00"),
+          (b"The swampy ground around you seems to stink with disease.\x00"),
+          (b"An animate blob of acid.  Being metallic, you keep well away.\x00"),
+          (b"It\'s a copy of Knuth with the chapter on kitten-search algorithms torn out.\x00"),
+          (b"A crowd of people, and at the center, a popular misconception.\x00"),
+          (b"It\'s a blind man. When you touch, he exclaims \"It\'s a kitten prospecting robot!\"\x00"),
+          (b"It\'s a lost wallet. It\'s owner didn\'t have pets, so you discard it.\x00"),
+          (b"This place is called Antarctica. There is no kitten here.\x00"),
+          (b"It\'s a mousetrap, baited with soap.\x00"),
+          (b"A book with \"Don\'t Panic\" in large friendly letters across the cover.\x00"),
+          (b"A compendium of haiku about metals.\x00"),
+          (b"A discredited cosmology, relic of a bygone era.\x00"),
+          (b"A hollow voice says \"Plugh\".\x00"),
+          (b"A knight who says \"Either I am an insane knave, or you will find kitten.\"\x00"),
+          (b"A neural net -- maybe it\'s trying to recognize kitten.\x00"),
+          (b"A screwdriver.\x00"),
+          (b"A statue of a girl holding a goose like the one in Gottingen, Germany.\x00"),
+          (b"A tetradrachm dated \"42 B.C.\"\x00"),
+          (b"A voice booms out \"Onward, kitten soldiers...\"\x00"),
+          (b"An eminently forgettable zahir.\x00"),
+          (b"Apparently, it\'s Edmund Burke.\x00"),
+          (b"For a moment, you feel something in your hands, but it disappears!\x00"),
+          (b"Here is a book about Robert Kennedy.\x00"),
+          (b"Hey, robot, leave those lists alone.\x00"),
+          (b"Ho hum.  Another synthetic a posteriori.\x00"),
+          (b"It\'s Asimov\'s Laws of Robotics.  You feel a strange affinity for them.\x00"),
+          (b"It\'s Bach\'s Mass in B-minor!\x00"),
+          (b"It\'s a bug.\x00"),
+          (b"It\'s a synthetic a priori truth!  Immanuel would be so pleased!\x00"),
+          (b"It\'s the Tiki Room.\x00"),
+          (b"Just some old play by a Czech playwright, and you can\'t read Czech.\x00"),
+          (b"Kitten is the letter \'Q\'.  Oh, wait, maybe not.\x00"),
+          (b"Quidquid Latine dictum sit, kitten non est.\x00"),
+          (b"Sutro Tower is visible at some distance through the fog.\x00"),
+          (b"The Digital Millennium Copyright Act of 1998.\x00"),
+          (b"The United States Court of Appeals for the Federal Circuit.\x00"),
+          (b"The non-kitten item like this but with \"false\" and \"true\" switched is true.\x00"),
+          (b"The non-kitten item like this but with \"true\" and \"false\" switched is false.\x00"),
+          (b"This is the chapter called \"A Map of the Cat?\" from Feynman\'s autobiography.\x00"),
+          (b"This is the forest primeval.\x00"),
+          (b"Werner\'s \"Pocket Field Guide to Things That Are Not Kitten\".\x00"),
+          (b"You found nettik, but that\'s backwards.\x00"),
+          (b"You have found some zinc, but you must not stop here, for you must find kitten.\x00"),
+          (b"\"50 Years Among the Non-Kitten Items\", by Ann Droyd.\x00"),
+          (b"\"Robot may not injure kitten, or, through inaction, ...\"\x00"),
+          (b"\"Address Allocation for Private Internets\" by Yakov Rekhter et al.\x00"),
+          (b"\"Mail Routing and the Domain System\" by Craig Partridge.\x00"),
+          (b"\"The Theory and Practice of Oligarchical Collectivism\" by Emmanuel Goldstein.\x00"),
+          (b"\"201 Kitten Verbs, Fully Conjugated\".  You look for \"find\".\x00"),
+          (b"A card shark sits here, practicing his Faro shuffle.  He ignores you.\x00"),
+          (b"A copy of DeCSS.  They\'re a dime a dozen these days.\x00"),
+          (b"A demonic voice proclaims \"There is no kitten, only Zuul\".  You flee.\x00"),
+          (b"A lotus.  You make an interesting pair.\x00"),
+          (b"A milk carton, with a black and white picture of kitten on the side.\x00"),
+          (b"Any ordinary robot could see from a mile away that this wasn\'t kitten.\x00"),
+          (b"A stegosaurus, escaped from the stegosaurusfindsrobot game.  It finds you.\x00"),
+          (b"Baling wire and chewing gum.\x00"),
+          (b"Chewing gum and baling wire.\x00"),
+          (b"Here is no kitten but only rock, rock and no kitten and the sandy road.\x00"),
+          (b"Hey, I bet you thought this was kitten.\x00"),
+          (b"It is an ancient mariner, and he stoppeth one of three.\x00"),
+          (b"It pleases you to be kind to what appears to be kitten -- but it\'s not!\x00"),
+          (b"It\'s a blatant plug for Ogg Vorbis, http://www.vorbis.com/\x00"),
+          (b"It\'s a business plan for a new startup, kitten.net.\x00"),
+          (b"It\'s a revised business plan for a new startup, my.kitten.net.\x00"),
+          (b"It\'s a square.\x00"),
+          (b"It seems to be a copy of \"A Tail of Two Kitties\".\x00"),
+          (b"It\'s the Donation of Constantine!\x00"),
+          (b"It\'s this message, nothing more.\x00"),
+          (b"Lysine, an essential amino acid.  Well, maybe not for robots.\x00"),
+          (b"No kitten here.\x00"),
+          (b"The score for a Czech composer\'s \"Kitten-Finding Symphony in C\".\x00"),
+          (b"This looks like Bradley\'s \"Appearance and Reality\", but it\'s really not.\x00"),
+          (b"This non-kitten item no verb.\x00"),
+          (b"You feel strangely unfulfilled.\x00"),
+          (b"You hit the non-kitten item.  The non-kitten item fails to yowl.\x00"),
+          (b"You suddenly yearn for your distant homeland.\x00"),
+          (b"You\'ve found the snows of yesteryear!  So that\'s where they all went to.\x00"),
+          (b"Approaching.  One car.  J.  Followed by.  Two car.  M, M.  In five. Minutes.\x00"),
+          (b"Free Jon Johansen!\x00"),
+          (b"Free Dmitry Sklyarov!\x00"),
+          (b"One person shouts \"What do we want?\" The crowd answers \"Free Dmitry!\"\x00"),
+          (b"Judith Platt insults librarians.\x00"),
+          (b"This map is not the territory.\x00"),
+          (b"\"Go back to Libraria!\", says Pat Schroeder.\x00"),
+          (b"This is a porcelain kitten-counter.  0, 0, 0, 0, 0...\x00"),
+          (b"An old bootable business card, unfortunately cracked down the middle.\x00"),
+          (b"A kitten sink, for washing kitten (if only kitten liked water).\x00"),
+          (b"A kitten source (to match the kitten sink).\x00"),
+          (b"If it\'s one thing, it\'s not another.\x00"),
+          (b"If it\'s not one thing, it\'s another.\x00"),
+          (b"A caboodle.\x00"),
+          (b"A grin.\x00"),
+          (b"A hedgehog.  It looks like it knows something important.\x00"),
+          (b"You\'ve found... Oh wait, that\'s just a cat.\x00"),
+          (b"Robot should not be touching that.\x00"),
+          (b"Air Guitar!!!  NA na NA na!!\x00"),
+          (b"An aromatherapy candle burns with healing light.\x00"),
+          (b"You find a bright shiny penny.\x00"),
+          (b"It\'s a free Jon Johansen!\x00"),
+          (b"It\'s a free Dmitry Sklyarov!\x00"),
+          (b"The rothe hits!  The rothe hits!\x00"),
+          (b"It\'s an Internet chain letter about sodium laureth sulfate.\x00"),
+          (b"Ed Witten sits here, pondering string theory.\x00"),
+          (b"Something is written here in the dust.  You read: \"rJbotf ndQkttten\".\x00"),
+          (b"We wish you a merry kitten, and a happy New Year!\x00"),
+          (b"Run away!  Run away!\x00"),
+          (b"You can see right through this copy of Brin\'s \"Transparent Society\".\x00"),
+          (b"This copy of \"Steal This Book\" has been stolen from a bookstore.\x00"),
+          (b"It\'s Roya Naini.\x00"),
+          (b"This kit is the fourteenth in a series of kits named with Roman letters.\x00"),
+          (b"This is the tenth key you\'ve found so far.\x00"),
+          (b"You find a fraud scheme in which loans are used as security for other loans.\x00"),
+          (b"It\'s the phrase \"and her\", written in ancient Greek.\x00"),
+          (b"It\'s the author of \"Randomness and Mathematical Proof\".\x00"),
+          (b"It\'s the crusty exoskeleton of an arthropod!\x00"),
+          (b"It\'s Emporer Shaddam the 4th\'s planet!\x00"),
+          (b"It\'s the triangle leg adjacent to an angle divided by the leg opposite it.\x00"),
+          (b"It\'s a bottle of nail polish remover.\x00"),
+          (b"You found netkit! Way to go, robot!\x00"),
+          (b"It\'s the ASCII Floating Head of Seth David Schoen!\x00"),
+          (b"A frosted pink party-cake, half eaten.\x00"),
+          (b"A bitchin\' homemade tesla coil.\x00"),
+          (b"Conan O\'Brian, sans jawbone.\x00"),
+          (b"It\'s either a mirror, or another soulless kitten-seeking robot.\x00"),
+          (b"Preoccupation with finding kitten prevents you from investigating further.\x00"),
+          (b"Fonzie sits here, mumbling incoherently about a shark and a pair of waterskis.\x00"),
+          (b"The ghost of your dance instructor, his face a paper-white mask of evil.\x00"),
+          (b"A bag of groceries taken off the shelf before the expiration date.\x00"),
+          (b"A book: Feng Shui, Zen: the art of randomly arranging items that are not kitten.\x00"),
+          (b"This might be the fountain of youth, but you\'ll never know.\x00"),
+          (b"Tigerbot Hesh.\x00"),
+          (b"Stimutacs.\x00"),
+          (b"A canister of pressurized whipped cream, sans whipped cream.\x00"),
+          (b"The non-kitten item bites!\x00"),
+          (b"A chain hanging from two posts reminds you of the Gateway Arch.\x00"),
+          (b"A mathematician calculates the halting probability of a Turing machine.\x00"),
+          (b"A number of short theatrical productions are indexed 1, 2, 3, ... n.\x00"),
+          (b"A technical university in Australia.\x00"),
+          (b"It is -- I just feel something wonderful is about to happen.\x00"),
+          (b"It\'s a Cat 5 cable.\x00"),
+          (b"It\'s a U.S. president.\x00"),
+          (b"It\'s a piece of cloth used to cover a stage in between performances.\x00"),
+          (b"The ionosphere seems charged with meaning.\x00"),
+          (b"This tomography is like, hella axial, man!\x00"),
+          (b"It\'s your favorite game -- robotfindscatan!\x00"),
+          (b"Just a man selling an albatross.\x00"),
+          (b"The intermission from a 1930s silent movie.\x00"),
+          (b"It\'s an inverted billiard ball!\x00"),
+          (b"The spectre of Sherlock Holmes wills you onwards.\x00")
       ];
-    }
-}
 
 #[derive(Copy)]
 #[repr(C)]
@@ -900,9 +630,7 @@ impl State {
             }
             input = ((::wrap::wgetch)());
         }
-        ((self)).message(
-            ((CStr::from_ptr(((*b"Bye!\0").as_ptr() as (*mut u8)) as *const c_char))),
-        );
+        ((self)).message((((CStr::from_bytes_with_nul((b"Bye!\0")).unwrap()))));
         (::wrap::wrefresh)();
         finish(0i32);
     }
@@ -943,10 +671,9 @@ impl State {
                 (::wrap::wrefresh_curscr)();
             } else {
                 ((self)).message(
-                    ((CStr::from_ptr(
-                        ((*b"Invalid input: Use direction keys or Esc.\0").as_ptr() as
-                             (*mut u8)) as *const c_char,
-                    ))),
+                    (((CStr::from_bytes_with_nul(
+                        (b"Invalid input: Use direction keys or Esc.\0"),
+                    ).unwrap()))),
                 );
                 return;
             }
@@ -970,7 +697,9 @@ impl State {
                                                          [(check_y as (isize)) as usize]) -
                                                         2i32) as
                                                        (usize)] as (usize);
-                    ((self)).message(((CStr::from_ptr((messages[index]) as *const c_char))));
+                    ((self)).message(
+                        ((CStr::from_bytes_with_nul((((messages)[(index)]))).unwrap())),
+                    );
                 }
             }
         } else {
@@ -1419,7 +1148,6 @@ fn main() {
     use std::os::unix::ffi::OsStringExt;
 
     _init_ver();
-    _init_messages();
 
     let mut argv_storage = ::std::env::args_os()
         .map(|str| {
