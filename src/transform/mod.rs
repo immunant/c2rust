@@ -84,6 +84,7 @@ pub fn register_transform_commands(reg: &mut Registry) {
     reg.register("let_x_uninitialized", |_args| mk(vars::LetXUninitialized));
     reg.register("sink_lets", |_args| mk(vars::SinkLets));
     reg.register("fold_let_assign", |_args| mk(vars::FoldLetAssign));
+    reg.register("uninit_to_default", |_args| mk(vars::UninitToDefault));
 
     reg.register("wrapping_arith_to_normal", |_args| mk(wrapping_arith::WrappingToNormal));
 }

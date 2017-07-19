@@ -1,8 +1,9 @@
 use std::collections::hash_map::{HashMap, Entry};
 use std::collections::HashSet;
 use std::mem;
-use rustc::hir::def_id::DefId;
+use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::middle::cstore::CrateStore;
+use rustc::ty::TypeVariants;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
@@ -10,7 +11,7 @@ use syntax::visit::{self, Visitor};
 use api::*;
 use command::CommandState;
 use cursor::Mark;
-use driver;
+use driver::{self, Phase};
 use transform::Transform;
 
 
@@ -206,6 +207,9 @@ impl Transform for SinkLets {
 fn is_uninit_call(cx: &driver::Ctxt, e: &Expr) -> bool {
     let func = match_or!([e.node] ExprKind::Call(ref func, _) => func; return false);
     let def_id = cx.resolve_expr(func);
+    if def_id.krate == LOCAL_CRATE {
+        return false;
+    }
     let crate_name = cx.session().cstore.crate_name(def_id.krate);
     let path = cx.session().cstore.def_path(def_id);
 
@@ -366,6 +370,41 @@ impl Transform for FoldLetAssign {
                 curs.advance();
             }
         })
+    }
+}
+
+
+/// Replace `let x = uninitialized()` with `let x = 0` or a similarly appropriate default value.
+pub struct UninitToDefault;
+
+impl Transform for UninitToDefault {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        fold_nodes(krate, |l: P<Local>| {
+            if !l.init.as_ref().map_or(false, |e| is_uninit_call(cx, e)) {
+                return l;
+            }
+
+            let init = l.init.as_ref().unwrap().clone();
+            let ty = cx.node_type(init.id);
+            let new_init_lit = match ty.sty {
+                TypeVariants::TyBool => mk().bool_lit(false),
+                TypeVariants::TyChar => mk().char_lit('\0'),
+                TypeVariants::TyInt(ity) => mk().int_lit(0, ity),
+                TypeVariants::TyUint(uty) => mk().int_lit(0, uty),
+                TypeVariants::TyFloat(fty) => mk().float_lit("0", fty),
+                _ => return l,
+            };
+            l.map(|l| {
+                Local {
+                    init: Some(mk().lit_expr(new_init_lit)),
+                    .. l
+                }
+            })
+        })
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
     }
 }
 

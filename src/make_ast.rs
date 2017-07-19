@@ -82,6 +82,42 @@ impl<'a> Make<UnOp> for &'a str {
     }
 }
 
+impl<'a> Make<LitIntType> for &'a str {
+    fn make(self, _mk: &Builder) -> LitIntType {
+        match self {
+            "is" | "isize" => LitIntType::Signed(IntTy::Is),
+            "i8" => LitIntType::Signed(IntTy::I8),
+            "i16" => LitIntType::Signed(IntTy::I16),
+            "i32" => LitIntType::Signed(IntTy::I32),
+            "i64" => LitIntType::Signed(IntTy::I64),
+            "i128" => LitIntType::Signed(IntTy::I128),
+
+            "us" | "usize" => LitIntType::Unsigned(UintTy::Us),
+            "u8" => LitIntType::Unsigned(UintTy::U8),
+            "u16" => LitIntType::Unsigned(UintTy::U16),
+            "u32" => LitIntType::Unsigned(UintTy::U32),
+            "u64" => LitIntType::Unsigned(UintTy::U64),
+            "u128" => LitIntType::Unsigned(UintTy::U128),
+
+            "" | "unsuffixed" => LitIntType::Unsuffixed,
+
+            _ => panic!("unrecognized string for LitIntType: {:?}", self),
+        }
+    }
+}
+
+impl<'a> Make<LitIntType> for IntTy {
+    fn make(self, _mk: &Builder) -> LitIntType {
+        LitIntType::Signed(self)
+    }
+}
+
+impl<'a> Make<LitIntType> for UintTy {
+    fn make(self, _mk: &Builder) -> LitIntType {
+        LitIntType::Unsigned(self)
+    }
+}
+
 
 impl<I: Make<Ident>> Make<PathSegment> for I {
     fn make(self, mk: &Builder) -> PathSegment {
@@ -240,6 +276,17 @@ impl Builder {
         })
     }
 
+    pub fn lit_expr<L>(self, lit: L) -> P<Expr>
+            where L: Make<P<Lit>> {
+        let lit = lit.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Lit(lit),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
     pub fn block_expr<B>(self, blk: B) -> P<Expr>
             where B: Make<P<Block>> {
         let blk = blk.make(&self);
@@ -329,6 +376,49 @@ impl Builder {
             is_shorthand: false,
             attrs: ThinVec::new(),
         }
+    }
+
+
+    // Literals
+
+    pub fn byte_lit(self, b: u8) -> P<Lit> {
+        P(Lit {
+            node: LitKind::Byte(b),
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn char_lit(self, c: char) -> P<Lit> {
+        P(Lit {
+            node: LitKind::Char(c),
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn int_lit<T>(self, i: u128, ty: T) -> P<Lit>
+            where T: Make<LitIntType>{
+        let ty = ty.make(&self);
+        P(Lit {
+            node: LitKind::Int(i, ty),
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn float_lit<S, T>(self, s: S, ty: T) -> P<Lit>
+            where S: IntoSymbol, T: Make<FloatTy> {
+        let s = s.into_symbol();
+        let ty = ty.make(&self);
+        P(Lit {
+            node: LitKind::Float(s, ty),
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn bool_lit(self, b: bool) -> P<Lit> {
+        P(Lit {
+            node: LitKind::Bool(b),
+            span: DUMMY_SP,
+        })
     }
 
 

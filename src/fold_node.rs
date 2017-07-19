@@ -78,6 +78,14 @@ gen_fold_node_impl! {
     }
 }
 
+gen_fold_node_impl! {
+    node = P<Local>;
+    folder = LocalNodeFolder;
+    fn fold_local(&mut self, l: P<Local>) -> P<Local> {
+        fold::noop_fold_local(l, self)
+    }
+}
+
 pub fn fold_nodes<N, T, F>(target: T, callback: F) -> <T as Fold>::Result
         where N: FoldNode,
               T: Fold,
