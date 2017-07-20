@@ -504,6 +504,16 @@ impl Builder {
 
     // Types
 
+    pub fn ptr_ty<T>(self, ty: T) -> P<Ty>
+            where T: Make<P<Ty>> {
+        let ty = ty.make(&self);
+        P(Ty {
+            id: DUMMY_NODE_ID,
+            node: TyKind::Ptr(MutTy { ty: ty, mutbl: self.mutbl }),
+            span: DUMMY_SP,
+        })
+    }
+
     pub fn ref_ty<T>(self, ty: T) -> P<Ty>
             where T: Make<P<Ty>> {
         let ty = ty.make(&self);

@@ -145,9 +145,14 @@ impl CastType {
             CastType::Int => mk().cast_expr(e, mk().ident_ty("i32")),
             CastType::Uint => mk().cast_expr(e, mk().ident_ty("u32")),
             CastType::Usize => mk().cast_expr(e, mk().ident_ty("usize")),
-            CastType::Char => mk().cast_expr(e, mk().ident_ty("char")),
+            CastType::Char => {
+                // e as u8 as char
+                let e = mk().cast_expr(e, mk().ident_ty("u8"));
+                mk().cast_expr(e, mk().ident_ty("char"))
+            },
             CastType::Str => {
-                // CStr::from_ptr(e).to_str().unwrap()
+                // CStr::from_ptr(e as *const i8).to_str().unwrap()
+                let e = mk().cast_expr(e, mk().ptr_ty(mk().ident_ty("i8")));
                 let cs = mk().call_expr(
                     mk().path_expr(vec!["CStr", "from_ptr"]), vec![e]);
                 let s = mk().method_call_expr(cs, "to_str", Vec::<P<Expr>>::new());
