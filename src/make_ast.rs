@@ -278,6 +278,25 @@ impl Builder {
         })
     }
 
+    pub fn method_call_expr<E, S, A>(self, expr: E, seg: S, args: Vec<A>) -> P<Expr>
+            where E: Make<P<Expr>>, S: Make<PathSegment>, A: Make<P<Expr>> {
+        let expr = expr.make(&self);
+        let seg = seg.make(&self);
+
+        let mut all_args = Vec::with_capacity(args.len() + 1);
+        all_args.push(expr);
+        for arg in args {
+            all_args.push(arg.make(&self));
+        }
+
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::MethodCall(seg, all_args),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
     pub fn unary_expr<O, E>(self, op: O, a: E) -> P<Expr>
             where O: Make<UnOp>, E: Make<P<Expr>> {
         let op = op.make(&self);
@@ -296,6 +315,18 @@ impl Builder {
         P(Expr {
             id: DUMMY_NODE_ID,
             node: ExprKind::Lit(lit),
+            span: DUMMY_SP,
+            attrs: ThinVec::new(),
+        })
+    }
+
+    pub fn cast_expr<E, T>(self, e: E, t: T) -> P<Expr>
+            where E: Make<P<Expr>>, T: Make<P<Ty>> {
+        let e = e.make(&self);
+        let t = t.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Cast(e, t),
             span: DUMMY_SP,
             attrs: ThinVec::new(),
         })
@@ -406,6 +437,15 @@ impl Builder {
 
     // Literals
 
+    pub fn str_lit<S>(self, s: S) -> P<Lit>
+            where S: IntoSymbol {
+        let s = s.into_symbol();
+        P(Lit {
+            node: LitKind::Str(s, StrStyle::Cooked),
+            span: DUMMY_SP,
+        })
+    }
+
     pub fn byte_lit(self, b: u8) -> P<Lit> {
         P(Lit {
             node: LitKind::Byte(b),
@@ -482,6 +522,11 @@ impl Builder {
             node: TyKind::Path(None, path),
             span: DUMMY_SP,
         })
+    }
+
+    pub fn ident_ty<I>(self, name: I) -> P<Ty>
+            where I: Make<Ident> {
+        self.path_ty(vec![name])
     }
 
 
