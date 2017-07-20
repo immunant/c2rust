@@ -104,25 +104,17 @@ impl Transform for ConvertFormatString {
                             LitKind::ByteStr(ref b) =>
                                 str::from_utf8(b).unwrap().to_owned());
 
-            info!("str = {:?}", s);
-
             let mut new_s = String::with_capacity(s.len());
             let mut casts = HashMap::new();
 
             let mut idx = 0;
-            Parser::new(&s, |piece| {
-                info!("  got piece: {:?}", piece);
-            match piece {
+            Parser::new(&s, |piece| match piece {
                 Piece::Text(s) => new_s.push_str(s),
                 Piece::Conv(c) => {
                     c.push_spec(&mut new_s);
-                    casts.insert(idx, c.cast());
-                    idx += 1;
+                    c.add_casts(&mut idx, &mut casts);
                 },
-            }
             }).parse();
-
-            info!("new str = {:?}", new_s);
 
             let mut new_args = args[..fmt_idx].to_owned();
             new_args.push(mk().lit_expr(mk().str_lit(&new_s)));
@@ -197,14 +189,26 @@ impl Conv {
         }
     }
 
-    fn cast(&self) -> CastType {
-        match self.ty {
+    fn add_casts(&self, idx: &mut usize, casts: &mut HashMap<usize, CastType>) {
+        if self.width == Some(Amount::NextArg) {
+            casts.insert(*idx, CastType::Usize);
+            *idx += 1;
+        }
+        if self.prec == Some(Amount::NextArg) {
+            casts.insert(*idx, CastType::Usize);
+            *idx += 1;
+        }
+
+        let cast = match self.ty {
             ConvType::Int => CastType::Int,
             ConvType::Uint |
             ConvType::Hex(_) => CastType::Uint,
             ConvType::Char => CastType::Char,
             ConvType::Str => CastType::Str,
-        }
+        };
+
+        casts.insert(*idx, cast);
+        *idx += 1;
     }
 
     fn push_spec(&self, buf: &mut String) {
@@ -290,7 +294,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
                 continue;
             }
 
-            if b'1' <= self.peek() && self.peek() <= b'9' {
+            if b'1' <= self.peek() && self.peek() <= b'9' || self.peek() == b'*'{
                 conv.width = Some(self.parse_amount());
             } 
             if self.peek() == b'.' {
