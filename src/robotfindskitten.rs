@@ -172,13 +172,7 @@ mod wrap {
 pub enum ldat {
 }
 
-static mut ver: *mut u8 = 0 as *mut u8;
-
-fn _init_ver() {
-    unsafe {
-        ver = (*b"1.7320508.406\0").as_ptr() as (*mut u8);
-    }
-}
+static ver: &str = "1.7320508.406";
 
 static messages: [&[u8]; 406]
     = [   (b"\"I pity the fool who mistakes me for kitten!\", sez Mr. T.\x00"),
@@ -632,17 +626,13 @@ impl State {
     pub extern "C" fn message(&mut self, mut message: &CStr) {
         (::wrap::wmove)((1i32), (0i32));
         (::wrap::wclrtoeol)();
-        unsafe {
-            mvprintw!(
-                1i32,
-                0i32,
-                "{:.*}\u{0}",
-                ::wrap::cols() as usize,
-                (CStr::from_ptr((message.as_ptr()) as *mut i8))
-                    .to_str()
-                    .unwrap()
-            );
-        }
+        mvprintw!(
+            1i32,
+            0i32,
+            "{:.*}\u{0}",
+            ::wrap::cols() as usize,
+            message.to_str().unwrap()
+        );
         (::wrap::wmove)((((*(self)).robot).y), (((*(self)).robot).x));
         (::wrap::wrefresh)();
     }
@@ -794,33 +784,22 @@ impl State {
     }
     #[no_mangle]
     pub extern "C" fn instructions(&mut self) {
-        unsafe {
-            mvprintw!(
-                0i32,
-                0i32,
-                "robotfindskitten v{:}\n\u{0}",
-                CStr::from_ptr(ver as *mut i8).to_str().unwrap()
-            );
-            printw!("By the illustrious Leonard Richardson (C) 1997, 2000\n\u{0}");
-            printw!("Written originally for the Nerth Pork robotfindskitten contest\n\n\u{0}");
-            printw!("In this game, you are robot (\u{0}");
-            draw_in_place(((*(self)).robot));
-            printw!("). Your job is to find kitten. This task\n\u{0}");
-            printw!(
-                "is complicated by the existence of various things which are not kitten.\n\u{0}"
-            );
-            printw!(
-                "Robot must touch items to determine if they are kitten or not. The game\n\u{0}"
-            );
-            printw!(
-                "ends when robotfindskitten. Alternatively, you may end the game by hitting\n\u{0}"
-            );
-            printw!("the Esc key. See the documentation for more information.\n\n\u{0}");
-            printw!("Press any key to start.\n\u{0}");
-            (::wrap::wrefresh)();
-            let mut dummy: u8 = (((::wrap::wgetch)()) as (u8));
-            (::wrap::wclear)();
-        }
+        mvprintw!(0i32, 0i32, "robotfindskitten v{:}\n\u{0}", ver);
+        printw!("By the illustrious Leonard Richardson (C) 1997, 2000\n\u{0}");
+        printw!("Written originally for the Nerth Pork robotfindskitten contest\n\n\u{0}");
+        printw!("In this game, you are robot (\u{0}");
+        draw_in_place(((*(self)).robot));
+        printw!("). Your job is to find kitten. This task\n\u{0}");
+        printw!("is complicated by the existence of various things which are not kitten.\n\u{0}");
+        printw!("Robot must touch items to determine if they are kitten or not. The game\n\u{0}");
+        printw!(
+            "ends when robotfindskitten. Alternatively, you may end the game by hitting\n\u{0}"
+        );
+        printw!("the Esc key. See the documentation for more information.\n\n\u{0}");
+        printw!("Press any key to start.\n\u{0}");
+        (::wrap::wrefresh)();
+        let mut dummy: u8 = (((::wrap::wgetch)()) as (u8));
+        (::wrap::wclear)();
     }
     #[no_mangle]
     pub extern "C" fn initialize_arrays(&mut self) {
@@ -971,25 +950,18 @@ impl State {
     }
     #[no_mangle]
     pub extern "C" fn initialize_screen(&mut self) {
-        unsafe {
-            mvprintw!(
-                0i32,
-                0i32,
-                "robotfindskitten v{:}\n\n\u{0}",
-                CStr::from_ptr(ver as *mut i8).to_str().unwrap()
-            );
-            let mut counter: i32 = (0i32);
-            while (counter <= (::wrap::cols()) - 1i32) {
-                printw!("{:}\u{0}", ((95i32) as u8 as char));
-                counter = counter + 1;
-            }
-            for counter in ((0i32)..(((*(self)).num_bogus))) {
-                draw(((*(self)).bogus)[counter as (usize)]);
-            }
-            draw(((*(self)).kitten));
-            draw(((*(self)).robot));
-            (::wrap::wrefresh)();
+        mvprintw!(0i32, 0i32, "robotfindskitten v{:}\n\n\u{0}", ver);
+        let mut counter: i32 = (0i32);
+        while (counter <= (::wrap::cols()) - 1i32) {
+            printw!("{:}\u{0}", ((95i32) as u8 as char));
+            counter = counter + 1;
         }
+        for counter in ((0i32)..(((*(self)).num_bogus))) {
+            draw(((*(self)).bogus)[counter as (usize)]);
+        }
+        draw(((*(self)).kitten));
+        draw(((*(self)).robot));
+        (::wrap::wrefresh)();
     }
 }
 
@@ -1134,14 +1106,12 @@ pub extern "C" fn draw_in_place(mut o: screen_object) {
 pub extern "C" fn finish(mut sig: i32) {
     // NB: this function is called as a signal handler.
     (::wrap::endwin)();
-    unsafe {
-        printf!(
-            "{:}{:}{:}\u{0}",
-            ((27i32) as u8 as char),
-            ((b'(' as i32) as u8 as char),
-            ((b'B' as i32) as u8 as char)
+    printf!(
+        "{:}{:}{:}\u{0}",
+        ((27i32) as u8 as char),
+        ((b'(' as i32) as u8 as char),
+        ((b'B' as i32) as u8 as char)
         );
-    }
     (::wrap::exit)(0i32);
 }
 
@@ -1164,23 +1134,23 @@ pub extern "C" fn validchar(mut a: u8) -> i32 {
 pub extern "C" fn initialize_ncurses() {
     unsafe {
         (::wrap::signal)(2i32, finish);
-        (::wrap::initscr)();
-        (::wrap::keypad)((true));
-        (::wrap::nonl)();
-        (::wrap::intrflush)((false));
-        (::wrap::noecho)();
-        (::wrap::cbreak)();
-        if (::wrap::has_colors)() {
-            (::wrap::start_color)();
-            (::wrap::init_pair)(0i16, 0i16, 0i16);
-            (::wrap::init_pair)(2i16, 2i16, 0i16);
-            (::wrap::init_pair)(1i16, 1i16, 0i16);
-            (::wrap::init_pair)(6i16, 6i16, 0i16);
-            (::wrap::init_pair)(7i16, 7i16, 0i16);
-            (::wrap::init_pair)(5i16, 5i16, 0i16);
-            (::wrap::init_pair)(4i16, 4i16, 0i16);
-            (::wrap::init_pair)(3i16, 3i16, 0i16);
-        }
+    }
+    (::wrap::initscr)();
+    (::wrap::keypad)((true));
+    (::wrap::nonl)();
+    (::wrap::intrflush)((false));
+    (::wrap::noecho)();
+    (::wrap::cbreak)();
+    if (::wrap::has_colors)() {
+        (::wrap::start_color)();
+        (::wrap::init_pair)(0i16, 0i16, 0i16);
+        (::wrap::init_pair)(2i16, 2i16, 0i16);
+        (::wrap::init_pair)(1i16, 1i16, 0i16);
+        (::wrap::init_pair)(6i16, 6i16, 0i16);
+        (::wrap::init_pair)(7i16, 7i16, 0i16);
+        (::wrap::init_pair)(5i16, 5i16, 0i16);
+        (::wrap::init_pair)(4i16, 4i16, 0i16);
+        (::wrap::init_pair)(3i16, 3i16, 0i16);
     }
 }
 
@@ -1194,8 +1164,6 @@ pub extern "C" fn initialize_ncurses() {
 
 fn main() {
     use std::os::unix::ffi::OsStringExt;
-
-    _init_ver();
 
     let mut argv_storage = ::std::env::args_os()
         .map(|str| {
