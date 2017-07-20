@@ -8,7 +8,8 @@ use syntax::visit::{self, Visitor};
 
 use api::DriverCtxtExt;
 use command::CommandState;
-use driver;
+use command::{Registry, FuncCommand};
+use driver::{self, Phase};
 use util::HirDefExt;
 use util::IntoSymbol;
 use visit::Visit;
@@ -219,4 +220,41 @@ pub fn rename_marks(st: &CommandState, old: Symbol, new: Symbol) {
         marks.remove(&(id, old));
         marks.insert((id, new));
     }
+}
+
+
+pub fn register_commands(reg: &mut Registry) {
+    reg.register("print_marks", |_| {
+        Box::new(FuncCommand::new(Phase::Phase2, move |st, _cx| {
+            let mut marks = st.marks().iter().map(|&x| x).collect::<Vec<_>>();
+            marks.sort();
+
+            for (id, label) in marks {
+                info!("{}:{}", id.as_usize(), label.as_str());
+            }
+        }))
+    });
+
+    reg.register("mark_uses", |args| {
+        let arg = args[0].clone();
+        Box::new(FuncCommand::new(Phase::Phase2, move |st, cx| {
+            find_mark_uses_command(st, cx, &arg);
+        }))
+    });
+
+    reg.register("mark_field_uses", |args| {
+        let field = args[0].clone();
+        let label = args[1].clone();
+        Box::new(FuncCommand::new(Phase::Phase3, move |st, cx| {
+            find_field_uses_command(st, cx, &field, &label);
+        }))
+    });
+
+    reg.register("rename_marks", |args| {
+        let old = (&args[0]).into_symbol();
+        let new = (&args[1]).into_symbol();
+        Box::new(FuncCommand::new(Phase::Phase2, move |st, _cx| {
+            rename_marks(st, old, new);
+        }))
+    });
 }
