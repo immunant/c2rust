@@ -43,6 +43,28 @@ extern "C" {
     fn wrefresh(arg1: *mut _win_st) -> i32;
 }
 
+macro_rules! mvprintw {
+    ($x:expr, $y:expr, $fmt:expr $(, $arg:expr)*) => {
+        ::wrap::mvprintw($x, $y,
+                         ::std::ffi::CStr::from_bytes_with_nul(
+                             format!($fmt $(, $arg)*).as_bytes()).unwrap())
+    };
+}
+
+macro_rules! printf {
+    ($fmt:expr $(, $arg:expr)*) => {
+        ::wrap::printf(::std::ffi::CStr::from_bytes_with_nul(
+                format!($fmt $(, $arg)*).as_bytes()).unwrap())
+    };
+}
+
+macro_rules! printw {
+    ($fmt:expr $(, $arg:expr)*) => {
+        ::wrap::printw(::std::ffi::CStr::from_bytes_with_nul(
+                format!($fmt $(, $arg)*).as_bytes()).unwrap())
+    };
+}
+
 mod wrap {
     use std::ffi::CStr;
     use super::_win_st;
@@ -52,6 +74,16 @@ mod wrap {
     }
     pub fn cols() -> i32 {
         unsafe { ::COLS }
+    }
+
+    pub fn mvprintw(x: i32, y: i32, s: &CStr) -> i32 {
+        unsafe { ::mvprintw(x, y, b"%s\0".as_ptr(), s.as_ptr()) }
+    }
+    pub fn printf(s: &CStr) -> i32 {
+        unsafe { ::printf(b"%s\0".as_ptr(), s.as_ptr()) }
+    }
+    pub fn printw(s: &CStr) -> i32 {
+        unsafe { ::printw(b"%s\0".as_ptr(), s.as_ptr()) }
     }
 
     pub fn atoi(__nptr: &CStr) -> i32 {
@@ -601,12 +633,14 @@ impl State {
         (::wrap::wmove)((1i32), (0i32));
         (::wrap::wclrtoeol)();
         unsafe {
-            mvprintw(
+            mvprintw!(
                 1i32,
                 0i32,
-                (*b"%.*s\0").as_ptr(),
-                (::wrap::cols()),
-                ((message).as_ptr() as *mut u8),
+                "{:.*}\u{0}",
+                ::wrap::cols() as usize,
+                (CStr::from_ptr((message.as_ptr()) as *mut i8))
+                    .to_str()
+                    .unwrap()
             );
         }
         (::wrap::wmove)((((*(self)).robot).y), (((*(self)).robot).x));
@@ -761,32 +795,28 @@ impl State {
     #[no_mangle]
     pub extern "C" fn instructions(&mut self) {
         unsafe {
-            mvprintw(0i32, 0i32, (*b"robotfindskitten v%s\n\0").as_ptr(), ver);
-            printw(
-                (*b"By the illustrious Leonard Richardson (C) 1997, 2000\n\0").as_ptr(),
+            mvprintw!(
+                0i32,
+                0i32,
+                "robotfindskitten v{:}\n\u{0}",
+                CStr::from_ptr(ver as *mut i8).to_str().unwrap()
             );
-            printw(
-                (*b"Written originally for the Nerth Pork robotfindskitten contest\n\n\0").as_ptr(),
-            );
-            printw((*b"In this game, you are robot (\0").as_ptr());
+            printw!("By the illustrious Leonard Richardson (C) 1997, 2000\n\u{0}");
+            printw!("Written originally for the Nerth Pork robotfindskitten contest\n\n\u{0}");
+            printw!("In this game, you are robot (\u{0}");
             draw_in_place(((*(self)).robot));
-            printw((*b"). Your job is to find kitten. This task\n\0").as_ptr());
-            printw(
-                (*b"is complicated by the existence of various things which are not kitten.\n\0")
-                    .as_ptr(),
+            printw!("). Your job is to find kitten. This task\n\u{0}");
+            printw!(
+                "is complicated by the existence of various things which are not kitten.\n\u{0}"
             );
-            printw(
-                (*b"Robot must touch items to determine if they are kitten or not. The game\n\0")
-                    .as_ptr(),
+            printw!(
+                "Robot must touch items to determine if they are kitten or not. The game\n\u{0}"
             );
-            printw(
-                (*b"ends when robotfindskitten. Alternatively, you may end the game by hitting\n\0")
-                    .as_ptr(),
+            printw!(
+                "ends when robotfindskitten. Alternatively, you may end the game by hitting\n\u{0}"
             );
-            printw(
-                (*b"the Esc key. See the documentation for more information.\n\n\0").as_ptr(),
-            );
-            printw((*b"Press any key to start.\n\0").as_ptr());
+            printw!("the Esc key. See the documentation for more information.\n\n\u{0}");
+            printw!("Press any key to start.\n\u{0}");
             (::wrap::wrefresh)();
             let mut dummy: u8 = (((::wrap::wgetch)()) as (u8));
             (::wrap::wclear)();
@@ -942,10 +972,15 @@ impl State {
     #[no_mangle]
     pub extern "C" fn initialize_screen(&mut self) {
         unsafe {
-            mvprintw(0i32, 0i32, (*b"robotfindskitten v%s\n\n\0").as_ptr(), ver);
+            mvprintw!(
+                0i32,
+                0i32,
+                "robotfindskitten v{:}\n\n\u{0}",
+                CStr::from_ptr(ver as *mut i8).to_str().unwrap()
+            );
             let mut counter: i32 = (0i32);
             while (counter <= (::wrap::cols()) - 1i32) {
-                printw((*b"%c\0").as_ptr(), 95i32);
+                printw!("{:}\u{0}", ((95i32) as u8 as char));
                 counter = counter + 1;
             }
             for counter in ((0i32)..(((*(self)).num_bogus))) {
@@ -1059,9 +1094,9 @@ pub unsafe extern "C" fn full_draw(mut o: screen_object, mut in_place: bool) {
         -1i32;
     }
     if in_place {
-        printw((*b"%c\0").as_ptr(), o.character as (i32));
+        printw!("{:}\u{0}", ((o.character as i32) as u8 as char));
     } else {
-        mvprintw(o.y, o.x, (*b"%c\0").as_ptr(), o.character as (i32));
+        mvprintw!(o.y, o.x, "{:}\u{0}", ((o.character as i32) as u8 as char));
         (::wrap::wmove)((o.y), (o.x));
     }
     if !stdscr.is_null() {
@@ -1100,7 +1135,12 @@ pub extern "C" fn finish(mut sig: i32) {
     // NB: this function is called as a signal handler.
     (::wrap::endwin)();
     unsafe {
-        printf((*b"%c%c%c\0").as_ptr(), 27i32, b'(' as (i32), b'B' as (i32));
+        printf!(
+            "{:}{:}{:}\u{0}",
+            ((27i32) as u8 as char),
+            ((b'(' as i32) as u8 as char),
+            ((b'B' as i32) as u8 as char)
+        );
     }
     (::wrap::exit)(0i32);
 }
@@ -1210,15 +1250,20 @@ pub unsafe extern "C" fn _c_main(mut argc: i32, mut argv: *mut *mut u8) -> i32 {
             (CStr::from_ptr((*argv.offset(1isize) as (*const u8)) as *const c_char)),
         );
         if (S.num_bogus) < 0i32 || (S.num_bogus) > 406i32 {
-            printf(
-                (*b"Run-time parameter must be between 0 and %d.\n\0").as_ptr(),
-                406i32,
+            printf!(
+                "Run-time parameter must be between 0 and {:}.\n\u{0}",
+                406i32 as i32
             );
             (::wrap::exit)(0i32);
         }
     }
     (::wrap::srand)((::wrap::time)() as (u32));
-    printf((*b"%c%c%c\0").as_ptr(), 27i32, b'(' as (i32), b'U' as (i32));
+    printf!(
+        "{:}{:}{:}\u{0}",
+        ((27i32) as u8 as char),
+        ((b'(' as i32) as u8 as char),
+        ((b'U' as i32) as u8 as char)
+    );
     initialize_ncurses();
     ((&mut S)).initialize_arrays();
     ((&mut S)).initialize_robot();
