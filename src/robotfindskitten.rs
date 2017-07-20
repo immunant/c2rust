@@ -167,6 +167,29 @@ mod wrap {
     pub fn wrefresh_curscr() -> i32 {
         unsafe { ::wrefresh(::curscr) }
     }
+
+    pub fn attr_get(attrs: Option<&mut usize>, pair: Option<&mut i16>) {
+        unsafe {
+            if ::stdscr.is_null() {
+                return;
+            }
+            if let Some(attrs) = attrs {
+                *attrs = (*::stdscr)._attrs;
+            }
+            if let Some(pair) = pair {
+                *pair = (((*::stdscr)._attrs & ((1usize << 8i32)) - (1usize) << 0i32 + 8i32) >> 8i32) as (i16);
+            }
+        }
+    }
+
+    pub fn attrset(attrs: usize) {
+        unsafe {
+            if ::stdscr.is_null() {
+                return;
+            }
+            (*::stdscr)._attrs = attrs;
+        }
+    }
 }
 
 pub enum ldat {
@@ -1021,31 +1044,12 @@ impl Clone for _win_st {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn full_draw(mut o: screen_object, mut in_place: bool) {
-
-
+pub extern "C" fn full_draw(mut o: screen_object, mut in_place: bool) {
     let mut old: usize = ((0usize));
     let mut dummy: i16 = ((0i16));
 
-    if &mut old as (*mut usize) != 0i32 as (*mut ::std::os::raw::c_void) as (*mut usize) {
-        *(&mut old as (*mut usize)) = if !stdscr.is_null() {
-            (*stdscr)._attrs
-        } else {
-            0usize
-        };
-    } else {
-        0i32;
-    }
-    if &mut dummy as (*mut i16) != 0i32 as (*mut ::std::os::raw::c_void) as (*mut i16) {
-        *(&mut dummy as (*mut i16)) = if !stdscr.is_null() {
-            (((*stdscr)._attrs & ((1usize << 8i32)) - (1usize) << 0i32 + 8i32) >> 8i32) as (i32)
-        } else {
-            0i32
-        } as (i16);
-    } else {
-        0i32;
-    }
-    0i32;
+    ::wrap::attr_get(Some(&mut old), Some(&mut dummy));
+
     let mut new: usize = (o.color as (usize) << 0i32 + 8i32);
     if o.character as (i32) == b'#' as (i32) {
         new = new | 1usize << 12i32 + 8i32;
@@ -1056,44 +1060,24 @@ pub unsafe extern "C" fn full_draw(mut o: screen_object, mut in_place: bool) {
     if o.bold {
         new = new | 1usize << 13i32 + 8i32;
     }
-    if !stdscr.is_null() {
-        (*stdscr) = ::_win_st {
-            _attrs: (new),
-            ..(*stdscr)
-        };
-        0i32;
-    } else {
-        -1i32;
-    }
+    ::wrap::attrset(new);
     if in_place {
         printw!("{:}\u{0}", ((o.character as i32) as u8 as char));
     } else {
         mvprintw!(o.y, o.x, "{:}\u{0}", ((o.character as i32) as u8 as char));
         (::wrap::wmove)((o.y), (o.x));
     }
-    if !stdscr.is_null() {
-        (*stdscr) = ::_win_st {
-            _attrs: (old),
-            ..(*stdscr)
-        };
-        0i32;
-    } else {
-        -1i32;
-    }
+    ::wrap::attrset(old);
 }
 
 #[no_mangle]
 pub extern "C" fn draw(mut o: screen_object) {
-    unsafe {
-        full_draw(o, false);
-    }
+    full_draw(o, false);
 }
 
 #[no_mangle]
 pub extern "C" fn draw_in_place(mut o: screen_object) {
-    unsafe {
-        full_draw(o, true);
-    }
+    full_draw(o, true);
 }
 
 
