@@ -1,4 +1,5 @@
 //! This module implements commands for manipulating the current set of marked nodes.
+use std::str::FromStr;
 use rustc::hir;
 use rustc::hir::def::Def;
 use rustc::ty::TypeVariants;
@@ -212,6 +213,41 @@ pub fn find_field_uses_command(st: &CommandState, cx: &driver::Ctxt, field: &str
 }
 
 
+pub fn find_arg_uses<T: Visit>(target: &T,
+                               st: &CommandState,
+                               cx: &driver::Ctxt,
+                               arg_idx: usize,
+                               label: &str) {
+    let label = label.into_symbol();
+
+    let old_ids = st.marks().iter().filter(|&&(_, l)| l == label)
+        .map(|&(id, _)| id).collect::<Vec<_>>();
+
+    visit_nodes(target, |e: &Expr| {
+        if let Some(def_id) = cx.opt_callee(e) {
+            if let Some(node_id) = cx.hir_map().as_local_node_id(def_id) {
+                if st.marked(node_id, label) {
+                    let args = match e.node {
+                        ExprKind::Call(_, ref args) => args,
+                        ExprKind::MethodCall(_, ref args) => args,
+                        _ => panic!("expected Call or MethodCall"),
+                    };
+                    st.add_mark(args[arg_idx].id, label);
+                }
+            }
+        }
+    });
+
+    for id in old_ids {
+        st.remove_mark(id, label);
+    }
+}
+
+pub fn find_arg_uses_command(st: &CommandState, cx: &driver::Ctxt, arg_idx: usize, label: &str) {
+    find_arg_uses(&*st.krate(), st, cx, arg_idx, label);
+}
+
+
 pub fn rename_marks(st: &CommandState, old: Symbol, new: Symbol) {
     let mut marks = st.marks_mut();
     let nodes = marks.iter().filter(|&&(_, label)| label == old)
@@ -247,6 +283,14 @@ pub fn register_commands(reg: &mut Registry) {
         let label = args[1].clone();
         Box::new(FuncCommand::new(Phase::Phase3, move |st, cx| {
             find_field_uses_command(st, cx, &field, &label);
+        }))
+    });
+
+    reg.register("mark_arg_uses", |args| {
+        let arg_idx = usize::from_str(&args[0]).unwrap();
+        let label = args[1].clone();
+        Box::new(FuncCommand::new(Phase::Phase3, move |st, cx| {
+            find_arg_uses_command(st, cx, arg_idx, &label);
         }))
     });
 
