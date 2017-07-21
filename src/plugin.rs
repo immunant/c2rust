@@ -10,7 +10,7 @@ pub fn load_plugins(search_path: &[String], plugins: &[String], reg: &mut Regist
     let sym_name = CString::new("register_commands").unwrap();
 
     for name in plugins {
-        println!("loading {}...", name);
+        eprintln!("loading {}...", name);
         let mut found = false;
         for dir in search_path {
             let path_str = format!("{}/lib{}.so", dir, name);
