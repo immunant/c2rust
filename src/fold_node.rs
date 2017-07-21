@@ -86,6 +86,14 @@ gen_fold_node_impl! {
     map = (self.callback)(l);
 }
 
+gen_fold_node_impl! {
+    node = ForeignMod;
+    folder = ForeignModNodeFolder;
+    fn fold_foreign_mod(&mut self, nm: ForeignMod) -> ForeignMod;
+    walk = fold::noop_fold_foreign_mod(nm, self);
+    map = (self.callback)(nm);
+}
+
 /// Fold over nodes of the callback's argument type within `target`.  This function performs a
 /// postorder traversal.
 pub fn fold_nodes<N, T, F>(target: T, callback: F) -> <T as Fold>::Result
