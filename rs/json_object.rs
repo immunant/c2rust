@@ -1,16 +1,19 @@
-
 extern "C" {
     fn __errno_location() -> *mut i32;
-    fn array_list_add(al: *mut array_list, data: *mut ::std::os::raw::c_void) -> i32;
-    fn array_list_free(al: *mut array_list);
-    fn array_list_get_idx(al: *mut array_list, i: i32) -> *mut ::std::os::raw::c_void;
-    fn array_list_length(al: *mut array_list) -> i32;
+    fn array_list_add(al: *mut ::arraylist::array_list, data: *mut ::std::os::raw::c_void) -> i32;
+    fn array_list_free(al: *mut ::arraylist::array_list);
+    fn array_list_get_idx(al: *mut ::arraylist::array_list, i: i32) -> *mut ::std::os::raw::c_void;
+    fn array_list_length(al: *mut ::arraylist::array_list) -> i32;
     fn array_list_new(
         free_fn: unsafe extern "C" fn(*mut ::std::os::raw::c_void),
-    ) -> *mut array_list;
-    fn array_list_put_idx(al: *mut array_list, i: i32, data: *mut ::std::os::raw::c_void) -> i32;
+    ) -> *mut ::arraylist::array_list;
+    fn array_list_put_idx(
+        al: *mut ::arraylist::array_list,
+        i: i32,
+        data: *mut ::std::os::raw::c_void,
+    ) -> i32;
     fn array_list_sort(
-        arr: *mut array_list,
+        arr: *mut ::arraylist::array_list,
         compar: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void)
                                      -> i32,
     );
@@ -142,20 +145,9 @@ impl Clone for lh_table {
     }
 }
 
-#[derive(Copy)]
-#[repr(C)]
-pub struct array_list {
-    pub array: *mut *mut ::std::os::raw::c_void,
-    pub length: i32,
-    pub size: i32,
-    pub free_fn: unsafe extern "C" fn(*mut ::std::os::raw::c_void),
-}
 
-impl Clone for array_list {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
+
 
 #[derive(Copy)]
 #[repr(C)]
@@ -177,7 +169,7 @@ pub union data {
     pub c_double : f64,
     pub c_int64 : i64,
     pub c_object : *mut lh_table,
-    pub c_array : *mut array_list,
+    pub c_array : *mut ::arraylist::array_list,
     pub c_string : Struct1,
 }
 
@@ -1085,15 +1077,17 @@ pub unsafe extern "C" fn json_object_new_array() -> *mut json_object {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn json_object_get_array(mut jso: *mut json_object) -> *mut array_list {
+pub unsafe extern "C" fn json_object_get_array(
+    mut jso: *mut json_object,
+) -> *mut ::arraylist::array_list {
     if jso.is_null() {
-        0i32 as (*mut ::std::os::raw::c_void) as (*mut array_list)
+        0i32 as (*mut ::std::os::raw::c_void) as (*mut ::arraylist::array_list)
     } else {
         let switch10 = (*jso).o_type;
         (if switch10 as (i32) == json_type::json_type_array as (i32) {
              (*jso).o.c_array
          } else {
-             0i32 as (*mut ::std::os::raw::c_void) as (*mut array_list)
+             0i32 as (*mut ::std::os::raw::c_void) as (*mut ::arraylist::array_list)
          })
     }
 }

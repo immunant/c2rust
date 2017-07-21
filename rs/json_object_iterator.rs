@@ -1,4 +1,3 @@
-
 extern "C" {
     fn json_object_get_object(obj: *mut json_object) -> *mut lh_table;
 }
@@ -74,20 +73,9 @@ impl Clone for lh_table {
     }
 }
 
-#[derive(Copy)]
-#[repr(C)]
-pub struct array_list {
-    pub array: *mut *mut ::std::os::raw::c_void,
-    pub length: i32,
-    pub size: i32,
-    pub free_fn: unsafe extern "C" fn(*mut ::std::os::raw::c_void),
-}
 
-impl Clone for array_list {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
+
 
 #[derive(Copy)]
 #[repr(C)]
@@ -109,7 +97,7 @@ pub union data {
     pub c_double : f64,
     pub c_int64 : i32,
     pub c_object : *mut lh_table,
-    pub c_array : *mut array_list,
+    pub c_array : *mut ::arraylist::array_list,
     pub c_string : Struct1,
 }
 
