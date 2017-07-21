@@ -7,6 +7,7 @@ use syntax::attr;
 use syntax::codemap::Spanned;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
+use syntax::symbol::Symbol;
 use syntax::util::small_vector::SmallVector;
 
 use api::*;
@@ -210,10 +211,95 @@ impl Transform for ReplaceItems {
 }
 
 
+/// Replace identically-named structs with a canonical (`target`-marked) version.
+pub struct CanonicalizeStructs;
+
+impl Transform for CanonicalizeStructs {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        // (1) Find all marked structs.
+        let mut canon_ids: HashMap<Symbol, DefId>  = HashMap::new();
+
+        visit_nodes(&krate, |i: &Item| {
+            if st.marked(i.id, "target") {
+                canon_ids.insert(i.ident.name, cx.node_def_id(i.id));
+            }
+        });
+
+        // (2) Remove all duplicate structs.
+
+        // Map removed struct IDs to their replacements.
+        let mut removed_id_map = HashMap::new();
+
+        let krate = fold_nodes(krate, |i: P<Item>| {
+            let should_remove = match i.node {
+                ItemKind::Struct(..) => {
+                    if let Some(&canon_def_id) = canon_ids.get(&i.ident.name) {
+                        let def_id = cx.node_def_id(i.id);
+                        if def_id != canon_def_id {
+                            removed_id_map.insert(cx.node_def_id(i.id), canon_def_id);
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                },
+                _ => false,
+            };
+
+            if should_remove {
+                SmallVector::new()
+            } else {
+                SmallVector::one(i)
+            }
+        });
+
+        // (3) Remove impls for removed structs.
+
+        let krate = fold_nodes(krate, |i: P<Item>| {
+            let should_remove = match i.node {
+                ItemKind::Impl(_, _, _, _, _, ref ty, _) => {
+                    if let Some(ty_def_id) = cx.try_resolve_ty(ty) {
+                        removed_id_map.contains_key(&ty_def_id)
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            };
+
+            if should_remove {
+                SmallVector::new()
+            } else {
+                SmallVector::one(i)
+            }
+        });
+
+        // (4) Rewrite references to removed structs.
+
+        let krate = fold_resolved_paths(krate, cx, |qself, path, def_id| {
+            if let Some(&canon_def_id) = removed_id_map.get(&def_id) {
+                (None, cx.def_path(canon_def_id))
+            } else {
+                (qself, path)
+            }
+        });
+
+        krate
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
     reg.register("link_funcs", |_args| mk(LinkFuncs));
     reg.register("link_incomplete_types", |_args| mk(LinkIncompleteTypes));
     reg.register("replace_items", |_args| mk(ReplaceItems));
+    reg.register("canonicalize_structs", |_args| mk(CanonicalizeStructs));
 }
