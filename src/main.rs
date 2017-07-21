@@ -10,7 +10,7 @@ use std::str::FromStr;
 use syntax::ast::NodeId;
 
 use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node};
-use idiomize::{interact, command, mark_adjust};
+use idiomize::{interact, command, mark_adjust, plugin};
 
 use idiomize::command::CommandState;
 use idiomize::util::IntoSymbol;
@@ -44,6 +44,9 @@ struct Options {
     rustc_args: Vec<String>,
     cursors: Vec<Cursor>,
     marks: Vec<Mark>,
+
+    plugins: Vec<String>,
+    plugin_dirs: Vec<String>,
 }
 
 fn find<T: PartialEq<U>, U: ?Sized>(xs: &[T], x: &U) -> Option<usize> {
@@ -76,6 +79,12 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     opts.opt("h", "help",
         "display usage information",
         "", HasArg::No, Occur::Optional);
+    opts.opt("p", "",
+        "name of a plugin to load",
+        "PLUGIN", HasArg::Yes, Occur::Multi);
+    opts.opt("P", "",
+        "search dir for plugins",
+        "DIR", HasArg::Yes, Occur::Multi);
 
 
     // Separate idiomize args from rustc args
@@ -218,6 +227,12 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         });
     }
 
+
+    // Get plugin options
+    let plugins = m.opt_strs("p").to_owned();
+    let plugin_dirs = m.opt_strs("P").to_owned();
+
+
     // Parse command names + args
     let mut commands = Vec::new();
     let mut cur_command = None;
@@ -242,12 +257,15 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
         commands.push(cmd);
     }
 
+
     Some(Options {
         rewrite_mode,
         commands,
         rustc_args,
         cursors,
         marks,
+        plugins,
+        plugin_dirs,
     })
 }
 
@@ -303,6 +321,8 @@ fn main() {
     command::register_misc_commands(&mut cmd_reg);
     transform::register_transform_commands(&mut cmd_reg);
     mark_adjust::register_commands(&mut cmd_reg);
+
+    plugin::load_plugins(&opts.plugin_dirs, &opts.plugins, &mut cmd_reg);
 
     if opts.commands.len() == 1 && opts.commands[0].name == "interact" {
         interact::interact_command(&opts.commands[0].args,

@@ -15,7 +15,7 @@ pub trait Transform {
 }
 
 
-struct TransformCommand<T: Transform>(T);
+pub struct TransformCommand<T: Transform>(pub T);
 
 impl<T: Transform> Command for TransformCommand<T> {
     fn run(&mut self, st: &CommandState, cx: &driver::Ctxt) {

@@ -21,42 +21,43 @@ extern crate syntax_pos;
 #[macro_use] mod macros;
 
 pub mod util;
-mod cursor;
+pub mod cursor;
 
 // AST queries
-mod ast_equiv;
-mod visit;
+pub mod ast_equiv;
+pub mod visit;
 pub mod visit_node;
 pub mod print_spans;
-mod get_node_id;
-mod get_span;
-mod contains_mark;
+pub mod get_node_id;
+pub mod get_span;
+pub mod contains_mark;
 pub mod pick_node;
 
 // AST edits
-mod fold;
+pub mod fold;
 pub mod fold_node;
 pub mod remove_paren;
 pub mod span_fix;
-mod seq_edit;
-mod make_ast;
+pub mod seq_edit;
+pub mod make_ast;
 
 // Higher-level AST manipulation
-mod fn_edit;
+pub mod fn_edit;
 pub mod path_edit;
-mod dataflow;
-mod api;
+pub mod dataflow;
+pub mod api;
 
 // Pattern matching and substitution
-mod bindings;
-mod matcher;
-mod matcher_impls;
-mod subst;
+pub mod bindings;
+pub mod matcher;
+pub mod matcher_impls;
+pub mod subst;
 
 // High-level interfaces
 pub mod driver;
 pub mod command;
 pub mod interact;
+pub mod plugin;
 
 // Command implementations
 pub mod transform;
@@ -64,5 +65,5 @@ pub mod mark_adjust;
 
 // Source rewriting
 pub mod rewrite;
-mod rewrite_impls;
+pub mod rewrite_impls;
 pub mod file_rewrite;
