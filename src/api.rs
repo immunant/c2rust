@@ -3,6 +3,7 @@ use rustc::hir::def_id::DefId;
 use rustc::session::Session;
 use rustc::ty::Ty;
 use rustc::ty::item_path::{ItemPathBuffer, RootMode};
+use syntax::ast::{self, TyKind};    // `Ty` refers to `rustc::ty::Ty`.
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
 use syntax::ast::{Expr, ExprKind};
 use syntax::ast::{Path, PathSegment, Ident};
@@ -77,6 +78,8 @@ pub trait DriverCtxtExt<'gcx> {
     fn node_def_id(&self, id: NodeId) -> DefId;
     fn try_resolve_expr(&self, e: &Expr) -> Option<DefId>;
     fn resolve_expr(&self, e: &Expr) -> DefId;
+    fn try_resolve_ty(&self, e: &ast::Ty) -> Option<DefId>;
+    fn resolve_ty(&self, e: &ast::Ty) -> DefId;
     fn opt_callee(&self, e: &Expr) -> Option<DefId>;
     fn callee(&self, e: &Expr) -> DefId;
 }
@@ -152,6 +155,25 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
     fn resolve_expr(&self, e: &Expr) -> DefId {
         self.try_resolve_expr(e)
             .unwrap_or_else(|| panic!("expr does not resolve to a def: {:?}", e))
+    }
+
+    /// Obtain the `DefId` referenced by a path `Ty`.
+    fn try_resolve_ty(&self, t: &ast::Ty) -> Option<DefId> {
+        let node = match_or!([self.hir_map().find(t.id)] Some(x) => x;
+                             return None);
+        let t = match_or!([node] hir::map::NodeTy(t) => t;
+                          return None);
+        let qpath = match_or!([t.node] hir::TyPath(ref q) => q;
+                              return None);
+        let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
+                             return None);
+        path.def.opt_def_id()
+    }
+
+    /// Obtain the `DefId` referenced by a path `Ty`.
+    fn resolve_ty(&self, t: &ast::Ty) -> DefId {
+        self.try_resolve_ty(t)
+            .unwrap_or_else(|| panic!("ty does not resolve to a def: {:?}", t))
     }
 
     /// Obtain the `DefId` of the function being called, if `e` is a function or method call.

@@ -184,6 +184,23 @@ impl Transform for ReplaceItems {
             }
         });
 
+        // (3) Find impls for `target` types, and remove them.  This way, if a struct is removed,
+        // we also remove the associated `Clone` impl.
+
+        let krate = fold_nodes(krate, |i: P<Item>| {
+            let opt_def_id = match i.node {
+                ItemKind::Impl(_, _, _, _, _, ref ty, _) => cx.try_resolve_ty(ty),
+                _ => None,
+            };
+
+            if let Some(def_id) = opt_def_id {
+                if target_ids.contains(&def_id) {
+                    return SmallVector::new();
+                }
+            }
+            SmallVector::one(i)
+        });
+
         krate
     }
 
