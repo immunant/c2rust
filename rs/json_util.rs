@@ -5,16 +5,16 @@ extern "C" {
     fn isdigit(arg1: i32) -> i32;
     fn isspace(arg1: i32) -> i32;
     fn json_object_to_json_string_ext(
-        obj: *mut ::json_object_iterator::json_object,
+        obj: *mut ::json_object::json_object,
         flags: i32,
     ) -> *const u8;
-    fn json_tokener_parse(str: *const u8) -> *mut ::json_object_iterator::json_object;
+    fn json_tokener_parse(str: *const u8) -> *mut ::json_object::json_object;
     fn mc_debug(msg: *const u8, ...);
     fn mc_error(msg: *const u8, ...);
     fn open(__file: *const u8, __oflag: i32, ...) -> i32;
-    fn printbuf_free(p: *mut printbuf);
-    fn printbuf_memappend(p: *mut printbuf, buf: *const u8, size: i32) -> i32;
-    fn printbuf_new() -> *mut printbuf;
+    fn printbuf_free(p: *mut ::printbuf::printbuf);
+    fn printbuf_memappend(p: *mut ::printbuf::printbuf, buf: *const u8, size: i32) -> i32;
+    fn printbuf_new() -> *mut ::printbuf::printbuf;
     fn read(__fd: i32, __buf: *mut ::std::os::raw::c_void, __nbytes: u64) -> i64;
     fn snprintf(__s: *mut u8, __maxlen: u64, __format: *const u8, ...) -> i32;
     fn sscanf(__s: *const u8, __format: *const u8, ...) -> i32;
@@ -31,26 +31,16 @@ static mut sscanf_is_broken: i32 = 0i32;
 
 static mut sscanf_is_broken_testdone: i32 = 0i32;
 
-#[derive(Copy)]
-#[repr(C)]
-pub struct printbuf {
-    pub buf: *mut u8,
-    pub bpos: i32,
-    pub size: i32,
-}
 
-impl Clone for printbuf {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
+
 
 #[no_mangle]
 pub unsafe extern "C" fn json_object_from_file(
     mut filename: *const u8,
-) -> *mut ::json_object_iterator::json_object {
-    let mut pb: *mut printbuf;
-    let mut obj: *mut ::json_object_iterator::json_object;
+) -> *mut ::json_object::json_object {
+    let mut pb: *mut ::printbuf::printbuf;
+    let mut obj: *mut ::json_object::json_object;
     let mut buf: [u8; 4096] = ::std::mem::uninitialized();
     let mut fd: i32;
     let mut ret: i32;
@@ -64,7 +54,7 @@ pub unsafe extern "C" fn json_object_from_file(
             filename,
             strerror(*__errno_location()),
         );
-        0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object_iterator::json_object)
+        0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object::json_object)
     } else if {
         pb = printbuf_new();
         pb
@@ -74,7 +64,7 @@ pub unsafe extern "C" fn json_object_from_file(
         mc_error(
             (*b"json_object_from_file: printbuf_new failed\n\0").as_ptr(),
         );
-        0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object_iterator::json_object)
+        0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object::json_object)
     } else {
         'loop2: loop {
             if !({
@@ -98,7 +88,7 @@ pub unsafe extern "C" fn json_object_from_file(
                 strerror(*__errno_location()),
             );
              printbuf_free(pb);
-             0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object_iterator::json_object)
+             0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object::json_object)
          } else {
              obj = json_tokener_parse((*pb).buf as (*const u8));
              printbuf_free(pb);
@@ -110,7 +100,7 @@ pub unsafe extern "C" fn json_object_from_file(
 #[no_mangle]
 pub unsafe extern "C" fn json_object_to_file_ext(
     mut filename: *const u8,
-    mut obj: *mut ::json_object_iterator::json_object,
+    mut obj: *mut ::json_object::json_object,
     mut flags: i32,
 ) -> i32 {
     let mut _currentBlock;
@@ -181,7 +171,7 @@ pub unsafe extern "C" fn json_object_to_file_ext(
 #[no_mangle]
 pub unsafe extern "C" fn json_object_to_file(
     mut filename: *const u8,
-    mut obj: *mut ::json_object_iterator::json_object,
+    mut obj: *mut ::json_object::json_object,
 ) -> i32 {
     json_object_to_file_ext(filename, obj, 0i32)
 }
