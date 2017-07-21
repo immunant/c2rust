@@ -124,9 +124,10 @@ impl Clone for data {
 pub struct json_object {
     pub o_type: json_type,
     pub _delete: unsafe extern "C" fn(*mut json_object),
-    pub _to_json_string: unsafe extern "C" fn(*mut json_object, *mut printbuf, i32, i32) -> i32,
+    pub _to_json_string:
+        unsafe extern "C" fn(*mut json_object, *mut ::json_object::printbuf, i32, i32) -> i32,
     pub _ref_count: i32,
-    pub _pb: *mut printbuf,
+    pub _pb: *mut ::json_object::printbuf,
     pub o: data,
     pub _user_delete: unsafe extern "C" fn(*mut json_object, *mut ::std::os::raw::c_void),
     pub _userdata: *mut ::std::os::raw::c_void,

@@ -5,17 +5,29 @@ extern "C" {
     fn isspace(arg1: i32) -> i32;
     static mut json_hex_chars: *const u8;
     static mut json_number_chars: *const u8;
-    fn json_object_array_add(obj: *mut json_object, val: *mut json_object) -> i32;
-    fn json_object_get(obj: *mut json_object) -> *mut json_object;
-    fn json_object_new_array() -> *mut json_object;
-    fn json_object_new_boolean(b: i32) -> *mut json_object;
-    fn json_object_new_double(d: f64) -> *mut json_object;
-    fn json_object_new_double_s(d: f64, ds: *const u8) -> *mut json_object;
-    fn json_object_new_int64(i: i64) -> *mut json_object;
-    fn json_object_new_object() -> *mut json_object;
-    fn json_object_new_string_len(s: *const u8, len: i32) -> *mut json_object;
-    fn json_object_object_add(obj: *mut json_object, key: *const u8, val: *mut json_object);
-    fn json_object_put(obj: *mut json_object) -> i32;
+    fn json_object_array_add(
+        obj: *mut ::json_object_iterator::json_object,
+        val: *mut ::json_object_iterator::json_object,
+    ) -> i32;
+    fn json_object_get(
+        obj: *mut ::json_object_iterator::json_object,
+    ) -> *mut ::json_object_iterator::json_object;
+    fn json_object_new_array() -> *mut ::json_object_iterator::json_object;
+    fn json_object_new_boolean(b: i32) -> *mut ::json_object_iterator::json_object;
+    fn json_object_new_double(d: f64) -> *mut ::json_object_iterator::json_object;
+    fn json_object_new_double_s(d: f64, ds: *const u8) -> *mut ::json_object_iterator::json_object;
+    fn json_object_new_int64(i: i64) -> *mut ::json_object_iterator::json_object;
+    fn json_object_new_object() -> *mut ::json_object_iterator::json_object;
+    fn json_object_new_string_len(
+        s: *const u8,
+        len: i32,
+    ) -> *mut ::json_object_iterator::json_object;
+    fn json_object_object_add(
+        obj: *mut ::json_object_iterator::json_object,
+        key: *const u8,
+        val: *mut ::json_object_iterator::json_object,
+    );
+    fn json_object_put(obj: *mut ::json_object_iterator::json_object) -> i32;
     fn json_parse_double(buf: *const u8, retval: *mut f64) -> i32;
     fn json_parse_int64(buf: *const u8, retval: *mut i64) -> i32;
     fn mc_debug(msg: *const u8, ...);
@@ -162,8 +174,8 @@ pub enum json_tokener_state {
 pub struct json_tokener_srec {
     pub state: json_tokener_state,
     pub saved_state: json_tokener_state,
-    pub obj: *mut json_object,
-    pub current: *mut json_object,
+    pub obj: *mut ::json_object_iterator::json_object,
+    pub current: *mut ::json_object_iterator::json_object,
     pub obj_field_name: *mut u8,
 }
 
@@ -249,7 +261,7 @@ unsafe extern "C" fn json_tokener_reset_level(mut tok: *mut json_tokener, mut de
         json_tokener_state::json_tokener_state_start;
     json_object_put((*(*tok).stack.offset(depth as (isize))).current);
     (*(*tok).stack.offset(depth as (isize))).current = 0i32 as (*mut ::std::os::raw::c_void) as
-        (*mut json_object);
+        (*mut ::json_object_iterator::json_object);
     free(
         (*(*tok).stack.offset(depth as (isize))).obj_field_name as (*mut ::std::os::raw::c_void),
     );
@@ -276,9 +288,11 @@ pub unsafe extern "C" fn json_tokener_reset(mut tok: *mut json_tokener) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn json_tokener_parse(mut str: *const u8) -> *mut json_object {
+pub unsafe extern "C" fn json_tokener_parse(
+    mut str: *const u8,
+) -> *mut ::json_object_iterator::json_object {
     let mut jerr_ignored: json_tokener_error = ::std::mem::uninitialized();
-    let mut obj: *mut json_object;
+    let mut obj: *mut ::json_object_iterator::json_object;
     obj = json_tokener_parse_verbose(str, &mut jerr_ignored as (*mut json_tokener_error));
     obj
 }
@@ -287,20 +301,24 @@ pub unsafe extern "C" fn json_tokener_parse(mut str: *const u8) -> *mut json_obj
 pub unsafe extern "C" fn json_tokener_parse_verbose(
     mut str: *const u8,
     mut error: *mut json_tokener_error,
-) -> *mut json_object {
+) -> *mut ::json_object_iterator::json_object {
     let mut tok: *mut json_tokener;
-    let mut obj: *mut json_object;
+    let mut obj: *mut ::json_object_iterator::json_object;
     tok = json_tokener_new();
     if tok.is_null() {
-        0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
+        0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object_iterator::json_object)
     } else {
         obj = json_tokener_parse_ex(tok, str, -1i32);
         *error = (*tok).err;
         if (*tok).err as (i32) != json_tokener_error::json_tokener_success as (i32) {
-            if obj != 0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object) {
+            if obj !=
+                0i32 as (*mut ::std::os::raw::c_void) as
+                    (*mut ::json_object_iterator::json_object)
+            {
                 json_object_put(obj);
             }
-            obj = 0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object);
+            obj = 0i32 as (*mut ::std::os::raw::c_void) as
+                (*mut ::json_object_iterator::json_object);
         }
         json_tokener_free(tok);
         obj
@@ -312,13 +330,14 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
     mut tok: *mut json_tokener,
     mut str: *const u8,
     mut len: i32,
-) -> *mut json_object {
+) -> *mut ::json_object_iterator::json_object {
     let mut unescaped_utf: [u8; 4] = ::std::mem::uninitialized();
     let mut case_start: *const u8 = ::std::mem::uninitialized();
     let mut case_len: i32 = ::std::mem::uninitialized();
     let mut got_hi_surrogate: u32 = ::std::mem::uninitialized();
     let mut _currentBlock;
-    let mut obj: *mut json_object = 0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object);
+    let mut obj: *mut ::json_object_iterator::json_object = 0i32 as (*mut ::std::os::raw::c_void) as
+        (*mut ::json_object_iterator::json_object);
     let mut c: u8 = b'\x01';
     let mut oldlocale: *mut u8 = 0i32 as (*mut ::std::os::raw::c_void) as (*mut u8);
     let mut tmplocale: *mut u8;
@@ -331,7 +350,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
     (*tok).err = json_tokener_error::json_tokener_success;
     if len < -1i32 || len == -1i32 && (strlen(str) > 2147483647u64) {
         (*tok).err = json_tokener_error::json_tokener_error_size;
-        0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
+        0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object_iterator::json_object)
     } else {
         'loop3: loop {
             if if (*tok).char_offset == len {
@@ -833,7 +852,8 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                         break;
                                     }
                                     (*(*tok).stack.offset((*tok).depth as (isize))).current =
-                                        0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object);
+                                        0i32 as (*mut ::std::os::raw::c_void) as
+                                            (*mut ::json_object_iterator::json_object);
                                     (*(*tok).stack.offset((*tok).depth as (isize))).saved_state =
                                         json_tokener_state::json_tokener_state_finish;
                                     (*(*tok).stack.offset((*tok).depth as (isize))).state =
@@ -2134,7 +2154,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
             free(oldlocale as (*mut ::std::os::raw::c_void));
         }
         (if (*tok).err as (i32) == json_tokener_error::json_tokener_success as (i32) {
-             let mut ret: *mut json_object =
+             let mut ret: *mut ::json_object_iterator::json_object =
                  json_object_get((*(*tok).stack.offset((*tok).depth as (isize))).current);
              let mut ii: i32;
              ii = (*tok).depth;
@@ -2154,7 +2174,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     (*tok).char_offset,
                 );
              }
-             0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
+             0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object_iterator::json_object)
          })
     }
 }
