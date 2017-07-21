@@ -975,7 +975,7 @@ pub unsafe extern fn json_tokener_parse_ex(
                 }
                 _currentBlock = 301;
             } else if _currentBlock == 61 {
-                let mut case_start : *const u8 = str;
+                case_start = str;
                 'loop62: loop {
                     if !(c as (i32) != b'*' as (i32)) {
                         break;
@@ -1046,7 +1046,7 @@ pub unsafe extern fn json_tokener_parse_ex(
                   )).state = json_tokener_state::json_tokener_state_comment_end;
                 _currentBlock = 301;
             } else if _currentBlock == 71 {
-                let mut case_start : *const u8 = str;
+                case_start = str;
                 'loop72: loop {
                     if !(c as (i32) != b'\n' as (i32)) {
                         break;
@@ -1119,7 +1119,7 @@ pub unsafe extern fn json_tokener_parse_ex(
                   )).state = json_tokener_state::json_tokener_state_eatws;
                 _currentBlock = 301;
             } else if _currentBlock == 83 {
-                let mut case_start : *const u8 = str;
+                case_start = str;
                 'loop84: loop {
                     if c as (i32) == (*tok).quote_char as (i32) {
                         _currentBlock = 94;
@@ -1620,7 +1620,7 @@ pub unsafe extern fn json_tokener_parse_ex(
                 }
                 _currentBlock = 301;
             } else if _currentBlock == 210 {
-                let mut case_start : *const u8 = str;
+                case_start = str;
                 'loop211: loop {
                     if c as (i32) == (*tok).quote_char as (i32) {
                         _currentBlock = 221;
