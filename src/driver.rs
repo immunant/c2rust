@@ -23,6 +23,7 @@ use syntax::parse::parser::Parser;
 use syntax::ptr::P;
 
 use remove_paren::remove_paren;
+use span_fix;
 use util::Lone;
 
 
@@ -102,7 +103,10 @@ pub fn run_compiler<F, R>(args: &[String],
 
     // Start of `compile_input` code
     let krate = driver::phase_1_parse_input(&sess, &input).unwrap();
-    // Leave parens in place until after expansion, unless we're stopping at phase 1.
+    // Leave parens in place until after expansion, unless we're stopping at phase 1.  But
+    // immediately fix up the attr spans, since during expansion, any `derive` attrs will be
+    // removed.
+    let krate = span_fix::fix_attr_spans(krate);
 
     if phase == Phase::Phase1 {
         let krate = remove_paren(krate);

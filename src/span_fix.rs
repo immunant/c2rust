@@ -174,6 +174,32 @@ impl Folder for FixMacros {
 }
 
 
+/// Folder for fixing up spans of items with attributes.  We set the span of the item to include
+/// all its attrs, so that removing the item will also remove the attrs from the source text.
+struct FixAttrs;
+
+impl Folder for FixAttrs {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+        let new_span = util::extended_span(i.span, &i.attrs);
+        let i =
+            if new_span != i.span {
+                i.map(|i| Item { span: new_span, ..i })
+            } else {
+                i
+            };
+        fold::noop_fold_item(i, self)
+    }
+
+    fn fold_mac(&mut self, mac: Mac) -> Mac {
+        fold::noop_fold_mac(mac, self)
+    }
+}
+
+
+pub fn fix_attr_spans<T: Fold>(node: T) -> <T as Fold>::Result {
+    node.fold(&mut FixAttrs)
+}
+
 pub fn fix_spans<T: Fold<Result=T>>(sess: &Session, node: T) -> T {
     let mut fix_format = FixFormat {
         sess: sess,
