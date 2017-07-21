@@ -1,4 +1,3 @@
-#![feature(untagged_unions)]
 
 extern {
     fn json_object_get_object(obj : *mut json_object) -> *mut lh_table;

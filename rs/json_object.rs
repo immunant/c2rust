@@ -1,4 +1,3 @@
-#![feature(untagged_unions)]
 
 extern {
     fn __errno_location() -> *mut i32;

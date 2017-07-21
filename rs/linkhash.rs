@@ -1,4 +1,3 @@
-#![feature(untagged_unions)]
 
 extern {
     fn calloc(

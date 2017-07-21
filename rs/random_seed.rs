@@ -1,4 +1,3 @@
-#![feature(untagged_unions)]
 
 extern {
     fn time(__timer : *mut i64) -> i64;

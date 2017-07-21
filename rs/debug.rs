@@ -1,4 +1,3 @@
-#![feature(untagged_unions)]
 
 #[no_mangle]
 pub static mut _syslog : i32 = 0i32;

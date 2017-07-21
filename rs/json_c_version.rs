@@ -1,4 +1,3 @@
-#![feature(untagged_unions)]
 
 #[no_mangle]
 pub unsafe extern fn json_c_version() -> *const u8 {
