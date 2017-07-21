@@ -1,59 +1,13 @@
 extern "C" {
     fn __errno_location() -> *mut i32;
-    fn array_list_add(al: *mut ::arraylist::array_list, data: *mut ::std::os::raw::c_void) -> i32;
-    fn array_list_free(al: *mut ::arraylist::array_list);
-    fn array_list_get_idx(al: *mut ::arraylist::array_list, i: i32) -> *mut ::std::os::raw::c_void;
-    fn array_list_length(al: *mut ::arraylist::array_list) -> i32;
-    fn array_list_new(
-        free_fn: unsafe extern "C" fn(*mut ::std::os::raw::c_void),
-    ) -> *mut ::arraylist::array_list;
-    fn array_list_put_idx(
-        al: *mut ::arraylist::array_list,
-        i: i32,
-        data: *mut ::std::os::raw::c_void,
-    ) -> i32;
-    fn array_list_sort(
-        arr: *mut ::arraylist::array_list,
-        compar: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void)
-                                     -> i32,
-    );
     fn calloc(__nmemb: u64, __size: u64) -> *mut ::std::os::raw::c_void;
     fn free(__ptr: *mut ::std::os::raw::c_void);
-    fn json_parse_int64(buf: *const u8, retval: *mut i64) -> i32;
-    fn lh_kchar_table_new(
-        size: i32,
-        name: *const u8,
-        free_fn: unsafe extern "C" fn(*mut ::linkhash::lh_entry),
-    ) -> *mut ::linkhash::lh_table;
-    fn lh_table_delete(t: *mut ::linkhash::lh_table, k: *const ::std::os::raw::c_void) -> i32;
-    fn lh_table_free(t: *mut ::linkhash::lh_table);
-    fn lh_table_insert(
-        t: *mut ::linkhash::lh_table,
-        k: *mut ::std::os::raw::c_void,
-        v: *const ::std::os::raw::c_void,
-    ) -> i32;
-    fn lh_table_length(t: *mut ::linkhash::lh_table) -> i32;
-    fn lh_table_lookup_entry(
-        t: *mut ::linkhash::lh_table,
-        k: *const ::std::os::raw::c_void,
-    ) -> *mut ::linkhash::lh_entry;
-    fn lh_table_lookup_ex(
-        t: *mut ::linkhash::lh_table,
-        k: *const ::std::os::raw::c_void,
-        v: *mut *mut ::std::os::raw::c_void,
-    ) -> i32;
     fn malloc(__size: u64) -> *mut ::std::os::raw::c_void;
     fn memcpy(
         __dest: *mut ::std::os::raw::c_void,
         __src: *const ::std::os::raw::c_void,
         __n: u64,
     ) -> *mut ::std::os::raw::c_void;
-    fn printbuf_free(p: *mut ::printbuf::printbuf);
-    fn printbuf_memappend(p: *mut ::printbuf::printbuf, buf: *const u8, size: i32) -> i32;
-    fn printbuf_memset(pb: *mut ::printbuf::printbuf, offset: i32, charvalue: i32, len: i32)
-        -> i32;
-    fn printbuf_new() -> *mut ::printbuf::printbuf;
-    fn printbuf_reset(p: *mut ::printbuf::printbuf);
     fn snprintf(__s: *mut u8, __maxlen: u64, __format: *const u8, ...) -> i32;
     fn sprintbuf(p: *mut ::printbuf::printbuf, msg: *const u8, ...) -> i32;
     fn strchr(__s: *const u8, __c: i32) -> *mut u8;
@@ -256,13 +210,13 @@ pub unsafe extern "C" fn json_object_to_json_string_ext(
         (*b"null\0").as_ptr()
     } else if (*jso)._pb.is_null() &&
                {
-            (*jso)._pb = printbuf_new();
+            (*jso)._pb = (::printbuf::printbuf_new)();
             (*jso)._pb
         }.is_null()
     {
         0i32 as (*mut ::std::os::raw::c_void) as (*const u8)
     } else {
-        printbuf_reset((*jso)._pb);
+        (::printbuf::printbuf_reset)((*jso)._pb);
         (if ((*jso)._to_json_string)(jso as (*mut json_object), (*jso)._pb, 0i32, flags) < 0i32 {
              0i32 as (*mut ::std::os::raw::c_void) as (*const u8)
          } else {
@@ -292,7 +246,7 @@ impl Clone for json_object_iter {
 
 unsafe extern "C" fn indent(mut pb: *mut ::printbuf::printbuf, mut level: i32, mut flags: i32) {
     if flags & 1i32 << 1i32 != 0 {
-        printbuf_memset(pb, -1i32, b' ' as (i32), level * 2i32);
+        (::printbuf::printbuf_memset)(pb, -1i32, b' ' as (i32), level * 2i32);
     }
 }
 
@@ -321,28 +275,28 @@ unsafe extern "C" fn json_escape_str(
             c as (i32) == b'\x08' as (i32)
         {
             if pos - start_offset > 0i32 {
-                printbuf_memappend(
+                (::printbuf::printbuf_memappend)(
                     pb,
                     str.offset(start_offset as (isize)) as (*const u8),
                     pos - start_offset,
                 );
             }
             if c as (i32) == b'\x08' as (i32) {
-                printbuf_memappend(pb, (*b"\\b\0").as_ptr(), 2i32);
+                (::printbuf::printbuf_memappend)(pb, (*b"\\b\0").as_ptr(), 2i32);
             } else if c as (i32) == b'\n' as (i32) {
-                printbuf_memappend(pb, (*b"\\n\0").as_ptr(), 2i32);
+                (::printbuf::printbuf_memappend)(pb, (*b"\\n\0").as_ptr(), 2i32);
             } else if c as (i32) == b'\r' as (i32) {
-                printbuf_memappend(pb, (*b"\\r\0").as_ptr(), 2i32);
+                (::printbuf::printbuf_memappend)(pb, (*b"\\r\0").as_ptr(), 2i32);
             } else if c as (i32) == b'\t' as (i32) {
-                printbuf_memappend(pb, (*b"\\t\0").as_ptr(), 2i32);
+                (::printbuf::printbuf_memappend)(pb, (*b"\\t\0").as_ptr(), 2i32);
             } else if c as (i32) == b'\x0C' as (i32) {
-                printbuf_memappend(pb, (*b"\\f\0").as_ptr(), 2i32);
+                (::printbuf::printbuf_memappend)(pb, (*b"\\f\0").as_ptr(), 2i32);
             } else if c as (i32) == b'\"' as (i32) {
-                printbuf_memappend(pb, (*b"\\\"\0").as_ptr(), 2i32);
+                (::printbuf::printbuf_memappend)(pb, (*b"\\\"\0").as_ptr(), 2i32);
             } else if c as (i32) == b'\\' as (i32) {
-                printbuf_memappend(pb, (*b"\\\\\0").as_ptr(), 2i32);
+                (::printbuf::printbuf_memappend)(pb, (*b"\\\\\0").as_ptr(), 2i32);
             } else if c as (i32) == b'/' as (i32) {
-                printbuf_memappend(pb, (*b"\\/\0").as_ptr(), 2i32);
+                (::printbuf::printbuf_memappend)(pb, (*b"\\/\0").as_ptr(), 2i32);
             }
             start_offset = {
                 pos = pos + 1;
@@ -350,7 +304,7 @@ unsafe extern "C" fn json_escape_str(
             };
         } else if c as (i32) < b' ' as (i32) {
             if pos - start_offset > 0i32 {
-                printbuf_memappend(
+                (::printbuf::printbuf_memappend)(
                     pb,
                     str.offset(start_offset as (isize)) as (*const u8),
                     pos - start_offset,
@@ -371,7 +325,7 @@ unsafe extern "C" fn json_escape_str(
         }
     }
     if pos - start_offset > 0i32 {
-        printbuf_memappend(
+        (::printbuf::printbuf_memappend)(
             pb,
             str.offset(start_offset as (isize)) as (*const u8),
             pos - start_offset,
@@ -446,7 +400,7 @@ unsafe extern "C" fn json_object_object_to_json_string(
 }
 
 unsafe extern "C" fn json_object_generic_delete(mut jso: *mut json_object) {
-    printbuf_free((*jso)._pb);
+    (::printbuf::printbuf_free)((*jso)._pb);
     free(jso as (*mut ::std::os::raw::c_void));
 }
 
@@ -464,7 +418,7 @@ unsafe extern "C" fn json_object_new(mut o_type: json_type) -> *mut json_object 
 }
 
 unsafe extern "C" fn json_object_object_delete(mut jso: *mut json_object) {
-    lh_table_free((*jso).o.c_object);
+    (::linkhash::lh_table_free)((*jso).o.c_object);
     json_object_generic_delete(jso);
 }
 
@@ -482,7 +436,7 @@ pub unsafe extern "C" fn json_object_new_object() -> *mut json_object {
         (*jso)._delete = json_object_object_delete as (unsafe extern "C" fn(*mut json_object));
         (*jso)._to_json_string = json_object_object_to_json_string as
             (unsafe extern "C" fn(*mut json_object, *mut ::printbuf::printbuf, i32, i32) -> i32);
-        (*jso).o.c_object = lh_kchar_table_new(
+        (*jso).o.c_object = (::linkhash::lh_kchar_table_new)(
             16i32,
             0i32 as (*mut ::std::os::raw::c_void) as (*const u8),
             json_object_lh_entry_free as
@@ -517,12 +471,12 @@ pub unsafe extern "C" fn json_object_object_add(
     let mut existing_value: *mut json_object = 0i32 as (*mut ::std::os::raw::c_void) as
         (*mut json_object);
     let mut existing_entry: *mut ::linkhash::lh_entry;
-    existing_entry = lh_table_lookup_entry(
+    existing_entry = (::linkhash::lh_table_lookup_entry)(
         (*jso).o.c_object,
         key as (*mut ::std::os::raw::c_void) as (*const ::std::os::raw::c_void),
     );
     if existing_entry.is_null() {
-        lh_table_insert(
+        (::linkhash::lh_table_insert)(
             (*jso).o.c_object,
             strdup(key) as (*mut ::std::os::raw::c_void),
             val as (*const ::std::os::raw::c_void),
@@ -538,7 +492,7 @@ pub unsafe extern "C" fn json_object_object_add(
 
 #[no_mangle]
 pub unsafe extern "C" fn json_object_object_length(mut jso: *mut json_object) -> i32 {
-    lh_table_length((*jso).o.c_object)
+    (::linkhash::lh_table_length)((*jso).o.c_object)
 }
 
 #[no_mangle]
@@ -569,7 +523,7 @@ pub unsafe extern "C" fn json_object_object_get_ex(
     } else {
         let switch4 = (*jso).o_type;
         (if switch4 as (i32) == json_type::json_type_object as (i32) {
-             lh_table_lookup_ex(
+             (::linkhash::lh_table_lookup_ex)(
                 (*jso).o.c_object,
                 key as (*mut ::std::os::raw::c_void) as (*const ::std::os::raw::c_void),
                 value as (*mut *mut ::std::os::raw::c_void),
@@ -585,7 +539,7 @@ pub unsafe extern "C" fn json_object_object_get_ex(
 
 #[no_mangle]
 pub unsafe extern "C" fn json_object_object_del(mut jso: *mut json_object, mut key: *const u8) {
-    lh_table_delete((*jso).o.c_object, key as (*const ::std::os::raw::c_void));
+    (::linkhash::lh_table_delete)((*jso).o.c_object, key as (*const ::std::os::raw::c_void));
 }
 
 unsafe extern "C" fn json_object_boolean_to_json_string(
@@ -666,7 +620,7 @@ pub unsafe extern "C" fn json_object_get_int(mut jso: *mut json_object) -> i32 {
         o_type = (*jso).o_type;
         cint64 = (*jso).o.c_int64;
         if o_type as (i32) == json_type::json_type_string as (i32) {
-            if json_parse_int64(
+            if (::json_util::json_parse_int64)(
                 (*jso).o.c_string.str as (*const u8),
                 &mut cint64 as (*mut i64),
             ) != 0i32
@@ -715,7 +669,7 @@ pub unsafe extern "C" fn json_object_get_int64(mut jso: *mut json_object) -> i64
     } else {
         let switch6 = (*jso).o_type;
         if switch6 as (i32) == json_type::json_type_string as (i32) {
-            if json_parse_int64(
+            if (::json_util::json_parse_int64)(
                 (*jso).o.c_string.str as (*const u8),
                 &mut cint as (*mut i64),
             ) == 0i32
@@ -796,7 +750,7 @@ unsafe extern "C" fn json_object_double_to_json_string(
         size = ((p as (isize)).wrapping_sub(buf.as_mut_ptr() as (isize)) /
                     ::std::mem::size_of::<u8>() as (isize)) as (i32);
     }
-    printbuf_memappend(pb, buf.as_mut_ptr() as (*const u8), size);
+    (::printbuf::printbuf_memappend)(pb, buf.as_mut_ptr() as (*const u8), size);
     size
 }
 
@@ -840,7 +794,7 @@ pub unsafe extern "C" fn json_object_userdata_to_json_string(
     mut flags: i32,
 ) -> i32 {
     let mut userdata_len: i32 = strlen((*jso)._userdata as (*const u8)) as (i32);
-    printbuf_memappend(pb, (*jso)._userdata as (*const u8), userdata_len);
+    (::printbuf::printbuf_memappend)(pb, (*jso)._userdata as (*const u8), userdata_len);
     userdata_len
 }
 
@@ -1025,7 +979,7 @@ unsafe extern "C" fn json_object_array_to_json_string(
 }
 
 unsafe extern "C" fn json_object_array_delete(mut jso: *mut json_object) {
-    array_list_free((*jso).o.c_array);
+    (::arraylist::array_list_free)((*jso).o.c_array);
     json_object_generic_delete(jso);
 }
 
@@ -1042,7 +996,7 @@ pub unsafe extern "C" fn json_object_new_array() -> *mut json_object {
         (*jso)._delete = json_object_array_delete as (unsafe extern "C" fn(*mut json_object));
         (*jso)._to_json_string = json_object_array_to_json_string as
             (unsafe extern "C" fn(*mut json_object, *mut ::printbuf::printbuf, i32, i32) -> i32);
-        (*jso).o.c_array = array_list_new(json_object_array_entry_free);
+        (*jso).o.c_array = (::arraylist::array_list_new)(json_object_array_entry_free);
         jso
     }
 }
@@ -1069,12 +1023,12 @@ pub unsafe extern "C" fn json_object_array_sort(
     mut sort_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void)
                                       -> i32,
 ) {
-    array_list_sort((*jso).o.c_array, sort_fn);
+    (::arraylist::array_list_sort)((*jso).o.c_array, sort_fn);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn json_object_array_length(mut jso: *mut json_object) -> i32 {
-    array_list_length((*jso).o.c_array)
+    (::arraylist::array_list_length)((*jso).o.c_array)
 }
 
 #[no_mangle]
@@ -1082,7 +1036,7 @@ pub unsafe extern "C" fn json_object_array_add(
     mut jso: *mut json_object,
     mut val: *mut json_object,
 ) -> i32 {
-    array_list_add((*jso).o.c_array, val as (*mut ::std::os::raw::c_void))
+    (::arraylist::array_list_add)((*jso).o.c_array, val as (*mut ::std::os::raw::c_void))
 }
 
 #[no_mangle]
@@ -1091,7 +1045,7 @@ pub unsafe extern "C" fn json_object_array_put_idx(
     mut idx: i32,
     mut val: *mut json_object,
 ) -> i32 {
-    array_list_put_idx((*jso).o.c_array, idx, val as (*mut ::std::os::raw::c_void))
+    (::arraylist::array_list_put_idx)((*jso).o.c_array, idx, val as (*mut ::std::os::raw::c_void))
 }
 
 #[no_mangle]
@@ -1099,5 +1053,5 @@ pub unsafe extern "C" fn json_object_array_get_idx(
     mut jso: *mut json_object,
     mut idx: i32,
 ) -> *mut json_object {
-    array_list_get_idx((*jso).o.c_array, idx) as (*mut json_object)
+    (::arraylist::array_list_get_idx)((*jso).o.c_array, idx) as (*mut json_object)
 }

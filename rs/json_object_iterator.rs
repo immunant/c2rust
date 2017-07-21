@@ -1,6 +1,4 @@
-extern "C" {
-    fn json_object_get_object(obj: *mut ::json_object::json_object) -> *mut ::linkhash::lh_table;
-}
+extern "C" {}
 
 pub enum printbuf {
 }
@@ -84,7 +82,7 @@ pub unsafe extern "C" fn json_object_iter_begin(
 ) -> json_object_iterator {
     let mut iter: json_object_iterator = ::std::mem::uninitialized();
     let mut pTable: *mut ::linkhash::lh_table;
-    pTable = json_object_get_object(obj as (*mut ::json_object::json_object)) as
+    pTable = (::json_object::json_object_get_object)(obj as (*mut ::json_object::json_object)) as
         (*mut ::linkhash::lh_table);
     iter.opaque_ = (*pTable).head as (*const ::std::os::raw::c_void);
     iter

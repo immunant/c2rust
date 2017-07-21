@@ -2,7 +2,6 @@
 extern "C" {
     fn calloc(__nmemb: u64, __size: u64) -> *mut ::std::os::raw::c_void;
     fn free(__ptr: *mut ::std::os::raw::c_void);
-    fn json_c_get_random_seed() -> i32;
     fn lh_abort(msg: *const u8, ...);
     fn strcmp(__s1: *const u8, __s2: *const u8) -> i32;
     fn strlen(__s: *const u8) -> u64;
@@ -443,7 +442,7 @@ pub unsafe extern "C" fn lh_char_hash(mut k: *const ::std::os::raw::c_void) -> u
         let mut seed: i32;
         'loop2: loop {
             if !({
-                     seed = json_c_get_random_seed();
+                     seed = (::random_seed::json_c_get_random_seed)();
                      seed
                  } == -1i32)
             {

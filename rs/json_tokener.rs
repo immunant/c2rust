@@ -5,36 +5,12 @@ extern "C" {
     fn isspace(arg1: i32) -> i32;
     static mut json_hex_chars: *const u8;
     static mut json_number_chars: *const u8;
-    fn json_object_array_add(
-        obj: *mut ::json_object::json_object,
-        val: *mut ::json_object::json_object,
-    ) -> i32;
-    fn json_object_get(obj: *mut ::json_object::json_object) -> *mut ::json_object::json_object;
-    fn json_object_new_array() -> *mut ::json_object::json_object;
-    fn json_object_new_boolean(b: i32) -> *mut ::json_object::json_object;
-    fn json_object_new_double(d: f64) -> *mut ::json_object::json_object;
-    fn json_object_new_double_s(d: f64, ds: *const u8) -> *mut ::json_object::json_object;
-    fn json_object_new_int64(i: i64) -> *mut ::json_object::json_object;
-    fn json_object_new_object() -> *mut ::json_object::json_object;
-    fn json_object_new_string_len(s: *const u8, len: i32) -> *mut ::json_object::json_object;
-    fn json_object_object_add(
-        obj: *mut ::json_object::json_object,
-        key: *const u8,
-        val: *mut ::json_object::json_object,
-    );
-    fn json_object_put(obj: *mut ::json_object::json_object) -> i32;
-    fn json_parse_double(buf: *const u8, retval: *mut f64) -> i32;
-    fn json_parse_int64(buf: *const u8, retval: *mut i64) -> i32;
     fn mc_debug(msg: *const u8, ...);
     fn memcpy(
         __dest: *mut ::std::os::raw::c_void,
         __src: *const ::std::os::raw::c_void,
         __n: u64,
     ) -> *mut ::std::os::raw::c_void;
-    fn printbuf_free(p: *mut ::printbuf::printbuf);
-    fn printbuf_memappend(p: *mut ::printbuf::printbuf, buf: *const u8, size: i32) -> i32;
-    fn printbuf_new() -> *mut ::printbuf::printbuf;
-    fn printbuf_reset(p: *mut ::printbuf::printbuf);
     fn setlocale(__category: i32, __locale: *const u8) -> *mut u8;
     fn strchr(__s: *const u8, __c: i32) -> *mut u8;
     fn strdup(__s: *const u8) -> *mut u8;
@@ -215,7 +191,7 @@ pub unsafe extern "C" fn json_tokener_new_ex(mut depth: i32) -> *mut json_tokene
              free(tok as (*mut ::std::os::raw::c_void));
              0i32 as (*mut ::std::os::raw::c_void) as (*mut json_tokener)
          } else {
-             (*tok).pb = printbuf_new();
+             (*tok).pb = (::printbuf::printbuf_new)();
              (*tok).max_depth = depth;
              json_tokener_reset(tok);
              tok
@@ -232,7 +208,7 @@ pub unsafe extern "C" fn json_tokener_new() -> *mut json_tokener {
 pub unsafe extern "C" fn json_tokener_free(mut tok: *mut json_tokener) {
     json_tokener_reset(tok);
     if !(*tok).pb.is_null() {
-        printbuf_free((*tok).pb);
+        (::printbuf::printbuf_free)((*tok).pb);
     }
     if !(*tok).stack.is_null() {
         free((*tok).stack as (*mut ::std::os::raw::c_void));
@@ -244,7 +220,7 @@ unsafe extern "C" fn json_tokener_reset_level(mut tok: *mut json_tokener, mut de
     (*(*tok).stack.offset(depth as (isize))).state = json_tokener_state::json_tokener_state_eatws;
     (*(*tok).stack.offset(depth as (isize))).saved_state =
         json_tokener_state::json_tokener_state_start;
-    json_object_put((*(*tok).stack.offset(depth as (isize))).current);
+    (::json_object::json_object_put)((*(*tok).stack.offset(depth as (isize))).current);
     (*(*tok).stack.offset(depth as (isize))).current = 0i32 as (*mut ::std::os::raw::c_void) as
         (*mut ::json_object::json_object);
     free(
@@ -295,7 +271,7 @@ pub unsafe extern "C" fn json_tokener_parse_verbose(
         *error = (*tok).err;
         if (*tok).err as (i32) != json_tokener_error::json_tokener_success as (i32) {
             if obj != 0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object::json_object) {
-                json_object_put(obj);
+                (::json_object::json_object_put)(obj);
             }
             obj = 0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object::json_object);
         }
@@ -415,7 +391,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     {
                         (*(*tok).stack.offset((*tok).depth as (isize))).state =
                             json_tokener_state::json_tokener_state_number;
-                        printbuf_reset((*tok).pb);
+                        (::printbuf::printbuf_reset)((*tok).pb);
                         (*tok).is_double = 0i32;
                     } else if c as (i32) == b'f' as (i32) || c as (i32) == b'F' as (i32) ||
                                c as (i32) == b't' as (i32) ||
@@ -423,7 +399,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     {
                         (*(*tok).stack.offset((*tok).depth as (isize))).state =
                             json_tokener_state::json_tokener_state_boolean;
-                        printbuf_reset((*tok).pb);
+                        (::printbuf::printbuf_reset)((*tok).pb);
                         (*tok).st_pos = 0i32;
                     } else {
                         if c as (i32) == b'\"' as (i32) {
@@ -437,7 +413,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                         if c as (i32) == b'n' as (i32) || c as (i32) == b'N' as (i32) {
                             (*(*tok).stack.offset((*tok).depth as (isize))).state =
                                 json_tokener_state::json_tokener_state_null;
-                            printbuf_reset((*tok).pb);
+                            (::printbuf::printbuf_reset)((*tok).pb);
                             (*tok).st_pos = 0i32;
                         } else {
                             if !(c as (i32) == b'i' as (i32) || c as (i32) == b'I' as (i32)) {
@@ -446,7 +422,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                             }
                             (*(*tok).stack.offset((*tok).depth as (isize))).state =
                                 json_tokener_state::json_tokener_state_inf;
-                            printbuf_reset((*tok).pb);
+                            (::printbuf::printbuf_reset)((*tok).pb);
                             (*tok).st_pos = 0i32;
                         }
                     }
@@ -472,7 +448,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     if switch1 as (i32) ==
                         json_tokener_state::json_tokener_state_object_value_add as (i32)
                     {
-                        json_object_object_add(
+                        (::json_object::json_object_object_add)(
                             (*(*tok).stack.offset((*tok).depth as (isize))).current,
                             (*(*tok).stack.offset((*tok).depth as (isize))).obj_field_name as
                                 (*const u8),
@@ -530,7 +506,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                         if switch1 as (i32) ==
                             json_tokener_state::json_tokener_state_array_add as (i32)
                         {
-                            json_object_array_add(
+                            (::json_object::json_object_array_add)(
                                 (*(*tok).stack.offset((*tok).depth as (isize))).current,
                                 obj,
                             );
@@ -623,7 +599,11 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                     (*(*tok).pb).bpos = (*(*tok).pb).bpos + case_len;
                                     *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                                 } else {
-                                    printbuf_memappend((*tok).pb, case_start, case_len);
+                                    (::printbuf::printbuf_memappend)(
+                                        (*tok).pb,
+                                        case_start,
+                                        case_len,
+                                    );
                                 }
                             }
                             if *(*(*tok).pb).buf.offset(0isize) as (i32) == b'-' as (i32) &&
@@ -636,7 +616,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                 let mut num64: i64 = ::std::mem::uninitialized();
                                 let mut numd: f64 = ::std::mem::uninitialized();
                                 if (*tok).is_double == 0 &&
-                                    (json_parse_int64(
+                                    ((::json_util::json_parse_int64)(
                                         (*(*tok).pb).buf as (*const u8),
                                         &mut num64 as (*mut i64),
                                     ) == 0i32)
@@ -650,10 +630,10 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                         break 'loop3;
                                     }
                                     (*(*tok).stack.offset((*tok).depth as (isize))).current =
-                                        json_object_new_int64(num64);
+                                        (::json_object::json_object_new_int64)(num64);
                                 } else {
                                     if !((*tok).is_double != 0 &&
-                                             (json_parse_double(
+                                             ((::json_util::json_parse_double)(
                                             (*(*tok).pb).buf as (*const u8),
                                             &mut numd as (*mut f64),
                                         ) == 0i32))
@@ -662,7 +642,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                         break 'loop3;
                                     }
                                     (*(*tok).stack.offset((*tok).depth as (isize))).current =
-                                        json_object_new_double_s(
+                                        (::json_object::json_object_new_double_s)(
                                             numd,
                                             (*(*tok).pb).buf as (*const u8),
                                         );
@@ -687,7 +667,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                 (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                                 *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                             } else {
-                                printbuf_memappend(
+                                (::printbuf::printbuf_memappend)(
                                     (*tok).pb,
                                     &mut c as (*mut u8) as (*const u8),
                                     1i32,
@@ -720,7 +700,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                     break;
                                 }
                                 (*(*tok).stack.offset((*tok).depth as (isize))).current =
-                                    json_object_new_boolean(1i32);
+                                    (::json_object::json_object_new_boolean)(1i32);
                                 (*(*tok).stack.offset((*tok).depth as (isize))).saved_state =
                                     json_tokener_state::json_tokener_state_finish;
                                 (*(*tok).stack.offset((*tok).depth as (isize))).state =
@@ -746,7 +726,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                     break;
                                 }
                                 (*(*tok).stack.offset((*tok).depth as (isize))).current =
-                                    json_object_new_boolean(0i32);
+                                    (::json_object::json_object_new_boolean)(0i32);
                                 (*(*tok).stack.offset((*tok).depth as (isize))).saved_state =
                                     json_tokener_state::json_tokener_state_finish;
                                 (*(*tok).stack.offset((*tok).depth as (isize))).state =
@@ -798,7 +778,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                     (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                                     *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                                 } else {
-                                    printbuf_memappend(
+                                    (::printbuf::printbuf_memappend)(
                                         (*tok).pb,
                                         &mut c as (*mut u8) as (*const u8),
                                         1i32,
@@ -858,7 +838,9 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                         break;
                                     }
                                     (*(*tok).stack.offset((*tok).depth as (isize))).current =
-                                        json_object_new_double((0.0f32 / 0.0f32) as (f64));
+                                        (::json_object::json_object_new_double)(
+                                            (0.0f32 / 0.0f32) as (f64),
+                                        );
                                     (*(*tok).stack.offset((*tok).depth as (isize))).saved_state =
                                         json_tokener_state::json_tokener_state_finish;
                                     (*(*tok).stack.offset((*tok).depth as (isize))).state =
@@ -879,7 +861,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                     (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                                     *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                                 } else {
-                                    printbuf_memappend(
+                                    (::printbuf::printbuf_memappend)(
                                         (*tok).pb,
                                         &mut c as (*mut u8) as (*const u8),
                                         1i32,
@@ -915,7 +897,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                     break;
                                 }
                                 (*(*tok).stack.offset((*tok).depth as (isize))).current =
-                                    json_object_new_double(if is_negative != 0 {
+                                    (::json_object::json_object_new_double)(if is_negative != 0 {
                                         -(1.0f32 / 0.0f32)
                                     } else {
                                         1.0f32 / 0.0f32
@@ -935,7 +917,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                     _currentBlock = 303;
                                     break 'loop3;
                                 }
-                                obj = json_object_get(
+                                obj = (::json_object::json_object_get)(
                                     (*(*tok).stack.offset((*tok).depth as (isize))).current,
                                 );
                                 json_tokener_reset_level(tok, (*tok).depth);
@@ -973,7 +955,11 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                     *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                 } else {
-                    printbuf_memappend((*tok).pb, &mut c as (*mut u8) as (*const u8), 1i32);
+                    (::printbuf::printbuf_memappend)(
+                        (*tok).pb,
+                        &mut c as (*mut u8) as (*const u8),
+                        1i32,
+                    );
                 }
                 _currentBlock = 301;
             } else if _currentBlock == 61 {
@@ -1034,7 +1020,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                             (i32);
                     *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                 } else {
-                    printbuf_memappend(
+                    (::printbuf::printbuf_memappend)(
                         (*tok).pb,
                         case_start,
                         ((str.offset(1isize) as (isize)).wrapping_sub(case_start as (isize)) /
@@ -1101,7 +1087,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                         (i32);
                     *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                 } else {
-                    printbuf_memappend(
+                    (::printbuf::printbuf_memappend)(
                         (*tok).pb,
                         case_start,
                         ((str as (isize)).wrapping_sub(case_start as (isize)) /
@@ -1182,7 +1168,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                 (i32);
                         *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                     } else {
-                        printbuf_memappend(
+                        (::printbuf::printbuf_memappend)(
                             (*tok).pb,
                             case_start,
                             ((str as (isize)).wrapping_sub(case_start as (isize)) /
@@ -1214,7 +1200,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                 (i32);
                         *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                     } else {
-                        printbuf_memappend(
+                        (::printbuf::printbuf_memappend)(
                             (*tok).pb,
                             case_start,
                             ((str as (isize)).wrapping_sub(case_start as (isize)) /
@@ -1223,7 +1209,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                         );
                     }
                     (*(*tok).stack.offset((*tok).depth as (isize))).current =
-                        json_object_new_string_len(
+                        (::json_object::json_object_new_string_len)(
                             (*(*tok).pb).buf as (*const u8),
                             (*(*tok).pb).bpos,
                         );
@@ -1270,7 +1256,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                 (*(*tok).pb).bpos = (*(*tok).pb).bpos + 3i32;
                                 *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                             } else {
-                                printbuf_memappend(
+                                (::printbuf::printbuf_memappend)(
                                     (*tok).pb,
                                     utf8_replacement_char.as_mut_ptr() as (*const u8),
                                     3i32,
@@ -1321,7 +1307,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                 (*(*tok).pb).bpos = (*(*tok).pb).bpos + 3i32;
                                 *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                             } else {
-                                printbuf_memappend(
+                                (::printbuf::printbuf_memappend)(
                                     (*tok).pb,
                                     utf8_replacement_char.as_mut_ptr() as (*const u8),
                                     3i32,
@@ -1414,7 +1400,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                             (*(*tok).pb).bpos = (*(*tok).pb).bpos + 3i32;
                             *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                         } else {
-                            printbuf_memappend(
+                            (::printbuf::printbuf_memappend)(
                                 (*tok).pb,
                                 utf8_replacement_char.as_mut_ptr() as (*const u8),
                                 3i32,
@@ -1435,7 +1421,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                             (*(*tok).pb).bpos = (*(*tok).pb).bpos + 3i32;
                             *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                         } else {
-                            printbuf_memappend(
+                            (::printbuf::printbuf_memappend)(
                                 (*tok).pb,
                                 unescaped_utf.as_mut_ptr() as (*const u8),
                                 3i32,
@@ -1459,7 +1445,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                             (*(*tok).pb).bpos = (*(*tok).pb).bpos + 4i32;
                             *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                         } else {
-                            printbuf_memappend(
+                            (::printbuf::printbuf_memappend)(
                                 (*tok).pb,
                                 unescaped_utf.as_mut_ptr() as (*const u8),
                                 4i32,
@@ -1475,7 +1461,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                         (*(*tok).pb).bpos = (*(*tok).pb).bpos + 3i32;
                         *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                     } else {
-                        printbuf_memappend(
+                        (::printbuf::printbuf_memappend)(
                             (*tok).pb,
                             utf8_replacement_char.as_mut_ptr() as (*const u8),
                             3i32,
@@ -1492,7 +1478,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                         (*(*tok).pb).bpos = (*(*tok).pb).bpos + 3i32;
                         *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                     } else {
-                        printbuf_memappend(
+                        (::printbuf::printbuf_memappend)(
                             (*tok).pb,
                             utf8_replacement_char.as_mut_ptr() as (*const u8),
                             3i32,
@@ -1511,7 +1497,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                         (*(*tok).pb).bpos = (*(*tok).pb).bpos + 2i32;
                         *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                     } else {
-                        printbuf_memappend(
+                        (::printbuf::printbuf_memappend)(
                             (*tok).pb,
                             unescaped_utf.as_mut_ptr() as (*const u8),
                             2i32,
@@ -1529,7 +1515,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                         (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                         *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                     } else {
-                        printbuf_memappend(
+                        (::printbuf::printbuf_memappend)(
                             (*tok).pb,
                             unescaped_utf.as_mut_ptr() as (*const u8),
                             1i32,
@@ -1591,7 +1577,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                         break;
                     }
                     (*tok).quote_char = c;
-                    printbuf_reset((*tok).pb);
+                    (::printbuf::printbuf_reset)((*tok).pb);
                     (*(*tok).stack.offset((*tok).depth as (isize))).state =
                         json_tokener_state::json_tokener_state_object_field;
                 }
@@ -1661,7 +1647,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                 (i32);
                         *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                     } else {
-                        printbuf_memappend(
+                        (::printbuf::printbuf_memappend)(
                             (*tok).pb,
                             case_start,
                             ((str as (isize)).wrapping_sub(case_start as (isize)) /
@@ -1693,7 +1679,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                                 (i32);
                         *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                     } else {
-                        printbuf_memappend(
+                        (::printbuf::printbuf_memappend)(
                             (*tok).pb,
                             case_start,
                             ((str as (isize)).wrapping_sub(case_start as (isize)) /
@@ -1750,7 +1736,11 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                         (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                         *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                     } else {
-                        printbuf_memappend((*tok).pb, &mut c as (*mut u8) as (*const u8), 1i32);
+                        (::printbuf::printbuf_memappend)(
+                            (*tok).pb,
+                            &mut c as (*mut u8) as (*const u8),
+                            1i32,
+                        );
                     }
                     (*(*tok).stack.offset((*tok).depth as (isize))).state =
                         (*(*tok).stack.offset((*tok).depth as (isize))).saved_state;
@@ -1779,7 +1769,11 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                             (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                             *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                         } else {
-                            printbuf_memappend((*tok).pb, (*b"\x08\0").as_ptr(), 1i32);
+                            (::printbuf::printbuf_memappend)(
+                                (*tok).pb,
+                                (*b"\x08\0").as_ptr(),
+                                1i32,
+                            );
                         }
                     } else if c as (i32) == b'n' as (i32) {
                         if (*(*tok).pb).size - (*(*tok).pb).bpos > 1i32 {
@@ -1792,7 +1786,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                             (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                             *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                         } else {
-                            printbuf_memappend((*tok).pb, (*b"\n\0").as_ptr(), 1i32);
+                            (::printbuf::printbuf_memappend)((*tok).pb, (*b"\n\0").as_ptr(), 1i32);
                         }
                     } else if c as (i32) == b'r' as (i32) {
                         if (*(*tok).pb).size - (*(*tok).pb).bpos > 1i32 {
@@ -1805,7 +1799,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                             (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                             *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                         } else {
-                            printbuf_memappend((*tok).pb, (*b"\r\0").as_ptr(), 1i32);
+                            (::printbuf::printbuf_memappend)((*tok).pb, (*b"\r\0").as_ptr(), 1i32);
                         }
                     } else if c as (i32) == b't' as (i32) {
                         if (*(*tok).pb).size - (*(*tok).pb).bpos > 1i32 {
@@ -1818,7 +1812,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                             (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                             *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                         } else {
-                            printbuf_memappend((*tok).pb, (*b"\t\0").as_ptr(), 1i32);
+                            (::printbuf::printbuf_memappend)((*tok).pb, (*b"\t\0").as_ptr(), 1i32);
                         }
                     } else if c as (i32) == b'f' as (i32) {
                         if (*(*tok).pb).size - (*(*tok).pb).bpos > 1i32 {
@@ -1831,7 +1825,11 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                             (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                             *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                         } else {
-                            printbuf_memappend((*tok).pb, (*b"\x0C\0").as_ptr(), 1i32);
+                            (::printbuf::printbuf_memappend)(
+                                (*tok).pb,
+                                (*b"\x0C\0").as_ptr(),
+                                1i32,
+                            );
                         }
                     }
                     (*(*tok).stack.offset((*tok).depth as (isize))).state =
@@ -1849,7 +1847,11 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                     *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                 } else {
-                    printbuf_memappend((*tok).pb, &mut c as (*mut u8) as (*const u8), 1i32);
+                    (::printbuf::printbuf_memappend)(
+                        (*tok).pb,
+                        &mut c as (*mut u8) as (*const u8),
+                        1i32,
+                    );
                 }
                 if c as (i32) == b'/' as (i32) {
                     if false {
@@ -1872,7 +1874,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     (*(*tok).stack.offset((*tok).depth as (isize))).saved_state =
                         json_tokener_state::json_tokener_state_array;
                     (*(*tok).stack.offset((*tok).depth as (isize))).current =
-                        json_object_new_array();
+                        (::json_object::json_object_new_array)();
                 } else {
                     if !(c as (i32) == b'{' as (i32)) {
                         _currentBlock = 283;
@@ -1883,7 +1885,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     (*(*tok).stack.offset((*tok).depth as (isize))).saved_state =
                         json_tokener_state::json_tokener_state_object_field_start;
                     (*(*tok).stack.offset((*tok).depth as (isize))).current =
-                        json_object_new_object();
+                        (::json_object::json_object_new_object)();
                 }
                 _currentBlock = 301;
             } else if _currentBlock == 288 {
@@ -1893,7 +1895,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                 }
                 _currentBlock = 290;
             } else if _currentBlock == 296 {
-                printbuf_reset((*tok).pb);
+                (::printbuf::printbuf_reset)((*tok).pb);
                 if (*(*tok).pb).size - (*(*tok).pb).bpos > 1i32 {
                     memcpy(
                         (*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) as
@@ -1904,7 +1906,11 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     (*(*tok).pb).bpos = (*(*tok).pb).bpos + 1i32;
                     *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                 } else {
-                    printbuf_memappend((*tok).pb, &mut c as (*mut u8) as (*const u8), 1i32);
+                    (::printbuf::printbuf_memappend)(
+                        (*tok).pb,
+                        &mut c as (*mut u8) as (*const u8),
+                        1i32,
+                    );
                 }
                 (*(*tok).stack.offset((*tok).depth as (isize))).state =
                     json_tokener_state::json_tokener_state_comment_start;
@@ -1913,7 +1919,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
             if _currentBlock == 290 {
                 (*(*tok).stack.offset((*tok).depth as (isize))).state =
                     json_tokener_state::json_tokener_state_string;
-                printbuf_reset((*tok).pb);
+                (::printbuf::printbuf_reset)((*tok).pb);
                 (*tok).quote_char = c;
             }
             if {
@@ -1950,7 +1956,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     (i32);
                 *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
             } else {
-                printbuf_memappend(
+                (::printbuf::printbuf_memappend)(
                     (*tok).pb,
                     case_start,
                     ((str as (isize)).wrapping_sub(case_start as (isize)) /
@@ -1975,7 +1981,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     (i32);
                 *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
             } else {
-                printbuf_memappend(
+                (::printbuf::printbuf_memappend)(
                     (*tok).pb,
                     case_start,
                     ((str as (isize)).wrapping_sub(case_start as (isize)) /
@@ -2000,7 +2006,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     (i32);
                 *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
             } else {
-                printbuf_memappend(
+                (::printbuf::printbuf_memappend)(
                     (*tok).pb,
                     case_start,
                     ((str as (isize)).wrapping_sub(case_start as (isize)) /
@@ -2021,7 +2027,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     (*(*tok).pb).bpos = (*(*tok).pb).bpos + 3i32;
                     *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
                 } else {
-                    printbuf_memappend(
+                    (::printbuf::printbuf_memappend)(
                         (*tok).pb,
                         utf8_replacement_char.as_mut_ptr() as (*const u8),
                         3i32,
@@ -2039,7 +2045,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                 (*(*tok).pb).bpos = (*(*tok).pb).bpos + 3i32;
                 *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
             } else {
-                printbuf_memappend(
+                (::printbuf::printbuf_memappend)(
                     (*tok).pb,
                     utf8_replacement_char.as_mut_ptr() as (*const u8),
                     3i32,
@@ -2062,7 +2068,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                 (*(*tok).pb).bpos = (*(*tok).pb).bpos + case_len;
                 *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
             } else {
-                printbuf_memappend((*tok).pb, case_start, case_len);
+                (::printbuf::printbuf_memappend)((*tok).pb, case_start, case_len);
             }
         } else if _currentBlock == 193 {
             (*tok).err = json_tokener_error::json_tokener_error_depth;
@@ -2092,7 +2098,7 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
                     (i32);
                 *(*(*tok).pb).buf.offset((*(*tok).pb).bpos as (isize)) = b'\0';
             } else {
-                printbuf_memappend(
+                (::printbuf::printbuf_memappend)(
                     (*tok).pb,
                     case_start,
                     ((str as (isize)).wrapping_sub(case_start as (isize)) /
@@ -2134,7 +2140,9 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
         }
         (if (*tok).err as (i32) == json_tokener_error::json_tokener_success as (i32) {
              let mut ret: *mut ::json_object::json_object =
-                 json_object_get((*(*tok).stack.offset((*tok).depth as (isize))).current);
+                 (::json_object::json_object_get)(
+                (*(*tok).stack.offset((*tok).depth as (isize))).current,
+            );
              let mut ii: i32;
              ii = (*tok).depth;
              'loop315: loop {
