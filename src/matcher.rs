@@ -1,6 +1,7 @@
 use std::collections::hash_map::HashMap;
 use std::cmp;
 use std::result;
+use rustc::hir::map::Node;
 use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Block};
 use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};
@@ -12,6 +13,7 @@ use syntax::tokenstream::ThinTokenStream;
 use syntax::util::move_map::MoveMap;
 use syntax::util::small_vector::SmallVector;
 
+use api::DriverCtxtExt;
 use bindings::{self, Bindings};
 use command::CommandState;
 use driver;
@@ -33,8 +35,12 @@ pub enum Error {
     // pattern matches a different ident/expr/stmt than the 1st occurrence.
     NonlinearMismatch,
 
-    // A `marked!` pattern tried to match a non-marked node.
+    /// A `marked!` pattern tried to match a non-marked node.
     NotMarked,
+
+    /// A `def!` pattern failed to match because the target is not a reference to the expected
+    /// item.
+    DefMismatch,
 
     BadSpecialPattern(Symbol),
 }
@@ -242,7 +248,41 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
         self.try_match(&pattern, target)
     }
 
+    pub fn do_def_expr(&mut self, tts: &ThinTokenStream, target: &Expr) -> Result<()> {
+        let mut p = Parser::new(&self.cx.session().parse_sess,
+                                tts.clone().into(),
+                                None, false, false);
+        let name = p.parse_ident().unwrap().name;
+        let label =
+            if p.eat(&Token::Comma) {
+                p.parse_ident().unwrap().name
+            } else {
+                "target".into_symbol()
+            };
 
+        let def_id = match_or!([self.cx.try_resolve_expr(target)] Some(x) => x;
+                               return Err(Error::DefMismatch));
+        let node_id = match_or!([self.cx.hir_map().as_local_node_id(def_id)] Some(x) => x;
+                                return Err(Error::DefMismatch));
+        if !self.st.marked(node_id, label) {
+            return Err(Error::DefMismatch);
+        }
+
+        let node = match_or!([self.cx.hir_map().get_if_local(def_id)] Some(x) => x;
+                             return Err(Error::DefMismatch));
+        let node_name = match node {
+            Node::NodeItem(i) => i.name,
+            Node::NodeForeignItem(i) => i.name,
+            Node::NodeTraitItem(i) => i.name,
+            Node::NodeImplItem(i) => i.name,
+            _ => panic!("expected item-like"),
+        };
+        if node_name != name {
+            return Err(Error::DefMismatch);
+        }
+
+        Ok(())
+    }
 }
 
 pub trait TryMatch {

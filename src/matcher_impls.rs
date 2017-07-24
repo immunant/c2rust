@@ -53,7 +53,7 @@ impl TryMatch for Expr {
                 "marked" => mcx.do_marked(&mac.node.tts,
                                           |p| p.parse_expr().map(|p| p.unwrap()),
                                           target),
-                //"def" => mcx.do_def_expr(&mac.tts, target),
+                "def" => mcx.do_def_expr(&mac.node.tts, target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
         }
