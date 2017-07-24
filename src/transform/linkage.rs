@@ -144,73 +144,6 @@ impl Transform for LinkIncompleteTypes {
 }
 
 
-/// Replace all uses of `target` items with references to the `repl` item, and remove all `target`
-/// items.
-pub struct ReplaceItems;
-
-impl Transform for ReplaceItems {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        // (1) Scan items for `target` and `repl` marks, collecting the relevant `DefId`s and
-        // removing all `target` items.
-
-        let mut target_ids = HashSet::new();
-        let mut repl_id = None;
-
-        let krate = fold_nodes(krate, |i: P<Item>| {
-            if st.marked(i.id, "repl") {
-                if repl_id.is_none() {
-                    repl_id = Some(cx.node_def_id(i.id));
-                } else {
-                    panic!("found multiple `repl` items");
-                }
-            }
-
-            if st.marked(i.id, "target") {
-                target_ids.insert(cx.node_def_id(i.id));
-                SmallVector::new()
-            } else {
-                SmallVector::one(i)
-            }
-        });
-
-        let repl_id = repl_id.expect("found no `repl` item");
-
-        // (2) Rewrite references to `target` items to refer to `repl` instead.
-
-        let krate = fold_resolved_paths(krate, cx, |qself, path, def_id| {
-            if target_ids.contains(&def_id) {
-                (None, cx.def_path(repl_id))
-            } else {
-                (qself, path)
-            }
-        });
-
-        // (3) Find impls for `target` types, and remove them.  This way, if a struct is removed,
-        // we also remove the associated `Clone` impl.
-
-        let krate = fold_nodes(krate, |i: P<Item>| {
-            let opt_def_id = match i.node {
-                ItemKind::Impl(_, _, _, _, _, ref ty, _) => cx.try_resolve_ty(ty),
-                _ => None,
-            };
-
-            if let Some(def_id) = opt_def_id {
-                if target_ids.contains(&def_id) {
-                    return SmallVector::new();
-                }
-            }
-            SmallVector::one(i)
-        });
-
-        krate
-    }
-
-    fn min_phase(&self) -> Phase {
-        Phase::Phase3
-    }
-}
-
-
 /// Replace identically-named structs with a canonical (`target`-marked) version.
 pub struct CanonicalizeStructs;
 
@@ -300,6 +233,5 @@ pub fn register_commands(reg: &mut Registry) {
 
     reg.register("link_funcs", |_args| mk(LinkFuncs));
     reg.register("link_incomplete_types", |_args| mk(LinkIncompleteTypes));
-    reg.register("replace_items", |_args| mk(ReplaceItems));
     reg.register("canonicalize_structs", |_args| mk(CanonicalizeStructs));
 }
