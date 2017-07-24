@@ -136,8 +136,12 @@ function! IdiomizeOutputHandler(channel, msg)
         call s:SetMark("'<", json["file"], json["start_line"], json["start_col"] + 1)
         call s:SetMark("'>", json["file"], json["end_line"], json["end_col"] + 1)
         "normal gv
-        call s:Highlight(json["start_line"], json["start_col"] + 1,
-                    \ json["end_line"], json["end_col"] + 1)
+        let nr = bufnr(json["file"])
+        if nr != -1
+            call s:Highlight(nr,
+                        \ json["start_line"], json["start_col"] + 1,
+                        \ json["end_line"], json["end_col"] + 1)
+        endif
         echo "Marked node as " . join(json["labels"], ", ")
     elseif json["msg"] == "node-list"
         call s:ClearHighlights()
@@ -192,17 +196,32 @@ endfunction
 
 hi default IdiomizeMarkedNode ctermbg=52
 
-function! s:Highlight(line1, col1, line2, col2)
+function! s:Highlight(nr, line1, col1, line2, col2)
     let pat = '\%' . a:line1 . 'l\%' . a:col1 . 'c\_.*' .
                 \ '\%' . a:line2 . 'l\%' . a:col2 . 'c'
     echom "highlight" pat
+
+    let cur_nr = bufnr("%")
+
+    if a:nr != cur_nr
+        exec 'buffer ' . a:nr
+    endif
     let hl = matchadd("IdiomizeMarkedNode", pat)
-    call add(s:highlights, hl)
+    echom 'hilite' hl 'in buf' a:nr
+    if a:nr != cur_nr
+        exec 'buffer ' . cur_nr
+    endif
+
+    call add(s:highlights, [hl, a:nr])
 endfunction
 
 function! s:ClearHighlights()
-    for hl in s:highlights
+    let cur_nr = bufnr("%")
+    for [hl, nr] in s:highlights
+        echom 'clear' hl 'in buf' nr
+        exec 'buffer ' . nr
         call matchdelete(hl)
     endfor
+    exec 'buffer ' . cur_nr
     let s:highlights = []
 endfunction
