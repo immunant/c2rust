@@ -34,7 +34,7 @@ pub struct LinkFuncs;
 
 impl Transform for LinkFuncs {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        // (1) Find all `#[no_mangle]` or `#[link_name=...]` functions, and index them by symbol.
+        // (1) Find all `#[no_mangle]` or `#[export_name=...]` functions, and index them by symbol.
         // (2) Find all extern fns, and index them by def_id.
         let mut symbol_to_def = HashMap::new();
         let mut extern_def_to_symbol = HashMap::new();
@@ -42,7 +42,7 @@ impl Transform for LinkFuncs {
         visit_fns(&krate, |fl| {
             let def_id = cx.node_def_id(fl.id);
             if fl.kind != FnKind::Foreign {
-                if let Some(name) = attr::first_attr_value_str_by_name(&fl.attrs, "link_name") {
+                if let Some(name) = attr::first_attr_value_str_by_name(&fl.attrs, "export_name") {
                     symbol_to_def.insert(name, def_id);
                 } else if attr::contains_name(&fl.attrs, "no_mangle") {
                     symbol_to_def.insert(fl.ident.name, def_id);

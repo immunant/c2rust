@@ -2,6 +2,7 @@
 use syntax::abi::Abi;
 use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Spanned};
+use syntax::parse::token::{self, Token};
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, TokenStream, ThinTokenStream};
 
@@ -165,6 +166,7 @@ pub struct Builder {
     unsafety: Unsafety,
     constness: Constness,
     abi: Abi,
+    attrs: Vec<Attribute>,
 }
 
 #[allow(dead_code)]
@@ -177,6 +179,7 @@ impl Builder {
             unsafety: Unsafety::Normal,
             constness: Constness::NotConst,
             abi: Abi::Rust,
+            attrs: Vec::new(),
         }
     }
 
@@ -240,6 +243,29 @@ impl Builder {
     }
 
 
+    pub fn str_attr<K, V>(self, key: K, value: V) -> Self
+            where K: Make<PathSegment>, V: IntoSymbol {
+        let key = vec![key].make(&self);
+
+        let mut attrs = self.attrs;
+        attrs.push(Attribute {
+            id: AttrId(0),
+            style: AttrStyle::Outer,
+            path: key,
+            tokens: vec![
+                Token::Eq,
+                Token::Literal(token::Lit::Str_(value.into_symbol()), None),
+            ].into_iter().collect(),
+            is_sugared_doc: false,
+            span: DUMMY_SP,
+        });
+        Builder {
+            attrs: attrs,
+            .. self
+        }
+    }
+
+
     // Simple nodes
 
     pub fn path_segment<S>(self, seg: S) -> PathSegment
@@ -274,7 +300,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             node: ExprKind::Call(func, args),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         })
     }
 
@@ -293,7 +319,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             node: ExprKind::MethodCall(seg, all_args),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         })
     }
 
@@ -305,7 +331,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             node: ExprKind::Unary(op, a),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         })
     }
 
@@ -316,7 +342,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             node: ExprKind::Lit(lit),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         })
     }
 
@@ -328,7 +354,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             node: ExprKind::Cast(e, t),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         })
     }
 
@@ -339,7 +365,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             node: ExprKind::Block(blk),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         })
     }
 
@@ -351,7 +377,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             node: ExprKind::Assign(lhs, rhs),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         })
     }
 
@@ -362,7 +388,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             node: ExprKind::Path(None, path),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         })
     }
 
@@ -379,7 +405,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             node: ExprKind::AddrOf(self.mutbl, e),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         })
     }
 
@@ -390,7 +416,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             node: ExprKind::Mac(mac),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         })
     }
 
@@ -401,7 +427,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             node: ExprKind::Struct(path, fields, None),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         })
     }
 
@@ -414,7 +440,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             node: ExprKind::Struct(path, fields, base),
             span: DUMMY_SP,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         })
     }
 
@@ -430,7 +456,7 @@ impl Builder {
             expr: expr,
             span: DUMMY_SP,
             is_shorthand: false,
-            attrs: ThinVec::new(),
+            attrs: self.attrs.into(),
         }
     }
 
@@ -582,7 +608,7 @@ impl Builder {
         let init = init.make(&self);
         P(Item {
             ident: name,
-            attrs: Vec::new(),
+            attrs: self.attrs,
             id: DUMMY_NODE_ID,
             node: ItemKind::Static(ty, self.mutbl, init),
             vis: self.vis,
@@ -597,7 +623,7 @@ impl Builder {
         let block = block.make(&self);
         P(Item {
             ident: name,
-            attrs: Vec::new(),
+            attrs: self.attrs,
             id: DUMMY_NODE_ID,
             node: ItemKind::Fn(decl,
                                self.unsafety,
@@ -615,7 +641,7 @@ impl Builder {
         let name = name.make(&self);
         P(Item {
             ident: name,
-            attrs: Vec::new(),
+            attrs: self.attrs,
             id: DUMMY_NODE_ID,
             node: ItemKind::Struct(VariantData::Struct(fields, DUMMY_NODE_ID),
                                    self.generics),
@@ -634,7 +660,7 @@ impl Builder {
             vis: self.vis,
             id: DUMMY_NODE_ID,
             ty: ty,
-            attrs: Vec::new(),
+            attrs: self.attrs,
         }
     }
 

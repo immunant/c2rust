@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use rustc::hir::def_id::DefId;
 use rustc::ty::TypeVariants;
 use syntax::abi::Abi;
 use syntax::ast::*;
+use syntax::attr;
 use syntax::codemap::Spanned;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
@@ -13,6 +14,7 @@ use command::{CommandState, Registry};
 use driver::{self, Phase};
 use fold::Fold;
 use transform::Transform;
+use util::IntoSymbol;
 
 
 /// Turn free functions into methods in an impl.  
@@ -428,6 +430,111 @@ impl Transform for WrapExtern {
 }
 
 
+/// Generate wrappers for API functions.  Each marked definition of an `extern` function will be
+/// split into a normal function and an `extern` wrapper.
+pub struct WrapApi;
+
+impl Transform for WrapApi {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        fold_nodes(krate, |i: P<Item>| {
+            if !st.marked(i.id, "target") {
+                return SmallVector::one(i);
+            }
+
+            let symbol =
+                if let Some(sym) = attr::first_attr_value_str_by_name(&i.attrs, "export_name") {
+                    sym
+                } else if attr::contains_name(&i.attrs, "no_mangle") {
+                    i.ident.name
+                } else {
+                    warn!("marked function `{:?}` does not have a stable symbol", i.ident.name);
+                    return SmallVector::one(i);
+                };
+
+            let (decl, old_abi) = expect!([i.node]
+                ItemKind::Fn(ref decl, _, _, abi, _, _) => (decl.clone(), abi));
+
+            let i = i.map(|mut i| {
+                i.attrs.retain(|attr| {
+                    attr.path != "no_mangle" &&
+                    attr.path != "export_name"
+                });
+
+                match i.node {
+                    ItemKind::Fn(_, _, _, ref mut abi, _, _) => *abi = Abi::Rust,
+                    _ => unreachable!(),
+                }
+
+                i
+            });
+
+            // Pick distinct names for the arguments in the wrapper.
+            let mut used_names = HashSet::new();
+
+            let arg_names = decl.inputs.iter().enumerate().map(|(idx, arg)| {
+                let base = match arg.pat.node {
+                    // Use the name from the original function, if there is one.  Otherwise, fall
+                    // back on `arg0`, `arg1`, ...
+                    PatKind::Ident(_, ref ident, _) => ident.node.name,
+                    _ => format!("arg{}", idx).into_symbol(),
+                };
+
+                let name;
+                if !used_names.contains(&base) {
+                    name = base;
+                } else {
+                    let mut i = 0;
+                    loop {
+                        let gen_name = format!("{}_{}", base.as_str(), i).into_symbol();
+                        if !used_names.contains(&gen_name) {
+                            name = gen_name;
+                            break;
+                        }
+                    }
+                }
+
+                used_names.insert(name);
+                name
+            }).collect::<Vec<_>>();
+
+            // Generate the wrapper.
+            let wrapper_decl = decl.clone().map(|decl| {
+                let new_inputs = decl.inputs.iter().zip(arg_names.iter()).map(|(arg, &name)| {
+                    mk().arg(&arg.ty, mk().ident_pat(name))
+                }).collect();
+                FnDecl {
+                    inputs: new_inputs,
+                    .. decl
+                }
+            });
+
+            let wrapper_args = arg_names.iter().map(|&name| mk().ident_expr(name)).collect();
+
+            let wrapper =
+                mk().unsafe_().abi(old_abi).str_attr("export_name", symbol).fn_item(
+                    format!("{}_wrapper", symbol.as_str()),
+                    wrapper_decl,
+                    mk().block(vec![
+                        mk().expr_stmt(mk().call_expr(
+                                mk().path_expr(vec![i.ident.name]),
+                                wrapper_args,
+                        ))
+                    ])
+                );
+
+            let mut v = SmallVector::new();
+            v.push(i);
+            v.push(wrapper);
+            v
+        })
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -435,4 +542,5 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("fix_unused_unsafe", |_args| mk(FixUnusedUnsafe));
     reg.register("sink_unsafe", |_args| mk(SinkUnsafe));
     reg.register("wrap_extern", |_args| mk(WrapExtern));
+    reg.register("wrap_api", |_args| mk(WrapApi));
 }
