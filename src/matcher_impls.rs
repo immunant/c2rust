@@ -68,6 +68,16 @@ impl TryMatch for Pat {
             return Ok(());
         }
 
+        if let PatKind::Mac(ref mac) = self.node {
+            let name = macro_name(mac);
+            return match &name.as_str() as &str {
+                "marked" => mcx.do_marked(&mac.node.tts,
+                                          |p| p.parse_pat().map(|p| p.unwrap()),
+                                          target),
+                _ => Err(matcher::Error::BadSpecialPattern(name)),
+            };
+        }
+
         default_try_match_pat(self, target, mcx)
     }
 }
@@ -76,6 +86,17 @@ impl TryMatch for Ty {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         if mcx.maybe_capture_ty(self, target)? {
             return Ok(());
+        }
+
+        if let TyKind::Mac(ref mac) = self.node {
+            let name = macro_name(mac);
+            return match &name.as_str() as &str {
+                "marked" => mcx.do_marked(&mac.node.tts,
+                                          |p| p.parse_ty().map(|p| p.unwrap()),
+                                          target),
+                "def" => mcx.do_def_ty(&mac.node.tts, target),
+                _ => Err(matcher::Error::BadSpecialPattern(name)),
+            };
         }
 
         default_try_match_ty(self, target, mcx)

@@ -1,6 +1,7 @@
 use std::collections::hash_map::HashMap;
 use std::cmp;
 use std::result;
+use rustc::hir::def_id::DefId;
 use rustc::hir::map::Node;
 use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Block};
 use syntax::symbol::Symbol;
@@ -248,7 +249,9 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
         self.try_match(&pattern, target)
     }
 
-    pub fn do_def_expr(&mut self, tts: &ThinTokenStream, target: &Expr) -> Result<()> {
+    fn do_def_impl(&mut self,
+                       tts: &ThinTokenStream,
+                       opt_def_id: Option<DefId>) -> Result<()> {
         let mut p = Parser::new(&self.cx.session().parse_sess,
                                 tts.clone().into(),
                                 None, false, false);
@@ -260,7 +263,7 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
                 "target".into_symbol()
             };
 
-        let def_id = match_or!([self.cx.try_resolve_expr(target)] Some(x) => x;
+        let def_id = match_or!([opt_def_id] Some(x) => x;
                                return Err(Error::DefMismatch));
         let node_id = match_or!([self.cx.hir_map().as_local_node_id(def_id)] Some(x) => x;
                                 return Err(Error::DefMismatch));
@@ -282,6 +285,16 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
         }
 
         Ok(())
+    }
+
+    pub fn do_def_expr(&mut self, tts: &ThinTokenStream, target: &Expr) -> Result<()> {
+        let opt_def_id = self.cx.try_resolve_expr(target);
+        self.do_def_impl(tts, opt_def_id)
+    }
+
+    pub fn do_def_ty(&mut self, tts: &ThinTokenStream, target: &Ty) -> Result<()> {
+        let opt_def_id = self.cx.try_resolve_ty(target);
+        self.do_def_impl(tts, opt_def_id)
     }
 }
 
