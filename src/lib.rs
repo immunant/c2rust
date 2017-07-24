@@ -8,6 +8,7 @@ extern crate libc;
 extern crate diff;
 #[macro_use] extern crate json;
 #[macro_use] extern crate log;
+extern crate regex;
 extern crate rustc;
 extern crate rustc_driver;
 extern crate rustc_errors;

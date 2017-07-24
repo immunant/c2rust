@@ -268,6 +268,11 @@ impl Builder {
 
     // Simple nodes
 
+    pub fn ident<I>(self, name: I) -> Ident
+            where I: Make<Ident> {
+        name.make(&self)
+    }
+
     pub fn path_segment<S>(self, seg: S) -> PathSegment
             where S: Make<PathSegment> {
         seg.make(&self)
