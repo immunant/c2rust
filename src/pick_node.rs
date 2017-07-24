@@ -31,6 +31,17 @@ impl<'a> Visitor<'a> for PickVisitor {
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
+
+        // Special case for modules.  If the cursor lies within the inner span of a mod item
+        // (meaning inside the included file), then we mark the mod item itself.  This is because
+        // `Mod` nodes don't have their own IDs.
+        if self.node_info.is_none() {
+            if let ItemKind::Mod(ref m) = x.node {
+                if m.inner.contains(self.target) {
+                    self.node_info = Some(NodeInfo { id: x.id, span: x.span });
+                }
+            }
+        }
     }
 
     fn visit_trait_item(&mut self, x: &'a TraitItem) {
@@ -201,6 +212,14 @@ pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo
         target: Span { lo: pos, hi: pos, ctxt: SyntaxContext::empty() },
     };
     krate.visit(&mut v);
+
+    // If the cursor falls inside the crate's module, then mark the crate itself.
+    if v.node_info.is_none() {
+        if krate.module.inner.contains(v.target) {
+            v.node_info = Some(NodeInfo { id: CRATE_NODE_ID, span: krate.span });
+        }
+    }
+
     v.node_info
 }
 

@@ -259,6 +259,33 @@ pub fn rename_marks(st: &CommandState, old: Symbol, new: Symbol) {
 }
 
 
+pub fn mark_pub_in_mod(st: &CommandState, cx: &driver::Ctxt, label: &str) {
+    let label = label.into_symbol();
+
+    // Use a preorder traversal.  This results in recursively marking public descendants of any
+    // marked module or crate.
+    if st.marked(CRATE_NODE_ID, label) {
+        for i in &st.krate().module.items {
+            if i.vis == Visibility::Public {
+                st.add_mark(i.id, label);
+            }
+        }
+    }
+
+    visit_nodes(&*st.krate(), |i: &Item| {
+        if st.marked(i.id, label) {
+            if let ItemKind::Mod(ref m) = i.node {
+                for i in &m.items {
+                    if i.vis == Visibility::Public {
+                        st.add_mark(i.id, label);
+                    }
+                }
+            }
+        }
+    });
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     reg.register("print_marks", |_| {
         Box::new(FuncCommand::new(Phase::Phase2, move |st, _cx| {
@@ -299,6 +326,13 @@ pub fn register_commands(reg: &mut Registry) {
         let new = (&args[1]).into_symbol();
         Box::new(FuncCommand::new(Phase::Phase2, move |st, _cx| {
             rename_marks(st, old, new);
+        }))
+    });
+
+    reg.register("mark_pub_in_mod", |args| {
+        let label = args[0].clone();
+        Box::new(FuncCommand::new(Phase::Phase2, move |st, cx| {
+            mark_pub_in_mod(st, cx, &label);
         }))
     });
 }
