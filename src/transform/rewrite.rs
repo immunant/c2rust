@@ -9,8 +9,10 @@ use transform::Transform;
 use util::IntoSymbol;
 
 
-fn make_init_mcx() -> MatchCtxt {
-    let mut init_mcx = MatchCtxt::new();
+fn make_init_mcx<'a, 'hir, 'gcx, 'tcx>(st: &'a CommandState,
+                                       cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>)
+                                       -> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
+    let mut init_mcx = MatchCtxt::new(st, cx);
     init_mcx.set_type("__i", BindingType::Ident);
     init_mcx.set_type("__j", BindingType::Ident);
 
@@ -45,7 +47,7 @@ impl Transform for RewriteExpr {
         let pat = parse_expr(cx.session(), &self.pat);
         let repl = parse_expr(cx.session(), &self.repl);
 
-        fold_match_with(make_init_mcx(), pat, krate, |ast, bnd| {
+        fold_match_with(make_init_mcx(st, cx), pat, krate, |ast, bnd| {
             if let Some(filter) = self.filter {
                 if !contains_mark(&*ast, filter, st) {
                     return ast;
@@ -69,7 +71,7 @@ impl Transform for RewriteTy {
         let pat = parse_ty(cx.session(), &self.pat);
         let repl = parse_ty(cx.session(), &self.repl);
 
-        fold_match_with(make_init_mcx(), pat, krate, |ast, bnd| {
+        fold_match_with(make_init_mcx(st, cx), pat, krate, |ast, bnd| {
             if let Some(filter) = self.filter {
                 if !contains_mark(&*ast, filter, st) {
                     return ast;

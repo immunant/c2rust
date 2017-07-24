@@ -10,9 +10,9 @@ use transform::Transform;
 pub struct ReconstructWhile;
 
 impl Transform for ReconstructWhile {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = replace_expr(
-            cx.session(), krate,
+            st, cx, krate,
             r#"
                 '__label: loop {
                     if !(__cond) {
@@ -34,7 +34,7 @@ impl Transform for ReconstructWhile {
 pub struct ReconstructForRange;
 
 impl Transform for ReconstructForRange {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let pat = parse_stmts(cx.session(), r#"
             __i = __start;
             '__label: while __i < __end {
@@ -55,7 +55,7 @@ impl Transform for ReconstructForRange {
             }
         "#);
 
-        let mut mcx = MatchCtxt::new();
+        let mut mcx = MatchCtxt::new(st, cx);
         mcx.set_type("__i", BindingType::Ident);
         mcx.set_type("__step", BindingType::Expr);
 
@@ -87,23 +87,24 @@ fn is_one_lit(l: &Lit) -> bool {
 pub struct RemoveUnusedLabels;
 
 fn remove_unused_labels_from_loop_kind(krate: Crate,
-                                       sess: &Session,
+                                       st: &CommandState,
+                                       cx: &driver::Ctxt,
                                        pat: &str,
                                        repl: &str) -> Crate {
-    let pat = parse_expr(sess, pat);
-    let repl = parse_expr(sess, repl);
+    let pat = parse_expr(cx.session(), pat);
+    let repl = parse_expr(cx.session(), repl);
 
-    let find_continue = parse_expr(sess, "continue '__label");
-    let find_break = parse_expr(sess, "break '__label");
-    let find_break_expr = parse_expr(sess, "break '__label __expr");
+    let find_continue = parse_expr(cx.session(), "continue '__label");
+    let find_break = parse_expr(cx.session(), "break '__label");
+    let find_break_expr = parse_expr(cx.session(), "break '__label __expr");
 
-    fold_match(pat, krate, |orig, bnd| {
+    fold_match(st, cx, pat, krate, |orig, bnd| {
         let body = bnd.multi_stmt("__m_body");
         // TODO: would be nice to get rid of the clones of body.  Might require making
         // `find_first` use a visitor instead of a `fold`.
-        if find_first(find_continue.clone().subst(&bnd), body.clone()).is_none() &&
-           find_first(find_break.clone().subst(&bnd), body.clone()).is_none() &&
-           find_first(find_break_expr.clone().subst(&bnd), body.clone()).is_none() {
+        if find_first(st, cx, find_continue.clone().subst(&bnd), body.clone()).is_none() &&
+           find_first(st, cx, find_break.clone().subst(&bnd), body.clone()).is_none() &&
+           find_first(st, cx, find_break_expr.clone().subst(&bnd), body.clone()).is_none() {
             repl.clone().subst(&bnd)
         } else {
             orig
@@ -112,17 +113,17 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
 }
 
 impl Transform for RemoveUnusedLabels {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        let krate = remove_unused_labels_from_loop_kind(krate, cx.session(),
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
                 "'__label: loop { __m_body; }",
                 "loop { __m_body; }");
-        let krate = remove_unused_labels_from_loop_kind(krate, cx.session(),
+        let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
                 "'__label: while __cond { __m_body; }",
                 "while __cond { __m_body; }");
-        let krate = remove_unused_labels_from_loop_kind(krate, cx.session(),
+        let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
                 "'__label: while let __pat = __expr { __m_body; }",
                 "while let __pat = __expr { __m_body; }");
-        let krate = remove_unused_labels_from_loop_kind(krate, cx.session(),
+        let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
                 "'__label: for __pat in __iter { __m_body; }",
                 "for __pat in __iter { __m_body; }");
         krate

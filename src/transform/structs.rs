@@ -14,11 +14,11 @@ use util::IntoSymbol;
 pub struct AssignToUpdate;
 
 impl Transform for AssignToUpdate {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let pat = parse_expr(cx.session(), "__x.__f = __y");
         let repl = parse_expr(cx.session(), "__x = __s { __f: __y, .. __x }");
 
-        fold_match(pat, krate, |orig, mut bnd| {
+        fold_match(st, cx, pat, krate, |orig, mut bnd| {
             let x = bnd.expr("__x").clone();
 
             let struct_def_id = match cx.node_type(x.id).ty_to_def_id() {

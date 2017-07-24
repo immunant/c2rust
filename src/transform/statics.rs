@@ -33,7 +33,7 @@ impl Transform for CollectToStruct {
             let mut insert_point = None;
 
             while let Some(bnd) = curs.advance_until_match(
-                    |i| MatchCtxt::from_match(&static_pat, &i)
+                    |i| MatchCtxt::from_match(st, cx, &static_pat, &i)
                             .ok().map(|mcx| mcx.bindings)) {
                 if !st.marked(curs.next().id, "target") {
                     curs.advance();
@@ -65,7 +65,7 @@ impl Transform for CollectToStruct {
 
         let ident_pat = parse_expr(cx.session(), "__x");
         let ident_repl = parse_expr(cx.session(), "__s.__x");
-        let mut init_mcx = MatchCtxt::new();
+        let mut init_mcx = MatchCtxt::new(st, cx);
         init_mcx.set_type("__x", BindingType::Ident);
         init_mcx.bindings.add_ident(
             "__s", Ident::with_empty_ctxt((&self.instance_name as &str).into_symbol()));

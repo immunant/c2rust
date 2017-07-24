@@ -9,6 +9,12 @@ use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use matcher::{self, TryMatch, MatchCtxt};
 
 
+fn macro_name(mac: &Mac) -> Name {
+    let p = &mac.node.path;
+    p.segments.last().unwrap().identifier.name
+}
+
+
 impl TryMatch for Ident {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         if mcx.maybe_capture_ident(self, target)? {
@@ -39,6 +45,17 @@ impl TryMatch for Expr {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         if mcx.maybe_capture_expr(self, target)? {
             return Ok(());
+        }
+
+        if let ExprKind::Mac(ref mac) = self.node {
+            let name = macro_name(mac);
+            return match &name.as_str() as &str {
+                "marked" => mcx.do_marked(&mac.node.tts,
+                                          |p| p.parse_expr().map(|p| p.unwrap()),
+                                          target),
+                //"def" => mcx.do_def_expr(&mac.tts, target),
+                _ => Err(matcher::Error::BadSpecialPattern(name)),
+            };
         }
 
         default_try_match_expr(self, target, mcx)

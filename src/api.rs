@@ -23,28 +23,31 @@ pub use path_edit::{self, fold_resolved_paths};
 pub use fn_edit::fold_fns;
 
 use bindings::Bindings;
+use command::CommandState;
 use driver;
 use fold::Fold;
 use matcher::Pattern;
 use util::HirDefExt;
 use util::IntoSymbol;
 
-pub fn replace_expr<T: Fold>(sess: &Session,
+pub fn replace_expr<T: Fold>(st: &CommandState,
+                             cx: &driver::Ctxt,
                              ast: T,
                              pat: &str,
                              repl: &str) -> <T as Fold>::Result {
-    let pat = parse_expr(sess, pat);
-    let repl = parse_expr(sess, repl);
-    fold_match(pat, ast, |_, bnd| repl.clone().subst(&bnd))
+    let pat = parse_expr(cx.session(), pat);
+    let repl = parse_expr(cx.session(), repl);
+    fold_match(st, cx, pat, ast, |_, bnd| repl.clone().subst(&bnd))
 }
 
-pub fn replace_stmts<T: Fold>(sess: &Session,
+pub fn replace_stmts<T: Fold>(st: &CommandState,
+                              cx: &driver::Ctxt,
                               ast: T,
                               pat: &str,
                               repl: &str) -> <T as Fold>::Result {
-    let pat = parse_stmts(sess, pat);
-    let repl = parse_stmts(sess, repl);
-    fold_match(pat, ast, |_, bnd| repl.clone().subst(&bnd))
+    let pat = parse_stmts(cx.session(), pat);
+    let repl = parse_stmts(cx.session(), repl);
+    fold_match(st, cx, pat, ast, |_, bnd| repl.clone().subst(&bnd))
 }
 
 
@@ -62,10 +65,12 @@ pub fn find_first_with<P, T>(init_mcx: MatchCtxt,
     result
 }
 
-pub fn find_first<P, T>(pattern: P,
+pub fn find_first<P, T>(st: &CommandState,
+                        cx: &driver::Ctxt,
+                        pattern: P,
                         target: T) -> Option<Bindings>
         where P: Pattern, T: Fold {
-    find_first_with(MatchCtxt::new(), pattern, target)
+    find_first_with(MatchCtxt::new(st, cx), pattern, target)
 }
 
 

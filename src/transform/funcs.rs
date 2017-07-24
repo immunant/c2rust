@@ -441,6 +441,13 @@ impl Transform for WrapApi {
                 return SmallVector::one(i);
             }
 
+            if !matches!([i.node] ItemKind::Fn(..)) {
+                return SmallVector::one(i);
+            }
+
+            let (decl, old_abi) = expect!([i.node]
+                ItemKind::Fn(ref decl, _, _, abi, _, _) => (decl.clone(), abi));
+
             let symbol =
                 if let Some(sym) = attr::first_attr_value_str_by_name(&i.attrs, "export_name") {
                     sym
@@ -450,9 +457,6 @@ impl Transform for WrapApi {
                     warn!("marked function `{:?}` does not have a stable symbol", i.ident.name);
                     return SmallVector::one(i);
                 };
-
-            let (decl, old_abi) = expect!([i.node]
-                ItemKind::Fn(ref decl, _, _, abi, _, _) => (decl.clone(), abi));
 
             let i = i.map(|mut i| {
                 i.attrs.retain(|attr| {
@@ -511,7 +515,8 @@ impl Transform for WrapApi {
             let wrapper_args = arg_names.iter().map(|&name| mk().ident_expr(name)).collect();
 
             let wrapper =
-                mk().unsafe_().abi(old_abi).str_attr("export_name", symbol).fn_item(
+                mk().vis(i.vis.clone()).unsafe_().abi(old_abi)
+                        .str_attr("export_name", symbol).fn_item(
                     format!("{}_wrapper", symbol.as_str()),
                     wrapper_decl,
                     mk().block(vec![

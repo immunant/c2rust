@@ -4,12 +4,19 @@ use std::result;
 use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Block};
 use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};
+use syntax::parse::PResult;
+use syntax::parse::parser::Parser;
+use syntax::parse::token::Token;
 use syntax::ptr::P;
+use syntax::tokenstream::ThinTokenStream;
 use syntax::util::move_map::MoveMap;
 use syntax::util::small_vector::SmallVector;
 
 use bindings::{self, Bindings};
+use command::CommandState;
+use driver;
 use fold::Fold;
+use get_node_id::GetNodeId;
 use util::PatternSymbol;
 use util::IntoSymbol;
 
@@ -25,19 +32,29 @@ pub enum Error {
     // For nonlinear patterns, it's possible that the 2nd+ occurrence of the variable in the
     // pattern matches a different ident/expr/stmt than the 1st occurrence.
     NonlinearMismatch,
+
+    // A `marked!` pattern tried to match a non-marked node.
+    NotMarked,
+
+    BadSpecialPattern(Symbol),
 }
 
-#[derive(Clone, Debug)]
-pub struct MatchCtxt {
+#[derive(Clone)]
+pub struct MatchCtxt<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a> {
     pub bindings: Bindings,
     pub types: HashMap<Symbol, bindings::Type>,
+    st: &'a CommandState,
+    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
 }
 
-impl MatchCtxt {
-    pub fn new() -> MatchCtxt {
+impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
+    pub fn new(st: &'a CommandState,
+               cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) -> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
         MatchCtxt {
             bindings: Bindings::new(),
             types: HashMap::new(),
+            st: st,
+            cx: cx,
         }
     }
 
@@ -46,14 +63,18 @@ impl MatchCtxt {
         r
     }
 
-    pub fn from_match<T: TryMatch>(pat: &T, target: &T) -> Result<MatchCtxt> {
-        let mut m = MatchCtxt::new();
+    pub fn from_match<T: TryMatch>(st: &'a CommandState,
+                                   cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+                                   pat: &T,
+                                   target: &T) -> Result<MatchCtxt<'a, 'hir, 'gcx, 'tcx>> {
+        let mut m = MatchCtxt::new(st, cx);
         m.try_match(pat, target)?;
         Ok(m)
     }
 
     /// Clone this context and try to perform a match in the clone, returning `Ok` if it succeeds.
-    pub fn clone_match<T: TryMatch>(&self, pat: &T, target: &T) -> Result<MatchCtxt> {
+    pub fn clone_match<T: TryMatch>(&self, pat: &T, target: &T)
+                                    -> Result<MatchCtxt<'a, 'hir, 'gcx, 'tcx>> {
         let mut m = self.clone();
         m.try_match(pat, target)?;
         Ok(m)
@@ -194,6 +215,34 @@ impl MatchCtxt {
         let ok = self.bindings.try_add_stmt(sym, target.clone());
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
+
+
+    pub fn do_marked<T, F>(&mut self,
+                           tts: &ThinTokenStream,
+                           func: F,
+                           target: &T) -> Result<()>
+            where T: TryMatch + GetNodeId,
+                  F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T> {
+        let mut p = Parser::new(&self.cx.session().parse_sess,
+                                tts.clone().into(),
+                                None, false, false);
+        let pattern = func(&mut p).unwrap();
+
+        let label =
+            if p.eat(&Token::Comma) {
+                p.parse_ident().unwrap().name
+            } else {
+                "target".into_symbol()
+            };
+
+        if !self.st.marked(target.get_node_id(), label) {
+            return Err(Error::NotMarked);
+        }
+
+        self.try_match(&pattern, target)
+    }
+
+
 }
 
 pub trait TryMatch {
@@ -222,14 +271,14 @@ macro_rules! gen_pattern_impl {
         walk = $walk:expr;
         map($match_one:ident) = $map:expr;
     ) => {
-        pub struct $PatternFolder<F>
+        pub struct $PatternFolder<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a, F>
                 where F: FnMut($Pat, Bindings) -> $Pat {
             pattern: $Pat,
-            init_mcx: MatchCtxt,
+            init_mcx: MatchCtxt<'a, 'hir, 'gcx, 'tcx>,
             callback: F,
         }
 
-        impl<F> Folder for $PatternFolder<F>
+        impl<'a, 'hir, 'gcx, 'tcx, F> Folder for $PatternFolder<'a, 'hir, 'gcx, 'tcx, F>
                 where F: FnMut($Pat, Bindings) -> $Pat {
             fn $fold_thing(&mut $slf, $arg: $ArgTy) -> $RetTy {
                 let $arg = $walk;
@@ -289,14 +338,14 @@ gen_pattern_impl! {
     map(match_one) = s.move_map(match_one);
 }
 
-pub struct MultiStmtPatternFolder<F>
+pub struct MultiStmtPatternFolder<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a, F>
         where F: FnMut(Vec<Stmt>, Bindings) -> Vec<Stmt> {
     pattern: Vec<Stmt>,
-    init_mcx: MatchCtxt,
+    init_mcx: MatchCtxt<'a, 'hir, 'gcx, 'tcx>,
     callback: F,
 }
 
-impl<F> Folder for MultiStmtPatternFolder<F>
+impl<'a, 'hir, 'gcx, 'tcx, F> Folder for MultiStmtPatternFolder<'a, 'hir, 'gcx, 'tcx, F>
         where F: FnMut(Vec<Stmt>, Bindings) -> Vec<Stmt> {
     fn fold_block(&mut self, b: P<Block>) -> P<Block> {
         assert!(self.pattern.len() > 0);
@@ -417,11 +466,15 @@ impl Pattern for Vec<Stmt> {
 
 
 /// Find every match for `pattern` within `target`, and rewrite each one by invoking `callback`.
-pub fn fold_match<P, T, F>(pattern: P, target: T, callback: F) -> <T as Fold>::Result
+pub fn fold_match<P, T, F>(st: &CommandState,
+                           cx: &driver::Ctxt,
+                           pattern: P,
+                           target: T,
+                           callback: F) -> <T as Fold>::Result
         where P: Pattern,
               T: Fold,
               F: FnMut(P, Bindings) -> P {
-    fold_match_with(MatchCtxt::new(), pattern, target, callback)
+    fold_match_with(MatchCtxt::new(st, cx), pattern, target, callback)
 }
 
 /// Find every match for `pattern` within `target`, and rewrite each one by invoking `callback`.
