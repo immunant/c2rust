@@ -80,8 +80,7 @@ pub enum json_tokener_error {
     json_tokener_error_size,
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_tokener_error_desc(mut jerr: json_tokener_error) -> *const u8 {
+pub unsafe fn json_tokener_error_desc(mut jerr: json_tokener_error) -> *const u8 {
     let mut jerr_int: i32 = jerr as (i32);
     if jerr_int < 0i32 ||
         jerr_int >=
@@ -94,6 +93,10 @@ pub unsafe extern "C" fn json_tokener_error_desc(mut jerr: json_tokener_error) -
     } else {
         json_tokener_errors[jerr as (usize)]
     }
+}
+#[export_name = "json_tokener_error_desc"]
+pub unsafe extern "C" fn json_tokener_error_desc_wrapper(jerr: json_tokener_error) -> *const u8 {
+    json_tokener_error_desc(jerr)
 }
 
 
@@ -169,15 +172,19 @@ impl Clone for json_tokener {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_tokener_get_error(mut tok: *mut json_tokener) -> json_tokener_error {
+pub unsafe fn json_tokener_get_error(mut tok: *mut json_tokener) -> json_tokener_error {
     (*tok).err
+}
+#[export_name = "json_tokener_get_error"]
+pub unsafe extern "C" fn json_tokener_get_error_wrapper(
+    tok: *mut json_tokener,
+) -> json_tokener_error {
+    json_tokener_get_error(tok)
 }
 
 static mut utf8_replacement_char: [u8; 3] = [0xefu8, 0xbfu8, 0xbdu8];
 
-#[no_mangle]
-pub unsafe extern "C" fn json_tokener_new_ex(mut depth: i32) -> *mut json_tokener {
+pub unsafe fn json_tokener_new_ex(mut depth: i32) -> *mut json_tokener {
     let mut tok: *mut json_tokener;
     tok = calloc(1u64, ::std::mem::size_of::<json_tokener>() as (u64)) as (*mut json_tokener);
     if tok.is_null() {
@@ -198,14 +205,20 @@ pub unsafe extern "C" fn json_tokener_new_ex(mut depth: i32) -> *mut json_tokene
          })
     }
 }
-
-#[no_mangle]
-pub unsafe extern "C" fn json_tokener_new() -> *mut json_tokener {
-    json_tokener_new_ex(32i32)
+#[export_name = "json_tokener_new_ex"]
+pub unsafe extern "C" fn json_tokener_new_ex_wrapper(depth: i32) -> *mut json_tokener {
+    json_tokener_new_ex(depth)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_tokener_free(mut tok: *mut json_tokener) {
+pub unsafe fn json_tokener_new() -> *mut json_tokener {
+    json_tokener_new_ex(32i32)
+}
+#[export_name = "json_tokener_new"]
+pub unsafe extern "C" fn json_tokener_new_wrapper() -> *mut json_tokener {
+    json_tokener_new()
+}
+
+pub unsafe fn json_tokener_free(mut tok: *mut json_tokener) {
     json_tokener_reset(tok);
     if !(*tok).pb.is_null() {
         (::printbuf::printbuf_free)((*tok).pb);
@@ -214,6 +227,10 @@ pub unsafe extern "C" fn json_tokener_free(mut tok: *mut json_tokener) {
         free((*tok).stack as (*mut ::std::os::raw::c_void));
     }
     free(tok as (*mut ::std::os::raw::c_void));
+}
+#[export_name = "json_tokener_free"]
+pub unsafe extern "C" fn json_tokener_free_wrapper(tok: *mut json_tokener) {
+    json_tokener_free(tok)
 }
 
 unsafe extern "C" fn json_tokener_reset_level(mut tok: *mut json_tokener, mut depth: i32) {
@@ -230,8 +247,7 @@ unsafe extern "C" fn json_tokener_reset_level(mut tok: *mut json_tokener, mut de
         0i32 as (*mut ::std::os::raw::c_void) as (*mut u8);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_tokener_reset(mut tok: *mut json_tokener) {
+pub unsafe fn json_tokener_reset(mut tok: *mut json_tokener) {
     let mut i: i32;
     if tok.is_null() {
     } else {
@@ -247,17 +263,25 @@ pub unsafe extern "C" fn json_tokener_reset(mut tok: *mut json_tokener) {
         (*tok).err = json_tokener_error::json_tokener_success;
     }
 }
+#[export_name = "json_tokener_reset"]
+pub unsafe extern "C" fn json_tokener_reset_wrapper(tok: *mut json_tokener) {
+    json_tokener_reset(tok)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_tokener_parse(mut str: *const u8) -> *mut ::json_object::json_object {
+pub unsafe fn json_tokener_parse(mut str: *const u8) -> *mut ::json_object::json_object {
     let mut jerr_ignored: json_tokener_error = ::std::mem::uninitialized();
     let mut obj: *mut ::json_object::json_object;
     obj = json_tokener_parse_verbose(str, &mut jerr_ignored as (*mut json_tokener_error));
     obj
 }
+#[export_name = "json_tokener_parse"]
+pub unsafe extern "C" fn json_tokener_parse_wrapper(
+    str: *const u8,
+) -> *mut ::json_object::json_object {
+    json_tokener_parse(str)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_tokener_parse_verbose(
+pub unsafe fn json_tokener_parse_verbose(
     mut str: *const u8,
     mut error: *mut json_tokener_error,
 ) -> *mut ::json_object::json_object {
@@ -279,9 +303,15 @@ pub unsafe extern "C" fn json_tokener_parse_verbose(
         obj
     }
 }
+#[export_name = "json_tokener_parse_verbose"]
+pub unsafe extern "C" fn json_tokener_parse_verbose_wrapper(
+    str: *const u8,
+    error: *mut json_tokener_error,
+) -> *mut ::json_object::json_object {
+    json_tokener_parse_verbose(str, error)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_tokener_parse_ex(
+pub unsafe fn json_tokener_parse_ex(
     mut tok: *mut json_tokener,
     mut str: *const u8,
     mut len: i32,
@@ -2165,8 +2195,19 @@ pub unsafe extern "C" fn json_tokener_parse_ex(
          })
     }
 }
+#[export_name = "json_tokener_parse_ex"]
+pub unsafe extern "C" fn json_tokener_parse_ex_wrapper(
+    tok: *mut json_tokener,
+    str: *const u8,
+    len: i32,
+) -> *mut ::json_object::json_object {
+    json_tokener_parse_ex(tok, str, len)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_tokener_set_flags(mut tok: *mut json_tokener, mut flags: i32) {
+pub unsafe fn json_tokener_set_flags(mut tok: *mut json_tokener, mut flags: i32) {
     (*tok).flags = flags;
+}
+#[export_name = "json_tokener_set_flags"]
+pub unsafe extern "C" fn json_tokener_set_flags_wrapper(tok: *mut json_tokener, flags: i32) {
+    json_tokener_set_flags(tok, flags)
 }

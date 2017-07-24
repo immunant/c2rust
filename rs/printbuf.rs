@@ -26,8 +26,7 @@ impl Clone for printbuf {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn printbuf_new() -> *mut printbuf {
+pub unsafe fn printbuf_new() -> *mut printbuf {
     let mut p: *mut printbuf;
     p = calloc(1u64, ::std::mem::size_of::<printbuf>() as (u64)) as (*mut printbuf);
     if p.is_null() {
@@ -46,6 +45,10 @@ pub unsafe extern "C" fn printbuf_new() -> *mut printbuf {
              p
          })
     }
+}
+#[export_name = "printbuf_new"]
+pub unsafe extern "C" fn printbuf_new_wrapper() -> *mut printbuf {
+    printbuf_new()
 }
 
 unsafe extern "C" fn printbuf_extend(mut p: *mut printbuf, mut min_size: i32) -> i32 {
@@ -73,12 +76,7 @@ unsafe extern "C" fn printbuf_extend(mut p: *mut printbuf, mut min_size: i32) ->
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn printbuf_memappend(
-    mut p: *mut printbuf,
-    mut buf: *const u8,
-    mut size: i32,
-) -> i32 {
+pub unsafe fn printbuf_memappend(mut p: *mut printbuf, mut buf: *const u8, mut size: i32) -> i32 {
     if (*p).size <= (*p).bpos + size + 1i32 {
         if printbuf_extend(p, (*p).bpos + size + 1i32) < 0i32 {
             return -1i32;
@@ -93,9 +91,16 @@ pub unsafe extern "C" fn printbuf_memappend(
     *(*p).buf.offset((*p).bpos as (isize)) = b'\0';
     size
 }
+#[export_name = "printbuf_memappend"]
+pub unsafe extern "C" fn printbuf_memappend_wrapper(
+    p: *mut printbuf,
+    buf: *const u8,
+    size: i32,
+) -> i32 {
+    printbuf_memappend(p, buf, size)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn printbuf_memset(
+pub unsafe fn printbuf_memset(
     mut pb: *mut printbuf,
     mut offset: i32,
     mut charvalue: i32,
@@ -121,17 +126,32 @@ pub unsafe extern "C" fn printbuf_memset(
     }
     0i32
 }
+#[export_name = "printbuf_memset"]
+pub unsafe extern "C" fn printbuf_memset_wrapper(
+    pb: *mut printbuf,
+    offset: i32,
+    charvalue: i32,
+    len: i32,
+) -> i32 {
+    printbuf_memset(pb, offset, charvalue, len)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn printbuf_reset(mut p: *mut printbuf) {
+pub unsafe fn printbuf_reset(mut p: *mut printbuf) {
     *(*p).buf.offset(0isize) = b'\0';
     (*p).bpos = 0i32;
 }
+#[export_name = "printbuf_reset"]
+pub unsafe extern "C" fn printbuf_reset_wrapper(p: *mut printbuf) {
+    printbuf_reset(p)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn printbuf_free(mut p: *mut printbuf) {
+pub unsafe fn printbuf_free(mut p: *mut printbuf) {
     if !p.is_null() {
         free((*p).buf as (*mut ::std::os::raw::c_void));
         free(p as (*mut ::std::os::raw::c_void));
     }
+}
+#[export_name = "printbuf_free"]
+pub unsafe extern "C" fn printbuf_free_wrapper(p: *mut printbuf) {
+    printbuf_free(p)
 }

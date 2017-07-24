@@ -507,8 +507,7 @@ impl Clone for lh_table {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn lh_table_new(
+pub unsafe fn lh_table_new(
     mut size: i32,
     mut name: *const u8,
     mut free_fn: unsafe extern "C" fn(*mut lh_entry),
@@ -543,27 +542,51 @@ pub unsafe extern "C" fn lh_table_new(
     }
     t
 }
+#[export_name = "lh_table_new"]
+pub unsafe extern "C" fn lh_table_new_wrapper(
+    size: i32,
+    name: *const u8,
+    free_fn: unsafe extern "C" fn(*mut lh_entry),
+    hash_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void) -> u64,
+    equal_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void)
+                                   -> i32,
+) -> *mut lh_table {
+    lh_table_new(size, name, free_fn, hash_fn, equal_fn)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn lh_kchar_table_new(
+pub unsafe fn lh_kchar_table_new(
     mut size: i32,
     mut name: *const u8,
     mut free_fn: unsafe extern "C" fn(*mut lh_entry),
 ) -> *mut lh_table {
     lh_table_new(size, name, free_fn, lh_char_hash, lh_char_equal)
 }
+#[export_name = "lh_kchar_table_new"]
+pub unsafe extern "C" fn lh_kchar_table_new_wrapper(
+    size: i32,
+    name: *const u8,
+    free_fn: unsafe extern "C" fn(*mut lh_entry),
+) -> *mut lh_table {
+    lh_kchar_table_new(size, name, free_fn)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn lh_kptr_table_new(
+pub unsafe fn lh_kptr_table_new(
     mut size: i32,
     mut name: *const u8,
     mut free_fn: unsafe extern "C" fn(*mut lh_entry),
 ) -> *mut lh_table {
     lh_table_new(size, name, free_fn, lh_ptr_hash, lh_ptr_equal)
 }
+#[export_name = "lh_kptr_table_new"]
+pub unsafe extern "C" fn lh_kptr_table_new_wrapper(
+    size: i32,
+    name: *const u8,
+    free_fn: unsafe extern "C" fn(*mut lh_entry),
+) -> *mut lh_table {
+    lh_kptr_table_new(size, name, free_fn)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn lh_table_resize(mut t: *mut lh_table, mut new_size: i32) {
+pub unsafe fn lh_table_resize(mut t: *mut lh_table, mut new_size: i32) {
     let mut new_t: *mut lh_table;
     let mut ent: *mut lh_entry;
     new_t = lh_table_new(
@@ -589,9 +612,12 @@ pub unsafe extern "C" fn lh_table_resize(mut t: *mut lh_table, mut new_size: i32
     (*t).resizes = (*t).resizes + 1;
     free(new_t as (*mut ::std::os::raw::c_void));
 }
+#[export_name = "lh_table_resize"]
+pub unsafe extern "C" fn lh_table_resize_wrapper(t: *mut lh_table, new_size: i32) {
+    lh_table_resize(t, new_size)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn lh_table_free(mut t: *mut lh_table) {
+pub unsafe fn lh_table_free(mut t: *mut lh_table) {
     let mut c: *mut lh_entry;
     c = (*t).head;
     'loop1: loop {
@@ -606,9 +632,12 @@ pub unsafe extern "C" fn lh_table_free(mut t: *mut lh_table) {
     free((*t).table as (*mut ::std::os::raw::c_void));
     free(t as (*mut ::std::os::raw::c_void));
 }
+#[export_name = "lh_table_free"]
+pub unsafe extern "C" fn lh_table_free_wrapper(t: *mut lh_table) {
+    lh_table_free(t)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn lh_table_insert(
+pub unsafe fn lh_table_insert(
     mut t: *mut lh_table,
     mut k: *mut ::std::os::raw::c_void,
     mut v: *const ::std::os::raw::c_void,
@@ -661,9 +690,16 @@ pub unsafe extern "C" fn lh_table_insert(
     }
     0i32
 }
+#[export_name = "lh_table_insert"]
+pub unsafe extern "C" fn lh_table_insert_wrapper(
+    t: *mut lh_table,
+    k: *mut ::std::os::raw::c_void,
+    v: *const ::std::os::raw::c_void,
+) -> i32 {
+    lh_table_insert(t, k, v)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn lh_table_lookup_entry(
+pub unsafe fn lh_table_lookup_entry(
     mut t: *mut lh_table,
     mut k: *const ::std::os::raw::c_void,
 ) -> *mut lh_entry {
@@ -707,9 +743,15 @@ pub unsafe extern "C" fn lh_table_lookup_entry(
         0i32 as (*mut ::std::os::raw::c_void) as (*mut lh_entry)
     }
 }
+#[export_name = "lh_table_lookup_entry"]
+pub unsafe extern "C" fn lh_table_lookup_entry_wrapper(
+    t: *mut lh_table,
+    k: *const ::std::os::raw::c_void,
+) -> *mut lh_entry {
+    lh_table_lookup_entry(t, k)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn lh_table_lookup(
+pub unsafe fn lh_table_lookup(
     mut t: *mut lh_table,
     mut k: *const ::std::os::raw::c_void,
 ) -> *const ::std::os::raw::c_void {
@@ -717,9 +759,15 @@ pub unsafe extern "C" fn lh_table_lookup(
     lh_table_lookup_ex(t, k, &mut result as (*mut *mut ::std::os::raw::c_void));
     result as (*const ::std::os::raw::c_void)
 }
+#[export_name = "lh_table_lookup"]
+pub unsafe extern "C" fn lh_table_lookup_wrapper(
+    t: *mut lh_table,
+    k: *const ::std::os::raw::c_void,
+) -> *const ::std::os::raw::c_void {
+    lh_table_lookup(t, k)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn lh_table_lookup_ex(
+pub unsafe fn lh_table_lookup_ex(
     mut t: *mut lh_table,
     mut k: *const ::std::os::raw::c_void,
     mut v: *mut *mut ::std::os::raw::c_void,
@@ -737,9 +785,16 @@ pub unsafe extern "C" fn lh_table_lookup_ex(
         0i32
     }
 }
+#[export_name = "lh_table_lookup_ex"]
+pub unsafe extern "C" fn lh_table_lookup_ex_wrapper(
+    t: *mut lh_table,
+    k: *const ::std::os::raw::c_void,
+    v: *mut *mut ::std::os::raw::c_void,
+) -> i32 {
+    lh_table_lookup_ex(t, k, v)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn lh_table_delete_entry(mut t: *mut lh_table, mut e: *mut lh_entry) -> i32 {
+pub unsafe fn lh_table_delete_entry(mut t: *mut lh_table, mut e: *mut lh_entry) -> i32 {
     let mut n: i64 = ((e as (isize)).wrapping_sub((*t).table as (isize)) /
                           ::std::mem::size_of::<lh_entry>() as (isize)) as
         (i64);
@@ -785,12 +840,12 @@ pub unsafe extern "C" fn lh_table_delete_entry(mut t: *mut lh_table, mut e: *mut
         0i32
     }
 }
+#[export_name = "lh_table_delete_entry"]
+pub unsafe extern "C" fn lh_table_delete_entry_wrapper(t: *mut lh_table, e: *mut lh_entry) -> i32 {
+    lh_table_delete_entry(t, e)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn lh_table_delete(
-    mut t: *mut lh_table,
-    mut k: *const ::std::os::raw::c_void,
-) -> i32 {
+pub unsafe fn lh_table_delete(mut t: *mut lh_table, mut k: *const ::std::os::raw::c_void) -> i32 {
     let mut e: *mut lh_entry = lh_table_lookup_entry(t, k);
     if e.is_null() {
         -1i32
@@ -798,8 +853,18 @@ pub unsafe extern "C" fn lh_table_delete(
         lh_table_delete_entry(t, e)
     }
 }
+#[export_name = "lh_table_delete"]
+pub unsafe extern "C" fn lh_table_delete_wrapper(
+    t: *mut lh_table,
+    k: *const ::std::os::raw::c_void,
+) -> i32 {
+    lh_table_delete(t, k)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn lh_table_length(mut t: *mut lh_table) -> i32 {
+pub unsafe fn lh_table_length(mut t: *mut lh_table) -> i32 {
     (*t).count
+}
+#[export_name = "lh_table_length"]
+pub unsafe extern "C" fn lh_table_length_wrapper(t: *mut lh_table) -> i32 {
+    lh_table_length(t)
 }

@@ -28,8 +28,7 @@ impl Clone for array_list {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn array_list_new(
+pub unsafe fn array_list_new(
     mut free_fn: unsafe extern "C" fn(*mut ::std::os::raw::c_void),
 ) -> *mut array_list {
     let mut arr: *mut array_list;
@@ -55,9 +54,14 @@ pub unsafe extern "C" fn array_list_new(
          })
     }
 }
+#[export_name = "array_list_new"]
+pub unsafe extern "C" fn array_list_new_wrapper(
+    free_fn: unsafe extern "C" fn(*mut ::std::os::raw::c_void),
+) -> *mut array_list {
+    array_list_new(free_fn)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn array_list_free(mut arr: *mut array_list) {
+pub unsafe fn array_list_free(mut arr: *mut array_list) {
     let mut i: i32;
     i = 0i32;
     'loop1: loop {
@@ -72,9 +76,12 @@ pub unsafe extern "C" fn array_list_free(mut arr: *mut array_list) {
     free((*arr).array as (*mut ::std::os::raw::c_void));
     free(arr as (*mut ::std::os::raw::c_void));
 }
+#[export_name = "array_list_free"]
+pub unsafe extern "C" fn array_list_free_wrapper(arr: *mut array_list) {
+    array_list_free(arr)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn array_list_get_idx(
+pub unsafe fn array_list_get_idx(
     mut arr: *mut array_list,
     mut i: i32,
 ) -> *mut ::std::os::raw::c_void {
@@ -83,6 +90,13 @@ pub unsafe extern "C" fn array_list_get_idx(
     } else {
         *(*arr).array.offset(i as (isize))
     }
+}
+#[export_name = "array_list_get_idx"]
+pub unsafe extern "C" fn array_list_get_idx_wrapper(
+    arr: *mut array_list,
+    i: i32,
+) -> *mut ::std::os::raw::c_void {
+    array_list_get_idx(arr, i)
 }
 
 unsafe extern "C" fn array_list_expand_internal(mut arr: *mut array_list, mut max: i32) -> i32 {
@@ -122,8 +136,7 @@ unsafe extern "C" fn array_list_expand_internal(mut arr: *mut array_list, mut ma
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn array_list_put_idx(
+pub unsafe fn array_list_put_idx(
     mut arr: *mut array_list,
     mut idx: i32,
     mut data: *mut ::std::os::raw::c_void,
@@ -141,17 +154,30 @@ pub unsafe extern "C" fn array_list_put_idx(
         0i32
     }
 }
+#[export_name = "array_list_put_idx"]
+pub unsafe extern "C" fn array_list_put_idx_wrapper(
+    arr: *mut array_list,
+    idx: i32,
+    data: *mut ::std::os::raw::c_void,
+) -> i32 {
+    array_list_put_idx(arr, idx, data)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn array_list_add(
+pub unsafe fn array_list_add(
     mut arr: *mut array_list,
     mut data: *mut ::std::os::raw::c_void,
 ) -> i32 {
     array_list_put_idx(arr, (*arr).length, data)
 }
+#[export_name = "array_list_add"]
+pub unsafe extern "C" fn array_list_add_wrapper(
+    arr: *mut array_list,
+    data: *mut ::std::os::raw::c_void,
+) -> i32 {
+    array_list_add(arr, data)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn array_list_sort(
+pub unsafe fn array_list_sort(
     mut arr: *mut array_list,
     mut sort_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void)
                                       -> i32,
@@ -163,8 +189,18 @@ pub unsafe extern "C" fn array_list_sort(
         sort_fn,
     );
 }
+#[export_name = "array_list_sort"]
+pub unsafe extern "C" fn array_list_sort_wrapper(
+    arr: *mut array_list,
+    sort_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void) -> i32,
+) {
+    array_list_sort(arr, sort_fn)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn array_list_length(mut arr: *mut array_list) -> i32 {
+pub unsafe fn array_list_length(mut arr: *mut array_list) -> i32 {
     (*arr).length
+}
+#[export_name = "array_list_length"]
+pub unsafe extern "C" fn array_list_length_wrapper(arr: *mut array_list) -> i32 {
+    array_list_length(arr)
 }

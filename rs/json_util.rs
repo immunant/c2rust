@@ -27,10 +27,7 @@ static mut sscanf_is_broken_testdone: i32 = 0i32;
 
 
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_from_file(
-    mut filename: *const u8,
-) -> *mut ::json_object::json_object {
+pub unsafe fn json_object_from_file(mut filename: *const u8) -> *mut ::json_object::json_object {
     let mut pb: *mut ::printbuf::printbuf;
     let mut obj: *mut ::json_object::json_object;
     let mut buf: [u8; 4096] = ::std::mem::uninitialized();
@@ -88,9 +85,14 @@ pub unsafe extern "C" fn json_object_from_file(
          })
     }
 }
+#[export_name = "json_object_from_file"]
+pub unsafe extern "C" fn json_object_from_file_wrapper(
+    filename: *const u8,
+) -> *mut ::json_object::json_object {
+    json_object_from_file(filename)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_to_file_ext(
+pub unsafe fn json_object_to_file_ext(
     mut filename: *const u8,
     mut obj: *mut ::json_object::json_object,
     mut flags: i32,
@@ -159,22 +161,39 @@ pub unsafe extern "C" fn json_object_to_file_ext(
          })
     }
 }
+#[export_name = "json_object_to_file_ext"]
+pub unsafe extern "C" fn json_object_to_file_ext_wrapper(
+    filename: *const u8,
+    obj: *mut ::json_object::json_object,
+    flags: i32,
+) -> i32 {
+    json_object_to_file_ext(filename, obj, flags)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_to_file(
+pub unsafe fn json_object_to_file(
     mut filename: *const u8,
     mut obj: *mut ::json_object::json_object,
 ) -> i32 {
     json_object_to_file_ext(filename, obj, 0i32)
 }
+#[export_name = "json_object_to_file"]
+pub unsafe extern "C" fn json_object_to_file_wrapper(
+    filename: *const u8,
+    obj: *mut ::json_object::json_object,
+) -> i32 {
+    json_object_to_file(filename, obj)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_parse_double(mut buf: *const u8, mut retval: *mut f64) -> i32 {
+pub unsafe fn json_parse_double(mut buf: *const u8, mut retval: *mut f64) -> i32 {
     if sscanf(buf, (*b"%lf\0").as_ptr(), retval) == 1i32 {
         0i32
     } else {
         1i32
     }
+}
+#[export_name = "json_parse_double"]
+pub unsafe extern "C" fn json_parse_double_wrapper(buf: *const u8, retval: *mut f64) -> i32 {
+    json_parse_double(buf, retval)
 }
 
 unsafe extern "C" fn sscanf_is_broken_test() {
@@ -207,8 +226,7 @@ unsafe extern "C" fn sscanf_is_broken_test() {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_parse_int64(mut buf: *const u8, mut retval: *mut i64) -> i32 {
+pub unsafe fn json_parse_int64(mut buf: *const u8, mut retval: *mut i64) -> i32 {
     let mut num64: i64 = ::std::mem::uninitialized();
     let mut buf_sig_digits: *const u8;
     let mut orig_has_neg: i32;
@@ -287,6 +305,10 @@ pub unsafe extern "C" fn json_parse_int64(mut buf: *const u8, mut retval: *mut i
         0i32
     }
 }
+#[export_name = "json_parse_int64"]
+pub unsafe extern "C" fn json_parse_int64_wrapper(buf: *const u8, retval: *mut i64) -> i32 {
+    json_parse_int64(buf, retval)
+}
 
 static mut json_type_name: [*const u8; 7] = [0 as *const _; 7];
 unsafe extern "C" fn _init_json_type_name() {
@@ -315,8 +337,7 @@ pub enum json_type {
     json_type_string,
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_type_to_name(mut o_type: json_type) -> *const u8 {
+pub unsafe fn json_type_to_name(mut o_type: json_type) -> *const u8 {
     let mut o_type_int: i32 = o_type as (i32);
     if o_type_int < 0i32 ||
         o_type_int >=
@@ -333,4 +354,8 @@ pub unsafe extern "C" fn json_type_to_name(mut o_type: json_type) -> *const u8 {
     } else {
         json_type_name[o_type as (usize)]
     }
+}
+#[export_name = "json_type_to_name"]
+pub unsafe extern "C" fn json_type_to_name_wrapper(o_type: json_type) -> *const u8 {
+    json_type_to_name(o_type)
 }

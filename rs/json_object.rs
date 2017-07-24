@@ -114,16 +114,18 @@ impl Clone for json_object {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_get(mut jso: *mut json_object) -> *mut json_object {
+pub unsafe fn json_object_get(mut jso: *mut json_object) -> *mut json_object {
     if !jso.is_null() {
         (*jso)._ref_count = (*jso)._ref_count + 1;
     }
     jso
 }
+#[export_name = "json_object_get"]
+pub unsafe extern "C" fn json_object_get_wrapper(jso: *mut json_object) -> *mut json_object {
+    json_object_get(jso)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_put(mut jso: *mut json_object) -> i32 {
+pub unsafe fn json_object_put(mut jso: *mut json_object) -> i32 {
     if !jso.is_null() {
         (*jso)._ref_count = (*jso)._ref_count - 1;
         if (*jso)._ref_count == 0 {
@@ -136,30 +138,39 @@ pub unsafe extern "C" fn json_object_put(mut jso: *mut json_object) -> i32 {
     }
     0i32
 }
+#[export_name = "json_object_put"]
+pub unsafe extern "C" fn json_object_put_wrapper(jso: *mut json_object) -> i32 {
+    json_object_put(jso)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_is_type(
-    mut jso: *mut json_object,
-    mut type_: json_type,
-) -> i32 {
+pub unsafe fn json_object_is_type(mut jso: *mut json_object, mut type_: json_type) -> i32 {
     if jso.is_null() {
         (type_ as (i32) == json_type::json_type_null as (i32)) as (i32)
     } else {
         ((*jso).o_type as (i32) == type_ as (i32)) as (i32)
     }
 }
+#[export_name = "json_object_is_type"]
+pub unsafe extern "C" fn json_object_is_type_wrapper(
+    jso: *mut json_object,
+    type_: json_type,
+) -> i32 {
+    json_object_is_type(jso, type_)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_get_type(mut jso: *mut json_object) -> json_type {
+pub unsafe fn json_object_get_type(mut jso: *mut json_object) -> json_type {
     if jso.is_null() {
         json_type::json_type_null
     } else {
         (*jso).o_type
     }
 }
+#[export_name = "json_object_get_type"]
+pub unsafe extern "C" fn json_object_get_type_wrapper(jso: *mut json_object) -> json_type {
+    json_object_get_type(jso)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_set_serializer(
+pub unsafe fn json_object_set_serializer(
     mut jso: *mut json_object,
     mut to_string_func: unsafe extern "C" fn(*mut json_object, *mut ::printbuf::printbuf, i32, i32)
                                              -> i32,
@@ -200,9 +211,17 @@ pub unsafe extern "C" fn json_object_set_serializer(
         (*jso)._user_delete = user_delete;
     }
 }
+#[export_name = "json_object_set_serializer"]
+pub unsafe extern "C" fn json_object_set_serializer_wrapper(
+    jso: *mut json_object,
+    to_string_func: unsafe extern "C" fn(*mut json_object, *mut ::printbuf::printbuf, i32, i32) -> i32,
+    userdata: *mut ::std::os::raw::c_void,
+    user_delete: unsafe extern "C" fn(*mut json_object, *mut ::std::os::raw::c_void),
+) {
+    json_object_set_serializer(jso, to_string_func, userdata, user_delete)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_to_json_string_ext(
+pub unsafe fn json_object_to_json_string_ext(
     mut jso: *mut json_object,
     mut flags: i32,
 ) -> *const u8 {
@@ -224,10 +243,20 @@ pub unsafe extern "C" fn json_object_to_json_string_ext(
          })
     }
 }
+#[export_name = "json_object_to_json_string_ext"]
+pub unsafe extern "C" fn json_object_to_json_string_ext_wrapper(
+    jso: *mut json_object,
+    flags: i32,
+) -> *const u8 {
+    json_object_to_json_string_ext(jso, flags)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_to_json_string(mut jso: *mut json_object) -> *const u8 {
+pub unsafe fn json_object_to_json_string(mut jso: *mut json_object) -> *const u8 {
     json_object_to_json_string_ext(jso, 1i32 << 0i32)
+}
+#[export_name = "json_object_to_json_string"]
+pub unsafe extern "C" fn json_object_to_json_string_wrapper(jso: *mut json_object) -> *const u8 {
+    json_object_to_json_string(jso)
 }
 
 #[derive(Copy)]
@@ -427,8 +456,7 @@ unsafe extern "C" fn json_object_lh_entry_free(mut ent: *mut ::linkhash::lh_entr
     json_object_put((*ent).v as (*mut json_object));
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_new_object() -> *mut json_object {
+pub unsafe fn json_object_new_object() -> *mut json_object {
     let mut jso: *mut json_object = json_object_new(json_type::json_type_object);
     if jso.is_null() {
         0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
@@ -445,11 +473,12 @@ pub unsafe extern "C" fn json_object_new_object() -> *mut json_object {
         jso
     }
 }
+#[export_name = "json_object_new_object"]
+pub unsafe extern "C" fn json_object_new_object_wrapper() -> *mut json_object {
+    json_object_new_object()
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_get_object(
-    mut jso: *mut json_object,
-) -> *mut ::linkhash::lh_table {
+pub unsafe fn json_object_get_object(mut jso: *mut json_object) -> *mut ::linkhash::lh_table {
     if jso.is_null() {
         0i32 as (*mut ::std::os::raw::c_void) as (*mut ::linkhash::lh_table)
     } else {
@@ -461,9 +490,14 @@ pub unsafe extern "C" fn json_object_get_object(
          })
     }
 }
+#[export_name = "json_object_get_object"]
+pub unsafe extern "C" fn json_object_get_object_wrapper(
+    jso: *mut json_object,
+) -> *mut ::linkhash::lh_table {
+    json_object_get_object(jso)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_object_add(
+pub unsafe fn json_object_object_add(
     mut jso: *mut json_object,
     mut key: *const u8,
     mut val: *mut json_object,
@@ -489,14 +523,24 @@ pub unsafe extern "C" fn json_object_object_add(
         (*existing_entry).v = val as (*const ::std::os::raw::c_void);
     }
 }
-
-#[no_mangle]
-pub unsafe extern "C" fn json_object_object_length(mut jso: *mut json_object) -> i32 {
-    (::linkhash::lh_table_length)((*jso).o.c_object)
+#[export_name = "json_object_object_add"]
+pub unsafe extern "C" fn json_object_object_add_wrapper(
+    jso: *mut json_object,
+    key: *const u8,
+    val: *mut json_object,
+) {
+    json_object_object_add(jso, key, val)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_object_get(
+pub unsafe fn json_object_object_length(mut jso: *mut json_object) -> i32 {
+    (::linkhash::lh_table_length)((*jso).o.c_object)
+}
+#[export_name = "json_object_object_length"]
+pub unsafe extern "C" fn json_object_object_length_wrapper(jso: *mut json_object) -> i32 {
+    json_object_object_length(jso)
+}
+
+pub unsafe fn json_object_object_get(
     mut jso: *mut json_object,
     mut key: *const u8,
 ) -> *mut json_object {
@@ -508,9 +552,15 @@ pub unsafe extern "C" fn json_object_object_get(
     );
     result
 }
+#[export_name = "json_object_object_get"]
+pub unsafe extern "C" fn json_object_object_get_wrapper(
+    jso: *mut json_object,
+    key: *const u8,
+) -> *mut json_object {
+    json_object_object_get(jso, key)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_object_get_ex(
+pub unsafe fn json_object_object_get_ex(
     mut jso: *mut json_object,
     mut key: *const u8,
     mut value: *mut *mut json_object,
@@ -536,10 +586,21 @@ pub unsafe extern "C" fn json_object_object_get_ex(
          })
     }
 }
+#[export_name = "json_object_object_get_ex"]
+pub unsafe extern "C" fn json_object_object_get_ex_wrapper(
+    jso: *mut json_object,
+    key: *const u8,
+    value: *mut *mut json_object,
+) -> i32 {
+    json_object_object_get_ex(jso, key, value)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_object_del(mut jso: *mut json_object, mut key: *const u8) {
+pub unsafe fn json_object_object_del(mut jso: *mut json_object, mut key: *const u8) {
     (::linkhash::lh_table_delete)((*jso).o.c_object, key as (*const ::std::os::raw::c_void));
+}
+#[export_name = "json_object_object_del"]
+pub unsafe extern "C" fn json_object_object_del_wrapper(jso: *mut json_object, key: *const u8) {
+    json_object_object_del(jso, key)
 }
 
 unsafe extern "C" fn json_object_boolean_to_json_string(
@@ -555,8 +616,7 @@ unsafe extern "C" fn json_object_boolean_to_json_string(
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_new_boolean(mut b: i32) -> *mut json_object {
+pub unsafe fn json_object_new_boolean(mut b: i32) -> *mut json_object {
     let mut jso: *mut json_object = json_object_new(json_type::json_type_boolean);
     if jso.is_null() {
         0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
@@ -567,9 +627,12 @@ pub unsafe extern "C" fn json_object_new_boolean(mut b: i32) -> *mut json_object
         jso
     }
 }
+#[export_name = "json_object_new_boolean"]
+pub unsafe extern "C" fn json_object_new_boolean_wrapper(b: i32) -> *mut json_object {
+    json_object_new_boolean(b)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_get_boolean(mut jso: *mut json_object) -> i32 {
+pub unsafe fn json_object_get_boolean(mut jso: *mut json_object) -> i32 {
     if jso.is_null() {
         0i32
     } else {
@@ -587,6 +650,10 @@ pub unsafe extern "C" fn json_object_get_boolean(mut jso: *mut json_object) -> i
          })
     }
 }
+#[export_name = "json_object_get_boolean"]
+pub unsafe extern "C" fn json_object_get_boolean_wrapper(jso: *mut json_object) -> i32 {
+    json_object_get_boolean(jso)
+}
 
 unsafe extern "C" fn json_object_int_to_json_string(
     mut jso: *mut json_object,
@@ -597,8 +664,7 @@ unsafe extern "C" fn json_object_int_to_json_string(
     sprintbuf(pb, (*b"%ld\0").as_ptr(), (*jso).o.c_int64)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_new_int(mut i: i32) -> *mut json_object {
+pub unsafe fn json_object_new_int(mut i: i32) -> *mut json_object {
     let mut jso: *mut json_object = json_object_new(json_type::json_type_int);
     if jso.is_null() {
         0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
@@ -609,9 +675,12 @@ pub unsafe extern "C" fn json_object_new_int(mut i: i32) -> *mut json_object {
         jso
     }
 }
+#[export_name = "json_object_new_int"]
+pub unsafe extern "C" fn json_object_new_int_wrapper(i: i32) -> *mut json_object {
+    json_object_new_int(i)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_get_int(mut jso: *mut json_object) -> i32 {
+pub unsafe fn json_object_get_int(mut jso: *mut json_object) -> i32 {
     let mut cint64: i64;
     let mut o_type: json_type;
     if jso.is_null() {
@@ -647,9 +716,12 @@ pub unsafe extern "C" fn json_object_get_int(mut jso: *mut json_object) -> i32 {
          })
     }
 }
+#[export_name = "json_object_get_int"]
+pub unsafe extern "C" fn json_object_get_int_wrapper(jso: *mut json_object) -> i32 {
+    json_object_get_int(jso)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_new_int64(mut i: i64) -> *mut json_object {
+pub unsafe fn json_object_new_int64(mut i: i64) -> *mut json_object {
     let mut jso: *mut json_object = json_object_new(json_type::json_type_int);
     if jso.is_null() {
         0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
@@ -660,9 +732,12 @@ pub unsafe extern "C" fn json_object_new_int64(mut i: i64) -> *mut json_object {
         jso
     }
 }
+#[export_name = "json_object_new_int64"]
+pub unsafe extern "C" fn json_object_new_int64_wrapper(i: i64) -> *mut json_object {
+    json_object_new_int64(i)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_get_int64(mut jso: *mut json_object) -> i64 {
+pub unsafe fn json_object_get_int64(mut jso: *mut json_object) -> i64 {
     let mut cint: i64 = ::std::mem::uninitialized();
     if jso.is_null() {
         0i64
@@ -685,6 +760,10 @@ pub unsafe extern "C" fn json_object_get_int64(mut jso: *mut json_object) -> i64
         }
         0i64
     }
+}
+#[export_name = "json_object_get_int64"]
+pub unsafe extern "C" fn json_object_get_int64_wrapper(jso: *mut json_object) -> i64 {
+    json_object_get_int64(jso)
 }
 
 unsafe extern "C" fn json_object_double_to_json_string(
@@ -754,8 +833,7 @@ unsafe extern "C" fn json_object_double_to_json_string(
     size
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_new_double(mut d: f64) -> *mut json_object {
+pub unsafe fn json_object_new_double(mut d: f64) -> *mut json_object {
     let mut jso: *mut json_object = json_object_new(json_type::json_type_double);
     if jso.is_null() {
         0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
@@ -766,12 +844,12 @@ pub unsafe extern "C" fn json_object_new_double(mut d: f64) -> *mut json_object 
         jso
     }
 }
+#[export_name = "json_object_new_double"]
+pub unsafe extern "C" fn json_object_new_double_wrapper(d: f64) -> *mut json_object {
+    json_object_new_double(d)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_new_double_s(
-    mut d: f64,
-    mut ds: *const u8,
-) -> *mut json_object {
+pub unsafe fn json_object_new_double_s(mut d: f64, mut ds: *const u8) -> *mut json_object {
     let mut jso: *mut json_object = json_object_new_double(d);
     if jso.is_null() {
         0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
@@ -784,6 +862,13 @@ pub unsafe extern "C" fn json_object_new_double_s(
         );
         jso
     }
+}
+#[export_name = "json_object_new_double_s"]
+pub unsafe extern "C" fn json_object_new_double_s_wrapper(
+    d: f64,
+    ds: *const u8,
+) -> *mut json_object {
+    json_object_new_double_s(d, ds)
 }
 
 #[no_mangle]
@@ -806,8 +891,7 @@ pub unsafe extern "C" fn json_object_free_userdata(
     free(userdata);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_get_double(mut jso: *mut json_object) -> f64 {
+pub unsafe fn json_object_get_double(mut jso: *mut json_object) -> f64 {
     let mut cdouble: f64;
     let mut errPtr: *mut u8 = 0i32 as (*mut ::std::os::raw::c_void) as (*mut u8);
     if jso.is_null() {
@@ -843,6 +927,10 @@ pub unsafe extern "C" fn json_object_get_double(mut jso: *mut json_object) -> f6
          })
     }
 }
+#[export_name = "json_object_get_double"]
+pub unsafe extern "C" fn json_object_get_double_wrapper(jso: *mut json_object) -> f64 {
+    json_object_get_double(jso)
+}
 
 unsafe extern "C" fn json_object_string_to_json_string(
     mut jso: *mut json_object,
@@ -861,8 +949,7 @@ unsafe extern "C" fn json_object_string_delete(mut jso: *mut json_object) {
     json_object_generic_delete(jso);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_new_string(mut s: *const u8) -> *mut json_object {
+pub unsafe fn json_object_new_string(mut s: *const u8) -> *mut json_object {
     let mut jso: *mut json_object = json_object_new(json_type::json_type_string);
     if jso.is_null() {
         0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
@@ -875,12 +962,12 @@ pub unsafe extern "C" fn json_object_new_string(mut s: *const u8) -> *mut json_o
         jso
     }
 }
+#[export_name = "json_object_new_string"]
+pub unsafe extern "C" fn json_object_new_string_wrapper(s: *const u8) -> *mut json_object {
+    json_object_new_string(s)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_new_string_len(
-    mut s: *const u8,
-    mut len: i32,
-) -> *mut json_object {
+pub unsafe fn json_object_new_string_len(mut s: *const u8, mut len: i32) -> *mut json_object {
     let mut jso: *mut json_object = json_object_new(json_type::json_type_string);
     if jso.is_null() {
         0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
@@ -899,9 +986,15 @@ pub unsafe extern "C" fn json_object_new_string_len(
         jso
     }
 }
+#[export_name = "json_object_new_string_len"]
+pub unsafe extern "C" fn json_object_new_string_len_wrapper(
+    s: *const u8,
+    len: i32,
+) -> *mut json_object {
+    json_object_new_string_len(s, len)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_get_string(mut jso: *mut json_object) -> *const u8 {
+pub unsafe fn json_object_get_string(mut jso: *mut json_object) -> *const u8 {
     if jso.is_null() {
         0i32 as (*mut ::std::os::raw::c_void) as (*const u8)
     } else {
@@ -913,9 +1006,12 @@ pub unsafe extern "C" fn json_object_get_string(mut jso: *mut json_object) -> *c
          })
     }
 }
+#[export_name = "json_object_get_string"]
+pub unsafe extern "C" fn json_object_get_string_wrapper(jso: *mut json_object) -> *const u8 {
+    json_object_get_string(jso)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_get_string_len(mut jso: *mut json_object) -> i32 {
+pub unsafe fn json_object_get_string_len(mut jso: *mut json_object) -> i32 {
     if jso.is_null() {
         0i32
     } else {
@@ -926,6 +1022,10 @@ pub unsafe extern "C" fn json_object_get_string_len(mut jso: *mut json_object) -
              0i32
          })
     }
+}
+#[export_name = "json_object_get_string_len"]
+pub unsafe extern "C" fn json_object_get_string_len_wrapper(jso: *mut json_object) -> i32 {
+    json_object_get_string_len(jso)
 }
 
 unsafe extern "C" fn json_object_array_to_json_string(
@@ -987,8 +1087,7 @@ unsafe extern "C" fn json_object_array_entry_free(mut data: *mut ::std::os::raw:
     json_object_put(data as (*mut json_object));
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_new_array() -> *mut json_object {
+pub unsafe fn json_object_new_array() -> *mut json_object {
     let mut jso: *mut json_object = json_object_new(json_type::json_type_array);
     if jso.is_null() {
         0i32 as (*mut ::std::os::raw::c_void) as (*mut json_object)
@@ -1000,11 +1099,12 @@ pub unsafe extern "C" fn json_object_new_array() -> *mut json_object {
         jso
     }
 }
+#[export_name = "json_object_new_array"]
+pub unsafe extern "C" fn json_object_new_array_wrapper() -> *mut json_object {
+    json_object_new_array()
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_get_array(
-    mut jso: *mut json_object,
-) -> *mut ::arraylist::array_list {
+pub unsafe fn json_object_get_array(mut jso: *mut json_object) -> *mut ::arraylist::array_list {
     if jso.is_null() {
         0i32 as (*mut ::std::os::raw::c_void) as (*mut ::arraylist::array_list)
     } else {
@@ -1016,42 +1116,73 @@ pub unsafe extern "C" fn json_object_get_array(
          })
     }
 }
+#[export_name = "json_object_get_array"]
+pub unsafe extern "C" fn json_object_get_array_wrapper(
+    jso: *mut json_object,
+) -> *mut ::arraylist::array_list {
+    json_object_get_array(jso)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_array_sort(
+pub unsafe fn json_object_array_sort(
     mut jso: *mut json_object,
     mut sort_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void)
                                       -> i32,
 ) {
     (::arraylist::array_list_sort)((*jso).o.c_array, sort_fn);
 }
+#[export_name = "json_object_array_sort"]
+pub unsafe extern "C" fn json_object_array_sort_wrapper(
+    jso: *mut json_object,
+    sort_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void) -> i32,
+) {
+    json_object_array_sort(jso, sort_fn)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_array_length(mut jso: *mut json_object) -> i32 {
+pub unsafe fn json_object_array_length(mut jso: *mut json_object) -> i32 {
     (::arraylist::array_list_length)((*jso).o.c_array)
 }
-
-#[no_mangle]
-pub unsafe extern "C" fn json_object_array_add(
-    mut jso: *mut json_object,
-    mut val: *mut json_object,
-) -> i32 {
-    (::arraylist::array_list_add)((*jso).o.c_array, val as (*mut ::std::os::raw::c_void))
+#[export_name = "json_object_array_length"]
+pub unsafe extern "C" fn json_object_array_length_wrapper(jso: *mut json_object) -> i32 {
+    json_object_array_length(jso)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_array_put_idx(
+pub unsafe fn json_object_array_add(mut jso: *mut json_object, mut val: *mut json_object) -> i32 {
+    (::arraylist::array_list_add)((*jso).o.c_array, val as (*mut ::std::os::raw::c_void))
+}
+#[export_name = "json_object_array_add"]
+pub unsafe extern "C" fn json_object_array_add_wrapper(
+    jso: *mut json_object,
+    val: *mut json_object,
+) -> i32 {
+    json_object_array_add(jso, val)
+}
+
+pub unsafe fn json_object_array_put_idx(
     mut jso: *mut json_object,
     mut idx: i32,
     mut val: *mut json_object,
 ) -> i32 {
     (::arraylist::array_list_put_idx)((*jso).o.c_array, idx, val as (*mut ::std::os::raw::c_void))
 }
+#[export_name = "json_object_array_put_idx"]
+pub unsafe extern "C" fn json_object_array_put_idx_wrapper(
+    jso: *mut json_object,
+    idx: i32,
+    val: *mut json_object,
+) -> i32 {
+    json_object_array_put_idx(jso, idx, val)
+}
 
-#[no_mangle]
-pub unsafe extern "C" fn json_object_array_get_idx(
+pub unsafe fn json_object_array_get_idx(
     mut jso: *mut json_object,
     mut idx: i32,
 ) -> *mut json_object {
     (::arraylist::array_list_get_idx)((*jso).o.c_array, idx) as (*mut json_object)
+}
+#[export_name = "json_object_array_get_idx"]
+pub unsafe extern "C" fn json_object_array_get_idx_wrapper(
+    jso: *mut json_object,
+    idx: i32,
+) -> *mut json_object {
+    json_object_array_get_idx(jso, idx)
 }
