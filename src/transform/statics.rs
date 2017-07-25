@@ -82,7 +82,7 @@ impl Transform for CollectToStruct {
 
             // This really is a reference to one of the collected statics.  Replace it with a
             // reference to the generated struct.
-            ident_repl.clone().subst(&bnd)
+            ident_repl.clone().subst(st, cx, &bnd)
         });
 
         krate

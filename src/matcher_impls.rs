@@ -7,12 +7,7 @@ use syntax::ptr::P;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
 
 use matcher::{self, TryMatch, MatchCtxt};
-
-
-fn macro_name(mac: &Mac) -> Name {
-    let p = &mac.node.path;
-    p.segments.last().unwrap().identifier.name
-}
+use util;
 
 
 impl TryMatch for Ident {
@@ -48,7 +43,7 @@ impl TryMatch for Expr {
         }
 
         if let ExprKind::Mac(ref mac) = self.node {
-            let name = macro_name(mac);
+            let name = util::macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(&mac.node.tts,
                                           |p| p.parse_expr().map(|p| p.unwrap()),
@@ -69,7 +64,7 @@ impl TryMatch for Pat {
         }
 
         if let PatKind::Mac(ref mac) = self.node {
-            let name = macro_name(mac);
+            let name = util::macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(&mac.node.tts,
                                           |p| p.parse_pat().map(|p| p.unwrap()),
@@ -89,7 +84,7 @@ impl TryMatch for Ty {
         }
 
         if let TyKind::Mac(ref mac) = self.node {
-            let name = macro_name(mac);
+            let name = util::macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(&mac.node.tts,
                                           |p| p.parse_ty().map(|p| p.unwrap()),

@@ -61,9 +61,9 @@ impl Transform for ReconstructForRange {
 
         fold_match_with(mcx, pat, krate, |_, bnd| {
             if is_one_expr(bnd.expr("__step")) {
-                repl_step_one.clone().subst(&bnd)
+                repl_step_one.clone().subst(st, cx, &bnd)
             } else {
-                repl_step_more.clone().subst(&bnd)
+                repl_step_more.clone().subst(st, cx, &bnd)
             }
         })
     }
@@ -102,10 +102,10 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
         let body = bnd.multi_stmt("__m_body");
         // TODO: would be nice to get rid of the clones of body.  Might require making
         // `find_first` use a visitor instead of a `fold`.
-        if find_first(st, cx, find_continue.clone().subst(&bnd), body.clone()).is_none() &&
-           find_first(st, cx, find_break.clone().subst(&bnd), body.clone()).is_none() &&
-           find_first(st, cx, find_break_expr.clone().subst(&bnd), body.clone()).is_none() {
-            repl.clone().subst(&bnd)
+        if find_first(st, cx, find_continue.clone().subst(st, cx, &bnd), body.clone()).is_none() &&
+           find_first(st, cx, find_break.clone().subst(st, cx, &bnd), body.clone()).is_none() &&
+           find_first(st, cx, find_break_expr.clone().subst(st, cx, &bnd), body.clone()).is_none() {
+            repl.clone().subst(st, cx, &bnd)
         } else {
             orig
         }

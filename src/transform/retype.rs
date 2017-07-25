@@ -76,7 +76,7 @@ impl Transform for RetypeArgument {
                         rewritten_nodes.insert(e.id);
                         let mut bnd = Bindings::new();
                         bnd.add_expr("__new", e.clone());
-                        return unwrap.clone().subst(&bnd);
+                        return unwrap.clone().subst(st, cx, &bnd);
                     }
                 }
                 e
@@ -103,7 +103,7 @@ impl Transform for RetypeArgument {
                     for &idx in mod_args {
                         let mut bnd = Bindings::new();
                         bnd.add_expr("__old", args[idx].clone());
-                        args[idx] = wrap.clone().subst(&bnd);
+                        args[idx] = wrap.clone().subst(st, cx, &bnd);
                     }
                 }
                 e

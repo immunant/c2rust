@@ -28,7 +28,7 @@ impl Transform for AssignToUpdate {
             let struct_path = cx.def_path(struct_def_id);
 
             bnd.add_path("__s", struct_path);
-            repl.clone().subst(&bnd)
+            repl.clone().subst(st, cx, &bnd)
         })
     }
 

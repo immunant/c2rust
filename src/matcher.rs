@@ -3,7 +3,7 @@ use std::cmp;
 use std::result;
 use rustc::hir::def_id::DefId;
 use rustc::hir::map::Node;
-use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Block};
+use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Block};
 use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};
 use syntax::parse::PResult;
@@ -250,8 +250,9 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
     }
 
     fn do_def_impl(&mut self,
-                       tts: &ThinTokenStream,
-                       opt_def_id: Option<DefId>) -> Result<()> {
+                   tts: &ThinTokenStream,
+                   opt_def_id: Option<DefId>,
+                   target_path: Option<&Path>) -> Result<()> {
         let mut p = Parser::new(&self.cx.session().parse_sess,
                                 tts.clone().into(),
                                 None, false, false);
@@ -284,17 +285,29 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
             return Err(Error::DefMismatch);
         }
 
+        if let Some(path) = target_path {
+            self.bindings.add_def_path(name, label, path.clone());
+        }
+
         Ok(())
     }
 
     pub fn do_def_expr(&mut self, tts: &ThinTokenStream, target: &Expr) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_expr(target);
-        self.do_def_impl(tts, opt_def_id)
+        let opt_path = match target.node {
+            ExprKind::Path(None, ref p) => Some(p),
+            _ => None,
+        };
+        self.do_def_impl(tts, opt_def_id, opt_path)
     }
 
     pub fn do_def_ty(&mut self, tts: &ThinTokenStream, target: &Ty) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_ty(target);
-        self.do_def_impl(tts, opt_def_id)
+        let opt_path = match target.node {
+            TyKind::Path(None, ref p) => Some(p),
+            _ => None,
+        };
+        self.do_def_impl(tts, opt_def_id, opt_path)
     }
 }
 

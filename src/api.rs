@@ -37,7 +37,7 @@ pub fn replace_expr<T: Fold>(st: &CommandState,
                              repl: &str) -> <T as Fold>::Result {
     let pat = parse_expr(cx.session(), pat);
     let repl = parse_expr(cx.session(), repl);
-    fold_match(st, cx, pat, ast, |_, bnd| repl.clone().subst(&bnd))
+    fold_match(st, cx, pat, ast, |_, bnd| repl.clone().subst(st, cx, &bnd))
 }
 
 pub fn replace_stmts<T: Fold>(st: &CommandState,
@@ -47,7 +47,7 @@ pub fn replace_stmts<T: Fold>(st: &CommandState,
                               repl: &str) -> <T as Fold>::Result {
     let pat = parse_stmts(cx.session(), pat);
     let repl = parse_stmts(cx.session(), repl);
-    fold_match(st, cx, pat, ast, |_, bnd| repl.clone().subst(&bnd))
+    fold_match(st, cx, pat, ast, |_, bnd| repl.clone().subst(st, cx, &bnd))
 }
 
 

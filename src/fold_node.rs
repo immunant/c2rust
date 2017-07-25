@@ -63,6 +63,14 @@ gen_fold_node_impl! {
 }
 
 gen_fold_node_impl! {
+    node = ImplItem;
+    folder = ImplItemNodeFolder;
+    fn fold_impl_item(&mut self, i: ImplItem) -> SmallVector<ImplItem>;
+    walk = fold::noop_fold_impl_item(i, self);
+    map = i.move_flat_map(|i| (self.callback)(i));
+}
+
+gen_fold_node_impl! {
     node = Path;
     folder = PathNodeFolder;
     fn fold_path(&mut self, p: Path) -> Path;

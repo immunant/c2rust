@@ -220,3 +220,9 @@ impl<'a> IntoSymbol for &'a String {
         <&str as IntoSymbol>::into_symbol(self)
     }
 }
+
+
+pub fn macro_name(mac: &Mac) -> Name {
+    let p = &mac.node.path;
+    p.segments.last().unwrap().identifier.name
+}

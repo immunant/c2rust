@@ -84,7 +84,27 @@ impl Transform for ReplaceItems {
         let mut target_ids = HashSet::new();
         let mut repl_id = None;
 
+        // (1a) Top-level items
         let krate = fold_nodes(krate, |i: P<Item>| {
+            if st.marked(i.id, "repl") {
+                if repl_id.is_none() {
+                    repl_id = Some(cx.node_def_id(i.id));
+                } else {
+                    panic!("found multiple `repl` items");
+                }
+            }
+
+            if st.marked(i.id, "target") {
+                target_ids.insert(cx.node_def_id(i.id));
+                SmallVector::new()
+            } else {
+                SmallVector::one(i)
+            }
+        });
+
+        // (1b) Impl items
+        // TODO: Only inherent impls are supported for now.  May not work on trait impls.
+        let krate = fold_nodes(krate, |i: ImplItem| {
             if st.marked(i.id, "repl") {
                 if repl_id.is_none() {
                     repl_id = Some(cx.node_def_id(i.id));
@@ -147,6 +167,7 @@ pub fn register_commands(reg: &mut Registry) {
         repl: args[1].clone(),
         filter: args.get(2).map(|x| (x as &str).into_symbol()),
     }));
+
     reg.register("replace_items", |_args| mk(ReplaceItems));
 }
 

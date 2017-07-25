@@ -4,7 +4,7 @@ use syntax::symbol::Symbol;
 use api::*;
 use command::{CommandState, Registry};
 use contains_mark::contains_mark;
-use driver;
+use driver::{self, Phase};
 use transform::Transform;
 use util::IntoSymbol;
 
@@ -54,8 +54,12 @@ impl Transform for RewriteExpr {
                 }
             }
 
-            repl.clone().subst(&bnd)
+            repl.clone().subst(st, cx, &bnd)
         })
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
     }
 }
 
@@ -78,8 +82,12 @@ impl Transform for RewriteTy {
                 }
             }
 
-            repl.clone().subst(&bnd)
+            repl.clone().subst(st, cx, &bnd)
         })
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
     }
 }
 
