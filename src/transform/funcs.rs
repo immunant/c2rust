@@ -59,7 +59,9 @@ impl Transform for ToMethod {
             generics: Generics,
             block: P<Block>,
 
-            arg_idx: usize,
+            /// Index of the argument that will be replaced with `self`, or `None` if this function
+            /// is being turned into a static method.
+            arg_idx: Option<usize>,
         }
         let mut fns = Vec::new();
 
@@ -69,8 +71,11 @@ impl Transform for ToMethod {
                 let decl = match_or!([i.node] ItemKind::Fn(ref decl, ..) => decl; return None);
                 for (idx, arg) in decl.inputs.iter().enumerate() {
                     if st.marked(arg.id, "target") {
-                        return Some(idx);
+                        return Some(Some(idx));
                     }
+                }
+                if st.marked(i.id, "target") {
+                    return Some(None);
                 }
                 None
             }) {
@@ -88,7 +93,7 @@ impl Transform for ToMethod {
         // Build a hash table with info needed to rewrite references to marked functions.
         struct FnRefInfo {
             ident: Ident,
-            arg_idx: usize,
+            arg_idx: Option<usize>,
         }
         let fn_ref_info = fns.iter().map(|f| {
             (cx.node_def_id(f.item.id),
@@ -101,10 +106,12 @@ impl Transform for ToMethod {
 
         // (3) Rewrite function signatures and bodies, replacing the marked arg with `self`.
         for f in &mut fns {
+            // Functions that are being turned into static methods don't need any changes.
+            let arg_idx = match_or!([f.arg_idx] Some(x) => x; continue);
             let mut inputs = f.decl.inputs.clone();
 
             // Remove the marked arg and inspect it.
-            let arg = inputs.remove(f.arg_idx);
+            let arg = inputs.remove(arg_idx);
 
             let mode = match arg.pat.node {
                 PatKind::Ident(mode, _, _) => mode,
@@ -213,18 +220,32 @@ impl Transform for ToMethod {
             // At this point, we know `func` is a reference to a marked function, and we have the
             // function's `FnRefInfo`.
 
-            let mut args = args;
-            let self_arg = args.remove(info.arg_idx);
-            args.insert(0, self_arg);
+            if let Some(arg_idx) = info.arg_idx {
+                // Move the `self` argument into the first position.
+                let mut args = args;
+                let self_arg = args.remove(arg_idx);
+                args.insert(0, self_arg);
 
-            e.map(|e| {
-                Expr {
-                    node: ExprKind::MethodCall(
-                              mk().path_segment(info.ident.clone()),
-                              args),
-                    .. e
-                }
-            })
+                e.map(|e| {
+                    Expr {
+                        node: ExprKind::MethodCall(
+                                  mk().path_segment(&info.ident),
+                                  args),
+                        .. e
+                    }
+                })
+            } else {
+                // There is no `self` argument, but change the function reference to the new path.
+                let mut new_path = cx.def_path(cx.node_def_id(dest.id));
+                new_path.segments.push(mk().path_segment(&info.ident));
+
+                e.map(|e| {
+                    Expr {
+                        node: ExprKind::Call(mk().path_expr(new_path), args),
+                        .. e
+                    }
+                })
+            }
         });
 
 
