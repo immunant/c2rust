@@ -10,7 +10,9 @@ use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream};
 
 use pick_node::NodeKind;
+use remove_paren::remove_paren;
 use select::{SelectOp, Filter, AnyPattern, ItemLikeKind};
+use util::Lone;
 
 type PResult<T> = Result<T, String>;
 
@@ -229,6 +231,7 @@ impl<'a> Stream<'a> {
                     p.expect(&Token::Eof)
                         .map_err(|e| format!("error parsing stmt: {}", e.message()))?;
 
+                    let x = remove_paren(x);
                     Ok(Filter::Matches(AnyPattern::Expr(x)))
                 },
 
@@ -241,6 +244,7 @@ impl<'a> Stream<'a> {
                     p.expect(&Token::Eof)
                         .map_err(|e| format!("error parsing stmt: {}", e.message()))?;
 
+                    let x = remove_paren(x);
                     Ok(Filter::Matches(AnyPattern::Ty(x)))
                 },
 
@@ -256,6 +260,7 @@ impl<'a> Stream<'a> {
                     p.expect(&Token::Eof)
                         .map_err(|e| format!("error parsing stmt: {}", e.message()))?;
 
+                    let x = remove_paren(x).lone();
                     Ok(Filter::Matches(AnyPattern::Stmt(x)))
                 },
 
