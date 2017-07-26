@@ -3,7 +3,7 @@ use std::sync::mpsc::{self, Sender};
 use std::thread;
 use json::{self, JsonValue};
 
-use interact::{ToServer, ToClient};
+use interact::{ToServer, ToClient, MarkInfo};
 use interact::WrapSender;
 
 
@@ -43,26 +43,31 @@ pub fn init<U, F>(to_server: WrapSender<ToServer, U, F>) -> Sender<ToClient>
 }
 
 
+fn encode_mark_info(i: MarkInfo) -> JsonValue {
+    object! {
+        "id" => i.id,
+        "file" => i.file,
+        "start_line" => i.start_line,
+        "start_col" => i.start_col,
+        "end_line" => i.end_line,
+        "end_col" => i.end_col,
+        "labels" => i.labels
+    }
+}
+
 fn encode_message(msg: ToClient) -> JsonValue {
     match msg {
-        ToClient::MarkInfo { id, file, start_line, start_col,
-                             end_line, end_col, labels } => {
+        ToClient::Mark { info } => {
             object! {
-                "msg" => "mark-info",
-                "id" => id,
-                "file" => file,
-                "start_line" => start_line,
-                "start_col" => start_col,
-                "end_line" => end_line,
-                "end_col" => end_col,
-                "labels" => labels
+                "msg" => "mark",
+                "info" => encode_mark_info(info)
             }
         },
 
-        ToClient::NodeList { nodes } => {
+        ToClient::MarkList { infos } => {
             object! {
-                "msg" => "node-list",
-                "nodes" => nodes
+                "msg" => "mark-list",
+                "infos" => infos.into_iter().map(encode_mark_info).collect::<Vec<_>>()
             }
         },
 
@@ -161,8 +166,8 @@ fn decode_message(json: JsonValue) -> Result<ToServer, String> {
             }
         },
 
-        "get-node-list" => {
-            ToServer::GetNodeList
+        "get-mark-list" => {
+            ToServer::GetMarkList
         },
 
         "set-buffers-available" => {

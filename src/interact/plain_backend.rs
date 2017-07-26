@@ -3,7 +3,7 @@ use std::str::FromStr;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 
-use interact::{ToServer, ToClient};
+use interact::{ToServer, ToClient, MarkInfo};
 use interact::WrapSender;
 
 
@@ -41,24 +41,29 @@ pub fn init<U, F>(to_server: WrapSender<ToServer, U, F>) -> Sender<ToClient>
 }
 
 
+fn encode_mark_info(i: MarkInfo) -> String {
+    let mut s = format!("info {} {} {} {} {} {} {}",
+                        i.id, i.file,
+                        i.start_line, i.start_col,
+                        i.end_line, i.end_col,
+                        i.labels.len());
+    for l in i.labels {
+        s.push_str(&format!(" {}", l));
+    }
+    s
+}
+
 fn encode_message(msg: ToClient) -> String {
     match msg {
-        ToClient::MarkInfo { id, file, start_line, start_col,
-                             end_line, end_col, labels } => {
-            let mut s = format!("mark-info {} {} {} {} {} {}",
-                    id, file, start_line, start_col, end_line, end_col);
-            for l in labels {
-                s.push_str(&format!(" {}", l));
-            }
-            s.push('\n');
-            s
+        ToClient::Mark { info } => {
+            format!("mark {}\n", encode_mark_info(info))
         },
 
-        ToClient::NodeList { nodes } => {
+        ToClient::MarkList { infos } => {
             let mut s = String::new();
-            s.push_str("node-list");
-            for node in nodes {
-                s.push_str(&format!(" {}", node)); 
+            s.push_str("mark-list");
+            for info in infos {
+                s.push_str(&format!(" {}", encode_mark_info(info))); 
             }
             s.push('\n');
             s
@@ -122,8 +127,8 @@ fn decode_message(line: &str) -> Result<ToServer, String> {
             }
         },
 
-        "get-node-list" => {
-            ToServer::GetNodeList
+        "get-mark-list" => {
+            ToServer::GetMarkList
         },
 
         "set-buffers-available" => {

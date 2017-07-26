@@ -27,7 +27,7 @@ pub enum ToServer {
         id: usize,
     },
 
-    GetNodeList,
+    GetMarkList,
 
 
     /// Provide the server with a list of available buffers.  If the compiler would load one of the
@@ -51,21 +51,26 @@ pub enum ToServer {
 }
 
 #[derive(Clone, Debug)]
+pub struct MarkInfo {
+    id: usize,
+    file: String,
+    start_line: u32,
+    start_col: u32,
+    end_line: u32,
+    end_col: u32,
+    labels: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
 pub enum ToClient {
     /// Details about an existing mark.
-    MarkInfo {
-        id: usize,
-        file: String,
-        start_line: u32,
-        start_col: u32,
-        end_line: u32,
-        end_col: u32,
-        labels: Vec<String>,
+    Mark {
+        info: MarkInfo,
     },
 
     /// List the IDs of all marked nodes.
-    NodeList {
-        nodes: Vec<usize>,
+    MarkList {
+        infos: Vec<MarkInfo>,
     },
 
 

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::panic::{self, AssertUnwindSafe};
@@ -21,6 +21,8 @@ use pick_node;
 use rewrite;
 use span_fix;
 use util::IntoSymbol;
+
+use super::MarkInfo;
 
 
 struct InteractState {
@@ -81,6 +83,35 @@ impl InteractState {
         driver::run_compiler(&self.rustc_args, Some(file_loader), phase, func)
     }
 
+    fn collect_mark_infos(&self, cx: &driver::Ctxt) -> Vec<MarkInfo> {
+        let mut infos = HashMap::with_capacity(self.current_marks.len());
+        for &(id, label) in &self.current_marks {
+            let info = infos.entry(id).or_insert_with(|| {
+                let span = cx.hir_map().span(id);
+                let lo = cx.session().codemap().lookup_char_pos(span.lo);
+                let hi = cx.session().codemap().lookup_char_pos(span.hi);
+                MarkInfo {
+                    id: id.as_usize(),
+                    file: lo.file.name.clone(),
+                    start_line: lo.line as u32,
+                    start_col: lo.col.0 as u32,
+                    end_line: hi.line as u32,
+                    end_col: hi.col.0 as u32,
+                    labels: vec![],
+                }
+            });
+            info.labels.push((&label.as_str() as &str).to_owned());
+        }
+
+        let mut infos_vec = Vec::with_capacity(infos.len());
+        for (_, mut info) in infos {
+            info.labels.sort();
+            infos_vec.push(info);
+        }
+        infos_vec.sort_by_key(|i| i.id);
+        infos_vec
+    }
+
     fn handle_one(&mut self, msg: ToServer) {
         use super::ToServer::*;
         use super::ToClient::*;
@@ -90,7 +121,7 @@ impl InteractState {
                 let kind = pick_node::NodeKind::from_str(&kind).unwrap();
                 let label = label.into_symbol();
 
-                let (id, msg) = self.run_compiler(driver::Phase::Phase2, |krate, cx| {
+                let (id, mark_info) = self.run_compiler(driver::Phase::Phase2, |krate, cx| {
                     let info = pick_node::pick_node_at_loc(
                             &krate, &cx, kind, &file, line, col)
                         .unwrap_or_else(
@@ -111,7 +142,7 @@ impl InteractState {
                 });
 
                 self.current_marks.insert((id, label));
-                self.to_client.send(msg).unwrap();
+                self.to_client.send(Mark { info: mark_info }).unwrap();
             },
 
             RemoveMark { id } => {
@@ -133,7 +164,7 @@ impl InteractState {
                     let span = cx.hir_map().span(id);
                     let lo = cx.session().codemap().lookup_char_pos(span.lo);
                     let hi = cx.session().codemap().lookup_char_pos(span.hi);
-                    MarkInfo {
+                    let info = MarkInfo {
                         id: id.as_usize(),
                         file: lo.file.name.clone(),
                         start_line: lo.line as u32,
@@ -141,18 +172,18 @@ impl InteractState {
                         end_line: hi.line as u32,
                         end_col: hi.col.0 as u32,
                         labels: labels,
-                    }
+                    };
+                    Mark { info: info }
                 });
                 self.to_client.send(msg).unwrap();
             },
 
-            GetNodeList => {
-                let mut nodes = Vec::with_capacity(self.current_marks.len());
-                for &(id, _) in &self.current_marks {
-                    nodes.push(id.as_usize());
-                }
-                nodes.sort();
-                self.to_client.send(NodeList { nodes }).unwrap();
+            GetMarkList => {
+                let msg = self.run_compiler(driver::Phase::Phase2, |_krate, cx| {
+                    let infos = self.collect_mark_infos(&cx);
+                    MarkList { infos: infos }
+                });
+                self.to_client.send(msg).unwrap();
             },
 
             SetBuffersAvailable { files } => {
@@ -199,12 +230,8 @@ impl InteractState {
                     if cmd_state.marks_changed() {
                         self.current_marks = cmd_state.marks().clone();
 
-                        let mut nodes = Vec::with_capacity(self.current_marks.len());
-                        for &(id, _) in &self.current_marks {
-                            nodes.push(id.as_usize());
-                        }
-                        nodes.sort();
-                        self.to_client.send(NodeList { nodes }).unwrap();
+                        let infos = self.collect_mark_infos(&cx);
+                        self.to_client.send(MarkList { infos: infos }).unwrap();
                     }
                 });
             },

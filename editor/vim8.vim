@@ -6,7 +6,7 @@ let s:active = 0
 let s:last_kind = "any"
 let s:last_label = "target"
 
-let s:highlights = []
+let s:hl_map = {}
 
 function! s:ModeBegin()
     if s:active
@@ -53,6 +53,7 @@ nnoremap <Leader>m :call <SID>DoMark()<CR>
 nnoremap <Leader>M :call <SID>DoMarkNamed()<CR>
 nnoremap <Leader>c :call <SID>DoCommand()<CR>
 nnoremap <Leader>f :call <SID>DoFormat()<CR>
+nnoremap <Leader>h :call <SID>RefreshHighlights()<CR>
 nnoremap <Leader>s :source %<CR>
 
 function! s:Send(json)
@@ -132,24 +133,13 @@ endfunction
 
 function! IdiomizeOutputHandler(channel, msg)
     let json = json_decode(a:msg)
-    if json["msg"] == "mark-info"
-        call s:SetMark("'<", json["file"], json["start_line"], json["start_col"] + 1)
-        call s:SetMark("'>", json["file"], json["end_line"], json["end_col"] + 1)
-        "normal gv
-        let nr = bufnr(json["file"])
-        if nr != -1
-            call s:Highlight(nr,
-                        \ json["start_line"], json["start_col"] + 1,
-                        \ json["end_line"], json["end_col"] + 1)
-        endif
+    if json["msg"] == "mark"
+        call s:HighlightMark(json["info"])
         echo "Marked node as " . join(json["labels"], ", ")
-    elseif json["msg"] == "node-list"
+    elseif json["msg"] == "mark-list"
         call s:ClearHighlights()
-        for id in json["nodes"]
-            call s:Send({
-                        \ "msg": "get-mark-info",
-                        \ "id": id,
-                        \ })
+        for info in json["infos"]
+            call s:HighlightMark(info)
         endfor
     elseif json["msg"] == "get-buffer-text"
         let nr = bufnr(json["file"])
@@ -196,32 +186,48 @@ endfunction
 
 hi default IdiomizeMarkedNode ctermbg=52
 
+function! s:HighlightMark(json)
+    call s:SetMark("'<", a:json["file"], a:json["start_line"], a:json["start_col"] + 1)
+    call s:SetMark("'>", a:json["file"], a:json["end_line"], a:json["end_col"] + 1)
+    "normal gv
+    let nr = bufnr(a:json["file"])
+    if nr != -1
+        call s:Highlight(nr,
+                    \ a:json["start_line"], a:json["start_col"] + 1,
+                    \ a:json["end_line"], a:json["end_col"] + 1)
+    endif
+endfunction
+
 function! s:Highlight(nr, line1, col1, line2, col2)
+    if !has_key(s:hl_map, a:nr)
+        let s:hl_map[a:nr] = []
+    endif
+
     let pat = '\%' . a:line1 . 'l\%' . a:col1 . 'c\_.*' .
                 \ '\%' . a:line2 . 'l\%' . a:col2 . 'c'
-    echom "highlight" pat
+    let hl = {
+                \ 'group': 'IdiomizeMarkedNode',
+                \ 'pattern': pat,
+                \ 'priority': 10,
+                \ 'id': len(s:hl_map[a:nr]) + 4
+                \ }
+    call add(s:hl_map[a:nr], hl)
 
-    let cur_nr = bufnr("%")
-
-    if a:nr != cur_nr
-        exec 'buffer ' . a:nr
+    if a:nr == bufnr('%')
+        call setmatches(s:hl_map[a:nr])
     endif
-    let hl = matchadd("IdiomizeMarkedNode", pat)
-    echom 'hilite' hl 'in buf' a:nr
-    if a:nr != cur_nr
-        exec 'buffer ' . cur_nr
-    endif
-
-    call add(s:highlights, [hl, a:nr])
 endfunction
 
 function! s:ClearHighlights()
-    let cur_nr = bufnr("%")
-    for [hl, nr] in s:highlights
-        echom 'clear' hl 'in buf' nr
-        exec 'buffer ' . nr
-        call matchdelete(hl)
-    endfor
-    exec 'buffer ' . cur_nr
-    let s:highlights = []
+    let s:hl_map = {}
+    call clearmatches()
+endfunction
+
+function! s:RefreshHighlights()
+    let nr = bufnr('%')
+    if has_key(s:hl_map, nr)
+        call setmatches(s:hl_map[nr])
+    else
+        call clearmatches()
+    endif
 endfunction
