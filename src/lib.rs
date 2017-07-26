@@ -63,6 +63,7 @@ pub mod plugin;
 // Command implementations
 pub mod transform;
 pub mod mark_adjust;
+pub mod select;
 
 // Source rewriting
 pub mod rewrite;

@@ -27,7 +27,7 @@ impl<'a> Visitor<'a> for PickVisitor {
         // the function and not its containing module, for example.
         visit::walk_item(self, x);
         if self.node_info.is_none() &&
-           self.kind.includes(NodeKind::Item) &&
+           self.kind.contains(NodeKind::Item) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -47,7 +47,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     fn visit_trait_item(&mut self, x: &'a TraitItem) {
         visit::walk_trait_item(self, x);
         if self.node_info.is_none() &&
-           self.kind.includes(NodeKind::TraitItem) &&
+           self.kind.contains(NodeKind::TraitItem) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -56,7 +56,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     fn visit_impl_item(&mut self, x: &'a ImplItem) {
         visit::walk_impl_item(self, x);
         if self.node_info.is_none() &&
-           self.kind.includes(NodeKind::ImplItem) &&
+           self.kind.contains(NodeKind::ImplItem) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -65,7 +65,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     fn visit_foreign_item(&mut self, x: &'a ForeignItem) {
         visit::walk_foreign_item(self, x);
         if self.node_info.is_none() &&
-           self.kind.includes(NodeKind::ForeignItem) &&
+           self.kind.contains(NodeKind::ForeignItem) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -74,7 +74,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     fn visit_stmt(&mut self, x: &'a Stmt) {
         visit::walk_stmt(self, x);
         if self.node_info.is_none() &&
-           self.kind.includes(NodeKind::Stmt) &&
+           self.kind.contains(NodeKind::Stmt) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -83,7 +83,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     fn visit_expr(&mut self, x: &'a Expr) {
         visit::walk_expr(self, x);
         if self.node_info.is_none() &&
-           self.kind.includes(NodeKind::Expr) &&
+           self.kind.contains(NodeKind::Expr) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -92,7 +92,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     fn visit_pat(&mut self, x: &'a Pat) {
         visit::walk_pat(self, x);
         if self.node_info.is_none() &&
-           self.kind.includes(NodeKind::Pat) &&
+           self.kind.contains(NodeKind::Pat) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -101,7 +101,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     fn visit_ty(&mut self, x: &'a Ty) {
         visit::walk_ty(self, x);
         if self.node_info.is_none() &&
-           self.kind.includes(NodeKind::Ty) &&
+           self.kind.contains(NodeKind::Ty) &&
            x.span.contains(self.target) {
             self.node_info = Some(NodeInfo { id: x.id, span: x.span });
         }
@@ -112,7 +112,7 @@ impl<'a> Visitor<'a> for PickVisitor {
         visit::walk_fn(self, fk, fd, s);
 
         if self.node_info.is_none() &&
-           self.kind.includes(NodeKind::Arg) {
+           self.kind.contains(NodeKind::Arg) {
             for arg in &fd.inputs {
                 if arg.ty.span.contains(self.target) ||
                    arg.pat.span.contains(self.target) ||
@@ -150,7 +150,7 @@ pub enum NodeKind {
 }
 
 impl NodeKind {
-    fn includes(self, other: NodeKind) -> bool {
+    pub fn contains(self, other: NodeKind) -> bool {
         match self {
             NodeKind::Any => true,
             NodeKind::ItemLike => match other {
