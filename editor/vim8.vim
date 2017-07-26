@@ -135,7 +135,7 @@ function! IdiomizeOutputHandler(channel, msg)
     let json = json_decode(a:msg)
     if json["msg"] == "mark"
         call s:HighlightMark(json["info"])
-        echo "Marked node as " . join(json["labels"], ", ")
+        echo "Marked node as " . join(json["info"]["labels"], ", ")
     elseif json["msg"] == "mark-list"
         call s:ClearHighlights()
         for info in json["infos"]
