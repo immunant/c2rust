@@ -117,10 +117,10 @@ impl<'a> Visitor<'a> for PickVisitor {
                 if arg.ty.span.contains(self.target) ||
                    arg.pat.span.contains(self.target) ||
                    (arg.ty.span.ctxt == arg.pat.span.ctxt &&
-                    arg.ty.span.between(arg.pat.span).contains(self.target)) {
+                    arg.pat.span.between(arg.ty.span).contains(self.target)) {
                     self.node_info = Some(NodeInfo {
                         id: arg.id,
-                        span: arg.ty.span.to(arg.pat.span),
+                        span: arg.pat.span.to(arg.ty.span),
                     });
                 }
             }

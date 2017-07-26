@@ -6,13 +6,17 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::mpsc::{self, Sender, Receiver};
 use std::thread;
-use syntax::ast::{NodeId, Crate};
+use syntax::ast::*;
 use syntax::codemap::{FileLoader, RealFileLoader};
+use syntax::codemap::Span;
 use syntax::symbol::Symbol;
+use syntax::visit::{self, Visitor, FnKind};
 
 use command::{self, CommandState};
 use driver;
 use file_rewrite;
+use get_node_id::GetNodeId;
+use get_span::GetSpan;
 use interact::{ToServer, ToClient};
 use interact::WrapSender;
 use interact::{plain_backend, vim8_backend};
@@ -21,6 +25,7 @@ use pick_node;
 use rewrite;
 use span_fix;
 use util::IntoSymbol;
+use visit::Visit;
 
 use super::MarkInfo;
 
@@ -83,11 +88,14 @@ impl InteractState {
         driver::run_compiler(&self.rustc_args, Some(file_loader), phase, func)
     }
 
-    fn collect_mark_infos(&self, cx: &driver::Ctxt) -> Vec<MarkInfo> {
+    fn collect_mark_infos(&self, krate: &Crate, cx: &driver::Ctxt) -> Vec<MarkInfo> {
+        let ids = self.current_marks.iter().map(|&(id, _)| id).collect();
+        let span_map = collect_spans(krate, ids);
+
         let mut infos = HashMap::with_capacity(self.current_marks.len());
         for &(id, label) in &self.current_marks {
             let info = infos.entry(id).or_insert_with(|| {
-                let span = cx.hir_map().span(id);
+                let span = span_map[&id];
                 let lo = cx.session().codemap().lookup_char_pos(span.lo);
                 let hi = cx.session().codemap().lookup_char_pos(span.hi);
                 MarkInfo {
@@ -179,8 +187,8 @@ impl InteractState {
             },
 
             GetMarkList => {
-                let msg = self.run_compiler(driver::Phase::Phase2, |_krate, cx| {
-                    let infos = self.collect_mark_infos(&cx);
+                let msg = self.run_compiler(driver::Phase::Phase2, |krate, cx| {
+                    let infos = self.collect_mark_infos(&krate, &cx);
                     MarkList { infos: infos }
                 });
                 self.to_client.send(msg).unwrap();
@@ -230,7 +238,7 @@ impl InteractState {
                     if cmd_state.marks_changed() {
                         self.current_marks = cmd_state.marks().clone();
 
-                        let infos = self.collect_mark_infos(&cx);
+                        let infos = self.collect_mark_infos(&krate, &cx);
                         self.to_client.send(MarkList { infos: infos }).unwrap();
                     }
                 });
@@ -289,4 +297,78 @@ impl FileLoader for InteractiveFileLoader {
             self.real.read_file(&canon)
         }
     }
+}
+
+
+struct CollectSpanVisitor {
+    ids: HashSet<NodeId>,
+    spans: HashMap<NodeId, Span>,
+}
+
+impl CollectSpanVisitor {
+    fn record<T: GetNodeId + GetSpan>(&mut self, x: &T) {
+        if self.ids.contains(&x.get_node_id()) {
+            self.spans.insert(x.get_node_id(), x.get_span());
+        }
+    }
+}
+
+impl<'ast> Visitor<'ast> for CollectSpanVisitor {
+    fn visit_item(&mut self, x: &'ast Item) {
+        self.record(x);
+        visit::walk_item(self, x)
+    }
+
+    fn visit_trait_item(&mut self, x: &'ast TraitItem) {
+        self.record(x);
+        visit::walk_trait_item(self, x)
+    }
+
+    fn visit_impl_item(&mut self, x: &'ast ImplItem) {
+        self.record(x);
+        visit::walk_impl_item(self, x)
+    }
+
+    fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
+        self.record(x);
+        visit::walk_foreign_item(self, x)
+    }
+
+    fn visit_stmt(&mut self, x: &'ast Stmt) {
+        self.record(x);
+        visit::walk_stmt(self, x)
+    }
+
+    fn visit_expr(&mut self, x: &'ast Expr) {
+        self.record(x);
+        visit::walk_expr(self, x)
+    }
+
+    fn visit_pat(&mut self, x: &'ast Pat) {
+        self.record(x);
+        visit::walk_pat(self, x)
+    }
+
+    fn visit_ty(&mut self, x: &'ast Ty) {
+        self.record(x);
+        visit::walk_ty(self, x)
+    }
+
+    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, id: NodeId) {
+        for arg in &fd.inputs {
+            if self.ids.contains(&arg.id) {
+                self.spans.insert(arg.id, arg.pat.span.to(arg.ty.span));
+            }
+        }
+        visit::walk_fn(self, kind, fd, span);
+    }
+}
+
+fn collect_spans<T: Visit>(target: &T, ids: HashSet<NodeId>) -> HashMap<NodeId, Span> {
+    let mut v = CollectSpanVisitor {
+        ids: ids,
+        spans: HashMap::new(),
+    };
+    target.visit(&mut v);
+    v.spans
 }
