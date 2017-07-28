@@ -705,6 +705,19 @@ impl Builder {
         Arg::from_self(eself, ident)
     }
 
+    pub fn ty_param<I>(self, ident: I) -> TyParam
+            where I: Make<Ident> {
+        let ident = ident.make(&self);
+        TyParam {
+            attrs: self.attrs.into(),
+            ident: ident,
+            id: DUMMY_NODE_ID,
+            bounds: vec![],
+            default: None,
+            span: DUMMY_SP,
+        }
+    }
+
     pub fn mac<Pa, Ts>(self, path: Pa, tts: Ts) -> Mac
             where Pa: Make<Path>, Ts: Make<ThinTokenStream> {
         let path = path.make(&self);

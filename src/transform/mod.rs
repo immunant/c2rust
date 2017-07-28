@@ -49,6 +49,7 @@ transform_modules! {
     control_flow,
     format,
     funcs,
+    generics,
     items,
     linkage,
     retype,
