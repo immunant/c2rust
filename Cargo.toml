@@ -12,6 +12,7 @@ json = "0.11.8"
 libc = "0.2.26"
 getopts = "0.2.14"
 regex = "0.2.2"
+ena = "0.7.3"
 
 [lib]
 name = "idiomize"

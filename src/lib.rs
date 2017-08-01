@@ -4,12 +4,14 @@
     trace_macros,
 )]
 extern crate arena;
+extern crate ena;
 extern crate libc;
 extern crate diff;
 #[macro_use] extern crate json;
 #[macro_use] extern crate log;
 extern crate regex;
 extern crate rustc;
+extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_metadata;
@@ -33,6 +35,7 @@ pub mod get_node_id;
 pub mod get_span;
 pub mod contains_mark;
 pub mod pick_node;
+pub mod analysis;
 
 // AST edits
 pub mod fold;
