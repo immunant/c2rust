@@ -27,6 +27,27 @@ fn i(p: (i32, i32)) -> i32 {
     x
 }
 
+struct S {
+    f: i32,
+}
+
+impl S {
+}
+
+type T = i32;
+
+fn type_alias(x: T, y: T) -> i32 {
+    x
+}
+
+fn substs() {
+    use std::slice::Iter;
+    let x = Option::<i32>::map::<i32, _>(Some(17), |x| x + 1);
+    let f = <Option<i32> as Clone>::clone;
+    let f = <str as AsRef<[u8]>>::as_ref;
+    let f = <Iter<u8> as Iterator>::collect::<Vec<_>>;
+}
+
 
 fn main() {
 }

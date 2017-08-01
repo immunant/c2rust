@@ -9,6 +9,12 @@
 //! Here the equivalence classes are {x, a} and {y, b}.  The annotations on `x` and `a` must match
 //! for the program to typecheck, but the annotations on `x` and `y` do not need to match because
 //! the two never interact.
+//!
+//! The analysis runs in two phases.  First, it constructs a "labeled type" for every type in the
+//! AST.  The labeled type has the same structure as the `ty::Ty`, but has a unification key at
+//! every type constructor.  Second, it walks over the AST unifying various types.  This includes
+//! unifying the LHS type of an assignment with the RHS type, `typeof(&e)` with `&typeof(e)`, the
+//! type of the expression `f` with `f`'s function signature, and so on.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -17,12 +23,15 @@ use ena::unify::{UnificationTable, UnifyKey};
 use rustc::hir;
 use rustc::hir::*;
 use rustc::hir::def_id::DefId;
-use rustc::hir::map::Node::*;
+use rustc::hir::intravisit::{self, Visitor, NestedVisitorMap};
 use rustc::hir::itemlikevisit::{self, ItemLikeVisitor};
-use rustc::ty::{self, TyCtxt};
+use rustc::hir::map::Node::*;
+use rustc::ty::{self, TyCtxt, TypeckTables};
+use rustc::ty::subst::{self, Substs};
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast;
 use syntax::ast::NodeId;
+use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
 use util::HirDefExt;
@@ -49,59 +58,497 @@ impl UnifyKey for TyLabel {
 }
 
 
-/// Representation of the skeleton of a type.  The `Symbol`s are only for debugging.
-#[derive(Clone, PartialEq, Eq)]
-enum TySkel {
-    Unsupported(Symbol),
-    Prim(Symbol),
-    Constr(Symbol, Vec<LTy>),
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct LTy {
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct LTy<'tcx> {
+    ty: ty::Ty<'tcx>,
     label: TyLabel,
-    ty: TySkel,
+    args: Box<[LTy<'tcx>]>,
 }
 
-impl fmt::Debug for TySkel {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            TySkel::Unsupported(s) => write!(f, "ERR({})", s),
-            TySkel::Prim(s) => write!(f, "{}", s),
-            TySkel::Constr(s, ref args) => write!(f, "{}<{:?}>", s, args),
-        }
-    }
-}
-
-impl fmt::Debug for LTy {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{:?}", self.label.0, self.ty)
-    }
-}
-
-impl LTy {
+impl<'tcx> LTy<'tcx> {
     fn canonicalize(&mut self, unif: &mut UnificationTable<TyLabel>) -> &Self {
         self.label = unif.find(self.label);
-        match self.ty {
-            TySkel::Unsupported(_) => {},
-            TySkel::Prim(_) => {},
-            TySkel::Constr(_, ref mut args) => {
-                for arg in args {
-                    arg.canonicalize(unif);
-                }
-            },
+        for arg in self.args.iter_mut() {
+            arg.canonicalize(unif);
         }
         self
     }
+}
 
-    fn args(&self) -> &[LTy] {
-        match self.ty {
-            TySkel::Constr(_, ref args) => args,
-            _ => &[],
+
+struct LTyTable {
+    unif: UnificationTable<TyLabel>,
+}
+
+impl LTyTable {
+    fn new() -> LTyTable {
+        LTyTable {
+            unif: UnificationTable::new(),
+        }
+    }
+
+    fn mk<'tcx>(&mut self, ty: ty::Ty<'tcx>, args: Vec<LTy<'tcx>>) -> LTy<'tcx> {
+        let label = self.unif.new_key(());
+        LTy {
+            ty: ty,
+            label: label,
+            args: args.into_boxed_slice(),
+        }
+    }
+
+
+    fn label<'tcx>(&mut self, ty: ty::Ty<'tcx>) -> LTy<'tcx> {
+        use rustc::ty::TypeVariants::*;
+        match ty.sty {
+            // Types with no arguments
+            TyBool |
+            TyChar |
+            TyInt(_) |
+            TyUint(_) |
+            TyFloat(_) |
+            TyStr |
+            TyNever => self.mk(ty, vec![]),
+
+            // Types that aren't actually supported by this analysis
+            TyFnDef(..) |
+            TyFnPtr(..) |
+            TyDynamic(..) |
+            TyClosure(..) |
+            TyProjection(..) |
+            TyAnon(..) |
+            TyParam(..) |
+            TyInfer(..) |
+            TyError => self.mk(ty, vec![]),
+
+            // Types with arguments
+            TyAdt(_, substs) => {
+                let args = substs.iter().filter_map(|s| s.as_type())
+                    .map(|t| self.label(t)).collect();
+                self.mk(ty, args)
+            },
+            TyArray(elem, _) => {
+                let args = vec![self.label(elem)];
+                self.mk(ty, args)
+            },
+            TySlice(elem) => {
+                let args = vec![self.label(elem)];
+                self.mk(ty, args)
+            },
+            TyRawPtr(mty) => {
+                let args = vec![self.label(mty.ty)];
+                self.mk(ty, args)
+            },
+            TyRef(_, mty) => {
+                let args = vec![self.label(mty.ty)];
+                self.mk(ty, args)
+            },
+            TyTuple(ref elems, _) => {
+                let args = elems.iter().map(|ty| self.label(ty)).collect();
+                self.mk(ty, args)
+            },
         }
     }
 }
 
+
+
+/// Walk over typechecking tables, building a labeled type for each expr and pattern.
+struct ExprPatVisitor<'t, 'a, 'gcx: 'tcx, 'tcx: 'a> {
+    tcx: TyCtxt<'a, 'gcx, 'tcx>,
+    ltt: &'t mut LTyTable,
+    unadjusted: HashMap<NodeId, LTy<'tcx>>,
+    adjusted: HashMap<NodeId, LTy<'tcx>>,
+}
+
+impl<'t, 'a, 'gcx, 'tcx> ExprPatVisitor<'t, 'a, 'gcx, 'tcx> {
+    fn handle_body(&mut self, body_id: BodyId) {
+        let tables = self.tcx.body_tables(body_id);
+        for (&id, &ty) in tables.node_types.iter() {
+            self.unadjusted.insert(id, self.ltt.label(ty));
+
+            if let Some(adj) = tables.adjustments.get(&id).and_then(|v| v.last()) {
+                self.ltt.label(adj.target);
+            }
+        }
+    }
+}
+
+impl<'t, 'a, 'gcx, 'tcx, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'t, 'a, 'gcx, 'tcx> {
+    fn visit_item(&mut self, item: &'hir Item) {
+        let body_id = match item.node {
+            ItemStatic(_, _, body_id) => body_id,
+            ItemConst(_, body_id) => body_id,
+            ItemFn(_, _, _, _, _, body_id) => body_id,
+            _ => return,
+        };
+        self.handle_body(body_id);
+    }
+
+    fn visit_trait_item(&mut self, item: &'hir TraitItem) {
+        let body_id = match item.node {
+            TraitItemKind::Const(_, Some(body_id)) => body_id,
+            TraitItemKind::Method(_, TraitMethod::Provided(body_id)) => body_id,
+            _ => return,
+        };
+        self.handle_body(body_id);
+    }
+
+    fn visit_impl_item(&mut self, item: &'hir ImplItem) {
+        let body_id = match item.node {
+            ImplItemKind::Const(_, body_id) => body_id,
+            ImplItemKind::Method(_, body_id) => body_id,
+            _ => return,
+        };
+        self.handle_body(body_id);
+    }
+}
+
+fn label_nodes<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>, ltt: &mut LTyTable, krate: &Crate)
+                               -> (HashMap<NodeId, LTy<'tcx>>, HashMap<NodeId, LTy<'tcx>>) {
+    let mut v = ExprPatVisitor {
+        tcx: tcx,
+        ltt: ltt,
+        unadjusted: HashMap::new(),
+        adjusted: HashMap::new(),
+    };
+    krate.visit_all_item_likes(&mut v);
+    (v.unadjusted, v.adjusted)
+}
+
+
+
+// Unfortunately, there is no central index of all/most `DefId`s and their types, like there is for
+// exprs and patterns.  And we can't visit all defs because some are pulled in from other crates.
+// Instead, we have to keep this cache and add defs to it as we encounter them.
+struct DefCache<'tcx> {
+    map: HashMap<DefId, LTy<'tcx>>,
+}
+
+impl<'tcx> DefCache<'tcx> {
+    fn new() -> DefCache<'tcx> {
+        DefCache {
+            map: HashMap::new(),
+        }
+    }
+
+    fn get<'a, 'gcx>(&mut self,
+                     tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                     ltt: &mut LTyTable,
+                     def_id: DefId) -> &LTy<'tcx> {
+        if !self.map.contains_key(&def_id) {
+            let lty = ltt.label(tcx.type_of(def_id));
+            self.map.insert(def_id, lty);
+        }
+        &self.map[&def_id]
+    }
+}
+
+
+
+/// Construct `LTy`s for all `hir::Ty` nodes in the AST.
+struct TyVisitor<'t, 'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
+    hir_map: &'a hir::map::Map<'hir>,
+    tcx: TyCtxt<'a, 'gcx, 'tcx>,
+    ltt: &'t mut LTyTable,
+    ty_nodes: HashMap<NodeId, LTy<'tcx>>,
+}
+
+impl<'t, 'a, 'hir, 'gcx, 'tcx> TyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
+    fn handle_ty(&mut self, ty: &Ty, tcx_ty: ty::Ty<'tcx>) {
+        let lty = self.ltt.label(tcx_ty);
+        eprintln!("HANDLE: {:?} => {:?}", ty, tcx_ty);
+        self.record_ty(ty, &lty);
+    }
+
+    fn record_ty(&mut self, ty: &Ty, lty: &LTy<'tcx>) {
+        use rustc::ty::TypeVariants::*;
+        match (&ty.node, &lty.ty.sty) {
+            (&Ty_::TySlice(ref elem), &TySlice(..)) => 
+                self.record_ty(elem, &lty.args[0]),
+            (&Ty_::TyArray(ref elem, _), &TyArray(..)) => 
+                self.record_ty(elem, &lty.args[0]),
+            (&Ty_::TyPtr(ref mty), &TyRawPtr(..)) =>
+                self.record_ty(&mty.ty, &lty.args[0]),
+            (&Ty_::TyRptr(_, ref mty), &TyRef(..)) =>
+                self.record_ty(&mty.ty, &lty.args[0]),
+            (&Ty_::TyBareFn(ref fn_ty), &TyFnPtr(..)) => {}, // unsupported
+            (&Ty_::TyNever, &TyNever) => {},
+            (&Ty_::TyTup(ref elems), &TyTuple(..)) =>
+                self.record_ty_list(elems, &lty.args),
+            (&Ty_::TyPath(ref qpath), _) => {
+                // TyPath could resolve to absolutely anything, since resolution includes expanding
+                // type aliases.  So this case gets special handling.
+                self.record_path_ty(qpath, lty);
+            },
+            (&Ty_::TyTraitObject(..), &TyDynamic(..)) => {}, // unsupported
+            (&Ty_::TyImplTrait(..), &TyAnon(..)) => {}, // unsupported
+            // No case for TyTypeof - it can't be written in source programs currently
+            // TyInfer has no sub-`hir::Ty`s to work on.
+            (&Ty_::TyInfer, _) => {},
+            (&Ty_::TyErr, _) => {},
+            (_, _) => {
+                panic!("unsupported hir::Ty/ty::Ty combination:\n  hir: {:?}\n  ty: {:?}",
+                       ty, lty.ty);
+            },
+        }
+        self.ty_nodes.insert(ty.id, lty.clone());
+    }
+
+    fn record_ty_list(&mut self, tys: &[P<Ty>], ltys: &[LTy<'tcx>]) {
+        assert!(tys.len() == ltys.len());
+        for (ty, lty) in tys.iter().zip(ltys.iter()) {
+            self.record_ty(ty, lty);
+        }
+    }
+
+    fn record_path_params(&mut self, params: &PathParameters, ltys: &[LTy<'tcx>]) {
+        match *params {
+            PathParameters::AngleBracketedParameters(ref abpd) => {
+                self.record_ty_list(&abpd.types, ltys);
+            },
+            PathParameters::ParenthesizedParameters(ref ppd) => {
+                if let Some(ref output) = ppd.output {
+                    self.record_ty_list(&ppd.inputs, &ltys[.. ltys.len() - 1]);
+                    self.record_ty(output, ltys.last().unwrap());
+                } else {
+                    self.record_ty_list(&ppd.inputs, ltys);
+                }
+            },
+        }
+    }
+
+    fn record_path_ty(&mut self, qpath: &QPath, lty: &LTy<'tcx>) {
+        use rustc::hir::def::Def;
+        use rustc::ty::TypeVariants::*;
+
+        let path = match *qpath {
+            QPath::Resolved(None, ref p) => p,
+            _ => {
+                // The path is relative to a type or trait.  That means it must be an associated
+                // type of some trait.  We don't handle those currently.
+                return;
+            },
+        };
+
+        let last_seg = path.segments.last().unwrap();
+
+        match (&path.def, &lty.ty.sty) {
+            (&Def::Struct(_), &TyAdt(..)) |
+            (&Def::Union(_), &TyAdt(..)) |
+            (&Def::Enum(_), &TyAdt(..)) =>
+                self.record_path_params(&last_seg.parameters, &lty.args),
+
+            (&Def::Trait(_), &TyDynamic(..)) => {}, // unsupported
+
+            (&Def::TyAlias(_), _) => {}, // unsupported
+
+            (&Def::PrimTy(_), &TyBool) |
+            (&Def::PrimTy(_), &TyChar) |
+            (&Def::PrimTy(_), &TyInt(_)) |
+            (&Def::PrimTy(_), &TyUint(_)) |
+            (&Def::PrimTy(_), &TyFloat(_)) |
+            (&Def::PrimTy(_), &TyStr) => {},
+
+            (&Def::TyParam(_), &TyParam(_)) => {}, // unsupported
+
+            (&Def::SelfTy(_, _), _) => {}, // unsupported
+
+            (&Def::Err, _) => {}, // unsupported
+
+            // These are in the type namespace (according to comments in `enum Def`), but it should
+            // be impossible to encounter them here.
+            (&Def::Mod(_), _) |
+            (&Def::Variant(_), _) |
+            (&Def::AssociatedTy(_), _) => {
+                panic!("impossible: ty path refers to {:?}", path.def);
+            },
+
+            (&Def::Fn(_), _) |
+            (&Def::Const(_), _) |
+            (&Def::Static(_, _), _) |
+            (&Def::StructCtor(_, _), _) |
+            (&Def::VariantCtor(_, _), _) |
+            (&Def::Method(_), _) |
+            (&Def::AssociatedConst(_), _) |
+            (&Def::Local(_), _) |
+            (&Def::Upvar(_, _, _), _) |
+            (&Def::Label(_), _) |
+            (&Def::Macro(_, _), _) |
+            (&Def::GlobalAsm(_), _) => {
+                panic!("impossible: ty path refers to non-type {:?}", path.def);
+            },
+
+            (d, t) => {
+                panic!("unexpected def/ty combination\n  def = {:?}\n  ty = {:?}", d, t);
+            },
+        }
+    }
+
+    fn get_tables(&self, id: NodeId) -> &'gcx TypeckTables<'gcx> {
+        let parent = self.hir_map.get_parent(id);
+        let parent_body = self.hir_map.body_owned_by(parent);
+        self.tcx.body_tables(parent_body)
+    }
+
+    fn get_substs(&self, id: NodeId) -> Option<&'tcx Substs<'tcx>> {
+        self.get_tables(id).node_substs.get(&id).map(|&x| x)
+    }
+
+    fn handle_node_ty(&mut self, ty: &Ty, id: NodeId) {
+        let tables = self.get_tables(id);
+        let tcx_ty = tables.node_id_to_type(id);
+        self.handle_ty(ty, tcx_ty);
+    }
+
+    fn handle_body_tys(&mut self, arg_tys: &[P<Ty>], ret_ty: Option<&Ty>, body_id: BodyId) {
+        let body = self.hir_map.body(body_id);
+        let tables = self.tcx.body_tables(body_id);
+
+        assert!(arg_tys.len() == body.arguments.len());
+        for (ty, arg) in arg_tys.iter().zip(body.arguments.iter()) {
+            self.handle_ty(ty, tables.node_id_to_type(arg.id));
+        }
+        if let Some(ret_ty) = ret_ty {
+            self.handle_ty(ret_ty, tables.node_id_to_type(body.value.id));
+        }
+    }
+
+    fn handle_def_ty(&mut self, ty: &Ty, id: NodeId) {
+        let def_id = self.hir_map.local_def_id(id);
+        let tcx_ty = self.tcx.type_of(def_id);
+        self.handle_ty(ty, tcx_ty);
+    }
+
+    fn handle_path_params<I: Iterator<Item=ty::Ty<'tcx>>>(&mut self,
+                                                          seg: &PathParameters,
+                                                          iter: &mut I) {
+        match *seg {
+            PathParameters::AngleBracketedParameters(ref abpd) => {
+                eprintln!("angle seg {:?}: inferred? {}", seg, abpd.infer_types);
+                for ty in &abpd.types {
+                    self.handle_ty(ty, iter.next().unwrap());
+                }
+            },
+            PathParameters::ParenthesizedParameters(ref ppd) => {
+                for input in &ppd.inputs {
+                    self.handle_ty(input, iter.next().unwrap());
+                }
+                if let Some(ref output) = ppd.output {
+                    self.handle_ty(output, iter.next().unwrap());
+                }
+            },
+        }
+    }
+}
+
+impl<'t, 'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
+    fn nested_visit_map<'this>(&'this mut self) -> NestedVisitorMap<'this, 'hir> {
+        NestedVisitorMap::OnlyBodies(self.hir_map)
+    }
+
+    // There are several places we can encounter `Ty` nodes, and each one has a different way of
+    // obtaining the corresponding `LTy`.
+
+    fn visit_expr(&mut self, e: &'hir Expr) {
+        match e.node {
+            ExprPath(ref qpath) => {
+                if let Some(substs) = self.get_substs(e.id) {
+                    // TODO: needs to handle cases with ABPD.infer_types == true.
+                    // It's not clear how to get the number of elements of `substs` to consume in
+                    // those cases.
+                    /*
+                    // This case gets a little hairy.  `hir::Ty`s can appear in several different
+                    // places inside a `QPath`, but for typechecking they all get stored in a
+                    // single linear `[ty::Ty]`.
+                    eprintln!(" ** SUBSTS: {:?} (for {:?})", substs, qpath);
+                    let mut substs = substs.iter().filter_map(|s| s.as_type());
+
+                    match *qpath {
+                        QPath::Resolved(ref self_ty, ref path) => {
+                            if let Some(ref self_ty) = *self_ty {
+                                self.handle_ty(self_ty, substs.next().unwrap());
+                            }
+                            for seg in &path.segments {
+                                self.handle_path_params(&seg.parameters, &mut substs);
+                            }
+                        },
+                        QPath::TypeRelative(ref base_ty, ref seg) => {
+                            self.handle_ty(base_ty, substs.next().unwrap());
+                            self.handle_path_params(&seg.parameters, &mut substs);
+                        },
+                    }
+
+                    assert!(substs.next().is_none());
+                    */
+                }
+            },
+            //ExprMethodCall(_, ref seg) => {
+            //},
+            ExprCast(_, ref ty) => self.handle_node_ty(ty, e.id),
+            ExprType(_, ref ty) => self.handle_node_ty(ty, e.id),
+            _ => {},
+        }
+        intravisit::walk_expr(self, e);
+    }
+
+    fn visit_local(&mut self, l: &'hir Local) {
+        if let Some(ref ty) = l.ty {
+            self.handle_node_ty(ty, l.pat.id);
+        }
+        intravisit::walk_local(self, l);
+    }
+
+    fn visit_item(&mut self, i: &'hir Item) {
+        match i.node {
+            ItemStatic(ref ty, _, body_id) =>
+                self.handle_body_tys(&[], Some(ty), body_id),
+            ItemConst(ref ty, body_id) =>
+                self.handle_body_tys(&[], Some(ty), body_id),
+            ItemFn(ref decl, _, _, _, _, body_id) => {
+                let ret_ty = match decl.output {
+                    FunctionRetTy::DefaultReturn(_) => None,
+                    FunctionRetTy::Return(ref ty) => Some(ty as &Ty),
+                };
+                self.handle_body_tys(&decl.inputs, ret_ty, body_id);
+            },
+            ItemTy(ref ty, _) =>
+                self.handle_def_ty(ty, i.id),
+            // ItemEnum, ItemStruct, and ItemUnion are all handled by `visit_struct_field`.
+            ItemImpl(_, _, _, _, _, ref ty, _) =>
+                self.handle_def_ty(ty, i.id),
+            _ => {},
+        }
+
+        intravisit::walk_item(self, i);
+    }
+
+    fn visit_struct_field(&mut self, field: &'hir StructField) {
+        self.handle_def_ty(&field.ty, field.id);
+        intravisit::walk_struct_field(self, field);
+    }
+
+    // TODO: impl items
+    // TODO: trait items
+}
+
+fn label_tys<'a, 'gcx, 'tcx>(hir_map: &hir::map::Map,
+                             tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                             ltt: &mut LTyTable)
+                             -> HashMap<NodeId, LTy<'tcx>> {
+    let mut v = TyVisitor {
+        hir_map: hir_map,
+        tcx: tcx,
+        ltt: ltt,
+        ty_nodes: HashMap::new(),
+    };
+    hir_map.krate().visit_all_item_likes(&mut v.as_deep_visitor());
+    v.ty_nodes
+}
+
+
+
+
+/*
 
 
 struct Ctxt<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
@@ -110,19 +557,23 @@ struct Ctxt<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
 
     unif: UnificationTable<TyLabel>,
 
+    /// Unadjusted types assigned to `Expr` and `Pat` nodes in the AST.  These are simply labeled
+    /// versions of the computed types obtained from `TypeckTables`.
+    unadjusted_nodes: HashMap<NodeId, LTy>,
+
+    /// Final adjusted type of each `Expr` and `Pat` in the AST.  The adjusted type should be used
+    /// when obtaining the type of a subexpression.
+    nodes: HashMap<NodeId, LTy>,
+
     /// Types corresponding to `Ty` nodes in the AST.  Our main goal is to sort these into
-    /// equivalence classes.
+    /// equivalence classes.  These are kept separate from `nodes` both because they are relevant
+    /// to the output and also because `TypeckTables` don't contain computed types for `Ty` nodes.
     ty_nodes: HashMap<NodeId, LTy>,
 
-    /// Entries in `prims` represent the "definitions" of primitive types.  These appear in the
-    /// signatures of primitive operations like slice indexing.  For example, the equivalence class
-    /// containing `prims["usize"]` consists of all the types that must be exactly `usize` (likely
-    /// because they were used as indices).
+    /// Primitive types used in built-in operations.  If a type is unified with `prims["bool"]`,
+    /// then the type must be exactly `bool` for the program to typecheck - most likely, a value
+    /// with that annotation is used as an `if` condition.
     prims: HashMap<&'static str, LTy>,
-
-    /// Types of various (monomorphic) definitions.  Includes statics, non-generic fns, and local
-    /// variables.
-    defs: HashMap<DefId, LTy>,
 }
 
 impl<'a, 'hir, 'gcx, 'tcx> Ctxt<'a, 'hir, 'gcx, 'tcx> {
@@ -134,9 +585,10 @@ impl<'a, 'hir, 'gcx, 'tcx> Ctxt<'a, 'hir, 'gcx, 'tcx> {
 
             unif: UnificationTable::new(),
 
+            unadjusted_nodes: HashMap::new(),
+            nodes: HashMap::new(),
             ty_nodes: HashMap::new(),
             prims: HashMap::new(),
-            defs: HashMap::new(),
         }
     }
 
@@ -698,15 +1150,22 @@ impl<'a, 'hir, 'gcx, 'tcx> ItemLikeVisitor<'hir> for UnificationVisitor<'a, 'hir
     }
 }
 
+*/
 
 pub fn analyze(hir_map: &hir::map::Map, tcx: &TyCtxt) -> HashMap<NodeId, u32> {
-    let mut v = UnificationVisitor {
-        ctxt: Ctxt::new(hir_map, *tcx),
-    };
-    hir_map.krate().visit_all_item_likes(&mut v);
-    v.ctxt.debug();
+    let tcx = *tcx;
+    let mut ltt = LTyTable::new();
+    let (unadjusted_nodes, nodes) = label_nodes(tcx, &mut ltt, hir_map.krate());
+    eprintln!("got {} unadjusted, {} adjusted", unadjusted_nodes.len(), nodes.len());
+    let mut def_cache = DefCache::new();
+    let ty_nodes = label_tys(hir_map, tcx, &mut ltt);
+    eprintln!("got {} tys", ty_nodes.len());
+    eprintln!("got {} cached defs", def_cache.map.len());
+    let mut keys = def_cache.map.keys().map(|&x| x).collect::<Vec<_>>();
+    keys.sort();
+    for did in keys {
+        eprintln!("  {:?}: {:?}", did, def_cache.map[&did]); 
+    }
 
-    v.ctxt.ty_nodes.iter()
-        .map(|(&id, lty)| (id, lty.label.index()))
-        .collect()
+    HashMap::new()
 }
