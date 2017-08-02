@@ -745,8 +745,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
         match lty.ty.sty {
             TyFnDef(id, _) => {
                 let sig = self.def_sig(id);
-                // TODO: substs
-                sig.output
+                self.ltt.subst(sig.output, &lty.args)
             },
             TyFnPtr(_) => {
                 &lty.args[lty.args.len() - 1]
