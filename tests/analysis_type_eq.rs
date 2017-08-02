@@ -116,6 +116,16 @@ impl S {
     }
 }
 
+fn closure_tys() {
+    let cap: i32 = 0;
+    let f = |a: &mut i32, b: i32| {
+        *a = cap + b;
+        *a
+    };
+    let mut a = 123;
+    let y = f(&mut a, 456);
+}
+
 
 fn main() {
 }

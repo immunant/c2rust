@@ -564,6 +564,17 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'a, 'lcx, 'hir, 'gc
             //},
             ExprCast(_, ref ty) => self.handle_node_ty(ty, e.id),
             ExprType(_, ref ty) => self.handle_node_ty(ty, e.id),
+
+            // We don't handle closure types well, but we still need to label the types of their
+            // args and returns so the UnifyVisitor doesn't crash.
+            ExprClosure(_, ref decl, body_id, _) => {
+                let ret_ty = match decl.output {
+                    FunctionRetTy::DefaultReturn(_) => None,
+                    FunctionRetTy::Return(ref ty) => Some(ty as &Ty),
+                };
+                self.handle_body_tys(&decl.inputs, ret_ty, body_id);
+            },
+
             _ => {},
         }
         intravisit::walk_expr(self, e);
@@ -857,6 +868,19 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
                 let func_lty = self.expr_lty(func);
                 eprintln!("EXPRCALL: ty {:?} for {:?} ( {:?} )", func_lty, func, args);
 
+                fn is_closure(ty: ty::Ty) -> bool {
+                    if let ty::TypeVariants::TyClosure(..) = ty.sty {
+                        true
+                    } else {
+                        false
+                    }
+                }
+                if is_closure(func_lty.ty) ||
+                   (func_lty.args.len() > 0 && is_closure(func_lty.args[0].ty)) {
+                    intravisit::walk_expr(self, e);
+                    return;
+                }
+
                 let args =
                     if !self.fn_is_variadic(func_lty) { args }
                     else { &args[.. self.fn_num_inputs(func_lty)] };
@@ -1088,6 +1112,10 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
                 body_id: BodyId,
                 span: Span,
                 id: NodeId) {
+        if let intravisit::FnKind::Closure(..) = kind {
+            return;
+        }
+
         let body = self.hir_map.body(body_id);
         let def_id = self.hir_map.local_def_id(id);
         let sig = self.def_sig(def_id);
