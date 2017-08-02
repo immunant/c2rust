@@ -61,7 +61,7 @@ impl UnifyKey for TyLabel {
 }
 
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq)]
 struct LTyS<'lcx, 'tcx: 'lcx> {
     ty: ty::Ty<'tcx>,
     label: Cell<TyLabel>,
@@ -88,12 +88,13 @@ impl<'lcx, 'tcx> LTyS<'lcx, 'tcx> {
     }
 }
 
-impl<'lcx, 'tcx> fmt::Display for LTyS<'lcx, 'tcx> {
+impl<'lcx, 'tcx> fmt::Debug for LTyS<'lcx, 'tcx> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}#{:?}", self.label.get().index(), self.ty)
+        write!(f, "{}#{:?}{:?}", self.label.get().index(), self.ty, self.args)
     }
 }
 
+#[derive(Debug)]
 struct LFnSigS<'lcx, 'tcx: 'lcx> {
     inputs: Box<[LTy<'lcx, 'tcx>]>,
     output: LTy<'lcx, 'tcx>,
@@ -198,7 +199,7 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
     }
 
     fn subst(&self, lty: LTy<'lcx, 'tcx>, substs: &[LTy<'lcx, 'tcx>]) -> LTy<'lcx, 'tcx> {
-        eprintln!("SUBST: {} {:?}", lty, substs);
+        eprintln!("SUBST: {:?} {:?}", lty, substs);
         match lty.ty.sty {
             ty::TypeVariants::TyParam(ref tp) => {
                 println!("  PARAM {:?} = {}", lty.ty, tp.idx);
@@ -216,8 +217,19 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
         }
     }
 
+    fn subst_sig(&self, sig: LFnSig<'lcx, 'tcx>, substs: &[LTy<'lcx, 'tcx>]) -> LFnSig<'lcx, 'tcx> {
+        eprintln!("SUBST_SIG: {:?}, {:?}", sig, substs);
+        let inputs = sig.inputs.iter().map(|&lty| self.subst(lty, substs))
+            .collect::<Vec<_>>().into_boxed_slice();
+        let output = self.subst(sig.output, substs);
+        self.sig_arena.alloc(LFnSigS {
+            inputs: inputs,
+            output: output,
+        })
+    }
+
     fn unify(&self, lty1: LTy<'lcx, 'tcx>, lty2: LTy<'lcx, 'tcx>) {
-        eprintln!("UNIFY: {} == {}", lty1, lty2);
+        eprintln!("UNIFY: {:?} == {:?}", lty1, lty2);
         self.unif.borrow_mut().union(lty1.label.get(), lty2.label.get());
 
         if lty1.args.len() == lty2.args.len() {
@@ -237,6 +249,7 @@ struct ExprPatVisitor<'a, 'lcx: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
 
     unadjusted: HashMap<NodeId, LTy<'lcx, 'tcx>>,
     adjusted: HashMap<NodeId, LTy<'lcx, 'tcx>>,
+    substs: HashMap<NodeId, Box<[LTy<'lcx, 'tcx>]>>,
 }
 
 impl<'a, 'lcx, 'gcx, 'tcx> ExprPatVisitor<'a, 'lcx, 'gcx, 'tcx> {
@@ -246,8 +259,14 @@ impl<'a, 'lcx, 'gcx, 'tcx> ExprPatVisitor<'a, 'lcx, 'gcx, 'tcx> {
             self.unadjusted.insert(id, self.ltt.label(ty));
 
             if let Some(adj) = tables.adjustments.get(&id).and_then(|v| v.last()) {
-                self.ltt.label(adj.target);
+                //self.adjusted.insert(id, self.ltt.label(adj.target));
             }
+        }
+
+        for (&id, &substs) in tables.node_substs.iter() {
+            let labeled = substs.types().map(|ty| self.ltt.label(ty))
+                .collect::<Vec<_>>().into_boxed_slice();
+            self.substs.insert(id, labeled);
         }
     }
 }
@@ -280,21 +299,6 @@ impl<'a, 'lcx, 'gcx, 'tcx, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'a, 'l
         };
         self.handle_body(body_id);
     }
-}
-
-fn label_nodes<'a, 'lcx, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                                     ltt: &'a LTyTable<'lcx, 'tcx>,
-                                     krate: &Crate)
-                                     -> (HashMap<NodeId, LTy<'lcx, 'tcx>>,
-                                         HashMap<NodeId, LTy<'lcx, 'tcx>>) {
-    let mut v = ExprPatVisitor {
-        tcx: tcx,
-        ltt: ltt,
-        unadjusted: HashMap::new(),
-        adjusted: HashMap::new(),
-    };
-    krate.visit_all_item_likes(&mut v);
-    (v.unadjusted, v.adjusted)
 }
 
 
@@ -626,6 +630,7 @@ struct UnifyVisitor<'a, 'lcx: 'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
 
     unadjusted_nodes: &'a HashMap<NodeId, LTy<'lcx, 'tcx>>,
     nodes: &'a HashMap<NodeId, LTy<'lcx, 'tcx>>,
+    node_substs: &'a HashMap<NodeId, Box<[LTy<'lcx, 'tcx>]>>,
     ty_nodes: &'a HashMap<NodeId, LTy<'lcx, 'tcx>>,
     prims: &'a HashMap<&'static str, LTy<'lcx, 'tcx>>,
 
@@ -748,6 +753,20 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
             _ => panic!("fn_output: not a fn type"),
         }
     }
+
+
+    fn get_tables(&self, id: NodeId) -> &'gcx TypeckTables<'gcx> {
+        let parent = self.hir_map.get_parent(id);
+        let parent_body = self.hir_map.body_owned_by(parent);
+        self.tcx.body_tables(parent_body)
+    }
+
+    fn method_sig(&self, e: &Expr) -> LFnSig<'lcx, 'tcx> {
+        let def_id = self.get_tables(e.id).type_dependent_defs[&e.id].def_id();
+        let sig = self.def_sig(def_id);
+        let substs = self.node_substs.get(&e.id).map_or_else(|| &[] as &[_], |x| x);
+        self.ltt.subst_sig(sig, substs)
+    }
 }
 
 impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
@@ -758,6 +777,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
     fn visit_expr(&mut self, e: &'hir Expr) {
         let rty = self.unadjusted_expr_lty(e);
 
+        eprintln!("visit {:?}", e);
         match e.node {
             ExprBox(ref e) => {
                 self.ltt.unify(rty.arg(0), self.expr_lty(e));
@@ -771,14 +791,23 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
 
             ExprCall(ref func, ref args) => {
                 let func_lty = self.expr_lty(func);
-                eprintln!("EXPRCALL: ty {} for {:?} ( {:?} )", func_lty, func, args);
+                eprintln!("EXPRCALL: ty {:?} for {:?} ( {:?} )", func_lty, func, args);
                 for (i, arg) in args.iter().enumerate() {
+                    eprintln!("> arg {} ({:?})", i, arg);
                     self.ltt.unify(self.fn_input(func_lty, i), self.expr_lty(arg));
                 }
                 self.ltt.unify(rty, self.fn_output(func_lty));
             },
 
-            ExprMethodCall(..) => {}, // TODO
+            ExprMethodCall(_, _, ref args) => {
+                let sig = self.method_sig(e);
+                eprintln!("EXPRMETHODCALL: sig {:?} for ( {:?} )", sig, args);
+                for (i, arg) in args.iter().enumerate() {
+                    eprintln!("> arg {} ({:?})", i, arg);
+                    self.ltt.unify(sig.inputs[i], self.expr_lty(arg));
+                }
+                self.ltt.unify(rty, sig.output);
+            },
 
             ExprTup(ref es) => {
                 for (expected, e) in rty.args.iter().zip(es.iter()) {
@@ -975,9 +1004,25 @@ pub fn analyze(hir_map: &hir::map::Map, tcx: &TyCtxt) -> HashMap<NodeId, u32> {
     let (arena, sig_arena) = (TypedArena::new(), TypedArena::new());
     let ltt = LTyTable::new(&arena, &sig_arena);
 
-    let (unadjusted_nodes, nodes) = label_nodes(tcx, &ltt, hir_map.krate());
+    // Collect labeled expr/pat types from the TypeckTables of each item.
+    let mut v = ExprPatVisitor {
+        tcx: tcx,
+        ltt: &ltt,
+        unadjusted: HashMap::new(),
+        adjusted: HashMap::new(),
+        substs: HashMap::new(),
+    };
+    hir_map.krate().visit_all_item_likes(&mut v);
+    let ExprPatVisitor {
+        unadjusted: unadjusted_nodes,
+        adjusted: nodes,
+        substs: node_substs,
+        ..
+    } = v;
     eprintln!("got {} unadjusted, {} adjusted", unadjusted_nodes.len(), nodes.len());
+    eprintln!("got {} substs", node_substs.len());
 
+    // Construct labeled types for each `ast::Ty` in the program.
     let ty_nodes = label_tys(hir_map, tcx, &ltt);
     eprintln!("got {} tys", ty_nodes.len());
 
@@ -991,6 +1036,7 @@ pub fn analyze(hir_map: &hir::map::Map, tcx: &TyCtxt) -> HashMap<NodeId, u32> {
 
         unadjusted_nodes: &unadjusted_nodes,
         nodes: &nodes,
+        node_substs: &node_substs,
         ty_nodes: &ty_nodes,
         prims: &prims,
         defs: RefCell::new(HashMap::new()),

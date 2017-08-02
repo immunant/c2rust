@@ -48,11 +48,16 @@ fn substs() {
     //let f = <Iter<u8> as Iterator>::collect::<Vec<_>>;
 }
 
-fn vec_push1(v: Vec<i32>, x: i32) {
-    Vec::push(&mut v, x);
+fn vec_push1(v: &mut Vec<i32>, x: i32) {
+    Vec::push(v, x);
 }
 
-fn vec_push2(v: Vec<i32>, x: i32) {
+fn vec_push2(v: &mut Vec<i32>, x: i32) {
+    v.push(x);
+}
+
+fn vec_push3(mut v: Vec<i32>, x: i32) {
+    // `v` gets an autoref adjustment
     v.push(x);
 }
 
