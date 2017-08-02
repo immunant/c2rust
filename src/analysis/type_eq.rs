@@ -16,9 +16,11 @@
 //! unifying the LHS type of an assignment with the RHS type, `typeof(&e)` with `&typeof(e)`, the
 //! type of the expression `f` with `f`'s function signature, and so on.
 
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+use arena::TypedArena;
 use ena::unify::{UnificationTable, UnifyKey};
 use rustc::hir;
 use rustc::hir::*;
@@ -59,45 +61,53 @@ impl UnifyKey for TyLabel {
 
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-struct LTy<'tcx> {
+struct LTyS<'lcx, 'tcx: 'lcx> {
     ty: ty::Ty<'tcx>,
-    label: TyLabel,
-    args: Box<[LTy<'tcx>]>,
+    label: Cell<TyLabel>,
+    args: Box<[LTy<'lcx, 'tcx>]>,
 }
 
-impl<'tcx> LTy<'tcx> {
-    fn canonicalize(&mut self, unif: &mut UnificationTable<TyLabel>) -> &Self {
-        self.label = unif.find(self.label);
-        for arg in self.args.iter_mut() {
-            arg.canonicalize(unif);
+type LTy<'lcx, 'tcx> = &'lcx LTyS<'lcx, 'tcx>;
+
+impl<'lcx, 'tcx> LTyS<'lcx, 'tcx> {
+    fn canonicalize(&self, ltt: &LTyTable<'lcx, 'tcx>) -> &Self {
+        let label = self.label.get();
+        let new_label = ltt.unif.borrow_mut().find(label);
+        self.label.set(new_label);
+
+        for arg in self.args.iter() {
+            arg.canonicalize(ltt);
         }
+
         self
     }
 }
 
 
-struct LTyTable {
-    unif: UnificationTable<TyLabel>,
+struct LTyTable<'lcx, 'tcx: 'lcx> {
+    unif: RefCell<UnificationTable<TyLabel>>,
+    arena: &'lcx TypedArena<LTyS<'lcx, 'tcx>>,
 }
 
-impl LTyTable {
-    fn new() -> LTyTable {
+impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
+    fn new(arena: &'lcx TypedArena<LTyS<'lcx, 'tcx>>) -> LTyTable<'lcx, 'tcx> {
         LTyTable {
-            unif: UnificationTable::new(),
+            unif: RefCell::new(UnificationTable::new()),
+            arena: arena,
         }
     }
 
-    fn mk<'tcx>(&mut self, ty: ty::Ty<'tcx>, args: Vec<LTy<'tcx>>) -> LTy<'tcx> {
-        let label = self.unif.new_key(());
-        LTy {
+    fn mk(&self, ty: ty::Ty<'tcx>, args: Vec<LTy<'lcx, 'tcx>>) -> LTy<'lcx, 'tcx> {
+        let label = self.unif.borrow_mut().new_key(());
+        self.arena.alloc(LTyS {
             ty: ty,
-            label: label,
+            label: Cell::new(label),
             args: args.into_boxed_slice(),
-        }
+        })
     }
 
 
-    fn label<'tcx>(&mut self, ty: ty::Ty<'tcx>) -> LTy<'tcx> {
+    fn label(&self, ty: ty::Ty<'tcx>) -> LTy<'lcx, 'tcx> {
         use rustc::ty::TypeVariants::*;
         match ty.sty {
             // Types with no arguments
@@ -148,19 +158,30 @@ impl LTyTable {
             },
         }
     }
+
+    fn unify(&self, lty1: LTy<'lcx, 'tcx>, lty2: LTy<'lcx, 'tcx>) {
+        self.unif.borrow_mut().union(lty1.label.get(), lty2.label.get());
+
+        if lty1.args.len() == lty2.args.len() {
+            for (arg1, arg2) in lty1.args.iter().zip(lty2.args.iter()) {
+                self.unify(arg1, arg2);
+            }
+        }
+    }
 }
 
 
 
 /// Walk over typechecking tables, building a labeled type for each expr and pattern.
-struct ExprPatVisitor<'t, 'a, 'gcx: 'tcx, 'tcx: 'a> {
+struct ExprPatVisitor<'a, 'lcx: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
     tcx: TyCtxt<'a, 'gcx, 'tcx>,
-    ltt: &'t mut LTyTable,
-    unadjusted: HashMap<NodeId, LTy<'tcx>>,
-    adjusted: HashMap<NodeId, LTy<'tcx>>,
+    ltt: &'a LTyTable<'lcx, 'tcx>,
+
+    unadjusted: HashMap<NodeId, LTy<'lcx, 'tcx>>,
+    adjusted: HashMap<NodeId, LTy<'lcx, 'tcx>>,
 }
 
-impl<'t, 'a, 'gcx, 'tcx> ExprPatVisitor<'t, 'a, 'gcx, 'tcx> {
+impl<'a, 'lcx, 'gcx, 'tcx> ExprPatVisitor<'a, 'lcx, 'gcx, 'tcx> {
     fn handle_body(&mut self, body_id: BodyId) {
         let tables = self.tcx.body_tables(body_id);
         for (&id, &ty) in tables.node_types.iter() {
@@ -173,7 +194,7 @@ impl<'t, 'a, 'gcx, 'tcx> ExprPatVisitor<'t, 'a, 'gcx, 'tcx> {
     }
 }
 
-impl<'t, 'a, 'gcx, 'tcx, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'t, 'a, 'gcx, 'tcx> {
+impl<'a, 'lcx, 'gcx, 'tcx, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'a, 'lcx, 'gcx, 'tcx> {
     fn visit_item(&mut self, item: &'hir Item) {
         let body_id = match item.node {
             ItemStatic(_, _, body_id) => body_id,
@@ -203,8 +224,11 @@ impl<'t, 'a, 'gcx, 'tcx, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'t, 'a, 
     }
 }
 
-fn label_nodes<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>, ltt: &mut LTyTable, krate: &Crate)
-                               -> (HashMap<NodeId, LTy<'tcx>>, HashMap<NodeId, LTy<'tcx>>) {
+fn label_nodes<'a, 'lcx, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                                     ltt: &'a LTyTable<'lcx, 'tcx>,
+                                     krate: &Crate)
+                                     -> (HashMap<NodeId, LTy<'lcx, 'tcx>>,
+                                         HashMap<NodeId, LTy<'lcx, 'tcx>>) {
     let mut v = ExprPatVisitor {
         tcx: tcx,
         ltt: ltt,
@@ -220,47 +244,50 @@ fn label_nodes<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>, ltt: &mut LTyTable, 
 // Unfortunately, there is no central index of all/most `DefId`s and their types, like there is for
 // exprs and patterns.  And we can't visit all defs because some are pulled in from other crates.
 // Instead, we have to keep this cache and add defs to it as we encounter them.
-struct DefCache<'tcx> {
-    map: HashMap<DefId, LTy<'tcx>>,
+struct DefCache<'a, 'lcx: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
+    tcx: TyCtxt<'a, 'gcx, 'tcx>,
+    ltt: &'a LTyTable<'lcx, 'tcx>,
+    map: RefCell<HashMap<DefId, LTy<'lcx, 'tcx>>>,
 }
 
-impl<'tcx> DefCache<'tcx> {
-    fn new() -> DefCache<'tcx> {
+impl<'a, 'lcx, 'gcx, 'tcx> DefCache<'a, 'lcx, 'gcx, 'tcx> {
+    fn new(tcx: TyCtxt<'a, 'gcx, 'tcx>,
+           ltt: &'a LTyTable<'lcx, 'tcx>)
+           -> DefCache<'a, 'lcx, 'gcx, 'tcx> {
         DefCache {
-            map: HashMap::new(),
+            tcx: tcx,
+            ltt: ltt,
+            map: RefCell::new(HashMap::new()),
         }
     }
 
-    fn get<'a, 'gcx>(&mut self,
-                     tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                     ltt: &mut LTyTable,
-                     def_id: DefId) -> &LTy<'tcx> {
-        if !self.map.contains_key(&def_id) {
-            let lty = ltt.label(tcx.type_of(def_id));
-            self.map.insert(def_id, lty);
-        }
-        &self.map[&def_id]
+    fn get(&mut self, def_id: DefId) -> LTy<'lcx, 'tcx> {
+        let tcx = self.tcx;
+        let ltt = self.ltt;
+        *self.map.borrow_mut().entry(def_id)
+            .or_insert_with(|| ltt.label(tcx.type_of(def_id)))
     }
 }
 
 
 
 /// Construct `LTy`s for all `hir::Ty` nodes in the AST.
-struct TyVisitor<'t, 'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
+struct TyVisitor<'a, 'lcx: 'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
     hir_map: &'a hir::map::Map<'hir>,
     tcx: TyCtxt<'a, 'gcx, 'tcx>,
-    ltt: &'t mut LTyTable,
-    ty_nodes: HashMap<NodeId, LTy<'tcx>>,
+    ltt: &'a LTyTable<'lcx, 'tcx>,
+
+    ty_nodes: HashMap<NodeId, LTy<'lcx, 'tcx>>,
 }
 
-impl<'t, 'a, 'hir, 'gcx, 'tcx> TyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'lcx, 'hir, 'gcx, 'tcx> TyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
     fn handle_ty(&mut self, ty: &Ty, tcx_ty: ty::Ty<'tcx>) {
         let lty = self.ltt.label(tcx_ty);
         eprintln!("HANDLE: {:?} => {:?}", ty, tcx_ty);
         self.record_ty(ty, &lty);
     }
 
-    fn record_ty(&mut self, ty: &Ty, lty: &LTy<'tcx>) {
+    fn record_ty(&mut self, ty: &Ty, lty: &LTy<'lcx, 'tcx>) {
         use rustc::ty::TypeVariants::*;
         match (&ty.node, &lty.ty.sty) {
             (&Ty_::TySlice(ref elem), &TySlice(..)) => 
@@ -294,14 +321,14 @@ impl<'t, 'a, 'hir, 'gcx, 'tcx> TyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
         self.ty_nodes.insert(ty.id, lty.clone());
     }
 
-    fn record_ty_list(&mut self, tys: &[P<Ty>], ltys: &[LTy<'tcx>]) {
+    fn record_ty_list(&mut self, tys: &[P<Ty>], ltys: &[LTy<'lcx, 'tcx>]) {
         assert!(tys.len() == ltys.len());
         for (ty, lty) in tys.iter().zip(ltys.iter()) {
             self.record_ty(ty, lty);
         }
     }
 
-    fn record_path_params(&mut self, params: &PathParameters, ltys: &[LTy<'tcx>]) {
+    fn record_path_params(&mut self, params: &PathParameters, ltys: &[LTy<'lcx, 'tcx>]) {
         match *params {
             PathParameters::AngleBracketedParameters(ref abpd) => {
                 self.record_ty_list(&abpd.types, ltys);
@@ -317,7 +344,7 @@ impl<'t, 'a, 'hir, 'gcx, 'tcx> TyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
         }
     }
 
-    fn record_path_ty(&mut self, qpath: &QPath, lty: &LTy<'tcx>) {
+    fn record_path_ty(&mut self, qpath: &QPath, lty: &LTy<'lcx, 'tcx>) {
         use rustc::hir::def::Def;
         use rustc::ty::TypeVariants::*;
 
@@ -363,6 +390,7 @@ impl<'t, 'a, 'hir, 'gcx, 'tcx> TyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
                 panic!("impossible: ty path refers to {:?}", path.def);
             },
 
+            // These are not in the type namespace
             (&Def::Fn(_), _) |
             (&Def::Const(_), _) |
             (&Def::Static(_, _), _) |
@@ -378,6 +406,7 @@ impl<'t, 'a, 'hir, 'gcx, 'tcx> TyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
                 panic!("impossible: ty path refers to non-type {:?}", path.def);
             },
 
+            // We got a `Def` in the type namespace together with an unrecognized `ty::Ty` variant.
             (d, t) => {
                 panic!("unexpected def/ty combination\n  def = {:?}\n  ty = {:?}", d, t);
             },
@@ -441,7 +470,7 @@ impl<'t, 'a, 'hir, 'gcx, 'tcx> TyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
     }
 }
 
-impl<'t, 'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
     fn nested_visit_map<'this>(&'this mut self) -> NestedVisitorMap<'this, 'hir> {
         NestedVisitorMap::OnlyBodies(self.hir_map)
     }
@@ -531,14 +560,15 @@ impl<'t, 'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'t, 'a, 'hir, 'gcx, '
     // TODO: trait items
 }
 
-fn label_tys<'a, 'gcx, 'tcx>(hir_map: &hir::map::Map,
-                             tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                             ltt: &mut LTyTable)
-                             -> HashMap<NodeId, LTy<'tcx>> {
+fn label_tys<'a, 'lcx, 'gcx, 'tcx>(hir_map: &hir::map::Map,
+                                   tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                                   ltt: &'a LTyTable<'lcx, 'tcx>)
+                                   -> HashMap<NodeId, LTy<'lcx, 'tcx>> {
     let mut v = TyVisitor {
         hir_map: hir_map,
         tcx: tcx,
         ltt: ltt,
+
         ty_nodes: HashMap::new(),
     };
     hir_map.krate().visit_all_item_likes(&mut v.as_deep_visitor());
@@ -546,6 +576,18 @@ fn label_tys<'a, 'gcx, 'tcx>(hir_map: &hir::map::Map,
 }
 
 
+
+fn prim_tys<'a, 'lcx, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                                  ltt: &'a LTyTable<'lcx, 'tcx>)
+                                  -> HashMap<&'static str, LTy<'lcx, 'tcx>> {
+    let mut map = HashMap::new();
+
+    map.insert("bool", ltt.label(tcx.mk_bool()));
+    map.insert("()", ltt.label(tcx.mk_nil()));
+    map.insert("usize", ltt.label(tcx.mk_mach_uint(ast::UintTy::Us)));
+
+    map
+}
 
 
 /*
@@ -1152,20 +1194,78 @@ impl<'a, 'hir, 'gcx, 'tcx> ItemLikeVisitor<'hir> for UnificationVisitor<'a, 'hir
 
 */
 
+
+/*
+struct Tables<'a, 'tcx: 'a> {
+    unadjusted_nodes: &'a HashMap<NodeId, LTy<'tcx>>,
+    nodes: &'a HashMap<NodeId, LTy<'tcx>>,
+    ty_nodes: &'a HashMap<NodeId, LTy<'tcx>>,
+    prims: &'a HashMap<&'static str, LTy<'tcx>>,
+    def_cache: DefCache<'tcx>,
+}
+
+impl<'a, 'tcx> Tables<'a, 'tcx> {
+    fn expr_lty(&self, id: NodeId) -> &'a LTy<'tcx> {
+        self.nodes.get(&id)
+            .or_else(self.unadjusted_nodes.get(&id))
+            .expect("expr_lty: no such expr")
+    }
+
+    fn pat_lty(&self, id: NodeId) -> &'a LTy<'tcx> {
+        self.nodes.get(&id)
+            .or_else(self.unadjusted_nodes.get(&id))
+            .expect("pat_lty: no such pat")
+    }
+
+    fn ty_lty(&self, id: NodeId) -> &'a LTy<'tcx> {
+        self.ty_nodes.get(&id)
+            .expect("ty_lty: no such ty")
+    }
+
+    fn prim_lty(&self, name: &'static str) -> &'a LTy<'tcx> {
+        self.prims.get(&name)
+            .expect("prim_lty: no such prim")
+    }
+
+    fn def_lty(&self, id: DefId, ltt: &mut LTyTable) -> &LTy<'tcx> {
+
+    }
+}
+
+struct UnifyVisitor<'t, 'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
+    hir_map: &'a hir::map::Map<'hir>,
+    tcx: TyCtxt<'a, 'gcx, 'tcx>,
+    ltt: &'t mut LTyTable,
+    tables: Tables<'a, 'tcx>,
+}
+
+impl<'t, 'a, 'hir, 'gcx, 'tcx> UnifyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
+    fn expr_ty(&self, id: NodeId) -> &'a LTy<'tcx> {
+
+    }
+}
+
+impl<'t, 'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
+    fn nested_visit_map<'this>(&'this mut self) -> NestedVisitorMap<'this, 'hir> {
+        NestedVisitorMap::OnlyBodies(self.hir_map)
+    }
+
+}
+*/
+
 pub fn analyze(hir_map: &hir::map::Map, tcx: &TyCtxt) -> HashMap<NodeId, u32> {
     let tcx = *tcx;
-    let mut ltt = LTyTable::new();
-    let (unadjusted_nodes, nodes) = label_nodes(tcx, &mut ltt, hir_map.krate());
+    let arena = TypedArena::new();
+    let ltt = LTyTable::new(&arena);
+
+    let (unadjusted_nodes, nodes) = label_nodes(tcx, &ltt, hir_map.krate());
     eprintln!("got {} unadjusted, {} adjusted", unadjusted_nodes.len(), nodes.len());
-    let mut def_cache = DefCache::new();
-    let ty_nodes = label_tys(hir_map, tcx, &mut ltt);
+
+    let ty_nodes = label_tys(hir_map, tcx, &ltt);
     eprintln!("got {} tys", ty_nodes.len());
-    eprintln!("got {} cached defs", def_cache.map.len());
-    let mut keys = def_cache.map.keys().map(|&x| x).collect::<Vec<_>>();
-    keys.sort();
-    for did in keys {
-        eprintln!("  {:?}: {:?}", did, def_cache.map[&did]); 
-    }
+
+    let prims = prim_tys(tcx, &ltt);
+    eprintln!("got {} prims", prims.len());
 
     HashMap::new()
 }
