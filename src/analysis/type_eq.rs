@@ -66,7 +66,7 @@ impl UnifyKey for TyLabel {
 struct LTyS<'lcx, 'tcx: 'lcx> {
     ty: ty::Ty<'tcx>,
     label: Cell<TyLabel>,
-    args: Box<[LTy<'lcx, 'tcx>]>,
+    args: &'lcx [LTy<'lcx, 'tcx>],
 }
 
 type LTy<'lcx, 'tcx> = &'lcx LTyS<'lcx, 'tcx>;
@@ -95,37 +95,42 @@ impl<'lcx, 'tcx> fmt::Debug for LTyS<'lcx, 'tcx> {
     }
 }
 
-#[derive(Debug)]
-struct LFnSigS<'lcx, 'tcx: 'lcx> {
-    inputs: Box<[LTy<'lcx, 'tcx>]>,
+#[derive(Clone, Copy, Debug)]
+struct LFnSig<'lcx, 'tcx: 'lcx> {
+    inputs: &'lcx [LTy<'lcx, 'tcx>],
     output: LTy<'lcx, 'tcx>,
 }
-
-type LFnSig<'lcx, 'tcx> = &'lcx LFnSigS<'lcx, 'tcx>;
 
 
 struct LTyTable<'lcx, 'tcx: 'lcx> {
     unif: RefCell<UnificationTable<TyLabel>>,
     arena: &'lcx TypedArena<LTyS<'lcx, 'tcx>>,
-    sig_arena: &'lcx TypedArena<LFnSigS<'lcx, 'tcx>>,
+    ref_arena: &'lcx TypedArena<LTy<'lcx, 'tcx>>,
 }
 
 impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
     fn new(arena: &'lcx TypedArena<LTyS<'lcx, 'tcx>>,
-           sig_arena: &'lcx TypedArena<LFnSigS<'lcx, 'tcx>>) -> LTyTable<'lcx, 'tcx> {
+           ref_arena: &'lcx TypedArena<LTy<'lcx, 'tcx>>) -> LTyTable<'lcx, 'tcx> {
         LTyTable {
             unif: RefCell::new(UnificationTable::new()),
             arena: arena,
-            sig_arena: sig_arena,
+            ref_arena: ref_arena,
         }
     }
 
-    fn mk(&self, ty: ty::Ty<'tcx>, args: Vec<LTy<'lcx, 'tcx>>) -> LTy<'lcx, 'tcx> {
+    fn mk_slice(&self, ltys: &[LTy<'lcx, 'tcx>]) -> &'lcx [LTy<'lcx, 'tcx>] {
+        if ltys.len() == 0 {
+            return &[];
+        }
+        self.ref_arena.alloc_slice(ltys)
+    }
+
+    fn mk(&self, ty: ty::Ty<'tcx>, args: &[LTy<'lcx, 'tcx>]) -> LTy<'lcx, 'tcx> {
         let label = self.unif.borrow_mut().new_key(());
         self.arena.alloc(LTyS {
             ty: ty,
             label: Cell::new(label),
-            args: args.into_boxed_slice(),
+            args: self.mk_slice(args),
         })
     }
 
@@ -140,7 +145,7 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
             TyUint(_) |
             TyFloat(_) |
             TyStr |
-            TyNever => self.mk(ty, vec![]),
+            TyNever => self.mk(ty, &[]),
 
             // Types that aren't actually supported by this analysis
             TyDynamic(..) |
@@ -149,55 +154,53 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
             TyAnon(..) |
             TyParam(..) |
             TyInfer(..) |
-            TyError => self.mk(ty, vec![]),
+            TyError => self.mk(ty, &[]),
 
             // Types with arguments
             TyAdt(_, substs) => {
                 let args = substs.iter().filter_map(|s| s.as_type())
-                    .map(|t| self.label(t)).collect();
-                self.mk(ty, args)
+                    .map(|t| self.label(t)).collect::<Vec<_>>();
+                self.mk(ty, &args)
             },
             TyArray(elem, _) => {
-                let args = vec![self.label(elem)];
-                self.mk(ty, args)
+                self.mk(ty, &[self.label(elem)])
             },
             TySlice(elem) => {
-                let args = vec![self.label(elem)];
-                self.mk(ty, args)
+                self.mk(ty, &[self.label(elem)])
             },
             TyRawPtr(mty) => {
-                let args = vec![self.label(mty.ty)];
-                self.mk(ty, args)
+                self.mk(ty, &[self.label(mty.ty)])
             },
             TyRef(_, mty) => {
-                let args = vec![self.label(mty.ty)];
-                self.mk(ty, args)
+                self.mk(ty, &[self.label(mty.ty)])
             },
             TyFnDef(_, substs) => {
-                let args = substs.types().map(|ty| self.label(ty)).collect();
-                self.mk(ty, args)
+                let args = substs.types().map(|ty| self.label(ty)).collect::<Vec<_>>();
+                self.mk(ty, &args)
             },
             TyFnPtr(ref sig) => {
                 let args = sig.0.inputs_and_output.iter()
-                    .map(|ty| self.label(ty)).collect();
-                self.mk(ty, args)
+                    .map(|ty| self.label(ty)).collect::<Vec<_>>();
+                self.mk(ty, &args)
             },
             TyTuple(ref elems, _) => {
-                let args = elems.iter().map(|ty| self.label(ty)).collect();
-                self.mk(ty, args)
+                let args = elems.iter().map(|ty| self.label(ty)).collect::<Vec<_>>();
+                self.mk(ty, &args)
             },
         }
     }
 
-    fn label_sig(&self, sig: ty::FnSig<'tcx>) -> LFnSig<'lcx, 'tcx> {
-        let inputs = sig.inputs().iter().map(|ty| self.label(ty))
-            .collect::<Vec<_>>().into_boxed_slice();
-        let output = self.label(sig.output());
-        self.sig_arena.alloc(LFnSigS {
-            inputs: inputs,
-            output: output,
-        })
+    fn label_slice(&self, tys: &[ty::Ty<'tcx>]) -> &'lcx [LTy<'lcx, 'tcx>] {
+        self.mk_slice(&tys.iter().map(|ty| self.label(ty)).collect::<Vec<_>>())
     }
+
+    fn label_sig(&self, sig: ty::FnSig<'tcx>) -> LFnSig<'lcx, 'tcx> {
+        LFnSig {
+            inputs: self.label_slice(sig.inputs()),
+            output: self.label(sig.output()),
+        }
+    }
+
 
     fn subst(&self, lty: LTy<'lcx, 'tcx>, substs: &[LTy<'lcx, 'tcx>]) -> LTy<'lcx, 'tcx> {
         eprintln!("SUBST: {:?} {:?}", lty, substs);
@@ -207,36 +210,40 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
                 substs[tp.idx as usize]
             },
             _ => {
-                let args = lty.args.iter().map(|&lty| self.subst(lty, substs))
-                    .collect::<Vec<_>>().into_boxed_slice();
                 self.arena.alloc(LTyS {
                     ty: lty.ty,
                     label: lty.label.clone(),
-                    args: args,
+                    args: self.subst_slice(lty.args, substs),
                 })
             },
         }
     }
 
+    fn subst_slice(&self, ltys: &[LTy<'lcx, 'tcx>], substs: &[LTy<'lcx, 'tcx>]) -> &'lcx [LTy<'lcx, 'tcx>] {
+        self.mk_slice(&ltys.iter().map(|lty| self.subst(lty, substs)).collect::<Vec<_>>())
+    }
+
     fn subst_sig(&self, sig: LFnSig<'lcx, 'tcx>, substs: &[LTy<'lcx, 'tcx>]) -> LFnSig<'lcx, 'tcx> {
         eprintln!("SUBST_SIG: {:?}, {:?}", sig, substs);
-        let inputs = sig.inputs.iter().map(|&lty| self.subst(lty, substs))
-            .collect::<Vec<_>>().into_boxed_slice();
-        let output = self.subst(sig.output, substs);
-        self.sig_arena.alloc(LFnSigS {
-            inputs: inputs,
-            output: output,
-        })
+        LFnSig {
+            inputs: self.subst_slice(sig.inputs, substs),
+            output: self.subst(sig.output, substs),
+        }
     }
+
 
     fn unify(&self, lty1: LTy<'lcx, 'tcx>, lty2: LTy<'lcx, 'tcx>) {
         eprintln!("UNIFY: {:?} == {:?}", lty1, lty2);
         self.unif.borrow_mut().union(lty1.label.get(), lty2.label.get());
 
         if lty1.args.len() == lty2.args.len() {
-            for (arg1, arg2) in lty1.args.iter().zip(lty2.args.iter()) {
-                self.unify(arg1, arg2);
-            }
+            self.unify_slices(lty1.args, lty2.args);
+        }
+    }
+
+    fn unify_slices(&self, ltys1: &[LTy<'lcx, 'tcx>], ltys2: &[LTy<'lcx, 'tcx>]) {
+        for (lty1, lty2) in ltys1.iter().zip(ltys2.iter()) {
+            self.unify(lty1, lty2);
         }
     }
 }
@@ -250,7 +257,7 @@ struct ExprPatVisitor<'a, 'lcx: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
 
     unadjusted: HashMap<NodeId, LTy<'lcx, 'tcx>>,
     adjusted: HashMap<NodeId, LTy<'lcx, 'tcx>>,
-    substs: HashMap<NodeId, Box<[LTy<'lcx, 'tcx>]>>,
+    substs: HashMap<NodeId, &'lcx [LTy<'lcx, 'tcx>]>,
 }
 
 impl<'a, 'lcx, 'gcx, 'tcx> ExprPatVisitor<'a, 'lcx, 'gcx, 'tcx> {
@@ -265,8 +272,7 @@ impl<'a, 'lcx, 'gcx, 'tcx> ExprPatVisitor<'a, 'lcx, 'gcx, 'tcx> {
         }
 
         for (&id, &substs) in tables.node_substs.iter() {
-            let labeled = substs.types().map(|ty| self.ltt.label(ty))
-                .collect::<Vec<_>>().into_boxed_slice();
+            let labeled = self.ltt.label_slice(&substs.types().collect::<Vec<_>>());
             self.substs.insert(id, labeled);
         }
     }
@@ -631,7 +637,7 @@ struct UnifyVisitor<'a, 'lcx: 'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
 
     unadjusted_nodes: &'a HashMap<NodeId, LTy<'lcx, 'tcx>>,
     nodes: &'a HashMap<NodeId, LTy<'lcx, 'tcx>>,
-    node_substs: &'a HashMap<NodeId, Box<[LTy<'lcx, 'tcx>]>>,
+    node_substs: &'a HashMap<NodeId, &'lcx [LTy<'lcx, 'tcx>]>,
     ty_nodes: &'a HashMap<NodeId, LTy<'lcx, 'tcx>>,
     prims: &'a HashMap<&'static str, LTy<'lcx, 'tcx>>,
 

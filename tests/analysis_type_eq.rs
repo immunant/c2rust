@@ -62,5 +62,9 @@ fn vec_push3(mut v: Vec<i32>, x: i32) {
 }
 
 
+// Test expr adjustment handling inside statics
+static G: fn(i32, i32) -> i32 = g;
+
+
 fn main() {
 }
