@@ -99,6 +99,7 @@ impl<'lcx, 'tcx> fmt::Debug for LTyS<'lcx, 'tcx> {
 struct LFnSig<'lcx, 'tcx: 'lcx> {
     inputs: &'lcx [LTy<'lcx, 'tcx>],
     output: LTy<'lcx, 'tcx>,
+    variadic: bool,
 }
 
 
@@ -198,6 +199,7 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
         LFnSig {
             inputs: self.label_slice(sig.inputs()),
             output: self.label(sig.output()),
+            variadic: sig.variadic,
         }
     }
 
@@ -228,6 +230,7 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
         LFnSig {
             inputs: self.subst_slice(sig.inputs, substs),
             output: self.subst(sig.output, substs),
+            variadic: sig.variadic,
         }
     }
 
@@ -604,6 +607,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'a, 'lcx, 'hir, 'gc
 
     // TODO: impl items
     // TODO: trait items
+    // TODO: foreign items
 }
 
 fn label_tys<'a, 'lcx, 'gcx, 'tcx>(hir_map: &hir::map::Map,
@@ -767,6 +771,19 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
         }
     }
 
+    fn fn_is_variadic(&self, lty: LTy<'lcx, 'tcx>) -> bool {
+        use rustc::ty::TypeVariants::*;
+        match lty.ty.sty {
+            TyFnDef(id, _) => {
+                self.def_sig(id).variadic
+            },
+            TyFnPtr(ty_sig) => {
+                ty_sig.0.variadic
+            },
+            _ => panic!("fn_is_variadic: not a fn type"),
+        }
+    }
+
 
     fn get_tables(&self, id: NodeId) -> &'gcx TypeckTables<'gcx> {
         let parent = self.hir_map.get_parent(id);
@@ -805,6 +822,10 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
             ExprCall(ref func, ref args) => {
                 let func_lty = self.expr_lty(func);
                 eprintln!("EXPRCALL: ty {:?} for {:?} ( {:?} )", func_lty, func, args);
+
+                let args =
+                    if !self.fn_is_variadic(func_lty) { args }
+                    else { &args[.. self.fn_num_inputs(func_lty)] };
                 for (i, arg) in args.iter().enumerate() {
                     eprintln!("> arg {} ({:?})", i, arg);
                     self.ltt.unify(self.fn_input(func_lty, i), self.expr_lty(arg));
