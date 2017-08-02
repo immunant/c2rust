@@ -337,7 +337,14 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> TyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
                 self.record_ty(&mty.ty, &lty.args[0]),
             (&Ty_::TyRptr(_, ref mty), &TyRef(..)) =>
                 self.record_ty(&mty.ty, &lty.args[0]),
-            (&Ty_::TyBareFn(ref fn_ty), &TyFnPtr(..)) => {}, // unsupported
+            (&Ty_::TyBareFn(ref fn_ty), &TyFnPtr(..)) => {
+                self.record_ty_list(&fn_ty.decl.inputs, &lty.args[.. lty.args.len() - 1]);
+                match fn_ty.decl.output {
+                    FunctionRetTy::DefaultReturn(_) => {},
+                    FunctionRetTy::Return(ref ty) =>
+                        self.record_ty(ty, &lty.args[lty.args.len() - 1]),
+                }
+            },
             (&Ty_::TyNever, &TyNever) => {},
             (&Ty_::TyTup(ref elems), &TyTuple(..)) =>
                 self.record_ty_list(elems, &lty.args),
