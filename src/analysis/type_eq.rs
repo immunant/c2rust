@@ -484,7 +484,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> TyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
             self.handle_ty(ty, tables.node_id_to_type(arg.id));
         }
         if let Some(ret_ty) = ret_ty {
-            self.handle_ty(ret_ty, tables.node_id_to_type(body.value.id));
+            self.handle_ty(ret_ty, tables.expr_ty_adjusted(&body.value));
         }
     }
 
