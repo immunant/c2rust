@@ -33,6 +33,7 @@ use rustc::ty::subst::{self, Substs};
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast;
 use syntax::ast::NodeId;
+use syntax::codemap::Span;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
@@ -70,6 +71,10 @@ struct LTyS<'lcx, 'tcx: 'lcx> {
 type LTy<'lcx, 'tcx> = &'lcx LTyS<'lcx, 'tcx>;
 
 impl<'lcx, 'tcx> LTyS<'lcx, 'tcx> {
+    fn arg(&self, idx: usize) -> LTy<'lcx, 'tcx> {
+        self.args[idx]
+    }
+
     fn canonicalize(&self, ltt: &LTyTable<'lcx, 'tcx>) -> &Self {
         let label = self.label.get();
         let new_label = ltt.unif.borrow_mut().find(label);
@@ -160,6 +165,9 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
     }
 
     fn unify(&self, lty1: LTy<'lcx, 'tcx>, lty2: LTy<'lcx, 'tcx>) {
+        eprintln!("UNIFY: {}#{:?} == {}#{:?}",
+                  lty1.label.get().index(), lty1.ty,
+                  lty2.label.get().index(), lty2.ty);
         self.unif.borrow_mut().union(lty1.label.get(), lty2.label.get());
 
         if lty1.args.len() == lty2.args.len() {
@@ -241,35 +249,6 @@ fn label_nodes<'a, 'lcx, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 
 
 
-// Unfortunately, there is no central index of all/most `DefId`s and their types, like there is for
-// exprs and patterns.  And we can't visit all defs because some are pulled in from other crates.
-// Instead, we have to keep this cache and add defs to it as we encounter them.
-struct DefCache<'a, 'lcx: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
-    tcx: TyCtxt<'a, 'gcx, 'tcx>,
-    ltt: &'a LTyTable<'lcx, 'tcx>,
-    map: RefCell<HashMap<DefId, LTy<'lcx, 'tcx>>>,
-}
-
-impl<'a, 'lcx, 'gcx, 'tcx> DefCache<'a, 'lcx, 'gcx, 'tcx> {
-    fn new(tcx: TyCtxt<'a, 'gcx, 'tcx>,
-           ltt: &'a LTyTable<'lcx, 'tcx>)
-           -> DefCache<'a, 'lcx, 'gcx, 'tcx> {
-        DefCache {
-            tcx: tcx,
-            ltt: ltt,
-            map: RefCell::new(HashMap::new()),
-        }
-    }
-
-    fn get(&mut self, def_id: DefId) -> LTy<'lcx, 'tcx> {
-        let tcx = self.tcx;
-        let ltt = self.ltt;
-        *self.map.borrow_mut().entry(def_id)
-            .or_insert_with(|| ltt.label(tcx.type_of(def_id)))
-    }
-}
-
-
 
 /// Construct `LTy`s for all `hir::Ty` nodes in the AST.
 struct TyVisitor<'a, 'lcx: 'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
@@ -283,7 +262,6 @@ struct TyVisitor<'a, 'lcx: 'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
 impl<'a, 'lcx, 'hir, 'gcx, 'tcx> TyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
     fn handle_ty(&mut self, ty: &Ty, tcx_ty: ty::Ty<'tcx>) {
         let lty = self.ltt.label(tcx_ty);
-        eprintln!("HANDLE: {:?} => {:?}", ty, tcx_ty);
         self.record_ty(ty, &lty);
     }
 
@@ -1195,63 +1173,300 @@ impl<'a, 'hir, 'gcx, 'tcx> ItemLikeVisitor<'hir> for UnificationVisitor<'a, 'hir
 */
 
 
-/*
-struct Tables<'a, 'tcx: 'a> {
-    unadjusted_nodes: &'a HashMap<NodeId, LTy<'tcx>>,
-    nodes: &'a HashMap<NodeId, LTy<'tcx>>,
-    ty_nodes: &'a HashMap<NodeId, LTy<'tcx>>,
-    prims: &'a HashMap<&'static str, LTy<'tcx>>,
-    def_cache: DefCache<'tcx>,
+struct UnifyVisitor<'a, 'lcx: 'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
+    hir_map: &'a hir::map::Map<'hir>,
+    tcx: TyCtxt<'a, 'gcx, 'tcx>,
+    ltt: &'a LTyTable<'lcx, 'tcx>,
+
+    unadjusted_nodes: &'a HashMap<NodeId, LTy<'lcx, 'tcx>>,
+    nodes: &'a HashMap<NodeId, LTy<'lcx, 'tcx>>,
+    ty_nodes: &'a HashMap<NodeId, LTy<'lcx, 'tcx>>,
+    prims: &'a HashMap<&'static str, LTy<'lcx, 'tcx>>,
+
+
+    // Unfortunately, there is no central index of all/most `DefId`s and their types, like there is
+    // for exprs and patterns.  And we can't visit all defs because some are pulled in from other
+    // crates.  Since we can't precompute the `LTy` for every def, we have to keep this cache and
+    // add defs to it as we encounter them.
+    defs: RefCell<HashMap<DefId, LTy<'lcx, 'tcx>>>,
 }
 
-impl<'a, 'tcx> Tables<'a, 'tcx> {
-    fn expr_lty(&self, id: NodeId) -> &'a LTy<'tcx> {
-        self.nodes.get(&id)
-            .or_else(self.unadjusted_nodes.get(&id))
+impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
+    fn expr_lty(&self, e: &Expr) -> LTy<'lcx, 'tcx> {
+        self.nodes.get(&e.id)
+            .or_else(|| self.unadjusted_nodes.get(&e.id))
             .expect("expr_lty: no such expr")
     }
 
-    fn pat_lty(&self, id: NodeId) -> &'a LTy<'tcx> {
-        self.nodes.get(&id)
-            .or_else(self.unadjusted_nodes.get(&id))
-            .expect("pat_lty: no such pat")
+    fn unadjusted_expr_lty(&self, e: &Expr) -> LTy<'lcx, 'tcx> {
+        self.unadjusted_nodes.get(&e.id)
+            .expect("unadjusted_expr_lty: no such expr")
     }
 
-    fn ty_lty(&self, id: NodeId) -> &'a LTy<'tcx> {
-        self.ty_nodes.get(&id)
-            .expect("ty_lty: no such ty")
+    fn block_lty(&self, b: &Block) -> LTy<'lcx, 'tcx> {
+        match b.expr {
+            Some(ref e) => self.expr_lty(e),
+            None => self.prim_lty("()"),
+        }
     }
 
-    fn prim_lty(&self, name: &'static str) -> &'a LTy<'tcx> {
+    fn pat_lty(&self, p: &Pat) -> LTy<'lcx, 'tcx> {
+        self.unadjusted_nodes.get(&p.id)
+            .expect("pat_lty: no such expr")
+    }
+
+    fn ty_lty(&self, t: &Ty) -> LTy<'lcx, 'tcx> {
+        let l = self.ty_nodes.get(&t.id)
+            .expect("ty_lty: no such ty");
+        eprintln!("ty {:?} = {:?}#{:?}",
+                  t, l.label.get().0, l.ty);
+        l
+    }
+
+    fn prim_lty(&self, name: &'static str) -> LTy<'lcx, 'tcx> {
         self.prims.get(&name)
             .expect("prim_lty: no such prim")
     }
 
-    fn def_lty(&self, id: DefId, ltt: &mut LTyTable) -> &LTy<'tcx> {
+    fn compute_def_lty(&self, id: DefId) -> LTy<'lcx, 'tcx> {
+        match self.hir_map.get_if_local(id) {
+            Some(NodeLocal(p)) => {
+                return self.pat_lty(p);
+            },
+            _ => {},
+        }
 
+        self.ltt.label(self.tcx.type_of(id))
+    }
+
+    fn def_lty(&self, id: DefId) -> LTy<'lcx, 'tcx> {
+        *self.defs.borrow_mut().entry(id)
+            .or_insert_with(|| self.compute_def_lty(id))
     }
 }
 
-struct UnifyVisitor<'t, 'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
-    hir_map: &'a hir::map::Map<'hir>,
-    tcx: TyCtxt<'a, 'gcx, 'tcx>,
-    ltt: &'t mut LTyTable,
-    tables: Tables<'a, 'tcx>,
-}
-
-impl<'t, 'a, 'hir, 'gcx, 'tcx> UnifyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
-    fn expr_ty(&self, id: NodeId) -> &'a LTy<'tcx> {
-
-    }
-}
-
-impl<'t, 'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'t, 'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
     fn nested_visit_map<'this>(&'this mut self) -> NestedVisitorMap<'this, 'hir> {
         NestedVisitorMap::OnlyBodies(self.hir_map)
     }
 
+    fn visit_expr(&mut self, e: &'hir Expr) {
+        let rty = self.unadjusted_expr_lty(e);
+
+        match e.node {
+            ExprBox(ref e) => {
+                self.ltt.unify(rty.arg(0), self.expr_lty(e));
+            },
+
+            ExprArray(ref es) => {
+                for e in es {
+                    self.ltt.unify(rty.arg(0), self.expr_lty(e));
+                }
+            },
+
+            ExprCall(ref func, ref args) => {
+                /* TODO
+                let mut ltys = Vec::with_capacity(args.len() + 1);
+                ltys.extend(args.iter().map(|e| self.expr_lty(e)));
+                ltys.push(tcx_lty.clone());
+                let expected = self.mk_constr("fn", ltys);
+
+                let func_lty = self.expr_lty(func);
+
+                eprintln!("function call");
+                eprintln!("  func = {:?}", func_lty);
+                eprintln!("  exp. = {:?}", expected);
+                self.unify(&func_lty, &expected);
+                */
+            },
+
+            ExprMethodCall(..) => {}, // TODO
+
+            ExprTup(ref es) => {
+                for (expected, e) in rty.args.iter().zip(es.iter()) {
+                    self.ltt.unify(expected, self.expr_lty(e));
+                }
+            },
+
+            ExprBinary(..) => {}, // TODO
+
+            ExprUnary(op, ref a) => {
+                match op {
+                    UnDeref => self.ltt.unify(rty, self.expr_lty(a).arg(0)),
+                    UnNot => self.ltt.unify(rty, self.expr_lty(a)),
+                    UnNeg => self.ltt.unify(rty, self.expr_lty(a)),
+                }
+            },
+
+            ExprLit(..) => {},  // Nothing to unify
+
+            ExprCast(_, ref ty) => {
+                self.ltt.unify(rty, self.ty_lty(ty));
+                // Ignore the expr type, since it has no connection to `rty`.
+            },
+
+            ExprType(ref e, ref ty) => {
+                self.ltt.unify(rty, self.expr_lty(e));
+                self.ltt.unify(rty, self.ty_lty(ty));
+            },
+
+            ExprIf(ref cond, ref e_true, ref e_false) => {
+                self.ltt.unify(self.prim_lty("bool"), self.expr_lty(cond));
+                self.ltt.unify(rty, self.expr_lty(e_true));
+                self.ltt.unify(rty, e_false.as_ref().map_or_else(|| self.prim_lty("()"),
+                                                                 |e| self.expr_lty(e)));
+            },
+
+            ExprWhile(ref cond, ref body, _) => {
+                self.ltt.unify(self.prim_lty("bool"), self.expr_lty(cond));
+                self.ltt.unify(self.prim_lty("()"), self.block_lty(body));
+                self.ltt.unify(rty, self.prim_lty("()"));
+            },
+
+            ExprLoop(..) => {}, // TODO
+
+            ExprMatch(..) => {}, // TODO
+
+            ExprClosure(..) => {}, // TODO
+
+            ExprBlock(ref b) => {
+                self.ltt.unify(rty, self.block_lty(b));
+            },
+
+            ExprAssign(ref lhs, ref rhs) => {
+                self.ltt.unify(self.expr_lty(lhs), self.expr_lty(rhs));
+                self.ltt.unify(rty, self.prim_lty("()"));
+            },
+
+            ExprAssignOp(..) => {}, // TODO
+
+            ExprField(..) => {},
+
+            ExprTupField(ref e, ref idx) => {}, // TODO
+
+            ExprIndex(ref arr, ref idx) => {}, // TODO
+
+            ExprPath(ref path) => {
+                // TODO: many more subcases need handling here
+                match *path {
+                    QPath::Resolved(_, ref path) => {
+                        if let Some(def_id) = path.def.opt_def_id() {
+                            self.ltt.unify(rty, self.def_lty(def_id));
+                        }
+                    },
+                    _ => {},
+                }
+            },
+
+            ExprAddrOf(_, ref e) => {
+                self.ltt.unify(rty.arg(0), self.expr_lty(e));
+            },
+
+            // break/continue/return all have type `!`, which unifies with everything.
+            ExprBreak(_, ref result) => {
+                // TODO: handle result == Some(x) case
+            },
+
+            ExprAgain(_) => {},
+
+            ExprRet(ref result) => {
+                // TODO: handle result == Some(x) case
+            },
+
+            ExprInlineAsm(..) => {},
+
+            ExprStruct(..) => {},
+
+            ExprRepeat(ref e, _) => {
+                self.ltt.unify(rty.arg(0), self.expr_lty(e));
+            },
+        }
+
+        intravisit::walk_expr(self, e);
+    }
+
+    fn visit_pat(&mut self, p: &'hir Pat) {
+        let rty = self.pat_lty(p);
+
+        match p.node {
+            PatKind::Wild => {},
+
+            PatKind::Binding(_, def_id, _, ref opt_pat) => {
+                self.ltt.unify(rty, self.def_lty(def_id));
+                if let Some(ref p) = *opt_pat {
+                    self.ltt.unify(rty, self.pat_lty(p));
+                }
+            },
+
+            PatKind::Struct(..) => {}, // TODO
+
+            PatKind::TupleStruct(..) => {}, // TODO
+
+            PatKind::Path(..) => {}, // TODO
+
+            PatKind::Tuple(ref ps, None) => {
+                for (expected, p) in rty.args.iter().zip(ps.iter()) {
+                    self.ltt.unify(expected, self.pat_lty(p));
+                }
+            },
+            PatKind::Tuple(ref pats, Some(dotdot_idx)) => {}, // TODO
+
+            PatKind::Box(ref p) => {
+                self.ltt.unify(rty.arg(0), self.pat_lty(p));
+            },
+
+            PatKind::Ref(ref p, _) => {
+                self.ltt.unify(rty.arg(0), self.pat_lty(p));
+            },
+
+            PatKind::Lit(_) => {},  // Nothing to unify
+
+            PatKind::Range(..) => {}, // TODO
+
+            PatKind::Slice(..) => {}, // TODO
+        }
+
+        intravisit::walk_pat(self, p);
+    }
+
+    fn visit_local(&mut self, l: &'hir Local) {
+        eprintln!("visit local {:?}", l);
+        if let Some(ref ty) = l.ty {
+            self.ltt.unify(self.pat_lty(&l.pat), self.ty_lty(ty));
+        }
+
+        if let Some(ref e) = l.init {
+            self.ltt.unify(self.pat_lty(&l.pat), self.expr_lty(e));
+        }
+
+        intravisit::walk_local(self, l);
+    }
+
+    fn visit_fn(&mut self,
+                kind: intravisit::FnKind<'hir>,
+                decl: &'hir FnDecl,
+                body_id: BodyId,
+                span: Span,
+                id: NodeId) {
+        let body = self.hir_map.body(body_id);
+        for (ty, arg) in decl.inputs.iter().zip(body.arguments.iter()) {
+            self.ltt.unify(self.ty_lty(ty), self.pat_lty(&arg.pat));
+        }
+
+        match decl.output {
+            FunctionRetTy::Return(ref ty) =>
+                self.ltt.unify(self.ty_lty(ty), self.expr_lty(&body.value)),
+            FunctionRetTy::DefaultReturn(_) =>
+                self.ltt.unify(self.prim_lty("()"), self.expr_lty(&body.value)),
+        }
+
+        // TODO: also unify sig with def_lty
+
+        intravisit::walk_fn(self, kind, decl, body_id, span, id);
+    }
 }
-*/
+
+
 
 pub fn analyze(hir_map: &hir::map::Map, tcx: &TyCtxt) -> HashMap<NodeId, u32> {
     let tcx = *tcx;
@@ -1267,5 +1482,34 @@ pub fn analyze(hir_map: &hir::map::Map, tcx: &TyCtxt) -> HashMap<NodeId, u32> {
     let prims = prim_tys(tcx, &ltt);
     eprintln!("got {} prims", prims.len());
 
-    HashMap::new()
+    let mut v = UnifyVisitor {
+        hir_map: hir_map,
+        tcx: tcx,
+        ltt: &ltt,
+
+        unadjusted_nodes: &unadjusted_nodes,
+        nodes: &nodes,
+        ty_nodes: &ty_nodes,
+        prims: &prims,
+        defs: RefCell::new(HashMap::new()),
+    };
+    hir_map.krate().visit_all_item_likes(&mut v.as_deep_visitor());
+
+    // Debug output
+    let mut keys = ty_nodes.keys().map(|&x| x).collect::<Vec<_>>();
+    keys.sort();
+    eprintln!("computed equiv classes:");
+    for id in keys {
+        let lty = ty_nodes[&id];
+        let span = hir_map.span(id);
+        let lines = tcx.sess.codemap().span_to_lines(span).unwrap().lines;
+        let text = tcx.sess.codemap().span_to_snippet(span).unwrap();
+        eprintln!("  {} ({}): {}", lines[0].line_index + 1, text,
+                  lty.canonicalize(&ltt).label.get().index());
+    }
+
+
+    ty_nodes.iter()
+        .map(|(&id, &lty)| (id, lty.canonicalize(&ltt).label.get().index()))
+        .collect()
 }

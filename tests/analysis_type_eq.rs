@@ -41,11 +41,11 @@ fn type_alias(x: T, y: T) -> i32 {
 }
 
 fn substs() {
-    use std::slice::Iter;
-    let x = Option::<i32>::map::<i32, _>(Some(17), |x| x + 1);
-    let f = <Option<i32> as Clone>::clone;
-    let f = <str as AsRef<[u8]>>::as_ref;
-    let f = <Iter<u8> as Iterator>::collect::<Vec<_>>;
+    //use std::slice::Iter;
+    //let x = Option::<i32>::map::<i32, _>(Some(17), |x| x + 1);
+    //let f = <Option<i32> as Clone>::clone;
+    //let f = <str as AsRef<[u8]>>::as_ref;
+    //let f = <Iter<u8> as Iterator>::collect::<Vec<_>>;
 }
 
 
