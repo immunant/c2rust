@@ -49,7 +49,7 @@ fn substs() {
 }
 
 fn vec_push1(v: Vec<i32>, x: i32) {
-    Vec::<i32>::push(&mut v, x);
+    Vec::push(&mut v, x);
 }
 
 fn vec_push2(v: Vec<i32>, x: i32) {

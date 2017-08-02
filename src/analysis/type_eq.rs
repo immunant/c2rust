@@ -88,6 +88,12 @@ impl<'lcx, 'tcx> LTyS<'lcx, 'tcx> {
     }
 }
 
+impl<'lcx, 'tcx> fmt::Display for LTyS<'lcx, 'tcx> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}#{:?}", self.label.get().index(), self.ty)
+    }
+}
+
 struct LFnSigS<'lcx, 'tcx: 'lcx> {
     inputs: Box<[LTy<'lcx, 'tcx>]>,
     output: LTy<'lcx, 'tcx>,
@@ -166,8 +172,8 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
                 self.mk(ty, args)
             },
             TyFnDef(_, substs) => {
-                // TODO: handle substs
-                self.mk(ty, vec![])
+                let args = substs.types().map(|ty| self.label(ty)).collect();
+                self.mk(ty, args)
             },
             TyFnPtr(ref sig) => {
                 let args = sig.0.inputs_and_output.iter()
@@ -191,10 +197,27 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
         })
     }
 
+    fn subst(&self, lty: LTy<'lcx, 'tcx>, substs: &[LTy<'lcx, 'tcx>]) -> LTy<'lcx, 'tcx> {
+        eprintln!("SUBST: {} {:?}", lty, substs);
+        match lty.ty.sty {
+            ty::TypeVariants::TyParam(ref tp) => {
+                println!("  PARAM {:?} = {}", lty.ty, tp.idx);
+                substs[tp.idx as usize]
+            },
+            _ => {
+                let args = lty.args.iter().map(|&lty| self.subst(lty, substs))
+                    .collect::<Vec<_>>().into_boxed_slice();
+                self.arena.alloc(LTyS {
+                    ty: lty.ty,
+                    label: lty.label.clone(),
+                    args: args,
+                })
+            },
+        }
+    }
+
     fn unify(&self, lty1: LTy<'lcx, 'tcx>, lty2: LTy<'lcx, 'tcx>) {
-        eprintln!("UNIFY: {}#{:?} == {}#{:?}",
-                  lty1.label.get().index(), lty1.ty,
-                  lty2.label.get().index(), lty2.ty);
+        eprintln!("UNIFY: {} == {}", lty1, lty2);
         self.unif.borrow_mut().union(lty1.label.get(), lty2.label.get());
 
         if lty1.args.len() == lty2.args.len() {
@@ -683,22 +706,30 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
             .or_insert_with(|| self.compute_def_sig(id))
     }
 
+    fn fn_num_inputs(&self, lty: LTy<'lcx, 'tcx>) -> usize {
+        use rustc::ty::TypeVariants::*;
+        match lty.ty.sty {
+            TyFnDef(id, _) => self.def_sig(id).inputs.len(),
+            TyFnPtr(_) => lty.args.len() - 1,
+            _ => panic!("fn_num_inputs: not a fn type"),
+        }
+    }
+
     /// Get the input types out of a `FnPtr` or `FnDef` `LTy`.
-    fn fn_inputs(&self, lty: LTy<'lcx, 'tcx>) -> &[LTy<'lcx, 'tcx>] {
+    fn fn_input(&self, lty: LTy<'lcx, 'tcx>, idx: usize) -> LTy<'lcx, 'tcx> {
         use rustc::ty::TypeVariants::*;
         match lty.ty.sty {
             TyFnDef(id, _) => {
-                // For a `TyFnDef`, retrieve the `LFnSig` for the given `DefId` and (NYI:) apply
-                // the labeled substs recorded in `LTy.args`.
+                // For a `TyFnDef`, retrieve the `LFnSig` for the given `DefId` and apply the
+                // labeled substs recorded in `LTy.args`.
                 let sig = self.def_sig(id);
-                // TODO: substs
-                &sig.inputs
+                self.ltt.subst(sig.inputs[idx], &lty.args)
             },
             TyFnPtr(_) => {
                 // For a `TyFnPtr`, `lty.args` records the labeled input and output types.
-                &lty.args[.. lty.args.len() - 1]
+                &lty.args[idx]
             },
-            _ => panic!("fn_inputs: not a fn type"),
+            _ => panic!("fn_input: not a fn type"),
         }
     }
 
@@ -714,7 +745,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
             TyFnPtr(_) => {
                 &lty.args[lty.args.len() - 1]
             },
-            _ => panic!("fn_inputs: not a fn type"),
+            _ => panic!("fn_output: not a fn type"),
         }
     }
 }
@@ -740,13 +771,11 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
 
             ExprCall(ref func, ref args) => {
                 let func_lty = self.expr_lty(func);
-                let inputs = self.fn_inputs(func_lty);
-                let output = self.fn_output(func_lty);
-
-                for (expected, arg) in inputs.iter().zip(args.iter()) {
-                    self.ltt.unify(expected, self.expr_lty(arg));
+                eprintln!("EXPRCALL: ty {} for {:?} ( {:?} )", func_lty, func, args);
+                for (i, arg) in args.iter().enumerate() {
+                    self.ltt.unify(self.fn_input(func_lty, i), self.expr_lty(arg));
                 }
-                self.ltt.unify(rty, output);
+                self.ltt.unify(rty, self.fn_output(func_lty));
             },
 
             ExprMethodCall(..) => {}, // TODO
