@@ -75,6 +75,47 @@ fn do_printf() {
     }
 }
 
+struct Clonable1 {
+    x: i32,
+    y: i32,
+}
+
+impl Clonable1 {
+    fn get_x(&self) -> i32 {
+        self.x
+    }
+}
+
+impl Clone for Clonable1 {
+    fn clone(&self) -> Self {
+        Clonable1 {
+            x: self.x,
+            y: self.y,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct Clonable2 {
+    x: i32,
+    y: i32,
+}
+
+
+fn test_cast() {
+    let x = 0i32;
+    let y = x as u8;
+    assert!((y as i32) < 256);
+}
+
+impl S {
+    fn test_cast2(&self) {
+        let x = 0i32;
+        let y = x as u8;
+        assert!((y as i32) < 256);
+    }
+}
+
 
 fn main() {
 }

@@ -605,7 +605,24 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'a, 'lcx, 'hir, 'gc
         intravisit::walk_struct_field(self, field);
     }
 
-    // TODO: impl items
+    fn visit_impl_item(&mut self, i: &'hir ImplItem) {
+        match i.node {
+            ImplItemKind::Const(ref ty, body_id) =>
+                self.handle_body_tys(&[], Some(ty), body_id),
+            ImplItemKind::Method(ref sig, body_id) => {
+                let ret_ty = match sig.decl.output {
+                    FunctionRetTy::DefaultReturn(_) => None,
+                    FunctionRetTy::Return(ref ty) => Some(ty as &Ty),
+                };
+                self.handle_body_tys(&sig.decl.inputs, ret_ty, body_id);
+            },
+            ImplItemKind::Type(ref ty) =>
+                self.handle_def_ty(ty, i.id),
+        }
+
+        intravisit::walk_impl_item(self, i);
+    }
+
     // TODO: trait items
     // TODO: foreign items
 }
@@ -668,12 +685,18 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
     fn expr_lty(&self, e: &Expr) -> LTy<'lcx, 'tcx> {
         self.nodes.get(&e.id)
             .or_else(|| self.unadjusted_nodes.get(&e.id))
-            .expect("expr_lty: no such expr")
+            .unwrap_or_else(|| panic!("expr_lty: no lty for {:?} @ {:?}",
+                                      e, self.tcx.sess.codemap().span_to_string(e.span)))
     }
 
     fn unadjusted_expr_lty(&self, e: &Expr) -> LTy<'lcx, 'tcx> {
         self.unadjusted_nodes.get(&e.id)
-            .expect("unadjusted_expr_lty: no such expr")
+            .unwrap_or_else(|| panic!("unadjusted_expr_lty: no unadjusted lty for {:?} @ {:?}",
+                                      e, self.tcx.sess.codemap().span_to_string(e.span)))
+    }
+
+    fn opt_unadjusted_expr_lty(&self, e: &Expr) -> Option<LTy<'lcx, 'tcx>> {
+        self.unadjusted_nodes.get(&e.id).map(|&x| x)
     }
 
     fn block_lty(&self, b: &Block) -> LTy<'lcx, 'tcx> {
@@ -685,20 +708,19 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
 
     fn pat_lty(&self, p: &Pat) -> LTy<'lcx, 'tcx> {
         self.unadjusted_nodes.get(&p.id)
-            .expect("pat_lty: no such expr")
+            .unwrap_or_else(|| panic!("pat_lty: no lty for {:?} @ {:?}",
+                                      p, self.tcx.sess.codemap().span_to_string(p.span)))
     }
 
     fn ty_lty(&self, t: &Ty) -> LTy<'lcx, 'tcx> {
-        let l = self.ty_nodes.get(&t.id)
-            .expect("ty_lty: no such ty");
-        eprintln!("ty {:?} = {:?}#{:?}",
-                  t, l.label.get().0, l.ty);
-        l
+        self.ty_nodes.get(&t.id)
+            .unwrap_or_else(|| panic!("ty_lty: no lty for {:?} @ {:?}",
+                                      t, self.tcx.sess.codemap().span_to_string(t.span)))
     }
 
     fn prim_lty(&self, name: &'static str) -> LTy<'lcx, 'tcx> {
         self.prims.get(&name)
-            .expect("prim_lty: no such prim")
+            .unwrap_or_else(|| panic!("prim_lty: no such prim {:?}", name))
     }
 
 
@@ -805,9 +827,21 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
     }
 
     fn visit_expr(&mut self, e: &'hir Expr) {
-        let rty = self.unadjusted_expr_lty(e);
-
         eprintln!("\nvisit {:?}", e);
+        let rty = match self.opt_unadjusted_expr_lty(e) {
+            Some(x) => x,
+            None => {
+                // This is a bit of a hack.  TyCtxt doesn't put entries in node_types for the
+                // length expressions in fixed-length arrays, so we can't obtain the unadjusted LTy
+                // for such exprs.  But given the existence of `const fn`s, we really ought to be
+                // looking at array length exprs.  Instead of figuring out where to get the type
+                // info for them, we just skip the length exprs entirely - along with anything else
+                // that may be absent from node_types.  (Hopefully that's not very much.)
+                intravisit::walk_expr(self, e);
+                return;
+            },
+        };
+
         match e.node {
             ExprBox(ref e) => {
                 self.ltt.unify(rty.arg(0), self.expr_lty(e));
