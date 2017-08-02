@@ -29,6 +29,7 @@ use rustc::hir::intravisit::{self, Visitor, NestedVisitorMap};
 use rustc::hir::itemlikevisit::{self, ItemLikeVisitor};
 use rustc::hir::map::Node::*;
 use rustc::ty::{self, TyCtxt, TypeckTables};
+use rustc::ty::adjustment::Adjust;
 use rustc::ty::subst::{self, Substs};
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast;
@@ -259,7 +260,7 @@ impl<'a, 'lcx, 'gcx, 'tcx> ExprPatVisitor<'a, 'lcx, 'gcx, 'tcx> {
             self.unadjusted.insert(id, self.ltt.label(ty));
 
             if let Some(adj) = tables.adjustments.get(&id).and_then(|v| v.last()) {
-                //self.adjusted.insert(id, self.ltt.label(adj.target));
+                self.adjusted.insert(id, self.ltt.label(adj.target));
             }
         }
 
@@ -777,7 +778,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
     fn visit_expr(&mut self, e: &'hir Expr) {
         let rty = self.unadjusted_expr_lty(e);
 
-        eprintln!("visit {:?}", e);
+        eprintln!("\nvisit {:?}", e);
         match e.node {
             ExprBox(ref e) => {
                 self.ltt.unify(rty.arg(0), self.expr_lty(e));
@@ -907,6 +908,51 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
             ExprRepeat(ref e, _) => {
                 self.ltt.unify(rty.arg(0), self.expr_lty(e));
             },
+        }
+
+        if let Some(adjs) = self.get_tables(e.id).adjustments.get(&e.id) {
+            eprintln!("expr adjustments for {:?}", e.id);
+            // Relate the unadjusted and adjusted types for this expr by stepping through the
+            // intermediate adjustments one by one.
+            let mut prev_ty = rty;
+            for (i, adj) in adjs.iter().enumerate() {
+                let rty =
+                    if i < adjs.len() - 1 { self.ltt.label(adj.target) }
+                    // Shortcut: instead of unifying the last adjustment's target type with the
+                    // adjusted expr type, we use the adjusted expr type itself in place of the
+                    // last target type.
+                    else { self.expr_lty(e) };
+
+                eprintln!("  {}: {:?} -> {:?} -> {:?}", i, prev_ty, adj, rty);
+
+                match adj.kind {
+                    Adjust::NeverToAny => {},   // prev and result tys are unrelated
+                    Adjust::ReifyFnPointer => {}, // TODO - need to unify the fn sigs
+                    Adjust::UnsafeFnPointer => {
+                        // prev and result ty shapes should be the same, only change is the
+                        // "unsafe" tag on the function pointer.
+                        self.ltt.unify(rty, prev_ty);
+                    },
+                    Adjust::ClosureFnPointer => {}, // unsupported
+                    Adjust::MutToConstPointer => {
+                        // Only the mutability tag changes
+                        self.ltt.unify(rty, prev_ty);
+                    },
+                    Adjust::Deref(None) => {
+                        self.ltt.unify(rty, prev_ty.arg(0));
+                    },
+                    Adjust::Deref(Some(_)) => {}, // TODO (overloaded deref case)
+                    Adjust::Borrow(_) => {
+                        // The AutoBorrow argument indicates whether we're going to a `&` or `*`
+                        // pointer, and whether it's `mut` or `const`.  In all cases, the shape of
+                        // rty is the same.
+                        self.ltt.unify(rty.arg(0), prev_ty);
+                    },
+                    Adjust::Unsize => {}, // TODO
+                }
+
+                prev_ty = rty;
+            }
         }
 
         intravisit::walk_expr(self, e);
