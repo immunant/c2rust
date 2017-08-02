@@ -127,5 +127,18 @@ fn closure_tys() {
 }
 
 
+fn get_f(s: S) -> i32 {
+    s.f
+}
+
+fn get_f2(s: &S) -> i32 {
+    s.f
+}
+
+fn set_f2(s: &mut S, x: i32) {
+    s.f = x;
+}
+
+
 fn main() {
 }

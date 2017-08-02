@@ -830,6 +830,22 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
         let substs = self.node_substs.get(&e.id).map_or_else(|| &[] as &[_], |x| x);
         self.ltt.subst_sig(sig, substs)
     }
+
+
+    fn field_lty(&self, struct_ty: LTy<'lcx, 'tcx>, name: Symbol) -> LTy<'lcx, 'tcx> {
+        let adt = match struct_ty.ty.sty {
+            ty::TypeVariants::TyAdt(ref adt, _) => adt,
+            _ => panic!("field_lty: not a struct ty: {:?}", struct_ty),
+        };
+        let variant = adt.struct_variant();
+        for field in &variant.fields {
+            if field.name == name {
+                let base = self.def_lty(field.did);
+                return self.ltt.subst(base, &struct_ty.args);
+            }
+        }
+        panic!("field_lty: no field `{}` in {:?}", name, struct_ty);
+    }
 }
 
 impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
@@ -959,7 +975,9 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
 
             ExprAssignOp(..) => {}, // TODO
 
-            ExprField(..) => {},
+            ExprField(ref e, ref field) => {
+                self.ltt.unify(rty, self.field_lty(self.expr_lty(e), field.node));
+            },
 
             ExprTupField(ref e, ref idx) => {}, // TODO
 
@@ -994,7 +1012,16 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
 
             ExprInlineAsm(..) => {},
 
-            ExprStruct(..) => {},
+            ExprStruct(_, ref fields, ref base) => {
+                for field in fields {
+                    self.ltt.unify(self.field_lty(rty, field.name.node),
+                                   self.expr_lty(&field.expr));
+                }
+
+                if let Some(ref base) = *base {
+                    self.ltt.unify(rty, self.expr_lty(base));
+                }
+            },
 
             ExprRepeat(ref e, _) => {
                 self.ltt.unify(rty.arg(0), self.expr_lty(e));
@@ -1135,6 +1162,12 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
 
         intravisit::walk_fn(self, kind, decl, body_id, span, id);
     }
+
+    fn visit_struct_field(&mut self, field: &'hir StructField) {
+        let def_id = self.hir_map.local_def_id(field.id);
+        self.ltt.unify(self.ty_lty(&field.ty), self.def_lty(def_id));
+        intravisit::walk_struct_field(self, field);
+    }
 }
 
 
@@ -1188,6 +1221,7 @@ pub fn analyze(hir_map: &hir::map::Map, tcx: &TyCtxt) -> HashMap<NodeId, u32> {
     // Debug output
     let mut keys = ty_nodes.keys().map(|&x| x).collect::<Vec<_>>();
     keys.sort();
+    let mut classes = HashSet::new();
     eprintln!("computed equiv classes:");
     for id in keys {
         let lty = ty_nodes[&id];
@@ -1196,7 +1230,10 @@ pub fn analyze(hir_map: &hir::map::Map, tcx: &TyCtxt) -> HashMap<NodeId, u32> {
         let text = tcx.sess.codemap().span_to_snippet(span).unwrap();
         eprintln!("  {} ({}): {}", lines[0].line_index + 1, text,
                   lty.canonicalize(&ltt).label.get().index());
+        classes.insert(lty.label.get().index());
     }
+    eprintln!("{} classes / {} types", classes.len(), ty_nodes.len());
+
 
 
     ty_nodes.iter()
