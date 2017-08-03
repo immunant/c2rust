@@ -7,8 +7,10 @@ extern "C" {
         __base: *mut ::std::os::raw::c_void,
         __nmemb: u64,
         __size: u64,
-        __compar: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void)
-                                       -> i32,
+        __compar: unsafe extern "C" fn(
+            *const ::std::os::raw::c_void,
+            *const ::std::os::raw::c_void,
+        ) -> i32,
     );
     fn realloc(__ptr: *mut ::std::os::raw::c_void, __size: u64) -> *mut ::std::os::raw::c_void;
 }
@@ -39,7 +41,7 @@ pub unsafe fn array_list_new(
         (*arr).size = 32i32;
         (*arr).length = 0i32;
         (*arr).free_fn = free_fn;
-        (if {
+        if {
             (*arr).array = calloc(
                 ::std::mem::size_of::<*mut ::std::os::raw::c_void>() as (u64),
                 (*arr).size as (u64),
@@ -47,11 +49,11 @@ pub unsafe fn array_list_new(
             (*arr).array
         }.is_null()
         {
-             free(arr as (*mut ::std::os::raw::c_void));
-             0i32 as (*mut ::std::os::raw::c_void) as (*mut array_list)
-         } else {
-             arr
-         })
+            free(arr as (*mut ::std::os::raw::c_void));
+            0i32 as (*mut ::std::os::raw::c_void) as (*mut array_list)
+        } else {
+            arr
+        }
     }
 }
 #[export_name = "array_list_new"]
@@ -110,29 +112,29 @@ unsafe extern "C" fn array_list_expand_internal(mut arr: *mut array_list, mut ma
         } else {
             max
         };
-        (if {
+        if {
             t = realloc(
                 (*arr).array as (*mut ::std::os::raw::c_void),
-                (new_size as (usize)).wrapping_mul(
-                    ::std::mem::size_of::<*mut ::std::os::raw::c_void>(),
-                ) as (u64),
+                (new_size as (usize))
+                    .wrapping_mul(::std::mem::size_of::<*mut ::std::os::raw::c_void>()) as
+                    (u64),
             );
             t
         }.is_null()
         {
-             -1i32
-         } else {
-             (*arr).array = t as (*mut *mut ::std::os::raw::c_void);
-             memset(
+            -1i32
+        } else {
+            (*arr).array = t as (*mut *mut ::std::os::raw::c_void);
+            memset(
                 (*arr).array.offset((*arr).size as (isize)) as (*mut ::std::os::raw::c_void),
                 0i32,
-                ((new_size - (*arr).size) as (usize)).wrapping_mul(
-                    ::std::mem::size_of::<*mut ::std::os::raw::c_void>(),
-                ) as (u64),
+                ((new_size - (*arr).size) as (usize))
+                    .wrapping_mul(::std::mem::size_of::<*mut ::std::os::raw::c_void>()) as
+                    (u64),
             );
-             (*arr).size = new_size;
-             0i32
-         })
+            (*arr).size = new_size;
+            0i32
+        }
     }
 }
 
@@ -180,7 +182,7 @@ pub unsafe extern "C" fn array_list_add_wrapper(
 pub unsafe fn array_list_sort(
     mut arr: *mut array_list,
     mut sort_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void)
-                                      -> i32,
+        -> i32,
 ) {
     qsort(
         (*arr).array as (*mut ::std::os::raw::c_void),
@@ -192,7 +194,8 @@ pub unsafe fn array_list_sort(
 #[export_name = "array_list_sort"]
 pub unsafe extern "C" fn array_list_sort_wrapper(
     arr: *mut array_list,
-    sort_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void) -> i32,
+    sort_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void)
+        -> i32,
 ) {
     array_list_sort(arr, sort_fn)
 }

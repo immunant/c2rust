@@ -45,7 +45,7 @@ pub unsafe fn json_object_from_file(mut filename: *const u8) -> *mut ::json_obje
         );
         0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object::json_object)
     } else if {
-        pb = (::printbuf::printbuf_new)();
+        pb = ::printbuf::printbuf_new();
         pb
     }.is_null()
     {
@@ -57,32 +57,32 @@ pub unsafe fn json_object_from_file(mut filename: *const u8) -> *mut ::json_obje
     } else {
         'loop2: loop {
             if !({
-                     ret = read(
+                ret = read(
                     fd,
                     buf.as_mut_ptr() as (*mut ::std::os::raw::c_void),
                     4096u64,
                 ) as (i32);
-                     ret
-                 } > 0i32)
+                ret
+            } > 0i32)
             {
                 break;
             }
-            (::printbuf::printbuf_memappend)(pb, buf.as_mut_ptr() as (*const u8), ret);
+            ::printbuf::printbuf_memappend(pb, buf.as_mut_ptr() as (*const u8), ret);
         }
         close(fd);
-        (if ret < 0i32 {
-             mc_error(
+        if ret < 0i32 {
+            mc_error(
                 (*b"json_object_from_file: error reading file %s: %s\n\0").as_ptr(),
                 filename,
                 strerror(*__errno_location()),
             );
-             (::printbuf::printbuf_free)(pb);
-             0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object::json_object)
-         } else {
-             obj = (::json_tokener::json_tokener_parse)((*pb).buf as (*const u8));
-             (::printbuf::printbuf_free)(pb);
-             obj
-         })
+            ::printbuf::printbuf_free(pb);
+            0i32 as (*mut ::std::os::raw::c_void) as (*mut ::json_object::json_object)
+        } else {
+            obj = ::json_tokener::json_tokener_parse((*pb).buf as (*const u8));
+            ::printbuf::printbuf_free(pb);
+            obj
+        }
     }
 }
 #[export_name = "json_object_from_file"]
@@ -107,9 +107,9 @@ pub unsafe fn json_object_to_file_ext(
         mc_error((*b"json_object_to_file: object is null\n\0").as_ptr());
         -1i32
     } else if {
-               fd = open(filename, 0o1i32 | 0o1000i32 | 0o100i32, 0o644i32);
-               fd
-           } < 0i32
+        fd = open(filename, 0o1i32 | 0o1000i32 | 0o100i32, 0o644i32);
+        fd
+    } < 0i32
     {
         mc_error(
             (*b"json_object_to_file: error opening file %s: %s\n\0").as_ptr(),
@@ -118,15 +118,15 @@ pub unsafe fn json_object_to_file_ext(
         );
         -1i32
     } else if {
-        json_str = (::json_object::json_object_to_json_string_ext)(obj, flags);
+        json_str = ::json_object::json_object_to_json_string_ext(obj, flags);
         json_str
     }.is_null()
     {
         close(fd);
         -1i32
     } else {
-        wsize = (strlen(json_str) & 0x7fffffffu32.wrapping_mul(2u32).wrapping_add(1u32) as (u64)) as
-            (u32);
+        wsize = (strlen(json_str) &
+            0x7fffffffu32.wrapping_mul(2u32).wrapping_add(1u32) as (u64)) as (u32);
         wpos = 0u32;
         'loop4: loop {
             if !(wpos < wsize) {
@@ -147,18 +147,18 @@ pub unsafe fn json_object_to_file_ext(
             }
             wpos = wpos.wrapping_add(ret as (u32));
         }
-        (if _currentBlock == 5 {
-             close(fd);
-             0i32
-         } else {
-             close(fd);
-             mc_error(
+        if _currentBlock == 5 {
+            close(fd);
+            0i32
+        } else {
+            close(fd);
+            mc_error(
                 (*b"json_object_to_file: error writing file %s: %s\n\0").as_ptr(),
                 filename,
                 strerror(*__errno_location()),
             );
-             -1i32
-         })
+            -1i32
+        }
     }
 }
 #[export_name = "json_object_to_file_ext"]
@@ -236,7 +236,7 @@ pub unsafe fn json_parse_int64(mut buf: *const u8, mut retval: *mut i64) -> i32 
         sscanf_is_broken_testdone = 1i32;
     }
     'loop2: loop {
-        if !(isspace(*buf as (i32)) != 0 && (*buf != 0)) {
+        if !(isspace(*buf as (i32)) != 0 && *buf != 0) {
             break;
         }
         buf = buf.offset(1isize);
@@ -255,14 +255,14 @@ pub unsafe fn json_parse_int64(mut buf: *const u8, mut retval: *mut i64) -> i32 
             buf_sig_digits = buf_sig_digits.offset(1isize);
             orig_has_neg = 1i32;
         }
-        if sscanf_is_broken != 0 && (saved_errno != 34i32) {
+        if sscanf_is_broken != 0 && saved_errno != 34i32 {
             let mut buf_cmp: [u8; 100] = ::std::mem::uninitialized();
             let mut buf_cmp_start: *mut u8 = buf_cmp.as_mut_ptr();
             let mut recheck_has_neg: i32 = 0i32;
             let mut buf_cmp_len: i32;
             'loop8: loop {
                 if !(*buf_sig_digits.offset(0isize) as (i32) == b'0' as (i32) &&
-                         (*buf_sig_digits.offset(1isize) as (i32) != b'\0' as (i32)))
+                    *buf_sig_digits.offset(1isize) as (i32) != b'\0' as (i32))
                 {
                     break;
                 }
@@ -289,7 +289,7 @@ pub unsafe fn json_parse_int64(mut buf: *const u8, mut retval: *mut i64) -> i32 
                     strlen(buf_cmp_start as (*const u8)),
                 ) != 0i32 ||
                 strlen(buf_sig_digits) as (i32) != buf_cmp_len &&
-                    (isdigit(*buf_sig_digits.offset(buf_cmp_len as (isize)) as (i32)) != 0)
+                    isdigit(*buf_sig_digits.offset(buf_cmp_len as (isize)) as (i32)) != 0
             {
                 saved_errno = 34i32;
             }
@@ -341,14 +341,14 @@ pub unsafe fn json_type_to_name(mut o_type: json_type) -> *const u8 {
     let mut o_type_int: i32 = o_type as (i32);
     if o_type_int < 0i32 ||
         o_type_int >=
-            ::std::mem::size_of::<[*const u8; 7]>().wrapping_div(
-                ::std::mem::size_of::<*const u8>(),
-            ) as (i32)
+            ::std::mem::size_of::<[*const u8; 7]>()
+                .wrapping_div(::std::mem::size_of::<*const u8>()) as (i32)
     {
         mc_error(
             (*b"json_type_to_name: type %d is out of range [0,%d]\n\0").as_ptr(),
             o_type as (i32),
-            ::std::mem::size_of::<[*const u8; 7]>().wrapping_div(::std::mem::size_of::<*const u8>()),
+            ::std::mem::size_of::<[*const u8; 7]>()
+                .wrapping_div(::std::mem::size_of::<*const u8>()),
         );
         0i32 as (*mut ::std::os::raw::c_void) as (*const u8)
     } else {

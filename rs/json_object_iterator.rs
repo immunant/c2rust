@@ -58,12 +58,12 @@ impl Clone for Struct1 {
 #[derive(Copy)]
 #[repr(C)]
 pub union data {
-    pub c_boolean : i32,
-    pub c_double : f64,
-    pub c_int64 : i32,
-    pub c_object : *mut ::linkhash::lh_table,
-    pub c_array : *mut ::arraylist::array_list,
-    pub c_string : Struct1,
+    pub c_boolean: i32,
+    pub c_double: f64,
+    pub c_int64: i32,
+    pub c_object: *mut ::linkhash::lh_table,
+    pub c_array: *mut ::arraylist::array_list,
+    pub c_string: Struct1,
 }
 
 impl Clone for data {
@@ -81,7 +81,7 @@ pub unsafe fn json_object_iter_begin(
 ) -> json_object_iterator {
     let mut iter: json_object_iterator = ::std::mem::uninitialized();
     let mut pTable: *mut ::linkhash::lh_table;
-    pTable = (::json_object::json_object_get_object)(obj as (*mut ::json_object::json_object)) as
+    pTable = ::json_object::json_object_get_object(obj as (*mut ::json_object::json_object)) as
         (*mut ::linkhash::lh_table);
     iter.opaque_ = (*pTable).head as (*const ::std::os::raw::c_void);
     iter
@@ -108,8 +108,8 @@ pub unsafe extern "C" fn json_object_iter_end_wrapper(
 }
 
 pub unsafe fn json_object_iter_next(mut iter: *mut json_object_iterator) {
-    (*iter).opaque_ = (*((*iter).opaque_ as (*mut ::linkhash::lh_entry))).next as
-        (*const ::std::os::raw::c_void);
+    (*iter).opaque_ =
+        (*((*iter).opaque_ as (*mut ::linkhash::lh_entry))).next as (*const ::std::os::raw::c_void);
 }
 #[export_name = "json_object_iter_next"]
 pub unsafe extern "C" fn json_object_iter_next_wrapper(iter: *mut json_object_iterator) {

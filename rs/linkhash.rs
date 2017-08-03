@@ -24,8 +24,8 @@ pub unsafe extern "C" fn lh_ptr_equal(
 #[derive(Copy)]
 #[repr(C)]
 pub union Union1 {
-    pub ptr : *const ::std::os::raw::c_void,
-    pub i : u64,
+    pub ptr: *const ::std::os::raw::c_void,
+    pub i: u64,
 }
 
 impl Clone for Union1 {
@@ -46,15 +46,15 @@ unsafe extern "C" fn hashlittle(
     let mut u: Union1 = ::std::mem::uninitialized();
     a = {
         b = {
-            c = 0xdeadbeefu32.wrapping_add(length as (u32)).wrapping_add(
-                initval,
-            );
+            c = 0xdeadbeefu32
+                .wrapping_add(length as (u32))
+                .wrapping_add(initval);
             c
         };
         b
     };
     u.ptr = key;
-    if true && (u.i & 0x3u64 == 0u64) {
+    if true && u.i & 0x3u64 == 0u64 {
         let mut k: *const u32 = key as (*const u32);
         'loop62: loop {
             if !(length > 12u64) {
@@ -123,25 +123,22 @@ unsafe extern "C" fn hashlittle(
             b = b.wrapping_add(*k.offset(1isize));
             a = a.wrapping_add(*k.offset(0isize));
         }
-    } else if true && (u.i & 0x1u64 == 0u64) {
+    } else if true && u.i & 0x1u64 == 0u64 {
         let mut k: *const u16 = key as (*const u16);
         let mut k8: *const u8;
         'loop32: loop {
             if !(length > 12u64) {
                 break;
             }
-            a = a.wrapping_add((*k.offset(0isize) as (u32)).wrapping_add(
-                *k.offset(1isize) as (u32) <<
-                    16i32,
-            ));
-            b = b.wrapping_add((*k.offset(2isize) as (u32)).wrapping_add(
-                *k.offset(3isize) as (u32) <<
-                    16i32,
-            ));
-            c = c.wrapping_add((*k.offset(4isize) as (u32)).wrapping_add(
-                *k.offset(5isize) as (u32) <<
-                    16i32,
-            ));
+            a = a.wrapping_add(
+                (*k.offset(0isize) as (u32)).wrapping_add(*k.offset(1isize) as (u32) << 16i32),
+            );
+            b = b.wrapping_add(
+                (*k.offset(2isize) as (u32)).wrapping_add(*k.offset(3isize) as (u32) << 16i32),
+            );
+            c = c.wrapping_add(
+                (*k.offset(4isize) as (u32)).wrapping_add(*k.offset(5isize) as (u32) << 16i32),
+            );
             a = a.wrapping_sub(c);
             a = a ^ (c << 4i32 | c >> 32i32 - 4i32);
             c = c.wrapping_add(b);
@@ -199,18 +196,18 @@ unsafe extern "C" fn hashlittle(
                                 c = c.wrapping_add(*k8.offset(10isize) as (u32) << 16i32);
                                 _currentBlock = 49;
                             } else if length == 12u64 {
-                                c = c.wrapping_add((*k.offset(4isize) as (u32)).wrapping_add(
-                                    *k.offset(5isize) as (u32) <<
-                                        16i32,
-                                ));
-                                b = b.wrapping_add((*k.offset(2isize) as (u32)).wrapping_add(
-                                    *k.offset(3isize) as (u32) <<
-                                        16i32,
-                                ));
-                                a = a.wrapping_add((*k.offset(0isize) as (u32)).wrapping_add(
-                                    *k.offset(1isize) as (u32) <<
-                                        16i32,
-                                ));
+                                c = c.wrapping_add(
+                                    (*k.offset(4isize) as (u32))
+                                        .wrapping_add(*k.offset(5isize) as (u32) << 16i32),
+                                );
+                                b = b.wrapping_add(
+                                    (*k.offset(2isize) as (u32))
+                                        .wrapping_add(*k.offset(3isize) as (u32) << 16i32),
+                                );
+                                a = a.wrapping_add(
+                                    (*k.offset(0isize) as (u32))
+                                        .wrapping_add(*k.offset(1isize) as (u32) << 16i32),
+                                );
                                 _currentBlock = 88;
                             } else {
                                 _currentBlock = 88;
@@ -218,46 +215,46 @@ unsafe extern "C" fn hashlittle(
                             if _currentBlock == 88 {
                             } else {
                                 c = c.wrapping_add(*k.offset(4isize) as (u32));
-                                b = b.wrapping_add((*k.offset(2isize) as (u32)).wrapping_add(
-                                    *k.offset(3isize) as (u32) <<
-                                        16i32,
-                                ));
-                                a = a.wrapping_add((*k.offset(0isize) as (u32)).wrapping_add(
-                                    *k.offset(1isize) as (u32) <<
-                                        16i32,
-                                ));
+                                b = b.wrapping_add(
+                                    (*k.offset(2isize) as (u32))
+                                        .wrapping_add(*k.offset(3isize) as (u32) << 16i32),
+                                );
+                                a = a.wrapping_add(
+                                    (*k.offset(0isize) as (u32))
+                                        .wrapping_add(*k.offset(1isize) as (u32) << 16i32),
+                                );
                                 _currentBlock = 88;
                             }
                         }
                         if _currentBlock == 88 {
                         } else {
-                            b = b.wrapping_add((*k.offset(2isize) as (u32)).wrapping_add(
-                                *k.offset(3isize) as (u32) <<
-                                    16i32,
-                            ));
-                            a = a.wrapping_add((*k.offset(0isize) as (u32)).wrapping_add(
-                                *k.offset(1isize) as (u32) <<
-                                    16i32,
-                            ));
+                            b = b.wrapping_add(
+                                (*k.offset(2isize) as (u32))
+                                    .wrapping_add(*k.offset(3isize) as (u32) << 16i32),
+                            );
+                            a = a.wrapping_add(
+                                (*k.offset(0isize) as (u32))
+                                    .wrapping_add(*k.offset(1isize) as (u32) << 16i32),
+                            );
                             _currentBlock = 88;
                         }
                     }
                     if _currentBlock == 88 {
                     } else {
                         b = b.wrapping_add(*k.offset(2isize) as (u32));
-                        a = a.wrapping_add((*k.offset(0isize) as (u32)).wrapping_add(
-                            *k.offset(1isize) as (u32) <<
-                                16i32,
-                        ));
+                        a = a.wrapping_add(
+                            (*k.offset(0isize) as (u32))
+                                .wrapping_add(*k.offset(1isize) as (u32) << 16i32),
+                        );
                         _currentBlock = 88;
                     }
                 }
                 if _currentBlock == 88 {
                 } else {
-                    a = a.wrapping_add((*k.offset(0isize) as (u32)).wrapping_add(
-                        *k.offset(1isize) as (u32) <<
-                            16i32,
-                    ));
+                    a = a.wrapping_add(
+                        (*k.offset(0isize) as (u32))
+                            .wrapping_add(*k.offset(1isize) as (u32) << 16i32),
+                    );
                     _currentBlock = 88;
                 }
             }
@@ -442,9 +439,9 @@ pub unsafe extern "C" fn lh_char_hash(mut k: *const ::std::os::raw::c_void) -> u
         let mut seed: i32;
         'loop2: loop {
             if !({
-                     seed = (::random_seed::json_c_get_random_seed)();
-                     seed
-                 } == -1i32)
+                seed = ::random_seed::json_c_get_random_seed();
+                seed
+            } == -1i32)
             {
                 break;
             }
@@ -497,8 +494,10 @@ pub struct lh_table {
     pub table: *mut lh_entry,
     pub free_fn: unsafe extern "C" fn(*mut lh_entry),
     pub hash_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void) -> u64,
-    pub equal_fn:
-        unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void) -> i32,
+    pub equal_fn: unsafe extern "C" fn(
+        *const ::std::os::raw::c_void,
+        *const ::std::os::raw::c_void,
+    ) -> i32,
 }
 
 impl Clone for lh_table {
@@ -512,8 +511,10 @@ pub unsafe fn lh_table_new(
     mut name: *const u8,
     mut free_fn: unsafe extern "C" fn(*mut lh_entry),
     mut hash_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void) -> u64,
-    mut equal_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void)
-                                       -> i32,
+    mut equal_fn: unsafe extern "C" fn(
+        *const ::std::os::raw::c_void,
+        *const ::std::os::raw::c_void,
+    ) -> i32,
 ) -> *mut lh_table {
     let mut i: i32;
     let mut t: *mut lh_table;
@@ -524,8 +525,8 @@ pub unsafe fn lh_table_new(
     (*t).count = 0i32;
     (*t).size = size;
     (*t).name = name;
-    (*t).table = calloc(size as (u64), ::std::mem::size_of::<lh_entry>() as (u64)) as
-        (*mut lh_entry);
+    (*t).table =
+        calloc(size as (u64), ::std::mem::size_of::<lh_entry>() as (u64)) as (*mut lh_entry);
     if (*t).table.is_null() {
         lh_abort((*b"lh_table_new: calloc failed\n\0").as_ptr());
     }
@@ -549,7 +550,7 @@ pub unsafe extern "C" fn lh_table_new_wrapper(
     free_fn: unsafe extern "C" fn(*mut lh_entry),
     hash_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void) -> u64,
     equal_fn: unsafe extern "C" fn(*const ::std::os::raw::c_void, *const ::std::os::raw::c_void)
-                                   -> i32,
+        -> i32,
 ) -> *mut lh_table {
     lh_table_new(size, name, free_fn, hash_fn, equal_fn)
 }
@@ -658,9 +659,9 @@ pub unsafe fn lh_table_insert(
         }
         (*t).collisions = (*t).collisions + 1;
         if !({
-                 n = n.wrapping_add(1u64);
-                 n
-             } as (i32) == (*t).size)
+            n = n.wrapping_add(1u64);
+            n
+        } as (i32) == (*t).size)
         {
             continue;
         }
@@ -681,11 +682,11 @@ pub unsafe fn lh_table_insert(
             *_lhs
         };
     } else {
-        (*(*t).tail).next = &mut *(*t).table.offset(n as (isize)) as (*mut lh_entry) as
-            (*mut lh_entry);
+        (*(*t).tail).next =
+            &mut *(*t).table.offset(n as (isize)) as (*mut lh_entry) as (*mut lh_entry);
         (*(*t).table.offset(n as (isize))).prev = (*t).tail as (*mut lh_entry);
-        (*(*t).table.offset(n as (isize))).next = 0i32 as (*mut ::std::os::raw::c_void) as
-            (*mut lh_entry);
+        (*(*t).table.offset(n as (isize))).next =
+            0i32 as (*mut ::std::os::raw::c_void) as (*mut lh_entry);
         (*t).tail = &mut *(*t).table.offset(n as (isize)) as (*mut lh_entry);
     }
     0i32
@@ -718,10 +719,10 @@ pub unsafe fn lh_table_lookup_entry(
             break;
         }
         if (*(*t).table.offset(n as (isize))).k != -2i32 as (*mut ::std::os::raw::c_void) &&
-            (((*t).equal_fn)(
+            ((*t).equal_fn)(
                 (*(*t).table.offset(n as (isize))).k as (*const ::std::os::raw::c_void),
                 k,
-            ) != 0)
+            ) != 0
         {
             _currentBlock = 8;
             break;
@@ -796,12 +797,11 @@ pub unsafe extern "C" fn lh_table_lookup_ex_wrapper(
 
 pub unsafe fn lh_table_delete_entry(mut t: *mut lh_table, mut e: *mut lh_entry) -> i32 {
     let mut n: i64 = ((e as (isize)).wrapping_sub((*t).table as (isize)) /
-                          ::std::mem::size_of::<lh_entry>() as (isize)) as
-        (i64);
+        ::std::mem::size_of::<lh_entry>() as (isize)) as (i64);
     if n < 0i64 {
         -2i32
     } else if (*(*t).table.offset(n as (isize))).k == -1i32 as (*mut ::std::os::raw::c_void) ||
-               (*(*t).table.offset(n as (isize))).k == -2i32 as (*mut ::std::os::raw::c_void)
+        (*(*t).table.offset(n as (isize))).k == -2i32 as (*mut ::std::os::raw::c_void)
     {
         -1i32
     } else {
@@ -809,11 +809,11 @@ pub unsafe fn lh_table_delete_entry(mut t: *mut lh_table, mut e: *mut lh_entry) 
         if (*t).free_fn as usize != 0 {
             ((*t).free_fn)(e as (*mut lh_entry));
         }
-        (*(*t).table.offset(n as (isize))).v = 0i32 as (*mut ::std::os::raw::c_void) as
-            (*const ::std::os::raw::c_void);
+        (*(*t).table.offset(n as (isize))).v =
+            0i32 as (*mut ::std::os::raw::c_void) as (*const ::std::os::raw::c_void);
         (*(*t).table.offset(n as (isize))).k = -2i32 as (*mut ::std::os::raw::c_void);
         if (*t).tail == &mut *(*t).table.offset(n as (isize)) as (*mut lh_entry) &&
-            ((*t).head == &mut *(*t).table.offset(n as (isize)) as (*mut lh_entry))
+            (*t).head == &mut *(*t).table.offset(n as (isize)) as (*mut lh_entry)
         {
             (*t).head = {
                 (*t).tail = 0i32 as (*mut ::std::os::raw::c_void) as (*mut lh_entry);
@@ -826,10 +826,10 @@ pub unsafe fn lh_table_delete_entry(mut t: *mut lh_table, mut e: *mut lh_entry) 
             (*(*(*t).tail).prev).next = 0i32 as (*mut ::std::os::raw::c_void) as (*mut lh_entry);
             (*t).tail = (*(*t).tail).prev as (*mut lh_entry);
         } else {
-            (*(*(*t).table.offset(n as (isize))).prev).next = (*(*t).table.offset(n as (isize)))
-                .next;
-            (*(*(*t).table.offset(n as (isize))).next).prev = (*(*t).table.offset(n as (isize)))
-                .prev;
+            (*(*(*t).table.offset(n as (isize))).prev).next =
+                (*(*t).table.offset(n as (isize))).next;
+            (*(*(*t).table.offset(n as (isize))).next).prev =
+                (*(*t).table.offset(n as (isize))).prev;
         }
         (*(*t).table.offset(n as (isize))).next = {
             let _rhs = 0i32 as (*mut ::std::os::raw::c_void);

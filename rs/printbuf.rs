@@ -34,16 +34,16 @@ pub unsafe fn printbuf_new() -> *mut printbuf {
     } else {
         (*p).size = 32i32;
         (*p).bpos = 0i32;
-        (if {
+        if {
             (*p).buf = malloc((*p).size as (u64)) as (*mut u8);
             (*p).buf
         }.is_null()
         {
-             free(p as (*mut ::std::os::raw::c_void));
-             0i32 as (*mut ::std::os::raw::c_void) as (*mut printbuf)
-         } else {
-             p
-         })
+            free(p as (*mut ::std::os::raw::c_void));
+            0i32 as (*mut ::std::os::raw::c_void) as (*mut printbuf)
+        } else {
+            p
+        }
     }
 }
 #[export_name = "printbuf_new"]
@@ -62,17 +62,17 @@ unsafe extern "C" fn printbuf_extend(mut p: *mut printbuf, mut min_size: i32) ->
         } else {
             min_size + 8i32
         };
-        (if {
+        if {
             t = realloc((*p).buf as (*mut ::std::os::raw::c_void), new_size as (u64)) as (*mut u8);
             t
         }.is_null()
         {
-             -1i32
-         } else {
-             (*p).size = new_size;
-             (*p).buf = t;
-             0i32
-         })
+            -1i32
+        } else {
+            (*p).size = new_size;
+            (*p).buf = t;
+            0i32
+        }
     }
 }
 
