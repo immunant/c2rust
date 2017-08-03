@@ -208,7 +208,7 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
         eprintln!("SUBST: {:?} {:?}", lty, substs);
         match lty.ty.sty {
             ty::TypeVariants::TyParam(ref tp) => {
-                println!("  PARAM {:?} = {}", lty.ty, tp.idx);
+                eprintln!("  PARAM {:?} = {}", lty.ty, tp.idx);
                 substs[tp.idx as usize]
             },
             _ => {
@@ -1172,8 +1172,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
 
 
 
-pub fn analyze(hir_map: &hir::map::Map, tcx: &TyCtxt) -> HashMap<NodeId, u32> {
-    let tcx = *tcx;
+pub fn analyze(hir_map: &hir::map::Map, tcx: TyCtxt) -> HashMap<NodeId, u32> {
     // Allocate in a single `let` so that `arena` and `sig_arena` have identical lifetimes.
     let (arena, sig_arena) = (TypedArena::new(), TypedArena::new());
     let ltt = LTyTable::new(&arena, &sig_arena);
