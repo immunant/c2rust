@@ -12,18 +12,18 @@ use util::HirDefExt;
 
 
 struct ResolvedPathFolder<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a, F>
-        where F: FnMut(Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
+        where F: FnMut(NodeId, Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
     cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
     callback: F,
 }
 
 impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
-        where F: FnMut(Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
+        where F: FnMut(NodeId, Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
     pub fn alter_pat_path(&mut self, p: P<Pat>, hir: &hir::Pat) -> P<Pat> {
         match hir.node {
             hir::PatKind::Struct(ref qpath, _, _) => p.map(|p| {
                 unpack!([p.node] PatKind::Struct(path, fields, dotdot));
-                let (new_qself, new_path) = self.handle_qpath(None, path, qpath);
+                let (new_qself, new_path) = self.handle_qpath(p.id, None, path, qpath);
                 assert!(new_qself.is_none(),
                         "can't insert QSelf at this location (PatKind::Struct)");
                 Pat {
@@ -34,7 +34,7 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
 
             hir::PatKind::TupleStruct(ref qpath, _, _) => p.map(|p| {
                 unpack!([p.node] PatKind::TupleStruct(path, fields, dotdot_pos));
-                let (new_qself, new_path) = self.handle_qpath(None, path, qpath);
+                let (new_qself, new_path) = self.handle_qpath(p.id, None, path, qpath);
                 assert!(new_qself.is_none(),
                         "can't insert QSelf at this location (PatKind::TupleStruct)");
                 Pat {
@@ -52,7 +52,7 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
                         PatKind::Path(qself, path) => (qself, path),
                         _ => panic!("expected PatKind::Ident or PatKind::Path"),
                     };
-                let (new_qself, new_path) = self.handle_qpath(qself, path, qpath);
+                let (new_qself, new_path) = self.handle_qpath(p.id, qself, path, qpath);
                 Pat {
                     node: PatKind::Path(new_qself, new_path),
                     .. p
@@ -67,7 +67,7 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
         match hir.node {
             hir::ExprPath(ref qpath) => e.map(|e| {
                 unpack!([e.node] ExprKind::Path(qself, path));
-                let (new_qself, new_path) = self.handle_qpath(qself, path, qpath);
+                let (new_qself, new_path) = self.handle_qpath(e.id, qself, path, qpath);
                 Expr {
                     node: ExprKind::Path(new_qself, new_path),
                     .. e
@@ -84,7 +84,7 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
                 }
 
                 unpack!([e.node] ExprKind::Struct(path, fields, base));
-                let (new_qself, new_path) = self.handle_qpath(None, path, qpath);
+                let (new_qself, new_path) = self.handle_qpath(e.id, None, path, qpath);
                 assert!(new_qself.is_none(),
                         "can't insert QSelf at this location (ExprKind::Struct)");
                 Expr {
@@ -107,7 +107,7 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
                 }
 
                 unpack!([t.node] TyKind::Path(qself, path));
-                let (new_qself, new_path) = self.handle_qpath(qself, path, qpath);
+                let (new_qself, new_path) = self.handle_qpath(t.id, qself, path, qpath);
                 Ty {
                     node: TyKind::Path(new_qself, new_path),
                     .. t
@@ -119,13 +119,14 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
     }
 
     fn handle_qpath(&mut self,
+                    id: NodeId,
                     qself: Option<QSelf>,
                     path: Path,
                     hir_qpath: &hir::QPath) -> (Option<QSelf>, Path) {
         match *hir_qpath {
             hir::QPath::Resolved(_, ref hir_path) => {
                 if let Some(def_id) = hir_path.def.opt_def_id() {
-                    (self.callback)(qself, path, def_id)
+                    (self.callback)(id, qself, path, def_id)
                 } else {
                     (qself, path)
                 }
@@ -134,7 +135,7 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
             hir::QPath::TypeRelative(ref hir_ty, _) => {
                 let mut path = path;
                 let tail = path.segments.pop().unwrap();
-                let (new_qself, mut new_path) = self.handle_relative_path(qself, path, hir_ty);
+                let (new_qself, mut new_path) = self.handle_relative_path(id, qself, path, hir_ty);
                 new_path.segments.push(tail);
                 (new_qself, new_path)
             },
@@ -142,12 +143,13 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
     }
 
     fn handle_relative_path(&mut self,
+                            id: NodeId,
                             qself: Option<QSelf>,
                             path: Path,
                             hir_ty: &hir::Ty) -> (Option<QSelf>, Path) {
         match hir_ty.node {
             hir::TyPath(ref qpath) => {
-                self.handle_qpath(qself, path, qpath)
+                self.handle_qpath(id, qself, path, qpath)
             },
 
             _ => (qself, path),
@@ -156,7 +158,7 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
 }
 
 impl<'a, 'hir, 'gcx, 'tcx, F> Folder for ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
-        where F: FnMut(Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
+        where F: FnMut(NodeId, Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
     // There are several places in the AST that a `Path` can appear:
     //  - PatKind::Ident (single-element paths only)
     //  - PatKind::Struct
@@ -217,9 +219,19 @@ impl<'a, 'hir, 'gcx, 'tcx, F> Folder for ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx
     }
 }
 
-pub fn fold_resolved_paths<T, F>(target: T, cx: &driver::Ctxt, callback: F) -> <T as Fold>::Result
+pub fn fold_resolved_paths<T, F>(target: T, cx: &driver::Ctxt, mut callback: F) -> <T as Fold>::Result
         where T: Fold,
               F: FnMut(Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
+    let mut f = ResolvedPathFolder {
+        cx: cx,
+        callback: |_, q, p, d| callback(q, p, d),
+    };
+    target.fold(&mut f)
+}
+
+pub fn fold_resolved_paths_with_id<T, F>(target: T, cx: &driver::Ctxt, callback: F) -> <T as Fold>::Result
+        where T: Fold,
+              F: FnMut(NodeId, Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
     let mut f = ResolvedPathFolder {
         cx: cx,
         callback: callback,

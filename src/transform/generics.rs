@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::hash_map::{HashMap, Entry};
+use std::collections::HashSet;
 use regex::Regex;
 use rustc::hir::def_id::DefId;
 use rustc::ty::TypeVariants;
@@ -20,24 +21,18 @@ use transform::Transform;
 use util::IntoSymbol;
 
 
-fn ty_var_name(idx: usize) -> Symbol {
-    if idx < 7 {
-        format!("{}", (b'T' + idx as u8) as char).into_symbol()
-    } else {
-        format!("T{}", idx).into_symbol()
-    }
+pub struct GeneralizeItems {
+    ty_var_name: Symbol,
 }
-
-pub struct GeneralizeItems;
 
 impl Transform for GeneralizeItems {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        // (1) Find marked types and replace with type variables.  As a side effect, also records
-        // the number type variables introduced in each item.
+        // (1) Find marked types and replace with the named type variable.
 
-        // Map from item NodeId to a list of types, one per introduced variable.  These types are
-        // used later as the actual parameters in references to rewritten items.
-        let mut item_ty_args = HashMap::new();
+        // Map from item NodeId to the concrete type that was replaced with the type variable.
+        // These types are used later as the actual parameters in references to rewritten items.
+        // If more than one type was replaced, only the first will be kept in this map.
+        let mut item_ty_arg = HashMap::new();
 
         let krate = fold_nodes(krate, |ty: P<Ty>| {
             if !st.marked(ty.id, "target") {
@@ -45,25 +40,16 @@ impl Transform for GeneralizeItems {
             }
 
             let item_id = cx.hir_map().get_parent(ty.id);
-            let var_idx = match item_ty_args.entry(item_id) {
-                Entry::Vacant(e) => {
-                    e.insert(vec![ty]);
-                    0
-                },
-                Entry::Occupied(mut e) => {
-                    let n = e.get().len();
-                    e.get_mut().push(ty);
-                    n
-                },
-            };
-            let var_name = ty_var_name(var_idx);
-            mk().ident_ty(var_name)
+            if let Entry::Vacant(e) = item_ty_arg.entry(item_id) {
+                e.insert(ty);
+            }
+            mk().ident_ty(self.ty_var_name)
         });
 
         // (2) Add parameters to rewritten items.
 
         let krate = fold_nodes(krate, |i: P<Item>| {
-            if !item_ty_args.contains_key(&i.id) {
+            if !item_ty_arg.contains_key(&i.id) {
                 return SmallVector::one(i);
             }
             SmallVector::one(i.map(|mut i| {
@@ -77,32 +63,39 @@ impl Transform for GeneralizeItems {
                         ItemKind::Impl(_, _, _, ref mut gen, _, _, _) => gen,
                         _ => panic!("item has no room for generics"),
                     };
-                    for idx in 0 .. item_ty_args[&i.id].len() {
-                        gen.ty_params.push(mk().ty_param(ty_var_name(idx)));
-                    }
+                    gen.ty_params.push(mk().ty_param(self.ty_var_name));
                 }
                 i
             }))
         });
 
-        // (3) Rewrite references to each item, replacing `X` with `X<ty1, ty2, ...>`.
+        // (3) Rewrite references to each item, replacing `X` with `X<ty1>`.  If the reference to
+        // rewritten item `X` appears inside another rewritten item `Y`, we instead replace `X`
+        // with `X<T>`, referring to `Y`'s instance of the type parameter.
 
-        let item_ty_args = item_ty_args.into_iter()
-            .map(|(id, args)| (cx.node_def_id(id), args)).collect::<HashMap<_, _>>();
+        let item_ids = item_ty_arg.keys().cloned().collect::<HashSet<_>>();
+        let def_ty_arg = item_ty_arg.into_iter()
+            .map(|(id, arg)| (cx.node_def_id(id), arg)).collect::<HashMap<_, _>>();
 
-        let krate = fold_resolved_paths(krate, cx, |qself, mut path, def_id| {
-            if !item_ty_args.contains_key(&def_id) {
+        let krate = fold_resolved_paths_with_id(krate, cx, |path_id, qself, mut path, def_id| {
+            if !def_ty_arg.contains_key(&def_id) {
                 return (qself, path);
             }
 
-            let args = &item_ty_args[&def_id];
+            let parent_id = cx.hir_map().get_parent(path_id);
+            let arg = if item_ids.contains(&parent_id) || st.marked(parent_id, "target") {
+                mk().ident_ty(self.ty_var_name)
+            } else {
+                def_ty_arg[&def_id].clone()
+            };
+
             {
                 let seg = path.segments.last_mut().unwrap();
                 if let Some(ref mut params) = seg.parameters {
                     *params = params.clone().map(|mut params| {
                         match params {
                             PathParameters::AngleBracketed(ref mut abpd) =>
-                                abpd.types.extend(args.iter().cloned()),
+                                abpd.types.push(arg),
                             PathParameters::Parenthesized(..) =>
                                 panic!("expected angle bracketed params, but found parenthesized"),
                         }
@@ -111,7 +104,7 @@ impl Transform for GeneralizeItems {
                 } else {
                     let abpd = AngleBracketedParameterData {
                         lifetimes: vec![],
-                        types: args.clone(),
+                        types: vec![arg],
                         bindings: vec![],
                     };
                     seg.parameters = Some(P(PathParameters::AngleBracketed(abpd)));
@@ -129,5 +122,7 @@ impl Transform for GeneralizeItems {
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
-    reg.register("generalize_items", |_args| mk(GeneralizeItems));
+    reg.register("generalize_items", |args| mk(GeneralizeItems {
+        ty_var_name: args.get(0).map_or("T", |x| x).into_symbol(),
+    }));
 }
