@@ -313,6 +313,24 @@ impl<'a> Stream<'a> {
                 SelectOp::Marked(label)
             },
 
+            "mark" => {
+                let mut inner = self.parens()?;
+                let label = inner.name()?;
+                inner.last()?;
+                SelectOp::Mark(label)
+            },
+
+            "unmark" => {
+                let mut inner = self.parens()?;
+                let label = inner.name()?;
+                inner.last()?;
+                SelectOp::Unmark(label)
+            },
+
+            "reset" => {
+                SelectOp::Reset
+            },
+
             "crate" => {
                 SelectOp::Crate
             },

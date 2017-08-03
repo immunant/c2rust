@@ -22,13 +22,19 @@ pub mod visitor;
 pub enum SelectOp {
     /// Select all nodes that are already marked with a given label.
     Marked(Symbol),
+    /// Add a mark with the given label to all selected nodes.
+    Mark(Symbol),
+    /// Remove any marks with the given label from all selected nodes.
+    Unmark(Symbol),
+
+    /// Clear the current selection.
+    Reset,
 
     /// Select the crate root.
     Crate,
 
     /// Select all nodes that are direct children of selected nodes and that match the filter.
     ChildMatch(Filter),
-
     /// Select all nodes that are descendants of selected nodes and that match the filter.
     DescMatch(Filter),
 
@@ -91,6 +97,22 @@ pub fn run_select<S: IntoSymbol>(st: &CommandState,
                         sel.insert(id);
                     }
                 }
+            },
+
+            SelectOp::Mark(label) => {
+                for &id in &sel {
+                    st.add_mark(id, label);
+                }
+            },
+
+            SelectOp::Unmark(label) => {
+                for &id in &sel {
+                    st.remove_mark(id, label);
+                }
+            },
+
+            SelectOp::Reset => {
+                sel = HashSet::new();
             },
 
             SelectOp::Crate => {
