@@ -97,18 +97,18 @@ impl<'ast, 'a, 'hir, 'gcx, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'hir, '
             if self.in_old && self.matches(AnyNode::Arg(arg)) {
                 self.new.insert(arg.id);
             }
-            self.maybe_enter_old(arg.id, |v| {
-                v.visit_pat(&arg.pat);
-                v.visit_ty(&arg.ty);
-            });
+            // No point in visiting if the arg is not in `old` - just let `walk_fn` handle it.
+            if self.old.contains(&arg.id) {
+                self.maybe_enter_old(arg.id, |v| {
+                    v.visit_pat(&arg.pat);
+                    v.visit_ty(&arg.ty);
+                });
+            }
         }
 
-        match fd.output {
-            FunctionRetTy::Default(_) => {},
-            FunctionRetTy::Ty(ref t) => {
-                self.visit_ty(t);
-            },
-        }
+        // NB: This causes argument pats and tys to sometimes be visited twice, once as a child of
+        // the arg and again as a child of the fn item.
+        visit::walk_fn(self, kind, fd, span);
     }
 }
 
@@ -220,18 +220,18 @@ impl<'ast, 'a, 'hir, 'gcx, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'hir, 'g
             if self.in_old && self.matches(AnyNode::Arg(arg)) {
                 self.new.insert(arg.id);
             }
-            self.maybe_enter_old(arg.id, |v| {
-                v.visit_pat(&arg.pat);
-                v.visit_ty(&arg.ty);
-            });
+            // No point in visiting if the arg is not in `old` - just let `walk_fn` handle it.
+            if self.old.contains(&arg.id) {
+                self.maybe_enter_old(arg.id, |v| {
+                    v.visit_pat(&arg.pat);
+                    v.visit_ty(&arg.ty);
+                });
+            }
         }
 
-        match fd.output {
-            FunctionRetTy::Default(_) => {},
-            FunctionRetTy::Ty(ref t) => {
-                self.visit_ty(t);
-            },
-        }
+        // NB: This causes argument pats and tys to sometimes be visited twice, once as a child of
+        // the arg and again as a child of the fn item.
+        visit::walk_fn(self, kind, fd, span);
     }
 }
 
@@ -330,16 +330,9 @@ impl<'ast, 'a, 'hir, 'gcx, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'hir, 'gcx,
             if self.old.contains(&arg.id) && self.matches(AnyNode::Arg(arg)) {
                 self.new.insert(arg.id);
             }
-            self.visit_pat(&arg.pat);
-            self.visit_ty(&arg.ty);
         }
 
-        match fd.output {
-            FunctionRetTy::Default(_) => {},
-            FunctionRetTy::Ty(ref t) => {
-                self.visit_ty(t);
-            },
-        }
+        visit::walk_fn(self, kind, fd, span);
     }
 }
 
