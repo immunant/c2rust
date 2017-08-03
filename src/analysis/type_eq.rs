@@ -32,6 +32,7 @@ use rustc::ty::{self, TyCtxt, TypeckTables};
 use rustc::ty::adjustment::Adjust;
 use rustc::ty::subst::{self, Substs};
 use rustc_data_structures::indexed_vec::IndexVec;
+use syntax::abi::Abi;
 use syntax::ast;
 use syntax::ast::NodeId;
 use syntax::codemap::Span;
@@ -65,7 +66,7 @@ impl UnifyKey for TyLabel {
 #[derive(Clone, PartialEq, Eq)]
 struct LTyS<'lcx, 'tcx: 'lcx> {
     ty: ty::Ty<'tcx>,
-    label: Cell<TyLabel>,
+    label: Option<Cell<TyLabel>>,
     args: &'lcx [LTy<'lcx, 'tcx>],
 }
 
@@ -77,9 +78,13 @@ impl<'lcx, 'tcx> LTyS<'lcx, 'tcx> {
     }
 
     fn canonicalize(&self, ltt: &LTyTable<'lcx, 'tcx>) -> &Self {
-        let label = self.label.get();
-        let new_label = ltt.unif.borrow_mut().find(label);
-        self.label.set(new_label);
+        match self.label {
+            Some(ref cell) => {
+                let new_label = ltt.unif.borrow_mut().find(cell.get());
+                cell.set(new_label);
+            },
+            None => {},
+        }
 
         for arg in self.args.iter() {
             arg.canonicalize(ltt);
@@ -91,7 +96,11 @@ impl<'lcx, 'tcx> LTyS<'lcx, 'tcx> {
 
 impl<'lcx, 'tcx> fmt::Debug for LTyS<'lcx, 'tcx> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}#{:?}{:?}", self.label.get().index(), self.ty, self.args)
+        if let Some(ref cell) = self.label {
+            write!(f, "{}#{:?}{:?}", cell.get().index(), self.ty, self.args)
+        } else {
+            write!(f, "DISTINCT#{:?}{:?}", self.ty, self.args)
+        }
     }
 }
 
@@ -126,17 +135,11 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
         self.ref_arena.alloc_slice(ltys)
     }
 
-    fn mk(&self, ty: ty::Ty<'tcx>, args: &[LTy<'lcx, 'tcx>]) -> LTy<'lcx, 'tcx> {
-        let label = self.unif.borrow_mut().new_key(());
-        self.arena.alloc(LTyS {
-            ty: ty,
-            label: Cell::new(label),
-            args: self.mk_slice(args),
-        })
-    }
 
-
-    fn label(&self, ty: ty::Ty<'tcx>) -> LTy<'lcx, 'tcx> {
+    fn label_with<F>(&self,
+                     ty: ty::Ty<'tcx>,
+                     mk: &mut F) -> LTy<'lcx, 'tcx>
+            where F: FnMut(ty::Ty<'tcx>, &[LTy<'lcx, 'tcx>]) -> LTy<'lcx, 'tcx> {
         use rustc::ty::TypeVariants::*;
         match ty.sty {
             // Types with no arguments
@@ -146,7 +149,7 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
             TyUint(_) |
             TyFloat(_) |
             TyStr |
-            TyNever => self.mk(ty, &[]),
+            TyNever => mk(ty, &[]),
 
             // Types that aren't actually supported by this analysis
             TyDynamic(..) |
@@ -155,50 +158,95 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
             TyAnon(..) |
             TyParam(..) |
             TyInfer(..) |
-            TyError => self.mk(ty, &[]),
+            TyError => mk(ty, &[]),
 
             // Types with arguments
             TyAdt(_, substs) => {
                 let args = substs.iter().filter_map(|s| s.as_type())
-                    .map(|t| self.label(t)).collect::<Vec<_>>();
-                self.mk(ty, &args)
+                    .map(|t| self.label_with(t, mk)).collect::<Vec<_>>();
+                mk(ty, &args)
             },
             TyArray(elem, _) => {
-                self.mk(ty, &[self.label(elem)])
+                let args = [self.label_with(elem, mk)];
+                mk(ty, &args)
             },
             TySlice(elem) => {
-                self.mk(ty, &[self.label(elem)])
+                let args = [self.label_with(elem, mk)];
+                mk(ty, &args)
             },
             TyRawPtr(mty) => {
-                self.mk(ty, &[self.label(mty.ty)])
+                let args = [self.label_with(mty.ty, mk)];
+                mk(ty, &args)
             },
             TyRef(_, mty) => {
-                self.mk(ty, &[self.label(mty.ty)])
+                let args = [self.label_with(mty.ty, mk)];
+                mk(ty, &args)
             },
             TyFnDef(_, substs) => {
-                let args = substs.types().map(|ty| self.label(ty)).collect::<Vec<_>>();
-                self.mk(ty, &args)
+                let args = substs.types().map(|ty| self.label_with(ty, mk)).collect::<Vec<_>>();
+                mk(ty, &args)
             },
             TyFnPtr(ref sig) => {
                 let args = sig.0.inputs_and_output.iter()
-                    .map(|ty| self.label(ty)).collect::<Vec<_>>();
-                self.mk(ty, &args)
+                    .map(|ty| self.label_with(ty, mk)).collect::<Vec<_>>();
+                mk(ty, &args)
             },
             TyTuple(ref elems, _) => {
-                let args = elems.iter().map(|ty| self.label(ty)).collect::<Vec<_>>();
-                self.mk(ty, &args)
+                let args = elems.iter().map(|ty| self.label_with(ty, mk)).collect::<Vec<_>>();
+                mk(ty, &args)
             },
         }
     }
 
-    fn label_slice(&self, tys: &[ty::Ty<'tcx>]) -> &'lcx [LTy<'lcx, 'tcx>] {
+    fn label(&self, ty: ty::Ty<'tcx>) -> LTy<'lcx, 'tcx> {
+        self.label_with(ty, &mut |ty, args| {
+            let label = self.unif.borrow_mut().new_key(());
+            self.arena.alloc(LTyS {
+                ty: ty,
+                label: Some(Cell::new(label)),
+                args: self.mk_slice(args),
+            })
+        })
+    }
+
+    fn label_slice(&self,
+                   tys: &[ty::Ty<'tcx>]) -> &'lcx [LTy<'lcx, 'tcx>] {
         self.mk_slice(&tys.iter().map(|ty| self.label(ty)).collect::<Vec<_>>())
     }
 
-    fn label_sig(&self, sig: ty::FnSig<'tcx>) -> LFnSig<'lcx, 'tcx> {
+    fn label_sig(&self,
+                 sig: ty::FnSig<'tcx>) -> LFnSig<'lcx, 'tcx> {
         LFnSig {
             inputs: self.label_slice(sig.inputs()),
             output: self.label(sig.output()),
+            variadic: sig.variadic,
+        }
+    }
+
+    /// Produce a dummy `LTy` on which unification is a no-op.  In effect, every use of the dummy
+    /// type behaves as if it were a fresh type.  Running `unify(dummy, a); unify(dummy, b);` does
+    /// not result in the unification of `a` and `b`.
+    fn non_unifiable(&self, ty: ty::Ty<'tcx>) -> LTy<'lcx, 'tcx> {
+        self.label_with(ty, &mut |ty, args| {
+            let label = self.unif.borrow_mut().new_key(());
+            self.arena.alloc(LTyS {
+                ty: ty,
+                label: None,
+                args: self.mk_slice(args),
+            })
+        })
+    }
+
+    fn non_unifiable_slice(&self,
+                           tys: &[ty::Ty<'tcx>]) -> &'lcx [LTy<'lcx, 'tcx>] {
+        self.mk_slice(&tys.iter().map(|ty| self.non_unifiable(ty)).collect::<Vec<_>>())
+    }
+
+    fn non_unifiable_sig(&self,
+                         sig: ty::FnSig<'tcx>) -> LFnSig<'lcx, 'tcx> {
+        LFnSig {
+            inputs: self.non_unifiable_slice(sig.inputs()),
+            output: self.non_unifiable(sig.output()),
             variadic: sig.variadic,
         }
     }
@@ -233,7 +281,9 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
 
 
     fn unify(&self, lty1: LTy<'lcx, 'tcx>, lty2: LTy<'lcx, 'tcx>) {
-        self.unif.borrow_mut().union(lty1.label.get(), lty2.label.get());
+        if let (Some(cell1), Some(cell2)) = (lty1.label.as_ref(), lty2.label.as_ref()) {
+            self.unif.borrow_mut().union(cell1.get(), cell2.get());
+        }
 
         if lty1.args.len() == lty2.args.len() {
             self.unify_slices(lty1.args, lty2.args);
@@ -771,7 +821,16 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
 
     fn compute_def_sig(&self, id: DefId) -> LFnSig<'lcx, 'tcx> {
         let sig = self.tcx.fn_sig(id);
-        self.ltt.label_sig(sig.0)
+        let is_extern = match sig.0.abi {
+            Abi::Rust | Abi::RustIntrinsic | Abi::RustCall => false,
+            _ => true,
+        };
+
+        if !is_extern {
+            self.ltt.label_sig(sig.0)
+        } else {
+            self.ltt.non_unifiable_sig(sig.0)
+        }
     }
 
     fn def_sig(&self, id: DefId) -> LFnSig<'lcx, 'tcx> {
@@ -1266,6 +1325,8 @@ pub fn analyze(hir_map: &hir::map::Map, tcx: TyCtxt) -> HashMap<NodeId, u32> {
     hir_map.krate().visit_all_item_likes(&mut v.as_deep_visitor());
 
     ty_nodes.iter()
-        .map(|(&id, &lty)| (id, lty.canonicalize(&ltt).label.get().index()))
+        .filter_map(
+            |(&id, &lty)| lty.canonicalize(&ltt).label.as_ref().map(
+                |cell| (id, cell.get().index())))
         .collect()
 }
