@@ -205,10 +205,8 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
 
 
     fn subst(&self, lty: LTy<'lcx, 'tcx>, substs: &[LTy<'lcx, 'tcx>]) -> LTy<'lcx, 'tcx> {
-        eprintln!("SUBST: {:?} {:?}", lty, substs);
         match lty.ty.sty {
             ty::TypeVariants::TyParam(ref tp) => {
-                eprintln!("  PARAM {:?} = {}", lty.ty, tp.idx);
                 substs[tp.idx as usize]
             },
             _ => {
@@ -226,7 +224,6 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
     }
 
     fn subst_sig(&self, sig: LFnSig<'lcx, 'tcx>, substs: &[LTy<'lcx, 'tcx>]) -> LFnSig<'lcx, 'tcx> {
-        eprintln!("SUBST_SIG: {:?}, {:?}", sig, substs);
         LFnSig {
             inputs: self.subst_slice(sig.inputs, substs),
             output: self.subst(sig.output, substs),
@@ -236,7 +233,6 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
 
 
     fn unify(&self, lty1: LTy<'lcx, 'tcx>, lty2: LTy<'lcx, 'tcx>) {
-        eprintln!("UNIFY: {:?} == {:?}", lty1, lty2);
         self.unif.borrow_mut().union(lty1.label.get(), lty2.label.get());
 
         if lty1.args.len() == lty2.args.len() {
@@ -502,7 +498,6 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> TyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
                                                           iter: &mut I) {
         match *seg {
             PathParameters::AngleBracketedParameters(ref abpd) => {
-                eprintln!("angle seg {:?}: inferred? {}", seg, abpd.infer_types);
                 for ty in &abpd.types {
                     self.handle_ty(ty, iter.next().unwrap());
                 }
@@ -854,7 +849,6 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
     }
 
     fn visit_expr(&mut self, e: &'hir Expr) {
-        eprintln!("\nvisit {:?}", e);
         let rty = match self.opt_unadjusted_expr_lty(e) {
             Some(x) => x,
             None => {
@@ -882,7 +876,6 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
 
             ExprCall(ref func, ref args) => {
                 let func_lty = self.expr_lty(func);
-                eprintln!("EXPRCALL: ty {:?} for {:?} ( {:?} )", func_lty, func, args);
 
                 fn is_closure(ty: ty::Ty) -> bool {
                     if let ty::TypeVariants::TyClosure(..) = ty.sty {
@@ -901,7 +894,6 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
                     if !self.fn_is_variadic(func_lty) { args }
                     else { &args[.. self.fn_num_inputs(func_lty)] };
                 for (i, arg) in args.iter().enumerate() {
-                    eprintln!("> arg {} ({:?})", i, arg);
                     self.ltt.unify(self.fn_input(func_lty, i), self.expr_lty(arg));
                 }
                 self.ltt.unify(rty, self.fn_output(func_lty));
@@ -909,9 +901,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
 
             ExprMethodCall(_, _, ref args) => {
                 let sig = self.method_sig(e);
-                eprintln!("EXPRMETHODCALL: sig {:?} for ( {:?} )", sig, args);
                 for (i, arg) in args.iter().enumerate() {
-                    eprintln!("> arg {} ({:?})", i, arg);
                     self.ltt.unify(sig.inputs[i], self.expr_lty(arg));
                 }
                 self.ltt.unify(rty, sig.output);
@@ -1029,7 +1019,6 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
         }
 
         if let Some(adjs) = self.get_tables(e.id).adjustments.get(&e.id) {
-            eprintln!("expr adjustments for {:?}", e.id);
             // Relate the unadjusted and adjusted types for this expr by stepping through the
             // intermediate adjustments one by one.
             let mut prev_ty = rty;
@@ -1040,8 +1029,6 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
                     // adjusted expr type, we use the adjusted expr type itself in place of the
                     // last target type.
                     else { self.expr_lty(e) };
-
-                eprintln!("  {}: {:?} -> {:?} -> {:?}", i, prev_ty, adj, rty);
 
                 match adj.kind {
                     Adjust::NeverToAny => {},   // prev and result tys are unrelated
@@ -1121,7 +1108,6 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
     }
 
     fn visit_local(&mut self, l: &'hir Local) {
-        eprintln!("visit local {:?}", l);
         if let Some(ref ty) = l.ty {
             self.ltt.unify(self.pat_lty(&l.pat), self.ty_lty(ty));
         }
@@ -1192,15 +1178,11 @@ pub fn analyze(hir_map: &hir::map::Map, tcx: TyCtxt) -> HashMap<NodeId, u32> {
         substs: node_substs,
         ..
     } = v;
-    eprintln!("got {} unadjusted, {} adjusted", unadjusted_nodes.len(), nodes.len());
-    eprintln!("got {} substs", node_substs.len());
 
     // Construct labeled types for each `ast::Ty` in the program.
     let ty_nodes = label_tys(hir_map, tcx, &ltt);
-    eprintln!("got {} tys", ty_nodes.len());
 
     let prims = prim_tys(tcx, &ltt);
-    eprintln!("got {} prims", prims.len());
 
     let mut v = UnifyVisitor {
         hir_map: hir_map,
@@ -1216,24 +1198,6 @@ pub fn analyze(hir_map: &hir::map::Map, tcx: TyCtxt) -> HashMap<NodeId, u32> {
         def_sigs: RefCell::new(HashMap::new()),
     };
     hir_map.krate().visit_all_item_likes(&mut v.as_deep_visitor());
-
-    // Debug output
-    let mut keys = ty_nodes.keys().map(|&x| x).collect::<Vec<_>>();
-    keys.sort();
-    let mut classes = HashSet::new();
-    eprintln!("computed equiv classes:");
-    for id in keys {
-        let lty = ty_nodes[&id];
-        let span = hir_map.span(id);
-        let lines = tcx.sess.codemap().span_to_lines(span).unwrap().lines;
-        let text = tcx.sess.codemap().span_to_snippet(span).unwrap();
-        eprintln!("  {} ({}): {}", lines[0].line_index + 1, text,
-                  lty.canonicalize(&ltt).label.get().index());
-        classes.insert(lty.label.get().index());
-    }
-    eprintln!("{} classes / {} types", classes.len(), ty_nodes.len());
-
-
 
     ty_nodes.iter()
         .map(|(&id, &lty)| (id, lty.canonicalize(&ltt).label.get().index()))
