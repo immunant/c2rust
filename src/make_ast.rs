@@ -570,6 +570,14 @@ impl Builder {
         self.path_ty(vec![name])
     }
 
+    pub fn infer_ty(self) -> P<Ty> {
+        P(Ty {
+            id: DUMMY_NODE_ID,
+            node: TyKind::Infer,
+            span: DUMMY_SP,
+        })
+    }
+
 
     // Stmts
 

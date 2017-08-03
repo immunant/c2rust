@@ -21,8 +21,15 @@ use transform::Transform;
 use util::IntoSymbol;
 
 
+/// Add a type variable with the given name (default: `T`) to each `target` item, and replace each
+/// `target` type annotation within a `target` item with the new type variable.  This makes all
+/// items with a `target` mark or containing a `target` type annotation generic over the new type
+/// variable, and adjusts references between them appropriately.  References from unmarked items to
+/// rewritten ones will set the type argument to the provided replacement type (default: use the
+/// first replaced type annotation).
 pub struct GeneralizeItems {
     ty_var_name: Symbol,
+    replacement_ty: Option<String>,
 }
 
 impl Transform for GeneralizeItems {
@@ -32,26 +39,33 @@ impl Transform for GeneralizeItems {
         // Map from item NodeId to the concrete type that was replaced with the type variable.
         // These types are used later as the actual parameters in references to rewritten items.
         // If more than one type was replaced, only the first will be kept in this map.
-        let mut item_ty_arg = HashMap::new();
+        let mut replacement_ty = self.replacement_ty.as_ref()
+            .map(|s| parse_ty(cx.session(), s));
 
         let krate = fold_nodes(krate, |ty: P<Ty>| {
             if !st.marked(ty.id, "target") {
                 return ty;
             }
 
-            let item_id = cx.hir_map().get_parent(ty.id);
-            if let Entry::Vacant(e) = item_ty_arg.entry(item_id) {
-                e.insert(ty);
+            let parent_id = cx.hir_map().get_parent(ty.id);
+            if !st.marked(parent_id, "target") {
+                return ty;
+            }
+
+            if replacement_ty.is_none() {
+                replacement_ty = Some(ty.clone());
             }
             mk().ident_ty(self.ty_var_name)
         });
 
         // (2) Add parameters to rewritten items.
 
+        let mut item_def_ids = HashSet::new();
         let krate = fold_nodes(krate, |i: P<Item>| {
-            if !item_ty_arg.contains_key(&i.id) {
+            if !st.marked(i.id, "target") {
                 return SmallVector::one(i);
             }
+            item_def_ids.insert(cx.node_def_id(i.id));
             SmallVector::one(i.map(|mut i| {
                 {
                     let gen = match i.node {
@@ -73,20 +87,20 @@ impl Transform for GeneralizeItems {
         // rewritten item `X` appears inside another rewritten item `Y`, we instead replace `X`
         // with `X<T>`, referring to `Y`'s instance of the type parameter.
 
-        let item_ids = item_ty_arg.keys().cloned().collect::<HashSet<_>>();
-        let def_ty_arg = item_ty_arg.into_iter()
-            .map(|(id, arg)| (cx.node_def_id(id), arg)).collect::<HashMap<_, _>>();
+        let replacement_ty = replacement_ty
+            .expect("must provide a replacement type argument or mark");
 
         let krate = fold_resolved_paths_with_id(krate, cx, |path_id, qself, mut path, def_id| {
-            if !def_ty_arg.contains_key(&def_id) {
+            if !item_def_ids.contains(&def_id) {
+                // Referenced item wasn't modified.
                 return (qself, path);
             }
 
             let parent_id = cx.hir_map().get_parent(path_id);
-            let arg = if item_ids.contains(&parent_id) || st.marked(parent_id, "target") {
+            let arg = if st.marked(parent_id, "target") {
                 mk().ident_ty(self.ty_var_name)
             } else {
-                def_ty_arg[&def_id].clone()
+                replacement_ty.clone()
             };
 
             {
@@ -124,5 +138,6 @@ pub fn register_commands(reg: &mut Registry) {
 
     reg.register("generalize_items", |args| mk(GeneralizeItems {
         ty_var_name: args.get(0).map_or("T", |x| x).into_symbol(),
+        replacement_ty: args.get(1).cloned(),
     }));
 }
