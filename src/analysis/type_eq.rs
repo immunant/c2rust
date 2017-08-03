@@ -629,8 +629,30 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'a, 'lcx, 'hir, 'gc
         intravisit::walk_impl_item(self, i);
     }
 
+    fn visit_foreign_item(&mut self, i: &'hir ForeignItem) {
+        let def_id = self.hir_map.local_def_id(i.id);
+        match i.node {
+            ForeignItemFn(ref decl, _, _) => {
+                let sig = self.tcx.type_of(def_id).fn_sig(self.tcx);
+                for (decl_ty, sig_ty) in decl.inputs.iter().zip(sig.0.inputs().iter()) {
+                    self.handle_ty(decl_ty, sig_ty);
+                }
+                match decl.output {
+                    FunctionRetTy::DefaultReturn(_) => {},
+                    FunctionRetTy::Return(ref ty) => self.handle_ty(ty, sig.0.output()),
+                }
+            },
+
+            ForeignItemStatic(ref ty, _) => {
+                let def_ty = self.tcx.type_of(def_id);
+                self.handle_ty(ty, def_ty);
+            },
+        }
+
+        intravisit::walk_foreign_item(self, i);
+    }
+
     // TODO: trait items
-    // TODO: foreign items
 }
 
 fn label_tys<'a, 'lcx, 'gcx, 'tcx>(hir_map: &hir::map::Map,
@@ -913,7 +935,25 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
                 }
             },
 
-            ExprBinary(..) => {}, // TODO
+            ExprBinary(ref op, ref a, ref b) => {
+                match op.node {
+                    BiAdd | BiSub | BiMul | BiDiv | BiRem |
+                    BiBitXor | BiBitAnd | BiBitOr |
+                    BiShl | BiShr => {
+                        self.ltt.unify(rty, self.expr_lty(a));
+                        self.ltt.unify(rty, self.expr_lty(b));
+                    },
+                    BiAnd | BiOr => {
+                        self.ltt.unify(rty, self.prim_lty("bool"));
+                        self.ltt.unify(self.expr_lty(a), self.prim_lty("bool"));
+                        self.ltt.unify(self.expr_lty(b), self.prim_lty("bool"));
+                    },
+                    BiEq | BiLt | BiLe | BiNe | BiGe | BiGt => {
+                        self.ltt.unify(rty, self.prim_lty("bool"));
+                        self.ltt.unify(self.expr_lty(a), self.expr_lty(b));
+                    },
+                }
+            },
 
             ExprUnary(op, ref a) => {
                 match op {
@@ -1153,6 +1193,32 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
         let def_id = self.hir_map.local_def_id(field.id);
         self.ltt.unify(self.ty_lty(&field.ty), self.def_lty(def_id));
         intravisit::walk_struct_field(self, field);
+    }
+
+    fn visit_foreign_item(&mut self, i: &'hir ForeignItem) {
+        let def_id = self.hir_map.local_def_id(i.id);
+        match i.node {
+            ForeignItemFn(ref decl, _, _) => {
+                let sig = self.def_sig(def_id);
+
+                for (i, ast_ty) in decl.inputs.iter().enumerate() {
+                    let lty = self.ty_lty(ast_ty);
+                    self.ltt.unify(lty, sig.inputs[i]);
+                }
+
+                let out_lty = match decl.output {
+                    FunctionRetTy::Return(ref ty) => self.ty_lty(ty),
+                    FunctionRetTy::DefaultReturn(_) => self.prim_lty("()"),
+                };
+                self.ltt.unify(out_lty, sig.output);
+            },
+
+            ForeignItemStatic(ref ty, _) => {
+                self.ltt.unify(self.ty_lty(ty), self.def_lty(def_id));
+            },
+        }
+
+        intravisit::walk_foreign_item(self, i);
     }
 }
 
