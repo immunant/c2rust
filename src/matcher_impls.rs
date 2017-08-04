@@ -49,6 +49,9 @@ impl TryMatch for Expr {
                                           |p| p.parse_expr().map(|p| p.unwrap()),
                                           target),
                 "def" => mcx.do_def_expr(&mac.node.tts, target),
+                "typed" => mcx.do_typed(&mac.node.tts,
+                                        |p| p.parse_expr().map(|p| p.unwrap()),
+                                        target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
         }
@@ -69,6 +72,9 @@ impl TryMatch for Pat {
                 "marked" => mcx.do_marked(&mac.node.tts,
                                           |p| p.parse_pat().map(|p| p.unwrap()),
                                           target),
+                "typed" => mcx.do_typed(&mac.node.tts,
+                                        |p| p.parse_pat().map(|p| p.unwrap()),
+                                        target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
         }

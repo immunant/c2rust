@@ -20,6 +20,7 @@ use command::CommandState;
 use driver;
 use fold::Fold;
 use get_node_id::GetNodeId;
+use reflect;
 use util::PatternSymbol;
 use util::IntoSymbol;
 
@@ -42,6 +43,9 @@ pub enum Error {
     /// A `def!` pattern failed to match because the target is not a reference to the expected
     /// item.
     DefMismatch,
+
+    /// A `typed!` macro failed to match because the target's type did not match the type pattern.
+    WrongType,
 
     BadSpecialPattern(Symbol),
 }
@@ -308,6 +312,29 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
             _ => None,
         };
         self.do_def_impl(tts, opt_def_id, opt_path)
+    }
+
+    pub fn do_typed<T, F>(&mut self,
+                          tts: &ThinTokenStream,
+                          func: F,
+                          target: &T) -> Result<()>
+            where T: TryMatch + GetNodeId,
+                  F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T> {
+        let mut p = Parser::new(&self.cx.session().parse_sess,
+                                tts.clone().into(),
+                                None, false, false);
+        let pattern = func(&mut p).unwrap();
+        p.expect(&Token::Comma).unwrap();
+        let ty_pattern = p.parse_ty().unwrap();
+
+        let tcx_ty = self.cx.node_type(target.get_node_id());
+        let ast_ty = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), tcx_ty);
+
+        if self.try_match(&ty_pattern, &ast_ty).is_err() {
+            return Err(Error::WrongType);
+        }
+
+        self.try_match(&pattern, target)
     }
 }
 

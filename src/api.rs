@@ -27,6 +27,7 @@ use command::CommandState;
 use driver;
 use fold::Fold;
 use matcher::Pattern;
+use reflect;
 use util::HirDefExt;
 use util::IntoSymbol;
 
@@ -116,23 +117,7 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
 
     /// Construct a `Path` AST suitable for referring to a definition.
     fn def_path(&self, id: DefId) -> Path {
-        let root = PathSegment {
-            identifier: keywords::CrateRoot.ident(),
-            span: DUMMY_SP,
-            parameters: None,
-        };
-        let mut buf = ItemPathVec(RootMode::Local, vec![root]);
-        self.ty_ctxt().push_item_path(&mut buf, id);
-
-        let mut segs = buf.1;
-        // If `id` refers to an `extern` item, there will be an entry in the path for the `extern`
-        // block (`ItemKind::ForeignMod`), with an empty ident.  Filter it out.
-        segs.retain(|seg| seg.identifier.name.as_str() != "");
-
-        Path {
-            span: DUMMY_SP,
-            segments: segs,
-        }
+        reflect::reflect_path(self.ty_ctxt(), id)
     }
 
     /// Obtain the `DefId` of a definition node, such as a `fn` item.
@@ -210,22 +195,5 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
 
     fn callee(&self, e: &Expr) -> DefId {
         self.opt_callee(e).expect("callee: expr is not a call")
-    }
-}
-
-
-struct ItemPathVec(RootMode, Vec<PathSegment>);
-
-impl ItemPathBuffer for ItemPathVec {
-    fn root_mode(&self) -> &RootMode {
-        &self.0
-    }
-
-    fn push(&mut self, text: &str) {
-        self.1.push(PathSegment {
-            identifier: Ident::with_empty_ctxt(text.into_symbol()),
-            span: DUMMY_SP,
-            parameters: None,
-        });
     }
 }

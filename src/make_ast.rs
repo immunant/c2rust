@@ -1,4 +1,5 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
+use rustc::hir;
 use syntax::abi::Abi;
 use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Spanned};
@@ -49,6 +50,15 @@ impl<'a> Make<Mutability> for &'a str {
             "" | "imm" | "immut" | "immutable" => Mutability::Immutable,
             "mut" | "mutable" => Mutability::Mutable,
             _ => panic!("unrecognized string for Mutability: {:?}", self),
+        }
+    }
+}
+
+impl<'a> Make<Mutability> for hir::Mutability {
+    fn make(self, _mk: &Builder) -> Mutability {
+        match self {
+            hir::Mutability::MutMutable => Mutability::Mutable,
+            hir::Mutability::MutImmutable => Mutability::Immutable,
         }
     }
 }
@@ -535,6 +545,27 @@ impl Builder {
 
     // Types
 
+    pub fn array_ty<T, E>(self, ty: T, len: E) -> P<Ty>
+            where T: Make<P<Ty>>, E: Make<P<Expr>> {
+        let ty = ty.make(&self);
+        let len = len.make(&self);
+        P(Ty {
+            id: DUMMY_NODE_ID,
+            node: TyKind::Array(ty, len),
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn slice_ty<T>(self, ty: T) -> P<Ty>
+            where T: Make<P<Ty>> {
+        let ty = ty.make(&self);
+        P(Ty {
+            id: DUMMY_NODE_ID,
+            node: TyKind::Slice(ty),
+            span: DUMMY_SP,
+        })
+    }
+
     pub fn ptr_ty<T>(self, ty: T) -> P<Ty>
             where T: Make<P<Ty>> {
         let ty = ty.make(&self);
@@ -551,6 +582,24 @@ impl Builder {
         P(Ty {
             id: DUMMY_NODE_ID,
             node: TyKind::Rptr(None, MutTy { ty: ty, mutbl: self.mutbl }),
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn never_ty(self) -> P<Ty> {
+        P(Ty {
+            id: DUMMY_NODE_ID,
+            node: TyKind::Never,
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn tuple_ty<T>(self, elem_tys: Vec<T>) -> P<Ty>
+            where T: Make<P<Ty>> {
+        let elem_tys = elem_tys.into_iter().map(|ty| ty.make(&self)).collect();
+        P(Ty {
+            id: DUMMY_NODE_ID,
+            node: TyKind::Tup(elem_tys),
             span: DUMMY_SP,
         })
     }
