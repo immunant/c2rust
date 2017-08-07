@@ -48,10 +48,11 @@ pub enum SelectOp {
 #[derive(Clone, Debug)]
 pub enum Filter {
     /// `kind(k)`: The node is of kind `k`.  See `pick_node::NodeKind` for a list of supported node
-    /// kinds.
+    /// kinds.  Shorthand: `k` is an alias for `kind(k)` if `k` is a valid node kind.
     Kind(NodeKind),
     /// `item_kind(k)`: The node is an itemlike of subkind `k`.  See `select::filter::ItemLikeKind`
-    /// for a list of supported itemlike subkinds.
+    /// for a list of supported itemlike subkinds.  Shorthand: `k` is an alias for `item_kind(k)`
+    /// if `k` is a valid itemlike subkind.
     ItemKind(ItemLikeKind),
     /// `pub`: The node's visibility is set to "public".  This implies the node must be item-like.
     Public,

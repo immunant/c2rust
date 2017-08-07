@@ -337,7 +337,17 @@ impl<'a> Stream<'a> {
                     Ok(Filter::AllDesc(Box::new(filt)))
                 },
 
-                name => fail!("unknown filter op `{}`", name),
+                name => {
+                    // Shorthand for `kind(x)` and `item_kind(x)`
+                    if let Ok(kind) = NodeKind::from_str(name) {
+                        Ok(Filter::Kind(kind))
+                    } else if let Ok(kind) = ItemLikeKind::from_str(name) {
+                        Ok(Filter::ItemKind(kind))
+                    } else {
+                        fail!("unknown filter op `{}`", name)
+                    }
+                },
+
             }
         }
     }
