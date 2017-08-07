@@ -57,6 +57,9 @@ pub enum Filter {
     Public,
     /// `name(re)`: The node's name matches regular expression `re`.
     Name(Regex),
+    /// `path_prefix(n, p)`: The prefix of the node's path, obtained by removing the last `n`
+    /// segments, is `p`.  Shorthand: `path(p)` is an alias for `path_prefix(0, p)`.
+    PathPrefix(usize, Box<Path>),
     /// `has_attr(a)`: The node has an attribute named `a`.
     HasAttr(Symbol),
     /// `match_k(p)`: The node matches a pattern `p` of kind `k`, according to the `matcher`
@@ -156,7 +159,7 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("select", |args| {
         let label = (&args[0]).into_symbol();
         let ops_str = args[1].clone();
-        Box::new(FuncCommand::new(Phase::Phase2, move |st, cx| {
+        Box::new(FuncCommand::new(Phase::Phase3, move |st, cx| {
             let ops = parse::parse(cx.session(), &ops_str);
             eprintln!("running select: {:?} -> {}", ops, label);
             run_select(st, cx, &ops, label);

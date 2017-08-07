@@ -5,10 +5,12 @@ use syntax::codemap::Span;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
+use ast_equiv::AstEquiv;
 use command::CommandState;
 use driver;
 use matcher::MatchCtxt;
 use pick_node::NodeKind;
+use reflect;
 use select::{Filter, AnyPattern};
 
 
@@ -208,6 +210,21 @@ pub fn matches_filter(st: &CommandState,
         Filter::ItemKind(k) => node.itemlike_kind().map_or(false, |nk| nk == k),
         Filter::Public => node.vis().map_or(false, |v| v == &Visibility::Public),
         Filter::Name(ref re) => node.name().map_or(false, |n| re.is_match(&n.as_str())),
+        Filter::PathPrefix(drop_segs, ref expect_path) => {
+            if !reflect::can_reflect_path(cx.hir_map(), node.id()) {
+                return false;
+            }
+            let def_id = match cx.hir_map().opt_local_def_id(node.id()) {
+                Some(id) => id,
+                None => return false,
+            };
+            let path = reflect::reflect_path(cx.ty_ctxt(), def_id);
+            if path.segments.len() != expect_path.segments.len() + drop_segs {
+                return false;
+            }
+            AstEquiv::ast_equiv(&expect_path.segments as &[_],
+                                &path.segments[.. path.segments.len() - drop_segs])
+        },
         Filter::HasAttr(name) => node.attrs().map_or(false, |attrs| {
             attr::contains_name(attrs, &name.as_str())
         }),

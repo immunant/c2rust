@@ -1,5 +1,7 @@
+use rustc::hir;
 use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
+use rustc::hir::map::Node::*;
 use rustc::ty::{self, TyCtxt};
 use rustc::ty::item_path::{ItemPathBuffer, RootMode};
 use syntax::ast::*;
@@ -62,6 +64,35 @@ pub fn reflect_path(tcx: TyCtxt, id: DefId) -> Path {
     Path {
         span: DUMMY_SP,
         segments: segs,
+    }
+}
+
+/// Wrapper around `reflect_path` that checks first to ensure its argument is the sort of def that
+/// has a path.  `reflect_path` will panic if called on a def with no path.
+pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
+    let node = match hir_map.find(id) {
+        Some(x) => x,
+        None => return false,
+    };
+    match node {
+        NodeItem(_) |
+        NodeForeignItem(_) |
+        NodeTraitItem(_) |
+        NodeImplItem(_) |
+        NodeVariant(_) |
+        NodeField(_) |
+        NodeStructCtor(_) => true,
+
+        NodeExpr(_) |
+        NodeStmt(_) |
+        NodeTy(_) |
+        NodeTraitRef(_) |
+        NodeLocal(_) |
+        NodePat(_) |
+        NodeBlock(_) |
+        NodeLifetime(_) |
+        NodeTyParam(_) |
+        NodeVisibility(_) => false,
     }
 }
 

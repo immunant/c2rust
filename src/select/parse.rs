@@ -1,10 +1,12 @@
+use std::mem;
 use std::str::FromStr;
 use std::vec;
 use regex::Regex;
 use rustc::session::Session;
+use syntax::ast::Path;
 use syntax::parse;
 use syntax::parse::ParseSess;
-use syntax::parse::parser::Parser;
+use syntax::parse::parser::{Parser, PathStyle};
 use syntax::parse::token::{Token, DelimToken, Lit};
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream};
@@ -129,6 +131,17 @@ impl<'a> Stream<'a> {
         }
     }
 
+    fn path(&mut self) -> PResult<Path> {
+        let ts = mem::replace(&mut self.toks, Vec::new().into_iter());
+        let mut p = Parser::new(self.sess, ts.collect(), None, false, false);
+        let path = p.parse_path(PathStyle::Mod)
+            .map_err(|e| format!("error parsing path: {}", e.message()))?;
+        self.toks = p.parse_all_token_trees()
+            .map_err(|e| format!("error parsing path: {}", e.message()))?
+            .into_iter();
+        Ok(path)
+    }
+
 
     fn filter(&mut self) -> PResult<Filter> {
         self.filter_or()
@@ -194,6 +207,31 @@ impl<'a> Stream<'a> {
                     Ok(Filter::ItemKind(subkind))
                 },
 
+                "path" => {
+                    let mut inner = self.parens()?;
+                    let path = inner.path()?;
+                    inner.last()?;
+                    Ok(Filter::PathPrefix(0, Box::new(path)))
+                },
+
+                "path_prefix" => {
+                    let mut inner = self.parens()?;
+                    let seg_count_lit = inner.lit()?;
+                    inner.expect(&Token::Comma)?;
+                    let path = inner.path()?;
+                    inner.last()?;
+
+                    let seg_count = match seg_count_lit {
+                        Lit::Integer(sym) => match usize::from_str(&sym.as_str()) {
+                            Ok(i) => i,
+                            Err(e) => fail!("error parsing integer: {}", e),
+                        },
+                        l => fail!("expected integer, but got {:?}", l),
+                    };
+
+                    Ok(Filter::PathPrefix(seg_count, Box::new(path)))
+                },
+
                 "pub" => {
                     Ok(Filter::Public)
                 },
@@ -229,7 +267,7 @@ impl<'a> Stream<'a> {
                     let x = p.parse_expr()
                         .map_err(|e| format!("error parsing expr: {}", e.message()))?;
                     p.expect(&Token::Eof)
-                        .map_err(|e| format!("error parsing stmt: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing expr: {}", e.message()))?;
 
                     let x = remove_paren(x);
                     Ok(Filter::Matches(AnyPattern::Expr(x)))
@@ -242,7 +280,7 @@ impl<'a> Stream<'a> {
                     let x = p.parse_ty()
                         .map_err(|e| format!("error parsing ty: {}", e.message()))?;
                     p.expect(&Token::Eof)
-                        .map_err(|e| format!("error parsing stmt: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing ty: {}", e.message()))?;
 
                     let x = remove_paren(x);
                     Ok(Filter::Matches(AnyPattern::Ty(x)))
