@@ -20,59 +20,66 @@ pub mod visitor;
 
 #[derive(Clone, Debug)]
 pub enum SelectOp {
-    /// Select all nodes that are already marked with a given label.
+    /// `marked(l)`: Select all nodes that are already marked with label `l`.
     Marked(Symbol),
-    /// Add a mark with the given label to all selected nodes.
+    /// `mark(l)`: Add a mark with label `l` to all selected nodes.
     Mark(Symbol),
-    /// Remove any marks with the given label from all selected nodes.
+    /// `unmark(l)`: Remove any marks with label `l` from all selected nodes.
     Unmark(Symbol),
 
-    /// Clear the current selection.
+    /// `reset`: Clear the current selection.
     Reset,
 
-    /// Select the crate root.
+    /// `crate`: Select the crate root.
     Crate,
 
-    /// Select all nodes that are direct children of selected nodes and that match the filter.
+    /// `child(f)`: Replace the current selection with the set of all nodes that are direct
+    /// children of selected nodes and that match filter `f`.  
     ChildMatch(Filter),
-    /// Select all nodes that are descendants of selected nodes and that match the filter.
+    /// `desc(f)`: Replace the current selection with the set of all nodes that are descendants of
+    /// selected nodes and that match filter `f`.
     DescMatch(Filter),
 
-    /// Filter the set of selected nodes, keeping only nodes that match the filter.
+    /// `filter(f)`: Filter the set of selected nodes, keeping only nodes that match filter `f`.
     Filter(Filter),
 }
 
 
 #[derive(Clone, Debug)]
 pub enum Filter {
-    /// The node is of the indicated kind.
+    /// `kind(k)`: The node is of kind `k`.  See `pick_node::NodeKind` for a list of supported node
+    /// kinds.
     Kind(NodeKind),
-    /// The node is an itemlike of the indicated subkind.
+    /// `item_kind(k)`: The node is an itemlike of subkind `k`.  See `select::filter::ItemLikeKind`
+    /// for a list of supported itemlike subkinds.
     ItemKind(ItemLikeKind),
-    /// The node's visibility is set to "public".  This implies the node must be an item-like.
+    /// `pub`: The node's visibility is set to "public".  This implies the node must be item-like.
     Public,
-    /// The node's name matches the given regular expression.
+    /// `name(re)`: The node's name matches regular expression `re`.
     Name(Regex),
-    /// The node has an attribute with the given name.
+    /// `has_attr(a)`: The node has an attribute named `a`.
     HasAttr(Symbol),
-    /// The node matches a pattern, according to the `matcher` module.  This implies that the node
-    /// kind must match the pattern kind.
+    /// `match_k(p)`: The node matches a pattern `p` of kind `k`, according to the `matcher`
+    /// module.  This implies that the node kind must match the pattern kind.
     Matches(AnyPattern),
-    /// The node is marked with the given label.
+    /// `marked(l)`: The node is marked with label `l`.
     Marked(Symbol),
 
-    /// At least one direct child of the node matches the filter.
+    /// `any_child(f)`: At least one direct child of the node matches filter `f`.
     AnyChild(Box<Filter>),
-    /// All direct children of the node match the filter.
+    /// `all_child(f)`: All direct children of the node match filter `f`.
     AllChild(Box<Filter>),
 
-    /// At least one descendant of the node matches the filter.
+    /// `any_desc(f)`: At least one descendant of the node matches filter `f`.
     AnyDesc(Box<Filter>),
-    /// All descendants of the node match the filter.
+    /// `all_desc(f)`: All descendants of the node match filter `f`.
     AllDesc(Box<Filter>),
 
+    /// `f1 && f2`: Filters `f1` and `f2` both hold on the node.
     And(Vec<Filter>),
+    /// `f1 || f2`: At least one of filters `f1` and `f2` holds on the node.
     Or(Vec<Filter>),
+    /// `!f`: Filter `f` does not hold on the node.
     Not(Box<Filter>),
 }
 
@@ -84,6 +91,11 @@ pub enum AnyPattern {
 }
 
 
+/// The `select` command runs a script to select and mark a set of nodes.
+///
+/// `select` scripts manipulate a set of nodes, called the "selection".  The selection starts out
+/// empty, and various commands can add or remove nodes from the set.  When the script finishes,
+/// all nodes in the selection will be marked with the given label.
 pub fn run_select<S: IntoSymbol>(st: &CommandState,
                                  cx: &driver::Ctxt,
                                  ops: &[SelectOp],

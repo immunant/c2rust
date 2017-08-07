@@ -1,7 +1,8 @@
 # Idiomize
 
-This is a refactoring tool for Rust programs, aimed at transforming
-automatically-generated Rust code into a more idiomatic style.
+This is a refactoring tool for Rust programs, aimed at removing unsafety from
+automatically-generated Rust code and transforming it into a more idiomatic
+style.
 
 
 ## Building
@@ -32,10 +33,10 @@ necessary `pprust` fixes.
 
 Flags for `idiomize` are described by `idiomize --help`.
 
-Commands are not
-currently documented in a central location - grep the source for `register` to
-see what commands are currently implemented.  The required arguments (and
-marks) are usually documented in the comments on the command implementation.
+Commands are not currently documented in a central location - grep the source
+for `register` to see what commands are currently implemented.  The required
+arguments (and marks) are usually documented in the comments on the command
+implementation.
 
 All arguments after the `--` are passed to `rustc`.  Since `idiomize` runs
 `rustc` analysis passes up through typechecking, the provided flags must
@@ -59,8 +60,8 @@ Nodes marked with other labels will be ignored.  The set of labels recognized
 by a command is usually documented in the comments for that command; when
 unspecified, the default label is `target`.
 
-A single node can be marked with two labels at once, but this is not likely
-to be particularly useful.
+A single node can be marked with two labels at once, though this is not often
+useful.
 
 In command line usage, there are two ways to specify marks.
 
