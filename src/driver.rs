@@ -32,6 +32,11 @@ pub struct Ctxt<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
     sess: &'a Session,
     map: Option<&'a hir_map::Map<'hir>>,
     tcx: Option<TyCtxt<'a, 'gcx, 'tcx>>,
+
+    /// This is a reference to the same `DroplessArena` used in `tcx`.  Analyses working with types
+    /// use this to allocate extra values with the same lifetime `'tcx` as the types themselves.
+    /// This way `Ty` wrappers don't need two lifetime parameters everywhere.
+    tcx_arena: Option<&'tcx DroplessArena>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -47,6 +52,7 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             sess: sess,
             map: None,
             tcx: None,
+            tcx_arena: None,
         }
     }
 
@@ -56,16 +62,19 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
             sess: sess,
             map: Some(map),
             tcx: None,
+            tcx_arena: None,
         }
     }
 
     fn new_phase_3(sess: &'a Session,
                    map: &'a hir_map::Map<'hir>,
-                   tcx: TyCtxt<'a, 'gcx, 'tcx>) -> Ctxt<'a, 'hir, 'gcx, 'tcx> {
+                   tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                   tcx_arena: &'tcx DroplessArena) -> Ctxt<'a, 'hir, 'gcx, 'tcx> {
         Ctxt {
             sess: sess,
             map: Some(map),
             tcx: Some(tcx),
+            tcx_arena: Some(tcx_arena),
         }
     }
 
@@ -80,6 +89,11 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
 
     pub fn ty_ctxt(&self) -> TyCtxt<'a, 'gcx, 'tcx> {
         self.tcx
+            .expect("ty ctxt is not available in this context (requires phase 3)")
+    }
+
+    pub fn ty_arena(&self) -> &'tcx DroplessArena {
+        self.tcx_arena
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }
 }
@@ -138,7 +152,7 @@ pub fn run_compiler<F, R>(args: &[String],
         &arena, &arenas, &crate_name,
         |tcx, _analysis, _incremental_hashes_map, _result| {
             if phase == Phase::Phase3 {
-                let cx = Ctxt::new_phase_3(&sess, &hir_map, tcx);
+                let cx = Ctxt::new_phase_3(&sess, &hir_map, tcx, &arena);
                 return func(krate, cx);
             }
             unreachable!();

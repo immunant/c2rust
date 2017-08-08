@@ -20,7 +20,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use arena::TypedArena;
+use arena::DroplessArena;
 use ena::unify::{UnificationTable, UnifyKey};
 use rustc::hir;
 use rustc::hir::*;
@@ -39,6 +39,7 @@ use syntax::codemap::Span;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
+use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use util::HirDefExt;
 use util::IntoSymbol;
 
@@ -63,159 +64,41 @@ impl UnifyKey for TyLabel {
 }
 
 
-#[derive(Clone, PartialEq, Eq)]
-struct LTyS<'lcx, 'tcx: 'lcx> {
-    ty: ty::Ty<'tcx>,
-    label: Option<Cell<TyLabel>>,
-    args: &'lcx [LTy<'lcx, 'tcx>],
-}
+type Label = Option<Cell<TyLabel>>;
 
-type LTy<'lcx, 'tcx> = &'lcx LTyS<'lcx, 'tcx>;
-
-impl<'lcx, 'tcx> LTyS<'lcx, 'tcx> {
-    fn arg(&self, idx: usize) -> LTy<'lcx, 'tcx> {
-        self.args[idx]
-    }
-
-    fn canonicalize(&self, ltt: &LTyTable<'lcx, 'tcx>) -> &Self {
-        match self.label {
-            Some(ref cell) => {
-                let new_label = ltt.unif.borrow_mut().find(cell.get());
-                cell.set(new_label);
-            },
-            None => {},
-        }
-
-        for arg in self.args.iter() {
-            arg.canonicalize(ltt);
-        }
-
-        self
-    }
-}
-
-impl<'lcx, 'tcx> fmt::Debug for LTyS<'lcx, 'tcx> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(ref cell) = self.label {
-            write!(f, "{}#{:?}{:?}", cell.get().index(), self.ty, self.args)
-        } else {
-            write!(f, "DISTINCT#{:?}{:?}", self.ty, self.args)
-        }
-    }
-}
+type LTy<'tcx> = LabeledTy<'tcx, Label>;
 
 #[derive(Clone, Copy, Debug)]
-struct LFnSig<'lcx, 'tcx: 'lcx> {
-    inputs: &'lcx [LTy<'lcx, 'tcx>],
-    output: LTy<'lcx, 'tcx>,
+struct LFnSig<'tcx> {
+    inputs: &'tcx [LTy<'tcx>],
+    output: LTy<'tcx>,
     variadic: bool,
 }
 
 
-struct LTyTable<'lcx, 'tcx: 'lcx> {
+struct LTyTable<'tcx> {
     unif: RefCell<UnificationTable<TyLabel>>,
-    arena: &'lcx TypedArena<LTyS<'lcx, 'tcx>>,
-    ref_arena: &'lcx TypedArena<LTy<'lcx, 'tcx>>,
+    lcx: LabeledTyCtxt<'tcx, Label>,
 }
 
-impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
-    fn new(arena: &'lcx TypedArena<LTyS<'lcx, 'tcx>>,
-           ref_arena: &'lcx TypedArena<LTy<'lcx, 'tcx>>) -> LTyTable<'lcx, 'tcx> {
+impl<'tcx> LTyTable<'tcx> {
+    fn new(arena: &'tcx DroplessArena) -> LTyTable<'tcx> {
         LTyTable {
             unif: RefCell::new(UnificationTable::new()),
-            arena: arena,
-            ref_arena: ref_arena,
+            lcx: LabeledTyCtxt::new(arena),
         }
     }
 
-    fn mk_slice(&self, ltys: &[LTy<'lcx, 'tcx>]) -> &'lcx [LTy<'lcx, 'tcx>] {
-        if ltys.len() == 0 {
-            return &[];
-        }
-        self.ref_arena.alloc_slice(ltys)
+
+    fn label(&self, ty: ty::Ty<'tcx>) -> LTy<'tcx> {
+        self.lcx.label(ty, &mut |_| Some(Cell::new(self.unif.borrow_mut().new_key(()))))
     }
 
-
-    fn label_with<F>(&self,
-                     ty: ty::Ty<'tcx>,
-                     mk: &mut F) -> LTy<'lcx, 'tcx>
-            where F: FnMut(ty::Ty<'tcx>, &[LTy<'lcx, 'tcx>]) -> LTy<'lcx, 'tcx> {
-        use rustc::ty::TypeVariants::*;
-        match ty.sty {
-            // Types with no arguments
-            TyBool |
-            TyChar |
-            TyInt(_) |
-            TyUint(_) |
-            TyFloat(_) |
-            TyStr |
-            TyNever => mk(ty, &[]),
-
-            // Types that aren't actually supported by this analysis
-            TyDynamic(..) |
-            TyClosure(..) |
-            TyProjection(..) |
-            TyAnon(..) |
-            TyParam(..) |
-            TyInfer(..) |
-            TyError => mk(ty, &[]),
-
-            // Types with arguments
-            TyAdt(_, substs) => {
-                let args = substs.iter().filter_map(|s| s.as_type())
-                    .map(|t| self.label_with(t, mk)).collect::<Vec<_>>();
-                mk(ty, &args)
-            },
-            TyArray(elem, _) => {
-                let args = [self.label_with(elem, mk)];
-                mk(ty, &args)
-            },
-            TySlice(elem) => {
-                let args = [self.label_with(elem, mk)];
-                mk(ty, &args)
-            },
-            TyRawPtr(mty) => {
-                let args = [self.label_with(mty.ty, mk)];
-                mk(ty, &args)
-            },
-            TyRef(_, mty) => {
-                let args = [self.label_with(mty.ty, mk)];
-                mk(ty, &args)
-            },
-            TyFnDef(_, substs) => {
-                let args = substs.types().map(|ty| self.label_with(ty, mk)).collect::<Vec<_>>();
-                mk(ty, &args)
-            },
-            TyFnPtr(ref sig) => {
-                let args = sig.0.inputs_and_output.iter()
-                    .map(|ty| self.label_with(ty, mk)).collect::<Vec<_>>();
-                mk(ty, &args)
-            },
-            TyTuple(ref elems, _) => {
-                let args = elems.iter().map(|ty| self.label_with(ty, mk)).collect::<Vec<_>>();
-                mk(ty, &args)
-            },
-        }
+    fn label_slice(&self, tys: &[ty::Ty<'tcx>]) -> &'tcx [LTy<'tcx>] {
+        self.lcx.label_slice(tys, &mut |_| Some(Cell::new(self.unif.borrow_mut().new_key(()))))
     }
 
-    fn label(&self, ty: ty::Ty<'tcx>) -> LTy<'lcx, 'tcx> {
-        self.label_with(ty, &mut |ty, args| {
-            let label = self.unif.borrow_mut().new_key(());
-            self.arena.alloc(LTyS {
-                ty: ty,
-                label: Some(Cell::new(label)),
-                args: self.mk_slice(args),
-            })
-        })
-    }
-
-    fn label_slice(&self,
-                   tys: &[ty::Ty<'tcx>]) -> &'lcx [LTy<'lcx, 'tcx>] {
-        self.mk_slice(&tys.iter().map(|ty| self.label(ty)).collect::<Vec<_>>())
-    }
-
-    fn label_sig(&self,
-                 sig: ty::FnSig<'tcx>) -> LFnSig<'lcx, 'tcx> {
+    fn label_sig(&self, sig: ty::FnSig<'tcx>) -> LFnSig<'tcx> {
         LFnSig {
             inputs: self.label_slice(sig.inputs()),
             output: self.label(sig.output()),
@@ -226,24 +109,15 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
     /// Produce a dummy `LTy` on which unification is a no-op.  In effect, every use of the dummy
     /// type behaves as if it were a fresh type.  Running `unify(dummy, a); unify(dummy, b);` does
     /// not result in the unification of `a` and `b`.
-    fn non_unifiable(&self, ty: ty::Ty<'tcx>) -> LTy<'lcx, 'tcx> {
-        self.label_with(ty, &mut |ty, args| {
-            let label = self.unif.borrow_mut().new_key(());
-            self.arena.alloc(LTyS {
-                ty: ty,
-                label: None,
-                args: self.mk_slice(args),
-            })
-        })
+    fn non_unifiable(&self, ty: ty::Ty<'tcx>) -> LTy<'tcx> {
+        self.lcx.label(ty, &mut |_| None)
     }
 
-    fn non_unifiable_slice(&self,
-                           tys: &[ty::Ty<'tcx>]) -> &'lcx [LTy<'lcx, 'tcx>] {
-        self.mk_slice(&tys.iter().map(|ty| self.non_unifiable(ty)).collect::<Vec<_>>())
+    fn non_unifiable_slice(&self, tys: &[ty::Ty<'tcx>]) -> &'tcx [LTy<'tcx>] {
+        self.lcx.label_slice(tys, &mut |_| None)
     }
 
-    fn non_unifiable_sig(&self,
-                         sig: ty::FnSig<'tcx>) -> LFnSig<'lcx, 'tcx> {
+    fn non_unifiable_sig(&self, sig: ty::FnSig<'tcx>) -> LFnSig<'tcx> {
         LFnSig {
             inputs: self.non_unifiable_slice(sig.inputs()),
             output: self.non_unifiable(sig.output()),
@@ -252,26 +126,15 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
     }
 
 
-    fn subst(&self, lty: LTy<'lcx, 'tcx>, substs: &[LTy<'lcx, 'tcx>]) -> LTy<'lcx, 'tcx> {
-        match lty.ty.sty {
-            ty::TypeVariants::TyParam(ref tp) => {
-                substs[tp.idx as usize]
-            },
-            _ => {
-                self.arena.alloc(LTyS {
-                    ty: lty.ty,
-                    label: lty.label.clone(),
-                    args: self.subst_slice(lty.args, substs),
-                })
-            },
-        }
+    fn subst(&self, lty: LTy<'tcx>, substs: &[LTy<'tcx>]) -> LTy<'tcx> {
+        self.lcx.subst(lty, substs)
     }
 
-    fn subst_slice(&self, ltys: &[LTy<'lcx, 'tcx>], substs: &[LTy<'lcx, 'tcx>]) -> &'lcx [LTy<'lcx, 'tcx>] {
-        self.mk_slice(&ltys.iter().map(|lty| self.subst(lty, substs)).collect::<Vec<_>>())
+    fn subst_slice(&self, ltys: &[LTy<'tcx>], substs: &[LTy<'tcx>]) -> &'tcx [LTy<'tcx>] {
+        self.lcx.subst_slice(ltys, substs)
     }
 
-    fn subst_sig(&self, sig: LFnSig<'lcx, 'tcx>, substs: &[LTy<'lcx, 'tcx>]) -> LFnSig<'lcx, 'tcx> {
+    fn subst_sig(&self, sig: LFnSig<'tcx>, substs: &[LTy<'tcx>]) -> LFnSig<'tcx> {
         LFnSig {
             inputs: self.subst_slice(sig.inputs, substs),
             output: self.subst(sig.output, substs),
@@ -280,7 +143,7 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
     }
 
 
-    fn unify(&self, lty1: LTy<'lcx, 'tcx>, lty2: LTy<'lcx, 'tcx>) {
+    fn unify(&self, lty1: LTy<'tcx>, lty2: LTy<'tcx>) {
         if let (Some(cell1), Some(cell2)) = (lty1.label.as_ref(), lty2.label.as_ref()) {
             self.unif.borrow_mut().union(cell1.get(), cell2.get());
         }
@@ -290,7 +153,7 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
         }
     }
 
-    fn unify_slices(&self, ltys1: &[LTy<'lcx, 'tcx>], ltys2: &[LTy<'lcx, 'tcx>]) {
+    fn unify_slices(&self, ltys1: &[LTy<'tcx>], ltys2: &[LTy<'tcx>]) {
         for (lty1, lty2) in ltys1.iter().zip(ltys2.iter()) {
             self.unify(lty1, lty2);
         }
@@ -300,16 +163,16 @@ impl<'lcx, 'tcx> LTyTable<'lcx, 'tcx> {
 
 
 /// Walk over typechecking tables, building a labeled type for each expr and pattern.
-struct ExprPatVisitor<'a, 'lcx: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
+struct ExprPatVisitor<'a, 'gcx: 'tcx, 'tcx: 'a> {
     tcx: TyCtxt<'a, 'gcx, 'tcx>,
-    ltt: &'a LTyTable<'lcx, 'tcx>,
+    ltt: &'a LTyTable<'tcx>,
 
-    unadjusted: HashMap<NodeId, LTy<'lcx, 'tcx>>,
-    adjusted: HashMap<NodeId, LTy<'lcx, 'tcx>>,
-    substs: HashMap<NodeId, &'lcx [LTy<'lcx, 'tcx>]>,
+    unadjusted: HashMap<NodeId, LTy<'tcx>>,
+    adjusted: HashMap<NodeId, LTy<'tcx>>,
+    substs: HashMap<NodeId, &'tcx [LTy<'tcx>]>,
 }
 
-impl<'a, 'lcx, 'gcx, 'tcx> ExprPatVisitor<'a, 'lcx, 'gcx, 'tcx> {
+impl<'a, 'gcx, 'tcx> ExprPatVisitor<'a, 'gcx, 'tcx> {
     fn handle_body(&mut self, body_id: BodyId) {
         let tables = self.tcx.body_tables(body_id);
         for (&id, &ty) in tables.node_types.iter() {
@@ -327,7 +190,7 @@ impl<'a, 'lcx, 'gcx, 'tcx> ExprPatVisitor<'a, 'lcx, 'gcx, 'tcx> {
     }
 }
 
-impl<'a, 'lcx, 'gcx, 'tcx, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'a, 'lcx, 'gcx, 'tcx> {
+impl<'a, 'gcx, 'tcx, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'a, 'gcx, 'tcx> {
     fn visit_item(&mut self, item: &'hir Item) {
         let body_id = match item.node {
             ItemStatic(_, _, body_id) => body_id,
@@ -361,21 +224,21 @@ impl<'a, 'lcx, 'gcx, 'tcx, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'a, 'l
 
 
 /// Construct `LTy`s for all `hir::Ty` nodes in the AST.
-struct TyVisitor<'a, 'lcx: 'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
+struct TyVisitor<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
     hir_map: &'a hir::map::Map<'hir>,
     tcx: TyCtxt<'a, 'gcx, 'tcx>,
-    ltt: &'a LTyTable<'lcx, 'tcx>,
+    ltt: &'a LTyTable<'tcx>,
 
-    ty_nodes: HashMap<NodeId, LTy<'lcx, 'tcx>>,
+    ty_nodes: HashMap<NodeId, LTy<'tcx>>,
 }
 
-impl<'a, 'lcx, 'hir, 'gcx, 'tcx> TyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
+impl<'a, 'hir, 'gcx, 'tcx> TyVisitor<'a, 'hir, 'gcx, 'tcx> {
     fn handle_ty(&mut self, ty: &Ty, tcx_ty: ty::Ty<'tcx>) {
         let lty = self.ltt.label(tcx_ty);
         self.record_ty(ty, &lty);
     }
 
-    fn record_ty(&mut self, ty: &Ty, lty: &LTy<'lcx, 'tcx>) {
+    fn record_ty(&mut self, ty: &Ty, lty: &LTy<'tcx>) {
         use rustc::ty::TypeVariants::*;
         match (&ty.node, &lty.ty.sty) {
             (&Ty_::TySlice(ref elem), &TySlice(..)) => 
@@ -416,14 +279,14 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> TyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
         self.ty_nodes.insert(ty.id, lty.clone());
     }
 
-    fn record_ty_list(&mut self, tys: &[P<Ty>], ltys: &[LTy<'lcx, 'tcx>]) {
+    fn record_ty_list(&mut self, tys: &[P<Ty>], ltys: &[LTy<'tcx>]) {
         assert!(tys.len() == ltys.len());
         for (ty, lty) in tys.iter().zip(ltys.iter()) {
             self.record_ty(ty, lty);
         }
     }
 
-    fn record_path_params(&mut self, params: &PathParameters, ltys: &[LTy<'lcx, 'tcx>]) {
+    fn record_path_params(&mut self, params: &PathParameters, ltys: &[LTy<'tcx>]) {
         match *params {
             PathParameters::AngleBracketedParameters(ref abpd) => {
                 self.record_ty_list(&abpd.types, ltys);
@@ -439,7 +302,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> TyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
         }
     }
 
-    fn record_path_ty(&mut self, qpath: &QPath, lty: &LTy<'lcx, 'tcx>) {
+    fn record_path_ty(&mut self, qpath: &QPath, lty: &LTy<'tcx>) {
         use rustc::hir::def::Def;
         use rustc::ty::TypeVariants::*;
 
@@ -564,7 +427,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> TyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
     }
 }
 
-impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
+impl<'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'a, 'hir, 'gcx, 'tcx> {
     fn nested_visit_map<'this>(&'this mut self) -> NestedVisitorMap<'this, 'hir> {
         NestedVisitorMap::OnlyBodies(self.hir_map)
     }
@@ -705,10 +568,10 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for TyVisitor<'a, 'lcx, 'hir, 'gc
     // TODO: trait items
 }
 
-fn label_tys<'a, 'lcx, 'gcx, 'tcx>(hir_map: &hir::map::Map,
-                                   tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                                   ltt: &'a LTyTable<'lcx, 'tcx>)
-                                   -> HashMap<NodeId, LTy<'lcx, 'tcx>> {
+fn label_tys<'a, 'gcx, 'tcx>(hir_map: &hir::map::Map,
+                             tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                             ltt: &'a LTyTable<'tcx>)
+                             -> HashMap<NodeId, LTy<'tcx>> {
     let mut v = TyVisitor {
         hir_map: hir_map,
         tcx: tcx,
@@ -722,9 +585,9 @@ fn label_tys<'a, 'lcx, 'gcx, 'tcx>(hir_map: &hir::map::Map,
 
 
 
-fn prim_tys<'a, 'lcx, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                                  ltt: &'a LTyTable<'lcx, 'tcx>)
-                                  -> HashMap<&'static str, LTy<'lcx, 'tcx>> {
+fn prim_tys<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                            ltt: &'a LTyTable<'tcx>)
+                            -> HashMap<&'static str, LTy<'tcx>> {
     let mut map = HashMap::new();
 
     map.insert("bool", ltt.label(tcx.mk_bool()));
@@ -736,73 +599,73 @@ fn prim_tys<'a, 'lcx, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 
 
 
-struct UnifyVisitor<'a, 'lcx: 'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'lcx> {
+struct UnifyVisitor<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
     hir_map: &'a hir::map::Map<'hir>,
     tcx: TyCtxt<'a, 'gcx, 'tcx>,
-    ltt: &'a LTyTable<'lcx, 'tcx>,
+    ltt: &'a LTyTable<'tcx>,
 
-    unadjusted_nodes: &'a HashMap<NodeId, LTy<'lcx, 'tcx>>,
-    nodes: &'a HashMap<NodeId, LTy<'lcx, 'tcx>>,
-    node_substs: &'a HashMap<NodeId, &'lcx [LTy<'lcx, 'tcx>]>,
-    ty_nodes: &'a HashMap<NodeId, LTy<'lcx, 'tcx>>,
-    prims: &'a HashMap<&'static str, LTy<'lcx, 'tcx>>,
+    unadjusted_nodes: &'a HashMap<NodeId, LTy<'tcx>>,
+    nodes: &'a HashMap<NodeId, LTy<'tcx>>,
+    node_substs: &'a HashMap<NodeId, &'tcx [LTy<'tcx>]>,
+    ty_nodes: &'a HashMap<NodeId, LTy<'tcx>>,
+    prims: &'a HashMap<&'static str, LTy<'tcx>>,
 
 
     // Unfortunately, there is no central index of all/most `DefId`s and their types, like there is
     // for exprs and patterns.  And we can't visit all defs because some are pulled in from other
     // crates.  Since we can't precompute the `LTy` for every def, we have to keep this cache and
     // add defs to it as we encounter them.
-    defs: RefCell<HashMap<DefId, LTy<'lcx, 'tcx>>>,
+    defs: RefCell<HashMap<DefId, LTy<'tcx>>>,
 
     /// Cache of signatures of function/method definitions.  This always contains the raw,
     /// un-substituted signature.
-    def_sigs: RefCell<HashMap<DefId, LFnSig<'lcx, 'tcx>>>,
+    def_sigs: RefCell<HashMap<DefId, LFnSig<'tcx>>>,
 }
 
-impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
-    fn expr_lty(&self, e: &Expr) -> LTy<'lcx, 'tcx> {
+impl<'a, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'hir, 'gcx, 'tcx> {
+    fn expr_lty(&self, e: &Expr) -> LTy<'tcx> {
         self.nodes.get(&e.id)
             .or_else(|| self.unadjusted_nodes.get(&e.id))
             .unwrap_or_else(|| panic!("expr_lty: no lty for {:?} @ {:?}",
                                       e, self.tcx.sess.codemap().span_to_string(e.span)))
     }
 
-    fn unadjusted_expr_lty(&self, e: &Expr) -> LTy<'lcx, 'tcx> {
+    fn unadjusted_expr_lty(&self, e: &Expr) -> LTy<'tcx> {
         self.unadjusted_nodes.get(&e.id)
             .unwrap_or_else(|| panic!("unadjusted_expr_lty: no unadjusted lty for {:?} @ {:?}",
                                       e, self.tcx.sess.codemap().span_to_string(e.span)))
     }
 
-    fn opt_unadjusted_expr_lty(&self, e: &Expr) -> Option<LTy<'lcx, 'tcx>> {
+    fn opt_unadjusted_expr_lty(&self, e: &Expr) -> Option<LTy<'tcx>> {
         self.unadjusted_nodes.get(&e.id).map(|&x| x)
     }
 
-    fn block_lty(&self, b: &Block) -> LTy<'lcx, 'tcx> {
+    fn block_lty(&self, b: &Block) -> LTy<'tcx> {
         match b.expr {
             Some(ref e) => self.expr_lty(e),
             None => self.prim_lty("()"),
         }
     }
 
-    fn pat_lty(&self, p: &Pat) -> LTy<'lcx, 'tcx> {
+    fn pat_lty(&self, p: &Pat) -> LTy<'tcx> {
         self.unadjusted_nodes.get(&p.id)
             .unwrap_or_else(|| panic!("pat_lty: no lty for {:?} @ {:?}",
                                       p, self.tcx.sess.codemap().span_to_string(p.span)))
     }
 
-    fn ty_lty(&self, t: &Ty) -> LTy<'lcx, 'tcx> {
+    fn ty_lty(&self, t: &Ty) -> LTy<'tcx> {
         self.ty_nodes.get(&t.id)
             .unwrap_or_else(|| panic!("ty_lty: no lty for {:?} @ {:?}",
                                       t, self.tcx.sess.codemap().span_to_string(t.span)))
     }
 
-    fn prim_lty(&self, name: &'static str) -> LTy<'lcx, 'tcx> {
+    fn prim_lty(&self, name: &'static str) -> LTy<'tcx> {
         self.prims.get(&name)
             .unwrap_or_else(|| panic!("prim_lty: no such prim {:?}", name))
     }
 
 
-    fn compute_def_lty(&self, id: DefId) -> LTy<'lcx, 'tcx> {
+    fn compute_def_lty(&self, id: DefId) -> LTy<'tcx> {
         match self.hir_map.get_if_local(id) {
             Some(NodeLocal(p)) => {
                 return self.pat_lty(p);
@@ -813,13 +676,13 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
         self.ltt.label(self.tcx.type_of(id))
     }
 
-    fn def_lty(&self, id: DefId) -> LTy<'lcx, 'tcx> {
+    fn def_lty(&self, id: DefId) -> LTy<'tcx> {
         *self.defs.borrow_mut().entry(id)
             .or_insert_with(|| self.compute_def_lty(id))
     }
 
 
-    fn compute_def_sig(&self, id: DefId) -> LFnSig<'lcx, 'tcx> {
+    fn compute_def_sig(&self, id: DefId) -> LFnSig<'tcx> {
         let sig = self.tcx.fn_sig(id);
         let is_extern = match sig.0.abi {
             Abi::Rust | Abi::RustIntrinsic | Abi::RustCall => false,
@@ -833,12 +696,12 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
         }
     }
 
-    fn def_sig(&self, id: DefId) -> LFnSig<'lcx, 'tcx> {
+    fn def_sig(&self, id: DefId) -> LFnSig<'tcx> {
         *self.def_sigs.borrow_mut().entry(id)
             .or_insert_with(|| self.compute_def_sig(id))
     }
 
-    fn fn_num_inputs(&self, lty: LTy<'lcx, 'tcx>) -> usize {
+    fn fn_num_inputs(&self, lty: LTy<'tcx>) -> usize {
         use rustc::ty::TypeVariants::*;
         match lty.ty.sty {
             TyFnDef(id, _) => self.def_sig(id).inputs.len(),
@@ -848,7 +711,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
     }
 
     /// Get the input types out of a `FnPtr` or `FnDef` `LTy`.
-    fn fn_input(&self, lty: LTy<'lcx, 'tcx>, idx: usize) -> LTy<'lcx, 'tcx> {
+    fn fn_input(&self, lty: LTy<'tcx>, idx: usize) -> LTy<'tcx> {
         use rustc::ty::TypeVariants::*;
         match lty.ty.sty {
             TyFnDef(id, _) => {
@@ -866,7 +729,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
     }
 
     /// Get the output type out of a `FnPtr` or `FnDef` `LTy`.
-    fn fn_output(&self, lty: LTy<'lcx, 'tcx>) -> LTy<'lcx, 'tcx> {
+    fn fn_output(&self, lty: LTy<'tcx>) -> LTy<'tcx> {
         use rustc::ty::TypeVariants::*;
         match lty.ty.sty {
             TyFnDef(id, _) => {
@@ -880,7 +743,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
         }
     }
 
-    fn fn_is_variadic(&self, lty: LTy<'lcx, 'tcx>) -> bool {
+    fn fn_is_variadic(&self, lty: LTy<'tcx>) -> bool {
         use rustc::ty::TypeVariants::*;
         match lty.ty.sty {
             TyFnDef(id, _) => {
@@ -900,7 +763,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
         self.tcx.body_tables(parent_body)
     }
 
-    fn method_sig(&self, e: &Expr) -> LFnSig<'lcx, 'tcx> {
+    fn method_sig(&self, e: &Expr) -> LFnSig<'tcx> {
         let def_id = self.get_tables(e.id).type_dependent_defs[&e.id].def_id();
         let sig = self.def_sig(def_id);
         let substs = self.node_substs.get(&e.id).map_or_else(|| &[] as &[_], |x| x);
@@ -908,7 +771,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
     }
 
 
-    fn field_lty(&self, struct_ty: LTy<'lcx, 'tcx>, name: Symbol) -> LTy<'lcx, 'tcx> {
+    fn field_lty(&self, struct_ty: LTy<'tcx>, name: Symbol) -> LTy<'tcx> {
         let adt = match struct_ty.ty.sty {
             ty::TypeVariants::TyAdt(ref adt, _) => adt,
             _ => panic!("field_lty: not a struct ty: {:?}", struct_ty),
@@ -924,7 +787,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
     }
 }
 
-impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 'gcx, 'tcx> {
+impl<'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'hir, 'gcx, 'tcx> {
     fn nested_visit_map<'this>(&'this mut self) -> NestedVisitorMap<'this, 'hir> {
         NestedVisitorMap::OnlyBodies(self.hir_map)
     }
@@ -946,12 +809,12 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
 
         match e.node {
             ExprBox(ref e) => {
-                self.ltt.unify(rty.arg(0), self.expr_lty(e));
+                self.ltt.unify(rty.args[0], self.expr_lty(e));
             },
 
             ExprArray(ref es) => {
                 for e in es {
-                    self.ltt.unify(rty.arg(0), self.expr_lty(e));
+                    self.ltt.unify(rty.args[0], self.expr_lty(e));
                 }
             },
 
@@ -1016,7 +879,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
 
             ExprUnary(op, ref a) => {
                 match op {
-                    UnDeref => self.ltt.unify(rty, self.expr_lty(a).arg(0)),
+                    UnDeref => self.ltt.unify(rty, self.expr_lty(a).args[0]),
                     UnNot => self.ltt.unify(rty, self.expr_lty(a)),
                     UnNeg => self.ltt.unify(rty, self.expr_lty(a)),
                 }
@@ -1085,7 +948,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
             },
 
             ExprAddrOf(_, ref e) => {
-                self.ltt.unify(rty.arg(0), self.expr_lty(e));
+                self.ltt.unify(rty.args[0], self.expr_lty(e));
             },
 
             // break/continue/return all have type `!`, which unifies with everything.
@@ -1113,7 +976,7 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
             },
 
             ExprRepeat(ref e, _) => {
-                self.ltt.unify(rty.arg(0), self.expr_lty(e));
+                self.ltt.unify(rty.args[0], self.expr_lty(e));
             },
         }
 
@@ -1143,14 +1006,14 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
                         self.ltt.unify(rty, prev_ty);
                     },
                     Adjust::Deref(None) => {
-                        self.ltt.unify(rty, prev_ty.arg(0));
+                        self.ltt.unify(rty, prev_ty.args[0]);
                     },
                     Adjust::Deref(Some(_)) => {}, // TODO (overloaded deref case)
                     Adjust::Borrow(_) => {
                         // The AutoBorrow argument indicates whether we're going to a `&` or `*`
                         // pointer, and whether it's `mut` or `const`.  In all cases, the shape of
                         // rty is the same.
-                        self.ltt.unify(rty.arg(0), prev_ty);
+                        self.ltt.unify(rty.args[0], prev_ty);
                     },
                     Adjust::Unsize => {}, // TODO
                 }
@@ -1189,11 +1052,11 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
             PatKind::Tuple(ref pats, Some(dotdot_idx)) => {}, // TODO
 
             PatKind::Box(ref p) => {
-                self.ltt.unify(rty.arg(0), self.pat_lty(p));
+                self.ltt.unify(rty.args[0], self.pat_lty(p));
             },
 
             PatKind::Ref(ref p, _) => {
-                self.ltt.unify(rty.arg(0), self.pat_lty(p));
+                self.ltt.unify(rty.args[0], self.pat_lty(p));
             },
 
             PatKind::Lit(_) => {},  // Nothing to unify
@@ -1283,10 +1146,10 @@ impl<'a, 'lcx, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'lcx, 'hir, 
 
 
 
-pub fn analyze(hir_map: &hir::map::Map, tcx: TyCtxt) -> HashMap<NodeId, u32> {
-    // Allocate in a single `let` so that `arena` and `sig_arena` have identical lifetimes.
-    let (arena, sig_arena) = (TypedArena::new(), TypedArena::new());
-    let ltt = LTyTable::new(&arena, &sig_arena);
+pub fn analyze<'a, 'gcx, 'tcx>(hir_map: &hir::map::Map,
+                               tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                               tcx_arena: &'tcx DroplessArena) -> HashMap<NodeId, u32> {
+    let ltt = LTyTable::new(tcx_arena);
 
     // Collect labeled expr/pat types from the TypeckTables of each item.
     let mut v = ExprPatVisitor {
@@ -1326,7 +1189,10 @@ pub fn analyze(hir_map: &hir::map::Map, tcx: TyCtxt) -> HashMap<NodeId, u32> {
 
     ty_nodes.iter()
         .filter_map(
-            |(&id, &lty)| lty.canonicalize(&ltt).label.as_ref().map(
-                |cell| (id, cell.get().index())))
+            |(&id, &lty)| lty.label.as_ref().map(
+                |cell| {
+                    let root = ltt.unif.borrow_mut().find(cell.get());
+                    (id, root.index())
+                }))
         .collect()
 }
