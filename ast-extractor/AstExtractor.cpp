@@ -58,6 +58,7 @@ enum ASTEntryTag {
     TagCaseStmt,
     TagContinueStmt,
     TagDefaultStmt,
+    TagDoStmt,
 
     
     TagBinaryOperator = 200,
@@ -70,11 +71,15 @@ enum ASTEntryTag {
     TagImplicitValueInitExpr,
     TagArraySubscriptExpr,
     TagCStyleCastExpr,
+    TagConditionalOperator,
+    
+    TagBinaryConditionalOperator,
     
     
     TagIntegerLiteral = 300,
     TagStringLiteral,
     TagCharacterLiteral,
+    TagFloatingLiteral,
 };
 
 
@@ -125,11 +130,11 @@ class TranslateASTVisitor final
       
       ASTContext *Context;
       CborEncoder *encoder;
-      std::set<std::pair<void*, ASTEntryTag>> exported_tags;
+      std::set<std::pair<void*, ASTEntryTag>> exportedTags;
       
-      // Returns true when a new entry is added
+      // Returns true when a new entry is added to exportedTags
       bool markForExport(void* ptr, ASTEntryTag tag) {
-          return exported_tags.emplace(ptr,tag).second;
+          return exportedTags.emplace(ptr,tag).second;
       }
       
       void encodeSourcePos(CborEncoder *enc, SourceLocation loc) {
@@ -141,19 +146,23 @@ class TranslateASTVisitor final
           cbor_encode_uint(enc, col);
       }
       
-      void encode_entry_extra
-      (CborEncoder *encoder,
-       Stmt *S, ASTEntryTag tag, const std::vector<void *> &childIds,
-       std::function<void(CborEncoder*)> extra
-       )
+      // Template required because Decl and Stmt don't share a common base class
+      template<class T>
+      void encode_entry
+             (CborEncoder *encoder,
+              T *ast,
+              ASTEntryTag tag,
+              const std::vector<void *> &childIds,
+              std::function<void(CborEncoder*)> extra = [](CborEncoder*){}
+             )
       {
-          if (!markForExport(S, tag)) return;
+          if (!markForExport(ast, tag)) return;
           
           CborEncoder local, childEnc;
           cbor_encoder_create_array(encoder, &local, CborIndefiniteLength);
           
           // 1 - Entry ID
-          cbor_encode_uint(&local, uintptr_t(S));
+          cbor_encode_uint(&local, uintptr_t(ast));
           
           // 2 - Entry Tag
           cbor_encode_uint(&local, tag);
@@ -171,66 +180,13 @@ class TranslateASTVisitor final
           
           // 4 - line number
           // 5 - column number
-          encodeSourcePos(&local, S->getLocStart());
+          encodeSourcePos(&local, ast->getLocStart());
           
           // 6.. extra entries
           extra(&local);
           
           cbor_encoder_close_container(encoder, &local);
       }
-      
-      void encode_entry_extra
-      (CborEncoder *encoder,
-       Decl *D, ASTEntryTag tag, const std::vector<void *> &childIds,
-       std::function<void(CborEncoder*)> extra
-       )
-      {
-          if (!markForExport(D, tag)) return;
-
-          CborEncoder local, childEnc;
-          cbor_encoder_create_array(encoder, &local, CborIndefiniteLength);
-          
-          // 1 - Entry ID
-          cbor_encode_uint(&local, uintptr_t(D));
-          
-          // 2 - Entry Tag
-          cbor_encode_uint(&local, tag);
-          
-          // 3 - Entry Children
-          cbor_encoder_create_array(&local, &childEnc, childIds.size());
-          for (auto x : childIds) {
-              if (x == nullptr) {
-                  cbor_encode_null(&childEnc);
-              } else {
-                  cbor_encode_uint(&childEnc, uintptr_t(x));
-              }
-          }
-          cbor_encoder_close_container(&local , &childEnc);
-          
-          // 4 - line number
-          // 5 - column number
-          encodeSourcePos(&local, D->getLocStart());
-          
-          // 6.. extra entries
-          extra(&local);
-          
-          cbor_encoder_close_container(encoder, &local);
-      }
-      
-      void encode_entry
-      (CborEncoder *encoder,
-       Decl *entryId, ASTEntryTag tag, const std::vector<void *> &childIds)
-      {
-          encode_entry_extra(encoder, entryId, tag, childIds, [](CborEncoder*){});
-      }
-      
-      void encode_entry
-      (CborEncoder *encoder,
-       Stmt *entryId, ASTEntryTag tag, const std::vector<void *> &childIds)
-      {
-          encode_entry_extra(encoder, entryId, tag, childIds, [](CborEncoder*){});
-      }
-
       
   public:
       explicit TranslateASTVisitor(ASTContext *Context, CborEncoder *encoder)
@@ -258,7 +214,11 @@ class TranslateASTVisitor final
           return true;
       }
 
-      
+      bool VisitDoStmt(DoStmt *S) {
+          std::vector<void*> childIds = { S->getBody(), S->getCond() } ;
+          encode_entry(encoder, S, TagDoStmt, childIds);
+          return true;
+      }
       
       bool VisitGotoStmt(GotoStmt *GS) {
           std::vector<void*> childIds = { GS->getLabel() };
@@ -269,7 +229,7 @@ class TranslateASTVisitor final
       bool VisitLabelStmt(LabelStmt *LS) {
           
           std::vector<void*> childIds = { LS->getSubStmt() };
-          encode_entry_extra(encoder, LS, TagLabelStmt, childIds,
+          encode_entry(encoder, LS, TagLabelStmt, childIds,
                              [LS](CborEncoder *array){
                                  cbor_encode_text_stringz(array, LS->getName());
                              });
@@ -365,7 +325,7 @@ class TranslateASTVisitor final
       
       bool VisitImplicitCastExpr(ImplicitCastExpr *ICE) {
           std::vector<void*> childIds = { ICE->getSubExpr() };
-          encode_entry_extra(encoder, ICE, TagImplicitCastExpr, childIds,
+          encode_entry(encoder, ICE, TagImplicitCastExpr, childIds,
                              [ICE](CborEncoder *array){
                                  cbor_encode_uint(array, ICE->getCastKind());
                              });
@@ -380,7 +340,7 @@ class TranslateASTVisitor final
       
       bool VisitUnaryOperator(UnaryOperator *UO) {
           std::vector<void*> childIds = { UO->getSubExpr() };
-          encode_entry_extra(encoder, UO, TagUnaryOperator, childIds,
+          encode_entry(encoder, UO, TagUnaryOperator, childIds,
                              [UO](CborEncoder *array) {
                                  cbor_encode_uint(array, UO->getOpcode());
                              });
@@ -389,10 +349,22 @@ class TranslateASTVisitor final
       
       bool VisitBinaryOperator(BinaryOperator *BO) {
           std::vector<void*> childIds = { BO->getLHS(), BO->getRHS() };
-          encode_entry_extra(encoder, BO, TagBinaryOperator, childIds,
+          encode_entry(encoder, BO, TagBinaryOperator, childIds,
                              [BO](CborEncoder *array) {
                                  cbor_encode_uint(array, BO->getOpcode());
                              });
+          return true;
+      }
+      
+      bool VisitConditionalOperator(ConditionalOperator *CO) {
+          std::vector<void*> childIds = { CO->getCond(), CO->getTrueExpr(), CO->getFalseExpr() };
+          encode_entry(encoder, CO, TagConditionalOperator, childIds);
+          return true;
+      }
+      
+      bool VisitBinaryConditionalOperator(BinaryConditionalOperator *CO) {
+          std::vector<void*> childIds = { CO->getCommon(), CO->getFalseExpr() };
+          encode_entry(encoder, CO, TagBinaryConditionalOperator, childIds);
           return true;
       }
       
@@ -429,7 +401,7 @@ class TranslateASTVisitor final
               childIds.push_back(x);
           }
           childIds.push_back(FD->getBody());
-          encode_entry_extra(encoder, FD, TagFunctionDecl, childIds,
+          encode_entry(encoder, FD, TagFunctionDecl, childIds,
                              [FD](CborEncoder *array) {
                                  auto name = FD->getNameAsString();
                                  cbor_encode_text_stringz(array, name.c_str());
@@ -454,7 +426,7 @@ class TranslateASTVisitor final
       {
           std::vector<void*> childIds =
           { VD->getInit() } ;
-          encode_entry_extra(encoder, VD, TagVarDecl, childIds,
+          encode_entry(encoder, VD, TagVarDecl, childIds,
                              [VD](CborEncoder *array){
                                  auto name = VD->getNameAsString();
                                  cbor_encode_text_stringz(array, name.c_str());
@@ -473,7 +445,7 @@ class TranslateASTVisitor final
       
       bool VisitFieldDecl(FieldDecl *D) {
           std::vector<void*> childIds;
-          encode_entry_extra(encoder, D, TagFieldDecl, childIds,
+          encode_entry(encoder, D, TagFieldDecl, childIds,
                              [D](CborEncoder *array) {
                                  auto name = D->getNameAsString();
                                  cbor_encode_text_stringz(array, name.c_str());
@@ -483,7 +455,7 @@ class TranslateASTVisitor final
       
       bool VisitTypedefDecl(TypedefDecl *D) {
           std::vector<void*> childIds;
-          encode_entry_extra(encoder, D, TagTypedefDecl, childIds,
+          encode_entry(encoder, D, TagTypedefDecl, childIds,
                              [D](CborEncoder *array) {
                                  auto name = D->getNameAsString();
                                  cbor_encode_text_stringz(array, name.c_str());
@@ -497,7 +469,7 @@ class TranslateASTVisitor final
       
       bool VisitIntegerLiteral(IntegerLiteral *IL) {
           std::vector<void*> childIds;
-          encode_entry_extra(encoder, IL, TagIntegerLiteral, childIds,
+          encode_entry(encoder, IL, TagIntegerLiteral, childIds,
                              [IL](CborEncoder *array){
                                  cbor_encode_uint(array, IL->getValue().getLimitedValue());
                              });
@@ -506,7 +478,7 @@ class TranslateASTVisitor final
       
       bool VisitCharacterLiteral(CharacterLiteral *L) {
           std::vector<void*> childIds;
-          encode_entry_extra(encoder, L, TagStringLiteral, childIds,
+          encode_entry(encoder, L, TagCharacterLiteral, childIds,
                              [L](CborEncoder *array){
                                  auto lit = L->getValue();
                                  cbor_encode_uint(array, lit);
@@ -516,11 +488,21 @@ class TranslateASTVisitor final
       
       bool VisitStringLiteral(clang::StringLiteral *SL) {
           std::vector<void*> childIds;
-          encode_entry_extra(encoder, SL, TagStringLiteral, childIds,
+          encode_entry(encoder, SL, TagStringLiteral, childIds,
                              [SL](CborEncoder *array){
                                  auto lit = SL->getString().str();
                                  cbor_encode_text_string(array, lit.c_str(), lit.size());
                              });
+          return true;
+      }
+      
+      bool VisitFloatingLiteral(clang::FloatingLiteral *L) {
+          std::vector<void*> childIds;
+          encode_entry(encoder, L, TagFloatingLiteral, childIds,
+                       [L](CborEncoder *array){
+                           auto lit = L->getValueAsApproximateDouble();
+                           cbor_encode_double(array, lit);
+                       });
           return true;
       }
   };
