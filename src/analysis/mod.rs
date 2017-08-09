@@ -6,6 +6,7 @@ use util::IntoSymbol;
 
 
 pub mod labeled_ty;
+pub mod ownership;
 pub mod type_eq;
 
 
@@ -13,6 +14,13 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("test_analysis_type_eq", |args| {
         Box::new(FuncCommand::new(Phase::Phase3, move |st, cx| {
             let result = type_eq::analyze(cx.hir_map(), cx.ty_ctxt(), cx.ty_arena());
+            info!("{:?}", result);
+        }))
+    });
+
+    reg.register("test_analysis_ownership", |args| {
+        Box::new(FuncCommand::new(Phase::Phase3, move |st, cx| {
+            let result = ownership::analyze(&st, &cx);
             info!("{:?}", result);
         }))
     });

@@ -34,14 +34,14 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
         }
     }
 
-    fn mk_slice(&self, ltys: &[LabeledTy<'tcx, L>]) -> &'tcx [LabeledTy<'tcx, L>] {
+    pub fn mk_slice(&self, ltys: &[LabeledTy<'tcx, L>]) -> &'tcx [LabeledTy<'tcx, L>] {
         if ltys.len() == 0 {
             return &[];
         }
         self.arena.alloc_slice(ltys)
     }
 
-    fn mk(&self, ty: Ty<'tcx>, args: &'tcx [LabeledTy<'tcx, L>], label: L) -> LabeledTy<'tcx, L> {
+    pub fn mk(&self, ty: Ty<'tcx>, args: &'tcx [LabeledTy<'tcx, L>], label: L) -> LabeledTy<'tcx, L> {
         self.arena.alloc(LabeledTyS {
             ty: ty,
             args: args,
@@ -132,5 +132,20 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
                        ltys: &[LabeledTy<'tcx, L>],
                        substs: &[LabeledTy<'tcx, L>]) -> &'tcx [LabeledTy<'tcx, L>] {
         self.mk_slice(&ltys.iter().map(|lty| self.subst(lty, substs)).collect::<Vec<_>>())
+    }
+
+
+    pub fn relabel<L2, F>(&self, lty: LabeledTy<'tcx, L2>, func: &mut F) -> LabeledTy<'tcx, L>
+            where F: FnMut(&L2) -> L {
+        let args = self.relabel_slice(lty.args, func);
+        self.mk(lty.ty, args, func(&lty.label))
+    }
+
+    pub fn relabel_slice<L2, F>(&self,
+                                ltys: &'tcx [LabeledTy<'tcx, L2>],
+                                func: &mut F) -> &'tcx [LabeledTy<'tcx, L>]
+            where F: FnMut(&L2) -> L {
+        let ltys = ltys.iter().cloned().map(|lty| self.relabel(lty, func)).collect::<Vec<_>>();
+        self.mk_slice(&ltys)
     }
 }
