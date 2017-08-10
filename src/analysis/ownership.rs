@@ -1,3 +1,4 @@
+use std::cmp;
 use std::collections::hash_map::{HashMap, Entry};
 use std::collections::VecDeque;
 use std::u32;
@@ -189,6 +190,10 @@ impl<'tcx> Ctxt<'tcx> {
             }
         }
     }
+
+    fn min_perm(&self, p1: Perm, p2: Perm) -> Perm {
+        Perm::Concrete(cmp::min(self.concrete_perm(p1), self.concrete_perm(p2)))
+    }
 }
 
 struct LocalCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
@@ -213,7 +218,8 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
     }
 
 
-    fn lvalue_lty(&mut self, lv: &Lvalue<'tcx>) -> LTy<'tcx> {
+    /// Compute the type of an `Lvalue` and the maximum permissions for accessing it.
+    fn lvalue_lty(&mut self, lv: &Lvalue<'tcx>) -> (LTy<'tcx>, Perm) {
         match *lv {
             Lvalue::Local(l) => {
                 let idx = l.index();
@@ -221,7 +227,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                     if idx < 1 + self.mir.arg_count { TySource::Sig(self.def_id, idx) }
                     else { TySource::Local(self.def_id, idx) };
                 let mir = self.mir;
-                self.cx.labeled(source, || mir.local_decls[l].ty)
+                (self.cx.labeled(source, || mir.local_decls[l].ty), Perm::move_())
             },
 
             Lvalue::Static(ref s) => {
@@ -229,10 +235,13 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             },
 
             Lvalue::Projection(ref p) => {
-                let base_ty = self.lvalue_lty(&p.base);
+                let (base_ty, base_perm) = self.lvalue_lty(&p.base);
                 match p.elem {
-                    ProjectionElem::Deref => base_ty.args[0],
-                    ProjectionElem::Field(f, _) => self.field_lty(base_ty, f),
+                    // Access permissions for a deref are the minimum of all pointers along the
+                    // path to the value.
+                    ProjectionElem::Deref =>
+                        (base_ty.args[0], self.cx.min_perm(base_perm, base_ty.label)),
+                    ProjectionElem::Field(f, _) => (self.field_lty(base_ty, f), base_perm),
                     ProjectionElem::Index(_) => unimplemented!(),
                     ProjectionElem::ConstantIndex { .. } => unimplemented!(),
                     ProjectionElem::Subslice { .. } => unimplemented!(),
@@ -257,19 +266,24 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         }
     }
 
-    fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> LTy<'tcx> {
+    fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> (LTy<'tcx>, Perm) {
         match *rv {
             Rvalue::Use(ref op) => self.operand_lty(op),
             Rvalue::Repeat(ref op, len) => unimplemented!(),
-            Rvalue::Ref(_, _, ref lv) => self.lvalue_lty(lv),
+            Rvalue::Ref(_, _, ref lv) => {
+                let (ty, perm) = self.lvalue_lty(lv);
+                let args = self.cx.lcx.mk_slice(&[ty]);
+                let ref_ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, perm);
+                (ref_ty, Perm::move_())
+            },
             Rvalue::Len(_) => unimplemented!(),
             Rvalue::Cast(_, ref op, ty) => {
                 let source = TySource::Cast(self.def_id, self.bbid, self.stmt_idx);
                 let cast_ty = self.cx.labeled(source, || ty);
-                let op_ty = self.operand_lty(op);
+                let (op_ty, op_perm) = self.operand_lty(op);
                 eprintln!("propagate cast:\n  {:?}\n  {:?}", cast_ty, op_ty);
-                self.propagate(cast_ty, op_ty);
-                cast_ty
+                self.propagate(cast_ty, op_ty, Perm::move_());
+                (cast_ty, op_perm)
             },
             Rvalue::BinaryOp(op, ref a, ref b) |
             Rvalue::CheckedBinaryOp(op, ref a, ref b) => match op {
@@ -286,9 +300,10 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                 match **kind {
                     AggregateKind::Array(_) => unimplemented!(),
                     AggregateKind::Tuple => {
-                        let args = ops.iter().map(|op| self.operand_lty(op)).collect::<Vec<_>>();
+                        let args = ops.iter().map(|op| self.operand_lty(op).0).collect::<Vec<_>>();
                         let args = self.cx.lcx.mk_slice(&args);
-                        self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, Perm::NonPtr)
+                        let ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, Perm::NonPtr);
+                        (ty, Perm::move_())
                     },
                     AggregateKind::Adt(_, _, _, _) => unimplemented!(),
                     AggregateKind::Closure(_, _) => unimplemented!(),
@@ -297,21 +312,24 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         }
     }
 
-    fn operand_lty(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
+    fn operand_lty(&mut self, op: &Operand<'tcx>) -> (LTy<'tcx>, Perm) {
         match *op {
             Operand::Consume(ref lv) => self.lvalue_lty(lv),
-            Operand::Constant(ref c) =>
-                self.cx.labeled(TySource::Const(c.ty as *const _ as usize), || c.ty),
+            Operand::Constant(ref c) => {
+                let ty = self.cx.labeled(TySource::Const(c.ty as *const _ as usize), || c.ty);
+                (ty, Perm::move_())
+            },
         }
     }
 
 
-    fn propagate(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>) {
+    fn propagate(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>, rhs_perm: Perm) {
         self.cx.propagate_perm(lhs.label, rhs.label);
+        self.cx.propagate_perm(lhs.label, rhs_perm);
 
         if lhs.args.len() == rhs.args.len() {
             for (&l_arg, &r_arg) in lhs.args.iter().zip(rhs.args.iter()) {
-                self.propagate(l_arg, r_arg);
+                self.propagate(l_arg, r_arg, rhs_perm);
             }
         }
     }
@@ -330,28 +348,30 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             TerminatorKind::Assert { .. } => {},
 
             TerminatorKind::DropAndReplace { ref location, ref value, .. } => {
-                let loc_ty = self.lvalue_lty(location);
-                let val_ty = self.operand_lty(value);
-                self.propagate(loc_ty, val_ty);
+                let (loc_ty, loc_perm) = self.lvalue_lty(location);
+                let (val_ty, val_perm) = self.operand_lty(value);
+                self.propagate(loc_ty, val_ty, val_perm);
+                self.cx.propagate_perm(Perm::write(), loc_perm);
                 eprintln!("    {:?}: {:?}", location, loc_ty);
                 eprintln!("    ^-- {:?}: {:?}", value, val_ty);
             },
 
             TerminatorKind::Call { ref func, ref args, ref destination, .. } => {
                 eprintln!("    call {:?}", func);
-                let func_ty = self.operand_lty(func);
+                let (func_ty, _func_perm) = self.operand_lty(func);
                 let sig = self.cx.labeled_sig(func_ty, self.tcx);
                 // Note that `sig.inputs` may be shorter than `args`, if `func` is varargs.
                 for (&sig_ty, arg) in sig.inputs.iter().zip(args.iter()) {
-                    let arg_ty = self.operand_lty(arg);
-                    self.propagate(sig_ty, arg_ty);
+                    let (arg_ty, arg_perm) = self.operand_lty(arg);
+                    self.propagate(sig_ty, arg_ty, arg_perm);
                     eprintln!("    (arg): {:?}", sig_ty);
                     eprintln!("    ^-- {:?}: {:?}", arg, arg_ty);
                 }
                 if let Some((ref dest, _)) = *destination {
                     let sig_ty = sig.output;
-                    let dest_ty = self.lvalue_lty(dest);
-                    self.propagate(dest_ty, sig_ty);
+                    let (dest_ty, dest_perm) = self.lvalue_lty(dest);
+                    self.propagate(dest_ty, sig_ty, Perm::move_());
+                    self.cx.propagate_perm(Perm::write(), dest_perm);
                     eprintln!("    {:?}: {:?}", dest, dest_ty);
                     eprintln!("    ^-- (return): {:?}", sig_ty);
                 }
@@ -362,9 +382,10 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             self.enter_stmt(idx);
             match s.kind {
                 StatementKind::Assign(ref lv, ref rv) => {
-                    let lv_ty = self.lvalue_lty(lv);
-                    let rv_ty = self.rvalue_lty(rv);
-                    self.propagate(lv_ty, rv_ty);
+                    let (lv_ty, lv_perm) = self.lvalue_lty(lv);
+                    let (rv_ty, rv_perm) = self.rvalue_lty(rv);
+                    self.propagate(lv_ty, rv_ty, rv_perm);
+                    self.cx.propagate_perm(Perm::write(), lv_perm);
                     eprintln!("    {:?}: {:?}", lv, lv_ty);
                     eprintln!("    ^-- {:?}: {:?}", rv, rv_ty);
                 },
