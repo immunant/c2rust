@@ -45,107 +45,26 @@ impl Idx for Var {
     }
 }
 
-type LTy<'tcx> = LabeledTy<'tcx, Option<Var>>;
+type LTy<'tcx> = LabeledTy<'tcx, Ann>;
 
 struct LFnSig<'tcx> {
     inputs: &'tcx [LTy<'tcx>],
     output: LTy<'tcx>,
 }
 
-/*
 
-/// Special `Var`, representing the top permission "BOX".
-const BOX: Var = Var(0);
-/// Special `Var`, representing the bottom permission "REF".
-const REF: Var = Var(1);
-
-const FIRST_USER_VAR: u32 = 2;
-
-
-
-
-struct ConstraintMap {
-    /// The presence of `v1, v2` indicates that `v1 <= v2`.
-    less: BTreeSet<(Var, Var)>,
-
-    /// The presence of `v1, v2` indicates that `v1 >= v2`.
-    greater: BTreeSet<(Var, Var)>,
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+enum Perm {
+    Read,
+    Write,
+    Free,
 }
-
-impl ConstraintMap {
-    fn new() -> ConstraintMap {
-        ConstraintMap {
-            less: vec![(REF, BOX)].into_iter().collect(),
-            greater: vec![(BOX, REF)].into_iter().collect(),
-        }
-    }
-
-    /// Check if `v1 <= v2`, based on constraints collected so far.
-    fn is_less(&self, v1: Var, v2: Var) -> bool {
-        let mut seen = HashSet::new();
-        let mut queue = VecDeque::new();
-        queue.push_back(v1);
-
-        while let Some(cur) = queue.pop_front() {
-            if cur == v2 {
-                return true;
-            }
-
-            for &(_, next) in self.less.range(key_range(cur)) {
-                if !seen.contains(&next) {
-                    seen.insert(next);
-                    queue.push_back(next);
-                }
-            }
-        }
-
-        false
-    }
-
-    /// Check if `v1 >= v2`, based on constraints collected so far.
-    ///
-    /// Note this is not identical to `self.is_less(v2, v1)` - `is_greater` runs its search through
-    /// the constraint graph in the opposite direction from `is_less`.  This may be faster if there
-    /// are many constraints of the form `v2 <= _` but few of the form `_ <= v1`.
-    fn is_greater(&self, v1: Var, v2: Var) -> bool {
-        let mut seen = HashSet::new();
-        let mut queue = VecDeque::new();
-        queue.push_back(v1);
-
-        while let Some(cur) = queue.pop_front() {
-            if cur == v2 {
-                return true;
-            }
-
-            for &(_, next) in self.greater.range(key_range(cur)) {
-                if !seen.contains(&next) {
-                    seen.insert(next);
-                    queue.push_back(next);
-                }
-            }
-        }
-
-        false
-    }
-
-    /// Add a constraint indicating that `v1 <= v2`.
-    fn add_constraint(&mut self, v1: Var, v2: Var) {
-        self.less.insert((v1, v2));
-        self.greater.insert((v2, v1));
-    }
-}
-
-fn key_range(k: Var) -> (Bound<(Var, Var)>, Bound<(Var, Var)>) {
-    (Bound::Included((k, Var(0))),
-     Bound::Included((k, Var(u32::MAX))))
-}
-*/
-
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-enum Perm {
-    Box,
-    Ref,
+enum Ann {
+    NonPtr,
+    Perm(Perm),
+    Var(Var),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -174,7 +93,7 @@ struct Ctxt<'tcx> {
     /// Assignment of permissions to permission variables.
     assign: IndexVec<Var, Perm>,
 
-    lcx: LabeledTyCtxt<'tcx, Option<Var>>,
+    lcx: LabeledTyCtxt<'tcx, Ann>,
 
     /// Cache of already-labeled types.  We use this to avoid re-labeling the same type twice,
     /// which would produce variables that are independent when they shouldn't be.
@@ -190,9 +109,9 @@ impl<'tcx> Ctxt<'tcx> {
                 *e.insert(self.lcx.label(mk_ty(), &mut |ty| {
                     match ty.sty {
                         TypeVariants::TyRef(_, _) |
-                        TypeVariants::TyRawPtr(_) => Some(assign.push(Perm::Ref)),
+                        TypeVariants::TyRawPtr(_) => Ann::Var(assign.push(Perm::Read)),
                         // TODO: handle Box<_>
-                        _ => None,
+                        _ => Ann::NonPtr,
                     }
                 }))
             },
@@ -232,10 +151,28 @@ impl<'tcx> Ctxt<'tcx> {
         }
     }
 
-    fn propagate_var(&mut self, lvar: Var, rvar: Var) {
-        if self.assign[lvar] == Perm::Box {
-            eprintln!("PROPAGATE OWNERSHIP: {:?} -> {:?}", lvar, rvar);
-            self.assign[rvar] = Perm::Box;
+    fn ann_perm(&self, ann: Ann) -> Perm {
+        match ann {
+            Ann::NonPtr => panic!("expected pointer annotation"),
+            Ann::Perm(p) => p,
+            Ann::Var(v) => self.assign[v],
+        }
+    }
+
+    fn ann_perm_opt(&self, ann: Ann) -> Option<Perm> {
+        match ann {
+            Ann::NonPtr => None,
+            Ann::Perm(p) => Some(p),
+            Ann::Var(v) => Some(self.assign[v]),
+        }
+    }
+
+    fn propagate_ann(&mut self, lann: Ann, rann: Ann) {
+        if let Ann::Var(v) = rann {
+            let perm = self.ann_perm(lann);
+            if perm > self.assign[v] {
+                self.assign[v] = perm;
+            }
         }
     }
 }
@@ -337,7 +274,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                     AggregateKind::Tuple => {
                         let args = ops.iter().map(|op| self.operand_lty(op)).collect::<Vec<_>>();
                         let args = self.cx.lcx.mk_slice(&args);
-                        self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, None)
+                        self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, Ann::NonPtr)
                     },
                     AggregateKind::Adt(_, _, _, _) => unimplemented!(),
                     AggregateKind::Closure(_, _) => unimplemented!(),
@@ -356,9 +293,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
 
 
     fn propagate(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>) {
-        if let (Some(lvar), Some(rvar)) = (lhs.label, rhs.label) {
-            self.cx.propagate_var(lvar, rvar);
-        }
+        self.cx.propagate_ann(lhs.label, rhs.label);
 
         if lhs.args.len() == rhs.args.len() {
             for (&l_arg, &r_arg) in lhs.args.iter().zip(rhs.args.iter()) {
@@ -461,9 +396,8 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
         if label == "free" {
             if let Some(def_id) = cx.hir_map().opt_local_def_id(id) {
                 let sig = get_sig(cx.ty_ctxt(), &mut ctxt, def_id);
-                let v = sig.inputs[0].label.unwrap();
-                ctxt.assign[v] = Perm::Box;
-                eprintln!("FREE: arg var = {:?}", v);
+                ctxt.propagate_ann(Ann::Perm(Perm::Free), sig.inputs[0].label);
+                eprintln!("FREE: arg var = {:?}", sig.inputs[0].label);
             }
         }
     }
@@ -497,11 +431,12 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     for def_id in def_ids {
         let sig = get_sig(cx.ty_ctxt(), &mut ctxt, def_id);
         let mut func = |&v: &_| {
-            match v {
+            match ctxt.ann_perm_opt(v) {
                 None => "--",
-                Some(v) => match ctxt.assign[v] {
-                    Perm::Box => "BOX",
-                    Perm::Ref => "REF",
+                Some(p) => match p {
+                    Perm::Free => "BOX",
+                    Perm::Write => "MUT",
+                    Perm::Read => "REF",
                 },
             }
         };
