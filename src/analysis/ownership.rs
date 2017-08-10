@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::u32;
 
+use arena::DroplessArena;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::mir::*;
 use rustc::mir::traversal::{Postorder, ReversePostorder};
@@ -108,6 +109,21 @@ impl ConstraintSet {
         self.greater.insert((b, a));
     }
 
+    fn import(&mut self, other: &ConstraintSet) {
+        self.less.extend(other.less.iter().cloned().filter(|&(ref a, ref b)| {
+            eprintln!("IMPORT CONSTRAINT: {:?} <= {:?}", a, b);
+            true
+        }));
+        self.greater.extend(other.greater.iter().cloned());
+    }
+
+    fn import_lower_bounds<I: Iterator<Item=(Var, ConcretePerm)>>(&mut self, mut iter: I) {
+        for (var, perm) in iter {
+            eprintln!("FIELD IMPORT: {:?} = {:?}", var, perm);
+            self.add(Perm::Concrete(perm), Perm::Var(var));
+        }
+    }
+
     fn var_lower_bound(&self, v: Var) -> ConcretePerm {
         let mut seen = HashSet::new();
         let mut queue = VecDeque::new();
@@ -164,6 +180,52 @@ enum TySource {
     Const(usize),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum VarKind {
+    Field,
+    Sig,
+    Local,
+}
+
+struct Vars {
+    field_min: HashMap<Var, ConcretePerm>,
+    sig_cset: HashMap<DefId, ConstraintSet>,
+
+    next_var: u32,
+}
+
+impl Vars {
+    fn new() -> Vars {
+        Vars {
+            field_min: HashMap::new(),
+            sig_cset: HashMap::new(),
+
+            next_var: 0,
+        }
+    }
+
+    fn fresh(&mut self, kind: VarKind) -> Var {
+        let v = Var(self.next_var);
+        self.next_var += 1;
+        match kind {
+            VarKind::Field => {
+                self.field_min.insert(v, ConcretePerm::Read);
+            },
+            VarKind::Sig => {},
+            VarKind::Local => {},
+        }
+        v
+    }
+
+    fn collect_field_mins(&mut self, cset: &ConstraintSet) {
+        for (&v, p) in self.field_min.iter_mut() {
+            let new_min = cset.var_lower_bound(v);
+            eprintln!("FIELD EXPORT: {:?} = {:?} -> {:?}", v, *p, new_min);
+            *p = cmp::max(*p, new_min);
+        }
+    }
+}
+
 struct Ctxt<'tcx> {
     lcx: LabeledTyCtxt<'tcx, Option<Perm>>,
 
@@ -173,24 +235,31 @@ struct Ctxt<'tcx> {
 
     min_map: HashMap<(Perm, Perm), Var>,
 
-    cset: ConstraintSet,
-    next_var: u32,
+    vars: Vars,
 }
 
 impl<'tcx> Ctxt<'tcx> {
-    fn labeled<F>(&mut self, source: TySource, mk_ty: F) -> LTy<'tcx>
+    fn new(arena: &'tcx DroplessArena) -> Ctxt<'tcx> {
+        Ctxt {
+            lcx: LabeledTyCtxt::new(arena),
+
+            lty_map: HashMap::new(),
+            min_map: HashMap::new(),
+
+            vars: Vars::new(),
+        }
+    }
+
+    fn labeled<F>(&mut self, source: TySource, kind: VarKind, mk_ty: F) -> LTy<'tcx>
             where F: FnOnce() -> Ty<'tcx> {
-        let next_var = &mut self.next_var;
+        let vars = &mut self.vars;
+
         match self.lty_map.entry(source) {
             Entry::Vacant(e) => {
                 *e.insert(self.lcx.label(mk_ty(), &mut |ty| {
                     match ty.sty {
                         TypeVariants::TyRef(_, _) |
-                        TypeVariants::TyRawPtr(_) => {
-                            let p = Perm::Var(Var(*next_var));
-                            *next_var += 1;
-                            Some(p)
-                        },
+                        TypeVariants::TyRawPtr(_) => Some(Perm::Var(vars.fresh(kind))),
                         // TODO: handle Box<_>
                         _ => None,
                     }
@@ -208,9 +277,13 @@ impl<'tcx> Ctxt<'tcx> {
             TypeVariants::TyFnDef(def_id, _) => {
                 let sig = tcx.fn_sig(def_id);
                 let inputs = sig.0.inputs().iter().enumerate()
-                    .map(|(i, &ty)| self.labeled(TySource::Sig(def_id, 1 + i), || ty))
+                    .map(|(i, &ty)| self.labeled(TySource::Sig(def_id, 1 + i),
+                                                 VarKind::Sig,
+                                                 || ty))
                     .collect::<Vec<_>>();
-                let output = self.labeled(TySource::Sig(def_id, 0), || sig.0.output());
+                let output = self.labeled(TySource::Sig(def_id, 0),
+                                          VarKind::Sig,
+                                          || sig.0.output());
 
                 LFnSig {
                     inputs: self.lcx.subst_slice(&inputs, &ty.args),
@@ -231,25 +304,10 @@ impl<'tcx> Ctxt<'tcx> {
         }
     }
 
-    fn propagate_perm(&mut self, lperm: Perm, rperm: Perm) {
-        self.cset.add(lperm, rperm);
-    }
-
     fn min_perm_var(&mut self, p1: Perm, p2: Perm) -> Var {
-        let next_var = &mut self.next_var;
+        let vars = &mut self.vars;
         let ps = if p1 < p2 { (p1, p2) } else { (p2, p1) };
-        *self.min_map.entry(ps).or_insert_with(|| {
-            let p = Var(*next_var);
-            *next_var += 1;
-            p
-        })
-    }
-
-    fn min_perm(&mut self, p1: Perm, p2: Perm) -> Perm {
-        let p = Perm::Var(self.min_perm_var(p1, p2));
-        self.propagate_perm(p, p1);
-        self.propagate_perm(p, p2);
-        p
+        *self.min_map.entry(ps).or_insert_with(|| vars.fresh(VarKind::Local))
     }
 }
 
@@ -261,9 +319,28 @@ struct LocalCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     mir: &'a Mir<'tcx>,
     bbid: BasicBlock,
     stmt_idx: usize,
+
+    cset: ConstraintSet,
 }
 
 impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
+    fn new(cx: &'a mut Ctxt<'tcx>,
+           tcx: TyCtxt<'a, 'gcx, 'tcx>,
+           def_id: DefId,
+           mir: &'a Mir<'tcx>) -> LocalCtxt<'a, 'gcx, 'tcx> {
+        LocalCtxt {
+            cx: cx,
+            tcx: tcx,
+
+            def_id: def_id,
+            mir: mir,
+            bbid: START_BLOCK,
+            stmt_idx: !0,
+
+            cset: ConstraintSet::new(),
+        }
+    }
+
     fn enter_block(&mut self, bbid: BasicBlock) {
         self.bbid = bbid;
         // Obviously bogus statement index
@@ -272,6 +349,31 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
 
     fn enter_stmt(&mut self, idx: usize) {
         self.stmt_idx = idx;
+    }
+
+
+    fn do_import(&mut self) {
+        self.cset.import_lower_bounds(
+            self.cx.vars.field_min.iter().map(|(&v, &p)| (v, p)));
+    }
+
+    fn do_export(self) {
+        self.cx.vars.collect_field_mins(&self.cset);
+        // TODO: reduce to sig constraints before export
+        self.cx.vars.sig_cset.insert(self.def_id, self.cset);
+    }
+
+    fn import_fn_sig_constraints(&mut self, fn_ty: LTy<'tcx>) {
+        let (def_id, substs) = match fn_ty.ty.sty {
+            TypeVariants::TyFnDef(def_id, substs) => (def_id, substs),
+            _ => return,
+        };
+        // TODO: handle substs
+        // TODO: add callgraph edge
+        if let Some(cset) = self.cx.vars.sig_cset.get(&def_id) {
+            eprintln!("import {} constraints for {:?}", cset.less.len(), def_id);
+            self.cset.import(cset);
+        }
     }
 
 
@@ -284,7 +386,8 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                     if idx < 1 + self.mir.arg_count { TySource::Sig(self.def_id, idx) }
                     else { TySource::Local(self.def_id, idx) };
                 let mir = self.mir;
-                (self.cx.labeled(source, || mir.local_decls[l].ty), Perm::move_())
+                (self.cx.labeled(source, VarKind::Local, || mir.local_decls[l].ty),
+                 Perm::move_())
             },
 
             Lvalue::Static(ref s) => {
@@ -297,7 +400,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                     // Access permissions for a deref are the minimum of all pointers along the
                     // path to the value.
                     ProjectionElem::Deref =>
-                        (base_ty.args[0], self.cx.min_perm(base_perm, base_ty.label.unwrap())),
+                        (base_ty.args[0], self.min_perm(base_perm, base_ty.label.unwrap())),
                     ProjectionElem::Field(f, _) => (self.field_lty(base_ty, f), base_perm),
                     ProjectionElem::Index(_) => unimplemented!(),
                     ProjectionElem::ConstantIndex { .. } => unimplemented!(),
@@ -313,7 +416,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             TypeVariants::TyAdt(adt, substs) => {
                 let source = TySource::StructField(adt.did, f.index());
                 let tcx = self.tcx;
-                let poly_ty = self.cx.labeled(source, || {
+                let poly_ty = self.cx.labeled(source, VarKind::Field, || {
                     tcx.type_of(adt.struct_variant().fields[f.index()].did)
                 });
                 self.cx.lcx.subst(poly_ty, &base_ty.args)
@@ -336,7 +439,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             Rvalue::Len(_) => unimplemented!(),
             Rvalue::Cast(_, ref op, ty) => {
                 let source = TySource::Cast(self.def_id, self.bbid, self.stmt_idx);
-                let cast_ty = self.cx.labeled(source, || ty);
+                let cast_ty = self.cx.labeled(source, VarKind::Local, || ty);
                 let (op_ty, op_perm) = self.operand_lty(op);
                 self.propagate(cast_ty, op_ty, Perm::move_());
                 (cast_ty, op_perm)
@@ -372,7 +475,9 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         match *op {
             Operand::Consume(ref lv) => self.lvalue_lty(lv),
             Operand::Constant(ref c) => {
-                let ty = self.cx.labeled(TySource::Const(c.ty as *const _ as usize), || c.ty);
+                let ty = self.cx.labeled(TySource::Const(c.ty as *const _ as usize),
+                                         VarKind::Local,
+                                         || c.ty);
                 (ty, Perm::move_())
             },
         }
@@ -381,8 +486,8 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
 
     fn propagate(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>, max_perm: Perm) {
         if let (Some(l_perm), Some(r_perm)) = (lhs.label, rhs.label) {
-            self.cx.propagate_perm(l_perm, r_perm);
-            self.cx.propagate_perm(l_perm, max_perm);
+            self.propagate_perm(l_perm, r_perm);
+            self.propagate_perm(l_perm, max_perm);
         }
 
         if lhs.args.len() == rhs.args.len() {
@@ -390,6 +495,18 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                 self.propagate(l_arg, r_arg, max_perm);
             }
         }
+    }
+
+    fn propagate_perm(&mut self, p1: Perm, p2: Perm) {
+        eprintln!("ADD: {:?} <= {:?}", p1, p2);
+        self.cset.add(p1, p2);
+    }
+
+    fn min_perm(&mut self, p1: Perm, p2: Perm) -> Perm {
+        let p = Perm::Var(self.cx.min_perm_var(p1, p2));
+        self.propagate_perm(p, p1);
+        self.propagate_perm(p, p2);
+        p
     }
 
     fn handle_basic_block(&mut self, bbid: BasicBlock, bb: &BasicBlockData<'tcx>) {
@@ -409,7 +526,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                 let (loc_ty, loc_perm) = self.lvalue_lty(location);
                 let (val_ty, val_perm) = self.operand_lty(value);
                 self.propagate(loc_ty, val_ty, val_perm);
-                self.cx.propagate_perm(Perm::write(), loc_perm);
+                self.propagate_perm(Perm::write(), loc_perm);
                 eprintln!("    {:?}: {:?}", location, loc_ty);
                 eprintln!("    ^-- {:?}: {:?}", value, val_ty);
             },
@@ -418,6 +535,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                 eprintln!("    call {:?}", func);
                 let (func_ty, _func_perm) = self.operand_lty(func);
                 let sig = self.cx.labeled_sig(func_ty, self.tcx);
+                self.import_fn_sig_constraints(func_ty);
                 // Note that `sig.inputs` may be shorter than `args`, if `func` is varargs.
                 for (&sig_ty, arg) in sig.inputs.iter().zip(args.iter()) {
                     let (arg_ty, arg_perm) = self.operand_lty(arg);
@@ -429,7 +547,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                     let sig_ty = sig.output;
                     let (dest_ty, dest_perm) = self.lvalue_lty(dest);
                     self.propagate(dest_ty, sig_ty, Perm::move_());
-                    self.cx.propagate_perm(Perm::write(), dest_perm);
+                    self.propagate_perm(Perm::write(), dest_perm);
                     eprintln!("    {:?}: {:?}", dest, dest_ty);
                     eprintln!("    ^-- (return): {:?}", sig_ty);
                 }
@@ -443,7 +561,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                     let (lv_ty, lv_perm) = self.lvalue_lty(lv);
                     let (rv_ty, rv_perm) = self.rvalue_lty(rv);
                     self.propagate(lv_ty, rv_ty, rv_perm);
-                    self.cx.propagate_perm(Perm::write(), lv_perm);
+                    self.propagate_perm(Perm::write(), lv_perm);
                     eprintln!("    {:?}: {:?}", lv, lv_ty);
                     eprintln!("    ^-- {:?}: {:?}", rv, rv_ty);
                 },
@@ -466,9 +584,9 @@ fn get_sig<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                            def_id: DefId) -> LFnSig<'tcx> {
     let sig = tcx.fn_sig(def_id);
     let inputs = sig.0.inputs().iter().enumerate()
-        .map(|(i, &ty)| cx.labeled(TySource::Sig(def_id, 1 + i), || ty))
+        .map(|(i, &ty)| cx.labeled(TySource::Sig(def_id, 1 + i), VarKind::Sig, || ty))
         .collect::<Vec<_>>();
-    let output = cx.labeled(TySource::Sig(def_id, 0), || sig.0.output());
+    let output = cx.labeled(TySource::Sig(def_id, 0), VarKind::Sig, || sig.0.output());
     LFnSig {
         inputs: cx.lcx.mk_slice(&inputs),
         output: output,
@@ -477,13 +595,7 @@ fn get_sig<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 
 
 pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
-    let mut ctxt = Ctxt {
-        lcx: LabeledTyCtxt::new(cx.ty_arena()),
-        lty_map: HashMap::new(),
-        min_map: HashMap::new(),
-        cset: ConstraintSet::new(),
-        next_var: 0,
-    };
+    let mut ctxt = Ctxt::new(cx.ty_arena());
 
 
     // TODO: make this less special-cased
@@ -491,41 +603,69 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
         if label == "free" {
             if let Some(def_id) = cx.hir_map().opt_local_def_id(id) {
                 let sig = get_sig(cx.ty_ctxt(), &mut ctxt, def_id);
-                ctxt.propagate_perm(Perm::move_(), sig.inputs[0].label.unwrap());
-                eprintln!("FREE: arg var = {:?}", sig.inputs[0].label);
+                let p = sig.inputs[0].label.unwrap();
+                let mut cset = ConstraintSet::new();
+                cset.add(Perm::move_(), p);
+                ctxt.vars.sig_cset.insert(def_id, cset);
+                eprintln!("FREE: {:?}: arg var = {:?}", def_id, p);
             }
         }
     }
 
 
     let tcx = cx.ty_ctxt();
-    for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
-        let mir = tcx.optimized_mir(def_id);
-        let mut local_cx = LocalCtxt {
-            cx: &mut ctxt,
-            tcx: cx.ty_ctxt(),
-            def_id: def_id,
-            mir: mir,
-            bbid: START_BLOCK,
-            stmt_idx: !0,
-        };
+    for _ in 0 .. 5 {
+        for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
+            let mir = tcx.optimized_mir(def_id);
+            let mut local_cx = LocalCtxt::new(&mut ctxt, tcx, def_id, mir);
+            local_cx.do_import();
 
-        eprintln!("mir for {:?}", def_id);
-        for (bbid, bb) in Postorder::new(&mir, START_BLOCK) {
-            local_cx.handle_basic_block(bbid, bb);
+            eprintln!("\nmir for {:?}", def_id);
+            eprintln!("  locals:");
+            for l in mir.local_decls.indices() {
+                let (ty, _) = local_cx.lvalue_lty(&Lvalue::Local(l));
+                eprintln!("    {:?}: {:?}", l, ty);
+            }
+            for (bbid, bb) in Postorder::new(&mir, START_BLOCK) {
+                local_cx.handle_basic_block(bbid, bb);
+            }
+
+            let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
+            eprintln!("  locals (after):");
+            for l in mir.local_decls.indices() {
+                let (ty, _) = local_cx.lvalue_lty(&Lvalue::Local(l));
+                let ty2 = new_lcx.relabel(ty, &mut |&v: &Option<_>| {
+                    if v.is_none() {
+                        return "--";
+                    }
+                    match local_cx.cset.lower_bound(v.unwrap()) {
+                        ConcretePerm::Read => "REF",
+                        ConcretePerm::Write => "MUT",
+                        ConcretePerm::Move => "BOX",
+                    }
+                });
+                eprintln!("    {:?}: {:?}", l, ty2);
+            }
+
+            local_cx.do_export();
         }
     }
+
 
     let mut def_ids = tcx.mir_keys(LOCAL_CRATE).iter().cloned().collect::<Vec<_>>();
     def_ids.sort();
     let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
     for def_id in def_ids {
         let sig = get_sig(cx.ty_ctxt(), &mut ctxt, def_id);
+        let cset = ctxt.vars.sig_cset.get(&def_id);
         let mut func = |&v: &Option<_>| {
             if v.is_none() {
                 return "--";
             }
-            match ctxt.cset.lower_bound(v.unwrap()) {
+            if cset.is_none() {
+                return "???";
+            }
+            match cset.unwrap().lower_bound(v.unwrap()) {
                 ConcretePerm::Read => "REF",
                 ConcretePerm::Write => "MUT",
                 ConcretePerm::Move => "BOX",
