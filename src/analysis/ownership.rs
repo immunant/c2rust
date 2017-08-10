@@ -45,7 +45,7 @@ impl Idx for Var {
     }
 }
 
-type LTy<'tcx> = LabeledTy<'tcx, Ann>;
+type LTy<'tcx> = LabeledTy<'tcx, Perm>;
 
 struct LFnSig<'tcx> {
     inputs: &'tcx [LTy<'tcx>],
@@ -54,17 +54,31 @@ struct LFnSig<'tcx> {
 
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-enum Perm {
+enum ConcretePerm {
     Read,
     Write,
-    Free,
+    Move,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-enum Ann {
+enum Perm {
     NonPtr,
-    Perm(Perm),
+    Concrete(ConcretePerm),
     Var(Var),
+}
+
+impl Perm {
+    fn read() -> Perm {
+        Perm::Concrete(ConcretePerm::Read)
+    }
+
+    fn write() -> Perm {
+        Perm::Concrete(ConcretePerm::Write)
+    }
+
+    fn move_() -> Perm {
+        Perm::Concrete(ConcretePerm::Move)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -90,10 +104,10 @@ enum TySource {
 }
 
 struct Ctxt<'tcx> {
-    /// Assignment of permissions to permission variables.
-    assign: IndexVec<Var, Perm>,
+    /// Assignment of concrete permissions to permission variables.
+    assign: IndexVec<Var, ConcretePerm>,
 
-    lcx: LabeledTyCtxt<'tcx, Ann>,
+    lcx: LabeledTyCtxt<'tcx, Perm>,
 
     /// Cache of already-labeled types.  We use this to avoid re-labeling the same type twice,
     /// which would produce variables that are independent when they shouldn't be.
@@ -109,9 +123,9 @@ impl<'tcx> Ctxt<'tcx> {
                 *e.insert(self.lcx.label(mk_ty(), &mut |ty| {
                     match ty.sty {
                         TypeVariants::TyRef(_, _) |
-                        TypeVariants::TyRawPtr(_) => Ann::Var(assign.push(Perm::Read)),
+                        TypeVariants::TyRawPtr(_) => Perm::Var(assign.push(ConcretePerm::Read)),
                         // TODO: handle Box<_>
-                        _ => Ann::NonPtr,
+                        _ => Perm::NonPtr,
                     }
                 }))
             },
@@ -151,25 +165,25 @@ impl<'tcx> Ctxt<'tcx> {
         }
     }
 
-    fn ann_perm(&self, ann: Ann) -> Perm {
-        match ann {
-            Ann::NonPtr => panic!("expected pointer annotation"),
-            Ann::Perm(p) => p,
-            Ann::Var(v) => self.assign[v],
+    fn concrete_perm(&self, perm: Perm) -> ConcretePerm {
+        match perm {
+            Perm::NonPtr => panic!("expected pointer permission"),
+            Perm::Concrete(p) => p,
+            Perm::Var(v) => self.assign[v],
         }
     }
 
-    fn ann_perm_opt(&self, ann: Ann) -> Option<Perm> {
-        match ann {
-            Ann::NonPtr => None,
-            Ann::Perm(p) => Some(p),
-            Ann::Var(v) => Some(self.assign[v]),
+    fn concrete_perm_opt(&self, perm: Perm) -> Option<ConcretePerm> {
+        match perm {
+            Perm::NonPtr => None,
+            Perm::Concrete(p) => Some(p),
+            Perm::Var(v) => Some(self.assign[v]),
         }
     }
 
-    fn propagate_ann(&mut self, lann: Ann, rann: Ann) {
-        if let Ann::Var(v) = rann {
-            let perm = self.ann_perm(lann);
+    fn propagate_perm(&mut self, lperm: Perm, rperm: Perm) {
+        if let Perm::Var(v) = rperm {
+            let perm = self.concrete_perm(lperm);
             if perm > self.assign[v] {
                 self.assign[v] = perm;
             }
@@ -274,7 +288,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                     AggregateKind::Tuple => {
                         let args = ops.iter().map(|op| self.operand_lty(op)).collect::<Vec<_>>();
                         let args = self.cx.lcx.mk_slice(&args);
-                        self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, Ann::NonPtr)
+                        self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, Perm::NonPtr)
                     },
                     AggregateKind::Adt(_, _, _, _) => unimplemented!(),
                     AggregateKind::Closure(_, _) => unimplemented!(),
@@ -293,7 +307,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
 
 
     fn propagate(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>) {
-        self.cx.propagate_ann(lhs.label, rhs.label);
+        self.cx.propagate_perm(lhs.label, rhs.label);
 
         if lhs.args.len() == rhs.args.len() {
             for (&l_arg, &r_arg) in lhs.args.iter().zip(rhs.args.iter()) {
@@ -396,7 +410,7 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
         if label == "free" {
             if let Some(def_id) = cx.hir_map().opt_local_def_id(id) {
                 let sig = get_sig(cx.ty_ctxt(), &mut ctxt, def_id);
-                ctxt.propagate_ann(Ann::Perm(Perm::Free), sig.inputs[0].label);
+                ctxt.propagate_perm(Perm::move_(), sig.inputs[0].label);
                 eprintln!("FREE: arg var = {:?}", sig.inputs[0].label);
             }
         }
@@ -431,12 +445,12 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     for def_id in def_ids {
         let sig = get_sig(cx.ty_ctxt(), &mut ctxt, def_id);
         let mut func = |&v: &_| {
-            match ctxt.ann_perm_opt(v) {
+            match ctxt.concrete_perm_opt(v) {
                 None => "--",
                 Some(p) => match p {
-                    Perm::Free => "BOX",
-                    Perm::Write => "MUT",
-                    Perm::Read => "REF",
+                    ConcretePerm::Read => "REF",
+                    ConcretePerm::Write => "MUT",
+                    ConcretePerm::Move => "BOX",
                 },
             }
         };
