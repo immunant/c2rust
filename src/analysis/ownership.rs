@@ -61,7 +61,7 @@ enum ConcretePerm {
     Move,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 enum Perm {
     NonPtr,
     Concrete(ConcretePerm),
@@ -113,6 +113,8 @@ struct Ctxt<'tcx> {
     /// Cache of already-labeled types.  We use this to avoid re-labeling the same type twice,
     /// which would produce variables that are independent when they shouldn't be.
     lty_map: HashMap<TySource, LTy<'tcx>>,
+
+    min_map: HashMap<(Perm, Perm), Var>,
 }
 
 impl<'tcx> Ctxt<'tcx> {
@@ -184,15 +186,27 @@ impl<'tcx> Ctxt<'tcx> {
 
     fn propagate_perm(&mut self, lperm: Perm, rperm: Perm) {
         if let Perm::Var(v) = rperm {
-            let perm = self.concrete_perm(lperm);
-            if perm > self.assign[v] {
-                self.assign[v] = perm;
+            if let Some(perm) = self.concrete_perm_opt(lperm) {
+                if perm > self.assign[v] {
+                    self.assign[v] = perm;
+                }
             }
         }
     }
 
-    fn min_perm(&self, p1: Perm, p2: Perm) -> Perm {
-        Perm::Concrete(cmp::min(self.concrete_perm(p1), self.concrete_perm(p2)))
+    fn min_perm_var(&mut self, p1: Perm, p2: Perm) -> Var {
+        let assign = &mut self.assign;
+        let ps = if p1 < p2 { (p1, p2) } else { (p2, p1) };
+        *self.min_map.entry(ps).or_insert_with(|| {
+            assign.push(ConcretePerm::Read)
+        })
+    }
+
+    fn min_perm(&mut self, p1: Perm, p2: Perm) -> Perm {
+        let p = Perm::Var(self.min_perm_var(p1, p2));
+        self.propagate_perm(p, p1);
+        self.propagate_perm(p, p2);
+        p
     }
 }
 
@@ -423,6 +437,7 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
         assign: IndexVec::new(),
         lcx: LabeledTyCtxt::new(cx.ty_arena()),
         lty_map: HashMap::new(),
+        min_map: HashMap::new(),
     };
 
 
