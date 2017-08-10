@@ -13,6 +13,7 @@ use rustc::mir::traversal::{Postorder, ReversePostorder};
 use rustc::ty::{Ty, TyS, TyCtxt, FnSig, Instance, TypeVariants};
 use rustc::ty::subst::Substs;
 use rustc::ty::fold::{TypeVisitor, TypeFoldable};
+use rustc_data_structures::bitvec::BitVector;
 use rustc_data_structures::indexed_vec::{IndexVec, Idx};
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -91,9 +92,13 @@ struct ConstraintSet {
     greater: BTreeSet<(Perm, Perm)>,
 }
 
+fn perm_range(p: Perm) -> (Bound<(Perm, Perm)>, Bound<(Perm, Perm)>) {
+    (Bound::Included((p, Perm::read())),
+     Bound::Included((p, Perm::Var(Var(!0)))))
+}
+
 fn var_range(v: Var) -> (Bound<(Perm, Perm)>, Bound<(Perm, Perm)>) {
-    (Bound::Included((Perm::Var(v), Perm::read())),
-     Bound::Included((Perm::Var(v), Perm::Var(Var(!0)))))
+    perm_range(Perm::Var(v))
 }
 
 impl ConstraintSet {
@@ -154,6 +159,56 @@ impl ConstraintSet {
             Perm::Concrete(p) => p,
             Perm::Var(v) => self.var_lower_bound(v),
         }
+    }
+
+    fn condense<I: IntoIterator<Item=Var>>(&mut self, vars: I) {
+        let mut all_perms = HashSet::new();
+        for &(p1, p2) in &self.less {
+            all_perms.insert(p1);
+            all_perms.insert(p2);
+        }
+
+        let vars = vars.into_iter().collect::<HashSet<_>>();
+
+        // Add edges routing around each var not in `vars`.
+        for &p in &all_perms {
+            let v = match p {
+                Perm::Var(v) => v,
+                Perm::Concrete(_) => { continue; },
+            };
+            if vars.contains(&v) {
+                continue;
+            }
+
+            // Perms less than `p`, and perms greater than `p`.
+            let less = self.greater.range(perm_range(p)).map(|&(a, b)| b).collect::<Vec<_>>();
+            let greater = self.less.range(perm_range(p)).map(|&(a, b)| b).collect::<Vec<_>>();
+
+            for &l in &less {
+                for &g in &greater {
+                    self.add(l, g);
+                }
+            }
+        }
+
+        // Filter out edges not involving `vars`.
+        let is_var = |p| match p {
+            Perm::Var(v) => vars.contains(&v),
+            Perm::Concrete(_) => true,
+        };
+
+        let mut cset = ConstraintSet::new();
+        for &(a, b) in self.less.iter().filter(|&&(a, b)| {
+            match (a, b) {
+                (Perm::Var(v1), Perm::Var(v2)) => vars.contains(&v1) && vars.contains(&v2),
+                (Perm::Var(v1), Perm::Concrete(_)) => vars.contains(&v1),
+                (Perm::Concrete(_), Perm::Var(v2)) => vars.contains(&v2),
+                (Perm::Concrete(_), Perm::Concrete(_)) => false,
+            }
+        }) {
+            cset.add(a, b);
+        }
+        *self = cset;
     }
 }
 
@@ -323,6 +378,22 @@ struct LocalCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     cset: ConstraintSet,
 }
 
+fn collect_perms(ty: LTy) -> Vec<Perm> {
+    let mut v = Vec::new();
+    collect_perms_into(ty, &mut v);
+    v
+}
+
+fn collect_perms_into(ty: LTy, v: &mut Vec<Perm>) {
+    if let Some(p) = ty.label {
+        v.push(p);
+    }
+
+    for &arg in ty.args {
+        collect_perms_into(arg, v);
+    }
+}
+
 impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
     fn new(cx: &'a mut Ctxt<'tcx>,
            tcx: TyCtxt<'a, 'gcx, 'tcx>,
@@ -357,9 +428,34 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             self.cx.vars.field_min.iter().map(|(&v, &p)| (v, p)));
     }
 
-    fn do_export(self) {
+    fn do_export(mut self) {
         self.cx.vars.collect_field_mins(&self.cset);
-        // TODO: reduce to sig constraints before export
+
+        eprintln!("exporting constraints");
+        eprintln!("  initial:");
+        for &(a, b) in self.cset.less.iter() {
+            eprintln!("    {:?} <= {:?}", a, b);
+        }
+
+        let mut v = Vec::new();
+        for i in 0 .. 1 + self.mir.arg_count {
+            let (ty, _) = self.lvalue_lty(&Lvalue::Local(Local::new(i)));
+            collect_perms_into(ty, &mut v);
+        }
+        eprintln!("  collected sig permissions:");
+        for &p in &v {
+            eprintln!("    {:?}", p);
+        }
+        self.cset.condense(v.into_iter().filter_map(|p| match p {
+            Perm::Var(v) => Some(v),
+            Perm::Concrete(_) => None,
+        }));
+
+        eprintln!("  condensed:");
+        for &(a, b) in self.cset.less.iter() {
+            eprintln!("    {:?} <= {:?}", a, b);
+        }
+
         self.cx.vars.sig_cset.insert(self.def_id, self.cset);
     }
 
