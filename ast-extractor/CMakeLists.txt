@@ -7,4 +7,5 @@ target_link_libraries(ast-extractor
   clangTooling
   clangBasic
   clangASTMatchers
+  tinycbor
   )
