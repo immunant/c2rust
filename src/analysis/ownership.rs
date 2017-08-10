@@ -1,5 +1,8 @@
 use std::cmp;
+use std::collections::Bound;
+use std::collections::BTreeSet;
 use std::collections::hash_map::{HashMap, Entry};
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::u32;
 
@@ -81,6 +84,64 @@ impl Perm {
     }
 }
 
+
+struct ConstraintSet {
+    less: BTreeSet<(Perm, Perm)>,
+    greater: BTreeSet<(Perm, Perm)>,
+}
+
+fn var_range(v: Var) -> (Bound<(Perm, Perm)>, Bound<(Perm, Perm)>) {
+    (Bound::Included((Perm::Var(v), Perm::read())),
+     Bound::Included((Perm::Var(v), Perm::Var(Var(!0)))))
+}
+
+impl ConstraintSet {
+    fn new() -> ConstraintSet {
+        ConstraintSet {
+            less: BTreeSet::new(),
+            greater: BTreeSet::new(),
+        }
+    }
+
+    fn add(&mut self, a: Perm, b: Perm) {
+        self.less.insert((a, b));
+        self.greater.insert((b, a));
+    }
+
+    fn var_lower_bound(&self, v: Var) -> ConcretePerm {
+        let mut seen = HashSet::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(v);
+        let mut bound = ConcretePerm::Read;
+
+        while let Some(cur) = queue.pop_front() {
+            for &(_, next) in self.greater.range(var_range(cur)) {
+                match next {
+                    Perm::Concrete(p) => {
+                        bound = cmp::max(bound, p);
+                    },
+                    Perm::Var(v) => {
+                        if !seen.contains(&v) {
+                            seen.insert(v);
+                            queue.push_back(v);
+                        }
+                    },
+                }
+            }
+        }
+
+        bound
+    }
+
+    fn lower_bound(&self, a: Perm) -> ConcretePerm {
+        match a {
+            Perm::Concrete(p) => p,
+            Perm::Var(v) => self.var_lower_bound(v),
+        }
+    }
+}
+
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum TySource {
     /// Types that appear in the signature of a def.  These are actually the first 1+N locals of
@@ -104,9 +165,6 @@ enum TySource {
 }
 
 struct Ctxt<'tcx> {
-    /// Assignment of concrete permissions to permission variables.
-    assign: IndexVec<Var, ConcretePerm>,
-
     lcx: LabeledTyCtxt<'tcx, Option<Perm>>,
 
     /// Cache of already-labeled types.  We use this to avoid re-labeling the same type twice,
@@ -114,19 +172,25 @@ struct Ctxt<'tcx> {
     lty_map: HashMap<TySource, LTy<'tcx>>,
 
     min_map: HashMap<(Perm, Perm), Var>,
+
+    cset: ConstraintSet,
+    next_var: u32,
 }
 
 impl<'tcx> Ctxt<'tcx> {
     fn labeled<F>(&mut self, source: TySource, mk_ty: F) -> LTy<'tcx>
             where F: FnOnce() -> Ty<'tcx> {
-        let assign = &mut self.assign;
+        let next_var = &mut self.next_var;
         match self.lty_map.entry(source) {
             Entry::Vacant(e) => {
                 *e.insert(self.lcx.label(mk_ty(), &mut |ty| {
                     match ty.sty {
                         TypeVariants::TyRef(_, _) |
-                        TypeVariants::TyRawPtr(_) =>
-                            Some(Perm::Var(assign.push(ConcretePerm::Read))),
+                        TypeVariants::TyRawPtr(_) => {
+                            let p = Perm::Var(Var(*next_var));
+                            *next_var += 1;
+                            Some(p)
+                        },
                         // TODO: handle Box<_>
                         _ => None,
                     }
@@ -140,7 +204,6 @@ impl<'tcx> Ctxt<'tcx> {
     fn labeled_sig<'a, 'gcx>(&mut self,
                              ty: LTy<'tcx>,
                              tcx: TyCtxt<'a, 'gcx, 'tcx>) -> LFnSig<'tcx> {
-        eprintln!(" * labeling sig for {:?}", ty);
         match ty.ty.sty {
             TypeVariants::TyFnDef(def_id, _) => {
                 let sig = tcx.fn_sig(def_id);
@@ -168,31 +231,17 @@ impl<'tcx> Ctxt<'tcx> {
         }
     }
 
-    fn concrete_perm(&self, perm: Perm) -> ConcretePerm {
-        match perm {
-            Perm::Concrete(p) => p,
-            Perm::Var(v) => self.assign[v],
-        }
-    }
-
-    fn concrete_perm_opt(&self, perm: Option<Perm>) -> Option<ConcretePerm> {
-        perm.map(|p| self.concrete_perm(p))
-    }
-
     fn propagate_perm(&mut self, lperm: Perm, rperm: Perm) {
-        if let Perm::Var(v) = rperm {
-            let perm = self.concrete_perm(lperm);
-            if perm > self.assign[v] {
-                self.assign[v] = perm;
-            }
-        }
+        self.cset.add(lperm, rperm);
     }
 
     fn min_perm_var(&mut self, p1: Perm, p2: Perm) -> Var {
-        let assign = &mut self.assign;
+        let next_var = &mut self.next_var;
         let ps = if p1 < p2 { (p1, p2) } else { (p2, p1) };
         *self.min_map.entry(ps).or_insert_with(|| {
-            assign.push(ConcretePerm::Read)
+            let p = Var(*next_var);
+            *next_var += 1;
+            p
         })
     }
 
@@ -289,7 +338,6 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                 let source = TySource::Cast(self.def_id, self.bbid, self.stmt_idx);
                 let cast_ty = self.cx.labeled(source, || ty);
                 let (op_ty, op_perm) = self.operand_lty(op);
-                eprintln!("propagate cast:\n  {:?}\n  {:?}", cast_ty, op_ty);
                 self.propagate(cast_ty, op_ty, Perm::move_());
                 (cast_ty, op_perm)
             },
@@ -430,10 +478,11 @@ fn get_sig<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 
 pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     let mut ctxt = Ctxt {
-        assign: IndexVec::new(),
         lcx: LabeledTyCtxt::new(cx.ty_arena()),
         lty_map: HashMap::new(),
         min_map: HashMap::new(),
+        cset: ConstraintSet::new(),
+        next_var: 0,
     };
 
 
@@ -450,24 +499,20 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
 
 
     let tcx = cx.ty_ctxt();
-    for _ in 0 .. 5 {   // TODO iterate to reach a fixed point
-        for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
-            let mir = tcx.optimized_mir(def_id);
-            let mut local_cx = LocalCtxt {
-                cx: &mut ctxt,
-                tcx: cx.ty_ctxt(),
-                def_id: def_id,
-                mir: mir,
-                bbid: START_BLOCK,
-                stmt_idx: !0,
-            };
+    for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
+        let mir = tcx.optimized_mir(def_id);
+        let mut local_cx = LocalCtxt {
+            cx: &mut ctxt,
+            tcx: cx.ty_ctxt(),
+            def_id: def_id,
+            mir: mir,
+            bbid: START_BLOCK,
+            stmt_idx: !0,
+        };
 
-            eprintln!("mir for {:?}", def_id);
-            for _ in 0 .. 5 {   // TODO iterate to reach a fixed point
-                for (bbid, bb) in Postorder::new(&mir, START_BLOCK) {
-                    local_cx.handle_basic_block(bbid, bb);
-                }
-            }
+        eprintln!("mir for {:?}", def_id);
+        for (bbid, bb) in Postorder::new(&mir, START_BLOCK) {
+            local_cx.handle_basic_block(bbid, bb);
         }
     }
 
@@ -476,14 +521,14 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
     for def_id in def_ids {
         let sig = get_sig(cx.ty_ctxt(), &mut ctxt, def_id);
-        let mut func = |&v: &_| {
-            match ctxt.concrete_perm_opt(v) {
-                None => "--",
-                Some(p) => match p {
-                    ConcretePerm::Read => "REF",
-                    ConcretePerm::Write => "MUT",
-                    ConcretePerm::Move => "BOX",
-                },
+        let mut func = |&v: &Option<_>| {
+            if v.is_none() {
+                return "--";
+            }
+            match ctxt.cset.lower_bound(v.unwrap()) {
+                ConcretePerm::Read => "REF",
+                ConcretePerm::Write => "MUT",
+                ConcretePerm::Move => "BOX",
             }
         };
         let inputs = new_lcx.relabel_slice(sig.inputs, &mut func);
