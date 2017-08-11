@@ -13,7 +13,7 @@ pub mod type_eq;
 pub fn register_commands(reg: &mut Registry) {
     reg.register("test_analysis_type_eq", |args| {
         Box::new(FuncCommand::new(Phase::Phase3, move |st, cx| {
-            let result = type_eq::analyze(cx.hir_map(), cx.ty_ctxt(), cx.ty_arena());
+            let result = type_eq::analyze(cx.hir_map(), cx.ty_ctxt(), cx.ty_arena(), &st.krate());
             info!("{:?}", result);
         }))
     });
@@ -28,7 +28,7 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("mark_related_types", |args| {
         let label = args.get(0).map_or("target", |x| x).into_symbol();
         Box::new(FuncCommand::new(Phase::Phase3, move |st, cx| {
-            let ty_class = type_eq::analyze(cx.hir_map(), cx.ty_ctxt(), cx.ty_arena());
+            let ty_class = type_eq::analyze(cx.hir_map(), cx.ty_ctxt(), cx.ty_arena(), &st.krate());
 
             let mut related_classes = HashSet::new();
             for &(id, l) in st.marks().iter() {

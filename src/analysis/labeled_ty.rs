@@ -4,6 +4,8 @@ use arena::DroplessArena;
 use rustc::ty::{Ty, TyCtxt, FnSig, TypeVariants};
 use rustc::ty::subst::Substs;
 
+use type_map;
+
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct LabeledTyS<'tcx, L: 'tcx> {
@@ -147,5 +149,20 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
             where F: FnMut(&L2) -> L {
         let ltys = ltys.iter().cloned().map(|lty| self.relabel(lty, func)).collect::<Vec<_>>();
         self.mk_slice(&ltys)
+    }
+}
+
+
+impl<'tcx, L: fmt::Debug> type_map::Type for LabeledTy<'tcx, L> {
+    fn sty(&self) -> &TypeVariants {
+        &self.ty.sty
+    }
+
+    fn num_args(&self) -> usize {
+        self.args.len()
+    }
+
+    fn arg(&self, idx: usize) -> Self {
+        self.args[idx]
     }
 }

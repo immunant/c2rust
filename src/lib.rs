@@ -52,6 +52,9 @@ pub mod path_edit;
 pub mod dataflow;
 pub mod api;
 
+// Mapping between ASTs and other representations
+pub mod type_map;
+
 // Pattern matching and substitution
 pub mod bindings;
 pub mod matcher;
