@@ -609,6 +609,28 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         self.enter_block(bbid);
         eprintln!("  {:?}", bbid);
 
+        for (idx, s) in bb.statements.iter().enumerate() {
+            self.enter_stmt(idx);
+            match s.kind {
+                StatementKind::Assign(ref lv, ref rv) => {
+                    let (lv_ty, lv_perm) = self.lvalue_lty(lv);
+                    let (rv_ty, rv_perm) = self.rvalue_lty(rv);
+                    self.propagate(lv_ty, rv_ty, rv_perm);
+                    self.propagate_perm(Perm::write(), lv_perm);
+                    eprintln!("    {:?}: {:?}", lv, lv_ty);
+                    eprintln!("    ^-- {:?}: {:?}", rv, rv_ty);
+                },
+                StatementKind::SetDiscriminant { .. } |
+                StatementKind::StorageLive(_) |
+                StatementKind::StorageDead(_) |
+                // InlineAsm has some Lvalues and Operands, but we can't do anything useful
+                // with them without analysing the actual asm code.
+                StatementKind::InlineAsm { .. } |
+                StatementKind::EndRegion(_) |
+                StatementKind::Nop => {},
+            }
+        }
+
         match bb.terminator().kind {
             TerminatorKind::Goto { .. } |
             TerminatorKind::SwitchInt { .. } |
@@ -648,28 +670,6 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                     eprintln!("    ^-- (return): {:?}", sig_ty);
                 }
             },
-        }
-
-        for (idx, s) in bb.statements.iter().enumerate().rev() {
-            self.enter_stmt(idx);
-            match s.kind {
-                StatementKind::Assign(ref lv, ref rv) => {
-                    let (lv_ty, lv_perm) = self.lvalue_lty(lv);
-                    let (rv_ty, rv_perm) = self.rvalue_lty(rv);
-                    self.propagate(lv_ty, rv_ty, rv_perm);
-                    self.propagate_perm(Perm::write(), lv_perm);
-                    eprintln!("    {:?}: {:?}", lv, lv_ty);
-                    eprintln!("    ^-- {:?}: {:?}", rv, rv_ty);
-                },
-                StatementKind::SetDiscriminant { .. } |
-                StatementKind::StorageLive(_) |
-                StatementKind::StorageDead(_) |
-                // InlineAsm has some Lvalues and Operands, but we can't do anything useful
-                // with them without analysing the actual asm code.
-                StatementKind::InlineAsm { .. } |
-                StatementKind::EndRegion(_) |
-                StatementKind::Nop => {},
-            }
         }
     }
 }
@@ -722,7 +722,7 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
                 let (ty, _) = local_cx.lvalue_lty(&Lvalue::Local(l));
                 eprintln!("    {:?}: {:?}", l, ty);
             }
-            for (bbid, bb) in Postorder::new(&mir, START_BLOCK) {
+            for (bbid, bb) in ReversePostorder::new(&mir, START_BLOCK) {
                 local_cx.handle_basic_block(bbid, bb);
             }
 
