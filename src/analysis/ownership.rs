@@ -362,7 +362,11 @@ impl<'tcx> Ctxt<'tcx> {
     fn min_perm_var(&mut self, p1: Perm, p2: Perm) -> Var {
         let vars = &mut self.vars;
         let ps = if p1 < p2 { (p1, p2) } else { (p2, p1) };
-        *self.min_map.entry(ps).or_insert_with(|| vars.fresh(VarKind::Local))
+        *self.min_map.entry(ps).or_insert_with(|| {
+            let v = vars.fresh(VarKind::Local);
+            eprintln!("ADD MIN: {:?} <= min({:?}, {:?})", v, p1, p2);
+            v
+        })
     }
 }
 
@@ -599,6 +603,25 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
     }
 
     fn min_perm(&mut self, p1: Perm, p2: Perm) -> Perm {
+        // Handle some easy cases precisely
+        match (p1, p2) {
+            (Perm::Concrete(ConcretePerm::Read), _) => return p1,
+            (_, Perm::Concrete(ConcretePerm::Read)) => return p2,
+            (Perm::Concrete(ConcretePerm::Move), _) => return p2,
+            (_, Perm::Concrete(ConcretePerm::Move)) => return p1,
+            (_, _) => {},
+        }
+
+        // For other cases, we introduce a new var and constrain it to be less than both p1 and p2.
+        // This works right when the min is used on the RHS of a constraint (`_ <= min(p1, p2)`),
+        // but if it's used on the LHS, the constraint will have no effect.  The LHS case is hard
+        // to handle, but only comes up in some tricky pointer-to-pointer cases, so it seems safe
+        // to ignore for now.
+        //
+        // Note that chaining mins works: `min(p1, min(p2, p3))` produces constraints `p4 <= p1`
+        // and `p4 <= min(p2, p3)` - the nested `min` is on the RHS.
+        //
+        // TODO: make the `min <= _` case work, or ensure it never happens
         let p = Perm::Var(self.cx.min_perm_var(p1, p2));
         self.propagate_perm(p, p1);
         self.propagate_perm(p, p2);
