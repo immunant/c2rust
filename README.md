@@ -7,22 +7,19 @@ style.
 
 ## Building
 
-`idiomize` requires a specific `rustc` version with additional patches.  The
-current supported revision is `8f1339af2`, which is the 1.20 nightly build from
-2017-07-16.  However, correct operation of `idiomize` requires some fixes to
-the Rust pretty printer, which have not been upstreamed yet.  As a result, you
-must build the indicated revision from source, after applying the patch
-`misc/pprust-expr-precedence.patch`.
+Install cargo and rustup first.
 
-After building the correct version of `rustc`, you can compile `idiomize` with
-`cargo build`.  You must either extend `PATH` and `LD_LIBRARY_PATH` with
-`rust/build/$TARGET/stage2/{bin,lib}`, or (if you are using `rustup`) add
-`rust/build/$TARGET/stage2` as a custom toolchain link.
+`idiomize` requires a specific `rustc` version with additional patches.  Clone
+branch `pprust-expr-fix-orig` from [epdtry/rust](https://github.com/epdtry/rust),
+and build it with `./configure && ./x.py build`.  Then add a toolchain link for
+the new compiler: `rustup toolchain link c2rust build/<TRIPLE>/stage2`.
+
+Once `rustc` is set up, build `idiomize` with `cargo +c2rust build`.
 
 Note that building with the wrong `rustc` may appear to succeed, but running
 certain transformations will fail with the message "new and reparsed ASTs
 differ" if `idiomize` is built against a `rustc` that does not include the
-necessary `pprust` fixes.
+fixes from the `pprust-expr-fix-orig` branch.
 
 
 ## Usage
@@ -41,8 +38,11 @@ implementation.
 All arguments after the `--` are passed to `rustc`.  Since `idiomize` runs
 `rustc` analysis passes up through typechecking, the provided flags must
 include any `-L` or `--extern` options needed to find external libraries.  In
-particular, `-L .../rust/build/$TARGET/stage2/lib/rustlib/$TARGET/lib` is
+particular, `-L .../rust/build/<TRIPLE>/stage2/lib/rustlib/<TRIPLE>/lib` is
 usually required to find a compatible version of `libstd`.
+
+Note that you may also need to add `.../rust/build/<TRIPLE>/stage2/lib` to
+`LD_LIBRARY_PATH` in order to run `idiomize`.
 
 
 ## Marks
