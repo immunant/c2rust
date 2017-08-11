@@ -53,6 +53,7 @@ impl Idx for Var {
 
 type LTy<'tcx> = LabeledTy<'tcx, Option<Perm>>;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct LFnSig<'tcx> {
     inputs: &'tcx [LTy<'tcx>],
     output: LTy<'tcx>,
@@ -249,6 +250,7 @@ enum VarKind {
 struct Vars {
     field_min: HashMap<Var, ConcretePerm>,
     sig_cset: HashMap<DefId, ConstraintSet>,
+    sig_accessed: HashSet<DefId>,
 
     next_var: u32,
 }
@@ -258,6 +260,7 @@ impl Vars {
         Vars {
             field_min: HashMap::new(),
             sig_cset: HashMap::new(),
+            sig_accessed: HashSet::new(),
 
             next_var: 0,
         }
@@ -334,19 +337,10 @@ impl<'tcx> Ctxt<'tcx> {
                              tcx: TyCtxt<'a, 'gcx, 'tcx>) -> LFnSig<'tcx> {
         match ty.ty.sty {
             TypeVariants::TyFnDef(def_id, _) => {
-                let sig = tcx.fn_sig(def_id);
-                let inputs = sig.0.inputs().iter().enumerate()
-                    .map(|(i, &ty)| self.labeled(TySource::Sig(def_id, 1 + i),
-                                                 VarKind::Sig,
-                                                 || ty))
-                    .collect::<Vec<_>>();
-                let output = self.labeled(TySource::Sig(def_id, 0),
-                                          VarKind::Sig,
-                                          || sig.0.output());
-
+                let poly_sig = self.labeled_def_sig(def_id, tcx);
                 LFnSig {
-                    inputs: self.lcx.subst_slice(&inputs, &ty.args),
-                    output: self.lcx.subst(output, &ty.args),
+                    inputs: self.lcx.subst_slice(poly_sig.inputs, &ty.args),
+                    output: self.lcx.subst(poly_sig.output, &ty.args),
                 }
             },
 
@@ -360,6 +354,24 @@ impl<'tcx> Ctxt<'tcx> {
             TypeVariants::TyClosure(_, _) => unimplemented!(),
 
             _ => unimplemented!(),
+        }
+    }
+
+    fn labeled_def_sig<'a, 'gcx>(&mut self,
+                                 def_id: DefId,
+                                 tcx: TyCtxt<'a, 'gcx, 'tcx>) -> LFnSig<'tcx> {
+        let sig = tcx.fn_sig(def_id);
+        let inputs = sig.0.inputs().iter().enumerate()
+            .map(|(i, &ty)| self.labeled(TySource::Sig(def_id, 1 + i),
+                                         VarKind::Sig,
+                                         || ty))
+            .collect::<Vec<_>>();
+        let output = self.labeled(TySource::Sig(def_id, 0),
+                                  VarKind::Sig,
+                                  || sig.0.output());
+        LFnSig {
+            inputs: &self.lcx.mk_slice(&inputs),
+            output: output,
         }
     }
 
@@ -474,10 +486,45 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         };
         // TODO: handle substs
         // TODO: add callgraph edge
+
+        if !self.cx.vars.sig_accessed.contains(&def_id) {
+            self.cx.vars.sig_accessed.insert(def_id);
+            // On first access, check if there are preloaded constraints for this def.
+            if !self.cx.vars.sig_cset.contains_key(&def_id) {
+                if let Some(cset) = self.find_preloaded_constraints(def_id) {
+                    self.cx.vars.sig_cset.insert(def_id, cset);
+                }
+            }
+        }
+
         if let Some(cset) = self.cx.vars.sig_cset.get(&def_id) {
-            eprintln!("import {} constraints for {:?}", cset.less.len(), def_id);
             self.cset.import(cset);
         }
+    }
+
+    fn find_preloaded_constraints(&mut self, def_id: DefId) -> Option<ConstraintSet> {
+        let path = self.tcx.absolute_item_path_str(def_id);
+
+        let mut cset = ConstraintSet::new();
+        let sig = self.cx.labeled_def_sig(def_id, self.tcx);
+
+        match &path as &str {
+            "core::ptr::<impl *const T>::offset" |
+            "core::ptr::<impl *mut T>::offset" => {
+                cset.add(sig.output.label.unwrap(),
+                         sig.inputs[0].label.unwrap());
+            },
+
+            _ => return None,
+        }
+
+        eprintln!("PRELOAD CONSTRAINTS for {:?}", def_id);
+        eprintln!("  {:?} -> {:?}", sig.inputs, sig.output);
+        for &(a, b) in &cset.less {
+            eprintln!("    {:?} <= {:?}", a, b);
+        }
+
+        Some(cset)
     }
 
 
