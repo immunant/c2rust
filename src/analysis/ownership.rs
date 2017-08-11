@@ -10,7 +10,7 @@ use arena::DroplessArena;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::mir::*;
 use rustc::mir::traversal::{Postorder, ReversePostorder};
-use rustc::ty::{Ty, TyS, TyCtxt, FnSig, Instance, TypeVariants};
+use rustc::ty::{Ty, TyS, TyCtxt, FnSig, Instance, TypeVariants, AdtDef};
 use rustc::ty::subst::Substs;
 use rustc::ty::fold::{TypeVisitor, TypeFoldable};
 use rustc_data_structures::bitvec::BitVector;
@@ -223,13 +223,17 @@ enum TySource {
     /// corresponding to args and return.
     Local(DefId, usize),
 
-    /// Types of the fields of structs.
-    StructField(DefId, usize),
+    /// Types of the fields of structs/enums/unions.  The first usize is the variant index (0 for
+    /// structs/unions).  The second is the field index.
+    Field(DefId, usize, usize),
 
-    /// Types appearing in `Rvalue::Cast`.  Note that `Rvalue`s appear only on the RHS of
-    /// `StatementKind::Assign`.  We identify the cast by its containing function, basic block, and
-    /// statement index.
-    Cast(DefId, BasicBlock, usize),
+    /// Types appearing in `Rvalue`s.  Note that `Rvalue`s appear only on the RHS of
+    /// `StatementKind::Assign`.  We identify the rvalue by its containing function, basic block,
+    /// and statement index.
+    Rvalue(DefId, BasicBlock, usize),
+
+    /// Types of static definitions.  This includes consts, statics, and extern statics.
+    Static(DefId),
 
     // TODO: better handling of consts
     Const(usize),
@@ -237,7 +241,7 @@ enum TySource {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum VarKind {
-    Field,
+    Static,
     Sig,
     Local,
 }
@@ -263,7 +267,7 @@ impl Vars {
         let v = Var(self.next_var);
         self.next_var += 1;
         match kind {
-            VarKind::Field => {
+            VarKind::Static => {
                 self.field_min.insert(v, ConcretePerm::Read);
             },
             VarKind::Sig => {},
@@ -491,7 +495,8 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             },
 
             Lvalue::Static(ref s) => {
-                unimplemented!()
+                (self.cx.labeled(TySource::Static(s.def_id), VarKind::Static, || s.ty),
+                 Perm::move_())
             },
 
             Lvalue::Projection(ref p) => {
@@ -502,7 +507,8 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                     ProjectionElem::Deref =>
                         (base_ty.args[0], self.min_perm(base_perm, base_ty.label.unwrap())),
                     ProjectionElem::Field(f, _) => (self.field_lty(base_ty, f), base_perm),
-                    ProjectionElem::Index(_) => unimplemented!(),
+                    ProjectionElem::Index(ref index_op) =>
+                        (base_ty.args[0], base_perm),
                     ProjectionElem::ConstantIndex { .. } => unimplemented!(),
                     ProjectionElem::Subslice { .. } => unimplemented!(),
                     ProjectionElem::Downcast(_, _) => unimplemented!(),
@@ -513,12 +519,8 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
 
     fn field_lty(&mut self, base_ty: LTy<'tcx>, f: Field) -> LTy<'tcx> {
         match base_ty.ty.sty {
-            TypeVariants::TyAdt(adt, substs) => {
-                let source = TySource::StructField(adt.did, f.index());
-                let tcx = self.tcx;
-                let poly_ty = self.cx.labeled(source, VarKind::Field, || {
-                    tcx.type_of(adt.struct_variant().fields[f.index()].did)
-                });
+            TypeVariants::TyAdt(def, substs) => {
+                let poly_ty = self.def_field_lty(def, 0, f.index());
                 self.cx.lcx.subst(poly_ty, &base_ty.args)
             },
             TypeVariants::TyTuple(tys, _) => base_ty.args[f.index()],
@@ -526,19 +528,43 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         }
     }
 
+    // TODO: handle substs
+    fn def_field_lty(&mut self, adt: &'tcx AdtDef, variant: usize, field: usize) -> LTy<'tcx> {
+        let source = TySource::Field(adt.did, variant, field);
+        let tcx = self.tcx;
+        self.cx.labeled(source, VarKind::Static, || {
+            tcx.type_of(adt.variants[variant].fields[field].did)
+        })
+    }
+
     fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> (LTy<'tcx>, Perm) {
         match *rv {
             Rvalue::Use(ref op) => self.operand_lty(op),
-            Rvalue::Repeat(ref op, len) => unimplemented!(),
+            Rvalue::Repeat(ref op, len) => {
+                let mir = self.mir;
+                let tcx = self.tcx;
+                let source = TySource::Rvalue(self.def_id, self.bbid, self.stmt_idx);
+                let arr_ty = self.cx.labeled(source, VarKind::Local, || rv.ty(mir, tcx));
+
+                // Assign the operand to the array element.
+                let (op_ty, op_perm) = self.operand_lty(op);
+                self.propagate(arr_ty.args[0], op_ty, op_perm);
+
+                (arr_ty, Perm::move_())
+            },
             Rvalue::Ref(_, _, ref lv) => {
                 let (ty, perm) = self.lvalue_lty(lv);
                 let args = self.cx.lcx.mk_slice(&[ty]);
                 let ref_ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, Some(perm));
                 (ref_ty, Perm::move_())
             },
-            Rvalue::Len(_) => unimplemented!(),
+            Rvalue::Len(_) => {
+                // Produces a usize
+                let ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), &[], None);
+                (ty, Perm::move_())
+            },
             Rvalue::Cast(_, ref op, ty) => {
-                let source = TySource::Cast(self.def_id, self.bbid, self.stmt_idx);
+                let source = TySource::Rvalue(self.def_id, self.bbid, self.stmt_idx);
                 let cast_ty = self.cx.labeled(source, VarKind::Local, || ty);
                 let (op_ty, op_perm) = self.operand_lty(op);
                 self.propagate(cast_ty, op_ty, Perm::move_());
@@ -546,25 +572,63 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             },
             Rvalue::BinaryOp(op, ref a, ref b) |
             Rvalue::CheckedBinaryOp(op, ref a, ref b) => match op {
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem |
+                BinOp::BitXor | BinOp::BitAnd | BinOp::BitOr | BinOp::Shl | BinOp::Shr |
+                BinOp::Eq | BinOp::Lt | BinOp::Le | BinOp::Ne | BinOp::Ge | BinOp::Gt => {
+                    // These ops only ever produce primitive values.
+                    let ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), &[], None);
+                    (ty, Perm::move_())
+                },
+
                 BinOp::Offset => self.operand_lty(a),
-                _ => unimplemented!(),
             },
             Rvalue::NullaryOp(op, ty) => unimplemented!(),
             Rvalue::UnaryOp(op, ref a) => match op {
-                UnOp::Not |
-                UnOp::Neg => self.operand_lty(a),
+                UnOp::Not | UnOp::Neg => {
+                    let ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), &[], None);
+                    (ty, Perm::move_())
+                },
             },
             Rvalue::Discriminant(ref lv) => unimplemented!(),
             Rvalue::Aggregate(ref kind, ref ops) => {
                 match **kind {
-                    AggregateKind::Array(_) => unimplemented!(),
+                    AggregateKind::Array(ty) => {
+                        let source = TySource::Rvalue(self.def_id, self.bbid, self.stmt_idx);
+                        let elem_ty = self.cx.labeled(source, VarKind::Local, || ty);
+                        // Record a pseudo-assignment from each array element operand to the array
+                        // element type.
+                        for op in ops {
+                            let (op_ty, op_perm) = self.operand_lty(op);
+                            self.propagate(elem_ty, op_ty, op_perm);
+                        }
+                        let args = self.cx.lcx.mk_slice(&[elem_ty]);
+                        let arr_ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, None);
+                        (arr_ty, Perm::move_())
+                    },
                     AggregateKind::Tuple => {
                         let args = ops.iter().map(|op| self.operand_lty(op).0).collect::<Vec<_>>();
                         let args = self.cx.lcx.mk_slice(&args);
                         let ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, None);
                         (ty, Perm::move_())
                     },
-                    AggregateKind::Adt(_, _, _, _) => unimplemented!(),
+                    AggregateKind::Adt(def, disr, substs, union_variant) => {
+                        if let Some(union_variant) = union_variant {
+                            assert!(ops.len() == 1);
+                            let field_ty = self.def_field_lty(def, 0, union_variant);
+                            let (op_ty, op_perm) = self.operand_lty(&ops[0]);
+                            self.propagate(field_ty, op_ty, op_perm);
+                        } else {
+                            for (i, op) in ops.iter().enumerate() {
+                                let field_ty = self.def_field_lty(def, disr, i);
+                                let (op_ty, op_perm) = self.operand_lty(op);
+                                self.propagate(field_ty, op_ty, op_perm);
+                            }
+                        }
+
+                        // TODO: handle substs
+                        let ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), &[], None);
+                        (ty, Perm::move_())
+                    },
                     AggregateKind::Closure(_, _) => unimplemented!(),
                 }
             },
@@ -719,7 +783,20 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
 fn get_sig<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                            cx: &mut Ctxt<'tcx>,
                            def_id: DefId) -> LFnSig<'tcx> {
-    let sig = tcx.fn_sig(def_id);
+    let ty = tcx.type_of(def_id);
+    match ty.sty {
+        TypeVariants::TyFnDef(_, _) |
+        TypeVariants::TyFnPtr(_) => {},
+
+        _ => {
+            return LFnSig {
+                inputs: &[],
+                output: cx.labeled(TySource::Static(def_id), VarKind::Static, || ty),
+            };
+        },
+    }
+
+    let sig = ty.fn_sig(tcx);
     let inputs = sig.0.inputs().iter().enumerate()
         .map(|(i, &ty)| cx.labeled(TySource::Sig(def_id, 1 + i), VarKind::Sig, || ty))
         .collect::<Vec<_>>();
@@ -789,28 +866,44 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     }
 
 
+    eprintln!("\n === summary ===");
     let mut def_ids = tcx.mir_keys(LOCAL_CRATE).iter().cloned().collect::<Vec<_>>();
     def_ids.sort();
+    let name_arena = ::arena::TypedArena::new();
     let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
     for def_id in def_ids {
         let sig = get_sig(cx.ty_ctxt(), &mut ctxt, def_id);
         let cset = ctxt.vars.sig_cset.get(&def_id);
-        let mut func = |&v: &Option<_>| {
-            if v.is_none() {
-                return "--";
+        let mut func = |&p: &Option<_>| {
+            if p.is_none() {
+                return format!("");
             }
+            let p = p.unwrap();
+            let v = match p {
+                Perm::Var(v) => v,
+                Perm::Concrete(c) => return format!("{:?}", c),
+            };
+
             if cset.is_none() {
-                return "???";
+                return format!("{}=???", v.index());
             }
-            match cset.unwrap().lower_bound(v.unwrap()) {
-                ConcretePerm::Read => "REF",
-                ConcretePerm::Write => "MUT",
-                ConcretePerm::Move => "BOX",
-            }
+            format!("{}={:?}", v.index(), cset.unwrap().lower_bound(p))
         };
-        let inputs = new_lcx.relabel_slice(sig.inputs, &mut func);
-        let output = new_lcx.relabel(sig.output, &mut func);
+        let mut func2 = |p: &_| {
+            let s = func(p);
+            name_arena.alloc(s) as &str
+        };
+        let inputs = new_lcx.relabel_slice(sig.inputs, &mut func2);
+        let output = new_lcx.relabel(sig.output, &mut func2);
         eprintln!("{:?}:\n  {:?} -> {:?}", def_id, inputs, output);
+        if let Some(cset) = cset {
+            for &(a, b) in &cset.less {
+                if a == b || a == Perm::read() || b == Perm::move_() {
+                    continue;
+                }
+                eprintln!("    {:?} <= {:?}", a, b);
+            }
+        }
     }
 }
 
