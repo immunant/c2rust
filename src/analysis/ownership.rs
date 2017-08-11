@@ -584,6 +584,11 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
     }
 
 
+    /// Handle an assignment, including the implicit assignments of function arguments and return
+    /// values.  An assignment can include an implicit reborrow, reducing the permission of the
+    /// topmost pointer type.  The resulting permission must be no higher than the permission of
+    /// the RHS pointer, and also must be no higher than the permission of any pointer dereferenced
+    /// on the path to the RHS.
     fn propagate(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>, max_perm: Perm) {
         if let (Some(l_perm), Some(r_perm)) = (lhs.label, rhs.label) {
             self.propagate_perm(l_perm, r_perm);
@@ -592,7 +597,20 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
 
         if lhs.args.len() == rhs.args.len() {
             for (&l_arg, &r_arg) in lhs.args.iter().zip(rhs.args.iter()) {
-                self.propagate(l_arg, r_arg, max_perm);
+                self.propagate_eq(l_arg, r_arg);
+            }
+        }
+    }
+
+    fn propagate_eq(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>) {
+        if let (Some(l_perm), Some(r_perm)) = (lhs.label, rhs.label) {
+            self.propagate_perm(l_perm, r_perm);
+            self.propagate_perm(r_perm, l_perm);
+        }
+
+        if lhs.args.len() == rhs.args.len() {
+            for (&l_arg, &r_arg) in lhs.args.iter().zip(rhs.args.iter()) {
+                self.propagate_eq(l_arg, r_arg);
             }
         }
     }
