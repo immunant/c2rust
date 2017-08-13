@@ -93,7 +93,7 @@ def download_llvm_sources():
             tar("xf", os.path.join(SCRIPT_DIR, LLVM_ARCHIVE_FILES[1]))
             os.rename(LLVM_ARCHIVE_DIRS[1], "clang")
 
-        with pb.local.cwd("clang"):
+        with pb.local.cwd("clang/tools"):
             if not os.path.isdir("extra"):
                 logging.info("extracting %s", LLVM_ARCHIVE_FILES[2])
                 tar("xf", os.path.join(SCRIPT_DIR, LLVM_ARCHIVE_FILES[2]))
@@ -168,7 +168,7 @@ add_subdirectory(ast-extractor)
     # update cmakefile
     # echo 'add_subdirectory(ast-extractor)' >> CMakeLists.txt
     if not os.path.exists(os.path.join(clang_tools_extra, "CMakeLists.txt")):
-        with open("CMakeLists.txt", "w") as fh:
+        with open("CMakeLists.txt", "w+") as fh:
             fh.writelines(cmakelists)
 
     # download tinycbor
