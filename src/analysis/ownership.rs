@@ -4,9 +4,11 @@ use std::collections::BTreeSet;
 use std::collections::hash_map::{HashMap, Entry};
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::fmt;
 use std::u32;
 
 use arena::DroplessArena;
+use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::mir::*;
 use rustc::mir::traversal::{Postorder, ReversePostorder};
@@ -15,10 +17,12 @@ use rustc::ty::subst::Substs;
 use rustc::ty::fold::{TypeVisitor, TypeFoldable};
 use rustc_data_structures::bitvec::BitVector;
 use rustc_data_structures::indexed_vec::{IndexVec, Idx};
+use syntax::ast;
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use command::CommandState;
 use driver;
+use type_map::{self, TypeSource};
 
 
 // - "permanent" vars:
@@ -214,7 +218,7 @@ impl ConstraintSet {
 }
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 enum TySource {
     /// Types that appear in the signature of a def.  These are actually the first 1+N locals of
     /// the def, where N is the number of args.
@@ -224,16 +228,12 @@ enum TySource {
     /// corresponding to args and return.
     Local(DefId, usize),
 
-    /// Types of the fields of structs/enums/unions.  The first usize is the variant index (0 for
-    /// structs/unions).  The second is the field index.
-    Field(DefId, usize, usize),
-
     /// Types appearing in `Rvalue`s.  Note that `Rvalue`s appear only on the RHS of
     /// `StatementKind::Assign`.  We identify the rvalue by its containing function, basic block,
     /// and statement index.
     Rvalue(DefId, BasicBlock, usize),
 
-    /// Types of static definitions.  This includes consts, statics, and extern statics.
+    /// Types of static definitions.  This includes consts/statics as well as struct/enum fields.
     Static(DefId),
 
     // TODO: better handling of consts
@@ -243,13 +243,14 @@ enum TySource {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum VarKind {
     Static,
-    Sig,
+    Sig(DefId),
     Local,
 }
 
 struct Vars {
     field_min: HashMap<Var, ConcretePerm>,
     sig_cset: HashMap<DefId, ConstraintSet>,
+    sig_vars: HashMap<DefId, HashSet<Var>>,
     sig_accessed: HashSet<DefId>,
 
     next_var: u32,
@@ -260,6 +261,7 @@ impl Vars {
         Vars {
             field_min: HashMap::new(),
             sig_cset: HashMap::new(),
+            sig_vars: HashMap::new(),
             sig_accessed: HashSet::new(),
 
             next_var: 0,
@@ -273,7 +275,9 @@ impl Vars {
             VarKind::Static => {
                 self.field_min.insert(v, ConcretePerm::Read);
             },
-            VarKind::Sig => {},
+            VarKind::Sig(def_id) => {
+                self.sig_vars.entry(def_id).or_insert_with(HashSet::new).insert(v);
+            },
             VarKind::Local => {},
         }
         v
@@ -285,6 +289,14 @@ impl Vars {
             eprintln!("FIELD EXPORT: {:?} = {:?} -> {:?}", v, *p, new_min);
             *p = cmp::max(*p, new_min);
         }
+    }
+
+    fn ensure_sig_vars(&mut self, did: DefId) {
+        self.sig_vars.entry(did).or_insert_with(HashSet::new);
+    }
+
+    fn add_sig_constraint(&mut self, did: DefId, a: Perm, b: Perm) {
+        self.sig_cset.entry(did).or_insert_with(ConstraintSet::new).add(a, b)
     }
 }
 
@@ -363,11 +375,11 @@ impl<'tcx> Ctxt<'tcx> {
         let sig = tcx.fn_sig(def_id);
         let inputs = sig.0.inputs().iter().enumerate()
             .map(|(i, &ty)| self.labeled(TySource::Sig(def_id, 1 + i),
-                                         VarKind::Sig,
+                                         VarKind::Sig(def_id),
                                          || ty))
             .collect::<Vec<_>>();
         let output = self.labeled(TySource::Sig(def_id, 0),
-                                  VarKind::Sig,
+                                  VarKind::Sig(def_id),
                                   || sig.0.output());
         LFnSig {
             inputs: &self.lcx.mk_slice(&inputs),
@@ -577,10 +589,11 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
 
     // TODO: handle substs
     fn def_field_lty(&mut self, adt: &'tcx AdtDef, variant: usize, field: usize) -> LTy<'tcx> {
-        let source = TySource::Field(adt.did, variant, field);
+        let field_def = &adt.variants[variant].fields[field];
+        let source = TySource::Static(field_def.did);
         let tcx = self.tcx;
         self.cx.labeled(source, VarKind::Static, || {
-            tcx.type_of(adt.variants[variant].fields[field].did)
+            tcx.type_of(field_def.did)
         })
     }
 
@@ -827,6 +840,53 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
 }
 
 
+struct LTySource<'a, 'gcx: 'tcx, 'tcx: 'a> {
+    cx: &'a mut Ctxt<'tcx>,
+    tcx: TyCtxt<'a, 'gcx, 'tcx>,
+}
+
+impl<'a, 'gcx, 'tcx> TypeSource for LTySource<'a, 'gcx, 'tcx> {
+    type Type = LTy<'tcx>;
+    type Signature = LFnSig<'tcx>;
+
+    fn expr_type(&mut self, e: &ast::Expr) -> Option<Self::Type> {
+        None
+    }
+
+    fn pat_type(&mut self, p: &ast::Pat) -> Option<Self::Type> {
+        None
+    }
+
+    fn def_type(&mut self, did: DefId) -> Option<Self::Type> {
+        let tcx = self.tcx;
+        Some(self.cx.labeled(TySource::Static(did), VarKind::Static, || tcx.type_of(did)))
+    }
+
+    fn fn_sig(&mut self, did: DefId) -> Option<Self::Signature> {
+        Some(self.cx.labeled_def_sig(did, self.tcx))
+    }
+
+    fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> {
+        // TODO - should probably support this
+        None
+    }
+}
+
+impl<'tcx> type_map::Signature<LTy<'tcx>> for LFnSig<'tcx> {
+    fn num_inputs(&self) -> usize {
+        self.inputs.len()
+    }
+
+    fn input(&self, idx: usize) -> LTy<'tcx> {
+        self.inputs[idx]
+    }
+
+    fn output(&self) -> LTy<'tcx> {
+        self.output
+    }
+}
+
+
 fn get_sig<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                            cx: &mut Ctxt<'tcx>,
                            def_id: DefId) -> LFnSig<'tcx> {
@@ -845,12 +905,77 @@ fn get_sig<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 
     let sig = ty.fn_sig(tcx);
     let inputs = sig.0.inputs().iter().enumerate()
-        .map(|(i, &ty)| cx.labeled(TySource::Sig(def_id, 1 + i), VarKind::Sig, || ty))
+        .map(|(i, &ty)| cx.labeled(TySource::Sig(def_id, 1 + i), VarKind::Sig(def_id), || ty))
         .collect::<Vec<_>>();
-    let output = cx.labeled(TySource::Sig(def_id, 0), VarKind::Sig, || sig.0.output());
+    let output = cx.labeled(TySource::Sig(def_id, 0), VarKind::Sig(def_id), || sig.0.output());
     LFnSig {
         inputs: cx.lcx.mk_slice(&inputs),
         output: output,
+    }
+}
+
+struct Pretty<'tcx, L: 'tcx>(LabeledTy<'tcx, L>);
+
+fn perm_label(p: Option<ConcretePerm>) -> &'static str {
+    match p {
+        Some(ConcretePerm::Read) => "READ ",
+        Some(ConcretePerm::Write) => "WRITE ",
+        Some(ConcretePerm::Move) => "MOVE ",
+        None => "",
+    }
+}
+
+fn pretty_slice<'a, 'tcx, L>(tys: &'a [LabeledTy<'tcx, L>]) -> &'a [Pretty<'tcx, L>] {
+    unsafe { ::std::mem::transmute(tys) }
+}
+
+struct PrettyLabel<L>(L);
+
+impl fmt::Debug for PrettyLabel<ConcretePerm> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            ConcretePerm::Read => write!(fmt, "READ"),
+            ConcretePerm::Write => write!(fmt, "WRITE"),
+            ConcretePerm::Move => write!(fmt, "MOVE"),
+        }
+    }
+}
+
+impl<L> fmt::Debug for PrettyLabel<Option<L>> where L: Copy, PrettyLabel<L>: fmt::Debug {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            Some(x) => write!(fmt, "{:?}", PrettyLabel(x)),
+            None => Ok(()),
+        }
+    }
+}
+
+impl fmt::Debug for PrettyLabel<(ConcretePerm, Option<Var>)> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(v) = (self.0).1 {
+            write!(fmt, "{:?}#{}", PrettyLabel((self.0).0), v.index())
+        } else {
+            write!(fmt, "{:?}#?", PrettyLabel((self.0).0))
+        }
+    }
+}
+
+
+impl<'tcx, L> fmt::Debug for Pretty<'tcx, L> where L: Copy + fmt::Debug, PrettyLabel<L>: fmt::Debug {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self.0.ty.sty {
+            TypeVariants::TyRef(_, mty) =>
+                write!(fmt, "&{} {:?} {:?}",
+                       if mty.mutbl == hir::MutImmutable { "" } else { "mut" },
+                       PrettyLabel(self.0.label),
+                       Pretty(self.0.args[0])),
+            TypeVariants::TyRawPtr(mty) =>
+                write!(fmt, "*{} {:?} {:?}",
+                       if mty.mutbl == hir::MutImmutable { "const" } else { "mut" },
+                       PrettyLabel(self.0.label),
+                       Pretty(self.0.args[0])),
+            _ => write!(fmt, "{:?}", self.0),
+        }
     }
 }
 
@@ -858,20 +983,61 @@ fn get_sig<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     let mut ctxt = Ctxt::new(cx.ty_arena());
 
+    let mut fixed_vars = HashMap::new();
+    {
+        let source = LTySource {
+            cx: &mut ctxt,
+            tcx: cx.ty_ctxt(),
+        };
 
-    // TODO: make this less special-cased
-    for &(id, label) in st.marks().iter() {
-        if label == "free" {
-            if let Some(def_id) = cx.hir_map().opt_local_def_id(id) {
-                let sig = get_sig(cx.ty_ctxt(), &mut ctxt, def_id);
-                let p = sig.inputs[0].label.unwrap();
-                let mut cset = ConstraintSet::new();
-                cset.add(Perm::move_(), p);
-                ctxt.vars.sig_cset.insert(def_id, cset);
-                eprintln!("FREE: {:?}: arg var = {:?}", def_id, p);
+        type_map::map_types(cx.hir_map(), source, &st.krate(), |source, ast_ty, lty| {
+            eprintln!("match {:?} ({:?}) with {:?}", ast_ty, ast_ty.id, lty);
+            if st.marked(ast_ty.id, "box") {
+                if let Some(Perm::Var(v)) = lty.label {
+                    fixed_vars.insert(v, Perm::move_());
+                }
+            }
+
+            if st.marked(ast_ty.id, "mut") {
+                if let Some(Perm::Var(v)) = lty.label {
+                    fixed_vars.insert(v, Perm::write());
+                }
+            }
+
+            if st.marked(ast_ty.id, "ref") {
+                if let Some(Perm::Var(v)) = lty.label {
+                    fixed_vars.insert(v, Perm::read());
+                }
+            }
+        });
+    }
+
+    // For any marked types that are in signatures, add constraints to the parent function's cset.
+    let mut sig_constraints = Vec::new();
+    for (&did, vars) in &ctxt.vars.sig_vars {
+        for &v in vars {
+            if let Some(p) = fixed_vars.remove(&v) {
+                sig_constraints.push((did, v, p));
             }
         }
     }
+
+    for (did, v, p) in sig_constraints {
+        ctxt.vars.add_sig_constraint(did, Perm::Var(v), p);
+        ctxt.vars.add_sig_constraint(did, p, Perm::Var(v));
+    }
+
+    // Check the remaining marked types for ones that should be added to the field constraints.
+    for (&v, &p) in &fixed_vars {
+        if ctxt.vars.field_min.contains_key(&v) {
+            let p = match p {
+                Perm::Concrete(p) => p,
+                _ => panic!("expected Perm::Concrete"),
+            };
+            ctxt.vars.field_min.insert(v, p);
+        }
+    }
+
 
 
     let tcx = cx.ty_ctxt();
@@ -914,35 +1080,45 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
 
 
     eprintln!("\n === summary ===");
+    let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
+
+    {
+        let mut lty_map_sorted = ctxt.lty_map.iter().collect::<Vec<_>>();
+        lty_map_sorted.sort_by_key(|&(k, _)| k);
+        for (&k, &v) in lty_map_sorted {
+            let def_id = match k {
+                TySource::Static(def_id) => def_id,
+                _ => continue,
+            };
+
+            let ty = new_lcx.relabel(v, &mut |p| {
+                p.as_ref().and_then(|&p| match p {
+                    Perm::Var(v) => ctxt.vars.field_min.get(&v).cloned()
+                        .map(|p| (p, Some(v))),
+                    Perm::Concrete(p) => Some((p, None)),
+                })
+            });
+
+            eprintln!("{:?}: {:?}", def_id, Pretty(ty));
+        }
+    }
+
+    let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
     let mut def_ids = tcx.mir_keys(LOCAL_CRATE).iter().cloned().collect::<Vec<_>>();
     def_ids.sort();
-    let name_arena = ::arena::TypedArena::new();
-    let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
     for def_id in def_ids {
         let sig = get_sig(cx.ty_ctxt(), &mut ctxt, def_id);
         let cset = ctxt.vars.sig_cset.get(&def_id);
-        let mut func = |&p: &Option<_>| {
-            if p.is_none() {
-                return format!("");
-            }
-            let p = p.unwrap();
-            let v = match p {
-                Perm::Var(v) => v,
-                Perm::Concrete(c) => return format!("{:?}", c),
-            };
-
-            if cset.is_none() {
-                return format!("{}=???", v.index());
-            }
-            format!("{}={:?}", v.index(), cset.unwrap().lower_bound(p))
-        };
-        let mut func2 = |p: &_| {
-            let s = func(p);
-            name_arena.alloc(s) as &str
+        let mut func2 = |p: &Option<_>| {
+            p.as_ref().and_then(|&p| match p {
+                Perm::Var(v) => cset.as_ref().map(|cset| cset.lower_bound(p))
+                    .map(|p| (p, Some(v))),
+                Perm::Concrete(p) => Some((p, None)),
+            })
         };
         let inputs = new_lcx.relabel_slice(sig.inputs, &mut func2);
         let output = new_lcx.relabel(sig.output, &mut func2);
-        eprintln!("{:?}:\n  {:?} -> {:?}", def_id, inputs, output);
+        eprintln!("{:?}:\n  {:?} -> {:?}", def_id, pretty_slice(inputs), Pretty(output));
         if let Some(cset) = cset {
             for &(a, b) in &cset.less {
                 if a == b || a == Perm::read() || b == Perm::move_() {
