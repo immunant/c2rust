@@ -34,6 +34,7 @@ LLVM_SIGNATURE_URLS = [s + ".sig" for s in LLVM_ARCHIVE_URLS]
 LLVM_ARCHIVE_FILES = [os.path.basename(s) for s in LLVM_ARCHIVE_URLS]
 LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "") for s in LLVM_ARCHIVE_FILES]
 
+MIN_PLUMBUM_VERSION = (1, 6, 3)
 
 def die(emsg, ecode=1):
     logging.fatal("error: %s", emsg)
@@ -239,16 +240,25 @@ def integrate_ast_extractor():
     update_cmakelists(cmakelists_path)
 
 
-if __name__ == "__main__":
-    setup_logging()
-    logging.debug("args: %s", " ".join(sys.argv))
-
+def parse_args():
     desc = 'download dependencies for the AST extractor and built it.'
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('-c', '--clean', default=False,
                         action='store_true', dest='clean',
                         help='clean everything before building')
-    args = parser.parse_args()
+    return parser.parse_args()
+
+if __name__ == "__main__":
+    setup_logging()
+    logging.debug("args: %s", " ".join(sys.argv))
+
+    # earlier plumbum versions are missing features such as TEE
+    if pb.__version__ < MIN_PLUMBUM_VERSION:
+        err =  "locally installed version {} of plumbum is too old.\n".format(pb.__version__)
+        err += "please upgrade plumbum to version {} or later.".format(MIN_PLUMBUM_VERSION)
+        die(err)
+
+    args = parse_args()
     if args.clean:
         logging.info("cleaning previously downloaded and built files")
         shutil.rmtree(LLVM_SRC, ignore_errors=True)
