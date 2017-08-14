@@ -6,9 +6,14 @@ import sys
 import errno
 import shutil
 import logging
-import plumbum as pb
 import argparse
 
+try:
+    import plumbum as pb
+except ImportError:
+    # run `pip install plumbum` or `easy_install plumbum` to fix
+    print >> sys.stderr, "error: python package plumbum is not installed."
+    quit(errno.ENOENT)
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 LLVM_SRC = os.path.join(SCRIPT_DIR, 'llvm.src')
@@ -22,7 +27,7 @@ CBOR_PREFIX = os.path.join(SCRIPT_DIR, "tinycbor")
 
 KEYSERVER = "pgpkeys.mit.edu"
 LLVM_PUBKEY = "8F0871F202119294"
-LLVM_VER = "4.0.1"  # FIXME: allow env override
+LLVM_VER = "4.0.1"
 LLVM_ARCHIVE_URLS = """
 http://releases.llvm.org/{ver}/llvm-4.0.1.src.tar.xz
 http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz
@@ -222,7 +227,9 @@ def install_tinycbor():
 
 
 def integrate_ast_extractor():
-    # link ast-extractor into $LLVM_SRC/tools/clang/tools/extra
+    """
+    link ast-extractor into $LLVM_SRC/tools/clang/tools/extra
+    """
     src = os.path.join(SCRIPT_DIR, "ast-extractor")
     extractor_dest = os.path.join(
         LLVM_SRC, "tools/clang/tools/extra/ast-extractor")
@@ -241,6 +248,9 @@ def integrate_ast_extractor():
 
 
 def parse_args():
+    """
+    define and parse command line arguments here.
+    """
     desc = 'download dependencies for the AST extractor and built it.'
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('-c', '--clean', default=False,
@@ -248,13 +258,14 @@ def parse_args():
                         help='clean everything before building')
     return parser.parse_args()
 
-if __name__ == "__main__":
+
+def main():
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
     # earlier plumbum versions are missing features such as TEE
     if pb.__version__ < MIN_PLUMBUM_VERSION:
-        err =  "locally installed version {} of plumbum is too old.\n".format(pb.__version__)
+        err = "locally installed version {} of plumbum is too old.\n".format(pb.__version__)
         err += "please upgrade plumbum to version {} or later.".format(MIN_PLUMBUM_VERSION)
         die(err)
 
@@ -266,8 +277,9 @@ if __name__ == "__main__":
         shutil.rmtree(CBOR_PREFIX, ignore_errors=True)
         shutil.rmtree(CBOR_SRC, ignore_errors=True)
 
-    # FIXME: allow env override of LLVM_SRC and LLVM_BLD
+    # FIXME: allow env/cli override of LLVM_SRC, LLVM_VER, and LLVM_BLD
     # FIXME: check that cmake and ninja are installed
+    # FIXME: option to build LLVM/Clang from master?
 
     ensure_dir(LLVM_BLD)
 
@@ -278,3 +290,6 @@ if __name__ == "__main__":
     install_tinycbor()
 
     configure_and_build_llvm()
+
+if __name__ == "__main__":
+    main()
