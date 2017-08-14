@@ -4,16 +4,21 @@ import os
 import re
 import sys
 import errno
+import shutil
 import logging
 import plumbum as pb
+import argparse
+
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 LLVM_SRC = os.path.join(SCRIPT_DIR, 'llvm.src')
 LLVM_BLD = os.path.join(SCRIPT_DIR, 'llvm.build')
 LOG_FILE = os.path.realpath(__file__).replace(".py", ".log")
-CBOR_PREFIX = os.path.join(SCRIPT_DIR, "tinycbor")
 CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
-CBOR_ARCHIVE = "tinycbor-0.4.1.tar.gz"
+CBOR_ARCHIVE = os.path.join(SCRIPT_DIR, "tinycbor-0.4.1.tar.gz")
+CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
+CBOR_SRC = os.path.join(SCRIPT_DIR, CBOR_SRC)
+CBOR_PREFIX = os.path.join(SCRIPT_DIR, "tinycbor")
 
 KEYSERVER = "pgpkeys.mit.edu"
 LLVM_PUBKEY = "8F0871F202119294"
@@ -42,8 +47,8 @@ def get_cmd_or_die(cmd):
     except pb.CommandNotFound:
         die("{} not in path".format(cmd), errno.ENOENT)
 
-def download_llvm_sources():
 
+def download_llvm_sources():
     curl = get_cmd_or_die("curl")
     tar = get_cmd_or_die("tar")
     # on macOS, run `brew install gpg`
@@ -188,27 +193,34 @@ def update_cbor_prefix(makefile):
 
 
 def install_tinycbor():
-    # download, unpack, build, and install tinycbor
-    cbor_dest = os.path.join(SCRIPT_DIR, CBOR_ARCHIVE)
-    cbor_dir = os.path.basename(cbor_dest).replace(".tar.gz", "")
-    cbor_dir = os.path.join(SCRIPT_DIR, cbor_dir)
-    if not os.path.isfile(cbor_dest):
-        curl = get_cmd_or_die("curl")
-        tar = get_cmd_or_die("tar")
+    """
+    download, unpack, build, and install tinycbor.
+    """
+    if os.path.isdir(CBOR_PREFIX):
+        logging.debug("skipping tinycbor installation")
+        return
 
-        curl['-s', CBOR_URL, '-o', cbor_dest] & pb.TEE
-        # check whether tinycbor dir exists or not
-        if not os.path.isdir(cbor_dir):
-            tar['xf', cbor_dest] & pb.TEE
-    update_cbor_prefix(os.path.join(cbor_dir, "Makefile"))
-    with pb.local.cwd(cbor_dir):
+    # download
+    if not os.path.isfile(CBOR_ARCHIVE):
+        curl = get_cmd_or_die("curl")
+        curl['-s', CBOR_URL, '-o', CBOR_ARCHIVE] & pb.TEE
+
+    # unpack
+    if not os.path.isdir(CBOR_SRC):
+        tar = get_cmd_or_die("tar")
+        tar['xf', CBOR_ARCHIVE] & pb.TEE
+
+    # update install prefix
+    update_cbor_prefix(os.path.join(CBOR_SRC, "Makefile"))
+
+    # make && install
+    with pb.local.cwd(CBOR_SRC):
         make = get_cmd_or_die("make")
         make & pb.TEE
         make('install')  # & pb.TEE
 
 
 def integrate_ast_extractor():
-    global clang_tools_extra
     # link ast-extractor into $LLVM_SRC/tools/clang/tools/extra
     src = os.path.join(SCRIPT_DIR, "ast-extractor")
     extractor_dest = os.path.join(
@@ -231,7 +243,19 @@ if __name__ == "__main__":
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
-    # FIXME: add clean option to start all over
+    desc = 'download dependencies for the AST extractor and built it.'
+    parser = argparse.ArgumentParser(description=desc)
+    parser.add_argument('-c', '--clean', default=False,
+                        action='store_true', dest='clean',
+                        help='clean everything before building')
+    args = parser.parse_args()
+    if args.clean:
+        logging.info("cleaning previously downloaded and built files")
+        shutil.rmtree(LLVM_SRC, ignore_errors=True)
+        shutil.rmtree(LLVM_BLD, ignore_errors=True)
+        shutil.rmtree(CBOR_PREFIX, ignore_errors=True)
+        shutil.rmtree(CBOR_SRC, ignore_errors=True)
+
     # FIXME: allow env override of LLVM_SRC and LLVM_BLD
     # FIXME: check that cmake and ninja are installed
 
