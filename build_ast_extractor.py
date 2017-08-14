@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import re
 import sys
 import errno
 import logging
@@ -10,6 +11,9 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 LLVM_SRC = os.path.join(SCRIPT_DIR, 'llvm.src')
 LLVM_BLD = os.path.join(SCRIPT_DIR, 'llvm.build')
 LOG_FILE = os.path.realpath(__file__).replace(".py", ".log")
+CBOR_PREFIX = os.path.join(SCRIPT_DIR, "tinycbor")
+CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
+CBOR_ARCHIVE = "tinycbor-0.4.1.tar.gz"
 
 KEYSERVER = "pgpkeys.mit.edu"
 LLVM_PUBKEY = "8F0871F202119294"
@@ -100,7 +104,7 @@ def download_llvm_sources():
                 os.rename(LLVM_ARCHIVE_DIRS[2], "extra")
 
 
-def configure_and_build():
+def configure_and_build_llvm():
     cmake = get_cmd_or_die("cmake")
     ninja = get_cmd_or_die("ninja")
     with pb.local.cwd(LLVM_BLD):
@@ -135,6 +139,94 @@ def ensure_dir(path):
     if not os.path.isdir(path):
         die("%s is not a directory", path)
 
+
+def update_cmakelists(filepath):
+    if not os.path.isfile(filepath):
+        die("not found: " + filepath, errno.ENOENT)
+
+    cmakelists_commands = \
+        """
+        include_directories({prefix}/include)
+        link_directories({prefix}/lib)
+        add_subdirectory(ast-extractor)
+        """.format(prefix=CBOR_PREFIX)
+    indicator = "add_subdirectory(ast-extractor)"
+
+    with open(filepath, "r") as fh:
+        cmakelists = fh.readlines()
+        add_commands = not any([indicator in l for l in cmakelists])
+        logging.debug("add commands to %s: %s", filepath, add_commands)
+
+
+    if add_commands:
+        with open(filepath, "w+") as fh:
+            fh.writelines(cmakelists_commands)
+        logging.debug("added commands to %s", filepath)
+
+
+def update_cbor_prefix(makefile):
+    if not os.path.isfile(makefile):
+        die("not found: " + makefile, errno.ENOENT)
+
+    lines = []
+    writeback = False
+    with open(makefile, 'r') as fh:
+        for line in fh.readlines():
+            m = re.match(r'^\s*prefix\s*=\s*([^\s]+)', line)
+            if m:
+                logging.debug("tinycbor prefix: '%s'", m.group(1))
+                prefix = m.group(1)
+                writeback = prefix != CBOR_PREFIX
+                lines.append("prefix = " + CBOR_PREFIX + os.linesep)
+            else:
+                lines.append(line)
+
+    if writeback:
+        logging.debug("updating tinycbor Makefile")
+        with open(makefile, 'w') as fh:
+            fh.writelines("".join(lines))
+
+
+def install_tinycbor():
+    # download, unpack, build, and install tinycbor
+    cbor_dest = os.path.join(SCRIPT_DIR, CBOR_ARCHIVE)
+    cbor_dir = os.path.basename(cbor_dest).replace(".tar.gz", "")
+    cbor_dir = os.path.join(SCRIPT_DIR, cbor_dir)
+    if not os.path.isfile(cbor_dest):
+        curl = get_cmd_or_die("curl")
+        tar = get_cmd_or_die("tar")
+
+        curl['-s', CBOR_URL, '-o', cbor_dest] & pb.TEE
+        # check whether tinycbor dir exists or not
+        if not os.path.isdir(cbor_dir):
+            tar['xf', cbor_dest] & pb.TEE
+    update_cbor_prefix(os.path.join(cbor_dir, "Makefile"))
+    with pb.local.cwd(cbor_dir):
+        make = get_cmd_or_die("make")
+        make & pb.TEE
+        make('install')  # & pb.TEE
+
+
+def integrate_ast_extractor():
+    global clang_tools_extra
+    # link ast-extractor into $LLVM_SRC/tools/clang/tools/extra
+    src = os.path.join(SCRIPT_DIR, "ast-extractor")
+    extractor_dest = os.path.join(
+        LLVM_SRC, "tools/clang/tools/extra/ast-extractor")
+    clang_tools_extra = os.path.abspath(
+        os.path.join(extractor_dest, os.pardir))
+    if not os.path.exists(extractor_dest):
+        # NOTE: using os.symlink to emulate `ln -s` would be unwieldy
+        ln = get_cmd_or_die("ln")
+        with pb.local.cwd(clang_tools_extra):
+            ln("-s", src)
+    assert os.path.islink(extractor_dest), \
+        "missing link: %s->%s" % (src, extractor_dest)
+
+    cmakelists_path = os.path.join(clang_tools_extra, "CMakeLists.txt")
+    update_cmakelists(cmakelists_path)
+
+
 if __name__ == "__main__":
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
@@ -147,45 +239,8 @@ if __name__ == "__main__":
 
     download_llvm_sources()
 
-    # link ast-extractor into LLVM_SRC/tools/extra
-    src = os.path.join(SCRIPT_DIR, "ast-extractor")
-    dest = os.path.join(LLVM_SRC, "tools/clang/tools/extra/ast-extractor")
-    clang_tools_extra = os.path.abspath(os.path.join(dest, os.pardir))
-    if not os.path.exists(dest):
-        # using os.symlink to emulate `ln -s` would be unwieldy
-        ln = get_cmd_or_die("ln")
-        with pb.local.cwd(clang_tools_extra):
-            ln("-s", src)
-    assert os.path.islink(dest), "missing link: %s->%s" % (src, dest)
+    integrate_ast_extractor()
 
-    cmakelists = \
-"""
-include_directories(../../../../../tinycbor-0.4.1/src)
-link_directories(../../../../../tinycbor-0.4.1/lib)
-add_subdirectory(ast-extractor)
-"""
+    install_tinycbor()
 
-    # update cmakefile
-    # echo 'add_subdirectory(ast-extractor)' >> CMakeLists.txt
-    if not os.path.exists(os.path.join(clang_tools_extra, "CMakeLists.txt")):
-        with open("CMakeLists.txt", "w+") as fh:
-            fh.writelines(cmakelists)
-
-    # download tinycbor
-    dest = os.path.join(SCRIPT_DIR, "tinycbor-0.4.1.tar.gz")
-    if not os.path.isfile(dest):
-        cbor_url = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
-        curl = get_cmd_or_die("curl")
-        tar = get_cmd_or_die("tar")
-
-        curl['-s', cbor_url, '-o', dest] & pb.TEE
-        # check whether tinycbor dir exists or not
-        cbor_dir = os.path.basename(dest).replace(".tar.gz", "")
-        if not os.path.isdir(cbor_dir):
-            tar['xf', dest] & pb.TEE
-
-        with pb.local.cwd(os.path.join(SCRIPT_DIR, cbor_dir)):
-            make = get_cmd_or_die("make")
-            make & pb.TEE
-
-    configure_and_build()
+    configure_and_build_llvm()
