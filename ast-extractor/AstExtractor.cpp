@@ -21,6 +21,7 @@
 #include "clang/Tooling/Tooling.h"
 
 #include <tinycbor/cbor.h>
+#include "ast_tags.hpp"
 
 using namespace llvm;
 using namespace clang;
@@ -31,80 +32,7 @@ using std::string;
 using clang::QualType;
 using clang::ASTContext;
 
-enum ASTEntryTag {
-    TagFunctionDecl = 0,
-    TagParmVarDecl,
-    TagVarDecl,
-    TagRecordDecl,
-    TagFieldDecl,
-    
-    TagEnumDecl,
-    TagEnumConstantDecl,
-    TagTypedefDecl,
-    
-    
-    TagCompoundStmt = 100,
-    TagReturnStmt,
-    TagIfStmt,
-    TagGotoStmt,
-    TagLabelStmt,
-    
-    TagNullStmt,
-    TagForStmt,
-    TagWhileStmt,
-    TagSwitchStmt,
-    TagDeclStmt,
-    
-    TagBreakStmt,
-    TagCaseStmt,
-    TagContinueStmt,
-    TagDefaultStmt,
-    TagDoStmt,
 
-    
-    TagBinaryOperator = 200,
-    TagUnaryOperator,
-    TagDeclRefExpr,
-    TagImplicitCastExpr,
-    TagCallExpr,
-
-    TagInitListExpr,
-    TagImplicitValueInitExpr,
-    TagArraySubscriptExpr,
-    TagCStyleCastExpr,
-    TagConditionalOperator,
-    
-    TagBinaryConditionalOperator,
-    TagMemberExpr,
-    
-    
-    TagIntegerLiteral = 300,
-    TagStringLiteral,
-    TagCharacterLiteral,
-    TagFloatingLiteral,
-};
-
-enum TypeTag {
-    TagTypeUnknown = 400,
-
-    TagInt = 500,
-    TagShort,
-    TagLong,
-    TagLongLong,
-    TagUInt,
-    
-    TagUShort,
-    TagULong,
-    TagULongLong,
-    TagPointer,
-    TagRecordType,
-    
-    TagArrayType,
-    TagEnumType,
-    TagFunctionType,
-    TagTypeOfType,
-    TagTypedefType,
-};
 
 class TypeEncoder final : public TypeVisitor<TypeEncoder>
 {
@@ -266,7 +194,9 @@ class TranslateASTVisitor final
           encodeSourcePos(&local, loc);
           
           // 6 - type (only for expressions)
-          if (nullptr != ty) {
+          if (nullptr == ty) {
+              cbor_encode_null(&local);
+          } else {
               cbor_encode_uint(&local, uintptr_t(ty));
           }
           
