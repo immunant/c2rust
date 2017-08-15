@@ -1,0 +1,8 @@
+llvm.src/*
+llvm.build/*
+*.tar.xz
+*.tar.xz.sig
+*.tar.gz
+.idea
+*.log
+tinycbor*
