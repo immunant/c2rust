@@ -115,15 +115,16 @@ def download_llvm_sources():
                 os.rename(LLVM_ARCHIVE_DIRS[2], "extra")
 
 
-def configure_and_build_llvm():
+def configure_and_build_llvm(args):
     cmake = get_cmd_or_die("cmake")
     ninja = get_cmd_or_die("ninja")
+    build_type = "Debug" if args.debug else "Release"
     with pb.local.cwd(LLVM_BLD):
         if not os.path.isfile("build.ninja"):
             cmake["-G", "Ninja", LLVM_SRC,
                   "-Wno-dev",
                   "-DLLVM_BUILD_TESTS=ON",
-                  "-DCMAKE_BUILD_TYPE=Release",
+                  "-DCMAKE_BUILD_TYPE=" + build_type,
                   "-DLLVM_ENABLE_ASSERTIONS=1",
                   "-DLLVM_TARGETS_TO_BUILD=X86"] & pb.TEE
         else:
@@ -167,7 +168,6 @@ def update_cmakelists(filepath):
         cmakelists = fh.readlines()
         add_commands = not any([indicator in l for l in cmakelists])
         logging.debug("add commands to %s: %s", filepath, add_commands)
-
 
     if add_commands:
         with open(filepath, "w+") as fh:
@@ -256,6 +256,10 @@ def parse_args():
     parser.add_argument('-c', '--clean', default=False,
                         action='store_true', dest='clean',
                         help='clean everything before building')
+    dhelp = 'build in debug mode (default build is release+asserts)'
+    parser.add_argument('-d', '--debug', default=False,
+                        action='store_true', dest='debug',
+                        help=dhelp)
     return parser.parse_args()
 
 
@@ -289,7 +293,7 @@ def main():
 
     install_tinycbor()
 
-    configure_and_build_llvm()
+    configure_and_build_llvm(args)
 
 if __name__ == "__main__":
     main()

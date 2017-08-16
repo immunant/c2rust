@@ -78,7 +78,9 @@ public:
             cbor_encode_uint(local, uintptr_t(s.Ty));
         });
         
-        Visit(s.Ty);
+        if(s.Ty) {
+            Visit(s.Ty);
+        }
     }
     
     void VisitRecordType(const RecordType *T) {
