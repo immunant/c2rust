@@ -165,7 +165,11 @@ impl<'tcx> ConstraintSet<'tcx> {
 
         // Add edges routing around each removed permission.
         for &p in &all_perms {
-            if filter(p) {
+            let keep = match p {
+                Perm::Min(ps) => ps.iter().any(|&p| filter(p)),
+                _ => filter(p),
+            };
+            if keep {
                 continue;
             }
 
@@ -220,6 +224,7 @@ struct FnSummary<'tcx> {
 
 struct Ctxt<'tcx> {
     lcx: LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
+    arena: &'tcx DroplessArena,
 
     static_summ: HashMap<DefId, LTy<'tcx>>,
     static_cset: ConstraintSet<'tcx>,
@@ -242,6 +247,7 @@ impl<'tcx> Ctxt<'tcx> {
     fn new(arena: &'tcx DroplessArena) -> Ctxt<'tcx> {
         Ctxt {
             lcx: LabeledTyCtxt::new(arena),
+            arena: arena,
 
             static_summ: HashMap::new(),
             static_cset: ConstraintSet::new(),
@@ -346,6 +352,58 @@ impl<'tcx> Ctxt<'tcx> {
                 *next_local += e.get().1;
                 e.get().0
             },
+        }
+    }
+
+    fn min_perm(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) -> Perm<'tcx> {
+        eprintln!("finding min of {:?} and {:?}", a, b);
+        match (a, b) {
+            // A few easy cases
+            (Perm::Concrete(ConcretePerm::Read), _) |
+            (_, Perm::Concrete(ConcretePerm::Read)) => Perm::read(),
+
+            (Perm::Concrete(ConcretePerm::Move), p) => p,
+            (p, Perm::Concrete(ConcretePerm::Move)) => p,
+
+            (Perm::Min(ps1), Perm::Min(ps2)) => {
+                let mut all = Vec::with_capacity(ps1.len() + ps2.len());
+                all.extend(ps1.iter().cloned());
+                for &p in ps2 {
+                    if !all.contains(&p) {
+                        all.push(p);
+                    }
+                }
+                let all =
+                    if all.len() == 0 { &[] as &[_] }
+                    else { self.arena.alloc_slice(&all) };
+                eprintln!("nontrivial min: {:?}", all);
+                Perm::Min(all)
+            },
+
+            (Perm::Min(ps), p) | (p, Perm::Min(ps)) => {
+                if ps.contains(&p) {
+                    Perm::Min(ps)
+                } else {
+                    let mut all = Vec::with_capacity(ps.len() + 1);
+                    all.extend(ps.iter().cloned());
+                    all.push(p);
+                    let all =
+                        if all.len() == 0 { &[] as &[_] }
+                        else { self.arena.alloc_slice(&all) };
+                    eprintln!("nontrivial min: {:?}", all);
+                    Perm::Min(all)
+                }
+            },
+
+            (a, b) => {
+                if a == b {
+                    a
+                } else {
+                    let all = self.arena.alloc_slice(&[a, b]);
+                    eprintln!("nontrivial min: {:?}", all);
+                    Perm::Min(all)
+                }
+            }
         }
     }
 }
@@ -491,7 +549,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             }
         });
 
-        let mut save_cset = ConstraintSet::new();
+        // Copy StaticVar constraints into the `static_cset`.
         fn perm_level(p: Perm) -> usize {
             match p {
                 Perm::Concrete(_) => 0,
@@ -503,27 +561,25 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         }
         for &(a, b) in self.cset.less.iter() {
             let level = cmp::max(perm_level(a), perm_level(b));
-            match level {
-                0 => {},    // Write <= Move and similar uselessness
-                1 => {
-                    self.cx.static_cset.add(a, b);
-                },
-                2 => {
-                    save_cset.add(a, b);
-                },
-                3 => {
-                    panic!("reduced cset still has LocalVars in it?")
-                },
-                _ => unreachable!(),
+            if level == 1 {
+                self.cx.static_cset.add(a, b);
             }
         }
 
+        // Further reduce the cset, removing static vars.
+        self.cset.retain_perms(|p| {
+            match p {
+                Perm::LocalVar(_) | Perm::StaticVar(_) => false,
+                _ => true,
+            }
+        });
+
         eprintln!("  exporting constraints (condensed):");
-        for &(a, b) in save_cset.less.iter() {
+        for &(a, b) in self.cset.less.iter() {
             eprintln!("    {:?} <= {:?}", a, b);
         }
 
-        self.cx.fn_summ(self.def_id, self.tcx).cset = save_cset;
+        self.cx.fn_summ(self.def_id, self.tcx).cset = self.cset;
     }
 
     fn local_ty(&mut self, ty: Ty<'tcx>) -> LTy<'tcx> {
@@ -563,9 +619,9 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                     // Access permissions for a deref are the minimum of all pointers along the
                     // path to the value.
                     ProjectionElem::Deref =>
-                        // TODO - reimplement `min`
-                        //(base_ty.args[0], self.min_perm(base_perm, base_ty.label.unwrap())),
-                        (base_ty.args[0], base_ty.label.unwrap(), None),
+                        (base_ty.args[0],
+                         self.cx.min_perm(base_perm, base_ty.label.unwrap()),
+                         None),
                     ProjectionElem::Field(f, _) =>
                         (self.field_lty(base_ty, base_variant.unwrap_or(0), f), base_perm, None),
                     ProjectionElem::Index(ref index_op) =>
@@ -953,6 +1009,7 @@ impl<'tcx> fmt::Debug for PrettyLabel<PrintVar<'tcx>> {
             Perm::StaticVar(v) => write!(fmt, "#s{}", v.index()),
             Perm::SigVar(v) => write!(fmt, "#f{}", v.index()),
             Perm::LocalVar(v) => write!(fmt, "#l{}", v.index()),
+
             Perm::Min(ps) => {
                 write!(fmt, "#min(")?;
                 let mut first = true;
@@ -1091,7 +1148,7 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
         statics_sorted.sort_by_key(|&(k, _)| k);
         for (&def_id, &ty) in statics_sorted {
             let ty = new_lcx.relabel(ty, &mut |p| {
-                p.as_ref().map(|&p| ctxt.static_cset.lower_bound(p))
+                p.as_ref().map(|&p| (ctxt.static_cset.lower_bound(p), PrintVar(p)))
             });
 
             eprintln!("{:?}: {:?}", def_id, Pretty(ty));
@@ -1102,7 +1159,7 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     let mut fns_sorted = ctxt.fn_summ.iter().collect::<Vec<_>>();
     fns_sorted.sort_by_key(|&(k, _)| k);
     for (&def_id, summ) in fns_sorted {
-        let cset = &summ.cset;
+        let mut cset = &summ.cset;
         let mut func2 = |p: &Option<_>| {
             p.map(|p| (cset.lower_bound(p), PrintVar(p)))
         };
