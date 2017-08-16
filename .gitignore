@@ -4,5 +4,8 @@ llvm.build/*
 *.tar.xz.sig
 *.tar.gz
 .idea
+.vscode
 *.log
 tinycbor*
+# ignore rust build dirs everywhere
+**/target/*
