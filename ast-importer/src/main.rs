@@ -1,6 +1,8 @@
 extern crate cbor;
 
+use std::env;
 use std::io::Cursor;
+use std::io::Error;
 use std::io::prelude::*;
 use std::fs::File;
 use cbor::Cbor;
@@ -127,14 +129,27 @@ fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError> {
 
 fn main() {
 
-    let path = "/Users/emertens//Source/c2rust/clang-translator/testcase/output.cbor";
-    let mut f = File::open(path).unwrap();
-    let mut buffer = Vec::new();
-    f.read_to_end(&mut buffer).unwrap();
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() < 2 {
+        println!("Usage: ast-importer FILENAME");
+        return;
+    }
+
+    let output = parse_and_dump(&args[1]);
+    match output {
+        Ok(cxt) => println!("{:#?}", cxt),
+        Err(e) => println!("{:#?}", e),
+    }
+}
+
+fn parse_and_dump(filename: &str) -> Result<AstContext, Error> {
+    let mut f = File::open(filename)?;
+    let mut buffer = vec![];
+    f.read_to_end(&mut buffer)?;
 
     let mut cursor: Decoder<Cursor<Vec<u8>>> = Decoder::from_bytes(buffer);
     let items = cursor.items();
 
-    println!("{:?}", process(items));
-    ()
+    Ok(process(items).unwrap())
 }
