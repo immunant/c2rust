@@ -59,10 +59,12 @@ enum ConcretePerm {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 enum Perm<'tcx> {
     Concrete(ConcretePerm),
+    // Weird ordering, but it's necessary for `perm_range` - we need a way to write down the
+    // largest and smallest possible `Perm`s, and the largest/smallest `Min` is hard to get.
+    Min(&'tcx [Perm<'tcx>]),
     StaticVar(Var),
     SigVar(Var),
     LocalVar(Var),
-    Min(&'tcx [Perm<'tcx>]),
 }
 
 impl<'tcx> Perm<'tcx> {
@@ -76,6 +78,72 @@ impl<'tcx> Perm<'tcx> {
 
     fn move_() -> Perm<'tcx> {
         Perm::Concrete(ConcretePerm::Move)
+    }
+
+    /// Check if `other` appears somewhere within `self`.  Note this checks syntactic presence
+    /// only, not any kind of subtyping relation.
+    fn contains(&self, other: Perm<'tcx>) -> bool {
+        if *self == other {
+            return true;
+        }
+        match *self {
+            Perm::Min(ps) => ps.iter().cloned().any(|p| p.contains(other)),
+            _ => false,
+        }
+    }
+
+    fn for_each_replacement<F>(&self,
+                               arena: &'tcx DroplessArena,
+                               old: Perm<'tcx>,
+                               news: &[Perm<'tcx>],
+                               mut callback: F)
+            where F: FnMut(Perm<'tcx>) {
+        if *self == old {
+            // Easy case
+            for &new in news {
+                callback(new);
+            }
+            return;
+        }
+
+        let self_ps = match *self {
+            Perm::Min(ps) => ps,
+            _ => {
+                // Easy case - `self` is atomic and not equal to `old`.  There's no replacement to
+                // be done.
+                callback(*self);
+                return;
+            },
+        };
+
+        let mut buf = self_ps.to_owned();
+        buf.retain(|&p| p != old);
+        let base_len = buf.len();
+
+        for &new in news {
+            match new {
+                Perm::Min(ps) => {
+                    for &p in ps {
+                        if !buf.contains(&p) {
+                            buf.push(p);
+                        }
+                    }
+                },
+                _ => {
+                    if !buf.contains(&new) {
+                        buf.push(new);
+                    }
+                },
+            }
+
+            if buf.len() == 1 {
+                callback(buf[0]);
+            } else {
+                callback(Perm::Min(arena.alloc_slice(&buf)));
+            }
+
+            buf.truncate(base_len);
+        }
     }
 }
 
@@ -156,40 +224,236 @@ impl<'tcx> ConstraintSet<'tcx> {
         bound
     }
 
-    fn retain_perms<F: Fn(Perm<'tcx>) -> bool>(&mut self, filter: F) {
-        let mut all_perms = HashSet::new();
-        for &(p1, p2) in &self.less {
-            all_perms.insert(p1);
-            all_perms.insert(p2);
+    fn edit<'a>(&'a mut self) -> EditConstraintSet<'a, 'tcx> {
+        let to_visit = self.less.iter().cloned().collect();
+        EditConstraintSet {
+            cset: self,
+            to_visit: to_visit,
         }
+    }
+}
 
-        // Add edges routing around each removed permission.
-        for &p in &all_perms {
-            let keep = match p {
-                Perm::Min(ps) => ps.iter().any(|&p| filter(p)),
-                _ => filter(p),
-            };
-            if keep {
-                continue;
+struct EditConstraintSet<'a, 'tcx: 'a> {
+    cset: &'a mut ConstraintSet<'tcx>,
+    to_visit: VecDeque<(Perm<'tcx>, Perm<'tcx>)>,
+}
+
+impl<'a, 'tcx> EditConstraintSet<'a, 'tcx> {
+    fn next(&mut self) -> Option<(Perm<'tcx>, Perm<'tcx>)> {
+        while let Some((a, b)) = self.to_visit.pop_front() {
+            if self.cset.less.contains(&(a, b)) {
+                return Some((a, b));
             }
+        }
+        None
+    }
 
-            // Perms less than `p`, and perms greater than `p`.
-            let less = self.greater.range(perm_range(p)).map(|&(a, b)| b).collect::<Vec<_>>();
-            let greater = self.less.range(perm_range(p)).map(|&(a, b)| b).collect::<Vec<_>>();
+    fn add(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) {
+        if self.cset.less.contains(&(a, b)) {
+            return;
+        }
+        self.cset.less.insert((a, b));
+        self.cset.greater.insert((b, a));
+        self.to_visit.push_back((a, b));
+    }
 
-            for &l in &less {
-                for &g in &greater {
-                    self.add(l, g);
+    fn add_no_visit(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) {
+        if self.cset.less.contains(&(a, b)) {
+            return;
+        }
+        self.cset.less.insert((a, b));
+        self.cset.greater.insert((b, a));
+    }
+
+    fn remove(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) {
+        self.cset.less.remove(&(a, b));
+        self.cset.greater.remove(&(b, a));
+        // If it remains in `to_visit`, it will be skipped by `next`.
+    }
+}
+
+
+impl<'tcx> ConstraintSet<'tcx> {
+    fn simplify(&mut self, arena: &'tcx DroplessArena) {
+        // (1) Remove useless constraints
+        {
+            let mut edit = self.edit();
+
+            while let Some((a, b)) = edit.next() {
+                let remove = match (a, b) {
+                    (Perm::Concrete(_), Perm::Concrete(_)) => true,
+                    (Perm::Concrete(ConcretePerm::Read), _) => true,
+                    (_, Perm::Concrete(ConcretePerm::Move)) => true,
+                    _ => a == b,
+                };
+                if remove {
+                    eprintln!("remove: {:?} <= {:?}", a, b);
+                    edit.remove(a, b);
                 }
             }
         }
 
-        // Filter out edges involving removed permissions.
-        let mut cset = ConstraintSet::new();
-        for &(a, b) in self.less.iter().filter(|&&(a, b)| filter(a) && filter(b)) {
-            cset.add(a, b);
+        // (2) Expand constraints with `Min` on the RHS.
+        {
+            let mut edit = self.edit();
+
+            while let Some((a, b)) = edit.next() {
+                match b {
+                    Perm::Min(ps) => {
+                        eprintln!("expand: {:?} <= {:?}", a, b);
+                        edit.remove(a, b);
+                        for &p in ps {
+                            edit.add(a, p);
+                        }
+                    },
+                    _ => {},
+                }
+            }
         }
-        *self = cset;
+
+        // (3) Handle constraints with `Min` on the LHS as well as we can.  This is where it gets a
+        // little ugly.
+        {
+            let mut edit = self.edit();
+
+            'next: while let Some((a, b)) = edit.next() {
+                let ps = match a {
+                    Perm::Min(ps) => ps,
+                    _ => continue,
+                };
+
+                if ps.len() == 0 {
+                    // Should never happen, but just in case...
+                    edit.remove(a, b);
+                    continue;
+                }
+
+                // We now have `min(p_0, p_1, ...) <= b`.  We want to reduce the set of `p_i`s as
+                // much as possible, ideally down to a single element.  The approach taken here
+                // (which is quite inefficient) is to collect, for each `p_i`, the set of `q`s
+                // where `p_i <= q`.  Then we query those sets to figure out what `p_i`s can be
+                // removed.
+
+                let mut greater_sets = Vec::with_capacity(ps.len());
+                for &p in ps {
+                    let mut seen = HashSet::new();
+                    let mut queue = VecDeque::new();
+                    queue.push_back(p);
+                    while let Some(cur) = queue.pop_front() {
+                        for &(_, next) in edit.cset.less.range(perm_range(cur)) {
+                            if !seen.contains(&next) {
+                                seen.insert(next);
+                                queue.push_back(next);
+                            }
+                        }
+                    }
+                    greater_sets.push(seen);
+                }
+
+                // Now we can make some queries into `greater_sets`.  The two things we want to
+                // check are:
+                //  (1) If `p_i <= p_j`, then `p_j` can be removed.
+                //  (2) If `p_i <= b`, then the entire constraint can be discarded.
+
+                let mut to_remove = HashSet::new();
+                for (i, &pi) in ps.iter().enumerate() {
+                    // This check handles cycles.  Suppose `a <= b <= c <= a` and `d <= e`.  We'd
+                    // like to replace `min(a, b, c, d, e)` with `min(a, d)`.  Without this check,
+                    // we would end up with `min()`, becuase `a` eliminates `b` and `c`, `b` and
+                    // `c` eliminate `a`, and `d` and `e` remove each other.  This check doesn't
+                    // cause us to miss any valid removals because if `a <= b` and `b <= x` then
+                    // also `a <= x`.
+                    if to_remove.contains(&i) {
+                        continue;
+                    }
+
+                    for (j, &pj) in ps.iter().enumerate() {
+                        if i != j && greater_sets[i].contains(&pj) {
+                            to_remove.insert(j);
+                        }
+                    }
+
+                    if greater_sets[i].contains(&b) {
+                        eprintln!("remove {:?} <= {:?} ({:?} <= {:?})", a, b, pi, b);
+                        edit.remove(a, b);
+                        continue 'next;
+                    }
+                }
+
+                assert!(to_remove.len() < ps.len(), "tried to remove all arguments of `min`");
+                if to_remove.len() == ps.len() - 1 {
+                    // `min(p)` is the same as just `p`.
+                    edit.remove(a, b);
+                    let (_, p) = ps.iter().cloned().enumerate()
+                        .filter(|&(i, _)| !to_remove.contains(&i)).next().unwrap();
+                    eprintln!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, p, b);
+                    edit.add(p, b);
+                } else if to_remove.len() > 0 {
+                    edit.remove(a, b);
+                    let ps = ps.iter().cloned().enumerate()
+                        .filter(|&(i, _)| !to_remove.contains(&i))
+                        .map(|(_, p)| p).collect::<Vec<_>>();
+                    let new_min = Perm::Min(arena.alloc_slice(&ps));
+                    eprintln!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, new_min, b);
+                    edit.add(new_min, b);
+                }
+                // Otherwise, to_remove == 0, meaning we don't have any changes to apply.
+            }
+        }
+    }
+
+    fn retain_perms<F: Fn(Perm<'tcx>) -> bool>(&mut self, arena: &'tcx DroplessArena, filter: F) {
+        // Collect all atomic permissions that appear in the constraint set.
+        let mut atomic_perms = HashSet::new();
+        fn collect_atomic<'tcx>(p: Perm<'tcx>, dest: &mut HashSet<Perm<'tcx>>) {
+            match p {
+                Perm::Min(ps) => {
+                    for &p in ps {
+                        collect_atomic(p, dest);
+                    }
+                },
+                _ => {
+                    dest.insert(p);
+                },
+            }
+        }
+        for &(p1, p2) in &self.less {
+            collect_atomic(p1, &mut atomic_perms);
+            collect_atomic(p2, &mut atomic_perms);
+        }
+
+        // Add edges routing around each removed permission.
+        for &p in &atomic_perms {
+            if filter(p) {
+                continue;
+            }
+
+            eprintln!("removing perm {:?}", p);
+
+            // Perms less than `p`, and perms greater than `p`.
+            let less = self.greater.range(perm_range(p))
+                .map(|&(a, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
+            let greater = self.less.range(perm_range(p))
+                .map(|&(a, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
+            eprintln!("    less: {:?}", less);
+            eprintln!("    greater: {:?}", greater);
+
+            let mut edit = self.edit();
+            while let Some((a, b)) = edit.next() {
+                if !a.contains(p) && !b.contains(p) {
+                    continue;
+                }
+
+                eprintln!("  remove {:?} <= {:?}", a, b);
+                edit.remove(a, b);
+                a.for_each_replacement(arena, p, &less, |a| {
+                    b.for_each_replacement(arena, p, &greater, |b| {
+                        eprintln!("    replacement: {:?} <= {:?}", a, b);
+                        edit.add_no_visit(a, b);
+                    });
+                });
+            }
+        }
     }
 }
 
@@ -542,12 +806,18 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             eprintln!("    {:?} <= {:?}", a, b);
         }
 
-        self.cset.retain_perms(|p| {
+
+        self.cset.retain_perms(self.cx.arena, |p| {
             match p {
                 Perm::LocalVar(_) => false,
                 _ => true,
             }
         });
+
+        eprintln!("  reduced (1) constraints:");
+        for &(a, b) in self.cset.less.iter() {
+            eprintln!("    {:?} <= {:?}", a, b);
+        }
 
         // Copy StaticVar constraints into the `static_cset`.
         fn perm_level(p: Perm) -> usize {
@@ -567,12 +837,14 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         }
 
         // Further reduce the cset, removing static vars.
-        self.cset.retain_perms(|p| {
+        self.cset.retain_perms(self.cx.arena, |p| {
             match p {
                 Perm::LocalVar(_) | Perm::StaticVar(_) => false,
                 _ => true,
             }
         });
+
+        self.cset.simplify(self.cx.arena);
 
         eprintln!("  exporting constraints (condensed):");
         for &(a, b) in self.cset.less.iter() {
@@ -757,10 +1029,15 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
     /// topmost pointer type.  The resulting permission must be no higher than the permission of
     /// the RHS pointer, and also must be no higher than the permission of any pointer dereferenced
     /// on the path to the RHS.
-    fn propagate(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>, max_perm: Perm<'tcx>) {
+    fn propagate(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>, path_perm: Perm<'tcx>) {
         if let (Some(l_perm), Some(r_perm)) = (lhs.label, rhs.label) {
             self.propagate_perm(l_perm, r_perm);
-            self.propagate_perm(l_perm, max_perm);
+
+            // Cap the required `path_perm` at WRITE.  The logic here is that container methods for
+            // removing (and freeing) elements or for reallocating internal storage shouldn't
+            // require MOVE.
+            let l_perm_capped = self.cx.min_perm(l_perm, Perm::write());
+            self.propagate_perm(l_perm_capped, path_perm);
         }
 
         if lhs.args.len() == rhs.args.len() {
@@ -1051,6 +1328,36 @@ impl<'tcx, L> fmt::Debug for Pretty<'tcx, L> where L: Copy + fmt::Debug, PrettyL
 }
 
 
+fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
+    use rustc::hir::map::Node::*;
+
+    let n = match hir_map.get_if_local(def_id) {
+        None => return false,
+        Some(n) => n,
+    };
+
+    match n {
+        NodeItem(i) => match i.node {
+            hir::ItemFn(..) => true,
+            _ => false,
+        },
+        NodeForeignItem(i) => match i.node {
+            hir::ForeignItemFn(..) => true,
+            _ => false,
+        },
+        NodeTraitItem(i) => match i.node {
+            hir::TraitItemKind::Method(..) => true,
+            _ => false,
+        },
+        NodeImplItem(i) => match i.node {
+            hir::ImplItemKind::Method(..) => true,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+
 pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     let mut ctxt = Ctxt::new(cx.ty_arena());
 
@@ -1101,6 +1408,11 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     let tcx = cx.ty_ctxt();
     for _ in 0 .. 5 {
         for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
+            // We currently don't process `static` bodies, even though they do have MIR.
+            if !is_fn(cx.hir_map(), def_id) {
+                continue;
+            }
+
             let mir = tcx.optimized_mir(def_id);
             let mut local_cx = LocalCtxt::new(&mut ctxt, tcx, def_id, mir);
 
@@ -1137,6 +1449,8 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
 
             local_cx.do_export();
         }
+
+        ctxt.static_cset.simplify(ctxt.arena);
     }
 
 
@@ -1153,6 +1467,11 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
 
             eprintln!("{:?}: {:?}", def_id, Pretty(ty));
         }
+
+        eprintln!("static constraints:");
+        for &(a, b) in &ctxt.static_cset.less {
+            eprintln!("    {:?} <= {:?}", a, b);
+        }
     }
 
     let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
@@ -1167,9 +1486,6 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
         let output = new_lcx.relabel(summ.sig.output, &mut func2);
         eprintln!("{:?}:\n  {:?} -> {:?}", def_id, pretty_slice(inputs), Pretty(output));
         for &(a, b) in &cset.less {
-            if a == b || a == Perm::read() || b == Perm::move_() {
-                continue;
-            }
             eprintln!("    {:?} <= {:?}", a, b);
         }
     }
