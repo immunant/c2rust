@@ -11,6 +11,7 @@ use arena::DroplessArena;
 use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::mir::*;
+use rustc::mir::tcx::LvalueTy;
 use rustc::mir::traversal::{Postorder, ReversePostorder};
 use rustc::ty::{Ty, TyS, TyCtxt, FnSig, Instance, TypeVariants, AdtDef};
 use rustc::ty::subst::Substs;
@@ -23,22 +24,6 @@ use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use command::CommandState;
 use driver;
 use type_map::{self, TypeSource};
-
-
-// - "permanent" vars:
-//   - struct fields
-//   - fn args
-//   - fn substs
-// - mono fn summaries: constraints on permanent vars (structs + the fn's args + substs)
-// - struct constraints? - field must be BOX, or field1 <= field2
-// - "local" vars:
-//   - MIR locals
-//   - function constraint instantiations (
-// - constraint maps:
-//   - set of "must be BOX"
-//   - map of "k <= v" (if k is BOX then v must be BOX)
-
-// * are constraints only ever added? - yes
 
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -74,7 +59,9 @@ enum ConcretePerm {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 enum Perm {
     Concrete(ConcretePerm),
-    Var(Var),
+    StaticVar(Var),
+    SigVar(Var),
+    LocalVar(Var),
 }
 
 impl Perm {
@@ -99,11 +86,7 @@ struct ConstraintSet {
 
 fn perm_range(p: Perm) -> (Bound<(Perm, Perm)>, Bound<(Perm, Perm)>) {
     (Bound::Included((p, Perm::read())),
-     Bound::Included((p, Perm::Var(Var(!0)))))
-}
-
-fn var_range(v: Var) -> (Bound<(Perm, Perm)>, Bound<(Perm, Perm)>) {
-    perm_range(Perm::Var(v))
+     Bound::Included((p, Perm::LocalVar(Var(!0)))))
 }
 
 impl ConstraintSet {
@@ -120,6 +103,7 @@ impl ConstraintSet {
     }
 
     fn import(&mut self, other: &ConstraintSet) {
+        eprintln!("IMPORT {} constraints", other.less.len());
         self.less.extend(other.less.iter().cloned().filter(|&(ref a, ref b)| {
             eprintln!("IMPORT CONSTRAINT: {:?} <= {:?}", a, b);
             true
@@ -127,29 +111,40 @@ impl ConstraintSet {
         self.greater.extend(other.greater.iter().cloned());
     }
 
-    fn import_lower_bounds<I: Iterator<Item=(Var, ConcretePerm)>>(&mut self, mut iter: I) {
-        for (var, perm) in iter {
-            eprintln!("FIELD IMPORT: {:?} = {:?}", var, perm);
-            self.add(Perm::Concrete(perm), Perm::Var(var));
-        }
+    fn import_substituted<F: Fn(Perm) -> Perm>(&mut self, other: &ConstraintSet, mut f: F) {
+        eprintln!("IMPORT {} constraints (substituted)", other.less.len());
+        self.less.extend(other.less.iter().map(|&(a, b)| {
+            let (a2, b2) = (f(a), f(b));
+            eprintln!("IMPORT CONSTRANT: {:?} <= {:?} (substituted from {:?} <= {:?})",
+                      a2, b2, a, b);
+            (a2, b2)
+        }));
+        self.greater.extend(other.greater.iter().map(|&(a, b)| (f(a), f(b))));
     }
 
-    fn var_lower_bound(&self, v: Var) -> ConcretePerm {
+    fn lower_bound(&self, p: Perm) -> ConcretePerm {
+        match p {
+            Perm::Concrete(p) => return p,
+            _ => {},
+        }
+
         let mut seen = HashSet::new();
         let mut queue = VecDeque::new();
-        queue.push_back(v);
         let mut bound = ConcretePerm::Read;
 
+        seen.insert(p);
+        queue.push_back(p);
+
         while let Some(cur) = queue.pop_front() {
-            for &(_, next) in self.greater.range(var_range(cur)) {
+            for &(_, next) in self.greater.range(perm_range(cur)) {
                 match next {
                     Perm::Concrete(p) => {
                         bound = cmp::max(bound, p);
                     },
-                    Perm::Var(v) => {
-                        if !seen.contains(&v) {
-                            seen.insert(v);
-                            queue.push_back(v);
+                    _ => {
+                        if !seen.contains(&next) {
+                            seen.insert(next);
+                            queue.push_back(next);
                         }
                     },
                 }
@@ -159,29 +154,16 @@ impl ConstraintSet {
         bound
     }
 
-    fn lower_bound(&self, a: Perm) -> ConcretePerm {
-        match a {
-            Perm::Concrete(p) => p,
-            Perm::Var(v) => self.var_lower_bound(v),
-        }
-    }
-
-    fn condense<I: IntoIterator<Item=Var>>(&mut self, vars: I) {
+    fn retain_perms<F: Fn(Perm) -> bool>(&mut self, filter: F) {
         let mut all_perms = HashSet::new();
         for &(p1, p2) in &self.less {
             all_perms.insert(p1);
             all_perms.insert(p2);
         }
 
-        let vars = vars.into_iter().collect::<HashSet<_>>();
-
-        // Add edges routing around each var not in `vars`.
+        // Add edges routing around each removed permission.
         for &p in &all_perms {
-            let v = match p {
-                Perm::Var(v) => v,
-                Perm::Concrete(_) => { continue; },
-            };
-            if vars.contains(&v) {
+            if filter(p) {
                 continue;
             }
 
@@ -196,21 +178,9 @@ impl ConstraintSet {
             }
         }
 
-        // Filter out edges not involving `vars`.
-        let is_var = |p| match p {
-            Perm::Var(v) => vars.contains(&v),
-            Perm::Concrete(_) => true,
-        };
-
+        // Filter out edges involving removed permissions.
         let mut cset = ConstraintSet::new();
-        for &(a, b) in self.less.iter().filter(|&&(a, b)| {
-            match (a, b) {
-                (Perm::Var(v1), Perm::Var(v2)) => vars.contains(&v1) && vars.contains(&v2),
-                (Perm::Var(v1), Perm::Concrete(_)) => vars.contains(&v1),
-                (Perm::Concrete(_), Perm::Var(v2)) => vars.contains(&v2),
-                (Perm::Concrete(_), Perm::Concrete(_)) => false,
-            }
-        }) {
+        for &(a, b) in self.less.iter().filter(|&&(a, b)| filter(a) && filter(b)) {
             cset.add(a, b);
         }
         *self = cset;
@@ -240,76 +210,30 @@ enum TySource {
     Const(usize),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum VarKind {
-    Static,
-    Sig(DefId),
-    Local,
-}
-
-struct Vars {
-    field_min: HashMap<Var, ConcretePerm>,
-    sig_cset: HashMap<DefId, ConstraintSet>,
-    sig_vars: HashMap<DefId, HashSet<Var>>,
-    sig_accessed: HashSet<DefId>,
-
-    next_var: u32,
-}
-
-impl Vars {
-    fn new() -> Vars {
-        Vars {
-            field_min: HashMap::new(),
-            sig_cset: HashMap::new(),
-            sig_vars: HashMap::new(),
-            sig_accessed: HashSet::new(),
-
-            next_var: 0,
-        }
-    }
-
-    fn fresh(&mut self, kind: VarKind) -> Var {
-        let v = Var(self.next_var);
-        self.next_var += 1;
-        match kind {
-            VarKind::Static => {
-                self.field_min.insert(v, ConcretePerm::Read);
-            },
-            VarKind::Sig(def_id) => {
-                self.sig_vars.entry(def_id).or_insert_with(HashSet::new).insert(v);
-            },
-            VarKind::Local => {},
-        }
-        v
-    }
-
-    fn collect_field_mins(&mut self, cset: &ConstraintSet) {
-        for (&v, p) in self.field_min.iter_mut() {
-            let new_min = cset.var_lower_bound(v);
-            eprintln!("FIELD EXPORT: {:?} = {:?} -> {:?}", v, *p, new_min);
-            *p = cmp::max(*p, new_min);
-        }
-    }
-
-    fn ensure_sig_vars(&mut self, did: DefId) {
-        self.sig_vars.entry(did).or_insert_with(HashSet::new);
-    }
-
-    fn add_sig_constraint(&mut self, did: DefId, a: Perm, b: Perm) {
-        self.sig_cset.entry(did).or_insert_with(ConstraintSet::new).add(a, b)
-    }
+struct FnSummary<'tcx> {
+    sig: LFnSig<'tcx>,
+    num_sig_vars: u32,
+    cset: ConstraintSet,
 }
 
 struct Ctxt<'tcx> {
     lcx: LabeledTyCtxt<'tcx, Option<Perm>>,
 
-    /// Cache of already-labeled types.  We use this to avoid re-labeling the same type twice,
-    /// which would produce variables that are independent when they shouldn't be.
-    lty_map: HashMap<TySource, LTy<'tcx>>,
+    static_summ: HashMap<DefId, LTy<'tcx>>,
+    static_cset: ConstraintSet,
+    next_static_var: u32,
 
-    min_map: HashMap<(Perm, Perm), Var>,
-
-    vars: Vars,
+    fn_summ: HashMap<DefId, FnSummary<'tcx>>,
+    /// Cache of labeled tys generated while processing function bodies.  We may process the same
+    /// function multiple times, and it would be nice to avoid allocating a new bunch of `LTy`s
+    /// each time around.  In this map, `fn_ty_cache[(did, i)]` is the labeled type produced while
+    /// processing `did` when the "next local variable" counter was `i`.  This works as long as
+    /// function processing visits MIR nodes in the same order and requests the same types each
+    /// time.
+    ///
+    /// The `u32` in the value is the amount to advance `next_local_var` by, after retrieving a
+    /// type from the cache.
+    fn_ty_cache: HashMap<(DefId, u32), (LTy<'tcx>, u32)>,
 }
 
 impl<'tcx> Ctxt<'tcx> {
@@ -317,24 +241,27 @@ impl<'tcx> Ctxt<'tcx> {
         Ctxt {
             lcx: LabeledTyCtxt::new(arena),
 
-            lty_map: HashMap::new(),
-            min_map: HashMap::new(),
+            static_summ: HashMap::new(),
+            static_cset: ConstraintSet::new(),
+            next_static_var: 0,
 
-            vars: Vars::new(),
+            fn_summ: HashMap::new(),
+            fn_ty_cache: HashMap::new(),
         }
     }
 
-    fn labeled<F>(&mut self, source: TySource, kind: VarKind, mk_ty: F) -> LTy<'tcx>
-            where F: FnOnce() -> Ty<'tcx> {
-        let vars = &mut self.vars;
-
-        match self.lty_map.entry(source) {
+    fn static_ty<'a, 'gcx>(&mut self, did: DefId, tcx: TyCtxt<'a, 'gcx, 'tcx>) -> LTy<'tcx> {
+        let next = &mut self.next_static_var;
+        match self.static_summ.entry(did) {
             Entry::Vacant(e) => {
-                *e.insert(self.lcx.label(mk_ty(), &mut |ty| {
+                *e.insert(self.lcx.label(tcx.type_of(did), &mut |ty| {
                     match ty.sty {
                         TypeVariants::TyRef(_, _) |
-                        TypeVariants::TyRawPtr(_) => Some(Perm::Var(vars.fresh(kind))),
-                        // TODO: handle Box<_>
+                        TypeVariants::TyRawPtr(_) => {
+                            let v = Var(*next);
+                            *next += 1;
+                            Some(Perm::StaticVar(v))
+                        },
                         _ => None,
                     }
                 }))
@@ -344,59 +271,106 @@ impl<'tcx> Ctxt<'tcx> {
         }
     }
 
-    fn labeled_sig<'a, 'gcx>(&mut self,
-                             ty: LTy<'tcx>,
-                             tcx: TyCtxt<'a, 'gcx, 'tcx>) -> LFnSig<'tcx> {
-        match ty.ty.sty {
-            TypeVariants::TyFnDef(def_id, _) => {
-                let poly_sig = self.labeled_def_sig(def_id, tcx);
-                LFnSig {
-                    inputs: self.lcx.subst_slice(poly_sig.inputs, &ty.args),
-                    output: self.lcx.subst(poly_sig.output, &ty.args),
-                }
+    fn fn_summ<'a, 'gcx>(&mut self,
+                         did: DefId,
+                         tcx: TyCtxt<'a, 'gcx, 'tcx>) -> &mut FnSummary<'tcx> {
+        match self.fn_summ.entry(did) {
+            Entry::Vacant(e) => {
+                let sig = tcx.fn_sig(did);
+                let mut counter = 0;
+
+                let l_sig = {
+                    let mut f = |ty: Ty<'tcx>| {
+                        match ty.sty {
+                            TypeVariants::TyRef(_, _) |
+                            TypeVariants::TyRawPtr(_) => {
+                                let v = Var(counter);
+                                counter += 1;
+                                Some(Perm::SigVar(v))
+                            },
+                            _ => None,
+                        }
+                    };
+
+                    LFnSig {
+                        inputs: self.lcx.label_slice(sig.0.inputs(), &mut f),
+                        output: self.lcx.label(sig.0.output(), &mut f),
+                    }
+                };
+
+                let cset = preload_constraints(tcx, did, l_sig)
+                    .unwrap_or_else(ConstraintSet::new);
+
+                e.insert(FnSummary {
+                    sig: l_sig,
+                    num_sig_vars: counter,
+                    cset: cset,
+                })
             },
 
-            TypeVariants::TyFnPtr(_) => {
-                LFnSig {
-                    inputs: &ty.args[.. ty.args.len() - 1],
-                    output: ty.args[ty.args.len() - 1],
-                }
-            },
-
-            TypeVariants::TyClosure(_, _) => unimplemented!(),
-
-            _ => unimplemented!(),
+            Entry::Occupied(e) => e.into_mut(),
         }
     }
 
-    fn labeled_def_sig<'a, 'gcx>(&mut self,
-                                 def_id: DefId,
-                                 tcx: TyCtxt<'a, 'gcx, 'tcx>) -> LFnSig<'tcx> {
-        let sig = tcx.fn_sig(def_id);
-        let inputs = sig.0.inputs().iter().enumerate()
-            .map(|(i, &ty)| self.labeled(TySource::Sig(def_id, 1 + i),
-                                         VarKind::Sig(def_id),
-                                         || ty))
-            .collect::<Vec<_>>();
-        let output = self.labeled(TySource::Sig(def_id, 0),
-                                  VarKind::Sig(def_id),
-                                  || sig.0.output());
-        LFnSig {
-            inputs: &self.lcx.mk_slice(&inputs),
-            output: output,
-        }
+    fn fn_sig<'a, 'gcx>(&mut self, did: DefId, tcx: TyCtxt<'a, 'gcx, 'tcx>) -> LFnSig<'tcx> {
+        self.fn_summ(did, tcx).sig
     }
 
-    fn min_perm_var(&mut self, p1: Perm, p2: Perm) -> Var {
-        let vars = &mut self.vars;
-        let ps = if p1 < p2 { (p1, p2) } else { (p2, p1) };
-        *self.min_map.entry(ps).or_insert_with(|| {
-            let v = vars.fresh(VarKind::Local);
-            eprintln!("ADD MIN: {:?} <= min({:?}, {:?})", v, p1, p2);
-            v
-        })
+    fn local_ty(&mut self, did: DefId, next_local: &mut u32, ty: Ty<'tcx>) -> LTy<'tcx> {
+        eprintln!("local_ty key = {:?}, {}", did, *next_local);
+        match self.fn_ty_cache.entry((did, *next_local)) {
+            Entry::Vacant(e) => {
+                let first_local = *next_local;
+                let lty = self.lcx.label(ty, &mut |ty| {
+                    match ty.sty {
+                        TypeVariants::TyRef(_, _) |
+                        TypeVariants::TyRawPtr(_) => {
+                            let v = Var(*next_local);
+                            *next_local += 1;
+                            Some(Perm::LocalVar(v))
+                        },
+                        _ => None,
+                    }
+                });
+                // Avoid ambiguity if no vars were generated.
+                if *next_local == first_local {
+                    *next_local += 1;
+                }
+                let advance = *next_local - first_local;
+                e.insert((lty, advance)).0
+            },
+
+            Entry::Occupied(e) => {
+                *next_local += e.get().1;
+                e.get().0
+            },
+        }
     }
 }
+
+fn preload_constraints(tcx: TyCtxt, def_id: DefId, sig: LFnSig) -> Option<ConstraintSet> {
+    let mut cset = ConstraintSet::new();
+
+    let path = tcx.absolute_item_path_str(def_id);
+    match &path as &str {
+        "core::ptr::<impl *const T>::offset" |
+        "core::ptr::<impl *mut T>::offset" => {
+            cset.add(sig.output.label.unwrap(),
+                     sig.inputs[0].label.unwrap());
+        },
+
+        _ => return None,
+    }
+
+    eprintln!("PRELOAD CONSTRAINTS for {:?}", def_id);
+    eprintln!("  {:?} -> {:?}", sig.inputs, sig.output);
+    for &(a, b) in &cset.less {
+        eprintln!("    {:?} <= {:?}", a, b);
+    }
+
+    Some(cset)
+}
+
 
 struct LocalCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     cx: &'a mut Ctxt<'tcx>,
@@ -408,6 +382,8 @@ struct LocalCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     stmt_idx: usize,
 
     cset: ConstraintSet,
+    local_tys: IndexVec<Local, LTy<'tcx>>,
+    next_local_var: u32,
 }
 
 fn collect_perms(ty: LTy) -> Vec<Perm> {
@@ -441,6 +417,8 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             stmt_idx: !0,
 
             cset: ConstraintSet::new(),
+            local_tys: IndexVec::new(),
+            next_local_var: 0,
         }
     }
 
@@ -455,131 +433,149 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
     }
 
 
+    fn init(&mut self) {
+        let sig = self.cx.fn_sig(self.def_id, self.tcx);
+        for (l, decl) in self.mir.local_decls.iter_enumerated() {
+            let lty =
+                if l.index() == 0 { sig.output }
+                else if l.index() - 1 < self.mir.arg_count { sig.inputs[l.index() - 1] }
+                else { self.local_ty(decl.ty) };
+            self.local_tys.push(lty);
+        }
+
+        self.do_import();
+    }
+
     fn do_import(&mut self) {
-        self.cset.import_lower_bounds(
-            self.cx.vars.field_min.iter().map(|(&v, &p)| (v, p)));
+        // Import constraints on statics
+        // TODO: we should import these on-demand as we encounter each static
+        self.cset.import(&self.cx.static_cset);
+    }
+
+    fn instantiate_fn(&mut self, did: DefId) -> LFnSig<'tcx> {
+        eprintln!("INSTANTIATE {:?}", did);
+        let var_base = self.next_local_var;
+        let mut f = |p| {
+            match p {
+                Perm::SigVar(v) => Perm::LocalVar(Var(var_base + v.0)),
+                p => p,
+            }
+        };
+        let sig = {
+            let summ = self.cx.fn_summ(did, self.tcx);
+            self.cset.import_substituted(&summ.cset, |p| f(p));
+            self.next_local_var += summ.num_sig_vars;
+            summ.sig
+        };
+
+        LFnSig {
+            inputs: self.cx.lcx.relabel_slice(sig.inputs, &mut |opt_p| opt_p.map(|p| f(p))),
+            output: self.cx.lcx.relabel(sig.output, &mut |opt_p| opt_p.map(|p| f(p))),
+        }
     }
 
     fn do_export(mut self) {
-        self.cx.vars.collect_field_mins(&self.cset);
-
-        eprintln!("exporting constraints");
-        eprintln!("  initial:");
+        eprintln!("  original constraints:");
         for &(a, b) in self.cset.less.iter() {
             eprintln!("    {:?} <= {:?}", a, b);
         }
 
-        let mut v = Vec::new();
-        for i in 0 .. 1 + self.mir.arg_count {
-            let (ty, _) = self.lvalue_lty(&Lvalue::Local(Local::new(i)));
-            collect_perms_into(ty, &mut v);
-        }
-        eprintln!("  collected sig permissions:");
-        for &p in &v {
-            eprintln!("    {:?}", p);
-        }
-        self.cset.condense(v.into_iter().filter_map(|p| match p {
-            Perm::Var(v) => Some(v),
-            Perm::Concrete(_) => None,
-        }));
+        self.cset.retain_perms(|p| {
+            match p {
+                Perm::LocalVar(_) => false,
+                _ => true,
+            }
+        });
 
-        eprintln!("  condensed:");
-        for &(a, b) in self.cset.less.iter() {
-            eprintln!("    {:?} <= {:?}", a, b);
-        }
-
-        self.cx.vars.sig_cset.insert(self.def_id, self.cset);
-    }
-
-    fn import_fn_sig_constraints(&mut self, fn_ty: LTy<'tcx>) {
-        let (def_id, substs) = match fn_ty.ty.sty {
-            TypeVariants::TyFnDef(def_id, substs) => (def_id, substs),
-            _ => return,
+        let mut save_cset = ConstraintSet::new();
+        let perm_level = |p| match p {
+            Perm::Concrete(_) => 0,
+            Perm::StaticVar(_) => 1,
+            Perm::SigVar(_) => 2,
+            Perm::LocalVar(_) => 3,
         };
-        // TODO: handle substs
-        // TODO: add callgraph edge
-
-        if !self.cx.vars.sig_accessed.contains(&def_id) {
-            self.cx.vars.sig_accessed.insert(def_id);
-            // On first access, check if there are preloaded constraints for this def.
-            if !self.cx.vars.sig_cset.contains_key(&def_id) {
-                if let Some(cset) = self.find_preloaded_constraints(def_id) {
-                    self.cx.vars.sig_cset.insert(def_id, cset);
-                }
+        for &(a, b) in self.cset.less.iter() {
+            let level = cmp::max(perm_level(a), perm_level(b));
+            match level {
+                0 => {},    // Write <= Move and similar uselessness
+                1 => {
+                    self.cx.static_cset.add(a, b);
+                },
+                2 => {
+                    save_cset.add(a, b);
+                },
+                3 => {
+                    panic!("reduced cset still has LocalVars in it?")
+                },
+                _ => unreachable!(),
             }
         }
 
-        if let Some(cset) = self.cx.vars.sig_cset.get(&def_id) {
-            self.cset.import(cset);
-        }
-    }
-
-    fn find_preloaded_constraints(&mut self, def_id: DefId) -> Option<ConstraintSet> {
-        let path = self.tcx.absolute_item_path_str(def_id);
-
-        let mut cset = ConstraintSet::new();
-        let sig = self.cx.labeled_def_sig(def_id, self.tcx);
-
-        match &path as &str {
-            "core::ptr::<impl *const T>::offset" |
-            "core::ptr::<impl *mut T>::offset" => {
-                cset.add(sig.output.label.unwrap(),
-                         sig.inputs[0].label.unwrap());
-            },
-
-            _ => return None,
-        }
-
-        eprintln!("PRELOAD CONSTRAINTS for {:?}", def_id);
-        eprintln!("  {:?} -> {:?}", sig.inputs, sig.output);
-        for &(a, b) in &cset.less {
+        eprintln!("  exporting constraints (condensed):");
+        for &(a, b) in save_cset.less.iter() {
             eprintln!("    {:?} <= {:?}", a, b);
         }
 
-        Some(cset)
+        self.cx.fn_summ(self.def_id, self.tcx).cset = save_cset;
+    }
+
+    fn local_ty(&mut self, ty: Ty<'tcx>) -> LTy<'tcx> {
+        self.cx.local_ty(self.def_id, &mut self.next_local_var, ty)
+    }
+
+    fn local_var_ty(&mut self, l: Local) -> LTy<'tcx> {
+        self.local_tys[l]
     }
 
 
     /// Compute the type of an `Lvalue` and the maximum permissions for accessing it.
     fn lvalue_lty(&mut self, lv: &Lvalue<'tcx>) -> (LTy<'tcx>, Perm) {
-        match *lv {
-            Lvalue::Local(l) => {
-                let idx = l.index();
-                let source =
-                    if idx < 1 + self.mir.arg_count { TySource::Sig(self.def_id, idx) }
-                    else { TySource::Local(self.def_id, idx) };
-                let mir = self.mir;
-                (self.cx.labeled(source, VarKind::Local, || mir.local_decls[l].ty),
-                 Perm::move_())
-            },
+        let (ty, perm, variant) = self.lvalue_lty_downcast(lv);
+        assert!(variant.is_none(), "expected non-Downcast result");
+        (ty, perm)
+    }
 
-            Lvalue::Static(ref s) => {
-                (self.cx.labeled(TySource::Static(s.def_id), VarKind::Static, || s.ty),
-                 Perm::move_())
-            },
+    fn lvalue_lty_downcast(&mut self, lv: &Lvalue<'tcx>) -> (LTy<'tcx>, Perm, Option<usize>) {
+        match *lv {
+            Lvalue::Local(l) => (self.local_var_ty(l), Perm::move_(), None),
+
+            Lvalue::Static(ref s) =>
+                (self.cx.static_ty(s.def_id, self.tcx), Perm::move_(), None),
 
             Lvalue::Projection(ref p) => {
-                let (base_ty, base_perm) = self.lvalue_lty(&p.base);
+                let (base_ty, base_perm, base_variant) = self.lvalue_lty_downcast(&p.base);
+
+                // Sanity check
+                match p.elem {
+                    ProjectionElem::Field(..) => {},
+                    _ => assert!(base_variant.is_none(), "expected non-Downcast result"),
+                }
+
                 match p.elem {
                     // Access permissions for a deref are the minimum of all pointers along the
                     // path to the value.
                     ProjectionElem::Deref =>
-                        (base_ty.args[0], self.min_perm(base_perm, base_ty.label.unwrap())),
-                    ProjectionElem::Field(f, _) => (self.field_lty(base_ty, f), base_perm),
+                        // TODO - reimplement `min`
+                        //(base_ty.args[0], self.min_perm(base_perm, base_ty.label.unwrap())),
+                        (base_ty.args[0], base_ty.label.unwrap(), None),
+                    ProjectionElem::Field(f, _) =>
+                        (self.field_lty(base_ty, base_variant.unwrap_or(0), f), base_perm, None),
                     ProjectionElem::Index(ref index_op) =>
-                        (base_ty.args[0], base_perm),
+                        (base_ty.args[0], base_perm, None),
                     ProjectionElem::ConstantIndex { .. } => unimplemented!(),
                     ProjectionElem::Subslice { .. } => unimplemented!(),
-                    ProjectionElem::Downcast(_, _) => unimplemented!(),
+                    ProjectionElem::Downcast(_, variant) =>
+                        (base_ty, base_perm, Some(variant)),
                 }
             },
         }
     }
 
-    fn field_lty(&mut self, base_ty: LTy<'tcx>, f: Field) -> LTy<'tcx> {
+    fn field_lty(&mut self, base_ty: LTy<'tcx>, v: usize, f: Field) -> LTy<'tcx> {
         match base_ty.ty.sty {
-            TypeVariants::TyAdt(def, substs) => {
-                let poly_ty = self.def_field_lty(def, 0, f.index());
+            TypeVariants::TyAdt(adt, substs) => {
+                let field_def = &adt.variants[v].fields[f.index()];
+                let poly_ty = self.cx.static_ty(field_def.did, self.tcx);
                 self.cx.lcx.subst(poly_ty, &base_ty.args)
             },
             TypeVariants::TyTuple(tys, _) => base_ty.args[f.index()],
@@ -587,24 +583,13 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         }
     }
 
-    // TODO: handle substs
-    fn def_field_lty(&mut self, adt: &'tcx AdtDef, variant: usize, field: usize) -> LTy<'tcx> {
-        let field_def = &adt.variants[variant].fields[field];
-        let source = TySource::Static(field_def.did);
-        let tcx = self.tcx;
-        self.cx.labeled(source, VarKind::Static, || {
-            tcx.type_of(field_def.did)
-        })
-    }
-
     fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> (LTy<'tcx>, Perm) {
+        let ty = rv.ty(self.mir, self.tcx);
+
         match *rv {
             Rvalue::Use(ref op) => self.operand_lty(op),
             Rvalue::Repeat(ref op, len) => {
-                let mir = self.mir;
-                let tcx = self.tcx;
-                let source = TySource::Rvalue(self.def_id, self.bbid, self.stmt_idx);
-                let arr_ty = self.cx.labeled(source, VarKind::Local, || rv.ty(mir, tcx));
+                let arr_ty = self.local_ty(ty);
 
                 // Assign the operand to the array element.
                 let (op_ty, op_perm) = self.operand_lty(op);
@@ -618,14 +603,9 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                 let ref_ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, Some(perm));
                 (ref_ty, Perm::move_())
             },
-            Rvalue::Len(_) => {
-                // Produces a usize
-                let ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), &[], None);
-                (ty, Perm::move_())
-            },
-            Rvalue::Cast(_, ref op, ty) => {
-                let source = TySource::Rvalue(self.def_id, self.bbid, self.stmt_idx);
-                let cast_ty = self.cx.labeled(source, VarKind::Local, || ty);
+            Rvalue::Len(_) => (self.local_ty(ty), Perm::move_()),
+            Rvalue::Cast(_, ref op, cast_raw_ty) => {
+                let cast_ty = self.local_ty(cast_raw_ty);
                 let (op_ty, op_perm) = self.operand_lty(op);
                 self.propagate(cast_ty, op_ty, Perm::move_());
                 (cast_ty, op_perm)
@@ -634,25 +614,21 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             Rvalue::CheckedBinaryOp(op, ref a, ref b) => match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem |
                 BinOp::BitXor | BinOp::BitAnd | BinOp::BitOr | BinOp::Shl | BinOp::Shr |
-                BinOp::Eq | BinOp::Lt | BinOp::Le | BinOp::Ne | BinOp::Ge | BinOp::Gt => {
-                    // These ops only ever produce primitive values.
-                    let ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), &[], None);
-                    (ty, Perm::move_())
-                },
+                BinOp::Eq | BinOp::Lt | BinOp::Le | BinOp::Ne | BinOp::Ge | BinOp::Gt =>
+                    (self.local_ty(ty), Perm::move_()),
 
                 BinOp::Offset => self.operand_lty(a),
             },
             Rvalue::NullaryOp(op, ty) => unimplemented!(),
             Rvalue::UnaryOp(op, ref a) => match op {
-                UnOp::Not | UnOp::Neg => {
-                    let ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), &[], None);
-                    (ty, Perm::move_())
-                },
+                UnOp::Not | UnOp::Neg => (self.local_ty(ty), Perm::move_()),
             },
             Rvalue::Discriminant(ref lv) => unimplemented!(),
             Rvalue::Aggregate(ref kind, ref ops) => {
                 match **kind {
                     AggregateKind::Array(ty) => {
+                        unimplemented!()
+                            /*
                         let source = TySource::Rvalue(self.def_id, self.bbid, self.stmt_idx);
                         let elem_ty = self.cx.labeled(source, VarKind::Local, || ty);
                         // Record a pseudo-assignment from each array element operand to the array
@@ -664,14 +640,19 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                         let args = self.cx.lcx.mk_slice(&[elem_ty]);
                         let arr_ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, None);
                         (arr_ty, Perm::move_())
+                        */
                     },
                     AggregateKind::Tuple => {
-                        let args = ops.iter().map(|op| self.operand_lty(op).0).collect::<Vec<_>>();
-                        let args = self.cx.lcx.mk_slice(&args);
-                        let ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, None);
-                        (ty, Perm::move_())
+                        let tuple_ty = self.local_ty(ty);
+                        for (&elem_ty, op) in tuple_ty.args.iter().zip(ops.iter()) {
+                            let (op_ty, op_perm) = self.operand_lty(op);
+                            self.propagate(elem_ty, op_ty, op_perm);
+                        }
+                        (tuple_ty, Perm::move_())
                     },
                     AggregateKind::Adt(def, disr, substs, union_variant) => {
+                        unimplemented!()
+                            /*
                         if let Some(union_variant) = union_variant {
                             assert!(ops.len() == 1);
                             let field_ty = self.def_field_lty(def, 0, union_variant);
@@ -688,6 +669,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                         // TODO: handle substs
                         let ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), &[], None);
                         (ty, Perm::move_())
+                        */
                     },
                     AggregateKind::Closure(_, _) => unimplemented!(),
                 }
@@ -699,10 +681,8 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         match *op {
             Operand::Consume(ref lv) => self.lvalue_lty(lv),
             Operand::Constant(ref c) => {
-                let ty = self.cx.labeled(TySource::Const(c.ty as *const _ as usize),
-                                         VarKind::Local,
-                                         || c.ty);
-                (ty, Perm::move_())
+                eprintln!("CONSTANT {:?}: type = {:?}", c, c.ty);
+                (self.local_ty(c.ty), Perm::move_())
             },
         }
     }
@@ -744,30 +724,25 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         self.cset.add(p1, p2);
     }
 
-    fn min_perm(&mut self, p1: Perm, p2: Perm) -> Perm {
-        // Handle some easy cases precisely
-        match (p1, p2) {
-            (Perm::Concrete(ConcretePerm::Read), _) => return p1,
-            (_, Perm::Concrete(ConcretePerm::Read)) => return p2,
-            (Perm::Concrete(ConcretePerm::Move), _) => return p2,
-            (_, Perm::Concrete(ConcretePerm::Move)) => return p1,
-            (_, _) => {},
-        }
+    fn ty_fn_sig(&mut self, ty: LTy<'tcx>) -> LFnSig<'tcx> {
+        match ty.ty.sty {
+            TypeVariants::TyFnDef(did, substs) => {
+                let poly_sig = self.instantiate_fn(did);
+                LFnSig {
+                    inputs: self.cx.lcx.subst_slice(poly_sig.inputs, ty.args),
+                    output: self.cx.lcx.subst(poly_sig.output, ty.args),
+                }
+            },
+            TypeVariants::TyFnPtr(_) => {
+                LFnSig {
+                    inputs: &ty.args[.. ty.args.len() - 1],
+                    output: ty.args[ty.args.len() - 1],
+                }
+            },
+            TypeVariants::TyClosure(_, _) => unimplemented!(),
 
-        // For other cases, we introduce a new var and constrain it to be less than both p1 and p2.
-        // This works right when the min is used on the RHS of a constraint (`_ <= min(p1, p2)`),
-        // but if it's used on the LHS, the constraint will have no effect.  The LHS case is hard
-        // to handle, but only comes up in some tricky pointer-to-pointer cases, so it seems safe
-        // to ignore for now.
-        //
-        // Note that chaining mins works: `min(p1, min(p2, p3))` produces constraints `p4 <= p1`
-        // and `p4 <= min(p2, p3)` - the nested `min` is on the RHS.
-        //
-        // TODO: make the `min <= _` case work, or ensure it never happens
-        let p = Perm::Var(self.cx.min_perm_var(p1, p2));
-        self.propagate_perm(p, p1);
-        self.propagate_perm(p, p2);
-        p
+            _ => panic!("expected FnDef, FnPtr, or Closure"),
+        }
     }
 
     fn handle_basic_block(&mut self, bbid: BasicBlock, bb: &BasicBlockData<'tcx>) {
@@ -817,8 +792,9 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             TerminatorKind::Call { ref func, ref args, ref destination, .. } => {
                 eprintln!("    call {:?}", func);
                 let (func_ty, _func_perm) = self.operand_lty(func);
-                let sig = self.cx.labeled_sig(func_ty, self.tcx);
-                self.import_fn_sig_constraints(func_ty);
+                eprintln!("fty = {:?}", func_ty);
+                let sig = self.ty_fn_sig(func_ty);
+
                 // Note that `sig.inputs` may be shorter than `args`, if `func` is varargs.
                 for (&sig_ty, arg) in sig.inputs.iter().zip(args.iter()) {
                     let (arg_ty, arg_perm) = self.operand_lty(arg);
@@ -843,6 +819,12 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
 struct LTySource<'a, 'gcx: 'tcx, 'tcx: 'a> {
     cx: &'a mut Ctxt<'tcx>,
     tcx: TyCtxt<'a, 'gcx, 'tcx>,
+
+    // XXX - bit of a hack.  We keep the def id of the last call to `fn_sig`, and refer to that
+    // inside the map_types callback to figure out the right scope for any SigVars in the type.
+    // This relies on the fact that map_types invokes the next TypeSource method only once all
+    // callback invocations resulting for the previous TypeSource call have been made.
+    last_sig_did: Option<DefId>,
 }
 
 impl<'a, 'gcx, 'tcx> TypeSource for LTySource<'a, 'gcx, 'tcx> {
@@ -850,23 +832,27 @@ impl<'a, 'gcx, 'tcx> TypeSource for LTySource<'a, 'gcx, 'tcx> {
     type Signature = LFnSig<'tcx>;
 
     fn expr_type(&mut self, e: &ast::Expr) -> Option<Self::Type> {
+        self.last_sig_did = None;
         None
     }
 
     fn pat_type(&mut self, p: &ast::Pat) -> Option<Self::Type> {
+        self.last_sig_did = None;
         None
     }
 
     fn def_type(&mut self, did: DefId) -> Option<Self::Type> {
-        let tcx = self.tcx;
-        Some(self.cx.labeled(TySource::Static(did), VarKind::Static, || tcx.type_of(did)))
+        self.last_sig_did = None;
+        Some(self.cx.static_ty(did, self.tcx))
     }
 
     fn fn_sig(&mut self, did: DefId) -> Option<Self::Signature> {
-        Some(self.cx.labeled_def_sig(did, self.tcx))
+        self.last_sig_did = Some(did);
+        Some(self.cx.fn_sig(did, self.tcx))
     }
 
     fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> {
+        self.last_sig_did = None;
         // TODO - should probably support this
         None
     }
@@ -893,28 +879,24 @@ fn get_sig<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
     let ty = tcx.type_of(def_id);
     match ty.sty {
         TypeVariants::TyFnDef(_, _) |
-        TypeVariants::TyFnPtr(_) => {},
+        TypeVariants::TyFnPtr(_) => cx.fn_sig(def_id, tcx),
 
         _ => {
             return LFnSig {
                 inputs: &[],
-                output: cx.labeled(TySource::Static(def_id), VarKind::Static, || ty),
+                output: cx.static_ty(def_id, tcx),
             };
         },
     }
-
-    let sig = ty.fn_sig(tcx);
-    let inputs = sig.0.inputs().iter().enumerate()
-        .map(|(i, &ty)| cx.labeled(TySource::Sig(def_id, 1 + i), VarKind::Sig(def_id), || ty))
-        .collect::<Vec<_>>();
-    let output = cx.labeled(TySource::Sig(def_id, 0), VarKind::Sig(def_id), || sig.0.output());
-    LFnSig {
-        inputs: cx.lcx.mk_slice(&inputs),
-        output: output,
-    }
 }
 
+
 struct Pretty<'tcx, L: 'tcx>(LabeledTy<'tcx, L>);
+
+fn pretty_slice<'a, 'tcx, L>(tys: &'a [LabeledTy<'tcx, L>]) -> &'a [Pretty<'tcx, L>] {
+    unsafe { ::std::mem::transmute(tys) }
+}
+
 
 fn perm_label(p: Option<ConcretePerm>) -> &'static str {
     match p {
@@ -925,9 +907,6 @@ fn perm_label(p: Option<ConcretePerm>) -> &'static str {
     }
 }
 
-fn pretty_slice<'a, 'tcx, L>(tys: &'a [LabeledTy<'tcx, L>]) -> &'a [Pretty<'tcx, L>] {
-    unsafe { ::std::mem::transmute(tys) }
-}
 
 struct PrettyLabel<L>(L);
 
@@ -950,15 +929,26 @@ impl<L> fmt::Debug for PrettyLabel<Option<L>> where L: Copy, PrettyLabel<L>: fmt
     }
 }
 
-impl fmt::Debug for PrettyLabel<(ConcretePerm, Option<Var>)> {
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct PrintVar(Perm);
+
+impl fmt::Debug for PrettyLabel<(ConcretePerm, PrintVar)> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(v) = (self.0).1 {
-            write!(fmt, "{:?}#{}", PrettyLabel((self.0).0), v.index())
-        } else {
-            write!(fmt, "{:?}#?", PrettyLabel((self.0).0))
+        write!(fmt, "{:?}{:?}", PrettyLabel((self.0).0), PrettyLabel((self.0).1))
+    }
+}
+
+impl fmt::Debug for PrettyLabel<PrintVar> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match (self.0).0 {
+            Perm::Concrete(_) => Ok(()),
+            Perm::StaticVar(v) => write!(fmt, "#s{}", v.index()),
+            Perm::SigVar(v) => write!(fmt, "#f{}", v.index()),
+            Perm::LocalVar(v) => write!(fmt, "#l{}", v.index()),
         }
     }
 }
+
 
 
 impl<'tcx, L> fmt::Debug for Pretty<'tcx, L> where L: Copy + fmt::Debug, PrettyLabel<L>: fmt::Debug {
@@ -983,61 +973,48 @@ impl<'tcx, L> fmt::Debug for Pretty<'tcx, L> where L: Copy + fmt::Debug, PrettyL
 pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     let mut ctxt = Ctxt::new(cx.ty_arena());
 
-    let mut fixed_vars = HashMap::new();
+    let mut fixed_vars = Vec::new();
     {
         let source = LTySource {
             cx: &mut ctxt,
             tcx: cx.ty_ctxt(),
+            last_sig_did: None,
         };
 
         type_map::map_types(cx.hir_map(), source, &st.krate(), |source, ast_ty, lty| {
             eprintln!("match {:?} ({:?}) with {:?}", ast_ty, ast_ty.id, lty);
             if st.marked(ast_ty.id, "box") {
-                if let Some(Perm::Var(v)) = lty.label {
-                    fixed_vars.insert(v, Perm::move_());
+                if let Some(p) = lty.label {
+                    fixed_vars.push((p, source.last_sig_did, Perm::move_()));
                 }
             }
 
             if st.marked(ast_ty.id, "mut") {
-                if let Some(Perm::Var(v)) = lty.label {
-                    fixed_vars.insert(v, Perm::write());
+                if let Some(p) = lty.label {
+                    fixed_vars.push((p, source.last_sig_did, Perm::write()));
                 }
             }
 
             if st.marked(ast_ty.id, "ref") {
-                if let Some(Perm::Var(v)) = lty.label {
-                    fixed_vars.insert(v, Perm::read());
+                if let Some(p) = lty.label {
+                    fixed_vars.push((p, source.last_sig_did, Perm::read()));
                 }
             }
         });
     }
 
     // For any marked types that are in signatures, add constraints to the parent function's cset.
-    let mut sig_constraints = Vec::new();
-    for (&did, vars) in &ctxt.vars.sig_vars {
-        for &v in vars {
-            if let Some(p) = fixed_vars.remove(&v) {
-                sig_constraints.push((did, v, p));
+    for (p, did, min_perm) in fixed_vars {
+        eprintln!("FIXED VAR: {:?} = {:?} (in {:?})", p, min_perm, did);
+        match p {
+            Perm::StaticVar(_) => ctxt.static_cset.add(min_perm, p),
+            Perm::SigVar(_) => {
+                let did = did.expect("expected DefId for SigVar");
+                ctxt.fn_summ(did, cx.ty_ctxt()).cset.add(min_perm, p);
             }
+            _ => panic!("expected StaticVar or SigVar, but got {:?}", p),
         }
     }
-
-    for (did, v, p) in sig_constraints {
-        ctxt.vars.add_sig_constraint(did, Perm::Var(v), p);
-        ctxt.vars.add_sig_constraint(did, p, Perm::Var(v));
-    }
-
-    // Check the remaining marked types for ones that should be added to the field constraints.
-    for (&v, &p) in &fixed_vars {
-        if ctxt.vars.field_min.contains_key(&v) {
-            let p = match p {
-                Perm::Concrete(p) => p,
-                _ => panic!("expected Perm::Concrete"),
-            };
-            ctxt.vars.field_min.insert(v, p);
-        }
-    }
-
 
 
     let tcx = cx.ty_ctxt();
@@ -1045,14 +1022,17 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
         for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
             let mir = tcx.optimized_mir(def_id);
             let mut local_cx = LocalCtxt::new(&mut ctxt, tcx, def_id, mir);
-            local_cx.do_import();
 
             eprintln!("\nmir for {:?}", def_id);
+
+            local_cx.init();
+
             eprintln!("  locals:");
             for l in mir.local_decls.indices() {
                 let (ty, _) = local_cx.lvalue_lty(&Lvalue::Local(l));
                 eprintln!("    {:?}: {:?}", l, ty);
             }
+
             for (bbid, bb) in ReversePostorder::new(&mir, START_BLOCK) {
                 local_cx.handle_basic_block(bbid, bb);
             }
@@ -1083,20 +1063,11 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
 
     {
-        let mut lty_map_sorted = ctxt.lty_map.iter().collect::<Vec<_>>();
-        lty_map_sorted.sort_by_key(|&(k, _)| k);
-        for (&k, &v) in lty_map_sorted {
-            let def_id = match k {
-                TySource::Static(def_id) => def_id,
-                _ => continue,
-            };
-
-            let ty = new_lcx.relabel(v, &mut |p| {
-                p.as_ref().and_then(|&p| match p {
-                    Perm::Var(v) => ctxt.vars.field_min.get(&v).cloned()
-                        .map(|p| (p, Some(v))),
-                    Perm::Concrete(p) => Some((p, None)),
-                })
+        let mut statics_sorted = ctxt.static_summ.iter().collect::<Vec<_>>();
+        statics_sorted.sort_by_key(|&(k, _)| k);
+        for (&def_id, &ty) in statics_sorted {
+            let ty = new_lcx.relabel(ty, &mut |p| {
+                p.as_ref().map(|&p| ctxt.static_cset.lower_bound(p))
             });
 
             eprintln!("{:?}: {:?}", def_id, Pretty(ty));
@@ -1104,140 +1075,21 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     }
 
     let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
-    let mut def_ids = tcx.mir_keys(LOCAL_CRATE).iter().cloned().collect::<Vec<_>>();
-    def_ids.sort();
-    for def_id in def_ids {
-        let sig = get_sig(cx.ty_ctxt(), &mut ctxt, def_id);
-        let cset = ctxt.vars.sig_cset.get(&def_id);
+    let mut fns_sorted = ctxt.fn_summ.iter().collect::<Vec<_>>();
+    fns_sorted.sort_by_key(|&(k, _)| k);
+    for (&def_id, summ) in fns_sorted {
+        let cset = &summ.cset;
         let mut func2 = |p: &Option<_>| {
-            p.as_ref().and_then(|&p| match p {
-                Perm::Var(v) => cset.as_ref().map(|cset| cset.lower_bound(p))
-                    .map(|p| (p, Some(v))),
-                Perm::Concrete(p) => Some((p, None)),
-            })
+            p.map(|p| (cset.lower_bound(p), PrintVar(p)))
         };
-        let inputs = new_lcx.relabel_slice(sig.inputs, &mut func2);
-        let output = new_lcx.relabel(sig.output, &mut func2);
+        let inputs = new_lcx.relabel_slice(summ.sig.inputs, &mut func2);
+        let output = new_lcx.relabel(summ.sig.output, &mut func2);
         eprintln!("{:?}:\n  {:?} -> {:?}", def_id, pretty_slice(inputs), Pretty(output));
-        if let Some(cset) = cset {
-            for &(a, b) in &cset.less {
-                if a == b || a == Perm::read() || b == Perm::move_() {
-                    continue;
-                }
-                eprintln!("    {:?} <= {:?}", a, b);
+        for &(a, b) in &cset.less {
+            if a == b || a == Perm::read() || b == Perm::move_() {
+                continue;
             }
+            eprintln!("    {:?} <= {:?}", a, b);
         }
     }
 }
-
-
-
-
-
-
-
-
-/*
-struct PtrCountVisitor {
-    count: usize,
-}
-
-impl<'tcx> TypeVisitor<'tcx> for PtrCountVisitor {
-    fn visit_ty(&mut self, ty: ty::Ty<'tcx>) -> bool {
-        use rustc::ty::TypeVariants::*;
-        match ty.sty {
-            TyRawPtr(mty) => {
-                self.count += 1;
-            },
-            _ => {},
-        }
-
-        ty.super_visit_with(self)
-    }
-}
-
-fn count_ty_ptrs(ty: ty::Ty) -> usize {
-    let mut v = PtrCountVisitor {
-        count: 0,
-    };
-    v.visit_ty(ty);
-    v.count
-}
-
-fn count_subst_ptrs(substs: &Substs) -> usize {
-    substs.types().map(count_ty_ptrs).sum()
-}
-
-fn count_fn_sig_ptrs(fn_sig: FnSig) -> usize {
-    fn_sig.inputs_and_output.iter().cloned().map(count_ty_ptrs).sum()
-}
-
-
-struct VarAlloc {
-    next: u32,
-}
-
-impl VarAlloc {
-    fn new() -> VarAlloc {
-        VarAlloc {
-            next: FIRST_USER_VAR,
-        }
-    }
-
-    fn alloc(&mut self) -> Var {
-        let v = Var(self.next);
-        self.next += 1;
-        v
-    }
-
-    fn alloc_n(&mut self, n: usize) -> Vec<Var> {
-        assert!(n as u32 as usize == n);
-        let mut v = Vec::with_capacity(n);
-        for i in 0 .. n as u32 {
-            v.push(Var(self.next + i));
-        }
-        self.next += n as u32;
-        v
-    }
-}
-
-struct SigInfo {
-}
-
-impl SigInfo {
-    fn from_instance<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                                     inst: Instance<'tcx>,
-                                     alloc: &mut VarAlloc) -> SigInfo {
-        let sig = tcx.fn_sig(inst.def_id()).0;
-        SigInfo {
-            sig_vars: alloc.alloc_n(count_fn_sig_ptrs(sig)),
-            subst_vars: alloc.alloc_n(count_subst_ptrs(inst.substs)),
-            cmap: ConstraintMap::new(),
-        }
-    }
-}
-
-struct Ctxt<'tcx> {
-    alloc: VarAlloc,
-    global_cmap: ConstraintMap,
-    sigs: HashSet<Instance<'tcx>, SigInfo>,
-}
-*/
-
-// global vars & constraints
-// mono fn summaries:
-// - vars + constraints
-// - var names are sequentially numbered following the globals
-//   - label subst tys first.  these will be connected to type annotations at callsites
-//   - label unsubstituted arg tys next.  these will be connected to the fn's arg annotations
-//   - treat return ty as arg #0.  this aligns with MIR locals
-// on update:
-// - import global v&c
-// - label the subst & local vars.  the first few locals' names should align with the names in the
-//   summary.
-// - scan the MIR for the function, adding constraints (and occasionally vars) on demand
-// - function call handling:
-//   - generate fresh vars for the substs and args in the callee signature
-//   - substitute the fresh variable names for the originals in the callee's constraints
-//   - add substituted constraints to the current set
-//   - add constraints for movement into args / out of return
