@@ -963,20 +963,12 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             Rvalue::Aggregate(ref kind, ref ops) => {
                 match **kind {
                     AggregateKind::Array(ty) => {
-                        unimplemented!()
-                            /*
-                        let source = TySource::Rvalue(self.def_id, self.bbid, self.stmt_idx);
-                        let elem_ty = self.cx.labeled(source, VarKind::Local, || ty);
-                        // Record a pseudo-assignment from each array element operand to the array
-                        // element type.
+                        let array_ty = self.local_ty(ty);
                         for op in ops {
                             let (op_ty, op_perm) = self.operand_lty(op);
-                            self.propagate(elem_ty, op_ty, op_perm);
+                            self.propagate(array_ty.args[0], op_ty, op_perm);
                         }
-                        let args = self.cx.lcx.mk_slice(&[elem_ty]);
-                        let arr_ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, None);
-                        (arr_ty, Perm::move_())
-                        */
+                        (array_ty, Perm::move_())
                     },
                     AggregateKind::Tuple => {
                         let tuple_ty = self.local_ty(ty);
@@ -986,26 +978,27 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                         }
                         (tuple_ty, Perm::move_())
                     },
-                    AggregateKind::Adt(def, disr, substs, union_variant) => {
-                        unimplemented!()
-                            /*
+                    AggregateKind::Adt(adt, disr, substs, union_variant) => {
+                        let adt_ty = self.local_ty(ty);
+
                         if let Some(union_variant) = union_variant {
                             assert!(ops.len() == 1);
-                            let field_ty = self.def_field_lty(def, 0, union_variant);
+                            let field_def_id = adt.variants[0].fields[union_variant].did;
+                            let poly_field_ty = self.cx.static_ty(field_def_id, self.tcx);
+                            let field_ty = self.cx.lcx.subst(poly_field_ty, adt_ty.args);
                             let (op_ty, op_perm) = self.operand_lty(&ops[0]);
                             self.propagate(field_ty, op_ty, op_perm);
                         } else {
                             for (i, op) in ops.iter().enumerate() {
-                                let field_ty = self.def_field_lty(def, disr, i);
+                                let field_def_id = adt.variants[disr].fields[i].did;
+                                let poly_field_ty = self.cx.static_ty(field_def_id, self.tcx);
+                                let field_ty = self.cx.lcx.subst(poly_field_ty, adt_ty.args);
                                 let (op_ty, op_perm) = self.operand_lty(op);
                                 self.propagate(field_ty, op_ty, op_perm);
                             }
                         }
 
-                        // TODO: handle substs
-                        let ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), &[], None);
-                        (ty, Perm::move_())
-                        */
+                        (adt_ty, Perm::move_())
                     },
                     AggregateKind::Closure(_, _) => unimplemented!(),
                 }
