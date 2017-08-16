@@ -40,7 +40,7 @@ impl Idx for Var {
     }
 }
 
-type LTy<'tcx> = LabeledTy<'tcx, Option<Perm>>;
+type LTy<'tcx> = LabeledTy<'tcx, Option<Perm<'tcx>>>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct LFnSig<'tcx> {
@@ -57,31 +57,32 @@ enum ConcretePerm {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-enum Perm {
+enum Perm<'tcx> {
     Concrete(ConcretePerm),
     StaticVar(Var),
     SigVar(Var),
     LocalVar(Var),
+    Min(&'tcx [Perm<'tcx>]),
 }
 
-impl Perm {
-    fn read() -> Perm {
+impl<'tcx> Perm<'tcx> {
+    fn read() -> Perm<'tcx> {
         Perm::Concrete(ConcretePerm::Read)
     }
 
-    fn write() -> Perm {
+    fn write() -> Perm<'tcx> {
         Perm::Concrete(ConcretePerm::Write)
     }
 
-    fn move_() -> Perm {
+    fn move_() -> Perm<'tcx> {
         Perm::Concrete(ConcretePerm::Move)
     }
 }
 
 
-struct ConstraintSet {
-    less: BTreeSet<(Perm, Perm)>,
-    greater: BTreeSet<(Perm, Perm)>,
+struct ConstraintSet<'tcx> {
+    less: BTreeSet<(Perm<'tcx>, Perm<'tcx>)>,
+    greater: BTreeSet<(Perm<'tcx>, Perm<'tcx>)>,
 }
 
 fn perm_range(p: Perm) -> (Bound<(Perm, Perm)>, Bound<(Perm, Perm)>) {
@@ -89,20 +90,20 @@ fn perm_range(p: Perm) -> (Bound<(Perm, Perm)>, Bound<(Perm, Perm)>) {
      Bound::Included((p, Perm::LocalVar(Var(!0)))))
 }
 
-impl ConstraintSet {
-    fn new() -> ConstraintSet {
+impl<'tcx> ConstraintSet<'tcx> {
+    fn new() -> ConstraintSet<'tcx> {
         ConstraintSet {
             less: BTreeSet::new(),
             greater: BTreeSet::new(),
         }
     }
 
-    fn add(&mut self, a: Perm, b: Perm) {
+    fn add(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) {
         self.less.insert((a, b));
         self.greater.insert((b, a));
     }
 
-    fn import(&mut self, other: &ConstraintSet) {
+    fn import(&mut self, other: &ConstraintSet<'tcx>) {
         eprintln!("IMPORT {} constraints", other.less.len());
         self.less.extend(other.less.iter().cloned().filter(|&(ref a, ref b)| {
             eprintln!("IMPORT CONSTRAINT: {:?} <= {:?}", a, b);
@@ -111,7 +112,8 @@ impl ConstraintSet {
         self.greater.extend(other.greater.iter().cloned());
     }
 
-    fn import_substituted<F: Fn(Perm) -> Perm>(&mut self, other: &ConstraintSet, mut f: F) {
+    fn import_substituted<F>(&mut self, other: &ConstraintSet<'tcx>, mut f: F)
+            where F: Fn(Perm<'tcx>) -> Perm<'tcx> {
         eprintln!("IMPORT {} constraints (substituted)", other.less.len());
         self.less.extend(other.less.iter().map(|&(a, b)| {
             let (a2, b2) = (f(a), f(b));
@@ -122,7 +124,7 @@ impl ConstraintSet {
         self.greater.extend(other.greater.iter().map(|&(a, b)| (f(a), f(b))));
     }
 
-    fn lower_bound(&self, p: Perm) -> ConcretePerm {
+    fn lower_bound(&self, p: Perm<'tcx>) -> ConcretePerm {
         match p {
             Perm::Concrete(p) => return p,
             _ => {},
@@ -154,7 +156,7 @@ impl ConstraintSet {
         bound
     }
 
-    fn retain_perms<F: Fn(Perm) -> bool>(&mut self, filter: F) {
+    fn retain_perms<F: Fn(Perm<'tcx>) -> bool>(&mut self, filter: F) {
         let mut all_perms = HashSet::new();
         for &(p1, p2) in &self.less {
             all_perms.insert(p1);
@@ -213,14 +215,14 @@ enum TySource {
 struct FnSummary<'tcx> {
     sig: LFnSig<'tcx>,
     num_sig_vars: u32,
-    cset: ConstraintSet,
+    cset: ConstraintSet<'tcx>,
 }
 
 struct Ctxt<'tcx> {
-    lcx: LabeledTyCtxt<'tcx, Option<Perm>>,
+    lcx: LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
 
     static_summ: HashMap<DefId, LTy<'tcx>>,
-    static_cset: ConstraintSet,
+    static_cset: ConstraintSet<'tcx>,
     next_static_var: u32,
 
     fn_summ: HashMap<DefId, FnSummary<'tcx>>,
@@ -348,7 +350,9 @@ impl<'tcx> Ctxt<'tcx> {
     }
 }
 
-fn preload_constraints(tcx: TyCtxt, def_id: DefId, sig: LFnSig) -> Option<ConstraintSet> {
+fn preload_constraints<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                                       def_id: DefId,
+                                       sig: LFnSig<'tcx>) -> Option<ConstraintSet<'tcx>> {
     let mut cset = ConstraintSet::new();
 
     let path = tcx.absolute_item_path_str(def_id);
@@ -381,18 +385,18 @@ struct LocalCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     bbid: BasicBlock,
     stmt_idx: usize,
 
-    cset: ConstraintSet,
+    cset: ConstraintSet<'tcx>,
     local_tys: IndexVec<Local, LTy<'tcx>>,
     next_local_var: u32,
 }
 
-fn collect_perms(ty: LTy) -> Vec<Perm> {
+fn collect_perms<'tcx>(ty: LTy<'tcx>) -> Vec<Perm<'tcx>> {
     let mut v = Vec::new();
     collect_perms_into(ty, &mut v);
     v
 }
 
-fn collect_perms_into(ty: LTy, v: &mut Vec<Perm>) {
+fn collect_perms_into<'tcx>(ty: LTy<'tcx>, v: &mut Vec<Perm<'tcx>>) {
     if let Some(p) = ty.label {
         v.push(p);
     }
@@ -488,12 +492,15 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         });
 
         let mut save_cset = ConstraintSet::new();
-        let perm_level = |p| match p {
-            Perm::Concrete(_) => 0,
-            Perm::StaticVar(_) => 1,
-            Perm::SigVar(_) => 2,
-            Perm::LocalVar(_) => 3,
-        };
+        fn perm_level(p: Perm) -> usize {
+            match p {
+                Perm::Concrete(_) => 0,
+                Perm::StaticVar(_) => 1,
+                Perm::SigVar(_) => 2,
+                Perm::LocalVar(_) => 3,
+                Perm::Min(ps) => ps.iter().cloned().map(perm_level).max().unwrap_or(0),
+            }
+        }
         for &(a, b) in self.cset.less.iter() {
             let level = cmp::max(perm_level(a), perm_level(b));
             match level {
@@ -529,13 +536,14 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
 
 
     /// Compute the type of an `Lvalue` and the maximum permissions for accessing it.
-    fn lvalue_lty(&mut self, lv: &Lvalue<'tcx>) -> (LTy<'tcx>, Perm) {
+    fn lvalue_lty(&mut self, lv: &Lvalue<'tcx>) -> (LTy<'tcx>, Perm<'tcx>) {
         let (ty, perm, variant) = self.lvalue_lty_downcast(lv);
         assert!(variant.is_none(), "expected non-Downcast result");
         (ty, perm)
     }
 
-    fn lvalue_lty_downcast(&mut self, lv: &Lvalue<'tcx>) -> (LTy<'tcx>, Perm, Option<usize>) {
+    fn lvalue_lty_downcast(&mut self,
+                           lv: &Lvalue<'tcx>) -> (LTy<'tcx>, Perm<'tcx>, Option<usize>) {
         match *lv {
             Lvalue::Local(l) => (self.local_var_ty(l), Perm::move_(), None),
 
@@ -583,7 +591,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         }
     }
 
-    fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> (LTy<'tcx>, Perm) {
+    fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> (LTy<'tcx>, Perm<'tcx>) {
         let ty = rv.ty(self.mir, self.tcx);
 
         match *rv {
@@ -677,7 +685,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         }
     }
 
-    fn operand_lty(&mut self, op: &Operand<'tcx>) -> (LTy<'tcx>, Perm) {
+    fn operand_lty(&mut self, op: &Operand<'tcx>) -> (LTy<'tcx>, Perm<'tcx>) {
         match *op {
             Operand::Consume(ref lv) => self.lvalue_lty(lv),
             Operand::Constant(ref c) => {
@@ -693,7 +701,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
     /// topmost pointer type.  The resulting permission must be no higher than the permission of
     /// the RHS pointer, and also must be no higher than the permission of any pointer dereferenced
     /// on the path to the RHS.
-    fn propagate(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>, max_perm: Perm) {
+    fn propagate(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>, max_perm: Perm<'tcx>) {
         if let (Some(l_perm), Some(r_perm)) = (lhs.label, rhs.label) {
             self.propagate_perm(l_perm, r_perm);
             self.propagate_perm(l_perm, max_perm);
@@ -719,7 +727,7 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
         }
     }
 
-    fn propagate_perm(&mut self, p1: Perm, p2: Perm) {
+    fn propagate_perm(&mut self, p1: Perm<'tcx>, p2: Perm<'tcx>) {
         eprintln!("ADD: {:?} <= {:?}", p1, p2);
         self.cset.add(p1, p2);
     }
@@ -930,21 +938,37 @@ impl<L> fmt::Debug for PrettyLabel<Option<L>> where L: Copy, PrettyLabel<L>: fmt
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct PrintVar(Perm);
+struct PrintVar<'tcx>(Perm<'tcx>);
 
-impl fmt::Debug for PrettyLabel<(ConcretePerm, PrintVar)> {
+impl<'tcx> fmt::Debug for PrettyLabel<(ConcretePerm, PrintVar<'tcx>)> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{:?}{:?}", PrettyLabel((self.0).0), PrettyLabel((self.0).1))
     }
 }
 
-impl fmt::Debug for PrettyLabel<PrintVar> {
+impl<'tcx> fmt::Debug for PrettyLabel<PrintVar<'tcx>> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match (self.0).0 {
             Perm::Concrete(_) => Ok(()),
             Perm::StaticVar(v) => write!(fmt, "#s{}", v.index()),
             Perm::SigVar(v) => write!(fmt, "#f{}", v.index()),
             Perm::LocalVar(v) => write!(fmt, "#l{}", v.index()),
+            Perm::Min(ps) => {
+                write!(fmt, "#min(")?;
+                let mut first = true;
+                for &p in ps {
+                    match p {
+                        Perm::Concrete(_) => continue,
+                        _ => {},
+                    }
+                    if !first {
+                        write!(fmt, ", ")?;
+                    }
+                    first = false;
+                    write!(fmt, "{:?}", PrettyLabel(PrintVar(p)))?;
+                }
+                write!(fmt, ")")
+            }
         }
     }
 }
