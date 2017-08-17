@@ -17,16 +17,15 @@ except ImportError:
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 DEPS_DIR = os.path.join(SCRIPT_DIR, 'dependencies')
-LLVM_SRC = os.path.join(SCRIPT_DIR, 'llvm.src')
-LLVM_BLD = os.path.join(SCRIPT_DIR, 'llvm.build')
-LOG_FILE = os.path.realpath(__file__).replace(".py", ".log")
+
 CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
 CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.1.tar.gz")
 CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
 CBOR_SRC = os.path.join(DEPS_DIR, CBOR_SRC)
 CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor")
 
-KEYSERVER = "pgpkeys.mit.edu"
+LLVM_SRC = os.path.join(SCRIPT_DIR, 'llvm.src')
+LLVM_BLD = os.path.join(SCRIPT_DIR, 'llvm.build')
 LLVM_PUBKEY = "8F0871F202119294"
 LLVM_VER = "4.0.1"
 LLVM_ARCHIVE_URLS = """
@@ -41,14 +40,15 @@ LLVM_ARCHIVE_FILES = [os.path.basename(s) for s in LLVM_ARCHIVE_URLS]
 LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "") for s in LLVM_ARCHIVE_FILES]
 LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
 
-
+KEYSERVER = "pgpkeys.mit.edu"
 MIN_PLUMBUM_VERSION = (1, 6, 3)
 CMAKELISTS_COMMANDS = \
 """
 include_directories({prefix}/include)
 link_directories({prefix}/lib)
 add_subdirectory(ast-extractor)
-""".format(prefix=CBOR_PREFIX)
+""".format(prefix=CBOR_PREFIX)  # nopep8
+
 
 def die(emsg, ecode=1):
     """
@@ -79,10 +79,10 @@ def check_sig(afile, asigfile):
     try:
         expected = "Good signature from \"Tom Stellard <tom@stellard.net>\""
         logging.debug("checking signature of %s", os.path.basename(afile))
-        retcode, _stdout, stderr = gpg['--verify', asigfile, afile].run(retcode=None)
+        retcode, _, stderr = gpg['--verify', asigfile, afile].run(retcode=None)
         if retcode:
             die("gpg signature check failed: gpg exit code " + str(retcode))
-        if not expected in stderr:
+        if expected not in stderr:
             die("gpg signature check failed: expected signature not found")
     except pb.ProcessExecutionError as pee:
         die("gpg signature check failed: " + pee.message)
@@ -180,7 +180,7 @@ def configure_and_build_llvm(args):
 
 def setup_logging():
     logging.basicConfig(
-        filename=LOG_FILE,
+        filename=sys.argv[0].replace(".py", ".log"),
         filemode='w',
         level=logging.DEBUG)
 
@@ -311,8 +311,10 @@ def main():
 
     # earlier plumbum versions are missing features such as TEE
     if pb.__version__ < MIN_PLUMBUM_VERSION:
-        err = "locally installed version {} of plumbum is too old.\n".format(pb.__version__)
-        err += "please upgrade plumbum to version {} or later.".format(MIN_PLUMBUM_VERSION)
+        err = "locally installed version {} of plumbum is too old.\n" \
+            .format(pb.__version__)
+        err += "please upgrade plumbum to version {} or later." \
+            .format(MIN_PLUMBUM_VERSION)
         die(err)
 
     args = parse_args()
@@ -320,8 +322,7 @@ def main():
         logging.info("cleaning all dependencies and previous built files")
         shutil.rmtree(LLVM_SRC, ignore_errors=True)
         shutil.rmtree(LLVM_BLD, ignore_errors=True)
-        shutil.rmtree(CBOR_PREFIX, ignore_errors=True)
-        shutil.rmtree(CBOR_SRC, ignore_errors=True)
+        shutil.rmtree(DEPS_DIR, ignore_errors=True)
 
     # FIXME: allow env/cli override of LLVM_SRC, LLVM_VER, and LLVM_BLD
     # FIXME: check that cmake and ninja are installed
