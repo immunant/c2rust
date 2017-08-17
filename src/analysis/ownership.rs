@@ -78,7 +78,8 @@ enum ConcretePerm {
 enum Perm<'tcx> {
     Concrete(ConcretePerm),
 
-    /// The minimum of some set of other permissions.
+    /// The minimum of some set of other permissions.  The slice should contain only atomic
+    /// permissions, not `Min`s.
     // Weird ordering, but it's necessary for `perm_range` - we need a way to write down the
     // largest and smallest possible `Perm`s, and the largest/smallest `Min` is hard to get.
     Min(&'tcx [Perm<'tcx>]),
@@ -184,6 +185,7 @@ impl<'tcx> Perm<'tcx> {
 }
 
 
+#[derive(Clone, PartialEq, Eq, Debug)]
 struct ConstraintSet<'tcx> {
     less: BTreeSet<(Perm<'tcx>, Perm<'tcx>)>,
     greater: BTreeSet<(Perm<'tcx>, Perm<'tcx>)>,
@@ -216,16 +218,35 @@ impl<'tcx> ConstraintSet<'tcx> {
         self.greater.extend(other.greater.iter().cloned());
     }
 
-    fn import_substituted<F>(&mut self, other: &ConstraintSet<'tcx>, mut f: F)
+    fn import_substituted<F>(&mut self,
+                             other: &ConstraintSet<'tcx>,
+                             arena: &'tcx DroplessArena,
+                             mut f: F)
             where F: Fn(Perm<'tcx>) -> Perm<'tcx> {
         eprintln!("IMPORT {} constraints (substituted)", other.less.len());
-        self.less.extend(other.less.iter().map(|&(a, b)| {
-            let (a2, b2) = (f(a), f(b));
+
+        let subst_one = |p| {
+            match p {
+                Perm::Min(ps) => {
+                    let mut buf = Vec::with_capacity(ps.len());
+                    for &p in ps {
+                        let q = f(p);
+                        if !buf.contains(&q) {
+                            buf.push(q);
+                        }
+                    }
+                    Perm::Min(arena.alloc_slice(&buf))
+                },
+                p => f(p),
+            }
+        };
+
+        for &(a, b) in other.less.iter() {
+            let (a2, b2) = (subst_one(a), subst_one(b));
             eprintln!("IMPORT CONSTRANT: {:?} <= {:?} (substituted from {:?} <= {:?})",
                       a2, b2, a, b);
-            (a2, b2)
-        }));
-        self.greater.extend(other.greater.iter().map(|&(a, b)| (f(a), f(b))));
+            self.add(a2, b2);
+        }
     }
 
     fn lower_bound(&self, p: Perm<'tcx>) -> ConcretePerm {
@@ -530,7 +551,7 @@ struct Ctxt<'tcx> {
     arena: &'tcx DroplessArena,
 
     static_summ: HashMap<DefId, LTy<'tcx>>,
-    next_static_var: u32,
+    static_assign: IndexVec<Var, ConcretePerm>,
 
     fn_summ: HashMap<DefId, FnSummary<'tcx>>,
     /// Cache of labeled tys generated while processing function bodies.  We may process the same
@@ -552,7 +573,7 @@ impl<'tcx> Ctxt<'tcx> {
             arena: arena,
 
             static_summ: HashMap::new(),
-            next_static_var: 0,
+            static_assign: IndexVec::new(),
 
             fn_summ: HashMap::new(),
             fn_ty_cache: HashMap::new(),
@@ -560,15 +581,14 @@ impl<'tcx> Ctxt<'tcx> {
     }
 
     fn static_ty<'a, 'gcx>(&mut self, did: DefId, tcx: TyCtxt<'a, 'gcx, 'tcx>) -> LTy<'tcx> {
-        let next = &mut self.next_static_var;
+        let assign = &mut self.static_assign;
         match self.static_summ.entry(did) {
             Entry::Vacant(e) => {
                 *e.insert(self.lcx.label(tcx.type_of(did), &mut |ty| {
                     match ty.sty {
                         TypeVariants::TyRef(_, _) |
                         TypeVariants::TyRawPtr(_) => {
-                            let v = Var(*next);
-                            *next += 1;
+                            let v = assign.push(ConcretePerm::Read);
                             Some(Perm::StaticVar(v))
                         },
                         _ => None,
@@ -830,6 +850,11 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             self.next_inst_var += summ.num_sig_vars;
             summ.sig
         };
+
+        self.insts.push(Instantiation {
+            callee: did,
+            first_inst_var: var_base,
+        });
 
         let mut f = |p| {
             match p {
@@ -1167,6 +1192,153 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
 }
 
 
+struct WorkList {
+    queue: VecDeque<DefId>,
+    in_queue: HashSet<DefId>,
+}
+
+impl WorkList {
+    fn new() -> WorkList {
+        WorkList {
+            queue: VecDeque::new(),
+            in_queue: HashSet::new(),
+        }
+    }
+
+    fn push(&mut self, id: DefId) {
+        if !self.in_queue.contains(&id) {
+            self.queue.push_back(id);
+            self.in_queue.insert(id);
+        }
+    }
+
+    fn pop(&mut self) -> Option<DefId> {
+        let r = self.queue.pop_front();
+        if let Some(id) = r {
+            self.in_queue.remove(&id);
+        }
+        r
+    }
+}
+
+struct InterCtxt<'a, 'tcx: 'a> {
+    cx: &'a mut Ctxt<'tcx>,
+
+    complete_cset: HashMap<DefId, ConstraintSet<'tcx>>,
+
+    work_list: WorkList,
+    rev_deps: HashMap<DefId, HashSet<DefId>>,
+}
+
+impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
+    fn new(cx: &'a mut Ctxt<'tcx>) -> InterCtxt<'a, 'tcx> {
+        InterCtxt {
+            cx: cx,
+            complete_cset: HashMap::new(),
+            work_list: WorkList::new(),
+            rev_deps: HashMap::new(),
+        }
+    }
+
+    fn process_one(&mut self, def_id: DefId) {
+        let summ = &self.cx.fn_summ[&def_id];
+        let dummy_cset = ConstraintSet::new();
+
+        // Copy in complete csets for all instantiations.
+        let mut cset = summ.cset.clone();
+        for inst in &summ.insts {
+            let complete = self.complete_cset.get(&inst.callee).unwrap_or(&dummy_cset);
+            eprintln!("  instantiate {:?} for vars {}..", inst.callee, inst.first_inst_var);
+            cset.import_substituted(complete, self.cx.arena, |p| {
+                match p {
+                    Perm::SigVar(v) => Perm::InstVar(Var(v.0 + inst.first_inst_var)),
+                    p => p,
+                }
+            });
+
+            self.rev_deps.entry(inst.callee).or_insert_with(HashSet::new).insert(def_id);
+        }
+
+        // Simplify away inst vars to produce a new complete cset for this fn.
+        eprintln!("  original constraints:");
+        for &(a, b) in cset.less.iter() {
+            eprintln!("    {:?} <= {:?}", a, b);
+        }
+
+        cset.remove_useless();
+        cset.simplify_min_lhs(self.cx.arena);
+
+        cset.retain_perms(self.cx.arena, |p| {
+            match p {
+                Perm::LocalVar(_) | Perm::InstVar(_) => false,
+                _ => true,
+            }
+        });
+
+        cset.simplify(self.cx.arena);
+
+        eprintln!("  simplified constraints:");
+        for &(a, b) in cset.less.iter() {
+            eprintln!("    {:?} <= {:?}", a, b);
+        }
+
+        // Update `complete_cset`
+
+        let did_update = match self.complete_cset.entry(def_id) {
+            Entry::Vacant(e) => {
+                e.insert(cset);
+                true
+            },
+            Entry::Occupied(mut e) => {
+                if e.get() != &cset {
+                    *e.get_mut() = cset;
+                    true
+                } else {
+                    false
+                }
+            },
+        };
+
+        if did_update {
+            if let Some(rev_deps) = self.rev_deps.get(&def_id) {
+                for &id in rev_deps {
+                    self.work_list.push(id);
+                }
+            }
+        }
+
+        // TODO: export static vars
+    }
+
+    fn process(&mut self) {
+        let mut idx = 0;
+
+        let ids = self.cx.fn_summ.keys().cloned().collect::<Vec<_>>();
+        eprintln!("\ninterprocedural analysis: process {} fns", ids.len());
+        for id in ids {
+            eprintln!("process {} (init): {:?}", idx, id);
+            idx += 1;
+
+            self.process_one(id);
+        }
+
+        while let Some(id) = self.work_list.pop() {
+            eprintln!("process {}: {:?}", idx, id);
+            idx += 1;
+
+            self.process_one(id);
+        }
+    }
+
+    fn finish(mut self) {
+        for (id, cset) in self.complete_cset {
+            let summ = self.cx.fn_summ.get_mut(&id).unwrap();
+            summ.cset = cset;
+        }
+    }
+}
+
+
 struct LTySource<'a, 'gcx: 'tcx, 'tcx: 'a> {
     cx: &'a mut Ctxt<'tcx>,
     tcx: TyCtxt<'a, 'gcx, 'tcx>,
@@ -1368,8 +1540,6 @@ fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
     }
 }
 
-
-
 fn handle_marks<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
                                       st: &CommandState,
                                       dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) {
@@ -1385,19 +1555,19 @@ fn handle_marks<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
             eprintln!("match {:?} ({:?}) with {:?}", ast_ty, ast_ty.id, lty);
             if st.marked(ast_ty.id, "box") {
                 if let Some(p) = lty.label {
-                    fixed_vars.push((p, source.last_sig_did, Perm::move_()));
+                    fixed_vars.push((p, source.last_sig_did, ConcretePerm::Move));
                 }
             }
 
             if st.marked(ast_ty.id, "mut") {
                 if let Some(p) = lty.label {
-                    fixed_vars.push((p, source.last_sig_did, Perm::write()));
+                    fixed_vars.push((p, source.last_sig_did, ConcretePerm::Write));
                 }
             }
 
             if st.marked(ast_ty.id, "ref") {
                 if let Some(p) = lty.label {
-                    fixed_vars.push((p, source.last_sig_did, Perm::read()));
+                    fixed_vars.push((p, source.last_sig_did, ConcretePerm::Read));
                 }
             }
         });
@@ -1407,12 +1577,13 @@ fn handle_marks<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
     for (p, did, min_perm) in fixed_vars {
         eprintln!("FIXED VAR: {:?} = {:?} (in {:?})", p, min_perm, did);
         match p {
-            Perm::StaticVar(_) => {
-                // TODO: cx.static_cset.add(min_perm, p),
+            Perm::StaticVar(v) => {
+                let new_perm = cmp::max(min_perm, cx.static_assign[v]);
+                cx.static_assign[v] = new_perm;
             },
             Perm::SigVar(_) => {
                 let did = did.expect("expected DefId for SigVar");
-                cx.fn_summ(did, dcx.ty_ctxt()).cset.add(min_perm, p);
+                cx.fn_summ(did, dcx.ty_ctxt()).cset.add(Perm::Concrete(min_perm), p);
             }
             _ => panic!("expected StaticVar or SigVar, but got {:?}", p),
         }
@@ -1466,12 +1637,18 @@ fn analyze_intra<'a, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
     }
 }
 
+fn analyze_inter(cx: &mut Ctxt) {
+    let mut inter_cx = InterCtxt::new(cx);
+    inter_cx.process();
+    inter_cx.finish();
+}
 
 pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
     let mut cx = Ctxt::new(dcx.ty_arena());
 
     handle_marks(&mut cx, st, dcx);
     analyze_intra(&mut cx, dcx.hir_map(), dcx.ty_ctxt());
+    analyze_inter(&mut cx);
 
     eprintln!("\n === summary ===");
     /*
