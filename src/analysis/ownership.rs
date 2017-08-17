@@ -182,6 +182,17 @@ impl<'tcx> Perm<'tcx> {
             buf.truncate(base_len);
         }
     }
+
+    fn for_each_atom<F: FnMut(Perm<'tcx>)>(&self, callback: &mut F) {
+        match *self {
+            Perm::Min(ps) => {
+                for &p in ps {
+                    p.for_each_atom(callback);
+                }
+            },
+            _ => callback(*self),
+        }
+    }
 }
 
 
@@ -286,6 +297,13 @@ impl<'tcx> ConstraintSet<'tcx> {
         EditConstraintSet {
             cset: self,
             to_visit: to_visit,
+        }
+    }
+
+    fn for_each_perm<F: FnMut(Perm<'tcx>)>(&self, mut f: F) {
+        for &(a, b) in &self.less {
+            a.for_each_atom(&mut f);
+            b.for_each_atom(&mut f);
         }
     }
 }
@@ -1228,6 +1246,8 @@ struct InterCtxt<'a, 'tcx: 'a> {
 
     work_list: WorkList,
     rev_deps: HashMap<DefId, HashSet<DefId>>,
+
+    static_rev_deps: HashMap<Var, HashSet<DefId>>,
 }
 
 impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
@@ -1237,6 +1257,7 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
             complete_cset: HashMap::new(),
             work_list: WorkList::new(),
             rev_deps: HashMap::new(),
+            static_rev_deps: HashMap::new(),
         }
     }
 
@@ -1244,8 +1265,25 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
         let summ = &self.cx.fn_summ[&def_id];
         let dummy_cset = ConstraintSet::new();
 
-        // Copy in complete csets for all instantiations.
         let mut cset = summ.cset.clone();
+
+        // Add constraints for all used static vars.
+        let mut used_statics = HashSet::new();
+        cset.for_each_perm(|p| {
+            match p {
+                Perm::StaticVar(v) => {
+                    used_statics.insert(v);
+                },
+                _ => {},
+            }
+        });
+        for &v in &used_statics {
+            eprintln!("  import static: {:?} = {:?}", v, self.cx.static_assign[v]);
+            cset.add(Perm::Concrete(self.cx.static_assign[v]), Perm::StaticVar(v));
+            self.static_rev_deps.entry(v).or_insert_with(HashSet::new).insert(def_id);
+        }
+
+        // Copy in complete csets for all instantiations.
         for inst in &summ.insts {
             let complete = self.complete_cset.get(&inst.callee).unwrap_or(&dummy_cset);
             eprintln!("  instantiate {:?} for vars {}..", inst.callee, inst.first_inst_var);
@@ -1275,15 +1313,37 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
             }
         });
 
-        cset.simplify(self.cx.arena);
-
         eprintln!("  simplified constraints:");
         for &(a, b) in cset.less.iter() {
             eprintln!("    {:?} <= {:?}", a, b);
         }
 
-        // Update `complete_cset`
+        // Update `cx.static_assign`
+        for &v in &used_statics {
+            let old = self.cx.static_assign[v];
+            let new = cset.lower_bound(Perm::StaticVar(v));
+            eprintln!("  static {:?}: {:?} -> {:?}", v, old, new);
+            if new > old {
+                self.cx.static_assign[v] = new;
+                if let Some(rev_deps) = self.static_rev_deps.get(&v) {
+                    for &id in rev_deps {
+                        self.work_list.push(id);
+                    }
+                }
+            }
+        }
 
+        // Simplify away static vars too.
+        cset.retain_perms(self.cx.arena, |p| {
+            match p {
+                Perm::LocalVar(_) | Perm::InstVar(_) | Perm::StaticVar(_) => false,
+                _ => true,
+            }
+        });
+
+        cset.simplify(self.cx.arena);
+
+        // Update `complete_cset`
         let did_update = match self.complete_cset.entry(def_id) {
             Entry::Vacant(e) => {
                 e.insert(cset);
@@ -1306,8 +1366,6 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
                 }
             }
         }
-
-        // TODO: export static vars
     }
 
     fn process(&mut self) {
