@@ -77,10 +77,15 @@ enum TypeTag {
     TagPointer,
     TagRecordType,
     
+    TagDouble,
+    TagLongDouble,
+    TagFloat,
     TagArrayType,
     TagEnumType,
+    
     TagFunctionType,
     TagTypeOfType,
     TagTypedefType,
+    TagElaboratedType,
 };
 #endif /* ast_tags_h */

@@ -32,12 +32,14 @@ using std::string;
 using clang::QualType;
 using clang::ASTContext;
 
-
+class TranslateASTVisitor;
 
 class TypeEncoder final : public TypeVisitor<TypeEncoder>
 {
     ASTContext *Context;
     CborEncoder *encoder;
+    TranslateASTVisitor *astEncoder;
+    
     std::unordered_set<const Type*> exports;
     
     bool isUnexported(const Type *ptr) {
@@ -45,7 +47,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder>
     }
     
     void encodeType(const Type *T, TypeTag tag,
-                    std::function<void(CborEncoder*)> = [](CborEncoder*){}) {
+                    std::function<void(CborEncoder*)> extra = [](CborEncoder*){}) {
         if (!isUnexported(T)) return;
         
         CborEncoder local;
@@ -57,12 +59,15 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder>
         // 2 - Type tag
         cbor_encode_uint(&local, tag);
         
+        // 3- extras
+        extra(&local);
+        
         cbor_encoder_close_container(encoder, &local);
     }
     
 public:
-    explicit TypeEncoder(ASTContext *Context, CborEncoder *encoder)
-      : Context(Context), encoder(encoder) {}
+    explicit TypeEncoder(ASTContext *Context, CborEncoder *encoder, TranslateASTVisitor *ast)
+      : Context(Context), encoder(encoder), astEncoder(ast) {}
     
     void VisitEnumType(const EnumType *T) {
         encodeType(T, TagEnumType, [T](CborEncoder *local) {
@@ -83,35 +88,56 @@ public:
         }
     }
     
-    void VisitRecordType(const RecordType *T) {
+    // definition below due to recursive call into AST translator
+    void VisitRecordType(const RecordType *T);
 
-        encodeType(T, TagRecordType, [T](CborEncoder *local) {
-            cbor_encode_uint(local, uintptr_t(T->getDecl()));
-        });
-        
-    }
     
     void VisitBuiltinType(const BuiltinType *T) {
         TypeTag tag;
         using clang::BuiltinType;
         switch (T->getKind()) {
-            default:                     tag = TagTypeUnknown; break;
-            case BuiltinType::Short:     tag = TagShort;       break;
-            case BuiltinType::Int:       tag = TagInt;         break;
-            case BuiltinType::Long:      tag = TagLong;        break;
-            case BuiltinType::UShort:    tag = TagUShort;      break;
-            case BuiltinType::UInt:      tag = TagUInt;        break;
-            case BuiltinType::ULong:     tag = TagULong;       break;
-            case BuiltinType::LongLong:  tag = TagLongLong;    break;
-            case BuiltinType::ULongLong: tag = TagULongLong;   break;
+            default:                      tag = TagTypeUnknown; break;
+            case BuiltinType::Short:      tag = TagShort;       break;
+            case BuiltinType::Int:        tag = TagInt;         break;
+            case BuiltinType::Long:       tag = TagLong;        break;
+            case BuiltinType::LongLong:   tag = TagLongLong;    break;
+            case BuiltinType::UShort:     tag = TagUShort;      break;
+            case BuiltinType::UInt:       tag = TagUInt;        break;
+            case BuiltinType::ULong:      tag = TagULong;       break;
+            case BuiltinType::ULongLong:  tag = TagULongLong;   break;
+            case BuiltinType::Double:     tag = TagDouble;      break;
+            case BuiltinType::LongDouble: tag = TagLongDouble;  break;
+            case BuiltinType::Float:      tag = TagFloat;       break;
         }
         
         encodeType(T, tag);
     }
     
-    void VisitFunctionType(const FunctionType *T) {
+    /* Function types are encoded with an extra list of types. The return type
+     is always the first element of the list followed by
+     */
+    void VisitFunctionProtoType(const FunctionProtoType *T) {
         encodeType(T, TagFunctionType, [T](CborEncoder *local) {
+            CborEncoder arrayEncoder;
+            
+            size_t elts = T->getNumParams()+1;
+            cbor_encoder_create_array(local, &arrayEncoder, elts);
+            
+            cbor_encode_uint(&arrayEncoder, uintptr_t(T->getReturnType().getTypePtr()));
+            for (auto x : T->param_types()) {
+                auto s = x.split();
+                cbor_encode_uint(&arrayEncoder, uintptr_t(s.Ty));
+            }
+            
+            cbor_encoder_close_container(local, &arrayEncoder);
+            
+            
         });
+        
+        Visit(T->getReturnType().split().Ty);
+        for (auto x : T->param_types()) {
+            Visit(x.split().Ty);
+        }
     }
     
     void VisitPointerType(const PointerType *T) {
@@ -134,6 +160,15 @@ public:
     void VisitTypeOfType(const TypeOfType *T) {
         encodeType(T, TagTypeOfType, [T](CborEncoder *local) {
         });
+    }
+    
+    void VisitElaboratedType(const ElaboratedType *T) {
+        auto T1 = T->desugar().getTypePtr();
+        encodeType(T, TagElaboratedType, [T,T1](CborEncoder *local) {
+            cbor_encode_uint(local, uintptr_t(T1));
+        });
+
+        Visit(T1);
     }
 };
 
@@ -232,15 +267,16 @@ class TranslateASTVisitor final
       (Decl *ast,
        ASTEntryTag tag,
        const std::vector<void *> &childIds,
+       const Type *T,
        std::function<void(CborEncoder*)> extra = [](CborEncoder*){}
        ) {
-          encode_entry_raw(ast, tag, ast->getLocStart(), nullptr, childIds, extra);
+          encode_entry_raw(ast, tag, ast->getLocStart(), T, childIds, extra);
       }
       
       
   public:
       explicit TranslateASTVisitor(ASTContext *Context, CborEncoder *encoder)
-      : Context(Context), typeEncoder(Context, encoder), encoder(encoder) {
+      : Context(Context), typeEncoder(Context, encoder, this), encoder(encoder) {
       }
       
       //
@@ -459,11 +495,13 @@ class TranslateASTVisitor final
               childIds.push_back(x);
           }
           childIds.push_back(FD->getBody());
-          encode_entry(FD, TagFunctionDecl, childIds,
+          encode_entry(FD, TagFunctionDecl, childIds, FD->getType().getTypePtr(),
                              [FD](CborEncoder *array) {
                                  auto name = FD->getNameAsString();
                                  cbor_encode_text_stringz(array, name.c_str());
                              });
+          typeEncoder.Visit(FD->getType().getTypePtr());
+
           return true;
       }
       
@@ -484,20 +522,27 @@ class TranslateASTVisitor final
       {
           std::vector<void*> childIds =
           { VD->getInit() } ;
-          encode_entry(VD, TagVarDecl, childIds,
+          auto T = VD->getType().getTypePtr();
+          
+          encode_entry(VD, TagVarDecl, childIds, T,
                              [VD](CborEncoder *array){
                                  auto name = VD->getNameAsString();
                                  cbor_encode_text_stringz(array, name.c_str());
                              });
+          
+          typeEncoder.Visit(T);
+
           return true;
       }
+      
       
       bool VisitRecordDecl(RecordDecl *D) {
           std::vector<void*> childIds;
           for (auto x : D->fields()) {
               childIds.push_back(x);
           }
-          encode_entry(D, TagRecordDecl, childIds, [D](CborEncoder *local){
+          encode_entry(D, TagRecordDecl, childIds, nullptr,
+          [D](CborEncoder *local){
               auto name = D->getNameAsString();
               cbor_encode_text_string(local, name.c_str(), name.size());
           });
@@ -510,7 +555,8 @@ class TranslateASTVisitor final
               childIds.push_back(x);
           }
           
-          encode_entry(D, TagEnumDecl, childIds, [D](CborEncoder *local){
+          encode_entry(D, TagEnumDecl, childIds, nullptr,
+          [D](CborEncoder *local){
               auto name = D->getNameAsString();
               cbor_encode_text_string(local, name.c_str(), name.size());
           });
@@ -520,7 +566,8 @@ class TranslateASTVisitor final
       bool VisitEnumConstantDecl(EnumConstantDecl *D) {
           std::vector<void*> childIds = { D->getInitExpr() };
           
-          encode_entry(D, TagEnumConstantDecl, childIds, [D](CborEncoder *local){
+          encode_entry(D, TagEnumConstantDecl, childIds, nullptr,
+            [D](CborEncoder *local){
               auto name = D->getNameAsString();
               cbor_encode_text_string(local, name.c_str(), name.size());
           });
@@ -529,7 +576,7 @@ class TranslateASTVisitor final
       
       bool VisitFieldDecl(FieldDecl *D) {
           std::vector<void*> childIds;
-          encode_entry(D, TagFieldDecl, childIds,
+          encode_entry(D, TagFieldDecl, childIds, nullptr,
                              [D](CborEncoder *array) {
                                  auto name = D->getNameAsString();
                                  cbor_encode_text_stringz(array, name.c_str());
@@ -539,11 +586,12 @@ class TranslateASTVisitor final
       
       bool VisitTypedefDecl(TypedefDecl *D) {
           std::vector<void*> childIds;
-          encode_entry(D, TagTypedefDecl, childIds,
+          encode_entry(D, TagTypedefDecl, childIds, D->getTypeForDecl(),
                              [D](CborEncoder *array) {
                                  auto name = D->getNameAsString();
                                  cbor_encode_text_stringz(array, name.c_str());
                              });
+          typeEncoder.Visit(D->getTypeForDecl());
           return true;
       }
       
@@ -590,6 +638,16 @@ class TranslateASTVisitor final
           return true;
       }
   };
+
+void TypeEncoder::VisitRecordType(const RecordType *T) {
+    
+    encodeType(T, TagRecordType, [T](CborEncoder *local) {
+        cbor_encode_uint(local, uintptr_t(T->getDecl()));
+    });
+    
+    // record type might be anonymous and have no top-level declaration
+    astEncoder->TraverseDecl(T->getDecl());
+}
 
 class TranslateConsumer : public clang::ASTConsumer {
 public:
