@@ -16,14 +16,15 @@ except ImportError:
     quit(errno.ENOENT)
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+DEPS_DIR = os.path.join(SCRIPT_DIR, 'dependencies')
 LLVM_SRC = os.path.join(SCRIPT_DIR, 'llvm.src')
 LLVM_BLD = os.path.join(SCRIPT_DIR, 'llvm.build')
 LOG_FILE = os.path.realpath(__file__).replace(".py", ".log")
 CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
-CBOR_ARCHIVE = os.path.join(SCRIPT_DIR, "tinycbor-0.4.1.tar.gz")
+CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.1.tar.gz")
 CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
-CBOR_SRC = os.path.join(SCRIPT_DIR, CBOR_SRC)
-CBOR_PREFIX = os.path.join(SCRIPT_DIR, "tinycbor")
+CBOR_SRC = os.path.join(DEPS_DIR, CBOR_SRC)
+CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor")
 
 KEYSERVER = "pgpkeys.mit.edu"
 LLVM_PUBKEY = "8F0871F202119294"
@@ -38,8 +39,16 @@ LLVM_ARCHIVE_URLS = [s.format(ver=LLVM_VER) for s in LLVM_ARCHIVE_URLS if s]
 LLVM_SIGNATURE_URLS = [s + ".sig" for s in LLVM_ARCHIVE_URLS]
 LLVM_ARCHIVE_FILES = [os.path.basename(s) for s in LLVM_ARCHIVE_URLS]
 LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "") for s in LLVM_ARCHIVE_FILES]
+LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
+
 
 MIN_PLUMBUM_VERSION = (1, 6, 3)
+CMAKELISTS_COMMANDS = \
+"""
+include_directories({prefix}/include)
+link_directories({prefix}/lib)
+add_subdirectory(ast-extractor)
+""".format(prefix=CBOR_PREFIX)
 
 def die(emsg, ecode=1):
     """
@@ -59,46 +68,52 @@ def get_cmd_or_die(cmd):
         die("{} not in path".format(cmd), errno.ENOENT)
 
 
-def download_llvm_sources():
-    curl = get_cmd_or_die("curl")
-    tar = get_cmd_or_die("tar")
+def check_sig(afile, asigfile):
     # on macOS, run `brew install gpg`
     gpg = get_cmd_or_die("gpg")
 
     # make sure we have the right public key installed
     gpg("--keyserver", KEYSERVER, "--recv-key", LLVM_PUBKEY)
 
-    # download archives and signatures
-    for (aurl, asig, afile, _) in zip(
-            LLVM_ARCHIVE_URLS,
-            LLVM_SIGNATURE_URLS,
-            LLVM_ARCHIVE_FILES,
-            LLVM_ARCHIVE_DIRS):
+    # check that archive matches signature
+    try:
+        expected = "Good signature from \"Tom Stellard <tom@stellard.net>\""
+        logging.debug("checking signature of %s", os.path.basename(afile))
+        retcode, _stdout, stderr = gpg['--verify', asigfile, afile].run(retcode=None)
+        if retcode:
+            die("gpg signature check failed: gpg exit code " + str(retcode))
+        if not expected in stderr:
+            die("gpg signature check failed: expected signature not found")
+    except pb.ProcessExecutionError as pee:
+        die("gpg signature check failed: " + pee.message)
 
-        # download archive
-        if not os.path.isfile(afile):
-            logging.info("downloading %s", os.path.basename(afile))
-            curl(aurl, "-o", afile)
-        else:
-            continue
 
-        # download archive signature
-        asigfile = afile + ".sig"
-        if not os.path.isfile(asig):
-            logging.debug("downloading %s", asigfile)
-            curl(asig, "-o", asigfile)
+def download_llvm_sources():
+    curl = get_cmd_or_die("curl")
+    tar = get_cmd_or_die("tar")
 
-        # check that archive matches signature
-        try:
-            expected = "Good signature from \"Tom Stellard <tom@stellard.net>\""
-            logging.debug("checking signature of %s", os.path.basename(afile))
-            retcode, _stdout, stderr = gpg['--verify', asigfile, afile].run(retcode=None)
-            if retcode:
-                die("gpg signature check failed: gpg exit code " + str(retcode))
-            if not expected in stderr:
-                die("gpg signature check failed: expected signature not found")
-        except pb.ProcessExecutionError as pee:
-            die("gpg signature check failed: " + pee.message)
+    with pb.local.cwd(DEPS_DIR):
+        # download archives and signatures
+        for (aurl, asig, afile, _) in zip(
+                LLVM_ARCHIVE_URLS,
+                LLVM_SIGNATURE_URLS,
+                LLVM_ARCHIVE_FILES,
+                LLVM_ARCHIVE_DIRS):
+
+            # download archive
+            if not os.path.isfile(afile):
+                logging.info("downloading %s", os.path.basename(afile))
+                curl(aurl, "-o", afile)
+            else:
+                continue
+
+            # download archive signature
+            asigfile = afile + ".sig"
+            if not os.path.isfile(asig):
+                logging.debug("downloading %s", asigfile)
+                curl(asig, "-o", asigfile)
+
+            check_sig(afile, asigfile)
 
     # first extract llvm archive
     if not os.path.isdir(LLVM_SRC):
@@ -185,13 +200,6 @@ def ensure_dir(path):
 def update_cmakelists(filepath):
     if not os.path.isfile(filepath):
         die("not found: " + filepath, errno.ENOENT)
-
-    cmakelists_commands = \
-        """
-        include_directories({prefix}/include)
-        link_directories({prefix}/lib)
-        add_subdirectory(ast-extractor)
-        """.format(prefix=CBOR_PREFIX)
     indicator = "add_subdirectory(ast-extractor)"
 
     with open(filepath, "r") as handle:
@@ -200,8 +208,8 @@ def update_cmakelists(filepath):
         logging.debug("add commands to %s: %s", filepath, add_commands)
 
     if add_commands:
-        with open(filepath, "w+") as handle:
-            handle.writelines(cmakelists_commands)
+        with open(filepath, "a+") as handle:
+            handle.writelines(CMAKELISTS_COMMANDS)
         logging.debug("added commands to %s", filepath)
 
 
@@ -247,7 +255,8 @@ def install_tinycbor():
     # unpack
     if not os.path.isdir(CBOR_SRC):
         tar = get_cmd_or_die("tar")
-        tar['xf', CBOR_ARCHIVE] & pb.TEE
+        with pb.local.cwd(DEPS_DIR):
+            tar['xf', CBOR_ARCHIVE] & pb.TEE
 
     # update install prefix
     update_cbor_prefix(os.path.join(CBOR_SRC, "Makefile"))
@@ -286,8 +295,8 @@ def parse_args():
     """
     desc = 'download dependencies for the AST extractor and built it.'
     parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument('-c', '--clean', default=False,
-                        action='store_true', dest='clean',
+    parser.add_argument('-c', '--clean-all', default=False,
+                        action='store_true', dest='clean_all',
                         help='clean everything before building')
     dhelp = 'build in debug mode (default build is release+asserts)'
     parser.add_argument('-d', '--debug', default=False,
@@ -307,8 +316,8 @@ def main():
         die(err)
 
     args = parse_args()
-    if args.clean:
-        logging.info("cleaning previously downloaded and built files")
+    if args.clean_all:
+        logging.info("cleaning all dependencies and previous built files")
         shutil.rmtree(LLVM_SRC, ignore_errors=True)
         shutil.rmtree(LLVM_BLD, ignore_errors=True)
         shutil.rmtree(CBOR_PREFIX, ignore_errors=True)
@@ -319,6 +328,7 @@ def main():
     # FIXME: option to build LLVM/Clang from master?
 
     ensure_dir(LLVM_BLD)
+    ensure_dir(DEPS_DIR)
 
     download_llvm_sources()
 
