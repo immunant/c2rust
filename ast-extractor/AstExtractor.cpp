@@ -592,9 +592,10 @@ class TranslateASTVisitor final
   };
 
 class TranslateConsumer : public clang::ASTConsumer {
-    const llvm::StringRef InFile;
+    const std::string outfile;
 public:
-    explicit TranslateConsumer(llvm::StringRef InFile) : InFile(InFile) { }
+    explicit TranslateConsumer(llvm::StringRef InFile) 
+        : outfile(InFile.str().append(".cbor")) { }
     
     virtual void HandleTranslationUnit(clang::ASTContext &Context) {
         
@@ -620,8 +621,6 @@ public:
         process(buf.data(), buf.size());
         
         {   
-            std::string outfile = InFile.str();
-            outfile.append(".cbor");
             std::ofstream out(outfile, out.binary | out.trunc);
             out.write(reinterpret_cast<char*>(buf.data()), buf.size());
         }
