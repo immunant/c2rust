@@ -1,3 +1,21 @@
+//! This module contains an analysis to infer ownership information for pointers.  It analyzes code
+//! using raw pointers and indicates, for each pointer, whether it appears to be owned, mutably
+//! borrowed, or immutably borrowed.  It can also infer ownership-polymorphic function signatures,
+//! which handles cases where the original C code used a single accessor for both mutable and
+//! immutable access to a field.
+//!
+//! The analysis operates on constraint sets over "permission variables", which can be take on the
+//! concrete permissions "READ", "WRITE", and "MOVE".  The analysis runs in two phases.  First, for
+//! each function, it analyzes the function and produces a set of constraints relating variables in
+//! the function's signature, variables appearing in static locations (such as struct field types).
+//! Since interprocedural information is not available yet, this phase leaves holes where
+//! constraints for callee functions can be plugged in.  The second phase fills in holes in
+//! function summaries to produce complete summaries that are useful to analysis consumers.  It
+//! runs interprocedurally to a fixed point, on each function plugging in the complete summaries of
+//! its callees and simplifying to produce a complete summary for the current function.
+
+
+
 use std::cmp;
 use std::collections::Bound;
 use std::collections::BTreeSet;
@@ -59,11 +77,29 @@ enum ConcretePerm {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 enum Perm<'tcx> {
     Concrete(ConcretePerm),
+
+    /// The minimum of some set of other permissions.
     // Weird ordering, but it's necessary for `perm_range` - we need a way to write down the
     // largest and smallest possible `Perm`s, and the largest/smallest `Min` is hard to get.
     Min(&'tcx [Perm<'tcx>]),
+
+    /// "Static" variables appear in the types of non-function items.  This includes `static` items
+    /// as well as `struct`s and other ADTs.  Constraints on static vars are inferred from their
+    /// usage inside functions.
     StaticVar(Var),
+
+    /// "Signature" variables appear in the signatures of function items.  Constraints on sig vars
+    /// are inferred from the body of the function in question.
     SigVar(Var),
+
+    /// "Instantiation" variables appear in the instantiations of function signatures inside other
+    /// functions.  They are left intact during the initial summary generation, to be filled in
+    /// during a later phase of the analysis.
+    InstVar(Var),
+
+    /// "Local" variables appear in the types of temporaries.  Constraints on local vars are
+    /// produced while analyzing a function, and are simplified away when the function's constraint
+    /// generation is done.
     LocalVar(Var),
 }
 
@@ -233,6 +269,7 @@ impl<'tcx> ConstraintSet<'tcx> {
     }
 }
 
+/// Helper for adding/removing constraints while also iterating over them.
 struct EditConstraintSet<'a, 'tcx: 'a> {
     cset: &'a mut ConstraintSet<'tcx>,
     to_visit: VecDeque<(Perm<'tcx>, Perm<'tcx>)>,
@@ -274,132 +311,133 @@ impl<'a, 'tcx> EditConstraintSet<'a, 'tcx> {
 
 
 impl<'tcx> ConstraintSet<'tcx> {
-    fn simplify(&mut self, arena: &'tcx DroplessArena) {
-        // (1) Remove useless constraints
-        {
-            let mut edit = self.edit();
+    fn remove_useless(&mut self) {
+        let mut edit = self.edit();
 
-            while let Some((a, b)) = edit.next() {
-                let remove = match (a, b) {
-                    (Perm::Concrete(_), Perm::Concrete(_)) => true,
-                    (Perm::Concrete(ConcretePerm::Read), _) => true,
-                    (_, Perm::Concrete(ConcretePerm::Move)) => true,
-                    _ => a == b,
-                };
-                if remove {
-                    eprintln!("remove: {:?} <= {:?}", a, b);
-                    edit.remove(a, b);
-                }
+        while let Some((a, b)) = edit.next() {
+            let remove = match (a, b) {
+                (Perm::Concrete(_), Perm::Concrete(_)) => true,
+                (Perm::Concrete(ConcretePerm::Read), _) => true,
+                (_, Perm::Concrete(ConcretePerm::Move)) => true,
+                _ => a == b,
+            };
+            if remove {
+                eprintln!("remove: {:?} <= {:?}", a, b);
+                edit.remove(a, b);
             }
         }
+    }
 
-        // (2) Expand constraints with `Min` on the RHS.
-        {
-            let mut edit = self.edit();
+    fn expand_min_rhs(&mut self) {
+        let mut edit = self.edit();
 
-            while let Some((a, b)) = edit.next() {
-                match b {
-                    Perm::Min(ps) => {
-                        eprintln!("expand: {:?} <= {:?}", a, b);
-                        edit.remove(a, b);
-                        for &p in ps {
-                            edit.add(a, p);
+        while let Some((a, b)) = edit.next() {
+            match b {
+                Perm::Min(ps) => {
+                    eprintln!("expand: {:?} <= {:?}", a, b);
+                    edit.remove(a, b);
+                    for &p in ps {
+                        edit.add(a, p);
+                    }
+                },
+                _ => {},
+            }
+        }
+    }
+
+    /// Simplify `min(...) <= ...` constraints as much as possible.
+    fn simplify_min_lhs(&mut self, arena: &'tcx DroplessArena) {
+        let mut edit = self.edit();
+
+        'next: while let Some((a, b)) = edit.next() {
+            let ps = match a {
+                Perm::Min(ps) => ps,
+                _ => continue,
+            };
+
+            if ps.len() == 0 {
+                // Should never happen, but just in case...
+                edit.remove(a, b);
+                continue;
+            }
+
+            // We now have `min(p_0, p_1, ...) <= b`.  We want to reduce the set of `p_i`s as
+            // much as possible, ideally down to a single element.  The approach taken here
+            // (which is quite inefficient) is to collect, for each `p_i`, the set of `q`s
+            // where `p_i <= q`.  Then we query those sets to figure out what `p_i`s can be
+            // removed.
+
+            let mut greater_sets = Vec::with_capacity(ps.len());
+            for &p in ps {
+                let mut seen = HashSet::new();
+                let mut queue = VecDeque::new();
+                queue.push_back(p);
+                while let Some(cur) = queue.pop_front() {
+                    for &(_, next) in edit.cset.less.range(perm_range(cur)) {
+                        if !seen.contains(&next) {
+                            seen.insert(next);
+                            queue.push_back(next);
                         }
-                    },
-                    _ => {},
+                    }
                 }
+                greater_sets.push(seen);
             }
-        }
 
-        // (3) Handle constraints with `Min` on the LHS as well as we can.  This is where it gets a
-        // little ugly.
-        {
-            let mut edit = self.edit();
+            // Now we can make some queries into `greater_sets`.  The two things we want to
+            // check are:
+            //  (1) If `p_i <= p_j`, then `p_j` can be removed.
+            //  (2) If `p_i <= b`, then the entire constraint can be discarded.
 
-            'next: while let Some((a, b)) = edit.next() {
-                let ps = match a {
-                    Perm::Min(ps) => ps,
-                    _ => continue,
-                };
-
-                if ps.len() == 0 {
-                    // Should never happen, but just in case...
-                    edit.remove(a, b);
+            let mut to_remove = HashSet::new();
+            for (i, &pi) in ps.iter().enumerate() {
+                // This check handles cycles.  Suppose `a <= b <= c <= a` and `d <= e`.  We'd
+                // like to replace `min(a, b, c, d, e)` with `min(a, d)`.  Without this check,
+                // we would end up with `min()`, becuase `a` eliminates `b` and `c`, `b` and
+                // `c` eliminate `a`, and `d` and `e` remove each other.  This check doesn't
+                // cause us to miss any valid removals because if `a <= b` and `b <= x` then
+                // also `a <= x`.
+                if to_remove.contains(&i) {
                     continue;
                 }
 
-                // We now have `min(p_0, p_1, ...) <= b`.  We want to reduce the set of `p_i`s as
-                // much as possible, ideally down to a single element.  The approach taken here
-                // (which is quite inefficient) is to collect, for each `p_i`, the set of `q`s
-                // where `p_i <= q`.  Then we query those sets to figure out what `p_i`s can be
-                // removed.
-
-                let mut greater_sets = Vec::with_capacity(ps.len());
-                for &p in ps {
-                    let mut seen = HashSet::new();
-                    let mut queue = VecDeque::new();
-                    queue.push_back(p);
-                    while let Some(cur) = queue.pop_front() {
-                        for &(_, next) in edit.cset.less.range(perm_range(cur)) {
-                            if !seen.contains(&next) {
-                                seen.insert(next);
-                                queue.push_back(next);
-                            }
-                        }
-                    }
-                    greater_sets.push(seen);
-                }
-
-                // Now we can make some queries into `greater_sets`.  The two things we want to
-                // check are:
-                //  (1) If `p_i <= p_j`, then `p_j` can be removed.
-                //  (2) If `p_i <= b`, then the entire constraint can be discarded.
-
-                let mut to_remove = HashSet::new();
-                for (i, &pi) in ps.iter().enumerate() {
-                    // This check handles cycles.  Suppose `a <= b <= c <= a` and `d <= e`.  We'd
-                    // like to replace `min(a, b, c, d, e)` with `min(a, d)`.  Without this check,
-                    // we would end up with `min()`, becuase `a` eliminates `b` and `c`, `b` and
-                    // `c` eliminate `a`, and `d` and `e` remove each other.  This check doesn't
-                    // cause us to miss any valid removals because if `a <= b` and `b <= x` then
-                    // also `a <= x`.
-                    if to_remove.contains(&i) {
-                        continue;
-                    }
-
-                    for (j, &pj) in ps.iter().enumerate() {
-                        if i != j && greater_sets[i].contains(&pj) {
-                            to_remove.insert(j);
-                        }
-                    }
-
-                    if greater_sets[i].contains(&b) {
-                        eprintln!("remove {:?} <= {:?} ({:?} <= {:?})", a, b, pi, b);
-                        edit.remove(a, b);
-                        continue 'next;
+                for (j, &pj) in ps.iter().enumerate() {
+                    if i != j && greater_sets[i].contains(&pj) {
+                        to_remove.insert(j);
                     }
                 }
 
-                assert!(to_remove.len() < ps.len(), "tried to remove all arguments of `min`");
-                if to_remove.len() == ps.len() - 1 {
-                    // `min(p)` is the same as just `p`.
+                if greater_sets[i].contains(&b) {
+                    eprintln!("remove {:?} <= {:?} ({:?} <= {:?})", a, b, pi, b);
                     edit.remove(a, b);
-                    let (_, p) = ps.iter().cloned().enumerate()
-                        .filter(|&(i, _)| !to_remove.contains(&i)).next().unwrap();
-                    eprintln!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, p, b);
-                    edit.add(p, b);
-                } else if to_remove.len() > 0 {
-                    edit.remove(a, b);
-                    let ps = ps.iter().cloned().enumerate()
-                        .filter(|&(i, _)| !to_remove.contains(&i))
-                        .map(|(_, p)| p).collect::<Vec<_>>();
-                    let new_min = Perm::Min(arena.alloc_slice(&ps));
-                    eprintln!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, new_min, b);
-                    edit.add(new_min, b);
+                    continue 'next;
                 }
-                // Otherwise, to_remove == 0, meaning we don't have any changes to apply.
             }
+
+            assert!(to_remove.len() < ps.len(), "tried to remove all arguments of `min`");
+            if to_remove.len() == ps.len() - 1 {
+                // `min(p)` is the same as just `p`.
+                edit.remove(a, b);
+                let (_, p) = ps.iter().cloned().enumerate()
+                    .filter(|&(i, _)| !to_remove.contains(&i)).next().unwrap();
+                eprintln!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, p, b);
+                edit.add(p, b);
+            } else if to_remove.len() > 0 {
+                edit.remove(a, b);
+                let ps = ps.iter().cloned().enumerate()
+                    .filter(|&(i, _)| !to_remove.contains(&i))
+                    .map(|(_, p)| p).collect::<Vec<_>>();
+                let new_min = Perm::Min(arena.alloc_slice(&ps));
+                eprintln!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, new_min, b);
+                edit.add(new_min, b);
+            }
+            // Otherwise, to_remove == 0, meaning we don't have any changes to apply.
         }
+    }
+
+    fn simplify(&mut self, arena: &'tcx DroplessArena) {
+        self.remove_useless();
+        self.expand_min_rhs();
+        self.simplify_min_lhs(arena);
     }
 
     fn retain_perms<F: Fn(Perm<'tcx>) -> bool>(&mut self, arena: &'tcx DroplessArena, filter: F) {
@@ -484,6 +522,7 @@ struct FnSummary<'tcx> {
     sig: LFnSig<'tcx>,
     num_sig_vars: u32,
     cset: ConstraintSet<'tcx>,
+    insts: Vec<Instantiation>,
 }
 
 struct Ctxt<'tcx> {
@@ -491,7 +530,6 @@ struct Ctxt<'tcx> {
     arena: &'tcx DroplessArena,
 
     static_summ: HashMap<DefId, LTy<'tcx>>,
-    static_cset: ConstraintSet<'tcx>,
     next_static_var: u32,
 
     fn_summ: HashMap<DefId, FnSummary<'tcx>>,
@@ -514,7 +552,6 @@ impl<'tcx> Ctxt<'tcx> {
             arena: arena,
 
             static_summ: HashMap::new(),
-            static_cset: ConstraintSet::new(),
             next_static_var: 0,
 
             fn_summ: HashMap::new(),
@@ -577,6 +614,7 @@ impl<'tcx> Ctxt<'tcx> {
                     sig: l_sig,
                     num_sig_vars: counter,
                     cset: cset,
+                    insts: Vec::new(),
                 })
             },
 
@@ -698,6 +736,8 @@ fn preload_constraints<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 }
 
 
+/// Function-local analysis context.  We run one of these for each function to produce the initial
+/// (incomplete) summary.
 struct LocalCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     cx: &'a mut Ctxt<'tcx>,
     tcx: TyCtxt<'a, 'gcx, 'tcx>,
@@ -710,6 +750,14 @@ struct LocalCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     cset: ConstraintSet<'tcx>,
     local_tys: IndexVec<Local, LTy<'tcx>>,
     next_local_var: u32,
+
+    insts: Vec<Instantiation>,
+    next_inst_var: u32,
+}
+
+struct Instantiation {
+    callee: DefId,
+    first_inst_var: u32,
 }
 
 fn collect_perms<'tcx>(ty: LTy<'tcx>) -> Vec<Perm<'tcx>> {
@@ -745,6 +793,9 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             cset: ConstraintSet::new(),
             local_tys: IndexVec::new(),
             next_local_var: 0,
+
+            insts: Vec::new(),
+            next_inst_var: 0,
         }
     }
 
@@ -768,32 +819,24 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
                 else { self.local_ty(decl.ty) };
             self.local_tys.push(lty);
         }
-
-        self.do_import();
-    }
-
-    fn do_import(&mut self) {
-        // Import constraints on statics
-        // TODO: we should import these on-demand as we encounter each static
-        self.cset.import(&self.cx.static_cset);
     }
 
     fn instantiate_fn(&mut self, did: DefId) -> LFnSig<'tcx> {
         eprintln!("INSTANTIATE {:?}", did);
-        let var_base = self.next_local_var;
-        let mut f = |p| {
-            match p {
-                Perm::SigVar(v) => Perm::LocalVar(Var(var_base + v.0)),
-                p => p,
-            }
-        };
+        let var_base = self.next_inst_var;
         let sig = {
             let summ = self.cx.fn_summ(did, self.tcx);
-            self.cset.import_substituted(&summ.cset, |p| f(p));
-            self.next_local_var += summ.num_sig_vars;
+            // Don't import any constraints.  Only the signature is initialized at this point.
+            self.next_inst_var += summ.num_sig_vars;
             summ.sig
         };
 
+        let mut f = |p| {
+            match p {
+                Perm::SigVar(v) => Perm::InstVar(Var(var_base + v.0)),
+                p => p,
+            }
+        };
         LFnSig {
             inputs: self.cx.lcx.relabel_slice(sig.inputs, &mut |opt_p| opt_p.map(|p| f(p))),
             output: self.cx.lcx.relabel(sig.output, &mut |opt_p| opt_p.map(|p| f(p))),
@@ -806,6 +849,8 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             eprintln!("    {:?} <= {:?}", a, b);
         }
 
+        self.cset.remove_useless();
+        self.cset.simplify_min_lhs(self.cx.arena);
 
         self.cset.retain_perms(self.cx.arena, |p| {
             match p {
@@ -814,44 +859,16 @@ impl<'a, 'gcx, 'tcx> LocalCtxt<'a, 'gcx, 'tcx> {
             }
         });
 
-        eprintln!("  reduced (1) constraints:");
-        for &(a, b) in self.cset.less.iter() {
-            eprintln!("    {:?} <= {:?}", a, b);
-        }
-
-        // Copy StaticVar constraints into the `static_cset`.
-        fn perm_level(p: Perm) -> usize {
-            match p {
-                Perm::Concrete(_) => 0,
-                Perm::StaticVar(_) => 1,
-                Perm::SigVar(_) => 2,
-                Perm::LocalVar(_) => 3,
-                Perm::Min(ps) => ps.iter().cloned().map(perm_level).max().unwrap_or(0),
-            }
-        }
-        for &(a, b) in self.cset.less.iter() {
-            let level = cmp::max(perm_level(a), perm_level(b));
-            if level == 1 {
-                self.cx.static_cset.add(a, b);
-            }
-        }
-
-        // Further reduce the cset, removing static vars.
-        self.cset.retain_perms(self.cx.arena, |p| {
-            match p {
-                Perm::LocalVar(_) | Perm::StaticVar(_) => false,
-                _ => true,
-            }
-        });
-
         self.cset.simplify(self.cx.arena);
 
-        eprintln!("  exporting constraints (condensed):");
+        eprintln!("  simplified constraints:");
         for &(a, b) in self.cset.less.iter() {
             eprintln!("    {:?} <= {:?}", a, b);
         }
 
-        self.cx.fn_summ(self.def_id, self.tcx).cset = self.cset;
+        let summ = self.cx.fn_summ(self.def_id, self.tcx);
+        summ.cset = self.cset;
+        summ.insts = self.insts;
     }
 
     fn local_ty(&mut self, ty: Ty<'tcx>) -> LTy<'tcx> {
@@ -1278,6 +1295,7 @@ impl<'tcx> fmt::Debug for PrettyLabel<PrintVar<'tcx>> {
             Perm::Concrete(_) => Ok(()),
             Perm::StaticVar(v) => write!(fmt, "#s{}", v.index()),
             Perm::SigVar(v) => write!(fmt, "#f{}", v.index()),
+            Perm::InstVar(v) => write!(fmt, "#i{}", v.index()),
             Perm::LocalVar(v) => write!(fmt, "#l{}", v.index()),
 
             Perm::Min(ps) => {
@@ -1351,18 +1369,19 @@ fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
 }
 
 
-pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
-    let mut ctxt = Ctxt::new(cx.ty_arena());
 
+fn handle_marks<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
+                                      st: &CommandState,
+                                      dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) {
     let mut fixed_vars = Vec::new();
     {
         let source = LTySource {
-            cx: &mut ctxt,
-            tcx: cx.ty_ctxt(),
+            cx: cx,
+            tcx: dcx.ty_ctxt(),
             last_sig_did: None,
         };
 
-        type_map::map_types(cx.hir_map(), source, &st.krate(), |source, ast_ty, lty| {
+        type_map::map_types(dcx.hir_map(), source, &st.krate(), |source, ast_ty, lty| {
             eprintln!("match {:?} ({:?}) with {:?}", ast_ty, ast_ty.id, lty);
             if st.marked(ast_ty.id, "box") {
                 if let Some(p) = lty.label {
@@ -1388,87 +1407,96 @@ pub fn analyze(st: &CommandState, cx: &driver::Ctxt) {
     for (p, did, min_perm) in fixed_vars {
         eprintln!("FIXED VAR: {:?} = {:?} (in {:?})", p, min_perm, did);
         match p {
-            Perm::StaticVar(_) => ctxt.static_cset.add(min_perm, p),
+            Perm::StaticVar(_) => {
+                // TODO: cx.static_cset.add(min_perm, p),
+            },
             Perm::SigVar(_) => {
                 let did = did.expect("expected DefId for SigVar");
-                ctxt.fn_summ(did, cx.ty_ctxt()).cset.add(min_perm, p);
+                cx.fn_summ(did, dcx.ty_ctxt()).cset.add(min_perm, p);
             }
             _ => panic!("expected StaticVar or SigVar, but got {:?}", p),
         }
     }
+}
 
-
-    let tcx = cx.ty_ctxt();
-    for _ in 0 .. 5 {
-        for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
-            // We currently don't process `static` bodies, even though they do have MIR.
-            if !is_fn(cx.hir_map(), def_id) {
-                continue;
-            }
-
-            let mir = tcx.optimized_mir(def_id);
-            let mut local_cx = LocalCtxt::new(&mut ctxt, tcx, def_id, mir);
-
-            eprintln!("\nmir for {:?}", def_id);
-
-            local_cx.init();
-
-            eprintln!("  locals:");
-            for l in mir.local_decls.indices() {
-                let (ty, _) = local_cx.lvalue_lty(&Lvalue::Local(l));
-                eprintln!("    {:?}: {:?}", l, ty);
-            }
-
-            for (bbid, bb) in ReversePostorder::new(&mir, START_BLOCK) {
-                local_cx.handle_basic_block(bbid, bb);
-            }
-
-            let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
-            eprintln!("  locals (after):");
-            for l in mir.local_decls.indices() {
-                let (ty, _) = local_cx.lvalue_lty(&Lvalue::Local(l));
-                let ty2 = new_lcx.relabel(ty, &mut |&v: &Option<_>| {
-                    if v.is_none() {
-                        return "--";
-                    }
-                    match local_cx.cset.lower_bound(v.unwrap()) {
-                        ConcretePerm::Read => "REF",
-                        ConcretePerm::Write => "MUT",
-                        ConcretePerm::Move => "BOX",
-                    }
-                });
-                eprintln!("    {:?}: {:?}", l, ty2);
-            }
-
-            local_cx.do_export();
+fn analyze_intra<'a, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
+                                 hir_map: &hir::map::Map,
+                                 tcx: TyCtxt<'a, 'gcx, 'tcx>) {
+    for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
+        // We currently don't process `static` bodies, even though they do have MIR.
+        if !is_fn(hir_map, def_id) {
+            continue;
         }
 
-        ctxt.static_cset.simplify(ctxt.arena);
-    }
+        let mir = tcx.optimized_mir(def_id);
+        let mut local_cx = LocalCtxt::new(cx, tcx, def_id, mir);
 
+        eprintln!("\nmir for {:?}", def_id);
+
+        local_cx.init();
+
+        eprintln!("  locals:");
+        for l in mir.local_decls.indices() {
+            let (ty, _) = local_cx.lvalue_lty(&Lvalue::Local(l));
+            eprintln!("    {:?}: {:?}", l, ty);
+        }
+
+        for (bbid, bb) in ReversePostorder::new(&mir, START_BLOCK) {
+            local_cx.handle_basic_block(bbid, bb);
+        }
+
+        let mut new_lcx = LabeledTyCtxt::new(local_cx.cx.arena);
+        eprintln!("  locals (after):");
+        for l in mir.local_decls.indices() {
+            let (ty, _) = local_cx.lvalue_lty(&Lvalue::Local(l));
+            let ty2 = new_lcx.relabel(ty, &mut |&v: &Option<_>| {
+                if v.is_none() {
+                    return "--";
+                }
+                match local_cx.cset.lower_bound(v.unwrap()) {
+                    ConcretePerm::Read => "REF",
+                    ConcretePerm::Write => "MUT",
+                    ConcretePerm::Move => "BOX",
+                }
+            });
+            eprintln!("    {:?}: {:?}", l, ty2);
+        }
+
+        local_cx.do_export();
+    }
+}
+
+
+pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
+    let mut cx = Ctxt::new(dcx.ty_arena());
+
+    handle_marks(&mut cx, st, dcx);
+    analyze_intra(&mut cx, dcx.hir_map(), dcx.ty_ctxt());
 
     eprintln!("\n === summary ===");
-    let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
+    /*
+    let mut new_lcx = LabeledTyCtxt::new(dcx.ty_arena());
 
     {
-        let mut statics_sorted = ctxt.static_summ.iter().collect::<Vec<_>>();
+        let mut statics_sorted = cx.static_summ.iter().collect::<Vec<_>>();
         statics_sorted.sort_by_key(|&(k, _)| k);
         for (&def_id, &ty) in statics_sorted {
             let ty = new_lcx.relabel(ty, &mut |p| {
-                p.as_ref().map(|&p| (ctxt.static_cset.lower_bound(p), PrintVar(p)))
+                p.as_ref().map(|&p| (cx.static_cset.lower_bound(p), PrintVar(p)))
             });
 
             eprintln!("{:?}: {:?}", def_id, Pretty(ty));
         }
 
         eprintln!("static constraints:");
-        for &(a, b) in &ctxt.static_cset.less {
+        for &(a, b) in &cx.static_cset.less {
             eprintln!("    {:?} <= {:?}", a, b);
         }
     }
+    */
 
-    let mut new_lcx = LabeledTyCtxt::new(cx.ty_arena());
-    let mut fns_sorted = ctxt.fn_summ.iter().collect::<Vec<_>>();
+    let mut new_lcx = LabeledTyCtxt::new(dcx.ty_arena());
+    let mut fns_sorted = cx.fn_summ.iter().collect::<Vec<_>>();
     fns_sorted.sort_by_key(|&(k, _)| k);
     for (&def_id, summ) in fns_sorted {
         let mut cset = &summ.cset;
