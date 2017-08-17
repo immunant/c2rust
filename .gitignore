@@ -9,3 +9,5 @@ llvm.build/*
 tinycbor*
 # ignore rust build dirs everywhere
 **/target/*
+**/dependencies/*
+**/tests/*

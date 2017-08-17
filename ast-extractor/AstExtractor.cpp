@@ -650,8 +650,10 @@ void TypeEncoder::VisitRecordType(const RecordType *T) {
 }
 
 class TranslateConsumer : public clang::ASTConsumer {
+    const std::string outfile;
 public:
-    explicit TranslateConsumer() { }
+    explicit TranslateConsumer(llvm::StringRef InFile) 
+        : outfile(InFile.str().append(".cbor")) { }
     
     virtual void HandleTranslationUnit(clang::ASTContext &Context) {
         
@@ -676,13 +678,10 @@ public:
         
         process(buf.data(), buf.size());
         
-        // TODO: Compute output filename
-        {
-            std::ofstream out("output.cbor", out.binary | out.trunc);
+        {   
+            std::ofstream out(outfile, out.binary | out.trunc);
             out.write(reinterpret_cast<char*>(buf.data()), buf.size());
         }
-        
-        
     }
 };
 
@@ -691,7 +690,7 @@ class TranslateAction : public clang::ASTFrontendAction {
 public:
   virtual std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
     clang::CompilerInstance &Compiler, llvm::StringRef InFile) {
-    return std::unique_ptr<clang::ASTConsumer>(new TranslateConsumer());
+    return std::unique_ptr<clang::ASTConsumer>(new TranslateConsumer(InFile));
   }
 };
 
