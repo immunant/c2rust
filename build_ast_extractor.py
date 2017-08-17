@@ -42,12 +42,17 @@ LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "") for s in LLVM_ARCHIVE_FILES]
 MIN_PLUMBUM_VERSION = (1, 6, 3)
 
 def die(emsg, ecode=1):
+    """
+    log fatal error and exit with specified error code.
+    """
     logging.fatal("error: %s", emsg)
     quit(ecode)
 
 
 def get_cmd_or_die(cmd):
-    # FIXME: return wrapper that also does logging
+    """
+    lookup named command or terminate script.
+    """
     try:
         return pb.local[cmd]
     except pb.CommandNotFound:
@@ -64,7 +69,7 @@ def download_llvm_sources():
     gpg("--keyserver", KEYSERVER, "--recv-key", LLVM_PUBKEY)
 
     # download archives and signatures
-    for (aurl, asig, afile, adir) in zip(
+    for (aurl, asig, afile, _) in zip(
             LLVM_ARCHIVE_URLS,
             LLVM_SIGNATURE_URLS,
             LLVM_ARCHIVE_FILES,
@@ -87,7 +92,7 @@ def download_llvm_sources():
         try:
             expected = "Good signature from \"Tom Stellard <tom@stellard.net>\""
             logging.debug("checking signature of %s", os.path.basename(afile))
-            retcode, stdout, stderr = gpg['--verify', asigfile, afile].run(retcode=None)
+            retcode, _stdout, stderr = gpg['--verify', asigfile, afile].run(retcode=None)
             if retcode:
                 die("gpg signature check failed: gpg exit code " + str(retcode))
             if not expected in stderr:
@@ -115,12 +120,37 @@ def download_llvm_sources():
                 os.rename(LLVM_ARCHIVE_DIRS[2], "extra")
 
 
+def get_ninja_build_type(ninja_build_file):
+    signature = "# CMAKE generated file: DO NOT EDIT!" + os.linesep
+    with open(ninja_build_file, "r") as handle:
+        lines = handle.readlines()
+        if not lines[0] == signature:
+            die("unexpected content in ninja.build: " + ninja_build_file)
+        r = re.compile(r'^#\s*Configuration:\s*(\w+)')
+        for line in lines:
+            m = r.match(line)
+            if m:
+                # print m.group(1)
+                return m.group(1)
+        die("missing content in ninja.build: " + ninja_build_file)
+
+
 def configure_and_build_llvm(args):
-    cmake = get_cmd_or_die("cmake")
+    """
+    run cmake as needed to generate ninja buildfiles. then run ninja.
+    """
     ninja = get_cmd_or_die("ninja")
     build_type = "Debug" if args.debug else "Release"
+    ninja_build_file = os.path.join(LLVM_BLD, "build.ninja")
     with pb.local.cwd(LLVM_BLD):
-        if not os.path.isfile("build.ninja"):
+        if os.path.isfile(ninja_build_file):
+            prev_build_type = get_ninja_build_type(ninja_build_file)
+            run_cmake = prev_build_type != build_type
+        else:
+            run_cmake = True
+
+        if run_cmake:
+            cmake = get_cmd_or_die("cmake")
             cmake["-G", "Ninja", LLVM_SRC,
                   "-Wno-dev",
                   "-DLLVM_BUILD_TESTS=ON",
@@ -130,7 +160,7 @@ def configure_and_build_llvm(args):
         else:
             logging.debug("found existing ninja.build, not running cmake")
 
-        ninja & pb.TEE
+        ninja['ast-extractor'] & pb.TEE
 
 
 def setup_logging():
@@ -164,18 +194,21 @@ def update_cmakelists(filepath):
         """.format(prefix=CBOR_PREFIX)
     indicator = "add_subdirectory(ast-extractor)"
 
-    with open(filepath, "r") as fh:
-        cmakelists = fh.readlines()
+    with open(filepath, "r") as handle:
+        cmakelists = handle.readlines()
         add_commands = not any([indicator in l for l in cmakelists])
         logging.debug("add commands to %s: %s", filepath, add_commands)
 
     if add_commands:
-        with open(filepath, "w+") as fh:
-            fh.writelines(cmakelists_commands)
+        with open(filepath, "w+") as handle:
+            handle.writelines(cmakelists_commands)
         logging.debug("added commands to %s", filepath)
 
 
 def update_cbor_prefix(makefile):
+    """
+    rewrite prefix variable in tinycbor makefile.
+    """
     if not os.path.isfile(makefile):
         die("not found: " + makefile, errno.ENOENT)
 
