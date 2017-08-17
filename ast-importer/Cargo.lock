@@ -3,7 +3,7 @@ name = "ast-importer"
 version = "0.1.0"
 dependencies = [
  "bindgen 0.29.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "cbor 0.4.0",
+ "cbor 0.4.0 (git+https://github.com/GaloisInc/rust-cbor)",
 ]
 
 [[package]]
@@ -75,6 +75,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "cbor"
 version = "0.4.0"
+source = "git+https://github.com/GaloisInc/rust-cbor#4eac168135ae09bb9343b82ad000e1b5e5a8634b"
 dependencies = [
  "byteorder 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-serialize 0.3.24 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -372,6 +373,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum bitflags 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)" = "1370e9fc2a6ae53aea8b7a5110edbd08836ed87c88736dfabccade1c2b44bff4"
 "checksum bitflags 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)" = "4efd02e230a02e18f92fc2735f44597385ed02ad8f831e7c1c1156ee5e1ab3a5"
 "checksum byteorder 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "0fc10e8cc6b2580fda3f36eb6dc5316657f812a3df879a44a66fc9f0fdbc4855"
+"checksum cbor 0.4.0 (git+https://github.com/GaloisInc/rust-cbor)" = "<none>"
 "checksum cexpr 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "cdbb21df6ff3497a61df5059994297f746267020ba38ce237aad9c875f7b4313"
 "checksum cfg-if 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "d4c819a1287eb618df47cc647173c5c4c66ba19d888a6e50d605672aed3140de"
 "checksum clang-sys 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)" = "611ec2e3a7623afd8a8c0d027887b6b55759d894abbf5fe11b9dc11b50d5b49a"
