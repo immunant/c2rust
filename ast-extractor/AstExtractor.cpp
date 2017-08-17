@@ -592,8 +592,9 @@ class TranslateASTVisitor final
   };
 
 class TranslateConsumer : public clang::ASTConsumer {
+    const llvm::StringRef InFile;
 public:
-    explicit TranslateConsumer() { }
+    explicit TranslateConsumer(llvm::StringRef InFile) : InFile(InFile) { }
     
     virtual void HandleTranslationUnit(clang::ASTContext &Context) {
         
@@ -618,13 +619,12 @@ public:
         
         process(buf.data(), buf.size());
         
-        // TODO: Compute output filename
-        {
-            std::ofstream out("output.cbor", out.binary | out.trunc);
+        {   
+            std::string outfile = InFile.str();
+            outfile.append(".cbor");
+            std::ofstream out(outfile, out.binary | out.trunc);
             out.write(reinterpret_cast<char*>(buf.data()), buf.size());
         }
-        
-        
     }
 };
 
@@ -633,7 +633,7 @@ class TranslateAction : public clang::ASTFrontendAction {
 public:
   virtual std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
     clang::CompilerInstance &Compiler, llvm::StringRef InFile) {
-    return std::unique_ptr<clang::ASTConsumer>(new TranslateConsumer());
+    return std::unique_ptr<clang::ASTConsumer>(new TranslateConsumer(InFile));
   }
 };
 
