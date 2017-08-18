@@ -83,7 +83,7 @@ public:
             cbor_encode_uint(local, uintptr_t(s.Ty));
         });
         
-        if(s.Ty) {
+        if(nullptr != s.Ty) {
             Visit(s.Ty);
         }
     }
@@ -586,12 +586,14 @@ class TranslateASTVisitor final
       
       bool VisitTypedefDecl(TypedefDecl *D) {
           std::vector<void*> childIds;
-          encode_entry(D, TagTypedefDecl, childIds, D->getTypeForDecl(),
+          auto typeForDecl = D->getTypeForDecl();
+          encode_entry(D, TagTypedefDecl, childIds, typeForDecl,
                              [D](CborEncoder *array) {
                                  auto name = D->getNameAsString();
                                  cbor_encode_text_stringz(array, name.c_str());
                              });
-          typeEncoder.Visit(D->getTypeForDecl());
+          if(nullptr != typeForDecl)
+            typeEncoder.Visit(typeForDecl);
           return true;
       }
       
