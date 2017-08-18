@@ -478,16 +478,15 @@ impl Clone for lh_entry {
     }
 }
 
-#[derive(Copy)]
 #[repr(C)]
 pub struct lh_table {
     pub size: i32,
     pub count: i32,
-    pub collisions: i32,
-    pub resizes: i32,
-    pub lookups: i32,
-    pub inserts: i32,
-    pub deletes: i32,
+    pub collisions: ::std::cell::Cell<i32>,
+    pub resizes: ::std::cell::Cell<i32>,
+    pub lookups: ::std::cell::Cell<i32>,
+    pub inserts: ::std::cell::Cell<i32>,
+    pub deletes: ::std::cell::Cell<i32>,
     pub name: *const u8,
     pub head: *mut lh_entry,
     pub tail: *mut lh_entry,
@@ -498,12 +497,6 @@ pub struct lh_table {
         *const ::std::os::raw::c_void,
         *const ::std::os::raw::c_void,
     ) -> i32,
-}
-
-impl Clone for lh_table {
-    fn clone(&self) -> Self {
-        *self
-    }
 }
 
 pub unsafe fn lh_table_new(
@@ -610,7 +603,7 @@ pub unsafe fn lh_table_resize(mut t: *mut lh_table, mut new_size: i32) {
     (*t).size = new_size;
     (*t).head = (*new_t).head;
     (*t).tail = (*new_t).tail;
-    (*t).resizes = (*t).resizes + 1;
+    (*t).resizes.set((*t).resizes.get() + 1);
     free(new_t as (*mut ::std::os::raw::c_void));
 }
 #[export_name = "lh_table_resize"]
@@ -645,7 +638,7 @@ pub unsafe fn lh_table_insert(
 ) -> i32 {
     let mut h: u64;
     let mut n: u64;
-    (*t).inserts = (*t).inserts + 1;
+    (*t).inserts.set((*t).inserts.get() + 1);
     if (*t).count as (f64) >= (*t).size as (f64) * 0.66f64 {
         lh_table_resize(t, (*t).size * 2i32);
     }
@@ -657,7 +650,7 @@ pub unsafe fn lh_table_insert(
         {
             break;
         }
-        (*t).collisions = (*t).collisions + 1;
+        (*t).collisions.set((*t).collisions.get() + 1);
         if !({
             n = n.wrapping_add(1u64);
             n
@@ -708,7 +701,7 @@ pub unsafe fn lh_table_lookup_entry(
     let mut h: u64 = ((*t).hash_fn)(k);
     let mut n: u64 = h.wrapping_rem((*t).size as (u64));
     let mut count: i32 = 0i32;
-    (*t).lookups = (*t).lookups + 1;
+    (*t).lookups.set((*t).lookups.get() + 1);
     'loop1: loop {
         if !(count < (*t).size) {
             _currentBlock = 2;
