@@ -11,3 +11,4 @@ tinycbor*
 **/target/*
 **/dependencies/*
 **/tests/*
+*.pyc

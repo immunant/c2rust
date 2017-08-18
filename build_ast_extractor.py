@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import os
@@ -12,6 +12,7 @@ import logging
 import argparse
 import platform
 
+from typing import List, Union
 
 try:
     import plumbum as pb
@@ -56,14 +57,14 @@ add_subdirectory(ast-extractor)
 """.format(prefix=CBOR_PREFIX)  # nopep8
 
 
-def on_mac():
+def on_mac() -> bool:
     """
     return true on macOS/OS X.
     """
     return 'Darwin' in platform.platform()
 
 
-def on_ubuntu():
+def on_ubuntu() -> bool:
     """
     return true on recent ubuntu linux distro.
     """
@@ -213,7 +214,7 @@ def setup_logging():
 def ensure_dir(path):
     if not os.path.exists(path):
         logging.debug("creating dir %s", path)
-        os.makedirs(path, mode=0744)
+        os.makedirs(path, mode=0o744)
     if not os.path.isdir(path):
         die("%s is not a directory", path)
 
@@ -260,7 +261,7 @@ def update_cbor_prefix(makefile):
             fh.writelines("".join(lines))
 
 
-def install_tinycbor():
+def install_tinycbor() -> Union[str, None]:
     """
     download, unpack, build, and install tinycbor.
     """
@@ -326,7 +327,7 @@ def integrate_ast_extractor():
     update_cmakelists(cmakelists_path)
 
 
-def parse_args():
+def _parse_args():
     """
     define and parse command line arguments here.
     """
@@ -346,7 +347,62 @@ def parse_args():
     return parser.parse_args()
 
 
-def test_ast_extractor(cc_db_path):
+def get_system_include_dirs(compiler: str="cc") -> List[str]:
+    cc = get_cmd_or_die(compiler)
+    cmd = cc["-E", "-Wp,-v", "-"]
+    _, _, stderr = cmd.run()
+    dirs = stderr.split(os.linesep)
+    return [l.strip() for l in dirs if len(l) and l[0] == ' ']
+
+
+def extract_ast_from(ast_extr: pb.commands.BaseCommand,
+                     cc_db_path: str,
+                     sys_incl_dirs: List[str],
+                     **kwargs) -> None:
+    """
+    run ast-extractor for a single compiler invocation.
+
+    :param ast_extr: command object representing ast-extractor
+    :param cc_db_path: path/to/compile_commands.json
+    :param sys_incl_dirs: list of system include directories
+    :return: path to generated cbor file.
+    """
+    keys = ['command', 'directory', 'file']
+    try:
+        cmd, dir, filename = [kwargs[k] for k in keys]
+    except KeyError:
+        die("couldn't parse " + cc_db_path)
+
+    if not os.path.isfile(filename):
+        die("missing file " + filename)
+    try:
+        basename = os.path.basename(filename)
+
+        # prepare ast-extractor arguments
+        cc_db_dir = os.path.dirname(cc_db_path)
+        args = ["-p", cc_db_dir, filename]
+        # this is required to locate system libraries
+        args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
+
+        # run ast-extractor
+        logging.info("extracting ast from %s", basename)
+        ast_extr[args] & pb.TEE  # nopep8
+        cbor_outfile = filename + ".cbor"
+        assert os.path.isfile(cbor_outfile), "missing: " + cbor_outfile
+        return cbor_outfile
+    except pb.ProcessExecutionError as pee:
+        if pee.retcode >= 0:
+            mesg = os.strerror(pee.retcode)
+        elif pee.retcode == -signal.SIGSEGV:
+            mesg = "Segmentation fault"
+        else:
+            mesg = "Received signal {}".format(-pee.retcode)
+
+        logging.fatal("command failed: %s", ast_extr["-p", cc_db_dir, filename])
+        die(u"sanity testing failed 🔥 : " + mesg, pee.retcode)
+
+
+def test_ast_extractor(cc_db_path: str):
     """
     run ast-extractor on tinycbor if on linux. testing is
     not supported on macOS since bear requires system integrity
@@ -358,44 +414,18 @@ def test_ast_extractor(cc_db_path):
     if not os.path.isfile(ast_extr):
         die("ast-extractor not found in " + LLVM_BIN)
     ast_extr = get_cmd_or_die(ast_extr)
-    cc_db_dir = os.path.dirname(cc_db_path)
 
-    def extract_ast_from(**kwargs):
-        """
-        process a single compiler invocation
-        """
-        keys = ['command', 'directory', 'file']
-        try:
-            cmd, dir, filename = [kwargs[k] for k in keys]
-        except KeyError:
-            die("couldn't parse " + cc_db_path)
-
-        if not os.path.isfile(filename):
-            die("missing file " + filename)
-        try:
-            basename = os.path.basename(filename)
-            logging.info("extracting ast from %s", basename)
-            ast_extr["-p", cc_db_dir, filename] & pb.TEE
-        except pb.ProcessExecutionError as pee:
-            if pee.retcode >= 0:
-                mesg = os.strerror(pee.retcode)
-            elif pee.retcode == -signal.SIGSEGV:
-                mesg = "Segmentation fault"
-            else: 
-                mesg = "Received signal {}".format(-pee.retcode) 
-            
-            logging.fatal("command failed: %s", ast_extr["-p", cc_db_dir, filename])
-            die(u"sanity testing failed 🔥 : " + mesg, pee.retcode)
+    include_dirs = get_system_include_dirs()
 
     with open(cc_db_path, "r") as handle:
         cc_db = json.load(handle)
-        for cmd in cc_db:
-            extract_ast_from(**cmd)
+    cbor_files = [extract_ast_from(ast_extr, cc_db_path, include_dirs, **cmd)
+                  for cmd in cc_db]
 
     logging.info(u"sanity test passed 👍")
 
 
-def binary_in_path(binary_name):
+def binary_in_path(binary_name) -> bool:
     try:
         # raises CommandNotFound exception if not available.
         _ = pb.local[binary_name]
@@ -404,7 +434,7 @@ def binary_in_path(binary_name):
         return False
 
 
-def main():
+def _main():
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
@@ -420,7 +450,7 @@ def main():
         emsg = "bear not in path, install package bear and retry" 
         die(emsg, errno.ENOENT)
 
-    args = parse_args()
+    args = _parse_args()
     if args.clean_all:
         logging.info("cleaning all dependencies and previous built files")
         shutil.rmtree(LLVM_SRC, ignore_errors=True)
@@ -446,4 +476,4 @@ def main():
         test_ast_extractor(cc_db)
 
 if __name__ == "__main__":
-    main()
+    _main()
