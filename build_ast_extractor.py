@@ -1,12 +1,17 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import os
 import re
 import sys
+import json
 import errno
 import shutil
+import signal
 import logging
 import argparse
+import platform
+
 
 try:
     import plumbum as pb
@@ -26,6 +31,7 @@ CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor")
 
 LLVM_SRC = os.path.join(SCRIPT_DIR, 'llvm.src')
 LLVM_BLD = os.path.join(SCRIPT_DIR, 'llvm.build')
+LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
 LLVM_PUBKEY = "8F0871F202119294"
 LLVM_VER = "4.0.1"
 LLVM_ARCHIVE_URLS = """
@@ -48,6 +54,21 @@ include_directories({prefix}/include)
 link_directories({prefix}/lib)
 add_subdirectory(ast-extractor)
 """.format(prefix=CBOR_PREFIX)  # nopep8
+
+
+def on_mac():
+    """
+    return true on macOS/OS X.
+    """
+    return 'Darwin' in platform.platform()
+
+
+def on_ubuntu():
+    """
+    return true on recent ubuntu linux distro.
+    """
+    match = re.match(r'^.+Ubuntu-\d\d\.\d\d-\w+', platform.platform())
+    return match is not None
 
 
 def die(emsg, ecode=1):
@@ -245,7 +266,7 @@ def install_tinycbor():
     """
     def path_to_cc_db():
         cc_cmd_db = os.path.join(CBOR_SRC, "compile_commands.json")
-        if not os.path.isfile(cc_cmd_db):
+        if not os.path.isfile(cc_cmd_db) and not on_mac():
             die("not found: " + cc_cmd_db)
         return cc_cmd_db
 
@@ -270,12 +291,15 @@ def install_tinycbor():
     # make && install
     # NOTE: we use bear to wrap make invocations such that
     # we get a .json database of compiler commands that we
-    # can use to test ast-extractor. On macOS, bear can be
-    # installed with `brew install bear`.
+    # can use to test ast-extractor. On macOS, bear requires
+    # system integrity protection to be turned off, so we
+    # only use bear on Ubuntu Linux hosts.
     with pb.local.cwd(CBOR_SRC):
         make = get_cmd_or_die("make")
-        bear = get_cmd_or_die("bear")
-        (bear[make]) & pb.TEE
+        if not on_mac():
+            bear = get_cmd_or_die("bear")
+            make = bear[make]
+        make & pb.TEE  # nopep8
         make('install')  # & pb.TEE
 
     return path_to_cc_db()
@@ -315,13 +339,69 @@ def parse_args():
     parser.add_argument('-d', '--debug', default=False,
                         action='store_true', dest='debug',
                         help=dhelp)
+    thelp = 'sanity test ast extractor using tinycbor (linux only)'
+    parser.add_argument('-t', '--test', default=False,
+                        action='store_true', dest='sanity_test',
+                        help=thelp)
     return parser.parse_args()
 
 
-def test_ast_extractor():
-    # FIXME: test ast-extractor on tinycbor
-    pass
+def test_ast_extractor(cc_db_path):
+    """
+    run ast-extractor on tinycbor if on linux. testing is
+    not supported on macOS since bear requires system integrity
+    protection to be disabled.
+    """
+    assert not on_mac(), "sanity testing requires linux host"
 
+    ast_extr = os.path.join(LLVM_BIN, "ast-extractor")
+    if not os.path.isfile(ast_extr):
+        die("ast-extractor not found in " + LLVM_BIN)
+    ast_extr = get_cmd_or_die(ast_extr)
+    cc_db_dir = os.path.dirname(cc_db_path)
+
+    def extract_ast_from(**kwargs):
+        """
+        process a single compiler invocation
+        """
+        keys = ['command', 'directory', 'file']
+        try:
+            cmd, dir, filename = [kwargs[k] for k in keys]
+        except KeyError:
+            die("couldn't parse " + cc_db_path)
+
+        if not os.path.isfile(filename):
+            die("missing file " + filename)
+        try:
+            basename = os.path.basename(filename)
+            logging.info("extracting ast from %s", basename)
+            ast_extr["-p", cc_db_dir, filename] & pb.TEE
+        except pb.ProcessExecutionError as pee:
+            if pee.retcode >= 0:
+                mesg = os.strerror(pee.retcode)
+            elif pee.retcode == -signal.SIGSEGV:
+                mesg = "Segmentation fault"
+            else: 
+                mesg = "Received signal {}".format(-pee.retcode) 
+            
+            logging.fatal("command failed: %s", ast_extr["-p", cc_db_dir, filename])
+            die(u"sanity testing failed 🔥 : " + mesg, pee.retcode)
+
+    with open(cc_db_path, "r") as handle:
+        cc_db = json.load(handle)
+        for cmd in cc_db:
+            extract_ast_from(**cmd)
+
+    logging.info(u"sanity test passed 👍")
+
+
+def binary_in_path(binary_name):
+    try:
+        # raises CommandNotFound exception if not available.
+        _ = pb.local[binary_name]
+        return True
+    except pb.CommandNotFound:
+        return False
 
 
 def main():
@@ -335,6 +415,10 @@ def main():
         err += "please upgrade plumbum to version {} or later." \
             .format(MIN_PLUMBUM_VERSION)
         die(err)
+
+    if on_ubuntu() and not binary_in_path("bear"):
+        emsg = "bear not in path, install package bear and retry" 
+        die(emsg, errno.ENOENT)
 
     args = parse_args()
     if args.clean_all:
@@ -357,6 +441,9 @@ def main():
     cc_db = install_tinycbor()
 
     configure_and_build_llvm(args)
+
+    if not on_mac() and args.sanity_test:
+        test_ast_extractor(cc_db)
 
 if __name__ == "__main__":
     main()
