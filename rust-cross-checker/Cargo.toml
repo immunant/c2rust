@@ -1,0 +1,9 @@
+[package]
+name = "cross-checks"
+version = "0.1.0"
+authors = ["Andrei Homescu <ah@immunant.com>"]
+
+[lib]
+plugin = true
+
+[dependencies]
