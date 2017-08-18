@@ -11,6 +11,7 @@ use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable};
 use syntax::codemap::Span;
 use syntax::fold::Folder;
 use syntax::symbol::Symbol;
+
 fn expand_cross_checks(cx: &mut ExtCtxt,
                        _sp: Span,
                        _meta_item: &ast::MetaItem,
