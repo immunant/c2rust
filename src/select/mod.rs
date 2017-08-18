@@ -5,7 +5,7 @@ use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
 use command::CommandState;
-use command::{Registry, FuncCommand};
+use command::{Registry, DriverCommand};
 use driver::{self, Phase};
 use pick_node::NodeKind;
 use util::IntoSymbol;
@@ -160,7 +160,7 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("select", |args| {
         let label = (&args[0]).into_symbol();
         let ops_str = args[1].clone();
-        Box::new(FuncCommand::new(Phase::Phase3, move |st, cx| {
+        Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             let ops = parse::parse(cx.session(), &ops_str);
             eprintln!("running select: {:?} -> {}", ops, label);
             run_select(st, cx, &ops, label);

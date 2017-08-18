@@ -10,7 +10,7 @@ use std::str::FromStr;
 use syntax::ast::NodeId;
 
 use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node};
-use idiomize::{interact, command, mark_adjust, plugin, select, analysis};
+use idiomize::{interact, command, mark_adjust, plugin, select, analysis, script};
 
 use idiomize::command::CommandState;
 use idiomize::util::IntoSymbol;
@@ -331,35 +331,17 @@ fn main() {
                                    opts.rustc_args,
                                    cmd_reg);
     } else {
+        let mut state = script::RefactorState::new(opts.rustc_args, cmd_reg, marks);
+        let rewrite_mode = opts.rewrite_mode;
+        state.rewrite_handler(move |fm, s| {
+            file_rewrite::rewrite_mode_callback(rewrite_mode, fm, s);
+        });
+
         for cmd in opts.commands.clone() {
             if &cmd.name == "interact" {
                 panic!("`interact` must be the only command");
             } else {
-                let mut cmd = cmd_reg.get_command(&cmd.name, &cmd.args);
-                let phase = cmd.min_phase();
-                driver::with_crate_and_context(&opts.rustc_args, phase, |krate, cx| {
-                    let krate = span_fix::fix_spans(cx.session(), krate);
-
-                    let mut cmd_state = CommandState::new(krate.clone(),
-                                                          marks.clone());
-
-                    cmd.run(&mut cmd_state, &cx);
-
-                    if cmd_state.krate_changed() {
-                        let rws = rewrite::rewrite(cx.session(), &krate, &cmd_state.krate());
-                        if rws.len() == 0 {
-                            info!("(no files to rewrite)");
-                        } else {
-                            file_rewrite::rewrite_files(cx.session().codemap(),
-                                                        &rws,
-                                                        opts.rewrite_mode);
-                        }
-                    }
-
-                    if cmd_state.marks_changed() {
-                        marks = cmd_state.marks().clone();
-                    }
-                });
+                state.run(&cmd.name, &cmd.args);
             }
         }
     }

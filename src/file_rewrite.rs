@@ -17,27 +17,33 @@ pub enum RewriteMode {
 
 pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite], mode: RewriteMode) {
     rewrite_files_with(cm, rewrites, |fm, s| {
-        if fm.name.starts_with("<") {
-            return;
-        }
-
-        match mode {
-            RewriteMode::InPlace => {
-                info!("writing to {}", fm.name);
-                let mut f = File::create(&fm.name).unwrap();
-                f.write_all(s.as_bytes()).unwrap();
-            },
-            RewriteMode::Alongside => {
-                let new_path = format!("{}.new", fm.name);
-                info!("writing to {}", new_path);
-                let mut f = File::create(&new_path).unwrap();
-                f.write_all(s.as_bytes()).unwrap();
-            },
-            RewriteMode::Print => {
-                println!(" ==== {} ====\n{}\n =========", fm.name, s);
-            },
-        }
+        rewrite_mode_callback(mode, fm, s);
     });
+}
+
+pub fn rewrite_mode_callback(mode: RewriteMode,
+                             fm: Rc<FileMap>,
+                             s: &str) {
+    if fm.name.starts_with("<") {
+        return;
+    }
+
+    match mode {
+        RewriteMode::InPlace => {
+            info!("writing to {}", fm.name);
+            let mut f = File::create(&fm.name).unwrap();
+            f.write_all(s.as_bytes()).unwrap();
+        },
+        RewriteMode::Alongside => {
+            let new_path = format!("{}.new", fm.name);
+            info!("writing to {}", new_path);
+            let mut f = File::create(&new_path).unwrap();
+            f.write_all(s.as_bytes()).unwrap();
+        },
+        RewriteMode::Print => {
+            println!(" ==== {} ====\n{}\n =========", fm.name, s);
+        },
+    }
 }
 
 pub fn rewrite_files_with<F>(cm: &CodeMap, rewrites: &[TextRewrite], mut callback: F)

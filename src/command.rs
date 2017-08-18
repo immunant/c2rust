@@ -6,6 +6,7 @@ use syntax::codemap::DUMMY_SP;
 use syntax::symbol::Symbol;
 
 use driver::{self, Phase};
+use script::RefactorState;
 use util::IntoSymbol;
 
 
@@ -86,14 +87,7 @@ impl CommandState {
 
 
 pub trait Command {
-    fn run(&mut self,
-           st: &CommandState,
-           cx: &driver::Ctxt);
-
-    fn min_phase(&self) -> Phase {
-        // Most operations should run on expanded code.
-        Phase::Phase2
-    }
+    fn run(&mut self, state: &mut RefactorState);
 }
 
 
@@ -124,27 +118,33 @@ impl Registry {
 }
 
 
-pub struct FuncCommand<F>
+pub struct FuncCommand<F>(pub F);
+
+impl<F> Command for FuncCommand<F>
+        where F: FnMut(&mut RefactorState) {
+    fn run(&mut self, state: &mut RefactorState) {
+        (self.0)(state);
+    }
+}
+
+
+pub struct DriverCommand<F>
         where F: FnMut(&CommandState, &driver::Ctxt) {
     func: F,
     phase: Phase,
 }
 
-impl<F> FuncCommand<F>
+impl<F> DriverCommand<F>
         where F: FnMut(&CommandState, &driver::Ctxt) {
-    pub fn new(phase: Phase, func: F) -> FuncCommand<F> {
-        FuncCommand { func, phase }
+    pub fn new(phase: Phase, func: F) -> DriverCommand<F> {
+        DriverCommand { func, phase }
     }
 }
 
-impl<F> Command for FuncCommand<F>
+impl<F> Command for DriverCommand<F>
         where F: FnMut(&CommandState, &driver::Ctxt) {
-    fn run(&mut self, st: &CommandState, cx: &driver::Ctxt) {
-        (self.func)(st, cx);
-    }
-
-    fn min_phase(&self) -> Phase {
-        self.phase
+    fn run(&mut self, state: &mut RefactorState) {
+        state.with_context_at_phase(self.phase, |st, cx| (self.func)(st, cx));
     }
 }
 
@@ -155,7 +155,7 @@ pub fn register_misc_commands(reg: &mut Registry) {
 
     reg.register("pick_node", |args| {
         let args = args.to_owned();
-        Box::new(FuncCommand::new(Phase::Phase2, move |st, cx| {
+        Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
             pick_node::pick_node_command(&st.krate(), &cx, &args);
         }))
     });

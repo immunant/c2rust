@@ -2,6 +2,7 @@ use syntax::ast::Crate;
 
 use command::{Command, CommandState, Registry};
 use driver::{self, Phase};
+use script::RefactorState;
 use util::IntoSymbol;
 
 
@@ -18,14 +19,12 @@ pub trait Transform {
 pub struct TransformCommand<T: Transform>(pub T);
 
 impl<T: Transform> Command for TransformCommand<T> {
-    fn run(&mut self, st: &CommandState, cx: &driver::Ctxt) {
-        st.map_krate(|krate| {
-            self.0.transform(krate, st, cx)
+    fn run(&mut self, state: &mut RefactorState) {
+        state.with_context_at_phase(self.0.min_phase(), |st, cx| {
+            st.map_krate(|krate| {
+                self.0.transform(krate, st, cx)
+            });
         });
-    }
-
-    fn min_phase(&self) -> Phase {
-        self.0.min_phase()
     }
 }
 
