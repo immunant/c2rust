@@ -49,6 +49,16 @@ impl<L> fmt::Debug for PrettyLabel<Option<L>> where L: Copy, PrettyLabel<L>: fmt
     }
 }
 
+impl<'tcx> fmt::Debug for PrettyLabel<bool> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        if self.0 {
+            write!(fmt, "T")
+        } else {
+            write!(fmt, "F")
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct PrintVar<'tcx>(pub Perm<'tcx>);
 
@@ -102,7 +112,7 @@ impl<'tcx, L> fmt::Debug for Pretty<'tcx, L> where L: Copy + fmt::Debug, PrettyL
                        if mty.mutbl == hir::MutImmutable { "const" } else { "mut" },
                        PrettyLabel(self.0.label),
                        Pretty(self.0.args[0])),
-            _ => write!(fmt, "{:?}", self.0),
+            _ => write!(fmt, "{:?}", self.0.ty),
         }
     }
 }

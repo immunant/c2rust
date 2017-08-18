@@ -234,6 +234,103 @@ impl<'tcx> ConstraintSet<'tcx> {
         bound
     }
 
+    pub fn upper_bound(&self, p: Perm<'tcx>) -> ConcretePerm {
+        match p {
+            Perm::Concrete(p) => return p,
+            _ => {},
+        }
+
+        let mut seen = HashSet::new();
+        let mut queue = VecDeque::new();
+        let mut bound = ConcretePerm::Move;
+
+        seen.insert(p);
+        queue.push_back(p);
+
+        while let Some(cur) = queue.pop_front() {
+            for &(_, next) in self.less.range(perm_range(cur)) {
+                match next {
+                    Perm::Concrete(p) => {
+                        bound = cmp::min(bound, p);
+                    },
+                    _ => {
+                        if !seen.contains(&next) {
+                            seen.insert(next);
+                            queue.push_back(next);
+                        }
+                    },
+                }
+            }
+        }
+
+        bound
+    }
+
+    /// Given an assignment of concrete permission values to a subset of the variables, check
+    /// whether any constraints are violated under the partial assignment.  Returns `false` if a
+    /// constraint is violated, or `true` if all constraints appear to be satisfiable.
+    ///
+    /// Note this function is only guaranteed to be accurate for complete assignments.  On
+    /// (strictly) partial assignments, it may report that a satisfying assignment is possible when
+    /// it's not, but never the other way around.
+    pub fn check_partial_assignment<F>(&self, eval: F) -> bool
+            where F: Fn(Perm<'tcx>) -> Option<ConcretePerm> {
+        /// Evaluate a permission, recursing into `Perm::Min`s.  Returns the computed permission
+        /// value along with two boolean flags `any_missing` and `all_missing`.
+        fn eval_rec<'tcx, F>(p: Perm<'tcx>, eval: &F) -> (ConcretePerm, bool, bool)
+                where F: Fn(Perm<'tcx>) -> Option<ConcretePerm> {
+            match p {
+                Perm::Concrete(c) => (c, false, false),
+                Perm::Min(ps) => {
+                    let mut min = ConcretePerm::Move;
+                    let mut any_missing = false;
+                    let mut all_missing = true;
+
+                    for &p in ps {
+                        let (c, any, all) = eval_rec(p, eval);
+                        min = cmp::min(min, c);
+                        any_missing |= any;
+                        all_missing &= all;
+                    }
+                    (min, any_missing, all_missing) 
+                },
+                p => {
+                    if let Some(c) = eval(p) {
+                        (c, false, false)
+                    } else {
+                        (ConcretePerm::Move, true, true)
+                    }
+                },
+            }
+        }
+
+        for &(a, b) in &self.less {
+            let (a, a_any, a_all) = eval_rec(a, &eval);
+            let (b, b_any, b_all) = eval_rec(b, &eval);
+
+            if a <= b {
+                continue;
+            }
+
+            if a_all || b_all {
+                // We have no info at all about one of the sides, so skip this constraint.
+                continue;
+            }
+
+            // If `a_any` is set, then further assignments might make the constraint "more
+            // satisfiable", by lowering the result of a `min` on the LHS.  Conversely, if `b_any`
+            // is set, further assignments might make it less satisfiable.
+            if a_any {
+                // Constraint is violated now, but could be repaired by further assignments.
+                continue;
+            }
+
+            return false;
+        }
+
+        true
+    }
+
     pub fn edit<'a>(&'a mut self) -> EditConstraintSet<'a, 'tcx> {
         let to_visit = self.less.iter().cloned().collect();
         EditConstraintSet {

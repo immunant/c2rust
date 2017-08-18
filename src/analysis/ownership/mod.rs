@@ -47,6 +47,7 @@ mod context;
 mod intra;
 mod inter;
 mod annot;
+mod mono;
 mod debug;
 
 use self::constraint::*;
@@ -54,6 +55,7 @@ use self::context::Ctxt;
 use self::intra::IntraCtxt;
 use self::inter::InterCtxt;
 use self::annot::handle_marks;
+use self::mono::mono_test;
 use self::debug::*;
 
 
@@ -190,10 +192,12 @@ pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
     }
     */
 
-    let mut new_lcx = LabeledTyCtxt::new(dcx.ty_arena());
+    //let mut new_lcx = LabeledTyCtxt::new(dcx.ty_arena());
     let mut fns_sorted = cx.fn_ids().collect::<Vec<_>>();
     fns_sorted.sort();
     for def_id in fns_sorted {
+        mono_test(cx.get_fn_summ(def_id).unwrap(), def_id);
+        /*
         let summ = cx.get_fn_summ(def_id).unwrap();
         let mut cset = &summ.cset;
         let mut func2 = |p: &Option<_>| {
@@ -205,5 +209,6 @@ pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
         for &(a, b) in cset.iter() {
             eprintln!("    {:?} <= {:?}", a, b);
         }
+        */
     }
 }

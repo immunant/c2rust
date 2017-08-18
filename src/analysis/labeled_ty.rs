@@ -22,6 +22,15 @@ impl<'tcx, L: fmt::Debug> fmt::Debug for LabeledTyS<'tcx, L> {
     }
 }
 
+impl<'tcx, L> LabeledTyS<'tcx, L> {
+    pub fn for_each_label<F: FnMut(&'tcx L)>(&'tcx self, callback: &mut F) {
+        callback(&self.label);
+        for &arg in self.args {
+            arg.for_each_label(callback);
+        }
+    }
+}
+
 
 pub struct LabeledTyCtxt<'tcx, L: 'tcx> {
     arena: &'tcx DroplessArena,

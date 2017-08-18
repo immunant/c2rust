@@ -29,22 +29,6 @@ pub struct IntraCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     next_inst_var: u32,
 }
 
-fn collect_perms<'tcx>(ty: LTy<'tcx>) -> Vec<Perm<'tcx>> {
-    let mut v = Vec::new();
-    collect_perms_into(ty, &mut v);
-    v
-}
-
-fn collect_perms_into<'tcx>(ty: LTy<'tcx>, v: &mut Vec<Perm<'tcx>>) {
-    if let Some(p) = ty.label {
-        v.push(p);
-    }
-
-    for &arg in ty.args {
-        collect_perms_into(arg, v);
-    }
-}
-
 impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
     pub fn new(cx: &'a mut Ctxt<'tcx>,
                tcx: TyCtxt<'a, 'gcx, 'tcx>,
