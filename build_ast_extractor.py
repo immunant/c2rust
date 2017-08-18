@@ -393,10 +393,9 @@ def extract_ast_from(ast_extr: pb.commands.BaseCommand,
     except pb.ProcessExecutionError as pee:
         if pee.retcode >= 0:
             mesg = os.strerror(pee.retcode)
-        elif pee.retcode == -signal.SIGSEGV:
-            mesg = "Segmentation fault"
         else:
-            mesg = "Received signal {}".format(-pee.retcode)
+            mesg = "Received signal: "
+            mesg += signal.Signals(-pee.retcode).name
 
         logging.fatal("command failed: %s", ast_extr["-p", cc_db_dir, filename])
         die(u"sanity testing failed 🔥 : " + mesg, pee.retcode)
