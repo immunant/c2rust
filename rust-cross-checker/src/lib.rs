@@ -30,12 +30,16 @@ struct CrossChecker<'a, 'cx: 'a> {
     ident: ast::Ident,
 }
 
+fn djb2_hash(s: &str) -> u32 {
+    s.bytes().fold(5381u32, |h, c| (h << 5) + h + (c as u32))
+}
+
 impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
     fn fold_item_kind(&mut self, ik: ast::ItemKind) -> ast::ItemKind {
         if let ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) = ik {
             // Add the cross-check to the beginning of the function
             // TODO: only add the checks to C abi functions???
-            let check_id = 0x12345678u32; // TODO
+            let check_id = djb2_hash(&*self.ident.name.as_str());
             let checked_block = self.fold_block(block).map(|block| {
                 quote_block!(self.cx, {
                     unsafe { rb_xcheck($check_id); }
