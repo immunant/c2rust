@@ -151,5 +151,8 @@ fn parse_and_dump(filename: &str) -> Result<AstContext, Error> {
     let mut cursor: Decoder<Cursor<Vec<u8>>> = Decoder::from_bytes(buffer);
     let items = cursor.items();
 
-    Ok(process(items).unwrap())
+    match process(items) {
+        Ok(cxt) => Ok(cxt),
+        Err(e) => panic!("{:#?}", e),
+    }
 }
