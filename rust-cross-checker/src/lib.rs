@@ -90,7 +90,7 @@ struct CrossChecker<'a, 'cx: 'a> {
 }
 
 fn djb2_hash(s: &str) -> u32 {
-    s.bytes().fold(5381u32, |h, c| (h << 5) + h + (c as u32))
+    s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
 }
 
 impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
