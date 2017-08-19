@@ -1,4 +1,4 @@
-#![feature(plugin_registrar, quote, rustc_private)]
+#![feature(plugin_registrar, quote, rustc_private, try_from)]
 
 extern crate rustc_plugin;
 extern crate syntax;
@@ -6,6 +6,8 @@ extern crate syntax;
 use rustc_plugin::Registry;
 use syntax::ast;
 use syntax::fold;
+
+use std::convert::TryInto;
 
 use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable};
 use syntax::codemap::Span;
@@ -61,14 +63,15 @@ impl CrossCheckConfig {
                                 res.name = item.value_str().map(|s| String::from(s.as_str().as_ref()))
                             }
                             "id" => {
-                                if let Some(val) = item.value_str() {
-                                    // FIXME: for now, we only support decimal ids
-                                    // It would be nice to use libsyntax's integer parser
-                                    let id = val.as_str().parse::<u32>();
-                                    if let Ok(id) = id {
-                                        res.id = Some(id)
+                                if let ast::MetaItemKind::NameValue(ref lit) = item.node {
+                                    if let ast::LitKind::Int(id128, _) = lit.node {
+                                        if let Ok(id32) = id128.try_into() {
+                                            res.id = Some(id32);
+                                        } else {
+                                            panic!("Invalid u32 for cross_check id: {}", id128);
+                                        }
                                     } else {
-                                        println!("Warning!!! Could not parse cross_check id: \"{}\"", val);
+                                        panic!("Invalid literal for cross_check id: {:?}", lit.node);
                                     }
                                 }
                             }
