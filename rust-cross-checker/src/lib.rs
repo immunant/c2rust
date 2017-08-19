@@ -105,7 +105,7 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
             // TODO: only add the checks to C abi functions???
             // Allow clients to specify the id or name manually, like this:
             // #[cross_check(name = "foo")]
-            // #[cross_check(id = "12345678")]
+            // #[cross_check(id = 0x12345678)]
             let check_id = if let Some(id) = self.config.id {
                 id
             } else if let Some(ref name) = self.config.name {
