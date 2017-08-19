@@ -39,6 +39,9 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
         if let ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) = ik {
             // Add the cross-check to the beginning of the function
             // TODO: only add the checks to C abi functions???
+            // TODO: allow clients to specify the id or name manually, like this:
+            // #[cross_check(name = "foo")]
+            // #[cross_check(id = 0x12345678u32)]
             let check_id = djb2_hash(&*self.ident.name.as_str());
             let checked_block = self.fold_block(block).map(|block| {
                 quote_block!(self.cx, {
