@@ -1,0 +1,5 @@
+fn main() {
+    let x;
+    let y;
+    let z = 12345;
+}
