@@ -1,12 +1,3 @@
-/*
-   -c tests/func_to_method.rs:12:1:dest
-   -c tests/func_to_method.rs:15:11::arg
-   -c tests/func_to_method.rs:19:11::arg
-   -c tests/func_to_method.rs:23:27::arg
-   -c tests/func_to_method.rs:27:23::arg
-   -c tests/func_to_method.rs:31:1
-   func_to_method
-   */
 struct S { x: u32 }
 
 impl S {

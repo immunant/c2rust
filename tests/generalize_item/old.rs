@@ -1,8 +1,3 @@
-/*
-    select target 'crate; desc(match_ty(i16));' ;
-    generalize_items
-*/
-
 struct S {
     x: i16,
     y: i32,

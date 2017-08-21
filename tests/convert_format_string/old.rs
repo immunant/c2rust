@@ -1,7 +1,3 @@
-/*
-mark_arg_uses 0 target ; convert_format_string
-    -c tests/convert_format_string.rs:6:5
-*/
 extern "C" {
     fn printf(s: &str, ...);
 }

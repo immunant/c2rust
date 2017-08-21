@@ -1,10 +1,3 @@
-// retype_argument \
-//      -c tests/retype_argument.rs:8:14::arg \
-//      -c tests/retype_argument.rs:15:18::arg \
-//      -c tests/retype_argument.rs:19:25::arg \
-//      -c tests/retype_argument.rs:23:26::arg \
-//      -c tests/retype_argument.rs:27:30::arg \
-//      u8 '__old as u8' '__new as u32'
 fn f(x: i32, y: i32) -> i32 {
     x + y
 }
@@ -27,10 +20,6 @@ impl S {
     fn h3(&mut self, x: i32, y: i32) -> i32 {
         x + y
     }
-}
-
-struct Dummy {
-    array: [u8; 10],
 }
 
 fn main() {
