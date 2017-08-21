@@ -624,8 +624,12 @@ class TranslateASTVisitor final
           std::vector<void*> childIds;
           encode_entry(SL, TagStringLiteral, childIds,
                              [SL](CborEncoder *array){
-                                 auto lit = SL->getString().str();
-                                 cbor_encode_text_string(array, lit.c_str(), lit.size());
+                                // String literals can contain arbitrary bytes, so we 
+                                // encode these as byte strings rather than text strings. 
+                                // FIXME: we might need to encode the char width and string 
+                                // type to handle C++ wide strings and unicode strings.
+                                const uint8_t* bytes = (const uint8_t*)SL->getBytes().data();
+                                cbor_encode_byte_string(array, bytes, SL->getByteLength());
                              });
           return true;
       }
