@@ -231,6 +231,8 @@ pub fn matches_filter(st: &CommandState,
         Filter::Matches(ref pat) => match (node, pat) {
             (AnyNode::Expr(target), &AnyPattern::Expr(ref pattern)) =>
                 MatchCtxt::from_match(st, cx, &**pattern, target).is_ok(),
+            (AnyNode::Pat(target), &AnyPattern::Pat(ref pattern)) =>
+                MatchCtxt::from_match(st, cx, &**pattern, target).is_ok(),
             (AnyNode::Ty(target), &AnyPattern::Ty(ref pattern)) =>
                 MatchCtxt::from_match(st, cx, &**pattern, target).is_ok(),
             (AnyNode::Stmt(target), &AnyPattern::Stmt(ref pattern)) =>

@@ -90,6 +90,7 @@ pub enum Filter {
 #[derive(Clone, Debug)]
 pub enum AnyPattern {
     Expr(P<Expr>),
+    Pat(P<Pat>),
     Ty(P<Ty>),
     Stmt(Stmt),
 }

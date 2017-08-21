@@ -273,6 +273,19 @@ impl<'a> Stream<'a> {
                     Ok(Filter::Matches(AnyPattern::Expr(x)))
                 },
 
+                "match_pat" => {
+                    let ts = self.parens_raw()?;
+
+                    let mut p = Parser::new(self.sess, ts, None, false, false);
+                    let x = p.parse_pat()
+                        .map_err(|e| format!("error parsing pat: {}", e.message()))?;
+                    p.expect(&Token::Eof)
+                        .map_err(|e| format!("error parsing pat: {}", e.message()))?;
+
+                    let x = remove_paren(x);
+                    Ok(Filter::Matches(AnyPattern::Pat(x)))
+                },
+
                 "match_ty" => {
                     let ts = self.parens_raw()?;
 
