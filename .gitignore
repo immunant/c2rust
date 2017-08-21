@@ -2,4 +2,5 @@
 /idiomize.d
 __pycache__/
 *.inc.rs
-target
+/target/
+/*.so
