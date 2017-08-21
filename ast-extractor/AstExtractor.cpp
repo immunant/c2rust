@@ -628,7 +628,8 @@ class TranslateASTVisitor final
                                 // encode these as byte strings rather than text strings. 
                                 // FIXME: we might need to encode the char width and string 
                                 // type to handle C++ wide strings and unicode strings.
-                                const uint8_t* bytes = (const uint8_t*)SL->getBytes().data();
+                                assert(SL->isAscii() && "Non-ASCII string literal");
+                                const uint8_t* bytes = reinterpret_cast<const uint8_t*>(SL->getBytes().data());
                                 cbor_encode_byte_string(array, bytes, SL->getByteLength());
                              });
           return true;
