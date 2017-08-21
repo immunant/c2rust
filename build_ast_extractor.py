@@ -80,6 +80,33 @@ def die(emsg, ecode=1):
     quit(ecode)
 
 
+def invoke(cmd, *arguments):
+    return _invoke(True, cmd, *arguments)
+
+
+def invoke_quietly(cmd, *arguments):
+    return _invoke(False, cmd, *arguments)
+
+
+def _invoke(console_output, cmd, *arguments):
+    try:
+        if console_output:
+            retcode, stdout, stderr = cmd[arguments] & pb.TEE()
+        else:
+            retcode, stdout, stderr = cmd[arguments].run()
+
+        if stdout:
+            logging.debug("stdout from %s:\n%s", cmd, stdout)
+        if stderr:
+            logging.debug("stderr from %s:\n%s", cmd, stderr)
+
+        return retcode, stdout, stderr
+    except pb.ProcessExecutionError as pee:
+        msg = "cmd exited with code {}: {}".format(pee.retcode, cmd[arguments])
+        logging.critical(pee.stderr)
+        die(msg, pee.retcode)
+
+
 def get_cmd_or_die(cmd):
     """
     lookup named command or terminate script.
@@ -188,16 +215,16 @@ def configure_and_build_llvm(args):
 
         if run_cmake:
             cmake = get_cmd_or_die("cmake")
-            cmake["-G", "Ninja", LLVM_SRC,
-                  "-Wno-dev",
-                  "-DLLVM_BUILD_TESTS=ON",
-                  "-DCMAKE_BUILD_TYPE=" + build_type,
-                  "-DLLVM_ENABLE_ASSERTIONS=1",
-                  "-DLLVM_TARGETS_TO_BUILD=X86"] & pb.TEE
+            invoke(cmake["-G", "Ninja", LLVM_SRC,
+                         "-Wno-dev",
+                         "-DLLVM_BUILD_TESTS=ON",
+                         "-DCMAKE_BUILD_TYPE=" + build_type,
+                         "-DLLVM_ENABLE_ASSERTIONS=1",
+                         "-DLLVM_TARGETS_TO_BUILD=X86"])
         else:
             logging.debug("found existing ninja.build, not running cmake")
 
-        ninja['ast-extractor'] & pb.TEE
+        invoke(ninja['ast-extractor'])
 
 
 def setup_logging():
