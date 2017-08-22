@@ -97,10 +97,23 @@ fn djb2_hash(s: &str) -> u32 {
 }
 
 impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
-    fn fold_item_kind(&mut self, ik: ast::ItemKind) -> ast::ItemKind {
+    fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         if !self.config.enabled {
-            fold::noop_fold_item_kind(ik, self)
-        } else if let ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) = ik {
+            return fold::noop_fold_item_simple(item, self);
+        }
+        if item.attrs.iter().any(|attr| attr.path == "cross_check") {
+            // If we have cross-check attrs at multiple levels, e.g.,
+            // one per crate and one per function, we'll get called multiple times
+            // and might end up adding multiple cross-checks to each function.
+            // If we get called from the crate-level #![cross_check] attr, we'll
+            // also see the #[cross_check] attributes here for each function;
+            // if that's the case, we can skip inserting cross-checks here,
+            // and let each function insert its own check calls later.
+            // This allows each function to override the global cross-check
+            // settings with its own.
+            return fold::noop_fold_item_simple(item, self);
+        }
+        if let ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) = item.node {
             // Add the cross-check to the beginning of the function
             // TODO: only add the checks to C abi functions???
             // Allow clients to specify the id or name manually, like this:
@@ -119,16 +132,25 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
                     $block
                 }).unwrap()
             });
-            
-            ast::ItemKind::Fn(
+            let checked_fn = ast::ItemKind::Fn(
                 self.fold_fn_decl(fn_decl),
                 unsafety,
                 constness,
                 abi,
                 self.fold_generics(generics),
-                checked_block)
+                checked_block);
+            // Build and return the replacement function item
+            ast::Item {
+                id: self.new_id(item.id),
+                vis: self.fold_vis(item.vis),
+                ident: self.fold_ident(item.ident),
+                attrs: fold::fold_attrs(item.attrs, self),
+                node: checked_fn,
+                span: self.new_span(item.span),
+                tokens: item.tokens,
+            }
         } else {
-            fold::noop_fold_item_kind(ik, self)
+            fold::noop_fold_item_simple(item, self)
         }
     }
 
