@@ -163,9 +163,9 @@ impl<'tcx> ConstraintSet<'tcx> {
     }
 
     pub fn import(&mut self, other: &ConstraintSet<'tcx>) {
-        eprintln!("IMPORT {} constraints", other.less.len());
+        debug!("IMPORT {} constraints", other.less.len());
         self.less.extend(other.less.iter().cloned().filter(|&(ref a, ref b)| {
-            eprintln!("IMPORT CONSTRAINT: {:?} <= {:?}", a, b);
+            debug!("IMPORT CONSTRAINT: {:?} <= {:?}", a, b);
             true
         }));
         self.greater.extend(other.greater.iter().cloned());
@@ -176,7 +176,7 @@ impl<'tcx> ConstraintSet<'tcx> {
                                  arena: &'tcx DroplessArena,
                                  mut f: F)
             where F: Fn(Perm<'tcx>) -> Perm<'tcx> {
-        eprintln!("IMPORT {} constraints (substituted)", other.less.len());
+        debug!("IMPORT {} constraints (substituted)", other.less.len());
 
         let subst_one = |p| {
             match p {
@@ -196,10 +196,53 @@ impl<'tcx> ConstraintSet<'tcx> {
 
         for &(a, b) in other.less.iter() {
             let (a2, b2) = (subst_one(a), subst_one(b));
-            eprintln!("IMPORT CONSTRANT: {:?} <= {:?} (substituted from {:?} <= {:?})",
-                      a2, b2, a, b);
+            debug!("IMPORT CONSTRANT: {:?} <= {:?} (substituted from {:?} <= {:?})",
+                   a2, b2, a, b);
             self.add(a2, b2);
         }
+    }
+
+    pub fn clone_substituted<F>(&self,
+                                arena: &'tcx DroplessArena,
+                                mut f: F) -> ConstraintSet<'tcx>
+            where F: Fn(Perm<'tcx>) -> Perm<'tcx> {
+        let mut new_cset = ConstraintSet::new();
+        new_cset.import_substituted(self, arena, f);
+        new_cset
+    }
+
+    fn traverse_constraints<F>(map: &BTreeSet<(Perm<'tcx>, Perm<'tcx>)>,
+                               p: Perm<'tcx>,
+                               mut f: F)
+            where F: FnMut(Perm<'tcx>) -> bool {
+        let mut seen = HashSet::new();
+        let mut queue = VecDeque::new();
+
+        if f(p) {
+            seen.insert(p);
+            queue.push_back(p);
+        }
+
+        while let Some(cur) = queue.pop_front() {
+            for &(_, next) in map.range(perm_range(cur)) {
+                if !seen.contains(&next) {
+                    if f(next) {
+                        seen.insert(next);
+                        queue.push_back(next);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn for_each_less_than<F>(&self, p: Perm<'tcx>, mut f: F)
+            where F: FnMut(Perm<'tcx>) -> bool {
+        Self::traverse_constraints(&self.greater, p, f);
+    }
+
+    pub fn for_each_greater_than<F>(&self, p: Perm<'tcx>, mut f: F)
+            where F: FnMut(Perm<'tcx>) -> bool {
+        Self::traverse_constraints(&self.less, p, f);
     }
 
     pub fn lower_bound(&self, p: Perm<'tcx>) -> ConcretePerm {
@@ -208,28 +251,16 @@ impl<'tcx> ConstraintSet<'tcx> {
             _ => {},
         }
 
-        let mut seen = HashSet::new();
-        let mut queue = VecDeque::new();
         let mut bound = ConcretePerm::Read;
-
-        seen.insert(p);
-        queue.push_back(p);
-
-        while let Some(cur) = queue.pop_front() {
-            for &(_, next) in self.greater.range(perm_range(cur)) {
-                match next {
-                    Perm::Concrete(p) => {
-                        bound = cmp::max(bound, p);
-                    },
-                    _ => {
-                        if !seen.contains(&next) {
-                            seen.insert(next);
-                            queue.push_back(next);
-                        }
-                    },
-                }
+        self.for_each_less_than(p, |p| {
+            match p {
+                Perm::Concrete(p) => {
+                    bound = cmp::max(bound, p);
+                    false
+                },
+                _ => true,
             }
-        }
+        });
 
         bound
     }
@@ -240,28 +271,16 @@ impl<'tcx> ConstraintSet<'tcx> {
             _ => {},
         }
 
-        let mut seen = HashSet::new();
-        let mut queue = VecDeque::new();
         let mut bound = ConcretePerm::Move;
-
-        seen.insert(p);
-        queue.push_back(p);
-
-        while let Some(cur) = queue.pop_front() {
-            for &(_, next) in self.less.range(perm_range(cur)) {
-                match next {
-                    Perm::Concrete(p) => {
-                        bound = cmp::min(bound, p);
-                    },
-                    _ => {
-                        if !seen.contains(&next) {
-                            seen.insert(next);
-                            queue.push_back(next);
-                        }
-                    },
-                }
+        self.for_each_greater_than(p, |p| {
+            match p {
+                Perm::Concrete(p) => {
+                    bound = cmp::min(bound, p);
+                    false
+                },
+                _ => true,
             }
-        }
+        });
 
         bound
     }
@@ -400,7 +419,7 @@ impl<'tcx> ConstraintSet<'tcx> {
                 _ => a == b,
             };
             if remove {
-                eprintln!("remove: {:?} <= {:?}", a, b);
+                debug!("remove: {:?} <= {:?}", a, b);
                 edit.remove(a, b);
             }
         }
@@ -412,7 +431,7 @@ impl<'tcx> ConstraintSet<'tcx> {
         while let Some((a, b)) = edit.next() {
             match b {
                 Perm::Min(ps) => {
-                    eprintln!("expand: {:?} <= {:?}", a, b);
+                    debug!("expand: {:?} <= {:?}", a, b);
                     edit.remove(a, b);
                     for &p in ps {
                         edit.add(a, p);
@@ -485,7 +504,7 @@ impl<'tcx> ConstraintSet<'tcx> {
                 }
 
                 if greater_sets[i].contains(&b) {
-                    eprintln!("remove {:?} <= {:?} ({:?} <= {:?})", a, b, pi, b);
+                    debug!("remove {:?} <= {:?} ({:?} <= {:?})", a, b, pi, b);
                     edit.remove(a, b);
                     continue 'next;
                 }
@@ -497,7 +516,7 @@ impl<'tcx> ConstraintSet<'tcx> {
                 edit.remove(a, b);
                 let (_, p) = ps.iter().cloned().enumerate()
                     .filter(|&(i, _)| !to_remove.contains(&i)).next().unwrap();
-                eprintln!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, p, b);
+                debug!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, p, b);
                 edit.add(p, b);
             } else if to_remove.len() > 0 {
                 edit.remove(a, b);
@@ -505,7 +524,7 @@ impl<'tcx> ConstraintSet<'tcx> {
                     .filter(|&(i, _)| !to_remove.contains(&i))
                     .map(|(_, p)| p).collect::<Vec<_>>();
                 let new_min = Perm::Min(arena.alloc_slice(&ps));
-                eprintln!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, new_min, b);
+                debug!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, new_min, b);
                 edit.add(new_min, b);
             }
             // Otherwise, to_remove == 0, meaning we don't have any changes to apply.
@@ -545,15 +564,15 @@ impl<'tcx> ConstraintSet<'tcx> {
                 continue;
             }
 
-            eprintln!("removing perm {:?}", p);
+            debug!("removing perm {:?}", p);
 
             // Perms less than `p`, and perms greater than `p`.
             let less = self.greater.range(perm_range(p))
                 .map(|&(a, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
             let greater = self.less.range(perm_range(p))
                 .map(|&(a, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
-            eprintln!("    less: {:?}", less);
-            eprintln!("    greater: {:?}", greater);
+            debug!("    less: {:?}", less);
+            debug!("    greater: {:?}", greater);
 
             let mut edit = self.edit();
             while let Some((a, b)) = edit.next() {
@@ -561,11 +580,11 @@ impl<'tcx> ConstraintSet<'tcx> {
                     continue;
                 }
 
-                eprintln!("  remove {:?} <= {:?}", a, b);
+                debug!("  remove {:?} <= {:?}", a, b);
                 edit.remove(a, b);
                 a.for_each_replacement(arena, p, &less, |a| {
                     b.for_each_replacement(arena, p, &greater, |b| {
-                        eprintln!("    replacement: {:?} <= {:?}", a, b);
+                        debug!("    replacement: {:?} <= {:?}", a, b);
                         edit.add_no_visit(a, b);
                     });
                 });
