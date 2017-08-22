@@ -19,6 +19,7 @@ void __cyg_profile_func_enter(void *, void *) __attribute__((no_instrument_funct
 extern void rb_xcheck(unsigned long) __attribute__((weak));
 
 void __cyg_profile_func_enter(void *func,  void *caller) {
+    // TODO: cache the name or hash
     Dl_info func_info, caller_info;
     dladdr(func, &func_info);
     const char *func_name = func_info.dli_sname;
