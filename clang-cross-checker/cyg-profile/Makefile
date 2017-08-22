@@ -11,7 +11,7 @@ clean:
 
 test: CFLAGS += -g
 test: test.c | $(LIB)
-	$(CC) $(CFLAGS) -finstrument-functions -rdynamic -ldl -lcrosscheck -L$(CURDIR) -Wl,-rpath,$(CURDIR) -o $@ $^
+	$(CC) $(CFLAGS) -finstrument-functions -rdynamic -lcrosscheck -L$(CURDIR) -Wl,-rpath,$(CURDIR) -o $@ $^
 
 $(LIB): CFLAGS += -fPIC -fvisibility=hidden
 $(LIB): LDFLAGS += -fPIC -ldl
