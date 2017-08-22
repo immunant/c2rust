@@ -13,6 +13,9 @@ uint32_t djb2_hash(const uint8_t *str) {
     return hash;
 }
 
+// Cache for the function->hash mapping
+// FIXME: this breaks if different libraries get loaded and unloaded
+// at the same addresses
 std::unordered_map<void*, uint32_t> hash_cache;
 std::mutex cache_mutex;
 
