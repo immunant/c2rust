@@ -6,13 +6,10 @@
 #include <unordered_map>
 #include <mutex>
 
-uint32_t djb2_hash(const char *str) {
-    uint32_t hash = 5381UL;
-    int c;
-
-    while (c = static_cast<int>(*str++))
+uint32_t djb2_hash(const uint8_t *str) {
+    uint32_t hash = 5381;
+    while (uint32_t c = static_cast<uint32_t>(*str++))
         hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-
     return hash;
 }
 
@@ -27,7 +24,7 @@ uint32_t get_func_hash(void *func) {
 
     Dl_info func_info, caller_info;
     dladdr(func, &func_info);
-    const char *func_name = func_info.dli_sname;
+    auto *func_name = reinterpret_cast<const uint8_t*>(func_info.dli_sname);
     uint32_t func_hash = djb2_hash(func_name);
     hash_cache[func] = func_hash;
     return func_hash;
