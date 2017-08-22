@@ -17,4 +17,4 @@ test: test.c | $(LIB)
 $(LIB): CXXFLAGS += -fPIC -fvisibility=hidden
 $(LIB): LDFLAGS += -fPIC -ldl
 $(LIB): cyg_profile_checker.o
-	$(CC) -shared $(LDFLAGS) -o $@ $^
+	$(CXX) -shared $(LDFLAGS) -o $@ $^
