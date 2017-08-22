@@ -297,8 +297,9 @@ def update_cbor_prefix(makefile):
 
 def build_a_bear():
     """
-    the output of bear differs between versions, so we build the 
+    the output of bear differs between versions, so we build the
     latest bear rather than trying to support multiple versions.
+    FIXME: might be better to handle multiple versions instead.
     """
     if os.path.isdir(BEAR_PREFIX):
         logging.debug("skipping Bear installation")
@@ -435,9 +436,10 @@ def extract_ast_from(ast_extr: pb.commands.BaseCommand,
     :param sys_incl_dirs: list of system include directories
     :return: path to generated cbor file.
     """
-    keys = ['arguments', 'directory', 'file']
+    # keys = ['arguments', 'directory', 'file']
+    keys = ['directory', 'file']  # 'arguments' is not required
     try:
-        args, dir, filename = [kwargs[k] for k in keys]
+        dir, filename = [kwargs[k] for k in keys]
         filepath = os.path.join(dir, filename)
     except KeyError:
         die("couldn't parse " + cc_db_path)
