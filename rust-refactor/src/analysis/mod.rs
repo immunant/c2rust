@@ -20,8 +20,8 @@ pub fn register_commands(reg: &mut Registry) {
 
     reg.register("test_analysis_ownership", |args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
-            let result = ownership::analyze(&st, &cx);
-            info!("{:?}", result);
+            let results = ownership::analyze(&st, &cx);
+            ownership::dump_results(&cx, &results);
         }))
     });
 

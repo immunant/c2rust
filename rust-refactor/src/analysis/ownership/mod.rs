@@ -42,7 +42,7 @@ use driver;
 use type_map::{self, TypeSource};
 
 
-mod constraint;
+pub mod constraint;
 mod context;
 mod intra;
 mod inter;
@@ -77,12 +77,12 @@ impl Idx for Var {
     }
 }
 
-type LTy<'tcx> = LabeledTy<'tcx, Option<Perm<'tcx>>>;
+pub type LTy<'tcx> = LabeledTy<'tcx, Option<Perm<'tcx>>>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct LFnSig<'tcx> {
-    inputs: &'tcx [LTy<'tcx>],
-    output: LTy<'tcx>,
+pub struct LFnSig<'tcx> {
+    pub inputs: &'tcx [LTy<'tcx>],
+    pub output: LTy<'tcx>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -168,7 +168,40 @@ fn analyze_inter(cx: &mut Ctxt) {
     inter_cx.finish();
 }
 
-pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
+
+pub struct FunctionResult<'tcx> {
+    /// Polymorphic function signature.  Each pointer is labeled with a `SigVar`.
+    pub sig: LFnSig<'tcx>,
+
+    pub num_sig_vars: u32,
+
+    /// Constraint set relating `SigVar`s to each other and to concrete permission values.
+    pub cset: ConstraintSet<'tcx>,
+
+    /// Monomorphizations
+    pub monos: Vec<MonoResult>,
+
+    /// IDs of all referenced functions.  (This includes both callees and functions whose address
+    /// is taken within the current function.)
+    pub callee_ids: Vec<DefId>,
+}
+
+pub struct MonoResult {
+    /// Suffix to add to the function name, such as `mut` or `take`.
+    pub suffix: String,
+
+    /// Assignment of concrete permission values to the signature variables of the function.  All
+    /// monomorphizations use the same `sig`, but have different assignments to its `SigVar`s.
+    pub assign: IndexVec<Var, ConcretePerm>,
+
+    /// Index of the chosen callee monomorphization for each call site.  These correspond to the
+    /// IDs in `callee_ids`.
+    pub callee_mono_idxs: Vec<usize>,
+}
+
+pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
+                                     dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>)
+                                     -> HashMap<DefId, FunctionResult<'tcx>> {
     let mut cx = Ctxt::new(dcx.ty_arena());
 
     handle_marks(&mut cx, st, dcx);
@@ -183,102 +216,96 @@ pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
 
     let mono_filter = filter_suspicious_monos(&cx, &mono_sigs, &inst_sel);
 
-    eprintln!("\n === summary ===");
-    /*
-    let mut new_lcx = LabeledTyCtxt::new(dcx.ty_arena());
 
-    {
-        let mut statics_sorted = cx.static_summ.iter().collect::<Vec<_>>();
-        statics_sorted.sort_by_key(|&(k, _)| k);
-        for (&def_id, &ty) in statics_sorted {
-            let ty = new_lcx.relabel(ty, &mut |p| {
-                p.as_ref().map(|&p| (cx.static_cset.lower_bound(p), PrintVar(p)))
-            });
-
-            eprintln!("{:?}: {:?}", def_id, Pretty(ty));
-        }
-
-        eprintln!("static constraints:");
-        for &(a, b) in &cx.static_cset.less {
-            eprintln!("    {:?} <= {:?}", a, b);
+    // Map from original (callee_id, mono_idx) to the mono_idx after filtering.
+    let mut filtered_mono_idx = HashMap::new();
+    for (&def_id, mono_sigs) in &mono_sigs {
+        let mut j = 0;
+        for i in 0 .. mono_sigs.len() {
+            if mono_filter.contains(&(def_id, i)) {
+                continue;
+            }
+            filtered_mono_idx.insert((def_id, i), j);
+            j += 1;
         }
     }
-    */
 
-
-
-    //let mut new_lcx = LabeledTyCtxt::new(dcx.ty_arena());
-    let mut fns_sorted = cx.fn_ids().collect::<Vec<_>>();
-    fns_sorted.sort();
-    for def_id in fns_sorted {
-        eprintln!("fn {}:", dcx.ty_ctxt().def_path(def_id).to_string(dcx.ty_ctxt()));
+    // Build the final result map
+    let mut results = HashMap::new();
+    for (&def_id, mono_sigs) in &mono_sigs {
         let summ = cx.get_fn_summ_imm(def_id).unwrap();
 
-        for (i, mono_sig) in mono_sigs[&def_id].iter().enumerate() {
-            let mut new_lcx = LabeledTyCtxt::new(cx.arena);
-            let mut func = |p: &Option<_>| {
-                if let Some(Perm::SigVar(v)) = *p {
-                    Some(mono_sig[v])
-                } else {
-                    None
-                }
-            };
-
-            let inputs = new_lcx.relabel_slice(summ.sig.inputs, &mut func);
-            let output = new_lcx.relabel(summ.sig.output, &mut func);
-            let filtered = if mono_filter.contains(&(def_id, i)) { " (FILTERED)" } else { "" };
-            eprintln!("  mono #{}{}: {:?} -> {:?}", i, filtered, pretty_slice(inputs), Pretty(output));
-
-
-            let inst_sel = {
-                let mut icx = inst::InstCtxt::new(&cx, &mono_sigs, summ, mono_sig);
-                icx.solve_instantiations()
-            };
-
-            for (i, (inst, &mono_idx)) in summ.insts.iter().zip(inst_sel.iter()).enumerate() {
-                let callee_name = dcx.ty_ctxt().def_path(inst.callee)
-                    .data.last().unwrap().data.to_string();
-                let inst_mono_sig = &mono_sigs[&inst.callee][mono_idx];
-
-                let callee_summ = cx.get_fn_summ_imm(inst.callee).unwrap();
-                let mut func = |p: &Option<_>| {
-                    if let Some(Perm::SigVar(v)) = *p {
-                        Some(inst_mono_sig[v])
-                    } else {
-                        None
-                    }
-                };
-
-                let inputs = new_lcx.relabel_slice(callee_summ.sig.inputs, &mut func);
-                let output = new_lcx.relabel(callee_summ.sig.output, &mut func);
-
-                eprintln!("    call {}: {} #{} :: {:?} -> {:?}",
-                          i, callee_name, mono_idx, pretty_slice(inputs), Pretty(output));
+        let mut mono_results = Vec::new();
+        for (i, mono_sig) in mono_sigs.iter().enumerate() {
+            if mono_filter.contains(&(def_id, i)) {
+                continue;
             }
+
+            let orig_inst_sel = &inst_sel[&(def_id, i)];
+            let mut inst_sel = Vec::with_capacity(orig_inst_sel.len());
+            for (inst, &mono_idx) in summ.insts.iter().zip(orig_inst_sel.iter()) {
+                inst_sel.push(filtered_mono_idx[&(inst.callee, mono_idx)]);
+            }
+
+            mono_results.push(MonoResult {
+                // TODO: be smarter about naming.  try "" / "mut" / "take" for R/W/M variants
+                suffix: if mono_sigs.len() > 0 { format!("{}", i) } else { format!("") },
+                assign: mono_sig.clone(),
+                callee_mono_idxs: inst_sel,
+            });
         }
 
+        let callee_ids = summ.insts.iter().map(|inst| inst.callee).collect();
 
-        // FIXME - hack
-        /*
-        let summ: &'static FnSummary = unsafe {
-            ::std::mem::transmute(cx.get_fn_summ(def_id).unwrap())
-        };
-        */
-        //mono_test(summ, def_id, &cx);
-        /*
-        let summ = cx.get_fn_summ(def_id).unwrap();
-        let mut cset = &summ.cset;
-        let mut func2 = |p: &Option<_>| {
-            p.map(|p| (cset.lower_bound(p), PrintVar(p)))
-        };
-        let inputs = new_lcx.relabel_slice(summ.sig.inputs, &mut func2);
-        let output = new_lcx.relabel(summ.sig.output, &mut func2);
-        eprintln!("{:?}:\n  {:?} -> {:?}", def_id, pretty_slice(inputs), Pretty(output));
-        for &(a, b) in cset.iter() {
-            eprintln!("    {:?} <= {:?}", a, b);
-        }
-        */
+        results.insert(def_id, FunctionResult {
+            sig: summ.sig,
+            num_sig_vars: summ.num_sig_vars,
+            cset: summ.cset.clone(),
+            monos: mono_results,
+            callee_ids: callee_ids,
+        });
     }
 
+    results
+}
 
+pub fn dump_results(dcx: &driver::Ctxt,
+                    results: &HashMap<DefId, FunctionResult>) {
+    eprintln!("\n === summary ===");
+
+    let arena = DroplessArena::new();
+    let mut new_lcx = LabeledTyCtxt::new(&arena);
+    let format_sig = |sig: LFnSig, assign: &IndexVec<Var, ConcretePerm>| {
+        let mut func = |p: &Option<_>| {
+            if let Some(Perm::SigVar(v)) = *p {
+                Some(assign[v])
+            } else {
+                None
+            }
+        };
+
+        let inputs = new_lcx.relabel_slice(sig.inputs, &mut func);
+        let output = new_lcx.relabel(sig.output, &mut func);
+        format!("{:?} -> {:?}", pretty_slice(inputs), Pretty(output))
+    };
+
+    let path_str = |def_id| dcx.ty_ctxt().def_path(def_id).to_string(dcx.ty_ctxt());
+
+    let mut ids = results.keys().cloned().collect::<Vec<_>>();
+    ids.sort();
+    for id in ids {
+        let fr = &results[&id];
+
+        eprintln!("fn {}:", path_str(id));
+        for (i, mr) in fr.monos.iter().enumerate() {
+            eprintln!("  mono #{}: {}", i, format_sig(fr.sig, &mr.assign));
+            for (j, (&callee, &mono_idx)) in
+                    fr.callee_ids.iter().zip(mr.callee_mono_idxs.iter()).enumerate() {
+                let callee_fr = &results[&callee];
+                eprintln!("    call #{}: {:?} #{} :: {}",
+                          j, path_str(callee), mono_idx,
+                          format_sig(callee_fr.sig, &callee_fr.monos[mono_idx].assign));
+            }
+        }
+    }
 }
