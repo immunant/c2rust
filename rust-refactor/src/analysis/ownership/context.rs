@@ -107,12 +107,17 @@ impl<'tcx> Ctxt<'tcx> {
                     sig: l_sig,
                     num_sig_vars: counter,
                     cset: cset,
+                    inst_cset: ConstraintSet::new(),
                     insts: Vec::new(),
                 })
             },
 
             Entry::Occupied(e) => e.into_mut(),
         }
+    }
+
+    pub fn get_fn_summ_imm(&self, did: DefId) -> Option<&FnSummary<'tcx>> {
+        self.fn_summ.get(&did)
     }
 
     pub fn get_fn_summ(&mut self, did: DefId) -> Option<&mut FnSummary<'tcx>> {

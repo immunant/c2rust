@@ -3,6 +3,7 @@
 use std::collections::hash_map::{HashMap, Entry};
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::mem;
 
 use rustc::hir::def_id::DefId;
 
@@ -191,7 +192,8 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
     pub fn finish(mut self) {
         for (id, cset) in self.complete_cset {
             let summ = self.cx.get_fn_summ(id).unwrap();
-            summ.cset = cset;
+            let inst_cset = mem::replace(&mut summ.cset, cset);
+            summ.inst_cset = inst_cset;
         }
     }
 }

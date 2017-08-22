@@ -48,6 +48,7 @@ mod intra;
 mod inter;
 mod annot;
 mod mono;
+mod inst;
 mod debug;
 
 use self::constraint::*;
@@ -55,7 +56,7 @@ use self::context::Ctxt;
 use self::intra::IntraCtxt;
 use self::inter::InterCtxt;
 use self::annot::handle_marks;
-use self::mono::mono_test;
+use self::mono::{mono_test, get_all_mono_sigs};
 use self::debug::*;
 
 
@@ -93,6 +94,7 @@ pub struct FnSummary<'tcx> {
     sig: LFnSig<'tcx>,
     num_sig_vars: u32,
     cset: ConstraintSet<'tcx>,
+    inst_cset: ConstraintSet<'tcx>,
     insts: Vec<Instantiation>,
 }
 
@@ -170,6 +172,8 @@ pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
     analyze_intra(&mut cx, dcx.hir_map(), dcx.ty_ctxt());
     analyze_inter(&mut cx);
 
+    let mono_sigs = get_all_mono_sigs(&cx);
+
     eprintln!("\n === summary ===");
     /*
     let mut new_lcx = LabeledTyCtxt::new(dcx.ty_arena());
@@ -196,7 +200,60 @@ pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
     let mut fns_sorted = cx.fn_ids().collect::<Vec<_>>();
     fns_sorted.sort();
     for def_id in fns_sorted {
-        mono_test(cx.get_fn_summ(def_id).unwrap(), def_id);
+        eprintln!("fn {}:", dcx.ty_ctxt().def_path(def_id).to_string(dcx.ty_ctxt()));
+        let summ = cx.get_fn_summ_imm(def_id).unwrap();
+
+        for (i, mono_sig) in mono_sigs[&def_id].iter().enumerate() {
+            let mut new_lcx = LabeledTyCtxt::new(cx.arena);
+            let mut func = |p: &Option<_>| {
+                if let Some(Perm::SigVar(v)) = *p {
+                    Some(mono_sig[v])
+                } else {
+                    None
+                }
+            };
+
+            let inputs = new_lcx.relabel_slice(summ.sig.inputs, &mut func);
+            let output = new_lcx.relabel(summ.sig.output, &mut func);
+            eprintln!("  mono #{}: {:?} -> {:?}", i, pretty_slice(inputs), Pretty(output));
+
+
+            let inst_sel = {
+                let mut icx = inst::InstCtxt::new(&cx, &mono_sigs, summ, mono_sig);
+                icx.solve_instantiations()
+            };
+
+            for (i, (inst, &mono_idx)) in summ.insts.iter().zip(inst_sel.iter()).enumerate() {
+                let callee_name = dcx.ty_ctxt().def_path(inst.callee)
+                    .data.last().unwrap().data.to_string();
+                let inst_mono_sig = &mono_sigs[&inst.callee][mono_idx];
+
+                let callee_summ = cx.get_fn_summ_imm(inst.callee).unwrap();
+                let mut func = |p: &Option<_>| {
+                    if let Some(Perm::SigVar(v)) = *p {
+                        Some(inst_mono_sig[v])
+                    } else {
+                        None
+                    }
+                };
+
+                let inputs = new_lcx.relabel_slice(callee_summ.sig.inputs, &mut func);
+                let output = new_lcx.relabel(callee_summ.sig.output, &mut func);
+
+                eprintln!("    call {}: {} #{} :: {:?} -> {:?}",
+                          i, callee_name, mono_idx, pretty_slice(inputs), Pretty(output));
+            }
+        }
+
+
+
+        // FIXME - hack
+        /*
+        let summ: &'static FnSummary = unsafe {
+            ::std::mem::transmute(cx.get_fn_summ(def_id).unwrap())
+        };
+        */
+        //mono_test(summ, def_id, &cx);
         /*
         let summ = cx.get_fn_summ(def_id).unwrap();
         let mut cset = &summ.cset;
