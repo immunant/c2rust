@@ -21,18 +21,61 @@ from concurrent.futures import ThreadPoolExecutor
 from build_ast_extractor import *
 
 
+def json_pp_obj(json_obj) -> str:
+    return json.dumps(json_obj,
+                      sort_keys=True,
+                      indent=2,
+                      separators=(',', ': '))
+
+
+def try_locate_elf_object(cmd: dict) -> Union[str, None]:
+    # first look for -o in compiler command
+    if "arguments" in cmd:
+        command = " ".join(cmd['arguments'])
+    elif "command" in cmd:
+        command = cmd['command']
+    else:
+        die("malformed entry in compile_commands.json:\n" + 
+            json_pp_obj(cmd))
+
+    if "directory" not in cmd:
+        die("malformed entry in compile_commands.json:\n" + 
+            json_pp_obj(cmd))
+    dir = cmd['directory']
+
+    # FIXME: assumes that outfile has .o suffix
+    m = re.search(r"\s-o\s+([^\0]+\.o)\s", command)
+    if m:
+        outfile = m.group(1)
+        outpath = os.path.join(dir, outfile)        
+    else:
+        # try replacing suffix of C file with .c
+        inpath = os.path.join(dir, cmd['file'])
+        outpath = inpath.replace(".c", ".o")
+
+    if os.path.isfile(outpath):
+        logging.debug("found output filename: %s", outpath)
+        return outpath
+    else:
+        logging.debug("didn't find output filename for command:\n%s",
+                      json_pp_obj(cmd))
+        return None
+
+
 def ensure_code_compiled_with_clang(cc_db: List[dict]):
-    src_files = [os.path.join(c['directory'], c['file']) for c in cc_db] 
-    non_c_files = [f for f in src_files if not f.endswith(".c")]
-    if len(non_c_files):
-        msg = "compile commands contains files with unrecognized extensions:\n"
-        msg += "\n".join(non_c_files)
+    # filter non C code commands first
+    c_cc_db = [c for c in cc_db if c['file'].endswith(".c")]
+    if not len(c_cc_db):
+        msg = "didn't find any commands compling C files"
         die(msg)
 
-    obj_files = [f.replace(".c", ".o") for f in src_files]
+    obj_files = [try_locate_elf_object(c) for c in c_cc_db]
     readelf = get_cmd_or_die("readelf")
-    comment_sections = [(f, readelf('-p', '.comment', f)) for f in obj_files]
-    non_clang_files = [(f, c) for (f, c) in comment_sections if "clang" not in c]
+    comment_sections = [(f, readelf('-p', '.comment', f))
+                        for f in obj_files if f]
+    non_clang_files = [(f, c) for (f, c) in comment_sections
+                       if "clang" not in c]
+
     if len(non_clang_files):
         msg = "some ELF objects were not compiled with clang:\n"
         msg += "\n".join([f for (f, c) in comment_sections])
