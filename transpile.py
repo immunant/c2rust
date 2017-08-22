@@ -21,6 +21,24 @@ from concurrent.futures import ThreadPoolExecutor
 from build_ast_extractor import *
 
 
+def ensure_code_compiled_with_clang(cc_db: List[dict]):
+    src_files = [os.path.join(c['directory'], c['file']) for c in cc_db] 
+    non_c_files = [f for f in src_files if not f.endswith(".c")]
+    if len(non_c_files):
+        msg = "compile commands contains files with unrecognized extensions:\n"
+        msg += "\n".join(non_c_files)
+        die(msg)
+
+    obj_files = [f.replace(".c", ".o") for f in src_files]
+    readelf = get_cmd_or_die("readelf")
+    comment_sections = [(f, readelf('-p', '.comment', f)) for f in obj_files]
+    non_clang_files = [(f, c) for (f, c) in comment_sections if "clang" not in c]
+    if len(non_clang_files):
+        msg = "some ELF objects were not compiled with clang:\n"
+        msg += "\n".join([f for (f, c) in comment_sections])
+        die(msg)
+
+
 def transpile_files(args) -> None:
     ast_extr = os.path.join(LLVM_BIN, "ast-extractor")
     ast_extr = get_cmd_or_die(ast_extr)
@@ -34,8 +52,8 @@ def transpile_files(args) -> None:
     if args.filter:  # skip commands not matching file filter
         cc_db = [c for c in cc_db if args.filter in f['file']]
 
-    cc_name = "cc"
-    include_dirs = get_system_include_dirs(cc_name)
+    ensure_code_compiled_with_clang(cc_db)
+    include_dirs = get_system_include_dirs()
 
     def transpile_single(cmd):
         if args.import_only:

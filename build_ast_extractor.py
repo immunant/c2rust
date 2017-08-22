@@ -412,8 +412,11 @@ def _parse_args():
     return parser.parse_args()
 
 
-def get_system_include_dirs(compiler: str="cc") -> List[str]:
-    cc = get_cmd_or_die(compiler)
+def get_system_include_dirs() -> List[str]:
+    """
+    note: assumes code was compiled with clang installed locally.
+    """
+    cc = get_cmd_or_die("clang") 
     cmd = cc["-E", "-Wp,-v", "-"]
     _, _, stderr = cmd.run()
     dirs = stderr.split(os.linesep)
