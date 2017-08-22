@@ -49,6 +49,7 @@ mod inter;
 mod annot;
 mod mono;
 mod inst;
+mod mono_filter;
 mod debug;
 
 use self::constraint::*;
@@ -57,6 +58,8 @@ use self::intra::IntraCtxt;
 use self::inter::InterCtxt;
 use self::annot::handle_marks;
 use self::mono::{mono_test, get_all_mono_sigs};
+use self::inst::find_instantiations;
+use self::mono_filter::filter_suspicious_monos;
 use self::debug::*;
 
 
@@ -169,10 +172,16 @@ pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
     let mut cx = Ctxt::new(dcx.ty_arena());
 
     handle_marks(&mut cx, st, dcx);
+
+    // Compute constraints for each function
     analyze_intra(&mut cx, dcx.hir_map(), dcx.ty_ctxt());
     analyze_inter(&mut cx);
 
+    // Monomorphize functions and call sites
     let mono_sigs = get_all_mono_sigs(&cx);
+    let inst_sel = find_instantiations(&cx, &mono_sigs);
+
+    let mono_filter = filter_suspicious_monos(&cx, &mono_sigs, &inst_sel);
 
     eprintln!("\n === summary ===");
     /*
@@ -196,6 +205,8 @@ pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
     }
     */
 
+
+
     //let mut new_lcx = LabeledTyCtxt::new(dcx.ty_arena());
     let mut fns_sorted = cx.fn_ids().collect::<Vec<_>>();
     fns_sorted.sort();
@@ -215,7 +226,8 @@ pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
 
             let inputs = new_lcx.relabel_slice(summ.sig.inputs, &mut func);
             let output = new_lcx.relabel(summ.sig.output, &mut func);
-            eprintln!("  mono #{}: {:?} -> {:?}", i, pretty_slice(inputs), Pretty(output));
+            let filtered = if mono_filter.contains(&(def_id, i)) { " (FILTERED)" } else { "" };
+            eprintln!("  mono #{}{}: {:?} -> {:?}", i, filtered, pretty_slice(inputs), Pretty(output));
 
 
             let inst_sel = {
@@ -246,7 +258,6 @@ pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
         }
 
 
-
         // FIXME - hack
         /*
         let summ: &'static FnSummary = unsafe {
@@ -268,4 +279,6 @@ pub fn analyze(st: &CommandState, dcx: &driver::Ctxt) {
         }
         */
     }
+
+
 }

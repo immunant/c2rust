@@ -21,7 +21,7 @@ pub struct PFnSig<'tcx> {
 
 /// Mark all sig variables that occur in output positions.  An "output position" means the return
 /// type of a function or the target of an always-mutable reference argument.
-fn infer_outputs(summ: &FnSummary) -> IndexVec<Var, bool> {
+pub fn infer_outputs(summ: &FnSummary) -> IndexVec<Var, bool> {
     let mut is_out = IndexVec::from_elem_n(false, summ.num_sig_vars as usize);
 
     fn mark_output(ty: LTy, is_out: &mut IndexVec<Var, bool>) {

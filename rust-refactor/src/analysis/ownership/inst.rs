@@ -14,46 +14,8 @@ use super::constraint::ConstraintSet;
 use super::context::Ctxt;
 
 
-/// Undirected graph of function instantiations.  Two instantiation sites are related in this graph
-/// if there is a constraint relating their instantiation variables.  We use the graph to select
-/// instantiations in a good order that avoids doing too much backtracking.
-struct InstantiationGraph {
-    rel: BTreeSet<(usize, usize)>,
-    fixed_return: BTreeSet<usize>,
-}
-
-fn edge_range(a: usize) -> (Bound<(usize, usize)>, Bound<(usize, usize)>) {
-    (Bound::Included((a, 0)),
-     Bound::Included((a, usize::MAX)))
-}
-
-impl InstantiationGraph {
-    fn new() -> InstantiationGraph {
-        InstantiationGraph {
-            rel: BTreeSet::new(),
-            fixed_return: BTreeSet::new(),
-        }
-    }
-
-    fn add_edge(&mut self, a: usize, b: usize) {
-        self.rel.insert((a, b));
-        self.rel.insert((b, a));
-    }
-
-    fn for_each_neighbor<F>(&mut self, a: usize, mut f: F)
-            where F: FnMut(usize) {
-        for &(_, b) in self.rel.range(edge_range(a)) {
-            f(b);
-        }
-    }
-}
-
-
 pub struct InstCtxt<'a, 'tcx: 'a> {
     cx: &'a Ctxt<'tcx>,
-
-    /// Flags indicating whether each sig var of each function is an input or an output.
-    //output_vars: &'a HashMap<DefId, IndexVec<Var, bool>>,
 
     /// Available monomorphized signatures of each function
     mono_sigs: &'a HashMap<DefId, Vec<IndexVec<Var, ConcretePerm>>>,
@@ -185,21 +147,27 @@ impl<'a, 'tcx> InstCtxt<'a, 'tcx> {
 }
 
 
-/*
 pub fn find_instantiations<'a, 'tcx: 'a>(
     cx: &'a Ctxt<'tcx>,
-    output_vars: &'a HashMap<DefId, IndexVec<Var, bool>>,
     mono_sigs: &'a HashMap<DefId, Vec<IndexVec<Var, ConcretePerm>>>)
-    -> HashMap<DefId, Vec<usize>> {
+    -> HashMap<(DefId, usize), Vec<usize>> {
 
-    let mut icx = InstCtxt {
-        cx: cx,
-        output_vars: output_vars,
-        mono_sigs: mono_sigs,
-        all_insts: HashMap::new(),
+    let mut instantiations = HashMap::new();
+
+    for def_id in cx.fn_ids() {
+        let summ = cx.get_fn_summ_imm(def_id).unwrap();
+        let fn_mono_sigs = &mono_sigs[&def_id];
+        for (idx, fn_mono_sig) in fn_mono_sigs.iter().enumerate() {
+            let inst_sel = {
+                let mut icx = InstCtxt::new(cx, mono_sigs, summ, fn_mono_sig);
+                icx.solve_instantiations()
+            };
+            instantiations.insert((def_id, idx), inst_sel);
+        }
     }
+
+    instantiations
 }
-*/
 
 
 pub fn build_inst_cset<'tcx>(cx: &Ctxt<'tcx>,
