@@ -21,19 +21,6 @@ from concurrent.futures import ThreadPoolExecutor
 from build_ast_extractor import *
 
 
-def get_compiler_name_from_db(cc_db: List[dict]) -> str:
-    commands = [c['command'] for c in cc_db]
-    cc_names = [c.split()[0] for c in commands]
-    cc_names = set(cc_names)
-    if not len(cc_names):
-        die("more than one compiler name found in compile_commands.json")
-    return cc_names.pop()
-
-
-def get_cborfiles_from_db(cc_db: List[dict]) -> List[str]:
-    return [cmd['file'] + ".cbor" for cmd in cc_db]
-
-
 def transpile_files(args) -> None:
     ast_extr = os.path.join(LLVM_BIN, "ast-extractor")
     ast_extr = get_cmd_or_die(ast_extr)
@@ -47,12 +34,12 @@ def transpile_files(args) -> None:
     if args.filter:  # skip commands not matching file filter
         cc_db = [c for c in cc_db if args.filter in f['file']]
 
-    cc_name = get_compiler_name_from_db(cc_db)
+    cc_name = "cc"
     include_dirs = get_system_include_dirs(cc_name)
 
     def transpile_single(cmd):
         if args.import_only:
-            cbor_file = cmd['file'] + ".cbor"
+            cbor_file = os.path.join(cmd['directory'], cmd['file'] + ".cbor")
         else:
             cbor_file = extract_ast_from(ast_extr, args.commands_json.name,
                                          include_dirs, **cmd)
@@ -64,15 +51,16 @@ def transpile_files(args) -> None:
             retcode, stdout, stderr = invoke_quietly(ast_impo, cbor_file)
             # FIXME: error handling
 
-    # for cmd in cc_db:
-    #     transpile_single(cmd)
-
-    # We use the ThreadPoolExecutor (not ProcesssPoolExecutor) because
-    # 1. we spend most of the time outside the python interpreter, and
-    # 2. it does not require that shared objects can be pickled.
-    with ThreadPoolExecutor(args.jobs) as executor:
+    if args.jobs == 1:
         for cmd in cc_db:
-            executor.submit(transpile_single, cmd)
+            transpile_single(cmd)
+    else:
+        # We use the ThreadPoolExecutor (not ProcesssPoolExecutor) because
+        # 1. we spend most of the time outside the python interpreter, and
+        # 2. it does not require that shared objects can be pickled.
+        with ThreadPoolExecutor(args.jobs) as executor:
+            for cmd in cc_db:
+                executor.submit(transpile_single, cmd)
 
 
 def parse_args():

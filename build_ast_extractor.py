@@ -30,6 +30,13 @@ CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
 CBOR_SRC = os.path.join(DEPS_DIR, CBOR_SRC)
 CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor")
 
+BEAR_URL = "https://codeload.github.com/rizsotto/Bear/archive/2.3.6.tar.gz"
+BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.6.tar.gz")
+BEAR_SRC = os.path.basename(BEAR_ARCHIVE).replace(".tar.gz", "")
+BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
+BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear")
+BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
+
 LLVM_SRC = os.path.join(SCRIPT_DIR, 'llvm.src')
 LLVM_BLD = os.path.join(SCRIPT_DIR, 'llvm.build')
 LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
@@ -288,6 +295,37 @@ def update_cbor_prefix(makefile):
             fh.writelines("".join(lines))
 
 
+def build_a_bear():
+    """
+    the output of bear differs between versions, so we build the 
+    latest bear rather than trying to support multiple versions.
+    """
+    if os.path.isdir(BEAR_PREFIX):
+        logging.debug("skipping Bear installation")
+        return
+
+    # download
+    if not os.path.isfile(BEAR_ARCHIVE):
+        curl = get_cmd_or_die("curl")
+        curl['-s', BEAR_URL, '-o', CBOR_BEAR] & pb.TEE
+
+    # unpack
+    if not os.path.isdir(BEAR_SRC):
+        tar = get_cmd_or_die("tar")
+        with pb.local.cwd(DEPS_DIR):
+            tar['xf', BEAR_ARCHIVE] & pb.TEE
+
+    # cmake
+    bear_build_dir = os.path.join(BEAR_SRC, "build")
+    bear_install_prefix = "-DCMAKE_INSTALL_PREFIX=" + BEAR_PREFIX
+    ensure_dir(bear_build_dir)
+    with local.cwd(bear_build_dir):
+        cmake = get_cmd_or_die("cmake")
+        cmake["..", bear_install_prefix] & pb.TEE
+        cmake = get_cmd_or_die("make")
+        make["install"] & pb.TEE
+
+
 def install_tinycbor() -> Union[str, None]:
     """
     download, unpack, build, and install tinycbor.
@@ -394,27 +432,26 @@ def extract_ast_from(ast_extr: pb.commands.BaseCommand,
     :param sys_incl_dirs: list of system include directories
     :return: path to generated cbor file.
     """
-    keys = ['command', 'directory', 'file']
+    keys = ['arguments', 'directory', 'file']
     try:
-        cmd, dir, filename = [kwargs[k] for k in keys]
+        args, dir, filename = [kwargs[k] for k in keys]
+        filepath = os.path.join(dir, filename)
     except KeyError:
         die("couldn't parse " + cc_db_path)
 
-    if not os.path.isfile(filename):
-        die("missing file " + filename)
+    if not os.path.isfile(filepath):
+        die("missing file " + filepath)
     try:
-        basename = os.path.basename(filename)
-
         # prepare ast-extractor arguments
         cc_db_dir = os.path.dirname(cc_db_path)
-        args = ["-p", cc_db_dir, filename]
+        args = ["-p", cc_db_dir, filepath]
         # this is required to locate system libraries
         args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
 
         # run ast-extractor
-        logging.info("extracting ast from %s", basename)
+        logging.info("extracting ast from %s", filename)
         ast_extr[args] & pb.TEE  # nopep8
-        cbor_outfile = filename + ".cbor"
+        cbor_outfile = filepath + ".cbor"
         assert os.path.isfile(cbor_outfile), "missing: " + cbor_outfile
         return cbor_outfile
     except pb.ProcessExecutionError as pee:
@@ -424,7 +461,8 @@ def extract_ast_from(ast_extr: pb.commands.BaseCommand,
             mesg = "Received signal: "
             mesg += signal.Signals(-pee.retcode).name
 
-        logging.fatal("command failed: %s", ast_extr["-p", cc_db_dir, filename])
+        logging.fatal("command failed: %s", 
+                      ast_extr["-p", cc_db_dir, filename])
         die(u"sanity testing failed 🔥 : " + mesg, pee.retcode)
 
 
@@ -472,9 +510,10 @@ def _main():
             .format(MIN_PLUMBUM_VERSION)
         die(err)
 
-    if on_ubuntu() and not binary_in_path("bear"):
-        emsg = "bear not in path, install package bear and retry" 
-        die(emsg, errno.ENOENT)
+    if on_ubuntu():
+        build_a_bear()
+        if not os.path.isfile(BEAR_BIN):
+            die("bear not found", errno.ENOENT)
 
     args = _parse_args()
     if args.clean_all:
