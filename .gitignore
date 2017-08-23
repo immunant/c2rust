@@ -7,8 +7,8 @@ llvm.build/*
 .vscode
 *.log
 # ignore rust build dirs everywhere
-**/target/*
-**/dependencies/*
-**/tests/*
+**/target/
+**/dependencies/
+**/tests/
 *.pyc
 .vagrant
