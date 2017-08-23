@@ -624,11 +624,32 @@ class TranslateASTVisitor final
           std::vector<void*> childIds;
           encode_entry(SL, TagStringLiteral, childIds,
                              [SL](CborEncoder *array){
-                                // String literals can contain arbitrary bytes, so we 
-                                // encode these as byte strings rather than text strings. 
-                                // FIXME: we might need to encode the char width and string 
-                                // type to handle C++ wide strings and unicode strings.
-                                assert(SL->isAscii() && "Non-ASCII string literal");
+                                // C and C++ supports different string types, so 
+                                // we need to identify the string literal type
+                                switch(SL->getKind()) {
+                                    case clang::StringLiteral::StringKind::Ascii:
+                                        cbor_encode_uint(array, StringTypeTag::TagAscii);
+                                        break;
+                                    case clang::StringLiteral::StringKind::Wide:
+                                        cbor_encode_uint(array, StringTypeTag::TagWide);
+                                        break;
+                                    case clang::StringLiteral::StringKind::UTF8:
+                                        cbor_encode_uint(array, StringTypeTag::TagUTF8);
+                                        break;
+                                    case clang::StringLiteral::StringKind::UTF16:
+                                        cbor_encode_uint(array, StringTypeTag::TagUTF16);
+                                        break;
+                                    case clang::StringLiteral::StringKind::UTF32:
+                                        cbor_encode_uint(array, StringTypeTag::TagUTF32);
+                                        break;
+                                    default:
+                                        assert("Unknown string kind.");
+                                }
+                                // The size of the wchar_t type in C is implementation defined
+                                cbor_encode_uint(array, SL->getCharByteWidth());
+
+                                // String literals can contain arbitrary bytes, so  
+                                // we encode these as byte strings rather than text. 
                                 const uint8_t* bytes = reinterpret_cast<const uint8_t*>(SL->getBytes().data());
                                 cbor_encode_byte_string(array, bytes, SL->getByteLength());
                              });
