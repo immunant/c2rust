@@ -39,6 +39,9 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder>
     ASTContext *Context;
     CborEncoder *encoder;
     TranslateASTVisitor *astEncoder;
+
+    // Bounds recursion when visiting self-referential record declarations
+    std::unordered_set<const clang::RecordDecl*> recordDeclsUnderVisit;
     
     std::unordered_set<const Type*> exports;
     
@@ -674,7 +677,13 @@ void TypeEncoder::VisitRecordType(const RecordType *T) {
     });
     
     // record type might be anonymous and have no top-level declaration
-    astEncoder->TraverseDecl(T->getDecl());
+    // structure declarations can reference themselves, so we need
+    // a way to guard against unbounded recursion.
+    clang::RecordDecl *D = T->getDecl();
+    if(recordDeclsUnderVisit.emplace(D).second) {
+        astEncoder->TraverseDecl(D);
+        recordDeclsUnderVisit.erase(D);
+    }
 }
 
 class TranslateConsumer : public clang::ASTConsumer {
