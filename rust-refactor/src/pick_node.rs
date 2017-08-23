@@ -127,6 +127,15 @@ impl<'a> Visitor<'a> for PickVisitor {
         }
     }
 
+    fn visit_struct_field(&mut self, x: &'a StructField) {
+        visit::walk_struct_field(self, x);
+        if self.node_info.is_none() &&
+           self.kind.contains(NodeKind::Field) &&
+           x.span.contains(self.target) {
+            self.node_info = Some(NodeInfo { id: x.id, span: x.span });
+        }
+    }
+
     fn visit_mac(&mut self, mac: &'a Mac) {
         visit::walk_mac(self, mac);
     }
@@ -147,6 +156,7 @@ pub enum NodeKind {
     Pat,
     Ty,
     Arg,
+    Field,
 }
 
 impl NodeKind {
@@ -177,6 +187,7 @@ impl NodeKind {
             NodeKind::Pat => "pat",
             NodeKind::Ty => "ty",
             NodeKind::Arg => "arg",
+            NodeKind::Field => "field",
         }
     }
 }
@@ -198,6 +209,7 @@ impl FromStr for NodeKind {
                 "pat" => NodeKind::Pat,
                 "ty" => NodeKind::Ty,
                 "arg" => NodeKind::Arg,
+                "field" => NodeKind::Field,
 
                 _ => return Err(()),
             };

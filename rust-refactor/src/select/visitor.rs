@@ -110,6 +110,13 @@ impl<'ast, 'a, 'hir, 'gcx, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'hir, '
         // the arg and again as a child of the fn item.
         visit::walk_fn(self, kind, fd, span);
     }
+
+    fn visit_struct_field(&mut self, x: &'ast StructField) {
+        if self.in_old && self.matches(AnyNode::Field(x)) {
+            self.new.insert(x.id);
+        }
+        self.maybe_enter_old(x.id, |v| visit::walk_struct_field(v, x));
+    }
 }
 
 pub fn matching_children(st: &CommandState,
@@ -233,6 +240,13 @@ impl<'ast, 'a, 'hir, 'gcx, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'hir, 'g
         // the arg and again as a child of the fn item.
         visit::walk_fn(self, kind, fd, span);
     }
+
+    fn visit_struct_field(&mut self, x: &'ast StructField) {
+        if self.in_old && self.matches(AnyNode::Field(x)) {
+            self.new.insert(x.id);
+        }
+        self.maybe_enter_old(x.id, |v| visit::walk_struct_field(v, x));
+    }
 }
 
 pub fn matching_descendants(st: &CommandState,
@@ -333,6 +347,13 @@ impl<'ast, 'a, 'hir, 'gcx, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'hir, 'gcx,
         }
 
         visit::walk_fn(self, kind, fd, span);
+    }
+
+    fn visit_struct_field(&mut self, x: &'ast StructField) {
+        if self.old.contains(&x.id) && self.matches(AnyNode::Field(x)) {
+            self.new.insert(x.id);
+        }
+        visit::walk_struct_field(self, x);
     }
 }
 
