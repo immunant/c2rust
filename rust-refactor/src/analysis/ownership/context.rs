@@ -109,6 +109,7 @@ impl<'tcx> Ctxt<'tcx> {
                     cset: cset,
                     inst_cset: ConstraintSet::new(),
                     insts: Vec::new(),
+                    attr_cset: None,
                 })
             },
 
@@ -166,55 +167,7 @@ impl<'tcx> Ctxt<'tcx> {
     }
 
     pub fn min_perm(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) -> Perm<'tcx> {
-        eprintln!("finding min of {:?} and {:?}", a, b);
-        match (a, b) {
-            // A few easy cases
-            (Perm::Concrete(ConcretePerm::Read), _) |
-            (_, Perm::Concrete(ConcretePerm::Read)) => Perm::read(),
-
-            (Perm::Concrete(ConcretePerm::Move), p) => p,
-            (p, Perm::Concrete(ConcretePerm::Move)) => p,
-
-            (Perm::Min(ps1), Perm::Min(ps2)) => {
-                let mut all = Vec::with_capacity(ps1.len() + ps2.len());
-                all.extend(ps1.iter().cloned());
-                for &p in ps2 {
-                    if !all.contains(&p) {
-                        all.push(p);
-                    }
-                }
-                let all =
-                    if all.len() == 0 { &[] as &[_] }
-                    else { self.arena.alloc_slice(&all) };
-                eprintln!("nontrivial min: {:?}", all);
-                Perm::Min(all)
-            },
-
-            (Perm::Min(ps), p) | (p, Perm::Min(ps)) => {
-                if ps.contains(&p) {
-                    Perm::Min(ps)
-                } else {
-                    let mut all = Vec::with_capacity(ps.len() + 1);
-                    all.extend(ps.iter().cloned());
-                    all.push(p);
-                    let all =
-                        if all.len() == 0 { &[] as &[_] }
-                        else { self.arena.alloc_slice(&all) };
-                    eprintln!("nontrivial min: {:?}", all);
-                    Perm::Min(all)
-                }
-            },
-
-            (a, b) => {
-                if a == b {
-                    a
-                } else {
-                    let all = self.arena.alloc_slice(&[a, b]);
-                    eprintln!("nontrivial min: {:?}", all);
-                    Perm::Min(all)
-                }
-            }
-        }
+        Perm::min(a, b, self.arena)
     }
 }
 

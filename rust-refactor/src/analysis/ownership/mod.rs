@@ -54,9 +54,9 @@ mod debug;
 
 use self::constraint::*;
 use self::context::Ctxt;
+use self::annot::{handle_marks, handle_attrs};
 use self::intra::IntraCtxt;
 use self::inter::InterCtxt;
-use self::annot::handle_marks;
 use self::mono::{mono_test, get_all_mono_sigs};
 use self::inst::find_instantiations;
 use self::mono_filter::filter_suspicious_monos;
@@ -99,6 +99,10 @@ pub struct FnSummary<'tcx> {
     cset: ConstraintSet<'tcx>,
     inst_cset: ConstraintSet<'tcx>,
     insts: Vec<Instantiation>,
+
+    /// Explicit constraint set provided by an attribute on the fn item.  This overrides the
+    /// inferred `cset` during the interprocedural part of inference.
+    attr_cset: Option<ConstraintSet<'tcx>>,
 }
 
 struct Instantiation {
@@ -222,6 +226,7 @@ pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
     let mut cx = Ctxt::new(dcx.ty_arena());
 
     handle_marks(&mut cx, st, dcx);
+    handle_attrs(&mut cx, st, dcx);
 
     // Compute constraints for each function
     analyze_intra(&mut cx, dcx.hir_map(), dcx.ty_ctxt());

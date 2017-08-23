@@ -2,16 +2,21 @@
 //! the analysis context.
 
 use std::cmp;
+use std::str::FromStr;
 
+use arena::DroplessArena;
 use rustc::hir::def_id::DefId;
 use rustc::ty::TyCtxt;
 use syntax::ast;
+use syntax::visit::{self, Visitor};
 
 use command::CommandState;
 use driver;
 use type_map::{self, TypeSource};
+use visit::Visit;
 
-use super::{LTy, LFnSig, ConcretePerm, Perm};
+use super::{LTy, LFnSig, ConcretePerm, Perm, Var};
+use super::constraint::ConstraintSet;
 use super::context::Ctxt;
 
 
@@ -121,3 +126,144 @@ pub fn handle_marks<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
     }
 }
 
+
+
+struct AttrVisitor<'ast> {
+    fn_attrs: Vec<(ast::NodeId, &'ast [ast::Attribute])>,
+}
+
+impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
+    fn visit_item(&mut self, i: &'ast ast::Item) {
+        match i.node {
+            ast::ItemKind::Fn(..) => {
+                self.fn_attrs.push((i.id, &i.attrs));
+            },
+            _ => {},
+        }
+
+        visit::walk_item(self, i);
+    }
+    // TODO: impl items, statics, consts, struct fields
+}
+
+pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
+                                          st: &CommandState,
+                                          dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) {
+
+    let krate = st.krate();
+    let mut v = AttrVisitor {
+        fn_attrs: Vec::new(),
+    };
+    krate.visit(&mut v);
+
+    eprintln!("HANDLE_ATTRS: found {} funcs", v.fn_attrs.len());
+
+
+    for (node_id, attrs) in v.fn_attrs {
+        let def_id = match_or!([dcx.hir_map().opt_local_def_id(node_id)] Some(x) => x; continue);
+
+        let summ = cx.fn_summ(def_id, dcx.ty_ctxt());
+        for attr in attrs {
+            let meta = match_or!([attr.meta()] Some(x) => x; continue);
+            match &meta.name.as_str() as &str {
+                "ownership_constraints" => {
+                    let cset = parse_ownership_constraints(&meta, dcx.ty_arena())
+                        .unwrap_or_else(|e| panic!("bad #[ownership_constraints] for {:?}: {}",
+                                                   def_id, e));
+
+                    eprintln!("found constraints for {:?}:", def_id);
+                    for &(a, b) in cset.iter() {
+                        eprintln!("  {:?} <= {:?}", a, b);
+                    }
+
+                    summ.attr_cset = Some(cset);
+                },
+
+                _ => {},
+            }
+        }
+    }
+}
+
+
+
+fn meta_item_list(meta: &ast::MetaItem) -> Result<&[ast::NestedMetaItem], &'static str> {
+    match meta.node {
+        ast::MetaItemKind::List(ref xs) => Ok(xs),
+        _ => Err("expected MetaItemKind::List"),
+    }
+}
+
+fn nested_meta_item(nmeta: &ast::NestedMetaItem) -> Result<&ast::MetaItem, &'static str> {
+    match nmeta.node {
+        ast::NestedMetaItemKind::MetaItem(ref m) => Ok(m),
+        _ => Err("expected NestedMetaItemKind::MetaItem"),
+    }
+}
+
+fn parse_ownership_constraints<'tcx>(meta: &ast::MetaItem,
+                                     arena: &'tcx DroplessArena)
+                                     -> Result<ConstraintSet<'tcx>, &'static str> {
+    use syntax::ast::*;
+    let args = meta_item_list(meta)?;
+
+    let mut cset = ConstraintSet::new();
+    for arg in args {
+        let arg = nested_meta_item(arg)?;
+        if !arg.check_name("le") {
+            return Err("expected `le(a, b)` in `ownership_constraints`");
+        }
+
+        let perms = meta_item_list(arg)?;
+        if perms.len() != 2 {
+            return Err("expected exactly two arguments in `le`");
+        }
+
+        let a = parse_perm(nested_meta_item(&perms[0])?, arena)?;
+        let b = parse_perm(nested_meta_item(&perms[1])?, arena)?;
+        cset.add(a, b);
+    }
+
+    Ok(cset)
+}
+
+fn parse_perm<'tcx>(meta: &ast::MetaItem,
+                    arena: &'tcx DroplessArena)
+                    -> Result<Perm<'tcx>, &'static str> {
+    use syntax::ast::*;
+    if meta.check_name("min") {
+        let args = meta_item_list(meta)?;
+        if args.len() == 0 {
+            return Err("`min` requires at least one argument");
+        }
+
+        let mut perms = Vec::with_capacity(args.len());
+        for arg in args {
+            let arg_meta = nested_meta_item(arg)?;
+            let perm = parse_perm(arg_meta, arena)?;
+            perms.push(perm);
+        }
+
+        let perms = arena.alloc_slice(&perms);
+        Ok(Perm::Min(perms))
+    } else {
+        match meta.node {
+            MetaItemKind::Word => {},
+            _ => return Err("permission values should not have arguments"),
+        }
+
+        let name = meta.name.as_str();
+        match &name as &str {
+            "READ" => return Ok(Perm::read()),
+            "WRITE" => return Ok(Perm::write()),
+            "MOVE" => return Ok(Perm::move_()),
+            _ => {},
+        }
+
+        if !name.starts_with("_") {
+            return Err("invalid permission variable");
+        }
+        let idx = FromStr::from_str(&name[1..]).map_err(|_| "invalid permission variable")?;
+        Ok(Perm::SigVar(Var(idx)))
+    }
+}

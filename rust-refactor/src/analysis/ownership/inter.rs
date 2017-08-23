@@ -63,8 +63,15 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
         }
     }
 
-    fn process_one(&mut self, def_id: DefId) {
+    /// Recompute the `complete_cset` of one function.  Returns the new cset.
+    fn compute_one_cset(&mut self, def_id: DefId) -> ConstraintSet<'tcx> {
         let dummy_cset = ConstraintSet::new();
+
+        if let Some(attr_cset) = self.cx.get_fn_summ(def_id).unwrap().attr_cset.as_ref() {
+            // The user provided the exact constraints using an attr.  Return them unchanged.
+            eprintln!("constraints overridden!  (for {:?})", def_id);
+            return attr_cset.clone();
+        }
 
         let mut cset = self.cx.get_fn_summ(def_id).unwrap().cset.clone();
 
@@ -143,6 +150,17 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
         });
 
         cset.simplify(self.cx.arena);
+
+        cset
+    }
+
+    fn process_one(&mut self, def_id: DefId) {
+        let cset = self.compute_one_cset(def_id);
+
+        eprintln!("save cset for {:?}", def_id);
+        for &(a, b) in cset.iter() {
+            eprintln!("  {:?} <= {:?}", a, b);
+        }
 
         // Update `complete_cset`
         let did_update = match self.complete_cset.entry(def_id) {
