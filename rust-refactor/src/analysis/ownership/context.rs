@@ -19,7 +19,7 @@ pub struct Ctxt<'tcx> {
     pub arena: &'tcx DroplessArena,
 
     /// Types of non-`fn` definitions.  This includes `static`s and also `struct` fields.
-    static_summ: HashMap<DefId, LTy<'tcx>>,
+    pub static_summ: HashMap<DefId, LTy<'tcx>>,
 
     /// Assignment of permission values to static vars.  This is only here because this is a
     /// convenient way to communicate it from `annot` to `inter`.

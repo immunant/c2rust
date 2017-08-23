@@ -29,7 +29,7 @@ use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::mir::*;
 use rustc::mir::tcx::LvalueTy;
 use rustc::mir::traversal::{Postorder, ReversePostorder};
-use rustc::ty::{Ty, TyS, TyCtxt, FnSig, Instance, TypeVariants, AdtDef};
+use rustc::ty::{Ty, TyS, TyCtxt, Instance, TypeVariants, AdtDef};
 use rustc::ty::subst::Substs;
 use rustc::ty::fold::{TypeVisitor, TypeFoldable};
 use rustc_data_structures::bitvec::BitVector;
@@ -169,9 +169,26 @@ fn analyze_inter(cx: &mut Ctxt) {
 }
 
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FnSig<'tcx, L: 'tcx> {
+    pub inputs: &'tcx [LabeledTy<'tcx, L>],
+    pub output: LabeledTy<'tcx, L>,
+}
+
+pub type VTy<'tcx> = LabeledTy<'tcx, Option<Var>>;
+pub type VFnSig<'tcx> = FnSig<'tcx, Option<Var>>;
+
+pub type PTy<'tcx> = LabeledTy<'tcx, Option<ConcretePerm>>;
+
+pub struct AnalysisResult<'tcx> {
+    pub statics: HashMap<DefId, PTy<'tcx>>,
+
+    pub fns: HashMap<DefId, FunctionResult<'tcx>>,
+}
+
 pub struct FunctionResult<'tcx> {
     /// Polymorphic function signature.  Each pointer is labeled with a `SigVar`.
-    pub sig: LFnSig<'tcx>,
+    pub sig: VFnSig<'tcx>,
 
     pub num_sig_vars: u32,
 
@@ -201,7 +218,7 @@ pub struct MonoResult {
 
 pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
                                      dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>)
-                                     -> HashMap<DefId, FunctionResult<'tcx>> {
+                                     -> AnalysisResult<'tcx> {
     let mut cx = Ctxt::new(dcx.ty_arena());
 
     handle_marks(&mut cx, st, dcx);
@@ -230,10 +247,38 @@ pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
         }
     }
 
-    // Build the final result map
-    let mut results = HashMap::new();
+    // Build the final result maps
+    let mut perm_lcx = LabeledTyCtxt::new(dcx.ty_arena());
+    let mut static_results = HashMap::new();
+    for (&def_id, &lty) in cx.static_summ.iter() {
+        let pty = perm_lcx.relabel(lty, &mut |p| {
+            if let Some(Perm::StaticVar(v)) = *p {
+                Some(cx.static_assign[v])
+            } else {
+                None
+            }
+        });
+        static_results.insert(def_id, pty);
+    }
+
+    let mut var_lcx = LabeledTyCtxt::new(dcx.ty_arena());
+    let mut func_results = HashMap::new();
     for (&def_id, mono_sigs) in &mono_sigs {
         let summ = cx.get_fn_summ_imm(def_id).unwrap();
+
+        let sig = {
+            let mut func = |p: &Option<_>| {
+                if let Some(Perm::SigVar(v)) = *p {
+                    Some(v)
+                } else {
+                    None
+                }
+            };
+            FnSig {
+                inputs: var_lcx.relabel_slice(summ.sig.inputs, &mut func),
+                output: var_lcx.relabel(summ.sig.output, &mut func),
+            }
+        };
 
         let mut mono_results = Vec::new();
         for (i, mono_sig) in mono_sigs.iter().enumerate() {
@@ -257,8 +302,8 @@ pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
 
         let callee_ids = summ.insts.iter().map(|inst| inst.callee).collect();
 
-        results.insert(def_id, FunctionResult {
-            sig: summ.sig,
+        func_results.insert(def_id, FunctionResult {
+            sig: sig,
             num_sig_vars: summ.num_sig_vars,
             cset: summ.cset.clone(),
             monos: mono_results,
@@ -266,23 +311,20 @@ pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
         });
     }
 
-    results
+    AnalysisResult {
+        statics: static_results,
+        fns: func_results,
+    }
 }
 
 pub fn dump_results(dcx: &driver::Ctxt,
-                    results: &HashMap<DefId, FunctionResult>) {
+                    results: &AnalysisResult) {
     eprintln!("\n === summary ===");
 
     let arena = DroplessArena::new();
     let mut new_lcx = LabeledTyCtxt::new(&arena);
-    let format_sig = |sig: LFnSig, assign: &IndexVec<Var, ConcretePerm>| {
-        let mut func = |p: &Option<_>| {
-            if let Some(Perm::SigVar(v)) = *p {
-                Some(assign[v])
-            } else {
-                None
-            }
-        };
+    let format_sig = |sig: VFnSig, assign: &IndexVec<Var, ConcretePerm>| {
+        let mut func = |p: &Option<_>| p.as_ref().map(|&v| assign[v]);
 
         let inputs = new_lcx.relabel_slice(sig.inputs, &mut func);
         let output = new_lcx.relabel(sig.output, &mut func);
@@ -291,17 +333,24 @@ pub fn dump_results(dcx: &driver::Ctxt,
 
     let path_str = |def_id| dcx.ty_ctxt().def_path(def_id).to_string(dcx.ty_ctxt());
 
-    let mut ids = results.keys().cloned().collect::<Vec<_>>();
+    let mut ids = results.statics.keys().cloned().collect::<Vec<_>>();
     ids.sort();
     for id in ids {
-        let fr = &results[&id];
+        let ty = results.statics[&id];
+        eprintln!("static {} :: {:?}", path_str(id), Pretty(ty));
+    }
+
+    let mut ids = results.fns.keys().cloned().collect::<Vec<_>>();
+    ids.sort();
+    for id in ids {
+        let fr = &results.fns[&id];
 
         eprintln!("fn {}:", path_str(id));
         for (i, mr) in fr.monos.iter().enumerate() {
             eprintln!("  mono #{}: {}", i, format_sig(fr.sig, &mr.assign));
             for (j, (&callee, &mono_idx)) in
                     fr.callee_ids.iter().zip(mr.callee_mono_idxs.iter()).enumerate() {
-                let callee_fr = &results[&callee];
+                let callee_fr = &results.fns[&callee];
                 eprintln!("    call #{}: {:?} #{} :: {}",
                           j, path_str(callee), mono_idx,
                           format_sig(callee_fr.sig, &callee_fr.monos[mono_idx].assign));
