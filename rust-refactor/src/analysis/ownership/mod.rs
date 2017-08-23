@@ -64,7 +64,7 @@ use self::debug::*;
 
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub struct Var(u32);
+pub struct Var(pub u32);
 
 impl Idx for Var {
     fn new(idx: usize) -> Var {
