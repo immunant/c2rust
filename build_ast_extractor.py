@@ -454,7 +454,7 @@ def extract_ast_from(ast_extr: pb.commands.BaseCommand,
         args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
 
         # run ast-extractor
-        logging.info("extracting ast from %s", filename)
+        logging.info("extracting ast from %s", os.path.basename(filename))
         ast_extr[args] & pb.TEE  # nopep8
         cbor_outfile = filepath + ".cbor"
         assert os.path.isfile(cbor_outfile), "missing: " + cbor_outfile
