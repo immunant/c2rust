@@ -67,6 +67,20 @@ fn do_annotate(st: &CommandState,
                 }
             }
         }
+
+        fn clean_attrs(&self, attrs: &mut Vec<Attribute>) {
+            attrs.retain(|a| {
+                if let Some(name) = a.name() {
+                    match &name.as_str() as &str {
+                        "ownership_mono" |
+                        "ownership_constraints" |
+                        "ownership_static" => return false,
+                        _ => {},
+                    }
+                }
+                true
+            });
+        }
     }
 
     impl<'a, 'hir, 'tcx> Folder for AnnotateFolder<'a, 'hir, 'tcx> {
@@ -78,12 +92,14 @@ fn do_annotate(st: &CommandState,
             fold::noop_fold_item(i.map(|mut i| {
                 match i.node {
                     ItemKind::Static(..) | ItemKind::Const(..) => {
+                        self.clean_attrs(&mut i.attrs);
                         if let Some(attr) = self.static_attr_for(i.id) {
                             i.attrs.push(attr);
                         }
                     },
 
                     ItemKind::Fn(..) => {
+                        self.clean_attrs(&mut i.attrs);
                         if let Some(attr) = self.constraints_attr_for(i.id) {
                             i.attrs.push(attr);
                         }
@@ -110,6 +126,7 @@ fn do_annotate(st: &CommandState,
                 return fold::noop_fold_struct_field(sf, self);
             }
 
+            self.clean_attrs(&mut sf.attrs);
             if let Some(attr) = self.static_attr_for(sf.id) {
                 sf.attrs.push(attr);
             }
