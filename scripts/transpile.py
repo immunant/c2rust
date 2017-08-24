@@ -86,7 +86,7 @@ def transpile_files(args) -> None:
     ast_extr = os.path.join(LLVM_BIN, "ast-extractor")
     ast_extr = get_cmd_or_die(ast_extr)
     ast_impo = os.path.join(
-        SCRIPT_DIR,
+        ROOT_DIR,
         "ast-importer/target/debug/ast-importer")
     ast_impo = get_cmd_or_die(ast_impo)
 

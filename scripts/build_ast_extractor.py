@@ -21,8 +21,9 @@ except ImportError:
     print >> sys.stderr, "error: python package plumbum is not installed."
     quit(errno.ENOENT)
 
-SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-DEPS_DIR = os.path.join(SCRIPT_DIR, 'dependencies')
+ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
+DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
 
 CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
 CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.1.tar.gz")
@@ -37,8 +38,8 @@ BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
 BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear")
 BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
-LLVM_SRC = os.path.join(SCRIPT_DIR, 'llvm.src')
-LLVM_BLD = os.path.join(SCRIPT_DIR, 'llvm.build')
+LLVM_SRC = os.path.join(ROOT_DIR, 'llvm.src')
+LLVM_BLD = os.path.join(ROOT_DIR, 'llvm.build')
 LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
 LLVM_PUBKEY = "8F0871F202119294"
 LLVM_VER = "4.0.1"
@@ -181,13 +182,13 @@ def download_llvm_sources():
     with pb.local.cwd(os.path.join(LLVM_SRC, "tools")):
         if not os.path.isdir("clang"):
             logging.info("extracting %s", LLVM_ARCHIVE_FILES[1])
-            tar("xf", os.path.join(SCRIPT_DIR, LLVM_ARCHIVE_FILES[1]))
+            tar("xf", os.path.join(ROOT_DIR, LLVM_ARCHIVE_FILES[1]))
             os.rename(LLVM_ARCHIVE_DIRS[1], "clang")
 
         with pb.local.cwd("clang/tools"):
             if not os.path.isdir("extra"):
                 logging.info("extracting %s", LLVM_ARCHIVE_FILES[2])
-                tar("xf", os.path.join(SCRIPT_DIR, LLVM_ARCHIVE_FILES[2]))
+                tar("xf", os.path.join(ROOT_DIR, LLVM_ARCHIVE_FILES[2]))
                 os.rename(LLVM_ARCHIVE_DIRS[2], "extra")
 
 
@@ -308,7 +309,7 @@ def build_a_bear():
     # download
     if not os.path.isfile(BEAR_ARCHIVE):
         curl = get_cmd_or_die("curl")
-        curl['-s', BEAR_URL, '-o', CBOR_BEAR] & pb.TEE
+        curl['-s', BEAR_URL, '-o', BEAR_ARCHIVE] & pb.TEE
 
     # unpack
     if not os.path.isdir(BEAR_SRC):
@@ -376,7 +377,7 @@ def integrate_ast_extractor():
     """
     link ast-extractor into $LLVM_SRC/tools/clang/tools/extra
     """
-    src = os.path.join(SCRIPT_DIR, "ast-extractor")
+    src = os.path.join(ROOT_DIR, "ast-extractor")
     extractor_dest = os.path.join(
         LLVM_SRC, "tools/clang/tools/extra/ast-extractor")
     clang_tools_extra = os.path.abspath(
