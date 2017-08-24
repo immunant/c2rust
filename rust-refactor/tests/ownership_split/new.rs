@@ -23,14 +23,14 @@ struct Tree {
 #[ownership_variant_of("old/8cd878b::get_children[0]")]
 unsafe fn get_children_take(parent: *mut Tree) -> *mut Forest {
     let mut out = ptr::null_mut();
-    get_children_err(parent, &mut out);
+    get_children_err_take(parent, &mut out);
     out
 }
 #[ownership_mono("mut", WRITE, WRITE)]
 #[ownership_variant_of("old/8cd878b::get_children[0]")]
 unsafe fn get_children_mut(parent: *mut Tree) -> *mut Forest {
     let mut out = ptr::null_mut();
-    get_children_err(parent, &mut out);
+    get_children_err_mut(parent, &mut out);
     out
 }
 #[ownership_mono("", READ, READ)]

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 use rustc::hir;
@@ -19,6 +20,7 @@ use command::{CommandState, Registry, DriverCommand};
 use driver::{self, Phase};
 use fn_edit;
 use fold::Fold;
+use fold_node;
 use make_ast::mk;
 use util::IntoSymbol;
 
@@ -270,62 +272,109 @@ fn do_split_variants(st: &CommandState,
                      label: Symbol) {
     let ana = ownership::analyze(&st, &cx);
 
-    st.map_krate(|krate| {
-        fn_edit::fold_fns_multi(krate, |fl| {
-            if !st.marked(fl.id, label) || !attr::contains_name(&fl.attrs, "ownership_mono") {
-                eprintln!("no mono attrs for {:?}", fl.ident);
-                return SmallVector::one(fl);
+    // Map from ExprPath/ExprMethodCall span to function ref idx within the caller.
+    let mut span_fref_idx = HashMap::new();
+    for fr in ana.fns.values() {
+        for (idx, fref) in fr.func_refs.iter().enumerate() {
+            if let Some(span) = fref.span {
+                span_fref_idx.insert(span, idx);
             }
-            // Since there is at least one `#[ownership_mono]`, we know the `MonoResult`s
-            // correspond exactly to `#[ownership_mono]` attrs.
-            eprintln!("looking at {:?}", fl.ident);
+        }
+    }
 
-            let def_id = match_or!([cx.hir_map().opt_local_def_id(fl.id)]
-                                   Some(x) => x; return SmallVector::one(fl));
-            let fr = match_or!([ana.fns.get(&def_id)]
+    st.map_krate(|krate| fn_edit::fold_fns_multi(krate, |fl| {
+        if !st.marked(fl.id, label) || !attr::contains_name(&fl.attrs, "ownership_mono") {
+            eprintln!("no mono attrs for {:?}", fl.ident);
+            return SmallVector::one(fl);
+        }
+        // Since there is at least one `#[ownership_mono]`, we know the `MonoResult`s
+        // correspond exactly to `#[ownership_mono]` attrs.
+        eprintln!("looking at {:?}", fl.ident);
+
+        let def_id = match_or!([cx.hir_map().opt_local_def_id(fl.id)]
                                Some(x) => x; return SmallVector::one(fl));
+        let fr = match_or!([ana.fns.get(&def_id)]
+                           Some(x) => x; return SmallVector::one(fl));
 
-            eprintln!("{} mono attr(s) for {:?}", fr.monos.len(), fl.ident);
-            if fr.monos.len() == 1 {
-                return SmallVector::one(fl);
+        eprintln!("{} mono attr(s) for {:?}", fr.monos.len(), fl.ident);
+        if fr.monos.len() == 1 {
+            return SmallVector::one(fl);
+        }
+
+        let path_str = cx.ty_ctxt().def_path(def_id).to_string(cx.ty_ctxt());
+
+        fr.monos.iter().enumerate().map(|(mono_idx, mr)| {
+            let mut fl = fl.clone();
+
+            if mr.suffix.len() > 0 {
+                fl.ident = mk().ident(format!("{}_{}", fl.ident.name, mr.suffix));
             }
 
-            let path_str = cx.ty_ctxt().def_path(def_id).to_string(cx.ty_ctxt());
-
-            fr.monos.iter().enumerate().map(|(mono_idx, mr)| {
-                let mut fl = fl.clone();
-
-                if mr.suffix.len() > 0 {
-                    fl.ident = mk().ident(format!("{}_{}", fl.ident.name, mr.suffix));
-                }
-
-                // Delete all but one of the `#[ownership_mono]` annotations.
-                let mut mono_attr_counter = 0;
-                fl.attrs = fl.attrs.into_iter().filter_map(|a| {
-                    if a.check_name("ownership_mono") {
-                        let keep = mono_attr_counter == mono_idx;
-                        mono_attr_counter += 1;
-                        if keep {
-                            Some(a)
-                        } else {
-                            None
-                        }
-                    } else if a.check_name("ownership_constraints") {
-                        if mono_idx == 0 {
-                            Some(a)
-                        } else {
-                            None
-                        }
-                    } else {
+            // Delete all but one of the `#[ownership_mono]` annotations.
+            let mut mono_attr_counter = 0;
+            fl.attrs = fl.attrs.into_iter().filter_map(|a| {
+                if a.check_name("ownership_mono") {
+                    let keep = mono_attr_counter == mono_idx;
+                    mono_attr_counter += 1;
+                    if keep {
                         Some(a)
+                    } else {
+                        None
                     }
-                }).collect();
+                } else if a.check_name("ownership_constraints") {
+                    if mono_idx == 0 {
+                        Some(a)
+                    } else {
+                        None
+                    }
+                } else {
+                    Some(a)
+                }
+            }).collect();
 
-                fl.attrs.push(build_variant_attr(&path_str));
+            fl.attrs.push(build_variant_attr(&path_str));
 
-                fl
-            }).collect()
-        })
-    });
+            fl.block = fl.block.map(|b| fold_node::fold_nodes(b, |e: P<Expr>| {
+                let fref_idx = match_or!([span_fref_idx.get(&e.span)]
+                                         Some(&x) => x; return e);
+
+                let callee = fr.func_refs[fref_idx].def_id;
+                let callee_mono_idx = mr.callee_mono_idxs[fref_idx];
+                let callee_mono = &ana.fns[&callee].monos[callee_mono_idx];
+
+                e.map(|mut e| {
+                    match e.node {
+                        ExprKind::Path(_, ref mut path) => {
+                            // Append the callee mono suffix to the last path segment.
+                            let seg = path.segments.last_mut().unwrap();
+                            let new_name = mono_name(&seg.identifier.name.as_str(),
+                                                     &callee_mono.suffix);
+                            seg.identifier = mk().ident(&new_name);
+                        },
+
+                        ExprKind::MethodCall(ref mut seg, _) => {
+                            let new_name = mono_name(&seg.identifier.name.as_str(),
+                                                     &callee_mono.suffix);
+                            seg.identifier = mk().ident(&new_name);
+                        },
+
+                        _ => panic!("unexpected expr kind for callee span: {:?}", e),
+                    }
+
+                    e
+                })
+            }));
+
+            fl
+        }).collect()
+    }));
+}
+
+fn mono_name(base: &str, suffix: &str) -> String {
+    if suffix.len() == 0 {
+        format!("{}", base)
+    } else {
+        format!("{}_{}", base, suffix)
+    }
 }
 
