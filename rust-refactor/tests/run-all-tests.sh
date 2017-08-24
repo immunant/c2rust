@@ -4,7 +4,7 @@ for f in */; do
     ./run-test.sh $f >$f/log 2>&1
     ret=$?
     if [ $ret -eq 0 ]; then
-        echo "[PASS] ${f%/}"
+        echo "[ OK ] ${f%/}"
     else
         echo "[FAIL] ${f%/}"
     fi
