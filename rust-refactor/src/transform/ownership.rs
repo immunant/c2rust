@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use rustc::hir;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast::*;
+use syntax::attr;
 use syntax::codemap::DUMMY_SP;
 use syntax::fold::{self, Folder};
 use syntax::parse::token::{self, Token, DelimToken};
@@ -16,6 +17,7 @@ use analysis::ownership::{self, ConcretePerm, Var, PTy};
 use analysis::ownership::constraint::{ConstraintSet, Perm};
 use command::{CommandState, Registry, DriverCommand};
 use driver::{self, Phase};
+use fn_edit;
 use fold::Fold;
 use make_ast::mk;
 use util::IntoSymbol;
@@ -29,7 +31,6 @@ pub fn register_commands(reg: &mut Registry) {
         }))
     });
 
-    /*
     reg.register("ownership_split_variants", |args| {
         let label = args.get(0).map_or("target", |x| x).into_symbol();
 
@@ -37,7 +38,6 @@ pub fn register_commands(reg: &mut Registry) {
             do_split_variants(st, cx, label);
         }))
     });
-    */
 }
 
 fn do_annotate(st: &CommandState,
@@ -257,3 +257,75 @@ fn make_attr(name: &str, tokens: TokenStream) -> Attribute {
         span: DUMMY_SP,
     }
 }
+
+fn build_variant_attr(group: &str) -> Attribute {
+    let tokens = parens(vec![str_token(group)]).into();
+    make_attr("ownership_variant_of", tokens)
+}
+
+
+
+fn do_split_variants(st: &CommandState,
+                     cx: &driver::Ctxt,
+                     label: Symbol) {
+    let ana = ownership::analyze(&st, &cx);
+
+    st.map_krate(|krate| {
+        fn_edit::fold_fns_multi(krate, |fl| {
+            if !st.marked(fl.id, label) || !attr::contains_name(&fl.attrs, "ownership_mono") {
+                eprintln!("no mono attrs for {:?}", fl.ident);
+                return SmallVector::one(fl);
+            }
+            // Since there is at least one `#[ownership_mono]`, we know the `MonoResult`s
+            // correspond exactly to `#[ownership_mono]` attrs.
+            eprintln!("looking at {:?}", fl.ident);
+
+            let def_id = match_or!([cx.hir_map().opt_local_def_id(fl.id)]
+                                   Some(x) => x; return SmallVector::one(fl));
+            let fr = match_or!([ana.fns.get(&def_id)]
+                               Some(x) => x; return SmallVector::one(fl));
+
+            eprintln!("{} mono attr(s) for {:?}", fr.monos.len(), fl.ident);
+            if fr.monos.len() == 1 {
+                return SmallVector::one(fl);
+            }
+
+            let path_str = cx.ty_ctxt().def_path(def_id).to_string(cx.ty_ctxt());
+
+            fr.monos.iter().enumerate().map(|(mono_idx, mr)| {
+                let mut fl = fl.clone();
+
+                if mr.suffix.len() > 0 {
+                    fl.ident = mk().ident(format!("{}_{}", fl.ident.name, mr.suffix));
+                }
+
+                // Delete all but one of the `#[ownership_mono]` annotations.
+                let mut mono_attr_counter = 0;
+                fl.attrs = fl.attrs.into_iter().filter_map(|a| {
+                    if a.check_name("ownership_mono") {
+                        let keep = mono_attr_counter == mono_idx;
+                        mono_attr_counter += 1;
+                        if keep {
+                            Some(a)
+                        } else {
+                            None
+                        }
+                    } else if a.check_name("ownership_constraints") {
+                        if mono_idx == 0 {
+                            Some(a)
+                        } else {
+                            None
+                        }
+                    } else {
+                        Some(a)
+                    }
+                }).collect();
+
+                fl.attrs.push(build_variant_attr(&path_str));
+
+                fl
+            }).collect()
+        })
+    });
+}
+

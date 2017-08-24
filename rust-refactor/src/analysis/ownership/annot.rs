@@ -379,7 +379,7 @@ fn parse_mono_sig(meta: &ast::MetaItem)
 fn parse_static_assign(meta: &ast::MetaItem) -> Result<Vec<ConcretePerm>, &'static str> {
     let args = meta_item_list(meta)?;
 
-    let mut assign = Vec::with_capacity(args.len() - 1);
+    let mut assign = Vec::with_capacity(args.len());
 
     for arg in args {
         let arg = nested_meta_item(arg)?;

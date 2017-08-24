@@ -20,6 +20,7 @@ pub enum FnKind {
     Foreign,
 }
 
+#[derive(Clone, Debug)]
 pub struct FnLike {
     pub kind: FnKind,
     pub id: NodeId,
