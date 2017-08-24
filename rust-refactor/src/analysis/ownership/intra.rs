@@ -5,9 +5,41 @@ use rustc::mir::*;
 use rustc::ty::{Ty, TyCtxt, TypeVariants};
 use rustc_data_structures::indexed_vec::{IndexVec, Idx};
 
-use super::{Var, LTy, LFnSig, Instantiation};
+use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
+
+use super::{Var, LTy, LFnSig, FnSig, Instantiation};
 use super::constraint::{ConstraintSet, Perm};
 use super::context::Ctxt;
+
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Label<'tcx> {
+    /// Most `TypeVariants` get no constructor.
+    None,
+
+    /// Pointers and references get a permission annotation.
+    Ptr(Perm<'tcx>),
+
+    /// `TyFnDef` ought to be labeled with something like an extra set of `Substs`, but for
+    /// permissions instead of type/lifetimes.  However, every one of those `Substs` would simply
+    /// consist of a list of sequentially numbered `InstVar`s.  So instead we store an index into
+    /// the `insts` table, which can be used to reconstruct the permission arguments, and also
+    /// allows storing extra information about the origin when available.
+    FnDef(usize),
+}
+
+impl<'tcx> Label<'tcx> {
+    fn perm(&self) -> Perm<'tcx> {
+        match *self {
+            Label::Ptr(p) => p,
+            _ => panic!("expected Label::Ptr"),
+        }
+    }
+}
+
+/// Type aliases for `intra`-specific labeled types.
+type ITy<'tcx> = LabeledTy<'tcx, Label<'tcx>>;
+type IFnSig<'tcx> = FnSig<'tcx, Label<'tcx>>;
 
 
 /// Function-local analysis context.  We run one of these for each function to produce the initial
@@ -15,6 +47,7 @@ use super::context::Ctxt;
 pub struct IntraCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     cx: &'a mut Ctxt<'tcx>,
     tcx: TyCtxt<'a, 'gcx, 'tcx>,
+    ilcx: LabeledTyCtxt<'tcx, Label<'tcx>>,
 
     def_id: DefId,
     mir: &'a Mir<'tcx>,
@@ -22,9 +55,22 @@ pub struct IntraCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     stmt_idx: usize,
 
     cset: ConstraintSet<'tcx>,
-    local_tys: IndexVec<Local, LTy<'tcx>>,
+    local_tys: IndexVec<Local, ITy<'tcx>>,
     next_local_var: u32,
 
+    /// List of function instantiation sites.
+    ///
+    /// Conceptually, for each time a function is referenced, we must instantiate its polymorphic
+    /// signature by substituting in some (inferred) concrete permissions for the function's
+    /// `SigVar`s.  At this stage, since the only interprocedural information we have available is
+    /// the number of `SigVar`s for each function, we simply replace all the `SigVar`s with fresh
+    /// `InstVar`s and record info about the instantiation site for future reference.  The actual
+    /// inference happens later, in `inter`, by copying the target function's constraints into the
+    /// caller's constraint set and then simplifying.
+    ///
+    /// In reality, we also need to track anonymous instantiations.  When labeling a `TyFnSig`, we
+    /// need to generate some new `InstVar`s to serve as its permission substs (see the comment on
+    /// `Label::FnDef` above), and we do that by adding a new entry to `insts`.
     insts: Vec<Instantiation>,
     next_inst_var: u32,
 }
@@ -34,9 +80,11 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
                tcx: TyCtxt<'a, 'gcx, 'tcx>,
                def_id: DefId,
                mir: &'a Mir<'tcx>) -> IntraCtxt<'a, 'gcx, 'tcx> {
+        let ilcx = LabeledTyCtxt::new(cx.arena);
         IntraCtxt {
             cx: cx,
             tcx: tcx,
+            ilcx: ilcx,
 
             def_id: def_id,
             mir: mir,
@@ -65,6 +113,7 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
 
     pub fn init(&mut self) {
         let sig = self.cx.fn_sig(self.def_id, self.tcx);
+        let sig = self.relabel_sig(sig);
         for (l, decl) in self.mir.local_decls.iter_enumerated() {
             let lty =
                 if l.index() == 0 { sig.output }
@@ -74,30 +123,25 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
         }
     }
 
-    fn instantiate_fn(&mut self, did: DefId) -> LFnSig<'tcx> {
-        eprintln!("INSTANTIATE {:?}", did);
-        let var_base = self.next_inst_var;
-        let sig = {
-            let summ = self.cx.fn_summ(did, self.tcx);
-            // Don't import any constraints.  Only the signature is initialized at this point.
-            self.next_inst_var += summ.num_sig_vars;
-            summ.sig
-        };
+    fn relabel_ty(&mut self, lty: LTy<'tcx>) -> ITy<'tcx> {
+        self.ilcx.relabel(lty, &mut |&l| {
+            match l {
+                Some(x) => Label::Ptr(x),
+                None => Label::None,
+            }
+        })
+    }
 
-        self.insts.push(Instantiation {
-            callee: did,
-            first_inst_var: var_base,
-        });
-
-        let mut f = |p| {
-            match p {
-                Perm::SigVar(v) => Perm::InstVar(Var(var_base + v.0)),
-                p => p,
+    fn relabel_sig(&mut self, sig: LFnSig<'tcx>) -> IFnSig<'tcx> {
+        let mut f = |&l: &Option<_>| {
+            match l {
+                Some(x) => Label::Ptr(x),
+                None => Label::None,
             }
         };
-        LFnSig {
-            inputs: self.cx.lcx.relabel_slice(sig.inputs, &mut |opt_p| opt_p.map(|p| f(p))),
-            output: self.cx.lcx.relabel(sig.output, &mut |opt_p| opt_p.map(|p| f(p))),
+        FnSig {
+            inputs: self.ilcx.relabel_slice(sig.inputs, &mut f),
+            output: self.ilcx.relabel(sig.output, &mut f),
         }
     }
 
@@ -129,29 +173,60 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
         summ.insts = self.insts;
     }
 
-    fn local_ty(&mut self, ty: Ty<'tcx>) -> LTy<'tcx> {
-        self.cx.local_ty(self.def_id, &mut self.next_local_var, ty)
+    fn local_ty(&mut self, ty: Ty<'tcx>) -> ITy<'tcx> {
+        let Self { ref mut cx, tcx, ref mut ilcx,
+                ref mut next_local_var, ref mut next_inst_var, ref mut insts, .. } = *self;
+        ilcx.label(ty, &mut |ty| {
+            match ty.sty {
+                TypeVariants::TyRef(_, _) |
+                TypeVariants::TyRawPtr(_) => {
+                    let v = Var(*next_local_var);
+                    *next_local_var += 1;
+                    Label::Ptr(Perm::LocalVar(v))
+                },
+
+                TypeVariants::TyFnDef(def_id, _) => {
+                    let num_vars = cx.fn_summ(def_id, tcx).num_sig_vars;
+
+                    let inst_idx = insts.len();
+                    insts.push(Instantiation {
+                        callee: def_id,
+                        span: None,
+                        first_inst_var: *next_inst_var,
+                    });
+                    *next_inst_var += num_vars;
+
+                    Label::FnDef(inst_idx)
+                },
+
+                _ => Label::None,
+            }
+        })
     }
 
-    fn local_var_ty(&mut self, l: Local) -> LTy<'tcx> {
+    fn local_var_ty(&mut self, l: Local) -> ITy<'tcx> {
         self.local_tys[l]
+    }
+
+    fn static_ty(&mut self, def_id: DefId) -> ITy<'tcx> {
+        let lty = self.cx.static_ty(def_id, self.tcx);
+        self.relabel_ty(lty)
     }
 
 
     /// Compute the type of an `Lvalue` and the maximum permissions for accessing it.
-    fn lvalue_lty(&mut self, lv: &Lvalue<'tcx>) -> (LTy<'tcx>, Perm<'tcx>) {
+    fn lvalue_lty(&mut self, lv: &Lvalue<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
         let (ty, perm, variant) = self.lvalue_lty_downcast(lv);
         assert!(variant.is_none(), "expected non-Downcast result");
         (ty, perm)
     }
 
     fn lvalue_lty_downcast(&mut self,
-                           lv: &Lvalue<'tcx>) -> (LTy<'tcx>, Perm<'tcx>, Option<usize>) {
+                           lv: &Lvalue<'tcx>) -> (ITy<'tcx>, Perm<'tcx>, Option<usize>) {
         match *lv {
             Lvalue::Local(l) => (self.local_var_ty(l), Perm::move_(), None),
 
-            Lvalue::Static(ref s) =>
-                (self.cx.static_ty(s.def_id, self.tcx), Perm::move_(), None),
+            Lvalue::Static(ref s) => (self.static_ty(s.def_id), Perm::move_(), None),
 
             Lvalue::Projection(ref p) => {
                 let (base_ty, base_perm, base_variant) = self.lvalue_lty_downcast(&p.base);
@@ -167,7 +242,7 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
                     // path to the value.
                     ProjectionElem::Deref =>
                         (base_ty.args[0],
-                         self.cx.min_perm(base_perm, base_ty.label.unwrap()),
+                         self.cx.min_perm(base_perm, base_ty.label.perm()),
                          None),
                     ProjectionElem::Field(f, _) =>
                         (self.field_lty(base_ty, base_variant.unwrap_or(0), f), base_perm, None),
@@ -182,19 +257,19 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
         }
     }
 
-    fn field_lty(&mut self, base_ty: LTy<'tcx>, v: usize, f: Field) -> LTy<'tcx> {
+    fn field_lty(&mut self, base_ty: ITy<'tcx>, v: usize, f: Field) -> ITy<'tcx> {
         match base_ty.ty.sty {
             TypeVariants::TyAdt(adt, substs) => {
                 let field_def = &adt.variants[v].fields[f.index()];
-                let poly_ty = self.cx.static_ty(field_def.did, self.tcx);
-                self.cx.lcx.subst(poly_ty, &base_ty.args)
+                let poly_ty = self.static_ty(field_def.did);
+                self.ilcx.subst(poly_ty, &base_ty.args)
             },
             TypeVariants::TyTuple(tys, _) => base_ty.args[f.index()],
             _ => unimplemented!(),
         }
     }
 
-    fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> (LTy<'tcx>, Perm<'tcx>) {
+    fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
         let ty = rv.ty(self.mir, self.tcx);
 
         match *rv {
@@ -210,8 +285,8 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
             },
             Rvalue::Ref(_, _, ref lv) => {
                 let (ty, perm) = self.lvalue_lty(lv);
-                let args = self.cx.lcx.mk_slice(&[ty]);
-                let ref_ty = self.cx.lcx.mk(rv.ty(self.mir, self.tcx), args, Some(perm));
+                let args = self.ilcx.mk_slice(&[ty]);
+                let ref_ty = self.ilcx.mk(rv.ty(self.mir, self.tcx), args, Label::Ptr(perm));
                 (ref_ty, Perm::move_())
             },
             Rvalue::Len(_) => (self.local_ty(ty), Perm::move_()),
@@ -259,15 +334,15 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
                         if let Some(union_variant) = union_variant {
                             assert!(ops.len() == 1);
                             let field_def_id = adt.variants[0].fields[union_variant].did;
-                            let poly_field_ty = self.cx.static_ty(field_def_id, self.tcx);
-                            let field_ty = self.cx.lcx.subst(poly_field_ty, adt_ty.args);
+                            let poly_field_ty = self.static_ty(field_def_id);
+                            let field_ty = self.ilcx.subst(poly_field_ty, adt_ty.args);
                             let (op_ty, op_perm) = self.operand_lty(&ops[0]);
                             self.propagate(field_ty, op_ty, op_perm);
                         } else {
                             for (i, op) in ops.iter().enumerate() {
                                 let field_def_id = adt.variants[disr].fields[i].did;
-                                let poly_field_ty = self.cx.static_ty(field_def_id, self.tcx);
-                                let field_ty = self.cx.lcx.subst(poly_field_ty, adt_ty.args);
+                                let poly_field_ty = self.static_ty(field_def_id);
+                                let field_ty = self.ilcx.subst(poly_field_ty, adt_ty.args);
                                 let (op_ty, op_perm) = self.operand_lty(op);
                                 self.propagate(field_ty, op_ty, op_perm);
                             }
@@ -281,12 +356,16 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
         }
     }
 
-    fn operand_lty(&mut self, op: &Operand<'tcx>) -> (LTy<'tcx>, Perm<'tcx>) {
+    fn operand_lty(&mut self, op: &Operand<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
         match *op {
             Operand::Consume(ref lv) => self.lvalue_lty(lv),
             Operand::Constant(ref c) => {
                 eprintln!("CONSTANT {:?}: type = {:?}", c, c.ty);
-                (self.local_ty(c.ty), Perm::move_())
+                let lty = self.local_ty(c.ty);
+                if let Label::FnDef(inst_idx) = lty.label {
+                    self.insts[inst_idx].span = Some(c.span);
+                }
+                (lty, Perm::move_())
             },
         }
     }
@@ -297,8 +376,8 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
     /// topmost pointer type.  The resulting permission must be no higher than the permission of
     /// the RHS pointer, and also must be no higher than the permission of any pointer dereferenced
     /// on the path to the RHS.
-    fn propagate(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>, path_perm: Perm<'tcx>) {
-        if let (Some(l_perm), Some(r_perm)) = (lhs.label, rhs.label) {
+    fn propagate(&mut self, lhs: ITy<'tcx>, rhs: ITy<'tcx>, path_perm: Perm<'tcx>) {
+        if let (Label::Ptr(l_perm), Label::Ptr(r_perm)) = (lhs.label, rhs.label) {
             self.propagate_perm(l_perm, r_perm);
 
             // Cap the required `path_perm` at WRITE.  The logic here is that container methods for
@@ -306,6 +385,8 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
             // require MOVE.
             let l_perm_capped = self.cx.min_perm(l_perm, Perm::write());
             self.propagate_perm(l_perm_capped, path_perm);
+        } else if let (Label::FnDef(l_inst), Label::FnDef(r_inst)) = (lhs.label, rhs.label) {
+            self.unify_inst_vars(l_inst, r_inst);
         }
 
         if lhs.args.len() == rhs.args.len() {
@@ -315,10 +396,12 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
         }
     }
 
-    fn propagate_eq(&mut self, lhs: LTy<'tcx>, rhs: LTy<'tcx>) {
-        if let (Some(l_perm), Some(r_perm)) = (lhs.label, rhs.label) {
+    fn propagate_eq(&mut self, lhs: ITy<'tcx>, rhs: ITy<'tcx>) {
+        if let (Label::Ptr(l_perm), Label::Ptr(r_perm)) = (lhs.label, rhs.label) {
             self.propagate_perm(l_perm, r_perm);
             self.propagate_perm(r_perm, l_perm);
+        } else if let (Label::FnDef(l_inst), Label::FnDef(r_inst)) = (lhs.label, rhs.label) {
+            self.unify_inst_vars(l_inst, r_inst);
         }
 
         if lhs.args.len() == rhs.args.len() {
@@ -333,22 +416,69 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
         self.cset.add(p1, p2);
     }
 
+    fn unify_inst_vars(&mut self, idx1: usize, idx2: usize) {
+        let (callee, first1, first2) = {
+            let inst1 = &self.insts[idx1];
+            let inst2 = &self.insts[idx2];
+            assert!(inst1.callee == inst2.callee,
+                    "impossible - tried to unify unequal TyFnDefs ({:?} != {:?})",
+                    inst1.callee, inst2.callee);
 
-    fn ty_fn_sig(&mut self, ty: LTy<'tcx>) -> LFnSig<'tcx> {
+            if inst1.first_inst_var == inst2.first_inst_var {
+                // The vars are already the same - no work to do
+                return;
+            }
+
+            (inst1.callee, inst1.first_inst_var, inst2.first_inst_var)
+        };
+
+        let num_vars = self.cx.fn_summ(callee, self.tcx).num_sig_vars;
+        for offset in 0 .. num_vars {
+            let p1 = Perm::InstVar(Var(first1 + offset));
+            let p2 = Perm::InstVar(Var(first2 + offset));
+            self.propagate_perm(p1, p2);
+            self.propagate_perm(p2, p1);
+        }
+    }
+
+
+    fn ty_fn_sig(&mut self, ty: ITy<'tcx>) -> IFnSig<'tcx> {
         match ty.ty.sty {
             TypeVariants::TyFnDef(did, substs) => {
-                let poly_sig = self.instantiate_fn(did);
-                LFnSig {
-                    inputs: self.cx.lcx.subst_slice(poly_sig.inputs, ty.args),
-                    output: self.cx.lcx.subst(poly_sig.output, ty.args),
+                let idx = expect!([ty.label] Label::FnDef(idx) => idx);
+                let var_base = self.insts[idx].first_inst_var;
+
+                let summ = self.cx.fn_summ(did, self.tcx);
+
+                // First apply the permission substs.  Replace all `SigVar`s with `InstVar`s.
+                let mut f = |p: &Option<_>| {
+                    match *p {
+                        Some(Perm::SigVar(v)) => Label::Ptr(Perm::InstVar(Var(var_base + v.0))),
+                        Some(Perm::Min(_)) => panic!("unexpected `Min` in ty label"),
+                        Some(Perm::Concrete(_)) => panic!("unexpected `Concrete` in ty label"),
+                        Some(p) => Label::Ptr(p),
+                        None => Label::None,
+                        // There's no way to write a TyFnDef type in a function signature, so it's
+                        // reasonable to have no cases output `Label::FnDef`.
+                    }
+                };
+                let poly_inputs = self.ilcx.relabel_slice(summ.sig.inputs, &mut f);
+                let poly_output = self.ilcx.relabel(summ.sig.output, &mut f);
+
+                // Now apply the type substs.
+                FnSig {
+                    inputs: self.ilcx.subst_slice(poly_inputs, ty.args),
+                    output: self.ilcx.subst(poly_output, ty.args),
                 }
             },
+
             TypeVariants::TyFnPtr(_) => {
-                LFnSig {
+                FnSig {
                     inputs: &ty.args[.. ty.args.len() - 1],
                     output: ty.args[ty.args.len() - 1],
                 }
             },
+
             TypeVariants::TyClosure(_, _) => unimplemented!(),
 
             _ => panic!("expected FnDef, FnPtr, or Closure"),

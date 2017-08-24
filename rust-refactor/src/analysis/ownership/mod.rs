@@ -35,6 +35,7 @@ use rustc::ty::fold::{TypeVisitor, TypeFoldable};
 use rustc_data_structures::bitvec::BitVector;
 use rustc_data_structures::indexed_vec::{IndexVec, Idx};
 use syntax::ast;
+use syntax::codemap::Span;
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use command::CommandState;
@@ -77,6 +78,7 @@ impl Idx for Var {
     }
 }
 
+// TODO: ty labels should only ever include the `Perm::*Var` variants. make that a different type.
 pub type LTy<'tcx> = LabeledTy<'tcx, Option<Perm<'tcx>>>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -116,6 +118,7 @@ pub struct FnSummary<'tcx> {
 
 struct Instantiation {
     callee: DefId,
+    span: Option<Span>,
     first_inst_var: u32,
 }
 
@@ -211,9 +214,15 @@ pub struct FunctionResult<'tcx> {
     /// Monomorphizations
     pub monos: Vec<MonoResult>,
 
-    /// IDs of all referenced functions.  (This includes both callees and functions whose address
-    /// is taken within the current function.)
-    pub callee_ids: Vec<DefId>,
+    /// Info on each referenced function.
+    pub func_refs: Vec<FuncRef>,
+}
+
+pub struct FuncRef {
+    pub def_id: DefId,
+
+    /// The location of the reference to this function.
+    pub span: Option<Span>,
 }
 
 pub struct MonoResult {
@@ -224,8 +233,8 @@ pub struct MonoResult {
     /// monomorphizations use the same `sig`, but have different assignments to its `SigVar`s.
     pub assign: IndexVec<Var, ConcretePerm>,
 
-    /// Index of the chosen callee monomorphization for each call site.  These correspond to the
-    /// IDs in `callee_ids`.
+    /// Index of the chosen monomorphization for each function reference.  These correspond to the
+    /// `DefId`s in `func_refs`.
     pub callee_mono_idxs: Vec<usize>,
 }
 
@@ -356,14 +365,19 @@ pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
             });
         }
 
-        let callee_ids = summ.insts.iter().map(|inst| inst.callee).collect();
+        let func_refs = summ.insts.iter().map(|inst| {
+            FuncRef {
+                def_id: inst.callee,
+                span: inst.span,
+            }
+        }).collect();
 
         func_results.insert(def_id, FunctionResult {
             sig: sig,
             num_sig_vars: summ.num_sig_vars,
             cset: summ.cset.clone(),
             monos: mono_results,
-            callee_ids: callee_ids,
+            func_refs: func_refs,
         });
     }
 
@@ -404,12 +418,13 @@ pub fn dump_results(dcx: &driver::Ctxt,
         eprintln!("fn {}:", path_str(id));
         for (i, mr) in fr.monos.iter().enumerate() {
             eprintln!("  mono #{}: {}", i, format_sig(fr.sig, &mr.assign));
-            for (j, (&callee, &mono_idx)) in
-                    fr.callee_ids.iter().zip(mr.callee_mono_idxs.iter()).enumerate() {
-                let callee_fr = &results.fns[&callee];
+            for (j, (func_ref, &mono_idx)) in
+                    fr.func_refs.iter().zip(mr.callee_mono_idxs.iter()).enumerate() {
+                let callee_fr = &results.fns[&func_ref.def_id];
                 eprintln!("    call #{}: {:?} #{} :: {}",
-                          j, path_str(callee), mono_idx,
+                          j, path_str(func_ref.def_id), mono_idx,
                           format_sig(callee_fr.sig, &callee_fr.monos[mono_idx].assign));
+                eprintln!("      (at {:?})", func_ref.span);
             }
         }
     }
