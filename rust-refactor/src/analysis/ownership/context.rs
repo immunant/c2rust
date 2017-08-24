@@ -110,6 +110,7 @@ impl<'tcx> Ctxt<'tcx> {
                     inst_cset: ConstraintSet::new(),
                     insts: Vec::new(),
                     attr_cset: None,
+                    attr_monos: None,
                 })
             },
 

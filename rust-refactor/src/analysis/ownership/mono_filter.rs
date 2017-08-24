@@ -36,21 +36,25 @@ pub fn filter_suspicious_monos(
 
     for (&def_id, mono_sigs) in all_mono_sigs {
         let summ = cx.get_fn_summ_imm(def_id).unwrap();
-        let outputs = super::mono::infer_outputs(summ);
 
-        for (v, is_output) in outputs.iter_enumerated() {
-            if !is_output {
-                continue;
-            }
+        // Only look at inferred monos - ones provided by attributes are exempt.
+        if summ.attr_monos.is_none() {
+            let outputs = super::mono::infer_outputs(summ);
 
-            if !mono_sigs.iter().any(|assign| assign[v] == ConcretePerm::Read) {
-                continue;
-            }
+            for (v, is_output) in outputs.iter_enumerated() {
+                if !is_output {
+                    continue;
+                }
 
-            for (i, assign) in mono_sigs.iter().enumerate() {
-                if assign[v] == ConcretePerm::Move {
-                    suspicious.insert((def_id, i));
-                    eprintln!("found suspicious mono: {:?} #{}", def_id, i);
+                if !mono_sigs.iter().any(|assign| assign[v] == ConcretePerm::Read) {
+                    continue;
+                }
+
+                for (i, assign) in mono_sigs.iter().enumerate() {
+                    if assign[v] == ConcretePerm::Move {
+                        suspicious.insert((def_id, i));
+                        eprintln!("found suspicious mono: {:?} #{}", def_id, i);
+                    }
                 }
             }
         }

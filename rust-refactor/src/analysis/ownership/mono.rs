@@ -306,7 +306,11 @@ pub fn get_all_mono_sigs(cx: &Ctxt) -> HashMap<DefId, Vec<IndexVec<Var, Concrete
     let mut all_sigs = HashMap::new();
     for def_id in cx.fn_ids() {
         let summ = cx.get_fn_summ_imm(def_id).unwrap();
-        let fn_sigs = get_mono_sigs(summ, def_id);
+        let fn_sigs = if let Some(ref monos) = summ.attr_monos {
+            monos.iter().map(|m| m.assign.clone()).collect()
+        } else {
+            get_mono_sigs(summ, def_id)
+        };
         all_sigs.insert(def_id, fn_sigs);
     }
     all_sigs

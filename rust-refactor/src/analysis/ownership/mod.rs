@@ -93,6 +93,11 @@ pub enum ConcretePerm {
 }
 
 
+pub struct AttrMono {
+    suffix: String,
+    assign: IndexVec<Var, ConcretePerm>,
+}
+
 pub struct FnSummary<'tcx> {
     sig: LFnSig<'tcx>,
     num_sig_vars: u32,
@@ -103,6 +108,10 @@ pub struct FnSummary<'tcx> {
     /// Explicit constraint set provided by an attribute on the fn item.  This overrides the
     /// inferred `cset` during the interprocedural part of inference.
     attr_cset: Option<ConstraintSet<'tcx>>,
+
+    /// Explicit list of monomorphized signatures (with corresponding name suffixes) provided by
+    /// attributes.  This overrides the signatures computed by `get_all_mono_sigs`.
+    attr_monos: Option<Vec<AttrMono>>,
 }
 
 struct Instantiation {
@@ -232,6 +241,20 @@ pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
     analyze_intra(&mut cx, dcx.hir_map(), dcx.ty_ctxt());
     analyze_inter(&mut cx);
 
+
+    let path_str = |def_id| dcx.ty_ctxt().def_path(def_id).to_string(dcx.ty_ctxt());
+    let mut ids = cx.fn_ids().collect::<Vec<_>>();
+    ids.sort();
+    for def_id in ids {
+        let summ = cx.get_fn_summ_imm(def_id).unwrap();
+        eprintln!("{:?}:", path_str(def_id));
+        eprintln!("  sig = {:?}", summ.sig);
+        for &(a, b) in summ.cset.iter() {
+            eprintln!("  {:?} <= {:?}", a, b);
+        }
+    }
+
+
     // Monomorphize functions and call sites
     let mono_sigs = get_all_mono_sigs(&cx);
     let inst_sel = find_instantiations(&cx, &mono_sigs);
@@ -285,7 +308,12 @@ pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
             }
         };
 
+        let mut suffix_count = [0, 0, 0];
+        static SUFFIX_BASE: [&'static str; 3] = ["", "mut", "take"];
+
         let mut mono_results = Vec::new();
+        let is_output = mono::infer_outputs(summ);
+
         for (i, mono_sig) in mono_sigs.iter().enumerate() {
             if mono_filter.contains(&(def_id, i)) {
                 continue;
@@ -297,9 +325,32 @@ pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
                 inst_sel.push(filtered_mono_idx[&(inst.callee, mono_idx)]);
             }
 
+            // Come up with a name suffix for this variant.  
+            let suffix = if let Some(ref monos) = summ.attr_monos {
+                // A suffix was provided, so use that.
+                monos[i].suffix.clone()
+            } else if mono_sigs.len() == 1 {
+                // There's only one variant, so it doesn't need a distinguishing suffix.
+                String::new()
+            } else {
+                // Use names like "foo", "foo_mut", "foo_take" for variants with READ/WRITE/MOVE
+                // outputs.
+                let mut max_perm = is_output.iter_enumerated()
+                    .filter(|&(_, &out)| out)
+                    .map(|(v, _)| mono_sig[v])
+                    .max().unwrap_or(ConcretePerm::Read);
+
+                let idx = max_perm as usize;
+                suffix_count[idx] += 1;
+                if suffix_count[idx] == 1 {
+                    SUFFIX_BASE[idx].to_owned()
+                } else {
+                    format!("{}{}", SUFFIX_BASE[idx], suffix_count[idx])
+                }
+            };
+
             mono_results.push(MonoResult {
-                // TODO: be smarter about naming.  try "" / "mut" / "take" for R/W/M variants
-                suffix: if mono_sigs.len() > 0 { format!("{}", i) } else { format!("") },
+                suffix: suffix,
                 assign: mono_sig.clone(),
                 callee_mono_idxs: inst_sel,
             });
