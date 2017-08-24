@@ -8,7 +8,7 @@ fi
 # exit early if cmake in path is the one to be installed
 if type "cmake" > /dev/null 2>&1; then
   # CMAKE_VERSION=$(cmake --version)
-  cmake --version | grep -q "3.7.2" && { echo >&2 "Cmake requirements already met. Nothing to do."; exit 0; }
+  cmake --version | grep -q "3.7.2" && { echo "Cmake requirements already met. Nothing to do."; exit 0; }
 fi
 
 CMAKE_URL="https://cmake.org/files/v3.7/cmake-3.7.2-Linux-x86_64.sh"
