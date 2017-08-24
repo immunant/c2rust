@@ -28,6 +28,16 @@ pub fn register_commands(reg: &mut Registry) {
             do_annotate(st, cx, label);
         }))
     });
+
+    /*
+    reg.register("ownership_split_variants", |args| {
+        let label = args.get(0).map_or("target", |x| x).into_symbol();
+
+        Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
+            do_split_variants(st, cx, label);
+        }))
+    });
+    */
 }
 
 fn do_annotate(st: &CommandState,

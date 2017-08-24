@@ -2,6 +2,7 @@ use syntax::ast::*;
 use syntax::codemap::Span;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
+use syntax::util::move_map::MoveMap;
 use syntax::util::small_vector::SmallVector;
 use syntax::visit::{self, Visitor};
 
@@ -43,43 +44,79 @@ impl GetSpan for FnLike {
 
 
 struct FnFolder<F>
-        where F: FnMut(FnLike) -> FnLike {
+        where F: FnMut(FnLike) -> SmallVector<FnLike> {
     callback: F,
 }
 
+impl<F> FnFolder<F>
+        where F: FnMut(FnLike) -> SmallVector<FnLike> {
+    fn fold_foreign_item_multi(&mut self, i: ForeignItem) -> SmallVector<ForeignItem> {
+        match i.node {
+            ForeignItemKind::Fn(..) => {},
+            _ => return SmallVector::one(fold::noop_fold_foreign_item(i, self)),
+        }
+
+        unpack!([i.node] ForeignItemKind::Fn(decl, generics));
+        let vis = i.vis;
+
+        let fl = FnLike {
+            kind: FnKind::Foreign,
+            id: i.id,
+            ident: i.ident,
+            span: i.span,
+            decl: decl,
+            block: None,
+            attrs: i.attrs,
+        };
+        let fls = (self.callback)(fl);
+
+        fls.into_iter().map(|fl| {
+            ForeignItem {
+                id: fl.id,
+                ident: fl.ident,
+                span: fl.span,
+                node: ForeignItemKind::Fn(fl.decl, generics.clone()),
+                attrs: fl.attrs,
+                vis: vis.clone(),
+            }
+        }).map(|i| fold::noop_fold_foreign_item(i, self)).collect()
+    }
+}
+
 impl<F> Folder for FnFolder<F>
-        where F: FnMut(FnLike) -> FnLike {
+        where F: FnMut(FnLike) -> SmallVector<FnLike> {
     fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
         match i.node {
             ItemKind::Fn(..) => {},
             _ => return fold::noop_fold_item(i, self),
         }
 
-        let i = i.map(|i| {
-            unpack!([i.node] ItemKind::Fn(decl, unsafety, constness, abi, generics, block));
+        let i = i.unwrap();
+        unpack!([i.node] ItemKind::Fn(decl, unsafety, constness, abi, generics, block));
+        let vis = i.vis;
 
-            let fl = FnLike {
-                kind: FnKind::Normal,
-                id: i.id,
-                ident: i.ident,
-                span: i.span,
-                decl: decl,
-                block: Some(block),
-                attrs: i.attrs,
-            };
-            let fl = (self.callback)(fl);
+        let fl = FnLike {
+            kind: FnKind::Normal,
+            id: i.id,
+            ident: i.ident,
+            span: i.span,
+            decl: decl,
+            block: Some(block),
+            attrs: i.attrs,
+        };
+        let fls = (self.callback)(fl);
 
+        fls.into_iter().map(|fl| {
             let block = fl.block.expect("can't remove Block from ItemKind::Fn");
-            Item {
+            P(Item {
                 id: fl.id,
                 ident: fl.ident,
                 span: fl.span,
-                node: ItemKind::Fn(fl.decl, unsafety, constness, abi, generics, block),
+                node: ItemKind::Fn(fl.decl, unsafety, constness, abi, generics.clone(), block),
                 attrs: fl.attrs,
-                .. i
-            }
-        });
-        fold::noop_fold_item(i, self)
+                vis: vis.clone(),
+            })
+        }).flat_map(|i| fold::noop_fold_item(i, self)).collect()
     }
 
     fn fold_impl_item(&mut self, i: ImplItem) -> SmallVector<ImplItem> {
@@ -88,23 +125,29 @@ impl<F> Folder for FnFolder<F>
             _ => return fold::noop_fold_impl_item(i, self),
         }
 
-        let i = {
-            unpack!([i.node] ImplItemKind::Method(sig, block));
+        unpack!([i.node] ImplItemKind::Method(sig, block));
+        let vis = i.vis;
+        let defaultness = i.defaultness;
+        let MethodSig { unsafety, constness, abi, decl, generics } = sig;
 
-            let fl = FnLike {
-                kind: FnKind::ImplMethod,
-                id: i.id,
-                ident: i.ident,
-                span: i.span,
-                decl: sig.decl,
-                block: Some(block),
-                attrs: i.attrs,
-            };
-            let fl = (self.callback)(fl);
+        let fl = FnLike {
+            kind: FnKind::ImplMethod,
+            id: i.id,
+            ident: i.ident,
+            span: i.span,
+            decl: decl,
+            block: Some(block),
+            attrs: i.attrs,
+        };
+        let fls = (self.callback)(fl);
 
+        fls.into_iter().map(|fl| {
             let sig = MethodSig {
+                unsafety: unsafety,
+                constness: constness,
+                abi: abi,
                 decl: fl.decl,
-                .. sig
+                generics: generics.clone(),
             };
             let block = fl.block.expect("can't remove Block from ImplItemKind::Method");
             ImplItem {
@@ -113,10 +156,10 @@ impl<F> Folder for FnFolder<F>
                 span: fl.span,
                 node: ImplItemKind::Method(sig, block),
                 attrs: fl.attrs,
-                .. i
+                vis: vis.clone(),
+                defaultness: defaultness,
             }
-        };
-        fold::noop_fold_impl_item(i, self)
+        }).flat_map(|i| fold::noop_fold_impl_item(i, self)).collect()
     }
 
     fn fold_trait_item(&mut self, i: TraitItem) -> SmallVector<TraitItem> {
@@ -125,24 +168,27 @@ impl<F> Folder for FnFolder<F>
             _ => return fold::noop_fold_trait_item(i, self),
         }
 
-        let i = {
-            unpack!([i.node] TraitItemKind::Method(sig, block));
+        unpack!([i.node] TraitItemKind::Method(sig, block));
+        let MethodSig { unsafety, constness, abi, decl, generics } = sig;
 
-            let fl = FnLike {
-                kind: FnKind::TraitMethod,
-                id: i.id,
-                ident: i.ident,
-                span: i.span,
-                decl: sig.decl,
-                block: block,
-                attrs: i.attrs,
-            };
-            let fl = (self.callback)(fl);
+        let fl = FnLike {
+            kind: FnKind::TraitMethod,
+            id: i.id,
+            ident: i.ident,
+            span: i.span,
+            decl: decl,
+            block: block,
+            attrs: i.attrs,
+        };
+        let fls = (self.callback)(fl);
 
-
+        fls.into_iter().map(|fl| {
             let sig = MethodSig {
+                unsafety: unsafety,
+                constness: constness,
+                abi: abi,
                 decl: fl.decl,
-                .. sig
+                generics: generics.clone(),
             };
             TraitItem {
                 id: fl.id,
@@ -150,50 +196,27 @@ impl<F> Folder for FnFolder<F>
                 span: fl.span,
                 node: TraitItemKind::Method(sig, fl.block),
                 attrs: fl.attrs,
-                .. i
             }
-        };
-        fold::noop_fold_trait_item(i, self)
+        }).flat_map(|i| fold::noop_fold_trait_item(i, self)).collect()
     }
 
-    fn fold_foreign_item(&mut self, i: ForeignItem) -> ForeignItem {
-        match i.node {
-            ForeignItemKind::Fn(..) => {},
-            _ => return fold::noop_fold_foreign_item(i, self),
-        }
-
-        let i = {
-            unpack!([i.node] ForeignItemKind::Fn(decl, generics));
-
-            let fl = FnLike {
-                kind: FnKind::Foreign,
-                id: i.id,
-                ident: i.ident,
-                span: i.span,
-                decl: decl,
-                block: None,
-                attrs: i.attrs,
-            };
-            let fl = (self.callback)(fl);
-
-            ForeignItem {
-                id: fl.id,
-                ident: fl.ident,
-                span: fl.span,
-                node: ForeignItemKind::Fn(fl.decl, generics),
-                attrs: fl.attrs,
-                .. i
-            }
-        };
-        fold::noop_fold_foreign_item(i, self)
+    fn fold_foreign_mod(&mut self, mut nm: ForeignMod) -> ForeignMod {
+        nm.items = nm.items.move_flat_map(|i| self.fold_foreign_item_multi(i));
+        fold::noop_fold_foreign_mod(nm, self)
     }
 }
 
 /// Fold over all item-like function definitions, including `ItemKind::Fn`, `ImplItemKind::Method`,
 /// `TraitItemKind::Method`, and `ForeignItemKind::Fn`.
-pub fn fold_fns<T, F>(target: T, callback: F) -> <T as Fold>::Result
+pub fn fold_fns<T, F>(target: T, mut callback: F) -> <T as Fold>::Result
         where T: Fold,
               F: FnMut(FnLike) -> FnLike {
+    fold_fns_multi(target, |fl| SmallVector::one(callback(fl)))
+}
+
+pub fn fold_fns_multi<T, F>(target: T, callback: F) -> <T as Fold>::Result
+        where T: Fold,
+              F: FnMut(FnLike) -> SmallVector<FnLike> {
     let mut f = FnFolder {
         callback: callback,
     };
