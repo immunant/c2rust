@@ -31,7 +31,7 @@ CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
 CBOR_SRC = os.path.join(DEPS_DIR, CBOR_SRC)
 CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor")
 
-BEAR_URL = "https://codeload.github.com/rizsotto/Bear/archive/2.3.6.tar.gz"
+BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.6"
 BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.6.tar.gz")
 BEAR_SRC = os.path.basename(BEAR_ARCHIVE).replace(".tar.gz", "")
 BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
@@ -225,6 +225,8 @@ def configure_and_build_llvm(args):
             cmake = get_cmd_or_die("cmake")
             invoke(cmake["-G", "Ninja", LLVM_SRC,
                          "-Wno-dev",
+                         "-DCMAKE_C_COMPILER=clang",
+                         "-DCMAKE_CXX_COMPILER=clang++",
                          "-DLLVM_BUILD_TESTS=ON",
                          "-DCMAKE_BUILD_TYPE=" + build_type,
                          "-DLLVM_ENABLE_ASSERTIONS=1",
@@ -321,10 +323,10 @@ def build_a_bear():
     bear_build_dir = os.path.join(BEAR_SRC, "build")
     bear_install_prefix = "-DCMAKE_INSTALL_PREFIX=" + BEAR_PREFIX
     ensure_dir(bear_build_dir)
-    with local.cwd(bear_build_dir):
+    with pb.local.cwd(bear_build_dir):
         cmake = get_cmd_or_die("cmake")
         cmake["..", bear_install_prefix] & pb.TEE
-        cmake = get_cmd_or_die("make")
+        make = get_cmd_or_die("make")
         make["install"] & pb.TEE
 
 
@@ -365,7 +367,7 @@ def install_tinycbor() -> Union[str, None]:
     with pb.local.cwd(CBOR_SRC):
         make = get_cmd_or_die("make")
         if not on_mac():
-            bear = get_cmd_or_die("bear")
+            bear = get_cmd_or_die(BEAR_BIN)
             make = bear[make]
         make & pb.TEE  # nopep8
         make('install')  # & pb.TEE
@@ -508,6 +510,13 @@ def _main():
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
+    # FIXME: allow env/cli override of LLVM_SRC, LLVM_VER, and LLVM_BLD
+    # FIXME: check that cmake and ninja are installed
+    # FIXME: option to build LLVM/Clang from master?
+
+    ensure_dir(LLVM_BLD)
+    ensure_dir(DEPS_DIR)
+
     # earlier plumbum versions are missing features such as TEE
     if pb.__version__ < MIN_PLUMBUM_VERSION:
         err = "locally installed version {} of plumbum is too old.\n" \
@@ -527,13 +536,6 @@ def _main():
         shutil.rmtree(LLVM_SRC, ignore_errors=True)
         shutil.rmtree(LLVM_BLD, ignore_errors=True)
         shutil.rmtree(DEPS_DIR, ignore_errors=True)
-
-    # FIXME: allow env/cli override of LLVM_SRC, LLVM_VER, and LLVM_BLD
-    # FIXME: check that cmake and ninja are installed
-    # FIXME: option to build LLVM/Clang from master?
-
-    ensure_dir(LLVM_BLD)
-    ensure_dir(DEPS_DIR)
 
     download_llvm_sources()
 
