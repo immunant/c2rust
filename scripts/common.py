@@ -217,7 +217,7 @@ def extract_ast_from(ast_extr: pb.commands.BaseCommand,
 
         logging.fatal("command failed: %s", 
                       ast_extr["-p", cc_db_dir, filename])
-        die(u"sanity testing failed 🔥 : " + mesg, pee.retcode)
+        die("FAIL sanity testing: " + mesg, pee.retcode)
 
 
 def check_sig(afile: str, asigfile: str) -> None:

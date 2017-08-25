@@ -80,7 +80,7 @@ def main() -> None:
     test_lua(args)
     # FIXME: test lighttpd, varnish, ruby, Python, etc.
 
-    logging.info(u"success 👍")
+    logging.info("PASS")
 
 if __name__ == "__main__":
     main()

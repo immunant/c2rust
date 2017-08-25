@@ -281,7 +281,7 @@ def test_ast_extractor(cc_db_path: str):
     cbor_files = [extract_ast_from(ast_extr, cc_db_path, include_dirs, **cmd)
                   for cmd in cc_db]
 
-    logging.info(u"sanity test passed 👍")
+    logging.info("PASS sanity testing")
 
 
 def binary_in_path(binary_name) -> bool:
