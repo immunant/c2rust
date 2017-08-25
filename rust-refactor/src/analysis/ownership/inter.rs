@@ -41,8 +41,10 @@ impl WorkList {
     }
 }
 
-pub struct InterCtxt<'a, 'tcx: 'a> {
-    cx: &'a mut Ctxt<'tcx>,
+pub struct InterCtxt<'c, 'a: 'c, 'gcx: 'tcx, 'tcx: 'a> {
+    cx: &'c mut Ctxt<'a, 'gcx, 'tcx>,
+
+    // Note: all IDs here are function IDs.  Variants are ignored.
 
     complete_cset: HashMap<DefId, ConstraintSet<'tcx>>,
 
@@ -52,8 +54,8 @@ pub struct InterCtxt<'a, 'tcx: 'a> {
     static_rev_deps: HashMap<Var, HashSet<DefId>>,
 }
 
-impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
-    pub fn new(cx: &'a mut Ctxt<'tcx>) -> InterCtxt<'a, 'tcx> {
+impl<'c, 'a, 'gcx, 'tcx> InterCtxt<'c, 'a, 'gcx, 'tcx> {
+    pub fn new(cx: &'c mut Ctxt<'a, 'gcx, 'tcx>) -> InterCtxt<'c, 'a, 'gcx, 'tcx> {
         InterCtxt {
             cx: cx,
             complete_cset: HashMap::new(),
@@ -66,14 +68,15 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
     /// Recompute the `complete_cset` of one function.  Returns the new cset.
     fn compute_one_cset(&mut self, def_id: DefId) -> ConstraintSet<'tcx> {
         let dummy_cset = ConstraintSet::new();
+        let arena = self.cx.arena;
 
-        if let Some(attr_cset) = self.cx.get_fn_summ(def_id).unwrap().attr_cset.as_ref() {
-            // The user provided the exact constraints using an attr.  Return them unchanged.
-            eprintln!("constraints overridden!  (for {:?})", def_id);
-            return attr_cset.clone();
-        }
-
-        let mut cset = self.cx.get_fn_summ(def_id).unwrap().cset.clone();
+        let mut cset = {
+            let (func, var) = self.cx.first_variant_summ(def_id);
+            if func.cset_provided {
+                return func.sig_cset.clone();
+            }
+            var.inst_cset.clone()
+        };
 
         // Add constraints for all used static vars.
         let mut used_statics = HashSet::new();
@@ -92,10 +95,10 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
         }
 
         // Copy in complete csets for all instantiations.
-        for inst in &self.cx.get_fn_summ(def_id).unwrap().insts {
+        for inst in &self.cx.first_variant_summ(def_id).1.insts {
             let complete = self.complete_cset.get(&inst.callee).unwrap_or(&dummy_cset);
             eprintln!("  instantiate {:?} for vars {}..", inst.callee, inst.first_inst_var);
-            cset.import_substituted(complete, self.cx.arena, |p| {
+            cset.import_substituted(complete, arena, |p| {
                 match p {
                     Perm::SigVar(v) => Perm::InstVar(Var(v.0 + inst.first_inst_var)),
                     p => p,
@@ -112,9 +115,9 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
         }
 
         cset.remove_useless();
-        cset.simplify_min_lhs(self.cx.arena);
+        cset.simplify_min_lhs(arena);
 
-        cset.retain_perms(self.cx.arena, |p| {
+        cset.retain_perms(arena, |p| {
             match p {
                 Perm::LocalVar(_) | Perm::InstVar(_) => false,
                 _ => true,
@@ -142,14 +145,14 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
         }
 
         // Simplify away static vars too.
-        cset.retain_perms(self.cx.arena, |p| {
+        cset.retain_perms(arena, |p| {
             match p {
                 Perm::LocalVar(_) | Perm::InstVar(_) | Perm::StaticVar(_) => false,
                 _ => true,
             }
         });
 
-        cset.simplify(self.cx.arena);
+        cset.simplify(arena);
 
         cset
     }
@@ -190,7 +193,7 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
     pub fn process(&mut self) {
         let mut idx = 0;
 
-        let ids = self.cx.fn_ids().collect::<Vec<_>>();
+        let ids = self.cx.func_ids().collect::<Vec<_>>();
         eprintln!("\ninterprocedural analysis: process {} fns", ids.len());
         for id in ids {
             eprintln!("process {} (init): {:?}", idx, id);
@@ -209,9 +212,8 @@ impl<'a, 'tcx> InterCtxt<'a, 'tcx> {
 
     pub fn finish(mut self) {
         for (id, cset) in self.complete_cset {
-            let summ = self.cx.get_fn_summ(id).unwrap();
-            let inst_cset = mem::replace(&mut summ.cset, cset);
-            summ.inst_cset = inst_cset;
+            let func = self.cx.func_summ(id);
+            func.sig_cset = cset;
         }
     }
 }

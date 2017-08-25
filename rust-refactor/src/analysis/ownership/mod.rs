@@ -45,12 +45,14 @@ use type_map::{self, TypeSource};
 
 pub mod constraint;
 mod context;
+mod annot;
 mod intra;
 mod inter;
-mod annot;
 mod mono;
 mod inst;
+/*
 mod mono_filter;
+*/
 mod debug;
 
 use self::constraint::*;
@@ -58,9 +60,11 @@ use self::context::Ctxt;
 use self::annot::{handle_marks, handle_attrs};
 use self::intra::IntraCtxt;
 use self::inter::InterCtxt;
-use self::mono::{mono_test, get_all_mono_sigs};
+use self::mono::compute_all_mono_sigs;
 use self::inst::find_instantiations;
+/*
 use self::mono_filter::filter_suspicious_monos;
+*/
 use self::debug::*;
 
 
@@ -82,6 +86,13 @@ impl Idx for Var {
 pub type LTy<'tcx> = LabeledTy<'tcx, Option<Perm<'tcx>>>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FnSig<'tcx, L: 'tcx> {
+    pub inputs: &'tcx [LabeledTy<'tcx, L>],
+    pub output: LabeledTy<'tcx, L>,
+}
+
+// TODO: replace with an alias for FnSig
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct LFnSig<'tcx> {
     pub inputs: &'tcx [LTy<'tcx>],
     pub output: LTy<'tcx>,
@@ -95,6 +106,7 @@ pub enum ConcretePerm {
 }
 
 
+/*
 pub struct AttrMono {
     suffix: String,
     assign: IndexVec<Var, ConcretePerm>,
@@ -126,6 +138,7 @@ struct Instantiation {
 
 
 
+*/
 
 fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
     use rustc::hir::map::Node::*;
@@ -156,7 +169,7 @@ fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
     }
 }
 
-fn analyze_intra<'a, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
+fn analyze_intra<'a, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
                                  hir_map: &hir::map::Map,
                                  tcx: TyCtxt<'a, 'gcx, 'tcx>) {
     for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
@@ -167,7 +180,7 @@ fn analyze_intra<'a, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
 
         let mir = tcx.optimized_mir(def_id);
 
-        let mut local_cx = IntraCtxt::new(cx, tcx, def_id, mir);
+        let mut local_cx = IntraCtxt::new(cx, def_id, mir);
         local_cx.init();
 
         for (bbid, bb) in mir.basic_blocks().iter_enumerated() {
@@ -184,13 +197,24 @@ fn analyze_inter(cx: &mut Ctxt) {
     inter_cx.finish();
 }
 
+pub fn test_analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
+                                          dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) {
+    let mut cx = Ctxt::new(dcx.ty_ctxt(), dcx.ty_arena());
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct FnSig<'tcx, L: 'tcx> {
-    pub inputs: &'tcx [LabeledTy<'tcx, L>],
-    pub output: LabeledTy<'tcx, L>,
+    handle_marks(&mut cx, st, dcx);
+    handle_attrs(&mut cx, st, dcx);
+
+    // Compute constraints for each function
+    analyze_intra(&mut cx, dcx.hir_map(), dcx.ty_ctxt());
+    analyze_inter(&mut cx);
+
+    compute_all_mono_sigs(&mut cx);
+    find_instantiations(&mut cx);
 }
 
+
+
+/*
 pub type VTy<'tcx> = LabeledTy<'tcx, Option<Var>>;
 pub type VFnSig<'tcx> = FnSig<'tcx, Option<Var>>;
 
@@ -431,3 +455,4 @@ pub fn dump_results(dcx: &driver::Ctxt,
         }
     }
 }
+*/

@@ -7,9 +7,9 @@ use rustc_data_structures::indexed_vec::{IndexVec, Idx};
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
-use super::{Var, LTy, LFnSig, FnSig, Instantiation};
+use super::{Var, LTy, LFnSig, FnSig};
 use super::constraint::{ConstraintSet, Perm};
-use super::context::Ctxt;
+use super::context::{Ctxt, Instantiation};
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -44,11 +44,11 @@ type IFnSig<'tcx> = FnSig<'tcx, Label<'tcx>>;
 
 /// Function-local analysis context.  We run one of these for each function to produce the initial
 /// (incomplete) summary.
-pub struct IntraCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
-    cx: &'a mut Ctxt<'tcx>,
-    tcx: TyCtxt<'a, 'gcx, 'tcx>,
+pub struct IntraCtxt<'c, 'a: 'c, 'gcx: 'tcx, 'tcx: 'a> {
+    cx: &'c mut Ctxt<'a, 'gcx, 'tcx>,
     ilcx: LabeledTyCtxt<'tcx, Label<'tcx>>,
 
+    /// ID of the variant being processed.
     def_id: DefId,
     mir: &'a Mir<'tcx>,
     bbid: BasicBlock,
@@ -75,15 +75,13 @@ pub struct IntraCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     next_inst_var: u32,
 }
 
-impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
-    pub fn new(cx: &'a mut Ctxt<'tcx>,
-               tcx: TyCtxt<'a, 'gcx, 'tcx>,
+impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
+    pub fn new(cx: &'c mut Ctxt<'a, 'gcx, 'tcx>,
                def_id: DefId,
-               mir: &'a Mir<'tcx>) -> IntraCtxt<'a, 'gcx, 'tcx> {
+               mir: &'a Mir<'tcx>) -> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
         let ilcx = LabeledTyCtxt::new(cx.arena);
         IntraCtxt {
             cx: cx,
-            tcx: tcx,
             ilcx: ilcx,
 
             def_id: def_id,
@@ -112,7 +110,7 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
 
 
     pub fn init(&mut self) {
-        let sig = self.cx.fn_sig(self.def_id, self.tcx);
+        let sig = self.cx.variant_func_sig(self.def_id);
         let sig = self.relabel_sig(sig);
         for (l, decl) in self.mir.local_decls.iter_enumerated() {
             let lty =
@@ -168,14 +166,14 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
             eprintln!("    {:?} <= {:?}", a, b);
         }
 
-        let summ = self.cx.fn_summ(self.def_id, self.tcx);
-        summ.cset = self.cset;
-        summ.insts = self.insts;
+        let (func, var) = self.cx.variant_summ(self.def_id);
+        var.inst_cset = self.cset;
+        var.insts = self.insts;
     }
 
     fn local_ty(&mut self, ty: Ty<'tcx>) -> ITy<'tcx> {
-        let Self { ref mut cx, tcx, ref mut ilcx,
-                ref mut next_local_var, ref mut next_inst_var, ref mut insts, .. } = *self;
+        let Self { ref mut cx, ref mut ilcx, ref mut next_local_var,
+                ref mut next_inst_var, ref mut insts, .. } = *self;
         ilcx.label(ty, &mut |ty| {
             match ty.sty {
                 TypeVariants::TyRef(_, _) |
@@ -186,11 +184,12 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
                 },
 
                 TypeVariants::TyFnDef(def_id, _) => {
-                    let num_vars = cx.fn_summ(def_id, tcx).num_sig_vars;
+                    let (func, var) = cx.variant_summ(def_id);
+                    let num_vars = func.num_sig_vars;
 
                     let inst_idx = insts.len();
                     insts.push(Instantiation {
-                        callee: def_id,
+                        callee: var.func_id,
                         span: None,
                         first_inst_var: *next_inst_var,
                     });
@@ -209,7 +208,7 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
     }
 
     fn static_ty(&mut self, def_id: DefId) -> ITy<'tcx> {
-        let lty = self.cx.static_ty(def_id, self.tcx);
+        let lty = self.cx.static_ty(def_id);
         self.relabel_ty(lty)
     }
 
@@ -270,7 +269,7 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
     }
 
     fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
-        let ty = rv.ty(self.mir, self.tcx);
+        let ty = rv.ty(self.mir, self.cx.tcx);
 
         match *rv {
             Rvalue::Use(ref op) => self.operand_lty(op),
@@ -286,7 +285,7 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
             Rvalue::Ref(_, _, ref lv) => {
                 let (ty, perm) = self.lvalue_lty(lv);
                 let args = self.ilcx.mk_slice(&[ty]);
-                let ref_ty = self.ilcx.mk(rv.ty(self.mir, self.tcx), args, Label::Ptr(perm));
+                let ref_ty = self.ilcx.mk(rv.ty(self.mir, self.cx.tcx), args, Label::Ptr(perm));
                 (ref_ty, Perm::move_())
             },
             Rvalue::Len(_) => (self.local_ty(ty), Perm::move_()),
@@ -432,7 +431,7 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
             (inst1.callee, inst1.first_inst_var, inst2.first_inst_var)
         };
 
-        let num_vars = self.cx.fn_summ(callee, self.tcx).num_sig_vars;
+        let num_vars = self.cx.variant_summ(callee).0.num_sig_vars;
         for offset in 0 .. num_vars {
             let p1 = Perm::InstVar(Var(first1 + offset));
             let p2 = Perm::InstVar(Var(first2 + offset));
@@ -448,7 +447,7 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
                 let idx = expect!([ty.label] Label::FnDef(idx) => idx);
                 let var_base = self.insts[idx].first_inst_var;
 
-                let summ = self.cx.fn_summ(did, self.tcx);
+                let sig = self.cx.variant_func_sig(did);
 
                 // First apply the permission substs.  Replace all `SigVar`s with `InstVar`s.
                 let mut f = |p: &Option<_>| {
@@ -462,8 +461,8 @@ impl<'a, 'gcx, 'tcx> IntraCtxt<'a, 'gcx, 'tcx> {
                         // reasonable to have no cases output `Label::FnDef`.
                     }
                 };
-                let poly_inputs = self.ilcx.relabel_slice(summ.sig.inputs, &mut f);
-                let poly_output = self.ilcx.relabel(summ.sig.output, &mut f);
+                let poly_inputs = self.ilcx.relabel_slice(sig.inputs, &mut f);
+                let poly_output = self.ilcx.relabel(sig.output, &mut f);
 
                 // Now apply the type substs.
                 FnSig {

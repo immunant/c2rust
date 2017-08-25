@@ -1,20 +1,105 @@
 //! The global analysis context.
+//!
+//!
+//! # Functions, variants, and monomorphizations
+//!
+//! A function can have one or more variants.  If it has one variant, it may have multiple
+//! monomorphizations, and each monomorphization belongs to the sole variant.  If it has multiple
+//! variants, then it has exactly as many monos as it has variants, and the n'th mono belongs to
+//! the n'th variant.
+//!
+//!
+//! # Summary initialization
+//!
+//! Summaries for functions and variants in the current crate are created by `annot`, which is
+//! aware of `#[ownership_variant_of]` annotations and sets up summaries accordingly.  Other
+//! summaries are created on-demand by the `func_summ` and `variant_summ` methods.
+//!
+//! Summaries for monomorphizations are created either by `annot` (upon encountering an
+//! `#[ownership_mono]` attr) or by `mono`, which creates mono summaries for all variants that
+//! don't currently have them.  Mono summaries aren't created on-demand because we never query a
+//! mono that might not exist.
+
 use std::collections::hash_map::{self, HashMap, Entry};
 
 use arena::DroplessArena;
 use rustc::hir::def_id::DefId;
 use rustc::ty::{Ty, TyCtxt, TypeVariants};
 use rustc_data_structures::indexed_vec::IndexVec;
+use syntax::codemap::Span;
 
 use analysis::labeled_ty::LabeledTyCtxt;
 
 use super::{Var, LTy, LFnSig, ConcretePerm};
-use super::{FnSummary, Instantiation};
 use super::constraint::ConstraintSet;
 use super::constraint::Perm;
 
 
-pub struct Ctxt<'tcx> {
+// The following structures describe the functions, variants, and monomorphizations relevant to the
+// analysis.  These structures generally start out minimally initialized, and are populated as
+// parts of the analysis runs.
+
+pub struct FuncSumm<'tcx> {
+    pub sig: LFnSig<'tcx>,
+    pub num_sig_vars: u32,
+
+    /// Constraints over signature variables only.
+    ///
+    /// Populated by `inter`.  May be initialized early by `annot` if an `#[ownership_constraints]`
+    /// attr is present on one of the variants - in this case, `cset_provided` will be set.
+    pub sig_cset: ConstraintSet<'tcx>,
+
+    /// Was the constraint set provided externally?  (If so, we don't process this function during
+    /// `inter`.)
+    pub cset_provided: bool,
+
+    pub monos_provided: bool,
+
+    pub variant_ids: Vec<DefId>,
+    pub num_monos: usize,
+}
+
+pub struct VariantSumm<'tcx> {
+    pub func_id: DefId,
+    pub variant_idx: usize,
+
+    /// Constraints over static, instantiation (callee), and signature variables.
+    ///
+    /// Populated by `intra`.
+    pub inst_cset: ConstraintSet<'tcx>,
+
+    /// List of instantiations, or references to functions.
+    ///
+    /// Populated by `intra`.
+    pub insts: Vec<Instantiation>,
+}
+
+pub struct MonoSumm {
+    /// Assignment of concrete permissions to sig vars that produces this monomorphization.
+    ///
+    /// Populated by `mono` when the `MonoSumm` is created.  If `#[ownership_mono]` attrs are
+    /// present on the variant, then the `MonoSumm` may be created (and this field populated)
+    /// during `annot`.
+    pub assign: IndexVec<Var, ConcretePerm>,
+
+    /// The index of the chosen (callee) monomorphization for each callee in `insts`.
+    ///
+    /// Populated by `inst`.
+    pub callee_mono_idxs: Vec<usize>,
+
+    pub suffix: String,
+    pub name: String,
+}
+
+pub struct Instantiation {
+    pub callee: DefId,
+    pub span: Option<Span>,
+    pub first_inst_var: u32,
+}
+
+
+pub struct Ctxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
+    pub tcx: TyCtxt<'a, 'gcx, 'tcx>,
     pub lcx: LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
     pub arena: &'tcx DroplessArena,
 
@@ -25,27 +110,33 @@ pub struct Ctxt<'tcx> {
     /// convenient way to communicate it from `annot` to `inter`.
     pub static_assign: IndexVec<Var, ConcretePerm>,
 
-    fn_summ: HashMap<DefId, FnSummary<'tcx>>,
+    funcs: HashMap<DefId, FuncSumm<'tcx>>,
+    variants: HashMap<DefId, VariantSumm<'tcx>>,
+    monos: HashMap<(DefId, usize), MonoSumm>,
 }
 
-impl<'tcx> Ctxt<'tcx> {
-    pub fn new(arena: &'tcx DroplessArena) -> Ctxt<'tcx> {
+impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
+    pub fn new(tcx: TyCtxt<'a, 'gcx, 'tcx>,
+               arena: &'tcx DroplessArena) -> Ctxt<'a, 'gcx, 'tcx> {
         Ctxt {
+            tcx: tcx,
             lcx: LabeledTyCtxt::new(arena),
             arena: arena,
 
             static_summ: HashMap::new(),
             static_assign: IndexVec::new(),
 
-            fn_summ: HashMap::new(),
+            funcs: HashMap::new(),
+            variants: HashMap::new(),
+            monos: HashMap::new(),
         }
     }
 
-    pub fn static_ty<'a, 'gcx>(&mut self, did: DefId, tcx: TyCtxt<'a, 'gcx, 'tcx>) -> LTy<'tcx> {
+    pub fn static_ty(&mut self, did: DefId) -> LTy<'tcx> {
         let assign = &mut self.static_assign;
         match self.static_summ.entry(did) {
             Entry::Vacant(e) => {
-                *e.insert(self.lcx.label(tcx.type_of(did), &mut |ty| {
+                *e.insert(self.lcx.label(self.tcx.type_of(did), &mut |ty| {
                     match ty.sty {
                         TypeVariants::TyRef(_, _) |
                         TypeVariants::TyRawPtr(_) => {
@@ -61,10 +152,12 @@ impl<'tcx> Ctxt<'tcx> {
         }
     }
 
-    pub fn fn_summ<'a, 'gcx>(&mut self,
-                             did: DefId,
-                             tcx: TyCtxt<'a, 'gcx, 'tcx>) -> &mut FnSummary<'tcx> {
-        match self.fn_summ.entry(did) {
+    fn func_summ_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
+                          variants: &mut HashMap<DefId, VariantSumm<'tcx>>,
+                          tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                          lcx: &mut LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
+                          did: DefId) -> &'b mut FuncSumm<'tcx> {
+        match funcs.entry(did) {
             Entry::Vacant(e) => {
                 let sig = tcx.fn_sig(did);
                 let mut counter = 0;
@@ -83,22 +176,34 @@ impl<'tcx> Ctxt<'tcx> {
                     };
 
                     LFnSig {
-                        inputs: self.lcx.label_slice(sig.0.inputs(), &mut f),
-                        output: self.lcx.label(sig.0.output(), &mut f),
+                        inputs: lcx.label_slice(sig.0.inputs(), &mut f),
+                        output: lcx.label(sig.0.output(), &mut f),
                     }
                 };
 
-                let cset = preload_constraints(tcx, did, l_sig)
-                    .unwrap_or_else(ConstraintSet::new);
+                let (cset, provided) =
+                    if let Some(cset) = preload_constraints(tcx, did, l_sig) {
+                        (cset, true)
+                    } else {
+                        (ConstraintSet::new(), false)
+                    };
 
-                e.insert(FnSummary {
-                    sig: l_sig,
-                    num_sig_vars: counter,
-                    cset: cset,
+                variants.insert(did, VariantSumm {
+                    func_id: did,
+                    variant_idx: 0,
                     inst_cset: ConstraintSet::new(),
                     insts: Vec::new(),
-                    attr_cset: None,
-                    attr_monos: None,
+                });
+
+                e.insert(FuncSumm {
+                    sig: l_sig,
+                    num_sig_vars: counter,
+                    sig_cset: cset,
+                    cset_provided: provided,
+                    monos_provided: false,
+
+                    variant_ids: vec![did],
+                    num_monos: 0,
                 })
             },
 
@@ -106,23 +211,168 @@ impl<'tcx> Ctxt<'tcx> {
         }
     }
 
-    pub fn get_fn_summ_imm(&self, did: DefId) -> Option<&FnSummary<'tcx>> {
-        self.fn_summ.get(&did)
+    pub fn func_summ(&mut self, did: DefId) -> &mut FuncSumm<'tcx> {
+        Self::func_summ_impl(&mut self.funcs,
+                             &mut self.variants,
+                             self.tcx,
+                             &mut self.lcx,
+                             did)
     }
 
-    pub fn get_fn_summ(&mut self, did: DefId) -> Option<&mut FnSummary<'tcx>> {
-        self.fn_summ.get_mut(&did)
+    pub fn get_func_summ(&self, did: DefId) -> &FuncSumm<'tcx> {
+        self.funcs.get(&did).unwrap()
     }
 
-    pub fn fn_ids<'a>(&'a self) -> FnIds<'a, 'tcx> {
-        FnIds {
-            inner: self.fn_summ.keys(),
+    pub fn func_ids<'b>(&'b self) -> FuncIds<'b, 'tcx> {
+        FuncIds {
+            inner: self.funcs.keys(),
         }
     }
 
-    pub fn fn_sig<'a, 'gcx>(&mut self, did: DefId, tcx: TyCtxt<'a, 'gcx, 'tcx>) -> LFnSig<'tcx> {
-        self.fn_summ(did, tcx).sig
+    pub fn variant_ids<'b>(&'b self) -> VariantIds<'b, 'tcx> {
+        VariantIds {
+            inner: self.variants.keys(),
+        }
     }
+
+    pub fn mono_ids<'b>(&'b self) -> MonoIds<'b> {
+        MonoIds {
+            inner: self.monos.keys(),
+        }
+    }
+
+    pub fn func_sig(&mut self, did: DefId) -> LFnSig<'tcx> {
+        self.func_summ(did).sig
+    }
+
+    pub fn add_variant(&mut self, func_did: DefId, variant_id: DefId)
+                       -> (&mut FuncSumm<'tcx>,
+                           &mut VariantSumm<'tcx>) {
+        let func = Self::func_summ_impl(&mut self.funcs,
+                                        &mut self.variants,
+                                        self.tcx,
+                                        &mut self.lcx,
+                                        func_did);
+        if self.variants.contains_key(&variant_id) {
+            // The variant already existed, or was just created by `func_summ_impl`.
+            let variant = self.variants.get_mut(&variant_id).unwrap();
+            return (func, variant);
+        }
+
+        let v_idx = func.variant_ids.len();
+        func.variant_ids.push(variant_id);
+
+        self.variants.insert(variant_id, VariantSumm {
+            func_id: func_did,
+            variant_idx: v_idx,
+            inst_cset: ConstraintSet::new(),
+            insts: Vec::new(),
+        });
+        let variant = self.variants.get_mut(&variant_id).unwrap();
+        (func, variant)
+    }
+
+    pub fn add_mono(&mut self, variant_did: DefId)
+                    -> (&mut FuncSumm<'tcx>,
+                        &mut VariantSumm<'tcx>,
+                        &mut MonoSumm) {
+        let variant = self.variants.get_mut(&variant_did).unwrap();
+
+        let func = self.funcs.get_mut(&variant.func_id).unwrap();
+        let m_idx = func.num_monos;
+        func.num_monos += 1;
+
+        self.monos.insert((variant.func_id, m_idx), MonoSumm {
+            assign: IndexVec::new(),
+            callee_mono_idxs: Vec::new(),
+            suffix: String::new(),
+            name: String::new(),
+        });
+        let mono = self.monos.get_mut(&(variant.func_id, m_idx)).unwrap();
+
+        (func, variant, mono)
+    }
+
+    /// Get the variant and function summaries for a `fn`.  The summaries will be created if they
+    /// don't already exist.
+    pub fn variant_summ(&mut self, variant_did: DefId)
+                        -> (&mut FuncSumm<'tcx>, &mut VariantSumm<'tcx>) {
+        if self.variants.contains_key(&variant_did) {
+            let variant = self.variants.get_mut(&variant_did).unwrap();
+            let func = self.funcs.get_mut(&variant.func_id).unwrap();
+            (func, variant)
+        } else {
+            self.add_variant(variant_did, variant_did)
+        }
+    }
+
+    pub fn get_variant_summ(&self, did: DefId) -> &VariantSumm<'tcx> {
+        &self.variants[&did]
+    }
+
+    pub fn variant_func_sig(&mut self, variant_did: DefId) -> LFnSig<'tcx> {
+        self.variant_summ(variant_did).0.sig
+    }
+
+    pub fn first_variant_summ(&mut self, func_did: DefId)
+                              -> (&mut FuncSumm<'tcx>,
+                                  &mut VariantSumm<'tcx>) {
+        let func = self.funcs.get_mut(&func_did).unwrap();
+        let variant = self.variants.get_mut(&func.variant_ids[0]).unwrap();
+        (func, variant)
+    }
+
+    pub fn mono_summ(&mut self, func_did: DefId, mono_idx: usize)
+                     -> (&mut FuncSumm<'tcx>,
+                         &mut VariantSumm<'tcx>,
+                         &mut MonoSumm) {
+        let func = self.funcs.get_mut(&func_did).unwrap();
+
+        let variant = if func.variant_ids.len() == 1 {
+            self.variants.get_mut(&func.variant_ids[0]).unwrap()
+        } else {
+            self.variants.get_mut(&func.variant_ids[mono_idx]).unwrap()
+        };
+
+        let mono = self.monos.get_mut(&(func_did, mono_idx)).unwrap();
+
+        (func, variant, mono)
+    }
+
+    pub fn get_mono_summ(&self, func_did: DefId, idx: usize) -> &MonoSumm {
+        &self.monos[&(func_did, idx)]
+    }
+
+    /// Get the variant summary for the variant that owns the given mono.
+    pub fn get_mono_variant_summ(&self, func_did: DefId, mono_idx: usize) -> &VariantSumm<'tcx> {
+        let func = self.get_func_summ(func_did);
+
+        if func.variant_ids.len() == 1 {
+            self.get_variant_summ(func.variant_ids[0])
+        } else {
+            self.get_variant_summ(func.variant_ids[mono_idx])
+        }
+    }
+
+    pub fn check_invariants(&self) {
+        for (&func_id, func) in self.funcs.iter() {
+            let num_v = func.variant_ids.len();
+            let num_m = func.num_monos;
+            assert!((num_v == 0 && num_m == 0) || num_v == 1 || num_v == num_m,
+                    "bad variant/mono combination: {} variants, {} monos (for {:?})",
+                    num_v, num_m, func_id);
+
+            for &variant_id in &func.variant_ids {
+                let variant = self.variants.get(&variant_id)
+                    .unwrap_or_else(|| panic!("{:?} references nonexistent variant {:?}",
+                                              func_id, variant_id));
+                assert!(variant.func_id == func_id,
+                        "variant {:?} of function {:?} has wrong func_id {:?}",
+                        variant_id, variant.func_id, func_id);
+            }
+        }
+    }
+
 
     pub fn min_perm(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) -> Perm<'tcx> {
         Perm::min(a, b, self.arena)
@@ -154,14 +404,40 @@ fn preload_constraints<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
     Some(cset)
 }
 
-pub struct FnIds<'a, 'tcx: 'a> {
-    inner: hash_map::Keys<'a, DefId, FnSummary<'tcx>>,
+pub struct FuncIds<'a, 'tcx: 'a> {
+    inner: hash_map::Keys<'a, DefId, FuncSumm<'tcx>>,
 }
 
-impl<'a, 'tcx> Iterator for FnIds<'a, 'tcx> {
+impl<'a, 'tcx> Iterator for FuncIds<'a, 'tcx> {
     type Item = DefId;
 
     fn next(&mut self) -> Option<DefId> {
+        self.inner.next().map(|&x| x)
+    }
+}
+
+
+pub struct VariantIds<'a, 'tcx: 'a> {
+    inner: hash_map::Keys<'a, DefId, VariantSumm<'tcx>>,
+}
+
+impl<'a, 'tcx> Iterator for VariantIds<'a, 'tcx> {
+    type Item = DefId;
+
+    fn next(&mut self) -> Option<DefId> {
+        self.inner.next().map(|&x| x)
+    }
+}
+
+
+pub struct MonoIds<'a> {
+    inner: hash_map::Keys<'a, (DefId, usize), MonoSumm>,
+}
+
+impl<'a> Iterator for MonoIds<'a> {
+    type Item = (DefId, usize);
+
+    fn next(&mut self) -> Option<(DefId, usize)> {
         self.inner.next().map(|&x| x)
     }
 }

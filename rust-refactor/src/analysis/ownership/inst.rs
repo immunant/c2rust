@@ -9,38 +9,36 @@ use std::usize;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 
-use super::{Var, ConcretePerm, Perm, FnSummary};
+use super::{Var, ConcretePerm, Perm};
 use super::constraint::ConstraintSet;
-use super::context::Ctxt;
+use super::context::{Ctxt, VariantSumm, Instantiation};
 
 
-pub struct InstCtxt<'a, 'tcx: 'a> {
-    cx: &'a Ctxt<'tcx>,
+pub struct InstCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
+    cx: &'a Ctxt<'a, 'gcx, 'tcx>,
 
-    /// Available monomorphized signatures of each function
-    mono_sigs: &'a HashMap<DefId, Vec<IndexVec<Var, ConcretePerm>>>,
-
-    summ: &'a FnSummary<'tcx>,
-
+    insts: &'a [Instantiation],
     cset: ConstraintSet<'tcx>,
 
+    /// Selected mono idx for each instantiation.
     inst_sel: Vec<Option<usize>>,
 
+    /// Assignment to inst vars for the current mono.
     inst_assign: IndexVec<Var, Option<ConcretePerm>>,
 }
 
-impl<'a, 'tcx> InstCtxt<'a, 'tcx> {
-    pub fn new(cx: &'a Ctxt<'tcx>,
-               mono_sigs: &'a HashMap<DefId, Vec<IndexVec<Var, ConcretePerm>>>,
-               summ: &'a FnSummary<'tcx>,
-               cur_mono_sig: &'a IndexVec<Var, ConcretePerm>)
-               -> InstCtxt<'a, 'tcx> {
-        let cset = build_inst_cset(cx, summ, cur_mono_sig);
+impl<'a, 'gcx, 'tcx> InstCtxt<'a, 'gcx, 'tcx> {
+    pub fn new(cx: &'a Ctxt<'a, 'gcx, 'tcx>,
+               func_did: DefId,
+               mono_idx: usize)
+               -> InstCtxt<'a, 'gcx, 'tcx> {
+        let variant = cx.get_mono_variant_summ(func_did, mono_idx);
+        let mono = cx.get_mono_summ(func_did, mono_idx);
+        let cset = build_inst_cset(cx, variant, &mono.assign);
 
         InstCtxt {
             cx: cx,
-            mono_sigs: mono_sigs,
-            summ: summ,
+            insts: &variant.insts,
             cset: cset,
             inst_sel: Vec::new(),
             inst_assign: IndexVec::new(),
@@ -48,11 +46,11 @@ impl<'a, 'tcx> InstCtxt<'a, 'tcx> {
     }
 
     pub fn solve_instantiations(&mut self) -> Vec<usize> {
-        self.inst_sel = iter::repeat(None).take(self.summ.insts.len()).collect::<Vec<_>>();
+        self.inst_sel = iter::repeat(None).take(self.insts.len()).collect::<Vec<_>>();
 
         let mut num_inst_vars = 0;
-        for inst in &self.summ.insts {
-            let callee_summ = self.cx.get_fn_summ_imm(inst.callee).unwrap();
+        for inst in self.insts {
+            let callee_summ = self.cx.get_func_summ(inst.callee);
             num_inst_vars = cmp::max(num_inst_vars,
                                      inst.first_inst_var + callee_summ.num_sig_vars);
         }
@@ -90,17 +88,16 @@ impl<'a, 'tcx> InstCtxt<'a, 'tcx> {
     }
 
     fn num_mono_sigs(&self, inst_idx: usize) -> usize {
-        let inst = &self.summ.insts[inst_idx];
-        let callee = inst.callee;
-        self.mono_sigs[&callee].len()
+        let inst = &self.insts[inst_idx];
+        self.cx.get_func_summ(inst.callee).num_monos
     }
 
     fn check_mono_compat(&self, inst_idx: usize, mono_idx: usize) -> bool {
-        let inst = &self.summ.insts[inst_idx];
+        let inst = &self.insts[inst_idx];
         let callee = inst.callee;
-        let mono_sig = &self.mono_sigs[&callee][mono_idx];
+        let mono_assign = &self.cx.get_mono_summ(callee, mono_idx).assign;
 
-        let callee_summ = self.cx.get_fn_summ_imm(callee).unwrap();
+        let callee_summ = self.cx.get_func_summ(callee);
         let first_var = Var(inst.first_inst_var);
         let last_var = Var(inst.first_inst_var + callee_summ.num_sig_vars);
 
@@ -112,7 +109,7 @@ impl<'a, 'tcx> InstCtxt<'a, 'tcx> {
 
             if first_var <= v && v < last_var {
                 let sig_var = Var(v.0 - first_var.0);
-                Some(mono_sig[sig_var])
+                Some(mono_assign[sig_var])
             } else {
                 self.inst_assign[v]
             }
@@ -122,23 +119,23 @@ impl<'a, 'tcx> InstCtxt<'a, 'tcx> {
     fn select(&mut self, inst_idx: usize, mono_idx: usize) {
         self.inst_sel[inst_idx] = Some(mono_idx);
 
-        let inst = &self.summ.insts[inst_idx];
+        let inst = &self.insts[inst_idx];
         let callee = inst.callee;
-        let mono_sig = &self.mono_sigs[&callee][mono_idx];
-        let callee_summ = self.cx.get_fn_summ_imm(callee).unwrap();
+        let mono_assign = &self.cx.get_mono_summ(callee, mono_idx).assign;
+        let callee_summ = self.cx.get_func_summ(callee);
         for i in 0 .. callee_summ.num_sig_vars {
             let src = Var(i);
             let dest = Var(inst.first_inst_var + i);
-            self.inst_assign[dest] = Some(mono_sig[src]);
+            self.inst_assign[dest] = Some(mono_assign[src]);
         }
     }
 
     fn deselect(&mut self, inst_idx: usize) {
         self.inst_sel[inst_idx] = None;
 
-        let inst = &self.summ.insts[inst_idx];
+        let inst = &self.insts[inst_idx];
         let callee = inst.callee;
-        let callee_summ = self.cx.get_fn_summ_imm(callee).unwrap();
+        let callee_summ = self.cx.get_func_summ(callee);
         for i in 0 .. callee_summ.num_sig_vars {
             let dest = Var(inst.first_inst_var + i);
             self.inst_assign[dest] = None;
@@ -147,33 +144,24 @@ impl<'a, 'tcx> InstCtxt<'a, 'tcx> {
 }
 
 
-pub fn find_instantiations<'a, 'tcx: 'a>(
-    cx: &'a Ctxt<'tcx>,
-    mono_sigs: &'a HashMap<DefId, Vec<IndexVec<Var, ConcretePerm>>>)
-    -> HashMap<(DefId, usize), Vec<usize>> {
+pub fn find_instantiations(cx: &mut Ctxt) {
+    let ids = cx.mono_ids().collect::<Vec<_>>();
 
-    let mut instantiations = HashMap::new();
-
-    for def_id in cx.fn_ids() {
-        let summ = cx.get_fn_summ_imm(def_id).unwrap();
-        let fn_mono_sigs = &mono_sigs[&def_id];
-        for (idx, fn_mono_sig) in fn_mono_sigs.iter().enumerate() {
-            let inst_sel = {
-                let mut icx = InstCtxt::new(cx, mono_sigs, summ, fn_mono_sig);
-                icx.solve_instantiations()
-            };
-            instantiations.insert((def_id, idx), inst_sel);
-        }
+    for &(func_did, mono_idx) in &ids {
+        let inst_sel = {
+            let mut icx = InstCtxt::new(cx, func_did, mono_idx);
+            icx.solve_instantiations()
+        };
+        cx.mono_summ(func_did, mono_idx).2.callee_mono_idxs = inst_sel;
     }
-
-    instantiations
 }
 
 
-pub fn build_inst_cset<'tcx>(cx: &Ctxt<'tcx>,
-                             summ: &FnSummary<'tcx>,
-                             assign: &IndexVec<Var, ConcretePerm>) -> ConstraintSet<'tcx> {
-    let mut cset = summ.inst_cset.clone_substituted(cx.arena, |p| {
+pub fn build_inst_cset<'a, 'gcx, 'tcx>(cx: &Ctxt<'a, 'gcx, 'tcx>,
+                                       variant: &VariantSumm<'tcx>,
+                                       assign: &IndexVec<Var, ConcretePerm>)
+                                       -> ConstraintSet<'tcx> {
+    let mut cset = variant.inst_cset.clone_substituted(cx.arena, |p| {
         match p {
             Perm::SigVar(v) => Perm::Concrete(assign[v]),
             Perm::StaticVar(v) => Perm::Concrete(cx.static_assign[v]),
@@ -181,12 +169,10 @@ pub fn build_inst_cset<'tcx>(cx: &Ctxt<'tcx>,
         }
     });
 
-    for inst in &summ.insts {
-        let callee_summ = match cx.get_fn_summ_imm(inst.callee) {
-            Some(x) => x,
-            None => continue,
-        };
-        cset.import_substituted(&callee_summ.cset, cx.arena, |p| {
+    for inst in &variant.insts {
+        // Import the callee's `sig_cset`.
+        let callee_func = cx.get_func_summ(inst.callee);
+        cset.import_substituted(&callee_func.sig_cset, cx.arena, |p| {
             match p {
                 Perm::SigVar(v) => Perm::InstVar(Var(v.0 + inst.first_inst_var)),
                 p => p,
@@ -212,5 +198,3 @@ pub fn build_inst_cset<'tcx>(cx: &Ctxt<'tcx>,
 
     cset
 }
-
-

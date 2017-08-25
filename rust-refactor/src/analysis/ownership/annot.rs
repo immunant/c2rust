@@ -2,6 +2,7 @@
 //! the analysis context.
 
 use std::cmp;
+use std::collections::HashMap;
 use std::str::FromStr;
 
 use arena::DroplessArena;
@@ -17,14 +18,13 @@ use driver;
 use type_map::{self, TypeSource};
 use visit::Visit;
 
-use super::{LTy, LFnSig, ConcretePerm, Perm, Var, AttrMono};
+use super::{LTy, LFnSig, ConcretePerm, Perm, Var};
 use super::constraint::ConstraintSet;
 use super::context::Ctxt;
 
 
-struct LTySource<'a, 'gcx: 'tcx, 'tcx: 'a> {
-    cx: &'a mut Ctxt<'tcx>,
-    tcx: TyCtxt<'a, 'gcx, 'tcx>,
+struct LTySource<'c, 'a: 'c, 'gcx: 'tcx, 'tcx: 'a> {
+    cx: &'c mut Ctxt<'a, 'gcx, 'tcx>,
 
     // XXX - bit of a hack.  We keep the def id of the last call to `fn_sig`, and refer to that
     // inside the map_types callback to figure out the right scope for any SigVars in the type.
@@ -33,7 +33,7 @@ struct LTySource<'a, 'gcx: 'tcx, 'tcx: 'a> {
     last_sig_did: Option<DefId>,
 }
 
-impl<'a, 'gcx, 'tcx> TypeSource for LTySource<'a, 'gcx, 'tcx> {
+impl<'c, 'a, 'gcx, 'tcx> TypeSource for LTySource<'c, 'a, 'gcx, 'tcx> {
     type Type = LTy<'tcx>;
     type Signature = LFnSig<'tcx>;
 
@@ -49,12 +49,12 @@ impl<'a, 'gcx, 'tcx> TypeSource for LTySource<'a, 'gcx, 'tcx> {
 
     fn def_type(&mut self, did: DefId) -> Option<Self::Type> {
         self.last_sig_did = None;
-        Some(self.cx.static_ty(did, self.tcx))
+        Some(self.cx.static_ty(did))
     }
 
     fn fn_sig(&mut self, did: DefId) -> Option<Self::Signature> {
         self.last_sig_did = Some(did);
-        Some(self.cx.fn_sig(did, self.tcx))
+        Some(self.cx.func_sig(did))
     }
 
     fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> {
@@ -78,14 +78,13 @@ impl<'tcx> type_map::Signature<LTy<'tcx>> for LFnSig<'tcx> {
     }
 }
 
-pub fn handle_marks<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
+pub fn handle_marks<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
                                           st: &CommandState,
                                           dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) {
     let mut fixed_vars = Vec::new();
     {
         let source = LTySource {
             cx: cx,
-            tcx: dcx.ty_ctxt(),
             last_sig_did: None,
         };
 
@@ -121,7 +120,7 @@ pub fn handle_marks<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
             },
             Perm::SigVar(_) => {
                 let did = did.expect("expected DefId for SigVar");
-                cx.fn_summ(did, dcx.ty_ctxt()).cset.add(Perm::Concrete(min_perm), p);
+                cx.func_summ(did).sig_cset.add(Perm::Concrete(min_perm), p);
             }
             _ => panic!("expected StaticVar or SigVar, but got {:?}", p),
         }
@@ -173,7 +172,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 }
 
-pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
+pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
                                           st: &CommandState,
                                           dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) {
 
@@ -186,8 +185,28 @@ pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
     eprintln!("HANDLE_ATTRS: found {} annotated defs", v.def_attrs.len());
 
 
+    // Primary variant ID for each variant group (keyed by group name)
+    let mut variant_group_primary = HashMap::new();
+
     for (node_id, attrs) in v.def_attrs {
         let def_id = match_or!([dcx.hir_map().opt_local_def_id(node_id)] Some(x) => x; continue);
+
+        // Handle `ownership_variant_of` first.
+        let mut is_variant = false;
+        if let Some(attr) = attrs.iter().filter(|a| a.check_name("ownership_variant_of")).next() {
+            let meta = match_or!([attr.meta()] Some(x) => x;
+                    panic!("bad meta item in #[ownership_variant_of] (for {:?})", def_id));
+            let group_name = parse_variant_of(&meta);
+            let primary = *variant_group_primary.entry(group_name).or_insert(def_id);
+            cx.add_variant(primary, def_id);
+
+            let num_mono = attrs.iter().filter(|a| a.check_name("ownership_mono")).count();
+            assert!(num_mono == 1, "functions with #[ownership_variant_of] \
+                        must also have #[ownership_mono] (on {:?})", def_id);
+
+            is_variant = true;
+        }
+        let is_variant = is_variant;
 
         for attr in attrs {
             let meta = match_or!([attr.meta()] Some(x) => x; continue);
@@ -202,8 +221,12 @@ pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
                         eprintln!("  {:?} <= {:?}", a, b);
                     }
 
-                    let summ = cx.fn_summ(def_id, dcx.ty_ctxt());
-                    summ.attr_cset = Some(cset);
+                    let (func, var) = cx.variant_summ(def_id);
+                    assert!(!func.cset_provided,
+                            "{} can only have one #[ownership_constraint] annotation (on {:?})",
+                            if is_variant { "variant set" } else { "function" }, def_id);
+                    func.sig_cset.import(&cset);
+                    func.cset_provided = true;
                 },
 
                 "ownership_mono" => {
@@ -211,14 +234,10 @@ pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
                         .unwrap_or_else(|e| panic!("bad #[ownership_mono] for {:?}: {}",
                                                    def_id, e));
 
-                    let summ = cx.fn_summ(def_id, dcx.ty_ctxt());
-                    if summ.attr_monos.is_none() {
-                        summ.attr_monos = Some(Vec::new());
-                    }
-                    summ.attr_monos.as_mut().unwrap().push(AttrMono {
-                        suffix: suffix,
-                        assign: assign,
-                    });
+                    let (func, variant, mono) = cx.add_mono(def_id);
+                    mono.assign = assign;
+                    mono.suffix = suffix;
+                    func.monos_provided = true;
                 },
 
                 "ownership_static" => {
@@ -226,7 +245,7 @@ pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'tcx>,
                         .unwrap_or_else(|e| panic!("bad #[ownership_static] for {:?}: {}",
                                                    def_id, e));
 
-                    let ty = cx.static_ty(def_id, dcx.ty_ctxt());
+                    let ty = cx.static_ty(def_id);
                     let mut iter = assign.into_iter();
                     ty.for_each_label(&mut |p| {
                         if let Some(Perm::StaticVar(v)) = *p {
@@ -388,4 +407,12 @@ fn parse_static_assign(meta: &ast::MetaItem) -> Result<Vec<ConcretePerm>, &'stat
     }
 
     Ok(assign)
+}
+
+fn parse_variant_of(meta: &ast::MetaItem) -> Result<Symbol, &'static str> {
+    let args = meta_item_list(meta)?;
+    if args.len() != 1 {
+        return Err("expected exactly one argument in #[ownership_variant_of]");
+    }
+    nested_str(&args[0])
 }

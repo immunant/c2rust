@@ -4,24 +4,14 @@ use std::collections::HashMap;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 
-use super::{ConcretePerm, Var, Perm, LTy, FnSummary};
+use super::{ConcretePerm, Var, Perm, LTy};
 use super::constraint::ConstraintSet;
-use super::context::Ctxt;
-
-
-/*
-pub type PTy<'tcx> = LabeledTy<'tcx, ConcretePerm>;
-
-pub struct PFnSig<'tcx> {
-    inputs: &'tcx [PTy<'tcx>],
-    output: PTy<'tcx>,
-}
-*/
+use super::context::{Ctxt, FuncSumm};
 
 
 /// Mark all sig variables that occur in output positions.  An "output position" means the return
 /// type of a function or the target of an always-mutable reference argument.
-pub fn infer_outputs(summ: &FnSummary) -> IndexVec<Var, bool> {
+pub fn infer_outputs(summ: &FuncSumm) -> IndexVec<Var, bool> {
     let mut is_out = IndexVec::from_elem_n(false, summ.num_sig_vars as usize);
 
     fn mark_output(ty: LTy, is_out: &mut IndexVec<Var, bool>) {
@@ -53,7 +43,7 @@ pub fn infer_outputs(summ: &FnSummary) -> IndexVec<Var, bool> {
     }
 
     for &input in summ.sig.inputs {
-        walk_input(input, &mut is_out, &summ.cset);
+        walk_input(input, &mut is_out, &summ.sig_cset);
     }
     mark_output(summ.sig.output, &mut is_out);
 
@@ -62,9 +52,9 @@ pub fn infer_outputs(summ: &FnSummary) -> IndexVec<Var, bool> {
 
 /// Mark all sig variables that are bounded from above.  Note this includes vars that appear in a
 /// `min(xs...) <= y` constraint, even though individual `xs` might be able to exceed `y`.
-fn upper_bounded_vars(summ: &FnSummary) -> IndexVec<Var, bool> {
+fn upper_bounded_vars(summ: &FuncSumm) -> IndexVec<Var, bool> {
     let mut bounded = IndexVec::from_elem_n(false, summ.num_sig_vars as usize);
-    for &(a, b) in summ.cset.iter() {
+    for &(a, b) in summ.sig_cset.iter() {
         a.for_each_atom(&mut |p| {
             if let Perm::SigVar(v) = p {
                 bounded[v] = true;
@@ -74,7 +64,7 @@ fn upper_bounded_vars(summ: &FnSummary) -> IndexVec<Var, bool> {
     bounded
 }
 
-fn for_each_output_assignment<F>(summ: &FnSummary,
+fn for_each_output_assignment<F>(summ: &FuncSumm,
                                  is_out: &IndexVec<Var, bool>,
                                  is_bounded: &IndexVec<Var, bool>,
                                  mut callback: F)
@@ -129,13 +119,13 @@ fn for_each_output_assignment<F>(summ: &FnSummary,
         max: Var(is_out.len() as u32),
         is_out: is_out,
         is_bounded: is_bounded,
-        cset: &summ.cset,
+        cset: &summ.sig_cset,
         assignment: IndexVec::from_elem_n(None, summ.num_sig_vars as usize),
         callback: &mut callback,
     }.walk_vars(Var(0));
 }
 
-fn find_input_assignment(summ: &FnSummary,
+fn find_input_assignment(summ: &FuncSumm,
                          out_assign: &IndexVec<Var, Option<ConcretePerm>>)
                          -> Option<IndexVec<Var, ConcretePerm>> {
     struct State<'a, 'tcx: 'a> {
@@ -197,7 +187,7 @@ fn find_input_assignment(summ: &FnSummary,
     let mut s = State {
         max: Var(out_assign.len() as u32),
         out_assign: out_assign,
-        cset: &summ.cset,
+        cset: &summ.sig_cset,
         assignment: IndexVec::from_elem_n(ConcretePerm::Read, summ.num_sig_vars as usize),
     };
     let ok = s.walk_vars(Var(0));
@@ -284,8 +274,7 @@ pub fn find_inst_assignment(cset: &ConstraintSet) -> IndexVec<Var, ConcretePerm>
     s.assignment
 }
 
-pub fn get_mono_sigs(summ: &FnSummary,
-                     def_id: DefId) -> Vec<IndexVec<Var, ConcretePerm>> {
+pub fn get_mono_sigs(summ: &FuncSumm) -> Vec<IndexVec<Var, ConcretePerm>> {
     let is_out = infer_outputs(&summ);
     let is_bounded = upper_bounded_vars(&summ);
 
@@ -297,111 +286,25 @@ pub fn get_mono_sigs(summ: &FnSummary,
         }
     });
 
-    assert!(assigns.len() > 0, "found no mono sigs for {:?}", def_id);
-
     assigns
 }
 
-pub fn get_all_mono_sigs(cx: &Ctxt) -> HashMap<DefId, Vec<IndexVec<Var, ConcretePerm>>> {
-    let mut all_sigs = HashMap::new();
-    for def_id in cx.fn_ids() {
-        let summ = cx.get_fn_summ_imm(def_id).unwrap();
-        let fn_sigs = if let Some(ref monos) = summ.attr_monos {
-            monos.iter().map(|m| m.assign.clone()).collect()
-        } else {
-            get_mono_sigs(summ, def_id)
+pub fn compute_all_mono_sigs(cx: &mut Ctxt) {
+    let ids = cx.variant_ids().collect::<Vec<_>>();
+    for &id in &ids {
+        let assigns = {
+            let (func, var) = cx.variant_summ(id);
+            if func.monos_provided {
+                // No work for us to do in this pass.
+                continue;
+            }
+            get_mono_sigs(func)
         };
-        all_sigs.insert(def_id, fn_sigs);
-    }
-    all_sigs
-}
+        assert!(assigns.len() > 0, "found no mono sigs for {:?}", id);
 
-pub fn mono_test(summ: &FnSummary,
-                 def_id: DefId,
-                 cx: &Ctxt) {
-    use super::debug::*;
-    use analysis::labeled_ty::LabeledTyCtxt;
-
-    let is_out = infer_outputs(&summ);
-    let is_bounded = upper_bounded_vars(&summ);
-
-    eprintln!("{:?}:", def_id);
-    for_each_output_assignment(summ, &is_out, &is_bounded, |assign| {
-        if let Some(assign) = find_input_assignment(summ, assign) {
-            let mut new_lcx = LabeledTyCtxt::new(cx.arena);
-            let mut func = |p: &Option<_>| {
-                if let Some(Perm::SigVar(v)) = *p {
-                    Some(assign[v])
-                } else {
-                    None
-                }
-            };
-
-            let inputs = new_lcx.relabel_slice(summ.sig.inputs, &mut func);
-            let output = new_lcx.relabel(summ.sig.output, &mut func);
-            eprintln!("  {:?} -> {:?}", pretty_slice(inputs), Pretty(output));
-
-
-            eprintln!("  instantiations:");
-            for i in &summ.insts {
-                eprintln!("    var {}: {:?}", i.first_inst_var, i.callee);
-            }
-
-            let mut cset = summ.inst_cset.clone_substituted(cx.arena, |p| {
-                match p {
-                    Perm::SigVar(v) => Perm::Concrete(assign[v]),
-                    Perm::StaticVar(v) => Perm::Concrete(cx.static_assign[v]),
-                    _ => p,
-                }
-            });
-
-            let mut num_inst_vars = 0;
-            for inst in &summ.insts {
-                let callee_summ = match cx.get_fn_summ_imm(inst.callee) {
-                    Some(x) => x,
-                    None => continue,
-                };
-                cset.import_substituted(&callee_summ.cset, cx.arena, |p| {
-                    match p {
-                        Perm::SigVar(v) => Perm::InstVar(Var(v.0 + inst.first_inst_var)),
-                        p => p,
-                    }
-                });
-                num_inst_vars = cmp::max(num_inst_vars,
-                                         inst.first_inst_var + callee_summ.num_sig_vars);
-            }
-            eprintln!("  orig constraints:");
-            for &(a, b) in summ.inst_cset.iter() {
-                eprintln!("    {:?} <= {:?}", a, b);
-            }
-
-            cset.retain_perms(cx.arena, |p| {
-                match p {
-                    Perm::StaticVar(_) => false,
-                    _ => true,
-                }
-            });
-            cset.simplify(cx.arena);
-            eprintln!("  inst constraints:");
-            for &(a, b) in cset.iter() {
-                eprintln!("    {:?} <= {:?}", a, b);
-            }
-
-            //let inst_assign = find_inst_assignment(&cset);
-            let mut inst_assign = IndexVec::from_elem_n(None, num_inst_vars as usize);
-            propagate_assign(&cset, &mut inst_assign, |p| {
-                match p {
-                    Perm::InstVar(v) => Some(v),
-                    _ => None,
-                }
-            });
-            //let inst_assign = find_inst_assignment(&cset);
-            eprintln!("  inst assignment:");
-            for (v, p) in inst_assign.iter_enumerated() {
-                eprintln!("    {:?} = {:?}", v, p);
-            }
-        } else {
-            eprintln!("  (bad output assignment)");
+        for assign in assigns {
+            let mono = cx.add_mono(id).2;
+            mono.assign = assign;
         }
-    });
+    }
 }

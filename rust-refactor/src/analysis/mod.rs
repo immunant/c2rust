@@ -20,11 +20,13 @@ pub fn register_commands(reg: &mut Registry) {
 
     reg.register("test_analysis_ownership", |args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
-            let results = ownership::analyze(&st, &cx);
-            ownership::dump_results(&cx, &results);
+            ownership::test_analyze(&st, &cx);
+            //let results = ownership::analyze(&st, &cx);
+            //ownership::dump_results(&cx, &results);
         }))
     });
 
+    /*
     reg.register("mark_related_types", |args| {
         let label = args.get(0).map_or("target", |x| x).into_symbol();
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
@@ -46,4 +48,5 @@ pub fn register_commands(reg: &mut Registry) {
             }
         }))
     });
+    */
 }
