@@ -6,7 +6,6 @@ llvm.build/*
 .idea
 .vscode
 *.log
-tinycbor*
 # ignore rust build dirs everywhere
 **/target/*
 **/dependencies/*
