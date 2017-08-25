@@ -26,17 +26,6 @@ pub struct Ctxt<'tcx> {
     pub static_assign: IndexVec<Var, ConcretePerm>,
 
     fn_summ: HashMap<DefId, FnSummary<'tcx>>,
-
-    /// Cache of labeled tys generated while processing function bodies.  We may process the same
-    /// function multiple times, and it would be nice to avoid allocating a new bunch of `LTy`s
-    /// each time around.  In this map, `fn_ty_cache[(did, i)]` is the labeled type produced while
-    /// processing `did` when the "next local variable" counter was `i`.  This works as long as
-    /// function processing visits MIR nodes in the same order and requests the same types each
-    /// time.
-    ///
-    /// The `u32` in the value is the amount to advance `next_local_var` by, after retrieving a
-    /// type from the cache.
-    fn_ty_cache: HashMap<(DefId, u32), (LTy<'tcx>, u32)>,
 }
 
 impl<'tcx> Ctxt<'tcx> {
@@ -49,7 +38,6 @@ impl<'tcx> Ctxt<'tcx> {
             static_assign: IndexVec::new(),
 
             fn_summ: HashMap::new(),
-            fn_ty_cache: HashMap::new(),
         }
     }
 
@@ -134,37 +122,6 @@ impl<'tcx> Ctxt<'tcx> {
 
     pub fn fn_sig<'a, 'gcx>(&mut self, did: DefId, tcx: TyCtxt<'a, 'gcx, 'tcx>) -> LFnSig<'tcx> {
         self.fn_summ(did, tcx).sig
-    }
-
-    pub fn local_ty(&mut self, did: DefId, next_local: &mut u32, ty: Ty<'tcx>) -> LTy<'tcx> {
-        eprintln!("local_ty key = {:?}, {}", did, *next_local);
-        match self.fn_ty_cache.entry((did, *next_local)) {
-            Entry::Vacant(e) => {
-                let first_local = *next_local;
-                let lty = self.lcx.label(ty, &mut |ty| {
-                    match ty.sty {
-                        TypeVariants::TyRef(_, _) |
-                        TypeVariants::TyRawPtr(_) => {
-                            let v = Var(*next_local);
-                            *next_local += 1;
-                            Some(Perm::LocalVar(v))
-                        },
-                        _ => None,
-                    }
-                });
-                // Avoid ambiguity if no vars were generated.
-                if *next_local == first_local {
-                    *next_local += 1;
-                }
-                let advance = *next_local - first_local;
-                e.insert((lty, advance)).0
-            },
-
-            Entry::Occupied(e) => {
-                *next_local += e.get().1;
-                e.get().0
-            },
-        }
     }
 
     pub fn min_perm(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) -> Perm<'tcx> {
