@@ -645,8 +645,6 @@ class TranslateASTVisitor final
                                     case clang::StringLiteral::StringKind::UTF32:
                                         cbor_encode_uint(array, StringTypeTag::TagUTF32);
                                         break;
-                                    default:
-                                        assert("Unknown string kind.");
                                 }
                                 // The size of the wchar_t type in C is implementation defined
                                 cbor_encode_uint(array, SL->getCharByteWidth());

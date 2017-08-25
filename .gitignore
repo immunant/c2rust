@@ -12,3 +12,4 @@ tinycbor*
 **/dependencies/*
 **/tests/*
 *.pyc
+.vagrant

@@ -21,8 +21,9 @@ except ImportError:
     print >> sys.stderr, "error: python package plumbum is not installed."
     quit(errno.ENOENT)
 
-SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-DEPS_DIR = os.path.join(SCRIPT_DIR, 'dependencies')
+ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
+DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
 
 CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
 CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.1.tar.gz")
@@ -30,15 +31,15 @@ CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
 CBOR_SRC = os.path.join(DEPS_DIR, CBOR_SRC)
 CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor")
 
-BEAR_URL = "https://codeload.github.com/rizsotto/Bear/archive/2.3.6.tar.gz"
+BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.6"
 BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.6.tar.gz")
 BEAR_SRC = os.path.basename(BEAR_ARCHIVE).replace(".tar.gz", "")
 BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
 BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear")
 BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
-LLVM_SRC = os.path.join(SCRIPT_DIR, 'llvm.src')
-LLVM_BLD = os.path.join(SCRIPT_DIR, 'llvm.build')
+LLVM_SRC = os.path.join(ROOT_DIR, 'llvm.src')
+LLVM_BLD = os.path.join(ROOT_DIR, 'llvm.build')
 LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
 LLVM_PUBKEY = "8F0871F202119294"
 LLVM_VER = "4.0.1"
@@ -181,13 +182,13 @@ def download_llvm_sources():
     with pb.local.cwd(os.path.join(LLVM_SRC, "tools")):
         if not os.path.isdir("clang"):
             logging.info("extracting %s", LLVM_ARCHIVE_FILES[1])
-            tar("xf", os.path.join(SCRIPT_DIR, LLVM_ARCHIVE_FILES[1]))
+            tar("xf", os.path.join(ROOT_DIR, LLVM_ARCHIVE_FILES[1]))
             os.rename(LLVM_ARCHIVE_DIRS[1], "clang")
 
         with pb.local.cwd("clang/tools"):
             if not os.path.isdir("extra"):
                 logging.info("extracting %s", LLVM_ARCHIVE_FILES[2])
-                tar("xf", os.path.join(SCRIPT_DIR, LLVM_ARCHIVE_FILES[2]))
+                tar("xf", os.path.join(ROOT_DIR, LLVM_ARCHIVE_FILES[2]))
                 os.rename(LLVM_ARCHIVE_DIRS[2], "extra")
 
 
@@ -224,6 +225,8 @@ def configure_and_build_llvm(args):
             cmake = get_cmd_or_die("cmake")
             invoke(cmake["-G", "Ninja", LLVM_SRC,
                          "-Wno-dev",
+                         "-DCMAKE_C_COMPILER=clang",
+                         "-DCMAKE_CXX_COMPILER=clang++",
                          "-DLLVM_BUILD_TESTS=ON",
                          "-DCMAKE_BUILD_TYPE=" + build_type,
                          "-DLLVM_ENABLE_ASSERTIONS=1",
@@ -308,7 +311,7 @@ def build_a_bear():
     # download
     if not os.path.isfile(BEAR_ARCHIVE):
         curl = get_cmd_or_die("curl")
-        curl['-s', BEAR_URL, '-o', CBOR_BEAR] & pb.TEE
+        curl['-s', BEAR_URL, '-o', BEAR_ARCHIVE] & pb.TEE
 
     # unpack
     if not os.path.isdir(BEAR_SRC):
@@ -320,10 +323,10 @@ def build_a_bear():
     bear_build_dir = os.path.join(BEAR_SRC, "build")
     bear_install_prefix = "-DCMAKE_INSTALL_PREFIX=" + BEAR_PREFIX
     ensure_dir(bear_build_dir)
-    with local.cwd(bear_build_dir):
+    with pb.local.cwd(bear_build_dir):
         cmake = get_cmd_or_die("cmake")
         cmake["..", bear_install_prefix] & pb.TEE
-        cmake = get_cmd_or_die("make")
+        make = get_cmd_or_die("make")
         make["install"] & pb.TEE
 
 
@@ -364,7 +367,7 @@ def install_tinycbor() -> Union[str, None]:
     with pb.local.cwd(CBOR_SRC):
         make = get_cmd_or_die("make")
         if not on_mac():
-            bear = get_cmd_or_die("bear")
+            bear = get_cmd_or_die(BEAR_BIN)
             make = bear[make]
         make & pb.TEE  # nopep8
         make('install')  # & pb.TEE
@@ -376,7 +379,7 @@ def integrate_ast_extractor():
     """
     link ast-extractor into $LLVM_SRC/tools/clang/tools/extra
     """
-    src = os.path.join(SCRIPT_DIR, "ast-extractor")
+    src = os.path.join(ROOT_DIR, "ast-extractor")
     extractor_dest = os.path.join(
         LLVM_SRC, "tools/clang/tools/extra/ast-extractor")
     clang_tools_extra = os.path.abspath(
@@ -507,6 +510,13 @@ def _main():
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
+    # FIXME: allow env/cli override of LLVM_SRC, LLVM_VER, and LLVM_BLD
+    # FIXME: check that cmake and ninja are installed
+    # FIXME: option to build LLVM/Clang from master?
+
+    ensure_dir(LLVM_BLD)
+    ensure_dir(DEPS_DIR)
+
     # earlier plumbum versions are missing features such as TEE
     if pb.__version__ < MIN_PLUMBUM_VERSION:
         err = "locally installed version {} of plumbum is too old.\n" \
@@ -526,13 +536,6 @@ def _main():
         shutil.rmtree(LLVM_SRC, ignore_errors=True)
         shutil.rmtree(LLVM_BLD, ignore_errors=True)
         shutil.rmtree(DEPS_DIR, ignore_errors=True)
-
-    # FIXME: allow env/cli override of LLVM_SRC, LLVM_VER, and LLVM_BLD
-    # FIXME: check that cmake and ninja are installed
-    # FIXME: option to build LLVM/Clang from master?
-
-    ensure_dir(LLVM_BLD)
-    ensure_dir(DEPS_DIR)
 
     download_llvm_sources()
 
