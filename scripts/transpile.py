@@ -16,6 +16,7 @@ import multiprocessing
 
 from common import *
 from typing import *
+from typing.io import *
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -26,11 +27,11 @@ def try_locate_elf_object(cmd: dict) -> Optional[str]:
     elif "command" in cmd:
         command = cmd['command']
     else:
-        die("malformed entry in compile_commands.json:\n" + 
+        die("malformed entry in compile_commands.json:\n" +
             json_pp_obj(cmd))
 
     if "directory" not in cmd:
-        die("malformed entry in compile_commands.json:\n" + 
+        die("malformed entry in compile_commands.json:\n" +
             json_pp_obj(cmd))
     dir = cmd['directory']
 
@@ -53,7 +54,7 @@ def try_locate_elf_object(cmd: dict) -> Optional[str]:
         return None
 
 
-def ensure_code_compiled_with_clang(cc_db: List[dict]):
+def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
     # filter non C code commands first
     c_cc_db = [c for c in cc_db if c['file'].endswith(".c")]
     if not len(c_cc_db):
@@ -76,18 +77,25 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]):
 exception_raised = False
 
 
-def transpile_files(args) -> None:
+def transpile_files(cc_db: TextIO,
+                    jobs: int,
+                    filter: str = None,
+                    import_only: bool = False) -> None:
+    """
+    run the ast-extractor and ast-importer on all C files
+    in a compile commands database.
+    """
     ast_extr = os.path.join(LLVM_BIN, "ast-extractor")
     ast_extr = get_cmd_or_die(ast_extr)
     ast_impo = os.path.join(
         ROOT_DIR,
         "ast-importer/target/debug/ast-importer")
     ast_impo = get_cmd_or_die(ast_impo)
+    cc_db_name = cc_db.name
+    cc_db = json.load(cc_db)
 
-    cc_db = json.load(args.commands_json)
-
-    if args.filter:  # skip commands not matching file filter
-        cc_db = [c for c in cc_db if args.filter in f['file']]
+    if filter:  # skip commands not matching file filter
+        cc_db = [c for c in cc_db if filter in f['file']]
 
     ensure_code_compiled_with_clang(cc_db)
     include_dirs = get_system_include_dirs()
@@ -95,12 +103,12 @@ def transpile_files(args) -> None:
     def transpile_single(cmd) -> None:
         global exception_raised
         if exception_raised:
-            return 
+            return
 
-        if args.import_only:
+        if import_only:
             cbor_file = os.path.join(cmd['directory'], cmd['file'] + ".cbor")
         else:
-            cbor_file = extract_ast_from(ast_extr, args.commands_json.name,
+            cbor_file = extract_ast_from(ast_extr, cc_db_name,
                                          include_dirs, **cmd)
         assert os.path.isfile(cbor_file), "missing: " + cbor_file
 
@@ -111,12 +119,12 @@ def transpile_files(args) -> None:
             if retcode != 0:
                 exception_raised = True
                 argv = str(ast_impo[cbor_file])
-                raise pb.ProcessExecutionError(argv, 
-                                               retcode, 
-                                               "(stdout elided)", 
+                raise pb.ProcessExecutionError(argv,
+                                               retcode,
+                                               "(stdout elided)",
                                                stderr)
 
-    if args.jobs == 1:
+    if jobs == 1:
         for cmd in cc_db:
             transpile_single(cmd)
     else:
@@ -124,7 +132,7 @@ def transpile_files(args) -> None:
         # 1. we spend most of the time outside the python interpreter, and
         # 2. it does not require that shared objects can be pickled.
         # 3. we can use a shared flag variable to acquiesce on error
-        with ThreadPoolExecutor(args.jobs) as executor:
+        with ThreadPoolExecutor(jobs) as executor:
             futures = [executor.submit(transpile_single, cmd)
                        for cmd in cc_db]
         try:
@@ -133,7 +141,7 @@ def transpile_files(args) -> None:
             die(str(exc))
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """
     define and parse command line arguments here.
     """
@@ -156,7 +164,10 @@ def main():
     logging.debug("args: %s", " ".join(sys.argv))
 
     args = parse_args()
-    transpile_files(args)
+    transpile_files(args.commands_json,
+                    args.jobs,
+                    args.filter,
+                    args.import_only)
 
     logging.info(u"success 👍")
 

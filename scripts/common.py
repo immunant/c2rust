@@ -60,6 +60,7 @@ include_directories({prefix}/include)
 link_directories({prefix}/lib)
 add_subdirectory(ast-extractor)
 """.format(prefix=CBOR_PREFIX)  # nopep8
+CC_DB_JSON = "compile_commands.json"
 
 
 def on_mac() -> bool:
