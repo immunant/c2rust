@@ -42,10 +42,9 @@ Vagrant.configure("2") do |config|
   # argument is a set of non-required options.
   config.vm.synced_folder "../ast-extractor", "/home/vagrant/ast-extractor"
   config.vm.synced_folder "../ast-importer", "/home/vagrant/ast-importer"
-  config.vm.synced_folder "../clang-cross-checker", "/home/vagrant/clang-cross-checker"
+  config.vm.synced_folder "../cross-checks", "/home/vagrant/cross-checks"
   config.vm.synced_folder "../examples", "/home/vagrant/examples"
   config.vm.synced_folder "../rust-refactor", "/home/vagrant/rust-refactor"
-  config.vm.synced_folder "../rust-cross-checker", "/home/vagrant/rust-cross-checker"
   config.vm.synced_folder "../scripts", "/home/vagrant/scripts"
   
   
