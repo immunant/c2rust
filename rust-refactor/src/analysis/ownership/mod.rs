@@ -268,7 +268,9 @@ pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
     let mono_sigs = get_all_mono_sigs(&cx);
     let inst_sel = find_instantiations(&cx, &mono_sigs);
 
-    let mono_filter = filter_suspicious_monos(&cx, &mono_sigs, &inst_sel);
+    // TODO: either fix mono_filter handling, or remove it completely
+    //let mono_filter = filter_suspicious_monos(&cx, &mono_sigs, &inst_sel);
+    let mono_filter: HashSet<(DefId, usize)> = HashSet::new();
 
 
     // Map from original (callee_id, mono_idx) to the mono_idx after filtering.
