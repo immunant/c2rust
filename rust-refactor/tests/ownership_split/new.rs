@@ -61,4 +61,6 @@ unsafe fn get_children_err(parent: *mut Tree, children_out: *mut *mut Forest) ->
     0
 }
 
+#[ownership_mono("")]
+#[ownership_variant_of("old/8cd878b::main[0]")]
 fn main() {}
