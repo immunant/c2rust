@@ -22,6 +22,8 @@ ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
 DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
 
+AST_IMPO = os.path.join(ROOT_DIR, "ast-importer/target/debug/ast-importer")
+
 CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
 CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.1.tar.gz")
 CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
@@ -51,6 +53,8 @@ LLVM_SIGNATURE_URLS = [s + ".sig" for s in LLVM_ARCHIVE_URLS]
 LLVM_ARCHIVE_FILES = [os.path.basename(s) for s in LLVM_ARCHIVE_URLS]
 LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "") for s in LLVM_ARCHIVE_FILES]
 LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
+
+AST_EXTR = os.path.join(LLVM_BLD, "bin/ast-extractor")
 
 KEYSERVER = "pgpkeys.mit.edu"
 MIN_PLUMBUM_VERSION = (1, 6, 3)

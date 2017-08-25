@@ -85,12 +85,8 @@ def transpile_files(cc_db: TextIO,
     run the ast-extractor and ast-importer on all C files
     in a compile commands database.
     """
-    ast_extr = os.path.join(LLVM_BIN, "ast-extractor")
-    ast_extr = get_cmd_or_die(ast_extr)
-    ast_impo = os.path.join(
-        ROOT_DIR,
-        "ast-importer/target/debug/ast-importer")
-    ast_impo = get_cmd_or_die(ast_impo)
+    ast_extr = get_cmd_or_die(AST_EXTR)
+    ast_impo = get_cmd_or_die(AST_IMPO)
     cc_db_name = cc_db.name
     cc_db = json.load(cc_db)
 

@@ -66,6 +66,15 @@ def main() -> None:
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
+    # check that the binaries have been built first
+    bins = [BEAR_BIN, AST_EXTR, AST_IMPO]
+    for b in bins:
+        if not os.path.isfile(b):
+            msg = b + " not found; run build_ast_extractor.py first?"
+            die(msg, errno.ENOENT)
+
+    ensure_dir(DEPS_DIR)
+
     args = parse_args()
     # FIXME: filter what gets tested using `what` argument
     test_lua(args)

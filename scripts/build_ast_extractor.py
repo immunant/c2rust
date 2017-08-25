@@ -137,6 +137,12 @@ def update_cbor_prefix(makefile):
             fh.writelines("".join(lines))
 
 
+def build_ast_importer() -> None:
+    cargo = get_cmd_or_die("cargo")
+    with pb.local.cwd(os.path.join(ROOT_DIR, "ast-importer")):
+        invoke(cargo, "build")
+
+
 def build_a_bear():
     """
     the output of bear differs between versions, so we build the
@@ -325,6 +331,8 @@ def _main():
     cc_db = install_tinycbor()
 
     configure_and_build_llvm(args)
+
+    build_ast_importer()
 
     if not on_mac() and args.sanity_test:
         test_ast_extractor(cc_db)

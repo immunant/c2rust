@@ -17,11 +17,6 @@ apt-get install -y python3-pip
 pip3 install --upgrade pip
 pip3 install plumbum colorlog typing cbor
 
-# FIXME: rustup is the most convenient way to install rust 
-# but it doesn't check signatures of downloaded packages :/
-# https://github.com/rust-lang-nursery/rustup.rs#security
-curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly
-
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 
 # Dependencies for test programs #
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 

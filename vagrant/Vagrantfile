@@ -112,6 +112,18 @@ Vagrant.configure("2") do |config|
     s.privileged = true
   end
 
+$script = <<SCRIPT
+# FIXME: rustup is the most convenient way to install rust 
+# but it doesn't check signatures of downloaded packages :/
+# https://github.com/rust-lang-nursery/rustup.rs#security
+# NOTE: must run as vagrant user, not root.
+curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly
+echo "source ~/.cargo/env" >> ~/.bashrc
+SCRIPT
+  
+  config.vm.provision "shell", inline: $script, privileged: false
+
+
   config.vm.provision "shell" do |s|
     s.path = "../scripts/provision_git.sh"
     # configure guest git using host git config
