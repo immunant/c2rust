@@ -15,10 +15,11 @@ import platform
 import multiprocessing
 
 from common import *
+from typing import *
 from concurrent.futures import ThreadPoolExecutor
 
 
-def try_locate_elf_object(cmd: dict) -> Union[str, None]:
+def try_locate_elf_object(cmd: dict) -> Optional[str]:
     # first look for -o in compiler command
     if "arguments" in cmd:
         command = " ".join(cmd['arguments'])

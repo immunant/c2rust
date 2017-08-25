@@ -13,7 +13,7 @@ import argparse
 
 
 from common import *
-from typing import List, Optional
+from typing import *
 
 
 def download_llvm_sources():
