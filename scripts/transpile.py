@@ -14,18 +14,8 @@ import argparse
 import platform
 import multiprocessing
 
-from typing import List, Union
+from common import *
 from concurrent.futures import ThreadPoolExecutor
-
-# FIXME: extract common functions and vars to separate file
-from build_ast_extractor import *
-
-
-def json_pp_obj(json_obj) -> str:
-    return json.dumps(json_obj,
-                      sort_keys=True,
-                      indent=2,
-                      separators=(',', ': '))
 
 
 def try_locate_elf_object(cmd: dict) -> Union[str, None]:
@@ -81,6 +71,9 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]):
         msg += "\n".join([f for (f, c) in comment_sections])
         die(msg)
 
+# this global is used as a flag shared between threads in transpile_files
+exception_raised = False
+
 
 def transpile_files(args) -> None:
     ast_extr = os.path.join(LLVM_BIN, "ast-extractor")
@@ -98,7 +91,11 @@ def transpile_files(args) -> None:
     ensure_code_compiled_with_clang(cc_db)
     include_dirs = get_system_include_dirs()
 
-    def transpile_single(cmd):
+    def transpile_single(cmd) -> None:
+        global exception_raised
+        if exception_raised:
+            return 
+
         if args.import_only:
             cbor_file = os.path.join(cmd['directory'], cmd['file'] + ".cbor")
         else:
@@ -110,7 +107,13 @@ def transpile_files(args) -> None:
         with pb.local.env(RUST_BACKTRACE='1'):
             logging.info(" importing ast from %s", os.path.basename(cbor_file))
             retcode, stdout, stderr = invoke_quietly(ast_impo, cbor_file)
-            # FIXME: error handling
+            if retcode != 0:
+                exception_raised = True
+                argv = str(ast_impo[cbor_file])
+                raise pb.ProcessExecutionError(argv, 
+                                               retcode, 
+                                               "(stdout elided)", 
+                                               stderr)
 
     if args.jobs == 1:
         for cmd in cc_db:
@@ -119,9 +122,14 @@ def transpile_files(args) -> None:
         # We use the ThreadPoolExecutor (not ProcesssPoolExecutor) because
         # 1. we spend most of the time outside the python interpreter, and
         # 2. it does not require that shared objects can be pickled.
+        # 3. we can use a shared flag variable to acquiesce on error
         with ThreadPoolExecutor(args.jobs) as executor:
-            for cmd in cc_db:
-                executor.submit(transpile_single, cmd)
+            futures = [executor.submit(transpile_single, cmd)
+                       for cmd in cc_db]
+        try:
+            results = [f.result() for f in futures]
+        except Exception as exc:
+            die(str(exc))
 
 
 def parse_args():
