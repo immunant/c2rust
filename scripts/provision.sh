@@ -9,8 +9,13 @@ bash $SCRIPT_DIR/provision_cmake.sh
 
 apt-get update
 apt-get install -y htop unzip tmux gdb
+# ubuntu installs clang/llvm 3.4 by default which is too old
+apt-get install -y git clang-3.9 lldb-3.9 gcc g++ ninja-build
 apt-get install -y software-properties-common build-essential
-apt-get install -y git clang gcc g++ ninja-build
+
+update-alternatives --install /usr/bin/clang clang /usr/bin/clang-3.9 100
+update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-3.9 100
+update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-3.9 100
 
 # Install python3.6 and packages
 apt-get install -y python3-pip
