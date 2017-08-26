@@ -138,6 +138,8 @@ def update_cbor_prefix(makefile):
 
 
 def build_ast_importer() -> None:
+    # clang 3.6.0 is known to work; 3.4.0 known to not work.
+    ensure_clang_version([3, 6, 0])
     cargo = get_cmd_or_die("cargo")
     with pb.local.cwd(os.path.join(ROOT_DIR, "ast-importer")):
         invoke(cargo, "build")

@@ -162,6 +162,24 @@ def json_pp_obj(json_obj) -> str:
                       separators=(',', ': '))
 
 
+def ensure_clang_version(min_ver: List[int]):
+    clang = get_cmd_or_die("clang")
+    version = clang("--version")
+    m = re.search("clang\s+version\s([^\s]+)", version)
+    if m:
+        version = m.group(1)
+        version = version[:version.find("-")]
+        # print(version)
+        version = [int(d) for d in version.split(".")]
+        emsg = "can't compare versions {} and {}".format(version, min_ver)
+        assert len(version) == len(min_ver), emsg
+        if version < min_ver:
+            emsg = "clang version: {} < min version: {}".format(version, min_ver)
+            die(emsg)
+    else:
+        die("unable to identify clang version")
+
+
 def get_system_include_dirs() -> List[str]:
     """
     note: assumes code was compiled with clang installed locally.
