@@ -16,6 +16,11 @@ LUA_ARCHIVE = os.path.basename(LUA_URL)
 LUA_SRC = LUA_ARCHIVE.replace(".tar.gz", "")
 LUA_SRC = os.path.join(DEPS_DIR, LUA_SRC)
 
+RUBY_URL = "https://cache.ruby-lang.org/pub/ruby/2.4/ruby-2.4.1.tar.gz"
+RUBY_ARCHIVE = os.path.basename(RUBY_URL)
+RUBY_SRC = RUBY_ARCHIVE.replace(".tar.gz", "")
+RUBY_SRC = os.path.join(DEPS_DIR, RUBY_SRC)
+
 TAR = get_cmd_or_die("tar")
 SED = get_cmd_or_die("sed")
 MAKE = get_cmd_or_die("make")
@@ -41,6 +46,25 @@ def test_lua(args: argparse.Namespace) -> None:
     if not os.path.isfile(cc_db_file):
         with pb.local.cwd(LUA_SRC), pb.local.env(CC="clang"):
             invoke(BEAR[MAKE["linux"]])
+
+    if not os.path.isfile(cc_db_file):
+        die("missing " + cc_db_file, errno.ENOENT)
+
+    with open(cc_db_file) as cc_db:
+        transpile_files(cc_db, args.jobs)
+
+
+def test_ruby(args: argparse.Namespace) -> None:
+    with pb.local.cwd(DEPS_DIR):
+        download_archive(RUBY_URL, RUBY_ARCHIVE)
+        invoke_quietly(TAR, "xf", RUBY_ARCHIVE)
+
+    cc_db_file = os.path.join(RUBY_SRC, CC_DB_JSON)
+    if not os.path.isfile(cc_db_file):
+        with pb.local.cwd(RUBY_SRC), pb.local.env(CC="clang"):
+            configure = pb.local.get("./configure")
+            invoke(configure)
+            invoke(BEAR[MAKE])
 
     if not os.path.isfile(cc_db_file):
         die("missing " + cc_db_file, errno.ENOENT)
@@ -76,9 +100,15 @@ def main() -> None:
     ensure_dir(DEPS_DIR)
 
     args = parse_args()
-    # FIXME: filter what gets tested using `what` argument
-    test_lua(args)
-    # FIXME: test lighttpd, varnish, ruby, Python, etc.
+
+    # filter what gets tested using `what` argument
+    tests = [test_ruby, test_lua]
+    tests = [t for t in tests if args.what in t.__name__]
+    for t in tests:
+        logging.debug("running test: %s", t.__name__)
+        t(args)
+
+    # FIXME: test lighttpd, varnish, Python, etc.
 
     logging.info("PASS")
 
