@@ -1,0 +1,37 @@
+#!/usr/bin/make -f
+#export DH_VERBOSE=1
+
+DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
+DPKG_GENSYMBOLS_CHECK_LEVEL ?= 4
+
+override_dh_auto_clean:
+	if test -e Makefile; then \
+	    make clean; \
+	    for f in Makefile config.h config.log config.status \
+	             json.pc json_config.h libtool stamp-h1 stamp-h2 \
+	             json-c.pc tests/Makefile; do \
+                rm -f $$f; \
+	done; \
+	fi; \
+	if test -d tests/testSubDir; then \
+	    rm -R tests/testSubDir; \
+	fi
+
+override_dh_auto_install:
+	dh_auto_install
+
+	# we install libjson-c into /lib, so fix the link in a way understood by ldconfig
+	rm debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/libjson-c.so
+	# new links are created by libjson-c-dev.links
+
+override_dh_strip:
+	dh_strip --dbgsym-migration='libjson-c2-dbg (<< 0.12-3)'
+
+override_dh_installdocs:
+	dh_installdocs -Xjquery.js
+
+override_dh_install:
+	dh_install --fail-missing -Xlibjson-c.la
+
+%:
+	dh  $@ --with autoreconf --with autotools-dev
