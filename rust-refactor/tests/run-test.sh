@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 
 triple=x86_64-unknown-linux-gnu
 export LD_LIBRARY_PATH=$HOME/install/rust/build/$triple/stage2/lib

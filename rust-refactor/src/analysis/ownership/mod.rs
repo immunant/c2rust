@@ -197,8 +197,9 @@ fn analyze_inter(cx: &mut Ctxt) {
     inter_cx.finish();
 }
 
-pub fn test_analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
-                                          dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) {
+pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
+                                     dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>)
+                                     -> AnalysisResult<'tcx> {
     let mut cx = Ctxt::new(dcx.ty_ctxt(), dcx.ty_arena());
 
     handle_marks(&mut cx, st, dcx);
@@ -210,11 +211,11 @@ pub fn test_analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
 
     compute_all_mono_sigs(&mut cx);
     find_instantiations(&mut cx);
+
+    convert_results(&cx)
 }
 
 
-
-/*
 pub type VTy<'tcx> = LabeledTy<'tcx, Option<Var>>;
 pub type VFnSig<'tcx> = FnSig<'tcx, Option<Var>>;
 
@@ -223,7 +224,9 @@ pub type PTy<'tcx> = LabeledTy<'tcx, Option<ConcretePerm>>;
 pub struct AnalysisResult<'tcx> {
     pub statics: HashMap<DefId, PTy<'tcx>>,
 
-    pub fns: HashMap<DefId, FunctionResult<'tcx>>,
+    pub funcs: HashMap<DefId, FunctionResult<'tcx>>,
+    pub variants: HashMap<DefId, VariantResult>,
+    pub monos: HashMap<(DefId, usize), MonoResult>,
 }
 
 pub struct FunctionResult<'tcx> {
@@ -235,14 +238,26 @@ pub struct FunctionResult<'tcx> {
     /// Constraint set relating `SigVar`s to each other and to concrete permission values.
     pub cset: ConstraintSet<'tcx>,
 
-    /// Monomorphizations
-    pub monos: Vec<MonoResult>,
+    /// List of variant IDs, for multi-variant functions.
+    pub variants: Option<Vec<DefId>>,
+
+    /// Number of monomorphizations
+    pub num_monos: usize,
+}
+
+pub struct VariantResult {
+    /// ID of the parent function.
+    pub func_id: DefId,
+
+    /// Index of this variant within the parent.
+    pub index: usize,
 
     /// Info on each referenced function.
     pub func_refs: Vec<FuncRef>,
 }
 
 pub struct FuncRef {
+    /// Function ID of the callee.
     pub def_id: DefId,
 
     /// The location of the reference to this function.
@@ -262,57 +277,17 @@ pub struct MonoResult {
     pub callee_mono_idxs: Vec<usize>,
 }
 
-pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
-                                     dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>)
-                                     -> AnalysisResult<'tcx> {
-    let mut cx = Ctxt::new(dcx.ty_arena());
+fn convert_results<'a, 'gcx, 'tcx>(cx: &Ctxt<'a, 'gcx, 'tcx>) -> AnalysisResult<'tcx> {
+    let mut r = AnalysisResult {
+        statics: HashMap::new(),
+        funcs: HashMap::new(),
+        variants: HashMap::new(),
+        monos: HashMap::new(),
+    };
 
-    handle_marks(&mut cx, st, dcx);
-    handle_attrs(&mut cx, st, dcx);
+    // statics
 
-    // Compute constraints for each function
-    analyze_intra(&mut cx, dcx.hir_map(), dcx.ty_ctxt());
-    analyze_inter(&mut cx);
-
-
-    let path_str = |def_id| dcx.ty_ctxt().def_path(def_id).to_string(dcx.ty_ctxt());
-    let mut ids = cx.fn_ids().collect::<Vec<_>>();
-    ids.sort();
-    for def_id in ids {
-        let summ = cx.get_fn_summ_imm(def_id).unwrap();
-        eprintln!("{:?}:", path_str(def_id));
-        eprintln!("  sig = {:?}", summ.sig);
-        for &(a, b) in summ.cset.iter() {
-            eprintln!("  {:?} <= {:?}", a, b);
-        }
-    }
-
-
-    // Monomorphize functions and call sites
-    let mono_sigs = get_all_mono_sigs(&cx);
-    let inst_sel = find_instantiations(&cx, &mono_sigs);
-
-    // TODO: either fix mono_filter handling, or remove it completely
-    //let mono_filter = filter_suspicious_monos(&cx, &mono_sigs, &inst_sel);
-    let mono_filter: HashSet<(DefId, usize)> = HashSet::new();
-
-
-    // Map from original (callee_id, mono_idx) to the mono_idx after filtering.
-    let mut filtered_mono_idx = HashMap::new();
-    for (&def_id, mono_sigs) in &mono_sigs {
-        let mut j = 0;
-        for i in 0 .. mono_sigs.len() {
-            if mono_filter.contains(&(def_id, i)) {
-                continue;
-            }
-            filtered_mono_idx.insert((def_id, i), j);
-            j += 1;
-        }
-    }
-
-    // Build the final result maps
-    let mut perm_lcx = LabeledTyCtxt::new(dcx.ty_arena());
-    let mut static_results = HashMap::new();
+    let mut perm_lcx = LabeledTyCtxt::new(cx.arena);
     for (&def_id, &lty) in cx.static_summ.iter() {
         let pty = perm_lcx.relabel(lty, &mut |p| {
             if let Some(Perm::StaticVar(v)) = *p {
@@ -321,16 +296,17 @@ pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
                 None
             }
         });
-        static_results.insert(def_id, pty);
+        r.statics.insert(def_id, pty);
     }
 
-    let mut var_lcx = LabeledTyCtxt::new(dcx.ty_arena());
-    let mut func_results = HashMap::new();
-    for (&def_id, mono_sigs) in &mono_sigs {
-        let summ = cx.get_fn_summ_imm(def_id).unwrap();
+    // funcs
+
+    let mut var_lcx = LabeledTyCtxt::new(cx.arena);
+    for def_id in cx.func_ids() {
+        let func = cx.get_func_summ(def_id);
 
         let sig = {
-            let mut func = |p: &Option<_>| {
+            let mut f = |p: &Option<_>| {
                 if let Some(Perm::SigVar(v)) = *p {
                     Some(v)
                 } else {
@@ -338,79 +314,91 @@ pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
                 }
             };
             FnSig {
-                inputs: var_lcx.relabel_slice(summ.sig.inputs, &mut func),
-                output: var_lcx.relabel(summ.sig.output, &mut func),
+                inputs: var_lcx.relabel_slice(func.sig.inputs, &mut f),
+                output: var_lcx.relabel(func.sig.output, &mut f),
             }
         };
 
-        let mut suffix_count = [0, 0, 0];
-        static SUFFIX_BASE: [&'static str; 3] = ["", "mut", "take"];
+        let variant_ids =
+            if func.variant_ids.len() == 1 { None }
+            else { Some(func.variant_ids.clone()) };
 
-        let mut mono_results = Vec::new();
-        let is_output = mono::infer_outputs(summ);
+        r.funcs.insert(def_id, FunctionResult {
+            sig: sig,
+            num_sig_vars: func.num_sig_vars,
+            cset: func.sig_cset.clone(),
+            variants: variant_ids,
+            num_monos: func.num_monos,
+        });
 
-        for (i, mono_sig) in mono_sigs.iter().enumerate() {
-            if mono_filter.contains(&(def_id, i)) {
-                continue;
-            }
 
-            let orig_inst_sel = &inst_sel[&(def_id, i)];
-            let mut inst_sel = Vec::with_capacity(orig_inst_sel.len());
-            for (inst, &mono_idx) in summ.insts.iter().zip(orig_inst_sel.iter()) {
-                inst_sel.push(filtered_mono_idx[&(inst.callee, mono_idx)]);
-            }
+        // func variants
 
-            // Come up with a name suffix for this variant.  
-            let suffix = if let Some(ref monos) = summ.attr_monos {
-                // A suffix was provided, so use that.
-                monos[i].suffix.clone()
-            } else if mono_sigs.len() == 1 {
-                // There's only one variant, so it doesn't need a distinguishing suffix.
-                String::new()
-            } else {
-                // Use names like "foo", "foo_mut", "foo_take" for variants with READ/WRITE/MOVE
-                // outputs.
+        for (idx, &var_id) in func.variant_ids.iter().enumerate() {
+            let variant = cx.get_variant_summ(var_id);
+            let func_refs = variant.insts.iter().map(|inst| {
+                FuncRef {
+                    def_id: inst.callee,
+                    span: inst.span,
+                }
+            }).collect();
+
+            r.variants.insert(var_id, VariantResult {
+                func_id: def_id,
+                index: idx,
+                func_refs: func_refs,
+            });
+        }
+
+
+        // func monos
+
+        // Assign suffixes if not provided.
+
+        let mut suffixes = Vec::new();
+        // If monos were provided, then they have suffixes already.
+        if !func.monos_provided {
+            let mut suffix_count = [0, 0, 0];
+            static SUFFIX_BASE: [&'static str; 3] = ["", "mut", "take"];
+            let is_output = mono::infer_outputs(func);
+
+            // Guess a suffix for each mono depending on its output types.  Automatic uffixes look
+            // like "", "mut", "take", "2", "mut3", "take4", etc.
+            for idx in 0 .. func.num_monos {
+                let mono = cx.get_mono_summ(def_id, idx);
+
                 let mut max_perm = is_output.iter_enumerated()
                     .filter(|&(_, &out)| out)
-                    .map(|(v, _)| mono_sig[v])
+                    .map(|(v, _)| mono.assign[v])
                     .max().unwrap_or(ConcretePerm::Read);
 
                 let idx = max_perm as usize;
                 suffix_count[idx] += 1;
-                if suffix_count[idx] == 1 {
+                let suffix = if suffix_count[idx] == 1 {
                     SUFFIX_BASE[idx].to_owned()
                 } else {
                     format!("{}{}", SUFFIX_BASE[idx], suffix_count[idx])
-                }
-            };
-
-            mono_results.push(MonoResult {
-                suffix: suffix,
-                assign: mono_sig.clone(),
-                callee_mono_idxs: inst_sel,
-            });
+                };
+                suffixes.push(suffix);
+            }
         }
 
-        let func_refs = summ.insts.iter().map(|inst| {
-            FuncRef {
-                def_id: inst.callee,
-                span: inst.span,
-            }
-        }).collect();
+        for idx in 0 .. func.num_monos {
+            let mono = cx.get_mono_summ(def_id, idx);
 
-        func_results.insert(def_id, FunctionResult {
-            sig: sig,
-            num_sig_vars: summ.num_sig_vars,
-            cset: summ.cset.clone(),
-            monos: mono_results,
-            func_refs: func_refs,
-        });
+            let suffix = 
+                if func.monos_provided { mono.suffix.clone() }
+                else { suffixes[idx].clone() };
+
+            r.monos.insert((def_id, idx), MonoResult {
+                suffix: suffix,
+                assign: mono.assign.clone(),
+                callee_mono_idxs: mono.callee_mono_idxs.clone(),
+            });
+        }
     }
 
-    AnalysisResult {
-        statics: static_results,
-        fns: func_results,
-    }
+    r
 }
 
 pub fn dump_results(dcx: &driver::Ctxt,
@@ -436,23 +424,36 @@ pub fn dump_results(dcx: &driver::Ctxt,
         eprintln!("static {} :: {:?}", path_str(id), Pretty(ty));
     }
 
-    let mut ids = results.fns.keys().cloned().collect::<Vec<_>>();
+    let mut ids = results.funcs.keys().cloned().collect::<Vec<_>>();
     ids.sort();
     for id in ids {
-        let fr = &results.fns[&id];
+        let fr = &results.funcs[&id];
 
-        eprintln!("fn {}:", path_str(id));
-        for (i, mr) in fr.monos.iter().enumerate() {
+        eprintln!("func {}:", path_str(id));
+        if let Some(ref var_ids) = fr.variants {
+            for (i, &var_id) in var_ids.iter().enumerate() {
+                eprintln!("  variant {}: {}", i, path_str(var_id));
+            }
+        } else {
+            eprintln!("  single variant");
+        }
+
+        for i in 0 .. fr.num_monos {
+            let mr = &results.monos[&(id, i)];
+
+            let var_id = fr.variants.as_ref().map_or(id, |vars| vars[i]);
+            let vr = &results.variants[&var_id];
+
             eprintln!("  mono #{}: {}", i, format_sig(fr.sig, &mr.assign));
             for (j, (func_ref, &mono_idx)) in
-                    fr.func_refs.iter().zip(mr.callee_mono_idxs.iter()).enumerate() {
-                let callee_fr = &results.fns[&func_ref.def_id];
+                    vr.func_refs.iter().zip(mr.callee_mono_idxs.iter()).enumerate() {
+                let callee_fr = &results.funcs[&func_ref.def_id];
                 eprintln!("    call #{}: {:?} #{} :: {}",
                           j, path_str(func_ref.def_id), mono_idx,
-                          format_sig(callee_fr.sig, &callee_fr.monos[mono_idx].assign));
+                          format_sig(callee_fr.sig,
+                                     &results.monos[&(func_ref.def_id, mono_idx)].assign));
                 eprintln!("      (at {:?})", func_ref.span);
             }
         }
     }
 }
-*/

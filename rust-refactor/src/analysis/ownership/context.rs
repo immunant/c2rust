@@ -88,7 +88,6 @@ pub struct MonoSumm {
     pub callee_mono_idxs: Vec<usize>,
 
     pub suffix: String,
-    pub name: String,
 }
 
 pub struct Instantiation {
@@ -286,7 +285,6 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
             assign: IndexVec::new(),
             callee_mono_idxs: Vec::new(),
             suffix: String::new(),
-            name: String::new(),
         });
         let mono = self.monos.get_mut(&(variant.func_id, m_idx)).unwrap();
 
