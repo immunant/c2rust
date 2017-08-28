@@ -14,10 +14,10 @@ pub trait TypeSource {
     type Type: Type;
     type Signature: Signature<Self::Type>;
 
-    fn expr_type(&mut self, e: &Expr) -> Option<Self::Type>;
-    fn pat_type(&mut self, p: &Pat) -> Option<Self::Type>;
-    fn def_type(&mut self, did: DefId) -> Option<Self::Type>;
-    fn fn_sig(&mut self, did: DefId) -> Option<Self::Signature>;
+    fn expr_type(&mut self, e: &Expr) -> Option<Self::Type> { None }
+    fn pat_type(&mut self, p: &Pat) -> Option<Self::Type> { None }
+    fn def_type(&mut self, did: DefId) -> Option<Self::Type> { None }
+    fn fn_sig(&mut self, did: DefId) -> Option<Self::Signature> { None }
     fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> { self.fn_sig(did) }
 }
 

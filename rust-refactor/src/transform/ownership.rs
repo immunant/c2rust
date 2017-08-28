@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use arena::DroplessArena;
 use rustc::hir;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
@@ -15,6 +16,7 @@ use syntax::tokenstream::{TokenTree, TokenStream, Delimited};
 use syntax::util::small_vector::SmallVector;
 use syntax::util::move_map::MoveMap;
 
+use analysis::labeled_ty::LabeledTyCtxt;
 use analysis::ownership::{self, ConcretePerm, Var, PTy};
 use analysis::ownership::constraint::{ConstraintSet, Perm};
 use api::*;
@@ -22,6 +24,7 @@ use command::{CommandState, Registry, DriverCommand};
 use driver::{self, Phase};
 use fold::Fold;
 use make_ast::mk;
+use type_map::{self, TypeSource};
 use util::IntoSymbol;
 
 pub fn register_commands(reg: &mut Registry) {
@@ -38,6 +41,12 @@ pub fn register_commands(reg: &mut Registry) {
 
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             do_split_variants(st, cx, label);
+        }))
+    });
+
+    reg.register("ownership_mark_pointers", |args| {
+        Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
+            do_mark_pointers(st, cx);
         }))
     });
 }
@@ -458,4 +467,85 @@ fn callee_new_name(cx: &driver::Ctxt,
             format!("{}", base_name)
         }
     }
+}
+
+
+fn do_mark_pointers(st: &CommandState, cx: &driver::Ctxt) {
+    let ana = ownership::analyze(&st, &cx);
+
+    struct AnalysisTypeSource<'a, 'tcx: 'a> {
+        ana: &'a ownership::AnalysisResult<'tcx>,
+        arena: &'tcx DroplessArena,
+        st: &'a CommandState,
+    }
+
+    impl<'a, 'tcx> type_map::TypeSource for AnalysisTypeSource<'a, 'tcx> {
+        type Type = ownership::PTy<'tcx>;
+        type Signature = ownership::PFnSig<'tcx>;
+
+        fn def_type(&mut self, did: DefId) -> Option<Self::Type> {
+            self.ana.statics.get(&did).cloned()
+        }
+
+        fn fn_sig(&mut self, did: DefId) -> Option<Self::Signature> {
+            let (fr, vr) = self.ana.fn_results(did);
+            // Only provide signatures for monomorphic fns.
+            if fr.variants.is_none() && fr.num_monos > 1 {
+                return None;
+            }
+
+            // Only one variant?  Use mono #0 (which is the only one, by the check above).
+            // Multiple variants?  Use the mono for the current variant.
+            let mono_idx =
+                if fr.variants.is_none() { 0 }
+                else { vr.index };
+
+            let mr = &self.ana.monos[&(vr.func_id, mono_idx)];
+
+            let mut lcx = LabeledTyCtxt::new(self.arena);
+
+            let sig = {
+                let mut f = |l: &Option<_>| {
+                    if let Some(v) = *l {
+                        Some(mr.assign[v])
+                    } else {
+                        None
+                    }
+                };
+                ownership::FnSig {
+                    inputs: lcx.relabel_slice(fr.sig.inputs, &mut f),
+                    output: lcx.relabel(fr.sig.output, &mut f),
+                }
+            };
+
+            Some(sig)
+        }
+
+        fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> { None }
+    }
+
+    let source = AnalysisTypeSource {
+        ana: &ana,
+        arena: cx.ty_arena(),
+        st: st,
+    };
+
+    let s_ref = "ref".into_symbol();
+    let s_mut = "mut".into_symbol();
+    let s_box = "box".into_symbol();
+
+    type_map::map_types(cx.hir_map(), source, &st.krate(), |source, ast_ty, lty| {
+        let p = match lty.label {
+            Some(x) => x,
+            None => return,
+        };
+
+        let label = match p {
+            ConcretePerm::Read => s_ref,
+            ConcretePerm::Write => s_mut,
+            ConcretePerm::Move => s_box,
+        };
+
+        st.add_mark(ast_ty.id, label);
+    });
 }

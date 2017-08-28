@@ -106,6 +106,21 @@ pub enum ConcretePerm {
 }
 
 
+impl<'tcx, L: fmt::Debug> type_map::Signature<LabeledTy<'tcx, L>> for FnSig<'tcx, L> {
+    fn num_inputs(&self) -> usize {
+        self.inputs.len()
+    }
+
+    fn input(&self, idx: usize) -> LabeledTy<'tcx, L> {
+        self.inputs[idx]
+    }
+
+    fn output(&self) -> LabeledTy<'tcx, L> {
+        self.output
+    }
+}
+
+
 /*
 pub struct AttrMono {
     suffix: String,
@@ -220,6 +235,7 @@ pub type VTy<'tcx> = LabeledTy<'tcx, Option<Var>>;
 pub type VFnSig<'tcx> = FnSig<'tcx, Option<Var>>;
 
 pub type PTy<'tcx> = LabeledTy<'tcx, Option<ConcretePerm>>;
+pub type PFnSig<'tcx> = FnSig<'tcx, Option<ConcretePerm>>;
 
 pub struct AnalysisResult<'tcx> {
     pub statics: HashMap<DefId, PTy<'tcx>>,
