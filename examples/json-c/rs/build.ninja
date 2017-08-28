@@ -1,0 +1,36 @@
+rustc = RUSTC_BOOTSTRAP=1 rustc
+cc = gcc
+ld = gcc
+rust_libdir = /usr/lib/rustlib/x86_64-unknown-linux-gnu/lib
+crate_hash = 63283ac5
+compiler_rt_dir = /home/stuart/install/rust/build/x86_64-unknown-linux-gnu/native/compiler-rt
+
+rule rustc
+    command = $rustc $in --emit obj,dep-info --crate-type cdylib --crate-name $crate_name -g
+    depfile = $crate_name.d
+
+rule gcc
+    command = $cc $in -o $out -c -g -I.. -fPIC
+
+rule link
+    command = $ld -shared -o $out -Wl,--start-group $in $
+        $rust_libdir/libcore-$crate_hash.rlib $
+        $rust_libdir/liballoc-$crate_hash.rlib $
+        $rust_libdir/libcollections-$crate_hash.rlib $
+        $rust_libdir/liblibc-$crate_hash.rlib $
+        $rust_libdir/libstd_unicode-$crate_hash.rlib $
+        $rust_libdir/libunwind-$crate_hash.rlib $
+        $rust_libdir/libstd-$crate_hash.rlib $
+        $rust_libdir/librand-$crate_hash.rlib $
+        $rust_libdir/libpanic_unwind-$crate_hash.rlib $
+        $rust_libdir/liballoc_system-$crate_hash.rlib $
+        $compiler_rt_dir/libcompiler-rt.a $
+        -Wl,--end-group -lpthread -ldl
+
+build json_c.o: rustc lib.rs
+    crate_name = json_c
+
+build varargs_funcs.o: gcc varargs_funcs.c
+
+build libjson-c.so.3: link json_c.o varargs_funcs.o
+
