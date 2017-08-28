@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use rustc::hir;
+use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast::*;
 use syntax::attr;
@@ -62,18 +63,24 @@ fn do_annotate(st: &CommandState,
 
         fn constraints_attr_for(&self, id: NodeId) -> Option<Attribute> {
             self.hir_map.opt_local_def_id(id)
-                .and_then(|def_id| self.ana.fns.get(&def_id))
+                .and_then(|def_id| self.ana.funcs.get(&def_id))
                 .map(|fr| build_constraints_attr(&fr.cset))
         }
 
         fn push_mono_attrs_for(&self, id: NodeId, dest: &mut Vec<Attribute>) {
-            if let Some(fr) = self.hir_map.opt_local_def_id(id)
-                    .and_then(|def_id| self.ana.fns.get(&def_id)) {
+            if let Some((def_id, (fr, vr))) = self.hir_map.opt_local_def_id(id)
+                    .map(|def_id| (def_id, self.ana.fn_results(def_id))) {
                 if fr.num_sig_vars == 0 {
                     return;
                 }
 
-                for mr in &fr.monos {
+                if fr.variants.is_none() {
+                    for idx in 0 .. fr.num_monos {
+                        let mr = &self.ana.monos[&(def_id, idx)];
+                        dest.push(build_mono_attr(&mr.suffix, &mr.assign));
+                    }
+                } else {
+                    let mr = &self.ana.monos[&(def_id, vr.index)];
                     dest.push(build_mono_attr(&mr.suffix, &mr.assign));
                 }
             }
@@ -273,8 +280,8 @@ fn do_split_variants(st: &CommandState,
 
     // Map from ExprPath/ExprMethodCall span to function ref idx within the caller.
     let mut span_fref_idx = HashMap::new();
-    for fr in ana.fns.values() {
-        for (idx, fref) in fr.func_refs.iter().enumerate() {
+    for vr in ana.variants.values() {
+        for (idx, fref) in vr.func_refs.iter().enumerate() {
             if let Some(span) = fref.span {
                 span_fref_idx.insert(span, idx);
             }
@@ -295,23 +302,43 @@ fn do_split_variants(st: &CommandState,
 
             let def_id = match_or!([cx.hir_map().opt_local_def_id(fl.id)]
                                    Some(x) => x; return SmallVector::one(fl));
-            let fr = match_or!([ana.fns.get(&def_id)]
-                               Some(x) => x; return SmallVector::one(fl));
+            if !ana.variants.contains_key(&def_id) {
+                return SmallVector::one(fl);
+            }
+            let (fr, vr) = ana.fn_results(def_id);
+
+            if fr.variants.is_some() {
+                // Func has already been split.  No work to do at this point.
+                return SmallVector::one(fl);
+            }
 
             let path_str = cx.ty_ctxt().def_path(def_id).to_string(cx.ty_ctxt());
 
-            fr.monos.iter().enumerate().map(|(mono_idx, mr)| {
+
+            // For consistency, we run the split logic even for funcs with only one mono.  This way
+            // the "1 variant, N monos" case is handled here, and the "N variants, N monos" case is
+            // handled below.
+            let mut fls = SmallVector::with_capacity(fr.num_monos);
+            for mono_idx in 0 .. fr.num_monos {
+                let mr = &ana.monos[&(vr.func_id, mono_idx)];
                 let mut fl = fl.clone();
 
                 if mr.suffix.len() > 0 {
                     fl.ident = mk().ident(format!("{}_{}", fl.ident.name, mr.suffix));
                 }
 
-                // Delete all but one of the `#[ownership_mono]` annotations.
+                // Apply ownership annotations
                 fl.attrs.retain(|a| {
+                    // If a `variant_of` annotation was present, then this fn should be part of a
+                    // variant set, and we should have bailed out of the split logic already.
+                    assert!(!a.check_name("ownership_variant_of"));
+
+                    // Remove all `ownership_mono` (we add a new one below) and also remove
+                    // `ownership_constraints` from all but the first split fn.
                     !a.check_name("ownership_mono") &&
                     (!a.check_name("ownership_constraints") || mono_idx == 0)
                 });
+
                 fl.attrs.push(build_mono_attr(&mr.suffix, &mr.assign));
                 fl.attrs.push(build_variant_attr(&path_str));
 
@@ -320,24 +347,32 @@ fn do_split_variants(st: &CommandState,
                                              Some(&x) => x; return e);
                     handled_spans.insert(e.span);
 
-                    let callee = fr.func_refs[fref_idx].def_id;
-                    let callee_marked = cx.hir_map().as_local_node_id(callee)
+                    let dest = vr.func_refs[fref_idx].def_id;
+                    let dest_fr = &ana.funcs[&dest];
+                    let dest_marked = cx.hir_map().as_local_node_id(dest)
                         .map_or(false, |id| st.marked(id, label));
-                    if !callee_marked {
+                    // Two conditions under which we adjust the call site.  First, if the fn is
+                    // marked, then it's going to be split during this pass.  Second, if the callee
+                    // func has variants (i.e, it was previously split), then we retarget the call
+                    // to the appropriate variant.
+                    if !dest_marked && dest_fr.variants.is_none() {
                         // A call from a split function to a non-split function.  Leave the call
                         // unchanged.
                         return e;
                     }
-                    let callee_mono_idx = mr.callee_mono_idxs[fref_idx];
-                    let callee_mono = &ana.fns[&callee].monos[callee_mono_idx];
+                    let dest_mono_idx = mr.callee_mono_idxs[fref_idx];
 
-                    apply_suffix(&callee_mono.suffix, e)
+                    let new_name = callee_new_name(cx, &ana, dest, dest_mono_idx);
+                    rename_callee(e, &new_name)
                 }));
 
-                fl
-            }).collect()
+                fls.push(fl);
+            }
+            fls
         });
 
+        // (2) Find calls from other functions into functions being split.  Retarget those calls to
+        // an appropriate monomorphization.
         let krate = fold_nodes(krate, |e: P<Expr>| {
             let fref_idx = match_or!([span_fref_idx.get(&e.span)]
                                      Some(&x) => x; return e);
@@ -346,61 +381,81 @@ fn do_split_variants(st: &CommandState,
                 return e;
             }
 
-            // Figure out what we're calling.
+            // Figure out where we are.
             let src = cx.hir_map().get_parent(e.id);
             let src_def_id = cx.node_def_id(src);
-            let src_fr = &ana.fns[&src_def_id];
-            let dest = src_fr.func_refs[fref_idx].def_id;
+            let (src_fr, src_vr) = ana.fn_results(src_def_id);
 
+            // Figure out what we're calling.
+            let dest = src_vr.func_refs[fref_idx].def_id;
+            let dest_fr = &ana.funcs[&dest];
             let dest_marked = cx.hir_map().as_local_node_id(dest)
                 .map_or(false, |id| st.marked(id, label));
-            if !dest_marked {
-                // A call to a non-split function.  Leave the call unchanged.
+            if !dest_marked && dest_fr.variants.is_none() {
                 return e;
             }
-            // This is a call from a non-split fn to a split fn.  We don't have a specific (src)
-            // `mono_idx` to use to look up the dest mono idx.  So we just look at the src's
-            // first variant instead.  This will usually give us the highest-permission dest mono
-            // that is used in any of the src variants.
-            let src_mr = &src_fr.monos[0];
-            let dest_mono_idx = src_mr.callee_mono_idxs[fref_idx];
-            let dest_mono = &ana.fns[&dest].monos[dest_mono_idx];
 
-            apply_suffix(&dest_mono.suffix, e)
+            // Pick a monomorphization.
+
+            // There are two cases here.  First, we might be in a non-split fn.  In that case, we
+            // arbitrarily pretend that we're in monomorphization #0 of the src function.  Second,
+            // we might be in a pre-split fn (a variant).  Then we use the variant index as the src
+            // mono idx.
+
+            let src_mono_idx =
+                if src_fr.variants.is_none() { 0 }
+                else { src_vr.index };
+            let src_mr = &ana.monos[&(src_vr.func_id, src_mono_idx)];
+            let dest_mono_idx = src_mr.callee_mono_idxs[fref_idx];
+
+            let new_name = callee_new_name(cx, &ana, dest, dest_mono_idx);
+            rename_callee(e, &new_name)
         });
 
         krate
     });
 }
 
-fn apply_suffix(suffix: &str, e: P<Expr>) -> P<Expr> {
+fn rename_callee(e: P<Expr>, new_name: &str) -> P<Expr> {
     e.map(|mut e| {
         match e.node {
             ExprKind::Path(_, ref mut path) => {
-                // Append the suffix to the last path segment.
+                // Change the last path segment.
                 let seg = path.segments.last_mut().unwrap();
-                let new_name = mono_name(&seg.identifier.name.as_str(), &suffix);
-                seg.identifier = mk().ident(&new_name);
+                seg.identifier = mk().ident(new_name);
             },
 
             ExprKind::MethodCall(ref mut seg, _) => {
-                let new_name = mono_name(&seg.identifier.name.as_str(), &suffix);
-                seg.identifier = mk().ident(&new_name);
+                seg.identifier = mk().ident(new_name);
             },
 
-            _ => panic!("apply_suffix: unexpected expr kind: {:?}", e),
+            _ => panic!("rename_callee: unexpected expr kind: {:?}", e),
         }
 
         e
     })
 }
 
-fn mono_name(base: &str, suffix: &str) -> String {
-    if suffix.len() == 0 {
-        format!("{}", base)
+fn callee_new_name(cx: &driver::Ctxt,
+                   ana: &ownership::AnalysisResult,
+                   dest: DefId,
+                   dest_mono_idx: usize) -> String {
+    let fr = &ana.funcs[&dest];
+    if let Some(ref var_ids) = fr.variants {
+        // Function has variants.  Take the name of the indicated variant.
+        let var_id = var_ids[dest_mono_idx];
+        cx.ty_ctxt().def_path(var_id).data
+           .last().unwrap().data.to_string()
     } else {
-        format!("{}_{}", base, suffix)
+        // No variants.  Presumably the function is getting split.  Add the suffix for the selected
+        // mono.
+        let base_name = cx.ty_ctxt().def_path(dest).data
+           .last().unwrap().data.get_opt_name().unwrap();
+        let suffix = &ana.monos[&(dest, dest_mono_idx)].suffix;
+        if suffix.len() > 0 {
+            format!("{}_{}", base_name, suffix)
+        } else {
+            format!("{}", base_name)
+        }
     }
 }
-
-

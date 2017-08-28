@@ -33,6 +33,7 @@ fn mk<T: transform::Transform + 'static>(t: T) -> Box<command::Command> {
 
 // Adjust these lines to control what part of `idiomize` gets built.
 #[path="src/analysis/mod.rs"]
+//#[path="src/transform/ownership.rs"]
 mod plugin;
 use self::plugin as analysis;
 

@@ -158,6 +158,8 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
                           did: DefId) -> &'b mut FuncSumm<'tcx> {
         match funcs.entry(did) {
             Entry::Vacant(e) => {
+                assert!(!variants.contains_key(&did),
+                        "tried to create func summ for {:?}, which is already a variant");
                 let sig = tcx.fn_sig(did);
                 let mut counter = 0;
 
@@ -244,40 +246,58 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
         self.func_summ(did).sig
     }
 
-    pub fn add_variant(&mut self, func_did: DefId, variant_id: DefId)
-                       -> (&mut FuncSumm<'tcx>,
-                           &mut VariantSumm<'tcx>) {
-        let func = Self::func_summ_impl(&mut self.funcs,
-                                        &mut self.variants,
-                                        self.tcx,
-                                        &mut self.lcx,
+    fn add_variant_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
+                            variants: &'b mut HashMap<DefId, VariantSumm<'tcx>>,
+                            tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                            lcx: &mut LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
+                            func_did: DefId,
+                            variant_did: DefId)
+                            -> (&'b mut FuncSumm<'tcx>,
+                                &'b mut VariantSumm<'tcx>) {
+        let func = Self::func_summ_impl(funcs,
+                                        variants,
+                                        tcx,
+                                        lcx,
                                         func_did);
-        if self.variants.contains_key(&variant_id) {
+        if variants.contains_key(&variant_did) {
             // The variant already existed, or was just created by `func_summ_impl`.
-            let variant = self.variants.get_mut(&variant_id).unwrap();
+            let variant = variants.get_mut(&variant_did).unwrap();
             return (func, variant);
         }
 
         let v_idx = func.variant_ids.len();
-        func.variant_ids.push(variant_id);
+        func.variant_ids.push(variant_did);
 
-        self.variants.insert(variant_id, VariantSumm {
+        variants.insert(variant_did, VariantSumm {
             func_id: func_did,
             variant_idx: v_idx,
             inst_cset: ConstraintSet::new(),
             insts: Vec::new(),
         });
-        let variant = self.variants.get_mut(&variant_id).unwrap();
+        let variant = variants.get_mut(&variant_did).unwrap();
         (func, variant)
+    }
+
+    pub fn add_variant(&mut self, func_did: DefId, variant_id: DefId)
+                       -> (&mut FuncSumm<'tcx>,
+                           &mut VariantSumm<'tcx>) {
+        Self::add_variant_impl(&mut self.funcs,
+                               &mut self.variants,
+                               self.tcx,
+                               &mut self.lcx,
+                               func_did,
+                               variant_id)
     }
 
     pub fn add_mono(&mut self, variant_did: DefId)
                     -> (&mut FuncSumm<'tcx>,
                         &mut VariantSumm<'tcx>,
                         &mut MonoSumm) {
-        let variant = self.variants.get_mut(&variant_did).unwrap();
-
-        let func = self.funcs.get_mut(&variant.func_id).unwrap();
+        let (func, variant) = Self::variant_summ_impl(&mut self.funcs,
+                                                      &mut self.variants,
+                                                      self.tcx,
+                                                      &mut self.lcx,
+                                                      variant_did);
         let m_idx = func.num_monos;
         func.num_monos += 1;
 
@@ -291,17 +311,31 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
         (func, variant, mono)
     }
 
+    fn variant_summ_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
+                             variants: &'b mut HashMap<DefId, VariantSumm<'tcx>>,
+                             tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                             lcx: &mut LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
+                             variant_did: DefId)
+                            -> (&'b mut FuncSumm<'tcx>,
+                                &'b mut VariantSumm<'tcx>) {
+        if variants.contains_key(&variant_did) {
+            let variant = variants.get_mut(&variant_did).unwrap();
+            let func = funcs.get_mut(&variant.func_id).unwrap();
+            (func, variant)
+        } else {
+            Self::add_variant_impl(funcs, variants, tcx, lcx, variant_did, variant_did)
+        }
+    }
+
     /// Get the variant and function summaries for a `fn`.  The summaries will be created if they
     /// don't already exist.
     pub fn variant_summ(&mut self, variant_did: DefId)
                         -> (&mut FuncSumm<'tcx>, &mut VariantSumm<'tcx>) {
-        if self.variants.contains_key(&variant_did) {
-            let variant = self.variants.get_mut(&variant_did).unwrap();
-            let func = self.funcs.get_mut(&variant.func_id).unwrap();
-            (func, variant)
-        } else {
-            self.add_variant(variant_did, variant_did)
-        }
+        Self::variant_summ_impl(&mut self.funcs,
+                                &mut self.variants,
+                                self.tcx,
+                                &mut self.lcx,
+                                variant_did)
     }
 
     pub fn get_variant_summ(&self, did: DefId) -> &VariantSumm<'tcx> {

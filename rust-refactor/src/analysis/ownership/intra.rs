@@ -42,8 +42,8 @@ type ITy<'tcx> = LabeledTy<'tcx, Label<'tcx>>;
 type IFnSig<'tcx> = FnSig<'tcx, Label<'tcx>>;
 
 
-/// Function-local analysis context.  We run one of these for each function to produce the initial
-/// (incomplete) summary.
+/// Variant-local analysis context.  We run one of these for each function variant to produce the
+/// initial (incomplete) summary.
 pub struct IntraCtxt<'c, 'a: 'c, 'gcx: 'tcx, 'tcx: 'a> {
     cx: &'c mut Ctxt<'a, 'gcx, 'tcx>,
     ilcx: LabeledTyCtxt<'tcx, Label<'tcx>>,
@@ -119,6 +119,9 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
                 else { self.local_ty(decl.ty) };
             self.local_tys.push(lty);
         }
+
+        // Pick up any preset constraints for this variant.
+        self.cset = self.cx.variant_summ(self.def_id).1.inst_cset.clone();
     }
 
     fn relabel_ty(&mut self, lty: LTy<'tcx>) -> ITy<'tcx> {

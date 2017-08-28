@@ -51,7 +51,7 @@ transform_modules! {
     generics,
     items,
     linkage,
-    //ownership,
+    ownership,
     retype,
     rewrite,
     statics,

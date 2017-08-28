@@ -202,8 +202,8 @@ pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
                                      -> AnalysisResult<'tcx> {
     let mut cx = Ctxt::new(dcx.ty_ctxt(), dcx.ty_arena());
 
-    handle_marks(&mut cx, st, dcx);
     handle_attrs(&mut cx, st, dcx);
+    handle_marks(&mut cx, st, dcx);
 
     // Compute constraints for each function
     analyze_intra(&mut cx, dcx.hir_map(), dcx.ty_ctxt());
@@ -275,6 +275,15 @@ pub struct MonoResult {
     /// Index of the chosen monomorphization for each function reference.  These correspond to the
     /// `DefId`s in `func_refs`.
     pub callee_mono_idxs: Vec<usize>,
+}
+
+impl<'tcx> AnalysisResult<'tcx> {
+    /// Get the func and variant results for a `fn` item-like.
+    pub fn fn_results(&self, id: DefId) -> (&FunctionResult<'tcx>, &VariantResult) {
+        let vr = &self.variants[&id];
+        let fr = &self.funcs[&vr.func_id];
+        (fr, vr)
+    }
 }
 
 fn convert_results<'a, 'gcx, 'tcx>(cx: &Ctxt<'a, 'gcx, 'tcx>) -> AnalysisResult<'tcx> {
@@ -356,8 +365,12 @@ fn convert_results<'a, 'gcx, 'tcx>(cx: &Ctxt<'a, 'gcx, 'tcx>) -> AnalysisResult<
         // Assign suffixes if not provided.
 
         let mut suffixes = Vec::new();
-        // If monos were provided, then they have suffixes already.
-        if !func.monos_provided {
+        if func.monos_provided {
+            // Do nothing. If monos were provided, we'll use their provided names.
+        } else if func.num_monos == 1 {
+            // Use the original name.
+            suffixes.push(String::new());
+        } else {
             let mut suffix_count = [0, 0, 0];
             static SUFFIX_BASE: [&'static str; 3] = ["", "mut", "take"];
             let is_output = mono::infer_outputs(func);
@@ -430,12 +443,34 @@ pub fn dump_results(dcx: &driver::Ctxt,
         let fr = &results.funcs[&id];
 
         eprintln!("func {}:", path_str(id));
+
+        eprintln!("  sig constraints:");
+        for &(a, b) in fr.cset.iter() {
+            eprintln!("    {:?} <= {:?}", a, b);
+        }
+
         if let Some(ref var_ids) = fr.variants {
             for (i, &var_id) in var_ids.iter().enumerate() {
                 eprintln!("  variant {}: {}", i, path_str(var_id));
+                let vr = &results.variants[&var_id];
+
+                for (j, func_ref) in vr.func_refs.iter().enumerate() {
+                    let callee_fr = &results.funcs[&func_ref.def_id];
+                    eprintln!("    call #{}: {:?} :: {:?}",
+                              j, path_str(func_ref.def_id), callee_fr.sig);
+                    eprintln!("      (at {:?})", func_ref.span);
+                }
             }
         } else {
             eprintln!("  single variant");
+            let vr = &results.variants[&id];
+
+            for (j, func_ref) in vr.func_refs.iter().enumerate() {
+                let callee_fr = &results.funcs[&func_ref.def_id];
+                eprintln!("    call #{}: {:?} :: {:?}",
+                          j, path_str(func_ref.def_id), callee_fr.sig);
+                eprintln!("      (at {:?})", func_ref.span);
+            }
         }
 
         for i in 0 .. fr.num_monos {
@@ -444,7 +479,8 @@ pub fn dump_results(dcx: &driver::Ctxt,
             let var_id = fr.variants.as_ref().map_or(id, |vars| vars[i]);
             let vr = &results.variants[&var_id];
 
-            eprintln!("  mono #{}: {}", i, format_sig(fr.sig, &mr.assign));
+            eprintln!("  mono #{} ({:?}): {}", i, mr.suffix, format_sig(fr.sig, &mr.assign));
+            /*
             for (j, (func_ref, &mono_idx)) in
                     vr.func_refs.iter().zip(mr.callee_mono_idxs.iter()).enumerate() {
                 let callee_fr = &results.funcs[&func_ref.def_id];
@@ -454,6 +490,7 @@ pub fn dump_results(dcx: &driver::Ctxt,
                                      &results.monos[&(func_ref.def_id, mono_idx)].assign));
                 eprintln!("      (at {:?})", func_ref.span);
             }
+            */
         }
     }
 }

@@ -54,7 +54,7 @@ impl<'c, 'a, 'gcx, 'tcx> TypeSource for LTySource<'c, 'a, 'gcx, 'tcx> {
 
     fn fn_sig(&mut self, did: DefId) -> Option<Self::Signature> {
         self.last_sig_did = Some(did);
-        Some(self.cx.func_sig(did))
+        Some(self.cx.variant_func_sig(did))
     }
 
     fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> {
@@ -120,7 +120,7 @@ pub fn handle_marks<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
             },
             Perm::SigVar(_) => {
                 let did = did.expect("expected DefId for SigVar");
-                cx.func_summ(did).sig_cset.add(Perm::Concrete(min_perm), p);
+                cx.variant_summ(did).1.inst_cset.add(Perm::Concrete(min_perm), p);
             }
             _ => panic!("expected StaticVar or SigVar, but got {:?}", p),
         }
@@ -196,7 +196,9 @@ pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
         if let Some(attr) = attrs.iter().filter(|a| a.check_name("ownership_variant_of")).next() {
             let meta = match_or!([attr.meta()] Some(x) => x;
                     panic!("bad meta item in #[ownership_variant_of] (for {:?})", def_id));
-            let group_name = parse_variant_of(&meta);
+            let group_name = parse_variant_of(&meta)
+                .unwrap_or_else(|e| panic!("bad #[ownership_variant_of] for {:?}: {}",
+                                           def_id, e));
             let primary = *variant_group_primary.entry(group_name).or_insert(def_id);
             cx.add_variant(primary, def_id);
 
