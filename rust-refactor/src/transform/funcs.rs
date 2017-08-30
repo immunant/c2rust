@@ -195,6 +195,7 @@ impl Transform for ToMethod {
                         attrs: f.item.attrs.clone(),
                         node: ImplItemKind::Method(sig, f.block),
                         span: f.item.span,
+                        tokens: None,
                     }
                 }));
                 Item {

@@ -117,6 +117,7 @@ impl Transform for GeneralizeItems {
                     });
                 } else {
                     let abpd = AngleBracketedParameterData {
+                        span: DUMMY_SP,
                         lifetimes: vec![],
                         types: vec![arg],
                         bindings: vec![],

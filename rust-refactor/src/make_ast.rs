@@ -663,19 +663,24 @@ impl Builder {
 
     // Items
 
+    fn item(self, name: Ident, node: ItemKind) -> P<Item> {
+        P(Item {
+            ident: name,
+            attrs: self.attrs,
+            id: DUMMY_NODE_ID,
+            node: node,
+            vis: self.vis,
+            span: DUMMY_SP,
+            tokens: None,
+        })
+    }
+
     pub fn static_item<I, T, E>(self, name: I, ty: T, init: E) -> P<Item>
             where I: Make<Ident>, T: Make<P<Ty>>, E: Make<P<Expr>> {
         let name = name.make(&self);
         let ty = ty.make(&self);
         let init = init.make(&self);
-        P(Item {
-            ident: name,
-            attrs: self.attrs,
-            id: DUMMY_NODE_ID,
-            node: ItemKind::Static(ty, self.mutbl, init),
-            vis: self.vis,
-            span: DUMMY_SP,
-        })
+        self.item(name, ItemKind::Static(ty, self.mutbl, init))
     }
 
     pub fn fn_item<I, D, B>(self, name: I, decl: D, block: B) -> P<Item>
@@ -683,33 +688,19 @@ impl Builder {
         let name = name.make(&self);
         let decl = decl.make(&self);
         let block = block.make(&self);
-        P(Item {
-            ident: name,
-            attrs: self.attrs,
-            id: DUMMY_NODE_ID,
-            node: ItemKind::Fn(decl,
-                               self.unsafety,
-                               Spanned { span: DUMMY_SP, node: self.constness },
-                               self.abi,
-                               self.generics,
-                               block),
-            vis: self.vis,
-            span: DUMMY_SP,
-        })
+        self.item(name, ItemKind::Fn(decl,
+                                     self.unsafety,
+                                     Spanned { span: DUMMY_SP, node: self.constness },
+                                     self.abi,
+                                     self.generics,
+                                     block))
     }
 
     pub fn struct_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
             where I: Make<Ident> {
         let name = name.make(&self);
-        P(Item {
-            ident: name,
-            attrs: self.attrs,
-            id: DUMMY_NODE_ID,
-            node: ItemKind::Struct(VariantData::Struct(fields, DUMMY_NODE_ID),
-                                   self.generics),
-            vis: self.vis,
-            span: DUMMY_SP,
-        })
+        self.item(name, ItemKind::Struct(VariantData::Struct(fields, DUMMY_NODE_ID),
+                                         self.generics))
     }
 
     pub fn struct_field<I, T>(self, ident: I, ty: T) -> StructField
