@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::mem;
 use rustc::hir::def_id::DefId;
 use rustc::ty::TypeVariants;
 use syntax::abi::Abi;
@@ -119,6 +120,148 @@ impl Transform for RetypeArgument {
 }
 
 
+pub fn bitcast_retype<F>(krate: Crate, retype: F) -> Crate
+        where F: FnMut(&P<Ty>) -> Option<P<Ty>> {
+    // (1) Walk over all supported nodes, replacing type annotations.  Also record which nodes had
+    // type annotations replaced, for future reference.
+
+    struct ChangeTypeFolder<F> {
+        retype: F,
+        changed_inputs: HashMap<(NodeId, usize), (P<Ty>, P<Ty>)>,
+        changed_outputs: HashMap<NodeId, (P<Ty>, P<Ty>)>,
+        changed_defs: HashMap<NodeId, (P<Ty>, P<Ty>)>,
+    }
+
+    impl<F> Folder for ChangeTypeFolder<F>
+            where F: FnMut(&P<Ty>) -> Option<P<Ty>> {
+        fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+            eprintln!("at item {:?}", i);
+            let i = if matches!([i.node] ItemKind::Fn(..)) {
+                i.map(|mut i| {
+                    let mut fd = expect!([i.node]
+                                         ItemKind::Fn(ref fd, _, _ ,_ ,_ ,_) =>
+                                         fd.clone().unwrap());
+                    eprintln!("handling fn decl {:?}", fd);
+
+                    for (j, arg) in fd.inputs.iter_mut().enumerate() {
+                        if let Some(new_ty) = (self.retype)(&arg.ty) {
+                            let old_ty = mem::replace(&mut arg.ty, new_ty.clone());
+                            self.changed_inputs.insert((i.id, j), (old_ty, new_ty));
+                        }
+                    }
+
+                    if let FunctionRetTy::Ty(ref mut ty) = fd.output {
+                        if let Some(new_ty) = (self.retype)(ty) {
+                            let old_ty = mem::replace(ty, new_ty.clone());
+                            self.changed_outputs.insert(i.id, (old_ty, new_ty));
+                        }
+                    }
+
+                    match i.node {
+                        ItemKind::Fn(ref mut fd_ptr, _, _, _, _, _) => {
+                            *fd_ptr = P(fd);
+                        },
+                        _ => panic!("expected ItemKind::Fn"),
+                    }
+
+                    i
+                })
+
+            } else if matches!([i.node] ItemKind::Static(..)) {
+                i.map(|mut i| {
+                    {
+                        let ty = expect!([i.node] ItemKind::Static(ref mut ty, _, _) => ty);
+                        if let Some(new_ty) = (self.retype)(ty) {
+                            let old_ty = mem::replace(ty, new_ty.clone());
+                            self.changed_defs.insert(i.id, (old_ty, new_ty));
+                        }
+                    }
+                    i
+                })
+
+            } else if matches!([i.node] ItemKind::Const(..)) {
+                i.map(|mut i| {
+                    {
+                        let ty = expect!([i.node] ItemKind::Const(ref mut ty, _) => ty);
+                        if let Some(new_ty) = (self.retype)(ty) {
+                            let old_ty = mem::replace(ty, new_ty.clone());
+                            self.changed_defs.insert(i.id, (old_ty, new_ty));
+                        }
+                    }
+                    i
+                })
+
+            } else {
+                i
+            };
+
+            fold::noop_fold_item(i, self)
+        }
+
+        fn fold_struct_field(&mut self, mut sf: StructField) -> StructField {
+            eprintln!("at struct field {:?}", sf);
+            if let Some(new_ty) = (self.retype)(&sf.ty) {
+                let old_ty = mem::replace(&mut sf.ty, new_ty.clone());
+                self.changed_defs.insert(sf.id, (old_ty, new_ty));
+            }
+            fold::noop_fold_struct_field(sf, self)
+        }
+    }
+
+    let mut f = ChangeTypeFolder {
+        retype: retype,
+        changed_inputs: HashMap::new(),
+        changed_outputs: HashMap::new(),
+        changed_defs: HashMap::new(),
+    };
+    eprintln!("folding krate...");
+    let krate = krate.fold(&mut f);
+    eprintln!("fold done!");
+    let ChangeTypeFolder { changed_inputs, changed_outputs, changed_defs, .. } = f;
+
+    // (2) Look for exprs referencing the changed items, and wrap them in transmutes.
+
+
+    krate
+}
+
+
+/// Replace types in signatures, fields, and globals.  The new types must be identical in
+/// representation to the old types, as all conversions between old and new types will be done with
+/// `transmute`.
+pub struct BitcastRetype {
+    pub pat: String,
+    pub repl: String,
+}
+
+impl Transform for BitcastRetype {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let pat = parse_ty(cx.session(), &self.pat);
+        let repl = parse_ty(cx.session(), &self.repl);
+
+        eprintln!("running! {:?} -> {:?}", pat, repl);
+
+        bitcast_retype(krate, |ty| {
+            // Doing a "deep" rewrite here is based on the assumption that if `T` and `U` are
+            // transmute-compatible, then so are `&T` and `&U`, `(T, T)` and `(U, U)`, `S<T>` and
+            // `S<U>`, etc.  This might not be true when associated types are involved (`T::SomeTy`
+            // and `U::SomeTy` could be totally unrelated).
+
+            let mut matched = false;
+            let new_ty = fold_match(st, cx, pat.clone(), ty.clone(), |_, bnd| {
+                matched = true;
+                repl.clone().subst(st, cx, &bnd)
+            });
+            if matched {
+                Some(new_ty)
+            } else {
+                None
+            }
+        })
+    }
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -126,5 +269,10 @@ pub fn register_commands(reg: &mut Registry) {
         new_ty: args[0].clone(),
         wrap: args[1].clone(),
         unwrap: args[2].clone(),
+    }));
+
+    reg.register("bitcast_retype", |args| mk(BitcastRetype {
+        pat: args[0].clone(),
+        repl: args[1].clone(),
     }));
 }
