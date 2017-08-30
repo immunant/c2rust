@@ -9,8 +9,10 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use syntax::ast::NodeId;
 
-use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node};
-use idiomize::{interact, command, mark_adjust, plugin, select, analysis, script};
+use idiomize::{
+    file_rewrite, driver, transform, span_fix, rewrite, pick_node, interact, command, mark_adjust,
+    plugin, select, analysis, script, print_spans
+};
 
 use idiomize::command::CommandState;
 use idiomize::util::IntoSymbol;
@@ -321,6 +323,7 @@ fn main() {
     command::register_misc_commands(&mut cmd_reg);
     transform::register_transform_commands(&mut cmd_reg);
     mark_adjust::register_commands(&mut cmd_reg);
+    print_spans::register_commands(&mut cmd_reg);
     select::register_commands(&mut cmd_reg);
     analysis::register_commands(&mut cmd_reg);
 
