@@ -24,7 +24,7 @@ struct Mod { inner, items }
 
 
 #[rewrite_splice] #[rewrite_seq_item] #[extend_span]
-struct Item { ident, #[match=ignore] attrs, id, node, vis, span }
+struct Item { ident, #[match=ignore] attrs, id, node, vis, span, #[match=ignore] tokens }
 enum ItemKind {
     ExternCrate(name),
     Use(vp),
@@ -47,7 +47,7 @@ enum ItemKind {
 }
 
 #[extend_span]
-struct TraitItem { id, ident, #[match=ignore] attrs, node, span }
+struct TraitItem { id, ident, #[match=ignore] attrs, node, span, #[match=ignore] tokens }
 enum TraitItemKind {
     Const(ty, init),
     Method(sig, body),
@@ -56,7 +56,7 @@ enum TraitItemKind {
 }
 
 #[extend_span]
-struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, node, span }
+struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, node, span, #[match=ignore] tokens }
 enum ImplItemKind {
     Const(ty, init),
     Method(sig, body),
@@ -89,7 +89,7 @@ enum ForeignItemKind {
 struct Generics { lifetimes, ty_params, where_clause, span }
 struct TyParam { attrs, ident, id, bounds, default, span }
 struct LifetimeDef { attrs, lifetime, bounds }
-struct WhereClause { id, predicates }
+struct WhereClause { id, predicates, span }
 enum WherePredicate {
     BoundPredicate(pred),
     RegionPredicate(pred),
@@ -297,7 +297,7 @@ enum PathParameters {
     Parenthesized(ppd),
 }
 
-struct AngleBracketedParameterData { lifetimes, types, bindings }
+struct AngleBracketedParameterData { span, lifetimes, types, bindings }
 struct ParenthesizedParameterData { span, inputs, output }
 struct QSelf { ty, position }
 
