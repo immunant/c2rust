@@ -7,7 +7,7 @@ use rustc::ty::TypeVariants;
 use syntax::abi::Abi;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::codemap::Spanned;
+use syntax::codemap::{Spanned, DUMMY_SP};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
