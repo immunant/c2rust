@@ -22,23 +22,23 @@ def wordwise(f):
 
 
 @comma_sep
-def struct_fields(fields, suffix):
+def struct_fields(fields, suffix, bind_mode):
     for f in fields:
-        yield '%s: ref %s%s' % (f.name, f.name, suffix)
+        yield '%s: %s%s%s' % (f.name, bind_mode, f.name, suffix)
 
 @comma_sep
-def tuple_fields(fields, suffix):
+def tuple_fields(fields, suffix, bind_mode):
     for f in fields:
-        yield 'ref %s%s' % (f.name, suffix)
+        yield '%s%s%s' % (bind_mode, f.name, suffix)
 
-def struct_pattern(s, path, suffix=''):
+def struct_pattern(s, path, suffix='', bind_mode='ref '):
     if not s.is_tuple:
-        return '%s { %s }' % (path, struct_fields(s.fields, suffix))
+        return '%s { %s }' % (path, struct_fields(s.fields, suffix, bind_mode))
     else:
         if len(s.fields) == 0:
             return path
         else:
-            return '%s(%s)' % (path, tuple_fields(s.fields, suffix))
+            return '%s(%s)' % (path, tuple_fields(s.fields, suffix, bind_mode))
 
 
 CAPS_RE = re.compile(r'[A-Z]')

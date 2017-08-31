@@ -7,6 +7,7 @@ use syntax::ast::*;
 use syntax::codemap::Spanned;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
+use syntax::util::move_map::MoveMap;
 use syntax::util::small_vector::SmallVector;
 
 use api::*;
@@ -120,7 +121,7 @@ impl Transform for RetypeArgument {
 }
 
 
-pub fn bitcast_retype<F>(krate: Crate, retype: F) -> Crate
+pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, retype: F) -> Crate
         where F: FnMut(&P<Ty>) -> Option<P<Ty>> {
     // (1) Walk over all supported nodes, replacing type annotations.  Also record which nodes had
     // type annotations replaced, for future reference.
@@ -146,7 +147,20 @@ pub fn bitcast_retype<F>(krate: Crate, retype: F) -> Crate
                     for (j, arg) in fd.inputs.iter_mut().enumerate() {
                         if let Some(new_ty) = (self.retype)(&arg.ty) {
                             let old_ty = mem::replace(&mut arg.ty, new_ty.clone());
-                            self.changed_inputs.insert((i.id, j), (old_ty, new_ty));
+                            self.changed_inputs.insert((i.id, j),
+                                                       (old_ty.clone(), new_ty.clone()));
+
+                            // Also record that the type of the variable declared here has changed.
+                            if matches!([arg.pat.node] PatKind::Ident(..)) {
+                                // Note that `PatKind::Ident` doesn't guarantee that this is a
+                                // variable binding.  But if it's not, then no name will ever
+                                // resolve to `arg.pat`'s DefId, so it doesn't matter.
+                                self.changed_defs.insert(arg.pat.id, (old_ty, new_ty));
+                            } else {
+                                // TODO: Would be nice to warn the user (or skip rewriting) if a
+                                // nontrivial pattern gets its type changed, as we'll likely miss
+                                // adding some required `transmute`s.
+                            }
                         }
                     }
 
@@ -221,6 +235,76 @@ pub fn bitcast_retype<F>(krate: Crate, retype: F) -> Crate
 
     // (2) Look for exprs referencing the changed items, and wrap them in transmutes.
 
+    let rvalue_repl = parse_expr(cx.session(),
+            "::std::mem::transmute::<__new_ty, __old_ty>(__e)");
+    let lvalue_repl = parse_expr(cx.session(),
+            "*::std::mem::transmute::<&__new_ty, &__old_ty>(&__e)");
+    let lvalue_mut_repl = parse_expr(cx.session(),
+            "*::std::mem::transmute::<&mut __new_ty, &mut __old_ty>(&mut __e)");
+
+    // Folder for rewriting top-level exprs only
+    struct ExprFolder<F> {
+        callback: F,
+    }
+
+    impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for ExprFolder<F> {
+        fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
+            (self.callback)(e)
+        }
+    }
+
+    fn fold_top_exprs<T, F>(x: T, callback: F) -> <T as Fold>::Result
+            where T: Fold, F: FnMut(P<Expr>) -> P<Expr> {
+        let mut f = ExprFolder { callback: callback };
+        x.fold(&mut f)
+    }
+
+    let krate = fold_top_exprs(krate, |e: P<Expr>| {
+        fold_expr_with_context(e, lr_expr::Context::Rvalue, |e, context| {
+            eprintln!("look at {:?} {:?}", context, e);
+            let ty_change = match e.node {
+                ExprKind::Path(..) => {
+                    cx.try_resolve_expr(&e)
+                        .and_then(|did| cx.hir_map().as_local_node_id(did))
+                        .and_then(|id| changed_defs.get(&id))
+                },
+
+                ExprKind::Field(ref obj, ref name) => {
+                    let ty = cx.adjusted_node_type(obj.id);
+                    match ty.sty {
+                        TypeVariants::TyAdt(adt, _) => {
+                            let did = adt.struct_variant().field_named(name.node.name).did;
+                            cx.hir_map().as_local_node_id(did)
+                              .and_then(|id| changed_defs.get(&id))
+                        },
+                        _ => panic!("field access on non-adt"),
+                    }
+                },
+
+                // TODO: Call, MethodCall
+                
+                _ => None,
+            };
+
+            if let Some(&(ref old_ty, ref new_ty)) = ty_change {
+                eprintln!("BITCAST RETYPE: change {:?} ({:?}) from {:?} to {:?}",
+                          e, context, old_ty, new_ty);
+                let mut bnd = Bindings::new();
+                bnd.add_expr("__e", e.clone());
+                bnd.add_ty("__old_ty", (*old_ty).clone());
+                bnd.add_ty("__new_ty", (*new_ty).clone());
+
+                let repl = match context {
+                    lr_expr::Context::Rvalue => rvalue_repl.clone(),
+                    lr_expr::Context::Lvalue => lvalue_repl.clone(),
+                    lr_expr::Context::LvalueMut => lvalue_mut_repl.clone(),
+                };
+                repl.subst(st, cx, &bnd)
+            } else {
+                e
+            }
+        })
+    });
 
     krate
 }
@@ -241,7 +325,7 @@ impl Transform for BitcastRetype {
 
         eprintln!("running! {:?} -> {:?}", pat, repl);
 
-        bitcast_retype(krate, |ty| {
+        bitcast_retype(st, cx, krate, |ty| {
             // Doing a "deep" rewrite here is based on the assumption that if `T` and `U` are
             // transmute-compatible, then so are `&T` and `&U`, `(T, T)` and `(U, U)`, `S<T>` and
             // `S<U>`, etc.  This might not be true when associated types are involved (`T::SomeTy`
@@ -258,6 +342,10 @@ impl Transform for BitcastRetype {
                 None
             }
         })
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
     }
 }
 

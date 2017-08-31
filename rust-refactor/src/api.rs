@@ -21,6 +21,7 @@ pub use fold_node::fold_nodes;
 pub use visit_node::visit_nodes;
 pub use path_edit::{self, fold_resolved_paths, fold_resolved_paths_with_id};
 pub use fn_edit::{fold_fns, fold_fns_multi};
+pub use lr_expr::{self, fold_expr_with_context};
 
 use bindings::Bindings;
 use command::CommandState;
