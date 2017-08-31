@@ -8,6 +8,10 @@ use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::move_map::MoveMap;
 
 
+// TODO: check for autoborrow adjustments
+// TODO: handle match inputs properly
+
+
 trait LRExpr {
     fn fold_rvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self;
     fn fold_lvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self;
