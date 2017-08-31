@@ -143,13 +143,11 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
     impl<F> Folder for ChangeTypeFolder<F>
             where F: FnMut(&P<Ty>) -> Option<P<Ty>> {
         fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
-            eprintln!("at item {:?}", i);
             let i = if matches!([i.node] ItemKind::Fn(..)) {
                 i.map(|mut i| {
                     let mut fd = expect!([i.node]
                                          ItemKind::Fn(ref fd, _, _ ,_ ,_ ,_) =>
                                          fd.clone().unwrap());
-                    eprintln!("handling fn decl {:?}", fd);
 
                     for (j, arg) in fd.inputs.iter_mut().enumerate() {
                         if let Some(new_ty) = (self.retype)(&arg.ty) {
@@ -222,7 +220,6 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
         }
 
         fn fold_struct_field(&mut self, mut sf: StructField) -> StructField {
-            eprintln!("at struct field {:?}", sf);
             if let Some(new_ty) = (self.retype)(&sf.ty) {
                 let old_ty = mem::replace(&mut sf.ty, new_ty.clone());
                 self.changed_defs.insert(sf.id, (old_ty, new_ty));
@@ -238,11 +235,10 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
         changed_funcs: HashSet::new(),
         changed_defs: HashMap::new(),
     };
-    eprintln!("folding krate...");
     let krate = krate.fold(&mut f);
-    eprintln!("fold done!");
     let ChangeTypeFolder { changed_inputs, changed_outputs, changed_funcs,
                            changed_defs, .. } = f;
+
 
     // (2) Look for exprs referencing the changed items, and wrap them in transmutes.
 
@@ -286,7 +282,6 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
 
     let krate = fold_top_exprs(krate, |e: P<Expr>| {
         fold_expr_with_context(e, lr_expr::Context::Rvalue, |e, context| {
-            eprintln!("look at {:?} {:?}", context, e);
             match e.node {
                 ExprKind::Path(..) => {
                     if let Some(&(ref old_ty, ref new_ty)) = cx.try_resolve_expr(&e)
@@ -353,6 +348,20 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
         })
     });
 
+
+    // (3) Wrap output expressions from functions whose return types were modified.
+
+    let krate = fold_fns(krate, |mut fl| {
+        if let Some(&(ref old_ty, ref new_ty)) = changed_outputs.get(&fl.id) {
+            fl.block = fl.block.map(|b| fold_output_exprs(b, true, |e| {
+                transmute(e, lr_expr::Context::Rvalue, old_ty, new_ty)
+            }));
+        }
+
+        fl
+    });
+
+
     krate
 }
 
@@ -369,8 +378,6 @@ impl Transform for BitcastRetype {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let pat = parse_ty(cx.session(), &self.pat);
         let repl = parse_ty(cx.session(), &self.repl);
-
-        eprintln!("running! {:?} -> {:?}", pat, repl);
 
         bitcast_retype(st, cx, krate, |ty| {
             // Doing a "deep" rewrite here is based on the assumption that if `T` and `U` are
