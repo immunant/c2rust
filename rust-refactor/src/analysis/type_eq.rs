@@ -395,7 +395,7 @@ impl<'a, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'hir, 'gcx, 'tcx> {
 
     fn compute_def_lty(&self, id: DefId) -> LTy<'tcx> {
         match self.hir_map.get_if_local(id) {
-            Some(NodeLocal(p)) => {
+            Some(NodeBinding(p)) => {
                 return self.pat_lty(p);
             },
             _ => {},
