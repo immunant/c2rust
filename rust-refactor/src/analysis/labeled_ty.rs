@@ -1,3 +1,8 @@
+//! Provides a wrapper around `rustc::ty::Ty` with a label attached to each type constructor.  This
+//! is useful for tracking analysis data about types.
+//!
+//! Labeled type data is manipulated by reference, the same as with `Ty`s, and the data is stored
+//! in the same arena as the underlying `Ty`s.
 use std::fmt;
 use std::marker::PhantomData;
 use arena::DroplessArena;
@@ -7,13 +12,28 @@ use rustc::ty::subst::Substs;
 use type_map;
 
 
+/// The actual data for a labeled type.
+///
+/// This struct shouldn't be constructed directly - instead, use `LabeledTyCtxt` methods to build
+/// instances inside the tcx arena and return `LabeledTy` references.
+///
+/// Labeled types have to mimic the tree structure of the underlying `Ty`, so that each type
+/// constructor in the tree can have its own label.  But maintaining a custom copy of
+/// `TypeVariants` would be annoying, so instead, we let labeled types form arbitrary trees, and
+/// make the `LabeledTyCtxt` responsible for making those trees match the `Ty`'s structure.
 #[derive(Clone, PartialEq, Eq)]
 pub struct LabeledTyS<'tcx, L: 'tcx> {
+    /// The underlying type.
     pub ty: Ty<'tcx>,
+    /// The arguments of this type constructor.  The number and meaning of these arguments depends
+    /// on which type constructor this is (specifically, which `TypeVariants` variant is used for
+    /// `self.ty.sty`).
     pub args: &'tcx [LabeledTy<'tcx, L>],
+    /// The label for the current type constructor.
     pub label: L,
 }
 
+/// A labeled type.  Like `rustc::ty::Ty`, this is a reference to some arena-allocated data.
 pub type LabeledTy<'tcx, L> = &'tcx LabeledTyS<'tcx, L>;
 
 impl<'tcx, L: fmt::Debug> fmt::Debug for LabeledTyS<'tcx, L> {
@@ -32,12 +52,15 @@ impl<'tcx, L> LabeledTyS<'tcx, L> {
 }
 
 
+/// Context for constructing `LabeledTy`s.
 pub struct LabeledTyCtxt<'tcx, L: 'tcx> {
     arena: &'tcx DroplessArena,
     _marker: PhantomData<L>,
 }
 
 impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
+    /// Build a new `LabeledTyCtxt`.  The `arena` must be the same one used by the `TyCtxt` that
+    /// built the underlying `Ty`s to be labeled.
     pub fn new(arena: &'tcx DroplessArena) -> LabeledTyCtxt<'tcx, L> {
         LabeledTyCtxt {
             arena: arena,
@@ -45,6 +68,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
         }
     }
 
+    /// Manually construct a slice in the context's arena.
     pub fn mk_slice(&self, ltys: &[LabeledTy<'tcx, L>]) -> &'tcx [LabeledTy<'tcx, L>] {
         if ltys.len() == 0 {
             return &[];
@@ -52,6 +76,8 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
         self.arena.alloc_slice(ltys)
     }
 
+    /// Manually construct a labeled type.  Note that this does not do any checks on `args`!  The
+    /// caller is responsible for making sure the number of arguments matches `ty.sty`.
     pub fn mk(&self, ty: Ty<'tcx>, args: &'tcx [LabeledTy<'tcx, L>], label: L) -> LabeledTy<'tcx, L> {
         self.arena.alloc(LabeledTyS {
             ty: ty,
@@ -61,6 +87,8 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
     }
 
 
+    /// Label a `Ty` using a callback.  The callback runs at every type constructor to produce a
+    /// label for that node in the tree.
     pub fn label<F: FnMut(Ty<'tcx>) -> L>(&self, ty: Ty<'tcx>, f: &mut F) -> LabeledTy<'tcx, L> {
         use rustc::ty::TypeVariants::*;
         let label = f(ty);
@@ -120,6 +148,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
         }
     }
 
+    /// Label multiple `Ty`s using a callback.
     pub fn label_slice<F>(&self,
                           tys: &[Ty<'tcx>],
                           f: &mut F) -> &'tcx [LabeledTy<'tcx, L>]
@@ -128,6 +157,14 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
     }
 
 
+    /// Substitute in arguments for any type parameter references (`TyParam`) in a labeled type.
+    /// Panics if `lty` contains a reference to a type parameter that is past the end of `substs`
+    /// (usually this means the caller is providing the wrong list of type arguments as `substs`).
+    ///
+    /// TODO: This produces a `LabeledTy` with the right structure, but doesn't actually do
+    /// substitution on the underlying `Ty`s!  This means if you substitute `u32` for `T`, you can
+    /// end up with a `LabeledTy` whose `ty` is `S<T>`, but whose args are `[u32]`!  By some
+    /// miracle, this hasn't broken anything yet, but we may need to fix it eventually.
     pub fn subst(&self,
                  lty: LabeledTy<'tcx, L>,
                  substs: &[LabeledTy<'tcx, L>]) -> LabeledTy<'tcx, L> {
@@ -139,6 +176,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
         }
     }
 
+    /// Substitute arguments in multiple labeled types.
     pub fn subst_slice(&self,
                        ltys: &[LabeledTy<'tcx, L>],
                        substs: &[LabeledTy<'tcx, L>]) -> &'tcx [LabeledTy<'tcx, L>] {
@@ -146,12 +184,14 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
     }
 
 
+    /// Run a callback to replace the labels on a type.
     pub fn relabel<L2, F>(&self, lty: LabeledTy<'tcx, L2>, func: &mut F) -> LabeledTy<'tcx, L>
             where F: FnMut(&L2) -> L {
         let args = self.relabel_slice(lty.args, func);
         self.mk(lty.ty, args, func(&lty.label))
     }
 
+    /// Replace the labels on several labeled types.
     pub fn relabel_slice<L2, F>(&self,
                                 ltys: &'tcx [LabeledTy<'tcx, L2>],
                                 func: &mut F) -> &'tcx [LabeledTy<'tcx, L>]
