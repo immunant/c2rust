@@ -1,3 +1,4 @@
+//! Functions for building AST representations of higher-level values.
 use rustc::hir;
 use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
@@ -16,6 +17,7 @@ use make_ast::mk;
 use util::IntoSymbol;
 
 
+/// Build an AST representing a `ty::Ty`.
 pub fn reflect_tcx_ty(tcx: TyCtxt, ty: ty::Ty) -> P<Ty> {
     use rustc::ty::TypeVariants::*;
     match ty.sty {
@@ -47,6 +49,7 @@ pub fn reflect_tcx_ty(tcx: TyCtxt, ty: ty::Ty) -> P<Ty> {
     }
 }
 
+/// Build a path referring to a specific def.
 pub fn reflect_path(tcx: TyCtxt, id: DefId) -> Path {
     let root = PathSegment {
         identifier: keywords::CrateRoot.ident(),
@@ -97,6 +100,7 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
 }
 
 
+/// Helper struct for `reflect_path`.
 struct ItemPathVec(RootMode, Vec<PathSegment>);
 
 impl ItemPathBuffer for ItemPathVec {

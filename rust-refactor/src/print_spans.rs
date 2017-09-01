@@ -1,3 +1,4 @@
+//! Debug command for printing the span of every major AST node.
 use syntax;
 use syntax::ast::*;
 use syntax::codemap::{CodeMap, Span, DUMMY_SP};
@@ -65,6 +66,7 @@ impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
     }
 }
 
+/// Print the spans of all major nodes in `x`.
 pub fn print_spans<T: Visit>(x: &T, cm: &CodeMap) {
     x.visit(&mut PrintSpanVisitor { cm: cm });
 }

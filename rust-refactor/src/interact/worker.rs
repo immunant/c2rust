@@ -1,3 +1,9 @@
+//! Worker thread implementation.
+//!
+//! The worker thread's main job is to hide the asynchrony of file loading from the main thread.
+//! The interactive mode's custom `FileLoader` has to provide file contents synchronously, but
+//! actually, obtaining file contents requires sending a request to the client and processing
+//! messages until we get a response.  That loop happens in the worker thread.
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -64,7 +70,9 @@ impl WorkerState {
                 self.pending_files.insert(path, send);
             },
 
-            // Other messages pass through to the main thread.
+            // Other messages pass through to the main thread.  The channels we use are unbounded,
+            // so if the main thread is busy (most importantly, if it's waiting on some file
+            // contents), then the message will be queued.
             InputMessage(msg) => {
                 self.to_main.send(msg).unwrap();
             },

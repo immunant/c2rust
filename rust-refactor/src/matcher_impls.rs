@@ -1,3 +1,4 @@
+//! `TryMatch` impls, to support the `matcher` module.
 use std::rc::Rc;
 use syntax::ast::*;
 use syntax::abi::Abi;

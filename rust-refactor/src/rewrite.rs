@@ -79,7 +79,7 @@ pub struct TextRewrite {
 }
 
 
-/// A table of nodes, each of which may or may not be "valid" according to some predicate.
+/// A table of references to AST nodes of some type, indexed by NodeId.
 pub struct NodeTable<'s, T: ?Sized+'s> {
     nodes: HashMap<NodeId, &'s T>,
 }

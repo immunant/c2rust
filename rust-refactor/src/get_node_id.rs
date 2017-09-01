@@ -1,3 +1,4 @@
+//! `GetNodeId` trait for obtaining the `NodeId` of a generic AST node.
 use syntax::ast::*;
 use syntax::ptr::P;
 

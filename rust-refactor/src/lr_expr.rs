@@ -1,3 +1,5 @@
+//! `fold_expr_with_context` function, for rewriting exprs with knowledge of their contexts (rvalue
+//! / lvalue / mut lvalue).
 use std::rc::Rc;
 use syntax::ast::*;
 use syntax::abi::Abi;
@@ -8,16 +10,21 @@ use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::move_map::MoveMap;
 
 
-// TODO: check for autoborrow adjustments
-// TODO: handle match inputs properly
+// TODO: Check for autoborrow adjustments.  Some method receivers are actually Lvalue / LvalueMut
+// contexts, but currently they're all treated as Rvalues.
+
+// TODO: Handle match inputs properly.  The target expression of a match could be any context,
+// depending on whether `ref` / `ref mut` appears in any of the patterns.
 
 
+/// Trait implemented by all AST types, allowing folding over exprs while tracking the context.
 trait LRExpr {
     fn fold_rvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self;
     fn fold_lvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self;
     fn fold_lvalue_mut<LR: LRRewrites>(self, lr: &mut LR) -> Self;
 }
 
+/// A set of expr rewrites, one for each kind of context where an expr may appear.
 trait LRRewrites {
     fn fold_rvalue(&mut self, e: Expr) -> Expr;
     fn fold_lvalue(&mut self, e: Expr) -> Expr;
@@ -26,6 +33,7 @@ trait LRRewrites {
 
 
 
+// Helper macro for generating LRExpr instances.
 macro_rules! lr_expr_fn {
     (($slf:ident, $next:ident($T:ty)) => $e:expr) => {
         fn fold_rvalue<LR: LRRewrites>($slf, lr: &mut LR) -> Self {
@@ -130,6 +138,7 @@ impl<A: LRExpr, B: LRExpr, C: LRExpr> LRExpr for (A, B, C) {
 include!(concat!(env!("OUT_DIR"), "/lr_expr_gen.inc.rs"));
 
 
+/// Kinds of contexts where exprs can appear.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Context {
     Rvalue,
@@ -139,6 +148,8 @@ pub enum Context {
 
 /// Perform a bottom-up rewrite of an `Expr`, indicating at each step whether the expr is in an
 /// rvalue, (immutable) lvalue, or mutable lvalue context.
+///
+/// `start` is the context of the outermost expression `e`.
 pub fn fold_expr_with_context<F>(e: P<Expr>, start: Context, callback: F) -> P<Expr>
         where F: FnMut(P<Expr>, Context) -> P<Expr> {
     

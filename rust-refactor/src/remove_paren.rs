@@ -1,3 +1,4 @@
+//! `remove_paren` function, for removing unnecessary `ExprKind::Paren` nodes.
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;

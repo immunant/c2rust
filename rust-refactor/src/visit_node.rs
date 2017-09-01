@@ -1,9 +1,11 @@
+//! Helper function for visiting only one type of AST node.
 use syntax::ast::*;
 use syntax::visit::{self, Visitor};
 
 use visit::Visit;
 
 
+/// Trait for AST node types that can be visited.
 pub trait VisitNode {
     fn visit_nodes<T, F>(target: &T, callback: F)
         where T: Visit,
@@ -69,6 +71,12 @@ macro_rules! gen_visit_node_impl {
     };
 }
 
+// If you want to use `visit_nodes` with more node types, add more `gen_visit_node_impl!`
+// invocations below.
+
+// `gen_visit_node_impl!` works much like `gen_fold_node_impl!` in fold_node.rs, except that `walk`
+// is written directly as the function body instead.
+// (TODO: No reason not to make these consistent, by switching this one to `walk = ...` syntax.)
 gen_visit_node_impl! {
     node = Expr;
     visitor = ExprNodeVisitor;

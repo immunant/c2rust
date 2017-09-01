@@ -1,5 +1,5 @@
-/// Helper definitions for constructing a mapping between `ast::Ty`s and some higher-level
-/// representation (usually `ty::Ty` or `LabeledTy`).
+//! Helper definitions for constructing a mapping between `ast::Ty`s and some higher-level
+//! representation (usually `ty::Ty` or `LabeledTy`).
 
 use std::fmt::Debug;
 
@@ -10,6 +10,10 @@ use syntax::ast::*;
 use syntax::visit::{self, Visitor, FnKind};
 
 
+/// Provider of a higher-level type representation.
+///
+/// Methods can return `None` under any circumstances to indicate that the provider can't find a
+/// type for the node.  In that case, `map_types` will simply skip visiting the corresponding node.
 pub trait TypeSource {
     type Type: Type;
     type Signature: Signature<Self::Type>;
@@ -43,6 +47,8 @@ pub struct TypeMapVisitor<'a, 'hir: 'a, S, F> {
 impl<'a, 'hir, S, F> TypeMapVisitor<'a, 'hir, S, F>
         where S: TypeSource,
               F: FnMut(&mut S, &Ty, S::Type) {
+    /// Record a matching `S::Type` and `ast::Ty`.  If the two representations have matching
+    /// shapes, this method recurses into their corresponding subtrees and records those as well.
     fn record_ty(&mut self, ty: S::Type, ast_ty: &Ty) {
         use rustc::ty::TypeVariants::*;
 
@@ -111,7 +117,7 @@ impl<'a, 'hir, S, F> TypeMapVisitor<'a, 'hir, S, F>
     }
 
     fn record_path_ty(&mut self, ty: S::Type, qself: Option<&QSelf>, path: &Path) {
-        // TODO: this is yet another Path case, which makes it a bit difficult to handle.
+        // TODO: See comments below for reasons why `Path`-related cases are difficult to handle.
     }
 }
 
@@ -189,7 +195,7 @@ impl<'ast, 'a, 'hir, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'hir, S, F>
             if let Some(ty) = self.source.pat_type(&l.pat) {
                 self.record_ty(ty, ast_ty);
             }
-            // TODO: if pat_type returns None, we may be able to recover by recursing on the Pat
+            // TODO: If pat_type returns None, we may be able to recover by recursing on the Pat
             // and the Ty.  This would help with use from MIR, where we can easily obtain types for
             // individual locals, but not for pats.
         }
@@ -325,6 +331,9 @@ impl<'ast, 'a, 'hir, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'hir, S, F>
     }
 }
 
+/// Try to match up `ast::Ty` nodes in the source with higher-level type representations provided
+/// by `source`.  The callback will be passed matching pairs of AST-level and higher-level type
+/// representations.
 pub fn map_types<'a, 'hir, S, F>(hir_map: &'a hir::map::Map<'hir>,
                                  source: S,
                                  krate: &Crate,

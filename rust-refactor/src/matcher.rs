@@ -1,3 +1,34 @@
+//! AST pattern matching implementation.
+//!
+//! The matching in this module allows matching one AST fragment against another fragment of the
+//! same type.  The "pattern" fragment can use some special forms to capture parts of the target
+//! AST, or to impose additional requirements on the matching.
+//!
+//! Matching forms:
+//!
+//!  * `__x`: An ident starting with double underscores will capture the AST matched against it,
+//!    and save it in the `Bindings`.  Other idents can also be used if the `MatchCtxt` is
+//!    appropriately configured first.
+//!
+//!    By default, this form captures the largest AST that it encounters.  For example, if the
+//!    target AST is `MyStruct`, it will try first to capture the entire Expr, then try the inner
+//!    Path, then the innermost Ident.  Normally the first attempt succeeds, but if a type is set
+//!    for the ident in the `MatchCtxt`, then it will only capture that type.
+//!
+//!    For itemlikes, a lone ident can't be used as a pattern because it's not a valid itemlike.
+//!    Use a macro `__x!()` instead.
+//!
+//!  * `marked!(x [, label])`: Matches `x` only if the node is marked with the given label.  The
+//!    label defaults to "target" if omitted.
+//!
+//!  * `def!(name [, label])`: Matches a path `Expr` or `Ty` that refers to a definition named
+//!    `name` and labeled with `label` (default: "target").  Note that this form uses only the
+//!    plain name of the definition, and relies on the label to find the specific def.
+//!
+//!  * `typed!(x, ty)`: Matches an `Expr` or `Ty` whose resolved type matches `ty`.  Specifically,
+//!    the resolved type of the node is converted back to an AST using the `reflect` module, and
+//!    the new AST is matched against `ty`.
+
 use std::collections::hash_map::HashMap;
 use std::cmp;
 use std::result;
@@ -50,6 +81,8 @@ pub enum Error {
     BadSpecialPattern(Symbol),
 }
 
+/// Pattern-matching context.  Stores configuration that affects pattern matching behavior, and
+/// collects bindings captured during the match.
 #[derive(Clone)]
 pub struct MatchCtxt<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a> {
     pub bindings: Bindings,
@@ -69,11 +102,13 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
         }
     }
 
+    /// Try to match `target` against `pat`, updating `self.bindings` with the results.
     pub fn try_match<T: TryMatch>(&mut self, pat: &T, target: &T) -> Result<()> {
         let r = pat.try_match(target, self);
         r
     }
 
+    /// Build a new `MatchCtxt`, and try to match `target` against `pat` in that context.
     pub fn from_match<T: TryMatch>(st: &'a CommandState,
                                    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
                                    pat: &T,
@@ -92,6 +127,8 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
     }
 
 
+    /// Set the type for a name, so that the name matches (and captures) only nodes of the
+    /// appropriate typ.
     pub fn set_type<S: IntoSymbol>(&mut self, name: S, ty: bindings::Type) {
         let name = name.into_symbol();
 
@@ -111,6 +148,8 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
     }
 
 
+    /// Try to capture an ident.  Returns `Ok(true)` if it captured, `Ok(false)` if `pattern` is
+    /// not a capturing pattern, or `Err(_)` if capturing failed.
     pub fn maybe_capture_ident(&mut self, pattern: &Ident, target: &Ident) -> Result<bool> {
         let sym = match pattern.pattern_symbol() {
             Some(x) => x,
@@ -227,7 +266,13 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
+    // If you want to be able to capture more types of nodes with `__x` / `__x!()` forms, then add
+    // another method here, add a new `TryMatch` impl in `matcher_impls`, and mark the AST type
+    // with `#[match=custom]` in ast.txt.  You may also need to add a new `PatternSymbol` impl in
+    // util.rs.
 
+
+    /// Handle the `marked!(...)` matching form.
     pub fn do_marked<T, F>(&mut self,
                            tts: &ThinTokenStream,
                            func: F,
@@ -253,6 +298,7 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
         self.try_match(&pattern, target)
     }
 
+    /// Core implementation of the `def!(...)` matching form.
     fn do_def_impl(&mut self,
                    tts: &ThinTokenStream,
                    opt_def_id: Option<DefId>,
@@ -296,6 +342,7 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
         Ok(())
     }
 
+    /// Handle the `def!(...)` matching form for exprs.
     pub fn do_def_expr(&mut self, tts: &ThinTokenStream, target: &Expr) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_expr(target);
         let opt_path = match target.node {
@@ -305,6 +352,7 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
         self.do_def_impl(tts, opt_def_id, opt_path)
     }
 
+    /// Handle the `def!(...)` matching form for exprs.
     pub fn do_def_ty(&mut self, tts: &ThinTokenStream, target: &Ty) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_ty(target);
         let opt_path = match target.node {
@@ -314,6 +362,7 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
         self.do_def_impl(tts, opt_def_id, opt_path)
     }
 
+    /// Handle the `typed!(...)` matching form.
     pub fn do_typed<T, F>(&mut self,
                           tts: &ThinTokenStream,
                           func: F,
@@ -344,6 +393,7 @@ pub trait TryMatch {
 
 
 
+/// Trait for AST types that can be used as patterns in a search-and-replace (`fold_match`).
 pub trait Pattern: TryMatch+Sized {
     fn apply_folder<T, F>(self,
                           init_mcx: MatchCtxt,
@@ -364,6 +414,7 @@ macro_rules! gen_pattern_impl {
         walk = $walk:expr;
         map($match_one:ident) = $map:expr;
     ) => {
+        /// Automatically generated `Folder` implementation, for use by `Pattern`.
         pub struct $PatternFolder<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a, F>
                 where F: FnMut($Pat, Bindings) -> $Pat {
             pattern: $Pat,
@@ -405,11 +456,18 @@ macro_rules! gen_pattern_impl {
 }
 
 gen_pattern_impl! {
+    // AST node type.
     pattern = P<Expr>;
+    // Name to use for the search-and-replace folder.
     folder = ExprPatternFolder;
 
+    // Signature of the corresponding `Folder` method.
     fn fold_expr(&mut self, e: P<Expr>) -> P<Expr>;
+    // Expr that runs the default `Folder` action for this node type.  Can refer to the argument of
+    // the `Folder` method using the name that appears in the signature above.
     walk = e.map(|e| fold::noop_fold_expr(e, self));
+    // Expr that runs the callback on the result of the `walk` expression.  This is parameterized
+    // by the `match_one` closure.
     map(match_one) = match_one(e);
 }
 
@@ -431,6 +489,10 @@ gen_pattern_impl! {
     map(match_one) = s.move_map(match_one);
 }
 
+
+// Implementation of multi-statement matching.
+
+/// Custom `Folder` for multi-statement `Pattern`s.
 pub struct MultiStmtPatternFolder<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a, F>
         where F: FnMut(Vec<Stmt>, Bindings) -> Vec<Stmt> {
     pattern: Vec<Stmt>,

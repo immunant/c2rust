@@ -1,4 +1,4 @@
-//! Helper trait `Fold`, for AST types that can be folded over.
+//! `Fold` trait for AST types that can be folded over.
 use syntax::ast::*;
 use syntax::codemap::Span;
 use syntax::fold::Folder;

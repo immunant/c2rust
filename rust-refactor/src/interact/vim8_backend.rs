@@ -1,3 +1,4 @@
+//! JSON backend, for communication with Vim 8.
 use std::io::{self, BufRead, Write};
 use std::sync::mpsc::{self, Sender};
 use std::thread;

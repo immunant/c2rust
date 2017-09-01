@@ -1,3 +1,6 @@
+//! Helper functions for picking a node by source location.
+//!
+//! This is used in various parts of the frontend to set marks at specific locations.
 use std::str::FromStr;
 use syntax::ast::*;
 use syntax::codemap::{Span, BytePos};
@@ -8,6 +11,7 @@ use driver;
 use visit::Visit;
 
 
+/// The ID and span of a selected node.
 #[derive(Debug)]
 pub struct NodeInfo {
     pub id: NodeId,
@@ -142,11 +146,15 @@ impl<'a> Visitor<'a> for PickVisitor {
 }
 
 
+/// Enum of node kinds.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NodeKind {
+    /// Any kind of node.
     Any,
+    /// Any item-like node.
     ItemLike,
 
+    // The rest refer to specific node types.
     Item,
     TraitItem,
     ImplItem,
@@ -160,6 +168,8 @@ pub enum NodeKind {
 }
 
 impl NodeKind {
+    /// Check if `self` contains kind `other`.  `other` is expected to be a specific node kind, not
+    /// a category like `Any`.
     pub fn contains(self, other: NodeKind) -> bool {
         match self {
             NodeKind::Any => true,
@@ -217,6 +227,8 @@ impl FromStr for NodeKind {
     }
 }
 
+/// Select an AST node by its `BytePos` in the `CodeMap`.  Only nodes of the specified `kind` will
+/// be selected.
 pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo> {
     let mut v = PickVisitor {
         node_info: None,
@@ -235,6 +247,7 @@ pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo
     v.node_info
 }
 
+/// Select an AST node by its file, line, and column numbers.
 pub fn pick_node_at_loc(krate: &Crate,
                         cx: &driver::Ctxt,
                         kind: NodeKind,
@@ -264,6 +277,7 @@ pub fn pick_node_at_loc(krate: &Crate,
     pick_node(krate, kind, pos)
 }
 
+/// Implementation of the `pick_node` command.
 pub fn pick_node_command(krate: &Crate, cx: &driver::Ctxt, args: &[String]) {
     let kind = NodeKind::from_str(&args[0]).unwrap();
     let file = &args[1];

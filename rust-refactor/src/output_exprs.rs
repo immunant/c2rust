@@ -1,3 +1,4 @@
+//! `fold_output_exprs` function, for visiting return-value expressions.
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
@@ -16,6 +17,7 @@ struct OutputFolder<F> {
 }
 
 impl<F: FnMut(P<Expr>) -> P<Expr>> OutputFolder<F> {
+    /// Change the value of `self.trailing` for the duration of the callback `g`.
     fn with_trailing<G: FnOnce(&mut Self) -> R, R>(&mut self, trailing: bool, g: G) -> R {
         let old = self.trailing;
         self.trailing = trailing;
@@ -97,7 +99,9 @@ impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for OutputFolder<F> {
                     rest.map(|e| self.fold_expr(e)),
                 ),
 
-                // TODO: handle loop + break-with-expr
+                // TODO: Handle `loop` + `break`-with-expr.  If the `loop` is a trailing
+                // expression, then a `break` targeting its label should be treated as a return
+                // expression.
                 //ExprKind::Loop(body) => { TODO },
 
                 ExprKind::Match(target, arms) => ExprKind::Match(

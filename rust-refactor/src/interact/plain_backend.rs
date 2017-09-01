@@ -1,3 +1,4 @@
+//! Plain-text backend, for testing interactive mode.
 use std::io::{self, BufRead, Write};
 use std::str::FromStr;
 use std::sync::mpsc::{self, Sender};
