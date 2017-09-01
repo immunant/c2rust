@@ -49,6 +49,7 @@ transform_modules! {
     format,
     funcs,
     generics,
+    ionize,
     items,
     linkage,
     ownership,
@@ -59,4 +60,5 @@ transform_modules! {
     test,
     vars,
     wrapping_arith,
+
 }

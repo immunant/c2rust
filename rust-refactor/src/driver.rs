@@ -15,7 +15,7 @@ use rustc_metadata::cstore::CStore;
 use rustc_resolve::MakeGlobMap;
 use rustc_trans;
 use rustc_trans::back::link;
-use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item};
+use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem};
 use syntax::codemap::CodeMap;
 use syntax::codemap::{FileLoader, RealFileLoader};
 use syntax::parse;
@@ -240,6 +240,22 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
             Ok(Some(item)) => items.push(remove_paren(item).lone()),
             Ok(None) => break,
             Err(e) => panic!("error parsing items: {:?}", e.into_diagnostic()),
+        }
+    }
+    items
+}
+
+pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
+    let mut p = make_parser(sess, "<impl>", src);
+    let mut items = vec![];
+    loop {
+        let mut at_end = false;
+        match p.parse_impl_item(&mut at_end) {
+            Ok(item) => {
+                items.push(remove_paren(item).lone());
+                if at_end { break }
+            }
+            Err(e) => panic!("error parsing impl items: {:?}", e.into_diagnostic()),
         }
     }
     items

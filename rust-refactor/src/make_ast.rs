@@ -6,8 +6,10 @@ use syntax::codemap::{DUMMY_SP, Spanned};
 use syntax::parse::token::{self, Token};
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, TokenStream, ThinTokenStream};
+use syntax::symbol::keywords;
 
 use util::IntoSymbol;
+use subst::Subst;
 
 
 pub trait Make<T> {
@@ -726,6 +728,54 @@ impl Builder {
         }
     }
 
+    pub fn enum_item<I>(self, name: I, fields: Vec<Variant>) -> P<Item>
+        where I: Make<Ident> {
+        let name = name.make(&self);
+        P(Item {
+            ident: name,
+            attrs: self.attrs,
+            id: DUMMY_NODE_ID,
+            node: ItemKind::Enum(EnumDef {variants: fields}, self.generics),
+            vis: self.vis,
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn variant<I>(self, name: I, dat: VariantData) -> Variant
+      where I: Make<Ident> {
+        let name = name.make(&self);
+        Spanned {
+            span: DUMMY_SP,
+            node: Variant_ {
+                name: name,
+                attrs: self.attrs,
+                data: dat,
+                disr_expr: None,
+            },
+        }
+    }
+
+    pub fn impl_item<T>(self, ty: T, items: Vec<ImplItem>) -> P<Item>
+        where T: Make<P<Ty>>
+    {
+        let ty = ty.make(&self);
+        P(Item {
+            ident: keywords::Invalid.ident(),
+            attrs: self.attrs,
+            vis: self.vis,
+            id: DUMMY_NODE_ID,
+            span: DUMMY_SP,
+            node: ItemKind::Impl(
+                self.unsafety,
+                ImplPolarity::Positive,
+                Defaultness::Final,
+                self.generics,
+                None, // not a trait implementation
+                ty,
+                items,
+                ),
+        })
+    }
 
     // Misc nodes
 

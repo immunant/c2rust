@@ -1,6 +1,6 @@
 use rustc::hir::map::Node;
 use rustc::hir::def_id::DefId;
-use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item};
+use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item, ImplItem};
 use syntax::ast::Mac;
 use syntax::fold::{self, Folder};
 use syntax::parse::parser::Parser;
@@ -223,6 +223,8 @@ subst_impl!(P<Pat>, fold_pat);
 subst_impl!(P<Ty>, fold_ty);
 subst_impl!(Stmt, fold_stmt);
 subst_impl!(P<Item>, fold_item);
+subst_impl!(ImplItem, fold_impl_item);
 
 multi_subst_impl!(Stmt, fold_stmt);
 multi_subst_impl!(P<Item>, fold_item);
+multi_subst_impl!(ImplItem, fold_impl_item);
