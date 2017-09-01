@@ -1,3 +1,4 @@
+//! Code for applying `TextRewrite`s to the actual source files.
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -8,19 +9,25 @@ use syntax_pos::BytePos;
 use rewrite::{TextRewrite, TextAdjust};
 
 
+/// Enum for specifying what to do with the updated source file contents.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RewriteMode {
+    /// Overwrite the old text in-place.
     InPlace,
+    /// Put the new text in a file alongside the old one (`foo.rs.new`).
     Alongside,
+    /// Print the new text to the console instead of saving it.
     Print,
 }
 
+/// Apply a sequence of rewrites to the source code, handling the results as specified by `mode`.
 pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite], mode: RewriteMode) {
     rewrite_files_with(cm, rewrites, |fm, s| {
         rewrite_mode_callback(mode, fm, s);
     });
 }
 
+/// Implementation of the provided rewrite modes, for use in a `rewrite_files_with` callback.
 pub fn rewrite_mode_callback(mode: RewriteMode,
                              fm: Rc<FileMap>,
                              s: &str) {
@@ -46,6 +53,8 @@ pub fn rewrite_mode_callback(mode: RewriteMode,
     }
 }
 
+/// Apply a sequence of rewrites to the source code, handling the results by passing the new text
+/// to `callback` along with the `FileMap` describing the original source file.
 pub fn rewrite_files_with<F>(cm: &CodeMap, rewrites: &[TextRewrite], mut callback: F)
         where F: FnMut(Rc<FileMap>, &str) {
     let mut by_file = HashMap::new();
@@ -83,6 +92,11 @@ fn print_rewrites(rws: &[TextRewrite]) {
     }
 }
 
+/// Apply a sequence of rewrites to the source text between codemap positions `start` and `end`.
+/// Runs `callback` on each contiguous block of text in the rewritten version.
+///
+/// All rewrites must be in order, and must lie between `start` and `end`.  Otherwise a panic may
+/// occur.
 fn rewrite_range(cm: &CodeMap,
                  start: BytePos,
                  end: BytePos,
@@ -120,6 +134,7 @@ fn rewrite_range(cm: &CodeMap,
     }
 }
 
+/// Runs `callback` on the source text between `lo` and `hi`.
 fn emit_chunk<F: FnMut(&str)>(cm: &CodeMap,
                               lo: BytePos,
                               hi: BytePos,

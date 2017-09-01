@@ -1,3 +1,4 @@
+//! Helper trait `Fold`, for AST types that can be folded over.
 use syntax::ast::*;
 use syntax::codemap::Span;
 use syntax::fold::Folder;
@@ -10,7 +11,9 @@ use syntax::util::small_vector::SmallVector;
 
 /// A trait for AST nodes that can be folded over.
 pub trait Fold {
+    /// The result of a fold over `Self`.  Typically this is either `Self` or `SmallVector<Self>`.
     type Result;
+
     fn fold<F: Folder>(self, f: &mut F) -> Self::Result;
 }
 
@@ -35,8 +38,6 @@ macro_rules! gen_folder_impls {
     };
 }
 
-// This code is generic, but a Vec<T> impl would conflict with more specific impls below, like
-// Vec<P<Expr>>.
 impl<T: Fold> Fold for Vec<T> {
     type Result = Vec<<T as Fold>::Result>;
     fn fold<F: Folder>(self, f: &mut F) -> Self::Result {

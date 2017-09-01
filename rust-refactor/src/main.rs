@@ -287,7 +287,7 @@ fn main() {
     }
 
     if opts.cursors.len() > 0 {
-        driver::with_crate_and_context(&opts.rustc_args, driver::Phase::Phase2, |krate, cx| {
+        driver::run_compiler(&opts.rustc_args, None, driver::Phase::Phase2, |krate, cx| {
             for c in &opts.cursors {
                 let kind_result = c.kind.clone().map_or(Ok(pick_node::NodeKind::Any),
                                                         |s| pick_node::NodeKind::from_str(&s));

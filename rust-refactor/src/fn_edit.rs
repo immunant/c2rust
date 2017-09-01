@@ -1,3 +1,4 @@
+//! Helpers for rewriting all `fn` itemlikes, regardless of item kind.
 use syntax::ast::*;
 use syntax::codemap::Span;
 use syntax::fold::{self, Folder};
@@ -12,6 +13,7 @@ use get_span::GetSpan;
 use visit::Visit;
 
 
+/// Enum indicating which kind of itemlike a `fn` is.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FnKind {
     Normal,
@@ -20,6 +22,7 @@ pub enum FnKind {
     Foreign,
 }
 
+/// Generic representation of a `fn`.
 #[derive(Clone, Debug)]
 pub struct FnLike {
     pub kind: FnKind,
@@ -29,6 +32,9 @@ pub struct FnLike {
     pub decl: P<FnDecl>,
     pub block: Option<P<Block>>,
     pub attrs: Vec<Attribute>,
+    // TODO: This should probably include `generics`, and maybe some kind of "parent generics" for
+    // impl and trait items.
+    // TODO: Also unsafety, constness, and abi
 }
 
 impl GetNodeId for FnLike {
@@ -44,6 +50,7 @@ impl GetSpan for FnLike {
 }
 
 
+/// Folder for rewriting `fn`s using a `FnLike` callback.
 struct FnFolder<F>
         where F: FnMut(FnLike) -> SmallVector<FnLike> {
     callback: F,
@@ -51,6 +58,8 @@ struct FnFolder<F>
 
 impl<F> FnFolder<F>
         where F: FnMut(FnLike) -> SmallVector<FnLike> {
+    // `Folder::fold_foreign_item` can only return a single `ForeignItem`, so we need a custom
+    // sequence-returning version.  This is called below in `fold_foreign_mod`.
     fn fold_foreign_item_multi(&mut self, i: ForeignItem) -> SmallVector<ForeignItem> {
         match i.node {
             ForeignItemKind::Fn(..) => {},
@@ -215,6 +224,8 @@ pub fn fold_fns<T, F>(target: T, mut callback: F) -> <T as Fold>::Result
     fold_fns_multi(target, |fl| SmallVector::one(callback(fl)))
 }
 
+/// Similar to `fold_fns`, but allows transforming each `FnLike` into a sequence of zero or more
+/// `FnLike`s.
 pub fn fold_fns_multi<T, F>(target: T, callback: F) -> <T as Fold>::Result
         where T: Fold,
               F: FnMut(FnLike) -> SmallVector<FnLike> {
@@ -225,6 +236,7 @@ pub fn fold_fns_multi<T, F>(target: T, callback: F) -> <T as Fold>::Result
 }
 
 
+/// Visitor for visiting `fn`s using a `FnLike` callback.
 struct FnVisitor<F>
         where F: FnMut(FnLike) {
     callback: F,

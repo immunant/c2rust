@@ -1,5 +1,5 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
-//! `librustc_driver::driver::compile_input`.
+//! `rustc_driver::driver::compile_input`.
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -27,6 +27,7 @@ use span_fix;
 use util::Lone;
 
 
+/// Driver context.  Contains all available analysis results as of the current compiler phase.
 #[derive(Clone)]
 pub struct Ctxt<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
     sess: &'a Session,
@@ -39,10 +40,16 @@ pub struct Ctxt<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
     tcx_arena: Option<&'tcx DroplessArena>,
 }
 
+/// Compiler phase selection.  Later phases have more analysis results available, but are less
+/// robust against broken code.  (For example, phase 3 provides typechecking results, but can't be
+/// used on code that doesn't typecheck.)
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Phase {
+    /// Phase 1: Runs on the source code immediately after parsing, before macro expansion.
     Phase1,
+    /// Phase 2: Runs after macro expansion and name resolution have finished.
     Phase2,
+    /// Phase 3: Runs after typechecking has finished.
     Phase3,
 }
 
@@ -99,6 +106,12 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
 }
 
 
+/// Run the compiler with some command line `args`.  Stops compiling and invokes the callback
+/// `func` after the indicated `phase`.
+///
+/// `file_loader` can be `None` to read source code from the file system.  Otherwise, the provided
+/// loader will be used within the compiler.  For example, editor integration uses a custom file
+/// loader to provide the compiler with buffer contents for currently open files.
 pub fn run_compiler<F, R>(args: &[String],
                           file_loader: Option<Box<FileLoader>>,
                           phase: Phase,
@@ -157,13 +170,6 @@ pub fn run_compiler<F, R>(args: &[String],
             }
             unreachable!();
         }).unwrap()
-}
-
-pub fn with_crate_and_context<F, R>(args: &[String],
-                                    phase: Phase,
-                                    func: F) -> R
-        where F: FnOnce(Crate, Ctxt) -> R {
-    run_compiler(args, None, phase, func)
 }
 
 fn build_session(sopts: Options,

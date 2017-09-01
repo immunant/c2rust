@@ -1,3 +1,4 @@
+//! The `Bindings` type, for mapping names to AST fragments.
 use std::collections::hash_map::{HashMap, Entry};
 use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Item};
 use syntax::ptr::P;
@@ -7,6 +8,7 @@ use ast_equiv::AstEquiv;
 use util::IntoSymbol;
 
 
+/// A set of bindings, mapping names to AST fragments.
 #[derive(Clone, Debug)]
 pub struct Bindings {
     map: HashMap<Symbol, Value>,
@@ -38,6 +40,7 @@ impl Bindings {
         }
     }
 
+    /// Record the `Path` used to refer to a marked definition, so it can be reused later.
     pub fn add_def_path(&mut self,
                         name: Symbol,
                         label: Symbol,
@@ -47,6 +50,7 @@ impl Bindings {
         }
     }
 
+    /// Obtain the path used to refer to a marked definition, if one was recorded.
     pub fn get_def_path(&self,
                         name: Symbol,
                         label: Symbol) -> Option<&Path> {
@@ -58,12 +62,14 @@ macro_rules! define_binding_values {
     ($( $Thing:ident($Repr:ty),
             $add_thing:ident, $try_add_thing:ident,
             $thing:ident, $get_thing:ident; )*) => {
+        /// An AST fragment, of any of the supported node types.
         #[derive(Clone, PartialEq, Eq, Debug)]
         #[allow(dead_code)] // TODO: remove once this crate becomes a library
         enum Value {
             $( $Thing($Repr), )*
         }
 
+        /// The types of AST fragments that can be used in `Bindings`.
         #[derive(Clone, Copy, PartialEq, Eq, Debug)]
         pub enum Type {
             $( $Thing, )*
@@ -104,6 +110,7 @@ macro_rules! define_binding_values {
                 }
             )*
 
+            /// Get the type of fragment associated with `name`, if any.
             pub fn get_type<S: IntoSymbol>(&self, name: S) -> Option<Type> {
                 self.map.get(&name.into_symbol()).map(|v| {
                     match v {
@@ -129,6 +136,7 @@ macro_rules! define_binding_values {
     };
 }
 
+// To allow bindings to contain more types of AST nodes, add more lines to this macro.
 define_binding_values! {
     Ident(Ident), add_ident, try_add_ident, ident, get_ident;
     Path(Path), add_path, try_add_path, path, get_path;
