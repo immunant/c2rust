@@ -46,6 +46,7 @@ pub mod seq_edit;
 pub mod make_ast;
 pub mod reflect;
 pub mod lr_expr;
+pub mod output_exprs;
 
 // Higher-level AST manipulation
 pub mod fn_edit;

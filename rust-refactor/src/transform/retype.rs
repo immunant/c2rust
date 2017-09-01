@@ -121,6 +121,11 @@ impl Transform for RetypeArgument {
 }
 
 
+/// Rewrite types in the crate to types that are transmute-compatible with the original.
+/// Automatically inserts `transmute` calls as needed to make the types line up after rewriting.
+///
+/// This function currently handles only direct function calls.  Creation and use of function
+/// pointers is not handled correctly yet.
 pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, retype: F) -> Crate
         where F: FnMut(&P<Ty>) -> Option<P<Ty>> {
     // (1) Walk over all supported nodes, replacing type annotations.  Also record which nodes had
@@ -130,25 +135,26 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
         retype: F,
         changed_inputs: HashMap<(NodeId, usize), (P<Ty>, P<Ty>)>,
         changed_outputs: HashMap<NodeId, (P<Ty>, P<Ty>)>,
+        // Functions where at least one input or output changed
+        changed_funcs: HashSet<NodeId>,
         changed_defs: HashMap<NodeId, (P<Ty>, P<Ty>)>,
     }
 
     impl<F> Folder for ChangeTypeFolder<F>
             where F: FnMut(&P<Ty>) -> Option<P<Ty>> {
         fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
-            eprintln!("at item {:?}", i);
             let i = if matches!([i.node] ItemKind::Fn(..)) {
                 i.map(|mut i| {
                     let mut fd = expect!([i.node]
                                          ItemKind::Fn(ref fd, _, _ ,_ ,_ ,_) =>
                                          fd.clone().unwrap());
-                    eprintln!("handling fn decl {:?}", fd);
 
                     for (j, arg) in fd.inputs.iter_mut().enumerate() {
                         if let Some(new_ty) = (self.retype)(&arg.ty) {
                             let old_ty = mem::replace(&mut arg.ty, new_ty.clone());
                             self.changed_inputs.insert((i.id, j),
                                                        (old_ty.clone(), new_ty.clone()));
+                            self.changed_funcs.insert(i.id);
 
                             // Also record that the type of the variable declared here has changed.
                             if matches!([arg.pat.node] PatKind::Ident(..)) {
@@ -168,6 +174,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
                         if let Some(new_ty) = (self.retype)(ty) {
                             let old_ty = mem::replace(ty, new_ty.clone());
                             self.changed_outputs.insert(i.id, (old_ty, new_ty));
+                            self.changed_funcs.insert(i.id);
                         }
                     }
 
@@ -213,7 +220,6 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
         }
 
         fn fold_struct_field(&mut self, mut sf: StructField) -> StructField {
-            eprintln!("at struct field {:?}", sf);
             if let Some(new_ty) = (self.retype)(&sf.ty) {
                 let old_ty = mem::replace(&mut sf.ty, new_ty.clone());
                 self.changed_defs.insert(sf.id, (old_ty, new_ty));
@@ -226,21 +232,22 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
         retype: retype,
         changed_inputs: HashMap::new(),
         changed_outputs: HashMap::new(),
+        changed_funcs: HashSet::new(),
         changed_defs: HashMap::new(),
     };
-    eprintln!("folding krate...");
     let krate = krate.fold(&mut f);
-    eprintln!("fold done!");
-    let ChangeTypeFolder { changed_inputs, changed_outputs, changed_defs, .. } = f;
+    let ChangeTypeFolder { changed_inputs, changed_outputs, changed_funcs,
+                           changed_defs, .. } = f;
+
 
     // (2) Look for exprs referencing the changed items, and wrap them in transmutes.
 
     let rvalue_repl = parse_expr(cx.session(),
-            "::std::mem::transmute::<__new_ty, __old_ty>(__e)");
+            "::std::mem::transmute::<__old_ty, __new_ty>(__e)");
     let lvalue_repl = parse_expr(cx.session(),
-            "*::std::mem::transmute::<&__new_ty, &__old_ty>(&__e)");
+            "*::std::mem::transmute::<&__old_ty, &__new_ty>(&__e)");
     let lvalue_mut_repl = parse_expr(cx.session(),
-            "*::std::mem::transmute::<&mut __new_ty, &mut __old_ty>(&mut __e)");
+            "*::std::mem::transmute::<&mut __old_ty, &mut __new_ty>(&mut __e)");
 
     // Folder for rewriting top-level exprs only
     struct ExprFolder<F> {
@@ -259,14 +266,29 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
         x.fold(&mut f)
     }
 
+    let transmute = |e, context, old_ty: &P<Ty>, new_ty: &P<Ty>| {
+        let mut bnd = Bindings::new();
+        bnd.add_expr("__e", e);
+        bnd.add_ty("__old_ty", (*old_ty).clone());
+        bnd.add_ty("__new_ty", (*new_ty).clone());
+
+        let repl = match context {
+            lr_expr::Context::Rvalue => rvalue_repl.clone(),
+            lr_expr::Context::Lvalue => lvalue_repl.clone(),
+            lr_expr::Context::LvalueMut => lvalue_mut_repl.clone(),
+        };
+        repl.subst(st, cx, &bnd)
+    };
+
     let krate = fold_top_exprs(krate, |e: P<Expr>| {
         fold_expr_with_context(e, lr_expr::Context::Rvalue, |e, context| {
-            eprintln!("look at {:?} {:?}", context, e);
-            let ty_change = match e.node {
+            match e.node {
                 ExprKind::Path(..) => {
-                    cx.try_resolve_expr(&e)
-                        .and_then(|did| cx.hir_map().as_local_node_id(did))
-                        .and_then(|id| changed_defs.get(&id))
+                    if let Some(&(ref old_ty, ref new_ty)) = cx.try_resolve_expr(&e)
+                            .and_then(|did| cx.hir_map().as_local_node_id(did))
+                            .and_then(|id| changed_defs.get(&id)) {
+                        return transmute(e.clone(), context, new_ty, old_ty);
+                    }
                 },
 
                 ExprKind::Field(ref obj, ref name) => {
@@ -274,37 +296,71 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
                     match ty.sty {
                         TypeVariants::TyAdt(adt, _) => {
                             let did = adt.struct_variant().field_named(name.node.name).did;
-                            cx.hir_map().as_local_node_id(did)
-                              .and_then(|id| changed_defs.get(&id))
+                            if let Some(&(ref old_ty, ref new_ty)) = cx.hir_map()
+                                    .as_local_node_id(did)
+                                    .and_then(|id| changed_defs.get(&id)) {
+                                return transmute(e.clone(), context, new_ty, old_ty);
+                            }
                         },
                         _ => panic!("field access on non-adt"),
                     }
                 },
 
-                // TODO: Call, MethodCall
-                
-                _ => None,
+                ExprKind::Call(ref func, ref args) => {
+                    if let Some(func_id) = cx.opt_callee(&e)
+                            .and_then(|did| cx.hir_map().as_local_node_id(did)) {
+                        if changed_funcs.contains(&func_id) {
+                            let mut e = e.clone();
+
+                            let new_args = args.iter().enumerate().map(|(i, a)| {
+                                if let Some(&(ref old_ty, ref new_ty)) =
+                                        changed_inputs.get(&(func_id, i)) {
+                                    transmute(a.clone(),
+                                              lr_expr::Context::Rvalue,
+                                              old_ty,
+                                              new_ty)
+                                } else {
+                                    a.clone()
+                                }
+                            }).collect();
+                            e = e.map(move |mut e| {
+                                expect!([e.node]
+                                        ExprKind::Call(_, ref mut args) => *args = new_args);
+                                e
+                            });
+
+                            if let Some(&(ref old_ty, ref new_ty)) =
+                                    changed_outputs.get(&func_id) {
+                                e = transmute(e, context, new_ty, old_ty);
+                            }
+
+                            return e;
+                        }
+                    }
+                },
+
+                // TODO: MethodCall
+
+                _ => {},
             };
 
-            if let Some(&(ref old_ty, ref new_ty)) = ty_change {
-                eprintln!("BITCAST RETYPE: change {:?} ({:?}) from {:?} to {:?}",
-                          e, context, old_ty, new_ty);
-                let mut bnd = Bindings::new();
-                bnd.add_expr("__e", e.clone());
-                bnd.add_ty("__old_ty", (*old_ty).clone());
-                bnd.add_ty("__new_ty", (*new_ty).clone());
-
-                let repl = match context {
-                    lr_expr::Context::Rvalue => rvalue_repl.clone(),
-                    lr_expr::Context::Lvalue => lvalue_repl.clone(),
-                    lr_expr::Context::LvalueMut => lvalue_mut_repl.clone(),
-                };
-                repl.subst(st, cx, &bnd)
-            } else {
-                e
-            }
+            e
         })
     });
+
+
+    // (3) Wrap output expressions from functions whose return types were modified.
+
+    let krate = fold_fns(krate, |mut fl| {
+        if let Some(&(ref old_ty, ref new_ty)) = changed_outputs.get(&fl.id) {
+            fl.block = fl.block.map(|b| fold_output_exprs(b, true, |e| {
+                transmute(e, lr_expr::Context::Rvalue, old_ty, new_ty)
+            }));
+        }
+
+        fl
+    });
+
 
     krate
 }
@@ -322,8 +378,6 @@ impl Transform for BitcastRetype {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let pat = parse_ty(cx.session(), &self.pat);
         let repl = parse_ty(cx.session(), &self.repl);
-
-        eprintln!("running! {:?} -> {:?}", pat, repl);
 
         bitcast_retype(st, cx, krate, |ty| {
             // Doing a "deep" rewrite here is based on the assumption that if `T` and `U` are

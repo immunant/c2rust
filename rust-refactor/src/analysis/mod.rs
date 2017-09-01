@@ -1,3 +1,4 @@
+//! Analysis passes used to drive various transformations.
 use std::collections::HashSet;
 
 use command::{Registry, DriverCommand};

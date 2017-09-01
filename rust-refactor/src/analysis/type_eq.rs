@@ -15,6 +15,24 @@
 //! every type constructor.  Second, it walks over the AST unifying various types.  This includes
 //! unifying the LHS type of an assignment with the RHS type, `typeof(&e)` with `&typeof(e)`, the
 //! type of the expression `f` with `f`'s function signature, and so on.
+//!
+//! Note that this analysis doesn't try to reason about traits.  Changing the type of an expression
+//! can have all sorts of non-trivial effects on the program, such as changing which trait is used
+//! at a method call (since the new type might implement a different type with the same method
+//! name).  In this code, we assume the callee is fixed at every method call site.
+//!
+//! The handling of type aliases (including associated types) is also not very sophisticated.  The
+//! analysis doesn't expand aliases before unification, so it never unifies the RHS type of an
+//! alias with any other types.
+//!
+//! Other features currently not handled:
+//!
+//!  * Closures
+//!  * Operator overloading
+//!  * Many specific expr variants, expr adjustments, and pattern variants.  See `UnifyVisitor::visit_expr` and related functions for details.
+//!
+//! (The best fix may be to switch to analyzing MIR, as it has many fewer cases.  But that requires
+//! mapping `ast::Ty` annotations down to MIR, which is likely nontrivial.)
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -45,6 +63,7 @@ use util::HirDefExt;
 use util::IntoSymbol;
 
 
+/// Unification key for types.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct TyLabel(u32);
 
@@ -65,10 +84,15 @@ impl UnifyKey for TyLabel {
 }
 
 
+/// Labels used on types.  If the `Option` is `None`, then there's nothing to unify at this node
+/// (see `LTyTable::non_unifiable`).
+// TODO: remove the `Cell` wrapping.  We don't actually use `set` anywhere.
 type Label = Option<Cell<TyLabel>>;
 
+/// A `Ty` where every node is labeled with a unification key.
 type LTy<'tcx> = LabeledTy<'tcx, Label>;
 
+/// A `FnSig` where every node is labeled with a unification key.
 #[derive(Clone, Copy, Debug)]
 struct LFnSig<'tcx> {
     inputs: &'tcx [LTy<'tcx>],
@@ -77,6 +101,7 @@ struct LFnSig<'tcx> {
 }
 
 
+/// A table for tracking labeled types and their unifications.
 struct LTyTable<'tcx> {
     unif: RefCell<UnificationTable<TyLabel>>,
     lcx: LabeledTyCtxt<'tcx, Label>,
@@ -91,6 +116,7 @@ impl<'tcx> LTyTable<'tcx> {
     }
 
 
+    /// Label a `Ty` with fresh unification keys.
     fn label(&self, ty: ty::Ty<'tcx>) -> LTy<'tcx> {
         self.lcx.label(ty, &mut |_| Some(Cell::new(self.unif.borrow_mut().new_key(()))))
     }
@@ -144,6 +170,7 @@ impl<'tcx> LTyTable<'tcx> {
     }
 
 
+    /// Unify two types, including any type arguments they may have.
     fn unify(&self, lty1: LTy<'tcx>, lty2: LTy<'tcx>) {
         if let (Some(cell1), Some(cell2)) = (lty1.label.as_ref(), lty2.label.as_ref()) {
             self.unif.borrow_mut().union(cell1.get(), cell2.get());
@@ -168,12 +195,16 @@ struct ExprPatVisitor<'a, 'gcx: 'tcx, 'tcx: 'a> {
     tcx: TyCtxt<'a, 'gcx, 'tcx>,
     ltt: &'a LTyTable<'tcx>,
 
+    /// The labeled unadjusted type, for every node that has a type.
     unadjusted: HashMap<NodeId, LTy<'tcx>>,
+    /// The labeled adjusted type, for every node that has adjustments.
     adjusted: HashMap<NodeId, LTy<'tcx>>,
+    /// The labeled substitutions, for every node where type substitutions were applied.
     substs: HashMap<NodeId, &'tcx [LTy<'tcx>]>,
 }
 
 impl<'a, 'gcx, 'tcx> ExprPatVisitor<'a, 'gcx, 'tcx> {
+    /// Process the type tables for a single body.
     fn handle_body(&mut self, body_id: BodyId) {
         let tables = self.tcx.body_tables(body_id);
         for (&id, &ty) in tables.node_types.iter() {
@@ -192,6 +223,8 @@ impl<'a, 'gcx, 'tcx> ExprPatVisitor<'a, 'gcx, 'tcx> {
 }
 
 impl<'a, 'gcx, 'tcx, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'a, 'gcx, 'tcx> {
+    // Visit every itemlike with a BodyId, and call `handle_body` on each.
+
     fn visit_item(&mut self, item: &'hir Item) {
         let body_id = match item.node {
             ItemStatic(_, _, body_id) => body_id,
@@ -223,6 +256,8 @@ impl<'a, 'gcx, 'tcx, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'a, 'gcx, 't
 
 
 
+/// `type_map::TypeSource` for getting `TyCtxt` results.  Used when collecting the labeled types
+/// for `ast::Ty` nodes.
 struct LabelTysSource<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
     hir_map: &'a hir::map::Map<'hir>,
     tcx: TyCtxt<'a, 'gcx, 'tcx>,
@@ -234,10 +269,6 @@ impl<'a, 'hir, 'gcx, 'tcx> LabelTysSource<'a, 'hir, 'gcx, 'tcx> {
         let parent = self.hir_map.get_parent(id);
         let parent_body = self.hir_map.body_owned_by(parent);
         self.tcx.body_tables(parent_body)
-    }
-
-    fn get_substs(&self, id: NodeId) -> Option<&'tcx Substs<'tcx>> {
-        self.get_tables(id).node_substs.get(&id).map(|&x| x)
     }
 
     fn node_lty(&self, id: NodeId) -> LTy<'tcx> {
@@ -294,6 +325,7 @@ impl<'tcx> type_map::Signature<LTy<'tcx>> for LFnSig<'tcx> {
     }
 }
 
+/// Label the `ty::Ty` for every `ast::Ty` in the crate.
 fn label_tys<'a, 'gcx, 'tcx>(hir_map: &hir::map::Map,
                              tcx: TyCtxt<'a, 'gcx, 'tcx>,
                              ltt: &'a LTyTable<'tcx>,
@@ -313,6 +345,8 @@ fn label_tys<'a, 'gcx, 'tcx>(hir_map: &hir::map::Map,
 
 
 
+/// Build a map of primitive types used by specific language features, such as `bool`'s usage in
+/// `if` and `while`.
 fn prim_tys<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                             ltt: &'a LTyTable<'tcx>)
                             -> HashMap<&'static str, LTy<'tcx>> {
@@ -327,30 +361,35 @@ fn prim_tys<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 
 
 
+/// Walk over the HIR, unifying types as equality constraints are discovered.
 struct UnifyVisitor<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
     hir_map: &'a hir::map::Map<'hir>,
     tcx: TyCtxt<'a, 'gcx, 'tcx>,
     ltt: &'a LTyTable<'tcx>,
 
+    // These are the tables generated by the visitors and functions defined above.
     unadjusted_nodes: &'a HashMap<NodeId, LTy<'tcx>>,
     nodes: &'a HashMap<NodeId, LTy<'tcx>>,
     node_substs: &'a HashMap<NodeId, &'tcx [LTy<'tcx>]>,
     ty_nodes: &'a HashMap<NodeId, LTy<'tcx>>,
     prims: &'a HashMap<&'static str, LTy<'tcx>>,
 
-
-    // Unfortunately, there is no central index of all/most `DefId`s and their types, like there is
-    // for exprs and patterns.  And we can't visit all defs because some are pulled in from other
-    // crates.  Since we can't precompute the `LTy` for every def, we have to keep this cache and
-    // add defs to it as we encounter them.
+    /// Cache of labeled types for each definition.
+    ///
+    /// Unfortunately, there is no central index of all/most `DefId`s and their types, like there
+    /// is for exprs and patterns.  And we can't easily visit all defs because some are pulled in
+    /// from other crates.  Since we can't precompute the `LTy` for every def, we have to keep this
+    /// cache and add defs to it as we encounter them.
     defs: RefCell<HashMap<DefId, LTy<'tcx>>>,
 
-    /// Cache of signatures of function/method definitions.  This always contains the raw,
-    /// un-substituted signature.
+    /// Cache of labeled signatures of function/method definitions.  For generic functions, this
+    /// always contains the unsubstituted (polymorphic) signature.
     def_sigs: RefCell<HashMap<DefId, LFnSig<'tcx>>>,
 }
 
 impl<'a, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'hir, 'gcx, 'tcx> {
+    // Helpers for looking up labeled types in the various precomputed tables.
+
     fn expr_lty(&self, e: &Expr) -> LTy<'tcx> {
         self.nodes.get(&e.id)
             .or_else(|| self.unadjusted_nodes.get(&e.id))
@@ -393,6 +432,8 @@ impl<'a, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'hir, 'gcx, 'tcx> {
     }
 
 
+    // Functions for accessing the def ty/sig caches
+
     fn compute_def_lty(&self, id: DefId) -> LTy<'tcx> {
         match self.hir_map.get_if_local(id) {
             Some(NodeLocal(p)) => {
@@ -429,11 +470,16 @@ impl<'a, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'hir, 'gcx, 'tcx> {
             .or_insert_with(|| self.compute_def_sig(id))
     }
 
+
+    // Helpers for extracting information from function types.
+
     fn fn_num_inputs(&self, lty: LTy<'tcx>) -> usize {
         use rustc::ty::TypeVariants::*;
         match lty.ty.sty {
             TyFnDef(id, _) => self.def_sig(id).inputs.len(),
             TyFnPtr(_) => lty.args.len() - 1,
+            // TODO: handle TyClosure.  This should be similar to TyFnDef, but the substs are a bit
+            // more complicated.
             _ => panic!("fn_num_inputs: not a fn type"),
         }
     }
@@ -452,6 +498,7 @@ impl<'a, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'hir, 'gcx, 'tcx> {
                 // For a `TyFnPtr`, `lty.args` records the labeled input and output types.
                 &lty.args[idx]
             },
+            // TODO: TyClosure
             _ => panic!("fn_input: not a fn type"),
         }
     }
@@ -467,6 +514,7 @@ impl<'a, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'hir, 'gcx, 'tcx> {
             TyFnPtr(_) => {
                 &lty.args[lty.args.len() - 1]
             },
+            // TODO: TyClosure
             _ => panic!("fn_output: not a fn type"),
         }
     }
@@ -480,6 +528,7 @@ impl<'a, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'hir, 'gcx, 'tcx> {
             TyFnPtr(ty_sig) => {
                 ty_sig.0.variadic
             },
+            // TODO: TyClosure
             _ => panic!("fn_is_variadic: not a fn type"),
         }
     }
@@ -491,6 +540,8 @@ impl<'a, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'hir, 'gcx, 'tcx> {
         self.tcx.body_tables(parent_body)
     }
 
+    /// Get the signature of the method being called by an expression.  This includes substituting
+    /// in the type arguments, if the method is generic.
     fn method_sig(&self, e: &Expr) -> LFnSig<'tcx> {
         let def_id = self.get_tables(e.id).type_dependent_defs[&e.id].def_id();
         let sig = self.def_sig(def_id);
@@ -499,6 +550,8 @@ impl<'a, 'hir, 'gcx, 'tcx> UnifyVisitor<'a, 'hir, 'gcx, 'tcx> {
     }
 
 
+    /// Get the labeled type of a field.  For generic structs, this returns the type after
+    /// substitution, using the type arguments from `struct_ty`.
     fn field_lty(&self, struct_ty: LTy<'tcx>, name: Symbol) -> LTy<'tcx> {
         let adt = match struct_ty.ty.sty {
             ty::TypeVariants::TyAdt(ref adt, _) => adt,
@@ -534,6 +587,9 @@ impl<'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'hir, 'gcx, 'tcx> 
                 return;
             },
         };
+
+        // TODO: Support operator overloading.  I think this can be detected by checking for a
+        // `type_dependent_defs` entry on a non-`MethodCall` node.
 
         match e.node {
             ExprBox(ref e) => {
@@ -680,14 +736,16 @@ impl<'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'hir, 'gcx, 'tcx> 
             },
 
             // break/continue/return all have type `!`, which unifies with everything.
-            ExprBreak(_, ref result) => {
-                // TODO: handle result == Some(x) case
+            ExprBreak(ref dest, ref result) => {
+                // TODO: handle result == Some(x) case (unify the target `ExprLoop`'s type with the
+                // result expression type)
             },
 
             ExprAgain(_) => {},
 
             ExprRet(ref result) => {
-                // TODO: handle result == Some(x) case
+                // TODO: handle result == Some(x) case (unify the result type with the current
+                // function's return type)
             },
 
             ExprInlineAsm(..) => {},
@@ -822,13 +880,21 @@ impl<'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'hir, 'gcx, 'tcx> 
         let body = self.hir_map.body(body_id);
         let def_id = self.hir_map.local_def_id(id);
         let sig = self.def_sig(def_id);
+        // The results of `def_sig` and `def_lty` are produced by calling `tcx.fn_sig` /
+        // `tcx.type_of` and giving the results fresh labels, so they initially have no connection
+        // to other representations of the item signature / type.  One of the reasons we need to
+        // visit functions and other items is to unify the `def_sig` / `def_lty` types with the
+        // types associated with the defs' `ast::Ty` annotations.
 
+        // Unify argument type annotations with the types of the corresponding patterns, and with
+        // the argument types that appear in the `DefId` signature.
         for (i, ast_ty) in decl.inputs.iter().enumerate() {
             let lty = self.ty_lty(ast_ty);
             self.ltt.unify(lty, self.pat_lty(&body.arguments[i].pat));
             self.ltt.unify(lty, sig.inputs[i]);
         }
 
+        // Unify the return type annotation with the body expr type and the signature return type.
         let out_lty = match decl.output {
             FunctionRetTy::Return(ref ty) => self.ty_lty(ty),
             FunctionRetTy::DefaultReturn(_) => self.prim_lty("()"),
@@ -840,6 +906,7 @@ impl<'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'hir, 'gcx, 'tcx> 
     }
 
     fn visit_struct_field(&mut self, field: &'hir StructField) {
+        // Unify the field's type annotation with the definition type.
         let def_id = self.hir_map.local_def_id(field.id);
         self.ltt.unify(self.ty_lty(&field.ty), self.def_lty(def_id));
         intravisit::walk_struct_field(self, field);
@@ -870,10 +937,14 @@ impl<'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'hir, 'gcx, 'tcx> 
 
         intravisit::walk_foreign_item(self, i);
     }
+
+    // TODO: handle const and non-foreign static items.  These should be similar to the
+    // `ForeignItemStatic` case.
 }
 
 
 
+/// Run the analysis, producing a map from `ast::Ty` `NodeId`s to an equivalence class number.
 pub fn analyze<'a, 'gcx, 'tcx>(hir_map: &hir::map::Map,
                                tcx: TyCtxt<'a, 'gcx, 'tcx>,
                                tcx_arena: &'tcx DroplessArena,
@@ -899,8 +970,11 @@ pub fn analyze<'a, 'gcx, 'tcx>(hir_map: &hir::map::Map,
     // Construct labeled types for each `ast::Ty` in the program.
     let ty_nodes = label_tys(hir_map, tcx, &ltt, krate);
 
+    // Construct labeled types for primitive operations.
     let prims = prim_tys(tcx, &ltt);
 
+
+    // Run the unification pass.
     let mut v = UnifyVisitor {
         hir_map: hir_map,
         tcx: tcx,
@@ -916,6 +990,9 @@ pub fn analyze<'a, 'gcx, 'tcx>(hir_map: &hir::map::Map,
     };
     hir_map.krate().visit_all_item_likes(&mut v.as_deep_visitor());
 
+
+    // For all `ast::Ty` nodes, build a map with the `NodeId` and the raw label of the root of its
+    // equivalence class.
     ty_nodes.iter()
         .filter_map(
             |(&id, &lty)| lty.label.as_ref().map(
