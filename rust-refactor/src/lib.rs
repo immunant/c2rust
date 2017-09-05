@@ -68,7 +68,6 @@ pub mod driver;
 pub mod command;
 pub mod interact;
 pub mod plugin;
-pub mod script;
 
 // Command implementations
 pub mod transform;

@@ -11,7 +11,7 @@ use syntax::ast::NodeId;
 
 use idiomize::{
     file_rewrite, driver, transform, span_fix, rewrite, pick_node, interact, command, mark_adjust,
-    plugin, select, analysis, script, print_spans
+    plugin, select, analysis, print_spans
 };
 
 use idiomize::command::CommandState;
@@ -320,9 +320,9 @@ fn main() {
 
 
     let mut cmd_reg = command::Registry::new();
-    command::register_misc_commands(&mut cmd_reg);
-    transform::register_transform_commands(&mut cmd_reg);
+    transform::register_commands(&mut cmd_reg);
     mark_adjust::register_commands(&mut cmd_reg);
+    pick_node::register_commands(&mut cmd_reg);
     print_spans::register_commands(&mut cmd_reg);
     select::register_commands(&mut cmd_reg);
     analysis::register_commands(&mut cmd_reg);
@@ -334,7 +334,7 @@ fn main() {
                                    opts.rustc_args,
                                    cmd_reg);
     } else {
-        let mut state = script::RefactorState::new(opts.rustc_args, cmd_reg, marks);
+        let mut state = command::RefactorState::new(opts.rustc_args, cmd_reg, marks);
         let rewrite_mode = opts.rewrite_mode;
         state.rewrite_handler(move |fm, s| {
             file_rewrite::rewrite_mode_callback(rewrite_mode, fm, s);

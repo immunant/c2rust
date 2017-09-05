@@ -5,8 +5,7 @@
 )]
 #[macro_use] extern crate idiomize;
 
-use idiomize::command::{Registry, FuncCommand};
-use idiomize::script::RefactorState;
+use idiomize::command::{Registry, FuncCommand, RefactorState};
 
 fn mark_fields(state: &mut RefactorState) {
     state.run("select", &["dummy",

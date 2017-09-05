@@ -7,7 +7,8 @@ use syntax::codemap::{Span, BytePos};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::visit::{self, Visitor, FnKind};
 
-use driver;
+use command::{Registry, DriverCommand};
+use driver::{self, Phase};
 use visit::Visit;
 
 
@@ -298,4 +299,13 @@ pub fn pick_node_command(krate: &Crate, cx: &driver::Ctxt, args: &[String]) {
     } else {
         info!("{{ found: false }}");
     }
+}
+
+pub fn register_commands(reg: &mut Registry) {
+    reg.register("pick_node", |args| {
+        let args = args.to_owned();
+        Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
+            pick_node_command(&st.krate(), &cx, &args);
+        }))
+    });
 }

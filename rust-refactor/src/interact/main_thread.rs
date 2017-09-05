@@ -15,7 +15,7 @@ use syntax::codemap::Span;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
-use command::{self, CommandState};
+use command::{self, CommandState, RefactorState};
 use driver;
 use file_rewrite;
 use get_node_id::GetNodeId;
@@ -26,7 +26,6 @@ use interact::{plain_backend, vim8_backend};
 use interact::worker::{self, ToWorker};
 use pick_node;
 use rewrite;
-use script::RefactorState;
 use span_fix;
 use util::IntoSymbol;
 use visit::Visit;

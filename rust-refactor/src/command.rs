@@ -1,15 +1,139 @@
+//! Command management and overall refactoring state.
+
+use std::borrow::Borrow;
 use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::mem;
 use syntax::ast::{NodeId, Crate, Mod};
 use syntax::codemap::DUMMY_SP;
+use syntax::codemap::FileLoader;
+use syntax::codemap::FileMap;
 use syntax::symbol::Symbol;
 
 use driver::{self, Phase};
-use script::RefactorState;
+use file_rewrite::{self, RewriteMode};
+use rewrite;
+use span_fix;
 use util::IntoSymbol;
 
 
+/// Stores the overall state of the refactoring process, which can be read and updated by
+/// `Command`s.
+///
+/// TODO: The current design has a few issues.  Specifically:
+///
+///  1. The `Crate` is regenerated from the filesystem contents for each command, so running
+///     multiple transform commands will fail if the rewriting mode is not (effectively) "inplace".
+///  2. Running a transform command requires discarding all the marks, because parsing the
+///     transformed code will assign NodeIds differently.
+///  3. There's no actual tracking of the relationship between the marks and the `Crate` (which,
+///     again, depends on the on-disk source code state).
+///
+/// I think these could be addressed by keeping the expanded `Crate` as part of the refactor state.
+/// Run `Phase1` once and keep the results, rerunning only `Phase2` and `Phase3` when analysis
+/// results are needed.  Explicitly run renumbering when the `Crate` is changed (so that NodeIds
+/// will remain unique), and update the marks to compensate for the changes.  And if the `Crate` is
+/// kept in-memory, then we can delay rewriting until the very end, producing good results for
+/// multi-command invocations even under non-"inplace" rewrite modes.
+pub struct RefactorState {
+    rustc_args: Vec<String>,
+    make_file_loader: Option<Box<Fn() -> Box<FileLoader>>>,
+    rewrite_handler: Option<Box<FnMut(Rc<FileMap>, &str)>>,
+    cmd_reg: Registry,
+    marks: HashSet<(NodeId, Symbol)>,
+}
+
+impl RefactorState {
+    pub fn new(rustc_args: Vec<String>,
+               cmd_reg: Registry,
+               marks: HashSet<(NodeId, Symbol)>) -> RefactorState {
+        RefactorState {
+            rustc_args: rustc_args,
+            make_file_loader: None,
+            rewrite_handler: None,
+            cmd_reg: cmd_reg,
+            marks: marks,
+        }
+    }
+
+    /// Provide a function that builds a custom file loader for `rustc` driver invocations.
+    pub fn make_file_loader<F: Fn() -> Box<FileLoader> + 'static>(&mut self, f: F) {
+        self.make_file_loader = Some(Box::new(f));
+    }
+
+    /// Provide a callback for handling rewritten file contents.
+    pub fn rewrite_handler<F: FnMut(Rc<FileMap>, &str) + 'static>(&mut self, f: F) {
+        self.rewrite_handler = Some(Box::new(f));
+    }
+
+    /// Run the compiler driver to the given phase, and pass the command and driver state to the
+    /// provided callback.
+    pub fn with_context_at_phase<F, R>(&mut self, phase: Phase, f: F) -> R
+            where F: FnOnce(&CommandState, &driver::Ctxt) -> R{
+        let marks = &mut self.marks;
+        let mut rewrite_handler = self.rewrite_handler.as_mut();
+
+        let file_loader = self.make_file_loader.as_ref().map(|f| f());
+        driver::run_compiler(&self.rustc_args, file_loader, phase, |krate, cx| {
+            let krate = span_fix::fix_spans(cx.session(), krate);
+
+            let cmd_state = CommandState::new(krate.clone(),
+                                              marks.clone());
+
+            let r = f(&cmd_state, &cx);
+
+            if cmd_state.marks_changed() {
+                *marks = cmd_state.marks().clone();
+            }
+
+            if cmd_state.krate_changed() {
+                let rws = rewrite::rewrite(cx.session(), &krate, &cmd_state.krate());
+                if rws.len() == 0 {
+                    info!("(no files to rewrite)");
+                } else {
+                    if let Some(ref mut handler) = rewrite_handler {
+                        file_rewrite::rewrite_files_with(cx.session().codemap(),
+                                                         &rws,
+                                                         |fm, s| handler(fm, s));
+                    }
+                }
+
+                *marks = HashSet::new();
+            }
+
+            r
+        })
+    }
+
+    /// Run the compiler driver to `Phase3`, and pass the command and driver state to the provided
+    /// callback.
+    pub fn with_context<F, R>(&mut self, f: F) -> R
+            where F: FnOnce(&CommandState, &driver::Ctxt) -> R {
+        self.with_context_at_phase(Phase::Phase3, f)
+    }
+
+    /// Invoke a registered command with the given command name and arguments.
+    pub fn run<S: AsRef<str>>(&mut self, cmd: &str, args: &[S]) {
+        let args = args.iter().map(|s| s.as_ref().to_owned()).collect::<Vec<_>>();
+
+        let mut cmd = self.cmd_reg.get_command(cmd, &args);
+        cmd.run(self);
+    }
+
+
+    pub fn marks(&self) -> &HashSet<(NodeId, Symbol)> {
+        &self.marks
+    }
+
+    pub fn marks_mut(&mut self) -> &mut HashSet<(NodeId, Symbol)> {
+        &mut self.marks
+    }
+}
+
+
+/// Mutable state that can be modified by a "driver" command.  This is normally paired with a
+/// `driver::Ctxt`, which contains immutable analysis results from the original input `Crate`.
 pub struct CommandState {
     krate: RefCell<Crate>,
     marks: RefCell<HashSet<(NodeId, Symbol)>>,
@@ -146,17 +270,4 @@ impl<F> Command for DriverCommand<F>
     fn run(&mut self, state: &mut RefactorState) {
         state.with_context_at_phase(self.phase, |st, cx| (self.func)(st, cx));
     }
-}
-
-
-pub fn register_misc_commands(reg: &mut Registry) {
-    use pick_node;
-    use mark_adjust;
-
-    reg.register("pick_node", |args| {
-        let args = args.to_owned();
-        Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
-            pick_node::pick_node_command(&st.krate(), &cx, &args);
-        }))
-    });
 }

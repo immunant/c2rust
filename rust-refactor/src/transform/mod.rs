@@ -1,8 +1,7 @@
 use syntax::ast::Crate;
 
-use command::{Command, CommandState, Registry};
+use command::{Command, RefactorState, CommandState, Registry};
 use driver::{self, Phase};
-use script::RefactorState;
 use util::IntoSymbol;
 
 
@@ -36,9 +35,9 @@ fn mk<T: Transform + 'static>(t: T) -> Box<Command> {
 
 macro_rules! transform_modules {
     ($($name:ident,)*) => {
-        $( mod $name; )*
+        $( pub mod $name; )*
 
-        pub fn register_transform_commands(reg: &mut Registry) {
+        pub fn register_commands(reg: &mut Registry) {
             $( $name::register_commands(reg); )*
         }
     };
