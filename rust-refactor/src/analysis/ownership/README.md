@@ -405,3 +405,34 @@ Together, these provide enough information that inference is not required.
 Note that unlike non-variant functions, variants may not have multiple
 `ownership_mono` annotations, as each variant is expected to correspond to a
 single monomorphization of the original function.
+
+
+# The "Collection Hack"
+
+The analysis as described so far tries to mimic the Rust ownership model as
+implemented in the Rust compiler.  However, collection data structures in Rust
+often use unsafe code to bypass parts of the ownership model.  A particularly
+common case is in removal methods, such as `Vec::pop`:
+
+    impl<T> Vec<T> {
+        fn pop(&mut self) -> Option<T> { ... }
+    }
+
+This method moves a `T` out of `self`'s internal storage, but only takes `self`
+by mutable reference.  Under the "normal" rules, this is impossible, and the
+analysis described above will infer a stricter signature for the raw pointer
+equivalent:
+
+    fn pop(this: /* MOVE */ *mut Vec) -> /* MOVE */ *mut c_void { ... }
+
+The analysis as implemented includes a small adjustment (the "collection hack")
+to let it infer the correct signature for such methods.
+
+The collection hack is this: when handling a pointer assignment, instead of
+constraining the path permission of the RHS to be at least the permission of
+the LHS, we constraint it to be at least `min(lhs_perm, WRITE)`.  The result is
+that it becomes possible to move a `MOVE` pointer out of a struct when only
+`WRITE` permission is available for the pointer to that struct.  Then the
+analysis will infer the correct type for `pop`:
+
+    fn pop(this: /* WRITE */ *mut Vec) -> /* MOVE */ *mut c_void { ... }

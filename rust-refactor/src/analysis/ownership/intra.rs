@@ -382,6 +382,8 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
         if let (Label::Ptr(l_perm), Label::Ptr(r_perm)) = (lhs.label, rhs.label) {
             self.propagate_perm(l_perm, r_perm);
 
+            // This is the "collection hack".
+            //
             // Cap the required `path_perm` at WRITE.  The logic here is that container methods for
             // removing (and freeing) elements or for reallocating internal storage shouldn't
             // require MOVE.
