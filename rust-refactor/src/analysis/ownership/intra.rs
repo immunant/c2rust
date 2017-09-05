@@ -508,6 +508,7 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
                 // InlineAsm has some Lvalues and Operands, but we can't do anything useful
                 // with them without analysing the actual asm code.
                 StatementKind::InlineAsm { .. } |
+                StatementKind::Validate(..) |
                 StatementKind::EndRegion(_) |
                 StatementKind::Nop => {},
             }

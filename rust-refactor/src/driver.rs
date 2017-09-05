@@ -10,7 +10,7 @@ use rustc::ty::{TyCtxt, GlobalArenas};
 use rustc::session::{self, Session};
 use rustc::session::config::{Input, Options};
 use rustc_driver;
-use rustc_driver::driver;
+use rustc_driver::driver::{self, CompileController};
 use rustc_errors::DiagnosticBuilder;
 use rustc_metadata::cstore::CStore;
 use rustc_resolve::MakeGlobMap;
@@ -117,7 +117,7 @@ pub fn run_compiler<F, R>(args: &[String],
     let (sess, cstore) = build_session(sopts, in_path, file_loader);
 
     // Start of `compile_input` code
-    let krate = driver::phase_1_parse_input(&sess, &input).unwrap();
+    let krate = driver::phase_1_parse_input(&CompileController::basic(), &sess, &input).unwrap();
     // Leave parens in place until after expansion, unless we're stopping at phase 1.  But
     // immediately fix up the attr spans, since during expansion, any `derive` attrs will be
     // removed.

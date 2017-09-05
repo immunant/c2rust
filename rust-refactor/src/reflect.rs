@@ -87,9 +87,10 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         NodeStmt(_) |
         NodeTy(_) |
         NodeTraitRef(_) |
-        NodeLocal(_) |
+        NodeBinding(_) |
         NodePat(_) |
         NodeBlock(_) |
+        NodeLocal(_) |
         NodeLifetime(_) |
         NodeTyParam(_) |
         NodeVisibility(_) => false,

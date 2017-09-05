@@ -663,13 +663,13 @@ impl Builder {
 
     // Items
 
-    fn item(self, name: Ident, node: ItemKind) -> P<Item> {
+    fn item(name: Ident, attrs: Vec<Attribute>, vis: Visibility, node: ItemKind) -> P<Item> {
         P(Item {
             ident: name,
-            attrs: self.attrs,
+            attrs: attrs,
             id: DUMMY_NODE_ID,
             node: node,
-            vis: self.vis,
+            vis: vis,
             span: DUMMY_SP,
             tokens: None,
         })
@@ -680,7 +680,8 @@ impl Builder {
         let name = name.make(&self);
         let ty = ty.make(&self);
         let init = init.make(&self);
-        self.item(name, ItemKind::Static(ty, self.mutbl, init))
+        Self::item(name, self.attrs, self.vis,
+                   ItemKind::Static(ty, self.mutbl, init))
     }
 
     pub fn fn_item<I, D, B>(self, name: I, decl: D, block: B) -> P<Item>
@@ -688,19 +689,21 @@ impl Builder {
         let name = name.make(&self);
         let decl = decl.make(&self);
         let block = block.make(&self);
-        self.item(name, ItemKind::Fn(decl,
-                                     self.unsafety,
-                                     Spanned { span: DUMMY_SP, node: self.constness },
-                                     self.abi,
-                                     self.generics,
-                                     block))
+        Self::item(name, self.attrs, self.vis,
+                   ItemKind::Fn(decl,
+                                self.unsafety,
+                                Spanned { span: DUMMY_SP, node: self.constness },
+                                self.abi,
+                                self.generics,
+                                block))
     }
 
     pub fn struct_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
             where I: Make<Ident> {
         let name = name.make(&self);
-        self.item(name, ItemKind::Struct(VariantData::Struct(fields, DUMMY_NODE_ID),
-                                         self.generics))
+        Self::item(name, self.attrs, self.vis,
+                   ItemKind::Struct(VariantData::Struct(fields, DUMMY_NODE_ID),
+                                    self.generics))
     }
 
     pub fn struct_field<I, T>(self, ident: I, ty: T) -> StructField
