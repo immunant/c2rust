@@ -28,6 +28,8 @@ use util::Lone;
 
 
 /// Driver context.  Contains all available analysis results as of the current compiler phase.
+///
+/// Accessor methods will panic if the requested results are not available.
 #[derive(Clone)]
 pub struct Ctxt<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
     sess: &'a Session,

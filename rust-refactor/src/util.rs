@@ -1,3 +1,4 @@
+//! Miscellaneous utility functions.
 use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
 use syntax::ast::*;
@@ -105,6 +106,7 @@ impl PatternSymbol for TraitItem {
 }
 
 
+/// Move the lone item out of a 1-element container.
 pub trait Lone<T> {
     fn lone(self) -> T;
 }
@@ -130,6 +132,8 @@ impl<T> Lone<T> for SmallVector<T> {
 }
 
 
+/// Get the text of a span, and pass it to a callback.  Returns `false` if the span text isn't
+/// available.
 pub fn with_span_text<F: FnOnce(&str)>(cm: &CodeMap, span: Span, callback: F) -> bool {
     let lo = cm.lookup_byte_offset(span.lo);
     let hi = cm.lookup_byte_offset(span.hi);
@@ -143,6 +147,8 @@ pub fn with_span_text<F: FnOnce(&str)>(cm: &CodeMap, span: Span, callback: F) ->
 }
 
 
+/// Extend a node span to cover its attributes.  (By default, item spans cover only the item body,
+/// not the preceding attrs.)
 pub fn extended_span(mut s: Span, attrs: &[Attribute]) -> Span {
     // Extend `s` backward to cover all the attrs
     for attr in attrs {
@@ -155,6 +161,7 @@ pub fn extended_span(mut s: Span, attrs: &[Attribute]) -> Span {
 }
 
 
+/// Extension trait for `rustc::hir::def::Def`, providing the `opt_def_id()` method.
 pub trait HirDefExt {
     fn opt_def_id(&self) -> Option<DefId>;
 }
@@ -222,6 +229,7 @@ impl<'a> IntoSymbol for &'a String {
 }
 
 
+/// Get the name of a macro invocation.
 pub fn macro_name(mac: &Mac) -> Name {
     let p = &mac.node.path;
     p.segments.last().unwrap().identifier.name

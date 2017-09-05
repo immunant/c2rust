@@ -1,3 +1,32 @@
+//! AST template substitution.
+//!
+//! This module provides functions for substituting `Bindings` into a template AST.  Placeholder
+//! forms in the template AST are similar to patterns used in the `matcher` module:
+//!
+//!  * `__x`: An ident whose name is present in the `Bindings` will be replaced with the
+//!    corresponding AST fragment.  (If the `Bindings` came from a `matcher` invocation, then most
+//!    of these names will start with double underscores.)
+//!
+//!    This placeholder form only works if the name is present in the `Bindings` and the
+//!    corresponding AST fragment is the same type as the current node.  Like in `matcher`, the
+//!    substitution code tries to replace at multiple levels.  For example, if the placeholder AST
+//!    is the expr `__x`, then the substitution code will first try to replace the entire `Expr`,
+//!    but if this fails (because the `Bindings` have a non-`Expr` for the name `__x`), then it
+//!    will continue on to try replacing the `Path` and finally just the `Ident`.
+//!
+//!    For itemlikes, a lone ident can't be used as a placeholder because it's not a valid
+//!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
+//!
+//!  * `def!(name [, label])`: This placeholder will be replaced with a path `Expr` or `Ty` that
+//!    refers to a definition named `name` and labeled with `label` (default: "target").  Note that
+//!    this form uses only the plain name of the definition, and relies on the label to find the
+//!    specific def.
+//!
+//!    By default, the replacement path will be an absolute path.  But if the `Bindings` came from
+//!    a `matcher` invocation that included a `def!(name, label)` pattern, then the path matched by
+//!    that `def!` pattern will be used instead.  (This provides an easy way to take advantage of
+//!    surrounding `use` items to produce more convenient paths.)
+
 use rustc::hir::map::Node;
 use rustc::hir::def_id::DefId;
 use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item, ImplItem};

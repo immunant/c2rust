@@ -210,14 +210,15 @@ impl CommandState {
 }
 
 
+/// Implementation of a refactoring command.
 pub trait Command {
     fn run(&mut self, state: &mut RefactorState);
 }
 
-
 /// A command builder is a function that takes some string arguments and produces a `Command`.
 pub type Builder = FnMut(&[String]) -> Box<Command>;
 
+/// Tracks known refactoring command builders, and allows invoking them by name.
 pub struct Registry {
     commands: HashMap<String, Box<Builder>>,
 }
@@ -242,6 +243,7 @@ impl Registry {
 }
 
 
+/// Wraps a `FnMut` to produce a `Command`.
 pub struct FuncCommand<F>(pub F);
 
 impl<F> Command for FuncCommand<F>
@@ -252,6 +254,8 @@ impl<F> Command for FuncCommand<F>
 }
 
 
+/// Wrap a `FnMut` to produce a command that invokes the `rustc` driver and operates over the
+/// results.
 pub struct DriverCommand<F>
         where F: FnMut(&CommandState, &driver::Ctxt) {
     func: F,

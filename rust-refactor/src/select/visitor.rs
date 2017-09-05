@@ -1,3 +1,6 @@
+//! Visitors for implementing `ChildMatch`, `DescMatch`, and `Filter`, which need to walk the AST
+//! and inspect the currently selected nodes.
+
 use std::collections::{HashMap, HashSet};
 use syntax::ast::*;
 use syntax::attr;
@@ -18,6 +21,7 @@ struct ChildMatchVisitor<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
     cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
     old: HashSet<NodeId>,
     new: HashSet<NodeId>,
+    /// Are we at a child of a node that was selected in the `old` set?
     in_old: bool,
     filt: &'a Filter,
 }
@@ -143,6 +147,7 @@ struct DescMatchVisitor<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
     cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
     old: HashSet<NodeId>,
     new: HashSet<NodeId>,
+    /// Are we at a descendant of a node that was selected in the `old` set?
     in_old: bool,
     filt: &'a Filter,
 }

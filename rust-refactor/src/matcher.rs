@@ -16,7 +16,7 @@
 //!    for the ident in the `MatchCtxt`, then it will only capture that type.
 //!
 //!    For itemlikes, a lone ident can't be used as a pattern because it's not a valid itemlike.
-//!    Use a macro `__x!()` instead.
+//!    Use a zero-argument macro invocation `__x!()` instead.
 //!
 //!  * `marked!(x [, label])`: Matches `x` only if the node is marked with the given label.  The
 //!    label defaults to "target" if omitted.
