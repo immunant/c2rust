@@ -19,6 +19,7 @@ use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem};
 use syntax::codemap::CodeMap;
 use syntax::codemap::{FileLoader, RealFileLoader};
 use syntax::parse;
+use syntax::parse::token;
 use syntax::parse::parser::Parser;
 use syntax::ptr::P;
 
@@ -230,7 +231,7 @@ pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
 pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
     let mut p = make_parser(sess, "<stmt>", src);
     let mut stmts = Vec::new();
-    loop {
+    while p.token != token::Eof {
         match p.parse_full_stmt(false) {
             Ok(Some(stmt)) => stmts.push(remove_paren(stmt).lone()),
             Ok(None) => break,
@@ -256,12 +257,10 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
 pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
     let mut p = make_parser(sess, "<impl>", src);
     let mut items = vec![];
-    loop {
-        let mut at_end = false;
-        match p.parse_impl_item(&mut at_end) {
+    while p.token != token::Eof {
+        match p.parse_impl_item(&mut false) {
             Ok(item) => {
                 items.push(remove_paren(item).lone());
-                if at_end { break }
             }
             Err(e) => panic!("error parsing impl items: {:?}", e.into_diagnostic()),
         }

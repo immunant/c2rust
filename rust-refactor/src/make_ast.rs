@@ -741,6 +741,19 @@ impl Builder {
         })
     }
 
+    pub fn enum_field<T>(self, ty: T) -> StructField
+        where T: Make<P<Ty>> {
+        let ty = ty.make(&self);
+        StructField {
+            span: DUMMY_SP,
+            ident: None,
+            vis: self.vis,
+            id: DUMMY_NODE_ID,
+            ty: ty,
+            attrs: self.attrs,
+        }
+    }
+
     pub fn variant<I>(self, name: I, dat: VariantData) -> Variant
       where I: Make<Ident> {
         let name = name.make(&self);
