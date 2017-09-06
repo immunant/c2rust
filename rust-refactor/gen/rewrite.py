@@ -23,8 +23,9 @@ Attributes:
   sequences of this node type.  This only works for types supporting
   `GetNodeId` and `GetSpan`.
 
-- `#[rewrite=ignore]`: Ignore nodes of this type.  Perform no side effects and
-  always return success, in both `rewrite_recycled` and `rewrite_fresh`.
+- `#[rewrite=ignore]`: On a type, ignore nodes of this type; on a field, ignore
+  the contents of this field.  Perform no side effects and always return
+  success, in both `rewrite_recycled` and `rewrite_fresh`.
 '''
 
 from datetime import datetime
@@ -53,6 +54,8 @@ def do_recycled_match(se, target1, target2):
         yield '  (&%s,' % struct_pattern(v, path, '1')
         yield '   &%s) => {' % struct_pattern(v, path, '2')
         for f in v.fields:
+            if f.attrs.get('rewrite') == 'ignore':
+                continue
             yield '    ({'
             yield indent(do_record_step_kind(se, v, f), '      ')
             yield '      let ok = Rewrite::rewrite_recycled(%s1, %s2, rcx.borrow());' % \
@@ -110,6 +113,8 @@ def do_fresh_match(se, target1, target2):
         yield '  (&%s,' % struct_pattern(v, path, '1')
         yield '   &%s) => {' % struct_pattern(v, path, '2')
         for f in v.fields:
+            if f.attrs.get('rewrite') == 'ignore':
+                continue
             yield '    {'
             yield indent(do_record_step_kind(se, v, f), '      ')
             yield '      Rewrite::rewrite_fresh(%s1, %s2, rcx.borrow());' % (f.name, f.name)

@@ -24,7 +24,8 @@ struct Mod { inner, items }
 
 
 #[rewrite_splice] #[rewrite_seq_item] #[extend_span]
-struct Item { ident, #[match=ignore] attrs, id, node, vis, span, #[match=ignore] tokens }
+struct Item { ident, #[match=ignore] attrs, id, node, vis, span,
+              #[match=ignore] #[rewrite=ignore] tokens }
 enum ItemKind {
     ExternCrate(name),
     Use(vp),
@@ -47,7 +48,8 @@ enum ItemKind {
 }
 
 #[extend_span]
-struct TraitItem { id, ident, #[match=ignore] attrs, node, span, #[match=ignore] tokens }
+struct TraitItem { id, ident, #[match=ignore] attrs, node, span,
+                   #[match=ignore] #[rewrite=ignore] tokens }
 enum TraitItemKind {
     Const(ty, init),
     Method(sig, body),
@@ -56,7 +58,8 @@ enum TraitItemKind {
 }
 
 #[extend_span]
-struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, node, span, #[match=ignore] tokens }
+struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, node, span,
+                  #[match=ignore] #[rewrite=ignore] tokens }
 enum ImplItemKind {
     Const(ty, init),
     Method(sig, body),
