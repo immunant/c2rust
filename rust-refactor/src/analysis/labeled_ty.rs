@@ -112,6 +112,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
             // Types that aren't actually supported by this code yet
             TyDynamic(..) |
             TyClosure(..) |
+            TyGenerator(..) |
             TyProjection(..) |
             TyAnon(..) |
             TyParam(..) |

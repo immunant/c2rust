@@ -222,6 +222,7 @@ enum ExprKind {
     Repeat(item, count),
     Paren(expr),
     Try(expr),
+    Yield(expr),
 }
 
 

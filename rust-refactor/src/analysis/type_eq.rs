@@ -697,6 +697,10 @@ impl<'a, 'hir, 'gcx, 'tcx> Visitor<'hir> for UnifyVisitor<'a, 'hir, 'gcx, 'tcx> 
                 // TODO: handle result == Some(x) case
             },
 
+            ExprYield(ref result) => {
+                // TODO: handle result == Some(x) case
+            },
+
             ExprInlineAsm(..) => {},
 
             ExprStruct(_, ref fields, ref base) => {

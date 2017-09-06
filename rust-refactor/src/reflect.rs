@@ -37,6 +37,7 @@ pub fn reflect_tcx_ty(tcx: TyCtxt, ty: ty::Ty) -> P<Ty> {
         TyFnPtr(_) => mk().ident_ty("_"), // TODO
         TyDynamic(_, _) => mk().ident_ty("_"), // TODO
         TyClosure(_, _) => mk().ident_ty("_"), // unsupported
+        TyGenerator(_, _, _) => mk().ident_ty("_"), // unsupported
         TyNever => mk().never_ty(),
         TyTuple(tys, _) => mk().tuple_ty(tys.iter().map(|&ty| reflect_tcx_ty(tcx, ty)).collect()),
         TyProjection(_) => mk().ident_ty("_"), // TODO
