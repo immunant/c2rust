@@ -23,8 +23,8 @@ use super::constraint::ConstraintSet;
 use super::context::Ctxt;
 
 
-struct LTySource<'c, 'a: 'c, 'gcx: 'tcx, 'tcx: 'a> {
-    cx: &'c mut Ctxt<'a, 'gcx, 'tcx>,
+struct LTySource<'c, 'a: 'c, 'tcx: 'a> {
+    cx: &'c mut Ctxt<'a, 'tcx>,
 
     // XXX - bit of a hack.  We keep the def id of the last call to `fn_sig`, and refer to that
     // inside the map_types callback to figure out the right scope for any SigVars in the type.
@@ -33,7 +33,7 @@ struct LTySource<'c, 'a: 'c, 'gcx: 'tcx, 'tcx: 'a> {
     last_sig_did: Option<DefId>,
 }
 
-impl<'c, 'a, 'gcx, 'tcx> TypeSource for LTySource<'c, 'a, 'gcx, 'tcx> {
+impl<'c, 'a, 'tcx> TypeSource for LTySource<'c, 'a, 'tcx> {
     type Type = LTy<'tcx>;
     type Signature = LFnSig<'tcx>;
 
@@ -78,9 +78,9 @@ impl<'tcx> type_map::Signature<LTy<'tcx>> for LFnSig<'tcx> {
     }
 }
 
-pub fn handle_marks<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
-                                          st: &CommandState,
-                                          dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) {
+pub fn handle_marks<'a, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
+                              st: &CommandState,
+                              dcx: &driver::Ctxt<'a, 'tcx>) {
     let mut fixed_vars = Vec::new();
     {
         let source = LTySource {
@@ -172,9 +172,9 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 }
 
-pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
-                                          st: &CommandState,
-                                          dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) {
+pub fn handle_attrs<'a, 'hir, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
+                                    st: &CommandState,
+                                    dcx: &driver::Ctxt<'a, 'tcx>) {
 
     let krate = st.krate();
     let mut v = AttrVisitor {

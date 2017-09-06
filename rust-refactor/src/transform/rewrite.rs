@@ -9,9 +9,9 @@ use transform::Transform;
 use util::IntoSymbol;
 
 
-fn make_init_mcx<'a, 'hir, 'gcx, 'tcx>(st: &'a CommandState,
-                                       cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>)
-                                       -> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
+fn make_init_mcx<'a, 'tcx>(st: &'a CommandState,
+                           cx: &'a driver::Ctxt<'a, 'tcx>)
+                           -> MatchCtxt<'a, 'tcx> {
     let mut init_mcx = MatchCtxt::new(st, cx);
     init_mcx.set_type("__i", BindingType::Ident);
     init_mcx.set_type("__j", BindingType::Ident);

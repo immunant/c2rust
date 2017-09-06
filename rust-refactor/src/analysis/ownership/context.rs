@@ -97,8 +97,8 @@ pub struct Instantiation {
 }
 
 
-pub struct Ctxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
-    pub tcx: TyCtxt<'a, 'gcx, 'tcx>,
+pub struct Ctxt<'a, 'tcx: 'a> {
+    pub tcx: TyCtxt<'a, 'tcx, 'tcx>,
     pub lcx: LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
     pub arena: &'tcx DroplessArena,
 
@@ -114,9 +114,9 @@ pub struct Ctxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     monos: HashMap<(DefId, usize), MonoSumm>,
 }
 
-impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
-    pub fn new(tcx: TyCtxt<'a, 'gcx, 'tcx>,
-               arena: &'tcx DroplessArena) -> Ctxt<'a, 'gcx, 'tcx> {
+impl<'a, 'tcx> Ctxt<'a, 'tcx> {
+    pub fn new(tcx: TyCtxt<'a, 'tcx, 'tcx>,
+               arena: &'tcx DroplessArena) -> Ctxt<'a, 'tcx> {
         Ctxt {
             tcx: tcx,
             lcx: LabeledTyCtxt::new(arena),
@@ -153,7 +153,7 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
 
     fn func_summ_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
                           variants: &mut HashMap<DefId, VariantSumm<'tcx>>,
-                          tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                          tcx: TyCtxt<'a, 'tcx, 'tcx>,
                           lcx: &mut LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
                           did: DefId) -> &'b mut FuncSumm<'tcx> {
         match funcs.entry(did) {
@@ -248,7 +248,7 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
 
     fn add_variant_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
                             variants: &'b mut HashMap<DefId, VariantSumm<'tcx>>,
-                            tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                            tcx: TyCtxt<'a, 'tcx, 'tcx>,
                             lcx: &mut LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
                             func_did: DefId,
                             variant_did: DefId)
@@ -313,7 +313,7 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
 
     fn variant_summ_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
                              variants: &'b mut HashMap<DefId, VariantSumm<'tcx>>,
-                             tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                             tcx: TyCtxt<'a, 'tcx, 'tcx>,
                              lcx: &mut LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
                              variant_did: DefId)
                             -> (&'b mut FuncSumm<'tcx>,
@@ -411,9 +411,9 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
     }
 }
 
-fn preload_constraints<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                                       def_id: DefId,
-                                       sig: LFnSig<'tcx>) -> Option<ConstraintSet<'tcx>> {
+fn preload_constraints<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
+                                 def_id: DefId,
+                                 sig: LFnSig<'tcx>) -> Option<ConstraintSet<'tcx>> {
     let mut cset = ConstraintSet::new();
 
     let path = tcx.absolute_item_path_str(def_id);

@@ -84,16 +84,16 @@ pub enum Error {
 /// Pattern-matching context.  Stores configuration that affects pattern matching behavior, and
 /// collects bindings captured during the match.
 #[derive(Clone)]
-pub struct MatchCtxt<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a> {
+pub struct MatchCtxt<'a, 'tcx: 'a> {
     pub bindings: Bindings,
     pub types: HashMap<Symbol, bindings::Type>,
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+    cx: &'a driver::Ctxt<'a, 'tcx>,
 }
 
-impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     pub fn new(st: &'a CommandState,
-               cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) -> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
+               cx: &'a driver::Ctxt<'a, 'tcx>) -> MatchCtxt<'a, 'tcx> {
         MatchCtxt {
             bindings: Bindings::new(),
             types: HashMap::new(),
@@ -110,9 +110,9 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
 
     /// Build a new `MatchCtxt`, and try to match `target` against `pat` in that context.
     pub fn from_match<T: TryMatch>(st: &'a CommandState,
-                                   cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+                                   cx: &'a driver::Ctxt<'a, 'tcx>,
                                    pat: &T,
-                                   target: &T) -> Result<MatchCtxt<'a, 'hir, 'gcx, 'tcx>> {
+                                   target: &T) -> Result<MatchCtxt<'a, 'tcx>> {
         let mut m = MatchCtxt::new(st, cx);
         m.try_match(pat, target)?;
         Ok(m)
@@ -120,7 +120,7 @@ impl<'a, 'hir, 'gcx, 'tcx> MatchCtxt<'a, 'hir, 'gcx, 'tcx> {
 
     /// Clone this context and try to perform a match in the clone, returning `Ok` if it succeeds.
     pub fn clone_match<T: TryMatch>(&self, pat: &T, target: &T)
-                                    -> Result<MatchCtxt<'a, 'hir, 'gcx, 'tcx>> {
+                                    -> Result<MatchCtxt<'a, 'tcx>> {
         let mut m = self.clone();
         m.try_match(pat, target)?;
         Ok(m)
@@ -415,14 +415,14 @@ macro_rules! gen_pattern_impl {
         map($match_one:ident) = $map:expr;
     ) => {
         /// Automatically generated `Folder` implementation, for use by `Pattern`.
-        pub struct $PatternFolder<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a, F>
+        pub struct $PatternFolder<'a, 'tcx: 'a, F>
                 where F: FnMut($Pat, Bindings) -> $Pat {
             pattern: $Pat,
-            init_mcx: MatchCtxt<'a, 'hir, 'gcx, 'tcx>,
+            init_mcx: MatchCtxt<'a, 'tcx>,
             callback: F,
         }
 
-        impl<'a, 'hir, 'gcx, 'tcx, F> Folder for $PatternFolder<'a, 'hir, 'gcx, 'tcx, F>
+        impl<'a, 'tcx, F> Folder for $PatternFolder<'a, 'tcx, F>
                 where F: FnMut($Pat, Bindings) -> $Pat {
             fn $fold_thing(&mut $slf, $arg: $ArgTy) -> $RetTy {
                 let $arg = $walk;
@@ -493,14 +493,14 @@ gen_pattern_impl! {
 // Implementation of multi-statement matching.
 
 /// Custom `Folder` for multi-statement `Pattern`s.
-pub struct MultiStmtPatternFolder<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a, F>
+pub struct MultiStmtPatternFolder<'a, 'tcx: 'a, F>
         where F: FnMut(Vec<Stmt>, Bindings) -> Vec<Stmt> {
     pattern: Vec<Stmt>,
-    init_mcx: MatchCtxt<'a, 'hir, 'gcx, 'tcx>,
+    init_mcx: MatchCtxt<'a, 'tcx>,
     callback: F,
 }
 
-impl<'a, 'hir, 'gcx, 'tcx, F> Folder for MultiStmtPatternFolder<'a, 'hir, 'gcx, 'tcx, F>
+impl<'a, 'tcx, F> Folder for MultiStmtPatternFolder<'a, 'tcx, F>
         where F: FnMut(Vec<Stmt>, Bindings) -> Vec<Stmt> {
     fn fold_block(&mut self, b: P<Block>) -> P<Block> {
         assert!(self.pattern.len() > 0);

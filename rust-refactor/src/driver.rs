@@ -31,10 +31,10 @@ use util::Lone;
 ///
 /// Accessor methods will panic if the requested results are not available.
 #[derive(Clone)]
-pub struct Ctxt<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
+pub struct Ctxt<'a, 'tcx: 'a> {
     sess: &'a Session,
-    map: Option<&'a hir_map::Map<'hir>>,
-    tcx: Option<TyCtxt<'a, 'gcx, 'tcx>>,
+    map: Option<&'a hir_map::Map<'tcx>>,
+    tcx: Option<TyCtxt<'a, 'tcx, 'tcx>>,
 
     /// This is a reference to the same `DroplessArena` used in `tcx`.  Analyses working with types
     /// use this to allocate extra values with the same lifetime `'tcx` as the types themselves.
@@ -55,8 +55,8 @@ pub enum Phase {
     Phase3,
 }
 
-impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
-    fn new_phase_1(sess: &'a Session) -> Ctxt<'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
+    fn new_phase_1(sess: &'a Session) -> Ctxt<'a, 'tcx> {
         Ctxt {
             sess: sess,
             map: None,
@@ -66,7 +66,7 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
     }
 
     fn new_phase_2(sess: &'a Session,
-                   map: &'a hir_map::Map<'hir>) -> Ctxt<'a, 'hir, 'gcx, 'tcx> {
+                   map: &'a hir_map::Map<'tcx>) -> Ctxt<'a, 'tcx> {
         Ctxt {
             sess: sess,
             map: Some(map),
@@ -76,9 +76,9 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
     }
 
     fn new_phase_3(sess: &'a Session,
-                   map: &'a hir_map::Map<'hir>,
-                   tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                   tcx_arena: &'tcx DroplessArena) -> Ctxt<'a, 'hir, 'gcx, 'tcx> {
+                   map: &'a hir_map::Map<'tcx>,
+                   tcx: TyCtxt<'a, 'tcx, 'tcx>,
+                   tcx_arena: &'tcx DroplessArena) -> Ctxt<'a, 'tcx> {
         Ctxt {
             sess: sess,
             map: Some(map),
@@ -91,12 +91,12 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
         self.sess
     }
 
-    pub fn hir_map(&self) -> &'a hir_map::Map<'hir> {
+    pub fn hir_map(&self) -> &'a hir_map::Map<'tcx> {
         self.map
             .expect("hir map is not available in this context (requires phase 2)")
     }
 
-    pub fn ty_ctxt(&self) -> TyCtxt<'a, 'gcx, 'tcx> {
+    pub fn ty_ctxt(&self) -> TyCtxt<'a, 'tcx, 'tcx> {
         self.tcx
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }

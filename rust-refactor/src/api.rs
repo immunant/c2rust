@@ -87,13 +87,13 @@ pub fn find_first<P, T>(st: &CommandState,
 
 
 /// `driver::Ctxt` extension trait.
-pub trait DriverCtxtExt<'gcx> {
+pub trait DriverCtxtExt<'tcx> {
     /// Get the `ty::Ty` computed for a node.
-    fn node_type(&self, id: NodeId) -> Ty<'gcx>;
+    fn node_type(&self, id: NodeId) -> Ty<'tcx>;
     /// Get the `ty::Ty` computed for a node, taking into account any adjustments that were applied.
-    fn adjusted_node_type(&self, id: NodeId) -> Ty<'gcx>;
+    fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx>;
 
-    fn def_type(&self, id: DefId) -> Ty<'gcx>;
+    fn def_type(&self, id: DefId) -> Ty<'tcx>;
     /// Build a `Path` referring to a particular def.  This method always returns an absolute path.
     fn def_path(&self, id: DefId) -> Path;
 
@@ -113,15 +113,15 @@ pub trait DriverCtxtExt<'gcx> {
     fn opt_callee(&self, e: &Expr) -> Option<DefId>;
 }
 
-impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 'tcx> {
-    fn node_type(&self, id: NodeId) -> Ty<'gcx> {
+impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
+    fn node_type(&self, id: NodeId) -> Ty<'tcx> {
         let parent = self.hir_map().get_parent(id);
         let parent_body = self.hir_map().body_owned_by(parent);
         let tables = self.ty_ctxt().body_tables(parent_body);
         tables.node_id_to_type(id)
     }
 
-    fn adjusted_node_type(&self, id: NodeId) -> Ty<'gcx> {
+    fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx> {
         let parent = self.hir_map().get_parent(id);
         let parent_body = self.hir_map().body_owned_by(parent);
         let tables = self.ty_ctxt().body_tables(parent_body);
@@ -132,7 +132,7 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
         }
     }
 
-    fn def_type(&self, id: DefId) -> Ty<'gcx> {
+    fn def_type(&self, id: DefId) -> Ty<'tcx> {
         self.ty_ctxt().type_of(id)
     }
 

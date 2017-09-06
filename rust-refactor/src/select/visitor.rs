@@ -16,9 +16,9 @@ use select::{Filter, AnyPattern};
 use select::filter::{self, AnyNode};
 
 
-struct ChildMatchVisitor<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
+struct ChildMatchVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+    cx: &'a driver::Ctxt<'a, 'tcx>,
     old: HashSet<NodeId>,
     new: HashSet<NodeId>,
     /// Are we at a child of a node that was selected in the `old` set?
@@ -26,7 +26,7 @@ struct ChildMatchVisitor<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
     filt: &'a Filter,
 }
 
-impl<'ast, 'a, 'hir, 'gcx, 'tcx> ChildMatchVisitor<'a, 'hir, 'gcx, 'tcx> {
+impl<'ast, 'a, 'tcx> ChildMatchVisitor<'a, 'tcx> {
     fn matches(&self, node: AnyNode) -> bool {
         filter::matches_filter(self.st, self.cx, node, self.filt)
     }
@@ -39,7 +39,7 @@ impl<'ast, 'a, 'hir, 'gcx, 'tcx> ChildMatchVisitor<'a, 'hir, 'gcx, 'tcx> {
     }
 }
 
-impl<'ast, 'a, 'hir, 'gcx, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'hir, 'gcx, 'tcx> {
+impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
     fn visit_item(&mut self, x: &'ast Item) {
         if self.in_old && self.matches(AnyNode::Item(x)) {
             self.new.insert(x.id);
@@ -142,9 +142,9 @@ pub fn matching_children(st: &CommandState,
 }
 
 
-struct DescMatchVisitor<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
+struct DescMatchVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+    cx: &'a driver::Ctxt<'a, 'tcx>,
     old: HashSet<NodeId>,
     new: HashSet<NodeId>,
     /// Are we at a descendant of a node that was selected in the `old` set?
@@ -152,7 +152,7 @@ struct DescMatchVisitor<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
     filt: &'a Filter,
 }
 
-impl<'ast, 'a, 'hir, 'gcx, 'tcx> DescMatchVisitor<'a, 'hir, 'gcx, 'tcx> {
+impl<'ast, 'a, 'tcx> DescMatchVisitor<'a, 'tcx> {
     fn matches(&self, node: AnyNode) -> bool {
         filter::matches_filter(self.st, self.cx, node, self.filt)
     }
@@ -170,7 +170,7 @@ impl<'ast, 'a, 'hir, 'gcx, 'tcx> DescMatchVisitor<'a, 'hir, 'gcx, 'tcx> {
     }
 }
 
-impl<'ast, 'a, 'hir, 'gcx, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'hir, 'gcx, 'tcx> {
+impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
     fn visit_item(&mut self, x: &'ast Item) {
         if self.in_old && self.matches(AnyNode::Item(x)) {
             self.new.insert(x.id);
@@ -273,21 +273,21 @@ pub fn matching_descendants(st: &CommandState,
 }
 
 
-struct FilterVisitor<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a> {
+struct FilterVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+    cx: &'a driver::Ctxt<'a, 'tcx>,
     old: HashSet<NodeId>,
     new: HashSet<NodeId>,
     filt: &'a Filter,
 }
 
-impl<'ast, 'a, 'hir, 'gcx, 'tcx> FilterVisitor<'a, 'hir, 'gcx, 'tcx> {
+impl<'ast, 'a, 'tcx> FilterVisitor<'a, 'tcx> {
     fn matches(&self, node: AnyNode) -> bool {
         filter::matches_filter(self.st, self.cx, node, self.filt)
     }
 }
 
-impl<'ast, 'a, 'hir, 'gcx, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'hir, 'gcx, 'tcx> {
+impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
     fn visit_item(&mut self, x: &'ast Item) {
         if self.old.contains(&x.id) && self.matches(AnyNode::Item(x)) {
             self.new.insert(x.id);

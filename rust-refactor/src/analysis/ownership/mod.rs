@@ -159,9 +159,9 @@ fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
 
 /// Run the intraprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
-fn analyze_intra<'a, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
-                                 hir_map: &hir::map::Map,
-                                 tcx: TyCtxt<'a, 'gcx, 'tcx>) {
+fn analyze_intra<'a, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
+                           hir_map: &hir::map::Map<'tcx>,
+                           tcx: TyCtxt<'a, 'tcx, 'tcx>) {
     for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
         // We currently don't process `static` bodies, even though they do have MIR.
         if !is_fn(hir_map, def_id) {
@@ -190,9 +190,9 @@ fn analyze_inter(cx: &mut Ctxt) {
 }
 
 /// Run the analysis.
-pub fn analyze<'a, 'hir, 'gcx, 'tcx>(st: &CommandState,
-                                     dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>)
-                                     -> AnalysisResult<'tcx> {
+pub fn analyze<'a, 'tcx>(st: &CommandState,
+                         dcx: &driver::Ctxt<'a, 'tcx>)
+                         -> AnalysisResult<'tcx> {
     let mut cx = Ctxt::new(dcx.ty_ctxt(), dcx.ty_arena());
 
     // Process the annotations and marks provided by the user.
@@ -322,7 +322,7 @@ impl<'tcx> AnalysisResult<'tcx> {
 }
 
 /// Extract the useful information from the `Ctxt`, and collect it into an `AnalysisResult`.
-fn convert_results<'a, 'gcx, 'tcx>(cx: &Ctxt<'a, 'gcx, 'tcx>) -> AnalysisResult<'tcx> {
+fn convert_results<'a, 'tcx>(cx: &Ctxt<'a, 'tcx>) -> AnalysisResult<'tcx> {
     let mut r = AnalysisResult {
         statics: HashMap::new(),
         funcs: HashMap::new(),

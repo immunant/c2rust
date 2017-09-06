@@ -18,13 +18,13 @@ use visit_node::visit_nodes;
 
 
 /// Find all nodes that refer to marked nodes.
-struct MarkUseVisitor<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
+struct MarkUseVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+    cx: &'a driver::Ctxt<'a, 'tcx>,
     label: Symbol,
 }
 
-impl<'a, 'hir, 'gcx, 'tcx> MarkUseVisitor<'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'tcx> MarkUseVisitor<'a, 'tcx> {
     fn handle_qpath(&mut self, use_id: NodeId, hp: &hir::QPath) {
         match hp {
             &hir::QPath::Resolved(_, ref path) => {
@@ -50,7 +50,7 @@ impl<'a, 'hir, 'gcx, 'tcx> MarkUseVisitor<'a, 'hir, 'gcx, 'tcx> {
     }
 }
 
-impl<'a, 'hir, 'gcx, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
     // We currently handle exprs, pats, and tys.  There are more cases (see comment in
     // path_edit.rs), but this should be sufficient for now.
     fn visit_expr(&mut self, x: &'s Expr) {

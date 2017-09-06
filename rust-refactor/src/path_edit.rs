@@ -12,13 +12,13 @@ use util::HirDefExt;
 
 
 
-struct ResolvedPathFolder<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a, F>
+struct ResolvedPathFolder<'a, 'tcx: 'a, F>
         where F: FnMut(NodeId, Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
-    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+    cx: &'a driver::Ctxt<'a, 'tcx>,
     callback: F,
 }
 
-impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
+impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
         where F: FnMut(NodeId, Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
     // Some helper functions that get both the AST node and its HIR equivalent.
 
@@ -168,7 +168,7 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
     }
 }
 
-impl<'a, 'hir, 'gcx, 'tcx, F> Folder for ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
+impl<'a, 'tcx, F> Folder for ResolvedPathFolder<'a, 'tcx, F>
         where F: FnMut(NodeId, Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
     // There are several places in the AST that a `Path` can appear:
     //  - PatKind::Ident (single-element paths only)

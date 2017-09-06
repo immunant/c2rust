@@ -38,13 +38,13 @@ pub trait Type: Copy + Debug {
 }
 
 
-pub struct TypeMapVisitor<'a, 'hir: 'a, S, F> {
-    hir_map: &'a hir::map::Map<'hir>,
+pub struct TypeMapVisitor<'a, 'tcx: 'a, S, F> {
+    hir_map: &'a hir::map::Map<'tcx>,
     source: S,
     callback: F,
 }
 
-impl<'a, 'hir, S, F> TypeMapVisitor<'a, 'hir, S, F>
+impl<'a, 'tcx, S, F> TypeMapVisitor<'a, 'tcx, S, F>
         where S: TypeSource,
               F: FnMut(&mut S, &Ty, S::Type) {
     /// Record a matching `S::Type` and `ast::Ty`.  If the two representations have matching
@@ -121,7 +121,7 @@ impl<'a, 'hir, S, F> TypeMapVisitor<'a, 'hir, S, F>
     }
 }
 
-impl<'ast, 'a, 'hir, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'hir, S, F>
+impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
         where S: TypeSource,
               F: FnMut(&mut S, &Ty, S::Type) {
 
@@ -334,7 +334,7 @@ impl<'ast, 'a, 'hir, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'hir, S, F>
 /// Try to match up `ast::Ty` nodes in the source with higher-level type representations provided
 /// by `source`.  The callback will be passed matching pairs of AST-level and higher-level type
 /// representations.
-pub fn map_types<'a, 'hir, S, F>(hir_map: &'a hir::map::Map<'hir>,
+pub fn map_types<'a, 'tcx, S, F>(hir_map: &'a hir::map::Map<'tcx>,
                                  source: S,
                                  krate: &Crate,
                                  callback: F)

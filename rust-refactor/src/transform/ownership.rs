@@ -56,14 +56,14 @@ fn do_annotate(st: &CommandState,
                label: Symbol) {
     let analysis = ownership::analyze(&st, &cx);
 
-    struct AnnotateFolder<'a, 'hir: 'a, 'tcx> {
+    struct AnnotateFolder<'a, 'tcx: 'a> {
         label: Symbol,
         ana: ownership::AnalysisResult<'tcx>,
-        hir_map: &'a hir::map::Map<'hir>,
+        hir_map: &'a hir::map::Map<'tcx>,
         st: &'a CommandState,
     }
 
-    impl<'a, 'hir, 'tcx> AnnotateFolder<'a, 'hir, 'tcx> {
+    impl<'a, 'tcx> AnnotateFolder<'a, 'tcx> {
         fn static_attr_for(&self, id: NodeId) -> Option<Attribute> {
             self.hir_map.opt_local_def_id(id)
                 .and_then(|def_id| self.ana.statics.get(&def_id))
@@ -110,7 +110,7 @@ fn do_annotate(st: &CommandState,
         }
     }
 
-    impl<'a, 'hir, 'tcx> Folder for AnnotateFolder<'a, 'hir, 'tcx> {
+    impl<'a, 'tcx> Folder for AnnotateFolder<'a, 'tcx> {
         fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
             if !self.st.marked(i.id, self.label) {
                 return fold::noop_fold_item(i, self);

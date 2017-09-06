@@ -14,8 +14,8 @@ use super::constraint::ConstraintSet;
 use super::context::{Ctxt, VariantSumm, Instantiation};
 
 
-pub struct InstCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
-    cx: &'a Ctxt<'a, 'gcx, 'tcx>,
+pub struct InstCtxt<'a, 'tcx: 'a> {
+    cx: &'a Ctxt<'a, 'tcx>,
 
     insts: &'a [Instantiation],
     cset: ConstraintSet<'tcx>,
@@ -27,11 +27,11 @@ pub struct InstCtxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     inst_assign: IndexVec<Var, Option<ConcretePerm>>,
 }
 
-impl<'a, 'gcx, 'tcx> InstCtxt<'a, 'gcx, 'tcx> {
-    pub fn new(cx: &'a Ctxt<'a, 'gcx, 'tcx>,
+impl<'a, 'tcx> InstCtxt<'a, 'tcx> {
+    pub fn new(cx: &'a Ctxt<'a, 'tcx>,
                func_did: DefId,
                mono_idx: usize)
-               -> InstCtxt<'a, 'gcx, 'tcx> {
+               -> InstCtxt<'a, 'tcx> {
         let variant = cx.get_mono_variant_summ(func_did, mono_idx);
         let mono = cx.get_mono_summ(func_did, mono_idx);
         let cset = build_inst_cset(cx, variant, &mono.assign);
@@ -157,10 +157,10 @@ pub fn find_instantiations(cx: &mut Ctxt) {
 }
 
 
-pub fn build_inst_cset<'a, 'gcx, 'tcx>(cx: &Ctxt<'a, 'gcx, 'tcx>,
-                                       variant: &VariantSumm<'tcx>,
-                                       assign: &IndexVec<Var, ConcretePerm>)
-                                       -> ConstraintSet<'tcx> {
+pub fn build_inst_cset<'a, 'tcx>(cx: &Ctxt<'a, 'tcx>,
+                                 variant: &VariantSumm<'tcx>,
+                                 assign: &IndexVec<Var, ConcretePerm>)
+                                 -> ConstraintSet<'tcx> {
     let mut cset = variant.inst_cset.clone_substituted(cx.arena, |p| {
         match p {
             Perm::SigVar(v) => Perm::Concrete(assign[v]),

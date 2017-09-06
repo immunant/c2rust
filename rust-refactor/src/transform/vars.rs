@@ -77,15 +77,15 @@ impl Transform for SinkLets {
             Other,
         }
 
-        struct BlockLocalsVisitor<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a> {
+        struct BlockLocalsVisitor<'a, 'tcx: 'a> {
             cur: HashMap<DefId, UseKind>,
             block_locals: HashMap<NodeId, HashMap<DefId, UseKind>>,
 
-            cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+            cx: &'a driver::Ctxt<'a, 'tcx>,
             locals: &'a HashMap<DefId, LocalInfo>,
         }
 
-        impl<'a, 'hir, 'gcx, 'tcx> BlockLocalsVisitor<'a, 'hir, 'gcx, 'tcx> {
+        impl<'a, 'tcx> BlockLocalsVisitor<'a, 'tcx> {
             fn record_use(&mut self, id: DefId) {
                 self.cur.insert(id, UseKind::Other);
             }
@@ -98,8 +98,7 @@ impl Transform for SinkLets {
             }
         }
 
-        impl<'a, 'hir, 'gcx, 'tcx, 'ast> Visitor<'ast>
-                for BlockLocalsVisitor<'a, 'hir, 'gcx, 'tcx> {
+        impl<'a, 'tcx, 'ast> Visitor<'ast> for BlockLocalsVisitor<'a, 'tcx> {
             fn visit_expr(&mut self, e: &'ast Expr) {
                 if let Some(def_id) = self.cx.try_resolve_expr(e) {
                     if self.locals.contains_key(&def_id) {
@@ -254,16 +253,15 @@ impl Transform for FoldLetAssign {
 
         // (2) Compute the set of foldable locals that are used in each statement.
 
-        struct StmtLocalsVisitor<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a> {
+        struct StmtLocalsVisitor<'a, 'tcx: 'a> {
             cur: HashSet<DefId>,
             stmt_locals: HashMap<NodeId, HashSet<DefId>>,
 
-            cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+            cx: &'a driver::Ctxt<'a, 'tcx>,
             locals: &'a HashMap<DefId, P<Local>>,
         }
 
-        impl<'a, 'hir, 'gcx, 'tcx, 'ast> Visitor<'ast>
-                for StmtLocalsVisitor<'a, 'hir, 'gcx, 'tcx> {
+        impl<'a, 'tcx, 'ast> Visitor<'ast> for StmtLocalsVisitor<'a, 'tcx> {
             fn visit_expr(&mut self, e: &'ast Expr) {
                 if let Some(def_id) = self.cx.try_resolve_expr(e) {
                     if self.locals.contains_key(&def_id) {

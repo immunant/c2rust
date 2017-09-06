@@ -51,13 +51,13 @@ use util::PatternSymbol;
 use util::Lone;
 
 
-struct SubstFolder<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a> {
+struct SubstFolder<'a, 'tcx: 'a> {
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+    cx: &'a driver::Ctxt<'a, 'tcx>,
     bindings: &'a Bindings,
 }
 
-impl<'a, 'hir, 'gcx, 'tcx> SubstFolder<'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
     fn named_marked_def_id(&self, name: Symbol, label: Symbol) -> Option<DefId> {
         let mut found = None;
 
@@ -111,7 +111,7 @@ impl<'a, 'hir, 'gcx, 'tcx> SubstFolder<'a, 'hir, 'gcx, 'tcx> {
     }
 }
 
-impl<'a, 'hir, 'gcx, 'tcx> Folder for SubstFolder<'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
     fn fold_ident(&mut self, i: Ident) -> Ident {
         // The `Ident` case is a bit different from the others.  If `fold_stmt` finds a non-`Stmt`
         // in `self.bindings`, it can ignore the problem and hope `fold_expr` or `fold_ident` will
