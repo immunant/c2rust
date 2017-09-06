@@ -130,6 +130,15 @@ pub fn run_compiler<F, R>(args: &[String],
 
     let (sess, cstore) = build_session(sopts, in_path, file_loader);
 
+    // It might seem tempting to set up a custom CompileController and invoke `compile_input` here,
+    // in order to avoid duplicating a bunch of `compile_input`'s logic.  Unfortunately, that
+    // doesn't work well with the current API.  The `CompileState`s provided to the PhaseController
+    // callbacks only contain the data relevant to th ecurrent  phase - for example, in the
+    // after_analysis callback, `tcx` is available but `krate`, `arena`, and `hir_map` are not.
+    // Furthermore, the callback type is such that the `CompileState`s for separate callbacks have
+    // unrelated lifetimes, so we can't (safely) collect up the relevant pieces ourselves from
+    // multiple callback invocations.
+
     // Start of `compile_input` code
     let krate = driver::phase_1_parse_input(&sess, &input).unwrap();
     // Leave parens in place until after expansion, unless we're stopping at phase 1.  But
