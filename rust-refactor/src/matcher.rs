@@ -175,7 +175,6 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         };
 
         // Labels use lifetime syntax, but are `Ident`s instead of `Lifetime`s.
-        // TODO: should probably distinguish idents, labels, and lifetimes at some point
         match self.types.get(&sym) {
             Some(&bindings::Type::Ident) => {},
             None if sym.as_str().starts_with("'__") => {},

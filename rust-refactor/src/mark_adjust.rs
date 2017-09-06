@@ -195,9 +195,10 @@ pub fn find_field_uses<T: Visit>(target: &T,
                 }
             },
 
-            // TODO: ExprKind::Struct
-            // (This case is more complicated since we need to resolve the `Path` and also deal
-            // with the fact that `Field` (field uses) do not have NodeIds.)
+            // TODO: Also handle uses in ExprKind::Struct.  (This case is more complicated since we
+            // need to resolve the `Struct` node's `Path`.  Also, the `Field` node type
+            // (representing field uses) does not have a NodeId of its own, so it's unclear where
+            // we should put the resulting mark.)
 
             _ => {},
         }

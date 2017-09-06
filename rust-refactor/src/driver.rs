@@ -170,8 +170,9 @@ pub fn run_compiler<F, R>(args: &[String],
     }
 
     driver::phase_3_run_analysis_passes(
-        // TODO: probably shouldn't be cloning hir_map... it ought to be accessible through the tcx
-        // somehow
+        // Cloning hir_map seems kind of ugly, but the alternative is to deref the `TyCtxt` to get
+        // a `GlobalCtxt` and read its `hir` field.  Since `GlobalCtxt` is actually private, this
+        // seems like it would probably stop working at some point.
         &sess, hir_map.clone(), expand_result.analysis, expand_result.resolutions,
         &arena, &arenas, &crate_name,
         |tcx, _analysis, _incremental_hashes_map, _result| {

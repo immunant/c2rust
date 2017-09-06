@@ -30,7 +30,7 @@ use syntax::codemap::Span;
 
 use analysis::labeled_ty::LabeledTyCtxt;
 
-use super::{Var, LTy, LFnSig, ConcretePerm};
+use super::{Var, FnSig, LTy, LFnSig, ConcretePerm};
 use super::constraint::ConstraintSet;
 use super::constraint::Perm;
 
@@ -176,7 +176,7 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
                         }
                     };
 
-                    LFnSig {
+                    FnSig {
                         inputs: lcx.label_slice(sig.0.inputs(), &mut f),
                         output: lcx.label(sig.0.output(), &mut f),
                     }

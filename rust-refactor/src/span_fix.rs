@@ -59,7 +59,7 @@ impl<'a> Folder for FixFormat<'a> {
                 // validate the span info by parsing the indicated text and comparing `e` to
                 // the resulting `Expr`.
 
-                // TODO: behavior is a litte weird if the argument is another `format!()`.  In
+                // TODO: Behavior is a litte weird if the argument is another `format!()`.  In
                 // something like `format!("{}", format!("{}", 12345))`, we set `current_expansion`
                 // on entry to the outer `format!`, and don't clear it until we get to the `12345`
                 // argument.  The inner `format!` essentially gets treated as if it were part of
@@ -158,7 +158,8 @@ impl Folder for FixMacros {
         SmallVector::one(s)
     }
 
-    // TODO: more syntax types
+    // TODO: Eventually we should extend this to work on the remaining node types where macros can
+    // appear (Pat, Ty, and the Item-likes).
 
     fn new_span(&mut self, sp: Span) -> Span {
         if sp.ctxt != SyntaxContext::empty() {

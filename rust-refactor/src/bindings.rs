@@ -64,7 +64,6 @@ macro_rules! define_binding_values {
             $thing:ident, $get_thing:ident; )*) => {
         /// An AST fragment, of any of the supported node types.
         #[derive(Clone, PartialEq, Eq, Debug)]
-        #[allow(dead_code)] // TODO: remove once this crate becomes a library
         enum Value {
             $( $Thing($Repr), )*
         }
@@ -75,7 +74,6 @@ macro_rules! define_binding_values {
             $( $Thing, )*
         }
 
-        #[allow(dead_code)] // TODO: remove once this crate becomes a library
         impl Bindings {
             $(
                 pub fn $add_thing<S: IntoSymbol>(&mut self, name: S, val: $Repr) {

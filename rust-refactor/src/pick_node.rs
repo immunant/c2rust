@@ -272,7 +272,8 @@ pub fn pick_node_at_loc(krate: &Crate,
         panic!("column {} is outside the bounds of {} line {}", col, file, line);
     }
 
-    // TODO: make this work when the line contains multibyte characters
+    // TODO: This math is probably off when the line contains multibyte characters.  The
+    // information to properly handle multibyte chars should be accessible through the `FileMap`.
     let pos = lo + BytePos(col);
 
     pick_node(krate, kind, pos)

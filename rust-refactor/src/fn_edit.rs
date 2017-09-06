@@ -34,7 +34,7 @@ pub struct FnLike {
     pub attrs: Vec<Attribute>,
     // TODO: This should probably include `generics`, and maybe some kind of "parent generics" for
     // impl and trait items.
-    // TODO: Also unsafety, constness, and abi
+    // TODO: Also unsafety, constness, and abi (these should be much easier to add)
 }
 
 impl GetNodeId for FnLike {

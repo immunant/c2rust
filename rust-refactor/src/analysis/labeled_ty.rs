@@ -163,7 +163,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
     ///
     /// TODO: This produces a `LabeledTy` with the right structure, but doesn't actually do
     /// substitution on the underlying `Ty`s!  This means if you substitute `u32` for `T`, you can
-    /// end up with a `LabeledTy` whose `ty` is `S<T>`, but whose args are `[u32]`!  By some
+    /// end up with a `LabeledTy` whose `ty` is `S<T>`, but whose args are `[u32]`.  By some
     /// miracle, this hasn't broken anything yet, but we may need to fix it eventually.
     pub fn subst(&self,
                  lty: LabeledTy<'tcx, L>,

@@ -88,7 +88,7 @@ impl<T> Cursor<T> {
 
     /// Move the cursor back by `n` positions.
     pub fn retract_by(&mut self, n: usize) {
-        // TODO: optimize
+        // TODO: Could probably optimize this, particularly the mark-list manipulation part.
         for _ in 0 .. n {
             self.retract();
         }
@@ -115,7 +115,7 @@ impl<T> Cursor<T> {
 
     /// Move the cursor forward by `n` positions.
     pub fn advance_by(&mut self, steps: usize) {
-        // TODO: optimize
+        // TODO: Optimize
         for _ in 0 .. steps {
             self.advance();
         }

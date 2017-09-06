@@ -26,7 +26,7 @@ pub fn reflect_tcx_ty(tcx: TyCtxt, ty: ty::Ty) -> P<Ty> {
         TyInt(ity) => mk().ident_ty(ity.ty_to_string()),
         TyUint(uty) => mk().ident_ty(uty.ty_to_string()),
         TyFloat(fty) => mk().ident_ty(fty.ty_to_string()),
-        // TODO: handle substs
+        // TODO: Add the substs to the path, instead of ignoring them.
         TyAdt(def, substs) => mk().path_ty(reflect_path(tcx, def.did)),
         TyStr => mk().ident_ty("str"),
         TyArray(ty, len) => mk().array_ty(
@@ -35,14 +35,15 @@ pub fn reflect_tcx_ty(tcx: TyCtxt, ty: ty::Ty) -> P<Ty> {
         TySlice(ty) => mk().slice_ty(reflect_tcx_ty(tcx, ty)),
         TyRawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(reflect_tcx_ty(tcx, mty.ty)),
         TyRef(_, mty) => mk().set_mutbl(mty.mutbl).ref_ty(reflect_tcx_ty(tcx, mty.ty)),
-        TyFnDef(_, _) => mk().ident_ty("_"), // TODO
+        TyFnDef(_, _) => mk().ident_ty("_"), // unsupported (type cannot be named)
         TyFnPtr(_) => mk().ident_ty("_"), // TODO
         TyDynamic(_, _) => mk().ident_ty("_"), // TODO
-        TyClosure(_, _) => mk().ident_ty("_"), // unsupported
+        TyClosure(_, _) => mk().ident_ty("_"), // unsupported (type cannot be named)
         TyNever => mk().never_ty(),
         TyTuple(tys, _) => mk().tuple_ty(tys.iter().map(|&ty| reflect_tcx_ty(tcx, ty)).collect()),
         TyProjection(_) => mk().ident_ty("_"), // TODO
         TyAnon(_, _) => mk().ident_ty("_"), // TODO
+        // (Note that, despite the name, `TyAnon` *can* be named - it's `impl SomeTrait`.)
         TyParam(param) => mk().ident_ty(param.name),
         TyInfer(_) => mk().infer_ty(),
         TyError => mk().ident_ty("_"), // unsupported

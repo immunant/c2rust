@@ -86,20 +86,13 @@ impl Idx for Var {
 /// A type where pointer type constructors are labeled with permission expressions.
 // TODO: Ty labels should only ever include the `Perm::*Var` variants.  Make that a different type.
 pub type LTy<'tcx> = LabeledTy<'tcx, Option<Perm<'tcx>>>;
+type LFnSig<'tcx> = FnSig<'tcx, Option<Perm<'tcx>>>;
 
 /// A generic labeled function signature.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct FnSig<'tcx, L: 'tcx> {
     pub inputs: &'tcx [LabeledTy<'tcx, L>],
     pub output: LabeledTy<'tcx, L>,
-}
-
-/// A permission-labeled function signature.
-// TODO: replace with an alias for FnSig
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct LFnSig<'tcx> {
-    pub inputs: &'tcx [LTy<'tcx>],
-    pub output: LTy<'tcx>,
 }
 
 /// One of the concrete permission values, READ, WRITE, or MOVE.

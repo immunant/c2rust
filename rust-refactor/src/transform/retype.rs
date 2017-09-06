@@ -339,7 +339,8 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
                     }
                 },
 
-                // TODO: MethodCall
+                // TODO: Handle MethodCall.  In theory we should also deal with method calls from
+                // operator overloads, but I doubt anybody wants to rewrite those definitions.
 
                 _ => {},
             };

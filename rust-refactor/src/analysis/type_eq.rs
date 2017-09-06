@@ -86,8 +86,7 @@ impl UnifyKey for TyLabel {
 
 /// Labels used on types.  If the `Option` is `None`, then there's nothing to unify at this node
 /// (see `LTyTable::non_unifiable`).
-// TODO: remove the `Cell` wrapping.  We don't actually use `set` anywhere.
-type Label = Option<Cell<TyLabel>>;
+type Label = Option<TyLabel>;
 
 /// A `Ty` where every node is labeled with a unification key.
 type LTy<'tcx> = LabeledTy<'tcx, Label>;
@@ -118,11 +117,11 @@ impl<'tcx> LTyTable<'tcx> {
 
     /// Label a `Ty` with fresh unification keys.
     fn label(&self, ty: ty::Ty<'tcx>) -> LTy<'tcx> {
-        self.lcx.label(ty, &mut |_| Some(Cell::new(self.unif.borrow_mut().new_key(()))))
+        self.lcx.label(ty, &mut |_| Some(self.unif.borrow_mut().new_key(())))
     }
 
     fn label_slice(&self, tys: &[ty::Ty<'tcx>]) -> &'tcx [LTy<'tcx>] {
-        self.lcx.label_slice(tys, &mut |_| Some(Cell::new(self.unif.borrow_mut().new_key(()))))
+        self.lcx.label_slice(tys, &mut |_| Some(self.unif.borrow_mut().new_key(())))
     }
 
     fn label_sig(&self, sig: ty::FnSig<'tcx>) -> LFnSig<'tcx> {
@@ -172,8 +171,8 @@ impl<'tcx> LTyTable<'tcx> {
 
     /// Unify two types, including any type arguments they may have.
     fn unify(&self, lty1: LTy<'tcx>, lty2: LTy<'tcx>) {
-        if let (Some(cell1), Some(cell2)) = (lty1.label.as_ref(), lty2.label.as_ref()) {
-            self.unif.borrow_mut().union(cell1.get(), cell2.get());
+        if let (Some(l1), Some(l2)) = (lty1.label, lty2.label) {
+            self.unif.borrow_mut().union(l1, l2);
         }
 
         if lty1.args.len() == lty2.args.len() {
@@ -478,7 +477,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
         match lty.ty.sty {
             TyFnDef(id, _) => self.def_sig(id).inputs.len(),
             TyFnPtr(_) => lty.args.len() - 1,
-            // TODO: handle TyClosure.  This should be similar to TyFnDef, but the substs are a bit
+            // TODO: Handle TyClosure.  This should be similar to TyFnDef, but the substs are a bit
             // more complicated.
             _ => panic!("fn_num_inputs: not a fn type"),
         }
@@ -589,7 +588,9 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
         };
 
         // TODO: Support operator overloading.  I think this can be detected by checking for a
-        // `type_dependent_defs` entry on a non-`MethodCall` node.
+        // `type_dependent_defs` entry on a non-`MethodCall` node.  (Alternative: rewrite this
+        // whole analysis to run over MIR.  At that level, operator-overload method calls are fully
+        // explicit.)
 
         match e.node {
             ExprBox(ref e) => {
@@ -995,10 +996,9 @@ pub fn analyze<'a, 'tcx>(hir_map: &hir::map::Map<'tcx>,
     // equivalence class.
     ty_nodes.iter()
         .filter_map(
-            |(&id, &lty)| lty.label.as_ref().map(
-                |cell| {
-                    let root = ltt.unif.borrow_mut().find(cell.get());
-                    (id, root.index())
-                }))
+            |(&id, &lty)| lty.label.map(|l| {
+                let root = ltt.unif.borrow_mut().find(l);
+                (id, root.index())
+            }))
         .collect()
 }

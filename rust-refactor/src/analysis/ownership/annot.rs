@@ -59,22 +59,8 @@ impl<'c, 'a, 'tcx> TypeSource for LTySource<'c, 'a, 'tcx> {
 
     fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> {
         self.last_sig_did = None;
-        // TODO - should probably support this
+        // TODO - Need to implement this properly if we ever add closure support.
         None
-    }
-}
-
-impl<'tcx> type_map::Signature<LTy<'tcx>> for LFnSig<'tcx> {
-    fn num_inputs(&self) -> usize {
-        self.inputs.len()
-    }
-
-    fn input(&self, idx: usize) -> LTy<'tcx> {
-        self.inputs[idx]
-    }
-
-    fn output(&self) -> LTy<'tcx> {
-        self.output
     }
 }
 

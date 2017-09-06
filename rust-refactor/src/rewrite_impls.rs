@@ -65,8 +65,8 @@ trait Splice: Rewrite+'static {
         Self::node_table(&mut rcx).get(id)
     }
 
-    // TODO: document these
-
+    /// Perform a switch from recycled mode to fresh mode.  The text at `old_span` will be replaced
+    /// with pretty-printed code for `new`.
     fn splice_recycled_span(new: &Self, old_span: Span, mut rcx: RewriteCtxtRef) {
         let printed = new.to_string();
         let reparsed = Self::parse(rcx.session(), &printed);
@@ -88,10 +88,18 @@ trait Splice: Rewrite+'static {
         rcx.record(old_span, reparsed.span(), rewrites, adj);
     }
 
+    /// Perform a switch from recycled mode to fresh mode.  The source text for `old` will be
+    /// replaced with pretty-printed code for `new`.
     fn splice_recycled(new: &Self, old: &Self, rcx: RewriteCtxtRef) {
         Splice::splice_recycled_span(new, old.span(), rcx);
     }
 
+    /// Perform a switch from fresh mode to recycled mode.  `new` must have been copied directly
+    /// from the old AST.  The source text for `reparsed`, which was previously spliced into the
+    /// output buffer by a `splice_recycled_span` call, will be replaced with the original source
+    /// text for `new`.
+    ///
+    /// Returns `true` if the rewrite was successful.
     fn splice_fresh(new: &Self, reparsed: &Self, mut rcx: RewriteCtxtRef) -> bool {
         // Don't try to replace the entire fresh subtree with old text.   This breaks an infinite
         // recursion when a non-splice-point child differs between the old and new ASTs.  In such a
