@@ -1,7 +1,10 @@
 //! Analysis passes used to drive various transformations.
 
+use std::collections::HashSet;
+
 use command::{Registry, DriverCommand};
 use driver::Phase;
+use util::IntoSymbol;
 
 
 pub mod labeled_ty;
@@ -24,7 +27,6 @@ pub fn register_commands(reg: &mut Registry) {
         }))
     });
 
-    /*
     reg.register("mark_related_types", |args| {
         let label = args.get(0).map_or("target", |x| x).into_symbol();
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
@@ -46,5 +48,4 @@ pub fn register_commands(reg: &mut Registry) {
             }
         }))
     });
-    */
 }
