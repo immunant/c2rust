@@ -7,9 +7,9 @@ use syntax::codemap::{Span, BytePos};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::visit::{self, Visitor, FnKind};
 
+use ast_manip::Visit;
 use command::{Registry, DriverCommand};
 use driver::{self, Phase};
-use visit::Visit;
 
 
 /// The ID and span of a selected node.

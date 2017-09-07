@@ -3,6 +3,7 @@ use syntax::ast::*;
 use syntax::ptr::P;
 
 
+/// Trait for obtaining the `NodeId` of a generic AST node.
 pub trait GetNodeId {
     fn get_node_id(&self) -> NodeId;
 }

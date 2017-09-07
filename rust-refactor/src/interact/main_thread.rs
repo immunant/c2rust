@@ -15,20 +15,17 @@ use syntax::codemap::Span;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
+use ast_manip::{GetNodeId, GetSpan, Visit};
 use command::{self, CommandState, RefactorState};
 use driver;
-use file_rewrite;
-use get_node_id::GetNodeId;
-use get_span::GetSpan;
 use interact::{ToServer, ToClient};
 use interact::WrapSender;
 use interact::{plain_backend, vim8_backend};
 use interact::worker::{self, ToWorker};
 use pick_node;
-use rewrite;
+use rewrite::{self, files};
 use span_fix;
 use util::IntoSymbol;
-use visit::Visit;
 
 use super::MarkInfo;
 

@@ -11,10 +11,9 @@ use syntax::symbol::Symbol;
 use syntax::util::small_vector::SmallVector;
 
 use api::*;
+use ast_manip::fn_edit::{visit_fns, FnKind};
 use command::{CommandState, Registry};
 use driver::{self, Phase};
-use fn_edit::{visit_fns, FnKind};
-use fold::Fold;
 use transform::Transform;
 
 

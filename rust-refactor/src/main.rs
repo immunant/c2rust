@@ -10,7 +10,7 @@ use std::str::FromStr;
 use syntax::ast::NodeId;
 
 use idiomize::{
-    file_rewrite, driver, transform, span_fix, rewrite, pick_node, interact, command, mark_adjust,
+    driver, transform, span_fix, rewrite, pick_node, interact, command, mark_adjust,
     plugin, select, analysis, print_spans
 };
 
@@ -41,7 +41,7 @@ struct Command {
 }
 
 struct Options {
-    rewrite_mode: file_rewrite::RewriteMode,
+    rewrite_mode: rewrite::files::RewriteMode,
     commands: Vec<Command>,
     rustc_args: Vec<String>,
     cursors: Vec<Cursor>,
@@ -126,15 +126,15 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     // Parse rewrite mode
     let rewrite_mode = match m.opt_str("rewrite-mode") {
         Some(mode_str) => match &mode_str as &str {
-            "inplace" => file_rewrite::RewriteMode::InPlace,
-            "alongside" => file_rewrite::RewriteMode::Alongside,
-            "print" => file_rewrite::RewriteMode::Print,
+            "inplace" => rewrite::files::RewriteMode::InPlace,
+            "alongside" => rewrite::files::RewriteMode::Alongside,
+            "print" => rewrite::files::RewriteMode::Print,
             _ => {
                 info!("Unknown rewrite mode: {}", mode_str);
                 return None;
             },
         },
-        None => file_rewrite::RewriteMode::Print,
+        None => rewrite::files::RewriteMode::Print,
     };
 
     // Parse cursors
@@ -337,7 +337,7 @@ fn main() {
         let mut state = command::RefactorState::new(opts.rustc_args, cmd_reg, marks);
         let rewrite_mode = opts.rewrite_mode;
         state.rewrite_handler(move |fm, s| {
-            file_rewrite::rewrite_mode_callback(rewrite_mode, fm, s);
+            rewrite::files::rewrite_mode_callback(rewrite_mode, fm, s);
         });
 
         for cmd in opts.commands.clone() {

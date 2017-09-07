@@ -5,7 +5,7 @@ use syntax::visit::Visitor;
 
 
 
-/// A trait for AST nodes that can be visited.
+/// A trait for AST nodes that can accept a `Visitor`.
 pub trait Visit {
     fn visit<'ast, V: Visitor<'ast>>(&'ast self, v: &mut V);
 }

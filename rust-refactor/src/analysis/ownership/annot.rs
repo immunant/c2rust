@@ -13,10 +13,10 @@ use syntax::ast;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
 
+use ast_manip::Visit;
 use command::CommandState;
 use driver;
 use type_map::{self, TypeSource};
-use visit::Visit;
 
 use super::{LTy, LFnSig, ConcretePerm, Perm, Var};
 use super::constraint::ConstraintSet;

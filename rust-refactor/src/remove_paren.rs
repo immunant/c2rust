@@ -3,7 +3,7 @@ use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 
-use fold::Fold;
+use ast_manip::Fold;
 
 
 /// AST fold for deleting `ExprKind::Paren` nodes.  These are used only for pretty-printing, but

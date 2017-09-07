@@ -4,10 +4,8 @@ use command::{CommandState, Registry};
 use driver::{self, Phase, parse_impl_items};
 use api::*;
 use syntax::ptr::P;
-use bindings::Bindings;
 use syntax::util::small_vector::SmallVector;
 use transform;
-use fold_node;
 use syntax::symbol::keywords;
 
 pub struct Ionize {

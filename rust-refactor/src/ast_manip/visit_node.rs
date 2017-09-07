@@ -2,7 +2,7 @@
 use syntax::ast::*;
 use syntax::visit::{self, Visitor};
 
-use visit::Visit;
+use ast_manip::Visit;
 
 
 /// Trait for AST node types that can be visited.

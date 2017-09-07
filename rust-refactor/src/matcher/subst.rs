@@ -40,14 +40,13 @@ use syntax::tokenstream::ThinTokenStream;
 use syntax::util::small_vector::SmallVector;
 
 use api::DriverCtxtExt;
-use bindings::Bindings;
+use ast_manip::Fold;
+use ast_manip::make_ast::mk;
+use ast_manip::util::{PatternSymbol, macro_name};
 use command::CommandState;
 use driver;
-use fold::Fold;
-use make_ast::mk;
-use util;
+use matcher::Bindings;
 use util::IntoSymbol;
-use util::PatternSymbol;
 use util::Lone;
 
 
@@ -144,7 +143,7 @@ impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
         }
 
         if let ExprKind::Mac(ref mac) = e.node {
-            match &util::macro_name(&mac).as_str() as &str {
+            match &macro_name(&mac).as_str() as &str {
                 "def" => {
                     let path = self.get_def_path(&mac.node.tts);
                     return mk().path_expr(path);
@@ -170,7 +169,7 @@ impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
         }
 
         if let TyKind::Mac(ref mac) = ty.node {
-            match &util::macro_name(&mac).as_str() as &str {
+            match &macro_name(&mac).as_str() as &str {
                 "def" => {
                     let path = self.get_def_path(&mac.node.tts);
                     return mk().path_ty(path);

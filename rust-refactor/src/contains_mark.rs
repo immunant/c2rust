@@ -3,9 +3,9 @@ use syntax::ast::*;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
 
+use ast_manip::Visit;
 use command::CommandState;
 use util::IntoSymbol;
-use visit::Visit;
 
 
 

@@ -15,10 +15,9 @@ use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::parser::{AssocOp, Fixity};
 
 use driver;
-use get_node_id;
-use get_span;
+use ast_manip::{GetNodeId, GetSpan};
+use ast_manip::util::extended_span;
 use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, VisitStep, NodeTable, TextAdjust};
-use util;
 use util::Lone;
 
 
@@ -158,7 +157,7 @@ impl<T> Deref for SelfDeref<T> {
 
 impl Splice for Expr {
     fn span(&self) -> Span {
-        util::extended_span(self.span, &self.attrs)
+        extended_span(self.span, &self.attrs)
     }
 
     fn id(&self) -> NodeId {
@@ -296,7 +295,7 @@ impl Splice for Stmt {
 
 impl Splice for Item {
     fn span(&self) -> Span {
-        util::extended_span(self.span, &self.attrs)
+        extended_span(self.span, &self.attrs)
     }
 
     fn id(&self) -> NodeId {

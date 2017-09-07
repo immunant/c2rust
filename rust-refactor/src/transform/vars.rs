@@ -10,9 +10,9 @@ use syntax::visit::{self, Visitor};
 
 use api::*;
 use command::{CommandState, Registry};
-use cursor::Mark;
 use driver::{self, Phase};
 use transform::Transform;
+use util::cursor::Mark;
 
 
 pub struct LetXUninitialized;

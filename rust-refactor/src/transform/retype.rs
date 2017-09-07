@@ -11,10 +11,8 @@ use syntax::util::move_map::MoveMap;
 use syntax::util::small_vector::SmallVector;
 
 use api::*;
-use bindings::Bindings;
 use command::{CommandState, Registry};
 use driver::{self, Phase};
-use fold::Fold;
 use transform::Transform;
 
 

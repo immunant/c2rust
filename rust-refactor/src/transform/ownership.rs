@@ -22,8 +22,6 @@ use analysis::ownership::constraint::{ConstraintSet, Perm};
 use api::*;
 use command::{CommandState, Registry, DriverCommand};
 use driver::{self, Phase};
-use fold::Fold;
-use make_ast::mk;
 use type_map::{self, TypeSource};
 use util::IntoSymbol;
 
@@ -303,7 +301,7 @@ fn do_split_variants(st: &CommandState,
         // (1) Duplicate marked fns with `mono` attrs to produce multiple variants.  We rewrite
         // references to other fns during this process, since afterward it would be difficult to
         // distinguish the different copies - their bodies have identical spans and `NodeId`s.
-        let krate = ::fn_edit::fold_fns_multi(krate, |fl| {
+        let krate = fold_fns_multi(krate, |fl| {
             if !st.marked(fl.id, label) {
                 return SmallVector::one(fl);
             }

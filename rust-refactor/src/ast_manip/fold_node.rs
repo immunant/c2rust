@@ -5,7 +5,7 @@ use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
 use syntax::util::move_map::MoveMap;
 
-use fold::Fold;
+use ast_manip::Fold;
 
 
 /// Trait for AST node types that can be rewritten with a fold.
@@ -122,7 +122,7 @@ gen_fold_node_impl! {
     map = (self.callback)(nm);
 }
 
-/// Fold over nodes of the callback's argument type within `target`.  This function performs a
+/// Rewrite nodes of the callback's argument type within `target`.  This function performs a
 /// postorder traversal.
 pub fn fold_nodes<N, T, F>(target: T, callback: F) -> <T as Fold>::Result
         where N: FoldNode,

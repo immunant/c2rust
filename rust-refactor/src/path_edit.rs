@@ -5,8 +5,8 @@ use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 
+use ast_manip::Fold;
 use driver;
-use fold::Fold;
 use util::HirDefExt;
 
 

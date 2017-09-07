@@ -7,10 +7,7 @@ use syntax::util::move_map::MoveMap;
 use syntax::util::small_vector::SmallVector;
 use syntax::visit::{self, Visitor};
 
-use fold::Fold;
-use get_node_id::GetNodeId;
-use get_span::GetSpan;
-use visit::Visit;
+use ast_manip::{Fold, Visit, GetNodeId, GetSpan};
 
 
 /// Enum indicating which kind of itemlike a `fn` is.

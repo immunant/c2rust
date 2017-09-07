@@ -8,8 +8,8 @@ use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, TokenStream, ThinTokenStream};
 use syntax::symbol::keywords;
 
+use matcher::Subst;
 use util::IntoSymbol;
-use subst::Subst;
 
 
 pub trait Make<T> {

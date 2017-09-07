@@ -5,7 +5,7 @@ use syntax::codemap::Span;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
-use ast_equiv::AstEquiv;
+use ast_manip::AstEquiv;
 use command::CommandState;
 use driver;
 use matcher::MatchCtxt;

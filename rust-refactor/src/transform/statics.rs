@@ -6,13 +6,12 @@ use syntax::symbol::Symbol;
 use syntax::util::small_vector::SmallVector;
 
 use api::*;
-use bindings::Bindings;
 use command::{CommandState, Registry};
-use dataflow;
 use driver;
 use transform::Transform;
 use util::IntoSymbol;
 use util::Lone;
+use util::dataflow;
 
 
 pub struct CollectToStruct {

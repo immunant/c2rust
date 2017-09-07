@@ -12,8 +12,8 @@ use syntax::codemap::FileMap;
 use syntax::symbol::Symbol;
 
 use driver::{self, Phase};
-use file_rewrite::{self, RewriteMode};
 use rewrite;
+use rewrite::files::{self, RewriteMode};
 use span_fix;
 use util::IntoSymbol;
 
@@ -93,9 +93,9 @@ impl RefactorState {
                     info!("(no files to rewrite)");
                 } else {
                     if let Some(ref mut handler) = rewrite_handler {
-                        file_rewrite::rewrite_files_with(cx.session().codemap(),
-                                                         &rws,
-                                                         |fm, s| handler(fm, s));
+                        files::rewrite_files_with(cx.session().codemap(),
+                                                  &rws,
+                                                  |fm, s| handler(fm, s));
                     }
                 }
 

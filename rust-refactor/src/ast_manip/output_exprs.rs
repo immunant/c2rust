@@ -5,7 +5,7 @@ use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
 use syntax::util::move_map::MoveMap;
 
-use fold::Fold;
+use ast_manip::Fold;
 use util::Lone;
 
 
@@ -150,9 +150,11 @@ impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for OutputFolder<F> {
 }
 
 
-/// Rewrite function output/return expressions.  For the trailing expression of a block, only the
-/// leaf expressions will be visited - for example, in `fn f() { if c { x } else { y } }`, only `x`
-/// and `y` will be visited, not `{ x }`, `{ y }`, or the `if`.
+/// Rewrite function output/return expressions.
+///
+/// For the trailing expression of a block, only the leaf expressions will be visited - for
+/// example, in `fn f() { if c { x } else { y } }`, only `x` and `y` will be visited, not `{ x }`,
+/// `{ y }`, or the `if`.
 pub fn fold_output_exprs<T, F>(target: T, trailing: bool, callback: F) -> <T as Fold>::Result
         where T: Fold,
               F: FnMut(P<Expr>) -> P<Expr> {

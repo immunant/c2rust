@@ -46,14 +46,19 @@ use syntax::util::move_map::MoveMap;
 use syntax::util::small_vector::SmallVector;
 
 use api::DriverCtxtExt;
-use bindings::{self, Bindings};
+use ast_manip::{Fold, GetNodeId};
+use ast_manip::util::PatternSymbol;
 use command::CommandState;
 use driver;
-use fold::Fold;
-use get_node_id::GetNodeId;
 use reflect;
-use util::PatternSymbol;
 use util::IntoSymbol;
+
+mod bindings;
+mod impls;
+mod subst;
+
+pub use self::bindings::{Bindings, Type as BindingType};
+pub use self::subst::Subst;
 
 
 pub type Result<T> = result::Result<T, Error>;

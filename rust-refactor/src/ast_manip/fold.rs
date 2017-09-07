@@ -9,7 +9,7 @@ use syntax::util::small_vector::SmallVector;
 
 
 
-/// A trait for AST nodes that can be folded over.
+/// A trait for AST nodes that can accept a `Folder`.
 pub trait Fold {
     /// The result of a fold over `Self`.  Typically this is either `Self` or `SmallVector<Self>`.
     type Result;

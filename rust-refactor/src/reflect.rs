@@ -13,7 +13,7 @@ use syntax::symbol::keywords;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::small_vector::SmallVector;
 
-use make_ast::mk;
+use ast_manip::make_ast::mk;
 use util::IntoSymbol;
 
 

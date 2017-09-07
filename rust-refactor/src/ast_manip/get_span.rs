@@ -3,9 +3,10 @@ use syntax::ast::*;
 use syntax::codemap::{Span, Spanned};
 use syntax::ptr::P;
 
-use util;
+use ast_manip::util::extended_span;
 
 
+/// Trait for obtaining the `Span` of a generic AST node.
 pub trait GetSpan {
     fn get_span(&self) -> Span;
 }

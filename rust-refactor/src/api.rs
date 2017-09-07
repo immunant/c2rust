@@ -13,25 +13,18 @@ use syntax::codemap::DUMMY_SP;
 use syntax::symbol::keywords;
 
 // Reexports of various helpers
-pub use matcher::MatchCtxt;
-pub use matcher::{fold_match, fold_match_with};
+pub use ast_manip::*;
+pub use ast_manip::fn_edit::{fold_fns, fold_fns_multi};
+pub use ast_manip::lr_expr::fold_expr_with_context;
+pub use ast_manip::make_ast::mk;
 pub use driver::{parse_expr, parse_pat, parse_ty, parse_stmts, parse_items};
-pub use subst::Subst;
-pub use bindings::Type as BindingType;
-pub use seq_edit::{fold_blocks, fold_modules};
-pub use make_ast::mk;
-pub use fold_node::fold_nodes;
-pub use visit_node::visit_nodes;
+pub use matcher::{MatchCtxt, Bindings, BindingType, Subst};
+pub use matcher::{fold_match, fold_match_with};
 pub use path_edit::{self, fold_resolved_paths, fold_resolved_paths_with_id};
-pub use fn_edit::{fold_fns, fold_fns_multi};
-pub use lr_expr::{self, fold_expr_with_context};
-pub use output_exprs::fold_output_exprs;
 
-use bindings::Bindings;
+use matcher::Pattern;
 use command::CommandState;
 use driver;
-use fold::Fold;
-use matcher::Pattern;
 use reflect;
 use util::HirDefExt;
 use util::IntoSymbol;

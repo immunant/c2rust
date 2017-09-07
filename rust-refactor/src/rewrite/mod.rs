@@ -47,7 +47,10 @@ use syntax::codemap::{Span, DUMMY_SP};
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
-use visit::Visit;
+use ast_manip::Visit;
+
+mod impls;
+pub mod files;
 
 
 pub trait Rewrite {

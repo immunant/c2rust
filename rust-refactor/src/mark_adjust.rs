@@ -8,13 +8,12 @@ use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
 
 use api::DriverCtxtExt;
+use ast_manip::{Visit, visit_nodes};
 use command::CommandState;
 use command::{Registry, DriverCommand};
 use driver::{self, Phase};
 use util::HirDefExt;
 use util::IntoSymbol;
-use visit::Visit;
-use visit_node::visit_nodes;
 
 
 /// Find all nodes that refer to marked nodes.

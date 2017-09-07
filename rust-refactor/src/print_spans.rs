@@ -5,9 +5,9 @@ use syntax::codemap::{CodeMap, Span, DUMMY_SP};
 use syntax::print::pprust;
 use syntax::visit::Visitor;
 
+use ast_manip::Visit;
 use command::{Registry, DriverCommand};
 use driver::Phase;
-use visit::Visit;
 
 
 struct PrintSpanVisitor<'a> {
