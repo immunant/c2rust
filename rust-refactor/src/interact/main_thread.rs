@@ -16,15 +16,13 @@ use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
 use ast_manip::{GetNodeId, GetSpan, Visit};
-use command::{self, CommandState, RefactorState};
+use command::{self, RefactorState};
 use driver;
 use interact::{ToServer, ToClient};
 use interact::WrapSender;
 use interact::{plain_backend, vim8_backend};
 use interact::worker::{self, ToWorker};
 use pick_node;
-use rewrite::{self, files};
-use span_fix;
 use util::IntoSymbol;
 
 use super::MarkInfo;
@@ -332,7 +330,7 @@ impl<'ast> Visitor<'ast> for CollectSpanVisitor {
         visit::walk_ty(self, x)
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, id: NodeId) {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
         for arg in &fd.inputs {
             if self.ids.contains(&arg.id) {
                 self.spans.insert(arg.id, arg.pat.span.to(arg.ty.span));

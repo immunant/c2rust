@@ -1,18 +1,14 @@
 //! Visitors for implementing `ChildMatch`, `DescMatch`, and `Filter`, which need to walk the AST
 //! and inspect the currently selected nodes.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use syntax::ast::*;
-use syntax::attr;
 use syntax::codemap::Span;
-use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
 use command::CommandState;
 use driver;
-use matcher::MatchCtxt;
-use pick_node::NodeKind;
-use select::{Filter, AnyPattern};
+use select::Filter;
 use select::filter::{self, AnyNode};
 
 
@@ -96,7 +92,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
         self.maybe_enter_old(x.id, |v| visit::walk_ty(v, x));
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, id: NodeId) {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
         for arg in &fd.inputs {
             if self.in_old && self.matches(AnyNode::Arg(arg)) {
                 self.new.insert(arg.id);
@@ -227,7 +223,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
         self.maybe_enter_old(x.id, |v| visit::walk_ty(v, x));
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, id: NodeId) {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
         for arg in &fd.inputs {
             if self.in_old && self.matches(AnyNode::Arg(arg)) {
                 self.new.insert(arg.id);
@@ -344,7 +340,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
         visit::walk_ty(self, x);
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, id: NodeId) {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
         for arg in &fd.inputs {
             if self.old.contains(&arg.id) && self.matches(AnyNode::Arg(arg)) {
                 self.new.insert(arg.id);

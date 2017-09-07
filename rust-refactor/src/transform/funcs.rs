@@ -455,7 +455,7 @@ impl Transform for WrapExtern {
 pub struct WrapApi;
 
 impl Transform for WrapApi {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
         fold_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return SmallVector::one(i);
@@ -514,6 +514,7 @@ impl Transform for WrapApi {
                             name = gen_name;
                             break;
                         }
+                        i += 1;
                     }
                 }
 

@@ -6,7 +6,6 @@ use rustc::hir;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast::*;
-use syntax::attr;
 use syntax::codemap::DUMMY_SP;
 use syntax::fold::{self, Folder};
 use syntax::parse::token::{self, Token, DelimToken};
@@ -14,7 +13,6 @@ use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream, Delimited};
 use syntax::util::small_vector::SmallVector;
-use syntax::util::move_map::MoveMap;
 
 use analysis::labeled_ty::LabeledTyCtxt;
 use analysis::ownership::{self, ConcretePerm, Var, PTy};
@@ -22,7 +20,7 @@ use analysis::ownership::constraint::{ConstraintSet, Perm};
 use api::*;
 use command::{CommandState, Registry, DriverCommand};
 use driver::{self, Phase};
-use type_map::{self, TypeSource};
+use type_map;
 use util::IntoSymbol;
 
 pub fn register_commands(reg: &mut Registry) {
@@ -42,7 +40,7 @@ pub fn register_commands(reg: &mut Registry) {
         }))
     });
 
-    reg.register("ownership_mark_pointers", |args| {
+    reg.register("ownership_mark_pointers", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             do_mark_pointers(st, cx);
         }))
@@ -474,7 +472,6 @@ fn do_mark_pointers(st: &CommandState, cx: &driver::Ctxt) {
     struct AnalysisTypeSource<'a, 'tcx: 'a> {
         ana: &'a ownership::AnalysisResult<'tcx>,
         arena: &'tcx DroplessArena,
-        st: &'a CommandState,
     }
 
     impl<'a, 'tcx> type_map::TypeSource for AnalysisTypeSource<'a, 'tcx> {
@@ -500,7 +497,7 @@ fn do_mark_pointers(st: &CommandState, cx: &driver::Ctxt) {
 
             let mr = &self.ana.monos[&(vr.func_id, mono_idx)];
 
-            let mut lcx = LabeledTyCtxt::new(self.arena);
+            let lcx = LabeledTyCtxt::new(self.arena);
 
             let sig = {
                 let mut f = |l: &Option<_>| {
@@ -519,20 +516,19 @@ fn do_mark_pointers(st: &CommandState, cx: &driver::Ctxt) {
             Some(sig)
         }
 
-        fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> { None }
+        fn closure_sig(&mut self, _did: DefId) -> Option<Self::Signature> { None }
     }
 
     let source = AnalysisTypeSource {
         ana: &ana,
         arena: cx.ty_arena(),
-        st: st,
     };
 
     let s_ref = "ref".into_symbol();
     let s_mut = "mut".into_symbol();
     let s_box = "box".into_symbol();
 
-    type_map::map_types(cx.hir_map(), source, &st.krate(), |source, ast_ty, lty| {
+    type_map::map_types(cx.hir_map(), source, &st.krate(), |_source, ast_ty, lty| {
         let p = match lty.label {
             Some(x) => x,
             None => return,

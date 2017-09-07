@@ -7,7 +7,6 @@ use std::str::FromStr;
 
 use arena::DroplessArena;
 use rustc::hir::def_id::DefId;
-use rustc::ty::TyCtxt;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast;
 use syntax::symbol::Symbol;
@@ -37,12 +36,12 @@ impl<'c, 'a, 'tcx> TypeSource for LTySource<'c, 'a, 'tcx> {
     type Type = LTy<'tcx>;
     type Signature = LFnSig<'tcx>;
 
-    fn expr_type(&mut self, e: &ast::Expr) -> Option<Self::Type> {
+    fn expr_type(&mut self, _e: &ast::Expr) -> Option<Self::Type> {
         self.last_sig_did = None;
         None
     }
 
-    fn pat_type(&mut self, p: &ast::Pat) -> Option<Self::Type> {
+    fn pat_type(&mut self, _p: &ast::Pat) -> Option<Self::Type> {
         self.last_sig_did = None;
         None
     }
@@ -57,7 +56,7 @@ impl<'c, 'a, 'tcx> TypeSource for LTySource<'c, 'a, 'tcx> {
         Some(self.cx.variant_func_sig(did))
     }
 
-    fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> {
+    fn closure_sig(&mut self, _did: DefId) -> Option<Self::Signature> {
         self.last_sig_did = None;
         // TODO - Need to implement this properly if we ever add closure support.
         None
@@ -209,7 +208,7 @@ pub fn handle_attrs<'a, 'hir, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
                         eprintln!("  {:?} <= {:?}", a, b);
                     }
 
-                    let (func, var) = cx.variant_summ(def_id);
+                    let (func, _var) = cx.variant_summ(def_id);
                     assert!(!func.cset_provided,
                             "{} can only have one #[ownership_constraint] annotation (on {:?})",
                             if is_variant { "variant set" } else { "function" }, def_id);
@@ -222,7 +221,7 @@ pub fn handle_attrs<'a, 'hir, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
                         .unwrap_or_else(|e| panic!("bad #[ownership_mono] for {:?}: {}",
                                                    def_id, e));
 
-                    let (func, variant, mono) = cx.add_mono(def_id);
+                    let (func, _variant, mono) = cx.add_mono(def_id);
                     mono.assign = assign;
                     mono.suffix = suffix;
                     func.monos_provided = true;
@@ -288,7 +287,6 @@ fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
 fn parse_ownership_constraints<'tcx>(meta: &ast::MetaItem,
                                      arena: &'tcx DroplessArena)
                                      -> Result<ConstraintSet<'tcx>, &'static str> {
-    use syntax::ast::*;
     let args = meta_item_list(meta)?;
 
     let mut cset = ConstraintSet::new();
@@ -314,7 +312,6 @@ fn parse_ownership_constraints<'tcx>(meta: &ast::MetaItem,
 fn parse_perm<'tcx>(meta: &ast::MetaItem,
                     arena: &'tcx DroplessArena)
                     -> Result<Perm<'tcx>, &'static str> {
-    use syntax::ast::*;
     if meta.check_name("min") {
         let args = meta_item_list(meta)?;
         if args.len() == 0 {

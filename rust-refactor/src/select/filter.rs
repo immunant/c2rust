@@ -31,16 +31,16 @@ pub enum AnyNode<'ast> {
 impl<'ast> AnyNode<'ast> {
     pub fn kind(&self) -> NodeKind {
         match *self {
-            AnyNode::Item(x) => NodeKind::Item,
-            AnyNode::TraitItem(x) => NodeKind::TraitItem,
-            AnyNode::ImplItem(x) => NodeKind::ImplItem,
-            AnyNode::ForeignItem(x) => NodeKind::ForeignItem,
-            AnyNode::Stmt(x) => NodeKind::Stmt,
-            AnyNode::Expr(x) => NodeKind::Expr,
-            AnyNode::Pat(x) => NodeKind::Pat,
-            AnyNode::Ty(x) => NodeKind::Ty,
-            AnyNode::Arg(x) => NodeKind::Arg,
-            AnyNode::Field(x) => NodeKind::Field,
+            AnyNode::Item(_) => NodeKind::Item,
+            AnyNode::TraitItem(_) => NodeKind::TraitItem,
+            AnyNode::ImplItem(_) => NodeKind::ImplItem,
+            AnyNode::ForeignItem(_) => NodeKind::ForeignItem,
+            AnyNode::Stmt(_) => NodeKind::Stmt,
+            AnyNode::Expr(_) => NodeKind::Expr,
+            AnyNode::Pat(_) => NodeKind::Pat,
+            AnyNode::Ty(_) => NodeKind::Ty,
+            AnyNode::Arg(_) => NodeKind::Arg,
+            AnyNode::Field(_) => NodeKind::Field,
         }
     }
 
@@ -424,7 +424,7 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
         visit::walk_ty(self, x);
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, id: NodeId) {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
         for arg in &fd.inputs {
             (self.func)(AnyNode::Arg(arg));
         }

@@ -5,7 +5,7 @@
 //! `select` command marks all nodes in the current selection with the given label.  See the docs
 //! for `SelectOp` for descriptions of the available commands.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use regex::Regex;
 use syntax::ast::*;
 use syntax::ptr::P;

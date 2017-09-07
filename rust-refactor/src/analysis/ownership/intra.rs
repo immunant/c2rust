@@ -2,7 +2,7 @@
 
 use rustc::hir::def_id::DefId;
 use rustc::mir::*;
-use rustc::ty::{Ty, TyCtxt, TypeVariants};
+use rustc::ty::{Ty, TypeVariants};
 use rustc_data_structures::indexed_vec::{IndexVec, Idx};
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -169,7 +169,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
             eprintln!("    {:?} <= {:?}", a, b);
         }
 
-        let (func, var) = self.cx.variant_summ(self.def_id);
+        let (_func, var) = self.cx.variant_summ(self.def_id);
         var.inst_cset = self.cset;
         var.insts = self.insts;
     }
@@ -248,7 +248,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                          None),
                     ProjectionElem::Field(f, _) =>
                         (self.field_lty(base_ty, base_variant.unwrap_or(0), f), base_perm, None),
-                    ProjectionElem::Index(ref index_op) =>
+                    ProjectionElem::Index(ref _index_op) =>
                         (base_ty.args[0], base_perm, None),
                     ProjectionElem::ConstantIndex { .. } => unimplemented!(),
                     ProjectionElem::Subslice { .. } => unimplemented!(),
@@ -261,12 +261,12 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
     fn field_lty(&mut self, base_ty: ITy<'tcx>, v: usize, f: Field) -> ITy<'tcx> {
         match base_ty.ty.sty {
-            TypeVariants::TyAdt(adt, substs) => {
+            TypeVariants::TyAdt(adt, _substs) => {
                 let field_def = &adt.variants[v].fields[f.index()];
                 let poly_ty = self.static_ty(field_def.did);
                 self.ilcx.subst(poly_ty, &base_ty.args)
             },
-            TypeVariants::TyTuple(tys, _) => base_ty.args[f.index()],
+            TypeVariants::TyTuple(_tys, _) => base_ty.args[f.index()],
             _ => unimplemented!(),
         }
     }
@@ -276,7 +276,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
         match *rv {
             Rvalue::Use(ref op) => self.operand_lty(op),
-            Rvalue::Repeat(ref op, len) => {
+            Rvalue::Repeat(ref op, _len) => {
                 let arr_ty = self.local_ty(ty);
 
                 // Assign the operand to the array element.
@@ -298,8 +298,8 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 self.propagate(cast_ty, op_ty, Perm::move_());
                 (cast_ty, op_perm)
             },
-            Rvalue::BinaryOp(op, ref a, ref b) |
-            Rvalue::CheckedBinaryOp(op, ref a, ref b) => match op {
+            Rvalue::BinaryOp(op, ref a, ref _b) |
+            Rvalue::CheckedBinaryOp(op, ref a, ref _b) => match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem |
                 BinOp::BitXor | BinOp::BitAnd | BinOp::BitOr | BinOp::Shl | BinOp::Shr |
                 BinOp::Eq | BinOp::Lt | BinOp::Le | BinOp::Ne | BinOp::Ge | BinOp::Gt =>
@@ -307,11 +307,11 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
                 BinOp::Offset => self.operand_lty(a),
             },
-            Rvalue::NullaryOp(op, ty) => unimplemented!(),
-            Rvalue::UnaryOp(op, ref a) => match op {
+            Rvalue::NullaryOp(_op, _ty) => unimplemented!(),
+            Rvalue::UnaryOp(op, ref _a) => match op {
                 UnOp::Not | UnOp::Neg => (self.local_ty(ty), Perm::move_()),
             },
-            Rvalue::Discriminant(ref lv) => unimplemented!(),
+            Rvalue::Discriminant(ref _lv) => unimplemented!(),
             Rvalue::Aggregate(ref kind, ref ops) => {
                 match **kind {
                     AggregateKind::Array(ty) => {
@@ -330,7 +330,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                         }
                         (tuple_ty, Perm::move_())
                     },
-                    AggregateKind::Adt(adt, disr, substs, union_variant) => {
+                    AggregateKind::Adt(adt, disr, _substs, union_variant) => {
                         let adt_ty = self.local_ty(ty);
 
                         if let Some(union_variant) = union_variant {
@@ -448,7 +448,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
     fn ty_fn_sig(&mut self, ty: ITy<'tcx>) -> IFnSig<'tcx> {
         match ty.ty.sty {
-            TypeVariants::TyFnDef(did, substs) => {
+            TypeVariants::TyFnDef(did, _substs) => {
                 let idx = expect!([ty.label] Label::FnDef(idx) => idx);
                 let var_base = self.insts[idx].first_inst_var;
 

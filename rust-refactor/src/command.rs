@@ -1,6 +1,5 @@
 //! Command management and overall refactoring state.
 
-use std::borrow::Borrow;
 use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -13,7 +12,7 @@ use syntax::symbol::Symbol;
 
 use driver::{self, Phase};
 use rewrite;
-use rewrite::files::{self, RewriteMode};
+use rewrite::files;
 use span_fix;
 use util::IntoSymbol;
 

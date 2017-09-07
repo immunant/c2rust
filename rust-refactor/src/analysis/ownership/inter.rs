@@ -3,7 +3,6 @@
 use std::collections::hash_map::{HashMap, Entry};
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::mem;
 
 use rustc::hir::def_id::DefId;
 

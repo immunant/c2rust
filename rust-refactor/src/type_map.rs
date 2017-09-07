@@ -7,13 +7,14 @@ use rustc::hir;
 use rustc::hir::def_id::DefId;
 use rustc::ty;
 use syntax::ast::*;
-use syntax::visit::{self, Visitor, FnKind};
+use syntax::visit::{self, Visitor};
 
 
 /// Provider of a higher-level type representation.
 ///
 /// Methods can return `None` under any circumstances to indicate that the provider can't find a
 /// type for the node.  In that case, `map_types` will simply skip visiting the corresponding node.
+#[allow(unused)]
 pub trait TypeSource {
     type Type: Type;
     type Signature: Signature<Self::Type>;
@@ -118,7 +119,7 @@ impl<'a, 'tcx, S, F> TypeMapVisitor<'a, 'tcx, S, F>
         self.record_function_ret_ty(sig.output(), &decl.output);
     }
 
-    fn record_path_ty(&mut self, ty: S::Type, qself: Option<&QSelf>, path: &Path) {
+    fn record_path_ty(&mut self, _ty: S::Type, _qself: Option<&QSelf>, _path: &Path) {
         // TODO: See comments below for reasons why `Path`-related cases are difficult to handle.
     }
 }
@@ -151,7 +152,7 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                 }
             },
 
-            ExprKind::Path(ref qself, ref path) => {
+            ExprKind::Path(ref _qself, ref _path) => {
                 // TODO: Handle `ast::Ty`s appearing inside path segments' `parameters` field.
                 // In cases where `parameters` is `Some`, the expr type should be `TyAdt`,
                 // `TyFnDef`, or some other type with `substs`.  The `parameters` correspond to the
@@ -162,7 +163,7 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                 // not obvious how many of the `substs` correspond to each position in the path.
             },
 
-            ExprKind::Struct(ref path, _, _) => {
+            ExprKind::Struct(ref _path, _, _) => {
                 // TODO: Another case like `ExprKind::Path` - the path in the `Struct` can have
                 // type parameters given explicitly.
             },
@@ -307,8 +308,6 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                     self.record_ty(ty, ast_ty);
                 }
             },
-
-            _ => {},
         }
 
         visit::walk_foreign_item(self, i);

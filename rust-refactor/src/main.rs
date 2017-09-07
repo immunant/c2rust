@@ -10,11 +10,10 @@ use std::str::FromStr;
 use syntax::ast::NodeId;
 
 use idiomize::{
-    driver, transform, span_fix, rewrite, pick_node, interact, command, mark_adjust,
+    driver, transform, rewrite, pick_node, interact, command, mark_adjust,
     plugin, select, analysis, print_spans
 };
 
-use idiomize::command::CommandState;
 use idiomize::util::IntoSymbol;
 
 

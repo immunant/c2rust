@@ -34,9 +34,8 @@
 //! (The best fix may be to switch to analyzing MIR, as it has many fewer cases.  But that requires
 //! mapping `ast::Ty` annotations down to MIR, which is likely nontrivial.)
 
-use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
-use std::fmt;
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 use arena::DroplessArena;
 use ena::unify::{UnificationTable, UnifyKey};
@@ -44,23 +43,19 @@ use rustc::hir;
 use rustc::hir::*;
 use rustc::hir::def_id::DefId;
 use rustc::hir::intravisit::{self, Visitor, NestedVisitorMap};
-use rustc::hir::itemlikevisit::{self, ItemLikeVisitor};
+use rustc::hir::itemlikevisit::ItemLikeVisitor;
 use rustc::hir::map::Node::*;
 use rustc::ty::{self, TyCtxt, TypeckTables};
 use rustc::ty::adjustment::Adjust;
-use rustc::ty::subst::{self, Substs};
-use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::abi::Abi;
 use syntax::ast;
 use syntax::ast::NodeId;
 use syntax::codemap::Span;
-use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use type_map;
 use util::HirDefExt;
-use util::IntoSymbol;
 
 
 /// Unification key for types.
@@ -396,12 +391,6 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
                                       e, self.tcx.sess.codemap().span_to_string(e.span)))
     }
 
-    fn unadjusted_expr_lty(&self, e: &Expr) -> LTy<'tcx> {
-        self.unadjusted_nodes.get(&e.id)
-            .unwrap_or_else(|| panic!("unadjusted_expr_lty: no unadjusted lty for {:?} @ {:?}",
-                                      e, self.tcx.sess.codemap().span_to_string(e.span)))
-    }
-
     fn opt_unadjusted_expr_lty(&self, e: &Expr) -> Option<LTy<'tcx>> {
         self.unadjusted_nodes.get(&e.id).map(|&x| x)
     }
@@ -716,9 +705,9 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
                 self.ltt.unify(rty, self.field_lty(self.expr_lty(e), field.node));
             },
 
-            ExprTupField(ref e, ref idx) => {}, // TODO
+            ExprTupField(ref _e, ref _idx) => {}, // TODO
 
-            ExprIndex(ref arr, ref idx) => {}, // TODO
+            ExprIndex(ref _arr, ref _idx) => {}, // TODO
 
             ExprPath(ref path) => {
                 // TODO: many more subcases need handling here
@@ -737,14 +726,14 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
             },
 
             // break/continue/return all have type `!`, which unifies with everything.
-            ExprBreak(ref dest, ref result) => {
+            ExprBreak(ref _dest, ref _result) => {
                 // TODO: handle result == Some(x) case (unify the target `ExprLoop`'s type with the
                 // result expression type)
             },
 
             ExprAgain(_) => {},
 
-            ExprRet(ref result) => {
+            ExprRet(ref _result) => {
                 // TODO: handle result == Some(x) case (unify the result type with the current
                 // function's return type)
             },
@@ -836,7 +825,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
                     self.ltt.unify(expected, self.pat_lty(p));
                 }
             },
-            PatKind::Tuple(ref pats, Some(dotdot_idx)) => {}, // TODO
+            PatKind::Tuple(ref _ps, Some(_dotdot_idx)) => {}, // TODO
 
             PatKind::Box(ref p) => {
                 self.ltt.unify(rty.args[0], self.pat_lty(p));

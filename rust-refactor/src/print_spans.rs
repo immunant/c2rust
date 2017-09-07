@@ -72,7 +72,7 @@ pub fn print_spans<T: Visit>(x: &T, cm: &CodeMap) {
 }
 
 pub fn register_commands(reg: &mut Registry) {
-    reg.register("print_spans", |args| {
+    reg.register("print_spans", |_args| {
         Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
             print_spans(&st.krate() as &Crate, cx.session().codemap());
         }))

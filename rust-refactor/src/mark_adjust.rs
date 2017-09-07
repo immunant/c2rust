@@ -259,7 +259,7 @@ pub fn rename_marks(st: &CommandState, old: Symbol, new: Symbol) {
 }
 
 
-pub fn mark_pub_in_mod(st: &CommandState, cx: &driver::Ctxt, label: &str) {
+pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
     let label = label.into_symbol();
 
     // Use a preorder traversal.  This results in recursively marking public descendants of any
@@ -331,8 +331,8 @@ pub fn register_commands(reg: &mut Registry) {
 
     reg.register("mark_pub_in_mod", |args| {
         let label = args[0].clone();
-        Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
-            mark_pub_in_mod(st, cx, &label);
+        Box::new(DriverCommand::new(Phase::Phase2, move |st, _cx| {
+            mark_pub_in_mod(st, &label);
         }))
     });
 }

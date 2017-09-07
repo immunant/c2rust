@@ -5,7 +5,6 @@ use std::ffi::CString;
 use std::mem;
 use std::path::Path;
 use libc::{dlopen, dlsym, RTLD_LAZY};
-use libc::c_char;
 
 use command::Registry;
 

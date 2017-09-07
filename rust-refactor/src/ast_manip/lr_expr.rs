@@ -36,16 +36,19 @@ trait LRRewrites {
 // Helper macro for generating LRExpr instances.
 macro_rules! lr_expr_fn {
     (($slf:ident, $next:ident($T:ty)) => $e:expr) => {
+        #[allow(unused_mut)]
         fn fold_rvalue<LR: LRRewrites>($slf, lr: &mut LR) -> Self {
             let mut $next = |x: $T| x.fold_rvalue(lr);
             $e
         }
 
+        #[allow(unused_mut)]
         fn fold_lvalue<LR: LRRewrites>($slf, lr: &mut LR) -> Self {
             let mut $next = |x: $T| x.fold_lvalue(lr);
             $e
         }
 
+        #[allow(unused_mut)]
         fn fold_lvalue_mut<LR: LRRewrites>($slf, lr: &mut LR) -> Self {
             let mut $next = |x: $T| x.fold_lvalue_mut(lr);
             $e

@@ -1,9 +1,7 @@
 //! Analysis passes used to drive various transformations.
-use std::collections::HashSet;
 
 use command::{Registry, DriverCommand};
 use driver::Phase;
-use util::IntoSymbol;
 
 
 pub mod labeled_ty;
@@ -12,14 +10,14 @@ pub mod type_eq;
 
 
 pub fn register_commands(reg: &mut Registry) {
-    reg.register("test_analysis_type_eq", |args| {
+    reg.register("test_analysis_type_eq", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             let result = type_eq::analyze(cx.hir_map(), cx.ty_ctxt(), cx.ty_arena(), &st.krate());
             info!("{:?}", result);
         }))
     });
 
-    reg.register("test_analysis_ownership", |args| {
+    reg.register("test_analysis_ownership", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             let results = ownership::analyze(&st, &cx);
             ownership::dump_results(&cx, &results);

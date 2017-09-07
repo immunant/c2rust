@@ -45,6 +45,7 @@ def expr_kind_match(d, mode):
 
 @linewise
 def expr_kind_impl(d):
+    yield '#[allow(unused)]'
     yield 'impl LRExpr for %s {' % d.name
     yield '  fn fold_rvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {'
     yield indent(expr_kind_match(d, 'rvalue'), '    ')
@@ -59,6 +60,7 @@ def expr_kind_impl(d):
 
 @linewise
 def expr_impl(d):
+    yield '#[allow(unused)]'
     yield 'impl LRExpr for %s {' % d.name
     yield '  fn fold_rvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {'
     yield '    let e = Expr { node: self.node.fold_rvalue(lr), ..self };'
@@ -76,6 +78,7 @@ def expr_impl(d):
 
 @linewise
 def null_impl(d):
+    yield '#[allow(unused)]'
     yield 'impl LRExpr for %s {' % d.name
     yield '  fn fold_rvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {'
     yield '    self'

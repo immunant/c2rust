@@ -2,15 +2,11 @@
 //! implementation modules.
 use rustc::hir;
 use rustc::hir::def_id::DefId;
-use rustc::session::Session;
 use rustc::ty::Ty;
-use rustc::ty::item_path::{ItemPathBuffer, RootMode};
-use syntax::ast::{self, TyKind};    // `Ty` refers to `rustc::ty::Ty`.
+use syntax::ast;    // Can't glob-import because `Ty` already refers to `rustc::ty::Ty`.
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
 use syntax::ast::{Expr, ExprKind};
-use syntax::ast::{Path, PathSegment, Ident};
-use syntax::codemap::DUMMY_SP;
-use syntax::symbol::keywords;
+use syntax::ast::Path;
 
 // Reexports of various helpers
 pub use ast_manip::*;
@@ -27,7 +23,6 @@ use command::CommandState;
 use driver;
 use reflect;
 use util::HirDefExt;
-use util::IntoSymbol;
 
 
 /// Replace all instances of expression `pat` with expression `repl`.

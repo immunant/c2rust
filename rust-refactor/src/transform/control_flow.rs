@@ -1,4 +1,3 @@
-use rustc::session::Session;
 use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind};
 
 use api::*;

@@ -242,10 +242,6 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
         }
     }
 
-    pub fn func_sig(&mut self, did: DefId) -> LFnSig<'tcx> {
-        self.func_summ(did).sig
-    }
-
     fn add_variant_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
                             variants: &'b mut HashMap<DefId, VariantSumm<'tcx>>,
                             tcx: TyCtxt<'a, 'tcx, 'tcx>,
@@ -383,25 +379,6 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
             self.get_variant_summ(func.variant_ids[0])
         } else {
             self.get_variant_summ(func.variant_ids[mono_idx])
-        }
-    }
-
-    pub fn check_invariants(&self) {
-        for (&func_id, func) in self.funcs.iter() {
-            let num_v = func.variant_ids.len();
-            let num_m = func.num_monos;
-            assert!((num_v == 0 && num_m == 0) || num_v == 1 || num_v == num_m,
-                    "bad variant/mono combination: {} variants, {} monos (for {:?})",
-                    num_v, num_m, func_id);
-
-            for &variant_id in &func.variant_ids {
-                let variant = self.variants.get(&variant_id)
-                    .unwrap_or_else(|| panic!("{:?} references nonexistent variant {:?}",
-                                              func_id, variant_id));
-                assert!(variant.func_id == func_id,
-                        "variant {:?} of function {:?} has wrong func_id {:?}",
-                        variant_id, variant.func_id, func_id);
-            }
         }
     }
 

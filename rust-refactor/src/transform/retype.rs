@@ -2,12 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::mem;
 use rustc::hir::def_id::DefId;
 use rustc::ty::TypeVariants;
-use syntax::abi::Abi;
 use syntax::ast::*;
-use syntax::codemap::Spanned;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::util::move_map::MoveMap;
 use syntax::util::small_vector::SmallVector;
 
 use api::*;
@@ -304,7 +301,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
                     }
                 },
 
-                ExprKind::Call(ref func, ref args) => {
+                ExprKind::Call(_, ref args) => {
                     if let Some(func_id) = cx.opt_callee(&e)
                             .and_then(|did| cx.hir_map().as_local_node_id(did)) {
                         if changed_funcs.contains(&func_id) {

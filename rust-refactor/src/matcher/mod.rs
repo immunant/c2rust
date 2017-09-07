@@ -428,6 +428,7 @@ macro_rules! gen_pattern_impl {
 
         impl<'a, 'tcx, F> Folder for $PatternFolder<'a, 'tcx, F>
                 where F: FnMut($Pat, Bindings) -> $Pat {
+            #[allow(unused_mut)]
             fn $fold_thing(&mut $slf, $arg: $ArgTy) -> $RetTy {
                 let $arg = $walk;
                 let mut $match_one = |x| {

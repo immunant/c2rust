@@ -14,33 +14,21 @@
 //! runs interprocedurally to a fixed point, on each function plugging in the complete summaries of
 //! its callees and simplifying to produce a complete summary for the current function.
 
-use std::cmp;
-use std::collections::Bound;
-use std::collections::BTreeSet;
-use std::collections::hash_map::{HashMap, Entry};
-use std::collections::HashSet;
-use std::collections::VecDeque;
+use std::collections::HashMap;
 use std::fmt;
 use std::u32;
 
 use arena::DroplessArena;
 use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
-use rustc::mir::*;
-use rustc::mir::tcx::LvalueTy;
-use rustc::mir::traversal::{Postorder, ReversePostorder};
-use rustc::ty::{Ty, TyS, TyCtxt, Instance, TypeVariants, AdtDef};
-use rustc::ty::subst::Substs;
-use rustc::ty::fold::{TypeVisitor, TypeFoldable};
-use rustc_data_structures::bitvec::BitVector;
+use rustc::ty::TyCtxt;
 use rustc_data_structures::indexed_vec::{IndexVec, Idx};
-use syntax::ast;
 use syntax::codemap::Span;
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use command::CommandState;
 use driver;
-use type_map::{self, TypeSource};
+use type_map;
 
 
 pub mod constraint;
@@ -325,7 +313,7 @@ fn convert_results<'a, 'tcx>(cx: &Ctxt<'a, 'tcx>) -> AnalysisResult<'tcx> {
 
     // statics
 
-    let mut perm_lcx = LabeledTyCtxt::new(cx.arena);
+    let perm_lcx = LabeledTyCtxt::new(cx.arena);
     for (&def_id, &lty) in cx.static_summ.iter() {
         let pty = perm_lcx.relabel(lty, &mut |p| {
             if let Some(Perm::StaticVar(v)) = *p {
@@ -339,7 +327,7 @@ fn convert_results<'a, 'tcx>(cx: &Ctxt<'a, 'tcx>) -> AnalysisResult<'tcx> {
 
     // funcs
 
-    let mut var_lcx = LabeledTyCtxt::new(cx.arena);
+    let var_lcx = LabeledTyCtxt::new(cx.arena);
     for def_id in cx.func_ids() {
         let func = cx.get_func_summ(def_id);
 
@@ -412,7 +400,7 @@ fn convert_results<'a, 'tcx>(cx: &Ctxt<'a, 'tcx>) -> AnalysisResult<'tcx> {
             for idx in 0 .. func.num_monos {
                 let mono = cx.get_mono_summ(def_id, idx);
 
-                let mut max_perm = is_output.iter_enumerated()
+                let max_perm = is_output.iter_enumerated()
                     .filter(|&(_, &out)| out)
                     .map(|(v, _)| mono.assign[v])
                     .max().unwrap_or(ConcretePerm::Read);
@@ -452,7 +440,7 @@ pub fn dump_results(dcx: &driver::Ctxt,
     eprintln!("\n === summary ===");
 
     let arena = DroplessArena::new();
-    let mut new_lcx = LabeledTyCtxt::new(&arena);
+    let new_lcx = LabeledTyCtxt::new(&arena);
     let format_sig = |sig: VFnSig, assign: &IndexVec<Var, ConcretePerm>| {
         let mut func = |p: &Option<_>| p.as_ref().map(|&v| assign[v]);
 

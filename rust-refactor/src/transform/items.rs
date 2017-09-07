@@ -1,13 +1,7 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
-use rustc::hir::def_id::DefId;
-use rustc::ty::TypeVariants;
-use syntax::abi::Abi;
 use syntax::ast::*;
-use syntax::attr;
-use syntax::codemap::Spanned;
-use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::util::small_vector::SmallVector;

@@ -18,16 +18,6 @@ pub fn pretty_slice<'a, 'tcx, L>(tys: &'a [LabeledTy<'tcx, L>]) -> &'a [Pretty<'
 }
 
 
-fn perm_label(p: Option<ConcretePerm>) -> &'static str {
-    match p {
-        Some(ConcretePerm::Read) => "READ ",
-        Some(ConcretePerm::Write) => "WRITE ",
-        Some(ConcretePerm::Move) => "MOVE ",
-        None => "",
-    }
-}
-
-
 pub struct PrettyLabel<L>(pub L);
 
 impl fmt::Debug for PrettyLabel<ConcretePerm> {

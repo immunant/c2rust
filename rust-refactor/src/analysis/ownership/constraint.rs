@@ -240,7 +240,7 @@ impl<'tcx> ConstraintSet<'tcx> {
     pub fn import_substituted<F>(&mut self,
                                  other: &ConstraintSet<'tcx>,
                                  arena: &'tcx DroplessArena,
-                                 mut f: F)
+                                 f: F)
             where F: Fn(Perm<'tcx>) -> Perm<'tcx> {
         debug!("IMPORT {} constraints (substituted)", other.less.len());
 
@@ -271,7 +271,7 @@ impl<'tcx> ConstraintSet<'tcx> {
     /// Clone `self`, substituting each atomic permission using the callback `f`.
     pub fn clone_substituted<F>(&self,
                                 arena: &'tcx DroplessArena,
-                                mut f: F) -> ConstraintSet<'tcx>
+                                f: F) -> ConstraintSet<'tcx>
             where F: Fn(Perm<'tcx>) -> Perm<'tcx> {
         let mut new_cset = ConstraintSet::new();
         new_cset.import_substituted(self, arena, f);
@@ -308,7 +308,7 @@ impl<'tcx> ConstraintSet<'tcx> {
     ///
     /// This only traverses chains of `q <= p`, `r <= q`, etc.  It doesn't do anything intelligent
     /// regarding `Min`.
-    pub fn for_each_less_than<F>(&self, p: Perm<'tcx>, mut f: F)
+    pub fn for_each_less_than<F>(&self, p: Perm<'tcx>, f: F)
             where F: FnMut(Perm<'tcx>) -> bool {
         Self::traverse_constraints(&self.greater, p, f);
     }
@@ -317,7 +317,7 @@ impl<'tcx> ConstraintSet<'tcx> {
     ///
     /// This only traverses chains of `p <= q`, `q <= r`, etc.  It doesn't do anything intelligent
     /// regarding `Min`.
-    pub fn for_each_greater_than<F>(&self, p: Perm<'tcx>, mut f: F)
+    pub fn for_each_greater_than<F>(&self, p: Perm<'tcx>, f: F)
             where F: FnMut(Perm<'tcx>) -> bool {
         Self::traverse_constraints(&self.less, p, f);
     }
@@ -412,7 +412,7 @@ impl<'tcx> ConstraintSet<'tcx> {
 
         for &(a, b) in &self.less {
             let (a, a_any, a_all) = eval_rec(a, &eval);
-            let (b, b_any, b_all) = eval_rec(b, &eval);
+            let (b, _b_any, b_all) = eval_rec(b, &eval);
 
             if a <= b {
                 continue;
@@ -675,9 +675,9 @@ impl<'tcx> ConstraintSet<'tcx> {
 
             // Perms less than `p`, and perms greater than `p`.
             let less = self.greater.range(perm_range(p))
-                .map(|&(a, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
+                .map(|&(_, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
             let greater = self.less.range(perm_range(p))
-                .map(|&(a, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
+                .map(|&(_, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
             debug!("    less: {:?}", less);
             debug!("    greater: {:?}", greater);
 

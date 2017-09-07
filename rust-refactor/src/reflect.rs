@@ -1,17 +1,13 @@
 //! Functions for building AST representations of higher-level values.
 use rustc::hir;
-use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
 use rustc::hir::map::Node::*;
 use rustc::ty::{self, TyCtxt};
 use rustc::ty::item_path::{ItemPathBuffer, RootMode};
 use syntax::ast::*;
-use syntax::codemap::{CodeMap, Span, DUMMY_SP};
+use syntax::codemap::DUMMY_SP;
 use syntax::ptr::P;
-use syntax::symbol::Symbol;
 use syntax::symbol::keywords;
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
-use syntax::util::small_vector::SmallVector;
 
 use ast_manip::make_ast::mk;
 use util::IntoSymbol;
@@ -27,7 +23,7 @@ pub fn reflect_tcx_ty(tcx: TyCtxt, ty: ty::Ty) -> P<Ty> {
         TyUint(uty) => mk().ident_ty(uty.ty_to_string()),
         TyFloat(fty) => mk().ident_ty(fty.ty_to_string()),
         // TODO: Add the substs to the path, instead of ignoring them.
-        TyAdt(def, substs) => mk().path_ty(reflect_path(tcx, def.did)),
+        TyAdt(def, _substs) => mk().path_ty(reflect_path(tcx, def.did)),
         TyStr => mk().ident_ty("str"),
         TyArray(ty, len) => mk().array_ty(
             reflect_tcx_ty(tcx, ty),

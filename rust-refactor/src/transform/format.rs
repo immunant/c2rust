@@ -1,21 +1,16 @@
 use std::collections::{HashMap, HashSet};
 use std::str;
 use std::str::FromStr;
-use rustc::hir::def_id::DefId;
 use rustc::session::Session;
-use rustc::ty::TypeVariants;
-use syntax::abi::Abi;
 use syntax::ast::*;
-use syntax::codemap::{Spanned, DUMMY_SP};
+use syntax::codemap::DUMMY_SP;
 use syntax::ext::base::{ExtCtxt, Resolver, DummyResolver};
 use syntax::ext::expand::ExpansionConfig;
 use syntax::ext::quote::rt::ToTokens;
-use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::parse::token::Token;
 use syntax::tokenstream::TokenTree;
-use syntax::util::small_vector::SmallVector;
 
 use api::*;
 use command::{CommandState, Registry};
@@ -83,7 +78,7 @@ impl Transform for FuncToMacro {
 pub struct ConvertFormatString;
 
 impl Transform for ConvertFormatString {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
         fold_nodes(krate, |e: P<Expr>| {
             let fmt_idx = match e.node {
                 ExprKind::Call(_, ref args) =>
@@ -352,5 +347,5 @@ pub fn register_commands(reg: &mut Registry) {
         macro_name: (&args[0]).into_symbol(),
     }));
 
-    reg.register("convert_format_string", |args| mk(ConvertFormatString));
+    reg.register("convert_format_string", |_args| mk(ConvertFormatString));
 }

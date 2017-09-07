@@ -3,7 +3,6 @@ use syntax::ast::*;
 use syntax::codemap::{CodeMap, Span};
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
-use syntax::util::small_vector::SmallVector;
 
 
 /// Extract the symbol from a pattern-like AST.

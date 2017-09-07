@@ -1,13 +1,11 @@
 //! Provides a wrapper around `rustc::ty::Ty` with a label attached to each type constructor.  This
-//! is useful for tracking analysis data about types.
 //!
 //! Labeled type data is manipulated by reference, the same as with `Ty`s, and the data is stored
 //! in the same arena as the underlying `Ty`s.
 use std::fmt;
 use std::marker::PhantomData;
 use arena::DroplessArena;
-use rustc::ty::{Ty, TyCtxt, FnSig, TypeVariants};
-use rustc::ty::subst::Substs;
+use rustc::ty::{Ty, TypeVariants};
 
 use type_map;
 

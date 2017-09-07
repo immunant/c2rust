@@ -2,7 +2,6 @@ use std::collections::hash_map::{HashMap, Entry};
 use std::collections::HashSet;
 use std::mem;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
-use rustc::middle::cstore::CrateStore;
 use rustc::ty::TypeVariants;
 use syntax::ast::*;
 use syntax::ptr::P;
@@ -12,7 +11,6 @@ use api::*;
 use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
-use util::cursor::Mark;
 
 
 pub struct LetXUninitialized;
@@ -41,13 +39,12 @@ impl Transform for SinkLets {
 
         struct LocalInfo {
             local: P<Local>,
-            ident: Ident,
             old_node_id: NodeId,
         }
 
         let mut locals: HashMap<DefId, LocalInfo> = HashMap::new();
         visit_nodes(&krate, |l: &Local| {
-            if let PatKind::Ident(BindingMode::ByValue(_), ref ident, None) = l.pat.node {
+            if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.node {
                 if l.init.is_none() || is_uninit_call(cx, l.init.as_ref().unwrap()) {
                     let def_id = cx.node_def_id(l.pat.id);
                     locals.insert(def_id, LocalInfo {
@@ -59,7 +56,6 @@ impl Transform for SinkLets {
                             id: DUMMY_NODE_ID,
                             .. l.clone()
                         }),
-                        ident: ident.node.clone(),
                         old_node_id: l.id,
                     });
                 }
@@ -86,10 +82,6 @@ impl Transform for SinkLets {
         }
 
         impl<'a, 'tcx> BlockLocalsVisitor<'a, 'tcx> {
-            fn record_use(&mut self, id: DefId) {
-                self.cur.insert(id, UseKind::Other);
-            }
-
             fn record_use_inside_block(&mut self, id: DefId) {
                 match self.cur.entry(id) {
                     Entry::Occupied(e) => { *e.into_mut() = UseKind::Other; },
@@ -122,8 +114,8 @@ impl Transform for SinkLets {
             fn visit_item(&mut self, i: &'ast Item) {
                 let old_cur = mem::replace(&mut self.cur, HashMap::new());
                 visit::walk_item(self, i);
-                let uses = mem::replace(&mut self.cur, old_cur);
                 // Discard collected uses.  They aren't meaningful outside the item body.
+                self.cur = old_cur;
             }
         }
 
@@ -243,7 +235,7 @@ impl Transform for FoldLetAssign {
 
         let mut locals: HashMap<DefId, P<Local>> = HashMap::new();
         visit_nodes(&krate, |l: &Local| {
-            if let PatKind::Ident(BindingMode::ByValue(_), ref ident, None) = l.pat.node {
+            if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.node {
                 if l.init.is_none() || is_uninit_call(cx, l.init.as_ref().unwrap()) {
                     let def_id = cx.node_def_id(l.pat.id);
                     locals.insert(def_id, P(l.clone()));
@@ -285,8 +277,8 @@ impl Transform for FoldLetAssign {
             fn visit_item(&mut self, i: &'ast Item) {
                 let old_cur = mem::replace(&mut self.cur, HashSet::new());
                 visit::walk_item(self, i);
-                let uses = mem::replace(&mut self.cur, old_cur);
                 // Discard collected uses.  They aren't meaningful outside the item body.
+                self.cur = old_cur;
             }
         }
 
