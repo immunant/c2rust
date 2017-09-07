@@ -170,8 +170,8 @@ struct Stmt { id, node, span }
 enum StmtKind {
     Local(local),
     Item(item),
-    Expr(#[rewrite_step_kind=StmtExpr] expr),
-    Semi(#[rewrite_step_kind=StmtExpr] expr),
+    Expr(expr),
+    Semi(expr),
     Mac(mac),
 }
 
@@ -180,48 +180,50 @@ struct Local { pat, ty, init, id, span, #[match=ignore] attrs }
 
 #[match=custom] #[rewrite_splice] #[extend_span]
 struct Expr { id, node, span, #[match=ignore] attrs }
-#[rewrite_default_step_kind=Expr]
+#[prec_contains_expr]
 enum ExprKind {
-    Box(expr),
-    InPlace(place, expr),
+    Box(#[prec=PREFIX] expr),
+    InPlace(#[prec_inc=Inplace] place, #[prec=Inplace] expr),
     Array(elems),
-    Call(func, args),
-    MethodCall(path_seg, args),
+    Call(#[prec=POSTFIX] #[prec_special=Callee] func, args),
+    MethodCall(path_seg, #[prec_first=POSTFIX] args),
     Tup(elems),
-    Binary(op,
-        #[rewrite_step_kind=ExprLeft] a,
-        #[rewrite_step_kind=ExprRight] b),
-    Unary(op, a),
+    Binary(op, #[prec_left_of_binop=op] a, #[prec_right_of_binop=op] b),
+    Unary(op, #[prec=PREFIX] a),
     Lit(lit),
-    Cast(expr, ty),
-    Type(expr, ty),
-    If(cond, then_body, else_body),
-    IfLet(pat, expr, then_body, else_body),
-    While(cond, body, label),
-    WhileLet(pat, expr, body, label),
-    ForLoop(pat, iter, body, label),
+    Cast(#[prec=As] expr, ty),
+    Type(#[prec=Colon] expr, ty),
+    If(#[prec_special=Cond] cond, then_body, else_body),
+    IfLet(pat, #[prec_special=Cond] expr, then_body, else_body),
+    While(#[prec_special=Cond] cond, body, label),
+    WhileLet(pat, #[prec_special=Cond] expr, body, label),
+    ForLoop(pat, #[prec_special=Cond] iter, body, label),
     Loop(body, label),
-    Match(target, arms),
+    Match(#[prec_special=Cond] target, arms),
     Closure(cap, decl, body, span),
     Block(body),
     Catch(body),
-    Assign(#[lvalue_mut] lhs, rhs),
-    AssignOp(op, #[lvalue_mut] lhs, rhs),
-    Field(#[lr_propagate] expr, ident),
-    TupField(#[lr_propagate] expr, idx),
-    Index(#[lr_propagate] arr, idx),
-    Range(lo, hi, limits),
+    Assign(#[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
+    AssignOp(op, #[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
+    Field(#[lr_propagate] #[prec=POSTFIX] expr, ident),
+    TupField(#[lr_propagate] #[prec=POSTFIX] expr, idx),
+    Index(#[lr_propagate] #[prec=POSTFIX] arr, idx),
+    // Special case for `Range`.  `AssocOp` claims that `Range` has higher precedence than
+    // `Assign`, but `x .. x = x` gives a parse error instead of `x .. (x = x)`.  Here we use a
+    // fake precedence value so that any child with lower precedence than a "normal" binop gets
+    // parenthesized.  (`LOr` is the lowest-precedence binop.)
+    Range(#[prec=LOr] lo, #[prec=LOr] hi, limits),
     Path(qself, path),
-    AddrOf(mutbl, #[lvalue_kind=mutbl] expr),
-    Break(label, expr),
+    AddrOf(mutbl, #[lvalue_kind=mutbl] #[prec=PREFIX] expr),
+    Break(label, #[prec=JUMP] expr),
     Continue(label),
-    Ret(expr),
+    Ret(#[prec=JUMP] expr),
     InlineAsm(asm),
     Mac(mac),
     Struct(path, fields, base),
     Repeat(item, count),
     Paren(expr),
-    Try(expr),
+    Try(#[prec=POSTFIX] expr),
 }
 
 

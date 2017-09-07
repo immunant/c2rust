@@ -44,7 +44,7 @@ use rustc::session::Session;
 use syntax::ast::{Expr, ExprKind, Pat, Ty, Stmt, Item};
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
 use syntax::codemap::{Span, DUMMY_SP};
-use syntax::ptr::P;
+use syntax::util::parser;
 use syntax::visit::{self, Visitor};
 
 use ast_manip::Visit;
@@ -167,45 +167,18 @@ impl<'s> Visitor<'s> for OldNodesVisitor<'s> {
 }
 
 
-/// A record of a single step in the AST traversal.  We care mainly about the nesting of
-/// `ExprKind`s, since it affects parenthesization of expressions.
-#[derive(Clone, Debug)]
-pub enum VisitStep {
-    /// Stepped from an `ExprKind` into one of its children.
-    Expr(P<ExprKind>),
-    /// Stepped from an `ExprKind` into its left child.
-    ExprLeft(P<ExprKind>),
-    /// Stepped from an `ExprKind` into its right child.
-    ExprRight(P<ExprKind>),
-    /// Stepped from a `StmtKind::Expr` or `StmtKind::Semi` into its `Expr`.
-    StmtExpr,
-    /// Stepped from some other node into one of its children.
-    Other,
-}
-
-impl VisitStep {
-    pub fn get_expr_kind(&self) -> Option<&ExprKind> {
-        match *self {
-            VisitStep::Expr(ref k) => Some(k),
-            VisitStep::ExprLeft(ref k) => Some(k),
-            VisitStep::ExprRight(ref k) => Some(k),
-            _ => None,
-        }
-    }
-
-    pub fn is_left(&self) -> bool {
-        match *self {
-            VisitStep::ExprLeft(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_right(&self) -> bool {
-        match *self {
-            VisitStep::ExprRight(_) => true,
-            _ => false,
-        }
-    }
+/// Precedence information about the context surrounding an expression.  Used to determine whether
+/// an expr needs to be parenthesized.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ExprPrec {
+    /// Normal behavior.  Parenthesize expr if its precedence is less than the given value.
+    Normal(i8),
+    /// Conditional-like position.  Parenthesize lower precedence, and also parenthesize exprs with
+    /// outer struct literals.
+    Cond(i8),
+    /// Callee position.  Parenthesize lower precedence, and also parenthesize struct and tuple
+    /// field expressions (so the call is not mistaken for a method call).
+    Callee(i8),
 }
 
 
@@ -217,7 +190,9 @@ pub struct RewriteCtxt<'s> {
     /// recursion - see comment in `splice_fresh`.
     fresh_start: Span,
 
-    visit_steps: Vec<VisitStep>,
+    /// Precedence of the current expression context.  If we splice in an expression of lower
+    /// precedence, it will be parenthesized.
+    expr_prec: ExprPrec,
 }
 
 impl<'s> RewriteCtxt<'s> {
@@ -227,7 +202,7 @@ impl<'s> RewriteCtxt<'s> {
             old_nodes: old_nodes,
 
             fresh_start: DUMMY_SP,
-            visit_steps: Vec::new(),
+            expr_prec: ExprPrec::Normal(parser::PREC_RESET),
         }
     }
 
@@ -263,6 +238,14 @@ impl<'s> RewriteCtxt<'s> {
         mem::replace(&mut self.fresh_start, span)
     }
 
+    pub fn expr_prec(&self) -> ExprPrec {
+        self.expr_prec
+    }
+
+    pub fn replace_expr_prec(&mut self, prec: ExprPrec) -> ExprPrec {
+        mem::replace(&mut self.expr_prec, prec)
+    }
+
     pub fn with_rewrites<'b>(&'b mut self,
                              rewrites: &'b mut Vec<TextRewrite>)
                              -> RewriteCtxtRef<'s, 'b> {
@@ -270,18 +253,6 @@ impl<'s> RewriteCtxt<'s> {
             rewrites: rewrites,
             cx: self,
         }
-    }
-
-    pub fn push_step(&mut self, step: VisitStep) {
-        self.visit_steps.push(step);
-    }
-
-    pub fn pop_step(&mut self) {
-        self.visit_steps.pop();
-    }
-
-    pub fn parent_step(&self) -> Option<&VisitStep> {
-        self.visit_steps.last()
     }
 }
 

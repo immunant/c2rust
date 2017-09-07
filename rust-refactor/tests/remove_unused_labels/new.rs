@@ -10,7 +10,7 @@ fn main() {
     }
 
 
-    while (true) {
+    while true {
         println!("a");
     }
 

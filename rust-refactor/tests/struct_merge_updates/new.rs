@@ -7,17 +7,17 @@ struct S {
 fn main() {
     let mut s = S { x: 0, y: 0, z: 0 };
     s = S {
-        x: (1),
-        y: (2),
-        z: (3),
+        x: 1,
+        y: 2,
+        z: 3,
         ..s
     };
 
     let mut s2 = S { x: 0, y: 0, z: 0 };
     s2 = S {
-        x: (1),
-        y: (2),
-        x: (1),
+        x: 1,
+        y: 2,
+        x: 1,
         ..s2
     };
 }

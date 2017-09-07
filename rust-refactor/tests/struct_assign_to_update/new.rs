@@ -5,15 +5,15 @@ struct S {
 
 fn main() {
     let mut s = S { x: 0, y: 0 };
-    s = ::S { x: (1), ..s };
-    s = ::S { y: (2), ..s };
+    s = ::S { x: 1, ..s };
+    s = ::S { y: 2, ..s };
 }
 
 mod m {
     fn g() {
         let mut r = 0..10;
-        r = ::std::ops::Range { start: (2), ..r };
-        r = ::std::ops::Range { end: (8), ..r };
+        r = ::std::ops::Range { start: 2, ..r };
+        r = ::std::ops::Range { end: 8, ..r };
     }
 }
 

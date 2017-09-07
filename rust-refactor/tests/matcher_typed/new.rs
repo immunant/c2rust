@@ -4,5 +4,5 @@ fn main() {
     let c = 3u32;
     let d = 4u64;
     let s = "hello";
-    println!("{} {} {} {} {}", a, (1000u16), c, d, s);
+    println!("{} {} {} {} {}", a, 1000u16, c, d, s);
 }
