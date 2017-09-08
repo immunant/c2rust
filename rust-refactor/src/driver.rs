@@ -1,5 +1,5 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
-//! `librustc_driver::driver::compile_input`.
+//! `rustc_driver::driver::compile_input`.
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -16,10 +16,11 @@ use rustc_metadata::cstore::CStore;
 use rustc_resolve::MakeGlobMap;
 use rustc_trans;
 use rustc_trans::back::link;
-use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item};
+use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem};
 use syntax::codemap::CodeMap;
 use syntax::codemap::{FileLoader, RealFileLoader};
 use syntax::parse;
+use syntax::parse::token;
 use syntax::parse::parser::Parser;
 use syntax::ptr::P;
 
@@ -28,11 +29,14 @@ use span_fix;
 use util::Lone;
 
 
+/// Driver context.  Contains all available analysis results as of the current compiler phase.
+///
+/// Accessor methods will panic if the requested results are not available.
 #[derive(Clone)]
-pub struct Ctxt<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
+pub struct Ctxt<'a, 'tcx: 'a> {
     sess: &'a Session,
-    map: Option<&'a hir_map::Map<'hir>>,
-    tcx: Option<TyCtxt<'a, 'gcx, 'tcx>>,
+    map: Option<&'a hir_map::Map<'tcx>>,
+    tcx: Option<TyCtxt<'a, 'tcx, 'tcx>>,
 
     /// This is a reference to the same `DroplessArena` used in `tcx`.  Analyses working with types
     /// use this to allocate extra values with the same lifetime `'tcx` as the types themselves.
@@ -40,15 +44,21 @@ pub struct Ctxt<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
     tcx_arena: Option<&'tcx DroplessArena>,
 }
 
+/// Compiler phase selection.  Later phases have more analysis results available, but are less
+/// robust against broken code.  (For example, phase 3 provides typechecking results, but can't be
+/// used on code that doesn't typecheck.)
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Phase {
+    /// Phase 1: Runs on the source code immediately after parsing, before macro expansion.
     Phase1,
+    /// Phase 2: Runs after macro expansion and name resolution have finished.
     Phase2,
+    /// Phase 3: Runs after typechecking has finished.
     Phase3,
 }
 
-impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
-    fn new_phase_1(sess: &'a Session) -> Ctxt<'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
+    fn new_phase_1(sess: &'a Session) -> Ctxt<'a, 'tcx> {
         Ctxt {
             sess: sess,
             map: None,
@@ -58,7 +68,7 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
     }
 
     fn new_phase_2(sess: &'a Session,
-                   map: &'a hir_map::Map<'hir>) -> Ctxt<'a, 'hir, 'gcx, 'tcx> {
+                   map: &'a hir_map::Map<'tcx>) -> Ctxt<'a, 'tcx> {
         Ctxt {
             sess: sess,
             map: Some(map),
@@ -68,9 +78,9 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
     }
 
     fn new_phase_3(sess: &'a Session,
-                   map: &'a hir_map::Map<'hir>,
-                   tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                   tcx_arena: &'tcx DroplessArena) -> Ctxt<'a, 'hir, 'gcx, 'tcx> {
+                   map: &'a hir_map::Map<'tcx>,
+                   tcx: TyCtxt<'a, 'tcx, 'tcx>,
+                   tcx_arena: &'tcx DroplessArena) -> Ctxt<'a, 'tcx> {
         Ctxt {
             sess: sess,
             map: Some(map),
@@ -83,12 +93,12 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
         self.sess
     }
 
-    pub fn hir_map(&self) -> &'a hir_map::Map<'hir> {
+    pub fn hir_map(&self) -> &'a hir_map::Map<'tcx> {
         self.map
             .expect("hir map is not available in this context (requires phase 2)")
     }
 
-    pub fn ty_ctxt(&self) -> TyCtxt<'a, 'gcx, 'tcx> {
+    pub fn ty_ctxt(&self) -> TyCtxt<'a, 'tcx, 'tcx> {
         self.tcx
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }
@@ -100,6 +110,12 @@ impl<'a, 'hir, 'gcx: 'a + 'tcx, 'tcx: 'a> Ctxt<'a, 'hir, 'gcx, 'tcx> {
 }
 
 
+/// Run the compiler with some command line `args`.  Stops compiling and invokes the callback
+/// `func` after the indicated `phase`.
+///
+/// `file_loader` can be `None` to read source code from the file system.  Otherwise, the provided
+/// loader will be used within the compiler.  For example, editor integration uses a custom file
+/// loader to provide the compiler with buffer contents for currently open files.
 pub fn run_compiler<F, R>(args: &[String],
                           file_loader: Option<Box<FileLoader>>,
                           phase: Phase,
@@ -115,6 +131,15 @@ pub fn run_compiler<F, R>(args: &[String],
     let input = Input::File(in_path.as_ref().unwrap().clone());
 
     let (sess, cstore) = build_session(sopts, in_path, file_loader);
+
+    // It might seem tempting to set up a custom CompileController and invoke `compile_input` here,
+    // in order to avoid duplicating a bunch of `compile_input`'s logic.  Unfortunately, that
+    // doesn't work well with the current API.  The `CompileState`s provided to the PhaseController
+    // callbacks only contain the data relevant to th ecurrent  phase - for example, in the
+    // after_analysis callback, `tcx` is available but `krate`, `arena`, and `hir_map` are not.
+    // Furthermore, the callback type is such that the `CompileState`s for separate callbacks have
+    // unrelated lifetimes, so we can't (safely) collect up the relevant pieces ourselves from
+    // multiple callback invocations.
 
     // Start of `compile_input` code
     let krate = driver::phase_1_parse_input(&CompileController::basic(), &sess, &input).unwrap();
@@ -147,8 +172,9 @@ pub fn run_compiler<F, R>(args: &[String],
     }
 
     driver::phase_3_run_analysis_passes(
-        // TODO: probably shouldn't be cloning hir_map... it ought to be accessible through the tcx
-        // somehow
+        // Cloning hir_map seems kind of ugly, but the alternative is to deref the `TyCtxt` to get
+        // a `GlobalCtxt` and read its `hir` field.  Since `GlobalCtxt` is actually private, this
+        // seems like it would probably stop working at some point.
         &sess, hir_map.clone(), expand_result.analysis, expand_result.resolutions,
         &arena, &arenas, &crate_name,
         |tcx, _analysis, _incremental_hashes_map, _result| {
@@ -158,13 +184,6 @@ pub fn run_compiler<F, R>(args: &[String],
             }
             unreachable!();
         }).unwrap()
-}
-
-pub fn with_crate_and_context<F, R>(args: &[String],
-                                    phase: Phase,
-                                    func: F) -> R
-        where F: FnOnce(Crate, Ctxt) -> R {
-    run_compiler(args, None, phase, func)
 }
 
 fn build_session(sopts: Options,
@@ -228,7 +247,7 @@ pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
 pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
     let mut p = make_parser(sess, "<stmt>", src);
     let mut stmts = Vec::new();
-    loop {
+    while p.token != token::Eof {
         match p.parse_full_stmt(false) {
             Ok(Some(stmt)) => stmts.push(remove_paren(stmt).lone()),
             Ok(None) => break,
@@ -246,6 +265,20 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
             Ok(Some(item)) => items.push(remove_paren(item).lone()),
             Ok(None) => break,
             Err(db) => emit_and_panic(db, "items"),
+        }
+    }
+    items
+}
+
+pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
+    let mut p = make_parser(sess, "<impl>", src);
+    let mut items = vec![];
+    while p.token != token::Eof {
+        match p.parse_impl_item(&mut false) {
+            Ok(item) => {
+                items.push(remove_paren(item).lone());
+            }
+            Err(e) => panic!("error parsing impl items: {:?}", e.into_diagnostic()),
         }
     }
     items

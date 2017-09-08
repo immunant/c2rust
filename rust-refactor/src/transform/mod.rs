@@ -1,14 +1,19 @@
+//! AST transformation implementations.  Most `idiomize` commands are transforms implemented in the
+//! submodules of this module.
+
 use syntax::ast::Crate;
 
-use command::{Command, CommandState, Registry};
+use command::{Command, RefactorState, CommandState, Registry};
 use driver::{self, Phase};
-use script::RefactorState;
-use util::IntoSymbol;
 
 
+/// An AST transformation that can be applied to a crate.
 pub trait Transform {
+    /// Apply the transformation.
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate;
 
+    /// Return the minimum phase at which this transform can operate.  See the `Phase` docs for
+    /// details.  The default is `Phase2`.
     fn min_phase(&self) -> Phase {
         // Most transforms should run on expanded code.
         Phase::Phase2
@@ -16,6 +21,7 @@ pub trait Transform {
 }
 
 
+/// Adapter for turning a `Transform` into a `Command`.
 pub struct TransformCommand<T: Transform>(pub T);
 
 impl<T: Transform> Command for TransformCommand<T> {
@@ -28,6 +34,7 @@ impl<T: Transform> Command for TransformCommand<T> {
     }
 }
 
+/// Wrap a `Transform` to produce a `Box<Command>`.
 fn mk<T: Transform + 'static>(t: T) -> Box<Command> {
     Box::new(TransformCommand(t))
 }
@@ -36,9 +43,9 @@ fn mk<T: Transform + 'static>(t: T) -> Box<Command> {
 
 macro_rules! transform_modules {
     ($($name:ident,)*) => {
-        $( mod $name; )*
+        $( pub mod $name; )*
 
-        pub fn register_transform_commands(reg: &mut Registry) {
+        pub fn register_commands(reg: &mut Registry) {
             $( $name::register_commands(reg); )*
         }
     };
@@ -49,6 +56,7 @@ transform_modules! {
     format,
     funcs,
     generics,
+    ionize,
     items,
     linkage,
     ownership,

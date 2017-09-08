@@ -2,12 +2,12 @@
 
 use rustc::hir::def_id::DefId;
 use rustc::mir::*;
-use rustc::ty::{Ty, TyCtxt, TypeVariants};
+use rustc::ty::{Ty, TypeVariants};
 use rustc_data_structures::indexed_vec::{IndexVec, Idx};
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
-use super::{Var, LTy, LFnSig, FnSig};
+use super::{Var, PermVar, LTy, LFnSig, FnSig};
 use super::constraint::{ConstraintSet, Perm};
 use super::context::{Ctxt, Instantiation};
 
@@ -18,6 +18,10 @@ enum Label<'tcx> {
     None,
 
     /// Pointers and references get a permission annotation.
+    ///
+    /// Note this can be an arbitrary permission expression, not just a `PermVar`.  Taking the
+    /// address of an lvalue gives a pointer whose permission is the lvalue's path permission,
+    /// which can be arbitrary.
     Ptr(Perm<'tcx>),
 
     /// `TyFnDef` ought to be labeled with something like an extra set of `Substs`, but for
@@ -44,8 +48,8 @@ type IFnSig<'tcx> = FnSig<'tcx, Label<'tcx>>;
 
 /// Variant-local analysis context.  We run one of these for each function variant to produce the
 /// initial (incomplete) summary.
-pub struct IntraCtxt<'c, 'a: 'c, 'gcx: 'tcx, 'tcx: 'a> {
-    cx: &'c mut Ctxt<'a, 'gcx, 'tcx>,
+pub struct IntraCtxt<'c, 'a: 'c, 'tcx: 'a> {
+    cx: &'c mut Ctxt<'a, 'tcx>,
     ilcx: LabeledTyCtxt<'tcx, Label<'tcx>>,
 
     /// ID of the variant being processed.
@@ -75,10 +79,10 @@ pub struct IntraCtxt<'c, 'a: 'c, 'gcx: 'tcx, 'tcx: 'a> {
     next_inst_var: u32,
 }
 
-impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
-    pub fn new(cx: &'c mut Ctxt<'a, 'gcx, 'tcx>,
+impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
+    pub fn new(cx: &'c mut Ctxt<'a, 'tcx>,
                def_id: DefId,
-               mir: &'a Mir<'tcx>) -> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
+               mir: &'a Mir<'tcx>) -> IntraCtxt<'c, 'a, 'tcx> {
         let ilcx = LabeledTyCtxt::new(cx.arena);
         IntraCtxt {
             cx: cx,
@@ -127,7 +131,7 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
     fn relabel_ty(&mut self, lty: LTy<'tcx>) -> ITy<'tcx> {
         self.ilcx.relabel(lty, &mut |&l| {
             match l {
-                Some(x) => Label::Ptr(x),
+                Some(pv) => Label::Ptr(Perm::var(pv)),
                 None => Label::None,
             }
         })
@@ -136,7 +140,7 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
     fn relabel_sig(&mut self, sig: LFnSig<'tcx>) -> IFnSig<'tcx> {
         let mut f = |&l: &Option<_>| {
             match l {
-                Some(x) => Label::Ptr(x),
+                Some(pv) => Label::Ptr(Perm::var(pv)),
                 None => Label::None,
             }
         };
@@ -169,7 +173,7 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
             eprintln!("    {:?} <= {:?}", a, b);
         }
 
-        let (func, var) = self.cx.variant_summ(self.def_id);
+        let (_func, var) = self.cx.variant_summ(self.def_id);
         var.inst_cset = self.cset;
         var.insts = self.insts;
     }
@@ -248,7 +252,7 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
                          None),
                     ProjectionElem::Field(f, _) =>
                         (self.field_lty(base_ty, base_variant.unwrap_or(0), f), base_perm, None),
-                    ProjectionElem::Index(ref index_op) =>
+                    ProjectionElem::Index(ref _index_op) =>
                         (base_ty.args[0], base_perm, None),
                     ProjectionElem::ConstantIndex { .. } => unimplemented!(),
                     ProjectionElem::Subslice { .. } => unimplemented!(),
@@ -261,12 +265,12 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
 
     fn field_lty(&mut self, base_ty: ITy<'tcx>, v: usize, f: Field) -> ITy<'tcx> {
         match base_ty.ty.sty {
-            TypeVariants::TyAdt(adt, substs) => {
+            TypeVariants::TyAdt(adt, _substs) => {
                 let field_def = &adt.variants[v].fields[f.index()];
                 let poly_ty = self.static_ty(field_def.did);
                 self.ilcx.subst(poly_ty, &base_ty.args)
             },
-            TypeVariants::TyTuple(tys, _) => base_ty.args[f.index()],
+            TypeVariants::TyTuple(_tys, _) => base_ty.args[f.index()],
             _ => unimplemented!(),
         }
     }
@@ -276,7 +280,7 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
 
         match *rv {
             Rvalue::Use(ref op) => self.operand_lty(op),
-            Rvalue::Repeat(ref op, len) => {
+            Rvalue::Repeat(ref op, _len) => {
                 let arr_ty = self.local_ty(ty);
 
                 // Assign the operand to the array element.
@@ -298,8 +302,8 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
                 self.propagate(cast_ty, op_ty, Perm::move_());
                 (cast_ty, op_perm)
             },
-            Rvalue::BinaryOp(op, ref a, ref b) |
-            Rvalue::CheckedBinaryOp(op, ref a, ref b) => match op {
+            Rvalue::BinaryOp(op, ref a, ref _b) |
+            Rvalue::CheckedBinaryOp(op, ref a, ref _b) => match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem |
                 BinOp::BitXor | BinOp::BitAnd | BinOp::BitOr | BinOp::Shl | BinOp::Shr |
                 BinOp::Eq | BinOp::Lt | BinOp::Le | BinOp::Ne | BinOp::Ge | BinOp::Gt =>
@@ -307,11 +311,11 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
 
                 BinOp::Offset => self.operand_lty(a),
             },
-            Rvalue::NullaryOp(op, ty) => unimplemented!(),
-            Rvalue::UnaryOp(op, ref a) => match op {
+            Rvalue::NullaryOp(_op, _ty) => unimplemented!(),
+            Rvalue::UnaryOp(op, ref _a) => match op {
                 UnOp::Not | UnOp::Neg => (self.local_ty(ty), Perm::move_()),
             },
-            Rvalue::Discriminant(ref lv) => unimplemented!(),
+            Rvalue::Discriminant(ref _lv) => unimplemented!(),
             Rvalue::Aggregate(ref kind, ref ops) => {
                 match **kind {
                     AggregateKind::Array(ty) => {
@@ -330,7 +334,7 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
                         }
                         (tuple_ty, Perm::move_())
                     },
-                    AggregateKind::Adt(adt, disr, substs, union_variant) => {
+                    AggregateKind::Adt(adt, disr, _substs, union_variant) => {
                         let adt_ty = self.local_ty(ty);
 
                         if let Some(union_variant) = union_variant {
@@ -383,6 +387,8 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
         if let (Label::Ptr(l_perm), Label::Ptr(r_perm)) = (lhs.label, rhs.label) {
             self.propagate_perm(l_perm, r_perm);
 
+            // This is the "collection hack".
+            //
             // Cap the required `path_perm` at WRITE.  The logic here is that container methods for
             // removing (and freeing) elements or for reallocating internal storage shouldn't
             // require MOVE.
@@ -447,7 +453,7 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
 
     fn ty_fn_sig(&mut self, ty: ITy<'tcx>) -> IFnSig<'tcx> {
         match ty.ty.sty {
-            TypeVariants::TyFnDef(did, substs) => {
+            TypeVariants::TyFnDef(did, _substs) => {
                 let idx = expect!([ty.label] Label::FnDef(idx) => idx);
                 let var_base = self.insts[idx].first_inst_var;
 
@@ -456,10 +462,8 @@ impl<'c, 'a, 'gcx, 'tcx> IntraCtxt<'c, 'a, 'gcx, 'tcx> {
                 // First apply the permission substs.  Replace all `SigVar`s with `InstVar`s.
                 let mut f = |p: &Option<_>| {
                     match *p {
-                        Some(Perm::SigVar(v)) => Label::Ptr(Perm::InstVar(Var(var_base + v.0))),
-                        Some(Perm::Min(_)) => panic!("unexpected `Min` in ty label"),
-                        Some(Perm::Concrete(_)) => panic!("unexpected `Concrete` in ty label"),
-                        Some(p) => Label::Ptr(p),
+                        Some(PermVar::Sig(v)) => Label::Ptr(Perm::InstVar(Var(var_base + v.0))),
+                        Some(_) => panic!("found non-Sig PermVar in sig"),
                         None => Label::None,
                         // There's no way to write a TyFnDef type in a function signature, so it's
                         // reasonable to have no cases output `Label::FnDef`.

@@ -1,13 +1,18 @@
+//! Helper functions for picking a node by source location.
+//!
+//! This is used in various parts of the frontend to set marks at specific locations.
 use std::str::FromStr;
 use syntax::ast::*;
 use syntax::codemap::{Span, BytePos};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::visit::{self, Visitor, FnKind};
 
-use driver;
-use visit::Visit;
+use ast_manip::Visit;
+use command::{Registry, DriverCommand};
+use driver::{self, Phase};
 
 
+/// The ID and span of a selected node.
 #[derive(Debug)]
 pub struct NodeInfo {
     pub id: NodeId,
@@ -142,11 +147,15 @@ impl<'a> Visitor<'a> for PickVisitor {
 }
 
 
+/// Enum of node kinds.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NodeKind {
+    /// Any kind of node.
     Any,
+    /// Any item-like node.
     ItemLike,
 
+    // The rest refer to specific node types.
     Item,
     TraitItem,
     ImplItem,
@@ -160,6 +169,8 @@ pub enum NodeKind {
 }
 
 impl NodeKind {
+    /// Check if `self` contains kind `other`.  `other` is expected to be a specific node kind, not
+    /// a category like `Any`.
     pub fn contains(self, other: NodeKind) -> bool {
         match self {
             NodeKind::Any => true,
@@ -217,6 +228,8 @@ impl FromStr for NodeKind {
     }
 }
 
+/// Select an AST node by its `BytePos` in the `CodeMap`.  Only nodes of the specified `kind` will
+/// be selected.
 pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo> {
     let mut v = PickVisitor {
         node_info: None,
@@ -235,6 +248,7 @@ pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo
     v.node_info
 }
 
+/// Select an AST node by its file, line, and column numbers.
 pub fn pick_node_at_loc(krate: &Crate,
                         cx: &driver::Ctxt,
                         kind: NodeKind,
@@ -258,12 +272,14 @@ pub fn pick_node_at_loc(krate: &Crate,
         panic!("column {} is outside the bounds of {} line {}", col, file, line);
     }
 
-    // TODO: make this work when the line contains multibyte characters
+    // TODO: This math is probably off when the line contains multibyte characters.  The
+    // information to properly handle multibyte chars should be accessible through the `FileMap`.
     let pos = lo + BytePos(col);
 
     pick_node(krate, kind, pos)
 }
 
+/// Implementation of the `pick_node` command.
 pub fn pick_node_command(krate: &Crate, cx: &driver::Ctxt, args: &[String]) {
     let kind = NodeKind::from_str(&args[0]).unwrap();
     let file = &args[1];
@@ -284,4 +300,13 @@ pub fn pick_node_command(krate: &Crate, cx: &driver::Ctxt, args: &[String]) {
     } else {
         info!("{{ found: false }}");
     }
+}
+
+pub fn register_commands(reg: &mut Registry) {
+    reg.register("pick_node", |args| {
+        let args = args.to_owned();
+        Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
+            pick_node_command(&st.krate(), &cx, &args);
+        }))
+    });
 }

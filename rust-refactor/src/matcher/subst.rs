@@ -1,6 +1,35 @@
+//! AST template substitution.
+//!
+//! This module provides functions for substituting `Bindings` into a template AST.  Placeholder
+//! forms in the template AST are similar to patterns used in the `matcher` module:
+//!
+//!  * `__x`: An ident whose name is present in the `Bindings` will be replaced with the
+//!    corresponding AST fragment.  (If the `Bindings` came from a `matcher` invocation, then most
+//!    of these names will start with double underscores.)
+//!
+//!    This placeholder form only works if the name is present in the `Bindings` and the
+//!    corresponding AST fragment is the same type as the current node.  Like in `matcher`, the
+//!    substitution code tries to replace at multiple levels.  For example, if the placeholder AST
+//!    is the expr `__x`, then the substitution code will first try to replace the entire `Expr`,
+//!    but if this fails (because the `Bindings` have a non-`Expr` for the name `__x`), then it
+//!    will continue on to try replacing the `Path` and finally just the `Ident`.
+//!
+//!    For itemlikes, a lone ident can't be used as a placeholder because it's not a valid
+//!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
+//!
+//!  * `def!(name [, label])`: This placeholder will be replaced with a path `Expr` or `Ty` that
+//!    refers to a definition named `name` and labeled with `label` (default: "target").  Note that
+//!    this form uses only the plain name of the definition, and relies on the label to find the
+//!    specific def.
+//!
+//!    By default, the replacement path will be an absolute path.  But if the `Bindings` came from
+//!    a `matcher` invocation that included a `def!(name, label)` pattern, then the path matched by
+//!    that `def!` pattern will be used instead.  (This provides an easy way to take advantage of
+//!    surrounding `use` items to produce more convenient paths.)
+
 use rustc::hir::map::Node;
 use rustc::hir::def_id::DefId;
-use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item};
+use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item, ImplItem};
 use syntax::ast::Mac;
 use syntax::fold::{self, Folder};
 use syntax::parse::parser::Parser;
@@ -11,24 +40,23 @@ use syntax::tokenstream::ThinTokenStream;
 use syntax::util::small_vector::SmallVector;
 
 use api::DriverCtxtExt;
-use bindings::Bindings;
+use ast_manip::Fold;
+use ast_manip::make_ast::mk;
+use ast_manip::util::{PatternSymbol, macro_name};
 use command::CommandState;
 use driver;
-use fold::Fold;
-use make_ast::mk;
-use util;
+use matcher::Bindings;
 use util::IntoSymbol;
-use util::PatternSymbol;
 use util::Lone;
 
 
-struct SubstFolder<'a, 'hir: 'a, 'gcx: 'tcx + 'a, 'tcx: 'a> {
+struct SubstFolder<'a, 'tcx: 'a> {
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+    cx: &'a driver::Ctxt<'a, 'tcx>,
     bindings: &'a Bindings,
 }
 
-impl<'a, 'hir, 'gcx, 'tcx> SubstFolder<'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
     fn named_marked_def_id(&self, name: Symbol, label: Symbol) -> Option<DefId> {
         let mut found = None;
 
@@ -82,7 +110,7 @@ impl<'a, 'hir, 'gcx, 'tcx> SubstFolder<'a, 'hir, 'gcx, 'tcx> {
     }
 }
 
-impl<'a, 'hir, 'gcx, 'tcx> Folder for SubstFolder<'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
     fn fold_ident(&mut self, i: Ident) -> Ident {
         // The `Ident` case is a bit different from the others.  If `fold_stmt` finds a non-`Stmt`
         // in `self.bindings`, it can ignore the problem and hope `fold_expr` or `fold_ident` will
@@ -115,7 +143,7 @@ impl<'a, 'hir, 'gcx, 'tcx> Folder for SubstFolder<'a, 'hir, 'gcx, 'tcx> {
         }
 
         if let ExprKind::Mac(ref mac) = e.node {
-            match &util::macro_name(&mac).as_str() as &str {
+            match &macro_name(&mac).as_str() as &str {
                 "def" => {
                     let path = self.get_def_path(&mac.node.tts);
                     return mk().path_expr(path);
@@ -141,7 +169,7 @@ impl<'a, 'hir, 'gcx, 'tcx> Folder for SubstFolder<'a, 'hir, 'gcx, 'tcx> {
         }
 
         if let TyKind::Mac(ref mac) = ty.node {
-            match &util::macro_name(&mac).as_str() as &str {
+            match &macro_name(&mac).as_str() as &str {
                 "def" => {
                     let path = self.get_def_path(&mac.node.tts);
                     return mk().path_ty(path);
@@ -223,6 +251,8 @@ subst_impl!(P<Pat>, fold_pat);
 subst_impl!(P<Ty>, fold_ty);
 subst_impl!(Stmt, fold_stmt);
 subst_impl!(P<Item>, fold_item);
+subst_impl!(ImplItem, fold_impl_item);
 
 multi_subst_impl!(Stmt, fold_stmt);
 multi_subst_impl!(P<Item>, fold_item);
+multi_subst_impl!(ImplItem, fold_impl_item);

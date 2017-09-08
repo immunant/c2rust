@@ -1,20 +1,15 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use rustc::hir::def_id::DefId;
-use rustc::ty::TypeVariants;
-use syntax::abi::Abi;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::codemap::Spanned;
-use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::util::small_vector::SmallVector;
 
 use api::*;
+use ast_manip::fn_edit::{visit_fns, FnKind};
 use command::{CommandState, Registry};
 use driver::{self, Phase};
-use fn_edit::{visit_fns, FnKind};
-use fold::Fold;
 use transform::Transform;
 
 
@@ -33,7 +28,7 @@ use transform::Transform;
 pub struct LinkFuncs;
 
 impl Transform for LinkFuncs {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
         // (1) Find all `#[no_mangle]` or `#[export_name=...]` functions, and index them by symbol.
         // (2) Find all extern fns, and index them by def_id.
         let mut symbol_to_def = HashMap::new();
@@ -100,7 +95,7 @@ impl Transform for LinkFuncs {
 pub struct LinkIncompleteTypes;
 
 impl Transform for LinkIncompleteTypes {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
         // (1) Find complete and incomplete type definitions, and index them by name.  The concept
         // of "incomplete types" doesn't exist in Rust, but Corrode translates incomplete C types
         // as zero-variant enums.

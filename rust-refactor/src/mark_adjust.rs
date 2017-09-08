@@ -8,23 +8,22 @@ use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
 
 use api::DriverCtxtExt;
+use ast_manip::{Visit, visit_nodes};
 use command::CommandState;
 use command::{Registry, DriverCommand};
 use driver::{self, Phase};
 use util::HirDefExt;
 use util::IntoSymbol;
-use visit::Visit;
-use visit_node::visit_nodes;
 
 
 /// Find all nodes that refer to marked nodes.
-struct MarkUseVisitor<'a, 'hir: 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> {
+struct MarkUseVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+    cx: &'a driver::Ctxt<'a, 'tcx>,
     label: Symbol,
 }
 
-impl<'a, 'hir, 'gcx, 'tcx> MarkUseVisitor<'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'tcx> MarkUseVisitor<'a, 'tcx> {
     fn handle_qpath(&mut self, use_id: NodeId, hp: &hir::QPath) {
         match hp {
             &hir::QPath::Resolved(_, ref path) => {
@@ -50,7 +49,7 @@ impl<'a, 'hir, 'gcx, 'tcx> MarkUseVisitor<'a, 'hir, 'gcx, 'tcx> {
     }
 }
 
-impl<'a, 'hir, 'gcx, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'hir, 'gcx, 'tcx> {
+impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
     // We currently handle exprs, pats, and tys.  There are more cases (see comment in
     // path_edit.rs), but this should be sufficient for now.
     fn visit_expr(&mut self, x: &'s Expr) {
@@ -195,9 +194,10 @@ pub fn find_field_uses<T: Visit>(target: &T,
                 }
             },
 
-            // TODO: ExprKind::Struct
-            // (This case is more complicated since we need to resolve the `Path` and also deal
-            // with the fact that `Field` (field uses) do not have NodeIds.)
+            // TODO: Also handle uses in ExprKind::Struct.  (This case is more complicated since we
+            // need to resolve the `Struct` node's `Path`.  Also, the `Field` node type
+            // (representing field uses) does not have a NodeId of its own, so it's unclear where
+            // we should put the resulting mark.)
 
             _ => {},
         }
@@ -259,7 +259,7 @@ pub fn rename_marks(st: &CommandState, old: Symbol, new: Symbol) {
 }
 
 
-pub fn mark_pub_in_mod(st: &CommandState, cx: &driver::Ctxt, label: &str) {
+pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
     let label = label.into_symbol();
 
     // Use a preorder traversal.  This results in recursively marking public descendants of any
@@ -331,8 +331,8 @@ pub fn register_commands(reg: &mut Registry) {
 
     reg.register("mark_pub_in_mod", |args| {
         let label = args[0].clone();
-        Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
-            mark_pub_in_mod(st, cx, &label);
+        Box::new(DriverCommand::new(Phase::Phase2, move |st, _cx| {
+            mark_pub_in_mod(st, &label);
         }))
     });
 }

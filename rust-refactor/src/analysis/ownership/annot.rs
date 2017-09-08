@@ -7,24 +7,23 @@ use std::str::FromStr;
 
 use arena::DroplessArena;
 use rustc::hir::def_id::DefId;
-use rustc::ty::TyCtxt;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
 
+use ast_manip::Visit;
 use command::CommandState;
 use driver;
 use type_map::{self, TypeSource};
-use visit::Visit;
 
-use super::{LTy, LFnSig, ConcretePerm, Perm, Var};
-use super::constraint::ConstraintSet;
+use super::{LTy, LFnSig, ConcretePerm, PermVar, Var};
+use super::constraint::{ConstraintSet, Perm};
 use super::context::Ctxt;
 
 
-struct LTySource<'c, 'a: 'c, 'gcx: 'tcx, 'tcx: 'a> {
-    cx: &'c mut Ctxt<'a, 'gcx, 'tcx>,
+struct LTySource<'c, 'a: 'c, 'tcx: 'a> {
+    cx: &'c mut Ctxt<'a, 'tcx>,
 
     // XXX - bit of a hack.  We keep the def id of the last call to `fn_sig`, and refer to that
     // inside the map_types callback to figure out the right scope for any SigVars in the type.
@@ -33,16 +32,16 @@ struct LTySource<'c, 'a: 'c, 'gcx: 'tcx, 'tcx: 'a> {
     last_sig_did: Option<DefId>,
 }
 
-impl<'c, 'a, 'gcx, 'tcx> TypeSource for LTySource<'c, 'a, 'gcx, 'tcx> {
+impl<'c, 'a, 'tcx> TypeSource for LTySource<'c, 'a, 'tcx> {
     type Type = LTy<'tcx>;
     type Signature = LFnSig<'tcx>;
 
-    fn expr_type(&mut self, e: &ast::Expr) -> Option<Self::Type> {
+    fn expr_type(&mut self, _e: &ast::Expr) -> Option<Self::Type> {
         self.last_sig_did = None;
         None
     }
 
-    fn pat_type(&mut self, p: &ast::Pat) -> Option<Self::Type> {
+    fn pat_type(&mut self, _p: &ast::Pat) -> Option<Self::Type> {
         self.last_sig_did = None;
         None
     }
@@ -57,30 +56,16 @@ impl<'c, 'a, 'gcx, 'tcx> TypeSource for LTySource<'c, 'a, 'gcx, 'tcx> {
         Some(self.cx.variant_func_sig(did))
     }
 
-    fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> {
+    fn closure_sig(&mut self, _did: DefId) -> Option<Self::Signature> {
         self.last_sig_did = None;
-        // TODO - should probably support this
+        // TODO - Need to implement this properly if we ever add closure support.
         None
     }
 }
 
-impl<'tcx> type_map::Signature<LTy<'tcx>> for LFnSig<'tcx> {
-    fn num_inputs(&self) -> usize {
-        self.inputs.len()
-    }
-
-    fn input(&self, idx: usize) -> LTy<'tcx> {
-        self.inputs[idx]
-    }
-
-    fn output(&self) -> LTy<'tcx> {
-        self.output
-    }
-}
-
-pub fn handle_marks<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
-                                          st: &CommandState,
-                                          dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) {
+pub fn handle_marks<'a, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
+                              st: &CommandState,
+                              dcx: &driver::Ctxt<'a, 'tcx>) {
     let mut fixed_vars = Vec::new();
     {
         let source = LTySource {
@@ -114,15 +99,17 @@ pub fn handle_marks<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
     for (p, did, min_perm) in fixed_vars {
         eprintln!("FIXED VAR: {:?} = {:?} (in {:?})", p, min_perm, did);
         match p {
-            Perm::StaticVar(v) => {
+            PermVar::Static(v) => {
                 let new_perm = cmp::max(min_perm, cx.static_assign[v]);
                 cx.static_assign[v] = new_perm;
             },
-            Perm::SigVar(_) => {
+            PermVar::Sig(_) => {
                 let did = did.expect("expected DefId for SigVar");
-                cx.variant_summ(did).1.inst_cset.add(Perm::Concrete(min_perm), p);
+                cx.variant_summ(did).1.inst_cset
+                    .add(Perm::Concrete(min_perm),
+                         Perm::var(p));
             }
-            _ => panic!("expected StaticVar or SigVar, but got {:?}", p),
+            _ => panic!("expected Static or Sig var, but got {:?}", p),
         }
     }
 }
@@ -172,9 +159,9 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 }
 
-pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
-                                          st: &CommandState,
-                                          dcx: &driver::Ctxt<'a, 'hir, 'gcx, 'tcx>) {
+pub fn handle_attrs<'a, 'hir, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
+                                    st: &CommandState,
+                                    dcx: &driver::Ctxt<'a, 'tcx>) {
 
     let krate = st.krate();
     let mut v = AttrVisitor {
@@ -223,7 +210,7 @@ pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
                         eprintln!("  {:?} <= {:?}", a, b);
                     }
 
-                    let (func, var) = cx.variant_summ(def_id);
+                    let (func, _var) = cx.variant_summ(def_id);
                     assert!(!func.cset_provided,
                             "{} can only have one #[ownership_constraint] annotation (on {:?})",
                             if is_variant { "variant set" } else { "function" }, def_id);
@@ -236,7 +223,7 @@ pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
                         .unwrap_or_else(|e| panic!("bad #[ownership_mono] for {:?}: {}",
                                                    def_id, e));
 
-                    let (func, variant, mono) = cx.add_mono(def_id);
+                    let (func, _variant, mono) = cx.add_mono(def_id);
                     mono.assign = assign;
                     mono.suffix = suffix;
                     func.monos_provided = true;
@@ -250,7 +237,7 @@ pub fn handle_attrs<'a, 'hir, 'gcx, 'tcx>(cx: &mut Ctxt<'a, 'gcx, 'tcx>,
                     let ty = cx.static_ty(def_id);
                     let mut iter = assign.into_iter();
                     ty.for_each_label(&mut |p| {
-                        if let Some(Perm::StaticVar(v)) = *p {
+                        if let Some(PermVar::Static(v)) = *p {
                             let c = iter.next().unwrap_or_else(|| panic!("not enough permissions \
                                         in #[ownership_static] for {:?}", def_id));
                             cx.static_assign[v] = c;
@@ -302,7 +289,6 @@ fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
 fn parse_ownership_constraints<'tcx>(meta: &ast::MetaItem,
                                      arena: &'tcx DroplessArena)
                                      -> Result<ConstraintSet<'tcx>, &'static str> {
-    use syntax::ast::*;
     let args = meta_item_list(meta)?;
 
     let mut cset = ConstraintSet::new();
@@ -328,7 +314,6 @@ fn parse_ownership_constraints<'tcx>(meta: &ast::MetaItem,
 fn parse_perm<'tcx>(meta: &ast::MetaItem,
                     arena: &'tcx DroplessArena)
                     -> Result<Perm<'tcx>, &'static str> {
-    use syntax::ast::*;
     if meta.check_name("min") {
         let args = meta_item_list(meta)?;
         if args.len() == 0 {

@@ -1,5 +1,5 @@
-/// Helper definitions for constructing a mapping between `ast::Ty`s and some higher-level
-/// representation (usually `ty::Ty` or `LabeledTy`).
+//! Helper definitions for constructing a mapping between `ast::Ty`s and some higher-level
+//! representation (usually `ty::Ty` or `LabeledTy`).
 
 use std::fmt::Debug;
 
@@ -7,9 +7,14 @@ use rustc::hir;
 use rustc::hir::def_id::DefId;
 use rustc::ty;
 use syntax::ast::*;
-use syntax::visit::{self, Visitor, FnKind};
+use syntax::visit::{self, Visitor};
 
 
+/// Provider of a higher-level type representation.
+///
+/// Methods can return `None` under any circumstances to indicate that the provider can't find a
+/// type for the node.  In that case, `map_types` will simply skip visiting the corresponding node.
+#[allow(unused)]
 pub trait TypeSource {
     type Type: Type;
     type Signature: Signature<Self::Type>;
@@ -34,15 +39,19 @@ pub trait Type: Copy + Debug {
 }
 
 
-pub struct TypeMapVisitor<'a, 'hir: 'a, S, F> {
-    hir_map: &'a hir::map::Map<'hir>,
+pub struct TypeMapVisitor<'a, 'tcx: 'a, S, F> {
+    hir_map: &'a hir::map::Map<'tcx>,
     source: S,
     callback: F,
 }
 
-impl<'a, 'hir, S, F> TypeMapVisitor<'a, 'hir, S, F>
+impl<'a, 'tcx, S, F> TypeMapVisitor<'a, 'tcx, S, F>
         where S: TypeSource,
               F: FnMut(&mut S, &Ty, S::Type) {
+    /// Record a matching `S::Type` and `ast::Ty`.  If the two representations have matching
+    /// shapes, this method recurses into their corresponding subtrees and records those as well.
+    /// (The structures may not match if the `ast::Ty` refers to a type alias which has been
+    /// expanded, for example - then `ast_ty` looks like `Alias` while `ty` is `Foo<Bar, Baz>`.)
     fn record_ty(&mut self, ty: S::Type, ast_ty: &Ty) {
         use rustc::ty::TypeVariants::*;
 
@@ -110,12 +119,12 @@ impl<'a, 'hir, S, F> TypeMapVisitor<'a, 'hir, S, F>
         self.record_function_ret_ty(sig.output(), &decl.output);
     }
 
-    fn record_path_ty(&mut self, ty: S::Type, qself: Option<&QSelf>, path: &Path) {
-        // TODO: this is yet another Path case, which makes it a bit difficult to handle.
+    fn record_path_ty(&mut self, _ty: S::Type, _qself: Option<&QSelf>, _path: &Path) {
+        // TODO: See comments below for reasons why `Path`-related cases are difficult to handle.
     }
 }
 
-impl<'ast, 'a, 'hir, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'hir, S, F>
+impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
         where S: TypeSource,
               F: FnMut(&mut S, &Ty, S::Type) {
 
@@ -143,39 +152,20 @@ impl<'ast, 'a, 'hir, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'hir, S, F>
                 }
             },
 
-            ExprKind::Path(ref qself, ref path) => {
-                // TODO: this case is hard
-                // TODO: needs to handle cases with ABPD.infer_types == true.
-                // It's not clear how to get the number of elements of `substs` to consume in
-                // those cases.
-                /*
-                // This case gets a little hairy.  `hir::Ty`s can appear in several different
-                // places inside a `QPath`, but for typechecking they all get stored in a
-                // single linear `[ty::Ty]`.
-                eprintln!(" ** SUBSTS: {:?} (for {:?})", substs, qpath);
-                let mut substs = substs.iter().filter_map(|s| s.as_type());
-
-                match *qpath {
-                    QPath::Resolved(ref self_ty, ref path) => {
-                        if let Some(ref self_ty) = *self_ty {
-                            self.handle_ty(self_ty, substs.next().unwrap());
-                        }
-                        for seg in &path.segments {
-                            self.handle_path_params(&seg.parameters, &mut substs);
-                        }
-                    },
-                    QPath::TypeRelative(ref base_ty, ref seg) => {
-                        self.handle_ty(base_ty, substs.next().unwrap());
-                        self.handle_path_params(&seg.parameters, &mut substs);
-                    },
-                }
-
-                assert!(substs.next().is_none());
-                */
+            ExprKind::Path(ref _qself, ref _path) => {
+                // TODO: Handle `ast::Ty`s appearing inside path segments' `parameters` field.
+                // In cases where `parameters` is `Some`, the expr type should be `TyAdt`,
+                // `TyFnDef`, or some other type with `substs`.  The `parameters` correspond to the
+                // `substs`, though the specific relationship is non-obvious.  The easy case is a
+                // path expr `T::<Foo>::f::<Bar>` with substs `[Foo, Bar]`.  The harder cases are
+                // those where some of the types are omitted - `T::<Foo>::f`, `T::f::<Bar>`, and
+                // `T::f` may all have substs `[Foo, Bar]` (based on inference results), and it's
+                // not obvious how many of the `substs` correspond to each position in the path.
             },
 
-            ExprKind::Struct(ref path, _, _) => {
-                // TODO: another path case
+            ExprKind::Struct(ref _path, _, _) => {
+                // TODO: Another case like `ExprKind::Path` - the path in the `Struct` can have
+                // type parameters given explicitly.
             },
 
             _ => {},
@@ -189,9 +179,10 @@ impl<'ast, 'a, 'hir, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'hir, S, F>
             if let Some(ty) = self.source.pat_type(&l.pat) {
                 self.record_ty(ty, ast_ty);
             }
-            // TODO: if pat_type returns None, we may be able to recover by recursing on the Pat
-            // and the Ty.  This would help with use from MIR, where we can easily obtain types for
-            // individual locals, but not for pats.
+            // TODO: If pat_type returns None, we may be able to recover by recursing on the Pat
+            // and the Ty (for example, when both are tuples, as in `let (x, y): (T, U)`).  This
+            // would help with use from MIR, where we can easily obtain types for individual
+            // locals, but not for pats.
         }
 
         visit::walk_local(self, l);
@@ -317,15 +308,16 @@ impl<'ast, 'a, 'hir, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'hir, S, F>
                     self.record_ty(ty, ast_ty);
                 }
             },
-
-            _ => {},
         }
 
         visit::walk_foreign_item(self, i);
     }
 }
 
-pub fn map_types<'a, 'hir, S, F>(hir_map: &'a hir::map::Map<'hir>,
+/// Try to match up `ast::Ty` nodes in the source with higher-level type representations provided
+/// by `source`.  The callback will be passed matching pairs of AST-level and higher-level type
+/// representations.
+pub fn map_types<'a, 'tcx, S, F>(hir_map: &'a hir::map::Map<'tcx>,
                                  source: S,
                                  krate: &Crate,
                                  callback: F)

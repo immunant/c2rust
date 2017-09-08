@@ -30,7 +30,7 @@ use syntax::codemap::Span;
 
 use analysis::labeled_ty::LabeledTyCtxt;
 
-use super::{Var, LTy, LFnSig, ConcretePerm};
+use super::{Var, FnSig, LTy, LFnSig, ConcretePerm, PermVar};
 use super::constraint::ConstraintSet;
 use super::constraint::Perm;
 
@@ -97,9 +97,9 @@ pub struct Instantiation {
 }
 
 
-pub struct Ctxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
-    pub tcx: TyCtxt<'a, 'gcx, 'tcx>,
-    pub lcx: LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
+pub struct Ctxt<'a, 'tcx: 'a> {
+    pub tcx: TyCtxt<'a, 'tcx, 'tcx>,
+    pub lcx: LabeledTyCtxt<'tcx, Option<PermVar>>,
     pub arena: &'tcx DroplessArena,
 
     /// Types of non-`fn` definitions.  This includes `static`s and also `struct` fields.
@@ -114,9 +114,9 @@ pub struct Ctxt<'a, 'gcx: 'tcx, 'tcx: 'a> {
     monos: HashMap<(DefId, usize), MonoSumm>,
 }
 
-impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
-    pub fn new(tcx: TyCtxt<'a, 'gcx, 'tcx>,
-               arena: &'tcx DroplessArena) -> Ctxt<'a, 'gcx, 'tcx> {
+impl<'a, 'tcx> Ctxt<'a, 'tcx> {
+    pub fn new(tcx: TyCtxt<'a, 'tcx, 'tcx>,
+               arena: &'tcx DroplessArena) -> Ctxt<'a, 'tcx> {
         Ctxt {
             tcx: tcx,
             lcx: LabeledTyCtxt::new(arena),
@@ -140,7 +140,7 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
                         TypeVariants::TyRef(_, _) |
                         TypeVariants::TyRawPtr(_) => {
                             let v = assign.push(ConcretePerm::Read);
-                            Some(Perm::StaticVar(v))
+                            Some(PermVar::Static(v))
                         },
                         _ => None,
                     }
@@ -153,8 +153,8 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
 
     fn func_summ_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
                           variants: &mut HashMap<DefId, VariantSumm<'tcx>>,
-                          tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                          lcx: &mut LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
+                          tcx: TyCtxt<'a, 'tcx, 'tcx>,
+                          lcx: &mut LabeledTyCtxt<'tcx, Option<PermVar>>,
                           did: DefId) -> &'b mut FuncSumm<'tcx> {
         match funcs.entry(did) {
             Entry::Vacant(e) => {
@@ -170,13 +170,13 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
                             TypeVariants::TyRawPtr(_) => {
                                 let v = Var(counter);
                                 counter += 1;
-                                Some(Perm::SigVar(v))
+                                Some(PermVar::Sig(v))
                             },
                             _ => None,
                         }
                     };
 
-                    LFnSig {
+                    FnSig {
                         inputs: lcx.label_slice(sig.0.inputs(), &mut f),
                         output: lcx.label(sig.0.output(), &mut f),
                     }
@@ -242,14 +242,10 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
         }
     }
 
-    pub fn func_sig(&mut self, did: DefId) -> LFnSig<'tcx> {
-        self.func_summ(did).sig
-    }
-
     fn add_variant_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
                             variants: &'b mut HashMap<DefId, VariantSumm<'tcx>>,
-                            tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                            lcx: &mut LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
+                            tcx: TyCtxt<'a, 'tcx, 'tcx>,
+                            lcx: &mut LabeledTyCtxt<'tcx, Option<PermVar>>,
                             func_did: DefId,
                             variant_did: DefId)
                             -> (&'b mut FuncSumm<'tcx>,
@@ -313,8 +309,8 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
 
     fn variant_summ_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
                              variants: &'b mut HashMap<DefId, VariantSumm<'tcx>>,
-                             tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                             lcx: &mut LabeledTyCtxt<'tcx, Option<Perm<'tcx>>>,
+                             tcx: TyCtxt<'a, 'tcx, 'tcx>,
+                             lcx: &mut LabeledTyCtxt<'tcx, Option<PermVar>>,
                              variant_did: DefId)
                             -> (&'b mut FuncSumm<'tcx>,
                                 &'b mut VariantSumm<'tcx>) {
@@ -386,42 +382,23 @@ impl<'a, 'gcx, 'tcx> Ctxt<'a, 'gcx, 'tcx> {
         }
     }
 
-    pub fn check_invariants(&self) {
-        for (&func_id, func) in self.funcs.iter() {
-            let num_v = func.variant_ids.len();
-            let num_m = func.num_monos;
-            assert!((num_v == 0 && num_m == 0) || num_v == 1 || num_v == num_m,
-                    "bad variant/mono combination: {} variants, {} monos (for {:?})",
-                    num_v, num_m, func_id);
-
-            for &variant_id in &func.variant_ids {
-                let variant = self.variants.get(&variant_id)
-                    .unwrap_or_else(|| panic!("{:?} references nonexistent variant {:?}",
-                                              func_id, variant_id));
-                assert!(variant.func_id == func_id,
-                        "variant {:?} of function {:?} has wrong func_id {:?}",
-                        variant_id, variant.func_id, func_id);
-            }
-        }
-    }
-
 
     pub fn min_perm(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) -> Perm<'tcx> {
         Perm::min(a, b, self.arena)
     }
 }
 
-fn preload_constraints<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                                       def_id: DefId,
-                                       sig: LFnSig<'tcx>) -> Option<ConstraintSet<'tcx>> {
+fn preload_constraints<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
+                                 def_id: DefId,
+                                 sig: LFnSig<'tcx>) -> Option<ConstraintSet<'tcx>> {
     let mut cset = ConstraintSet::new();
 
     let path = tcx.absolute_item_path_str(def_id);
     match &path as &str {
         "core::ptr::<impl *const T>::offset" |
         "core::ptr::<impl *mut T>::offset" => {
-            cset.add(sig.output.label.unwrap(),
-                     sig.inputs[0].label.unwrap());
+            cset.add(Perm::var(sig.output.label.unwrap()),
+                     Perm::var(sig.inputs[0].label.unwrap()));
         },
 
         _ => return None,

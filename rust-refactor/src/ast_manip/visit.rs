@@ -1,10 +1,11 @@
+//! `Visit` trait for AST types that can be visited.
 use syntax;
 use syntax::ast::*;
 use syntax::visit::Visitor;
 
 
 
-/// A trait for AST nodes that can be folded over.
+/// A trait for AST nodes that can accept a `Visitor`.
 pub trait Visit {
     fn visit<'ast, V: Visitor<'ast>>(&'ast self, v: &mut V);
 }
@@ -17,8 +18,8 @@ impl Visit for Crate {
 }
 
 
-// This macro takes as input the definition of `syntax::fold::Folder` as it appears the libsyntax
-// docs, and emits a `Fold` impl for each method it finds.
+// This macro takes as input the definition of `syntax::visit::Visitor` as it appears the libsyntax
+// docs, and emits a `Visit` impl for each method it finds.
 macro_rules! gen_visit_impls {
     (
         pub trait Visitor<'ast>: Sized {
@@ -39,7 +40,7 @@ macro_rules! gen_visit_impls {
 
 
 gen_visit_impls! {
-    // Copy-pasted from the syntax::fold::Folder docs.  Some methods take multiple arguments, so
+    // Copy-pasted from the syntax::visit::Visitor docs.  Some methods take multiple arguments, so
     // they are commented out in this copy.
     pub trait Visitor<'ast>: Sized {
         //fn visit_name(&mut self, _span: Span, _name: Name) { ... }

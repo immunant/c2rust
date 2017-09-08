@@ -53,7 +53,7 @@ impl<'a> Stream<'a> {
         }
     }
 
-    fn last(mut self) -> PResult<()> {
+    fn last(self) -> PResult<()> {
         if let Some(tt) = self.peek() {
             fail!("expected end of input, but got {:?}", tt);
         } else {
@@ -179,7 +179,7 @@ impl<'a> Stream<'a> {
             Ok(Filter::Not(Box::new(filt)))
         } else if let Some(mut inner) = self.maybe_parens() {
             let filt = inner.filter()?;
-            inner.last();
+            inner.last()?;
             Ok(filt)
         } else {
             match &self.name()?.as_str() as &str {
@@ -325,28 +325,28 @@ impl<'a> Stream<'a> {
                 "any_child" => {
                     let mut inner = self.parens()?;
                     let filt = inner.filter()?;
-                    inner.last();
+                    inner.last()?;
                     Ok(Filter::AnyChild(Box::new(filt)))
                 },
 
                 "every_child" => {
                     let mut inner = self.parens()?;
                     let filt = inner.filter()?;
-                    inner.last();
+                    inner.last()?;
                     Ok(Filter::AllChild(Box::new(filt)))
                 },
 
                 "any_desc" => {
                     let mut inner = self.parens()?;
                     let filt = inner.filter()?;
-                    inner.last();
+                    inner.last()?;
                     Ok(Filter::AnyDesc(Box::new(filt)))
                 },
 
                 "every_desc" => {
                     let mut inner = self.parens()?;
                     let filt = inner.filter()?;
-                    inner.last();
+                    inner.last()?;
                     Ok(Filter::AllDesc(Box::new(filt)))
                 },
 

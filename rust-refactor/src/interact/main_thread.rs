@@ -1,3 +1,6 @@
+//! The main thread for interactive mode.
+//!
+//! The main thread runs a loop receiving and processing client requests.
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
@@ -12,21 +15,15 @@ use syntax::codemap::Span;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
-use command::{self, CommandState};
+use ast_manip::{GetNodeId, GetSpan, Visit};
+use command::{self, RefactorState};
 use driver;
-use file_rewrite;
-use get_node_id::GetNodeId;
-use get_span::GetSpan;
 use interact::{ToServer, ToClient};
 use interact::WrapSender;
 use interact::{plain_backend, vim8_backend};
 use interact::worker::{self, ToWorker};
 use pick_node;
-use rewrite;
-use script::RefactorState;
-use span_fix;
 use util::IntoSymbol;
-use visit::Visit;
 
 use super::MarkInfo;
 
@@ -333,7 +330,7 @@ impl<'ast> Visitor<'ast> for CollectSpanVisitor {
         visit::walk_ty(self, x)
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, id: NodeId) {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
         for arg in &fd.inputs {
             if self.ids.contains(&arg.id) {
                 self.spans.insert(arg.id, arg.pat.span.to(arg.ty.span));

@@ -1,12 +1,14 @@
+//! Helper function for performing a fold that transforms only one type of AST node.
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
 use syntax::util::move_map::MoveMap;
 
-use fold::Fold;
+use ast_manip::Fold;
 
 
+/// Trait for AST node types that can be rewritten with a fold.
 pub trait FoldNode: Fold + Sized {
     fn fold_nodes<T, F>(target: T, callback: F) -> <T as Fold>::Result
         where T: Fold,
@@ -46,11 +48,21 @@ macro_rules! gen_fold_node_impl {
     };
 }
 
+// If you want to use `fold_nodes` with more node types, add more `gen_fold_node_impl!` invocations
+// below.
 gen_fold_node_impl! {
+    // The node type.
     node = P<Expr>;
+    // A name to use for the `Folder` that rewrites this node type.
     folder = ExprNodeFolder;
+    // The signature of the `Folder` method for this node type.
     fn fold_expr(&mut self, e: P<Expr>) -> P<Expr>;
+    // An expression that invokes the default `Folder` behavior for this node type.  Can refer to
+    // the node being folded using the argument name from the signature above.
     walk = e.map(|e| fold::noop_fold_expr(e, self));
+    // An expression that computes the application of `self.callback` to the result of `walk`.
+    // This will be more complicated if folding this node type returns a sequence of nodes (see
+    // below for examples).
     map = (self.callback)(e);
 }
 
@@ -110,7 +122,7 @@ gen_fold_node_impl! {
     map = (self.callback)(nm);
 }
 
-/// Fold over nodes of the callback's argument type within `target`.  This function performs a
+/// Rewrite nodes of the callback's argument type within `target`.  This function performs a
 /// postorder traversal.
 pub fn fold_nodes<N, T, F>(target: T, callback: F) -> <T as Fold>::Result
         where N: FoldNode,

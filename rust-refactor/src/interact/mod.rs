@@ -1,3 +1,4 @@
+//! Interactive mode, for running `idiomize` as a backend for editor plugins.
 use std::marker::PhantomData;
 use std::sync::mpsc::{Sender, SendError};
 
@@ -11,6 +12,7 @@ pub use self::main_thread::interact_command;
 
 #[derive(Clone, Debug)]
 pub enum ToServer {
+    /// Add a mark with label `label` to a node of the indicated `kind` at `file`, `line`, `col`.
     AddMark {
         file: String,
         line: u32,
@@ -19,14 +21,17 @@ pub enum ToServer {
         label: String,
     },
 
+    /// Remove all marks from node `id`.
     RemoveMark {
         id: usize,
     },
 
+    /// Get details about the marks on node `id`.
     GetMarkInfo {
         id: usize,
     },
 
+    /// Get a list of all marks.
     GetMarkList,
 
 
@@ -44,6 +49,7 @@ pub enum ToServer {
     },
 
 
+    /// Run a refactoring command.
     RunCommand {
         name: String,
         args: Vec<String>,
@@ -92,6 +98,8 @@ pub enum ToClient {
 }
 
 
+/// Like `std::sync::mpsc::Sender`, but transforms sent data with a function before sending it to
+/// the receiving thread.
 #[derive(Clone, Debug)]
 pub struct WrapSender<T, U, F> where F: Fn(T) -> U {
     inner: Sender<U>,

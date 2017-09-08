@@ -9,10 +9,11 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use syntax::ast::NodeId;
 
-use idiomize::{file_rewrite, driver, transform, span_fix, rewrite, pick_node};
-use idiomize::{interact, command, mark_adjust, plugin, select, analysis, script};
+use idiomize::{
+    driver, transform, rewrite, pick_node, interact, command, mark_adjust,
+    plugin, select, analysis, print_spans, reflect
+};
 
-use idiomize::command::CommandState;
 use idiomize::util::IntoSymbol;
 
 
@@ -39,7 +40,7 @@ struct Command {
 }
 
 struct Options {
-    rewrite_mode: file_rewrite::RewriteMode,
+    rewrite_mode: rewrite::files::RewriteMode,
     commands: Vec<Command>,
     rustc_args: Vec<String>,
     cursors: Vec<Cursor>,
@@ -124,15 +125,15 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     // Parse rewrite mode
     let rewrite_mode = match m.opt_str("rewrite-mode") {
         Some(mode_str) => match &mode_str as &str {
-            "inplace" => file_rewrite::RewriteMode::InPlace,
-            "alongside" => file_rewrite::RewriteMode::Alongside,
-            "print" => file_rewrite::RewriteMode::Print,
+            "inplace" => rewrite::files::RewriteMode::InPlace,
+            "alongside" => rewrite::files::RewriteMode::Alongside,
+            "print" => rewrite::files::RewriteMode::Print,
             _ => {
                 info!("Unknown rewrite mode: {}", mode_str);
                 return None;
             },
         },
-        None => file_rewrite::RewriteMode::Print,
+        None => rewrite::files::RewriteMode::Print,
     };
 
     // Parse cursors
@@ -285,7 +286,7 @@ fn main() {
     }
 
     if opts.cursors.len() > 0 {
-        driver::with_crate_and_context(&opts.rustc_args, driver::Phase::Phase2, |krate, cx| {
+        driver::run_compiler(&opts.rustc_args, None, driver::Phase::Phase2, |krate, cx| {
             for c in &opts.cursors {
                 let kind_result = c.kind.clone().map_or(Ok(pick_node::NodeKind::Any),
                                                         |s| pick_node::NodeKind::from_str(&s));
@@ -318,11 +319,13 @@ fn main() {
 
 
     let mut cmd_reg = command::Registry::new();
-    command::register_misc_commands(&mut cmd_reg);
-    transform::register_transform_commands(&mut cmd_reg);
+    transform::register_commands(&mut cmd_reg);
     mark_adjust::register_commands(&mut cmd_reg);
+    pick_node::register_commands(&mut cmd_reg);
+    print_spans::register_commands(&mut cmd_reg);
     select::register_commands(&mut cmd_reg);
     analysis::register_commands(&mut cmd_reg);
+    reflect::register_commands(&mut cmd_reg);
 
     plugin::load_plugins(&opts.plugin_dirs, &opts.plugins, &mut cmd_reg);
 
@@ -331,10 +334,10 @@ fn main() {
                                    opts.rustc_args,
                                    cmd_reg);
     } else {
-        let mut state = script::RefactorState::new(opts.rustc_args, cmd_reg, marks);
+        let mut state = command::RefactorState::new(opts.rustc_args, cmd_reg, marks);
         let rewrite_mode = opts.rewrite_mode;
         state.rewrite_handler(move |fm, s| {
-            file_rewrite::rewrite_mode_callback(rewrite_mode, fm, s);
+            rewrite::files::rewrite_mode_callback(rewrite_mode, fm, s);
         });
 
         for cmd in opts.commands.clone() {

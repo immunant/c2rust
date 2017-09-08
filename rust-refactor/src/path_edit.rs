@@ -1,24 +1,27 @@
+//! `fold_resolved_paths` function, for rewriting paths based on their resolved `DefId`.
 use rustc::hir;
 use rustc::hir::def_id::DefId;
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 
+use ast_manip::Fold;
 use driver;
-use fold::Fold;
 use util::HirDefExt;
 
 
 
 
-struct ResolvedPathFolder<'a, 'hir: 'a, 'gcx: 'tcx, 'tcx: 'a, F>
+struct ResolvedPathFolder<'a, 'tcx: 'a, F>
         where F: FnMut(NodeId, Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
-    cx: &'a driver::Ctxt<'a, 'hir, 'gcx, 'tcx>,
+    cx: &'a driver::Ctxt<'a, 'tcx>,
     callback: F,
 }
 
-impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
+impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
         where F: FnMut(NodeId, Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
+    // Some helper functions that get both the AST node and its HIR equivalent.
+
     pub fn alter_pat_path(&mut self, p: P<Pat>, hir: &hir::Pat) -> P<Pat> {
         match hir.node {
             hir::PatKind::Struct(ref qpath, _, _) => p.map(|p| {
@@ -118,6 +121,9 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
         }
     }
 
+
+    /// Common implementation of path rewriting.  If the resolved `DefId` of the path is available,
+    /// rewrites the path using `self.callback`.  Otherwise the path is left unchanged.
     fn handle_qpath(&mut self,
                     id: NodeId,
                     qself: Option<QSelf>,
@@ -133,6 +139,10 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
             },
 
             hir::QPath::TypeRelative(ref hir_ty, _) => {
+                // If the path is type-relative, then no `DefId` is available for the whole path.
+                // However, we might still be able to do something with the base `Ty`.  Pop off the
+                // last segment, which is the name of the associated item, and recursively try to
+                // process the `Ty`.
                 let mut path = path;
                 let tail = path.segments.pop().unwrap();
                 let (new_qself, mut new_path) = self.handle_relative_path(id, qself, path, hir_ty);
@@ -142,6 +152,7 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
         }
     }
 
+    /// Handle the base of a type-relative path.
     fn handle_relative_path(&mut self,
                             id: NodeId,
                             qself: Option<QSelf>,
@@ -157,7 +168,7 @@ impl<'a, 'hir, 'gcx, 'tcx, F> ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
     }
 }
 
-impl<'a, 'hir, 'gcx, 'tcx, F> Folder for ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx, F>
+impl<'a, 'tcx, F> Folder for ResolvedPathFolder<'a, 'tcx, F>
         where F: FnMut(NodeId, Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
     // There are several places in the AST that a `Path` can appear:
     //  - PatKind::Ident (single-element paths only)
@@ -219,6 +230,7 @@ impl<'a, 'hir, 'gcx, 'tcx, F> Folder for ResolvedPathFolder<'a, 'hir, 'gcx, 'tcx
     }
 }
 
+/// Rewrite paths, with access to their resolved `DefId`s in the callback.
 pub fn fold_resolved_paths<T, F>(target: T, cx: &driver::Ctxt, mut callback: F) -> <T as Fold>::Result
         where T: Fold,
               F: FnMut(Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {
@@ -229,6 +241,8 @@ pub fn fold_resolved_paths<T, F>(target: T, cx: &driver::Ctxt, mut callback: F) 
     target.fold(&mut f)
 }
 
+/// Like `fold_resolved_paths`, but also passes the `NodeId` of the AST node containing the path.
+/// (Paths don't have `NodeId`s of their own.)
 pub fn fold_resolved_paths_with_id<T, F>(target: T, cx: &driver::Ctxt, callback: F) -> <T as Fold>::Result
         where T: Fold,
               F: FnMut(NodeId, Option<QSelf>, Path, DefId) -> (Option<QSelf>, Path) {

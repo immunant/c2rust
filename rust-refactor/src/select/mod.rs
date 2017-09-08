@@ -1,4 +1,11 @@
-use std::collections::{HashMap, HashSet};
+//! A simple scripting language for marking a set of nodes.
+//!
+//! This module provides a command `select <label> <script>`. The script is a sequence of commands,
+//! which manipulate a set of nodes called the "current selection".  When the script completes, the
+//! `select` command marks all nodes in the current selection with the given label.  See the docs
+//! for `SelectOp` for descriptions of the available commands.
+
+use std::collections::HashSet;
 use regex::Regex;
 use syntax::ast::*;
 use syntax::ptr::P;
@@ -18,6 +25,8 @@ pub mod visitor;
 
 
 
+/// Commands of the select scripting language.  In the concrete syntax, each command ends with a
+/// semicolon.
 #[derive(Clone, Debug)]
 pub enum SelectOp {
     /// `marked(l)`: Select all nodes that are already marked with label `l`.
@@ -45,6 +54,7 @@ pub enum SelectOp {
 }
 
 
+/// Filters used in certain script commands.
 #[derive(Clone, Debug)]
 pub enum Filter {
     /// `kind(k)`: The node is of kind `k`.  See `pick_node::NodeKind` for a list of supported node
@@ -96,11 +106,7 @@ pub enum AnyPattern {
 }
 
 
-/// The `select` command runs a script to select and mark a set of nodes.
-///
-/// `select` scripts manipulate a set of nodes, called the "selection".  The selection starts out
-/// empty, and various commands can add or remove nodes from the set.  When the script finishes,
-/// all nodes in the selection will be marked with the given label.
+/// Implementation of the `select` command.  See module docs for more details.
 pub fn run_select<S: IntoSymbol>(st: &CommandState,
                                  cx: &driver::Ctxt,
                                  ops: &[SelectOp],

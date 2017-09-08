@@ -6,7 +6,6 @@ use rustc::hir;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast::*;
-use syntax::attr;
 use syntax::codemap::DUMMY_SP;
 use syntax::fold::{self, Folder};
 use syntax::parse::token::{self, Token, DelimToken};
@@ -14,7 +13,6 @@ use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream, Delimited};
 use syntax::util::small_vector::SmallVector;
-use syntax::util::move_map::MoveMap;
 
 use analysis::labeled_ty::LabeledTyCtxt;
 use analysis::ownership::{self, ConcretePerm, Var, PTy};
@@ -22,9 +20,7 @@ use analysis::ownership::constraint::{ConstraintSet, Perm};
 use api::*;
 use command::{CommandState, Registry, DriverCommand};
 use driver::{self, Phase};
-use fold::Fold;
-use make_ast::mk;
-use type_map::{self, TypeSource};
+use type_map;
 use util::IntoSymbol;
 
 pub fn register_commands(reg: &mut Registry) {
@@ -44,7 +40,7 @@ pub fn register_commands(reg: &mut Registry) {
         }))
     });
 
-    reg.register("ownership_mark_pointers", |args| {
+    reg.register("ownership_mark_pointers", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             do_mark_pointers(st, cx);
         }))
@@ -56,14 +52,14 @@ fn do_annotate(st: &CommandState,
                label: Symbol) {
     let analysis = ownership::analyze(&st, &cx);
 
-    struct AnnotateFolder<'a, 'hir: 'a, 'tcx> {
+    struct AnnotateFolder<'a, 'tcx: 'a> {
         label: Symbol,
         ana: ownership::AnalysisResult<'tcx>,
-        hir_map: &'a hir::map::Map<'hir>,
+        hir_map: &'a hir::map::Map<'tcx>,
         st: &'a CommandState,
     }
 
-    impl<'a, 'hir, 'tcx> AnnotateFolder<'a, 'hir, 'tcx> {
+    impl<'a, 'tcx> AnnotateFolder<'a, 'tcx> {
         fn static_attr_for(&self, id: NodeId) -> Option<Attribute> {
             self.hir_map.opt_local_def_id(id)
                 .and_then(|def_id| self.ana.statics.get(&def_id))
@@ -110,7 +106,7 @@ fn do_annotate(st: &CommandState,
         }
     }
 
-    impl<'a, 'hir, 'tcx> Folder for AnnotateFolder<'a, 'hir, 'tcx> {
+    impl<'a, 'tcx> Folder for AnnotateFolder<'a, 'tcx> {
         fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
             if !self.st.marked(i.id, self.label) {
                 return fold::noop_fold_item(i, self);
@@ -303,7 +299,7 @@ fn do_split_variants(st: &CommandState,
         // (1) Duplicate marked fns with `mono` attrs to produce multiple variants.  We rewrite
         // references to other fns during this process, since afterward it would be difficult to
         // distinguish the different copies - their bodies have identical spans and `NodeId`s.
-        let krate = ::fn_edit::fold_fns_multi(krate, |fl| {
+        let krate = fold_fns_multi(krate, |fl| {
             if !st.marked(fl.id, label) {
                 return SmallVector::one(fl);
             }
@@ -476,7 +472,6 @@ fn do_mark_pointers(st: &CommandState, cx: &driver::Ctxt) {
     struct AnalysisTypeSource<'a, 'tcx: 'a> {
         ana: &'a ownership::AnalysisResult<'tcx>,
         arena: &'tcx DroplessArena,
-        st: &'a CommandState,
     }
 
     impl<'a, 'tcx> type_map::TypeSource for AnalysisTypeSource<'a, 'tcx> {
@@ -502,7 +497,7 @@ fn do_mark_pointers(st: &CommandState, cx: &driver::Ctxt) {
 
             let mr = &self.ana.monos[&(vr.func_id, mono_idx)];
 
-            let mut lcx = LabeledTyCtxt::new(self.arena);
+            let lcx = LabeledTyCtxt::new(self.arena);
 
             let sig = {
                 let mut f = |l: &Option<_>| {
@@ -521,20 +516,19 @@ fn do_mark_pointers(st: &CommandState, cx: &driver::Ctxt) {
             Some(sig)
         }
 
-        fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> { None }
+        fn closure_sig(&mut self, _did: DefId) -> Option<Self::Signature> { None }
     }
 
     let source = AnalysisTypeSource {
         ana: &ana,
         arena: cx.ty_arena(),
-        st: st,
     };
 
     let s_ref = "ref".into_symbol();
     let s_mut = "mut".into_symbol();
     let s_box = "box".into_symbol();
 
-    type_map::map_types(cx.hir_map(), source, &st.krate(), |source, ast_ty, lty| {
+    type_map::map_types(cx.hir_map(), source, &st.krate(), |_source, ast_ty, lty| {
         let p = match lty.label {
             Some(x) => x,
             None => return,

@@ -1,9 +1,10 @@
+//! Functions for rewriting sequences of stmts or items, using `Cursor<T>`.
 use syntax::ast::{Block, Stmt, Item, Mod};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 
-use cursor::Cursor;
-use fold::Fold;
+use ast_manip::Fold;
+use util::cursor::Cursor;
 
 
 struct BlockFolder<F: FnMut(&mut Cursor<Stmt>)> {
@@ -22,6 +23,7 @@ impl<F: FnMut(&mut Cursor<Stmt>)> Folder for BlockFolder<F> {
     }
 }
 
+/// Rewrite every block by manipulating a `Cursor` for the `Stmt`s inside.
 pub fn fold_blocks<T, F>(target: T, callback: F) -> <T as Fold>::Result
         where T: Fold,
               F: FnMut(&mut Cursor<Stmt>) {
@@ -42,6 +44,7 @@ impl<F: FnMut(&mut Cursor<P<Item>>)> Folder for ModuleFolder<F> {
     }
 }
 
+/// Rewrite every module by manipulating a `Cursor` for the `Item`s inside.
 pub fn fold_modules<T, F>(target: T, callback: F) -> <T as Fold>::Result
         where T: Fold,
               F: FnMut(&mut Cursor<P<Item>>) {

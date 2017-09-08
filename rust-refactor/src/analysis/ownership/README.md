@@ -200,11 +200,239 @@ variables from functions' constraint sets.
 
 ## Monomorphization
 
+The first part of the analysis infers a permission polymorphic signature for
+each function, but Rust does not support this form of polymorphism.  To make
+the analysis results applicable to actual Rust code, the analysis must provide
+enough information to allow *monomorphizing* functions - that is, producing
+multiple copies of each function with different concrete instantiations of the
+permission variables.
+
+Monomorphization begins by collecting all "useful" monomorphic signatures for
+each function.  The analysis identifies all signature variables that appear in
+output positions (in the return type, or behind a pointer whose permission
+value is always at least `WRITE`), then enumerates all assignments to those
+output variables that are allowed by the function's constraints.  For each
+combination of outputs, it finds the least-restrictive valid assignment of
+permissions to the remaining (input) variables.  For example, given this
+function:
+
+    fn element_ptr /* <s0, s1> */ (arr: /* s0 */ *mut Array,
+                                   idx: usize)
+                                   -> /* s1 */ *mut i32
+        /* where s1 <= s0 */;
+
+The only output variable is `s1`, which appears in the return type.  The
+monomorphization step will try each assignment to `s1` that is allowed by the
+constraints.  Since the only constraint is `s1 <= s0`, `READ`, `WRITE`, and
+`MOVE` are all valid.  For each of these, it finds the least restrictive
+assignment to `s0` that is compatible with the assignment to `s0`.  For
+example, when `s1 = MOVE`, only `s0 = MOVE` is valid, so the analysis records
+`MOVE, MOVE` as a monomorphization for the `element_ptr` function.  When `s1 =
+WRITE`, both `s0 = MOVE` and `s0 = WRITE` satisfy the constraints, but `s0 =
+WRITE` is less restrictive - it allows calling the function with both `MOVE`
+and `WRITE` pointers, while setting `s0 = MOVE` allows only `MOVE` pointers.
+So the analysis records arguments `WRITE, WRITE` as another monomorphization,
+and by similar logic records `READ, READ` as the final one.
+
+The next step of monomorphization is to select a monomorphic variant to call at
+each callsite of each monomorphized function.  Given a pair of functions:
+
+    fn f /* <s0, s1> */ (arr: /* s0 */ *mut Array) -> /* s1 */ *mut i32
+            /* where s1 <= s0 */ {
+        g(arr)
+    }
+
+    fn g /* <s0, s1> */ (arr: /* s0 */ *mut Array) -> /* s1 */ *mut i32
+            /* where s1 <= s0 */ {
+        ...
+    }
+
+For pointer  permissions to line up properly, a monomorphic variant of `f`
+specialized to `READ, READ` will need to call a variant of `g` also specialized
+to `READ, READ`, and a variant of `f` specialized to `WRITE, WRITE` will need
+to call a `WRITE, WRITE` variant of `g`.
+
+To infer this information, the analysis separately considers each monomorphic
+signature of each function.  It performs a backtracking search to select, for
+each callsite in the function, a monomorphic signature of the callee, such that
+all of the calling function's constraints are satisfied, including constraints
+setting the caller's sig variables equal to the concrete permissions in the
+monomorphic signature.  The table of callee monomorphization selections is
+included in the analysis results so that callsites can be updated appropriately
+when splitting functions for monomorphization.
+
 
 # Annotations
+
+The ownership analysis supports annotations to specify the permission types of
+functions and struct fields.  These annotations serve two purposes.  First, the
+user can annotate functions to provide custom signatures for functions on which
+the analysis produces inaccurate results.  Signatures provided this way will be
+propagated throughout the analysis, so manually correcting a single
+wrongly-inferred function can fix the inference results for its callers as
+well.  Second, the ownership system provides an `ownership_annotate` command
+that adds annotations to functions reflecting their inferred signatures.  The
+user can then read the generated annotations to check the analysis results,
+and optionally edit them to improve precision, before proceeding with further
+code transformations.
+
+There are four annotation types currently supported by the ownership system.
+
+* `#[ownership_static(<perms>)]` provides concrete permission values for all
+  pointer types in a static declaration or struct field.  The `perms` argument
+  is a comma-separated sequence of concrete permission tokens (`READ`, `WRITE`,
+  `MOVE`).  The given permission values will be applied to the pointers in the
+  static or field type, following a preorder traversal of the type.  For
+  example:
+
+      struct S {
+          #[ownership_static(READ, WRITE, MOVE)]
+          f: *mut (*mut u8, *mut u16)
+      }
+
+  Here the outermost pointer will be given permission `READ`, the pointer to
+  `u8` will be given permission WRITE, and the pointer to `u16` will be given
+  permission `MOVE`.
+
+* `#[ownership_constraints(<constraints>)` provides the signature constraints
+  for the annotated function, overriding polymorphic signature inference.  The
+  argument `constraints` is a comma-separated sequence of constraints of the
+  form `le(<perm1>, <perm2>)`, each representing a single constraint `perm1 <=
+  perm2`.  The permissions used in each constraint may be any combination of
+  concrete permissions (`READ`, `WRITE`, `MOVE`), permission variables (`_0`,
+  `_1`, ...), or expressions of the form `min(p1, p2, ...)`.  (The permission
+  syntax is limited by the requirement for compatibility with Rust's attribute
+  syntax.)
+
+  The permission variables used in constraints always refer to signature
+  variables of the annotated function.  A signature variable is introduced for
+  each pointer type constructor in the function's signature, and they are
+  numbered according to a preorder traversal of each node in the argument and
+  return types of the function.  This example shows location of each variable
+  in a simple signature:
+
+      fn get_err(arr: /* _0 */ *mut Array,
+                 element_out: /* _1 */ *mut /* _2 */ *mut i32)
+                 -> /* _3 */ *const c_char;
+
+* `#[ownership_mono(<suffix>, <perms>)]` supplies a monomorphic signature to be
+  used for the annotated function.  The `suffix` argument is a quoted string,
+  which (if non-empty) will be used when splitting polymorphic functions into
+  monomorphic variants to construct a name for the monomorphized copy of the
+  function.  The `perms` argument is a comma-separated list of concrete
+  permission tokens, giving the permissions to be used in the function
+  signature in this monomorphization.
+
+  The `ownership_mono` annotation can appear multiple times on a single
+  function to provide multiple monomorphic signatures.  However, if it appears
+  at all, monomorphization inference will be completely overriden for the
+  annotated function, and only the provided signatures will be used in callee
+  argument inference and later transformations.
+
+  Example:
+
+      #[ownership_mono("mut", WRITE, WRITE)]
+      #[ownership_mono("", READ, READ)]
+      fn first(arr: *mut Array) -> *mut i32;
+
+  This function will have two monomorphic variants, one where both pointers'
+  permission values are `WRITE` and one where both are `READ`.  When the
+  `ownership_split_variants` command splits the function into its monomorphic
+  variants, the `WRITE` variant will be named `first_mut` and the `READ`
+  variant will keep the original name `first`.
+
+* `#[ownership_variant_of(<name>)]` is used to combine source-level functions
+  into variant groups.  See the section on variant groups for details.
 
 
 # Variant Groups
 
+The "variant group" mechanism allows combining several source-level functions
+into a single logical function for purposes of the analysis.  This is useful
+for combining a function that was previously split into monomorphic variants
+back into a single logical function.  This allows for a sort of "modular
+refactoring", in which the user focuses on one module at a time, analyzing,
+annotating, and splitting variants in only that module before moving on to
+another.
 
-# The "collection hack"
+As a concrete example of the purpose of this feature, consider the following
+code:
+
+    fn f(arr: *mut Array) -> *mut i32 { ... g(arr) ... }
+
+    fn g(arr: *mut Array) -> *mut i32 { ... }
+
+The user works first on (the module containing) `g`, resulting in splitting `g`
+into two variants:
+
+    fn f(arr: *mut Array) -> *mut i32 { ... g_mut(arr) ... }
+
+    fn g(arr: *mut Array) -> *mut i32 { ... }
+    fn g_mut(arr: *mut Array) -> *mut i32 { ... }
+
+Note that, because there is still only one variant of `f`, the transformation
+must choose a single `g` variant for `f` to call.  In this case, it chose the
+`g_mut` variant.
+
+Later, the user works on `f`.  If `g` and `g_mut` are treated as separate
+functions, then there are two possibilities.  First, if the constraints on
+`g_mut` are set up (or inferred) to require `WRITE` permission for `arr`, then
+only a `WRITE` variant of `f` will be generated.  Or second, if the constraints
+are relaxed, then `f` may get both `READ` and `WRITE` variants, but both will
+(wrongly) call `g_mut`.
+
+Treating `g` and `g_mut` as two variants of a single function allows the
+analysis to switch between `g` variants in the different variants of `f`,
+resulting in correct code like the following:
+
+    fn f(arr: *mut Array) -> *mut i32 { ... g(arr) ... }
+    fn f_mut(arr: *mut Array) -> *mut i32 { ... g_mut(arr) ... }
+
+    fn g(arr: *mut Array) -> *mut i32 { ... }
+    fn g_mut(arr: *mut Array) -> *mut i32 { ... }
+
+The `ownership_split_variants` automatically annotates the split functions so
+they will be combined into a variant group during further analysis.  Variant
+groups can also be constructed manually using the
+`#[ownership_variant_of(<name>)]` annotation, where `name` is an arbitrary
+quoted string.  All source-level functions bearing an `ownership_variant_of`
+annotation with the same `name` will form a single variant group, which will be
+treated as a single function throughout the analysis.  However, signature
+inference for the variants themselves is not well supported.  Thus, each
+variant must have an `ownership_mono` annotation, and exactly one function in
+each variant group must also have an `ownership_constraints` annotation.
+Together, these provide enough information that inference is not required.
+Note that unlike non-variant functions, variants may not have multiple
+`ownership_mono` annotations, as each variant is expected to correspond to a
+single monomorphization of the original function.
+
+
+# The "Collection Hack"
+
+The analysis as described so far tries to mimic the Rust ownership model as
+implemented in the Rust compiler.  However, collection data structures in Rust
+often use unsafe code to bypass parts of the ownership model.  A particularly
+common case is in removal methods, such as `Vec::pop`:
+
+    impl<T> Vec<T> {
+        fn pop(&mut self) -> Option<T> { ... }
+    }
+
+This method moves a `T` out of `self`'s internal storage, but only takes `self`
+by mutable reference.  Under the "normal" rules, this is impossible, and the
+analysis described above will infer a stricter signature for the raw pointer
+equivalent:
+
+    fn pop(this: /* MOVE */ *mut Vec) -> /* MOVE */ *mut c_void { ... }
+
+The analysis as implemented includes a small adjustment (the "collection hack")
+to let it infer the correct signature for such methods.
+
+The collection hack is this: when handling a pointer assignment, instead of
+constraining the path permission of the RHS to be at least the permission of
+the LHS, we constraint it to be at least `min(lhs_perm, WRITE)`.  The result is
+that it becomes possible to move a `MOVE` pointer out of a struct when only
+`WRITE` permission is available for the pointer to that struct.  Then the
+analysis will infer the correct type for `pop`:
+
+    fn pop(this: /* WRITE */ *mut Vec) -> /* MOVE */ *mut c_void { ... }

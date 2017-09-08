@@ -1,11 +1,15 @@
+//! Simple plugin loading infrastructure.
+//!
+//! See PLUGINS.txt for more details on plugins.
 use std::ffi::CString;
 use std::mem;
 use std::path::Path;
 use libc::{dlopen, dlsym, RTLD_LAZY};
-use libc::c_char;
 
 use command::Registry;
 
+/// Find the named plugins in the search path, and pass `reg` to each of their `register_commands`
+/// entry points.
 pub fn load_plugins(search_path: &[String], plugins: &[String], reg: &mut Registry) {
     let sym_name = CString::new("register_commands").unwrap();
 

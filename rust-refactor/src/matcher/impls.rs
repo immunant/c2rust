@@ -1,3 +1,4 @@
+//! `TryMatch` impls, to support the `matcher` module.
 use std::rc::Rc;
 use syntax::ast::*;
 use syntax::abi::Abi;
@@ -6,8 +7,8 @@ use syntax::ext::hygiene::SyntaxContext;
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
 
+use ast_manip::util::macro_name;
 use matcher::{self, TryMatch, MatchCtxt};
-use util;
 
 
 impl TryMatch for Ident {
@@ -43,7 +44,7 @@ impl TryMatch for Expr {
         }
 
         if let ExprKind::Mac(ref mac) = self.node {
-            let name = util::macro_name(mac);
+            let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(&mac.node.tts,
                                           |p| p.parse_expr().map(|p| p.unwrap()),
@@ -67,7 +68,7 @@ impl TryMatch for Pat {
         }
 
         if let PatKind::Mac(ref mac) = self.node {
-            let name = util::macro_name(mac);
+            let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(&mac.node.tts,
                                           |p| p.parse_pat().map(|p| p.unwrap()),
@@ -90,7 +91,7 @@ impl TryMatch for Ty {
         }
 
         if let TyKind::Mac(ref mac) = self.node {
-            let name = util::macro_name(mac);
+            let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(&mac.node.tts,
                                           |p| p.parse_ty().map(|p| p.unwrap()),

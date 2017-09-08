@@ -1,3 +1,4 @@
+//! Worklist algorithm for finding fixed points.
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
@@ -6,6 +7,7 @@ use std::mem;
 use std::ops::Index;
 
 
+/// Map of dependency relationships using internal mutability.
 struct DepMap<K> {
     map: UnsafeCell<HashMap<K, HashSet<K>>>,
 }
@@ -18,6 +20,7 @@ impl<K> DepMap<K>
         }
     }
 
+    /// Record a new dependency edge, pointing from `src` to `dest`.
     fn insert(&self, src: K, dest: K) {
         info!(" * record dep: {:?} -> {:?}", src, dest);
         unsafe {
@@ -25,6 +28,7 @@ impl<K> DepMap<K>
         }
     }
 
+    /// Iterate over the targets of edges starting at `key`.
     fn for_each<F: FnMut(&K)>(&self, key: &K, mut func: F) {
         unsafe {
             let map = &*self.map.get();
@@ -38,6 +42,9 @@ impl<K> DepMap<K>
 }
 
 
+/// Worklist algorithm context.  `K` is the type of keys, which identify nodes, and `V` is the type
+/// of value associated with each node.  Allows indexing to retrieve data from other nodes.
+/// Accessing the current node's data triggers a panic.
 pub struct Ctxt<'a, K: 'a, V: 'a> {
     rev_deps: &'a DepMap<K>,
     data: &'a HashMap<K, UnsafeCell<V>>,
@@ -79,6 +86,13 @@ impl<'a, K, V> Index<K> for Ctxt<'a, K, V>
     }
 }
 
+/// Run an iterative worklist algorithm to find a fixed point.  `data` should be pre-initialized
+/// with data for each relevant key.  This function will call `update(k, v, ctx)` for each node.
+/// Use `ctx[other_k]` to obtain data for other nodes.
+///
+/// TODO: Right now, indexing panics if `other_k == k`.  If we change the signature of `update` to
+/// `FnMut(K, &Ctxt<K, V>) -> V` then we can avoid this issue.  Being unable to mutate the value
+/// in-place might be slightly less efficient for some use cases, though.
 pub fn iterate<K, V, F>(data: &mut HashMap<K, V>, mut update: F)
         where K: Hash+Eq+Clone+::std::fmt::Debug,
               F: FnMut(K, &mut V, &Ctxt<K, V>) -> bool {

@@ -17,3 +17,7 @@ ena = "0.7.3"
 [lib]
 name = "idiomize"
 path = "src/lib.rs"
+
+[[bin]]
+name = "idiomize"
+doc = false

@@ -26,6 +26,32 @@ Attributes:
 - `#[rewrite=ignore]`: On a type, ignore nodes of this type; on a field, ignore
   the contents of this field.  Perform no side effects and always return
   success, in both `rewrite_recycled` and `rewrite_fresh`.
+
+
+- `#[prec_contains_expr]`: When entering a child of this node type, by default
+  set expr precedence to `RESET` (don't parenthesize).  The expr precedence can
+  be overridden using other `prec` attributes on specific fields.
+
+- `#[prec=name]`: When entering this child node, set expr precedence to
+  `PREC_[name]` (if `name` is all-caps) or to the precedence of
+  `AssocOp::[name]` (otherwise).
+
+- `#[prec_inc=name]`: Like `#[prec=name]`, but add 1 to the precedence value
+  so that the subexpr will be parenthesized if it has the same type as the
+  current expr.
+
+- `#[prec_first=name]`: On a field containing a sequence, use a different
+  precedence value for the first element of the sequence.  `name` is parsed the
+  same as in `#[prec=name]`.
+
+- `#[prec_left_of_binop=op]`, `#[prec_right_of_binop=op]`: Use the appropriate
+  precedence value for the left/right operand of a binary operator.  The
+  argument `op` should be the name of the field containing the binop.
+
+- `#[prec_special=kind]`: Apply special parenthesization rules, in addition to
+  normal precedence.  `kind` should be the name of a `rewrite::ExprPrec`
+  variant: `Cond` for exprs in conditional-like positions, or `Callee` for
+  exprs in function-call callee positions.
 '''
 
 from datetime import datetime
@@ -35,20 +61,50 @@ from ast import *
 from util import *
 
 
-@linewise
-def do_record_step_kind(se, v, f):
-    kind = f.attrs.get('rewrite_step_kind') or \
-            v.attrs.get('rewrite_default_step_kind') or \
-            se.attrs.get('rewrite_default_step_kind') or \
-            'Other'
-
-    if kind in ('Other', 'StmtExpr'):
-        yield 'rcx.push_step(VisitStep::%s);' % kind
+def prec_name_to_expr(name, inc):
+    inc_str = '' if not inc else ' + 1'
+    if name.isupper():
+        # If all letters are uppercase, it's a precedence constant from
+        # syntax::util::parser
+        return 'parser::PREC_%s%s' % (name, inc_str)
     else:
-        yield 'rcx.push_step(VisitStep::%s(P(self.clone())));' % kind
+        # If some letters are lowercase, it's an AssocOp variant name.
+        return 'parser::AssocOp::%s.precedence() as i8%s' % (name, inc_str)
+
+def field_prec_expr(f, first):
+    # First, figure out the "normal" precedence expression.
+    prec_val = 'parser::PREC_RESET'
+
+    prec = f.attrs.get('prec')
+    if prec:
+        prec_val = prec_name_to_expr(prec, False)
+
+    prec_inc = f.attrs.get('prec_inc')
+    if prec_inc:
+        prec_val = prec_name_to_expr(prec_inc, True)
+
+    left_of = f.attrs.get('prec_left_of_binop')
+    if left_of:
+        # Refer to `op1` instead of `op`, to get the binop as it appear in the
+        # new AST.
+        prec_val = 'binop_left_prec(%s1)' % left_of
+
+    right_of = f.attrs.get('prec_right_of_binop')
+    if right_of:
+        prec_val = 'binop_right_prec(%s1)' % right_of
+
+    prec_first = f.attrs.get('prec_first')
+    if first and prec_first:
+        prec_val = prec_name_to_expr(prec_first, False)
+
+    # Now apply `prec_special`, if present
+    ctor = f.attrs.get('prec_special', 'Normal')
+    return 'ExprPrec::%s(%s)' % (ctor, prec_val)
 
 @linewise
 def do_recycled_match(se, target1, target2):
+    contains_expr = 'prec_contains_expr' in se.attrs
+
     yield 'match (%s, %s) {' % (target1, target2)
     for v, path in variants_paths(se):
         yield '  (&%s,' % struct_pattern(v, path, '1')
@@ -57,11 +113,27 @@ def do_recycled_match(se, target1, target2):
             if f.attrs.get('rewrite') == 'ignore':
                 continue
             yield '    ({'
-            yield indent(do_record_step_kind(se, v, f), '      ')
-            yield '      let ok = Rewrite::rewrite_recycled(%s1, %s2, rcx.borrow());' % \
-                    (f.name, f.name)
-            yield '      rcx.pop_step();'
-            yield '      ok'
+
+            if 'prec_first' in f.attrs:
+                yield '      let old = rcx.replace_expr_prec(%s);' % \
+                        field_prec_expr(f, True)
+                yield '      let fail = Rewrite::rewrite_recycled(&%s1[0], &%s2[0], ' \
+                        'rcx.borrow());' % (f.name, f.name)
+                yield '      rcx.replace_expr_prec(%s);' % field_prec_expr(f, False)
+                yield '      let fail = fail || Rewrite::rewrite_recycled(&%s1[1..], &%s2[1..], ' \
+                        'rcx.borrow());' % (f.name, f.name)
+                yield '      rcx.replace_expr_prec(old);'
+                yield '      fail'
+            else:
+                if contains_expr:
+                    yield '      let old = rcx.replace_expr_prec(%s);' % \
+                            field_prec_expr(f, False)
+                yield '      let fail = Rewrite::rewrite_recycled(%s1, %s2, rcx.borrow());' % \
+                        (f.name, f.name)
+                if contains_expr:
+                    yield '      rcx.replace_expr_prec(old);'
+                yield '      fail'
+
             yield '    }) ||'
         yield '    false'
         yield '  }'
@@ -108,6 +180,8 @@ def do_recycled_body(d):
 
 @linewise
 def do_fresh_match(se, target1, target2):
+    contains_expr = 'prec_contains_expr' in se.attrs
+
     yield 'match (%s, %s) {' % (target1, target2)
     for v, path in variants_paths(se):
         yield '  (&%s,' % struct_pattern(v, path, '1')
@@ -116,9 +190,24 @@ def do_fresh_match(se, target1, target2):
             if f.attrs.get('rewrite') == 'ignore':
                 continue
             yield '    {'
-            yield indent(do_record_step_kind(se, v, f), '      ')
-            yield '      Rewrite::rewrite_fresh(%s1, %s2, rcx.borrow());' % (f.name, f.name)
-            yield '      rcx.pop_step();'
+
+            if 'prec_first' in f.attrs:
+                yield '      let old = rcx.replace_expr_prec(%s);' % \
+                        field_prec_expr(f, True)
+                yield '      Rewrite::rewrite_fresh(&%s1[0], &%s2[0], rcx.borrow());' % \
+                        (f.name, f.name)
+                yield '      rcx.replace_expr_prec(%s);' % field_prec_expr(f, False)
+                yield '      Rewrite::rewrite_fresh(&%s1[1..], &%s2[1..], rcx.borrow());' % \
+                        (f.name, f.name)
+                yield '      rcx.replace_expr_prec(old);'
+            else:
+                if contains_expr:
+                    yield '      let old = rcx.replace_expr_prec(%s);' % \
+                            field_prec_expr(f, False)
+                yield '      Rewrite::rewrite_fresh(%s1, %s2, rcx.borrow());' % (f.name, f.name)
+                if contains_expr:
+                    yield '      rcx.replace_expr_prec(old);'
+
             yield '    }'
         yield '  }'
     yield '  (_, _) => panic!("new and reparsed AST differ ({:?}  !=  {:?})",'
@@ -161,11 +250,11 @@ def do_full_seq_item_impl(d):
     yield '  fn supported() -> bool { true }'
     yield ''
     yield '  fn get_span(&self) -> Span {'
-    yield '    <Self as get_span::GetSpan>::get_span(self)'
+    yield '    <Self as GetSpan>::get_span(self)'
     yield '  }'
     yield ''
     yield '  fn get_id(&self) -> NodeId {'
-    yield '    <Self as get_node_id::GetNodeId>::get_node_id(self)'
+    yield '    <Self as GetNodeId>::get_node_id(self)'
     yield '  }'
     yield ''
     yield '  fn splice_recycled_span(new: &Self, old_span: Span, rcx: RewriteCtxtRef) {'

@@ -23,9 +23,9 @@ impl S {
 }
 
 fn main() {
-    println!("1 + 1 = {}", f(1, ((1) as u8)));
-    println!("1 + 1 = {}", S::g(1, ((1) as u8)));
-    println!("1 + 1 = {}", S.h1(1, ((1) as u8)));
-    println!("1 + 1 = {}", S.h2(1, ((1) as u8)));
-    println!("1 + 1 = {}", S.h3(1, ((1) as u8)));
+    println!("1 + 1 = {}", f(1, 1 as u8));
+    println!("1 + 1 = {}", S::g(1, 1 as u8));
+    println!("1 + 1 = {}", S.h1(1, 1 as u8));
+    println!("1 + 1 = {}", S.h2(1, 1 as u8));
+    println!("1 + 1 = {}", S.h3(1, 1 as u8));
 }

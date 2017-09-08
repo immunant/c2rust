@@ -7,11 +7,13 @@ use std::collections::VecDeque;
 
 use arena::DroplessArena;
 
-use super::{ConcretePerm, Var};
+use super::{ConcretePerm, PermVar, Var};
 
 
+/// A permission expression.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Perm<'tcx> {
+    /// A concrete permission.
     Concrete(ConcretePerm),
 
     /// The minimum of some set of other permissions.  The slice should contain only atomic
@@ -20,23 +22,10 @@ pub enum Perm<'tcx> {
     // largest and smallest possible `Perm`s, and the largest/smallest `Min` is hard to get.
     Min(&'tcx [Perm<'tcx>]),
 
-    /// "Static" variables appear in the types of non-function items.  This includes `static` items
-    /// as well as `struct`s and other ADTs.  Constraints on static vars are inferred from their
-    /// usage inside functions.
+    // Wrappers around the various `PermVar`s.
     StaticVar(Var),
-
-    /// "Signature" variables appear in the signatures of function items.  Constraints on sig vars
-    /// are inferred from the body of the function in question.
     SigVar(Var),
-
-    /// "Instantiation" variables appear in the instantiations of function signatures inside other
-    /// functions.  They are left intact during the initial summary generation, to be filled in
-    /// during a later phase of the analysis.
     InstVar(Var),
-
-    /// "Local" variables appear in the types of temporaries.  Constraints on local vars are
-    /// produced while analyzing a function, and are simplified away when the function's constraint
-    /// generation is done.
     LocalVar(Var),
 }
 
@@ -53,6 +42,28 @@ impl<'tcx> Perm<'tcx> {
         Perm::Concrete(ConcretePerm::Move)
     }
 
+    pub fn var(pv: PermVar) -> Perm<'tcx> {
+        match pv {
+            PermVar::Static(v) => Perm::StaticVar(v),
+            PermVar::Sig(v) => Perm::SigVar(v),
+            PermVar::Inst(v) => Perm::InstVar(v),
+            PermVar::Local(v) => Perm::LocalVar(v),
+        }
+    }
+
+    pub fn as_var(&self) -> Option<PermVar> {
+        match *self {
+            Perm::Concrete(_) => None,
+            Perm::Min(_) => None,
+            Perm::StaticVar(v) => Some(PermVar::Static(v)),
+            Perm::SigVar(v) => Some(PermVar::Sig(v)),
+            Perm::InstVar(v) => Some(PermVar::Inst(v)),
+            Perm::LocalVar(v) => Some(PermVar::Local(v)),
+        }
+    }
+
+    /// Construct the minimum of two permissions.  This needs a reference to the arena, since it
+    /// may need to allocate a new slice for `Min`.
     pub fn min(a: Perm<'tcx>, b: Perm<'tcx>, arena: &'tcx DroplessArena) -> Perm<'tcx> {
         eprintln!("finding min of {:?} and {:?}", a, b);
         match (a, b) {
@@ -173,6 +184,7 @@ impl<'tcx> Perm<'tcx> {
         }
     }
 
+    /// Iterater over each atomic (non-`Min`) permission that appears in `self`.
     pub fn for_each_atom<F: FnMut(Perm<'tcx>)>(&self, callback: &mut F) {
         match *self {
             Perm::Min(ps) => {
@@ -186,12 +198,18 @@ impl<'tcx> Perm<'tcx> {
 }
 
 
+/// A set of constraints over permission expressions, of the form `p1 <= p2`.
+///
+/// Note that most of the more complex operations are imprecise (unsound) in certain cases
+/// involving `Min`.  Fortunately, these cases seem not to come up often in practice.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ConstraintSet<'tcx> {
     less: BTreeSet<(Perm<'tcx>, Perm<'tcx>)>,
     greater: BTreeSet<(Perm<'tcx>, Perm<'tcx>)>,
 }
 
+/// Return a pair of bounds, suitable for use with `BTreeSet::range`, covering all pairs of
+/// permissions whose first element is `p`.
 fn perm_range(p: Perm) -> (Bound<(Perm, Perm)>, Bound<(Perm, Perm)>) {
     (Bound::Included((p, Perm::read())),
      Bound::Included((p, Perm::LocalVar(Var(!0)))))
@@ -214,6 +232,7 @@ impl<'tcx> ConstraintSet<'tcx> {
         self.greater.insert((b, a));
     }
 
+    /// Add all constraints from `other` to `self`.
     pub fn import(&mut self, other: &ConstraintSet<'tcx>) {
         debug!("IMPORT {} constraints", other.less.len());
         self.less.extend(other.less.iter().cloned().filter(|&(ref a, ref b)| {
@@ -223,10 +242,12 @@ impl<'tcx> ConstraintSet<'tcx> {
         self.greater.extend(other.greater.iter().cloned());
     }
 
+    /// For each constraint in `other`, substitute all atomic permissions using the callback `f`,
+    /// then add the constraint to `self`.
     pub fn import_substituted<F>(&mut self,
                                  other: &ConstraintSet<'tcx>,
                                  arena: &'tcx DroplessArena,
-                                 mut f: F)
+                                 f: F)
             where F: Fn(Perm<'tcx>) -> Perm<'tcx> {
         debug!("IMPORT {} constraints (substituted)", other.less.len());
 
@@ -254,15 +275,18 @@ impl<'tcx> ConstraintSet<'tcx> {
         }
     }
 
+    /// Clone `self`, substituting each atomic permission using the callback `f`.
     pub fn clone_substituted<F>(&self,
                                 arena: &'tcx DroplessArena,
-                                mut f: F) -> ConstraintSet<'tcx>
+                                f: F) -> ConstraintSet<'tcx>
             where F: Fn(Perm<'tcx>) -> Perm<'tcx> {
         let mut new_cset = ConstraintSet::new();
         new_cset.import_substituted(self, arena, f);
         new_cset
     }
 
+    /// Run a breadth-first search over `map`, starting from `p`.  Runs callback `f` on each
+    /// encountered permission.
     fn traverse_constraints<F>(map: &BTreeSet<(Perm<'tcx>, Perm<'tcx>)>,
                                p: Perm<'tcx>,
                                mut f: F)
@@ -287,16 +311,29 @@ impl<'tcx> ConstraintSet<'tcx> {
         }
     }
 
-    pub fn for_each_less_than<F>(&self, p: Perm<'tcx>, mut f: F)
+    /// Iterate over all permissions less than `p`.
+    ///
+    /// This only traverses chains of `q <= p`, `r <= q`, etc.  It doesn't do anything intelligent
+    /// regarding `Min`.
+    pub fn for_each_less_than<F>(&self, p: Perm<'tcx>, f: F)
             where F: FnMut(Perm<'tcx>) -> bool {
         Self::traverse_constraints(&self.greater, p, f);
     }
 
-    pub fn for_each_greater_than<F>(&self, p: Perm<'tcx>, mut f: F)
+    /// Iterate over all permissions greater than `p`.
+    ///
+    /// This only traverses chains of `p <= q`, `q <= r`, etc.  It doesn't do anything intelligent
+    /// regarding `Min`.
+    pub fn for_each_greater_than<F>(&self, p: Perm<'tcx>, f: F)
             where F: FnMut(Perm<'tcx>) -> bool {
         Self::traverse_constraints(&self.less, p, f);
     }
 
+    /// Obtain a concrete lower bound on `p`.  Replacing `p` with any concrete permission less than
+    /// `lower_bound(p)` is guaranteed to make the constraint set unsatisfiable.
+    ///
+    /// This function may return a lower result than necessary due to imprecise reasoning about
+    /// `Min`.
     pub fn lower_bound(&self, p: Perm<'tcx>) -> ConcretePerm {
         match p {
             Perm::Concrete(p) => return p,
@@ -317,6 +354,11 @@ impl<'tcx> ConstraintSet<'tcx> {
         bound
     }
 
+    /// Obtain a concrete upper bound on `p`.  Replacing `p` with any concrete permission greater
+    /// than `upper_bound(p)` is guaranteed to make the constraint set unsatisfiable.
+    ///
+    /// This function may return a higher result than necessary due to imprecise reasoning about
+    /// `Min`.
     pub fn upper_bound(&self, p: Perm<'tcx>) -> ConcretePerm {
         match p {
             Perm::Concrete(p) => return p,
@@ -377,7 +419,7 @@ impl<'tcx> ConstraintSet<'tcx> {
 
         for &(a, b) in &self.less {
             let (a, a_any, a_all) = eval_rec(a, &eval);
-            let (b, b_any, b_all) = eval_rec(b, &eval);
+            let (b, _b_any, b_all) = eval_rec(b, &eval);
 
             if a <= b {
                 continue;
@@ -402,6 +444,7 @@ impl<'tcx> ConstraintSet<'tcx> {
         true
     }
 
+    /// Obtain an editing cursor for this constraint set.
     pub fn edit<'a>(&'a mut self) -> EditConstraintSet<'a, 'tcx> {
         let to_visit = self.less.iter().cloned().collect();
         EditConstraintSet {
@@ -410,6 +453,7 @@ impl<'tcx> ConstraintSet<'tcx> {
         }
     }
 
+    /// Iterate over each atomic permission in each constraint.
     pub fn for_each_perm<F: FnMut(Perm<'tcx>)>(&self, mut f: F) {
         for &(a, b) in &self.less {
             a.for_each_atom(&mut f);
@@ -418,13 +462,17 @@ impl<'tcx> ConstraintSet<'tcx> {
     }
 }
 
-/// Helper for adding/removing constraints while also iterating over them.
+/// Editing cursor, for visiting every constraint while adding/removing as you go.
 pub struct EditConstraintSet<'a, 'tcx: 'a> {
+    /// The underlying constraint set.
     cset: &'a mut ConstraintSet<'tcx>,
+
+    /// Queue of constraints that have yet to be visited.
     to_visit: VecDeque<(Perm<'tcx>, Perm<'tcx>)>,
 }
 
 impl<'a, 'tcx> EditConstraintSet<'a, 'tcx> {
+    /// Obtain the next constraint if there are any left to be processed.
     pub fn next(&mut self) -> Option<(Perm<'tcx>, Perm<'tcx>)> {
         while let Some((a, b)) = self.to_visit.pop_front() {
             if self.cset.less.contains(&(a, b)) {
@@ -434,6 +482,8 @@ impl<'a, 'tcx> EditConstraintSet<'a, 'tcx> {
         None
     }
 
+    /// Add a new constraint.  If the constraint didn't already exist, it will be queued up to be
+    /// visited in the future.
     pub fn add(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) {
         if self.cset.less.contains(&(a, b)) {
             return;
@@ -443,6 +493,7 @@ impl<'a, 'tcx> EditConstraintSet<'a, 'tcx> {
         self.to_visit.push_back((a, b));
     }
 
+    /// Add a constraint, but never queue it up for future visiting.
     pub fn add_no_visit(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) {
         if self.cset.less.contains(&(a, b)) {
             return;
@@ -451,6 +502,7 @@ impl<'a, 'tcx> EditConstraintSet<'a, 'tcx> {
         self.cset.greater.insert((b, a));
     }
 
+    /// Remove a constraint.
     pub fn remove(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) {
         self.cset.less.remove(&(a, b));
         self.cset.greater.remove(&(b, a));
@@ -460,6 +512,7 @@ impl<'a, 'tcx> EditConstraintSet<'a, 'tcx> {
 
 
 impl<'tcx> ConstraintSet<'tcx> {
+    /// Remove constraints that are obviously useless, like `READ <= p`.
     pub fn remove_useless(&mut self) {
         let mut edit = self.edit();
 
@@ -477,6 +530,7 @@ impl<'tcx> ConstraintSet<'tcx> {
         }
     }
 
+    /// Simplify `a <= min(b1, b2)` into `a <= b1, a <= b2`.
     pub fn expand_min_rhs(&mut self) {
         let mut edit = self.edit();
 
@@ -494,7 +548,8 @@ impl<'tcx> ConstraintSet<'tcx> {
         }
     }
 
-    /// Simplify `min(...) <= ...` constraints as much as possible.
+    /// Simplify `min(...) <= ...` constraints as much as possible.  Unlike `... <= min(...)`, it
+    /// may not always be possible to completely eliminate such constraints.
     pub fn simplify_min_lhs(&mut self, arena: &'tcx DroplessArena) {
         let mut edit = self.edit();
 
@@ -583,12 +638,19 @@ impl<'tcx> ConstraintSet<'tcx> {
         }
     }
 
+    /// Simplify the constraint set as best we can.
     pub fn simplify(&mut self, arena: &'tcx DroplessArena) {
         self.remove_useless();
         self.expand_min_rhs();
         self.simplify_min_lhs(arena);
     }
 
+    /// Eliminate constraints involving permissions on which `f(p)` returns false, while
+    /// maintaining relationships between other permissions.  For example, when removing `q` from
+    /// `{p <= q, q <= r}`, we would add `p <= r` before removing the other two constraints.
+    ///
+    /// This may be imprecise if a removed permission appears as an argument of a `Min`.  Simplify
+    /// the constraint set first to remove as many `Min`s as possible before using this function.
     pub fn retain_perms<F>(&mut self, arena: &'tcx DroplessArena, filter: F)
             where F: Fn(Perm<'tcx>) -> bool {
         // Collect all atomic permissions that appear in the constraint set.
@@ -620,9 +682,9 @@ impl<'tcx> ConstraintSet<'tcx> {
 
             // Perms less than `p`, and perms greater than `p`.
             let less = self.greater.range(perm_range(p))
-                .map(|&(a, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
+                .map(|&(_, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
             let greater = self.less.range(perm_range(p))
-                .map(|&(a, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
+                .map(|&(_, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
             debug!("    less: {:?}", less);
             debug!("    greater: {:?}", greater);
 
@@ -632,6 +694,9 @@ impl<'tcx> ConstraintSet<'tcx> {
                     continue;
                 }
 
+                // TODO: This may be more aggressive than necessary on `min(removed)` permissions.
+                // In those cases, we should delete just the removed permission(s) from the `Min`,
+                // and only delete the whole constraint if the `Min` winds up empty.
                 debug!("  remove {:?} <= {:?}", a, b);
                 edit.remove(a, b);
                 a.for_each_replacement(arena, p, &less, |a| {

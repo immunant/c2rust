@@ -1,3 +1,4 @@
+//! `AstEquiv` trait for checking equivalence of two ASTs.
 use std::rc::Rc;
 use syntax::abi::Abi;
 use syntax::ast::*;
@@ -87,4 +88,5 @@ impl<A: AstEquiv, B: AstEquiv, C: AstEquiv> AstEquiv for (A, B, C) {
 }
 
 
+// Implementations for specific AST types are auto-generated.
 include!(concat!(env!("OUT_DIR"), "/ast_equiv_gen.inc.rs"));

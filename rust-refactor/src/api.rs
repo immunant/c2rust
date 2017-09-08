@@ -1,36 +1,31 @@
+//! A variety of helpers for writing transformations.  Meant to be glob-imported by transform
+//! implementation modules.
 use rustc::hir;
 use rustc::hir::def_id::DefId;
-use rustc::session::Session;
 use rustc::ty::Ty;
-use rustc::ty::item_path::{ItemPathBuffer, RootMode};
-use syntax::ast::{self, TyKind};    // `Ty` refers to `rustc::ty::Ty`.
+use syntax::ast;    // Can't glob-import because `Ty` already refers to `rustc::ty::Ty`.
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
 use syntax::ast::{Expr, ExprKind};
-use syntax::ast::{Path, PathSegment, Ident};
-use syntax::codemap::DUMMY_SP;
-use syntax::symbol::keywords;
+use syntax::ast::{Path, QSelf};
 
-pub use matcher::MatchCtxt;
-pub use matcher::{fold_match, fold_match_with};
+// Reexports of various helpers
+pub use ast_manip::*;
+pub use ast_manip::fn_edit::{fold_fns, fold_fns_multi};
+pub use ast_manip::lr_expr::fold_expr_with_context;
+pub use ast_manip::make_ast::mk;
 pub use driver::{parse_expr, parse_pat, parse_ty, parse_stmts, parse_items};
-pub use subst::Subst;
-pub use bindings::Type as BindingType;
-pub use seq_edit::{fold_blocks, fold_modules};
-pub use make_ast::mk;
-pub use fold_node::fold_nodes;
-pub use visit_node::visit_nodes;
+pub use matcher::{MatchCtxt, Bindings, BindingType, Subst};
+pub use matcher::{fold_match, fold_match_with};
 pub use path_edit::{self, fold_resolved_paths, fold_resolved_paths_with_id};
-pub use fn_edit::{fold_fns, fold_fns_multi};
 
-use bindings::Bindings;
+use matcher::Pattern;
 use command::CommandState;
 use driver;
-use fold::Fold;
-use matcher::Pattern;
 use reflect;
 use util::HirDefExt;
-use util::IntoSymbol;
 
+
+/// Replace all instances of expression `pat` with expression `repl`.
 pub fn replace_expr<T: Fold>(st: &CommandState,
                              cx: &driver::Ctxt,
                              ast: T,
@@ -41,6 +36,7 @@ pub fn replace_expr<T: Fold>(st: &CommandState,
     fold_match(st, cx, pat, ast, |_, bnd| repl.clone().subst(st, cx, &bnd))
 }
 
+/// Replace all instances of the statement sequence `pat` with `repl`.
 pub fn replace_stmts<T: Fold>(st: &CommandState,
                               cx: &driver::Ctxt,
                               ast: T,
@@ -52,6 +48,8 @@ pub fn replace_stmts<T: Fold>(st: &CommandState,
 }
 
 
+/// Find the first place where `pattern` matches under initial context `init_mcx`, and return the
+/// resulting `Bindings`.
 pub fn find_first_with<P, T>(init_mcx: MatchCtxt,
                              pattern: P,
                              target: T) -> Option<Bindings>
@@ -66,6 +64,7 @@ pub fn find_first_with<P, T>(init_mcx: MatchCtxt,
     result
 }
 
+/// Find the first place where `pattern` matches, and return the resulting `Bindings`.
 pub fn find_first<P, T>(st: &CommandState,
                         cx: &driver::Ctxt,
                         pattern: P,
@@ -75,24 +74,37 @@ pub fn find_first<P, T>(st: &CommandState,
 }
 
 
-pub trait DriverCtxtExt<'gcx> {
-    fn node_type(&self, id: NodeId) -> Ty<'gcx>;
-    fn adjusted_node_type(&self, id: NodeId) -> Ty<'gcx>;
-    fn def_type(&self, id: DefId) -> Ty<'gcx>;
-    fn def_path(&self, id: DefId) -> Path;
+/// `driver::Ctxt` extension trait.
+pub trait DriverCtxtExt<'tcx> {
+    /// Get the `ty::Ty` computed for a node.
+    fn node_type(&self, id: NodeId) -> Ty<'tcx>;
+    /// Get the `ty::Ty` computed for a node, taking into account any adjustments that were applied.
+    fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx>;
 
+    fn def_type(&self, id: DefId) -> Ty<'tcx>;
+    /// Build a `Path` referring to a particular def.  This method returns an absolute path when
+    /// possible.
+    fn def_path(&self, id: DefId) -> Path;
+    fn def_qpath(&self, id: DefId) -> (Option<QSelf>, Path);
+
+    /// Obtain the `DefId` of a definition node, such as a `fn` item.
     fn node_def_id(&self, id: NodeId) -> DefId;
-    fn try_resolve_expr(&self, e: &Expr) -> Option<DefId>;
+
+    /// Get the target `DefId` of a path expr.
     fn resolve_expr(&self, e: &Expr) -> DefId;
-    fn try_resolve_ty(&self, e: &ast::Ty) -> Option<DefId>;
+    fn try_resolve_expr(&self, e: &Expr) -> Option<DefId>;
+
+    /// Get the target `DefId` of a path ty.
     fn resolve_ty(&self, e: &ast::Ty) -> DefId;
-    fn opt_callee(&self, e: &Expr) -> Option<DefId>;
+    fn try_resolve_ty(&self, e: &ast::Ty) -> Option<DefId>;
+
+    /// Get the `DefId` of the function or method being called by a `Call` or `MethodCall` expr.
     fn callee(&self, e: &Expr) -> DefId;
+    fn opt_callee(&self, e: &Expr) -> Option<DefId>;
 }
 
-impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 'tcx> {
-    /// Get the `ty::Ty` computed for a node.
-    fn node_type(&self, id: NodeId) -> Ty<'gcx> {
+impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
+    fn node_type(&self, id: NodeId) -> Ty<'tcx> {
         let parent = self.hir_map().get_parent(id);
         let parent_body = self.hir_map().body_owned_by(parent);
         let tables = self.ty_ctxt().body_tables(parent_body);
@@ -100,8 +112,7 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
         tables.node_id_to_type(hir_id)
     }
 
-    /// Get the `ty::Ty` computed for a node, taking into account any adjustments that were applied.
-    fn adjusted_node_type(&self, id: NodeId) -> Ty<'gcx> {
+    fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx> {
         let parent = self.hir_map().get_parent(id);
         let parent_body = self.hir_map().body_owned_by(parent);
         let tables = self.ty_ctxt().body_tables(parent_body);
@@ -113,16 +124,18 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
         }
     }
 
-    fn def_type(&self, id: DefId) -> Ty<'gcx> {
+    fn def_type(&self, id: DefId) -> Ty<'tcx> {
         self.ty_ctxt().type_of(id)
     }
 
-    /// Construct a `Path` AST suitable for referring to a definition.
     fn def_path(&self, id: DefId) -> Path {
+        reflect::reflect_path(self.ty_ctxt(), id).1
+    }
+
+    fn def_qpath(&self, id: DefId) -> (Option<QSelf>, Path) {
         reflect::reflect_path(self.ty_ctxt(), id)
     }
 
-    /// Obtain the `DefId` of a definition node, such as a `fn` item.
     fn node_def_id(&self, id: NodeId) -> DefId {
         match self.hir_map().opt_local_def_id(id) {
             Some(x) => x,
@@ -130,7 +143,6 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
         }
     }
 
-    /// Obtain the `DefId` referenced by a path `Expr`.
     fn try_resolve_expr(&self, e: &Expr) -> Option<DefId> {
         let node = match_or!([self.hir_map().find(e.id)] Some(x) => x;
                              return None);
@@ -143,13 +155,11 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
         path.def.opt_def_id()
     }
 
-    /// Obtain the `DefId` referenced by a path `Expr`.
     fn resolve_expr(&self, e: &Expr) -> DefId {
         self.try_resolve_expr(e)
             .unwrap_or_else(|| panic!("expr does not resolve to a def: {:?}", e))
     }
 
-    /// Obtain the `DefId` referenced by a path `Ty`.
     fn try_resolve_ty(&self, t: &ast::Ty) -> Option<DefId> {
         let node = match_or!([self.hir_map().find(t.id)] Some(x) => x;
                              return None);
@@ -162,13 +172,11 @@ impl<'a, 'hir, 'gcx, 'tcx> DriverCtxtExt<'gcx> for driver::Ctxt<'a, 'hir, 'gcx, 
         path.def.opt_def_id()
     }
 
-    /// Obtain the `DefId` referenced by a path `Ty`.
     fn resolve_ty(&self, t: &ast::Ty) -> DefId {
         self.try_resolve_ty(t)
             .unwrap_or_else(|| panic!("ty does not resolve to a def: {:?}", t))
     }
 
-    /// Obtain the `DefId` of the function being called, if `e` is a function or method call.
     fn opt_callee(&self, e: &Expr) -> Option<DefId> {
         if e.id == DUMMY_NODE_ID {
             return None;

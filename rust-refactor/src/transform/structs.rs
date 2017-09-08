@@ -2,9 +2,7 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
 
-
 use api::*;
-use ast_equiv::AstEquiv;
 use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;

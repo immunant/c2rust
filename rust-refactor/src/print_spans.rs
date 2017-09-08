@@ -1,10 +1,13 @@
+//! Debug command for printing the span of every major AST node.
 use syntax;
 use syntax::ast::*;
 use syntax::codemap::{CodeMap, Span, DUMMY_SP};
 use syntax::print::pprust;
 use syntax::visit::Visitor;
 
-use visit::Visit;
+use ast_manip::Visit;
+use command::{Registry, DriverCommand};
+use driver::Phase;
 
 
 struct PrintSpanVisitor<'a> {
@@ -63,7 +66,15 @@ impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
     }
 }
 
-#[allow(dead_code)] // Helper function for debugging
+/// Print the spans of all major nodes in `x`.
 pub fn print_spans<T: Visit>(x: &T, cm: &CodeMap) {
     x.visit(&mut PrintSpanVisitor { cm: cm });
+}
+
+pub fn register_commands(reg: &mut Registry) {
+    reg.register("print_spans", |_args| {
+        Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
+            print_spans(&st.krate() as &Crate, cx.session().codemap());
+        }))
+    });
 }

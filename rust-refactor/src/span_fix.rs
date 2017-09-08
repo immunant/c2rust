@@ -16,10 +16,9 @@ use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
 use syntax_pos::hygiene::SyntaxContext;
 
-use ast_equiv::AstEquiv;
+use ast_manip::{AstEquiv, Fold};
+use ast_manip::util::{with_span_text, extended_span};
 use driver;
-use fold::Fold;
-use util;
 use util::Lone;
 
 
@@ -59,13 +58,13 @@ impl<'a> Folder for FixFormat<'a> {
                 // validate the span info by parsing the indicated text and comparing `e` to
                 // the resulting `Expr`.
 
-                // TODO: behavior is a litte weird if the argument is another `format!()`.  In
+                // TODO: Behavior is a litte weird if the argument is another `format!()`.  In
                 // something like `format!("{}", format!("{}", 12345))`, we set `current_expansion`
                 // on entry to the outer `format!`, and don't clear it until we get to the `12345`
                 // argument.  The inner `format!` essentially gets treated as if it were part of
                 // the outer one.  Not a big problem at the moment, but it is a little odd.
                 let mut parsed = None;
-                util::with_span_text(self.codemap, e.span, |s| {
+                with_span_text(self.codemap, e.span, |s| {
                     parsed = Some(driver::parse_expr(self.sess, s));
                 });
                 if let Some(parsed) = parsed {
@@ -158,7 +157,8 @@ impl Folder for FixMacros {
         SmallVector::one(s)
     }
 
-    // TODO: more syntax types
+    // TODO: Eventually we should extend this to work on the remaining node types where macros can
+    // appear (Pat, Ty, and the Item-likes).
 
     fn new_span(&mut self, sp: Span) -> Span {
         if sp.ctxt != SyntaxContext::empty() {
@@ -180,7 +180,7 @@ struct FixAttrs;
 
 impl Folder for FixAttrs {
     fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
-        let new_span = util::extended_span(i.span, &i.attrs);
+        let new_span = extended_span(i.span, &i.attrs);
         let i =
             if new_span != i.span {
                 i.map(|i| Item { span: new_span, ..i })

@@ -1,10 +1,11 @@
+//! Helper for checking if a node or one of its descendants has a particular mark.
 use syntax::ast::*;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
 
+use ast_manip::Visit;
 use command::CommandState;
 use util::IntoSymbol;
-use visit::Visit;
 
 
 
@@ -39,6 +40,8 @@ impl<'a, 'ast> Visitor<'ast> for ContainsMarkVisitor<'a> {
     gen_method!(visit_item(&'ast Item) -> walk_item);
 }
 
+/// Check if any descendant of a node has a particular mark.  It only looks at certain types of
+/// nodes, though, so it's not completely reliable and probably shouldn't be used.
 pub fn contains_mark<T, S>(target: &T, label: S, st: &CommandState) -> bool
         where T: Visit, S: IntoSymbol {
     let mut v = ContainsMarkVisitor {

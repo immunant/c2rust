@@ -1,4 +1,3 @@
-use rustc::session::Session;
 use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind};
 
 use api::*;
@@ -100,8 +99,9 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
 
     fold_match(st, cx, pat, krate, |orig, bnd| {
         let body = bnd.multi_stmt("__m_body");
-        // TODO: would be nice to get rid of the clones of body.  Might require making
-        // `find_first` use a visitor instead of a `fold`.
+        // TODO: Would be nice to get rid of the clones of body.  Might require making
+        // `find_first` use a visitor instead of a `fold`, which means duplicating a lot of the
+        // `PatternFolder` definitions in matcher.rs to make `PatternVisitor` variants.
         if find_first(st, cx, find_continue.clone().subst(st, cx, &bnd), body.clone()).is_none() &&
            find_first(st, cx, find_break.clone().subst(st, cx, &bnd), body.clone()).is_none() &&
            find_first(st, cx, find_break_expr.clone().subst(st, cx, &bnd), body.clone()).is_none() {
