@@ -203,7 +203,7 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                     assert!(substs.len() >= num_params);
                     let start = substs.len() - num_params;
                     let mut abpd = AngleBracketedParameterData {
-                        //span: DUMMY_SP,
+                        span: DUMMY_SP,
                         lifetimes: Vec::new(),
                         types: Vec::new(),
                         bindings: Vec::new(),
@@ -295,7 +295,8 @@ pub fn register_commands(reg: &mut Registry) {
                         let parent = cx.hir_map().get_parent(e.id);
                         let parent_body = cx.hir_map().body_owned_by(parent);
                         let tables = cx.ty_ctxt().body_tables(parent_body);
-                        let substs = tables.node_substs(e.id);
+                        let hir_id = cx.hir_map().node_to_hir_id(e.id);
+                        let substs = tables.node_substs(hir_id);
                         let substs = substs.types().collect::<Vec<_>>();
                         let (qself, path) = reflect_path_inner(
                             cx.ty_ctxt(), def_id, Some(&substs));

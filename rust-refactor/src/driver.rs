@@ -278,7 +278,7 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
             Ok(item) => {
                 items.push(remove_paren(item).lone());
             }
-            Err(e) => panic!("error parsing impl items: {:?}", e.into_diagnostic()),
+            Err(db) => emit_and_panic(db, "impl items"),
         }
     }
     items

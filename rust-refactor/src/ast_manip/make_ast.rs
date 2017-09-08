@@ -746,14 +746,8 @@ impl Builder {
     pub fn enum_item<I>(self, name: I, fields: Vec<Variant>) -> P<Item>
         where I: Make<Ident> {
         let name = name.make(&self);
-        P(Item {
-            ident: name,
-            attrs: self.attrs,
-            id: DUMMY_NODE_ID,
-            node: ItemKind::Enum(EnumDef {variants: fields}, self.generics),
-            vis: self.vis,
-            span: DUMMY_SP,
-        })
+        Self::item(name, self.attrs, self.vis,
+                   ItemKind::Enum(EnumDef {variants: fields}, self.generics))
     }
 
     pub fn enum_field<T>(self, ty: T) -> StructField
@@ -787,22 +781,14 @@ impl Builder {
         where T: Make<P<Ty>>
     {
         let ty = ty.make(&self);
-        P(Item {
-            ident: keywords::Invalid.ident(),
-            attrs: self.attrs,
-            vis: self.vis,
-            id: DUMMY_NODE_ID,
-            span: DUMMY_SP,
-            node: ItemKind::Impl(
-                self.unsafety,
-                ImplPolarity::Positive,
-                Defaultness::Final,
-                self.generics,
-                None, // not a trait implementation
-                ty,
-                items,
-                ),
-        })
+        Self::item(keywords::Invalid.ident(), self.attrs, self.vis,
+                   ItemKind::Impl(self.unsafety,
+                                  ImplPolarity::Positive,
+                                  Defaultness::Final,
+                                  self.generics,
+                                  None, // not a trait implementation
+                                  ty,
+                                  items))
     }
 
     // Misc nodes
