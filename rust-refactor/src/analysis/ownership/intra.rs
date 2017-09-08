@@ -7,7 +7,7 @@ use rustc_data_structures::indexed_vec::{IndexVec, Idx};
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
-use super::{Var, LTy, LFnSig, FnSig};
+use super::{Var, PermVar, LTy, LFnSig, FnSig};
 use super::constraint::{ConstraintSet, Perm};
 use super::context::{Ctxt, Instantiation};
 
@@ -18,6 +18,10 @@ enum Label<'tcx> {
     None,
 
     /// Pointers and references get a permission annotation.
+    ///
+    /// Note this can be an arbitrary permission expression, not just a `PermVar`.  Taking the
+    /// address of an lvalue gives a pointer whose permission is the lvalue's path permission,
+    /// which can be arbitrary.
     Ptr(Perm<'tcx>),
 
     /// `TyFnDef` ought to be labeled with something like an extra set of `Substs`, but for
@@ -127,7 +131,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
     fn relabel_ty(&mut self, lty: LTy<'tcx>) -> ITy<'tcx> {
         self.ilcx.relabel(lty, &mut |&l| {
             match l {
-                Some(x) => Label::Ptr(x),
+                Some(pv) => Label::Ptr(Perm::var(pv)),
                 None => Label::None,
             }
         })
@@ -136,7 +140,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
     fn relabel_sig(&mut self, sig: LFnSig<'tcx>) -> IFnSig<'tcx> {
         let mut f = |&l: &Option<_>| {
             match l {
-                Some(x) => Label::Ptr(x),
+                Some(pv) => Label::Ptr(Perm::var(pv)),
                 None => Label::None,
             }
         };
@@ -457,10 +461,8 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 // First apply the permission substs.  Replace all `SigVar`s with `InstVar`s.
                 let mut f = |p: &Option<_>| {
                     match *p {
-                        Some(Perm::SigVar(v)) => Label::Ptr(Perm::InstVar(Var(var_base + v.0))),
-                        Some(Perm::Min(_)) => panic!("unexpected `Min` in ty label"),
-                        Some(Perm::Concrete(_)) => panic!("unexpected `Concrete` in ty label"),
-                        Some(p) => Label::Ptr(p),
+                        Some(PermVar::Sig(v)) => Label::Ptr(Perm::InstVar(Var(var_base + v.0))),
+                        Some(_) => panic!("found non-Sig PermVar in sig"),
                         None => Label::None,
                         // There's no way to write a TyFnDef type in a function signature, so it's
                         // reasonable to have no cases output `Label::FnDef`.

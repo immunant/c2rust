@@ -56,7 +56,10 @@ use self::mono_filter::filter_suspicious_monos;
 use self::debug::*;
 
 
-/// A permission variable reference.
+/// A variable index.
+///
+/// There are multiple kinds of variables using the same index type, so the variable kind must be
+/// known by other means to use this effectively.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Var(pub u32);
 
@@ -71,10 +74,32 @@ impl Idx for Var {
     }
 }
 
-/// A type where pointer type constructors are labeled with permission expressions.
-// TODO: Ty labels should only ever include the `Perm::*Var` variants.  Make that a different type.
-pub type LTy<'tcx> = LabeledTy<'tcx, Option<Perm<'tcx>>>;
-type LFnSig<'tcx> = FnSig<'tcx, Option<Perm<'tcx>>>;
+/// A permission variable.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PermVar {
+    /// "Static" variables appear in the types of non-function items.  This includes `static` items
+    /// as well as `struct`s and other ADTs.  Constraints on static vars are inferred from their
+    /// usage inside functions.
+    Static(Var),
+
+    /// "Signature" variables appear in the signatures of function items.  Constraints on sig vars
+    /// are inferred from the body of the function in question.
+    Sig(Var),
+
+    /// "Instantiation" variables appear in the instantiations of function signatures inside other
+    /// functions.  They are left intact during the initial summary generation, to be filled in
+    /// during a later phase of the analysis.
+    Inst(Var),
+
+    /// "Local" variables appear in the types of temporaries.  Constraints on local vars are
+    /// produced while analyzing a function, and are simplified away when the function's constraint
+    /// generation is done.
+    Local(Var),
+}
+
+/// A type where pointer type constructors are labeled with permission variables.
+pub type LTy<'tcx> = LabeledTy<'tcx, Option<PermVar>>;
+type LFnSig<'tcx> = FnSig<'tcx, Option<PermVar>>;
 
 /// A generic labeled function signature.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -316,7 +341,7 @@ fn convert_results<'a, 'tcx>(cx: &Ctxt<'a, 'tcx>) -> AnalysisResult<'tcx> {
     let perm_lcx = LabeledTyCtxt::new(cx.arena);
     for (&def_id, &lty) in cx.static_summ.iter() {
         let pty = perm_lcx.relabel(lty, &mut |p| {
-            if let Some(Perm::StaticVar(v)) = *p {
+            if let Some(PermVar::Static(v)) = *p {
                 Some(cx.static_assign[v])
             } else {
                 None
@@ -333,7 +358,7 @@ fn convert_results<'a, 'tcx>(cx: &Ctxt<'a, 'tcx>) -> AnalysisResult<'tcx> {
 
         let sig = {
             let mut f = |p: &Option<_>| {
-                if let Some(Perm::SigVar(v)) = *p {
+                if let Some(PermVar::Sig(v)) = *p {
                     Some(v)
                 } else {
                     None

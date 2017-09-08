@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 
 use arena::DroplessArena;
 
-use super::{ConcretePerm, Var};
+use super::{ConcretePerm, PermVar, Var};
 
 
 /// A permission expression.
@@ -22,23 +22,10 @@ pub enum Perm<'tcx> {
     // largest and smallest possible `Perm`s, and the largest/smallest `Min` is hard to get.
     Min(&'tcx [Perm<'tcx>]),
 
-    /// "Static" variables appear in the types of non-function items.  This includes `static` items
-    /// as well as `struct`s and other ADTs.  Constraints on static vars are inferred from their
-    /// usage inside functions.
+    // Wrappers around the various `PermVar`s.
     StaticVar(Var),
-
-    /// "Signature" variables appear in the signatures of function items.  Constraints on sig vars
-    /// are inferred from the body of the function in question.
     SigVar(Var),
-
-    /// "Instantiation" variables appear in the instantiations of function signatures inside other
-    /// functions.  They are left intact during the initial summary generation, to be filled in
-    /// during a later phase of the analysis.
     InstVar(Var),
-
-    /// "Local" variables appear in the types of temporaries.  Constraints on local vars are
-    /// produced while analyzing a function, and are simplified away when the function's constraint
-    /// generation is done.
     LocalVar(Var),
 }
 
@@ -53,6 +40,26 @@ impl<'tcx> Perm<'tcx> {
 
     pub fn move_() -> Perm<'tcx> {
         Perm::Concrete(ConcretePerm::Move)
+    }
+
+    pub fn var(pv: PermVar) -> Perm<'tcx> {
+        match pv {
+            PermVar::Static(v) => Perm::StaticVar(v),
+            PermVar::Sig(v) => Perm::SigVar(v),
+            PermVar::Inst(v) => Perm::InstVar(v),
+            PermVar::Local(v) => Perm::LocalVar(v),
+        }
+    }
+
+    pub fn as_var(&self) -> Option<PermVar> {
+        match *self {
+            Perm::Concrete(_) => None,
+            Perm::Min(_) => None,
+            Perm::StaticVar(v) => Some(PermVar::Static(v)),
+            Perm::SigVar(v) => Some(PermVar::Sig(v)),
+            Perm::InstVar(v) => Some(PermVar::Inst(v)),
+            Perm::LocalVar(v) => Some(PermVar::Local(v)),
+        }
     }
 
     /// Construct the minimum of two permissions.  This needs a reference to the arena, since it

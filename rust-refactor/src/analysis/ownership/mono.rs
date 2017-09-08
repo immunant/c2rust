@@ -1,7 +1,7 @@
 use rustc_data_structures::indexed_vec::IndexVec;
 
-use super::{ConcretePerm, Var, Perm, LTy};
-use super::constraint::ConstraintSet;
+use super::{ConcretePerm, PermVar, Var, LTy};
+use super::constraint::{ConstraintSet, Perm};
 use super::context::{Ctxt, FuncSumm};
 
 
@@ -11,7 +11,7 @@ pub fn infer_outputs(summ: &FuncSumm) -> IndexVec<Var, bool> {
     let mut is_out = IndexVec::from_elem_n(false, summ.num_sig_vars as usize);
 
     fn mark_output(ty: LTy, is_out: &mut IndexVec<Var, bool>) {
-        if let Some(Perm::SigVar(v)) = ty.label {
+        if let Some(PermVar::Sig(v)) = ty.label {
             is_out[v] = true;
         }
         for &arg in ty.args {
@@ -24,7 +24,7 @@ pub fn infer_outputs(summ: &FuncSumm) -> IndexVec<Var, bool> {
                         cset: &ConstraintSet<'tcx>) {
         let mut target_out = false;
         if let Some(p) = ty.label {
-            if cset.lower_bound(p) >= ConcretePerm::Write {
+            if cset.lower_bound(Perm::var(p)) >= ConcretePerm::Write {
                 target_out = true;
             }
         }

@@ -17,8 +17,8 @@ use command::CommandState;
 use driver;
 use type_map::{self, TypeSource};
 
-use super::{LTy, LFnSig, ConcretePerm, Perm, Var};
-use super::constraint::ConstraintSet;
+use super::{LTy, LFnSig, ConcretePerm, PermVar, Var};
+use super::constraint::{ConstraintSet, Perm};
 use super::context::Ctxt;
 
 
@@ -99,15 +99,17 @@ pub fn handle_marks<'a, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
     for (p, did, min_perm) in fixed_vars {
         eprintln!("FIXED VAR: {:?} = {:?} (in {:?})", p, min_perm, did);
         match p {
-            Perm::StaticVar(v) => {
+            PermVar::Static(v) => {
                 let new_perm = cmp::max(min_perm, cx.static_assign[v]);
                 cx.static_assign[v] = new_perm;
             },
-            Perm::SigVar(_) => {
+            PermVar::Sig(_) => {
                 let did = did.expect("expected DefId for SigVar");
-                cx.variant_summ(did).1.inst_cset.add(Perm::Concrete(min_perm), p);
+                cx.variant_summ(did).1.inst_cset
+                    .add(Perm::Concrete(min_perm),
+                         Perm::var(p));
             }
-            _ => panic!("expected StaticVar or SigVar, but got {:?}", p),
+            _ => panic!("expected Static or Sig var, but got {:?}", p),
         }
     }
 }
@@ -235,7 +237,7 @@ pub fn handle_attrs<'a, 'hir, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
                     let ty = cx.static_ty(def_id);
                     let mut iter = assign.into_iter();
                     ty.for_each_label(&mut |p| {
-                        if let Some(Perm::StaticVar(v)) = *p {
+                        if let Some(PermVar::Static(v)) = *p {
                             let c = iter.next().unwrap_or_else(|| panic!("not enough permissions \
                                         in #[ownership_static] for {:?}", def_id));
                             cx.static_assign[v] = c;
