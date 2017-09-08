@@ -1,0 +1,55 @@
+- Don't reprint entire items when attrs are added/removed.  Probably all that's
+  needed is to add full SeqItem support for Attribute.  It may also be helpful
+  to make `Block` a splice point, so that function signatures can be changed
+  without reprinting the entire body.
+
+- General purpose conversion collapser.  See json-c `rs/README.md` for an
+  explanation.
+
+- struct_assign_to_update fails if the struct is actually a reference.  For
+  example, it turns `r.f = 1` into `r = S { f: 1, .. r }`, when it should use
+  `*r` in both places.
+  - In general, it might be useful to have a pass that makes adjustments
+    explicit, and another to make them implicit again (maybe using a trace from
+    the first pass?)
+
+- Ownership: re-enable "suspicious mono" checking.  The goal is to remove
+  monomorphizations that are allowed by the inferred polymorphic but aren't
+  likely to be implementable under the Rust type system.  Mainly this is for
+  getting rid of `WRITE -> MOVE` monomorphizations of generic accessors (they
+  should have only `WRITE -> WRITE` and `READ -> READ` monos).  There is code
+  for finding suspicious monos in `mono_filter.rs`, but it's currently disabled
+  because removing the suspicious monos too early causes `ownership::inst` to
+  fail.  We probably need a separate transform that can be run at the very end
+  to find and remove suspicious monos.
+
+- Bad failure modes in ownership analysis.  Ex: forgetting to mark `free` and
+  related functions as taking MOVE pointers causes json-c analysis to fail,
+  with `inst` unable to find a solution.  This is partly caused by it inferring
+  the `data.c_object` union variant as `WRITE` instead of `MOVE`.  Another
+  contributing factor is the generation of `MOVE` monos which can't actually be
+  solved with the given static var assignment.  (We may need to let `inst`
+  reject a mono.  This would require turning `inst` into a fixpoint analysis,
+  removing all invalid monos.)
+
+- When ownership analysis fails, it fails in different ways on different runs,
+  due to hash table randomization (it iterates hash tables in several places).
+  This includes failing on different functions, as well as hanging
+  (backtracking forever) inside `inst`.  We should fix this so at least it
+  fails reproducibly.
+
+- The "collection hack" in the ownership analysis works well for libjson-c, but
+  is probably not suitable for all codebases.  At some point we may need a way
+  to selectively disable the collection hack for certain functions or modules.
+
+- Convert type_eq to analyze MIR instead of AST/HIR.  This makes the analysis
+  simpler (no need to worry about operator overloads, for example), but makes
+  it harder to match `ty::Ty`s to `ast::Ty`s.
+
+- Right now the ownership analysis runs on `optimized_mir` from the `TyCtxt`.
+  Eventually `rustc` is likely to get enough MIR optimizations (such as
+  inlining) that this is no longer desirable.  Unfortunately, by the time we
+  get access to a `TyCtxt`, the previous versions of the MIR (such as
+  `mir_const`) are no longer available (the `Steal` has been stolen).  We may
+  need more invasive driver changes to make this work.
+
