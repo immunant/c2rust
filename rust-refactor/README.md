@@ -9,10 +9,10 @@ style.
 
 Install cargo and rustup first.
 
-`idiomize` requires a specific `rustc` version with additional patches.  Clone
-branch `pprust-expr-fix-orig` from [epdtry/rust](https://github.com/epdtry/rust),
-and build it with `./configure && ./x.py build`.  Then add a toolchain link for
-the new compiler: `rustup toolchain link c2rust build/<TRIPLE>/stage2`.
+`idiomize` requires a specific `rustc` revision.  Clone `rust-lang/rust`, check
+out revision `d6ad402`, and build it with `./configure && ./x.py build`.  Then
+add a toolchain link for the new compiler: `rustup toolchain link c2rust
+build/<TRIPLE>/stage2`.
 
 Once `rustc` is set up, build `idiomize` with `cargo +c2rust build`.
 
