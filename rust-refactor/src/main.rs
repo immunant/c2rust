@@ -11,7 +11,7 @@ use syntax::ast::NodeId;
 
 use idiomize::{
     driver, transform, rewrite, pick_node, interact, command, mark_adjust,
-    plugin, select, analysis, print_spans
+    plugin, select, analysis, print_spans, reflect
 };
 
 use idiomize::util::IntoSymbol;
@@ -325,6 +325,7 @@ fn main() {
     print_spans::register_commands(&mut cmd_reg);
     select::register_commands(&mut cmd_reg);
     analysis::register_commands(&mut cmd_reg);
+    reflect::register_commands(&mut cmd_reg);
 
     plugin::load_plugins(&opts.plugin_dirs, &opts.plugins, &mut cmd_reg);
 

@@ -12,6 +12,8 @@ use syntax::ptr::P;
 use syntax::symbol::keywords;
 
 use ast_manip::make_ast::mk;
+use command::{Registry, DriverCommand};
+use driver::Phase;
 use util::IntoSymbol;
 
 
@@ -37,7 +39,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 mk().qpath_ty(qself, path)
             } else {
                 let substs = substs.types().collect::<Vec<_>>();
-                let (qself, path) = reflect_path_inner(tcx, def.did, &substs);
+                let (qself, path) = reflect_path_inner(tcx, def.did, Some(&substs));
                 mk().qpath_ty(qself, path)
             }
         },
@@ -48,14 +50,14 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         TySlice(ty) => mk().slice_ty(reflect_tcx_ty(tcx, ty)),
         TyRawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(reflect_tcx_ty(tcx, mty.ty)),
         TyRef(_, mty) => mk().set_mutbl(mty.mutbl).ref_ty(reflect_tcx_ty(tcx, mty.ty)),
-        TyFnDef(_, _) => mk().ident_ty("_"), // unsupported (type cannot be named)
-        TyFnPtr(_) => mk().ident_ty("_"), // TODO
-        TyDynamic(_, _) => mk().ident_ty("_"), // TODO
-        TyClosure(_, _) => mk().ident_ty("_"), // unsupported (type cannot be named)
+        TyFnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
+        TyFnPtr(_) => mk().infer_ty(), // TODO
+        TyDynamic(_, _) => mk().infer_ty(), // TODO
+        TyClosure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
         TyNever => mk().never_ty(),
         TyTuple(tys, _) => mk().tuple_ty(tys.iter().map(|&ty| reflect_tcx_ty(tcx, ty)).collect()),
-        TyProjection(_) => mk().ident_ty("_"), // TODO
-        TyAnon(_, _) => mk().ident_ty("_"), // TODO
+        TyProjection(_) => mk().infer_ty(), // TODO
+        TyAnon(_, _) => mk().infer_ty(), // TODO
         // (Note that, despite the name, `TyAnon` *can* be named - it's `impl SomeTrait`.)
         TyParam(param) => {
             if infer_args {
@@ -65,19 +67,20 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             }
         },
         TyInfer(_) => mk().infer_ty(),
-        TyError => mk().ident_ty("_"), // unsupported
+        TyError => mk().infer_ty(), // unsupported
     }
 }
 
 /// Build a path referring to a specific def.
 pub fn reflect_path(tcx: TyCtxt, id: DefId) -> (Option<QSelf>, Path) {
-    reflect_path_inner(tcx, id, &[])
+    reflect_path_inner(tcx, id, None)
 }
 
 /// Build a path referring to a specific def.
 fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                                       id: DefId,
-                                      substs: &[ty::Ty<'tcx>]) -> (Option<QSelf>, Path) {
+                                      opt_substs: Option<&[ty::Ty<'tcx>]>)
+                                      -> (Option<QSelf>, Path) {
     // Access to `sess` relies on the `TyCtxt -> GlobalCtxt` deref.  `GlobalCtxt` is private (and
     // undocumented), so this may break at some point.
     let sess = tcx.sess;
@@ -88,7 +91,7 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
     // Build the path in reverse order.  Push the name of the current def first, then the name of
     // its parent, and so on.  We flip the path around at the end.
     let mut id = id;
-    let mut substs = substs;
+    let mut opt_substs = opt_substs;
     loop {
         let dk = tcx.def_key(id);
         match dk.disambiguated_data.data {
@@ -121,8 +124,8 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 let gen = tcx.generics_of(id);
                 let num_params = gen.types.len();
 
-                // Reflect the type.  If we have substs available, we apply them to the type.
-                let ast_ty = if substs.len() > 0 {
+                // Reflect the type.  If we have substs available, apply them to the type first.
+                let ast_ty = if let Some(substs) = opt_substs {
                     let start = substs.len() - num_params;
                     let tcx_substs = substs[start..].iter().map(|&t| t.into())
                         .collect::<Vec<_>>();
@@ -132,7 +135,6 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                     reflect_tcx_ty_inner(tcx, ty, true)
                 };
 
-                // 
                 match ast_ty.node {
                     TyKind::Path(ref ty_qself, ref ty_path) => {
                         qself = ty_qself.clone();
@@ -165,7 +167,6 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 
             DefPathData::TypeNs(name) |
             DefPathData::MacroDef(name) |
-            DefPathData::TypeParam(name) |
             DefPathData::LifetimeDef(name) |
             DefPathData::EnumVariant(name) |
             DefPathData::Module(name) |
@@ -177,6 +178,13 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 }
             },
 
+            DefPathData::TypeParam(name) => {
+                if name.as_str().len() > 0 {
+                    segments.push(mk().path_segment(name));
+                    break;
+                }
+            },
+
             DefPathData::ClosureExpr |
             DefPathData::StructCtor |
             DefPathData::Initializer |
@@ -184,12 +192,13 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             DefPathData::Typeof => {},
         }
 
+        // Special logic for certain node kinds
         match dk.disambiguated_data.data {
             DefPathData::ValueNs(_) |
             DefPathData::TypeNs(_) => {
                 let gen = tcx.generics_of(id);
                 let num_params = gen.types.len();
-                if substs.len() > 0 {
+                if let Some(substs) = opt_substs {
                     assert!(substs.len() >= num_params);
                     let start = substs.len() - num_params;
                     let mut abpd = AngleBracketedParameterData {
@@ -202,12 +211,23 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                         abpd.types.push(reflect_tcx_ty(tcx, ty));
                     }
                     segments.last_mut().unwrap().parameters = abpd.into();
-                    substs = &substs[..start];
+                    opt_substs = Some(&substs[..start]);
                 }
             },
+
+            DefPathData::StructCtor => {
+                // The parent of the struct ctor in `visible_parent_map` is the parent of the
+                // struct.  But we want to visit the struct first, so we can add its name.
+                if let Some(parent_id) = tcx.parent_def_id(id) {
+                    id = parent_id;
+                    continue;
+                } else {
+                    break;
+                }
+            },
+
             _ => {},
         }
-
 
         let visible_parent_map = sess.cstore.visible_parent_map(sess);
         if let Some(&parent_id) = visible_parent_map.get(&id) {
@@ -253,19 +273,40 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
 }
 
 
-/// Helper struct for `reflect_path`.
-struct ItemPathVec(RootMode, Vec<PathSegment>);
+pub fn register_commands(reg: &mut Registry) {
+    reg.register("test_reflect", |args| {
+        let args = args.to_owned();
+        Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
+            st.map_krate(|krate| {
+                use api::*;
+                use rustc::ty::TypeVariants;
 
-impl ItemPathBuffer for ItemPathVec {
-    fn root_mode(&self) -> &RootMode {
-        &self.0
-    }
+                let krate = fold_nodes(krate, |e: P<Expr>| {
+                    let ty = cx.node_type(e.id);
 
-    fn push(&mut self, text: &str) {
-        self.1.push(PathSegment {
-            identifier: Ident::with_empty_ctxt(text.into_symbol()),
-            span: DUMMY_SP,
-            parameters: None,
-        });
-    }
+                    let e = if let TypeVariants::TyFnDef(def_id, ref substs) = ty.sty {
+                        let substs = substs.types().collect::<Vec<_>>();
+                        let (qself, path) = reflect_path_inner(
+                            cx.ty_ctxt(), def_id, Some(&substs));
+                        mk().qpath_expr(qself, path)
+                    } else if let Some(def_id) = cx.try_resolve_expr(&e) {
+                        let parent = cx.hir_map().get_parent(e.id);
+                        let parent_body = cx.hir_map().body_owned_by(parent);
+                        let tables = cx.ty_ctxt().body_tables(parent_body);
+                        let substs = tables.node_substs(e.id);
+                        let substs = substs.types().collect::<Vec<_>>();
+                        let (qself, path) = reflect_path_inner(
+                            cx.ty_ctxt(), def_id, Some(&substs));
+                        mk().qpath_expr(qself, path)
+                    } else {
+                        e
+                    };
+
+                    mk().type_expr(e, reflect_tcx_ty(cx.ty_ctxt(), ty))
+                });
+
+                krate
+            });
+        }))
+    });
 }

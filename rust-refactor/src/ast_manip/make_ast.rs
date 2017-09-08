@@ -374,6 +374,18 @@ impl Builder {
         })
     }
 
+    pub fn type_expr<E, T>(self, e: E, t: T) -> P<Expr>
+            where E: Make<P<Expr>>, T: Make<P<Ty>> {
+        let e = e.make(&self);
+        let t = t.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Type(e, t),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
     pub fn block_expr<B>(self, blk: B) -> P<Expr>
             where B: Make<P<Block>> {
         let blk = blk.make(&self);
@@ -399,10 +411,15 @@ impl Builder {
 
     pub fn path_expr<Pa>(self, path: Pa) -> P<Expr>
             where Pa: Make<Path> {
+        self.qpath_expr(None, path)
+    }
+
+    pub fn qpath_expr<Pa>(self, qself: Option<QSelf>, path: Pa) -> P<Expr>
+            where Pa: Make<Path> {
         let path = path.make(&self);
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Path(None, path),
+            node: ExprKind::Path(qself, path),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })
