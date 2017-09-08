@@ -607,10 +607,15 @@ impl Builder {
 
     pub fn path_ty<Pa>(self, path: Pa) -> P<Ty>
             where Pa: Make<Path> {
+        self.qpath_ty(None, path)
+    }
+
+    pub fn qpath_ty<Pa>(self, qself: Option<QSelf>, path: Pa) -> P<Ty>
+            where Pa: Make<Path> {
         let path = path.make(&self);
         P(Ty {
             id: DUMMY_NODE_ID,
-            node: TyKind::Path(None, path),
+            node: TyKind::Path(qself, path),
             span: DUMMY_SP,
         })
     }

@@ -6,7 +6,7 @@ use rustc::ty::Ty;
 use syntax::ast;    // Can't glob-import because `Ty` already refers to `rustc::ty::Ty`.
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
 use syntax::ast::{Expr, ExprKind};
-use syntax::ast::Path;
+use syntax::ast::{Path, QSelf};
 
 // Reexports of various helpers
 pub use ast_manip::*;
@@ -82,8 +82,10 @@ pub trait DriverCtxtExt<'tcx> {
     fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx>;
 
     fn def_type(&self, id: DefId) -> Ty<'tcx>;
-    /// Build a `Path` referring to a particular def.  This method always returns an absolute path.
+    /// Build a `Path` referring to a particular def.  This method returns an absolute path when
+    /// possible.
     fn def_path(&self, id: DefId) -> Path;
+    fn def_qpath(&self, id: DefId) -> (Option<QSelf>, Path);
 
     /// Obtain the `DefId` of a definition node, such as a `fn` item.
     fn node_def_id(&self, id: NodeId) -> DefId;
@@ -125,6 +127,10 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
     }
 
     fn def_path(&self, id: DefId) -> Path {
+        reflect::reflect_path(self.ty_ctxt(), id).1
+    }
+
+    fn def_qpath(&self, id: DefId) -> (Option<QSelf>, Path) {
         reflect::reflect_path(self.ty_ctxt(), id)
     }
 

@@ -223,7 +223,7 @@ pub fn matches_filter(st: &CommandState,
                 Some(id) => id,
                 None => return false,
             };
-            let path = reflect::reflect_path(cx.ty_ctxt(), def_id);
+            let path = reflect::reflect_path(cx.ty_ctxt(), def_id).1;   // TODO: handle qself
             if path.segments.len() != expect_path.segments.len() + drop_segs {
                 return false;
             }
