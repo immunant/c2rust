@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use syntax::ast::*;
+use syntax::codemap::DUMMY_SP;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::util::small_vector::SmallVector;
@@ -107,6 +108,7 @@ impl Transform for GeneralizeItems {
                     });
                 } else {
                     let abpd = AngleBracketedParameterData {
+                        span: DUMMY_SP,
                         lifetimes: vec![],
                         types: vec![arg],
                         bindings: vec![],

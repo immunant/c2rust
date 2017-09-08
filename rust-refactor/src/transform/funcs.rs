@@ -194,6 +194,7 @@ impl Transform for ToMethod {
                         attrs: f.item.attrs.clone(),
                         node: ImplItemKind::Method(sig, f.block),
                         span: f.item.span,
+                        tokens: None,
                     }
                 }));
                 Item {
@@ -257,6 +258,16 @@ impl Transform for ToMethod {
 }
 
 
+// TODO: Reimplement FixUnusedUnsafe for updated rust.  Previously we implemented this pass by
+// consulting the `TyCtxt::used_unsafe` set, but this set no longer exists in more recent versions.
+// Instead, the "unused unsafe" diagnostics are emitted directly by the effect checking pass.  One
+// possible new implementation strategy is to collect `rustc`'s diagnostics while running the
+// driver, and consult them here to figure out which `unsafe`s are unused.
+//
+// Note: There was also a `fix_unused_unsafe` test case, which was removed in the same commit that
+// added this comment.
+
+/*
 /// Find unused `unsafe` blocks and turn them into ordinary blocks.
 pub struct FixUnusedUnsafe;
 
@@ -281,6 +292,7 @@ impl Transform for FixUnusedUnsafe {
         Phase::Phase3
     }
 }
+*/
 
 
 /// Turn `unsafe fn f() { ... }` into `fn f() { unsafe { ... } }`.
@@ -565,7 +577,8 @@ pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
     reg.register("func_to_method", |_args| mk(ToMethod));
-    reg.register("fix_unused_unsafe", |_args| mk(FixUnusedUnsafe));
+    // TODO: Reimplement fix_unused_unsafe (see other TODO comment above)
+    //reg.register("fix_unused_unsafe", |_args| mk(FixUnusedUnsafe));
     reg.register("sink_unsafe", |_args| mk(SinkUnsafe));
     reg.register("wrap_extern", |_args| mk(WrapExtern));
     reg.register("wrap_api", |_args| mk(WrapApi));

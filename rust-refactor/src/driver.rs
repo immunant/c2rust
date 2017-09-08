@@ -10,7 +10,8 @@ use rustc::ty::{TyCtxt, GlobalArenas};
 use rustc::session::{self, Session};
 use rustc::session::config::{Input, Options};
 use rustc_driver;
-use rustc_driver::driver;
+use rustc_driver::driver::{self, CompileController};
+use rustc_errors::DiagnosticBuilder;
 use rustc_metadata::cstore::CStore;
 use rustc_resolve::MakeGlobMap;
 use rustc_trans;
@@ -141,7 +142,7 @@ pub fn run_compiler<F, R>(args: &[String],
     // multiple callback invocations.
 
     // Start of `compile_input` code
-    let krate = driver::phase_1_parse_input(&sess, &input).unwrap();
+    let krate = driver::phase_1_parse_input(&CompileController::basic(), &sess, &input).unwrap();
     // Leave parens in place until after expansion, unless we're stopping at phase 1.  But
     // immediately fix up the attr spans, since during expansion, any `derive` attrs will be
     // removed.
@@ -213,12 +214,17 @@ fn make_parser<'a>(sess: &'a Session, name: &str, src: &str) -> Parser<'a> {
                                       src.to_owned())
 }
 
+fn emit_and_panic(mut db: DiagnosticBuilder, what: &str) -> ! {
+    db.emit();
+    panic!("error parsing {}", what);
+}
+
 // Helper functions for parsing source code in an existing `Session`.
 pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
     let mut p = make_parser(sess, "<expr>", src);
     match p.parse_expr() {
         Ok(expr) => remove_paren(expr),
-        Err(e) => panic!("error parsing expr: {:?}", e.into_diagnostic()),
+        Err(db) => emit_and_panic(db, "expr"),
     }
 }
 
@@ -226,7 +232,7 @@ pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
     let mut p = make_parser(sess, "<pat>", src);
     match p.parse_pat() {
         Ok(pat) => remove_paren(pat),
-        Err(e) => panic!("error parsing pat: {:?}", e.into_diagnostic()),
+        Err(db) => emit_and_panic(db, "pat"),
     }
 }
 
@@ -234,7 +240,7 @@ pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
     let mut ty = make_parser(sess, "<ty>", src);
     match ty.parse_ty() {
         Ok(ty) => remove_paren(ty),
-        Err(e) => panic!("error parsing ty: {:?}", e.into_diagnostic()),
+        Err(db) => emit_and_panic(db, "ty"),
     }
 }
 
@@ -245,20 +251,20 @@ pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
         match p.parse_full_stmt(false) {
             Ok(Some(stmt)) => stmts.push(remove_paren(stmt).lone()),
             Ok(None) => break,
-            Err(e) => panic!("error parsing stmts: {:?}", e.into_diagnostic()),
+            Err(db) => emit_and_panic(db, "stmts"),
         }
     }
     stmts
 }
 
 pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
-    let mut p = make_parser(sess, "<stmt>", src);
+    let mut p = make_parser(sess, "<item>", src);
     let mut items = Vec::new();
     loop {
         match p.parse_item() {
             Ok(Some(item)) => items.push(remove_paren(item).lone()),
             Ok(None) => break,
-            Err(e) => panic!("error parsing items: {:?}", e.into_diagnostic()),
+            Err(db) => emit_and_panic(db, "items"),
         }
     }
     items
@@ -272,7 +278,7 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
             Ok(item) => {
                 items.push(remove_paren(item).lone());
             }
-            Err(e) => panic!("error parsing impl items: {:?}", e.into_diagnostic()),
+            Err(db) => emit_and_panic(db, "impl items"),
         }
     }
     items

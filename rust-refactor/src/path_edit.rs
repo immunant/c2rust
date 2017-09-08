@@ -191,7 +191,7 @@ impl<'a, 'tcx, F> Folder for ResolvedPathFolder<'a, 'tcx, F>
             Some(node) => {
                 let hir = expect!([node]
                                   hir::map::NodePat(pat) => pat,
-                                  hir::map::NodeLocal(pat) => pat);
+                                  hir::map::NodeBinding(pat) => pat);
 
                 self.alter_pat_path(p, hir)
             },

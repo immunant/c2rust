@@ -122,6 +122,9 @@ impl<F> Folder for FnFolder<F>
                 node: ItemKind::Fn(fl.decl, unsafety, constness, abi, generics.clone(), block),
                 attrs: fl.attrs,
                 vis: vis.clone(),
+                // Don't keep the old tokens.  The callback could have made arbitrary changes to
+                // the signature and body of the function.
+                tokens: None,
             })
         }).flat_map(|i| fold::noop_fold_item(i, self)).collect()
     }
@@ -165,6 +168,7 @@ impl<F> Folder for FnFolder<F>
                 attrs: fl.attrs,
                 vis: vis.clone(),
                 defaultness: defaultness,
+                tokens: None,
             }
         }).flat_map(|i| fold::noop_fold_impl_item(i, self)).collect()
     }
@@ -203,6 +207,7 @@ impl<F> Folder for FnFolder<F>
                 span: fl.span,
                 node: TraitItemKind::Method(sig, fl.block),
                 attrs: fl.attrs,
+                tokens: None,
             }
         }).flat_map(|i| fold::noop_fold_trait_item(i, self)).collect()
     }

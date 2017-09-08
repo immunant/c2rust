@@ -108,17 +108,19 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
         let parent = self.hir_map().get_parent(id);
         let parent_body = self.hir_map().body_owned_by(parent);
         let tables = self.ty_ctxt().body_tables(parent_body);
-        tables.node_id_to_type(id)
+        let hir_id = self.hir_map().node_to_hir_id(id);
+        tables.node_id_to_type(hir_id)
     }
 
     fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx> {
         let parent = self.hir_map().get_parent(id);
         let parent_body = self.hir_map().body_owned_by(parent);
         let tables = self.ty_ctxt().body_tables(parent_body);
-        if let Some(adj) = tables.adjustments.get(&id).and_then(|adjs| adjs.last()) {
+        let hir_id = self.hir_map().node_to_hir_id(id);
+        if let Some(adj) = tables.adjustments().get(hir_id).and_then(|adjs| adjs.last()) {
             adj.target
         } else {
-            tables.node_id_to_type(id)
+            tables.node_id_to_type(hir_id)
         }
     }
 
@@ -192,11 +194,14 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
                 if let Some(def_id) = self.try_resolve_expr(func) {
                     return Some(def_id);
                 } else {
-                    tables.type_dependent_defs.get(&func.id).and_then(|d| d.opt_def_id())
+                    let func_hir_id = self.hir_map().node_to_hir_id(func.id);
+                    tables.type_dependent_defs().get(func_hir_id).and_then(|d| d.opt_def_id())
                 }
             },
-            ExprKind::MethodCall(..) =>
-                tables.type_dependent_defs.get(&e.id).and_then(|d| d.opt_def_id()),
+            ExprKind::MethodCall(..) => {
+                let hir_id = self.hir_map().node_to_hir_id(e.id);
+                tables.type_dependent_defs().get(hir_id).and_then(|d| d.opt_def_id())
+            },
             _ => None,
         }
     }

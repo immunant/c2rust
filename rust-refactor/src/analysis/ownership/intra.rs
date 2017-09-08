@@ -357,6 +357,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                         (adt_ty, Perm::move_())
                     },
                     AggregateKind::Closure(_, _) => unimplemented!(),
+                    AggregateKind::Generator(_, _, _) => unimplemented!(),
                 }
             },
         }
@@ -512,6 +513,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 // InlineAsm has some Lvalues and Operands, but we can't do anything useful
                 // with them without analysing the actual asm code.
                 StatementKind::InlineAsm { .. } |
+                StatementKind::Validate(..) |
                 StatementKind::EndRegion(_) |
                 StatementKind::Nop => {},
             }
@@ -524,7 +526,9 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
             TerminatorKind::Return |
             TerminatorKind::Unreachable |
             TerminatorKind::Drop { .. } |
-            TerminatorKind::Assert { .. } => {},
+            TerminatorKind::Assert { .. } |
+            TerminatorKind::Yield { .. } |
+            TerminatorKind::GeneratorDrop => {},
 
             TerminatorKind::DropAndReplace { ref location, ref value, .. } => {
                 let (loc_ty, loc_perm) = self.lvalue_lty(location);

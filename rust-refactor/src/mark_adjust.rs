@@ -84,7 +84,7 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
     fn visit_pat(&mut self, x: &'s Pat) {
         let hir = if let Some(node) = self.cx.hir_map().find(x.id) {
             expect!([node] hir::map::NodePat(y) => y,
-                           hir::map::NodeLocal(y) => y)
+                           hir::map::NodeBinding(y) => y)
         } else {
             visit::walk_pat(self, x);
             return;

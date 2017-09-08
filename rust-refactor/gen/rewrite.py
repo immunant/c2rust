@@ -23,8 +23,9 @@ Attributes:
   sequences of this node type.  This only works for types supporting
   `GetNodeId` and `GetSpan`.
 
-- `#[rewrite=ignore]`: Ignore nodes of this type.  Perform no side effects and
-  always return success, in both `rewrite_recycled` and `rewrite_fresh`.
+- `#[rewrite=ignore]`: On a type, ignore nodes of this type; on a field, ignore
+  the contents of this field.  Perform no side effects and always return
+  success, in both `rewrite_recycled` and `rewrite_fresh`.
 
 
 - `#[prec_contains_expr]`: When entering a child of this node type, by default
@@ -109,6 +110,8 @@ def do_recycled_match(se, target1, target2):
         yield '  (&%s,' % struct_pattern(v, path, '1')
         yield '   &%s) => {' % struct_pattern(v, path, '2')
         for f in v.fields:
+            if f.attrs.get('rewrite') == 'ignore':
+                continue
             yield '    ({'
 
             if 'prec_first' in f.attrs:
@@ -184,6 +187,8 @@ def do_fresh_match(se, target1, target2):
         yield '  (&%s,' % struct_pattern(v, path, '1')
         yield '   &%s) => {' % struct_pattern(v, path, '2')
         for f in v.fields:
+            if f.attrs.get('rewrite') == 'ignore':
+                continue
             yield '    {'
 
             if 'prec_first' in f.attrs:
