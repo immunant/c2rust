@@ -101,7 +101,7 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
         if !self.config.enabled {
             return fold::noop_fold_item_simple(item, self);
         }
-        if item.attrs.iter().any(|attr| attr.path == "cross_check") {
+        if item.attrs.iter().any(|attr| attr.name().map_or(false, |name| name == "cross_check")) {
             // If we have cross-check attrs at multiple levels, e.g.,
             // one per crate and one per function, we'll get called multiple times
             // and might end up adding multiple cross-checks to each function.
