@@ -128,7 +128,13 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
             };
             let checked_block = self.fold_block(block).map(|block| {
                 quote_block!(self.cx, {
-                    unsafe { rb_xcheck($check_id); }
+                    unsafe {
+                        extern {
+                            #[no_mangle]
+                            fn rb_xcheck(item: u32);
+                        }
+                        rb_xcheck($check_id);
+                    }
                     $block
                 }).unwrap()
             });
