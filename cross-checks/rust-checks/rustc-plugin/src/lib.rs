@@ -21,7 +21,7 @@ fn expand_cross_checks(cx: &mut ExtCtxt,
     let config = CrossCheckConfig::new(mi);
     match item {
         Annotatable::Item(i) => Annotatable::Item(
-            CrossChecker{ cx: cx, config: config, ident: i.ident }
+            CrossChecker{ cx: cx, config: config }
             .fold_item(i).expect_one("too many items returned")),
         // TODO: handle TraitItem
         // TODO: handle ImplItem
@@ -89,7 +89,6 @@ impl CrossCheckConfig {
 struct CrossChecker<'a, 'cx: 'a> {
     cx: &'a mut ExtCtxt<'cx>,
     config: CrossCheckConfig,
-    ident: ast::Ident,
 }
 
 fn djb2_hash(s: &str) -> u32 {
@@ -119,12 +118,13 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
             // Allow clients to specify the id or name manually, like this:
             // #[cross_check(name = "foo")]
             // #[cross_check(id = 0x12345678)]
+            let fn_ident = self.fold_ident(item.ident);
             let check_id = if let Some(id) = self.config.id {
                 id
             } else if let Some(ref name) = self.config.name {
                 djb2_hash(name)
             } else {
-                djb2_hash(self.ident.name.as_str().as_ref())
+                djb2_hash(fn_ident.name.as_str().as_ref())
             };
             let checked_block = self.fold_block(block).map(|block| {
                 quote_block!(self.cx, {
@@ -149,7 +149,7 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
             ast::Item {
                 id: self.new_id(item.id),
                 vis: self.fold_vis(item.vis),
-                ident: self.fold_ident(item.ident),
+                ident: fn_ident,
                 attrs: fold::fold_attrs(item.attrs, self),
                 node: checked_fn,
                 span: self.new_span(item.span),
