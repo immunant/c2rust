@@ -42,6 +42,8 @@ pub struct Ctxt<'a, 'tcx: 'a> {
     /// use this to allocate extra values with the same lifetime `'tcx` as the types themselves.
     /// This way `Ty` wrappers don't need two lifetime parameters everywhere.
     tcx_arena: Option<&'tcx DroplessArena>,
+
+    cstore: &'a CStore,
 }
 
 /// Compiler phase selection.  Later phases have more analysis results available, but are less
@@ -58,9 +60,10 @@ pub enum Phase {
 }
 
 impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
-    fn new_phase_1(sess: &'a Session) -> Ctxt<'a, 'tcx> {
+    fn new_phase_1(sess: &'a Session, cstore: &'a CStore) -> Ctxt<'a, 'tcx> {
         Ctxt {
-            sess: sess,
+            sess,
+            cstore,
             map: None,
             tcx: None,
             tcx_arena: None,
@@ -68,9 +71,11 @@ impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
     }
 
     fn new_phase_2(sess: &'a Session,
+                   cstore: &'a CStore,
                    map: &'a hir_map::Map<'tcx>) -> Ctxt<'a, 'tcx> {
         Ctxt {
-            sess: sess,
+            sess,
+            cstore,
             map: Some(map),
             tcx: None,
             tcx_arena: None,
@@ -78,11 +83,13 @@ impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
     }
 
     fn new_phase_3(sess: &'a Session,
+                   cstore: &'a CStore,
                    map: &'a hir_map::Map<'tcx>,
                    tcx: TyCtxt<'a, 'tcx, 'tcx>,
                    tcx_arena: &'tcx DroplessArena) -> Ctxt<'a, 'tcx> {
         Ctxt {
-            sess: sess,
+            sess,
+            cstore,
             map: Some(map),
             tcx: Some(tcx),
             tcx_arena: Some(tcx_arena),
@@ -92,6 +99,8 @@ impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
     pub fn session(&self) -> &'a Session {
         self.sess
     }
+
+    pub fn cstore(&self) -> &'a CStore { self.cstore }
 
     pub fn hir_map(&self) -> &'a hir_map::Map<'tcx> {
         self.map
@@ -150,7 +159,7 @@ pub fn run_compiler<F, R>(args: &[String],
 
     if phase == Phase::Phase1 {
         let krate = remove_paren(krate);
-        let cx = Ctxt::new_phase_1(&sess);
+        let cx = Ctxt::new_phase_1(&sess, &cstore);
         return func(krate, cx);
     }
 
@@ -167,7 +176,7 @@ pub fn run_compiler<F, R>(args: &[String],
     let hir_map = hir_map::map_crate(&mut expand_result.hir_forest, expand_result.defs);
 
     if phase == Phase::Phase2 {
-        let cx = Ctxt::new_phase_2(&sess, &hir_map);
+        let cx = Ctxt::new_phase_2(&sess, &cstore,&hir_map);
         return func(krate, cx);
     }
 
@@ -175,11 +184,11 @@ pub fn run_compiler<F, R>(args: &[String],
         // Cloning hir_map seems kind of ugly, but the alternative is to deref the `TyCtxt` to get
         // a `GlobalCtxt` and read its `hir` field.  Since `GlobalCtxt` is actually private, this
         // seems like it would probably stop working at some point.
-        &sess, hir_map.clone(), expand_result.analysis, expand_result.resolutions,
+        &sess, cstore.as_ref(), hir_map.clone(), expand_result.analysis, expand_result.resolutions,
         &arena, &arenas, &crate_name,
         |tcx, _analysis, _incremental_hashes_map, _result| {
             if phase == Phase::Phase3 {
-                let cx = Ctxt::new_phase_3(&sess, &hir_map, tcx, &arena);
+                let cx = Ctxt::new_phase_3(&sess, &cstore, &hir_map, tcx, &arena);
                 return func(krate, cx);
             }
             unreachable!();
@@ -192,7 +201,7 @@ fn build_session(sopts: Options,
     // Corresponds roughly to `run_compiler`.
     let descriptions = rustc_driver::diagnostics_registry();
     let dep_graph = DepGraph::new(sopts.build_dep_graph());
-    let cstore = Rc::new(CStore::new(&dep_graph, Box::new(rustc_trans::LlvmMetadataLoader)));
+    let cstore = Rc::new(CStore::new(Box::new(rustc_trans::LlvmMetadataLoader)));
     let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
     let codemap = Rc::new(CodeMap::with_file_loader(file_loader, sopts.file_path_mapping()));
     // Put a dummy file at the beginning of the codemap, so that no real `Span` will accidentally
@@ -201,7 +210,7 @@ fn build_session(sopts: Options,
     let emitter_dest = None;
 
     let sess = session::build_session_with_codemap(
-        sopts, &dep_graph, in_path, descriptions, cstore.clone(), codemap, emitter_dest,
+        sopts, &dep_graph, in_path, descriptions, codemap, emitter_dest
     );
 
     (sess, cstore)

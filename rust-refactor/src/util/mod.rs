@@ -3,6 +3,7 @@ use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
 use syntax::symbol::Symbol;
 use syntax::util::small_vector::SmallVector;
+use syntax::symbol::InternedString;
 
 pub mod cursor;
 pub mod dataflow;
@@ -58,10 +59,12 @@ impl HirDefExt for Def {
             Def::VariantCtor(did, _) |
             Def::Method(did) |
             Def::AssociatedConst(did) |
-            Def::Local(did) |
-            Def::Upvar(did, _, _) |
             Def::Macro(did, _) |
             Def::GlobalAsm(did) => Some(did),
+
+            // Local variables stopped having DefIds at some point and switched to NodeId
+            Def::Local(_) |
+            Def::Upvar(_, _, _) |
 
             Def::PrimTy(_) |
             Def::SelfTy(_, _) |
@@ -98,5 +101,11 @@ impl IntoSymbol for String {
 impl<'a> IntoSymbol for &'a String {
     fn into_symbol(self) -> Symbol {
         <&str as IntoSymbol>::into_symbol(self)
+    }
+}
+
+impl IntoSymbol for InternedString {
+    fn into_symbol(self) -> Symbol {
+        (*self).into_symbol()
     }
 }

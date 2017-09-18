@@ -106,8 +106,8 @@ impl PatternSymbol for TraitItem {
 /// Get the text of a span, and pass it to a callback.  Returns `false` if the span text isn't
 /// available.
 pub fn with_span_text<F: FnOnce(&str)>(cm: &CodeMap, span: Span, callback: F) -> bool {
-    let lo = cm.lookup_byte_offset(span.lo);
-    let hi = cm.lookup_byte_offset(span.hi);
+    let lo = cm.lookup_byte_offset(span.lo());
+    let hi = cm.lookup_byte_offset(span.hi());
     let file_src = match lo.fm.src.as_ref() {
         Some(x) => x,
         None => return false,
@@ -124,8 +124,8 @@ pub fn extended_span(mut s: Span, attrs: &[Attribute]) -> Span {
     // Extend `s` backward to cover all the attrs
     for attr in attrs {
         // Not sure these checks are exactly right, but it seems to work for now.
-        if attr.span.ctxt == s.ctxt && attr.span.lo < s.lo {
-            s.lo = attr.span.lo;
+        if attr.span.ctxt() == s.ctxt() && attr.span.lo() < s.lo() {
+            s.lo = attr.span.lo();
         }
     }
     s

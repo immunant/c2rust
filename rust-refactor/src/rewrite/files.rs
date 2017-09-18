@@ -60,14 +60,14 @@ pub fn rewrite_files_with<F>(cm: &CodeMap, rewrites: &[TextRewrite], mut callbac
     let mut by_file = HashMap::new();
 
     for rw in rewrites {
-        let fm = cm.lookup_byte_offset(rw.old_span.lo).fm;
+        let fm = cm.lookup_byte_offset(rw.old_span.lo()).fm;
         let ptr = (&fm as &FileMap) as *const _;
         by_file.entry(ptr).or_insert_with(|| (Vec::new(), fm)).0.push(rw.clone());
     }
 
     for (_, (mut rewrites, fm)) in by_file {
         let mut buf = String::new();
-        rewrites.sort_by_key(|rw| rw.old_span.lo.0);
+        rewrites.sort_by_key(|rw| rw.old_span.lo().0);
         rewrite_range(cm, fm.start_pos, fm.end_pos, &mut rewrites, &mut |s| buf.push_str(s));
         callback(fm, &buf);
     }
@@ -105,8 +105,8 @@ fn rewrite_range(cm: &CodeMap,
     let mut cur = start;
 
     for rw in rewrites {
-        if rw.old_span.lo != cur {
-            emit_chunk(cm, cur, rw.old_span.lo, |s| callback(s));
+        if rw.old_span.lo() != cur {
+            emit_chunk(cm, cur, rw.old_span.lo(), |s| callback(s));
         }
 
         match rw.adjust {
@@ -115,10 +115,10 @@ fn rewrite_range(cm: &CodeMap,
         }
 
         if rw.rewrites.len() == 0 {
-            emit_chunk(cm, rw.new_span.lo, rw.new_span.hi, |s| callback(s));
+            emit_chunk(cm, rw.new_span.lo(), rw.new_span.hi(), |s| callback(s));
         } else {
-            rw.rewrites.sort_by_key(|rw| rw.old_span.lo.0);
-            rewrite_range(cm, rw.new_span.lo, rw.new_span.hi, &mut rw.rewrites, callback);
+            rw.rewrites.sort_by_key(|rw| rw.old_span.lo().0);
+            rewrite_range(cm, rw.new_span.lo(), rw.new_span.hi(), &mut rw.rewrites, callback);
         }
 
         match rw.adjust {
@@ -126,7 +126,7 @@ fn rewrite_range(cm: &CodeMap,
             TextAdjust::Parenthesize => callback(")"),
         }
 
-        cur = rw.old_span.hi;
+        cur = rw.old_span.hi();
     }
 
     if cur != end {

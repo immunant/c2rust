@@ -289,8 +289,8 @@ pub fn pick_node_command(krate: &Crate, cx: &driver::Ctxt, args: &[String]) {
     let result = pick_node_at_loc(krate, cx, kind, file, line, col);
 
     if let Some(ref result) = result {
-        let lo_loc = cx.session().codemap().lookup_char_pos(result.span.lo);
-        let hi_loc = cx.session().codemap().lookup_char_pos(result.span.hi - BytePos(1));
+        let lo_loc = cx.session().codemap().lookup_char_pos(result.span.lo());
+        let hi_loc = cx.session().codemap().lookup_char_pos(result.span.hi() - BytePos(1));
         info!("{{ \
             found: true, \
             node_id: {}, \

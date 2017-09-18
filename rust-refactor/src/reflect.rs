@@ -4,7 +4,7 @@ use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::map::Node::*;
 use rustc::hir::map::definitions::DefPathData;
 use rustc::ty::{self, TyCtxt};
-use rustc::ty::item_path::{ItemPathBuffer, RootMode};
+use rustc::ty::item_path::{ItemPathBuffer};
 use rustc::ty::subst::Subst;
 use syntax::ast::*;
 use syntax::codemap::DUMMY_SP;
@@ -14,7 +14,6 @@ use syntax::symbol::keywords;
 use ast_manip::make_ast::mk;
 use command::{Registry, DriverCommand};
 use driver::Phase;
-use util::IntoSymbol;
 
 
 /// Build an AST representing a `ty::Ty`.
@@ -46,7 +45,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         TyStr => mk().ident_ty("str"),
         TyArray(ty, len) => mk().array_ty(
             reflect_tcx_ty(tcx, ty),
-            mk().lit_expr(mk().int_lit(len as u128, "usize"))),
+            mk().lit_expr(mk().int_lit(len.val.to_const_int().unwrap().to_u128().unwrap(), "usize"))),
         TySlice(ty) => mk().slice_ty(reflect_tcx_ty(tcx, ty)),
         TyRawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(reflect_tcx_ty(tcx, mty.ty)),
         TyRef(_, mty) => mk().set_mutbl(mty.mutbl).ref_ty(reflect_tcx_ty(tcx, mty.ty)),
@@ -154,7 +153,7 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 
             DefPathData::ValueNs(name) => {
                 if segments.len() == 0 {
-                    if name.as_str().len() > 0 {
+                    if name.len() > 0 {
                         segments.push(mk().path_segment(name));
                     }
                 } else {
@@ -172,15 +171,14 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             DefPathData::EnumVariant(name) |
             DefPathData::Module(name) |
             DefPathData::Field(name) |
-            DefPathData::Binding(name) |
             DefPathData::GlobalMetaData(name) => {
-                if name.as_str().len() > 0 {
+                if name.len() > 0 {
                     segments.push(mk().path_segment(name));
                 }
             },
 
             DefPathData::TypeParam(name) => {
-                if name.as_str().len() > 0 {
+                if name.len() > 0 {
                     segments.push(mk().path_segment(name));
                     break;
                 }
@@ -230,7 +228,7 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             _ => {},
         }
 
-        let visible_parent_map = sess.cstore.visible_parent_map(sess);
+        let visible_parent_map = tcx.visible_parent_map(LOCAL_CRATE);
         if let Some(&parent_id) = visible_parent_map.get(&id) {
             id = parent_id;
         } else if let Some(parent_id) = tcx.parent_def_id(id) {

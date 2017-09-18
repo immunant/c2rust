@@ -36,7 +36,7 @@ impl<'a> Folder for FixFormat<'a> {
         let old_ce = self.current_expansion;
         if self.current_expansion.is_none() {
             // Check if this is the top of a `format!` expansion.
-            let lo = self.codemap.lookup_byte_offset(e.span.lo);
+            let lo = self.codemap.lookup_byte_offset(e.span.lo());
             match &lo.fm.name as &str {
                 "<format macros>" |
                 "<print macros>" |
@@ -51,8 +51,8 @@ impl<'a> Folder for FixFormat<'a> {
             // Check if we are exiting the current expansion, traversing into a copy of a macro
             // argument expression.
             let current_expansion = self.current_expansion.unwrap();
-            if e.span.ctxt != current_expansion.ctxt &&
-               e.span.ctxt == current_expansion.source_callsite().ctxt {
+            if e.span.ctxt() != current_expansion.ctxt() &&
+               e.span.ctxt() == current_expansion.source_callsite().ctxt() {
                 // The current node at least *claims* to be a macro argument.  But `format!`
                 // applies the argument's span to all kinds of random nodes, so we have to
                 // validate the span info by parsing the indicated text and comparing `e` to
@@ -102,7 +102,7 @@ struct FixMacros {
 
 fn invocation_span(span: Span) -> Span {
     let mut span = span;
-    while span.ctxt != SyntaxContext::empty() {
+    while span.ctxt() != SyntaxContext::empty() {
         let new_span = span.source_callsite();
         assert!(new_span != span);
         span = new_span;
@@ -113,7 +113,7 @@ fn invocation_span(span: Span) -> Span {
 impl Folder for FixMacros {
     fn fold_expr(&mut self, mut e: P<Expr>) -> P<Expr> {
         let was_in_macro = self.in_macro;
-        self.in_macro = e.span.ctxt != SyntaxContext::empty();
+        self.in_macro = e.span.ctxt() != SyntaxContext::empty();
 
         let old_span = e.span;
         // Clear all macro spans in the node and its children.
@@ -136,7 +136,7 @@ impl Folder for FixMacros {
 
     fn fold_stmt(&mut self, mut s: Stmt) -> SmallVector<Stmt> {
         let was_in_macro = self.in_macro;
-        self.in_macro = s.span.ctxt != SyntaxContext::empty();
+        self.in_macro = s.span.ctxt() != SyntaxContext::empty();
 
         let old_span = s.span;
         // Clear all macro spans in the node and its children.
@@ -161,7 +161,7 @@ impl Folder for FixMacros {
     // appear (Pat, Ty, and the Item-likes).
 
     fn new_span(&mut self, sp: Span) -> Span {
-        if sp.ctxt != SyntaxContext::empty() {
+        if sp.ctxt() != SyntaxContext::empty() {
             DUMMY_SP
         } else {
             sp

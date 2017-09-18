@@ -114,8 +114,8 @@ impl InteractState {
                         .unwrap_or_else(
                             || panic!("no {:?} node at {}:{}:{}", kind, file, line, col));
 
-                    let lo = cx.session().codemap().lookup_char_pos(info.span.lo);
-                    let hi = cx.session().codemap().lookup_char_pos(info.span.hi);
+                    let lo = cx.session().codemap().lookup_char_pos(info.span.lo());
+                    let hi = cx.session().codemap().lookup_char_pos(info.span.hi());
                     (info.id,
                      MarkInfo {
                          id: info.id.as_usize(),
@@ -149,8 +149,8 @@ impl InteractState {
 
                 let msg = self.run_compiler(driver::Phase::Phase2, |_krate, cx| {
                     let span = cx.hir_map().span(id);
-                    let lo = cx.session().codemap().lookup_char_pos(span.lo);
-                    let hi = cx.session().codemap().lookup_char_pos(span.hi);
+                    let lo = cx.session().codemap().lookup_char_pos(span.lo());
+                    let hi = cx.session().codemap().lookup_char_pos(span.hi());
                     let info = MarkInfo {
                         id: id.as_usize(),
                         file: lo.file.name.clone(),
@@ -202,8 +202,8 @@ fn collect_mark_infos(marks: &HashSet<(NodeId, Symbol)>,
     for &(id, label) in marks {
         let info = infos.entry(id).or_insert_with(|| {
             let span = span_map[&id];
-            let lo = cx.session().codemap().lookup_char_pos(span.lo);
-            let hi = cx.session().codemap().lookup_char_pos(span.hi);
+            let lo = cx.session().codemap().lookup_char_pos(span.lo());
+            let hi = cx.session().codemap().lookup_char_pos(span.hi());
             MarkInfo {
                 id: id.as_usize(),
                 file: lo.file.name.clone(),

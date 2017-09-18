@@ -390,6 +390,13 @@ struct UnifyVisitor<'a, 'tcx: 'a> {
 impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     // Helpers for looking up labeled types in the various precomputed tables.
 
+    fn node_lty(&self, id: NodeId) -> LTy<'tcx> {
+        let tables = self.get_tables(id);
+        let hir_id = self.hir_map.node_to_hir_id(id);
+        let ty = tables.node_id_to_type(hir_id);
+        self.ltt.label(ty)
+    }
+
     fn expr_lty(&self, e: &Expr) -> LTy<'tcx> {
         self.nodes.get(&e.hir_id)
             .or_else(|| self.unadjusted_nodes.get(&e.hir_id))
@@ -817,8 +824,10 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
         match p.node {
             PatKind::Wild => {},
 
-            PatKind::Binding(_, def_id, _, ref opt_pat) => {
-                self.ltt.unify(rty, self.def_lty(def_id));
+            PatKind::Binding(_, node_id, _, ref opt_pat) => {
+
+                let lty = self.node_lty(node_id);
+                self.ltt.unify(rty, lty);
                 if let Some(ref p) = *opt_pat {
                     self.ltt.unify(rty, self.pat_lty(p));
                 }

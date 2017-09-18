@@ -20,8 +20,8 @@ impl<'a> PrintSpanVisitor<'a> {
             return "DUMMY_SP".to_owned();
         }
 
-        let lo = self.cm.lookup_byte_offset(span.lo);
-        let hi = self.cm.lookup_byte_offset(span.hi);
+        let lo = self.cm.lookup_byte_offset(span.lo());
+        let hi = self.cm.lookup_byte_offset(span.hi());
         let mut s = format!("{}: {} .. {}", lo.fm.name, lo.pos.0, hi.pos.0);
 
         let span2 = span.source_callsite();

@@ -11,6 +11,7 @@ use api::*;
 use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
+use rustc::middle::cstore::CrateStore;
 
 
 pub struct LetXUninitialized;
@@ -212,13 +213,13 @@ fn is_uninit_call(cx: &driver::Ctxt, e: &Expr) -> bool {
     if def_id.krate == LOCAL_CRATE {
         return false;
     }
-    let crate_name = cx.session().cstore.crate_name(def_id.krate);
-    let path = cx.session().cstore.def_path(def_id);
+    let crate_name = cx.cstore().crate_name_untracked(def_id.krate);
+    let path = cx.cstore().def_path(def_id);
 
     (crate_name.as_str() == "std" || crate_name.as_str() == "core") &&
     path.data.len() == 2 &&
-    path.data[0].data.get_opt_name().map_or(false, |sym| sym.as_str() == "mem") &&
-    path.data[1].data.get_opt_name().map_or(false, |sym| sym.as_str() == "uninitialized")
+    path.data[0].data.get_opt_name().map_or(false, |sym| sym == "mem") &&
+    path.data[1].data.get_opt_name().map_or(false, |sym| sym == "uninitialized")
 }
 
 
