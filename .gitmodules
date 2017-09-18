@@ -1,0 +1,3 @@
+[submodule "rust-refactor/compiler"]
+	path = rust-refactor/compiler
+	url = git@github.com:rust-lang/rust

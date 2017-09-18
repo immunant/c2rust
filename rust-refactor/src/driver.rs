@@ -210,7 +210,7 @@ fn build_session(sopts: Options,
     let emitter_dest = None;
 
     let sess = session::build_session_with_codemap(
-        sopts, &dep_graph, in_path, descriptions, codemap, emitter_dest
+        sopts, in_path, descriptions, codemap, emitter_dest
     );
 
     (sess, cstore)
