@@ -4,19 +4,15 @@ use command::{CommandState, Registry};
 use driver::{self, Phase, parse_impl_items};
 use reflect::reflect_path;
 use rustc::hir::def_id::DefId;
-use rustc::ty::Ty;
-use rustc::ty::TypeAndMut;
 use rustc::ty::TypeVariants;
 use std::collections::HashSet;
 use std::fmt::Display;
 use syntax::ast::*;
-use syntax::fold::{self, Folder};
+use syntax::fold::Folder;
 use syntax::ptr::P;
 use syntax::symbol::keywords;
 use syntax::util::small_vector::SmallVector;
 use transform::Transform;
-use transform;
-use util::HirDefExt;
 
 pub struct Ionize {
 

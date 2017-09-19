@@ -125,7 +125,7 @@ pub fn extended_span(mut s: Span, attrs: &[Attribute]) -> Span {
     for attr in attrs {
         // Not sure these checks are exactly right, but it seems to work for now.
         if attr.span.ctxt() == s.ctxt() && attr.span.lo() < s.lo() {
-            s.lo = attr.span.lo();
+            s = s.with_lo(attr.span.lo());
         }
     }
     s

@@ -200,7 +200,6 @@ fn build_session(sopts: Options,
                  file_loader: Option<Box<FileLoader>>) -> (Session, Rc<CStore>) {
     // Corresponds roughly to `run_compiler`.
     let descriptions = rustc_driver::diagnostics_registry();
-    let dep_graph = DepGraph::new(sopts.build_dep_graph());
     let cstore = Rc::new(CStore::new(Box::new(rustc_trans::LlvmMetadataLoader)));
     let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
     let codemap = Rc::new(CodeMap::with_file_loader(file_loader, sopts.file_path_mapping()));

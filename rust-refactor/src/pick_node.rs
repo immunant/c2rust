@@ -121,7 +121,7 @@ impl<'a> Visitor<'a> for PickVisitor {
             for arg in &fd.inputs {
                 if arg.ty.span.contains(self.target) ||
                    arg.pat.span.contains(self.target) ||
-                   (arg.ty.span.ctxt == arg.pat.span.ctxt &&
+                   (arg.ty.span.ctxt() == arg.pat.span.ctxt() &&
                     arg.pat.span.between(arg.ty.span).contains(self.target)) {
                     self.node_info = Some(NodeInfo {
                         id: arg.id,
@@ -234,7 +234,7 @@ pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo
     let mut v = PickVisitor {
         node_info: None,
         kind: kind,
-        target: Span { lo: pos, hi: pos, ctxt: SyntaxContext::empty() },
+        target: Span::new(pos, pos, SyntaxContext::empty()),
     };
     krate.visit(&mut v);
 

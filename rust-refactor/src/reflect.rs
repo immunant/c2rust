@@ -81,10 +81,6 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                                       id: DefId,
                                       opt_substs: Option<&[ty::Ty<'tcx>]>)
                                       -> (Option<QSelf>, Path) {
-    // Access to `sess` relies on the `TyCtxt -> GlobalCtxt` deref.  `GlobalCtxt` is private (and
-    // undocumented), so this may break at some point.
-    let sess = tcx.sess;
-
     let mut segments = Vec::new();
     let mut qself = None;
 
@@ -275,7 +271,6 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
 
 pub fn register_commands(reg: &mut Registry) {
     reg.register("test_reflect", |args| {
-        let args = args.to_owned();
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             st.map_krate(|krate| {
                 use api::*;

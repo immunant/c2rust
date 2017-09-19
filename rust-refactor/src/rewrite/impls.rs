@@ -23,8 +23,8 @@ use util::Lone;
 
 fn describe(sess: &Session, span: Span) -> String {
     let cm = sess.codemap();
-    let lo = cm.lookup_byte_offset(span.lo);
-    let hi = cm.lookup_byte_offset(span.hi);
+    let lo = cm.lookup_byte_offset(span.lo());
+    let hi = cm.lookup_byte_offset(span.hi());
     let src = &lo.fm.src.as_ref().unwrap()[lo.pos.0 as usize .. hi.pos.0 as usize];
 
     if Rc::ptr_eq(&lo.fm, &hi.fm) {
@@ -70,7 +70,7 @@ trait Splice: Rewrite+'static {
         let printed = new.to_string();
         let reparsed = Self::parse(rcx.session(), &printed);
 
-        if old_span.lo != old_span.hi {
+        if old_span.lo() != old_span.hi() {
             info!("REWRITE {}", describe(rcx.session(), old_span));
             info!("   INTO {}", describe(rcx.session(), reparsed.span()));
         } else {
@@ -122,7 +122,7 @@ trait Splice: Rewrite+'static {
             return false;
         }
 
-        let fm = rcx.session().codemap().lookup_byte_offset(old.span().lo).fm;
+        let fm = rcx.session().codemap().lookup_byte_offset(old.span().lo()).fm;
         if fm.name.starts_with("<") {
             return false;
         }
@@ -483,18 +483,10 @@ impl<T: Rewrite+SeqItem> Rewrite for [T] {
                         let old_span =
                             if i > 0 {
                                 let s = old[i - 1].get_span();
-                                Span {
-                                    lo: s.hi,
-                                    hi: s.hi,
-                                    ctxt: s.ctxt,
-                                }
+                                s.with_lo(s.hi())
                             } else {
                                 let s = old[0].get_span();
-                                Span {
-                                    lo: s.lo,
-                                    hi: s.lo,
-                                    ctxt: s.ctxt,
-                                }
+                                s.with_hi(s.lo())
                             };
                         SeqItem::splice_recycled_span(&self[j], old_span, rcx.borrow());
                         j += 1;
