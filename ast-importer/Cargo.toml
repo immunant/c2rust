@@ -1,11 +1,14 @@
 [package]
-name = "ast-importer"
+name = "ast_importer"
 version = "0.1.0"
 authors = ["Eric Mertens <emertens@galois.com>"]
 build = "build.rs"
 
 [dependencies]
 cbor = { git = "https://github.com/GaloisInc/rust-cbor" } # "0.4"
+syn = "0.11.11"
+quote = "0.3"
+bimap = "0.1"
 
 [build-dependencies]
 bindgen="0.29.0"

@@ -1,4 +1,9 @@
 extern crate cbor;
+extern crate syn;
+extern crate ast_importer;
+
+#[macro_use]
+extern crate quote;
 
 use std::env;
 use std::io::Cursor;
@@ -11,6 +16,8 @@ use cbor::Items;
 use cbor::Decoder;
 
 use std::collections::HashMap;
+
+use ast_importer::name_manager;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
@@ -141,6 +148,15 @@ fn main() {
         Ok(cxt) => println!("{:#?}", cxt),
         Err(e) => println!("{:#?}", e),
     }
+
+    use syn::parse;
+    use quote::ToTokens;
+    use quote::Tokens;
+    if let parse::IResult::Done(_, t) = parse::ty("[u32; 10]") {
+        let mut tokens = Tokens::new();
+        t.to_tokens(&mut tokens);
+        println!("{}", tokens.as_str());
+    }
 }
 
 fn parse_and_dump(filename: &str) -> Result<AstContext, Error> {
@@ -156,3 +172,6 @@ fn parse_and_dump(filename: &str) -> Result<AstContext, Error> {
         Err(e) => panic!("{:#?}", e),
     }
 }
+
+
+
