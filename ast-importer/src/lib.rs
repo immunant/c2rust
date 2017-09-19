@@ -3,7 +3,7 @@ extern crate bimap;
 extern crate cbor;
 use cbor::Decoder;
 
-pub mod name_manager;
+pub mod renamer;
 
 #[cfg(test)]
 mod tests {

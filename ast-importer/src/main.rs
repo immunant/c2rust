@@ -17,7 +17,7 @@ use cbor::Decoder;
 
 use std::collections::HashMap;
 
-use ast_importer::name_manager;
+use ast_importer::renamer;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
