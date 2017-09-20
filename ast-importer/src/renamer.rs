@@ -1,16 +1,15 @@
 use std::collections::HashSet;
 use std::hash::Hash;
 use bimap::BiMap;
-use bimap::Overwritten;
 
 type Scope<T> = BiMap<T, String>;
 
-struct Renamer<T> {
+pub struct Renamer<T> {
     scopes: Vec<Scope<T>>,
     reserved_names: HashSet<String>,
 }
 
-impl<T: ToNameString + Eq + Hash> Renamer<T> {
+impl<T: Copy + Clone + Eq + Hash> Renamer<T> {
 
     /// Creates a new renaming environment with a single, empty scope. The given set of
     /// reserved names will exclude those names from being chosen as the mangled names from
@@ -44,6 +43,7 @@ impl<T: ToNameString + Eq + Hash> Renamer<T> {
         self.scopes.last_mut().expect("Expected a scope")
     }
 
+    /// Is the mangled name currently in use
     fn is_target_used(&self, key: &str) -> bool {
         let key = key.to_string();
 
@@ -56,18 +56,17 @@ impl<T: ToNameString + Eq + Hash> Renamer<T> {
     /// Introduce a new name binding into the current scope. If the key is unbound in
     /// the current scope then Some of the resulting mangled name is returned, otherwise
     /// None.
-    pub fn insert(&mut self, key: T) -> Option<String> {
+    pub fn insert(&mut self, key: T, basename: &str) -> Option<String> {
 
         if self.current_scope().get_by_left(&key).is_some() {
             return None
         }
 
-        let target0 = key.to_name();
-        let mut target = target0.clone();
+        let mut target = basename.to_string();
 
         for i in 0.. {
             if self.is_target_used(&target) {
-                target = format!("{}_{}", target0, i);
+                target = format!("{}_{}", basename, i);
             } else {
                 break
             }
@@ -92,28 +91,6 @@ impl<T: ToNameString + Eq + Hash> Renamer<T> {
     }
 }
 
-trait ToNameString {
-    fn to_name(&self) -> String;
-}
-
-impl<'a> ToNameString for &'a str {
-    fn to_name(&self) -> String {
-        self.to_string()
-    }
-}
-
-impl ToNameString for str {
-    fn to_name(&self) -> String {
-        self.to_string()
-    }
-}
-
-impl ToNameString for String {
-    fn to_name(&self) -> String {
-        self.to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,12 +100,12 @@ mod tests {
         let keywords = vec!["reserved"].into_iter().map(str::to_string).collect();
         let mut renamer = Renamer::new(keywords);
 
-        let one1 = renamer.insert("one").unwrap();
-        let one2 = renamer.get("one").unwrap();
+        let one1 = renamer.insert(1,"one").unwrap();
+        let one2 = renamer.get(1).unwrap();
         assert_eq!(one1, one2);
 
-        let reserved1 = renamer.insert("reserved").unwrap();
-        let reserved2 = renamer.get("reserved").unwrap();
+        let reserved1 = renamer.insert(2, "reserved").unwrap();
+        let reserved2 = renamer.get(2).unwrap();
         assert_eq!(reserved1, "reserved_0");
         assert_eq!(reserved2, "reserved_0");
     }
@@ -137,30 +114,30 @@ mod tests {
     fn scoped() {
         let mut renamer = Renamer::new(HashSet::new());
 
-        let one1 = renamer.insert("one").unwrap();
+        let one1 = renamer.insert(10, "one").unwrap();
         renamer.add_scope();
 
-        let one2 = renamer.get("one").unwrap();
+        let one2 = renamer.get(10).unwrap();
         assert_eq!(one1, one2);
 
-        let one3 = renamer.insert("one").unwrap();
-        let one4 = renamer.get("one").unwrap();
+        let one3 = renamer.insert(20,"one").unwrap();
+        let one4 = renamer.get(20).unwrap();
         assert_eq!(one3, one4);
         assert_ne!(one3, one2);
 
         renamer.drop_scope();
 
-        let one5 = renamer.get("one").unwrap();
+        let one5 = renamer.get(10).unwrap();
         assert_eq!(one5, one2);
     }
 
     #[test]
     fn forgets() {
         let mut renamer = Renamer::new(HashSet::new());
-        assert_eq!(renamer.get("example"), None);
+        assert_eq!(renamer.get(1), None);
         renamer.add_scope();
-        renamer.insert("example");
+        renamer.insert(1,"example");
         renamer.drop_scope();
-        assert_eq!(renamer.get("example"), None);
+        assert_eq!(renamer.get(1), None);
     }
 }
