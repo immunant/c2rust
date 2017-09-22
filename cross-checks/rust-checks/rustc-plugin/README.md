@@ -11,11 +11,10 @@ First, add the plugin as a Cargo dependency to your `Cargo.toml` file:
 cross-checks = { path = ".../C2Rust/cross-checks/rust-checks/rustc-plugin" }
 ```
 with `...` as the full path to the C2Rust repository.
-Next, add the following preamble to each of your `.rs` files:
+Next, add the following preamble to your `main.rs` or `lib.rs` file:
 ```rust
 #![feature(plugin)]
 #![plugin(cross_checks)]
-#![cross_check]
 ```
 Finally, create a `build.rs` file next to `Cargo.toml` in your crate and add
 these lines:
@@ -29,7 +28,7 @@ replacing `...` with the path to your ReMon repository.
 
 ## Cross-checker options
 Cross-checking is enabled and configured using the `#[cross_check]` directive,
-which can either be enabled per-crate (as in the preamble above), or separately
+which can either be enabled per file (using `#![cross_check]` at the beginning of each file) or individually
 per function (the per-function settings override the global ones).
 
 The directive optionally takes the following options:
