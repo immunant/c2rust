@@ -28,7 +28,7 @@ replacing `...` with the path to your ReMon repository.
 
 ## Cross-checker options
 Cross-checking is enabled and configured using the `#[cross_check]` directive,
-which can either be enabled per file (using `#![cross_check]` at the beginning of each file) or individually
+which can either be enabled globally (using `#![cross_check]` at the beginning of `main.rs` or `lib.rs`) or individually
 per function (the per-function settings override the global ones).
 
 The directive optionally takes the following options:
