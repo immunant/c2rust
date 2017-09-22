@@ -46,4 +46,7 @@ fn bar() { }
 
 #[cross_check(yes, id=0x1234)]
 fn baz() { }
+
+#[cross_check(no)]
+fn foo() { }
 ```
