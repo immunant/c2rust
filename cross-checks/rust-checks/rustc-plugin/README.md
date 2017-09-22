@@ -12,14 +12,14 @@ cross-checks = { path = ".../C2Rust/cross-checks/rust-checks/rustc-plugin" }
 ```
 with `...` as the full path to the C2Rust repository.
 Next, add the following preamble to each of your `.rs` files:
-```
+```rust
 #![feature(plugin)]
 #![plugin(cross_checks)]
 #![cross_check]
 ```
 Finally, create a `build.rs` file next to `Cargo.toml` in your crate and add
 these lines:
-```
+```rust
 fn main() {
     println!("cargo:rustc-link-lib=dylib=clevrbuf");
     println!("cargo:rustc-link-search=native=.../ReMon/libclevrbuf");
@@ -41,7 +41,7 @@ The directive optionally takes the following options:
     overrides `name=foo` if both are present.
 
 Example:
-```
+```rust
 #[cross_check(yes, name=foo)]
 fn bar() { }
 
