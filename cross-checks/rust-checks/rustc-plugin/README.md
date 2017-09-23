@@ -16,7 +16,7 @@ Next, add the following preamble to your `main.rs` or `lib.rs` file:
 #![feature(plugin)]
 #![plugin(cross_checks)]
 ```
-Finally, create a `build.rs` file next to `Cargo.toml` in your crate and add
+Finally, create a `build.rs` file in the same directory as `Cargo.toml` and add
 these lines:
 ```rust
 fn main() {
