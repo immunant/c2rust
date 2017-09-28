@@ -36,11 +36,11 @@ uint32_t get_func_hash(void *func) {
 extern "C" {
 void __cyg_profile_func_enter(void *, void *) __attribute__((no_instrument_function, visibility("default")));
 
-void rb_xcheck(unsigned long) __attribute__((weak));
+void rb_xcheck(uint8_t tag, uint64_t val) __attribute__((weak));
 
 void __cyg_profile_func_enter(void *func,  void *caller) {
     auto func_hash = get_func_hash(func);
     if (rb_xcheck)
-        rb_xcheck(func_hash);
+        rb_xcheck(0, static_cast<uint64_t>(func_hash));
 }
 }
