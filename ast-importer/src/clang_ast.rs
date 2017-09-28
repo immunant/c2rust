@@ -8,7 +8,7 @@ use std;
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 #[derive(Debug)]
-struct AstNode {
+pub struct AstNode {
     tag: ASTEntryTag,
     children: Vec<Option<u64>>,
     line: u64,
@@ -18,8 +18,8 @@ struct AstNode {
 }
 
 #[derive(Debug)]
-struct TypeNode {
-    tag: TypeTag,
+pub struct TypeNode {
+    pub tag: TypeTag,
     extras: Vec<Cbor>,
 }
 
