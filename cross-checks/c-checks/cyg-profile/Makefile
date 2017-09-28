@@ -15,6 +15,6 @@ test: test.c | $(LIB)
 	$(CC) $(CFLAGS) -finstrument-functions -rdynamic -lcrosscheck -L$(CURDIR) -Wl,-rpath,$(CURDIR) -o $@ $^
 
 $(LIB): CXXFLAGS += -fPIC -fvisibility=hidden
-$(LIB): LDFLAGS += -fPIC -ldl
+$(LIB): LDFLAGS += -fPIC -ldl -Wl,--as-needed
 $(LIB): cyg_profile_checker.o
 	$(CXX) -shared $(LDFLAGS) -o $@ $^
