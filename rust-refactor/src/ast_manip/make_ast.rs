@@ -839,6 +839,14 @@ impl Builder {
         }
     }
 
+    pub fn ty<T>(self, node: TyKind) -> Ty {
+        Ty {
+            id: DUMMY_NODE_ID,
+            node,
+            span: DUMMY_SP,
+        }
+    }
+
     pub fn mac<Pa, Ts>(self, path: Pa, tts: Ts) -> Mac
             where Pa: Make<Path>, Ts: Make<ThinTokenStream> {
         let path = path.make(&self);

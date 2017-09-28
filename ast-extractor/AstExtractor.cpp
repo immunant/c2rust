@@ -39,9 +39,6 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder>
     ASTContext *Context;
     CborEncoder *encoder;
     TranslateASTVisitor *astEncoder;
-
-    // Bounds recursion when visiting self-referential record declarations
-    std::unordered_set<const clang::RecordDecl*> recordDeclsUnderVisit;
     
     std::unordered_set<const Type*> exports;
     
@@ -62,7 +59,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder>
         // 2 - Type tag
         cbor_encode_uint(&local, tag);
         
-        // 3- extras
+        // 3 - extras
         extra(&local);
         
         cbor_encoder_close_container(encoder, &local);
@@ -78,15 +75,40 @@ public:
         });
     }
     
-    //Constant, Variable, DependentSized, Incomplete
-    void VisitArrayType(const ArrayType *T) {
+    void VisitConstantArrayType(const ConstantArrayType *T) {
         auto s = T->getPointeeType().split();
         
-        encodeType(T, TagArrayType, [T,&s](CborEncoder *local) {
+        encodeType(T, TagConstantArrayType, [T,&s](CborEncoder *local) {
+            cbor_encode_uint(local, uintptr_t(s.Ty));
+            cbor_encode_uint(local, T->getSize().getLimitedValue());
+        });
+        
+        if(s.Ty) {
+            Visit(s.Ty);
+        }
+    }
+    
+    void VisitVariableArrayType(const VariableArrayType *T) {
+        auto s = T->getPointeeType().split();
+        
+        encodeType(T, TagVariableArrayType, [T,&s](CborEncoder *local) {
+            cbor_encode_uint(local, uintptr_t(s.Ty));
+            cbor_encode_undefined(local); // Variable size not exported currently
+        });
+        
+        if(s.Ty) {
+            Visit(s.Ty);
+        }
+    }
+    
+    void VisitIncompleteArrayType(const IncompleteArrayType *T) {
+        auto s = T->getPointeeType().split();
+        
+        encodeType(T, TagIncompleteArrayType, [T,&s](CborEncoder *local) {
             cbor_encode_uint(local, uintptr_t(s.Ty));
         });
         
-        if(nullptr != s.Ty) {
+        if(s.Ty) {
             Visit(s.Ty);
         }
     }
@@ -589,14 +611,12 @@ class TranslateASTVisitor final
       
       bool VisitTypedefDecl(TypedefDecl *D) {
           std::vector<void*> childIds;
-          auto typeForDecl = D->getTypeForDecl();
-          encode_entry(D, TagTypedefDecl, childIds, typeForDecl,
+          encode_entry(D, TagTypedefDecl, childIds, D->getTypeForDecl(),
                              [D](CborEncoder *array) {
                                  auto name = D->getNameAsString();
                                  cbor_encode_text_stringz(array, name.c_str());
                              });
-          if(nullptr != typeForDecl)
-            typeEncoder.Visit(typeForDecl);
+          typeEncoder.Visit(D->getTypeForDecl());
           return true;
       }
       
@@ -627,32 +647,8 @@ class TranslateASTVisitor final
           std::vector<void*> childIds;
           encode_entry(SL, TagStringLiteral, childIds,
                              [SL](CborEncoder *array){
-                                // C and C++ supports different string types, so 
-                                // we need to identify the string literal type
-                                switch(SL->getKind()) {
-                                    case clang::StringLiteral::StringKind::Ascii:
-                                        cbor_encode_uint(array, StringTypeTag::TagAscii);
-                                        break;
-                                    case clang::StringLiteral::StringKind::Wide:
-                                        cbor_encode_uint(array, StringTypeTag::TagWide);
-                                        break;
-                                    case clang::StringLiteral::StringKind::UTF8:
-                                        cbor_encode_uint(array, StringTypeTag::TagUTF8);
-                                        break;
-                                    case clang::StringLiteral::StringKind::UTF16:
-                                        cbor_encode_uint(array, StringTypeTag::TagUTF16);
-                                        break;
-                                    case clang::StringLiteral::StringKind::UTF32:
-                                        cbor_encode_uint(array, StringTypeTag::TagUTF32);
-                                        break;
-                                }
-                                // The size of the wchar_t type in C is implementation defined
-                                cbor_encode_uint(array, SL->getCharByteWidth());
-
-                                // String literals can contain arbitrary bytes, so  
-                                // we encode these as byte strings rather than text. 
-                                const uint8_t* bytes = reinterpret_cast<const uint8_t*>(SL->getBytes().data());
-                                cbor_encode_byte_string(array, bytes, SL->getByteLength());
+                                 auto lit = SL->getString().str();
+                                 cbor_encode_text_string(array, lit.c_str(), lit.size());
                              });
           return true;
       }
@@ -675,13 +671,7 @@ void TypeEncoder::VisitRecordType(const RecordType *T) {
     });
     
     // record type might be anonymous and have no top-level declaration
-    // structure declarations can reference themselves, so we need
-    // a way to guard against unbounded recursion.
-    clang::RecordDecl *D = T->getDecl();
-    if(recordDeclsUnderVisit.emplace(D).second) {
-        astEncoder->TraverseDecl(D);
-        recordDeclsUnderVisit.erase(D);
-    }
+    astEncoder->TraverseDecl(T->getDecl());
 }
 
 class TranslateConsumer : public clang::ASTConsumer {

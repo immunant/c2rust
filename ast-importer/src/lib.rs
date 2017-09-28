@@ -2,6 +2,7 @@
 extern crate bimap;
 extern crate cbor;
 extern crate syntax;
+extern crate idiomize;
 
 pub mod renamer;
 pub mod name_manager;
