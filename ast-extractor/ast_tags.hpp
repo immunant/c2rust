@@ -80,20 +80,15 @@ enum TypeTag {
     TagDouble,
     TagLongDouble,
     TagFloat,
-    TagArrayType,
-    TagEnumType,
+    TagConstantArrayType,
+    TagVariableArrayType,
     
+    TagIncompleteArrayType,
+    TagEnumType,
     TagFunctionType,
     TagTypeOfType,
     TagTypedefType,
+    
     TagElaboratedType,
-};
-
-enum StringTypeTag {
-    TagAscii = 600,
-    TagWide,
-    TagUTF8,
-    TagUTF16,
-    TagUTF32,
 };
 #endif /* ast_tags_h */
