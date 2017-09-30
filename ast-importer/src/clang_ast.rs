@@ -20,7 +20,8 @@ pub struct AstNode {
 #[derive(Debug)]
 pub struct TypeNode {
     pub tag: TypeTag,
-    extras: Vec<Cbor>,
+    pub constant: bool,
+    pub extras: Vec<Cbor>,
 }
 
 #[derive(Debug)]
@@ -35,6 +36,20 @@ pub enum DecodeError {
     TypeMismatch,
 }
 
+impl AstContext {
+    pub fn get_type(&self, node_id: u64) -> Option<TypeNode> {
+        self.type_nodes
+            .get(node_id & !1u64)
+            .cloned()
+            .map(|x| {
+                if node_id & 1 {
+                    x.constant = true
+                }
+                x
+            })
+    }
+}
+
 fn expect_array<'a>(val: &'a Cbor) -> Result<&'a Vec<Cbor>, DecodeError> {
     match val {
         &Cbor::Array(ref xs) => Ok(xs),
@@ -42,9 +57,16 @@ fn expect_array<'a>(val: &'a Cbor) -> Result<&'a Vec<Cbor>, DecodeError> {
     }
 }
 
-fn expect_u64(val: &Cbor) -> Result<u64, DecodeError> {
+pub fn expect_u64(val: &Cbor) -> Result<u64, DecodeError> {
     match val {
         &Cbor::Unsigned(x) => Ok(x.into_u64()),
+        _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
+    }
+}
+
+fn expect_bool(val: &Cbor) -> Result<bool, DecodeError> {
+    match val {
+        &Cbor::Bool(b) => Ok(b),
         _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
     }
 }
@@ -97,7 +119,7 @@ pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError>
                     children: kids,
                     line: expect_u64(&entry[3])?,
                     column: expect_u64(&entry[4])?,
-                    type_id: type_id,
+                    type_id,
                     extras: entry[6..].to_vec(),
                 };
 
@@ -107,7 +129,8 @@ pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError>
 
                 let node = TypeNode {
                     tag: import_type_tag(tag),
-                    extras: entry[2..].to_vec(),
+                    constant: false,
+                    extras: entry[3..].to_vec(),
                 };
 
                 types.insert(entry_id, node);

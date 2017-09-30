@@ -90,5 +90,11 @@ enum TypeTag {
     TagTypedefType,
     
     TagElaboratedType,
+    TagUChar,
+    TagSChar,
+    TagChar,
+    TagVoid,
+    
+    TagBool,
 };
 #endif /* ast_tags_h */
