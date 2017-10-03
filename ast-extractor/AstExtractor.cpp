@@ -220,6 +220,7 @@ class TranslateASTVisitor final
       ASTContext *Context;
       TypeEncoder typeEncoder;
       CborEncoder *encoder;
+      std::unordered_map<string, uint64_t> filenames;
       std::set<std::pair<void*, ASTEntryTag>> exportedTags;
       
       // Returns true when a new entry is added to exportedTags
@@ -231,7 +232,13 @@ class TranslateASTVisitor final
           auto& manager = Context->getSourceManager();
           auto line = manager.getPresumedLineNumber(loc);
           auto col  = manager.getPresumedColumnNumber(loc);
+          auto fileid = manager.getFileID(loc);
+          auto entry = manager.getFileEntryForID(fileid);
+          auto filename = entry->getName().str();
           
+          auto pair = filenames.insert(std::make_pair(filename, filenames.size()));
+
+          cbor_encode_uint(enc, pair.first->second);
           cbor_encode_uint(enc, line);
           cbor_encode_uint(enc, col);
       }
@@ -319,6 +326,10 @@ class TranslateASTVisitor final
   public:
       explicit TranslateASTVisitor(ASTContext *Context, CborEncoder *encoder)
       : Context(Context), typeEncoder(Context, encoder, this), encoder(encoder) {
+      }
+      
+      const std::unordered_map<string,uint64_t> &getFilenames() const {
+          return filenames;
       }
       
       //
@@ -706,10 +717,18 @@ public:
             cbor_encoder_init(&encoder, buffer, len, 0);
             
             CborEncoder array;
+            
             cbor_encoder_create_array(&encoder, &array, CborIndefiniteLength);
+            TranslateASTVisitor visitor(&Context, &array);
+            visitor.TraverseDecl(Context.getTranslationUnitDecl());
+            cbor_encoder_close_container(&encoder, &array);
             
-            TranslateASTVisitor(&Context, &array).TraverseDecl(Context.getTranslationUnitDecl());
-            
+            auto filenames = visitor.getFilenames();
+            cbor_encoder_create_array(&encoder, &array, filenames.size());
+            for (auto &kv : filenames) {
+                auto str = kv.first;
+                cbor_encode_text_string(&array, str.c_str(), str.size());
+            }
             cbor_encoder_close_container(&encoder, &array);
         };
         

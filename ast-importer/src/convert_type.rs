@@ -14,13 +14,16 @@ impl TypeConverter {
         }
     }
 
-    pub fn convert(&self, ctxt: &AstContext, ctype: &TypeNode) -> P<Ty> {
+    pub fn convert(&self, ctxt: &AstContext, ctype_id: u64) -> P<Ty> {
+
+        let node = ctxt.get_type(ctype_id);
+
         match ctype.tag {
             TypeTag::TagInt => mk().path_ty(mk().path(vec!["libc","c_int"])),
 
             TypeTag::TagPointer => {
-                let child = ctxt.type_nodes.get(&expect_u64(&ctype.extras[0]).unwrap()).expect("Pointer child not found");
-                let child_ty = self.convert(ctxt, child);
+                let child_id = expect_u64(&ctype.extras[0]).expect("Pointer child not found");
+                let child_ty = self.convert(ctxt, child_id);
                 mk().set_mutbl(Mutability::Mutable).ptr_ty(child_ty)
             }
 

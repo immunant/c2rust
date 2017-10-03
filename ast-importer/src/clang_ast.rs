@@ -11,6 +11,7 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 pub struct AstNode {
     tag: ASTEntryTag,
     children: Vec<Option<u64>>,
+    fileid: u64,
     line: u64,
     column: u64,
     type_id: Option<u64>,
@@ -112,15 +113,16 @@ pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError>
                     kids.push(expect_opt_u64(&x)?)
                 }
 
-                let type_id: Option<u64> = expect_opt_u64(&entry[5])?;
+                let type_id: Option<u64> = expect_opt_u64(&entry[6])?;
 
                 let node = AstNode {
                     tag: import_ast_tag(tag),
                     children: kids,
-                    line: expect_u64(&entry[3])?,
-                    column: expect_u64(&entry[4])?,
+                    fileid: expect_u64(&entry[3])?,
+                    line: expect_u64(&entry[4])?,
+                    column: expect_u64(&entry[5])?,
                     type_id,
-                    extras: entry[6..].to_vec(),
+                    extras: entry[7..].to_vec(),
                 };
 
                 asts.insert(entry_id, node);
