@@ -18,7 +18,7 @@ pub struct AstNode {
     extras: Vec<Cbor>,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct TypeNode {
     pub tag: TypeTag,
     pub constant: bool,
@@ -40,10 +40,10 @@ pub enum DecodeError {
 impl AstContext {
     pub fn get_type(&self, node_id: u64) -> Option<TypeNode> {
         self.type_nodes
-            .get(node_id & !1u64)
+            .get(&(node_id & !1u64))
             .cloned()
-            .map(|x| {
-                if node_id & 1 {
+            .map(|mut x| {
+                if node_id & 1 == 1 {
                     x.constant = true
                 }
                 x
@@ -97,13 +97,13 @@ pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError>
     let mut asts: HashMap<u64, AstNode> = HashMap::new();
     let mut types: HashMap<u64, TypeNode> = HashMap::new();
 
-    for val in items {
+    for val in items.take(1) {
         let val1 = val.map_err(DecodeError::DecodeCborError)?;
 
         for x in expect_array(&val1)? {
 
             let entry = expect_array(x)?;
-
+            println!("{:?}", entry);
             let entry_id = expect_u64(&entry[0])?;
             let tag = expect_u64(&entry[1])?;
 
@@ -132,7 +132,7 @@ pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError>
                 let node = TypeNode {
                     tag: import_type_tag(tag),
                     constant: false,
-                    extras: entry[3..].to_vec(),
+                    extras: entry[2..].to_vec(),
                 };
 
                 types.insert(entry_id, node);

@@ -16,7 +16,7 @@ impl TypeConverter {
 
     pub fn convert(&self, ctxt: &AstContext, ctype_id: u64) -> P<Ty> {
 
-        let node = ctxt.get_type(ctype_id);
+        let ctype = ctxt.get_type(ctype_id).unwrap();
 
         match ctype.tag {
             TypeTag::TagInt => mk().path_ty(mk().path(vec!["libc","c_int"])),
