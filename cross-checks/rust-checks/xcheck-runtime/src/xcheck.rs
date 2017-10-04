@@ -7,8 +7,7 @@ pub const FUNCTION_RETURN_TAG: u8 = 2;
 #[inline]
 unsafe fn call_rb_xcheck_sym<T>(sym: *mut T, tag: u8, val: u64) {
     if !sym.is_null() {
-        use std::mem;
-        let rb_xcheck_fn: unsafe extern fn(u8, u64) = mem::transmute(sym);
+        let rb_xcheck_fn: unsafe extern fn(u8, u64) = ::std::mem::transmute(sym);
         rb_xcheck_fn(tag, val);
     } else {
         // FIXME: or do nothing???
@@ -18,15 +17,11 @@ unsafe fn call_rb_xcheck_sym<T>(sym: *mut T, tag: u8, val: u64) {
 
 #[cfg(feature="xcheck-with-dlsym")]
 unsafe fn rb_xcheck(tag: u8, val: u64) {
-    use std::ffi;
-    use std::ptr;
-    use std::sync::{Once, ONCE_INIT};
-
     extern crate libc;
-    static mut RB_XCHECK_SYM: *mut libc::c_void = ptr::null_mut();
-    static RB_XCHECK_INIT: Once = ONCE_INIT;
+    static mut RB_XCHECK_SYM: *mut libc::c_void = ::std::ptr::null_mut();
+    static RB_XCHECK_INIT: ::std::sync::Once = ::std::sync::ONCE_INIT;
     RB_XCHECK_INIT.call_once(|| {
-        let rb_xcheck_name = ffi::CString::new("rb_xcheck").unwrap();
+        let rb_xcheck_name = ::std::ffi::CString::new("rb_xcheck").unwrap();
         RB_XCHECK_SYM = libc::dlsym(libc::RTLD_DEFAULT, rb_xcheck_name.as_ptr());
     });
     call_rb_xcheck_sym(RB_XCHECK_SYM, tag, val);
