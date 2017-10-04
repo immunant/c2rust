@@ -1,0 +1,6 @@
+[package]
+name = "xcheck-runtime"
+version = "0.1.0"
+authors = ["Andrei Homescu <ah@immunant.com>"]
+
+[dependencies]
