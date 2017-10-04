@@ -94,7 +94,7 @@ def download_and_build_custom_rustc():
     
     assert on_ubuntu(), "FIXME: set target_triple based on host os"
     target_triple = 'x86_64-unknown-linux-gnu'
-    build_output = os.path.join(CUSTOM_RUST_DIR, "build", target_triple, "stage2")
+    build_output = os.path.join(COMPILER_SUBMOD_DIR, "build", target_triple, "stage2")
     assert os.path.isdir(build_output)
     rustup['toolchain', 'link', CUSTOM_RUST_NAME, build_output] & pb.FG
 
