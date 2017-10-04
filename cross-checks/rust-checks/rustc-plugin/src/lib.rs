@@ -130,13 +130,8 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
             };
             let checked_block = self.fold_block(block).map(|block| {
                 quote_block!(self.cx, {
-                    unsafe {
-                        extern {
-                            #[no_mangle]
-                            fn rb_xcheck(tag: u8, val: u64);
-                        }
-                        rb_xcheck($XCHECK_TAG_FUNCTION_CALL, $check_id as u64);
-                    }
+                    extern crate xcheck_runtime;
+                    xcheck_runtime::xcheck::xcheck($XCHECK_TAG_FUNCTION_CALL, $check_id as u64);
                     $block
                 }).unwrap()
             });
