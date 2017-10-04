@@ -137,12 +137,17 @@ def update_cbor_prefix(makefile):
             fh.writelines("".join(lines))
 
 
-def build_ast_importer() -> None:
+def build_ast_importer():
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])
     cargo = get_cmd_or_die("cargo")
+    git = get_cmd_or_die("git")
+
+    assert os.path.isdir(os.path.join(COMPILER_SUBMOD_DIR, 'src'))
+
     with pb.local.cwd(os.path.join(ROOT_DIR, "ast-importer")):
-        invoke(cargo, "build")
+        # we build with custom rust toolchain here ('c2rust')
+        invoke(cargo, "+" + CUSTOM_RUST_NAME, "build")
 
 
 def build_a_bear():
@@ -333,6 +338,8 @@ def _main():
     cc_db = install_tinycbor()
 
     configure_and_build_llvm(args)
+
+    download_and_build_custom_rustc()
 
     build_ast_importer()
 
