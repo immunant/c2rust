@@ -14,8 +14,6 @@ use syntax::codemap::Span;
 use syntax::fold::Folder;
 use syntax::symbol::Symbol;
 
-const XCHECK_TAG_FUNCTION_CALL: u8 = 0;
-
 fn expand_cross_checks(cx: &mut ExtCtxt,
                        _sp: Span,
                        mi: &ast::MetaItem,
@@ -131,7 +129,9 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
             let checked_block = self.fold_block(block).map(|block| {
                 quote_block!(self.cx, {
                     extern crate xcheck_runtime;
-                    xcheck_runtime::xcheck::xcheck($XCHECK_TAG_FUNCTION_CALL, $check_id as u64);
+                    xcheck_runtime::xcheck::xcheck(
+                        xcheck_runtime::xcheck::FUNCTION_CALL_TAG,
+                        $check_id as u64);
                     $block
                 }).unwrap()
             });
