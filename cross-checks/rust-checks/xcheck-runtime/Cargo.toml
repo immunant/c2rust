@@ -6,5 +6,6 @@ build = "build.rs"
 
 [features]
 xcheck-with-dlsym = []
+xcheck-with-weak = []
 
 [dependencies]
