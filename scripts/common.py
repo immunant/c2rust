@@ -66,6 +66,40 @@ add_subdirectory(ast-extractor)
 """.format(prefix=CBOR_PREFIX)  # nopep8
 CC_DB_JSON = "compile_commands.json"
 
+CUSTOM_RUST_URL = "git@github.com/rust-lang/rust"
+CUSTOM_RUST_REV = "d6ad402"
+CUSTOM_RUST_DIR = os.path.join(DEPS_DIR, 'rust')
+CUSTOM_RUST_NAME = 'c2rust'
+
+def download_and_build_custom_rustc():
+    git = get_cmd_or_die('git')
+    rustup = get_cmd_or_die('rustup')
+
+    # TODO: check whether we already integrated custom c2rust toolchain
+    # by calling rustup show | grep c2rust (or similar)
+
+
+    with pb.local.cwd(DEPS_DIR):
+        if not os.path.exists(CUSTOM_RUST_DIR):
+            invoke(git, 'clone', CUSTOM_RUST_URL)
+
+            # TODO: check whether we're on the right revision
+            invoke(git, 'reset', '--hard', CUSTOM_RUST_REV)
+
+
+        with pb.local.cwd(CUSTOM_RUST_DIR):
+            configure = pb.local['./configure']
+            configure & pb.FG
+
+            x_py = pb.local['./x.py']
+            x_py['build'] & pb.FG
+    
+    assert on_ubuntu(), "FIXME: set target_triple based on host os"
+    target_triple = 'x86_64-unknown-linux-gnu'
+    build_output = os.path.join(CUSTOM_RUST_DIR, target_triple, "stage2")
+    assert os.path.isdir(build_output)
+    rustup['toolchain', 'link', CUSTOM_RUST_NAME, build_output] & pb.FG
+
 
 def on_mac() -> bool:
     """
