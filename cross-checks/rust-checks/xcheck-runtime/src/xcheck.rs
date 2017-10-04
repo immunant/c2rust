@@ -1,5 +1,7 @@
 
 pub const FUNCTION_CALL_TAG: u8 = 0;
+pub const FUNCTION_ARG_TAG: u8 = 1;
+pub const FUNCTION_RETURN_TAG: u8 = 2;
 
 extern {
     #[no_mangle]
