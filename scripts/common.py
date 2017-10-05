@@ -299,9 +299,8 @@ def extract_ast_from(ast_extr: pb.commands.BaseCommand,
             mesg = "Received signal: "
             mesg += signal.Signals(-pee.retcode).name
 
-        logging.fatal("command failed: %s", 
-                      ast_extr["-p", cc_db_dir, filename])
-        die("FAIL sanity testing: " + mesg, pee.retcode)
+        logging.fatal("command failed: %s", ast_extr[args])
+        die("sanity testing: " + mesg, pee.retcode)
 
 
 def check_sig(afile: str, asigfile: str) -> None:
