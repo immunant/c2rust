@@ -28,6 +28,7 @@ unsafe fn rb_xcheck(tag: u8, val: u64) {
 }
 
 #[cfg(feature="xcheck-with-weak")]
+#[deprecated(note="this does not work correctly, please use xcheck-with-dlsym for now")]
 unsafe fn rb_xcheck(tag: u8, val: u64) {
     extern {
         #[link_name = "rb_xcheck"]
