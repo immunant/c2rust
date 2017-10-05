@@ -128,9 +128,9 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
             };
             let checked_block = self.fold_block(block).map(|block| {
                 quote_block!(self.cx, {
-                    extern crate xcheck_runtime;
-                    xcheck_runtime::xcheck::xcheck(
-                        xcheck_runtime::xcheck::FUNCTION_CALL_TAG,
+                    extern crate cross_check_runtime;
+                    cross_check_runtime::xcheck::xcheck(
+                        cross_check_runtime::xcheck::FUNCTION_CALL_TAG,
                         $check_id as u64);
                     $block
                 }).unwrap()

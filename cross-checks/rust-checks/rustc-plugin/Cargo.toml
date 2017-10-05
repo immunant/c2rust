@@ -1,5 +1,5 @@
 [package]
-name = "xcheck-plugin"
+name = "cross-check-plugin"
 version = "0.1.0"
 authors = ["Andrei Homescu <ah@immunant.com>"]
 
