@@ -26,7 +26,7 @@ DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
 RREF_DIR = os.path.join(ROOT_DIR, 'rust-refactor')
 COMPILER_SUBMOD_DIR = os.path.join(RREF_DIR, 'compiler')
 
-AST_IMPO = os.path.join(ROOT_DIR, "ast-importer/target/debug/ast-importer") 
+AST_IMPO = os.path.join(ROOT_DIR, "ast-importer/target/debug/ast_importer") 
 
 CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
 CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.1.tar.gz")
