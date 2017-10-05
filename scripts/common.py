@@ -105,7 +105,7 @@ def download_and_build_custom_rustc():
 
         if not os.path.isfile("config.toml"):
             configure = pb.local['./configure']
-            configure['--prefix', CUSTOM_RUST_PREFIX] & pb.FG
+            configure & pb.FG
 
         x_py = pb.local['./x.py']
 
