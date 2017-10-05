@@ -11,7 +11,7 @@ unsafe fn call_rb_xcheck_sym<T>(sym: *mut T, tag: u8, val: u64) {
         rb_xcheck_fn(tag, val);
     } else {
         // FIXME: or do nothing???
-        println!("Called rb_xcheck({},{:x})", tag, val);
+        eprintln!("Called rb_xcheck({},{:x})", tag, val);
     }
 }
 
