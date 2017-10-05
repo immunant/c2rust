@@ -9,6 +9,7 @@ First, add the plugin as a Cargo dependency to your `Cargo.toml` file:
 ```
 [dependencies]
 cross-checks = { path = ".../C2Rust/cross-checks/rust-checks/rustc-plugin" }
+xcheck-runtime = { path = ".../C2Rust/cross-checks/rust-checks/xcheck-runtime" }
 ```
 with `...` as the full path to the C2Rust repository.
 Next, add the following preamble to your `main.rs` or `lib.rs` file:
@@ -16,15 +17,6 @@ Next, add the following preamble to your `main.rs` or `lib.rs` file:
 #![feature(plugin)]
 #![plugin(cross_checks)]
 ```
-Finally, create a `build.rs` file in the same directory as `Cargo.toml` and add
-these lines:
-```rust
-fn main() {
-    println!("cargo:rustc-link-lib=dylib=clevrbuf");
-    println!("cargo:rustc-link-search=native=.../ReMon/libclevrbuf");
-}
-```
-replacing `...` with the path to your ReMon repository.
 
 ## Cross-checker options
 Cross-checking is enabled and configured using the `#[cross_check]` directive,
