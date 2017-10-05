@@ -79,7 +79,7 @@ def parse_args() -> argparse.Namespace:
     """
     desc = 'run integration tests.'
     parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument('-w', '--what', type=str, nargs='+', default='lua')
+    parser.add_argument('-w', '--what', type=str, nargs='+', default='')
     parser.add_argument('-j', '--jobs', type=int, dest="jobs",
                         default=multiprocessing.cpu_count(),
                         help='max number of concurrent jobs')
