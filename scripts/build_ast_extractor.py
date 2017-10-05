@@ -319,7 +319,7 @@ def _main():
             .format(MIN_PLUMBUM_VERSION)
         die(err)
 
-    if on_ubuntu():
+    if on_linux():
         build_a_bear()
         if not os.path.isfile(BEAR_BIN):
             die("bear not found", errno.ENOENT)
