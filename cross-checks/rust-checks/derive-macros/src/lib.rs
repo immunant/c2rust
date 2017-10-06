@@ -19,6 +19,8 @@ pub fn derive_xcheck_hash(input: TokenStream) -> TokenStream {
         use cross_check_runtime::hash::XCheckHash;
         h.write_u64(XCheckHash::<H>::xcheck_hash_with_depth(#f, _depth - 1));
     });
+    // TODO: we should mark the impl below with #[automatically_derived],
+    // but that currently causes an "unused attribute" warning
     let hash_impl = quote! {
         #[allow(unused_mut)]
         impl<H> ::cross_check_runtime::hash::XCheckHash<H> for #ident
