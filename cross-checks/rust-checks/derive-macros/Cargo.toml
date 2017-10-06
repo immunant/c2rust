@@ -9,5 +9,6 @@ proc-macro = true
 
 [dependencies]
 syn = "0.11.11"
+synstructure = "*"
 quote = "0.3.15"
 
