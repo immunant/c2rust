@@ -1,4 +1,4 @@
 [root]
-name = "cross-checks"
+name = "cross-check-plugin"
 version = "0.1.0"
 

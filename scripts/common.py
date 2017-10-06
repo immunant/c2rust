@@ -7,6 +7,7 @@ import errno
 import signal
 import logging
 import platform
+import multiprocessing
 
 from typing import List
 
@@ -17,6 +18,7 @@ except ImportError:
     print >> sys.stderr, "error: python package plumbum is not installed."
     sys.exit(errno.ENOENT)
 
+NCPUS = str(multiprocessing.cpu_count())
 
 ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
@@ -24,7 +26,7 @@ DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
 RREF_DIR = os.path.join(ROOT_DIR, 'rust-refactor')
 COMPILER_SUBMOD_DIR = os.path.join(RREF_DIR, 'compiler')
 
-AST_IMPO = os.path.join(ROOT_DIR, "ast-importer/target/debug/ast-importer") 
+AST_IMPO = os.path.join(ROOT_DIR, "ast-importer/target/debug/ast_importer") 
 
 CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
 CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.1.tar.gz")
@@ -69,32 +71,49 @@ add_subdirectory(ast-extractor)
 CC_DB_JSON = "compile_commands.json"
 
 # CUSTOM_RUST_URL = "git@github.com:rust-lang/rust"
-CUSTOM_RUST_REV = "d6ad402"
+# CUSTOM_RUST_PREFIX = os.path.join(DEPS_DIR, "rust")
+# CUSTOM_RUST_REV = "cfcac37204c8dbdde192c1c9387cdbe663fe5ed5"
 CUSTOM_RUST_NAME = 'c2rust'
 
+
+def have_rust_toolchain(name: str) -> bool:
+    """
+    Check whether name is output by `rustup show` on its own line.
+    """
+    rustup = get_cmd_or_die('rustup')
+    lines = rustup('show').split('\n')
+    res = False
+    return True if [True for line in lines if name == line] else False
+    
 
 def download_and_build_custom_rustc():
     git = get_cmd_or_die('git')
     rustup = get_cmd_or_die('rustup')
 
-    # TODO: check whether we already integrated custom c2rust toolchain
-    # by calling rustup show | grep c2rust (or similar)
+    # check if rustup already lists c2rust custom toolchain
+    # so we can avoid this time consuming step
+    if have_rust_toolchain(CUSTOM_RUST_NAME):
+        logging.info("skipping custom rust toolchain build step; already installed")
+        return
 
-    if not os.path.exists(os.path.join(COMPILER_SUBMOD_DIR, "src")):
-        invoke(git, "submodule", "update", "--init", COMPILER_SUBMOD_DIR)
+    # make sure the submodule is initialized and updated
+    invoke(git, "submodule", "update", "--init", COMPILER_SUBMOD_DIR)
 
     with pb.local.cwd(COMPILER_SUBMOD_DIR):
-        invoke(git, 'reset', '--hard', CUSTOM_RUST_REV)
-        
-        configure = pb.local['./configure']
-        configure & pb.FG
+        # seems that just updating submodule gives us the right version
+        # invoke(git, 'reset', '--hard', CUSTOM_RUST_REV)
+
+        if not os.path.isfile("config.toml"):
+            configure = pb.local['./configure']
+            configure & pb.FG
 
         x_py = pb.local['./x.py']
-        x_py['build'] & pb.FG
+
+        x_py['build', '-j' + NCPUS] & pb.FG
     
-    assert on_ubuntu(), "FIXME: set target_triple based on host os"
+    assert on_linux(), "FIXME: set target_triple based on host os"
     target_triple = 'x86_64-unknown-linux-gnu'
-    build_output = os.path.join(CUSTOM_RUST_DIR, "build", target_triple, "stage2")
+    build_output = os.path.join(COMPILER_SUBMOD_DIR, "build", target_triple, "stage2")
     assert os.path.isdir(build_output)
     rustup['toolchain', 'link', CUSTOM_RUST_NAME, build_output] & pb.FG
 
@@ -104,6 +123,22 @@ def on_mac() -> bool:
     return true on macOS/OS X.
     """
     return 'Darwin' in platform.platform()
+
+def on_linux() -> bool:
+    if on_mac():
+        return False
+    elif on_ubuntu() or on_arch():
+        return True
+    else:
+        # neither on mac nor on a known distro
+        assert False, "not sure"
+
+
+def on_arch() -> bool:
+    """
+    return true on arch distros.
+    """
+    return platform.platform().endswith('-with-arch')
 
 
 def on_ubuntu() -> bool:
@@ -197,10 +232,9 @@ def json_pp_obj(json_obj) -> str:
 def ensure_clang_version(min_ver: List[int]):
     clang = get_cmd_or_die("clang")
     version = clang("--version")
-    m = re.search("clang\s+version\s([^\s]+)", version)
+    m = re.search(r"clang\s+version\s([^\s-]+)", version)
     if m:
         version = m.group(1)
-        version = version[:version.find("-")]
         # print(version)
         version = [int(d) for d in version.split(".")]
         emsg = "can't compare versions {} and {}".format(version, min_ver)
@@ -265,9 +299,8 @@ def extract_ast_from(ast_extr: pb.commands.BaseCommand,
             mesg = "Received signal: "
             mesg += signal.Signals(-pee.retcode).name
 
-        logging.fatal("command failed: %s", 
-                      ast_extr["-p", cc_db_dir, filename])
-        die("FAIL sanity testing: " + mesg, pee.retcode)
+        logging.fatal("command failed: %s", ast_extr[args])
+        die("sanity testing: " + mesg, pee.retcode)
 
 
 def check_sig(afile: str, asigfile: str) -> None:

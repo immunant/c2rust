@@ -1,10 +1,12 @@
 [package]
-name = "xcheck-runtime"
+name = "cross-check-runtime"
 version = "0.1.0"
 authors = ["Andrei Homescu <ah@immunant.com>"]
+readme = "README.md"
 build = "build.rs"
 
 [features]
 xcheck-with-dlsym = []
+xcheck-with-weak = []
 
 [dependencies]
