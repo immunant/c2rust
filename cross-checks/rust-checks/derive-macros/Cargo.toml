@@ -1,0 +1,13 @@
+[package]
+name = "cross-check-derive"
+version = "0.1.0"
+authors = ["Andrei Homescu <ah@immunant.com>"]
+readme = "README.md"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "0.11.11"
+quote = "0.3.15"
+

@@ -9,6 +9,7 @@ First, add the plugin as a Cargo dependency to your `Cargo.toml` file:
 ```
 [dependencies]
 cross-check-plugin = { path = ".../C2Rust/cross-checks/rust-checks/rustc-plugin" }
+cross-check-derive = { path = ".../C2Rust/cross-checks/rust-checks/derive-macros" }
 cross-check-runtime = { path = ".../C2Rust/cross-checks/rust-checks/runtime" }
 ```
 with `...` as the full path to the C2Rust repository.
@@ -16,6 +17,10 @@ Next, add the following preamble to your `main.rs` or `lib.rs` file:
 ```rust
 #![feature(plugin)]
 #![plugin(cross_check_plugin)]
+
+#[macro_use]
+extern crate cross_check_derive;
+extern crate cross_check_runtime;
 ```
 
 ## Cross-checker options
