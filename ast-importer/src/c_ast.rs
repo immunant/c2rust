@@ -14,26 +14,40 @@ pub type CStmtOrDeclId = u64; // Points to either a stmt or a decl
 /// AST context containing all of the nodes in the Clang AST
 #[derive(Debug)]
 pub struct TypedAstContext {
-  c_types: HashMap<CTypeId, CType>,
-  c_exprs: HashMap<CExprId, CExpr>,
-  c_decls: HashMap<CDeclId, CDecl>,
-  c_stmts: HashMap<CStmtId, CStmt>,
-  c_files: HashMap<u64, String>,
+  pub c_types: HashMap<CTypeId, CType>,
+  pub c_exprs: HashMap<CExprId, CExpr>,
+  pub c_decls: HashMap<CDeclId, CDecl>,
+  pub c_stmts: HashMap<CStmtId, CStmt>,
+  
+  pub c_files: HashMap<u64, String>,
+}
+
+impl TypedAstContext {
+  pub fn new() -> TypedAstContext {
+    TypedAstContext {
+      c_types: HashMap::new(),
+      c_exprs: HashMap::new(),
+      c_decls: HashMap::new(),
+      c_stmts: HashMap::new(),
+      
+      c_files: HashMap::new(),
+    }
+  }
 }
 
 /// Represents a position inside a C source file
 #[derive(Debug,Copy,Clone)]
 pub struct SrcLoc {
-  line: u64,
-  column: u64,
-  file: u64,
+  pub line: u64,
+  pub column: u64,
+  pub fileid: u64,
 }
 
 /// Represents some AST node possibly with source location information bundled with it
 #[derive(Debug)]
 pub struct Located<T> {
-  loc: Option<SrcLoc>,
-  kind: T,
+  pub loc: Option<SrcLoc>,
+  pub kind: T,
 }
 
 /// All of our AST types should have location information bundled with them
@@ -42,17 +56,27 @@ type CStmt = Located<CStmtKind>;
 type CExpr = Located<CExprKind>;
 type CType = Located<CTypeKind>;
 
+
+// TODO:
+//
 #[derive(Debug)]
 pub enum CDeclKind {
-  /*
-  Enum       // http://clang.llvm.org/doxygen/classclang_1_1EnumDecl.html
-  Function    // http://clang.llvm.org/doxygen/classclang_1_1FunctionDecl.html
-  Variable    // http://clang.llvm.org/doxygen/classclang_1_1VarDecl.html
-  Typedef     // http://clang.llvm.org/doxygen/classclang_1_1TypedefNameDecl.html
-  Record
-  */
+  // http://clang.llvm.org/doxygen/classclang_1_1FunctionDecl.html
+  Function {
+    /* TODO: Parameters,*/
+    typ: CTypeId,
+    name: String,
+    body: CStmtId,
+  }
+  
+  // Enum       // http://clang.llvm.org/doxygen/classclang_1_1EnumDecl.html
+  // Variable    // http://clang.llvm.org/doxygen/classclang_1_1VarDecl.html
+  // Typedef     // http://clang.llvm.org/doxygen/classclang_1_1TypedefNameDecl.html
+  // Record
 }
 
+// TODO:
+//
 /// Represents an expression in C (6.5 Expressions)
 #[derive(Debug)]
 pub enum CExprKind {
@@ -70,7 +94,7 @@ pub enum CStmtKind {
   Default(CStmtId),
 
   // Compound statements (6.8.2)
-  CompoundStmt(Vec<CStmtOrDeclId>),
+  Compound(Vec<CStmtOrDeclId>),
   
   // Expression and null statements (6.8.3)
   Expr(CExprId),
@@ -113,16 +137,16 @@ pub enum CStmtKind {
 /// Type qualifiers (6.7.3)
 #[derive(Debug)]
 pub struct Qualifiers {
-  is_const: bool,
-  is_restrict: bool,
-  is_volatile: bool,
+  pub is_const: bool,
+  pub is_restrict: bool,
+  pub is_volatile: bool,
 }
 
 /// Qualified type
 #[derive(Debug)]
 pub struct CQualTypeId {
-  qualifiers: Qualifiers,
-  ctype: CTypeId,
+  pub qualifiers: Qualifiers,
+  pub ctype: CTypeId,
 }
 
 

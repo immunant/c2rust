@@ -9,13 +9,13 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 #[derive(Debug)]
 pub struct AstNode {
-    tag: ASTEntryTag,
-    children: Vec<Option<u64>>,
-    fileid: u64,
-    line: u64,
-    column: u64,
-    type_id: Option<u64>,
-    extras: Vec<Cbor>,
+    pub tag: ASTEntryTag,
+    pub children: Vec<Option<u64>>,
+    pub fileid: u64,
+    pub line: u64,
+    pub column: u64,
+    pub type_id: Option<u64>,
+    pub extras: Vec<Cbor>,
 }
 
 #[derive(Debug,Clone)]
@@ -27,8 +27,8 @@ pub struct TypeNode {
 
 #[derive(Debug)]
 pub struct AstContext {
-    ast_nodes: HashMap<u64, AstNode>,
-    type_nodes: HashMap<u64, TypeNode>,
+    pub ast_nodes: HashMap<u64, AstNode>,
+    pub type_nodes: HashMap<u64, TypeNode>,
 }
 
 #[derive(Debug)]
@@ -61,6 +61,13 @@ fn expect_array<'a>(val: &'a Cbor) -> Result<&'a Vec<Cbor>, DecodeError> {
 pub fn expect_u64(val: &Cbor) -> Result<u64, DecodeError> {
     match val {
         &Cbor::Unsigned(x) => Ok(x.into_u64()),
+        _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
+    }
+}
+
+pub fn expect_str(val: &Cbor) -> Result<&str, DecodeError> {
+    match val {
+        &Cbor::Unicode(ref s) => Ok(s),
         _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
     }
 }
