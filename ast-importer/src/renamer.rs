@@ -1,29 +1,62 @@
 use std::collections::HashSet;
+use std::collections::HashMap;
 use std::hash::Hash;
-use bimap::BiMap;
 
-type Scope<T> = BiMap<T, String>;
+struct Scope<T> {
+    name_map: HashMap<T, String>,
+    used: HashSet<String>,
+}
+
+impl<T: Clone + Eq + Hash> Scope<T> {
+    pub fn new() -> Self {
+        Self::new_with_reserved(HashSet::new())
+    }
+
+    pub fn new_with_reserved(reserved: HashSet<String>) -> Self {
+        Scope {
+            name_map: HashMap::new(),
+            used: reserved,
+        }
+    }
+
+    pub fn contains_key(&self, key: &T) -> bool {
+        self.name_map.contains_key(key)
+    }
+
+    pub fn contains_value(&self, val: &str) -> bool {
+        self.used.contains(val)
+    }
+
+    pub fn insert(&mut self, key: T, val: &str) {
+        self.name_map.insert(key, val.to_string());
+        self.used.insert(val.to_string());
+    }
+
+    pub fn reserve(&mut self, val: String) {
+        self.used.insert(val);
+    }
+}
 
 pub struct Renamer<T> {
     scopes: Vec<Scope<T>>,
-    reserved_names: HashSet<String>,
+    next_fresh: u64,
 }
 
-impl<T: Copy + Clone + Eq + Hash> Renamer<T> {
+impl<T: Clone + Eq + Hash> Renamer<T> {
 
     /// Creates a new renaming environment with a single, empty scope. The given set of
     /// reserved names will exclude those names from being chosen as the mangled names from
     /// the insert method.
-    pub fn new(reserved_names: HashSet<String>) -> Renamer<T> {
+    pub fn new(reserved_names: HashSet<String>) -> Self {
         Renamer {
-            scopes: vec![BiMap::new()],
-            reserved_names,
+            scopes: vec![Scope::new_with_reserved(reserved_names)],
+            next_fresh: 0,
         }
     }
 
     /// Introduces a new name binding scope
     pub fn add_scope(&mut self) {
-        self.scopes.push(BiMap::new())
+        self.scopes.push(Scope::new())
     }
 
     /// Drops the current name binding scope
@@ -47,23 +80,12 @@ impl<T: Copy + Clone + Eq + Hash> Renamer<T> {
     fn is_target_used(&self, key: &str) -> bool {
         let key = key.to_string();
 
-        let is_reserved = self.reserved_names.contains(&key);
-
-        is_reserved
-            || self.scopes.iter().any(|x| x.get_by_right(&key).is_some())
+        self.scopes.iter().any(|x| x.contains_value(&key))
     }
 
-    /// Introduce a new name binding into the current scope. If the key is unbound in
-    /// the current scope then Some of the resulting mangled name is returned, otherwise
-    /// None.
-    pub fn insert(&mut self, key: T, basename: &str) -> Option<String> {
-
-        if self.current_scope().get_by_left(&key).is_some() {
-            return None
-        }
+    fn pick_name (&mut self, basename: &str) -> String {
 
         let mut target = basename.to_string();
-
         for i in 0.. {
             if self.is_target_used(&target) {
                 target = format!("{}_{}", basename, i);
@@ -72,9 +94,23 @@ impl<T: Copy + Clone + Eq + Hash> Renamer<T> {
             }
         }
 
-        if self.current_scope_mut().insert(key, target.clone()).did_overwrite() {
-            panic!("Unexpected overwriting occurred")
+        self.current_scope_mut().reserve(target.clone());
+
+        target
+    }
+
+    /// Introduce a new name binding into the current scope. If the key is unbound in
+    /// the current scope then Some of the resulting mangled name is returned, otherwise
+    /// None.
+    pub fn insert(&mut self, key: T, basename: &str) -> Option<String> {
+
+        if self.current_scope().contains_key(&key) {
+            return None
         }
+
+        let target = self.pick_name(basename);
+
+        self.current_scope_mut().name_map.insert(key, target.clone());
 
         Some(target)
     }
@@ -83,11 +119,17 @@ impl<T: Copy + Clone + Eq + Hash> Renamer<T> {
     /// if one exists, otherwise None.
     pub fn get(&self, key: T) -> Option<String> {
         for scope in self.scopes.iter().rev() {
-            if let Some(target) = scope.get_by_left(&key) {
+            if let Some(target) = scope.name_map.get(&key) {
                 return Some(target.to_string())
             }
         }
         None
+    }
+
+    pub fn fresh(&mut self) -> String {
+        let fresh = self.next_fresh;
+        self.next_fresh += 1;
+        self.pick_name(&format!("fresh{}", fresh))
     }
 }
 
