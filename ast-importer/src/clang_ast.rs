@@ -7,15 +7,15 @@ use std;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct AstNode {
-    tag: ASTEntryTag,
-    children: Vec<Option<u64>>,
-    fileid: u64,
-    line: u64,
-    column: u64,
-    type_id: Option<u64>,
-    extras: Vec<Cbor>,
+    pub tag: ASTEntryTag,
+    pub children: Vec<Option<u64>>,
+    pub fileid: u64,
+    pub line: u64,
+    pub column: u64,
+    pub type_id: Option<u64>,
+    pub extras: Vec<Cbor>,
 }
 
 #[derive(Debug,Clone)]
@@ -25,10 +25,10 @@ pub struct TypeNode {
     pub extras: Vec<Cbor>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AstContext {
-    ast_nodes: HashMap<u64, AstNode>,
-    type_nodes: HashMap<u64, TypeNode>,
+    pub ast_nodes: HashMap<u64, AstNode>,
+    pub type_nodes: HashMap<u64, TypeNode>,
 }
 
 #[derive(Debug)]
@@ -51,9 +51,16 @@ impl AstContext {
     }
 }
 
-fn expect_array<'a>(val: &'a Cbor) -> Result<&'a Vec<Cbor>, DecodeError> {
+pub fn expect_array<'a>(val: &'a Cbor) -> Result<&'a Vec<Cbor>, DecodeError> {
     match val {
         &Cbor::Array(ref xs) => Ok(xs),
+        _ => Err(DecodeError::TypeMismatch)
+    }
+}
+
+pub fn expect_string(val: &Cbor) -> Result<String, DecodeError> {
+    match val {
+        &Cbor::Unicode(ref xs) => Ok(xs.clone()),
         _ => Err(DecodeError::TypeMismatch)
     }
 }

@@ -721,6 +721,15 @@ impl Builder {
                                 block))
     }
 
+    pub fn fn_decl(self, inputs: Vec<Arg>, output: FunctionRetTy) -> P<FnDecl>
+    {
+        P (FnDecl {
+            inputs,
+            output,
+            variadic: false,
+        })
+    }
+
     pub fn struct_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
             where I: Make<Ident> {
         let name = name.make(&self);
@@ -761,6 +770,15 @@ impl Builder {
             ty: ty,
             attrs: self.attrs,
         }
+    }
+
+    pub fn type_item<I,T>(self, name: I, ty: T) -> P<Item>
+        where I: Make<Ident>, T: Make<P<Ty>> {
+
+        let ty = ty.make(&self);
+        let name = name.make(&self);
+        let kind = ItemKind::Ty(ty, self.generics);
+        Self::item(name, self.attrs, self.vis, kind)
     }
 
     pub fn variant<I>(self, name: I, dat: VariantData) -> Variant

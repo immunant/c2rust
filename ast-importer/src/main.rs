@@ -36,6 +36,16 @@ fn main() {
         t.to_tokens(&mut tokens);
         println!("{}", tokens.as_str());
     }
+
+    use ast_importer::translator::translate;
+    let output = parse_and_dump(&args[1]);
+    match output {
+        Err(e) => println!("{:#?}", e),
+        Ok(cxt) => {
+            println!("{}", translate(cxt));
+        },
+    }
+
 }
 
 fn parse_and_dump(filename: &str) -> Result<AstContext, Error> {

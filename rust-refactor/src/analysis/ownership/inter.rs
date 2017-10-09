@@ -209,7 +209,7 @@ impl<'c, 'a, 'tcx> InterCtxt<'c, 'a, 'tcx> {
         }
     }
 
-    pub fn finish(mut self) {
+    pub fn finish(self) {
         for (id, cset) in self.complete_cset {
             let func = self.cx.func_summ(id);
             func.sig_cset = cset;
