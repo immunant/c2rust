@@ -11,6 +11,7 @@ use std::io::prelude::*;
 use std::fs::File;
 use cbor::Decoder;
 use ast_importer::clang_ast::process;
+use ast_importer::c_ast_conversion::typed_ast_context;
 use ast_importer::clang_ast::AstContext;
 
 fn main() {
@@ -24,8 +25,11 @@ fn main() {
 
     let output = parse_and_dump(&args[1]);
     match output {
-        Ok(cxt) => println!("{:#?}", cxt),
         Err(e) => println!("{:#?}", e),
+        Ok(cxt) => {
+          println!("{:#?}", cxt);
+          println!("{:#?}", typed_ast_context(cxt))
+        },
     }
 
     use syn::parse;
@@ -61,6 +65,5 @@ fn parse_and_dump(filename: &str) -> Result<AstContext, Error> {
         Err(e) => panic!("{:#?}", e),
     }
 }
-
 
 

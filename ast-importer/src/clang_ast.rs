@@ -72,6 +72,13 @@ pub fn expect_u64(val: &Cbor) -> Result<u64, DecodeError> {
     }
 }
 
+pub fn expect_str(val: &Cbor) -> Result<&str, DecodeError> {
+    match val {
+        &Cbor::Unicode(ref s) => Ok(s),
+        _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
+    }
+}
+
 fn expect_bool(val: &Cbor) -> Result<bool, DecodeError> {
     match val {
         &Cbor::Bool(b) => Ok(b),
