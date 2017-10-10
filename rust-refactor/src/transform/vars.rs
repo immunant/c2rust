@@ -305,7 +305,7 @@ impl Transform for FoldLetAssign {
         // If a local gets used before we reach the assignment, we delete it from this map.
         let mut local_pos = HashMap::new();
 
-        fold_blocks(krate, |mut curs| {
+        fold_blocks(krate, |curs| {
             while !curs.eof() {
                 // Is it a local declaration?  If so, mark it.
                 let mark_did = match curs.next().node {

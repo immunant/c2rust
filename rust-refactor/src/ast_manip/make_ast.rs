@@ -721,6 +721,15 @@ impl Builder {
                                 block))
     }
 
+    pub fn fn_decl(self, inputs: Vec<Arg>, output: FunctionRetTy) -> P<FnDecl>
+    {
+        P (FnDecl {
+            inputs,
+            output,
+            variadic: false,
+        })
+    }
+
     pub fn struct_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
             where I: Make<Ident> {
         let name = name.make(&self);
@@ -761,6 +770,15 @@ impl Builder {
             ty: ty,
             attrs: self.attrs,
         }
+    }
+
+    pub fn type_item<I,T>(self, name: I, ty: T) -> P<Item>
+        where I: Make<Ident>, T: Make<P<Ty>> {
+
+        let ty = ty.make(&self);
+        let name = name.make(&self);
+        let kind = ItemKind::Ty(ty, self.generics);
+        Self::item(name, self.attrs, self.vis, kind)
     }
 
     pub fn variant<I>(self, name: I, dat: VariantData) -> Variant
@@ -857,6 +875,19 @@ impl Builder {
                 tts: tts,
             },
             span: DUMMY_SP,
+        }
+    }
+
+    pub fn local<V,T,E>(self, pat: V, ty: Option<T>, init: Option<E>) -> Local
+        where V: Make<P<Pat>>, T: Make<P<Ty>>, E: Make<P<Expr>> {
+        let pat = pat.make(&self);
+        let ty = ty.map(|x| x.make(&self));
+        let init = init.map(|x| x.make(&self));
+        Local {
+            pat, ty, init,
+            id: DUMMY_NODE_ID,
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
         }
     }
 }

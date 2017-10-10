@@ -8,7 +8,6 @@ build = "build.rs"
 cbor = { git = "https://github.com/GaloisInc/rust-cbor" } # "0.4"
 syn = "0.11.11"
 quote = "0.3"
-bimap = "0.1"
 idiomize =  { path = "../rust-refactor" }
 
 [build-dependencies]

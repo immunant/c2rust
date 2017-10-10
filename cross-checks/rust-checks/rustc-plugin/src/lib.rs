@@ -112,48 +112,67 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
             // settings with its own.
             return fold::noop_fold_item_simple(item, self);
         }
-        if let ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) = item.node {
-            // Add the cross-check to the beginning of the function
-            // TODO: only add the checks to C abi functions???
-            // Allow clients to specify the id or name manually, like this:
-            // #[cross_check(name = "foo")]
-            // #[cross_check(id = 0x12345678)]
-            let fn_ident = self.fold_ident(item.ident);
-            let check_id = if let Some(id) = self.config.id {
-                id
-            } else if let Some(ref name) = self.config.name {
-                djb2_hash(name)
-            } else {
-                djb2_hash(fn_ident.name.as_str().as_ref())
-            };
-            let checked_block = self.fold_block(block).map(|block| {
-                quote_block!(self.cx, {
-                    extern crate xcheck_runtime;
-                    xcheck_runtime::xcheck::xcheck(
-                        xcheck_runtime::xcheck::FUNCTION_CALL_TAG,
-                        $check_id as u64);
-                    $block
-                }).unwrap()
-            });
-            let checked_fn = ast::ItemKind::Fn(
-                self.fold_fn_decl(fn_decl),
-                unsafety,
-                constness,
-                abi,
-                self.fold_generics(generics),
-                checked_block);
-            // Build and return the replacement function item
-            ast::Item {
-                id: self.new_id(item.id),
-                vis: self.fold_vis(item.vis),
-                ident: fn_ident,
-                attrs: fold::fold_attrs(item.attrs, self),
-                node: checked_fn,
-                span: self.new_span(item.span),
-                tokens: item.tokens,
+        match item.node {
+            ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) => {
+                // Add the cross-check to the beginning of the function
+                // TODO: only add the checks to C abi functions???
+                // Allow clients to specify the id or name manually, like this:
+                // #[cross_check(name = "foo")]
+                // #[cross_check(id = 0x12345678)]
+                let fn_ident = self.fold_ident(item.ident);
+                let check_id = if let Some(id) = self.config.id {
+                    id
+                } else if let Some(ref name) = self.config.name {
+                    djb2_hash(name)
+                } else {
+                    djb2_hash(fn_ident.name.as_str().as_ref())
+                };
+                let checked_block = self.fold_block(block).map(|block| {
+                    quote_block!(self.cx, {
+                        extern crate cross_check_runtime;
+                        cross_check_runtime::xcheck::xcheck(
+                            cross_check_runtime::xcheck::FUNCTION_CALL_TAG,
+                            $check_id as u64);
+                        $block
+                    }).unwrap()
+                });
+                let checked_fn = ast::ItemKind::Fn(
+                    self.fold_fn_decl(fn_decl),
+                    unsafety,
+                    constness,
+                    abi,
+                    self.fold_generics(generics),
+                    checked_block);
+                // Build and return the replacement function item
+                ast::Item {
+                    id: self.new_id(item.id),
+                    vis: self.fold_vis(item.vis),
+                    ident: fn_ident,
+                    attrs: fold::fold_attrs(item.attrs, self),
+                    node: checked_fn,
+                    span: self.new_span(item.span),
+                    tokens: item.tokens,
+                }
             }
-        } else {
-            fold::noop_fold_item_simple(item, self)
+            ast::ItemKind::Enum(_, _) |
+            ast::ItemKind::Struct(_, _) |
+            ast::ItemKind::Union(_, _) => {
+                // Prepend #[derive(XCheckHash)] automatically
+                // to every structure definition
+                let mut item_attrs = fold::fold_attrs(item.attrs, self);
+                let xcheck_hash_attr = quote_attr!(self.cx, #[derive(XCheckHash)]);
+                item_attrs.push(xcheck_hash_attr);
+                ast::Item {
+                    id: self.new_id(item.id),
+                    vis: self.fold_vis(item.vis),
+                    ident: self.fold_ident(item.ident),
+                    attrs: item_attrs,
+                    node: self.fold_item_kind(item.node),
+                    span: self.new_span(item.span),
+                    tokens: item.tokens,
+                }
+            }
+            _ => fold::noop_fold_item_simple(item, self)
         }
     }
 

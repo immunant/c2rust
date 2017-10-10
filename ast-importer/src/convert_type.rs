@@ -19,6 +19,8 @@ impl TypeConverter {
         let ctype = ctxt.get_type(ctype_id).unwrap();
 
         match ctype.tag {
+            TypeTag::TagVoid => mk().tuple_ty(vec![] as Vec<P<Ty>>),
+            TypeTag::TagBool => mk().path_ty(mk().path(vec!["bool"])),
             TypeTag::TagInt => mk().path_ty(mk().path(vec!["libc","c_int"])),
 
             TypeTag::TagPointer => {

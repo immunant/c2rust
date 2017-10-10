@@ -3,7 +3,6 @@ name = "ast_importer"
 version = "0.1.0"
 dependencies = [
  "arena 0.0.0",
- "bimap 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "bindgen 0.29.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cbor 0.4.0 (git+https://github.com/GaloisInc/rust-cbor)",
  "idiomize 0.1.0",
@@ -60,11 +59,6 @@ dependencies = [
  "libc 0.2.29 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
-
-[[package]]
-name = "bimap"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "bindgen"
@@ -991,7 +985,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum ar 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b24e4eef8e3fa7e2ca75b157e6039cdf8d9d3a68213ddc19d0fd9d576b9717c9"
 "checksum aster 0.41.0 (registry+https://github.com/rust-lang/crates.io-index)" = "4ccfdf7355d9db158df68f976ed030ab0f6578af811f5a7bb6dcf221ec24e0e0"
 "checksum atty 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "d912da0db7fa85514874458ca3651fe2cddace8d0b0505571dbdcd41ab490159"
-"checksum bimap 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "b0aa1aab06e5d0123511ab9b16e14e214e420defca1465ebf392d0901f5f2e06"
 "checksum bindgen 0.29.0 (registry+https://github.com/rust-lang/crates.io-index)" = "0c338079dafc81bef7d581f494b906603d12359c4306979eae6ca081925a4984"
 "checksum bitflags 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "aad18937a628ec6abcd26d1489012cc0e18c21798210f491af69ded9b881106d"
 "checksum bitflags 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)" = "1370e9fc2a6ae53aea8b7a5110edbd08836ed87c88736dfabccade1c2b44bff4"
