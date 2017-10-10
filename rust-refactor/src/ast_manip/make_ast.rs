@@ -877,6 +877,19 @@ impl Builder {
             span: DUMMY_SP,
         }
     }
+
+    pub fn local<V,T,E>(self, pat: V, ty: Option<T>, init: Option<E>) -> Local
+        where V: Make<P<Pat>>, T: Make<P<Ty>>, E: Make<P<Expr>> {
+        let pat = pat.make(&self);
+        let ty = ty.map(|x| x.make(&self));
+        let init = init.map(|x| x.make(&self));
+        Local {
+            pat, ty, init,
+            id: DUMMY_NODE_ID,
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        }
+    }
 }
 
 pub fn mk() -> Builder {
