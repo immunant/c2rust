@@ -17,10 +17,9 @@ pub fn derive_xcheck_hash(input: TokenStream) -> TokenStream {
     let mut h_all_generics = struct_def.generics.clone();
     let h_generic_str = "impl<__XCheckHasherType : ::std::hash::Hasher + Default> X {}";
     let h_generic_item = syn::parse_item(h_generic_str).unwrap();
-    let h_generics = if let syn::ItemKind::Impl(_, _, item_generics, ..) = h_generic_item.node {
-        item_generics
-    } else {
-        panic!("invalid parse result for fake impl item");
+    let h_generics = match h_generic_item.node {
+        syn::ItemKind::Impl(_, _, item_generics, ..) => item_generics,
+        _ => panic!("invalid parse result for fake impl item")
     };
     // FIXME: do we want to add __XCheckHasherType to the beginning or the end?
     h_all_generics.ty_params.extend(h_generics.ty_params.into_iter());
