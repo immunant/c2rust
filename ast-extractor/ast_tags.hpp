@@ -96,5 +96,6 @@ enum TypeTag {
     TagVoid,
     
     TagBool,
+    TagDecayedType,
 };
 #endif /* ast_tags_h */

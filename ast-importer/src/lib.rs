@@ -1,5 +1,4 @@
 #![feature(rustc_private)]
-extern crate bimap;
 extern crate cbor;
 extern crate syntax;
 extern crate idiomize;

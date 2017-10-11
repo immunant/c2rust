@@ -82,8 +82,7 @@ def have_rust_toolchain(name: str) -> bool:
     """
     rustup = get_cmd_or_die('rustup')
     lines = rustup('show').split('\n')
-    res = False
-    return True if [True for line in lines if name == line] else False
+    return name in lines
     
 
 def download_and_build_custom_rustc():
