@@ -40,12 +40,7 @@ Vagrant.configure("2") do |config|
   # the path on the host to the actual folder. The second argument is
   # the path on the guest to mount the folder. And the optional third
   # argument is a set of non-required options.
-  config.vm.synced_folder "../ast-extractor", "/home/vagrant/ast-extractor"
-  config.vm.synced_folder "../ast-importer", "/home/vagrant/ast-importer"
-  config.vm.synced_folder "../cross-checks", "/home/vagrant/cross-checks"
-  config.vm.synced_folder "../examples", "/home/vagrant/examples"
-  config.vm.synced_folder "../rust-refactor", "/home/vagrant/rust-refactor"
-  config.vm.synced_folder "../scripts", "/home/vagrant/scripts"
+  config.vm.synced_folder "..", "/home/vagrant/C2Rust"
   
   
 

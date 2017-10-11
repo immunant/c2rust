@@ -1,7 +1,7 @@
 # C2Rust Vagrant environment
 - Ubuntu 14.04.5 LTS (GNU/Linux 3.13.0-32-generic x86_64)
 - CMake 3.7.2
-- Clang version 3.4-1ubuntu3 (tags/RELEASE_34/final) (based on LLVM 3.4) 
+- Clang version 3.9.1-4ubuntu3~14.04.3 (tags/RELEASE_391/rc2)
 
 ## Running with Virtualbox
 `vagrant up`
