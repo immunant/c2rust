@@ -212,6 +212,16 @@ public:
 
         VisitQualType(t);
     }
+    
+    void VisitDecayedType(const DecayedType *T) {
+        auto t = T->desugar();
+        auto s = t.split();
+        encodeType(T, TagDecayedType, [&s](CborEncoder *local) {
+            cbor_encode_uint(local, uintptr_t(s.Ty));
+        });
+        
+        VisitQualType(t);
+    }
 };
 
 class TranslateASTVisitor final
@@ -234,7 +244,11 @@ class TranslateASTVisitor final
           auto col  = manager.getPresumedColumnNumber(loc);
           auto fileid = manager.getFileID(loc);
           auto entry = manager.getFileEntryForID(fileid);
-          auto filename = entry->getName().str();
+
+          string filename = "?";
+          if (entry) {
+              filename = entry->getName().str();
+          }
           
           auto pair = filenames.insert(std::make_pair(filename, filenames.size()));
 
@@ -718,11 +732,21 @@ public:
             
             CborEncoder array;
             
+            // Encode all of the reachable AST nodes and types
             cbor_encoder_create_array(&encoder, &array, CborIndefiniteLength);
             TranslateASTVisitor visitor(&Context, &array);
-            visitor.TraverseDecl(Context.getTranslationUnitDecl());
+            auto translation_unit = Context.getTranslationUnitDecl();
+            visitor.TraverseDecl(translation_unit);
             cbor_encoder_close_container(&encoder, &array);
             
+            // Track all of the top-level declarations
+            cbor_encoder_create_array(&encoder, &array, CborIndefiniteLength);
+            for (auto d : translation_unit->decls()) {
+                cbor_encode_uint(&array, reinterpret_cast<std::uintptr_t>(d));
+            }
+            cbor_encoder_close_container(&encoder, &array);
+            
+            // Encode all of the visited file names
             auto filenames = visitor.getFilenames();
             cbor_encoder_create_array(&encoder, &array, filenames.size());
             for (auto &kv : filenames) {
