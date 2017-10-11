@@ -60,7 +60,7 @@ LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
 
 AST_EXTR = os.path.join(LLVM_BLD, "bin/ast-extractor")
 
-KEYSERVER = "pgpkeys.mit.edu"
+KEYSERVER = "keys.gnupg.net"
 MIN_PLUMBUM_VERSION = (1, 6, 3)
 CMAKELISTS_COMMANDS = \
 """
