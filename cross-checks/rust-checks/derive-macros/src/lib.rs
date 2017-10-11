@@ -19,8 +19,6 @@ pub fn derive_xcheck_hash(input: TokenStream) -> TokenStream {
     // TODO: we should mark the impl below with #[automatically_derived],
     // but that currently causes an "unused attribute" warning
     //
-    // We use the type generics and the where clause from the original definition,
-    // but we use our own modified version of the impl generics
     let (impl_generics, ty_generics, where_clause) = struct_def.generics.split_for_impl();
     let ident = &struct_def.ident;
     let hash_impl = quote! {
