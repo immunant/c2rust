@@ -31,6 +31,11 @@ macro_rules! impl_primitive_hash {
         impl XCheckHash for $in_ty {
             #[inline]
             fn xcheck_hash_with_depth<H: XCheckHasher>(&self, _: usize) -> u64 {
+                // FIXME: this is pretty slow, but has the advantage that
+                // the size of the value is rolled into the hash, which
+                // roughly approximates rolling the type into the hash
+                // What we really want is a fast but good hash function that looks like:
+                //   H(type, value: u64) -> u64
                 let mut h = H::default();
                 h.$write_meth($val_filter(*self));
                 h.finish()
