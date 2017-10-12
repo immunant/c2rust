@@ -32,24 +32,12 @@ using std::string;
 using clang::QualType;
 using clang::ASTContext;
 
-
+// Encode a string object assuming that it is valid UTF-8 encoded text
 static void cbor_encode_string(CborEncoder *encoder, const std::string &str) {
     auto ptr = str.data();
-    auto len = str.length();
+    auto len = str.size();
     cbor_encode_text_string(encoder, ptr, len);
 }
-
-/*
- Strings must be encoded a raw byte strings and not a text, which in
- CBOR must be valid UTF-8 encoding. We can't make any assumptions about
- the content of string literals being in any particular encoding.
- */
-static void cbor_encode_bytes(CborEncoder *encoder, const std::string &str) {
-    auto ptr = str.data();
-    auto len = str.length();
-    cbor_encode_byte_string(encoder, reinterpret_cast<const uint8_t *>(ptr), len);
-}
-
 
 class TranslateASTVisitor;
 
@@ -60,6 +48,9 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder>
     TranslateASTVisitor *astEncoder;
     bool isConst;
     
+    // Bounds recursion when visiting self-referential record declarations
+    std::unordered_set<const clang::RecordDecl*> recordDeclsUnderVisit;
+   
     std::unordered_set<const Type*> exports;
     
     bool isUnexported(const Type *ptr) {
@@ -80,7 +71,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder>
         // 2 - Type tag
         cbor_encode_uint(&local, tag);
         
-        // 4 - extras
+        // 3 - extras
         extra(&local);
         
         cbor_encoder_close_container(encoder, &local);
@@ -263,14 +254,14 @@ class TranslateASTVisitor final
           auto col  = manager.getPresumedColumnNumber(loc);
           auto fileid = manager.getFileID(loc);
           auto entry = manager.getFileEntryForID(fileid);
-
-          string filename = "?";
+          
+          auto filename = string("?");
           if (entry) {
               filename = entry->getName().str();
           }
           
           auto pair = filenames.insert(std::make_pair(filename, filenames.size()));
-
+          
           cbor_encode_uint(enc, pair.first->second);
           cbor_encode_uint(enc, line);
           cbor_encode_uint(enc, col);
@@ -404,8 +395,7 @@ class TranslateASTVisitor final
           std::vector<void*> childIds = { LS->getSubStmt() };
           encode_entry(LS, TagLabelStmt, childIds,
                              [LS](CborEncoder *array){
-                                 auto name = LS->getName();
-                                 cbor_encode_text_stringz(array, name);
+                                 cbor_encode_text_stringz(array, LS->getName());
                              });
           return true;
       }
@@ -673,12 +663,15 @@ class TranslateASTVisitor final
       
       bool VisitTypedefDecl(TypedefDecl *D) {
           std::vector<void*> childIds;
-          encode_entry(D, TagTypedefDecl, childIds, D->getTypeForDecl(),
+          auto typeForDecl = D->getUnderlyingType();
+          encode_entry(D, TagTypedefDecl, childIds, typeForDecl.getTypePtrOrNull(),
                              [D](CborEncoder *array) {
                                  auto name = D->getNameAsString();
                                  cbor_encode_string(array, name);
                              });
-          typeEncoder.VisitQualType(D->getUnderlyingType());
+
+          typeEncoder.VisitQualType(typeForDecl);
+          
           return true;
       }
       
@@ -709,10 +702,33 @@ class TranslateASTVisitor final
           std::vector<void*> childIds;
           encode_entry(SL, TagStringLiteral, childIds,
                              [SL](CborEncoder *array){
-                                 auto lit = SL->getString().str();
-                                 
-                                 // "String" literals are byte literals in C, not text
-                                 cbor_encode_bytes(array, lit);
+                                // C and C++ supports different string types, so 
+                                // we need to identify the string literal type
+                                switch(SL->getKind()) {
+                                    case clang::StringLiteral::StringKind::Ascii:
+                                        cbor_encode_uint(array, StringTypeTag::TagAscii);
+                                        break;
+                                    case clang::StringLiteral::StringKind::Wide:
+                                        cbor_encode_uint(array, StringTypeTag::TagWide);
+                                        break;
+                                    case clang::StringLiteral::StringKind::UTF8:
+                                        cbor_encode_uint(array, StringTypeTag::TagUTF8);
+                                        break;
+                                    case clang::StringLiteral::StringKind::UTF16:
+                                        cbor_encode_uint(array, StringTypeTag::TagUTF16);
+                                        break;
+                                    case clang::StringLiteral::StringKind::UTF32:
+                                        cbor_encode_uint(array, StringTypeTag::TagUTF32);
+                                        break;
+                                }
+                                // The size of the wchar_t type in C is implementation defined
+                                cbor_encode_uint(array, SL->getCharByteWidth());
+
+                                // String literals can contain arbitrary bytes, so  
+                                // we encode these as byte strings rather than text.
+
+                                const uint8_t* bytes = reinterpret_cast<const uint8_t*>(SL->getBytes().data());
+                                cbor_encode_byte_string(array, bytes, SL->getByteLength());
                              });
           return true;
       }
@@ -735,7 +751,13 @@ void TypeEncoder::VisitRecordType(const RecordType *T) {
     });
     
     // record type might be anonymous and have no top-level declaration
-    astEncoder->TraverseDecl(T->getDecl());
+    // structure declarations can reference themselves, so we need
+    // a way to guard against unbounded recursion.
+    clang::RecordDecl *D = T->getDecl();
+    if(recordDeclsUnderVisit.emplace(D).second) {
+        astEncoder->TraverseDecl(D);
+        recordDeclsUnderVisit.erase(D);
+    }
 }
 
 class TranslateConsumer : public clang::ASTConsumer {
