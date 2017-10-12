@@ -12,7 +12,7 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://atlas.hashicorp.com/search.
-  config.vm.box = "geerlingguy/ubuntu1404"
+  config.vm.box = "geerlingguy/ubuntu1604"
 
   # this allows the guest os to use host os credentials to access github
   config.ssh.forward_agent = true
@@ -64,19 +64,23 @@ Vagrant.configure("2") do |config|
   mem  = mem / 4  if mem > 2048
 
   config.vm.provider "virtualbox" do |vb|
-     # Display the VirtualBox GUI when booting the machine
-     # vb.gui = true
+    # Display the VirtualBox GUI when booting the machine
+    # vb.gui = true
 
-     # Customize the amount of memory on the VM:
-     vb.memory = mem.to_s
-     vb.cpus = cpus / 2 if cpus > 4
+    # Customize the amount of memory on the VM:
+    vb.memory = mem.to_s
+    if cpus > 4
+      vb.cpus = cpus / 2
+    else
+      vb.cpus = cpus
+    end
   end
 
   config.vm.provider "vmware_fusion" do |v|
     #  v.gui = true
-     # Customize the amount of memory on the VM:
-     v.vmx["memsize"] = mem.to_s
-     v.vmx["numvcpus"] = cpus
+    # Customize the amount of memory on the VM:
+    v.vmx["memsize"] = mem.to_s
+    v.vmx["numvcpus"] = cpus
   end
   #
   # View the documentation for the provider you are using for more
