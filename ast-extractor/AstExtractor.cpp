@@ -32,6 +32,25 @@ using std::string;
 using clang::QualType;
 using clang::ASTContext;
 
+
+static void cbor_encode_string(CborEncoder *encoder, const std::string &str) {
+    auto ptr = str.data();
+    auto len = str.length();
+    cbor_encode_text_string(encoder, ptr, len);
+}
+
+/*
+ Strings must be encoded a raw byte strings and not a text, which in
+ CBOR must be valid UTF-8 encoding. We can't make any assumptions about
+ the content of string literals being in any particular encoding.
+ */
+static void cbor_encode_bytes(CborEncoder *encoder, const std::string &str) {
+    auto ptr = str.data();
+    auto len = str.length();
+    cbor_encode_byte_string(encoder, reinterpret_cast<const uint8_t *>(ptr), len);
+}
+
+
 class TranslateASTVisitor;
 
 class TypeEncoder final : public TypeVisitor<TypeEncoder>
@@ -385,7 +404,8 @@ class TranslateASTVisitor final
           std::vector<void*> childIds = { LS->getSubStmt() };
           encode_entry(LS, TagLabelStmt, childIds,
                              [LS](CborEncoder *array){
-                                 cbor_encode_text_stringz(array, LS->getName());
+                                 auto name = LS->getName();
+                                 cbor_encode_text_stringz(array, name);
                              });
           return true;
       }
@@ -565,7 +585,7 @@ class TranslateASTVisitor final
           encode_entry(FD, TagFunctionDecl, childIds, FD->getType().getTypePtr(),
                              [FD](CborEncoder *array) {
                                  auto name = FD->getNameAsString();
-                                 cbor_encode_text_stringz(array, name.c_str());
+                                 cbor_encode_string(array, name);
                              });
           typeEncoder.VisitQualType(FD->getType());
 
@@ -594,7 +614,7 @@ class TranslateASTVisitor final
           encode_entry(VD, TagVarDecl, childIds, T.getTypePtr(),
                              [VD](CborEncoder *array){
                                  auto name = VD->getNameAsString();
-                                 cbor_encode_text_stringz(array, name.c_str());
+                                 cbor_encode_string(array, name);
                              });
           
           typeEncoder.VisitQualType(T);
@@ -611,7 +631,7 @@ class TranslateASTVisitor final
           encode_entry(D, TagRecordDecl, childIds, nullptr,
           [D](CborEncoder *local){
               auto name = D->getNameAsString();
-              cbor_encode_text_string(local, name.c_str(), name.size());
+              cbor_encode_string(local, name);
           });
           return true;
       }
@@ -625,7 +645,7 @@ class TranslateASTVisitor final
           encode_entry(D, TagEnumDecl, childIds, nullptr,
           [D](CborEncoder *local){
               auto name = D->getNameAsString();
-              cbor_encode_text_string(local, name.c_str(), name.size());
+              cbor_encode_string(local, name);
           });
           return true;
       }
@@ -636,7 +656,7 @@ class TranslateASTVisitor final
           encode_entry(D, TagEnumConstantDecl, childIds, nullptr,
             [D](CborEncoder *local){
               auto name = D->getNameAsString();
-              cbor_encode_text_string(local, name.c_str(), name.size());
+              cbor_encode_string(local, name);
           });
           return true;
       }
@@ -646,7 +666,7 @@ class TranslateASTVisitor final
           encode_entry(D, TagFieldDecl, childIds, nullptr,
                              [D](CborEncoder *array) {
                                  auto name = D->getNameAsString();
-                                 cbor_encode_text_stringz(array, name.c_str());
+                                 cbor_encode_string(array, name);
                              });
           return true;
       }
@@ -656,7 +676,7 @@ class TranslateASTVisitor final
           encode_entry(D, TagTypedefDecl, childIds, D->getTypeForDecl(),
                              [D](CborEncoder *array) {
                                  auto name = D->getNameAsString();
-                                 cbor_encode_text_stringz(array, name.c_str());
+                                 cbor_encode_string(array, name);
                              });
           typeEncoder.VisitQualType(D->getUnderlyingType());
           return true;
@@ -690,7 +710,9 @@ class TranslateASTVisitor final
           encode_entry(SL, TagStringLiteral, childIds,
                              [SL](CborEncoder *array){
                                  auto lit = SL->getString().str();
-                                 cbor_encode_text_string(array, lit.c_str(), lit.size());
+                                 
+                                 // "String" literals are byte literals in C, not text
+                                 cbor_encode_bytes(array, lit);
                              });
           return true;
       }
@@ -751,7 +773,7 @@ public:
             cbor_encoder_create_array(&encoder, &array, filenames.size());
             for (auto &kv : filenames) {
                 auto str = kv.first;
-                cbor_encode_text_string(&array, str.c_str(), str.size());
+                cbor_encode_string(&array, str);
             }
             cbor_encoder_close_container(&encoder, &array);
         };
