@@ -61,7 +61,8 @@ def test_ruby(args: argparse.Namespace) -> None:
 
     cc_db_file = os.path.join(RUBY_SRC, CC_DB_JSON)
     if not os.path.isfile(cc_db_file):
-        with pb.local.cwd(RUBY_SRC), pb.local.env(CC="clang"):
+        with pb.local.cwd(RUBY_SRC), pb.local.env(CC="clang",
+                                                  cflags="-w"):
             configure = pb.local.get("./configure")
             invoke(configure)
             invoke(BEAR[MAKE])
@@ -109,6 +110,7 @@ def main() -> None:
         t(args)
 
     # FIXME: test lighttpd, varnish, Python, etc.
+    # FIXME: add rebuild option?.
 
     logging.info("PASS")
 

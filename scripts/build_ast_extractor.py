@@ -91,7 +91,6 @@ def configure_and_build_llvm(args):
                          "-DLLVM_TARGETS_TO_BUILD=X86"])
         else:
             logging.debug("found existing ninja.build, not running cmake")
-
         invoke(ninja['ast-extractor'])
 
 
@@ -236,7 +235,8 @@ def integrate_ast_extractor():
         LLVM_SRC, "tools/clang/tools/extra/ast-extractor")
     clang_tools_extra = os.path.abspath(
         os.path.join(extractor_dest, os.pardir))
-    if not os.path.exists(extractor_dest):
+    # NOTE: `os.path.exists` returns False on broken symlinks, `lexists` returns True.
+    if not os.path.lexists(extractor_dest):
         # NOTE: using os.symlink to emulate `ln -s` would be unwieldy
         ln = get_cmd_or_die("ln")
         with pb.local.cwd(clang_tools_extra):
@@ -308,9 +308,6 @@ def _main():
     # FIXME: check that cmake and ninja are installed
     # FIXME: option to build LLVM/Clang from master?
 
-    ensure_dir(LLVM_BLD)
-    ensure_dir(DEPS_DIR)
-
     # earlier plumbum versions are missing features such as TEE
     if pb.__version__ < MIN_PLUMBUM_VERSION:
         err = "locally installed version {} of plumbum is too old.\n" \
@@ -319,17 +316,20 @@ def _main():
             .format(MIN_PLUMBUM_VERSION)
         die(err)
 
-    if on_linux():
-        build_a_bear()
-        if not os.path.isfile(BEAR_BIN):
-            die("bear not found", errno.ENOENT)
-
     args = _parse_args()
     if args.clean_all:
         logging.info("cleaning all dependencies and previous built files")
         shutil.rmtree(LLVM_SRC, ignore_errors=True)
         shutil.rmtree(LLVM_BLD, ignore_errors=True)
         shutil.rmtree(DEPS_DIR, ignore_errors=True)
+
+    ensure_dir(LLVM_BLD)
+    ensure_dir(DEPS_DIR)
+
+    if on_linux():
+        build_a_bear()
+        if not os.path.isfile(BEAR_BIN):
+            die("bear not found", errno.ENOENT)
 
     download_llvm_sources()
 

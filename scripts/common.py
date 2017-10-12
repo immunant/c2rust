@@ -60,7 +60,7 @@ LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
 
 AST_EXTR = os.path.join(LLVM_BLD, "bin/ast-extractor")
 
-KEYSERVER = "pgpkeys.mit.edu"
+KEYSERVER = "keys.gnupg.net"
 MIN_PLUMBUM_VERSION = (1, 6, 3)
 CMAKELISTS_COMMANDS = \
 """
@@ -83,7 +83,7 @@ def have_rust_toolchain(name: str) -> bool:
     rustup = get_cmd_or_die('rustup')
     lines = rustup('show').split('\n')
     return name in lines
-    
+
 
 def download_and_build_custom_rustc():
     git = get_cmd_or_die('git')
@@ -95,8 +95,10 @@ def download_and_build_custom_rustc():
         logging.info("skipping custom rust toolchain build step; already installed")
         return
 
-    # make sure the submodule is initialized and updated
-    invoke(git, "submodule", "update", "--init", COMPILER_SUBMOD_DIR)
+    # disable host key checking to avoid prompts during automated builds
+    with pb.local.env(GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"):
+        # make sure the submodule is initialized and updated
+        invoke(git, "submodule", "update", "--init", COMPILER_SUBMOD_DIR)
 
     with pb.local.cwd(COMPILER_SUBMOD_DIR):
         # seems that just updating submodule gives us the right version
