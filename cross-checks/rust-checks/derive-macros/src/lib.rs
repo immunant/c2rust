@@ -4,47 +4,99 @@ extern crate synstructure;
 #[macro_use]
 extern crate quote;
 
+use std::collections::HashSet;
+
 use proc_macro::TokenStream;
 use synstructure::{each_field, BindStyle};
+
+struct XCheckHashPredicateInserter<'a> {
+    skip_visit: bool,
+    xcheck_hash_bound: syn::TyParamBound,
+    ty_param_names: &'a HashSet<&'a str>,
+    seen_tys: HashSet<syn::PathSegment>,
+    ty_where_preds: Vec<syn::WherePredicate>,
+}
+
+impl<'a> syn::visit::Visitor for XCheckHashPredicateInserter<'a> {
+    fn visit_ty(&mut self, ty: &syn::Ty) {
+        // If this type matches one of the parameter types, e.g., T,
+        // add a "T: ::cross_check_runtime::hash::XCheckHash" where-predicate
+        if let syn::Ty::Path(_, ref path) = *ty {
+            if let Some(segment) = path.segments.first() {
+                let seg_name = segment.ident.as_ref();
+                if self.ty_param_names.contains(seg_name) &&
+                   !self.seen_tys.contains(segment) {
+                    let bp = syn::WhereBoundPredicate {
+                        bound_lifetimes: vec![],
+                        bounded_ty: ty.clone(),
+                        bounds: vec![self.xcheck_hash_bound.clone()],
+                    };
+                    let wp = syn::WherePredicate::BoundPredicate(bp);
+                    self.ty_where_preds.push(wp);
+                    self.seen_tys.insert(segment.clone());
+                }
+            }
+        }
+        syn::visit::walk_ty(self, ty)
+    }
+}
 
 #[proc_macro_derive(XCheckHash)]
 pub fn derive_xcheck_hash(input: TokenStream) -> TokenStream {
     let struct_def = syn::parse_derive_input(&input.to_string()).unwrap();
 
-    // Extend the structure definition's generics list with an extra
-    // type parameter called __XCheckHasherType for the hasher, e.g.,
-    // "struct<T> Foo" gets an "impl<T, __XCheckHasherType : ...> for Foo<T>"
-    let mut h_all_generics = struct_def.generics.clone();
-    let h_generic_str = "impl<__XCheckHasherType : ::std::hash::Hasher + Default> X {}";
-    let h_generic_item = syn::parse_item(h_generic_str).unwrap();
-    let h_generics = if let syn::ItemKind::Impl(_, _, item_generics, ..) = h_generic_item.node {
-        item_generics
-    } else {
-        panic!("invalid parse result for fake impl item");
+    // Build the XCheckHashPredicateInserter
+    let ty_param_names: HashSet<&str> = struct_def.generics.ty_params.iter()
+        .map(|ty_param| ty_param.ident.as_ref())
+        .collect();
+    let xcheck_hash_bound = {
+        const PATH_STR: &'static str = "::cross_check_runtime::hash::XCheckHash";
+        let path = syn::parse_path(PATH_STR).unwrap();
+        let trait_ref = syn::PolyTraitRef {
+            bound_lifetimes: vec![],
+            trait_ref: path,
+        };
+        syn::TyParamBound::Trait(trait_ref, syn::TraitBoundModifier::None)
     };
-    // FIXME: do we want to add __XCheckHasherType to the beginning or the end?
-    h_all_generics.ty_params.extend(h_generics.ty_params.into_iter());
+    let mut hash_pred_inserter = XCheckHashPredicateInserter {
+        skip_visit: ty_param_names.is_empty(),
+        xcheck_hash_bound: xcheck_hash_bound,
+        ty_param_names: &ty_param_names,
+        seen_tys: Default::default(),
+        ty_where_preds: vec![],
+    };
 
-    let hash_fields = each_field(&struct_def, &BindStyle::Ref.into(), |f| quote! {
-        extern crate cross_check_runtime;
-        use cross_check_runtime::hash::XCheckHash;
-        h.write_u64(XCheckHash::<__XCheckHasherType>::xcheck_hash_with_depth(#f, _depth - 1));
+    // Iterate through all fields, doing 2 things at once:
+    // 1) insert the hash computation for each field
+    // 2) add the necessary where-predicates for the type of each field
+    let hash_fields = each_field(&struct_def, &BindStyle::Ref.into(), |f| {
+        if !hash_pred_inserter.skip_visit {
+            syn::visit::Visitor::visit_ty(&mut hash_pred_inserter, &f.field.ty);
+        }
+        quote! {
+            extern crate cross_check_runtime;
+            use cross_check_runtime::hash::XCheckHash;
+            h.write_u64(XCheckHash::xcheck_hash_with_depth::<__XCH>(#f, _depth - 1));
+        }
     });
+
+    // Extract the generics components and add our own where predicates
+    let (impl_generics, ty_generics, where_clause) = struct_def.generics.split_for_impl();
+    let mut full_where_clause = where_clause.clone();
+    full_where_clause.predicates.extend(hash_pred_inserter.ty_where_preds.into_iter());
 
     // TODO: we should mark the impl below with #[automatically_derived],
     // but that currently causes an "unused attribute" warning
     //
-    // We use the type generics and the where clause from the original definition,
-    // but we use our own modified version of the impl generics
-    let (_, ty_generics, where_clause) = struct_def.generics.split_for_impl();
-    let (h_impl_generics, _, _) = h_all_generics.split_for_impl();
+    // TODO: also hash in the name of the structure???
     let ident = &struct_def.ident;
     let hash_impl = quote! {
         #[allow(unused_mut)]
-        impl #h_impl_generics ::cross_check_runtime::hash::XCheckHash<__XCheckHasherType>
-                for #ident #ty_generics #where_clause {
-            fn xcheck_hash_with_depth(&self, _depth: usize) -> u64 {
-                let mut h = __XCheckHasherType::default();
+        impl #impl_generics ::cross_check_runtime::hash::XCheckHash
+                for #ident #ty_generics #full_where_clause {
+            fn xcheck_hash_with_depth<__XCH>(&self, _depth: usize) -> u64
+                    where __XCH: ::cross_check_runtime::hash::XCheckHasher {
+                let mut h = __XCH::default();
                 match *self { #hash_fields }
                 h.finish()
             }

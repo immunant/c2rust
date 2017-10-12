@@ -8,7 +8,7 @@ readme = "README.md"
 proc-macro = true
 
 [dependencies]
-syn = { version = "0.11.11", features = ["full"] }
+syn = { version = "0.11.11", features = ["full", "visit"] }
 synstructure = "*"
 quote = "0.3.15"
 
