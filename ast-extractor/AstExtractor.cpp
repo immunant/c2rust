@@ -513,7 +513,7 @@ class TranslateASTVisitor final
           std::vector<void*> childIds = { UO->getSubExpr() };
           encode_entry(UO, TagUnaryOperator, childIds,
                              [UO](CborEncoder *array) {
-                                 cbor_encode_uint(array, UO->getOpcode());
+                                 cbor_encode_string(array, UO->getOpcodeStr(UO->getOpcode()).str());
                              });
           return true;
       }
@@ -522,7 +522,7 @@ class TranslateASTVisitor final
           std::vector<void*> childIds = { BO->getLHS(), BO->getRHS() };
           encode_entry(BO, TagBinaryOperator, childIds,
                              [BO](CborEncoder *array) {
-                                 cbor_encode_uint(array, BO->getOpcode());
+                                 cbor_encode_string(array, BO->getOpcodeStr().str());
                              });
           return true;
       }
