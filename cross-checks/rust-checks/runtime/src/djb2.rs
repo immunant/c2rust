@@ -68,8 +68,7 @@ impl Hasher for Djb2Hasher {
 
 #[cfg(test)]
 mod tests {
-    use super::Hasher;
-    use super::Djb2Hasher;
+    use super::{Hasher, Djb2Hasher};
 
     fn djb2_string(s: &str) -> u32 {
         let mut h = Djb2Hasher::new();
