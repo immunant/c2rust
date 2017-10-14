@@ -29,7 +29,7 @@ impl Hasher for Djb2Hasher {
         self.0 as u64
     }
 
-    #[cfg(feature="djb2_ssse3")]
+    #[cfg(feature="djb2-ssse3")]
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
         extern crate simd;
@@ -59,7 +59,7 @@ impl Hasher for Djb2Hasher {
         }
     }
 
-    #[cfg(not(feature="djb2_ssse3"))]
+    #[cfg(not(feature="djb2-ssse3"))]
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
         self.0 = bytes.iter().fold(self.0,
