@@ -29,6 +29,36 @@ impl Hasher for Djb2Hasher {
         self.0 as u64
     }
 
+    #[cfg(feature="djb2_ssse3")]
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        extern crate simd;
+        use ::simd::u32x4;
+        use ::simd::x86::ssse3::Ssse3U32x4;
+
+        let mut u32_chunks = bytes.chunks(4);
+        let last_chunk = if bytes.len() % 4 != 0 { u32_chunks.next_back() } else { None };
+        const DJB2_FACTORS: u32x4 = u32x4::new(35937, 1089, 33, 1);
+        for chunk_bytes in u32_chunks {
+            let cvec = u32x4::new(
+                chunk_bytes[0] as u32,
+                chunk_bytes[1] as u32,
+                chunk_bytes[2] as u32,
+                chunk_bytes[3] as u32);
+            let cmul = cvec * DJB2_FACTORS;
+            let ch1 = Ssse3U32x4::hadd(cmul, cmul);
+            let ch2 = Ssse3U32x4::hadd(ch1, ch1);
+            self.0 = self.0.wrapping_mul(1185921u32)
+                .wrapping_add(ch2.extract(0));
+        }
+        // Add in the last 1-3 bytes manually
+        if let Some(last_bytes) = last_chunk {
+            self.0 = last_bytes.iter().fold(self.0,
+                |h, c| h.wrapping_mul(33).wrapping_add(*c as u32));
+        }
+    }
+
+    #[cfg(not(feature="djb2_ssse3"))]
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
         self.0 = bytes.iter().fold(self.0,

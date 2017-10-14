@@ -1,4 +1,14 @@
 [root]
 name = "cross-check-runtime"
 version = "0.1.0"
+dependencies = [
+ "simd 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
+[[package]]
+name = "simd"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[metadata]
+"checksum simd 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7a94d14a2ae1f1f110937de5fb69e494372560181c7e1739a097fcc2cee37ba0"
