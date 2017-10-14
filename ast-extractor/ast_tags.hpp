@@ -98,4 +98,12 @@ enum TypeTag {
     TagBool,
     TagDecayedType,
 };
+
+enum StringTypeTag {
+    TagAscii = 600,
+    TagWide,
+    TagUTF8,
+    TagUTF16,
+    TagUTF32,
+};
 #endif /* ast_tags_h */
