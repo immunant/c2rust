@@ -38,13 +38,14 @@ impl Hasher for Djb2Hasher {
 
         let mut u32_chunks = bytes.chunks(4);
         let last_chunk = if bytes.len() % 4 != 0 { u32_chunks.next_back() } else { None };
-        const DJB2_FACTORS: u32x4 = u32x4::new(35937, 1089, 33, 1);
         for chunk_bytes in u32_chunks {
             let cvec = u32x4::new(
                 chunk_bytes[0] as u32,
                 chunk_bytes[1] as u32,
                 chunk_bytes[2] as u32,
                 chunk_bytes[3] as u32);
+            // The djb2 factors: powers of 33 from 33^3 to 33^0
+            const DJB2_FACTORS: u32x4 = u32x4::new(35937, 1089, 33, 1);
             let cmul = cvec * DJB2_FACTORS;
             let ch1 = Ssse3U32x4::hadd(cmul, cmul);
             let ch2 = Ssse3U32x4::hadd(ch1, ch1);
