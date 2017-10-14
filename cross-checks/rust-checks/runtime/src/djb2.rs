@@ -32,9 +32,8 @@ impl Hasher for Djb2Hasher {
     #[cfg(feature="djb2-ssse3")]
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
-        extern crate simd;
-        use ::simd::u32x4;
-        use ::simd::x86::ssse3::Ssse3U32x4;
+        use simd::u32x4;
+        use simd::x86::ssse3::Ssse3U32x4;
 
         let mut u32_chunks = bytes.chunks(4);
         let last_chunk = if bytes.len() % 4 != 0 { u32_chunks.next_back() } else { None };
