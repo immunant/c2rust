@@ -76,7 +76,7 @@ pub fn derive_xcheck_hash(input: TokenStream) -> TokenStream {
         quote! {
             extern crate cross_check_runtime;
             use cross_check_runtime::hash::XCheckHash;
-            h.write_u64(XCheckHash::xcheck_hash_with_depth::<__XCH>(#f, _depth - 1));
+            h.write_u64(XCheckHash::xcheck_hash_with_depth::<__XCHA, __XCHS>(#f, _depth - 1));
         }
     });
 
@@ -94,9 +94,10 @@ pub fn derive_xcheck_hash(input: TokenStream) -> TokenStream {
         #[allow(unused_mut)]
         impl #impl_generics ::cross_check_runtime::hash::XCheckHash
                 for #ident #ty_generics #full_where_clause {
-            fn xcheck_hash_with_depth<__XCH>(&self, _depth: usize) -> u64
-                    where __XCH: ::cross_check_runtime::hash::XCheckHasher {
-                let mut h = __XCH::default();
+            fn xcheck_hash_with_depth<__XCHA, __XCHS>(&self, _depth: usize) -> u64
+                    where __XCHA: ::cross_check_runtime::hash::XCheckHasher,
+                          __XCHS: ::cross_check_runtime::hash::XCheckHasher {
+                let mut h = __XCHA::default();
                 match *self { #hash_fields }
                 h.finish()
             }

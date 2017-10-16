@@ -26,13 +26,19 @@ pub trait XCheckHasher: Hasher + Default {
 // Implement XCheckHasher for all types that satisfy the sub-traits
 impl<H: Hasher + Default> XCheckHasher for H {}
 
+// Trait for our cross-check hash function
+// The hash function itself takes 2 generic parameters:
+//   HA = the hasher for aggregate types, e.g., structs/enums
+//   HS = the (fast) hasher to use for simple types, e.g., u32
 pub trait XCheckHash {
     #[inline]
-    fn xcheck_hash<H: XCheckHasher>(&self) -> u64 {
-        self.xcheck_hash_with_depth::<H>(MAX_DEPTH)
+    fn xcheck_hash<HA, HS>(&self) -> u64
+            where HA: XCheckHasher, HS: XCheckHasher {
+        self.xcheck_hash_with_depth::<HA, HS>(MAX_DEPTH)
     }
 
-    fn xcheck_hash_with_depth<H: XCheckHasher>(&self, depth: usize) -> u64;
+    fn xcheck_hash_with_depth<HA, HS>(&self, depth: usize) -> u64
+            where HA: XCheckHasher, HS: XCheckHasher;
 }
 
 // Macro that emits xcheck_hash for a given primitive type, hashing
@@ -46,13 +52,14 @@ macro_rules! impl_primitive_hash {
     ($in_ty:ident, $write_meth:ident, $val_filter:expr) => {
         impl XCheckHash for $in_ty {
             #[inline]
-            fn xcheck_hash_with_depth<H: XCheckHasher>(&self, _: usize) -> u64 {
+            fn xcheck_hash_with_depth<HA, HS>(&self, _: usize) -> u64
+                    where HA: XCheckHasher, HS: XCheckHasher {
                 // FIXME: this is pretty slow, but has the advantage that
                 // the size of the value is rolled into the hash, which
                 // roughly approximates rolling the type into the hash
                 // What we really want is a fast but good hash function that looks like:
                 //   H(type, value: u64) -> u64
-                let mut h = H::default();
+                let mut h = HS::default();
                 h.$write_meth($val_filter(*self));
                 h.finish()
             }
@@ -89,24 +96,26 @@ const LEAF_POINTER_VALUE: u32 = 0xDEADBEEFu32;
 // Hash implementation for references
 impl<'a, T: ?Sized + XCheckHash> XCheckHash for &'a T {
     #[inline]
-    fn xcheck_hash_with_depth<H: XCheckHasher>(&self, depth: usize) -> u64 {
+    fn xcheck_hash_with_depth<HA, HS>(&self, depth: usize) -> u64
+            where HA: XCheckHasher, HS: XCheckHasher {
         if depth == 0 {
-            XCheckHash::xcheck_hash::<H>(&LEAF_REFERENCE_VALUE)
+            XCheckHash::xcheck_hash::<HA, HS>(&LEAF_REFERENCE_VALUE)
         } else {
             // FIXME: don't decrease the depth when following references?
-            (**self).xcheck_hash_with_depth::<H>(depth - 1)
+            (**self).xcheck_hash_with_depth::<HA, HS>(depth - 1)
         }
     }
 }
 
 impl<'a, T: ?Sized + XCheckHash> XCheckHash for &'a mut T {
     #[inline]
-    fn xcheck_hash_with_depth<H: XCheckHasher>(&self, depth: usize) -> u64 {
+    fn xcheck_hash_with_depth<HA, HS>(&self, depth: usize) -> u64
+            where HA: XCheckHasher, HS: XCheckHasher {
         if depth == 0 {
-            XCheckHash::xcheck_hash::<H>(&LEAF_REFERENCE_VALUE)
+            XCheckHash::xcheck_hash::<HA, HS>(&LEAF_REFERENCE_VALUE)
         } else {
             // FIXME: don't decrease the depth when following references?
-            (**self).xcheck_hash_with_depth::<H>(depth - 1)
+            (**self).xcheck_hash_with_depth::<HA, HS>(depth - 1)
         }
     }
 }
@@ -114,15 +123,16 @@ impl<'a, T: ?Sized + XCheckHash> XCheckHash for &'a mut T {
 // Hash implementation for raw pointers
 impl<T: XCheckHash> XCheckHash for *const T {
     #[inline]
-    fn xcheck_hash_with_depth<H: XCheckHasher>(&self, depth: usize) -> u64 {
+    fn xcheck_hash_with_depth<HA, HS>(&self, depth: usize) -> u64
+            where HA: XCheckHasher, HS: XCheckHasher {
         if depth == 0 {
-            XCheckHash::xcheck_hash::<H>(&LEAF_POINTER_VALUE)
+            XCheckHash::xcheck_hash::<HA, HS>(&LEAF_POINTER_VALUE)
         } else if self.is_null() {
-            XCheckHash::xcheck_hash::<H>(&0usize)
+            XCheckHash::xcheck_hash::<HA, HS>(&0usize)
         } else {
             unsafe {
                 // FIXME: even non-NULL pointers may be invalid
-                (**self).xcheck_hash_with_depth::<H>(depth - 1)
+                (**self).xcheck_hash_with_depth::<HA, HS>(depth - 1)
             }
         }
     }
@@ -130,15 +140,16 @@ impl<T: XCheckHash> XCheckHash for *const T {
 
 impl<T: XCheckHash> XCheckHash for *mut T {
     #[inline]
-    fn xcheck_hash_with_depth<H: XCheckHasher>(&self, depth: usize) -> u64 {
+    fn xcheck_hash_with_depth<HA, HS>(&self, depth: usize) -> u64
+            where HA: XCheckHasher, HS: XCheckHasher {
         if depth == 0 {
-            XCheckHash::xcheck_hash::<H>(&LEAF_POINTER_VALUE)
+            XCheckHash::xcheck_hash::<HA, HS>(&LEAF_POINTER_VALUE)
         } else if self.is_null() {
-            XCheckHash::xcheck_hash::<H>(&0usize)
+            XCheckHash::xcheck_hash::<HA, HS>(&0usize)
         } else {
             unsafe {
                 // FIXME: even non-NULL pointers may be invalid
-                (**self).xcheck_hash_with_depth::<H>(depth - 1)
+                (**self).xcheck_hash_with_depth::<HA, HS>(depth - 1)
             }
         }
     }
