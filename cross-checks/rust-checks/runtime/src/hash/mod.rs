@@ -2,6 +2,8 @@
 use std::hash::Hasher;
 use std::mem;
 
+pub mod djb2;
+
 const MAX_DEPTH: usize = 4;
 
 // Trait alias for Hasher + Default
