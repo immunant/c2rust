@@ -20,7 +20,7 @@ impl SimpleHasher {
         if self.0.is_some() {
             panic!("Tried to add hash multiple values with SimpleHasher");
         }
-        self.0 = Some(i ^ (MIX_CONSTANT * (ty as u64)));
+        self.0 = Some(i ^ (MIX_CONSTANT.wrapping_mul(ty as u64)));
     }
 }
 
