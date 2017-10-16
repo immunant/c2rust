@@ -5,7 +5,23 @@ use std::mem;
 const MAX_DEPTH: usize = 4;
 
 // Trait alias for Hasher + Default
-pub trait XCheckHasher: Hasher + Default {}
+pub trait XCheckHasher: Hasher + Default {
+    fn write_bool(&mut self, i: bool) {
+        self.write_u8(i as u8);
+    }
+
+    fn write_char(&mut self, i: char) {
+        self.write_u32(i as u32);
+    }
+
+    fn write_f32(&mut self, i: f32) {
+        self.write_u32(unsafe { mem::transmute(i) });
+    }
+
+    fn write_f64(&mut self, i: f64) {
+        self.write_u64(unsafe { mem::transmute(i) });
+    }
+}
 
 // Implement XCheckHasher for all types that satisfy the sub-traits
 impl<H: Hasher + Default> XCheckHasher for H {}
@@ -57,10 +73,10 @@ impl_primitive_hash!(i16,   write_i16);
 impl_primitive_hash!(i32,   write_i32);
 impl_primitive_hash!(i64,   write_i64);
 impl_primitive_hash!(isize, write_isize);
-impl_primitive_hash!(bool,  write_u8,  |x| x as u8);
-impl_primitive_hash!(char,  write_u32, |x| x as u32);
-impl_primitive_hash!(f32,   write_u32, |x| unsafe { mem::transmute(x) });
-impl_primitive_hash!(f64,   write_u64, |x| unsafe { mem::transmute(x) });
+impl_primitive_hash!(bool,  write_bool);
+impl_primitive_hash!(char,  write_char);
+impl_primitive_hash!(f32,   write_f32);
+impl_primitive_hash!(f64,   write_f64);
 
 // TODO: hash for strings (str type)
 // TODO: hash for slices ([T] type)
