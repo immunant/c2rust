@@ -3,6 +3,7 @@ use std::hash::Hasher;
 use std::mem;
 
 pub mod djb2;
+pub mod simple;
 
 const MAX_DEPTH: usize = 4;
 
@@ -24,9 +25,6 @@ pub trait XCheckHasher: Hasher + Default {
         self.write_u64(unsafe { mem::transmute(i) });
     }
 }
-
-// Implement XCheckHasher for all types that satisfy the sub-traits
-impl<H: Hasher + Default> XCheckHasher for H {}
 
 // Trait for our cross-check hash function
 // The hash function itself takes 2 generic parameters:

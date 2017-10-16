@@ -1,5 +1,6 @@
 
 use std::hash::Hasher;
+use super::XCheckHasher;
 
 #[derive(Debug)]
 pub struct Djb2Hasher(u32);
@@ -63,6 +64,8 @@ impl Hasher for Djb2Hasher {
             |h, c| h.wrapping_mul(33).wrapping_add(*c as u32));
     }
 }
+
+impl XCheckHasher for Djb2Hasher {}
 
 #[cfg(test)]
 mod tests {
