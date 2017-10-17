@@ -351,6 +351,19 @@ impl Builder {
         })
     }
 
+    pub fn binary_expr<O, E>(self, op: O, lhs: E, rhs: E) -> P<Expr>
+        where O: Make<BinOp>, E: Make<P<Expr>> {
+        let op = op.make(&self);
+        let lhs = lhs.make(&self);
+        let rhs = rhs.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Binary(op, lhs, rhs),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
     pub fn lit_expr<L>(self, lit: L) -> P<Expr>
             where L: Make<P<Lit>> {
         let lit = lit.make(&self);
@@ -542,6 +555,20 @@ impl Builder {
         P(Lit {
             node: LitKind::Bool(b),
             span: DUMMY_SP,
+        })
+    }
+
+    pub fn ifte_expr<C,T,E>(self, cond: C, then_case: T, else_case: Option<E>) -> P<Expr>
+        where C: Make<P<Expr>>, T: Make<P<Block>>, E: Make<P<Expr>> {
+        let cond = cond.make(&self);
+        let then_case = then_case.make(&self);
+        let else_case = else_case.map(|x| x.make(&self));
+
+        P(Expr{
+            id: DUMMY_NODE_ID,
+            node: ExprKind::If(cond, then_case, else_case),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
         })
     }
 
@@ -889,6 +916,17 @@ impl Builder {
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         }
+    }
+
+    pub fn return_expr<E>(self, val: Option<E>) -> P<Expr>
+        where E: Make<P<Expr>> {
+        let val = val.map(|x| x.make(&self));
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Ret(val),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
     }
 }
 
