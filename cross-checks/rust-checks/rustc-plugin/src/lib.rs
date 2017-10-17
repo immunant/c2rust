@@ -135,6 +135,8 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
                     fn_decl.inputs.iter().for_each(|ref arg| {
                         match arg.pat.node {
                             ast::PatKind::Ident(_, ident, _) => {
+                                // Parameter pattern is just an identifier,
+                                // so we can reference it directly by name
                                 arg_xchecks.push(quote_block!(self.cx, {
                                     extern crate cross_check_runtime;
                                     use cross_check_runtime::hash::XCheckHash;
