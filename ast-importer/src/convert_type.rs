@@ -22,6 +22,10 @@ impl TypeConverter {
             TypeTag::TagVoid => mk().tuple_ty(vec![] as Vec<P<Ty>>),
             TypeTag::TagBool => mk().path_ty(mk().path(vec!["bool"])),
             TypeTag::TagInt => mk().path_ty(mk().path(vec!["libc","c_int"])),
+            TypeTag::TagUInt => mk().path_ty(mk().path(vec!["libc","c_uint"])),
+            TypeTag::TagSChar => mk().path_ty(mk().path(vec!["libc","c_schar"])),
+            TypeTag::TagUChar => mk().path_ty(mk().path(vec!["libc","c_uchar"])),
+            TypeTag::TagChar => mk().path_ty(mk().path(vec!["libc","c_char"])),
 
             TypeTag::TagPointer => {
                 let child_id = expect_u64(&ctype.extras[0]).expect("Pointer child not found");

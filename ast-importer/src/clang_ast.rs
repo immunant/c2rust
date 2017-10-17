@@ -52,6 +52,16 @@ impl AstContext {
     }
 }
 
+impl TypeNode {
+    pub fn is_unsigned_integral_type(&self) -> bool {
+        match self.tag {
+            TypeTag::TagUInt | TypeTag::TagUShort | TypeTag::TagULong | TypeTag::TagULongLong => true,
+            _ => false
+        }
+
+    }
+}
+
 pub fn expect_array<'a>(val: &'a Cbor) -> Result<&'a Vec<Cbor>, DecodeError> {
     match val {
         &Cbor::Array(ref xs) => Ok(xs),
