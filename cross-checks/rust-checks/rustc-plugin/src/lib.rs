@@ -127,12 +127,38 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
                 } else {
                     djb2_hash(fn_ident.name.as_str().as_ref())
                 };
+
+                // Insert cross-checks for function arguments,
+                // if enabled via the "xcheck-args" feature
+                let mut arg_xchecks: Vec<ast::Block> = vec![];
+                if cfg!(feature = "xcheck-args") {
+                    fn_decl.inputs.iter().for_each(|ref arg| {
+                        match arg.pat.node {
+                            ast::PatKind::Ident(_, ident, _) => {
+                                // Parameter pattern is just an identifier,
+                                // so we can reference it directly by name
+                                arg_xchecks.push(quote_block!(self.cx, {
+                                    extern crate cross_check_runtime;
+                                    use cross_check_runtime::hash::XCheckHash;
+                                    use cross_check_runtime::hash::jodyhash::JodyHasher;
+                                    use cross_check_runtime::hash::simple::SimpleHasher;
+                                    cross_check_runtime::xcheck::xcheck(
+                                        cross_check_runtime::xcheck::FUNCTION_ARG_TAG,
+                                        XCheckHash::xcheck_hash::<JodyHasher, SimpleHasher>(&$ident));
+                                }).unwrap());
+                            }
+                            _ => unimplemented!()
+                        }
+                    });
+                }
+
                 let checked_block = self.fold_block(block).map(|block| {
                     quote_block!(self.cx, {
                         extern crate cross_check_runtime;
                         cross_check_runtime::xcheck::xcheck(
                             cross_check_runtime::xcheck::FUNCTION_CALL_TAG,
                             $check_id as u64);
+                        $arg_xchecks
                         $block
                     }).unwrap()
                 });
