@@ -4,6 +4,7 @@ use std::mem;
 
 pub mod djb2;
 pub mod simple;
+pub mod jodyhash;
 
 const MAX_DEPTH: usize = 4;
 
