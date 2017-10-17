@@ -48,8 +48,19 @@ impl XCheckHasher for JodyHasher {}
 mod tests {
     use super::{Hasher, JodyHasher};
 
+    fn jodyhash_string(s: &str) -> u64 {
+        assert!(s.len() == 8);
+        let sv = unsafe { *(s.as_ptr() as *const u64) };
+        let mut h = JodyHasher::default();
+        h.write_u64(sv);
+        h.finish()
+    }
+
     #[test]
     fn test_jodyhash() {
-        // TODO
+        assert_eq!(jodyhash_string("aaaaaaaa"), 0xa1b314f742d47698u64);
+        assert_eq!(jodyhash_string("abcdefgh"), 0xea0ab92ac586d967u64);
+        assert_eq!(jodyhash_string("hgfedcba"), 0x31f588dbf657cc7fu64);
+        assert_eq!(jodyhash_string("jodyhash"), 0xba43645fabc566ddu64);
     }
 }
