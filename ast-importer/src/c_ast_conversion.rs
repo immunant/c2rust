@@ -8,15 +8,16 @@ use clang_ast::*;
 pub type NodeType = u16;
 
 mod node_types {
-  pub const TYPE       : super::NodeType = 0b00001;
-  pub const EXPR       : super::NodeType = 0b00010;
-  pub const DECL       : super::NodeType = 0b00100;
-  pub const LABEL_STMT : super::NodeType = 0b01000;
-  pub const OTHER_STMT : super::NodeType = 0b10000;
- 
-  pub const STMT       : super::NodeType = 0b11000; 
-  pub const STMT_DECL  : super::NodeType = 0b11100;
-  pub const ANYTHING   : super::NodeType = 0b11111;
+  pub const TYPE       : super::NodeType = 0b000001;
+  pub const EXPR       : super::NodeType = 0b000010;
+  pub const FIELD_DECL : super::NodeType = 0b000100;
+  pub const OTHER_DECL : super::NodeType = 0b001000;
+  pub const LABEL_STMT : super::NodeType = 0b010000;
+  pub const OTHER_STMT : super::NodeType = 0b100000;
+
+  pub const DECL       : super::NodeType = FIELD_DECL | OTHER_DECL;
+  pub const STMT       : super::NodeType = LABEL_STMT | OTHER_STMT;
+  pub const ANYTHING   : super::NodeType = TYPE | EXPR | DECL | STMT;
 }
 
 pub fn typed_ast_context(untyped_context: AstContext) -> TypedAstContext {
@@ -50,12 +51,32 @@ pub fn typed_ast_context(untyped_context: AstContext) -> TypedAstContext {
 
   fn expect_node_type(
     expected_nodes: &mut HashMap<u64, NodeType>,
-    node_id: u64,
+    node_id: &u64,
     node_ty: NodeType
   ) -> () {
-    let existing = expected_nodes.entry(node_id).or_insert(ANYTHING);
+    let existing = expected_nodes.entry(*node_id).or_insert(ANYTHING);
 
     *existing &= node_ty;
+  }
+
+  fn expect_opt_node_type(
+    expected_nodes: &mut HashMap<u64, NodeType>,
+    opt_node_id: &Option<u64>,
+    node_ty: NodeType
+  ) -> () {
+    for node_id in opt_node_id.iter() {
+      expect_node_type(expected_nodes, node_id, node_ty);
+    }
+  }
+
+  fn expect_vec_node_type(
+    expected_nodes: &mut HashMap<u64, NodeType>,
+    opt_node_id: &Vec<u64>,
+    node_ty: NodeType
+  ) -> () {
+    for node_id in opt_node_id.iter() {
+      expect_node_type(expected_nodes, node_id, node_ty);
+    }
   }
 
   // Convert all 'AstNode's
@@ -69,73 +90,218 @@ pub fn typed_ast_context(untyped_context: AstContext) -> TypedAstContext {
           .iter()
           .map(|id| id.expect("Compound stmt child not found"))
           .collect();
-        for constituent_stmt in constituent_stmts.iter() {
-          expect_node_type(&mut expected_nodes, *constituent_stmt, STMT_DECL);
-        }
-        
-        let compound_stmt = CStmtKind::Compound(constituent_stmts);
-        typed_context.c_stmts.insert(*node_id, located(node, compound_stmt)); 
+        expect_vec_node_type(&mut expected_nodes, &constituent_stmts, STMT);
 
+        let compound_stmt = CStmtKind::Compound(constituent_stmts);
+
+        typed_context.c_stmts.insert(*node_id, located(node, compound_stmt));
+      }
+
+      ASTEntryTag::TagDeclStmt => {
+        let decl = node.children[0].expect("Decl not found in decl-statement");
+        expect_node_type(&mut expected_nodes, &decl, DECL);
+
+        let decl_stmt = CStmtKind::Decl(decl);
+
+        typed_context.c_stmts.insert(*node_id, located(node, decl_stmt));
       }
 
       ASTEntryTag::TagReturnStmt => {
         let return_expr_opt = node.children[0];
-        let return_stmt = CStmtKind::Return(return_expr_opt);
-        typed_context.c_stmts.insert(*node_id, located(node, return_stmt));
+        expect_opt_node_type(&mut expected_nodes, &return_expr_opt, EXPR);
 
-        for return_expr in return_expr_opt.iter() {
-          expect_node_type(&mut expected_nodes, *return_expr, EXPR);
-        }
+        let return_stmt = CStmtKind::Return(return_expr_opt);
+
+        typed_context.c_stmts.insert(*node_id, located(node, return_stmt));
       }
 
       ASTEntryTag::TagIfStmt => {
         let scrutinee = node.children[0].expect("If condition expression not found");
-        let true_variant = node.children[1].expect("If then body statement not found");
-        let false_variant = node.children[2];
-        let if_stmt = CStmtKind::If { scrutinee, true_variant, false_variant };
-        typed_context.c_stmts.insert(*node_id, located(node, if_stmt));
+        expect_node_type(&mut expected_nodes, &scrutinee, EXPR);
 
-        expect_node_type(&mut expected_nodes, scrutinee, EXPR);
-        expect_node_type(&mut expected_nodes, true_variant, STMT);
-        for else_stmt in false_variant.iter() {
-          expect_node_type(&mut expected_nodes, *else_stmt, STMT);
-        }
+        let true_variant = node.children[1].expect("If then body statement not found");
+        expect_node_type(&mut expected_nodes, &true_variant, STMT);
+
+        let false_variant = node.children[2];
+        expect_opt_node_type(&mut expected_nodes, &false_variant, STMT);
+
+        let if_stmt = CStmtKind::If { scrutinee, true_variant, false_variant };
+
+        typed_context.c_stmts.insert(*node_id, located(node, if_stmt));
       }
 
       ASTEntryTag::TagGotoStmt => {
         let target_label = node.children[0].expect("Goto target label not found");
+        expect_node_type(&mut expected_nodes, &target_label, STMT);
+
         let goto_stmt = CStmtKind::Goto(target_label);
+
         typed_context.c_stmts.insert(*node_id, located(node, goto_stmt));
-        
-        expected_nodes.insert(target_label, STMT);
       }
 
 
       ASTEntryTag::TagNullStmt => {
         let null_stmt = CStmtKind::Empty;
+
         typed_context.c_stmts.insert(*node_id, located(node, null_stmt));
       }
 
       ASTEntryTag::TagLabelStmt => {
         let pointed_stmt = node.children[0].expect("Label statement not found");
+        expect_node_type(&mut expected_nodes, &pointed_stmt, STMT);
+
         let label_stmt = CStmtKind::Label(pointed_stmt);
+
         typed_context.c_stmts.insert(*node_id, located(node, label_stmt));
-        
-        expected_nodes.insert(pointed_stmt, STMT);
+      }
+
+      // Expressions
+
+      ASTEntryTag::TagIntegerLiteral => {
+        let value = expect_u64(&node.extras[0]).expect("Expected integer literal value");
+
+        let integer_literal = CExprKind::Literal(CLiteral::Integer(value));
+
+        typed_context.c_exprs.insert(*node_id, located(node, integer_literal));
+      }
+
+      ASTEntryTag::TagCharacterLiteral => {
+        let value = expect_u64(&node.extras[0]).expect("Expected character literal value");
+
+        let character_literal = CExprKind::Literal(CLiteral::Character(value));
+
+        typed_context.c_exprs.insert(*node_id, located(node, character_literal));
+      }
+
+      ASTEntryTag::TagFloatingLiteral => {
+        let value = expect_f64(&node.extras[0]).expect("Expected float literal value");
+
+        let floating_literal = CExprKind::Literal(CLiteral::Floating(value));
+
+        typed_context.c_exprs.insert(*node_id, located(node, floating_literal));
+      }
+
+      ASTEntryTag::TagUnaryOperator => {
+        let operator = match expect_str(&node.extras[0]).expect("Expected operator") {
+          "&" => UnOp::AddressOf,
+          "*" => UnOp::Deref,
+          "+" => UnOp::Plus,
+          "-" => UnOp::Negate,
+          "~" => UnOp::Complement,
+          "!" => UnOp::Not,
+          _   => unimplemented!(),
+        };
+
+        let operand = node.children[0].expect("Expected operand");
+        expect_node_type(&mut expected_nodes, &operand, EXPR);
+
+        let unary = CExprKind::Unary(operator, operand);
+
+        typed_context.c_exprs.insert(*node_id, located(node, unary));
+      }
+
+      ASTEntryTag::TagImplicitCastExpr => {
+        let expression = node.children[0].expect("Expected expression for implicit cast");
+        expect_node_type(&mut expected_nodes, &expression, EXPR);
+
+        let typ = node.type_id.expect("Expected type for implicit cast");
+        expect_node_type(&mut expected_nodes, &typ, TYPE);
+
+        let implicit = CExprKind::ImplicitCast(typ, expression);
+
+        typed_context.c_exprs.insert(*node_id, located(node, implicit));
+      }
+
+      ASTEntryTag::TagBinaryOperator => {
+        let operator = match expect_str(&node.extras[0]).expect("Expected operator") {
+          "*" => BinOp::Multiply,
+          "/" => BinOp::Divide,
+          "%" => BinOp::Modulus,
+          "+" => BinOp::Add,
+          "-" => BinOp::Subtract,
+          "<<" => BinOp::ShiftLeft,
+          ">>" => BinOp::ShiftRight,
+          "<" => BinOp::Less,
+          ">" => BinOp::Greater,
+          "<=" => BinOp::LessEqual,
+          ">=" => BinOp::GreaterEqual,
+          "==" => BinOp::EqualEqual,
+          "!=" => BinOp::NotEqual,
+          "&" => BinOp::BitAnd,
+          "^" => BinOp::BitXor,
+          "|" => BinOp::BitOr,
+          "&&" => BinOp::And,
+          "||" => BinOp::Or,
+          _ => unimplemented!(),
+        };
+
+        let left_operand = node.children[0].expect("Expected left operand");
+
+        let right_operand = node.children[1].expect("Expected right operand");
+
+        let binary = CExprKind::Binary(operator, left_operand, right_operand);
+
+        typed_context.c_exprs.insert(*node_id, located(node, binary));
+      }
+
+      ASTEntryTag::TagDeclRefExpr => {
+        let declaration = node.children[0].expect("Expected declaration on expression tag decl");
+        expect_node_type(&mut expected_nodes, &declaration, DECL);
+
+        let decl = CExprKind::DeclRef(declaration);
+
+        typed_context.c_exprs.insert(*node_id, located(node, decl));
       }
 
       // Declarations
 
       ASTEntryTag::TagFunctionDecl => {
         let name = expect_str(&node.extras[0]).expect("Expected to find function name").to_string();
-        let typ = node.type_id.expect("Expected to find a type on a function decl");
-        let body = node.children.last().expect("Function body not found").expect("Function body not found");
-        let function_decl = CDeclKind::Function { typ, name, body };
-        typed_context.c_decls.insert(*node_id, located(node, function_decl)); 
 
-        expected_nodes.insert(typ, TYPE);
-        expected_nodes.insert(body, STMT);
+        let typ = node.type_id.expect("Expected to find a type on a function decl");
+        expect_node_type(&mut expected_nodes, &typ, TYPE);
+
+        let body = node.children.last().expect("Function body not found").expect("Function body not found");
+        expect_node_type(&mut expected_nodes, &body, STMT);
+
+        let function_decl = CDeclKind::Function { typ, name, body };
+
+        typed_context.c_decls.insert(*node_id, located(node, function_decl));
       }
+
+      ASTEntryTag::TagVarDecl => {
+        let ident = expect_str(&node.extras[0]).expect("Expected to find variable name").to_string();
+
+        let initializer = node.children[0];
+        expect_opt_node_type(&mut expected_nodes, &initializer, EXPR);
+
+        let typ = node.type_id.expect("Expected to find type on variable declaration");
+        expect_node_type(&mut expected_nodes, &typ, TYPE);
+
+        let variable_decl = CDeclKind::Variable { ident, initializer, typ };
+
+        typed_context.c_decls.insert(*node_id, located(node, variable_decl));
+      }
+
+      ASTEntryTag::TagRecordDecl => {
+        let name = expect_str(&node.extras[0]).ok().map(str::to_string);
+        let fields: Vec<CDeclId> = node.children
+            .iter()
+            .map(|id| id.expect("Record field decl not found"))
+            .collect();
+        expect_vec_node_type(&mut expected_nodes, &fields, FIELD_DECL);
+
+        let record = CDeclKind::Record { name, fields };
+
+        typed_context.c_decls.insert(*node_id, located(node, record));
+      },
+
+      ASTEntryTag::TagFieldDecl => {
+        let name = expect_str(&node.extras[0]).expect("A field needs a name").to_string();
+        let field = CDeclKind::Field { name };
+        typed_context.c_decls.insert(*node_id, located(node, field));
+      }
+
 
       t => println!("Declaration not implemented {:?}", t),
 
@@ -241,38 +407,61 @@ pub fn typed_ast_context(untyped_context: AstContext) -> TypedAstContext {
     }
   }
 
+  // Disjoint and most refined partition of all the possible types
+  let node_types = vec![TYPE, EXPR, FIELD_DECL, OTHER_DECL, LABEL_STMT, OTHER_STMT];
+
   // Check that 'expected_node' expectations are satisfied
-  for (node_id, expected_node_type) in expected_nodes {
-    
-    match expected_node_type {
-      TYPE => assert!(typed_context.c_types.contains_key(&node_id), "Expected {} to be a type node", node_id),
-      EXPR => assert!(typed_context.c_exprs.contains_key(&node_id), "Expected {} to be an expression node", node_id),
-      DECL => assert!(typed_context.c_decls.contains_key(&node_id), "Expected {} to be a declaration node", node_id),
-      STMT => assert!(typed_context.c_stmts.contains_key(&node_id), "Expected {} to be a statement node", node_id),
-      
+  for (node_id, expect_node_type) in expected_nodes {
+
+
+    match expect_node_type {
+
+      TYPE if typed_context.c_types.contains_key(&node_id) => { }
+      TYPE => panic!("Expected {} to be a type node", node_id),
+
+      EXPR if typed_context.c_exprs.contains_key(&node_id) => { }
+      EXPR => panic!("Expected {} to be an expression node", node_id),
+
+      DECL if typed_context.c_decls.contains_key(&node_id) => { }
+      DECL => panic!("Expected {} to be a declaration node", node_id),
+
+
+      STMT if typed_context.c_stmts.contains_key(&node_id) => { }
+      STMT if typed_context.c_exprs.contains_key(&node_id) => {
+
+        // Clang expressions are a subclass of statements. We catch that and make it explicit.
+        let wrapped = CStmtKind::Expr(node_id);
+        let original_ast_node = untyped_context.ast_nodes.get(&node_id).unwrap();
+
+        typed_context.c_stmts.insert(node_id, located(original_ast_node, wrapped));
+      }
+      STMT => panic!("Expected {} to be a statement node", node_id),
+
+      FIELD_DECL | OTHER_DECL => {
+        let is_field = match typed_context.c_decls.get(&node_id) {
+          Some(&Located { loc: _, kind: CDeclKind::Field { .. } }) => true,
+          _ => false,
+        };
+
+        if expect_node_type == FIELD_DECL {
+          assert!(is_field, "Expected {} to be a field declaration node", node_id)
+        } else {
+          assert!(!is_field, "Expected {} to be a non-field declaration node", node_id)
+        }
+      }
+
       LABEL_STMT | OTHER_STMT => {
         let is_label = match typed_context.c_stmts.get(&node_id) {
           Some(&Located { loc: _, kind: CStmtKind::Label(_) }) => true,
           _ => false,
         };
 
-        if expected_node_type == LABEL_STMT {
+        if expect_node_type == LABEL_STMT {
           assert!(is_label, "Expected {} to be a label statement node", node_id)
         } else {
           assert!(!is_label, "Expected {} to be a non-label statement node", node_id)
         }
       }
-    
-      STMT_DECL =>
-        // XXX: Check disabled until more declarations are implemented
-        // assert!(
-        //   typed_context.c_stmts.contains_key(&node_id) || typed_context.c_decls.contains_key(&node_id),
-        //   "Expected {} to be a statement or a declaration node", node_id
-        // ),
-          (),
-       
-      ANYTHING => { }, 
-
       _ => panic!("Not a valid node-type"),
     }
   }
