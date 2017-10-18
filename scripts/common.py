@@ -47,9 +47,8 @@ LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
 LLVM_PUBKEY = "8F0871F202119294"
 LLVM_VER = "4.0.1"
 LLVM_ARCHIVE_URLS = """
-http://releases.llvm.org/{ver}/llvm-4.0.1.src.tar.xz
+http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz
 http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz
-http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz
 http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz
 """.split("\n")
 LLVM_ARCHIVE_URLS = [s.format(ver=LLVM_VER) for s in LLVM_ARCHIVE_URLS if s]
