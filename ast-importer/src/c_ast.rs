@@ -9,7 +9,7 @@ pub type CStmtId = u64;
 
 // These are references into particular variants of AST nodes
 pub type CLabelId = CStmtId;  // Labels point into the 'StmtKind::Label' that declared the label
-pub type CStmtOrDeclId = u64; // Points to either a stmt or a decl
+pub type CFieldId = CDeclId;  // Records always contain 'DeclKind::Field's
 
 /// AST context containing all of the nodes in the Clang AST
 #[derive(Debug)]
@@ -82,7 +82,7 @@ pub enum CDeclKind {
   // Record
   Record {
     name: Option<String>,
-    fields: Vec<CDeclId>,
+    fields: Vec<CFieldId>,
   },
 
   // Field
