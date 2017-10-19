@@ -19,7 +19,8 @@ RUN apt-get update && apt-get install -y \
     ninja-build \
     python3-pip \
     curl \
-    wget
+    wget \
+    vim
 
 # cmake setup
 RUN wget --quiet $CMAKE_URL
@@ -49,7 +50,9 @@ RUN apt-get install -y --no-install-recommends tk-dev
 RUN pip3 install --no-cache-dir --upgrade pip
 RUN pip3 install --no-cache-dir plumbum colorlog typing cbor
     
-
+USER $USER
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly
+RUN echo "source ~/.cargo/env" >> ~/.bashrc
 # VOLUME ["$PWD"]
 
 
