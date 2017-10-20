@@ -26,6 +26,28 @@ impl<T> WithStmts<T> {
     }
 }
 
+impl WithStmts<P<Expr>> {
+    pub fn to_expr(mut self) -> P<Expr> {
+        if self.stmts.is_empty() {
+            self.val
+        } else {
+            self.stmts.push(mk().expr_stmt(self.val));
+            mk().block_expr(mk().block(self.stmts))
+        }
+    }
+}
+
+pub fn stmts_block(stmts: Vec<Stmt>) -> P<Block> {
+    if stmts.len() == 1 {
+        if let StmtKind::Expr(ref e) = stmts[0].node {
+            if let ExprKind::Block(ref b) = e.node {
+                    return b.clone()
+            }
+        }
+    }
+    mk().block(stmts)
+}
+
 pub fn with_stmts_opt<T>(opt: Option<WithStmts<T>>) -> WithStmts<Option<T>> {
     match opt {
         None => WithStmts::new(None),
@@ -36,6 +58,15 @@ pub fn with_stmts_opt<T>(opt: Option<WithStmts<T>>) -> WithStmts<Option<T>> {
 pub fn translate(ast_context: AstContext) -> String {
     use clang_ast::*;
     let mut t = Translation::new(ast_context.clone());
+
+    // Populate renamer with top-level names
+    for top_id in ast_context.top_nodes.to_owned() {
+        if let Some(x) = ast_context.ast_nodes.get(&top_id) {
+           if let Some(y) = x.get_decl_name() {
+               t.renamer.insert(y.to_owned(), &y);
+           }
+        }
+    }
 
     for top_id in ast_context.top_nodes.to_owned() {
         let x = match ast_context.ast_nodes.get(&top_id) {
@@ -155,7 +186,7 @@ impl Translation {
         // Close function body scope
         self.renamer.drop_scope();
 
-        mk().block(stmts)
+        stmts_block(stmts)
     }
 
     fn convert_stmt(&mut self, stmt_id: u64) -> Vec<Stmt> {
@@ -175,6 +206,12 @@ impl Translation {
             ASTEntryTag::TagIfStmt => {
                 self.convert_if_stmt(node.children[0].unwrap(), node.children[1].unwrap(), node.children[2])
             }
+            ASTEntryTag::TagWhileStmt => {
+                self.convert_while_stmt(node.children[0].unwrap(), node.children[1].unwrap())
+            }
+            ASTEntryTag::TagNullStmt => {
+                vec![]
+            }
             ASTEntryTag::TagCompoundStmt => {
                 self.renamer.add_scope();
 
@@ -182,21 +219,31 @@ impl Translation {
 
                 self.renamer.drop_scope();
 
-                vec![mk().expr_stmt(mk().block_expr(mk().block(stmts)))]
+                vec![mk().expr_stmt(mk().block_expr(stmts_block(stmts)))]
             }
             t => {
-                let res = self.convert_expr(stmt_id);
-                let mut stmts = res.stmts;
-                stmts.push(mk().expr_stmt(res.val));
-                stmts
+                let mut xs = self.convert_expr(stmt_id);
+                xs.stmts.push(mk().expr_stmt(xs.val));
+                xs.stmts
             },
         }
     }
 
+    fn convert_while_stmt(&mut self, cond_id: u64, body_id: u64) -> Vec<Stmt> {
+
+        let cond = self.convert_expr(cond_id);
+        let body = self.convert_stmt(body_id);
+
+        let rust_cond = cond.to_expr();
+        let rust_body = stmts_block(body);
+
+        vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body))]
+    }
+
     fn convert_if_stmt(&mut self, cond_id: u64, then_id: u64, else_id: Option<u64>) -> Vec<Stmt> {
         let mut cond = self.convert_expr(cond_id);
-        let then_stmts = mk().block(self.convert_stmt(then_id));
-        let else_stmts = else_id.map(|x| { mk().block_expr(mk().block(self.convert_stmt(x)))});
+        let then_stmts = stmts_block(self.convert_stmt(then_id));
+        let else_stmts = else_id.map(|x| { mk().block_expr(stmts_block(self.convert_stmt(x)))});
 
         cond.stmts.push(mk().expr_stmt(mk().ifte_expr(cond.val, then_stmts, else_stmts)));
         cond.stmts
@@ -251,16 +298,20 @@ impl Translation {
                         self.ast_context.ast_nodes.get(&node.children[0].expect("Expected decl id"))
                             .expect("Expected decl node");
 
-
-                    assert_eq!(child.tag, ASTEntryTag::TagVarDecl);
-                    let varname = expect_string(&child.extras[0]).expect("expected variable name");
+                    let varname = child.get_decl_name().expect("expected variable name").to_owned();
                     let rustname = self.renamer.get(varname).expect("name not declared");
                     WithStmts::new(mk().path_expr(vec![rustname]))
                 }
             ASTEntryTag::TagIntegerLiteral =>
                 {
                     let val = expect_u64(&node.extras[0]).expect("Expected value");
-                    let ty = self.convert_type(node.type_id.expect("Expected type"));
+                    let _ty = self.convert_type(node.type_id.expect("Expected type"));
+                    WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
+                }
+            ASTEntryTag::TagCharacterLiteral =>
+                {
+                    let val = expect_u64(&node.extras[0]).expect("Expected value");
+                    let _ty = self.convert_type(node.type_id.expect("Expected type"));
                     WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
                 }
             ASTEntryTag::TagImplicitCastExpr =>
@@ -268,6 +319,20 @@ impl Translation {
                     // TODO actually cast
                     let child = node.children[0].expect("Expected subvalue");
                     self.convert_expr(child)
+                }
+            ASTEntryTag::TagUnaryOperator =>
+                {
+                    let name = expect_string(&node.extras[0]).expect("Missing binary operator name");
+                    let mut arg = self.convert_expr(node.children[0].expect("Missing value"));
+                    let type_id = node.type_id.unwrap();
+                    let cty = self.ast_context.get_type(type_id).unwrap();
+                    let ty = self.convert_type(type_id);
+                    let mut unary = self.convert_unary_operator(&name, cty, ty, arg.val);
+                    arg.stmts.append(&mut unary.stmts);
+                    WithStmts {
+                        stmts: arg.stmts,
+                        val: unary.val,
+                    }
                 }
             ASTEntryTag::TagBinaryOperator =>
                 {
@@ -283,8 +348,32 @@ impl Translation {
                         stmts: lhs.stmts.into_iter().chain(rhs.stmts).chain(bin.stmts).collect(),
                         val: bin.val,
                     }
+                },
+            ASTEntryTag::TagCallExpr =>
+                {
+                    let mut stmts = vec![];
+                    let mut exprs = vec![];
+
+                    for x in node.children.iter() {
+                        let mut res = self.convert_expr(x.unwrap());
+                        stmts.append(&mut res.stmts);
+                        exprs.push(res.val);
+                    }
+
+                    let fun = exprs.remove(0);
+
+                    WithStmts {
+                        stmts,
+                        val: mk().call_expr(fun, exprs),
+                    }
                 }
             t => panic!("Expression not implemented {:?}", t),
+        }
+    }
+
+    pub fn convert_unary_operator(&mut self, name: &str, ctype: TypeNode, ty: P<Ty>, arg: P<Expr>) -> WithStmts<P<Expr>> {
+        match name {
+            n => panic!("unary operator {} not implemented", n),
         }
     }
 
@@ -317,6 +406,7 @@ impl Translation {
             ">>" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Shr), lhs, rhs)),
 
             "==" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Eq), lhs, rhs)),
+            "!=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Ne), lhs, rhs)),
             "<" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Lt), lhs, rhs)),
             ">" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Gt), lhs, rhs)),
             ">=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Ge), lhs, rhs)),
@@ -328,37 +418,49 @@ impl Translation {
             "&" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::BitAnd), lhs, rhs)),
             "|" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::BitOr), lhs, rhs)),
 
-            "+=" => {
-                /*
-                let tmpvar = self.renamer.fresh();
-                let sum = self.convert_binary_operator("+", ctype, ty, lhs.clone(), rhs);
-                let tmplet = mk().local_stmt(P(mk().local(mk().ident_pat(&tmpvar), None as Option<P<Ty>>, Some(sum.val))));
-                let tmpval = mk().ident_expr(&tmpvar);
-                let assign = mk().expr_stmt(mk().assign_expr(lhs, &tmpval));
+            "+=" => self.covert_binary_assignment("+", ctype, ty, lhs, rhs),
+            "-=" => self.covert_binary_assignment("-", ctype, ty, lhs, rhs),
+            "*=" => self.covert_binary_assignment("*", ctype, ty, lhs, rhs),
+            "/=" => self.covert_binary_assignment("/", ctype, ty, lhs, rhs),
+            "%=" => self.covert_binary_assignment("%", ctype, ty, lhs, rhs),
+            "^=" => self.covert_binary_assignment("^", ctype, ty, lhs, rhs),
+            "<<=" => self.covert_binary_assignment("<<", ctype, ty, lhs, rhs),
+            ">>=" => self.covert_binary_assignment(">>", ctype, ty, lhs, rhs),
+            "|=" => self.covert_binary_assignment("|", ctype, ty, lhs, rhs),
+            "&=" => self.covert_binary_assignment("&", ctype, ty, lhs, rhs),
 
-                let mut stmts = sum.stmts;
-                stmts.push(tmplet);
-                stmts.push(assign);
+            "=" => unimplemented!(),
 
-                WithStmts {
-                    stmts: stmts,
-                    val: tmpval,
-                }
-                */
-                unimplemented!()
-            },
-            "-=" => unimplemented!(),
-            "*=" => unimplemented!(),
-            "/=" => unimplemented!(),
-            "%=" => unimplemented!(),
-            "^=" => unimplemented!(),
-            "!=" => unimplemented!(),
-            "<<=" => unimplemented!(),
-            ">>=" => unimplemented!(),
-            "|=" => unimplemented!(),
-            "&=" => unimplemented!(),
+            op => panic!("Unknown binary operator {}", op),
+        }
+    }
 
-            _ => panic!("Unknown binary operator"),
+    fn covert_binary_assignment(&mut self, name: &str, ctype: TypeNode, ty: P<Ty>, lhs: P<Expr>, rhs: P<Expr>) -> WithStmts<P<Expr>> {
+        // Improvements:
+        // * Don't create fresh names in place of lhs that is already a name
+        // * Don't create block, use += for a statement
+        let ptr_name = self.renamer.fresh();
+        // let ref mut p = lhs;
+        let compute_lhs =
+            mk().local_stmt(
+                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&ptr_name),
+                             None as Option<P<Ty>>,
+                             Some(lhs)))
+            );
+        // *p
+        let deref_lhs = mk().unary_expr("*", mk().ident_expr(&ptr_name));
+        // *p + rhs
+        let mut val = self.convert_binary_operator(name, ctype, ty, deref_lhs.clone(), rhs);
+        // *p = *p + rhs
+        let assign_stmt = mk().assign_expr(&deref_lhs, val.val);
+
+        let mut stmts = vec![compute_lhs];
+        stmts.append(&mut val.stmts);
+        stmts.push(mk().expr_stmt(assign_stmt));
+
+        WithStmts {
+            stmts,
+            val: deref_lhs
         }
     }
 }

@@ -572,6 +572,20 @@ impl Builder {
         })
     }
 
+    pub fn while_expr<C,B>(self, cond: C, body: B) -> P<Expr>
+        where C: Make<P<Expr>>, B: Make<P<Block>> {
+        let cond = cond.make(&self);
+        let body = body.make(&self);
+
+        P(Expr{
+            id: DUMMY_NODE_ID,
+            node: ExprKind::While(cond, body, None),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
+
 
     // Patterns
 
@@ -581,6 +595,18 @@ impl Builder {
         P(Pat {
             id: DUMMY_NODE_ID,
             node: PatKind::Ident(BindingMode::ByValue(self.mutbl),
+                                 Spanned { node: name, span: DUMMY_SP },
+                                 None),
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn ident_ref_pat<I>(self, name: I) -> P<Pat>
+        where I: Make<Ident> {
+        let name = name.make(&self);
+        P(Pat {
+            id: DUMMY_NODE_ID,
+            node: PatKind::Ident(BindingMode::ByRef(self.mutbl),
                                  Spanned { node: name, span: DUMMY_SP },
                                  None),
             span: DUMMY_SP,
