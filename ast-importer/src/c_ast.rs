@@ -67,12 +67,29 @@ pub enum CDeclKind {
     typ: CTypeId,
     name: String,
     body: CStmtId,
-  }
-  
+  },
+
+  // http://clang.llvm.org/doxygen/classclang_1_1VarDecl.html
+  Variable {
+    ident: String,
+    initializer: Option<CExprId>,
+    typ: CTypeId,
+  },
+
   // Enum       // http://clang.llvm.org/doxygen/classclang_1_1EnumDecl.html
-  // Variable    // http://clang.llvm.org/doxygen/classclang_1_1VarDecl.html
   // Typedef     // http://clang.llvm.org/doxygen/classclang_1_1TypedefNameDecl.html
+
   // Record
+  Record {
+    name: Option<String>,
+    fields: Vec<CDeclId>,
+  },
+
+  // Field
+  Field {
+    /* TODO: type */
+    name: String,
+  },
 }
 
 // TODO:
@@ -80,6 +97,64 @@ pub enum CDeclKind {
 /// Represents an expression in C (6.5 Expressions)
 #[derive(Debug)]
 pub enum CExprKind {
+  // Literals
+  Literal(CLiteral),
+
+  // Unary operator
+  Unary(UnOp, CExprId),
+
+  // Binary operator
+  Binary(BinOp, CExprId, CExprId),
+
+  // Implicit cast
+  // TODO: consider adding the cast type (see OperationKinds.def)
+  ImplicitCast(CTypeId, CExprId),
+
+  // Reference to a decl
+  // TODO: what is this really? https://clang.llvm.org/doxygen/classclang_1_1DeclRefExpr.html
+  DeclRef(CDeclId),
+}
+
+/// Represents a unary operator in C (6.5.3 Unary operators)
+#[derive(Debug)]
+pub enum UnOp {
+  AddressOf,  // &
+  Deref,      // *
+  Plus,       // +
+  Negate,     // -
+  Complement, // ~
+  Not,        // !
+}
+
+/// Represents a binary operator in C (6.5.5 Multiplicative operators - 6.5.14 Logical OR operator)
+#[derive(Debug)]
+pub enum BinOp {
+  Multiply,     // *
+  Divide,       // /
+  Modulus,      // %
+  Add,          // +
+  Subtract,     // -
+  ShiftLeft,    // <<
+  ShiftRight,   // >>
+  Less,         // <
+  Greater,      // >
+  LessEqual,    // <=
+  GreaterEqual, // >=
+  EqualEqual,   // ==
+  NotEqual,     // !=
+  BitAnd,       // &
+  BitXor,       // ^
+  BitOr,        // |
+  And,          // &&
+  Or,           // ||
+}
+
+#[derive(Debug)]
+pub enum CLiteral {
+  Integer(u64),
+  Character(u64),
+  Floating(f64),
+  // TODO: String
 }
 
 
@@ -94,7 +169,7 @@ pub enum CStmtKind {
   Default(CStmtId),
 
   // Compound statements (6.8.2)
-  Compound(Vec<CStmtOrDeclId>),
+  Compound(Vec<CStmtId>),
   
   // Expression and null statements (6.8.3)
   Expr(CExprId),
@@ -132,6 +207,9 @@ pub enum CStmtKind {
   Break,
   Continue,
   Return(Option<CExprId>),
+
+  // Declarations (variables, etc.)
+  Decl(CDeclId),
 }
 
 /// Type qualifiers (6.7.3)
