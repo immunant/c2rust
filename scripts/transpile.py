@@ -112,7 +112,7 @@ def transpile_files(cc_db: TextIO,
         # we need to point to the custom toolchain's lib dir
         ld_lib_path = os.path.join(
             COMPILER_SUBMOD_DIR,
-            "/build/x86_64-unknown-linux-gnu/stage2/lib")
+            "build/x86_64-unknown-linux-gnu/stage2/lib")
         emsg = "custom rust compiler lib path missing: " + ld_lib_path
         assert os.path.isdir(ld_lib_path), emsg
         
