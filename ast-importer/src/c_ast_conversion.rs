@@ -20,6 +20,57 @@ mod node_types {
   pub const ANYTHING   : super::NodeType = TYPE | EXPR | DECL | STMT;
 }
 
+type ClangId = u64;
+type NewId = u64;
+
+/// Correspondance between old/new IDs.
+///
+/// We need to re-ID nodes since the mapping from Clang's AST to ours is not one-to-one. Sometimes
+/// we need to add nodes, sometimes we need to collapse.
+pub struct IdMapper {
+  new_id_source: NewId,
+  old_to_new: HashMap<ClangId, NewId>,
+  new_to_old: HashMap<NewId, ClangId>,
+}
+
+impl IdMapper {
+  pub fn new() -> IdMapper {
+    IdMapper {
+      new_id_source: 0,
+      old_to_new: HashMap::new(),
+      new_to_old: HashMap::new(),
+    }
+  }
+
+  /// Create a fresh NEW_ID not corresponding to a CLANG_ID
+  fn fresh_id(&mut self) -> NewId {
+    self.new_id_source += 1;
+    self.new_id_source
+  }
+
+  /// Lookup the NEW_ID corresponding to a CLANG_ID
+  pub fn get_new(&mut self, old_id: ClangId) -> Option<NewId> {
+    self.old_to_new.get(&old_id).map(|o| *o)
+  }
+
+  /// Lookup (or create if not a found) a NEW_ID corresponding to a CLANG_ID
+  pub fn get_or_create_new(&mut self, old_id: ClangId) -> NewId {
+    match self.get_new(old_id) {
+      Some(new_id) => new_id,
+      None => {
+        let new_id = self.fresh_id();
+        self.old_to_new.insert(old_id, new_id);
+        new_id
+      }
+    }
+  }
+
+  /// Lookup the CLANG_ID corresponding to a NEW_ID
+  pub fn get_old(&mut self, new_id: NewId) -> Option<ClangId> {
+    self.new_to_old.get(&new_id).map(|n| *n)
+  }
+}
+
 pub fn typed_ast_context(untyped_context: AstContext) -> TypedAstContext {
 
   use self::node_types::*;
@@ -28,23 +79,16 @@ pub fn typed_ast_context(untyped_context: AstContext) -> TypedAstContext {
   let mut typed_context = TypedAstContext::new();
 
   // Mapping old to new IDs and reverse
-  let mut next_id: u64 = 0;
-  let mut old_to_new: HashMap<u64, u64> = HashMap::new();
-  let mut new_to_old: HashMap<u64, u64> = HashMap::new();
+  let mut id_mapper = IdMapper::new();
 
-  // Keep track of nodes already processed and their types
-  let mut processed_nodes: HashMap<u64, NodeType> = HashMap::new();
+  // Keep track of new nodes already processed and their types
+  let mut processed_nodes: HashMap<NewId, NodeType> = HashMap::new();
 
   // Stack of things to visit (and their expected types). This starts out as all of the top-level
   // nodes, which we expect to be 'DECL's
   let mut visit_as: Vec<(u64, NodeType)> = Vec::new();
   for top_node in untyped_context.top_nodes.iter() {
     visit_as.push((*top_node, DECL));
-  }
-
-  fn fresh_id(id: &mut u64) -> u64 {
-    *id += 1;
-    *id
   }
 
   /// Transfer location information off of an 'AstNode' and onto something that is 'Located'
