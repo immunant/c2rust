@@ -84,13 +84,15 @@ def have_rust_toolchain(name: str) -> bool:
     return name in lines
 
 
-def download_and_build_custom_rustc():
+def download_and_build_custom_rustc(args):
     git = get_cmd_or_die('git')
     rustup = get_cmd_or_die('rustup')
 
     # check if rustup already lists c2rust custom toolchain
-    # so we can avoid this time consuming step
-    if have_rust_toolchain(CUSTOM_RUST_NAME):
+    # so we can avoid this time consuming step if we're not cleaning.
+    if args.clean_all and have_rust_toolchain(CUSTOM_RUST_NAME):
+        rustup['toolchain', 'uninstall', CUSTOM_RUST_NAME] & pb.FG
+    elif have_rust_toolchain(CUSTOM_RUST_NAME):
         logging.info("skipping custom rust toolchain build step; already installed")
         return
 
