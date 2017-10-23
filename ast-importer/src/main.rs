@@ -11,7 +11,7 @@ use std::io::prelude::*;
 use std::fs::File;
 use cbor::Decoder;
 use ast_importer::clang_ast::process;
-use ast_importer::c_ast::typed_ast_context;
+use ast_importer::c_ast::*;
 use ast_importer::c_ast::Printer;
 use ast_importer::clang_ast::AstContext;
 
@@ -28,8 +28,11 @@ fn main() {
     match output {
         Err(e) => println!("{:#?}", e),
         Ok(cxt) => {
-          println!("{:#?}", cxt);
-          println!("{:#?}", Printer::new(typed_ast_context(cxt)).print())
+            println!("{:#?}", cxt);
+
+            let mut conv = ConversionContext::new(&cxt);
+            conv.convert(&cxt);
+            println!("{:#?}", Printer::new().print(&conv.typed_context));
         },
     }
 
