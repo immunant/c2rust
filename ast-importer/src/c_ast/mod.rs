@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 
 // In order to avoid lifetime hell and mirror as closely as possible what we get from Clang, we
 // store references to AST nodes in HashMap's in TypedAstContext.
@@ -11,6 +11,12 @@ pub type CStmtId = u64;
 pub type CLabelId = CStmtId;  // Labels point into the 'StmtKind::Label' that declared the label
 pub type CFieldId = CDeclId;  // Records always contain 'DeclKind::Field's
 
+pub use self::conversion::typed_ast_context;
+pub use self::print::Printer;
+
+mod conversion;
+mod print;
+
 /// AST context containing all of the nodes in the Clang AST
 #[derive(Debug)]
 pub struct TypedAstContext {
@@ -18,21 +24,23 @@ pub struct TypedAstContext {
   pub c_exprs: HashMap<CExprId, CExpr>,
   pub c_decls: HashMap<CDeclId, CDecl>,
   pub c_stmts: HashMap<CStmtId, CStmt>,
-  
+
+  pub c_decls_top: HashSet<CDeclId>,
   pub c_files: HashMap<u64, String>,
 }
 
 impl TypedAstContext {
-  pub fn new() -> TypedAstContext {
-    TypedAstContext {
-      c_types: HashMap::new(),
-      c_exprs: HashMap::new(),
-      c_decls: HashMap::new(),
-      c_stmts: HashMap::new(),
-      
-      c_files: HashMap::new(),
+    pub fn new() -> TypedAstContext {
+        TypedAstContext {
+            c_types: HashMap::new(),
+            c_exprs: HashMap::new(),
+            c_decls: HashMap::new(),
+            c_stmts: HashMap::new(),
+
+            c_decls_top: HashSet::new(),
+            c_files: HashMap::new(),
+        }
     }
-  }
 }
 
 /// Represents a position inside a C source file
@@ -51,10 +59,10 @@ pub struct Located<T> {
 }
 
 /// All of our AST types should have location information bundled with them
-type CDecl = Located<CDeclKind>;
-type CStmt = Located<CStmtKind>;
-type CExpr = Located<CExprKind>;
-type CType = Located<CTypeKind>;
+pub type CDecl = Located<CDeclKind>;
+pub type CStmt = Located<CStmtKind>;
+pub type CExpr = Located<CExprKind>;
+pub type CType = Located<CTypeKind>;
 
 
 // TODO:
@@ -92,6 +100,18 @@ pub enum CDeclKind {
   },
 }
 
+impl CDeclKind {
+  pub fn get_name(&self) -> Option<&String> {
+    match self {
+      &CDeclKind::Function { typ, ref name, body } => Some(name),
+      &CDeclKind::Variable { ref ident, initializer, typ } => Some(ident),
+//      &CDeclKind::Record { ref name, fields } => ???,
+      &CDeclKind::Field { ref name } => Some(name),
+      _ => None,
+    }
+  }
+}
+
 // TODO:
 //
 /// Represents an expression in C (6.5 Expressions)
@@ -110,13 +130,13 @@ pub enum CExprKind {
   // TODO: consider adding the cast type (see OperationKinds.def)
   ImplicitCast(CTypeId, CExprId),
 
-  // Reference to a decl
-  // TODO: what is this really? https://clang.llvm.org/doxygen/classclang_1_1DeclRefExpr.html
+  // Reference to a decl (a variable, for instance)
+  // TODO: consider enforcing what types of declarations are allowed here
   DeclRef(CDeclId),
 }
 
 /// Represents a unary operator in C (6.5.3 Unary operators)
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum UnOp {
   AddressOf,  // &
   Deref,      // *
@@ -127,7 +147,7 @@ pub enum UnOp {
 }
 
 /// Represents a binary operator in C (6.5.5 Multiplicative operators - 6.5.14 Logical OR operator)
-#[derive(Debug)]
+#[derive(Debug,Clone,Copy)]
 pub enum BinOp {
   Multiply,     // *
   Divide,       // /
@@ -149,7 +169,7 @@ pub enum BinOp {
   Or,           // ||
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone,Copy)]
 pub enum CLiteral {
   Integer(u64),
   Character(u64),
@@ -213,7 +233,7 @@ pub enum CStmtKind {
 }
 
 /// Type qualifiers (6.7.3)
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Qualifiers {
   pub is_const: bool,
   pub is_restrict: bool,
@@ -221,7 +241,7 @@ pub struct Qualifiers {
 }
 
 /// Qualified type
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct CQualTypeId {
   pub qualifiers: Qualifiers,
   pub ctype: CTypeId,
