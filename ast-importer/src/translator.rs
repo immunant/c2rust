@@ -314,9 +314,16 @@ impl Translation {
                     let _ty = self.convert_type(node.type_id.expect("Expected type"));
                     WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
                 }
+            ASTEntryTag::TagFloatingLiteral =>
+                {
+                    let val = expect_f64(&node.extras[0]).expect("Expected value");
+                    let str = format!("{}", val);
+                    WithStmts::new(mk().lit_expr(mk().float_unsuffixed_lit(str)))
+                }
             ASTEntryTag::TagImplicitCastExpr =>
                 {
                     // TODO actually cast
+                    // Numeric casts with 'as', pointer casts with transmute
                     let child = node.children[0].expect("Expected subvalue");
                     self.convert_expr(child)
                 }
@@ -367,6 +374,14 @@ impl Translation {
                         val: mk().call_expr(fun, exprs),
                     }
                 }
+            ASTEntryTag::TagMemberExpr => {
+                let mut struct_val = self.convert_expr(node.children[0].expect("Missing structval"));
+                let field_node = self.ast_context.ast_nodes.get(&node.children[1].expect("Missing structfield id")).expect("Missing structfield").clone();
+                let field_name = expect_str(&field_node.extras[0]).expect("expected field name");
+
+                struct_val.val = mk().field_expr(struct_val.val, field_name);
+                struct_val
+            }
             t => panic!("Expression not implemented {:?}", t),
         }
     }

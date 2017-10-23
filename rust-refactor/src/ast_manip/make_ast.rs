@@ -364,6 +364,18 @@ impl Builder {
         })
     }
 
+    pub fn field_expr<E, F>(self, val: E, field: F) -> P<Expr>
+        where E: Make<P<Expr>>, F: Make<Ident> {
+        let val = val.make(&self);
+        let field = field.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Field(val, mk().spanned(field)),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
     pub fn lit_expr<L>(self, lit: L) -> P<Expr>
             where L: Make<P<Lit>> {
         let lit = lit.make(&self);
@@ -547,6 +559,15 @@ impl Builder {
         let ty = ty.make(&self);
         P(Lit {
             node: LitKind::Float(s, ty),
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn float_unsuffixed_lit<S>(self, s: S) -> P<Lit>
+        where S: IntoSymbol {
+        let s = s.into_symbol();
+        P(Lit {
+            node: LitKind::FloatUnsuffixed(s),
             span: DUMMY_SP,
         })
     }

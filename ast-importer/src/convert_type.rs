@@ -26,11 +26,26 @@ impl TypeConverter {
             TypeTag::TagSChar => mk().path_ty(mk().path(vec!["libc","c_schar"])),
             TypeTag::TagUChar => mk().path_ty(mk().path(vec!["libc","c_uchar"])),
             TypeTag::TagChar => mk().path_ty(mk().path(vec!["libc","c_char"])),
+            TypeTag::TagDouble => mk().path_ty(mk().path(vec!["libc","c_double"])),
+            TypeTag::TagFloat => mk().path_ty(mk().path(vec!["libc","c_float"])),
 
             TypeTag::TagPointer => {
                 let child_id = expect_u64(&ctype.extras[0]).expect("Pointer child not found");
                 let child_ty = self.convert(ctxt, child_id);
                 mk().set_mutbl(Mutability::Mutable).ptr_ty(child_ty)
+            }
+
+            TypeTag::TagElaboratedType => {
+                let child_id = expect_u64(&ctype.extras[0]).expect("Elaborated child not found");
+                self.convert(ctxt, child_id)
+            }
+
+            TypeTag::TagRecordType => {
+                let child_id = expect_u64(&ctype.extras[0]).expect("Record child not found");
+                let decl = ctxt.ast_nodes.get(&child_id).expect("Expected declaration node");
+                assert_eq!(decl.tag, ASTEntryTag::TagRecordDecl);
+                let name = expect_str(&decl.extras[0]).expect("record name");
+                mk().path_ty(mk().path(vec![name]))
             }
 
             /*
@@ -42,7 +57,7 @@ impl TypeConverter {
             }
             */
 
-            _ => panic!("Unsupported type"),
+            t => panic!("Unsupported type {:?}", t),
         }
     }
 }
