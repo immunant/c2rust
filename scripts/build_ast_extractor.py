@@ -323,6 +323,7 @@ def _main():
         shutil.rmtree(LLVM_BLD, ignore_errors=True)
         shutil.rmtree(DEPS_DIR, ignore_errors=True)
 
+
     ensure_dir(LLVM_BLD)
     ensure_dir(DEPS_DIR)
 
@@ -339,7 +340,7 @@ def _main():
 
     configure_and_build_llvm(args)
 
-    download_and_build_custom_rustc()
+    download_and_build_custom_rustc(args)
 
     build_ast_importer()
 
