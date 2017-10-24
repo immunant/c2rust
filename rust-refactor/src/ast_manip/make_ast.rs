@@ -352,8 +352,8 @@ impl Builder {
     }
 
     pub fn binary_expr<O, E>(self, op: O, lhs: E, rhs: E) -> P<Expr>
-        where O: Make<BinOp>, E: Make<P<Expr>> {
-        let op = op.make(&self);
+        where O: Make<BinOpKind>, E: Make<P<Expr>> {
+        let op = mk().spanned(op.make(&self));
         let lhs = lhs.make(&self);
         let rhs = rhs.make(&self);
         P(Expr {

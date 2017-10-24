@@ -247,9 +247,23 @@ impl Translation {
         }
     }
 
+    /// Convert a C expression to a rust boolean expression
+    fn convert_condition(&mut self, cond_id: u64) -> WithStmts<P<Expr>> {
+        let node: AstNode =
+            self.ast_context
+                .ast_nodes
+                .get(&cond_id)
+                .unwrap()
+                .to_owned(); // release immutable borrow on self
+        let type_id = node.type_id.expect("type id");
+        let ty = self.ast_context.get_type(type_id).expect("type");
+        let cond = self.convert_expr_node(node);
+        cond.map(|e| self.to_bool(ty, e))
+    }
+
     fn convert_while_stmt(&mut self, cond_id: u64, body_id: u64) -> Vec<Stmt> {
 
-        let cond = self.convert_expr(cond_id);
+        let cond = self.convert_condition(cond_id);
         let body = self.convert_stmt(body_id);
 
         let rust_cond = cond.to_expr();
@@ -259,7 +273,7 @@ impl Translation {
     }
 
     fn convert_if_stmt(&mut self, cond_id: u64, then_id: u64, else_id: Option<u64>) -> Vec<Stmt> {
-        let mut cond = self.convert_expr(cond_id);
+        let mut cond = self.convert_condition(cond_id);
         let then_stmts = stmts_block(self.convert_stmt(then_id));
         let else_stmts = else_id.map(|x| { mk().block_expr(stmts_block(self.convert_stmt(x)))});
 
@@ -427,47 +441,46 @@ impl Translation {
         match name {
 
             "+" => WithStmts::new(self.convert_addition(lhs_type, rhs_type, lhs, rhs)),
-            "-" => WithStmts::new(self.convert_subtraction(lhs_type, rhs_type, lhs, rhs)),
+            "-" => WithStmts::new(self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs)),
 
             "*" if ctype.is_unsigned_integral_type() =>
                 WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_mul"), vec![rhs])),
-            "*" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Mul), lhs, rhs)),
+            "*" => WithStmts::new(mk().binary_expr(BinOpKind::Mul, lhs, rhs)),
 
             "/" if ctype.is_unsigned_integral_type() =>
                 WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_div"), vec![rhs])),
-            "/" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Div), lhs, rhs)),
+            "/" => WithStmts::new(mk().binary_expr(BinOpKind::Div, lhs, rhs)),
 
             "%" if ctype.is_unsigned_integral_type() =>
                 WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_rem"), vec![rhs])),
-            "%" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Rem), lhs, rhs)),
+            "%" => WithStmts::new(mk().binary_expr(BinOpKind::Rem, lhs, rhs)),
 
-            "^" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::BitXor), lhs, rhs)),
+            "^" => WithStmts::new(mk().binary_expr(BinOpKind::BitXor, lhs, rhs)),
 
-            ">>" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Shr), lhs, rhs)),
+            ">>" => WithStmts::new(mk().binary_expr(BinOpKind::Shr, lhs, rhs)),
 
-            "==" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Eq),
-                                                        lhs, rhs)).map(bool_to_int),
-            "!=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Ne), lhs, rhs)).map(bool_to_int),
-            "<" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Lt), lhs, rhs)).map(bool_to_int),
-            ">" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Gt), lhs, rhs)).map(bool_to_int),
-            ">=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Ge), lhs, rhs)).map(bool_to_int),
-            "<=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Le), lhs, rhs)).map(bool_to_int),
+            "==" => WithStmts::new(mk().binary_expr(BinOpKind::Eq, lhs, rhs)).map(bool_to_int),
+            "!=" => WithStmts::new(mk().binary_expr(BinOpKind::Ne, lhs, rhs)).map(bool_to_int),
+            "<" => WithStmts::new(mk().binary_expr(BinOpKind::Lt, lhs, rhs)).map(bool_to_int),
+            ">" => WithStmts::new(mk().binary_expr(BinOpKind::Gt, lhs, rhs)).map(bool_to_int),
+            ">=" => WithStmts::new(mk().binary_expr(BinOpKind::Ge, lhs, rhs)).map(bool_to_int),
+            "<=" => WithStmts::new(mk().binary_expr(BinOpKind::Le, lhs, rhs)).map(bool_to_int),
 
             "&&" => {
                 let lhs = self.to_bool(lhs_type, lhs);
                 let rhs = self.to_bool(rhs_type, rhs);
-                let res = mk().binary_expr(mk().spanned(BinOpKind::And), lhs, rhs);
+                let res = mk().binary_expr(BinOpKind::And, lhs, rhs);
                 WithStmts::new(bool_to_int(res))
             },
             "||" => {
                 let lhs = self.to_bool(lhs_type, lhs);
                 let rhs = self.to_bool(rhs_type, rhs);
-                let res = mk().binary_expr(mk().spanned(BinOpKind::Or), lhs, rhs);
+                let res = mk().binary_expr(BinOpKind::Or, lhs, rhs);
                 WithStmts::new(bool_to_int(res))
             },
 
-            "&" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::BitAnd), lhs, rhs)),
-            "|" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::BitOr), lhs, rhs)),
+            "&" => WithStmts::new(mk().binary_expr(BinOpKind::BitAnd, lhs, rhs)),
+            "|" => WithStmts::new(mk().binary_expr(BinOpKind::BitOr, lhs, rhs)),
 
             "+="  => self.convert_binary_assignment("+",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
             "-="  => self.convert_binary_assignment("-",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
@@ -519,30 +532,41 @@ impl Translation {
         let lhs_type = self.ast_context.resolve_type(lhs_type);
         let rhs_type = self.ast_context.resolve_type(rhs_type);
 
+        fn to_isize(val: P<Expr>) -> P<Expr> {
+            mk().cast_expr(val, mk().path_ty(vec!["isize"]))
+        }
+
         if lhs_type.is_pointer() {
-            mk().method_call_expr(lhs, "offset", vec![rhs])
+            mk().method_call_expr(lhs, "offset", vec![to_isize(rhs)])
         } else if rhs_type.is_pointer() {
-            mk().method_call_expr(rhs, "offset", vec![lhs])
+            mk().method_call_expr(rhs, "offset", vec![to_isize(lhs)])
         } else if lhs_type.is_unsigned_integral_type() {
             mk().method_call_expr(lhs, mk().path_segment("wrapping_add"), vec![rhs])
         } else {
-            mk().binary_expr(mk().spanned(BinOpKind::Add), lhs, rhs)
+            mk().binary_expr(BinOpKind::Add, lhs, rhs)
         }
     }
 
-    fn convert_subtraction(&mut self, lhs_type: TypeNode, rhs_type: TypeNode, lhs: P<Expr>, rhs: P<Expr>) -> P<Expr> {
+    fn convert_subtraction(&mut self, ty: P<Ty>, lhs_type: TypeNode, rhs_type: TypeNode, lhs: P<Expr>, rhs: P<Expr>) -> P<Expr> {
         let lhs_type = self.ast_context.resolve_type(lhs_type);
         let rhs_type = self.ast_context.resolve_type(rhs_type);
 
         if rhs_type.is_pointer() {
-            mk().method_call_expr(rhs, "offset_to", vec![lhs])
+            // offset_to returns None when a pointer
+            // offset_opt := rhs.offset_to(lhs)
+            let offset_opt = mk().method_call_expr(rhs, "offset_to", vec![lhs]);
+            // msg := "bad offset_to"
+            let msg = mk().lit_expr(mk().str_lit("bad offset_to"));
+            // offset := offset_opt.expect(msg)
+            let offset = mk().method_call_expr(offset_opt, "expect", vec![msg]);
+            mk().cast_expr(offset, ty)
         } else if lhs_type.is_pointer() {
             let neg_rhs = mk().unary_expr(UnOp::Neg, rhs);
             mk().method_call_expr(lhs, "offset", vec![neg_rhs])
         } else if lhs_type.is_unsigned_integral_type() {
             mk().method_call_expr(lhs, mk().path_segment("wrapping_sub"), vec![rhs])
         } else {
-            mk().binary_expr(mk().spanned(BinOpKind::Sub), lhs, rhs)
+            mk().binary_expr(BinOpKind::Sub, lhs, rhs)
         }
     }
 
@@ -578,7 +602,7 @@ impl Translation {
             mk().unary_expr(UnOp::Not, mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>))
         } else {
             let zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
-            mk().binary_expr(mk().spanned(BinOpKind::Ne), zero, val)
+            mk().binary_expr(BinOpKind::Ne, zero, val)
         }
     }
 }
