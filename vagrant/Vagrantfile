@@ -13,105 +13,113 @@ Vagrant.configure("2") do |config|
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://atlas.hashicorp.com/search.
   config.vm.box = "geerlingguy/ubuntu1604"
+  config.vm.define :c2rust do |c2rust|    
+    # this allows the guest os to use host os credentials to access github
+    c2rust.ssh.forward_agent = true
 
-  # this allows the guest os to use host os credentials to access github
-  config.ssh.forward_agent = true
+    # Disable automatic box update checking. If you disable this, then
+    # boxes will only be checked for updates when the user runs
+    # `vagrant box outdated`. This is not recommended.
+    # config.vm.box_check_update = false
 
-  # Disable automatic box update checking. If you disable this, then
-  # boxes will only be checked for updates when the user runs
-  # `vagrant box outdated`. This is not recommended.
-  # config.vm.box_check_update = false
+    # Create a forwarded port mapping which allows access to a specific port
+    # within the machine from a port on the host machine. In the example below,
+    # accessing "localhost:8080" will access port 80 on the guest machine.
+    # config.vm.network "forwarded_port", guest: 80, host: 8080
 
-  # Create a forwarded port mapping which allows access to a specific port
-  # within the machine from a port on the host machine. In the example below,
-  # accessing "localhost:8080" will access port 80 on the guest machine.
-  # config.vm.network "forwarded_port", guest: 80, host: 8080
+    # Create a private network, which allows host-only access to the machine
+    # using a specific IP.
+    # config.vm.network "private_network", ip: "192.168.33.10"
 
-  # Create a private network, which allows host-only access to the machine
-  # using a specific IP.
-  # config.vm.network "private_network", ip: "192.168.33.10"
+    # Create a public network, which generally matched to bridged network.
+    # Bridged networks make the machine appear as another physical device on
+    # your network.
+    # config.vm.network "public_network"
 
-  # Create a public network, which generally matched to bridged network.
-  # Bridged networks make the machine appear as another physical device on
-  # your network.
-  # config.vm.network "public_network"
-
-  # Share an additional folder to the guest VM. The first argument is
-  # the path on the host to the actual folder. The second argument is
-  # the path on the guest to mount the folder. And the optional third
-  # argument is a set of non-required options.
-  config.vm.synced_folder "..", "/home/vagrant/C2Rust"
-  
-  
-
-  # Provider-specific configuration so you can fine-tune various
-  # backing providers for Vagrant. These expose provider-specific options.
-  # Example for VirtualBox:
-  #
-  host = RbConfig::CONFIG['host_os']
-  
-  # source https://github.com/rdsubhas/vagrant-faster
-  if host =~ /darwin/
-    cpus = `sysctl -n hw.ncpu`.to_i
-    mem = `sysctl -n hw.memsize`.to_i / 1024 / 1024
-  elsif host =~ /linux/
-    cpus = `nproc`.to_i
-    mem = `grep 'MemTotal' /proc/meminfo | sed -e 's/MemTotal://' -e 's/ kB//'`.to_i / 1024
-  elsif host =~ /mswin|mingw|cygwin/
-    cpus = `wmic cpu Get NumberOfCores`.split[1].to_i
-    mem = `wmic computersystem Get TotalPhysicalMemory`.split[1].to_i / 1024 / 1024
-  end
-  mem  = mem / 4  if mem > 2048
-
-  config.vm.provider "virtualbox" do |vb|
-    # Display the VirtualBox GUI when booting the machine
-    # vb.gui = true
-
-    # Customize the amount of memory on the VM:
-    vb.memory = mem.to_s
-    if cpus > 4
-      vb.cpus = cpus / 2
-    else
-      vb.cpus = cpus
+    # Share an additional folder to the guest VM. The first argument is
+    # the path on the host to the actual folder. The second argument is
+    # the path on the guest to mount the folder. And the optional third
+    # argument is a set of non-required options.
+    # PL: default folder sync for thousands of files is slow and buggy. 
+    # The nfs option can improve performance by requires admin rights 
+    # and potentially requires more configuration.
+    # config.vm.synced_folder "..", "/home/vagrant/C2Rust", type: "nfs"
+    
+    # Provider-specific configuration so you can fine-tune various
+    # backing providers for Vagrant. These expose provider-specific options.
+    # Example for VirtualBox:
+    #
+    host = RbConfig::CONFIG['host_os']
+    
+    # source https://github.com/rdsubhas/vagrant-faster
+    if host =~ /darwin/
+      cpus = `sysctl -n hw.ncpu`.to_i
+      mem = `sysctl -n hw.memsize`.to_i / 1024 / 1024
+    elsif host =~ /linux/
+      cpus = `nproc`.to_i
+      mem = `grep 'MemTotal' /proc/meminfo | sed -e 's/MemTotal://' -e 's/ kB//'`.to_i / 1024
+    elsif host =~ /mswin|mingw|cygwin/
+      cpus = `wmic cpu Get NumberOfCores`.split[1].to_i
+      mem = `wmic computersystem Get TotalPhysicalMemory`.split[1].to_i / 1024 / 1024
     end
-  end
+    mem  = mem / 4  if mem > 2048
 
-  config.vm.provider "vmware_fusion" do |v|
-    #  v.gui = true
-    # Customize the amount of memory on the VM:
-    v.vmx["memsize"] = mem.to_s
-    v.vmx["numvcpus"] = cpus
-  end
-  #
-  # View the documentation for the provider you are using for more
-  # information on available options.
+    # VirtualBox.
+    # `vagrant up virtualbox --provider=virtualbox`
+    c2rust.vm.provider "virtualbox" do |vb|
+      c2rust.vm.hostname = 'c2rust-vbox'
+      # Display the VirtualBox GUI when booting the machine
+      # vb.gui = true
+      
+      # Customize the amount of memory on the VM:
+      vb.memory = mem.to_s
+      if cpus > 4
+        vb.cpus = cpus / 2
+      else
+        vb.cpus = cpus
+      end
+    end
+    
+    # VMware Fusion.
+    # `vagrant up vmware --provider=vmware_fusion`
+    c2rust.vm.provider "vmware_fusion" do |v|
+      c2rust.vm.hostname = 'c2rust-vmware'
+      #  v.gui = true
 
-  # Define a Vagrant Push strategy for pushing to Atlas. Other push strategies
-  # such as FTP and Heroku are also available. See the documentation at
-  # https://docs.vagrantup.com/v2/push/atlas.html for more information.
-  # config.push.define "atlas" do |push|
-  #   push.app = "YOUR_ATLAS_USERNAME/YOUR_APPLICATION_NAME"
-  # end
+      # Customize the amount of memory on the VM:
+      v.vmx["memsize"] = mem.to_s
+      v.vmx["numvcpus"] = cpus
+    end
+    #
+    # View the documentation for the provider you are using for more
+    # information on available options.
 
-  # Enable provisioning with a shell script. Additional provisioners such as
-  # Puppet, Chef, Ansible, Salt, and Docker are also available. Please see the
-  # documentation for more information about their specific syntax and use.
-  
-  # http://foo-o-rama.com/vagrant--stdin-is-not-a-tty--fix.html
-  config.vm.provision "fix-no-tty", type: "shell" do |s|
-    s.privileged = false
-    s.inline = "sudo sed -i '/tty/!s/mesg n/tty -s \\&\\& mesg n/' /root/.profile"
-  end
-  
-  config.vm.provision "file", source: "../scripts/provision_cmake.sh", destination: "/tmp/provision_cmake.sh"
-  config.vm.provision "shell" do |s|
-    s.path = "../scripts/provision.sh"
+    # Define a Vagrant Push strategy for pushing to Atlas. Other push strategies
+    # such as FTP and Heroku are also available. See the documentation at
+    # https://docs.vagrantup.com/v2/push/atlas.html for more information.
+    # config.push.define "atlas" do |push|
+    #   push.app = "YOUR_ATLAS_USERNAME/YOUR_APPLICATION_NAME"
+    # end
 
-    # Run as root
-    s.privileged = true
-  end
+    # Enable provisioning with a shell script. Additional provisioners such as
+    # Puppet, Chef, Ansible, Salt, and Docker are also available. Please see the
+    # documentation for more information about their specific syntax and use.
+    
+    # http://foo-o-rama.com/vagrant--stdin-is-not-a-tty--fix.html
+    c2rust.vm.provision "fix-no-tty", type: "shell" do |s|
+      s.privileged = false
+      s.inline = "sudo sed -i '/tty/!s/mesg n/tty -s \\&\\& mesg n/' /root/.profile"
+    end
+    
+    c2rust.vm.provision "file", source: "../scripts/provision_cmake.sh", destination: "/tmp/provision_cmake.sh"
+    c2rust.vm.provision "shell" do |s|
+      s.path = "../scripts/provision.sh"
 
-$script = <<SCRIPT
+      # Run as root
+      s.privileged = true
+    end
+
+$rustup_script = <<SCRIPT
 # FIXME: rustup is the most convenient way to install rust 
 # but it doesn't check signatures of downloaded packages :/
 # https://github.com/rust-lang-nursery/rustup.rs#security
@@ -119,19 +127,29 @@ $script = <<SCRIPT
 curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly
 echo "source ~/.cargo/env" >> ~/.bashrc
 SCRIPT
-  
-  config.vm.provision "shell", inline: $script, privileged: false
+    
+    c2rust.vm.provision "shell", inline: $rustup_script, privileged: false
 
+    c2rust.vm.provision "shell" do |s|
+      s.path = "../scripts/provision_git.sh"
+      # configure guest git using host git config
+      s.env = {
+        "GIT_USER_NAME":  `git config --global user.name`,
+        "GIT_USER_EMAIL": `git config --global user.email`
+      }
 
-  config.vm.provision "shell" do |s|
-    s.path = "../scripts/provision_git.sh"
-    # configure guest git using host git config
-    s.env = {
-      "GIT_USER_NAME":  `git config --global user.name`,
-      "GIT_USER_EMAIL": `git config --global user.email`
-    }
+      # Run as root
+      s.privileged = false
+    end
 
-    # Run as root
-    s.privileged = false
+$git_clone_script = <<SCRIPT
+GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" \
+  git clone git@github.com:GaloisInc/C2Rust ~/C2Rust
+SCRIPT
+
+    # comment this block if sharing the hosts copy of the C2Rust checkout.
+    c2rust.vm.provision "shell", 
+      inline: $git_clone_script, 
+      privileged: false
   end
 end
