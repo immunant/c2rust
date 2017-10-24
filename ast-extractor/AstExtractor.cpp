@@ -200,7 +200,9 @@ public:
     }
     
     void VisitTypedefType(const TypedefType *T) {
-        encodeType(T, TagTypedefType, [](CborEncoder *local) {
+        auto D = T->getDecl();
+        encodeType(T, TagTypedefType, [D](CborEncoder *local) {
+            cbor_encode_uint(local, uintptr_t(D));
         });
     }
     
@@ -514,6 +516,7 @@ class TranslateASTVisitor final
           encode_entry(UO, TagUnaryOperator, childIds,
                              [UO](CborEncoder *array) {
                                  cbor_encode_string(array, UO->getOpcodeStr(UO->getOpcode()).str());
+                                 cbor_encode_boolean(array, UO->isPrefix());
                              });
           return true;
       }

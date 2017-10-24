@@ -4,6 +4,7 @@ import re
 import sys
 import json
 import errno
+import shutil
 import signal
 import logging
 import platform
@@ -15,7 +16,7 @@ try:
     import plumbum as pb
 except ImportError:
     # run `pip install plumbum` or `easy_install plumbum` to fix
-    print >> sys.stderr, "error: python package plumbum is not installed."
+    print("error: python package plumbum is not installed.", file=sys.stderr)
     sys.exit(errno.ENOENT)
 
 NCPUS = str(multiprocessing.cpu_count())
@@ -47,9 +48,8 @@ LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
 LLVM_PUBKEY = "8F0871F202119294"
 LLVM_VER = "4.0.1"
 LLVM_ARCHIVE_URLS = """
-http://releases.llvm.org/{ver}/llvm-4.0.1.src.tar.xz
+http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz
 http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz
-http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz
 http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz
 """.split("\n")
 LLVM_ARCHIVE_URLS = [s.format(ver=LLVM_VER) for s in LLVM_ARCHIVE_URLS if s]
@@ -85,35 +85,41 @@ def have_rust_toolchain(name: str) -> bool:
     return name in lines
 
 
-def download_and_build_custom_rustc():
+def download_and_build_custom_rustc(args):
     git = get_cmd_or_die('git')
     rustup = get_cmd_or_die('rustup')
 
     # check if rustup already lists c2rust custom toolchain
-    # so we can avoid this time consuming step
-    if have_rust_toolchain(CUSTOM_RUST_NAME):
+    # so we can avoid this time consuming step if we're not cleaning.
+    if args.clean_all and have_rust_toolchain(CUSTOM_RUST_NAME):
+        rustup['toolchain', 'uninstall', CUSTOM_RUST_NAME] & pb.FG
+    elif have_rust_toolchain(CUSTOM_RUST_NAME):
         logging.info("skipping custom rust toolchain build step; already installed")
         return
 
+    assert on_linux(), "FIXME: set target_triple based on host os"
+    target_triple = 'x86_64-unknown-linux-gnu'
+
     # disable host key checking to avoid prompts during automated builds
     with pb.local.env(GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"):
-        # make sure the submodule is initialized and updated
-        invoke(git, "submodule", "update", "--init", COMPILER_SUBMOD_DIR)
+        # recursively update and (optionally) initialize submodules
+        invoke(git, "submodule", "update", "--init", "--recursive",
+               COMPILER_SUBMOD_DIR)
 
     with pb.local.cwd(COMPILER_SUBMOD_DIR):
         # seems that just updating submodule gives us the right version
         # invoke(git, 'reset', '--hard', CUSTOM_RUST_REV)
 
+        x_py = pb.local['./x.py']
+        if args.clean_all:
+            x_py['clean'] & pb.FG
+
         if not os.path.isfile("config.toml"):
             configure = pb.local['./configure']
             configure & pb.FG
 
-        x_py = pb.local['./x.py']
-
         x_py['build', '-j' + NCPUS] & pb.FG
-    
-    assert on_linux(), "FIXME: set target_triple based on host os"
-    target_triple = 'x86_64-unknown-linux-gnu'
+
     build_output = os.path.join(COMPILER_SUBMOD_DIR, "build", target_triple, "stage2")
     assert os.path.isdir(build_output)
     rustup['toolchain', 'link', CUSTOM_RUST_NAME, build_output] & pb.FG
