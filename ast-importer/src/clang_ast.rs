@@ -50,6 +50,25 @@ impl AstContext {
                 x
             })
     }
+
+    pub fn resolve_type(&self, node: TypeNode) -> TypeNode {
+        match node.tag {
+            TypeTag::TagElaboratedType | TypeTag::TagDecayedType | TypeTag::TagTypeOfType => {
+                let child_id = expect_u64(&node.extras[0]).expect("child id");
+                let node = self.get_type(child_id).expect("child node");
+                self.resolve_type(node)
+            }
+            TypeTag::TagTypedefType => {
+                let child_id = expect_u64(&node.extras[0]).expect("child id");
+                let decl = self.ast_nodes.get(&child_id).expect("child node");
+                assert_eq!(decl.tag, ASTEntryTag::TagTypedefDecl);
+                let type_id = decl.type_id.expect("typedef type");
+                let type_node = self.get_type(type_id).expect("type node");
+                self.resolve_type(type_node)
+            }
+            _ => node,
+        }
+    }
 }
 
 impl AstNode {
@@ -63,6 +82,12 @@ impl AstNode {
 }
 
 impl TypeNode {
+    pub fn is_pointer(&self) -> bool {
+        match self.tag {
+            TypeTag::TagPointer => true,
+            _ => false,
+        }
+    }
     pub fn is_unsigned_integral_type(&self) -> bool {
         match self.tag {
             TypeTag::TagUInt | TypeTag::TagUShort | TypeTag::TagULong | TypeTag::TagULongLong => true,
