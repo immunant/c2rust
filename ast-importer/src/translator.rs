@@ -24,6 +24,21 @@ impl<T> WithStmts<T> {
     pub fn new(val: T) -> Self {
         WithStmts { stmts: vec![], val, }
     }
+    pub fn and_then<U,F: FnOnce(T) -> WithStmts<U>>(self, f : F) -> WithStmts<U> {
+        let mut next = f(self.val);
+        let mut stmts = self.stmts;
+        stmts.append(&mut next.stmts);
+        WithStmts {
+            val: next.val,
+            stmts
+        }
+    }
+    pub fn map<U,F: FnOnce(T) -> U>(self, f : F) -> WithStmts<U> {
+        WithStmts {
+            val: f(self.val),
+            stmts: self.stmts,
+        }
+    }
 }
 
 impl WithStmts<P<Expr>> {
@@ -108,7 +123,16 @@ pub fn translate(ast_context: AstContext) -> String {
     })
 }
 
+/// Convert a boolean expression to a c_int
+fn bool_to_int(val: P<Expr>) -> P<Expr> {
+    mk().cast_expr(val, mk().path_ty(vec!["libc","c_int"]))
+}
 
+/// Convert a boolean expression to a c_int
+fn int_to_bool(val: P<Expr>) -> P<Expr> {
+    let zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
+    mk().binary_expr(mk().spanned(BinOpKind::Ne), zero, val)
+}
 
 impl Translation {
     pub fn new(ast_context: AstContext) -> Translation {
@@ -288,9 +312,11 @@ impl Translation {
     }
 
     fn convert_expr(&mut self, expr_id: u64) -> WithStmts<P<Expr>> {
-        println!("Converting {}", expr_id);
         let node = self.ast_context.ast_nodes.get(&expr_id).expect("Expected expression node").clone();
+        self.convert_expr_node(node)
 
+    }
+    fn convert_expr_node(&mut self, node: AstNode) -> WithStmts<P<Expr>> {
         match node.tag {
             ASTEntryTag::TagDeclRefExpr =>
                 {
@@ -344,12 +370,17 @@ impl Translation {
             ASTEntryTag::TagBinaryOperator =>
                 {
                     let name = expect_string(&node.extras[0]).expect("Missing binary operator name");
-                    let lhs = self.convert_expr(node.children[0].expect("Missing LHS"));
-                    let rhs = self.convert_expr(node.children[1].expect("Missing RHS"));
+                    let lhs_node = self.ast_context.ast_nodes.get(&node.children[0].expect("lhs id")).expect("lhs node").to_owned();
+                    let lhs_ty = self.ast_context.get_type(lhs_node.type_id.expect("lhs ty id")).expect("lhs ty");
+                    let lhs = self.convert_expr_node(lhs_node);
+                    let rhs_node = self.ast_context.ast_nodes.get(&node.children[1].expect("rhs id")).expect("rhs node").to_owned();
+                    let rhs_ty = self.ast_context.get_type(rhs_node.type_id.expect("rhs ty id")).expect("rhs ty");
+                    let rhs = self.convert_expr_node(rhs_node);
                     let type_id = node.type_id.unwrap();
                     let cty = self.ast_context.get_type(type_id).unwrap();
                     let ty = self.convert_type(type_id);
-                    let bin = self.convert_binary_operator(&name, cty, ty, lhs.val, rhs.val);
+                    let bin =
+                        self.convert_binary_operator(&name, ty, cty, lhs_ty, rhs_ty, lhs.val, rhs.val);
 
                     WithStmts {
                         stmts: lhs.stmts.into_iter().chain(rhs.stmts).chain(bin.stmts).collect(),
@@ -388,21 +419,21 @@ impl Translation {
 
     pub fn convert_unary_operator(&mut self, name: &str, ctype: TypeNode, ty: P<Ty>, arg: P<Expr>) -> WithStmts<P<Expr>> {
         match name {
+            "&" => {
+                let addr_of_arg = mk().set_mutbl(Mutability::Mutable).addr_of_expr(arg);
+                let ptr = mk().cast_expr(addr_of_arg, ty);
+                WithStmts::new(ptr)
+            },
             n => panic!("unary operator {} not implemented", n),
         }
     }
 
-    pub fn convert_binary_operator(&mut self, name: &str, ctype: TypeNode, ty: P<Ty>, lhs: P<Expr>, rhs: P<Expr>) -> WithStmts<P<Expr>>
+    pub fn convert_binary_operator(&mut self, name: &str, ty: P<Ty>, ctype: TypeNode, lhs_type: TypeNode, rhs_type: TypeNode, lhs: P<Expr>, rhs: P<Expr>) -> WithStmts<P<Expr>>
     {
         match name {
 
-            "+" if ctype.is_unsigned_integral_type() =>
-                WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_add"), vec![rhs])),
-            "+" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Add), lhs, rhs)),
-
-            "-" if ctype.is_unsigned_integral_type() =>
-                WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_sub"), vec![rhs])),
-            "-" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Sub), lhs, rhs)),
+            "+" => WithStmts::new(self.convert_addition(lhs_type, rhs_type, lhs, rhs)),
+            "-" => WithStmts::new(self.convert_subtraction(lhs_type, rhs_type, lhs, rhs)),
 
             "*" if ctype.is_unsigned_integral_type() =>
                 WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_mul"), vec![rhs])),
@@ -420,12 +451,13 @@ impl Translation {
 
             ">>" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Shr), lhs, rhs)),
 
-            "==" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Eq), lhs, rhs)),
-            "!=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Ne), lhs, rhs)),
-            "<" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Lt), lhs, rhs)),
-            ">" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Gt), lhs, rhs)),
-            ">=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Ge), lhs, rhs)),
-            "<=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Le), lhs, rhs)),
+            "==" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Eq),
+                                                        lhs, rhs)).map(bool_to_int),
+            "!=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Ne), lhs, rhs)).map(bool_to_int),
+            "<" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Lt), lhs, rhs)).map(bool_to_int),
+            ">" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Gt), lhs, rhs)).map(bool_to_int),
+            ">=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Ge), lhs, rhs)).map(bool_to_int),
+            "<=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Le), lhs, rhs)).map(bool_to_int),
 
             "&&" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::And), lhs, rhs)),
             "||" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Or), lhs, rhs)),
@@ -433,24 +465,24 @@ impl Translation {
             "&" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::BitAnd), lhs, rhs)),
             "|" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::BitOr), lhs, rhs)),
 
-            "+=" => self.covert_binary_assignment("+", ctype, ty, lhs, rhs),
-            "-=" => self.covert_binary_assignment("-", ctype, ty, lhs, rhs),
-            "*=" => self.covert_binary_assignment("*", ctype, ty, lhs, rhs),
-            "/=" => self.covert_binary_assignment("/", ctype, ty, lhs, rhs),
-            "%=" => self.covert_binary_assignment("%", ctype, ty, lhs, rhs),
-            "^=" => self.covert_binary_assignment("^", ctype, ty, lhs, rhs),
-            "<<=" => self.covert_binary_assignment("<<", ctype, ty, lhs, rhs),
-            ">>=" => self.covert_binary_assignment(">>", ctype, ty, lhs, rhs),
-            "|=" => self.covert_binary_assignment("|", ctype, ty, lhs, rhs),
-            "&=" => self.covert_binary_assignment("&", ctype, ty, lhs, rhs),
+            "+="  => self.convert_binary_assignment("+",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
+            "-="  => self.convert_binary_assignment("-",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
+            "*="  => self.convert_binary_assignment("*",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
+            "/="  => self.convert_binary_assignment("/",  ty, ctype, lhs_type, rhs_type ,lhs, rhs),
+            "%="  => self.convert_binary_assignment("%",  ty, ctype, lhs_type, rhs_type ,lhs, rhs),
+            "^="  => self.convert_binary_assignment("^",  ty, ctype, lhs_type, rhs_type ,lhs, rhs),
+            "<<=" => self.convert_binary_assignment("<<", ty, ctype, lhs_type, rhs_type ,lhs, rhs),
+            ">>=" => self.convert_binary_assignment(">>", ty, ctype, lhs_type, rhs_type ,lhs, rhs),
+            "|="  => self.convert_binary_assignment("|",  ty, ctype, lhs_type, rhs_type ,lhs, rhs),
+            "&="  => self.convert_binary_assignment("&",  ty, ctype, lhs_type, rhs_type ,lhs, rhs),
 
-            "=" => unimplemented!(),
+            "=" => self.convert_assignment(lhs, rhs),
 
             op => panic!("Unknown binary operator {}", op),
         }
     }
 
-    fn covert_binary_assignment(&mut self, name: &str, ctype: TypeNode, ty: P<Ty>, lhs: P<Expr>, rhs: P<Expr>) -> WithStmts<P<Expr>> {
+    fn convert_binary_assignment(&mut self, name: &str, ty: P<Ty>, ctype: TypeNode, lhs_type: TypeNode, rhs_type: TypeNode, lhs: P<Expr>, rhs: P<Expr>) -> WithStmts<P<Expr>> {
         // Improvements:
         // * Don't create fresh names in place of lhs that is already a name
         // * Don't create block, use += for a statement
@@ -465,7 +497,7 @@ impl Translation {
         // *p
         let deref_lhs = mk().unary_expr("*", mk().ident_expr(&ptr_name));
         // *p + rhs
-        let mut val = self.convert_binary_operator(name, ctype, ty, deref_lhs.clone(), rhs);
+        let mut val = self.convert_binary_operator(name, ty, ctype, lhs_type, rhs_type, deref_lhs.clone(), rhs);
         // *p = *p + rhs
         let assign_stmt = mk().assign_expr(&deref_lhs, val.val);
 
@@ -475,6 +507,61 @@ impl Translation {
 
         WithStmts {
             stmts,
+            val: deref_lhs
+        }
+    }
+
+    fn convert_addition(&mut self, lhs_type: TypeNode, rhs_type: TypeNode, lhs: P<Expr>, rhs: P<Expr>) -> P<Expr> {
+        let lhs_type = self.ast_context.resolve_type(lhs_type);
+        let rhs_type = self.ast_context.resolve_type(rhs_type);
+
+        if lhs_type.is_pointer() {
+            mk().method_call_expr(lhs, "offset", vec![rhs])
+        } else if rhs_type.is_pointer() {
+            mk().method_call_expr(rhs, "offset", vec![lhs])
+        } else if lhs_type.is_unsigned_integral_type() {
+            mk().method_call_expr(lhs, mk().path_segment("wrapping_add"), vec![rhs])
+        } else {
+            mk().binary_expr(mk().spanned(BinOpKind::Add), lhs, rhs)
+        }
+    }
+
+    fn convert_subtraction(&mut self, lhs_type: TypeNode, rhs_type: TypeNode, lhs: P<Expr>, rhs: P<Expr>) -> P<Expr> {
+        let lhs_type = self.ast_context.resolve_type(lhs_type);
+        let rhs_type = self.ast_context.resolve_type(rhs_type);
+
+        if rhs_type.is_pointer() {
+            mk().method_call_expr(rhs, "offset_to", vec![lhs])
+        } else if lhs_type.is_pointer() {
+            let neg_rhs = mk().unary_expr(UnOp::Neg, rhs);
+            mk().method_call_expr(lhs, "offset", vec![neg_rhs])
+        } else if lhs_type.is_unsigned_integral_type() {
+            mk().method_call_expr(lhs, mk().path_segment("wrapping_sub"), vec![rhs])
+        } else {
+            mk().binary_expr(mk().spanned(BinOpKind::Sub), lhs, rhs)
+        }
+    }
+
+    fn convert_assignment(&mut self, lhs: P<Expr>, rhs: P<Expr>) -> WithStmts<P<Expr>> {
+        // Improvements:
+        // * Don't create fresh names in place of lhs that is already a name
+        // * Don't create block, use += for a statement
+        let ptr_name = self.renamer.fresh();
+        // let ref mut p = lhs;
+        let compute_lhs =
+            mk().local_stmt(
+                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&ptr_name),
+                             None as Option<P<Ty>>,
+                             Some(lhs)))
+            );
+        // *p
+        let deref_lhs = mk().unary_expr("*", mk().ident_expr(&ptr_name));
+
+        // *p = rhs
+        let assign_stmt = mk().expr_stmt(mk().assign_expr(&deref_lhs, rhs));
+
+        WithStmts {
+            stmts: vec![assign_stmt],
             val: deref_lhs
         }
     }
