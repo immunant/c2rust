@@ -440,14 +440,15 @@ impl Translation {
             "*" => unimplemented!(),
             "+" => WithStmts::new(arg), // promotion is explicit in the clang AST
             "-" => {
-                if self.ast_context.resolve_type(ctype).is_unsigned_integral_type() {
+                let val = if self.ast_context.resolve_type(ctype).is_unsigned_integral_type() {
                     mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<P<Expr>>)
                 } else {
                     mk().unary_expr(UnOp::Neg, arg)
-                }
+                };
+                WithStmts::new(val)
             }
-            "~" => mk().unary_expr(UnOp::Not, arg) ,
-            "!" => unimplemented!(),
+            "~" => WithStmts::new(mk().unary_expr(UnOp::Not, arg)),
+            "!" => WithStmts::new(self.convert_not(ctype, arg)),
             n => panic!("Unknown unary operator {}", n),
         }
     }
@@ -620,5 +621,19 @@ impl Translation {
             let zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
             mk().binary_expr(BinOpKind::Ne, zero, val)
         }
+    }
+
+    /// Convert expression to c_int using '!' behavior
+    fn convert_not(&self, ty: TypeNode, val: P<Expr>) -> P<Expr> {
+        let ty = self.ast_context.resolve_type(ty);
+
+        let b = if ty.is_pointer() {
+            mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>)
+        } else {
+            let zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
+            mk().binary_expr(BinOpKind::Eq, zero, val)
+        };
+
+        mk().cast_expr(b, mk().path_ty(vec!["libc","c_int"]))
     }
 }

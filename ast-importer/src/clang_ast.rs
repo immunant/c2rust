@@ -132,7 +132,7 @@ pub fn expect_str(val: &Cbor) -> Result<&str, DecodeError> {
     }
 }
 
-fn expect_bool(val: &Cbor) -> Result<bool, DecodeError> {
+pub fn expect_bool(val: &Cbor) -> Result<bool, DecodeError> {
     match val {
         &Cbor::Bool(b) => Ok(b),
         _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
