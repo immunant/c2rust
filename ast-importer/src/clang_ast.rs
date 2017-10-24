@@ -52,6 +52,26 @@ impl AstContext {
     }
 }
 
+impl AstNode {
+    pub fn get_decl_name(&self) -> Option<&str> {
+        match self.tag {
+            ASTEntryTag::TagVarDecl => Some(expect_str(&self.extras[0]).unwrap()),
+            ASTEntryTag::TagFunctionDecl => Some(expect_str(&self.extras[0]).unwrap()),
+            _ => None,
+        }
+    }
+}
+
+impl TypeNode {
+    pub fn is_unsigned_integral_type(&self) -> bool {
+        match self.tag {
+            TypeTag::TagUInt | TypeTag::TagUShort | TypeTag::TagULong | TypeTag::TagULongLong => true,
+            _ => false
+        }
+
+    }
+}
+
 pub fn expect_array<'a>(val: &'a Cbor) -> Result<&'a Vec<Cbor>, DecodeError> {
     match val {
         &Cbor::Array(ref xs) => Ok(xs),

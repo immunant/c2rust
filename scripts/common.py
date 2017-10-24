@@ -16,7 +16,7 @@ try:
     import plumbum as pb
 except ImportError:
     # run `pip install plumbum` or `easy_install plumbum` to fix
-    print >> sys.stderr, "error: python package plumbum is not installed."
+    print("error: python package plumbum is not installed.", file=sys.stderr)
     sys.exit(errno.ENOENT)
 
 NCPUS = str(multiprocessing.cpu_count())
