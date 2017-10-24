@@ -118,7 +118,7 @@ def download_and_build_custom_rustc(args):
             configure = pb.local['./configure']
             configure & pb.FG
 
-        x_py['build', '--target=X86' '-j' + NCPUS] & pb.FG
+        x_py['build', '-j' + NCPUS] & pb.FG
 
     build_output = os.path.join(COMPILER_SUBMOD_DIR, "build", target_triple, "stage2")
     assert os.path.isdir(build_output)
