@@ -140,7 +140,6 @@ def build_ast_importer():
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])
     cargo = get_cmd_or_die("cargo")
-    git = get_cmd_or_die("git")
 
     assert os.path.isdir(os.path.join(COMPILER_SUBMOD_DIR, 'src'))
 
@@ -322,7 +321,6 @@ def _main():
         shutil.rmtree(LLVM_SRC, ignore_errors=True)
         shutil.rmtree(LLVM_BLD, ignore_errors=True)
         shutil.rmtree(DEPS_DIR, ignore_errors=True)
-
 
     ensure_dir(LLVM_BLD)
     ensure_dir(DEPS_DIR)
