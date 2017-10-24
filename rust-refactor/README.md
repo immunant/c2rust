@@ -12,7 +12,7 @@ Install cargo and rustup first.
 `idiomize` requires a specific `rustc` revision. The `rust-lang/rust` repository was
 added as a git submodule to this repository. 
 
-1. Check out revision `cfcac3` of `rust-lang/rust` by running `git submodule update --init path/to/rust-refactor/compiler`. 
+1. Check out revision `cfcac3` of `rust-lang/rust` by running `git submodule update --init --recursive path/to/rust-refactor/compiler`. 
 
 2. cd to `rust-refactor/compiler` and build with `./configure && ./x.py build`. 
 
