@@ -516,6 +516,7 @@ class TranslateASTVisitor final
           encode_entry(UO, TagUnaryOperator, childIds,
                              [UO](CborEncoder *array) {
                                  cbor_encode_string(array, UO->getOpcodeStr(UO->getOpcode()).str());
+                                 cbor_encode_boolean(array, UO->isPrefix());
                              });
           return true;
       }

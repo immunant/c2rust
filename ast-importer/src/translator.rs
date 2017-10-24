@@ -364,11 +364,12 @@ impl Translation {
             ASTEntryTag::TagUnaryOperator =>
                 {
                     let name = expect_string(&node.extras[0]).expect("Missing binary operator name");
+                    let prefix = expect_bool(&node.extras[1]).expect("is_prefix");
                     let mut arg = self.convert_expr(node.children[0].expect("Missing value"));
                     let type_id = node.type_id.unwrap();
                     let cty = self.ast_context.get_type(type_id).unwrap();
                     let ty = self.convert_type(type_id);
-                    let mut unary = self.convert_unary_operator(&name, cty, ty, arg.val);
+                    let mut unary = self.convert_unary_operator(&name, prefix, cty, ty, arg.val);
                     arg.stmts.append(&mut unary.stmts);
                     WithStmts {
                         stmts: arg.stmts,
@@ -425,14 +426,29 @@ impl Translation {
         }
     }
 
-    pub fn convert_unary_operator(&mut self, name: &str, ctype: TypeNode, ty: P<Ty>, arg: P<Expr>) -> WithStmts<P<Expr>> {
+    pub fn convert_unary_operator(&mut self, name: &str, prefix: bool, ctype: TypeNode, ty: P<Ty>, arg: P<Expr>) -> WithStmts<P<Expr>> {
         match name {
             "&" => {
                 let addr_of_arg = mk().set_mutbl(Mutability::Mutable).addr_of_expr(arg);
                 let ptr = mk().cast_expr(addr_of_arg, ty);
                 WithStmts::new(ptr)
             },
-            n => panic!("unary operator {} not implemented", n),
+            "++" if prefix => unimplemented!(),
+            "++" => unimplemented!(),
+            "--" if prefix => unimplemented!(),
+            "--" => unimplemented!(),
+            "*" => unimplemented!(),
+            "+" => WithStmts::new(arg), // promotion is explicit in the clang AST
+            "-" => {
+                if self.ast_context.resolve_type(ctype).is_unsigned_integral_type() {
+                    mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<P<Expr>>)
+                } else {
+                    mk().unary_expr(UnOp::Neg, arg)
+                }
+            }
+            "~" => mk().unary_expr(UnOp::Not, arg) ,
+            "!" => unimplemented!(),
+            n => panic!("Unknown unary operator {}", n),
         }
     }
 
