@@ -128,12 +128,6 @@ fn bool_to_int(val: P<Expr>) -> P<Expr> {
     mk().cast_expr(val, mk().path_ty(vec!["libc","c_int"]))
 }
 
-/// Convert a boolean expression to a c_int
-fn int_to_bool(val: P<Expr>) -> P<Expr> {
-    let zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
-    mk().binary_expr(mk().spanned(BinOpKind::Ne), zero, val)
-}
-
 impl Translation {
     pub fn new(ast_context: AstContext) -> Translation {
         Translation {
@@ -459,8 +453,18 @@ impl Translation {
             ">=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Ge), lhs, rhs)).map(bool_to_int),
             "<=" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Le), lhs, rhs)).map(bool_to_int),
 
-            "&&" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::And), lhs, rhs)),
-            "||" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::Or), lhs, rhs)),
+            "&&" => {
+                let lhs = self.to_bool(lhs_type, lhs);
+                let rhs = self.to_bool(rhs_type, rhs);
+                let res = mk().binary_expr(mk().spanned(BinOpKind::And), lhs, rhs);
+                WithStmts::new(bool_to_int(res))
+            },
+            "||" => {
+                let lhs = self.to_bool(lhs_type, lhs);
+                let rhs = self.to_bool(rhs_type, rhs);
+                let res = mk().binary_expr(mk().spanned(BinOpKind::Or), lhs, rhs);
+                WithStmts::new(bool_to_int(res))
+            },
 
             "&" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::BitAnd), lhs, rhs)),
             "|" => WithStmts::new(mk().binary_expr(mk().spanned(BinOpKind::BitOr), lhs, rhs)),
@@ -563,6 +567,18 @@ impl Translation {
         WithStmts {
             stmts: vec![assign_stmt],
             val: deref_lhs
+        }
+    }
+
+    /// Convert a boolean expression to a boolean for use in && or || or if
+    fn to_bool(&self, ty: TypeNode, val: P<Expr>) -> P<Expr> {
+        let ty = self.ast_context.resolve_type(ty);
+
+        if ty.is_pointer() {
+            mk().unary_expr(UnOp::Not, mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>))
+        } else {
+            let zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
+            mk().binary_expr(mk().spanned(BinOpKind::Ne), zero, val)
         }
     }
 }
