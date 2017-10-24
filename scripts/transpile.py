@@ -124,18 +124,17 @@ def transpile_files(cc_db: TextIO,
         with pb.local.env(RUST_BACKTRACE='1',
                           LD_LIBRARY_PATH=ld_lib_path):
             logging.info(" importing ast from %s", os.path.basename(cbor_file))
-            retcode, stdout, stderr = invoke_quietly(ast_impo, cbor_file)
-            if retcode != 0:
+            try:
+                retcode, stdout, stderr = invoke_quietly(ast_impo, cbor_file)
+            except:
                 exception_raised = True
-                argv = str(ast_impo[cbor_file])
-                raise pb.ProcessExecutionError(argv,
-                                               retcode,
-                                               "(stdout elided)",
-                                               stderr)
+                quit(1)
 
     if jobs == 1:
         for cmd in cc_db:
             transpile_single(cmd)
+        if exception_raised:
+            quit(1)
     else:
         # We use the ThreadPoolExecutor (not ProcesssPoolExecutor) because
         # 1. we spend most of the time outside the python interpreter, and
