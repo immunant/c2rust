@@ -21,10 +21,38 @@ RUBY_ARCHIVE = os.path.basename(RUBY_URL)
 RUBY_SRC = RUBY_ARCHIVE.replace(".tar.gz", "")
 RUBY_SRC = os.path.join(DEPS_DIR, RUBY_SRC)
 
+JSON_C_URL = "https://s3.amazonaws.com/" + \
+    "json-c_releases/releases/json-c-0.12.1.tar.gz"
+JSON_C_ARCHIVE = os.path.basename(JSON_C_URL)
+JSON_C_SRC = JSON_C_ARCHIVE.replace(".tar.gz", "")
+JSON_C_SRC = os.path.join(DEPS_DIR, JSON_C_SRC)
+
 TAR = get_cmd_or_die("tar")
 SED = get_cmd_or_die("sed")
 MAKE = get_cmd_or_die("make")
 BEAR = get_cmd_or_die(BEAR_BIN)
+JOBS = "-j2"  # main updates jobs based on args
+
+
+def test_json_c(args: argparse.Namespace) -> None:
+    with pb.local.cwd(DEPS_DIR):
+        download_archive(JSON_C_URL, JSON_C_ARCHIVE)
+        invoke_quietly(TAR, "xf", JSON_C_ARCHIVE)
+
+    cc_db_file = os.path.join(JSON_C_SRC, CC_DB_JSON)
+    if not os.path.isfile(cc_db_file):
+        with pb.local.cwd(JSON_C_SRC), pb.local.env(CC="clang"):
+            if os.path.isfile('Makefile'):
+                invoke(MAKE['clean'])
+            configure = pb.local.get("./configure")
+            invoke(configure)
+            invoke(BEAR[MAKE[JOBS]])
+
+    if not os.path.isfile(cc_db_file):
+        die("missing " + cc_db_file, errno.ENOENT)
+
+    with open(cc_db_file) as cc_db:
+        transpile_files(cc_db, args.jobs)
 
 
 def test_lua(args: argparse.Namespace) -> None:
@@ -45,7 +73,8 @@ def test_lua(args: argparse.Namespace) -> None:
     cc_db_file = os.path.join(LUA_SRC, CC_DB_JSON)
     if not os.path.isfile(cc_db_file):
         with pb.local.cwd(LUA_SRC), pb.local.env(CC="clang"):
-            invoke(BEAR[MAKE["linux"]])
+            invoke(MAKE['clean'])
+            invoke(BEAR[MAKE["linux", JOBS]])
 
     if not os.path.isfile(cc_db_file):
         die("missing " + cc_db_file, errno.ENOENT)
@@ -65,7 +94,7 @@ def test_ruby(args: argparse.Namespace) -> None:
                                                   cflags="-w"):
             configure = pb.local.get("./configure")
             invoke(configure)
-            invoke(BEAR[MAKE])
+            invoke(BEAR[MAKE[JOBS]])
 
     if not os.path.isfile(cc_db_file):
         die("missing " + cc_db_file, errno.ENOENT)
@@ -88,6 +117,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    global JOBS
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
@@ -101,10 +131,15 @@ def main() -> None:
     ensure_dir(DEPS_DIR)
 
     args = parse_args()
+    JOBS = '-j' + str(args.jobs)
 
     # filter what gets tested using `what` argument
-    tests = [test_ruby, test_lua]
+    tests = [test_json_c, test_ruby, test_lua]
     tests = [t for t in tests if args.what in t.__name__]
+
+    if not tests:
+        die("nothing to test")
+
     for t in tests:
         logging.debug("running test: %s", t.__name__)
         t(args)

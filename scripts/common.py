@@ -4,6 +4,7 @@ import re
 import sys
 import json
 import errno
+import shutil
 import signal
 import logging
 import platform
@@ -96,25 +97,29 @@ def download_and_build_custom_rustc(args):
         logging.info("skipping custom rust toolchain build step; already installed")
         return
 
+    assert on_linux(), "FIXME: set target_triple based on host os"
+    target_triple = 'x86_64-unknown-linux-gnu'
+
     # disable host key checking to avoid prompts during automated builds
     with pb.local.env(GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"):
-        # make sure the submodule is initialized and updated
-        invoke(git, "submodule", "update", "--init", COMPILER_SUBMOD_DIR)
+        # recursively update and (optionally) initialize submodules
+        invoke(git, "submodule", "update", "--init", "--recursive",
+               COMPILER_SUBMOD_DIR)
 
     with pb.local.cwd(COMPILER_SUBMOD_DIR):
         # seems that just updating submodule gives us the right version
         # invoke(git, 'reset', '--hard', CUSTOM_RUST_REV)
 
+        x_py = pb.local['./x.py']
+        if args.clean_all:
+            x_py['clean'] & pb.FG
+
         if not os.path.isfile("config.toml"):
             configure = pb.local['./configure']
             configure & pb.FG
 
-        x_py = pb.local['./x.py']
-
         x_py['build', '-j' + NCPUS] & pb.FG
-    
-    assert on_linux(), "FIXME: set target_triple based on host os"
-    target_triple = 'x86_64-unknown-linux-gnu'
+
     build_output = os.path.join(COMPILER_SUBMOD_DIR, "build", target_triple, "stage2")
     assert os.path.isdir(build_output)
     rustup['toolchain', 'link', CUSTOM_RUST_NAME, build_output] & pb.FG
