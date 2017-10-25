@@ -8,17 +8,32 @@ pub enum XCheckBasicType {
     Skip,
 }
 
+#[derive(Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum XCheckComplexType {
+    // Basic types
+    // FIXME: ideally, we'd extend or include XCheckBasicType here
+    Default,
+    Skip,
+
+    // Complex types (which use other fields from TypeInfo below)
+    Fixed,
+}
+
 #[derive(Deserialize, Debug)]
-pub struct XCheckComplexType {
+pub struct XCheckComplexTypeInfo {
     #[serde(rename = "type")]
-    ty: XCheckBasicType,
+    ty: XCheckComplexType,
+
+    #[serde(default)]
+    item: Option<u64>,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum XCheckType {
     Basic(XCheckBasicType),
-    Complex(XCheckComplexType),
+    Complex(XCheckComplexTypeInfo),
 }
 
 impl Default for XCheckType {
@@ -33,6 +48,10 @@ pub struct FunctionConfig {
     // Name of the function
     // FIXME: where do we get this???
     name: Option<String>,
+
+    // Overrides for the attribute config items
+    no_xchecks: bool,
+    xcheck_name: Option<String>,
 
     // How to cross-check function entry and exit
     entry: XCheckType,
