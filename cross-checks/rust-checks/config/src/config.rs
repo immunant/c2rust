@@ -1,4 +1,6 @@
 
+use std::collections::HashMap;
+
 #[derive(Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum XCheckBasicType {
@@ -17,6 +19,31 @@ pub struct XCheckComplexType {
 pub enum XCheckType {
     Basic(XCheckBasicType),
     Complex(XCheckComplexType),
+}
+
+impl Default for XCheckType {
+    fn default() -> XCheckType {
+        XCheckType::Basic(XCheckBasicType::Default)
+    }
+}
+
+#[derive(Deserialize, Debug, Default)]
+#[serde(default)]
+pub struct FunctionConfig {
+    // Name of the function
+    // FIXME: where do we get this???
+    name: Option<String>,
+
+    // How to cross-check function entry and exit
+    entry: XCheckType,
+    exit: XCheckType,
+
+    // How to cross-check each argument
+    args: HashMap<String, XCheckType>,
+
+    // How to cross-check the return value
+    #[serde(rename = "return")]
+    ret: XCheckType,
 }
 
 #[cfg(test)]
@@ -41,5 +68,10 @@ mod tests {
                    XCheckBasicType::Default);
 
         // TODO: test XCheckComplexType
+    }
+
+    #[test]
+    fn test_function() {
+        // TODO
     }
 }
