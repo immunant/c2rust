@@ -52,9 +52,9 @@ mod tests {
         assert!(s.len() % 8 == 0);
         let mut h = JodyHasher::default();
         let sptr = s.as_ptr() as *const u64;
-        (0..s.len() / 8).for_each(|i| {
+        for i in 0..s.len() / 8 {
             h.write_u64(unsafe { *sptr.offset(i as isize) })
-        });
+        }
         h.finish()
     }
 
