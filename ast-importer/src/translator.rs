@@ -326,6 +326,11 @@ impl Translation {
     }
     fn convert_expr_node(&mut self, node: AstNode) -> WithStmts<P<Expr>> {
         match node.tag {
+            ASTEntryTag::TagParenExpr => {
+                let child_id = node.children[0].expect("child id");
+                self.convert_expr(child_id)
+            }
+
             ASTEntryTag::TagDeclRefExpr =>
                 {
                     let child =
@@ -384,16 +389,34 @@ impl Translation {
                     let lhs = self.convert_expr_node(lhs_node);
                     let rhs_node = self.ast_context.ast_nodes.get(&node.children[1].expect("rhs id")).expect("rhs node").to_owned();
                     let rhs_ty = self.ast_context.get_type(rhs_node.type_id.expect("rhs ty id")).expect("rhs ty");
-                    let rhs = self.convert_expr_node(rhs_node);
+                    let mut rhs = self.convert_expr_node(rhs_node);
                     let type_id = node.type_id.unwrap();
                     let cty = self.ast_context.get_type(type_id).unwrap();
                     let ty = self.convert_type(type_id);
-                    let bin =
-                        self.convert_binary_operator(&name, ty, cty, lhs_ty, rhs_ty, lhs.val, rhs.val);
 
-                    WithStmts {
-                        stmts: lhs.stmts.into_iter().chain(rhs.stmts).chain(bin.stmts).collect(),
-                        val: bin.val,
+                    match name.as_str() {
+                        "," =>
+                            lhs.and_then(|x| {
+                                rhs.stmts.insert(0,mk().expr_stmt(x));
+                                rhs
+                            }),
+
+                        "&&" =>
+                            lhs.map(|x| mk().binary_expr(BinOpKind::And, x, rhs.to_expr())),
+
+                        "||" =>
+                            lhs.map(|x| mk().binary_expr(BinOpKind::Or, x, rhs.to_expr())),
+
+                        // No sequence-point cases
+                        _ => {
+                            let bin =
+                                self.convert_binary_operator(&name, ty, cty, lhs_ty, rhs_ty, lhs.val, rhs.val);
+
+                            WithStmts {
+                                stmts: lhs.stmts.into_iter().chain(rhs.stmts).chain(bin.stmts).collect(),
+                                val: bin.val,
+                            }
+                        }
                     }
                 },
             ASTEntryTag::TagCallExpr =>
@@ -483,32 +506,19 @@ impl Translation {
             ">=" => WithStmts::new(mk().binary_expr(BinOpKind::Ge, lhs, rhs)).map(bool_to_int),
             "<=" => WithStmts::new(mk().binary_expr(BinOpKind::Le, lhs, rhs)).map(bool_to_int),
 
-            "&&" => {
-                let lhs = self.to_bool(lhs_type, lhs);
-                let rhs = self.to_bool(rhs_type, rhs);
-                let res = mk().binary_expr(BinOpKind::And, lhs, rhs);
-                WithStmts::new(bool_to_int(res))
-            },
-            "||" => {
-                let lhs = self.to_bool(lhs_type, lhs);
-                let rhs = self.to_bool(rhs_type, rhs);
-                let res = mk().binary_expr(BinOpKind::Or, lhs, rhs);
-                WithStmts::new(bool_to_int(res))
-            },
-
             "&" => WithStmts::new(mk().binary_expr(BinOpKind::BitAnd, lhs, rhs)),
             "|" => WithStmts::new(mk().binary_expr(BinOpKind::BitOr, lhs, rhs)),
 
             "+="  => self.convert_binary_assignment("+",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
             "-="  => self.convert_binary_assignment("-",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
             "*="  => self.convert_binary_assignment("*",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
-            "/="  => self.convert_binary_assignment("/",  ty, ctype, lhs_type, rhs_type ,lhs, rhs),
-            "%="  => self.convert_binary_assignment("%",  ty, ctype, lhs_type, rhs_type ,lhs, rhs),
-            "^="  => self.convert_binary_assignment("^",  ty, ctype, lhs_type, rhs_type ,lhs, rhs),
-            "<<=" => self.convert_binary_assignment("<<", ty, ctype, lhs_type, rhs_type ,lhs, rhs),
-            ">>=" => self.convert_binary_assignment(">>", ty, ctype, lhs_type, rhs_type ,lhs, rhs),
-            "|="  => self.convert_binary_assignment("|",  ty, ctype, lhs_type, rhs_type ,lhs, rhs),
-            "&="  => self.convert_binary_assignment("&",  ty, ctype, lhs_type, rhs_type ,lhs, rhs),
+            "/="  => self.convert_binary_assignment("/",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
+            "%="  => self.convert_binary_assignment("%",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
+            "^="  => self.convert_binary_assignment("^",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
+            "<<=" => self.convert_binary_assignment("<<", ty, ctype, lhs_type, rhs_type, lhs, rhs),
+            ">>=" => self.convert_binary_assignment(">>", ty, ctype, lhs_type, rhs_type, lhs, rhs),
+            "|="  => self.convert_binary_assignment("|",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
+            "&="  => self.convert_binary_assignment("&",  ty, ctype, lhs_type, rhs_type, lhs, rhs),
 
             "=" => self.convert_assignment(lhs, rhs),
 
