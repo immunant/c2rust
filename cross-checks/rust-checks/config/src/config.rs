@@ -49,6 +49,7 @@ pub struct FunctionConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use serde;
     use serde_yaml;
 
