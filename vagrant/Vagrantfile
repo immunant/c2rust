@@ -130,7 +130,7 @@ $rustup_script = <<SCRIPT
 # but it doesn't check signatures of downloaded packages :/
 # https://github.com/rust-lang-nursery/rustup.rs#security
 # NOTE: must run as vagrant user, not root.
-curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2017-09-17
+curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2017-09-18
 echo "source ~/.cargo/env" >> ~/.bashrc
 SCRIPT
   
