@@ -449,6 +449,75 @@ impl Translation {
         }
     }
 
+    pub fn convert_pre_increment(&mut self, ctype: TypeNode, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
+        let ptr_name = self.renamer.fresh();
+        // let ref mut p = lhs;
+        let compute_lhs =
+            mk().local_stmt(
+                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&ptr_name),
+                             None as Option<P<Ty>>,
+                             Some(arg)))
+            );
+        // *p
+        let deref_lhs = mk().unary_expr("*", mk().ident_expr(&ptr_name));
+        let one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
+        // *p + 1
+        let val =
+            if self.ast_context.resolve_type(ctype).is_pointer() {
+                let n = if up { one } else { mk().unary_expr(UnOp::Neg, one) };
+                mk().method_call_expr(mk().ident_expr(&ptr_name), "offset", vec![n])
+            } else {
+                let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
+                mk().binary_expr(k, deref_lhs.clone(), one)
+            };
+
+        // *p = *p + rhs
+        let assign_stmt = mk().assign_expr(&deref_lhs.clone(), val);
+
+        WithStmts {
+            stmts: vec![compute_lhs, mk().expr_stmt(assign_stmt)],
+            val: deref_lhs,
+        }
+    }
+
+    pub fn convert_post_increment(&mut self, ctype: TypeNode, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
+        let ptr_name = self.renamer.fresh();
+        let val_name = self.renamer.fresh();
+        // let ref mut p = lhs;
+        let compute_lhs =
+            mk().local_stmt(
+                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&ptr_name),
+                             None as Option<P<Ty>>,
+                             Some(arg)))
+            );
+        // *p
+        let deref_lhs = mk().unary_expr("*", mk().ident_expr(&ptr_name));
+        let save_old_val =
+            mk().local_stmt(
+                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&val_name),
+                             None as Option<P<Ty>>,
+                             Some(deref_lhs.clone())))
+            );
+        let one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
+        // *p + 1
+        let val =
+            if self.ast_context.resolve_type(ctype).is_pointer() {
+                let n = if up { one } else { mk().unary_expr(UnOp::Neg, one) };
+                mk().method_call_expr(mk().ident_expr(&ptr_name), "offset", vec![n])
+            } else {
+                let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
+                mk().binary_expr(k, deref_lhs.clone(), one)
+            };
+
+        // *p = *p + rhs
+        let assign_stmt = mk().assign_expr(&deref_lhs.clone(), val);
+
+        WithStmts {
+            stmts: vec![compute_lhs, save_old_val, mk().expr_stmt(assign_stmt)],
+            val: mk().ident_expr(val_name),
+        }
+    }
+
     pub fn convert_unary_operator(&mut self, name: &str, prefix: bool, ctype: TypeNode, ty: P<Ty>, arg: P<Expr>) -> WithStmts<P<Expr>> {
         match name {
             "&" => {
@@ -456,11 +525,11 @@ impl Translation {
                 let ptr = mk().cast_expr(addr_of_arg, ty);
                 WithStmts::new(ptr)
             },
-            "++" if prefix => unimplemented!(),
-            "++" => unimplemented!(),
-            "--" if prefix => unimplemented!(),
-            "--" => unimplemented!(),
-            "*" => unimplemented!(),
+            "++" if prefix => self.convert_pre_increment(ctype, true, arg),
+            "++" => self.convert_post_increment(ctype, true, arg),
+            "--" if prefix => self.convert_pre_increment(ctype, false, arg),
+            "--" => self.convert_post_increment(ctype, false, arg),
+            "*" => WithStmts::new(mk().unary_expr(UnOp::Deref, arg)),
             "+" => WithStmts::new(arg), // promotion is explicit in the clang AST
             "-" => {
                 let val = if self.ast_context.resolve_type(ctype).is_unsigned_integral_type() {
