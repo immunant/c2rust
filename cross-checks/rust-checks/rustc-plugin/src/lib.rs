@@ -174,7 +174,7 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
 
                 let checked_block = self.fold_block(block).map(|block| {
                     quote_block!(self.cx, {
-                        cross_check_raw!(FUNCTION_CALL_TAG, $check_id);
+                        cross_check_raw!(FUNCTION_ENTRY_TAG, $check_id);
                         $arg_xchecks
                         $block
                     }).unwrap()
