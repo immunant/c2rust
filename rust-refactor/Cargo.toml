@@ -14,18 +14,18 @@ getopts = "0.2.14"
 regex = "0.2.2"
 ena = "0.7.3"
 
-[target.'cfg(NOT_A_PLATFORM)'.dependencies]
-arena                 = {path = "compiler/src/libarena"}
-rustc                 = {path = "compiler/src/librustc"}
-rustc_data_structures = {path = "compiler/src/librustc_data_structures"}
-rustc_driver          = {path = "compiler/src/librustc_driver"}
-rustc_errors          = {path = "compiler/src/librustc_errors"}
-rustc_metadata        = {path = "compiler/src/librustc_metadata"}
-rustc_resolve         = {path = "compiler/src/librustc_resolve"}
-rustc_trans           = {path = "compiler/src/librustc_trans"}
-syntax                = {path = "compiler/src/libsyntax"}
-syntax_ext            = {path = "compiler/src/libsyntax_ext"}
-syntax_pos            = {path = "compiler/src/libsyntax_pos"}
+# [target.'cfg(NOT_A_PLATFORM)'.dependencies]
+# arena                 = {path = "compiler/src/libarena"}
+# rustc                 = {path = "compiler/src/librustc"}
+# rustc_data_structures = {path = "compiler/src/librustc_data_structures"}
+# rustc_driver          = {path = "compiler/src/librustc_driver"}
+# rustc_errors          = {path = "compiler/src/librustc_errors"}
+# rustc_metadata        = {path = "compiler/src/librustc_metadata"}
+# rustc_resolve         = {path = "compiler/src/librustc_resolve"}
+# rustc_trans           = {path = "compiler/src/librustc_trans"}
+# syntax                = {path = "compiler/src/libsyntax"}
+# syntax_ext            = {path = "compiler/src/libsyntax_ext"}
+# syntax_pos            = {path = "compiler/src/libsyntax_pos"}
 
 [lib]
 name = "idiomize"
