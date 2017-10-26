@@ -9,23 +9,42 @@ use syntax::fold;
 
 use std::convert::TryInto;
 
-use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable};
+use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier};
 use syntax::codemap::Span;
 use syntax::fold::Folder;
 use syntax::symbol::Symbol;
 
-fn expand_cross_checks(cx: &mut ExtCtxt,
-                       _sp: Span,
-                       mi: &ast::MetaItem,
-                       item: Annotatable) -> Annotatable {
-    let config = CrossCheckConfig::new(mi);
-    match item {
-        Annotatable::Item(i) => Annotatable::Item(
-            CrossChecker{ cx: cx, config: config }
-            .fold_item(i).expect_one("too many items returned")),
-        // TODO: handle TraitItem
-        // TODO: handle ImplItem
-        _ => panic!("Unexpected item: {:?}", item),
+struct CrossCheckExpander {
+    // Arguments passed to plugin
+    // TODO: pre-parse them???
+    args: Vec<ast::NestedMetaItem>,
+}
+
+impl CrossCheckExpander {
+    fn new(args: &[ast::NestedMetaItem]) -> CrossCheckExpander {
+        CrossCheckExpander {
+            args: args.to_vec(),
+        }
+    }
+}
+
+impl MultiItemModifier for CrossCheckExpander {
+    fn expand(&self,
+              cx: &mut ExtCtxt,
+              _sp: Span,
+              mi: &ast::MetaItem,
+              item: Annotatable) -> Vec<Annotatable> {
+        let config = CrossCheckConfig::new(mi);
+        match item {
+            Annotatable::Item(i) => Annotatable::Item(
+                CrossChecker{ cx: cx, config: config }
+                .fold_item(i)
+                .expect_one("too many items returned"))
+                .into(),
+            // TODO: handle TraitItem
+            // TODO: handle ImplItem
+            _ => panic!("Unexpected item: {:?}", item),
+        }
     }
 }
 
@@ -209,7 +228,9 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
 
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
+    let ecc = CrossCheckExpander::new(reg.args());
+    // TODO: parse args
     reg.register_syntax_extension(
         Symbol::intern("cross_check"),
-        SyntaxExtension::MultiModifier(Box::new(expand_cross_checks)));
+        SyntaxExtension::MultiModifier(Box::new(ecc)));
 }
