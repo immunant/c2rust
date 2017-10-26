@@ -39,8 +39,7 @@ impl MultiItemModifier for CrossCheckExpander {
             Annotatable::Item(i) => Annotatable::Item(
                 CrossChecker{ cx: cx, config: config }
                 .fold_item(i)
-                .expect_one("too many items returned"))
-                .into(),
+                .expect_one("too many items returned")).into(),
             // TODO: handle TraitItem
             // TODO: handle ImplItem
             _ => panic!("Unexpected item: {:?}", item),
