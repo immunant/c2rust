@@ -64,7 +64,16 @@ LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
 
 AST_EXTR = os.path.join(LLVM_BLD, "bin/ast-extractor")
 
-KEYSERVER = "keys.gnupg.net"
+# from `gpg-connect-agent --dirmngr 'keyserver --hosttable'`
+# PL: seems we need multiple keyservers since some only work
+# for IPv4 and others only work for IPv6.
+KEYSERVERS = [
+    "hkp://keys.gnupg.net",
+    "hkp://ipv4.pool.sks-keyservers.net",
+    "hkp://cryptonomicon.mit.edu",
+    "hkp://proxy-nue.opensuse.org",
+]
+
 MIN_PLUMBUM_VERSION = (1, 6, 3)
 CMAKELISTS_COMMANDS = \
 """
@@ -91,7 +100,7 @@ def have_rust_toolchain(name: str) -> bool:
 
 def download_and_build_custom_rustc(args):
     """
-    NOTE: we''re not using this function currently 
+    NOTE: we''re not using this function currently
     since it is faster and easier to pull the prebuilt
     binaries for the custom rust we need with rustup.
     """
@@ -103,7 +112,8 @@ def download_and_build_custom_rustc(args):
     if args.clean_all and have_rust_toolchain(CUSTOM_RUST_NAME):
         rustup['toolchain', 'uninstall', CUSTOM_RUST_NAME] & pb.FG
     elif have_rust_toolchain(CUSTOM_RUST_NAME):
-        logging.info("skipping custom rust toolchain build step; already installed")
+        m = "skipping custom rust toolchain build step; already installed"
+        logging.info(m)
         return
 
     assert on_linux(), "FIXME: set target_triple based on host os"
@@ -257,7 +267,8 @@ def ensure_clang_version(min_ver: List[int]):
         emsg = "can't compare versions {} and {}".format(version, min_ver)
         assert len(version) == len(min_ver), emsg
         if version < min_ver:
-            emsg = "clang version: {} < min version: {}".format(version, min_ver)
+            emsg = "clang version: {} < min version: {}"
+            emeg = emsg.format(version, min_ver)
             die(emsg)
     else:
         die("unable to identify clang version")
@@ -324,8 +335,29 @@ def check_sig(afile: str, asigfile: str) -> None:
     # on macOS, run `brew install gpg`
     gpg = get_cmd_or_die("gpg")
 
-    # make sure we have the right public key installed
-    gpg("--keyserver", KEYSERVER, "--recv-key", LLVM_PUBKEY)
+    def init_gpg_keys():
+        """
+        make sure we have the LLVM public key installed
+        """ 
+        keys = gpg('--list-keys')
+        for line in keys.split("\n"):
+            if line.endswith(LLVM_PUBKEY):
+                logging.debug('LLVM pubkey already downloaded')
+                return
+
+        for keyserver in KEYSERVERS:
+            try:
+                invoke_quietly(gpg,
+                               "--keyserver", keyserver,
+                               "--recv-key", LLVM_PUBKEY)
+                break
+            except:
+                emsg = "failed go get keys from %s; trying next keyserver"
+                logging.debug(emsg, keyserver)
+        else:
+            die("couldn't receive gpg keys from any keyserver :/")
+
+    init_gpg_keys()
 
     # check that archive matches signature
     try:
