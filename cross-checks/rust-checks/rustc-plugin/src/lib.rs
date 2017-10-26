@@ -158,13 +158,7 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
                                 // Parameter pattern is just an identifier,
                                 // so we can reference it directly by name
                                 arg_xchecks.push(quote_block!(self.cx, {
-                                    extern crate cross_check_runtime;
-                                    use cross_check_runtime::hash::XCheckHash;
-                                    use cross_check_runtime::hash::jodyhash::JodyHasher;
-                                    use cross_check_runtime::hash::simple::SimpleHasher;
-                                    cross_check_runtime::xcheck::xcheck(
-                                        cross_check_runtime::xcheck::FUNCTION_ARG_TAG,
-                                        XCheckHash::xcheck_hash::<JodyHasher, SimpleHasher>(&$ident));
+                                    cross_check_value!(FUNCTION_ARG_TAG, $ident);
                                 }).unwrap());
                             }
                             _ => unimplemented!()
@@ -249,6 +243,21 @@ pub fn plugin_registrar(reg: &mut Registry) {
                 cross_check_runtime::xcheck::xcheck(cross_check_runtime::xcheck::$tag, $item as u64);
             };
         }");
+    let xcheck_macro_value_ext = compile_macro_rules(reg,
+        "macro_rules! cross_check_value {
+            ($value:expr) => {
+                cross_check_value!(UNKNOWN_TAG, $value);
+            };
+            ($tag:ident, $value:expr) => {
+                extern crate cross_check_runtime;
+                use cross_check_runtime::hash::XCheckHash;
+                use cross_check_runtime::hash::jodyhash::JodyHasher;
+                use cross_check_runtime::hash::simple::SimpleHasher;
+                cross_check_runtime::xcheck::xcheck(
+                    cross_check_runtime::xcheck::$tag,
+                    XCheckHash::xcheck_hash::<JodyHasher, SimpleHasher>(&$value));
+            };
+        }");
     let ecc = CrossCheckExpander::new(reg.args());
     // TODO: parse args
     reg.register_syntax_extension(
@@ -257,4 +266,7 @@ pub fn plugin_registrar(reg: &mut Registry) {
     reg.register_syntax_extension(
         Symbol::intern("cross_check_raw"),
         xcheck_macro_raw_ext);
+    reg.register_syntax_extension(
+        Symbol::intern("cross_check_value"),
+        xcheck_macro_value_ext);
 }
