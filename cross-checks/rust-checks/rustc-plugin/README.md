@@ -20,6 +20,7 @@ Next, add the following preamble to your `main.rs` or `lib.rs` file:
 
 #[macro_use]
 extern crate cross_check_derive;
+#[macro_use]
 extern crate cross_check_runtime;
 ```
 

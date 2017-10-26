@@ -10,10 +10,8 @@ use syntax::fold;
 use std::convert::TryInto;
 
 use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier};
-use syntax::ext::tt;
 use syntax::codemap::Span;
 use syntax::fold::Folder;
-use syntax::parse;
 use syntax::symbol::Symbol;
 
 struct CrossCheckExpander {
@@ -218,19 +216,6 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
     }
 }
 
-// Parse and compile a textual macro_rules! definition
-// and return the syntax extension for it
-fn compile_macro_rules(reg: &mut Registry,
-                       macro_rules: &str) -> SyntaxExtension {
-    let item = parse::parse_item_from_source_str(
-        String::from("<macro_rules! expansion>"),
-        String::from(macro_rules),
-        &reg.sess.parse_sess).expect("macro parse error").unwrap();
-    tt::macro_rules::compile(&reg.sess.parse_sess,
-                             &reg.sess.features,
-                             &item)
-}
-
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
     let ecc = CrossCheckExpander::new(reg.args());
@@ -238,39 +223,4 @@ pub fn plugin_registrar(reg: &mut Registry) {
     reg.register_syntax_extension(
         Symbol::intern("cross_check"),
         SyntaxExtension::MultiModifier(Box::new(ecc)));
-
-    // cross_check_raw! macro extension
-    let xcheck_macro_raw_ext = compile_macro_rules(reg,
-        "macro_rules! cross_check_raw {
-            ($item:expr) => {
-                cross_check_raw!(UNKNOWN_TAG, $item);
-            };
-            ($tag:ident, $item:expr) => {
-                extern crate cross_check_runtime;
-                cross_check_runtime::xcheck::xcheck(cross_check_runtime::xcheck::$tag, $item as u64);
-            };
-        }");
-    reg.register_syntax_extension(
-        Symbol::intern("cross_check_raw"),
-        xcheck_macro_raw_ext);
-
-    // cross_check_value! macro extension
-    let xcheck_macro_value_ext = compile_macro_rules(reg,
-        "macro_rules! cross_check_value {
-            ($value:expr) => {
-                cross_check_value!(UNKNOWN_TAG, $value);
-            };
-            ($tag:ident, $value:expr) => {
-                extern crate cross_check_runtime;
-                use cross_check_runtime::hash::XCheckHash;
-                use cross_check_runtime::hash::jodyhash::JodyHasher;
-                use cross_check_runtime::hash::simple::SimpleHasher;
-                cross_check_runtime::xcheck::xcheck(
-                    cross_check_runtime::xcheck::$tag,
-                    XCheckHash::xcheck_hash::<JodyHasher, SimpleHasher>(&$value));
-            };
-        }");
-    reg.register_syntax_extension(
-        Symbol::intern("cross_check_value"),
-        xcheck_macro_value_ext);
 }
