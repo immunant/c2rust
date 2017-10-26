@@ -140,8 +140,6 @@ def update_cbor_prefix(makefile):
 
 
 def build_ast_importer():
-    # clang 3.6.0 is known to work; 3.4.0 known to not work.
-    ensure_clang_version([3, 6, 0])
     cargo = get_cmd_or_die("cargo")
 
     # assert os.path.isdir(os.path.join(COMPILER_SUBMOD_DIR, 'src'))
@@ -330,6 +328,13 @@ def _main():
         shutil.rmtree(LLVM_BLD, ignore_errors=True)
         shutil.rmtree(DEPS_DIR, ignore_errors=True)
 
+    # prerequisites
+    if not have_rust_toolchain(CUSTOM_RUST_NAME):
+        die("mising rust toolchain: " + CUSTOM_RUST_NAME, errno.ENOENT)
+
+    # clang 3.6.0 is known to work; 3.4.0 known to not work.
+    ensure_clang_version([3, 6, 0])
+
     ensure_dir(LLVM_BLD)
     ensure_dir(DEPS_DIR)
 
@@ -355,6 +360,7 @@ def _main():
 
     if not on_mac() and args.sanity_test:
         test_ast_extractor(cc_db)
+
 
 if __name__ == "__main__":
     _main()
