@@ -10,8 +10,10 @@ use syntax::fold;
 use std::convert::TryInto;
 
 use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier};
+use syntax::ext::tt;
 use syntax::codemap::Span;
 use syntax::fold::Folder;
+use syntax::parse;
 use syntax::symbol::Symbol;
 
 struct CrossCheckExpander {
@@ -172,10 +174,7 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
 
                 let checked_block = self.fold_block(block).map(|block| {
                     quote_block!(self.cx, {
-                        extern crate cross_check_runtime;
-                        cross_check_runtime::xcheck::xcheck(
-                            cross_check_runtime::xcheck::FUNCTION_CALL_TAG,
-                            $check_id as u64);
+                        cross_check_raw!(FUNCTION_CALL_TAG, $check_id);
                         $arg_xchecks
                         $block
                     }).unwrap()
@@ -225,11 +224,37 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
     }
 }
 
+// Parse and compile a textual macro_rules! definition
+// and return the syntax extension for it
+fn compile_macro_rules(reg: &mut Registry,
+                       macro_rules: &str) -> SyntaxExtension {
+    let item = parse::parse_item_from_source_str(
+        String::from("<macro_rules! expansion>"),
+        String::from(macro_rules),
+        &reg.sess.parse_sess).expect("macro parse error").unwrap();
+    tt::macro_rules::compile(&reg.sess.parse_sess,
+                             &reg.sess.features,
+                             &item)
+}
+
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
+    let xcheck_macro_raw_ext = compile_macro_rules(reg,
+        "macro_rules! cross_check_raw {
+            ($item:expr) => {
+                cross_check_raw!(UNKNOWN_TAG, $item);
+            };
+            ($tag:ident, $item:expr) => {
+                extern crate cross_check_runtime;
+                cross_check_runtime::xcheck::xcheck(cross_check_runtime::xcheck::$tag, $item as u64);
+            };
+        }");
     let ecc = CrossCheckExpander::new(reg.args());
     // TODO: parse args
     reg.register_syntax_extension(
         Symbol::intern("cross_check"),
         SyntaxExtension::MultiModifier(Box::new(ecc)));
+    reg.register_syntax_extension(
+        Symbol::intern("cross_check_raw"),
+        xcheck_macro_raw_ext);
 }
