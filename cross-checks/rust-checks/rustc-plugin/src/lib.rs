@@ -233,6 +233,13 @@ fn compile_macro_rules(reg: &mut Registry,
 
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
+    let ecc = CrossCheckExpander::new(reg.args());
+    // TODO: parse args
+    reg.register_syntax_extension(
+        Symbol::intern("cross_check"),
+        SyntaxExtension::MultiModifier(Box::new(ecc)));
+
+    // cross_check_raw! macro extension
     let xcheck_macro_raw_ext = compile_macro_rules(reg,
         "macro_rules! cross_check_raw {
             ($item:expr) => {
@@ -243,6 +250,11 @@ pub fn plugin_registrar(reg: &mut Registry) {
                 cross_check_runtime::xcheck::xcheck(cross_check_runtime::xcheck::$tag, $item as u64);
             };
         }");
+    reg.register_syntax_extension(
+        Symbol::intern("cross_check_raw"),
+        xcheck_macro_raw_ext);
+
+    // cross_check_value! macro extension
     let xcheck_macro_value_ext = compile_macro_rules(reg,
         "macro_rules! cross_check_value {
             ($value:expr) => {
@@ -258,14 +270,6 @@ pub fn plugin_registrar(reg: &mut Registry) {
                     XCheckHash::xcheck_hash::<JodyHasher, SimpleHasher>(&$value));
             };
         }");
-    let ecc = CrossCheckExpander::new(reg.args());
-    // TODO: parse args
-    reg.register_syntax_extension(
-        Symbol::intern("cross_check"),
-        SyntaxExtension::MultiModifier(Box::new(ecc)));
-    reg.register_syntax_extension(
-        Symbol::intern("cross_check_raw"),
-        xcheck_macro_raw_ext);
     reg.register_syntax_extension(
         Symbol::intern("cross_check_value"),
         xcheck_macro_value_ext);
