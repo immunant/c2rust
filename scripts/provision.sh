@@ -26,6 +26,9 @@ pip3 install plumbum colorlog typing cbor
 # Dependencies for test programs #
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 
 
+# json-c dependencies
+apt-get install -y automake autoconf
+
 # lua dependencies
 apt-get install -y libreadline-dev
 

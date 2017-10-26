@@ -1,5 +1,5 @@
 llvm.src/*
-llvm.build/*
+llvm.build*
 *.tar.xz
 *.tar.xz.sig
 *.tar.gz

@@ -473,6 +473,12 @@ class TranslateASTVisitor final
       // Expressions
       //
       
+      bool VisitParenExpr(ParenExpr *E) {
+          std::vector<void*> childIds { E->getSubExpr() };
+          encode_entry(E, TagParenExpr, childIds);
+          return true;
+      }
+      
       bool VisitMemberExpr(MemberExpr *E) {
           std::vector<void*> childIds =
             { E->getBase(), E->getMemberDecl() };
