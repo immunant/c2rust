@@ -33,7 +33,9 @@ CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
 CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.1.tar.gz")
 CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
 CBOR_SRC = os.path.join(DEPS_DIR, CBOR_SRC)
-CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor")
+CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
+# use an install prefix unique to the host
+CBOR_PREFIX += platform.node()  # returns hostname
 
 BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.6"
 BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.6.tar.gz")
@@ -95,7 +97,7 @@ def have_rust_toolchain(name: str) -> bool:
     """
     rustup = get_cmd_or_die('rustup')
     lines = rustup('show').split('\n')
-    return name in lines
+    return any([True for l in lines if l.startswith(name)])
 
 
 def download_and_build_custom_rustc(args):
@@ -259,19 +261,30 @@ def json_pp_obj(json_obj) -> str:
 def ensure_clang_version(min_ver: List[int]):
     clang = get_cmd_or_die("clang")
     version = clang("--version")
-    m = re.search(r"clang\s+version\s([^\s-]+)", version)
-    if m:
-        version = m.group(1)
-        # print(version)
-        version = [int(d) for d in version.split(".")]
-        emsg = "can't compare versions {} and {}".format(version, min_ver)
-        assert len(version) == len(min_ver), emsg
-        if version < min_ver:
-            emsg = "clang version: {} < min version: {}"
-            emeg = emsg.format(version, min_ver)
-            die(emsg)
+
+    def _common_check(m):
+        if m:
+            version = m.group(1)
+            # print(version)
+            version = [int(d) for d in version.split(".")]
+            emsg = "can't compare versions {} and {}".format(version, min_ver)
+            assert len(version) == len(min_ver), emsg
+            if version < min_ver:
+                emsg = "clang version: {} < min version: {}"
+                emsg = emsg.format(version, min_ver)
+                die(emsg)
+        else:
+            logging.warning("unknown clang version: " + version)
+            die("unable to identify clang version")
+
+    if on_linux():
+        m = re.search(r"clang\s+version\s([^\s-]+)", version)
+        _common_check(m)
+    elif on_mac():
+        m = re.search(r"Apple\sLLVM\sversion\s([^\s-]+)", version)
+        _common_check(m)
     else:
-        die("unable to identify clang version")
+        assert False, "run this script on macOS or linux"
 
 
 def get_system_include_dirs() -> List[str]:
