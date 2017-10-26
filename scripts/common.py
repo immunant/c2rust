@@ -43,7 +43,11 @@ BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear")
 BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
 LLVM_SRC = os.path.join(ROOT_DIR, 'llvm.src')
-LLVM_BLD = os.path.join(ROOT_DIR, 'llvm.build')
+LLVM_BLD = os.path.join(ROOT_DIR, 'llvm.build.')
+# make the build directory unique to the hostname such that 
+# building inside a vagrant/docker environment uses a different 
+# folder than building directly on the host.
+LLVM_BLD += platform.node()  # returns hostname 
 LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
 LLVM_PUBKEY = "8F0871F202119294"
 LLVM_VER = "4.0.1"
@@ -64,8 +68,6 @@ KEYSERVER = "keys.gnupg.net"
 MIN_PLUMBUM_VERSION = (1, 6, 3)
 CMAKELISTS_COMMANDS = \
 """
-include_directories({prefix}/include)
-link_directories({prefix}/lib)
 add_subdirectory(ast-extractor)
 """.format(prefix=CBOR_PREFIX)  # nopep8
 CC_DB_JSON = "compile_commands.json"
@@ -73,7 +75,9 @@ CC_DB_JSON = "compile_commands.json"
 # CUSTOM_RUST_URL = "git@github.com:rust-lang/rust"
 # CUSTOM_RUST_PREFIX = os.path.join(DEPS_DIR, "rust")
 # CUSTOM_RUST_REV = "cfcac37204c8dbdde192c1c9387cdbe663fe5ed5"
-CUSTOM_RUST_NAME = 'c2rust'
+# NOTE: `rustup run nightly-2017-09-18 -- rustc --version` should output
+# rustc 1.22.0-nightly (cfcac3720 2017-09-17)
+CUSTOM_RUST_NAME = 'nightly-2017-09-18'
 
 
 def have_rust_toolchain(name: str) -> bool:
@@ -86,6 +90,11 @@ def have_rust_toolchain(name: str) -> bool:
 
 
 def download_and_build_custom_rustc(args):
+    """
+    NOTE: we''re not using this function currently 
+    since it is faster and easier to pull the prebuilt
+    binaries for the custom rust we need with rustup.
+    """
     git = get_cmd_or_die('git')
     rustup = get_cmd_or_die('rustup')
 
@@ -130,6 +139,7 @@ def on_mac() -> bool:
     return true on macOS/OS X.
     """
     return 'Darwin' in platform.platform()
+
 
 def on_linux() -> bool:
     if on_mac():

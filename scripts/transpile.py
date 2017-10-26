@@ -110,9 +110,9 @@ def transpile_files(cc_db: TextIO,
 
         # since we compiled ast-importer with custom c2rust toolchain
         # we need to point to the custom toolchain's lib dir
-        ld_lib_path = os.path.join(
-            COMPILER_SUBMOD_DIR,
-            "build/x86_64-unknown-linux-gnu/stage2/lib")
+        rustup_toolch_path = ".rustup/toolchains/{}-x86_64-unknown-linux-gnu/lib/"
+        rustup_toolch_path = rustup_toolch_path.format(CUSTOM_RUST_NAME)
+        ld_lib_path = os.path.join(pb.local.env['HOME'], rustup_toolch_path)
         emsg = "custom rust compiler lib path missing: " + ld_lib_path
         assert os.path.isdir(ld_lib_path), emsg
         

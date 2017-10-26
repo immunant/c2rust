@@ -26,7 +26,7 @@ pub struct XCheckComplexTypeInfo {
     ty: XCheckComplexType,
 
     #[serde(default)]
-    item: Option<u64>,
+    id: Option<u64>,
 }
 
 #[derive(Deserialize, Debug)]

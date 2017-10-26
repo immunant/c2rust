@@ -70,7 +70,8 @@ def configure_and_build_llvm(args):
     run cmake as needed to generate ninja buildfiles. then run ninja.
     """
     ninja = get_cmd_or_die("ninja")
-    build_type = "Debug" if args.debug else "Release"
+    # Possible values are Release, Debug, RelWithDebInfo and MinSizeRel
+    build_type = "Debug" if args.debug else "RelWithDebInfo"
     ninja_build_file = os.path.join(LLVM_BLD, "build.ninja")
     with pb.local.cwd(LLVM_BLD):
         if os.path.isfile(ninja_build_file):
@@ -85,7 +86,9 @@ def configure_and_build_llvm(args):
                          "-Wno-dev",
                          "-DCMAKE_C_COMPILER=clang",
                          "-DCMAKE_CXX_COMPILER=clang++",
-                         "-DLLVM_BUILD_TESTS=ON",
+                         "-DCMAKE_C_FLAGS=-I{}/include".format(CBOR_PREFIX),
+                         "-DCMAKE_CXX_FLAGS=-I{}/include".format(CBOR_PREFIX),
+                         "-DCMAKE_EXE_LINKER_FLAGS=-L{}/lib".format(CBOR_PREFIX),
                          "-DCMAKE_BUILD_TYPE=" + build_type,
                          "-DLLVM_ENABLE_ASSERTIONS=1",
                          "-DLLVM_TARGETS_TO_BUILD=X86"])
@@ -141,10 +144,10 @@ def build_ast_importer():
     ensure_clang_version([3, 6, 0])
     cargo = get_cmd_or_die("cargo")
 
-    assert os.path.isdir(os.path.join(COMPILER_SUBMOD_DIR, 'src'))
+    # assert os.path.isdir(os.path.join(COMPILER_SUBMOD_DIR, 'src'))
 
     with pb.local.cwd(os.path.join(ROOT_DIR, "ast-importer")):
-        # we build with custom rust toolchain here ('c2rust')
+        # we build with custom rust toolchain here 
         invoke(cargo, "+" + CUSTOM_RUST_NAME, "build")
 
 
@@ -229,7 +232,8 @@ def integrate_ast_extractor():
     """
     link ast-extractor into $LLVM_SRC/tools/clang/tools/extra
     """
-    src = os.path.join(ROOT_DIR, "ast-extractor")
+    abs_src = os.path.join(ROOT_DIR, "ast-extractor")
+    src = "../../../../../ast-extractor"
     extractor_dest = os.path.join(
         LLVM_SRC, "tools/clang/tools/extra/ast-extractor")
     clang_tools_extra = os.path.abspath(
@@ -242,6 +246,10 @@ def integrate_ast_extractor():
             ln("-s", src)
     assert os.path.islink(extractor_dest), \
         "missing link: %s->%s" % (src, extractor_dest)
+    # check that link points to its intended target
+    link_target = os.path.realpath(extractor_dest)
+    assert link_target == abs_src, \
+        "invalid link target: %s!=%s" % (link_target, abs_src)
 
     cmakelists_path = os.path.join(clang_tools_extra, "CMakeLists.txt")
     update_cmakelists(cmakelists_path)
@@ -338,7 +346,10 @@ def _main():
 
     configure_and_build_llvm(args)
 
-    download_and_build_custom_rustc(args)
+    # NOTE: we're not doing this anymore since it is
+    # faster and takes less space to simply pull the
+    # prebuilt nightly binaries with rustup
+    # download_and_build_custom_rustc(args)
 
     build_ast_importer()
 

@@ -1,7 +1,9 @@
 
-pub const FUNCTION_CALL_TAG: u8 = 0;
-pub const FUNCTION_ARG_TAG: u8 = 1;
-pub const FUNCTION_RETURN_TAG: u8 = 2;
+pub const UNKNOWN_TAG: u8 = 0;
+pub const FUNCTION_ENTRY_TAG: u8 = 1;
+pub const FUNCTION_EXIT_TAG: u8 = 2;
+pub const FUNCTION_ARG_TAG: u8 = 3;
+pub const FUNCTION_RETURN_TAG: u8 = 4;
 
 #[cfg(any(feature="xcheck-with-dlsym", feature="xcheck-with-weak"))]
 #[inline]

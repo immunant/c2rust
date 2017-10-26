@@ -51,7 +51,7 @@ RUN pip3 install --no-cache-dir --upgrade pip
 RUN pip3 install --no-cache-dir plumbum colorlog typing cbor
     
 USER $USER
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2017-09-18
 RUN echo "source ~/.cargo/env" >> ~/.bashrc
 # VOLUME ["$PWD"]
 
