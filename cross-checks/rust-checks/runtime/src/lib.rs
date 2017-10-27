@@ -9,4 +9,5 @@ extern crate simd;
 
 pub mod xcheck;
 pub mod hash;
+pub mod macros;
 
