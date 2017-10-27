@@ -78,7 +78,7 @@ impl CrossCheckConfig {
             ast::MetaItemKind::List(ref items) => {
                 for ref nested_item in items {
                     if let Some(ref item) = nested_item.meta_item() {
-                        match item.name.as_str().as_ref() {
+                        match &*item.name.as_str() {
                             "never" |
                             "disable" |
                             "no" => {
@@ -90,7 +90,7 @@ impl CrossCheckConfig {
                                 res.enabled = true
                             }
                             "name" => {
-                                res.name = item.value_str().map(|s| String::from(s.as_str().as_ref()))
+                                res.name = item.value_str().map(|s| String::from(&*s.as_str()))
                             }
                             "id" => {
                                 if let ast::MetaItemKind::NameValue(ref lit) = item.node {
@@ -155,7 +155,7 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
                 } else if let Some(ref name) = self.config.name {
                     djb2_hash(name)
                 } else {
-                    djb2_hash(fn_ident.name.as_str().as_ref())
+                    djb2_hash(&*fn_ident.name.as_str())
                 };
 
                 // Insert cross-checks for function arguments,
