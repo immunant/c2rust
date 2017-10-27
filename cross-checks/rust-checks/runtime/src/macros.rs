@@ -16,8 +16,8 @@ macro_rules! cross_check_value {
     };
     ($tag:ident, $value:expr) => {
         cross_check_value!($tag, $value,
-                           $crate::hash::jodyhash::JodyHasher,
-                           $crate::hash::simple::SimpleHasher);
+                           cross_check_types::DefaultAggHasher,
+                           cross_check_types::DefaultSimpleHasher);
     };
     // This form allows the user to pick the hashers, where:
     //   $ahasher == the hasher to use for aggregate/derived values

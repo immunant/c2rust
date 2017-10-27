@@ -189,6 +189,11 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
 
                 let checked_block = self.fold_block(block).map(|block| {
                     quote_block!(self.cx, {
+                        #[allow(dead_code)]
+                        mod cross_check_types {
+                            pub type DefaultAggHasher    = ::cross_check_runtime::hash::jodyhash::JodyHasher;
+                            pub type DefaultSimpleHasher = ::cross_check_runtime::hash::simple::SimpleHasher;
+                        };
                         cross_check_raw!(FUNCTION_ENTRY_TAG, $check_id);
                         $arg_xchecks
                         $block
