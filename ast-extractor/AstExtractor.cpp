@@ -417,7 +417,7 @@ class TranslateASTVisitor final
       
       bool VisitForStmt(ForStmt *FS) {
           std::vector<void*> childIds =
-          { FS->getInit(), FS->getCond(), FS->getBody() };
+          { FS->getInit(), FS->getCond(), FS->getInc(), FS->getBody() };
           encode_entry(FS, TagForStmt, childIds);
           return true;
       }
