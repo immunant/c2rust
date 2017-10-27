@@ -59,10 +59,19 @@ impl MultiItemModifier for CrossCheckExpander {
               item: Annotatable) -> Vec<Annotatable> {
         let config = CrossCheckConfig::new(mi);
         match item {
-            Annotatable::Item(i) => Annotatable::Item(
-                CrossChecker{ cx: cx, config: config }
-                .fold_item(i)
-                .expect_one("too many items returned")).into(),
+            Annotatable::Item(i) => {
+                // If we're seeing #![cross_check] at the top of the crate or a module,
+                // create a fresh configuration and perform a folding; otherwise, just
+                // ignore this expansion and let the higher level one do everything
+                let ni = match i.node {
+                    ast::ItemKind::Mod(_) =>
+                        CrossChecker{ cx: cx, config: config }
+                        .fold_item(i)
+                        .expect_one("too many items returned"),
+                    _ => i
+                };
+                Annotatable::Item(ni).into()
+            }
             // TODO: handle TraitItem
             // TODO: handle ImplItem
             _ => panic!("Unexpected item: {:?}", item),
@@ -138,19 +147,10 @@ fn djb2_hash(s: &str) -> u32 {
 
 impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
-        if !self.config.enabled {
-            return fold::noop_fold_item_simple(item, self);
-        }
         if item.attrs.iter().any(|attr| attr.name().map_or(false, |name| name == "cross_check")) {
-            // If we have cross-check attrs at multiple levels, e.g.,
-            // one per crate and one per function, we'll get called multiple times
-            // and might end up adding multiple cross-checks to each function.
-            // If we get called from the crate-level #![cross_check] attr, we'll
-            // also see the #[cross_check] attributes here for each function;
-            // if that's the case, we can skip inserting cross-checks here,
-            // and let each function insert its own check calls later.
-            // This allows each function to override the global cross-check
-            // settings with its own.
+            // TODO: parse the attribute and add the parameters to self.config
+        }
+        if !self.config.enabled {
             return fold::noop_fold_item_simple(item, self);
         }
         match item.node {
