@@ -3,7 +3,7 @@
 
 use std::hash::Hasher;
 use std::ops::BitXor;
-use super::XCheckHasher;
+use super::CrossCheckHasher;
 
 #[derive(Debug, Default)]
 pub struct JodyHasher(u64);
@@ -42,7 +42,7 @@ impl Hasher for JodyHasher {
     }
 }
 
-impl XCheckHasher for JodyHasher {}
+impl CrossCheckHasher for JodyHasher {}
 
 #[cfg(test)]
 mod tests {

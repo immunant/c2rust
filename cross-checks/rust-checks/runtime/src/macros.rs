@@ -15,11 +15,11 @@ macro_rules! cross_check_value {
        cross_check_value!(UNKNOWN_TAG, $value);
    };
    ($tag:ident, $value:expr) => {
-       use $crate::hash::XCheckHash;
+       use $crate::hash::CrossCheckHash;
        use $crate::hash::jodyhash::JodyHasher;
        use $crate::hash::simple::SimpleHasher;
        $crate::xcheck::xcheck(
            $crate::xcheck::$tag,
-           XCheckHash::xcheck_hash::<JodyHasher, SimpleHasher>(&$value));
+           CrossCheckHash::cross_check_hash::<JodyHasher, SimpleHasher>(&$value));
    };
 }

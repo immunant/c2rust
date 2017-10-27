@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use proc_macro::TokenStream;
 use synstructure::{each_field, BindStyle};
 
-struct XCheckHashPredicateInserter<'a> {
+struct CrossCheckHashPredicateInserter<'a> {
     skip_visit: bool,
     xcheck_hash_bound: syn::TyParamBound,
     ty_param_names: &'a HashSet<&'a str>,
@@ -17,10 +17,10 @@ struct XCheckHashPredicateInserter<'a> {
     ty_where_preds: Vec<syn::WherePredicate>,
 }
 
-impl<'a> syn::visit::Visitor for XCheckHashPredicateInserter<'a> {
+impl<'a> syn::visit::Visitor for CrossCheckHashPredicateInserter<'a> {
     fn visit_ty(&mut self, ty: &syn::Ty) {
         // If this type matches one of the parameter types, e.g., T,
-        // add a "T: ::cross_check_runtime::hash::XCheckHash" where-predicate
+        // add a "T: ::cross_check_runtime::hash::CrossCheckHash" where-predicate
         if let syn::Ty::Path(_, ref path) = *ty {
             if let Some(segment) = path.segments.first() {
                 let seg_name = segment.ident.as_ref();
@@ -41,16 +41,16 @@ impl<'a> syn::visit::Visitor for XCheckHashPredicateInserter<'a> {
     }
 }
 
-#[proc_macro_derive(XCheckHash)]
-pub fn derive_xcheck_hash(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(CrossCheckHash)]
+pub fn derive_cross_check_hash(input: TokenStream) -> TokenStream {
     let struct_def = syn::parse_derive_input(&input.to_string()).unwrap();
 
-    // Build the XCheckHashPredicateInserter
+    // Build the CrossCheckHashPredicateInserter
     let ty_param_names: HashSet<&str> = struct_def.generics.ty_params.iter()
         .map(|ty_param| ty_param.ident.as_ref())
         .collect();
     let xcheck_hash_bound = {
-        const PATH_STR: &'static str = "::cross_check_runtime::hash::XCheckHash";
+        const PATH_STR: &'static str = "::cross_check_runtime::hash::CrossCheckHash";
         let path = syn::parse_path(PATH_STR).unwrap();
         let trait_ref = syn::PolyTraitRef {
             bound_lifetimes: vec![],
@@ -58,7 +58,7 @@ pub fn derive_xcheck_hash(input: TokenStream) -> TokenStream {
         };
         syn::TyParamBound::Trait(trait_ref, syn::TraitBoundModifier::None)
     };
-    let mut hash_pred_inserter = XCheckHashPredicateInserter {
+    let mut hash_pred_inserter = CrossCheckHashPredicateInserter {
         skip_visit: ty_param_names.is_empty(),
         xcheck_hash_bound: xcheck_hash_bound,
         ty_param_names: &ty_param_names,
@@ -75,8 +75,8 @@ pub fn derive_xcheck_hash(input: TokenStream) -> TokenStream {
         }
         quote! {
             extern crate cross_check_runtime;
-            use cross_check_runtime::hash::XCheckHash;
-            h.write_u64(XCheckHash::xcheck_hash_with_depth::<__XCHA, __XCHS>(#f, _depth - 1));
+            use cross_check_runtime::hash::CrossCheckHash;
+            h.write_u64(CrossCheckHash::cross_check_hash_depth::<__XCHA, __XCHS>(#f, _depth - 1));
         }
     });
 
@@ -92,11 +92,11 @@ pub fn derive_xcheck_hash(input: TokenStream) -> TokenStream {
     let ident = &struct_def.ident;
     let hash_impl = quote! {
         #[allow(unused_mut)]
-        impl #impl_generics ::cross_check_runtime::hash::XCheckHash
+        impl #impl_generics ::cross_check_runtime::hash::CrossCheckHash
                 for #ident #ty_generics #full_where_clause {
-            fn xcheck_hash_with_depth<__XCHA, __XCHS>(&self, _depth: usize) -> u64
-                    where __XCHA: ::cross_check_runtime::hash::XCheckHasher,
-                          __XCHS: ::cross_check_runtime::hash::XCheckHasher {
+            fn cross_check_hash_depth<__XCHA, __XCHS>(&self, _depth: usize) -> u64
+                    where __XCHA: ::cross_check_runtime::hash::CrossCheckHasher,
+                          __XCHS: ::cross_check_runtime::hash::CrossCheckHasher {
                 let mut h = __XCHA::default();
                 match *self { #hash_fields }
                 h.finish()

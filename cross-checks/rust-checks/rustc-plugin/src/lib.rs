@@ -215,10 +215,10 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
             ast::ItemKind::Enum(_, _) |
             ast::ItemKind::Struct(_, _) |
             ast::ItemKind::Union(_, _) => {
-                // Prepend #[derive(XCheckHash)] automatically
+                // Prepend #[derive(CrossCheckHash)] automatically
                 // to every structure definition
                 let mut item_attrs = fold::fold_attrs(item.attrs, self);
-                let xcheck_hash_attr = quote_attr!(self.cx, #[derive(XCheckHash)]);
+                let xcheck_hash_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
                 item_attrs.push(xcheck_hash_attr);
                 ast::Item {
                     id: self.new_id(item.id),

@@ -1,7 +1,7 @@
 
 use std::hash::Hasher;
 use std::mem;
-use super::XCheckHasher;
+use super::CrossCheckHasher;
 
 #[derive(Debug, Default)]
 pub struct SimpleHasher(Option<u64>);
@@ -73,7 +73,7 @@ impl Hasher for SimpleHasher {
     impl_primitive_hash!(isize, write_isize, ISize);
 }
 
-impl XCheckHasher for SimpleHasher {
+impl CrossCheckHasher for SimpleHasher {
     impl_primitive_hash!(bool,  write_bool,  Bool);
     impl_primitive_hash!(char,  write_char,  Char);
 
