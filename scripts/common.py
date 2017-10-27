@@ -104,16 +104,24 @@ def have_rust_toolchain(name: str) -> bool:
 def get_rust_toolchain_libpath(name: str) -> str:
     """
     returns library path to custom rust libdir
+    
     """
+    if platform.architecture()[0] != '64bit':
+        die("must be on 64-bit host")
+
     if on_linux():
-        rustup_toolch_path = ".rustup/toolchains/{}-x86_64-unknown-linux-gnu/lib/"
-        rustup_toolch_path = rustup_toolch_path.format(CUSTOM_RUST_NAME)
-        ld_lib_path = os.path.join(pb.local.env['HOME'], rustup_toolch_path)
-        emsg = "custom rust compiler lib path missing: " + ld_lib_path
-        assert os.path.isdir(ld_lib_path), emsg
-        return ld_lib_path
+        host_triplet = "x86_64-unknown-linux-gnu"
+    elif on_mac():
+        host_triplet = "x86_64-apple-darwin"
     else:
         assert False, "not implemented"
+
+    libpath = ".rustup/toolchains/{}-{}/lib/"
+    libpath = libpath.format(CUSTOM_RUST_NAME, host_triplet)
+    libpath = os.path.join(pb.local.env['HOME'], libpath)
+    emsg = "custom rust compiler lib path missing: " + libpath
+    assert os.path.isdir(libpath), emsg
+    return libpath
 
 
 def download_and_build_custom_rustc(args):
@@ -317,7 +325,7 @@ def get_system_include_dirs() -> List[str]:
 def extract_ast_from(ast_extr: pb.commands.BaseCommand,
                      cc_db_path: str,
                      sys_incl_dirs: List[str],
-                     **kwargs) -> None:
+                     **kwargs) -> str:
     """
     run ast-extractor for a single compiler invocation.
 
