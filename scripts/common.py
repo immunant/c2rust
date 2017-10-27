@@ -33,7 +33,9 @@ CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
 CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.1.tar.gz")
 CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
 CBOR_SRC = os.path.join(DEPS_DIR, CBOR_SRC)
-CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor")
+CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
+# use an install prefix unique to the host
+CBOR_PREFIX += platform.node()  # returns hostname
 
 BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.6"
 BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.6.tar.gz")
@@ -49,8 +51,9 @@ LLVM_BLD = os.path.join(ROOT_DIR, 'llvm.build.')
 # folder than building directly on the host.
 LLVM_BLD += platform.node()  # returns hostname 
 LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
-LLVM_PUBKEY = "8F0871F202119294"
-LLVM_VER = "4.0.1"
+# LLVM_PUBKEY = "8F0871F202119294"  # signed v4.0.1
+LLVM_PUBKEY = "345AD05D"  # signed v5.0.0
+LLVM_VER = "5.0.0"
 LLVM_ARCHIVE_URLS = """
 http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz
 http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz
@@ -64,7 +67,16 @@ LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
 
 AST_EXTR = os.path.join(LLVM_BLD, "bin/ast-extractor")
 
-KEYSERVER = "keys.gnupg.net"
+# from `gpg-connect-agent --dirmngr 'keyserver --hosttable'`
+# PL: seems we need multiple keyservers since some only work
+# for IPv4 and others only work for IPv6.
+KEYSERVERS = [
+    "hkp://keys.gnupg.net",
+    "hkp://ipv4.pool.sks-keyservers.net",
+    "hkp://cryptonomicon.mit.edu",
+    "hkp://proxy-nue.opensuse.org",
+]
+
 MIN_PLUMBUM_VERSION = (1, 6, 3)
 CMAKELISTS_COMMANDS = \
 """
@@ -86,12 +98,27 @@ def have_rust_toolchain(name: str) -> bool:
     """
     rustup = get_cmd_or_die('rustup')
     lines = rustup('show').split('\n')
-    return name in lines
+    return any([True for l in lines if l.startswith(name)])
+
+
+def get_rust_toolchain_libpath(name: str) -> str:
+    """
+    returns library path to custom rust libdir
+    """
+    if on_linux():
+        rustup_toolch_path = ".rustup/toolchains/{}-x86_64-unknown-linux-gnu/lib/"
+        rustup_toolch_path = rustup_toolch_path.format(CUSTOM_RUST_NAME)
+        ld_lib_path = os.path.join(pb.local.env['HOME'], rustup_toolch_path)
+        emsg = "custom rust compiler lib path missing: " + ld_lib_path
+        assert os.path.isdir(ld_lib_path), emsg
+        return ld_lib_path
+    else:
+        assert False, "not implemented"
 
 
 def download_and_build_custom_rustc(args):
     """
-    NOTE: we''re not using this function currently 
+    NOTE: we''re not using this function currently
     since it is faster and easier to pull the prebuilt
     binaries for the custom rust we need with rustup.
     """
@@ -103,7 +130,8 @@ def download_and_build_custom_rustc(args):
     if args.clean_all and have_rust_toolchain(CUSTOM_RUST_NAME):
         rustup['toolchain', 'uninstall', CUSTOM_RUST_NAME] & pb.FG
     elif have_rust_toolchain(CUSTOM_RUST_NAME):
-        logging.info("skipping custom rust toolchain build step; already installed")
+        m = "skipping custom rust toolchain build step; already installed"
+        logging.info(m)
         return
 
     assert on_linux(), "FIXME: set target_triple based on host os"
@@ -249,18 +277,30 @@ def json_pp_obj(json_obj) -> str:
 def ensure_clang_version(min_ver: List[int]):
     clang = get_cmd_or_die("clang")
     version = clang("--version")
-    m = re.search(r"clang\s+version\s([^\s-]+)", version)
-    if m:
-        version = m.group(1)
-        # print(version)
-        version = [int(d) for d in version.split(".")]
-        emsg = "can't compare versions {} and {}".format(version, min_ver)
-        assert len(version) == len(min_ver), emsg
-        if version < min_ver:
-            emsg = "clang version: {} < min version: {}".format(version, min_ver)
-            die(emsg)
+
+    def _common_check(m):
+        if m:
+            version = m.group(1)
+            # print(version)
+            version = [int(d) for d in version.split(".")]
+            emsg = "can't compare versions {} and {}".format(version, min_ver)
+            assert len(version) == len(min_ver), emsg
+            if version < min_ver:
+                emsg = "clang version: {} < min version: {}"
+                emsg = emsg.format(version, min_ver)
+                die(emsg)
+        else:
+            logging.warning("unknown clang version: " + version)
+            die("unable to identify clang version")
+
+    if on_linux():
+        m = re.search(r"clang\s+version\s([^\s-]+)", version)
+        _common_check(m)
+    elif on_mac():
+        m = re.search(r"Apple\sLLVM\sversion\s([^\s-]+)", version)
+        _common_check(m)
     else:
-        die("unable to identify clang version")
+        assert False, "run this script on macOS or linux"
 
 
 def get_system_include_dirs() -> List[str]:
@@ -324,12 +364,33 @@ def check_sig(afile: str, asigfile: str) -> None:
     # on macOS, run `brew install gpg`
     gpg = get_cmd_or_die("gpg")
 
-    # make sure we have the right public key installed
-    gpg("--keyserver", KEYSERVER, "--recv-key", LLVM_PUBKEY)
+    def init_gpg_keys():
+        """
+        make sure we have the LLVM public key installed
+        """ 
+        keys = gpg('--list-keys')
+        for line in keys.split("\n"):
+            if line.endswith(LLVM_PUBKEY):
+                logging.debug('LLVM pubkey already downloaded')
+                return
+
+        for keyserver in KEYSERVERS:
+            try:
+                invoke_quietly(gpg,
+                               "--keyserver", keyserver,
+                               "--recv-key", LLVM_PUBKEY)
+                break
+            except:
+                emsg = "failed go get keys from %s; trying next keyserver"
+                logging.debug(emsg, keyserver)
+        else:
+            die("couldn't receive gpg keys from any keyserver :/")
+
+    init_gpg_keys()
 
     # check that archive matches signature
     try:
-        expected = "Good signature from \"Tom Stellard <tom@stellard.net>\""
+        expected = "Good signature from "
         logging.debug("checking signature of %s", os.path.basename(afile))
         retcode, _, stderr = gpg['--verify', asigfile, afile].run(retcode=None)
         if retcode:

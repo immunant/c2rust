@@ -166,7 +166,7 @@ impl Translation {
 
         let args: Vec<Arg> = arguments.iter().map(|&(var, ty)| {
             let rust_var = self.renamer.insert(var.to_string(), var).expect("Failed to insert argument");
-            mk().arg(self.convert_type(ty), mk().ident_pat(rust_var))
+            mk().arg(self.convert_type(ty), mk().mutbl().ident_pat(rust_var))
         }).collect();
 
         let ret = FunctionRetTy::Ty(self.convert_type(return_type));
@@ -178,7 +178,7 @@ impl Translation {
         // End scope for function parameters
         self.renamer.drop_scope();
 
-        self.items.push(mk().fn_item(name, decl, block));
+        self.items.push(mk().unsafe_().fn_item(name, decl, block));
     }
 
     fn convert_function_body(&mut self, body_id: u64) -> P<Block> {
@@ -225,7 +225,16 @@ impl Translation {
                 self.convert_if_stmt(node.children[0].unwrap(), node.children[1].unwrap(), node.children[2])
             }
             ASTEntryTag::TagWhileStmt => {
-                self.convert_while_stmt(node.children[0].unwrap(), node.children[1].unwrap())
+                let cond_id = node.children[0].unwrap();
+                let body_id = node.children[1].unwrap();
+                self.convert_while_stmt(cond_id, body_id)
+            }
+            ASTEntryTag::TagForStmt => {
+                let init_id = node.children[0];
+                let cond_id = node.children[1];
+                let inc_id = node.children[2];
+                let body_id = node.children[3].unwrap();
+                self.convert_for_stmt(init_id, cond_id, inc_id, body_id)
             }
             ASTEntryTag::TagNullStmt => {
                 vec![]
@@ -270,6 +279,38 @@ impl Translation {
         let rust_body = stmts_block(body);
 
         vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body))]
+    }
+
+    fn convert_for_stmt(&mut self, init_id: Option<u64>, cond_id: Option<u64>, inc_id: Option<u64>, body_id: u64) -> Vec<Stmt> {
+
+        self.renamer.add_scope();
+
+        let mut init = match init_id {
+          Some(i) => self.convert_stmt(i),
+          None => vec![],
+        };
+
+        let mut inc = match inc_id {
+            Some(i) => self.convert_stmt(i),
+            None => vec![],
+        };
+
+        let mut body = self.convert_stmt(body_id);
+        body.append(&mut inc);
+
+        let body_block = mk().block(body);
+
+        let looper = match cond_id {
+            None => mk().loop_expr(body_block), // loop
+            Some(i) => mk().while_expr(self.convert_expr(i).to_expr(), body_block), // while
+        };
+
+        init.push(mk().expr_stmt(looper));
+
+        self.renamer.drop_scope();
+
+        vec![mk().expr_stmt(mk().block_expr(mk().block(init)))]
+
     }
 
     fn convert_if_stmt(&mut self, cond_id: u64, then_id: u64, else_id: Option<u64>) -> Vec<Stmt> {
@@ -449,6 +490,75 @@ impl Translation {
         }
     }
 
+    pub fn convert_pre_increment(&mut self, ctype: TypeNode, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
+        let ptr_name = self.renamer.fresh();
+        // let ref mut p = lhs;
+        let compute_lhs =
+            mk().local_stmt(
+                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&ptr_name),
+                             None as Option<P<Ty>>,
+                             Some(arg)))
+            );
+        // *p
+        let deref_lhs = mk().unary_expr("*", mk().ident_expr(&ptr_name));
+        let one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
+        // *p + 1
+        let val =
+            if self.ast_context.resolve_type(ctype).is_pointer() {
+                let n = if up { one } else { mk().unary_expr(UnOp::Neg, one) };
+                mk().method_call_expr(mk().ident_expr(&ptr_name), "offset", vec![n])
+            } else {
+                let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
+                mk().binary_expr(k, deref_lhs.clone(), one)
+            };
+
+        // *p = *p + rhs
+        let assign_stmt = mk().assign_expr(&deref_lhs.clone(), val);
+
+        WithStmts {
+            stmts: vec![compute_lhs, mk().expr_stmt(assign_stmt)],
+            val: deref_lhs,
+        }
+    }
+
+    pub fn convert_post_increment(&mut self, ctype: TypeNode, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
+        let ptr_name = self.renamer.fresh();
+        let val_name = self.renamer.fresh();
+        // let ref mut p = lhs;
+        let compute_lhs =
+            mk().local_stmt(
+                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&ptr_name),
+                             None as Option<P<Ty>>,
+                             Some(arg)))
+            );
+        // *p
+        let deref_lhs = mk().unary_expr("*", mk().ident_expr(&ptr_name));
+        let save_old_val =
+            mk().local_stmt(
+                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&val_name),
+                             None as Option<P<Ty>>,
+                             Some(deref_lhs.clone())))
+            );
+        let one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
+        // *p + 1
+        let val =
+            if self.ast_context.resolve_type(ctype).is_pointer() {
+                let n = if up { one } else { mk().unary_expr(UnOp::Neg, one) };
+                mk().method_call_expr(mk().ident_expr(&ptr_name), "offset", vec![n])
+            } else {
+                let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
+                mk().binary_expr(k, deref_lhs.clone(), one)
+            };
+
+        // *p = *p + rhs
+        let assign_stmt = mk().assign_expr(&deref_lhs.clone(), val);
+
+        WithStmts {
+            stmts: vec![compute_lhs, save_old_val, mk().expr_stmt(assign_stmt)],
+            val: mk().ident_expr(val_name),
+        }
+    }
+
     pub fn convert_unary_operator(&mut self, name: &str, prefix: bool, ctype: TypeNode, ty: P<Ty>, arg: P<Expr>) -> WithStmts<P<Expr>> {
         match name {
             "&" => {
@@ -456,11 +566,11 @@ impl Translation {
                 let ptr = mk().cast_expr(addr_of_arg, ty);
                 WithStmts::new(ptr)
             },
-            "++" if prefix => unimplemented!(),
-            "++" => unimplemented!(),
-            "--" if prefix => unimplemented!(),
-            "--" => unimplemented!(),
-            "*" => unimplemented!(),
+            "++" if prefix => self.convert_pre_increment(ctype, true, arg),
+            "++" => self.convert_post_increment(ctype, true, arg),
+            "--" if prefix => self.convert_pre_increment(ctype, false, arg),
+            "--" => self.convert_post_increment(ctype, false, arg),
+            "*" => WithStmts::new(mk().unary_expr(UnOp::Deref, arg)),
             "+" => WithStmts::new(arg), // promotion is explicit in the clang AST
             "-" => {
                 let val = if self.ast_context.resolve_type(ctype).is_unsigned_integral_type() {
