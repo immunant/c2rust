@@ -8,7 +8,6 @@ use syntax::ast;
 use syntax::fold;
 
 use std::convert::TryInto;
-use std::io;
 use std::path::PathBuf;
 
 use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier};
