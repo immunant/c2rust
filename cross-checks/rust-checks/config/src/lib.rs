@@ -71,6 +71,16 @@ pub struct FunctionConfig {
     ret: XCheckType,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct FileConfig(HashMap<String, FunctionConfig>);
+
+#[derive(Deserialize, Debug)]
+pub struct Config(HashMap<String, FileConfig>);
+
+pub fn parse_string(s: &str) -> Result<Config, String> {
+    serde_yaml::from_str(s).map_err(|e| format!("serde_yaml error: {}", e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

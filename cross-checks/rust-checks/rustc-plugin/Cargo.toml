@@ -11,3 +11,4 @@ plugin = true
 xcheck-args = []
 
 [dependencies]
+config = { path = "../config" }

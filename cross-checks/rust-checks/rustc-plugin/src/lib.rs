@@ -3,6 +3,8 @@
 extern crate rustc_plugin;
 extern crate syntax;
 
+extern crate config as xcfg;
+
 use rustc_plugin::Registry;
 use syntax::ast;
 use syntax::fold;
@@ -19,7 +21,7 @@ struct CrossCheckExpander {
     // Arguments passed to plugin
     // TODO: pre-parse them???
     args: Vec<ast::NestedMetaItem>,
-    config_files: Vec<String>,
+    config_files: Vec<xcfg::Config>,
 }
 
 impl CrossCheckExpander {
@@ -30,7 +32,7 @@ impl CrossCheckExpander {
         }
     }
 
-    fn parse_config_files(args: &[ast::NestedMetaItem]) -> Vec<String> {
+    fn parse_config_files(args: &[ast::NestedMetaItem]) -> Vec<xcfg::Config> {
         // Parse arguments of the form
         // #[plugin(cross_check_plugin(config_file = "..."))]
         let fl = RealFileLoader;
@@ -42,6 +44,7 @@ impl CrossCheckExpander {
                         .expect(&format!("invalid path to config file: {:?}", fp)))
             .map(|fp| fl.read_file(&fp)
                         .expect(&format!("could not read config file: {:?}", fp)))
+            .map(|fd| xcfg::parse_string(&fd).expect("could not parse config file"))
             .collect()
     }
 }
