@@ -33,6 +33,33 @@ MAKE = get_cmd_or_die("make")
 BEAR = get_cmd_or_die(BEAR_BIN)
 JOBS = "-j2"  # main updates jobs based on args
 
+minimal_str = """ \
+int main() { return 0; }
+"""
+
+
+def test_minimal(args: argparse.Namespace) -> None:
+    ast_extr = get_cmd_or_die(AST_EXTR)
+    ast_impo = get_cmd_or_die(AST_IMPO)
+    cfile = os.path.join(ROOT_DIR, "scripts/test.c")
+    if not os.path.isfile(cfile):
+        with open(cfile, 'w') as fh:
+            fh.write(minimal_str)
+    cborfile = cfile + '.cbor'
+
+    invoke(ast_extr[cfile])
+
+    ld_lib_path = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
+
+    # don't overwrite existing ld lib path if any...
+    if 'LD_LIBRARY_PATH' in pb.local.env:
+        ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
+
+    # import extracted ast
+    with pb.local.env(RUST_BACKTRACE='1',
+                      LD_LIBRARY_PATH=ld_lib_path):
+        invoke(ast_impo[cborfile])
+
 
 def test_json_c(args: argparse.Namespace) -> None:
     with pb.local.cwd(DEPS_DIR):
@@ -134,7 +161,7 @@ def main() -> None:
     JOBS = '-j' + str(args.jobs)
 
     # filter what gets tested using `what` argument
-    tests = [test_json_c, test_ruby, test_lua]
+    tests = [test_minimal, test_json_c, test_ruby, test_lua]
     tests = [t for t in tests if args.what in t.__name__]
 
     if not tests:

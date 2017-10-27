@@ -101,6 +101,21 @@ def have_rust_toolchain(name: str) -> bool:
     return any([True for l in lines if l.startswith(name)])
 
 
+def get_rust_toolchain_libpath(name: str) -> str:
+    """
+    returns library path to custom rust libdir
+    """
+    if on_linux():
+        rustup_toolch_path = ".rustup/toolchains/{}-x86_64-unknown-linux-gnu/lib/"
+        rustup_toolch_path = rustup_toolch_path.format(CUSTOM_RUST_NAME)
+        ld_lib_path = os.path.join(pb.local.env['HOME'], rustup_toolch_path)
+        emsg = "custom rust compiler lib path missing: " + ld_lib_path
+        assert os.path.isdir(ld_lib_path), emsg
+        return ld_lib_path
+    else:
+        assert False, "not implemented"
+
+
 def download_and_build_custom_rustc(args):
     """
     NOTE: we''re not using this function currently
