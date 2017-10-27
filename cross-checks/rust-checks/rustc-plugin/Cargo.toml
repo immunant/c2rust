@@ -11,4 +11,4 @@ plugin = true
 xcheck-args = []
 
 [dependencies]
-config = { path = "../config" }
+cross-check-config = { path = "../config" }

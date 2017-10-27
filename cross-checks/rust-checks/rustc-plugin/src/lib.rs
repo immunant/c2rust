@@ -3,7 +3,7 @@
 extern crate rustc_plugin;
 extern crate syntax;
 
-extern crate config as xcfg;
+extern crate cross_check_config as xcfg;
 
 use rustc_plugin::Registry;
 use syntax::ast;

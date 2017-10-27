@@ -1,5 +1,5 @@
 [package]
-name = "config"
+name = "cross-check-config"
 version = "0.1.0"
 authors = ["Andrei Homescu <ah@immunant.com>"]
 
