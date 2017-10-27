@@ -8,9 +8,11 @@ use syntax::ast;
 use syntax::fold;
 
 use std::convert::TryInto;
+use std::io;
+use std::path::PathBuf;
 
 use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier};
-use syntax::codemap::Span;
+use syntax::codemap::{Span, FileLoader, RealFileLoader};
 use syntax::fold::Folder;
 use syntax::symbol::Symbol;
 
@@ -18,7 +20,7 @@ struct CrossCheckExpander {
     // Arguments passed to plugin
     // TODO: pre-parse them???
     args: Vec<ast::NestedMetaItem>,
-    config_files: Vec<Symbol>,
+    config_files: Vec<String>,
 }
 
 impl CrossCheckExpander {
@@ -29,12 +31,18 @@ impl CrossCheckExpander {
         }
     }
 
-    fn parse_config_files(args: &[ast::NestedMetaItem]) -> Vec<Symbol> {
+    fn parse_config_files(args: &[ast::NestedMetaItem]) -> Vec<String> {
         // Parse arguments of the form
         // #[plugin(cross_check_plugin(config_file = "..."))]
+        let fl = RealFileLoader;
         args.iter()
             .filter(|nmi| nmi.check_name("config_file"))
             .map(|mi| mi.value_str().expect("invalid string for config_file"))
+            .map(|fsym| PathBuf::from(&*fsym.as_str()))
+            .map(|fp| fl.abs_path(&fp)
+                        .expect(&format!("invalid path to config file: {:?}", fp)))
+            .map(|fp| fl.read_file(&fp)
+                        .expect(&format!("could not read config file: {:?}", fp)))
             .collect()
     }
 }
