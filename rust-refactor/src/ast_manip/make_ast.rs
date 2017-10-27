@@ -606,6 +606,17 @@ impl Builder {
         })
     }
 
+    pub fn loop_expr<B>(self, body: B) -> P<Expr>
+        where B: Make<P<Block>> {
+        let body = body.make(&self);
+
+        P(Expr{
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Loop(body, None),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
 
 
     // Patterns
