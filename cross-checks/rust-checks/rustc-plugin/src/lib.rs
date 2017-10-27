@@ -18,7 +18,7 @@ struct CrossCheckExpander {
     // Arguments passed to plugin
     // TODO: pre-parse them???
     args: Vec<ast::NestedMetaItem>,
-    config_files: Vec<String>,
+    config_files: Vec<Symbol>,
 }
 
 impl CrossCheckExpander {
@@ -29,13 +29,12 @@ impl CrossCheckExpander {
         }
     }
 
-    fn parse_config_files(args: &[ast::NestedMetaItem]) -> Vec<String> {
+    fn parse_config_files(args: &[ast::NestedMetaItem]) -> Vec<Symbol> {
         // Parse arguments of the form
         // #[plugin(cross_check_plugin(config_file = "..."))]
         args.iter()
             .filter(|nmi| nmi.check_name("config_file"))
             .map(|mi| mi.value_str().expect("invalid string for config_file"))
-            .map(|ss| String::from(&*ss.as_str()))
             .collect()
     }
 }
