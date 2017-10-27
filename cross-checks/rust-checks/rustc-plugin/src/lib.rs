@@ -44,6 +44,8 @@ impl CrossCheckExpander {
                         .expect(&format!("invalid path to config file: {:?}", fp)))
             .map(|fp| fl.read_file(&fp)
                         .expect(&format!("could not read config file: {:?}", fp)))
+            // TODO: use a Reader to read&parse each configuration file
+            // without storing its contents in an intermediate String buffer???
             .map(|fd| xcfg::parse_string(&fd).expect("could not parse config file"))
             .collect()
     }
