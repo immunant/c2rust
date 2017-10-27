@@ -51,8 +51,9 @@ LLVM_BLD = os.path.join(ROOT_DIR, 'llvm.build.')
 # folder than building directly on the host.
 LLVM_BLD += platform.node()  # returns hostname 
 LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
-LLVM_PUBKEY = "8F0871F202119294"
-LLVM_VER = "4.0.1"
+# LLVM_PUBKEY = "8F0871F202119294"  # signed v4.0.1
+LLVM_PUBKEY = "345AD05D"  # signed v5.0.0
+LLVM_VER = "5.0.0"
 LLVM_ARCHIVE_URLS = """
 http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz
 http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz
@@ -374,7 +375,7 @@ def check_sig(afile: str, asigfile: str) -> None:
 
     # check that archive matches signature
     try:
-        expected = "Good signature from \"Tom Stellard <tom@stellard.net>\""
+        expected = "Good signature from "
         logging.debug("checking signature of %s", os.path.basename(afile))
         retcode, _, stderr = gpg['--verify', asigfile, afile].run(retcode=None)
         if retcode:
