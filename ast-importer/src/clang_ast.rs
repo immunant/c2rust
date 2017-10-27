@@ -184,7 +184,6 @@ pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError>
 
     for x in all_nodes {
         let entry = expect_array(x).expect("All nodes entry not array");
-        println!("{:?}", entry);
         let entry_id = expect_u64(&entry[0])?;
         let tag = expect_u64(&entry[1])?;
 

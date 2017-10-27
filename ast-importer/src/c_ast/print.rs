@@ -28,12 +28,12 @@ impl Printer {
 
     pub fn print_expr(&mut self, expr_id: CExprId, context: &TypedAstContext) {
         match context.c_exprs.get(&expr_id).map(|l| &l.kind) {
-            Some(&CExprKind::Literal(lit)) => self.print_lit(&lit, context),
-            Some(&CExprKind::Unary(op, rhs)) => {
+            Some(&CExprKind::Literal(_, lit)) => self.print_lit(&lit, context),
+            Some(&CExprKind::Unary(_, op, rhs)) => {
                 self.print_unop(&op, context);
                 self.print_expr(rhs, context);
             },
-            Some(&CExprKind::Binary(op, lhs, rhs)) => {
+            Some(&CExprKind::Binary(_, op, lhs, rhs)) => {
                 self.print_expr(lhs, context);
                 print!(" ");
                 self.print_binop(&op, context);
@@ -41,7 +41,20 @@ impl Printer {
                 self.print_expr(rhs, context);
             },
             Some(&CExprKind::ImplicitCast(_, expr)) => self.print_expr(expr, context),
-            Some(&CExprKind::DeclRef(decl)) => self.print_decl_name(decl, context),
+            Some(&CExprKind::DeclRef(_, decl)) => self.print_decl_name(decl, context),
+            Some(&CExprKind::Call(_, func, ref args)) => {
+                self.print_expr(func, context);
+                print!("(");
+                for arg in args {
+                    self.print_expr(*arg, context);
+                }
+                print!(")");
+            },
+            Some(&CExprKind::Member(_, base, member)) => {
+                self.print_expr(base, context);
+                print!(".");
+                self.print_decl_name(member, context);
+            }
             None => panic!("Could not find expressions with ID {}", expr_id),
            // _ => unimplemented!("Printer::print_expr"),
         }
@@ -127,6 +140,24 @@ impl Printer {
                     },
                     &None => println!(),
                 }
+            },
+
+            Some(&CStmtKind::ForLoop { ref init, ref condition, ref increment, ref body }) => {
+                self.pad();
+                println!("for (");
+                self.indent += 2;
+                self.pad();
+                self.print_stmt(*init, context);
+                self.pad();
+                self.print_expr(*condition, context);
+                println!(";");
+                self.pad();
+                self.print_expr(*increment, context);
+                println!();
+                self.indent -= 2;
+                self.pad();
+                print!(") ");
+                self.print_stmt(*body, context);
             },
 
             Some(&CStmtKind::While { ref condition, ref body }) => {

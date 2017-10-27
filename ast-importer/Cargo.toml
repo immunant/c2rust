@@ -9,6 +9,7 @@ cbor = { git = "https://github.com/GaloisInc/rust-cbor" } # "0.4"
 syn = "0.11.11"
 quote = "0.3"
 idiomize =  { path = "../rust-refactor" }
+clap = "2.26.0"
 
 [build-dependencies]
 bindgen="0.29.0"

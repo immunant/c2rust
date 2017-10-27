@@ -70,6 +70,15 @@ impl IdMapper {
     pub fn get_old(&mut self, new_id: NewId) -> Option<ClangId> {
         self.new_to_old.get(&new_id).map(|n| *n)
     }
+
+    /// If the `old_id` is already present, map the `other_old_id` to point to the same `NewID`.
+    pub fn merge_old(&mut self, old_id: ClangId, other_old_id: ClangId) -> Option<NewId> {
+        self.get_new(old_id)
+            .map(|new_id| {
+                self.old_to_new.insert(other_old_id, new_id);
+                new_id
+            })
+    }
 }
 
 /// Transfer location information off of an `AstNode` and onto something that is `Located`
@@ -247,6 +256,10 @@ impl ConversionContext {
                     self.add_type(new_id, not_located(CTypeKind::Void));
                 }
 
+                TypeTag::TagChar => {
+                    self.add_type(new_id, not_located(CTypeKind::Char));
+                }
+
                 TypeTag::TagInt => {
                     self.add_type(new_id, not_located(CTypeKind::Int));
                 }
@@ -265,6 +278,14 @@ impl ConversionContext {
 
                 TypeTag::TagUInt => {
                     self.add_type(new_id, not_located(CTypeKind::UInt));
+                }
+
+                TypeTag::TagUChar => {
+                    self.add_type(new_id, not_located(CTypeKind::UChar));
+                }
+
+                TypeTag::TagSChar => {
+                    self.add_type(new_id, not_located(CTypeKind::SChar));
                 }
 
                 TypeTag::TagUShort => {
@@ -419,6 +440,36 @@ impl ConversionContext {
                     self.add_stmt(new_id, located(node, null_stmt));
                 }
 
+                ASTEntryTag::TagForStmt if expected_ty & OTHER_STMT != 0 => {
+                    let init_old = node.children[0].expect("For loop initializer not found");
+                    let init = self.visit_node_type(&init_old, STMT);
+
+                    let condition_old = node.children[1].expect("For loop condition not found");
+                    let condition = self.visit_node_type(&condition_old, EXPR);
+
+                    let increment_old = node.children[2].expect("For loop increment not found");
+                    let increment = self.visit_node_type(&increment_old, EXPR);
+
+                    let body_old = node.children[3].expect("For loop body not found");
+                    let body = self.visit_node_type(&body_old, STMT);
+
+                    let for_stmt = CStmtKind::ForLoop { init, condition, increment, body };
+
+                    self.add_stmt(new_id, located(node, for_stmt));
+                }
+
+                ASTEntryTag::TagWhileStmt if expected_ty & OTHER_STMT != 0 => {
+                    let condition_old = node.children[0].expect("While loop condition not found");
+                    let condition = self.visit_node_type(&condition_old, EXPR);
+
+                    let body_old = node.children[1].expect("While loop body not found");
+                    let body = self.visit_node_type(&body_old, STMT);
+
+                    let while_stmt = CStmtKind::While { condition, body };
+
+                    self.add_stmt(new_id, located(node, while_stmt));
+                }
+
                 ASTEntryTag::TagLabelStmt if expected_ty & LABEL_STMT != 0 => {
                     let pointed_stmt_old = node.children[0].expect("Label statement not found");
                     let pointed_stmt = self.visit_node_type(&pointed_stmt_old, STMT);
@@ -431,10 +482,20 @@ impl ConversionContext {
 
                 // Expressions
 
+                ASTEntryTag::TagParenExpr if expected_ty & (EXPR | STMT) != 0 => {
+                    let wrapped = node.children[0].expect("Expected wrapped paren expression");
+
+                    self.id_mapper.merge_old(node_id, wrapped);
+                    self.visit_node_type(&wrapped, expected_ty);
+                }
+
                 ASTEntryTag::TagIntegerLiteral if expected_ty & (EXPR | STMT) != 0 => {
                     let value = expect_u64(&node.extras[0]).expect("Expected integer literal value");
 
-                    let integer_literal = CExprKind::Literal(CLiteral::Integer(value));
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_node_type(&ty_old, TYPE);
+
+                    let integer_literal = CExprKind::Literal(ty, CLiteral::Integer(value));
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, integer_literal);
                 }
@@ -442,7 +503,10 @@ impl ConversionContext {
                 ASTEntryTag::TagCharacterLiteral if expected_ty & (EXPR | STMT) != 0 => {
                     let value = expect_u64(&node.extras[0]).expect("Expected character literal value");
 
-                    let character_literal = CExprKind::Literal(CLiteral::Character(value));
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_node_type(&ty_old, TYPE);
+
+                    let character_literal = CExprKind::Literal(ty, CLiteral::Character(value));
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, character_literal);
                 }
@@ -450,7 +514,10 @@ impl ConversionContext {
                 ASTEntryTag::TagFloatingLiteral if expected_ty & (EXPR | STMT) != 0 => {
                     let value = expect_f64(&node.extras[0]).expect("Expected float literal value");
 
-                    let floating_literal = CExprKind::Literal(CLiteral::Floating(value));
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_node_type(&ty_old, TYPE);
+
+                    let floating_literal = CExprKind::Literal(ty, CLiteral::Floating(value));
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, floating_literal);
                 }
@@ -469,7 +536,10 @@ impl ConversionContext {
                     let operand_old = node.children[0].expect("Expected operand");
                     let operand = self.visit_node_type(&operand_old, EXPR);
 
-                    let unary = CExprKind::Unary(operator, operand);
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_node_type(&ty_old, TYPE);
+
+                    let unary = CExprKind::Unary(ty, operator, operand);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, unary);
                 }
@@ -484,6 +554,42 @@ impl ConversionContext {
                     let implicit = CExprKind::ImplicitCast(typ, expression);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, implicit);
+                }
+
+                ASTEntryTag::TagCallExpr if expected_ty & (EXPR | STMT) != 0 => {
+                    let func_old = node.children[0].expect("Expected function for function call");
+                    let func = self.visit_node_type(&func_old, EXPR);
+
+                    let args: Vec<CExprId> = node.children
+                        .iter()
+                        .skip(1)
+                        .map(|id| {
+                            let arg_id = id.expect("Expected call expression argument");
+                            self.visit_node_type(&arg_id, EXPR)
+                        })
+                        .collect();
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_node_type(&ty_old, TYPE);
+
+                    let call = CExprKind::Call(ty, func, args);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, call);
+                }
+
+                ASTEntryTag::TagMemberExpr if expected_ty & (EXPR | STMT) != 0 => {
+                    let base_old = node.children[0].expect("Expected base for member expression");
+                    let base = self.visit_node_type(&base_old, EXPR);
+
+                    let field_old = node.children[1].expect("Expected field for member expression");
+                    let field = self.visit_node_type(&field_old, DECL);
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_node_type(&ty_old, TYPE);
+
+                    let member = CExprKind::Member(ty, base, field);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, member);
                 }
 
                 ASTEntryTag::TagBinaryOperator if expected_ty & (EXPR | STMT) != 0 => {
@@ -515,7 +621,10 @@ impl ConversionContext {
                     let right_operand_old = node.children[1].expect("Expected right operand");
                     let right_operand = self.visit_node_type(&right_operand_old, EXPR);
 
-                    let binary = CExprKind::Binary(operator, left_operand, right_operand);
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_node_type(&ty_old, TYPE);
+
+                    let binary = CExprKind::Binary(ty, operator, left_operand, right_operand);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, binary);
                 }
@@ -524,7 +633,10 @@ impl ConversionContext {
                     let declaration_old = node.children[0].expect("Expected declaration on expression tag decl");
                     let declaration = self.visit_node_type(&declaration_old, DECL);
 
-                    let decl = CExprKind::DeclRef(declaration);
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_node_type(&ty_old, TYPE);
+
+                    let decl = CExprKind::DeclRef(ty, declaration);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, decl);
                 }

@@ -116,13 +116,13 @@ impl CDeclKind {
 #[derive(Debug)]
 pub enum CExprKind {
     // Literals
-    Literal(CLiteral),
+    Literal(CTypeId, CLiteral),
 
     // Unary operator
-    Unary(UnOp, CExprId),
+    Unary(CTypeId, UnOp, CExprId),
 
     // Binary operator
-    Binary(BinOp, CExprId, CExprId),
+    Binary(CTypeId, BinOp, CExprId, CExprId),
 
     // Implicit cast
     // TODO: consider adding the cast type (see OperationKinds.def)
@@ -130,7 +130,27 @@ pub enum CExprKind {
 
     // Reference to a decl (a variable, for instance)
     // TODO: consider enforcing what types of declarations are allowed here
-    DeclRef(CDeclId),
+    DeclRef(CTypeId, CDeclId),
+
+    // Function call
+    Call(CTypeId, CExprId, Vec<CExprId>),
+
+    // Member
+    Member(CTypeId, CExprId, CDeclId),
+}
+
+impl CExprKind {
+    pub fn get_type(&self) -> CTypeId {
+        match *self {
+            CExprKind::Literal(ty, _) => ty,
+            CExprKind::Unary(ty, _, _) => ty,
+            CExprKind::Binary(ty, _, _, _) => ty,
+            CExprKind::ImplicitCast(ty, _) => ty,
+            CExprKind::DeclRef(ty, _) => ty,
+            CExprKind::Call(ty, _, _) => ty,
+            CExprKind::Member(ty, _, _) => ty,
+        }
+    }
 }
 
 /// Represents a unary operator in C (6.5.3 Unary operators)
@@ -214,9 +234,9 @@ pub enum CStmtKind {
         condition: CExprId,
     },
     ForLoop {
-        init: CStmtId,      // This can be an 'Expr'
-        condition: CExprId,
-        increment: CExprId,
+        init: CStmtId,       // This can be an 'Expr'  // TODO: should this field be an option
+        condition: CExprId,                            // TODO: should this field be an option
+        increment: CExprId,                            // TODO: should this field be an option
         body: CStmtId,
     },
 
