@@ -9,7 +9,6 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     // Iterate through all fields, inserting the hash computation for each field
     let hash_fields = s.each(|f| {
         quote! {
-            extern crate cross_check_runtime;
             use cross_check_runtime::hash::CrossCheckHash;
             h.write_u64(CrossCheckHash::cross_check_hash_depth::<__XCHA, __XCHS>(#f, _depth - 1));
         }
