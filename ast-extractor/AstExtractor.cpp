@@ -301,18 +301,18 @@ class TranslateASTVisitor final
           }
           cbor_encoder_close_container(&local , &childEnc);
           
-          // 4 - line number
-          // 5 - column number
+          // 4 - Line number
+          // 5 - Column number
           encodeSourcePos(&local, loc);
           
-          // 6 - type (only for expressions)
+          // 6 - Type ID (only for expressions)
           if (nullptr == ty) {
               cbor_encode_null(&local);
           } else {
               cbor_encode_uint(&local, uintptr_t(ty));
           }
           
-          // 7.. extra entries
+          // 7 - Extra entries
           extra(&local);
           
           cbor_encoder_close_container(encoder, &local);
