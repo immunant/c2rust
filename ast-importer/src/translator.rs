@@ -93,7 +93,11 @@ pub fn translate(ast_context: AstContext) -> String {
 
             let name = expect_string(&x.extras[0]).expect("Expected a name");
 
-            let ty = ast_context.get_type(x.type_id.expect("Expected a type")).expect("Expected a number");
+            let type_id = x.type_id.expect("Expected a type");
+            let ty = match ast_context.get_type(type_id) {
+                None => panic!("Missing type node for type_id {}", type_id),
+                Some(_ty) => _ty
+            };
             let funtys = expect_array(&ty.extras[0]).expect("Function declaration type expected");
             let ret = expect_u64(&funtys[0]).expect("Expected a return type");
 
