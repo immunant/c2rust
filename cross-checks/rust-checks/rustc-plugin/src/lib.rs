@@ -18,6 +18,10 @@ use syntax::fold::Folder;
 use syntax::symbol::Symbol;
 use syntax::ptr::P;
 
+fn djb2_hash(s: &str) -> u32 {
+    s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
+}
+
 struct CrossCheckExpander {
     // Arguments passed to plugin
     // TODO: pre-parse them???
@@ -263,10 +267,6 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
             _ => fold::noop_fold_item_simple(item, self)
         }
     }
-}
-
-fn djb2_hash(s: &str) -> u32 {
-    s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
 }
 
 impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
