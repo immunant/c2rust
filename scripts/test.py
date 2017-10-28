@@ -37,14 +37,31 @@ minimal_str = """ \
 int main() { return 0; }
 """
 
+minimal_cc_db = """ \
+[
+  {{
+    "arguments": [ "cc", "-c", "test.c" ],
+    "directory": "{}",
+    "file": "test.c"
+  }}
+]
+""".format(os.path.join(ROOT_DIR, "scripts"))
 
-def test_minimal(args: argparse.Namespace) -> None:
+
+def test_minimal(_: argparse.Namespace) -> None:
     ast_extr = get_cmd_or_die(AST_EXTR)
     ast_impo = get_cmd_or_die(AST_IMPO)
     cfile = os.path.join(ROOT_DIR, "scripts/test.c")
     if not os.path.isfile(cfile):
         with open(cfile, 'w') as fh:
             fh.write(minimal_str)
+
+    # avoid warnings about missing compiler flags, not strictly required
+    minimal_cc_db_path = os.path.join(ROOT_DIR, "scripts/compile_commands.json")
+    if not os.path.isfile(minimal_cc_db_path):
+        with open(minimal_cc_db_path, 'w') as fh:
+            fh.write(minimal_cc_db)
+
     cborfile = cfile + '.cbor'
 
     invoke(ast_extr[cfile])
@@ -55,10 +72,12 @@ def test_minimal(args: argparse.Namespace) -> None:
     if 'LD_LIBRARY_PATH' in pb.local.env:
         ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
+    args = [cborfile]
+
     # import extracted ast
     with pb.local.env(RUST_BACKTRACE='1',
                       LD_LIBRARY_PATH=ld_lib_path):
-        invoke(ast_impo[cborfile])
+        invoke(ast_impo, args)
 
 
 def test_json_c(args: argparse.Namespace) -> None:
