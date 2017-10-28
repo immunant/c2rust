@@ -115,9 +115,10 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
     }
 
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
-        match item.node {
+        let folded_item = fold::noop_fold_item_simple(item, self);
+        match folded_item.node {
             ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) => {
-                let fn_ident = self.fold_ident(item.ident);
+                let fn_ident = folded_item.ident;
                 let checked_block = if self.config.enabled {
                     // Add the cross-check to the beginning of the function
                     // TODO: only add the checks to C abi functions???
@@ -143,13 +144,13 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                     }
 
                     // Build and return the block
-                    self.fold_block(block).map(|block| quote_block!(self.cx, {
+                    block.map(|block| quote_block!(self.cx, {
                         cross_check_raw!(FUNCTION_ENTRY_TAG, $check_id);
                         $arg_xchecks
                         $block
                     }).unwrap())
                 } else {
-                    self.fold_block(block)
+                    block
                 };
 
                 // Add our typedefs to the beginning of each function;
@@ -167,21 +168,16 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                     })
                 };
                 let checked_fn = ast::ItemKind::Fn(
-                    self.fold_fn_decl(fn_decl),
+                    fn_decl,
                     unsafety,
                     constness,
                     abi,
-                    self.fold_generics(generics),
+                    generics,
                     block_with_types);
                 // Build and return the replacement function item
                 ast::Item {
-                    id: self.new_id(item.id),
-                    vis: self.fold_vis(item.vis),
-                    ident: fn_ident,
-                    attrs: fold::fold_attrs(item.attrs, self),
                     node: checked_fn,
-                    span: self.new_span(item.span),
-                    tokens: item.tokens,
+                    ..folded_item
                 }
             }
             ast::ItemKind::Enum(_, _) |
@@ -189,20 +185,15 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
             ast::ItemKind::Union(_, _) => {
                 // Prepend #[derive(CrossCheckHash)] automatically
                 // to every structure definition
-                let mut item_attrs = fold::fold_attrs(item.attrs, self);
+                let mut item_attrs = folded_item.attrs;
                 let xcheck_hash_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
                 item_attrs.push(xcheck_hash_attr);
                 ast::Item {
-                    id: self.new_id(item.id),
-                    vis: self.fold_vis(item.vis),
-                    ident: self.fold_ident(item.ident),
                     attrs: item_attrs,
-                    node: self.fold_item_kind(item.node),
-                    span: self.new_span(item.span),
-                    tokens: item.tokens,
+                    ..folded_item
                 }
             }
-            _ => fold::noop_fold_item_simple(item, self)
+            _ => folded_item
         }
     }
 }
