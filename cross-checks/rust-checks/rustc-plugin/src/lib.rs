@@ -98,8 +98,8 @@ impl Default for CrossCheckConfig {
 
 impl CrossCheckConfig {
     fn parse_config(&self, mi: &ast::MetaItem) -> Self {
-        let mut res = self.clone();
         assert!(mi.name == "cross_check");
+        let mut res = self.clone();
         match mi.node {
             ast::MetaItemKind::Word => { } // Use the defaults for #[cross_check]
             ast::MetaItemKind::List(ref items) => {
