@@ -122,7 +122,7 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                 let checked_block = if self.config.enabled {
                     // Insert cross-checks for function arguments,
                     // if enabled via the "xcheck-args" feature
-                    let mut arg_xchecks: Vec<ast::Block> = vec![];
+                    let mut arg_xchecks: Vec<P<ast::Block>> = vec![];
                     if cfg!(feature = "xcheck-args") {
                         fn_decl.inputs.iter().for_each(|ref arg| {
                             match arg.pat.node {
@@ -131,7 +131,7 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                                     // so we can reference it directly by name
                                     arg_xchecks.push(quote_block!(self.cx, {
                                         cross_check_value!(FUNCTION_ARG_TAG, $ident);
-                                    }).unwrap());
+                                    }));
                                 }
                                 _ => unimplemented!()
                             }
