@@ -13,10 +13,12 @@ use std::convert::TryInto;
 use std::path::PathBuf;
 
 use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier};
+use syntax::ext::quote::rt::{ToTokens, ExtParseUtils};
 use syntax::codemap::{Span, FileLoader, RealFileLoader};
 use syntax::fold::Folder;
 use syntax::symbol::Symbol;
 use syntax::ptr::P;
+use syntax::tokenstream::TokenTree;
 
 fn djb2_hash(s: &str) -> u32 {
     s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
@@ -27,8 +29,8 @@ struct CrossCheckConfig {
     enabled: bool,
     name: Option<String>,
     id: Option<u32>,
-    ahasher: P<ast::Ty>,
-    shasher: P<ast::Ty>,
+    ahasher: Vec<TokenTree>,
+    shasher: Vec<TokenTree>,
 }
 
 impl CrossCheckConfig {
@@ -37,12 +39,12 @@ impl CrossCheckConfig {
             enabled: true,
             name: None,
             id: None,
-            ahasher: quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher),
-            shasher: quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher),
+            ahasher: quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher).to_tokens(cx),
+            shasher: quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher).to_tokens(cx),
         }
     }
 
-    fn parse_config(&self, mi: &ast::MetaItem) -> Self {
+    fn parse_config(&self, cx: &mut ExtCtxt, mi: &ast::MetaItem) -> Self {
         assert!(mi.name == "cross_check");
         let mut res = self.clone();
         match mi.node {
@@ -77,6 +79,16 @@ impl CrossCheckConfig {
                                     }
                                 }
                             }
+                            "ahasher" => {
+                                res.ahasher = item.value_str()
+                                                  .map(|s| cx.parse_tts(String::from(&*s.as_str())))
+                                                  .unwrap_or_else(|| vec![])
+                            }
+                            "shasher" => {
+                                res.shasher = item.value_str()
+                                                  .map(|s| cx.parse_tts(String::from(&*s.as_str())))
+                                                  .unwrap_or_else(|| vec![])
+                            }
                             name@_ => panic!("Unknown cross_check item: {}", name)
                         }
                     }
@@ -104,7 +116,7 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
     fn parse_config(&mut self, item: &ast::Item) -> Option<CrossCheckConfig> {
         let xcheck_attr = item.attrs.iter().find(
             |attr| attr.name().map_or(false, |name| name == "cross_check"));
-        xcheck_attr.map(|attr| self.config.parse_config(&attr.meta().unwrap()))
+        xcheck_attr.map(|attr| self.config.parse_config(self.cx, &attr.meta().unwrap()))
     }
 
     fn swap_config(&mut self, new_config: Option<CrossCheckConfig>) -> Option<CrossCheckConfig> {
@@ -250,7 +262,7 @@ impl MultiItemModifier for CrossCheckExpander {
               _sp: Span,
               mi: &ast::MetaItem,
               item: Annotatable) -> Vec<Annotatable> {
-        let config = CrossCheckConfig::new(cx).parse_config(mi);
+        let config = CrossCheckConfig::new(cx).parse_config(cx, mi);
         match item {
             Annotatable::Item(i) => {
                 // If we're seeing #![cross_check] at the top of the crate or a module,
