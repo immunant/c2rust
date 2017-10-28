@@ -141,6 +141,13 @@ impl CrossCheckConfig {
         }
         res
     }
+
+    // Allow clients to specify the id or name manually, like this:
+    // #[cross_check(name = "foo")]
+    // #[cross_check(id = 0x12345678)]
+    fn get_hash(&self) -> Option<u32> {
+        self.id.or_else(|| self.name.as_ref().map(|ref name| djb2_hash(name)))
+    }
 }
 
 struct CrossChecker<'a, 'cx: 'a> {
@@ -169,16 +176,8 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                 let checked_block = if self.config.enabled {
                     // Add the cross-check to the beginning of the function
                     // TODO: only add the checks to C abi functions???
-                    // Allow clients to specify the id or name manually, like this:
-                    // #[cross_check(name = "foo")]
-                    // #[cross_check(id = 0x12345678)]
-                    let check_id = if let Some(id) = self.config.id {
-                        id
-                    } else if let Some(ref name) = self.config.name {
-                        djb2_hash(name)
-                    } else {
-                        djb2_hash(&*fn_ident.name.as_str())
-                    };
+                    let check_id = self.config.get_hash().unwrap_or_else(
+                        || djb2_hash(&*fn_ident.name.as_str()));
 
                     // Insert cross-checks for function arguments,
                     // if enabled via the "xcheck-args" feature
