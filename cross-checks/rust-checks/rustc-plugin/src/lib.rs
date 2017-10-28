@@ -19,6 +19,7 @@ use syntax::fold::Folder;
 use syntax::symbol::Symbol;
 use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
+use syntax::util::small_vector::SmallVector;
 
 fn djb2_hash(s: &str) -> u32 {
     s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
@@ -112,10 +113,13 @@ struct CrossChecker<'a, 'cx: 'a> {
     config: CrossCheckConfig,
 }
 
+fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
+    attrs.iter().find(|attr| attr.name().map_or(false, |name| name == "cross_check"))
+}
+
 impl<'a, 'cx> CrossChecker<'a, 'cx> {
     fn parse_config(&mut self, item: &ast::Item) -> Option<CrossCheckConfig> {
-        let xcheck_attr = item.attrs.iter().find(
-            |attr| attr.name().map_or(false, |name| name == "cross_check"));
+        let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
         xcheck_attr.map(|attr| self.config.parse_config(self.cx, &attr.meta().unwrap()))
     }
 
@@ -215,6 +219,33 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
         let new_item = self.internal_fold_item_simple(item);
         self.swap_config(old_config);
         new_item
+    }
+
+    fn fold_stmt(&mut self, s: ast::Stmt) -> SmallVector<ast::Stmt> {
+       let folded_stmt = fold::noop_fold_stmt(s, self);
+       folded_stmt.into_iter().flat_map(|s| {
+           let new_stmt = match s.node {
+               ast::StmtKind::Local(ref local) => {
+                   let attr = find_cross_check_attr(&*local.attrs);
+                   // TODO: check that the cross_check attr is "yes"
+                   attr.and_then(|_| {
+                       // TODO: only add cross-checks for initialized locals???
+                       // (in other words, check local.init.is_some())
+                       match local.pat.node {
+                           ast::PatKind::Ident(_, ident, _) => {
+                               Some(quote_stmt!(self.cx, cross_check_value!($ident)).unwrap())
+                           },
+                           // TODO: handle more pattern types
+                           _ => None
+                       }
+                   })
+               },
+               _ => None
+           };
+           let mut res = vec![s];
+           res.extend(new_stmt.into_iter());
+           res
+       }).collect()
     }
 
     fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
