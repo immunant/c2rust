@@ -120,11 +120,6 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
             ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) => {
                 let fn_ident = folded_item.ident;
                 let checked_block = if self.config.enabled {
-                    // Add the cross-check to the beginning of the function
-                    // TODO: only add the checks to C abi functions???
-                    let check_id = self.config.get_hash().unwrap_or_else(
-                        || djb2_hash(&*fn_ident.name.as_str()));
-
                     // Insert cross-checks for function arguments,
                     // if enabled via the "xcheck-args" feature
                     let mut arg_xchecks: Vec<ast::Block> = vec![];
@@ -143,12 +138,15 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                         });
                     }
 
-                    // Build and return the block
-                    block.map(|block| quote_block!(self.cx, {
+                    // Add the cross-check to the beginning of the function
+                    // TODO: only add the checks to C abi functions???
+                    let check_id = self.config.get_hash().unwrap_or_else(
+                        || djb2_hash(&*fn_ident.name.as_str()));
+                    quote_block!(self.cx, {
                         cross_check_raw!(FUNCTION_ENTRY_TAG, $check_id);
                         $arg_xchecks
                         $block
-                    }).unwrap())
+                    })
                 } else {
                     block
                 };
