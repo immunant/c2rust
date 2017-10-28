@@ -161,13 +161,16 @@ public:
         encodeType(T, tag);
     }
     
-    /* Function types are encoded with an extra list of types. The return type
-     is always the first element of the list followed by
-     */
+    // Clang represents function declarations with parameters as `FunctionProtoType`
+    // instances whereas functions w/o parameters are handled as `FunctionNoPrototype`
+    // instances. Note: we could handle both cases by overriding `VisitFunctionType`
+    // instead of the current two-function solution.
     void VisitFunctionProtoType(const FunctionProtoType *T) {
         encodeType(T, TagFunctionType, [T](CborEncoder *local) {
             CborEncoder arrayEncoder;
-            
+
+            // Function types are encoded with an extra list of types. The return type
+            // is always the first element of the list followed by the parameters.
             size_t elts = T->getNumParams()+1;
             cbor_encoder_create_array(local, &arrayEncoder, elts);
             
@@ -178,14 +181,27 @@ public:
             }
             
             cbor_encoder_close_container(local, &arrayEncoder);
-            
-            
         });
         
         VisitQualType(T->getReturnType());
         for (auto x : T->param_types()) {
             VisitQualType(x);
         }
+    }
+
+    // See `VisitFunctionProtoType`.
+    void VisitFunctionNoProtoType(const FunctionNoProtoType *T) {
+        encodeType(T, TagFunctionType, [T](CborEncoder *local) {
+            CborEncoder arrayEncoder;
+
+            cbor_encoder_create_array(local, &arrayEncoder, 1);
+
+            cbor_encode_uint(&arrayEncoder, uintptr_t(T->getReturnType().getTypePtrOrNull()));
+
+            cbor_encoder_close_container(local, &arrayEncoder);
+        });
+
+        VisitQualType(T->getReturnType());
     }
     
     void VisitPointerType(const PointerType *T) {
@@ -304,7 +320,7 @@ class TranslateASTVisitor final
           // 4 - Line number
           // 5 - Column number
           encodeSourcePos(&local, loc);
-          
+
           // 6 - Type ID (only for expressions)
           if (nullptr == ty) {
               cbor_encode_null(&local);
@@ -581,12 +597,14 @@ class TranslateASTVisitor final
               childIds.push_back(x);
           }
           childIds.push_back(FD->getBody());
-          encode_entry(FD, TagFunctionDecl, childIds, FD->getType().getTypePtr(),
+
+          auto functionType = FD->getType();
+          encode_entry(FD, TagFunctionDecl, childIds, functionType.getTypePtr(),
                              [FD](CborEncoder *array) {
                                  auto name = FD->getNameAsString();
                                  cbor_encode_string(array, name);
                              });
-          typeEncoder.VisitQualType(FD->getType());
+          typeEncoder.VisitQualType(functionType);
 
           return true;
       }
