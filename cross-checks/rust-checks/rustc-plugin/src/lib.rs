@@ -22,68 +22,6 @@ fn djb2_hash(s: &str) -> u32 {
     s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
 }
 
-struct CrossCheckExpander {
-    // Arguments passed to plugin
-    // TODO: pre-parse them???
-    args: Vec<ast::NestedMetaItem>,
-    config_files: Vec<xcfg::Config>,
-}
-
-impl CrossCheckExpander {
-    fn new(args: &[ast::NestedMetaItem]) -> CrossCheckExpander {
-        CrossCheckExpander {
-            args: args.to_vec(),
-            config_files: CrossCheckExpander::parse_config_files(args),
-        }
-    }
-
-    fn parse_config_files(args: &[ast::NestedMetaItem]) -> Vec<xcfg::Config> {
-        // Parse arguments of the form
-        // #[plugin(cross_check_plugin(config_file = "..."))]
-        let fl = RealFileLoader;
-        args.iter()
-            .filter(|nmi| nmi.check_name("config_file"))
-            .map(|mi| mi.value_str().expect("invalid string for config_file"))
-            .map(|fsym| PathBuf::from(&*fsym.as_str()))
-            .map(|fp| fl.abs_path(&fp)
-                        .expect(&format!("invalid path to config file: {:?}", fp)))
-            .map(|fp| fl.read_file(&fp)
-                        .expect(&format!("could not read config file: {:?}", fp)))
-            // TODO: use a Reader to read&parse each configuration file
-            // without storing its contents in an intermediate String buffer???
-            .map(|fd| xcfg::parse_string(&fd).expect("could not parse config file"))
-            .collect()
-    }
-}
-
-impl MultiItemModifier for CrossCheckExpander {
-    fn expand(&self,
-              cx: &mut ExtCtxt,
-              _sp: Span,
-              mi: &ast::MetaItem,
-              item: Annotatable) -> Vec<Annotatable> {
-        let config = CrossCheckConfig::new(cx).parse_config(mi);
-        match item {
-            Annotatable::Item(i) => {
-                // If we're seeing #![cross_check] at the top of the crate or a module,
-                // create a fresh configuration and perform a folding; otherwise, just
-                // ignore this expansion and let the higher level one do everything
-                let ni = match i.node {
-                    ast::ItemKind::Mod(_) =>
-                        CrossChecker{ cx: cx, config: config }
-                        .fold_item(i)
-                        .expect_one("too many items returned"),
-                    _ => i
-                };
-                Annotatable::Item(ni).into()
-            }
-            // TODO: handle TraitItem
-            // TODO: handle ImplItem
-            _ => panic!("Unexpected item: {:?}", item),
-        }
-    }
-}
-
 #[derive(Clone)]
 struct CrossCheckConfig {
     enabled: bool,
@@ -280,6 +218,68 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
 
     fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
         mac
+    }
+}
+
+struct CrossCheckExpander {
+    // Arguments passed to plugin
+    // TODO: pre-parse them???
+    args: Vec<ast::NestedMetaItem>,
+    config_files: Vec<xcfg::Config>,
+}
+
+impl CrossCheckExpander {
+    fn new(args: &[ast::NestedMetaItem]) -> CrossCheckExpander {
+        CrossCheckExpander {
+            args: args.to_vec(),
+            config_files: CrossCheckExpander::parse_config_files(args),
+        }
+    }
+
+    fn parse_config_files(args: &[ast::NestedMetaItem]) -> Vec<xcfg::Config> {
+        // Parse arguments of the form
+        // #[plugin(cross_check_plugin(config_file = "..."))]
+        let fl = RealFileLoader;
+        args.iter()
+            .filter(|nmi| nmi.check_name("config_file"))
+            .map(|mi| mi.value_str().expect("invalid string for config_file"))
+            .map(|fsym| PathBuf::from(&*fsym.as_str()))
+            .map(|fp| fl.abs_path(&fp)
+                        .expect(&format!("invalid path to config file: {:?}", fp)))
+            .map(|fp| fl.read_file(&fp)
+                        .expect(&format!("could not read config file: {:?}", fp)))
+            // TODO: use a Reader to read&parse each configuration file
+            // without storing its contents in an intermediate String buffer???
+            .map(|fd| xcfg::parse_string(&fd).expect("could not parse config file"))
+            .collect()
+    }
+}
+
+impl MultiItemModifier for CrossCheckExpander {
+    fn expand(&self,
+              cx: &mut ExtCtxt,
+              _sp: Span,
+              mi: &ast::MetaItem,
+              item: Annotatable) -> Vec<Annotatable> {
+        let config = CrossCheckConfig::new(cx).parse_config(mi);
+        match item {
+            Annotatable::Item(i) => {
+                // If we're seeing #![cross_check] at the top of the crate or a module,
+                // create a fresh configuration and perform a folding; otherwise, just
+                // ignore this expansion and let the higher level one do everything
+                let ni = match i.node {
+                    ast::ItemKind::Mod(_) =>
+                        CrossChecker{ cx: cx, config: config }
+                        .fold_item(i)
+                        .expect_one("too many items returned"),
+                    _ => i
+                };
+                Annotatable::Item(ni).into()
+            }
+            // TODO: handle TraitItem
+            // TODO: handle ImplItem
+            _ => panic!("Unexpected item: {:?}", item),
+        }
     }
 }
 
