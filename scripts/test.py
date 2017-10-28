@@ -33,8 +33,16 @@ MAKE = get_cmd_or_die("make")
 BEAR = get_cmd_or_die(BEAR_BIN)
 JOBS = "-j2"  # main updates jobs based on args
 
-minimal_str = """ \
+minimal_snippet = """ \
 int main() { return 0; }
+"""
+
+hello_world_snippet = """ \
+#include <stdio.h>
+int main() { 
+  printf("Hello, World!\\n");
+  return 0; 
+}
 """
 
 minimal_cc_db = """ \
@@ -48,19 +56,17 @@ minimal_cc_db = """ \
 """.format(os.path.join(ROOT_DIR, "scripts"))
 
 
-def test_minimal(_: argparse.Namespace) -> None:
+def _test_minimal(code_snippet: str) -> None:
     ast_extr = get_cmd_or_die(AST_EXTR)
     ast_impo = get_cmd_or_die(AST_IMPO)
     cfile = os.path.join(ROOT_DIR, "scripts/test.c")
-    if not os.path.isfile(cfile):
-        with open(cfile, 'w') as fh:
-            fh.write(minimal_str)
+    with open(cfile, 'w') as fh:
+        fh.write(code_snippet)
 
     # avoid warnings about missing compiler flags, not strictly required
     minimal_cc_db_path = os.path.join(ROOT_DIR, "scripts/compile_commands.json")
-    if not os.path.isfile(minimal_cc_db_path):
-        with open(minimal_cc_db_path, 'w') as fh:
-            fh.write(minimal_cc_db)
+    with open(minimal_cc_db_path, 'w') as fh:
+        fh.write(minimal_cc_db)
 
     cborfile = cfile + '.cbor'
 
@@ -72,12 +78,22 @@ def test_minimal(_: argparse.Namespace) -> None:
     if 'LD_LIBRARY_PATH' in pb.local.env:
         ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
-    args = [cborfile]
+    args = []
+    args += ['--ddump-untyped-clang-ast']
+    args += [cborfile]
 
     # import extracted ast
     with pb.local.env(RUST_BACKTRACE='1',
                       LD_LIBRARY_PATH=ld_lib_path):
         invoke(ast_impo, args)
+
+
+def test_minimal(_: argparse.Namespace) -> None:
+    _test_minimal(minimal_snippet)
+
+
+def test_hello_world(_: argparse.Namespace) -> None:
+    _test_minimal(hello_world_snippet)
 
 
 def test_json_c(args: argparse.Namespace) -> None:
@@ -180,7 +196,11 @@ def main() -> None:
     JOBS = '-j' + str(args.jobs)
 
     # filter what gets tested using `what` argument
-    tests = [test_minimal, test_json_c, test_ruby, test_lua]
+    tests = [test_minimal,
+             test_hello_world,
+             test_json_c,
+             test_ruby,
+             test_lua]
     tests = [t for t in tests if args.what in t.__name__]
 
     if not tests:
