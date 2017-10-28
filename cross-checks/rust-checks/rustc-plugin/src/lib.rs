@@ -16,6 +16,7 @@ use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier
 use syntax::codemap::{Span, FileLoader, RealFileLoader};
 use syntax::fold::Folder;
 use syntax::symbol::Symbol;
+use syntax::ptr::P;
 
 struct CrossCheckExpander {
     // Arguments passed to plugin
@@ -57,12 +58,21 @@ impl MultiItemModifier for CrossCheckExpander {
               _sp: Span,
               mi: &ast::MetaItem,
               item: Annotatable) -> Vec<Annotatable> {
-        let config = CrossCheckConfig::new(mi);
+        let config = CrossCheckConfig::new(cx).parse_config(mi);
         match item {
-            Annotatable::Item(i) => Annotatable::Item(
-                CrossChecker{ cx: cx, config: config }
-                .fold_item(i)
-                .expect_one("too many items returned")).into(),
+            Annotatable::Item(i) => {
+                // If we're seeing #![cross_check] at the top of the crate or a module,
+                // create a fresh configuration and perform a folding; otherwise, just
+                // ignore this expansion and let the higher level one do everything
+                let ni = match i.node {
+                    ast::ItemKind::Mod(_) =>
+                        CrossChecker{ cx: cx, config: config }
+                        .fold_item(i)
+                        .expect_one("too many items returned"),
+                    _ => i
+                };
+                Annotatable::Item(ni).into()
+            }
             // TODO: handle TraitItem
             // TODO: handle ImplItem
             _ => panic!("Unexpected item: {:?}", item),
@@ -70,20 +80,29 @@ impl MultiItemModifier for CrossCheckExpander {
     }
 }
 
+#[derive(Clone)]
 struct CrossCheckConfig {
     enabled: bool,
     name: Option<String>,
     id: Option<u32>,
+    ahasher: P<ast::Ty>,
+    shasher: P<ast::Ty>,
 }
 
 impl CrossCheckConfig {
-    fn new(mi: &ast::MetaItem) -> CrossCheckConfig {
-        assert!(mi.name == "cross_check");
-        let mut res = CrossCheckConfig {
+    fn new(cx: &mut ExtCtxt) -> CrossCheckConfig {
+        CrossCheckConfig {
             enabled: true,
             name: None,
             id: None,
-        };
+            ahasher: quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher),
+            shasher: quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher),
+        }
+    }
+
+    fn parse_config(&self, mi: &ast::MetaItem) -> Self {
+        assert!(mi.name == "cross_check");
+        let mut res = self.clone();
         match mi.node {
             ast::MetaItemKind::Word => { } // Use the defaults for #[cross_check]
             ast::MetaItemKind::List(ref items) => {
@@ -125,6 +144,13 @@ impl CrossCheckConfig {
         }
         res
     }
+
+    // Allow clients to specify the id or name manually, like this:
+    // #[cross_check(name = "foo")]
+    // #[cross_check(id = 0x12345678)]
+    fn get_hash(&self) -> Option<u32> {
+        self.id.or_else(|| self.name.as_ref().map(|ref name| djb2_hash(name)))
+    }
 }
 
 struct CrossChecker<'a, 'cx: 'a> {
@@ -132,75 +158,79 @@ struct CrossChecker<'a, 'cx: 'a> {
     config: CrossCheckConfig,
 }
 
-fn djb2_hash(s: &str) -> u32 {
-    s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
-}
+impl<'a, 'cx> CrossChecker<'a, 'cx> {
+    fn parse_config(&mut self, item: &ast::Item) -> Option<CrossCheckConfig> {
+        let xcheck_attr = item.attrs.iter().find(
+            |attr| attr.name().map_or(false, |name| name == "cross_check"));
+        xcheck_attr.map(|attr| self.config.parse_config(&attr.meta().unwrap()))
+    }
 
-impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
-    fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
-        if !self.config.enabled {
-            return fold::noop_fold_item_simple(item, self);
-        }
-        if item.attrs.iter().any(|attr| attr.name().map_or(false, |name| name == "cross_check")) {
-            // If we have cross-check attrs at multiple levels, e.g.,
-            // one per crate and one per function, we'll get called multiple times
-            // and might end up adding multiple cross-checks to each function.
-            // If we get called from the crate-level #![cross_check] attr, we'll
-            // also see the #[cross_check] attributes here for each function;
-            // if that's the case, we can skip inserting cross-checks here,
-            // and let each function insert its own check calls later.
-            // This allows each function to override the global cross-check
-            // settings with its own.
-            return fold::noop_fold_item_simple(item, self);
-        }
+    fn swap_config(&mut self, new_config: Option<CrossCheckConfig>) -> Option<CrossCheckConfig> {
+        new_config.map(|mut new_config| {
+            std::mem::swap(&mut self.config, &mut new_config);
+            new_config
+        })
+    }
+
+    fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         match item.node {
             ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) => {
-                // Add the cross-check to the beginning of the function
-                // TODO: only add the checks to C abi functions???
-                // Allow clients to specify the id or name manually, like this:
-                // #[cross_check(name = "foo")]
-                // #[cross_check(id = 0x12345678)]
                 let fn_ident = self.fold_ident(item.ident);
-                let check_id = if let Some(id) = self.config.id {
-                    id
-                } else if let Some(ref name) = self.config.name {
-                    djb2_hash(name)
-                } else {
-                    djb2_hash(&*fn_ident.name.as_str())
-                };
+                let checked_block = if self.config.enabled {
+                    // Add the cross-check to the beginning of the function
+                    // TODO: only add the checks to C abi functions???
+                    let check_id = self.config.get_hash().unwrap_or_else(
+                        || djb2_hash(&*fn_ident.name.as_str()));
 
-                // Insert cross-checks for function arguments,
-                // if enabled via the "xcheck-args" feature
-                let mut arg_xchecks: Vec<ast::Block> = vec![];
-                if cfg!(feature = "xcheck-args") {
-                    fn_decl.inputs.iter().for_each(|ref arg| {
-                        match arg.pat.node {
-                            ast::PatKind::Ident(_, ident, _) => {
-                                // Parameter pattern is just an identifier,
-                                // so we can reference it directly by name
-                                arg_xchecks.push(quote_block!(self.cx, {
-                                    cross_check_value!(FUNCTION_ARG_TAG, $ident);
-                                }).unwrap());
+                    // Insert cross-checks for function arguments,
+                    // if enabled via the "xcheck-args" feature
+                    let mut arg_xchecks: Vec<ast::Block> = vec![];
+                    if cfg!(feature = "xcheck-args") {
+                        fn_decl.inputs.iter().for_each(|ref arg| {
+                            match arg.pat.node {
+                                ast::PatKind::Ident(_, ident, _) => {
+                                    // Parameter pattern is just an identifier,
+                                    // so we can reference it directly by name
+                                    arg_xchecks.push(quote_block!(self.cx, {
+                                        cross_check_value!(FUNCTION_ARG_TAG, $ident);
+                                    }).unwrap());
+                                }
+                                _ => unimplemented!()
                             }
-                            _ => unimplemented!()
-                        }
-                    });
-                }
+                        });
+                    }
 
-                let checked_block = self.fold_block(block).map(|block| {
-                    quote_block!(self.cx, {
+                    // Build and return the block
+                    self.fold_block(block).map(|block| quote_block!(self.cx, {
                         cross_check_raw!(FUNCTION_ENTRY_TAG, $check_id);
                         $arg_xchecks
                         $block
-                    }).unwrap()
-                });
+                    }).unwrap())
+                } else {
+                    self.fold_block(block)
+                };
+
+                // Add our typedefs to the beginning of each function;
+                // whatever the configuration says, we should always add these
+                let block_with_types = {
+                    let (ahasher, shasher) = (&self.config.ahasher,
+                                              &self.config.shasher);
+                    quote_block!(self.cx, {
+                        #[allow(dead_code)]
+                        mod cross_check_types {
+                            pub type DefaultAggHasher    = $ahasher;
+                            pub type DefaultSimpleHasher = $shasher;
+                        };
+                        $checked_block
+                    })
+                };
                 let checked_fn = ast::ItemKind::Fn(
                     self.fold_fn_decl(fn_decl),
                     unsafety,
                     constness,
                     abi,
                     self.fold_generics(generics),
-                    checked_block);
+                    block_with_types);
                 // Build and return the replacement function item
                 ast::Item {
                     id: self.new_id(item.id),
@@ -232,6 +262,20 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
             }
             _ => fold::noop_fold_item_simple(item, self)
         }
+    }
+}
+
+fn djb2_hash(s: &str) -> u32 {
+    s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
+}
+
+impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
+    fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
+        let new_config = self.parse_config(&item);
+        let old_config = self.swap_config(new_config);
+        let new_item = self.internal_fold_item_simple(item);
+        self.swap_config(old_config);
+        new_item
     }
 
     fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {

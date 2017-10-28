@@ -2,24 +2,30 @@
 #[macro_export]
 macro_rules! cross_check_raw {
     ($item:expr) => {
-        cross_check_raw!(UNKNOWN_TAG, $item);
+        cross_check_raw!(UNKNOWN_TAG, $item)
     };
     ($tag:ident, $item:expr) => {
-        $crate::xcheck::xcheck($crate::xcheck::$tag, $item as u64);
+        $crate::xcheck::xcheck($crate::xcheck::$tag, $item as u64)
     };
 }
 
 #[macro_export]
 macro_rules! cross_check_value {
-   ($value:expr) => {
-       cross_check_value!(UNKNOWN_TAG, $value);
-   };
-   ($tag:ident, $value:expr) => {
-       use $crate::hash::CrossCheckHash;
-       use $crate::hash::jodyhash::JodyHasher;
-       use $crate::hash::simple::SimpleHasher;
-       $crate::xcheck::xcheck(
-           $crate::xcheck::$tag,
-           CrossCheckHash::cross_check_hash::<JodyHasher, SimpleHasher>(&$value));
-   };
+    ($value:expr) => {
+        cross_check_value!(UNKNOWN_TAG, $value)
+    };
+    ($tag:ident, $value:expr) => {
+        cross_check_value!($tag, $value,
+                           cross_check_types::DefaultAggHasher,
+                           cross_check_types::DefaultSimpleHasher);
+    };
+    // This form allows the user to pick the hashers, where:
+    //   $ahasher == the hasher to use for aggregate/derived values
+    //   $shasher == the hasher to use for simple values
+    ($tag:ident, $value:expr, $ahasher:ty, $shasher:ty) => {{
+        use $crate::hash::CrossCheckHash as XCH;
+        $crate::xcheck::xcheck(
+            $crate::xcheck::$tag,
+            XCH::cross_check_hash::<$ahasher, $shasher>(&$value))
+    }}
 }
