@@ -16,6 +16,7 @@ use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier
 use syntax::codemap::{Span, FileLoader, RealFileLoader};
 use syntax::fold::Folder;
 use syntax::symbol::Symbol;
+use syntax::ptr::P;
 
 struct CrossCheckExpander {
     // Arguments passed to plugin
@@ -57,7 +58,7 @@ impl MultiItemModifier for CrossCheckExpander {
               _sp: Span,
               mi: &ast::MetaItem,
               item: Annotatable) -> Vec<Annotatable> {
-        let config = CrossCheckConfig::default().parse_config(mi);
+        let config = CrossCheckConfig::new(cx).parse_config(mi);
         match item {
             Annotatable::Item(i) => {
                 // If we're seeing #![cross_check] at the top of the crate or a module,
@@ -84,19 +85,21 @@ struct CrossCheckConfig {
     enabled: bool,
     name: Option<String>,
     id: Option<u32>,
+    ahasher: P<ast::Ty>,
+    shasher: P<ast::Ty>,
 }
 
-impl Default for CrossCheckConfig {
-    fn default() -> CrossCheckConfig {
+impl CrossCheckConfig {
+    fn new(cx: &mut ExtCtxt) -> CrossCheckConfig {
         CrossCheckConfig {
             enabled: true,
             name: None,
             id: None,
+            ahasher: quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher),
+            shasher: quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher),
         }
     }
-}
 
-impl CrossCheckConfig {
     fn parse_config(&self, mi: &ast::MetaItem) -> Self {
         assert!(mi.name == "cross_check");
         let mut res = self.clone();
@@ -209,14 +212,18 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
 
                 // Add our typedefs to the beginning of each function;
                 // whatever the configuration says, we should always add these
-                let block_with_types = quote_block!(self.cx, {
-                    #[allow(dead_code)]
-                    mod cross_check_types {
-                        pub type DefaultAggHasher    = ::cross_check_runtime::hash::jodyhash::JodyHasher;
-                        pub type DefaultSimpleHasher = ::cross_check_runtime::hash::simple::SimpleHasher;
-                    };
-                    $checked_block
-                });
+                let block_with_types = {
+                    let (ahasher, shasher) = (&self.config.ahasher,
+                                              &self.config.shasher);
+                    quote_block!(self.cx, {
+                        #[allow(dead_code)]
+                        mod cross_check_types {
+                            pub type DefaultAggHasher    = $ahasher;
+                            pub type DefaultSimpleHasher = $shasher;
+                        };
+                        $checked_block
+                    })
+                };
                 let checked_fn = ast::ItemKind::Fn(
                     self.fold_fn_decl(fn_decl),
                     unsafety,
