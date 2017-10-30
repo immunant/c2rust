@@ -60,6 +60,11 @@ impl TypeConverter {
                 mk().path_ty(mk().path(vec![name]))
             }
 
+            TypeTag::TagDecayedType => {
+                let child_id = expect_u64(&ctype.extras[0]).expect("child id");
+                self.convert(ctxt, child_id)
+            }
+
             /*
             TypeTag::TagConstantArray => {
                 let child = ctxt.type_nodes.get(ctype.extras[0]).expect("Array child not found");
