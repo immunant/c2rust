@@ -197,12 +197,22 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                 // Prepend #[derive(CrossCheckHash)] automatically
                 // to every structure definition
                 let mut item_attrs = folded_item.attrs;
-                let xcheck_attr = {
+                let xcheck_attr_disabled = {
+                    // If the structure has #[cross_check(no)] or #[cross_check(disable)],
+                    // do not automatically add CrossCheckHash
                     find_cross_check_attr(&item_attrs)
                         .map(|a| a.parse_meta(self.cx.parse_sess).unwrap())
+                        .and_then(|mi| mi.meta_item_list().map(
+                            |items| items.iter().any(
+                                |item| item.meta_item()
+                                           .map(|mi| mi.name == "no" || mi.name == "disable")
+                                           .unwrap_or(false))))
+                        .unwrap_or(false)
                 };
-                let xcheck_hash_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
-                item_attrs.push(xcheck_hash_attr);
+                if !xcheck_attr_disabled {
+                    let xcheck_hash_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
+                    item_attrs.push(xcheck_hash_attr);
+                }
                 ast::Item {
                     attrs: item_attrs,
                     ..folded_item
