@@ -15,7 +15,7 @@ use ast_importer::clang_ast::process;
 use ast_importer::c_ast::*;
 use ast_importer::c_ast::Printer;
 use ast_importer::clang_ast::AstContext;
-use clap::{Arg, App, SubCommand};
+use clap::{Arg, App};
 
 fn main() {
 

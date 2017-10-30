@@ -150,24 +150,44 @@ impl ConversionContext {
         self.id_mapper.get_or_create_new(*node_id)
     }
 
+    /// Like `visit_node_type`, but specifically for type nodes
+    fn visit_type(&mut self, node_id: &ClangId) -> CTypeId {
+        CTypeId(self.visit_node_type(node_id, node_types::TYPE))
+    }
+
+    /// Like `visit_node_type`, but specifically for statement nodes
+    fn visit_stmt(&mut self, node_id: &ClangId) -> CStmtId {
+        CStmtId(self.visit_node_type(node_id, node_types::STMT))
+    }
+
+    /// Like `visit_node_type`, but specifically for expression nodes
+    fn visit_expr(&mut self, node_id: &ClangId) -> CExprId {
+        CExprId(self.visit_node_type(node_id, node_types::EXPR))
+    }
+
+    /// Like `visit_node_type`, but specifically for declaration nodes
+    fn visit_decl(&mut self, node_id: &ClangId) -> CDeclId {
+        CDeclId(self.visit_node_type(node_id, node_types::DECL))
+    }
+
     /// Add a `CType`node into the `TypedAstContext`
     fn add_type(&mut self, id: NewId, typ: CType) -> () {
-        self.typed_context.c_types.insert(id, typ);
+        self.typed_context.c_types.insert(CTypeId(id), typ);
     }
 
     /// Add a `CStmt` node into the `TypedAstContext`
     fn add_stmt(&mut self, id: NewId, stmt: CStmt) -> () {
-        self.typed_context.c_stmts.insert(id, stmt);
+        self.typed_context.c_stmts.insert(CStmtId(id), stmt);
     }
 
     /// Add a `CExpr` node into the `TypedAstContext`
     fn add_expr(&mut self, id: NewId, expr: CExpr) -> () {
-        self.typed_context.c_exprs.insert(id, expr);
+        self.typed_context.c_exprs.insert(CExprId(id), expr);
     }
 
     /// Add a `CDecl` node into the `TypedAstContext`
     fn add_decl(&mut self, id: NewId, decl: CDecl) -> () {
-        self.typed_context.c_decls.insert(id, decl);
+        self.typed_context.c_decls.insert(CDeclId(id), decl);
     }
 
     /// Clang has `Expression <: Statement`, but we want to make that explicit via the
@@ -187,10 +207,10 @@ impl ConversionContext {
             self.processed_nodes.insert(new_expr_id, node_types::EXPR);
 
             // We wrap the expression in a STMT
-            let semi_stmt = CStmtKind::Expr(new_expr_id);
+            let semi_stmt = CStmtKind::Expr(CExprId(new_expr_id));
             self.add_stmt(new_id, located(node, semi_stmt));
             self.processed_nodes.insert(new_id, node_types::STMT);
-        } else if (expected_ty & node_types::EXPR != 0) {
+        } else if expected_ty & node_types::EXPR != 0 {
             // No special work to do...
             self.add_expr(new_id, located(node, expr));
             self.processed_nodes.insert(new_id, node_types::EXPR);
@@ -222,7 +242,7 @@ impl ConversionContext {
 
             // If the node is top-level, add it as such to the new context
             if untyped_context.top_nodes.contains(&node_id) {
-                self.typed_context.c_decls_top.insert(new_id);
+                self.typed_context.c_decls_top.insert(CDeclId(new_id));
             }
 
             self.visit_node(untyped_context, node_id, new_id, expected_ty)
@@ -315,7 +335,7 @@ impl ConversionContext {
                 TypeTag::TagPointer => {
                     let pointed = expect_u64(&ty_node.extras[0])
                         .expect("Pointer child not found");
-                    let pointed_new = self.visit_node_type( &pointed, TYPE);
+                    let pointed_new = self.visit_type( &pointed);
 
                     let pointed_ty = CQualTypeId {
                         qualifiers: qualifiers(ty_node),
@@ -335,7 +355,7 @@ impl ConversionContext {
                                 .get(&ty_node_id)
                                 .expect("Function type child not found");
 
-                            let ty_node_new_id = self.visit_node_type( &ty_node_id, TYPE);
+                            let ty_node_new_id = self.visit_type( &ty_node_id);
 
                             CQualTypeId { qualifiers: qualifiers(ty_node), ctype: ty_node_new_id }
                         })
@@ -350,7 +370,7 @@ impl ConversionContext {
                     let type_of = untyped_context.type_nodes
                         .get(&type_of_id)
                         .expect("Type of (type) child not found");
-                    let type_of_new_id = self.visit_node_type(&type_of_id, TYPE);
+                    let type_of_new_id = self.visit_type(&type_of_id);
 
                     let type_of_ty_qual = CQualTypeId {
                         qualifiers: qualifiers(type_of),
@@ -378,7 +398,7 @@ impl ConversionContext {
                         .iter()
                         .map(|id| {
                             let arg_id = id.expect("Compound stmt child not found");
-                            self.visit_node_type(&arg_id, STMT)
+                            self.visit_stmt(&arg_id)
                         })
                         .collect();
 
@@ -390,7 +410,7 @@ impl ConversionContext {
 
                 ASTEntryTag::TagDeclStmt if expected_ty & OTHER_STMT != 0 => {
                     let decl = node.children[0].expect("Decl not found in decl-statement");
-                    let decl_new = self.visit_node_type(&decl, DECL);
+                    let decl_new = self.visit_decl(&decl);
 
                     let decl_stmt = CStmtKind::Decl(decl_new);
 
@@ -400,7 +420,7 @@ impl ConversionContext {
 
                 ASTEntryTag::TagReturnStmt if expected_ty & OTHER_STMT != 0 => {
                     let return_expr_opt = node.children[0]
-                        .map(|id| self.visit_node_type(&id, EXPR));
+                        .map(|id| self.visit_expr(&id));
 
                     let return_stmt = CStmtKind::Return(return_expr_opt);
 
@@ -410,13 +430,13 @@ impl ConversionContext {
 
                 ASTEntryTag::TagIfStmt if expected_ty & OTHER_STMT != 0 => {
                     let scrutinee_old = node.children[0].expect("If condition expression not found");
-                    let scrutinee = self.visit_node_type(&scrutinee_old, EXPR);
+                    let scrutinee = self.visit_expr(&scrutinee_old);
 
                     let true_variant_old = node.children[1].expect("If then body statement not found");
-                    let true_variant = self.visit_node_type(&true_variant_old, STMT);
+                    let true_variant = self.visit_stmt(&true_variant_old);
 
                     let false_variant = node.children[2]
-                        .map(|id| self.visit_node_type(&id, STMT));
+                        .map(|id| self.visit_stmt(&id));
 
                     let if_stmt = CStmtKind::If { scrutinee, true_variant, false_variant };
 
@@ -426,7 +446,7 @@ impl ConversionContext {
 
                 ASTEntryTag::TagGotoStmt if expected_ty & OTHER_STMT != 0 => {
                     let target_label_old = node.children[0].expect("Goto target label not found");
-                    let target_label = self.visit_node_type(&target_label_old, STMT);
+                    let target_label = CStmtId(self.visit_node_type(&target_label_old, LABEL_STMT));
 
                     let goto_stmt = CStmtKind::Goto(target_label);
 
@@ -442,16 +462,16 @@ impl ConversionContext {
 
                 ASTEntryTag::TagForStmt if expected_ty & OTHER_STMT != 0 => {
                     let init_old = node.children[0].expect("For loop initializer not found");
-                    let init = self.visit_node_type(&init_old, STMT);
+                    let init = self.visit_stmt(&init_old);
 
                     let condition_old = node.children[1].expect("For loop condition not found");
-                    let condition = self.visit_node_type(&condition_old, EXPR);
+                    let condition = self.visit_expr(&condition_old);
 
                     let increment_old = node.children[2].expect("For loop increment not found");
-                    let increment = self.visit_node_type(&increment_old, EXPR);
+                    let increment = self.visit_expr(&increment_old);
 
                     let body_old = node.children[3].expect("For loop body not found");
-                    let body = self.visit_node_type(&body_old, STMT);
+                    let body = self.visit_stmt(&body_old);
 
                     let for_stmt = CStmtKind::ForLoop { init, condition, increment, body };
 
@@ -460,10 +480,10 @@ impl ConversionContext {
 
                 ASTEntryTag::TagWhileStmt if expected_ty & OTHER_STMT != 0 => {
                     let condition_old = node.children[0].expect("While loop condition not found");
-                    let condition = self.visit_node_type(&condition_old, EXPR);
+                    let condition = self.visit_expr(&condition_old);
 
                     let body_old = node.children[1].expect("While loop body not found");
-                    let body = self.visit_node_type(&body_old, STMT);
+                    let body = self.visit_stmt(&body_old);
 
                     let while_stmt = CStmtKind::While { condition, body };
 
@@ -472,7 +492,7 @@ impl ConversionContext {
 
                 ASTEntryTag::TagLabelStmt if expected_ty & LABEL_STMT != 0 => {
                     let pointed_stmt_old = node.children[0].expect("Label statement not found");
-                    let pointed_stmt = self.visit_node_type(&pointed_stmt_old, STMT);
+                    let pointed_stmt = self.visit_stmt(&pointed_stmt_old);
 
                     let label_stmt = CStmtKind::Label(pointed_stmt);
 
@@ -493,7 +513,7 @@ impl ConversionContext {
                     let value = expect_u64(&node.extras[0]).expect("Expected integer literal value");
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_node_type(&ty_old, TYPE);
+                    let ty = self.visit_type(&ty_old);
 
                     let integer_literal = CExprKind::Literal(ty, CLiteral::Integer(value));
 
@@ -504,7 +524,7 @@ impl ConversionContext {
                     let value = expect_u64(&node.extras[0]).expect("Expected character literal value");
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_node_type(&ty_old, TYPE);
+                    let ty = self.visit_type(&ty_old);
 
                     let character_literal = CExprKind::Literal(ty, CLiteral::Character(value));
 
@@ -515,7 +535,7 @@ impl ConversionContext {
                     let value = expect_f64(&node.extras[0]).expect("Expected float literal value");
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_node_type(&ty_old, TYPE);
+                    let ty = self.visit_type(&ty_old);
 
                     let floating_literal = CExprKind::Literal(ty, CLiteral::Floating(value));
 
@@ -534,10 +554,10 @@ impl ConversionContext {
                     };
 
                     let operand_old = node.children[0].expect("Expected operand");
-                    let operand = self.visit_node_type(&operand_old, EXPR);
+                    let operand = self.visit_expr(&operand_old);
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_node_type(&ty_old, TYPE);
+                    let ty = self.visit_type(&ty_old);
 
                     let unary = CExprKind::Unary(ty, operator, operand);
 
@@ -546,10 +566,10 @@ impl ConversionContext {
 
                 ASTEntryTag::TagImplicitCastExpr if expected_ty & (EXPR | STMT) != 0 => {
                     let expression_old = node.children[0].expect("Expected expression for implicit cast");
-                    let expression = self.visit_node_type(&expression_old, EXPR);
+                    let expression = self.visit_expr(&expression_old);
 
                     let typ_old = node.type_id.expect("Expected type for implicit cast");
-                    let typ = self.visit_node_type(&typ_old, TYPE);
+                    let typ = self.visit_type(&typ_old);
 
                     let implicit = CExprKind::ImplicitCast(typ, expression);
 
@@ -558,19 +578,19 @@ impl ConversionContext {
 
                 ASTEntryTag::TagCallExpr if expected_ty & (EXPR | STMT) != 0 => {
                     let func_old = node.children[0].expect("Expected function for function call");
-                    let func = self.visit_node_type(&func_old, EXPR);
+                    let func = self.visit_expr(&func_old);
 
                     let args: Vec<CExprId> = node.children
                         .iter()
                         .skip(1)
                         .map(|id| {
                             let arg_id = id.expect("Expected call expression argument");
-                            self.visit_node_type(&arg_id, EXPR)
+                            self.visit_expr(&arg_id)
                         })
                         .collect();
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_node_type(&ty_old, TYPE);
+                    let ty = self.visit_type(&ty_old);
 
                     let call = CExprKind::Call(ty, func, args);
 
@@ -579,13 +599,13 @@ impl ConversionContext {
 
                 ASTEntryTag::TagMemberExpr if expected_ty & (EXPR | STMT) != 0 => {
                     let base_old = node.children[0].expect("Expected base for member expression");
-                    let base = self.visit_node_type(&base_old, EXPR);
+                    let base = self.visit_expr(&base_old);
 
                     let field_old = node.children[1].expect("Expected field for member expression");
-                    let field = self.visit_node_type(&field_old, DECL);
+                    let field = self.visit_decl(&field_old);
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_node_type(&ty_old, TYPE);
+                    let ty = self.visit_type(&ty_old);
 
                     let member = CExprKind::Member(ty, base, field);
 
@@ -616,13 +636,13 @@ impl ConversionContext {
                     };
 
                     let left_operand_old = node.children[0].expect("Expected left operand");
-                    let left_operand = self.visit_node_type(&left_operand_old, EXPR);
+                    let left_operand = self.visit_expr(&left_operand_old);
 
                     let right_operand_old = node.children[1].expect("Expected right operand");
-                    let right_operand = self.visit_node_type(&right_operand_old, EXPR);
+                    let right_operand = self.visit_expr(&right_operand_old);
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_node_type(&ty_old, TYPE);
+                    let ty = self.visit_type(&ty_old);
 
                     let binary = CExprKind::Binary(ty, operator, left_operand, right_operand);
 
@@ -631,10 +651,10 @@ impl ConversionContext {
 
                 ASTEntryTag::TagDeclRefExpr if expected_ty & (EXPR | STMT) != 0 => {
                     let declaration_old = node.children[0].expect("Expected declaration on expression tag decl");
-                    let declaration = self.visit_node_type(&declaration_old, DECL);
+                    let declaration = self.visit_decl(&declaration_old);
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_node_type(&ty_old, TYPE);
+                    let ty = self.visit_type(&ty_old);
 
                     let decl = CExprKind::DeclRef(ty, declaration);
 
@@ -647,10 +667,10 @@ impl ConversionContext {
                     let name = expect_str(&node.extras[0]).expect("Expected to find function name").to_string();
 
                     let typ_old = node.type_id.expect("Expected to find a type on a function decl");
-                    let typ = self.visit_node_type(&typ_old, TYPE);
+                    let typ = self.visit_type(&typ_old);
 
                     let body_old = node.children.last().expect("Function body not found").expect("Function body not found");
-                    let body = self.visit_node_type(&body_old, STMT);
+                    let body = self.visit_stmt(&body_old);
 
                     let function_decl = CDeclKind::Function { typ, name, body };
 
@@ -662,10 +682,10 @@ impl ConversionContext {
                     let ident = expect_str(&node.extras[0]).expect("Expected to find variable name").to_string();
 
                     let initializer = node.children[0]
-                        .map(|id| self.visit_node_type(&id, EXPR));
+                        .map(|id| self.visit_expr(&id));
 
                     let typ_old = node.type_id.expect("Expected to find type on variable declaration");
-                    let typ = self.visit_node_type(&typ_old, TYPE);
+                    let typ = self.visit_type(&typ_old);
 
                     let variable_decl = CDeclKind::Variable { ident, initializer, typ };
 
@@ -679,7 +699,7 @@ impl ConversionContext {
                         .iter()
                         .map(|id| {
                             let field = id.expect("Record field decl not found");
-                            self.visit_node_type(&field, FIELD_DECL)
+                            CDeclId(self.visit_node_type(&field, FIELD_DECL))
                         })
                         .collect();
 
