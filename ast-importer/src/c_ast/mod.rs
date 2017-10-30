@@ -16,6 +16,10 @@ pub struct CStmtId(u64);
 // These are references into particular variants of AST nodes
 pub type CLabelId = CStmtId;  // Labels point into the 'StmtKind::Label' that declared the label
 pub type CFieldId = CDeclId;  // Records always contain 'DeclKind::Field's
+pub type CParamId = CDeclId;  // Parameters always contain 'DeclKind::Variable's
+pub type CFuncTypeId = CTypeId;  // Function declarations always have types which are 'TypeKind::Function'
+pub type CRecordId = CDeclId;  // Record types need to point to 'DeclKind::Record'
+pub type CTypedefId = CDeclId;  // Typedef types need to point to 'DeclKind::Typedef'
 
 pub use self::conversion::*;
 pub use self::print::Printer;
@@ -24,7 +28,7 @@ mod conversion;
 mod print;
 
 /// AST context containing all of the nodes in the Clang AST
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypedAstContext {
     pub c_types: HashMap<CTypeId, CType>,
     pub c_exprs: HashMap<CExprId, CExpr>,
@@ -46,6 +50,26 @@ impl TypedAstContext {
             c_decls_top: HashSet::new(),
             c_files: HashMap::new(),
         }
+    }
+
+    pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
+        match (*self.index(typ)).kind {
+            CTypeKind::Elaborated(ty) => self.resolve_type_id(ty),
+            CTypeKind::Decayed(ty) => self.resolve_type_id(ty),
+            CTypeKind::TypeOf(ty) => self.resolve_type_id(ty),
+            CTypeKind::Typedef(decl) => {
+                match self.index(decl).kind {
+                    CDeclKind::Typedef { typ: ty, .. } => self.resolve_type_id(ty),
+                    _ => panic!("Typedef decl did not point to a typedef"),
+                }
+            },
+            _ => typ,
+        }
+    }
+
+    pub fn resolve_type(&self, typ: CTypeId) -> &CType {
+        let resolved_typ_id = self.resolve_type_id(typ);
+        self.index(resolved_typ_id)
     }
 }
 
@@ -94,7 +118,7 @@ impl Index<CStmtId> for TypedAstContext {
 }
 
 /// Represents a position inside a C source file
-#[derive(Debug,Copy,Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct SrcLoc {
     pub line: u64,
     pub column: u64,
@@ -102,7 +126,7 @@ pub struct SrcLoc {
 }
 
 /// Represents some AST node possibly with source location information bundled with it
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Located<T> {
     pub loc: Option<SrcLoc>,
     pub kind: T,
@@ -115,15 +139,13 @@ pub type CExpr = Located<CExprKind>;
 pub type CType = Located<CTypeKind>;
 
 
-// TODO:
-//
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CDeclKind {
     // http://clang.llvm.org/doxygen/classclang_1_1FunctionDecl.html
     Function {
-        /* TODO: Parameters,*/
-        typ: CTypeId,
+        typ: CFuncTypeId,
         name: String,
+        parameters: Vec<CParamId>,
         body: CStmtId,
     },
 
@@ -131,11 +153,16 @@ pub enum CDeclKind {
     Variable {
         ident: String,
         initializer: Option<CExprId>,
-        typ: CTypeId,
+        typ: CQualTypeId,
     },
 
     // Enum       // http://clang.llvm.org/doxygen/classclang_1_1EnumDecl.html
-    // Typedef     // http://clang.llvm.org/doxygen/classclang_1_1TypedefNameDecl.html
+
+    // Typedef
+    Typedef {
+        name: String,
+        typ: CTypeId,
+    },
 
     // Record
     Record {
@@ -163,13 +190,13 @@ impl CDeclKind {
 }
 
 /// Represents an expression in C (6.5 Expressions)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CExprKind {
     // Literals
     Literal(CTypeId, CLiteral),
 
-    // Unary operator
-    Unary(CTypeId, UnOp, CExprId),
+    // Unary operator. The boolean field tells us if the operator is prefix
+    Unary(CTypeId, UnOp, bool, CExprId),
 
     // Binary operator
     Binary(CTypeId, BinOp, CExprId, CExprId),
@@ -185,20 +212,24 @@ pub enum CExprKind {
     // Function call
     Call(CTypeId, CExprId, Vec<CExprId>),
 
-    // Member
+    // Member access
     Member(CTypeId, CExprId, CDeclId),
+
+    // Array subscript access
+    ArraySubscript(CTypeId, CExprId, CExprId),
 }
 
 impl CExprKind {
     pub fn get_type(&self) -> CTypeId {
         match *self {
             CExprKind::Literal(ty, _) => ty,
-            CExprKind::Unary(ty, _, _) => ty,
+            CExprKind::Unary(ty, _, _, _) => ty,
             CExprKind::Binary(ty, _, _, _) => ty,
             CExprKind::ImplicitCast(ty, _) => ty,
             CExprKind::DeclRef(ty, _) => ty,
             CExprKind::Call(ty, _, _) => ty,
             CExprKind::Member(ty, _, _) => ty,
+            CExprKind::ArraySubscript(ty, _, _) => ty,
         }
     }
 }
@@ -209,35 +240,51 @@ pub enum UnOp {
     AddressOf,  // &
     Deref,      // *
     Plus,       // +
+    Increment,  // ++
     Negate,     // -
+    Decrement,  // --
     Complement, // ~
     Not,        // !
 }
 
 /// Represents a binary operator in C (6.5.5 Multiplicative operators - 6.5.14 Logical OR operator)
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinOp {
-    Multiply,     // *
-    Divide,       // /
-    Modulus,      // %
-    Add,          // +
-    Subtract,     // -
-    ShiftLeft,    // <<
-    ShiftRight,   // >>
-    Less,         // <
-    Greater,      // >
-    LessEqual,    // <=
-    GreaterEqual, // >=
-    EqualEqual,   // ==
-    NotEqual,     // !=
-    BitAnd,       // &
-    BitXor,       // ^
-    BitOr,        // |
-    And,          // &&
-    Or,           // ||
+    Multiply,         // *
+    Divide,           // /
+    Modulus,          // %
+    Add,              // +
+    Subtract,         // -
+    ShiftLeft,        // <<
+    ShiftRight,       // >>
+    Less,             // <
+    Greater,          // >
+    LessEqual,        // <=
+    GreaterEqual,     // >=
+    EqualEqual,       // ==
+    NotEqual,         // !=
+    BitAnd,           // &
+    BitXor,           // ^
+    BitOr,            // |
+    And,              // &&
+    Or,               // ||
+
+    AssignAdd,        // +=
+    AssignSubtract,   // -=
+    AssignMultiply,   // *=
+    AssignDivide,     // /=
+    AssignModulus,    // %=
+    AssignBitXor,     // ^=
+    AssignShiftLeft,  // <<=
+    AssignShiftRight, // >>=
+    AssignBitOr,      // |=
+    AssignBitAnd,     // &=
+
+    Assign,           // =
+    Comma,            // ,
 }
 
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum CLiteral {
     Integer(u64),
     Character(u64),
@@ -249,7 +296,7 @@ pub enum CLiteral {
 /// Represents a statement in C (6.8 Statements)
 ///
 /// Reflects the types in <http://clang.llvm.org/doxygen/classclang_1_1Stmt.html>
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CStmtKind {
     // Labeled statements (6.8.1)
     Label(CStmtId),
@@ -284,9 +331,9 @@ pub enum CStmtKind {
         condition: CExprId,
     },
     ForLoop {
-        init: CStmtId,       // This can be an 'Expr'  // TODO: should this field be an option
-        condition: CExprId,                            // TODO: should this field be an option
-        increment: CExprId,                            // TODO: should this field be an option
+        init: Option<CStmtId>,
+        condition: Option<CExprId>,
+        increment: Option<CExprId>,
         body: CStmtId,
     },
 
@@ -297,7 +344,7 @@ pub enum CStmtKind {
     Return(Option<CExprId>),
 
     // Declarations (variables, etc.)
-    Decl(CDeclId),
+    Decls(Vec<CDeclId>),
 }
 
 /// Type qualifiers (6.7.3)
@@ -317,15 +364,14 @@ pub struct CQualTypeId {
 
 
 // TODO: these may be interesting, but I'm not sure if they fit here:
-//  
-//  * ElaboratedType <http://clang.llvm.org/doxygen/classclang_1_1ElaboratedType.html>
+//
 //  * UnaryTranformType <http://clang.llvm.org/doxygen/classclang_1_1UnaryTransformType.html>
 //  * AdjustedType <http://clang.llvm.org/doxygen/classclang_1_1AdjustedType.html>
 
 /// Represents a type in C (6.2.5 Types)
 ///
 /// Reflects the types in <http://clang.llvm.org/doxygen/classclang_1_1Type.html>
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CTypeKind {
     /* Builtin types: <https://github.com/llvm-mirror/clang/include/clang/AST/BuiltinTypes.def> */
 
@@ -364,22 +410,46 @@ pub enum CTypeKind {
     VariableArray(CQualTypeId, CExprId),
 
     // Type of type or expression (GCC extension)
-    TypeOf(CQualTypeId),
+    TypeOf(CTypeId),
     TypeOfExpr(CExprId),
 
-    // K&R stype function type (6.7.5.3). Ex: `int foo()`.
-    FunctionNoProto(CQualTypeId),
-
-    // Function type always with arguments (6.7.5.3). Ex: `int bar(void)`
-    FunctionProto(CQualTypeId, Vec<CQualTypeId>),
+    // Function type (6.7.5.3)
+    //
+    // Note a function taking no arguments should have one `void` argument. Functions without any
+    // arguments and in K&R format.
+    Function(CQualTypeId, Vec<CQualTypeId>),
 
     // Type definition type (6.7.7)
-    Typedef(CDeclId),     // TODO make a type synonym for this: not all decls could be the target of a typedef
+    Typedef(CTypedefId),
 
     // Represents a pointer type decayed from an array or function type.
-    Decayed(CQualTypeId, CQualTypeId),
+    Decayed(CTypeId),
+    Elaborated(CTypeId),
 
     // Struct or union type
-    RecordType(CDeclId),  // TODO same comment as Typedef
-    EnumType(CDeclId),    // TODO same comment as Typedef
+    //
+    // XXX: distinction between `struct` and `union`
+    Record(CRecordId),
+
+    Enum(CDeclId),    // TODO same comment as Typedef
+}
+
+impl CTypeKind {
+
+    pub fn is_pointer(&self) -> bool {
+        match *self {
+            CTypeKind::Pointer(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_unsigned_integral_type(&self) -> bool {
+        match *self {
+            CTypeKind::UInt => true,
+            CTypeKind::UShort => true,
+            CTypeKind::ULong => true,
+            CTypeKind::ULongLong => true,
+            _ => false,
+        }
+    }
 }
