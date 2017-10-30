@@ -347,7 +347,7 @@ impl Translation {
             ASTEntryTag::TagVarDecl => {
                 let var_name = expect_string(&node.extras[0]).unwrap();
                 let rust_name = self.renamer.insert(var_name.clone(), &var_name).unwrap();
-                let pat = mk().set_mutbl(Mutability::Mutable).ident_pat(rust_name);
+                let pat = mk().mutbl().ident_pat(rust_name);
                 let init = with_stmts_opt(node.children[0].map(|x| self.convert_expr(x)));
                 let ty = self.convert_type(node.type_id.unwrap());
                 let local = mk().local(pat, Some(ty), init.val);
@@ -499,7 +499,7 @@ impl Translation {
         // let ref mut p = lhs;
         let compute_lhs =
             mk().local_stmt(
-                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&ptr_name),
+                P(mk().local(mk().mutbl().ident_ref_pat(&ptr_name),
                              None as Option<P<Ty>>,
                              Some(arg)))
             );
@@ -531,7 +531,7 @@ impl Translation {
         // let ref mut p = lhs;
         let compute_lhs =
             mk().local_stmt(
-                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&ptr_name),
+                P(mk().local(mk().mutbl().ident_ref_pat(&ptr_name),
                              None as Option<P<Ty>>,
                              Some(arg)))
             );
@@ -539,7 +539,7 @@ impl Translation {
         let deref_lhs = mk().unary_expr("*", mk().ident_expr(&ptr_name));
         let save_old_val =
             mk().local_stmt(
-                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&val_name),
+                P(mk().local(mk().mutbl().ident_ref_pat(&val_name),
                              None as Option<P<Ty>>,
                              Some(deref_lhs.clone())))
             );
@@ -566,7 +566,7 @@ impl Translation {
     pub fn convert_unary_operator(&mut self, name: &str, prefix: bool, ctype: TypeNode, ty: P<Ty>, arg: P<Expr>) -> WithStmts<P<Expr>> {
         match name {
             "&" => {
-                let addr_of_arg = mk().set_mutbl(Mutability::Mutable).addr_of_expr(arg);
+                let addr_of_arg = mk().mutbl().addr_of_expr(arg);
                 let ptr = mk().cast_expr(addr_of_arg, ty);
                 WithStmts::new(ptr)
             },
@@ -648,7 +648,7 @@ impl Translation {
         // let ref mut p = lhs;
         let compute_lhs =
             mk().local_stmt(
-                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&ptr_name),
+                P(mk().local(mk().mutbl().ident_ref_pat(&ptr_name),
                              None as Option<P<Ty>>,
                              Some(lhs)))
             );
@@ -719,7 +719,7 @@ impl Translation {
         // let ref mut p = lhs;
         let compute_lhs =
             mk().local_stmt(
-                P(mk().local(mk().set_mutbl(Mutability::Mutable).ident_ref_pat(&ptr_name),
+                P(mk().local(mk().mutbl().ident_ref_pat(&ptr_name),
                              None as Option<P<Ty>>,
                              Some(lhs)))
             );
