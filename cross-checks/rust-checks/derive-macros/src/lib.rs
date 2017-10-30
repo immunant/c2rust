@@ -10,7 +10,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     let hash_fields = s.each(|f| {
         quote! {
             use cross_check_runtime::hash::CrossCheckHash;
-            h.write_u64(CrossCheckHash::cross_check_hash_depth::<__XCHA, __XCHS>(#f, _depth - 1));
+            h.write_u64(CrossCheckHash::cross_check_hash_depth::<__XCHA, __XCHS>(&#f, _depth - 1));
         }
     });
     s.bound_impl("::cross_check_runtime::hash::CrossCheckHash", quote! {
