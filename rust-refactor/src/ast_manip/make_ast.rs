@@ -308,6 +308,16 @@ impl Builder {
     // These are sorted in the same order as the corresponding ExprKind variants, with additional
     // variant-specific details following each variant.
 
+    pub fn tuple_expr<E>(self, exprs: Vec<E>) -> P<Expr> where E: Make<P<Expr>> {
+        let exprs: Vec<P<Expr>> = exprs.into_iter().map(|x| x.make(&self)).collect();
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Tup(exprs),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
     pub fn call_expr<F, A>(self, func: F, args: Vec<A>) -> P<Expr>
             where F: Make<P<Expr>>, A: Make<P<Expr>> {
         let func = func.make(&self);
