@@ -55,12 +55,12 @@ impl Printer {
                 print!(".");
                 self.print_decl_name(member, context);
             }
-            None => panic!("Could not find expressions with ID {}", expr_id),
+            None => panic!("Could not find expression with ID {:?}", expr_id),
            // _ => unimplemented!("Printer::print_expr"),
         }
     }
 
-    pub fn print_unop(&mut self, op: &UnOp, context: &TypedAstContext) {
+    pub fn print_unop(&mut self, op: &UnOp, _context: &TypedAstContext) {
         match *op {
             UnOp::AddressOf => print!("&"),
             UnOp::Deref => print!("*"),
@@ -71,7 +71,7 @@ impl Printer {
         }
     }
 
-    pub fn print_binop(&mut self, op: &BinOp, context: &TypedAstContext) {
+    pub fn print_binop(&mut self, op: &BinOp, _context: &TypedAstContext) {
         match *op {
             BinOp::Multiply => print!("*"),
             BinOp::Divide => print!("/"),
@@ -94,7 +94,7 @@ impl Printer {
         }
     }
 
-    pub fn print_lit(&mut self, lit: &CLiteral, context: &TypedAstContext) {
+    pub fn print_lit(&mut self, lit: &CLiteral, _context: &TypedAstContext) {
         match *lit {
             CLiteral::Integer(i) => print!("{}", i),
             CLiteral::Floating(f) => print!("{}", f),
@@ -222,7 +222,7 @@ impl Printer {
             // Jump statements (6.8.6)
             Goto(CLabelId),
             */
-            None => panic!("Could not find statement with ID {}", stmt_id),
+            None => panic!("Could not find statement with ID {:?}", stmt_id),
 
             _ => unimplemented!("Printer::print_stmt"),
         }
@@ -271,7 +271,7 @@ impl Printer {
                 println!("{},", &name);
             },
 
-            None => panic!("Could not find declaration with ID {}", decl_id),
+            None => panic!("Could not find declaration with ID {:?}", decl_id),
 
            // _ => unimplemented!("Printer::print_decl"),
         }
@@ -282,7 +282,7 @@ impl Printer {
             .get(&decl_id)
             .and_then(|l| l.kind.get_name());
         match name {
-            None => print!("<some_decl {}>", decl_id),
+            None => print!("<some_decl {:?}>", decl_id),
             Some(s) => print!("{}", s),
         }
 
@@ -312,7 +312,7 @@ impl Printer {
                 self.print_qtype( *qual_ty, context);
             },
 
-            None => panic!("Could not find type with ID {}", type_id),
+            None => panic!("Could not find type with ID {:?}", type_id),
 
             _ => unimplemented!("Printer::print_type"),
         }

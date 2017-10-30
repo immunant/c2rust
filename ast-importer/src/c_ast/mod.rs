@@ -1,11 +1,17 @@
 use std::collections::{HashSet, HashMap};
+use std::ops::Index;
 
-// In order to avoid lifetime hell and mirror as closely as possible what we get from Clang, we
-// store references to AST nodes in HashMap's in TypedAstContext.
-pub type CTypeId = u64;
-pub type CExprId = u64;
-pub type CDeclId = u64;
-pub type CStmtId = u64;
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
+pub struct CTypeId(u64);
+
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
+pub struct CExprId(u64);
+
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
+pub struct CDeclId(u64);
+
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
+pub struct CStmtId(u64);
 
 // These are references into particular variants of AST nodes
 pub type CLabelId = CStmtId;  // Labels point into the 'StmtKind::Label' that declared the label
@@ -39,6 +45,50 @@ impl TypedAstContext {
 
             c_decls_top: HashSet::new(),
             c_files: HashMap::new(),
+        }
+    }
+}
+
+impl Index<CTypeId> for TypedAstContext {
+    type Output = CType;
+
+    fn index(&self, index: CTypeId) -> &CType {
+        match self.c_types.get(&index) {
+            None => panic!("Could not find {:?} in TypedAstContext", index),
+            Some(ty) => ty,
+        }
+    }
+}
+
+impl Index<CExprId> for TypedAstContext {
+    type Output = CExpr;
+
+    fn index(&self, index: CExprId) -> &CExpr {
+        match self.c_exprs.get(&index) {
+            None => panic!("Could not find {:?} in TypedAstContext", index),
+            Some(ty) => ty,
+        }
+    }
+}
+
+impl Index<CDeclId> for TypedAstContext {
+    type Output = CDecl;
+
+    fn index(&self, index: CDeclId) -> &CDecl {
+        match self.c_decls.get(&index) {
+            None => panic!("Could not find {:?} in TypedAstContext", index),
+            Some(ty) => ty,
+        }
+    }
+}
+
+impl Index<CStmtId> for TypedAstContext {
+    type Output = CStmt;
+
+    fn index(&self, index: CStmtId) -> &CStmt {
+        match self.c_stmts.get(&index) {
+            None => panic!("Could not find {:?} in TypedAstContext", index),
+            Some(ty) => ty,
         }
     }
 }
