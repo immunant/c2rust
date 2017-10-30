@@ -494,23 +494,40 @@ impl Translation {
         }
     }
 
+    pub fn name_reference(&mut self, reference: P<Expr>) -> WithStmts<P<Expr>> {
+        let is_simple = match reference.node {
+            ExprKind::Path{..} => true,
+            _ => false,
+        };
+
+        if is_simple {
+            WithStmts::new(mk().unary_expr(UnOp::Deref, reference))
+        } else {
+            let ptr_name = self.renamer.fresh();
+            // let ref mut p = lhs;
+            let compute_ref =
+                mk().local_stmt(
+                    P(mk().local(mk().mutbl().ident_ref_pat(&ptr_name),
+                                 None as Option<P<Ty>>,
+                                 Some(reference)))
+                );
+            WithStmts {
+                val: mk().ident_expr(&ptr_name),
+                stmts: vec![compute_ref],
+            }
+        }
+    }
+
     pub fn convert_pre_increment(&mut self, ctype: TypeNode, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
-        let ptr_name = self.renamer.fresh();
-        // let ref mut p = lhs;
-        let compute_lhs =
-            mk().local_stmt(
-                P(mk().local(mk().mutbl().ident_ref_pat(&ptr_name),
-                             None as Option<P<Ty>>,
-                             Some(arg)))
-            );
-        // *p
-        let deref_lhs = mk().unary_expr("*", mk().ident_expr(&ptr_name));
+
+        let WithStmts{ val: deref_lhs, stmts: mut lhs_stmts } = self.name_reference(arg);
+
         let one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
         // *p + 1
         let val =
             if self.ast_context.resolve_type(ctype).is_pointer() {
                 let n = if up { one } else { mk().unary_expr(UnOp::Neg, one) };
-                mk().method_call_expr(mk().ident_expr(&ptr_name), "offset", vec![n])
+                mk().method_call_expr(deref_lhs.clone(), "offset", vec![n])
             } else {
                 let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
                 mk().binary_expr(k, deref_lhs.clone(), one)
@@ -519,36 +536,32 @@ impl Translation {
         // *p = *p + rhs
         let assign_stmt = mk().assign_expr(&deref_lhs.clone(), val);
 
+        lhs_stmts.push(mk().expr_stmt(assign_stmt));
+
         WithStmts {
-            stmts: vec![compute_lhs, mk().expr_stmt(assign_stmt)],
+            stmts: lhs_stmts,
             val: deref_lhs,
         }
     }
 
     pub fn convert_post_increment(&mut self, ctype: TypeNode, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
-        let ptr_name = self.renamer.fresh();
+
+        let WithStmts{ val: deref_lhs, stmts: mut lhs_stmts } = self.name_reference(arg);
+
         let val_name = self.renamer.fresh();
-        // let ref mut p = lhs;
-        let compute_lhs =
-            mk().local_stmt(
-                P(mk().local(mk().mutbl().ident_ref_pat(&ptr_name),
-                             None as Option<P<Ty>>,
-                             Some(arg)))
-            );
-        // *p
-        let deref_lhs = mk().unary_expr("*", mk().ident_expr(&ptr_name));
         let save_old_val =
             mk().local_stmt(
-                P(mk().local(mk().mutbl().ident_ref_pat(&val_name),
+                P(mk().local(mk().ident_pat(&val_name),
                              None as Option<P<Ty>>,
                              Some(deref_lhs.clone())))
             );
+
         let one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
         // *p + 1
         let val =
             if self.ast_context.resolve_type(ctype).is_pointer() {
                 let n = if up { one } else { mk().unary_expr(UnOp::Neg, one) };
-                mk().method_call_expr(mk().ident_expr(&ptr_name), "offset", vec![n])
+                mk().method_call_expr(deref_lhs.clone(), "offset", vec![n])
             } else {
                 let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
                 mk().binary_expr(k, deref_lhs.clone(), one)
@@ -557,8 +570,11 @@ impl Translation {
         // *p = *p + rhs
         let assign_stmt = mk().assign_expr(&deref_lhs.clone(), val);
 
+        lhs_stmts.push(save_old_val);
+        lhs_stmts.push(mk().expr_stmt(assign_stmt));
+
         WithStmts {
-            stmts: vec![compute_lhs, save_old_val, mk().expr_stmt(assign_stmt)],
+            stmts: lhs_stmts,
             val: mk().ident_expr(val_name),
         }
     }
@@ -641,31 +657,21 @@ impl Translation {
     }
 
     fn convert_binary_assignment(&mut self, name: &str, ty: P<Ty>, ctype: TypeNode, lhs_type: TypeNode, rhs_type: TypeNode, lhs: P<Expr>, rhs: P<Expr>) -> WithStmts<P<Expr>> {
+
         // Improvements:
-        // * Don't create fresh names in place of lhs that is already a name
         // * Don't create block, use += for a statement
-        let ptr_name = self.renamer.fresh();
-        // let ref mut p = lhs;
-        let compute_lhs =
-            mk().local_stmt(
-                P(mk().local(mk().mutbl().ident_ref_pat(&ptr_name),
-                             None as Option<P<Ty>>,
-                             Some(lhs)))
-            );
-        // *p
-        let deref_lhs = mk().unary_expr("*", mk().ident_expr(&ptr_name));
+        let WithStmts{ val: deref_lhs, stmts: mut lhs_stmts } = self.name_reference(lhs);
         // *p + rhs
         let mut val = self.convert_binary_operator(name, ty, ctype, lhs_type, rhs_type, deref_lhs.clone(), rhs);
         // *p = *p + rhs
         let assign_stmt = mk().assign_expr(&deref_lhs, val.val);
 
-        let mut stmts = vec![compute_lhs];
-        stmts.append(&mut val.stmts);
-        stmts.push(mk().expr_stmt(assign_stmt));
+        lhs_stmts.append(&mut val.stmts);
+        lhs_stmts.push(mk().expr_stmt(assign_stmt));
 
         WithStmts {
-            stmts,
-            val: deref_lhs
+            stmts: lhs_stmts,
+            val: deref_lhs,
         }
     }
 
@@ -713,25 +719,17 @@ impl Translation {
 
     fn convert_assignment(&mut self, lhs: P<Expr>, rhs: P<Expr>) -> WithStmts<P<Expr>> {
         // Improvements:
-        // * Don't create fresh names in place of lhs that is already a name
         // * Don't create block, use += for a statement
-        let ptr_name = self.renamer.fresh();
-        // let ref mut p = lhs;
-        let compute_lhs =
-            mk().local_stmt(
-                P(mk().local(mk().mutbl().ident_ref_pat(&ptr_name),
-                             None as Option<P<Ty>>,
-                             Some(lhs)))
-            );
-        // *p
-        let deref_lhs = mk().unary_expr("*", mk().ident_expr(&ptr_name));
+
+        let WithStmts{ val: deref_lhs, stmts: mut lhs_stmts } = self.name_reference(lhs);
 
         // *p = rhs
         let assign_stmt = mk().expr_stmt(mk().assign_expr(&deref_lhs, rhs));
+        lhs_stmts.push(assign_stmt);
 
         WithStmts {
-            stmts: vec![assign_stmt],
-            val: deref_lhs
+            stmts: lhs_stmts,
+            val: deref_lhs,
         }
     }
 
