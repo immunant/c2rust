@@ -48,54 +48,50 @@ impl CrossCheckConfig {
     fn parse_config(&self, cx: &mut ExtCtxt, mi: &ast::MetaItem) -> Self {
         assert!(mi.name == "cross_check");
         let mut res = self.clone();
-        match mi.node {
-            ast::MetaItemKind::Word => { } // Use the defaults for #[cross_check]
-            ast::MetaItemKind::List(ref items) => {
-                for ref nested_item in items {
-                    if let Some(ref item) = nested_item.meta_item() {
-                        match &*item.name.as_str() {
-                            "never" |
-                            "disable" |
-                            "no" => {
-                                res.enabled = false
-                            }
-                            "always" |
-                            "enable" |
-                            "yes" => {
-                                res.enabled = true
-                            }
-                            "name" => {
-                                res.name = item.value_str().map(|s| String::from(&*s.as_str()))
-                            }
-                            "id" => {
-                                if let ast::MetaItemKind::NameValue(ref lit) = item.node {
-                                    if let ast::LitKind::Int(id128, _) = lit.node {
-                                        if let Ok(id32) = id128.try_into() {
-                                            res.id = Some(id32);
-                                        } else {
-                                            panic!("Invalid u32 for cross_check id: {}", id128);
-                                        }
+        if let Some(ref items) = mi.meta_item_list() {
+            for ref nested_item in items.iter() {
+                if let Some(ref item) = nested_item.meta_item() {
+                    match &*item.name.as_str() {
+                        "never" |
+                        "disable" |
+                        "no" => {
+                            res.enabled = false
+                        }
+                        "always" |
+                        "enable" |
+                        "yes" => {
+                            res.enabled = true
+                        }
+                        "name" => {
+                            res.name = item.value_str().map(|s| String::from(&*s.as_str()))
+                        }
+                        "id" => {
+                            if let ast::MetaItemKind::NameValue(ref lit) = item.node {
+                                if let ast::LitKind::Int(id128, _) = lit.node {
+                                    if let Ok(id32) = id128.try_into() {
+                                        res.id = Some(id32);
                                     } else {
-                                        panic!("Invalid literal for cross_check id: {:?}", lit.node);
+                                        panic!("Invalid u32 for cross_check id: {}", id128);
                                     }
+                                } else {
+                                    panic!("Invalid literal for cross_check id: {:?}", lit.node);
                                 }
                             }
-                            "ahasher" => {
-                                res.ahasher = item.value_str()
-                                                  .map(|s| cx.parse_tts(String::from(&*s.as_str())))
-                                                  .unwrap_or_else(|| vec![])
-                            }
-                            "shasher" => {
-                                res.shasher = item.value_str()
-                                                  .map(|s| cx.parse_tts(String::from(&*s.as_str())))
-                                                  .unwrap_or_else(|| vec![])
-                            }
-                            name@_ => panic!("Unknown cross_check item: {}", name)
                         }
+                        "ahasher" => {
+                            res.ahasher = item.value_str()
+                                              .map(|s| cx.parse_tts(String::from(&*s.as_str())))
+                                              .unwrap_or_else(|| vec![])
+                        }
+                        "shasher" => {
+                            res.shasher = item.value_str()
+                                              .map(|s| cx.parse_tts(String::from(&*s.as_str())))
+                                              .unwrap_or_else(|| vec![])
+                        }
+                        name@_ => panic!("Unknown cross_check item: {}", name)
                     }
                 }
             }
-            _ => panic!("Unknown cross_check item: {:?}", mi.node)
         }
         res
     }
@@ -114,13 +110,14 @@ struct CrossChecker<'a, 'cx: 'a> {
 }
 
 fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
-    attrs.iter().find(|attr| attr.name().map_or(false, |name| name == "cross_check"))
+    attrs.iter().find(|attr| attr.path == "cross_check")
 }
 
 impl<'a, 'cx> CrossChecker<'a, 'cx> {
     fn parse_config(&mut self, item: &ast::Item) -> Option<CrossCheckConfig> {
         let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
-        xcheck_attr.map(|attr| self.config.parse_config(self.cx, &attr.meta().unwrap()))
+        xcheck_attr.map(|attr| self.config.parse_config(
+                self.cx, &attr.parse_meta(self.cx.parse_sess).unwrap()))
     }
 
     fn swap_config(&mut self, new_config: Option<CrossCheckConfig>) -> Option<CrossCheckConfig> {
@@ -200,8 +197,22 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                 // Prepend #[derive(CrossCheckHash)] automatically
                 // to every structure definition
                 let mut item_attrs = folded_item.attrs;
-                let xcheck_hash_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
-                item_attrs.push(xcheck_hash_attr);
+                let xcheck_attr_disabled = {
+                    // If the structure has #[cross_check(no)] or #[cross_check(disable)],
+                    // do not automatically add CrossCheckHash
+                    find_cross_check_attr(&item_attrs)
+                        .map(|a| a.parse_meta(self.cx.parse_sess).unwrap())
+                        .and_then(|mi| mi.meta_item_list().map(
+                            |items| items.iter().any(
+                                |item| item.meta_item()
+                                           .map(|mi| mi.name == "no" || mi.name == "disable")
+                                           .unwrap_or(false))))
+                        .unwrap_or(false)
+                };
+                if !xcheck_attr_disabled {
+                    let xcheck_hash_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
+                    item_attrs.push(xcheck_hash_attr);
+                }
                 ast::Item {
                     attrs: item_attrs,
                     ..folded_item
