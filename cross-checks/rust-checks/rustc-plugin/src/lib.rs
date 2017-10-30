@@ -116,7 +116,8 @@ fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
 impl<'a, 'cx> CrossChecker<'a, 'cx> {
     fn parse_config(&mut self, item: &ast::Item) -> Option<CrossCheckConfig> {
         let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
-        xcheck_attr.map(|attr| self.config.parse_config(self.cx, &attr.meta().unwrap()))
+        xcheck_attr.map(|attr| self.config.parse_config(
+                self.cx, &attr.parse_meta(self.cx.parse_sess).unwrap()))
     }
 
     fn swap_config(&mut self, new_config: Option<CrossCheckConfig>) -> Option<CrossCheckConfig> {
@@ -196,6 +197,10 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                 // Prepend #[derive(CrossCheckHash)] automatically
                 // to every structure definition
                 let mut item_attrs = folded_item.attrs;
+                let xcheck_attr = {
+                    find_cross_check_attr(&item_attrs)
+                        .map(|a| a.parse_meta(self.cx.parse_sess).unwrap())
+                };
                 let xcheck_hash_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
                 item_attrs.push(xcheck_hash_attr);
                 ast::Item {
