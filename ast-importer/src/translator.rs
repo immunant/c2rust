@@ -501,7 +501,7 @@ impl Translation {
         };
 
         if is_simple {
-            WithStmts::new(mk().unary_expr(UnOp::Deref, reference))
+            WithStmts::new(reference)
         } else {
             let ptr_name = self.renamer.fresh();
             // let ref mut p = lhs;
@@ -512,7 +512,7 @@ impl Translation {
                                  Some(reference)))
                 );
             WithStmts {
-                val: mk().ident_expr(&ptr_name),
+                val: mk().unary_expr(UnOp::Deref, mk().ident_expr(&ptr_name)),
                 stmts: vec![compute_ref],
             }
         }
