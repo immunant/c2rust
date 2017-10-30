@@ -10,7 +10,15 @@ uint64_t fibo(uint64_t n) {
 }
 
 int main() {
+#if 0
     printf("Profiling test!!!\n");
     fibo(4);
+#endif
+    for (size_t i = 0; i < 5; i++) {
+        fibo(i);
+#if 0
+        printf("fibo(%zd)=%llu\n", i, fibo(i));
+#endif
+    }
     return 0;
 }
