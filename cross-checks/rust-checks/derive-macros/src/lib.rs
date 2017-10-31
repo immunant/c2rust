@@ -96,9 +96,9 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
 
     // Allow users to override __XCHA and __XCHS
     let ahasher_override = top_args.get("ahasher_override").map_or_else(
-        || quote! { __XCHA }, ArgValue::get_str_tokens);
+        || syn::Ident::from("__XCHA"), ArgValue::get_str_ident);
     let shasher_override = top_args.get("shasher_override").map_or_else(
-        || quote! { __XCHS }, ArgValue::get_str_tokens);
+        || syn::Ident::from("__XCHS"), ArgValue::get_str_ident);
 
     // Iterate through all fields, inserting the hash computation for each field
     let hash_fields = s.each(|f| {
@@ -142,7 +142,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         quote! { #id::<#ahasher_override, #shasher_override>(&self, _depth) }
     }).unwrap_or_else(|| {
         // Hash this value using the default algorithm
-        let hasher = top_args.get("hasher").map_or(ahasher_override, ArgValue::get_str_tokens);
+        let hasher = top_args.get("hasher").map_or(ahasher_override, ArgValue::get_str_ident);
         quote! {
             let mut h = #hasher::default();
             match *self { #hash_fields }
