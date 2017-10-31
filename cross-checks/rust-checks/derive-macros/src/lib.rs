@@ -5,29 +5,41 @@ extern crate synstructure;
 #[macro_use]
 extern crate quote;
 
+use quote::ToTokens;
+
 // Extract the optional tag from a #[cross_check(by_value(...))] attribute
-fn get_by_value_item_tag(mi: &syn::MetaItem) -> syn::Ident {
+fn get_direct_item_config(mi: &syn::MetaItem) -> (syn::Ident, quote::Tokens) {
+    let mut tag_ident = syn::Ident::from("UNKNOWN_TAG");
+    let mut filter_tokens = quote! { };
     if let syn::MetaItem::List(_, ref items) = *mi {
-        items.iter().filter_map(|item| {
+        items.iter().for_each(|item| {
             match *item {
                 syn::NestedMetaItem::MetaItem(ref mi) => {
                     match *mi {
                         syn::MetaItem::NameValue(ref kw, ref val)
                             if kw == "tag" => match *val {
                                 syn::Lit::Str(ref s, syn::StrStyle::Cooked) => {
-                                    Some(syn::Ident::from(s.clone()))
+                                    tag_ident = syn::Ident::from(s.clone());
                                 },
                                 _ => panic!("invalid tag value for by_value: {:?}", *val)
                             },
+
+                        syn::MetaItem::NameValue(ref kw, ref val)
+                            if kw == "filter" => match *val {
+                                syn::Lit::Str(ref s, syn::StrStyle::Cooked) => {
+                                    syn::Ident::from(s.clone()).to_tokens(&mut filter_tokens);
+                                },
+                                _ => panic!("invalid tag value for by_value: {:?}", *val)
+                            },
+
                         _ => panic!("unknown item passed to by_value: {:?}", *mi)
                     }
                 },
                 _ => panic!("unknown item passed to by_value: {:?}", *item)
             }
-        }).next().unwrap()
-    } else {
-        syn::Ident::from("UNKNOWN_TAG")
+        })
     }
+    (tag_ident, filter_tokens)
 }
 
 fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
@@ -51,8 +63,8 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                             syn::MetaItem::Word(ref kw) |
                             syn::MetaItem::List(ref kw, _)
                                 if kw == "by_value" => {
-                                    let tag = get_by_value_item_tag(mi);
-                                    return quote! { cross_check_value!(#tag, #f, __XCHA, __XCHS) }
+                                    let (tag, filter) = get_direct_item_config(mi);
+                                    return quote! { cross_check_value!(#tag, #filter(#f), __XCHA, __XCHS) }
                                 },
 
                             syn::MetaItem::NameValue(ref kw, ref val)
