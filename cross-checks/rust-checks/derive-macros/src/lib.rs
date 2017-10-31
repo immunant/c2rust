@@ -17,12 +17,12 @@ fn get_by_value_item_tag(mi: &syn::MetaItem) -> syn::Ident {
                                 syn::Lit::Str(ref s, syn::StrStyle::Cooked) => {
                                     Some(syn::Ident::from(s.clone()))
                                 },
-                                _ => panic!("invalid tag value for by_value")
+                                _ => panic!("invalid tag value for by_value: {:?}", *val)
                             },
-                        _ => panic!("unknown item passed to by_value")
+                        _ => panic!("unknown item passed to by_value: {:?}", *mi)
                     }
                 },
-                _ => panic!("unknown item passed to by_value")
+                _ => panic!("unknown item passed to by_value: {:?}", *item)
             }
         }).next().unwrap()
     } else {
@@ -61,10 +61,10 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                                         let id = syn::Ident::from(s.clone());
                                         return quote! { #id(&mut h, #f) };
                                     }
-                                    _ => panic!("invalid identifier passed to #[cross_check(custom = ...)]")
+                                    _ => panic!("invalid identifier passed to #[cross_check(custom = ...)]: {:?}", *val)
                             }
 
-                            _ => panic!("unknown parameter for #[cross_check]")
+                            _ => panic!("unknown parameter for #[cross_check]: {:?}", *mi)
                         }
                     }
                 }
