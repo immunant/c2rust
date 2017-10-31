@@ -62,9 +62,16 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                             // This has an optional tag parameter (tag="NNN_TAG")
                             syn::MetaItem::Word(ref kw) |
                             syn::MetaItem::List(ref kw, _)
-                                if kw == "by_value" => {
+                                if kw == "check_value" => {
                                     let (tag, filter) = get_direct_item_config(mi);
                                     return quote! { cross_check_value!(#tag, #filter(#f), __XCHA, __XCHS) }
+                                },
+
+                            syn::MetaItem::Word(ref kw) |
+                            syn::MetaItem::List(ref kw, _)
+                                if kw == "check_raw" => {
+                                    let (tag, filter) = get_direct_item_config(mi);
+                                    return quote! { cross_check_raw!(#tag, #filter(#f) as u64) }
                                 },
 
                             syn::MetaItem::NameValue(ref kw, ref val)
