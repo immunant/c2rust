@@ -110,7 +110,7 @@ struct CrossChecker<'a, 'cx: 'a> {
 }
 
 fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
-    attrs.iter().find(|attr| attr.path == "cross_check")
+    attrs.iter().find(|attr| attr.check_name("cross_check"))
 }
 
 impl<'a, 'cx> CrossChecker<'a, 'cx> {
