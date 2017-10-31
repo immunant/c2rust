@@ -8,11 +8,11 @@ extern crate quote;
 fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     // Iterate through all fields, inserting the hash computation for each field
     let hash_fields = s.each(|f| {
-        let xcheck_hash_attr = f.ast().attrs.iter().find(
-            |f| f.name() == "cross_check_hash");
-        if let Some(ref attr) = xcheck_hash_attr {
+        let xcheck_attr = f.ast().attrs.iter().find(
+            |f| f.name() == "cross_check");
+        if let Some(ref attr) = xcheck_attr {
             if let syn::MetaItem::List(ref ident, ref items) = attr.value {
-                assert!(ident == "cross_check_hash");
+                assert!(ident == "cross_check");
                 for item in items {
                     if let &syn::NestedMetaItem::MetaItem(ref mi) = item {
                         match *mi {
@@ -27,10 +27,10 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                                         let id = syn::Ident::from(s.clone());
                                         return quote! { #id(&mut h, #f) };
                                     }
-                                    _ => panic!("invalid identifier passed to #[cross_check_hash(custom = ...)]")
+                                    _ => panic!("invalid identifier passed to #[cross_check(custom = ...)]")
                             }
 
-                            _ => panic!("unknown parameter for #[cross_check_hash]")
+                            _ => panic!("unknown parameter for #[cross_check]")
                         }
                     }
                 }
