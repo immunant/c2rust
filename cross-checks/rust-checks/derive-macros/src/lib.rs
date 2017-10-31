@@ -65,7 +65,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                             syn::MetaItem::List(ref kw, _)
                                 if kw == "check_value" => {
                                     let (tag, filter) = get_direct_item_config(mi, quote! { });
-                                    return quote! { cross_check_value!(#tag, #filter(#f), __XCHA, __XCHS) }
+                                    return quote! { cross_check_value!(#tag, (#filter(#f)), __XCHA, __XCHS) }
                                 },
 
                             syn::MetaItem::Word(ref kw) |
