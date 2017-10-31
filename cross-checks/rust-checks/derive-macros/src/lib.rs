@@ -73,6 +73,12 @@ fn get_item_args(mi: &syn::MetaItem) -> ArgList {
     }
 }
 
+fn get_cross_check_args(attrs: &[syn::Attribute]) -> Option<ArgList> {
+    attrs.iter()
+         .find(|f| f.name() == "cross_check")
+         .map(|attr| get_item_args(&attr.value))
+}
+
 // Extract the optional tag from a #[cross_check(by_value(...))] attribute
 fn get_direct_item_config(args: &ArgList, default_filter_tokens: quote::Tokens)
         -> (syn::Ident, quote::Tokens) {
@@ -90,13 +96,7 @@ fn get_direct_item_config(args: &ArgList, default_filter_tokens: quote::Tokens)
 }
 
 fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
-    let top_xcheck_attr = s.ast().attrs.iter().find(
-        |f| f.name() == "cross_check");
-    let top_args = if let Some(ref attr) = top_xcheck_attr {
-        get_item_args(&attr.value)
-    } else {
-        Default::default()
-    };
+    let top_args = get_cross_check_args(&s.ast().attrs[..]).unwrap_or_default();
 
     // Allow users to override __XCHA and __XCHS
     let ahasher_override = top_args.get("ahasher_override").map_or_else(
@@ -106,11 +106,8 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
 
     // Iterate through all fields, inserting the hash computation for each field
     let hash_fields = s.each(|f| {
-        let xcheck_attr = f.ast().attrs.iter().find(
-            |f| f.name() == "cross_check");
-        xcheck_attr.and_then(|attr| {
+        get_cross_check_args(&f.ast().attrs[..]).and_then(|args| {
             // FIXME: figure out the argument priorities here
-            let args = get_item_args(&attr.value);
             if args.contains_key("no") ||
                args.contains_key("never") ||
                args.contains_key("disable") {
