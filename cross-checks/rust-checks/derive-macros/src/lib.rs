@@ -5,41 +5,64 @@ extern crate synstructure;
 #[macro_use]
 extern crate quote;
 
+use std::collections::{HashSet, HashMap};
+
 use quote::ToTokens;
 
-// Extract the optional tag from a #[cross_check(by_value(...))] attribute
-fn get_direct_item_config(mi: &syn::MetaItem, mut filter_tokens: quote::Tokens)
-        -> (syn::Ident, quote::Tokens) {
-    let mut tag_ident = syn::Ident::from("UNKNOWN_TAG");
+fn get_item_args(mi: &syn::MetaItem, args: HashSet<&'static str>)
+        -> HashMap<&'static str, Option<String>> {
     if let syn::MetaItem::List(_, ref items) = *mi {
-        items.iter().for_each(|item| {
+        items.iter().map(|item| {
             match *item {
                 syn::NestedMetaItem::MetaItem(ref mi) => {
                     match *mi {
-                        syn::MetaItem::NameValue(ref kw, ref val)
-                            if kw == "tag" => match *val {
-                                syn::Lit::Str(ref s, syn::StrStyle::Cooked) => {
-                                    tag_ident = syn::Ident::from(s.clone());
-                                },
-                                _ => panic!("invalid tag value for by_value: {:?}", *val)
-                            },
+                        syn::MetaItem::Word(ref kw) => (kw.as_ref(), None),
 
-                        syn::MetaItem::NameValue(ref kw, ref val)
-                            if kw == "filter" => match *val {
-                                syn::Lit::Str(ref s, syn::StrStyle::Cooked) => {
-                                    filter_tokens = quote::Tokens::new();
-                                    syn::Ident::from(s.clone()).to_tokens(&mut filter_tokens);
-                                },
+                        syn::MetaItem::NameValue(ref kw, ref val) => {
+                            match *val {
+                                syn::Lit::Str(ref s, syn::StrStyle::Cooked) =>
+                                    (kw.as_ref(), Some(s.clone())),
+
                                 _ => panic!("invalid tag value for by_value: {:?}", *val)
-                            },
+                            }
+                        },
 
                         _ => panic!("unknown item passed to by_value: {:?}", *mi)
                     }
                 },
                 _ => panic!("unknown item passed to by_value: {:?}", *item)
             }
-        })
+        }).map(|(key, val)| {
+            let key_ref = args.get(key)
+                .expect(&format!("unknown #[cross_check(...)] argument: {}", key));
+            (*key_ref, val)
+        }).collect()
+    } else {
+        Default::default()
     }
+}
+
+// Extract the optional tag from a #[cross_check(by_value(...))] attribute
+fn get_direct_item_config(mi: &syn::MetaItem, default_filter_tokens: quote::Tokens)
+        -> (syn::Ident, quote::Tokens) {
+    const DIRECT_ARGS: &[&str] = &["tag", "filter"];
+    let args = get_item_args(mi, DIRECT_ARGS.iter().cloned().collect());
+    // Process "tag = ..." argument
+    let tag_ident = match args.get("tag") {
+        Some(&Some(ref tag)) => syn::Ident::from(tag.clone()),
+        Some(&None) => panic!("tag argument expects value"),
+        None => syn::Ident::from("UNKNOWN_TAG")
+    };
+    // Process "filter = ..." argument
+    let filter_tokens = match args.get("filter") {
+        Some(&Some(ref filter)) => {
+            let mut new_tokens = quote::Tokens::new();
+            syn::Ident::from(filter.clone()).to_tokens(&mut new_tokens);
+            new_tokens
+        },
+        Some(&None) => panic!("filter argument expects value"),
+        None => default_filter_tokens,
+    };
     (tag_ident, filter_tokens)
 }
 
