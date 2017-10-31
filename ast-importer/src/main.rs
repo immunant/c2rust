@@ -83,8 +83,13 @@ fn main() {
 //    }
 
     // Perform the translation
-    use ast_importer::translator::translate;
-    println!("{}", translate(untyped_context));
+    //use ast_importer::translator::translate;
+    use ast_importer::typed_translator::translate;
+
+    let mut conv = ConversionContext::new(&untyped_context);
+    conv.convert(&untyped_context);
+
+    println!("{}", translate(&conv.typed_context));
 }
 
 fn parse_untyped_ast(filename: &str) -> Result<AstContext, Error> {
