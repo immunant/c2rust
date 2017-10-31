@@ -8,16 +8,26 @@ use clang_ast::*;
 pub type NodeType = u16;
 
 mod node_types {
-    pub const TYPE       : super::NodeType = 0b000001;
-    pub const EXPR       : super::NodeType = 0b000010;
-    pub const FIELD_DECL : super::NodeType = 0b000100;
-    pub const OTHER_DECL : super::NodeType = 0b001000;
-    pub const LABEL_STMT : super::NodeType = 0b010000;
-    pub const OTHER_STMT : super::NodeType = 0b100000;
+    pub const FUNC_TYPE  : super::NodeType = 0b0000000001;
+    pub const OTHER_TYPE : super::NodeType = 0b0000000010;
+    pub const TYPE       : super::NodeType = FUNC_TYPE | OTHER_TYPE;
 
-    pub const DECL       : super::NodeType = FIELD_DECL | OTHER_DECL;
+    pub const EXPR       : super::NodeType = 0b0000000100;
+
+    pub const FIELD_DECL : super::NodeType = 0b0000001000;
+    pub const VAR_DECL   : super::NodeType = 0b0000010000;
+    pub const RECORD_DECL: super::NodeType = 0b0000100000;
+    pub const TYPDEF_DECL: super::NodeType = 0b0001000000;
+    pub const OTHER_DECL : super::NodeType = 0b0010000000;
+    pub const DECL       : super::NodeType = FIELD_DECL | VAR_DECL | RECORD_DECL | TYPDEF_DECL | OTHER_DECL;
+
+    pub const LABEL_STMT : super::NodeType = 0b0100000000;
+    pub const OTHER_STMT : super::NodeType = 0b1000000000;
     pub const STMT       : super::NodeType = LABEL_STMT | OTHER_STMT;
+
     pub const ANYTHING   : super::NodeType = TYPE | EXPR | DECL | STMT;
+
+    // TODO
 }
 
 type ClangId = u64;
@@ -260,7 +270,7 @@ impl ConversionContext {
     ) -> () {
         use self::node_types::*;
 
-        if expected_ty == TYPE {
+        if expected_ty & TYPE != 0 {
 
             // Convert the node
             let ty_node: &TypeNode = untyped_context.type_nodes
@@ -268,71 +278,87 @@ impl ConversionContext {
                 .expect("Could not find type node");
 
             match ty_node.tag {
-                TypeTag::TagBool => {
+                TypeTag::TagBool if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::Bool));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagVoid => {
+                TypeTag::TagVoid if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::Void));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagChar => {
+                TypeTag::TagChar if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::Char));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagInt => {
+                TypeTag::TagInt if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::Int));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagShort => {
+                TypeTag::TagShort if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::Short));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagLong => {
+                TypeTag::TagLong if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::Long));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagLongLong => {
+                TypeTag::TagLongLong if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::LongLong));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagUInt => {
+                TypeTag::TagUInt if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::UInt));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagUChar => {
+                TypeTag::TagUChar if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::UChar));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagSChar => {
+                TypeTag::TagSChar if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::SChar));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagUShort => {
+                TypeTag::TagUShort if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::UShort));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagULong => {
+                TypeTag::TagULong if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::ULong));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagULongLong => {
+                TypeTag::TagULongLong if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::ULongLong));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagDouble => {
+                TypeTag::TagDouble if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::Double));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagLongDouble => {
+                TypeTag::TagLongDouble if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::LongDouble));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagFloat => {
+                TypeTag::TagFloat if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::Float));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagPointer => {
+                TypeTag::TagPointer if expected_ty & OTHER_TYPE != 0 => {
                     let pointed = expect_u64(&ty_node.extras[0])
                         .expect("Pointer child not found");
                     let pointed_new = self.visit_type( &pointed);
@@ -343,9 +369,20 @@ impl ConversionContext {
                     };
                     let pointer_ty = CTypeKind::Pointer(pointed_ty);
                     self.add_type(new_id, not_located(pointer_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagFunctionType => {
+                TypeTag::TagRecordType if expected_ty & OTHER_TYPE != 0 => {
+                    let decl = expect_u64(&ty_node.extras[0])
+                        .expect("Record decl not found");
+                    let decl_new = CDeclId(self.visit_node_type(&decl, RECORD_DECL));
+
+                    let record_ty = CTypeKind::Record(decl_new);
+                    self.add_type(new_id, not_located(record_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
+                TypeTag::TagFunctionType if expected_ty & FUNC_TYPE != 0 => {
                     let mut arguments: Vec<CQualTypeId> = expect_array(&ty_node.extras[0])
                         .expect("Function type expects array argument")
                         .iter()
@@ -361,28 +398,50 @@ impl ConversionContext {
                         })
                         .collect();
                     let ret = arguments.remove(0);
-                    let function_ty = CTypeKind::FunctionProto(ret, arguments);
+                    let function_ty = CTypeKind::Function(ret, arguments);
                     self.add_type(new_id, not_located(function_ty));
+                    self.processed_nodes.insert(new_id, FUNC_TYPE);
                 }
 
-                TypeTag::TagTypeOfType => {
-                    let type_of_id = expect_u64(&ty_node.extras[0]).expect("Type of (type) child not found");
-                    let type_of = untyped_context.type_nodes
-                        .get(&type_of_id)
-                        .expect("Type of (type) child not found");
-                    let type_of_new_id = self.visit_type(&type_of_id);
+                TypeTag::TagTypeOfType if expected_ty & OTHER_TYPE != 0 => {
+                    let type_of_old = expect_u64(&ty_node.extras[0]).expect("Type of (type) child not found");
+                    let type_of = self.visit_type(&type_of_old);
 
-                    let type_of_ty_qual = CQualTypeId {
-                        qualifiers: qualifiers(type_of),
-                        ctype: type_of_new_id
-                    };
-                    let type_of_ty = CTypeKind::TypeOf(type_of_ty_qual);
+                    let type_of_ty = CTypeKind::TypeOf(type_of);
                     self.add_type(new_id, not_located(type_of_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
+                TypeTag::TagTypedefType if expected_ty & OTHER_TYPE != 0 => {
+                    let decl = expect_u64(&ty_node.extras[0])
+                        .expect("Typedef decl not found");
+                    let decl_new = CDeclId(self.visit_node_type(&decl, TYPDEF_DECL));
+
+                    let typedef_ty = CTypeKind::Typedef(decl_new);
+                    self.add_type(new_id, not_located(typedef_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
+                TypeTag::TagDecayedType if expected_ty & OTHER_TYPE != 0 => {
+                    let decayed_id = expect_u64(&ty_node.extras[0]).expect("Decayed type child not found");
+                    let decayed = self.visit_type(&decayed_id);
+
+                    let decayed_ty = CTypeKind::Decayed(decayed);
+                    self.add_type(new_id, not_located(decayed_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
+                TypeTag::TagElaboratedType if expected_ty & OTHER_TYPE != 0 => {
+                    let elaborated_id = expect_u64(&ty_node.extras[0]).expect("Elaborated type child not found");
+                    let elaborated = self.visit_type(&elaborated_id);
+
+                    let elaborated_ty = CTypeKind::Elaborated(elaborated);
+                    self.add_type(new_id, not_located(elaborated_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
                 t => panic!("Type conversion not implemented for {:?}", t),
             }
-            self.processed_nodes.insert(new_id, TYPE);
 
         } else {
             // Convert the node
@@ -409,12 +468,17 @@ impl ConversionContext {
                 }
 
                 ASTEntryTag::TagDeclStmt if expected_ty & OTHER_STMT != 0 => {
-                    let decl = node.children[0].expect("Decl not found in decl-statement");
-                    let decl_new = self.visit_decl(&decl);
+                    let decls = node.children
+                        .iter()
+                        .map(|decl| {
+                            let decl_id = decl.expect("Decl not found in decl-statement");
+                            self.visit_decl(&decl_id)
+                        })
+                        .collect();
 
-                    let decl_stmt = CStmtKind::Decl(decl_new);
+                    let decls_stmt = CStmtKind::Decls(decls);
 
-                    self.add_stmt(new_id, located(node, decl_stmt));
+                    self.add_stmt(new_id, located(node, decls_stmt));
                     self.processed_nodes.insert(new_id, OTHER_STMT);
                 }
 
@@ -461,14 +525,11 @@ impl ConversionContext {
                 }
 
                 ASTEntryTag::TagForStmt if expected_ty & OTHER_STMT != 0 => {
-                    let init_old = node.children[0].expect("For loop initializer not found");
-                    let init = self.visit_stmt(&init_old);
+                    let init = node.children[0].map(|id| self.visit_stmt(&id));
 
-                    let condition_old = node.children[1].expect("For loop condition not found");
-                    let condition = self.visit_expr(&condition_old);
+                    let condition = node.children[1].map(|id| self.visit_expr(&id));
 
-                    let increment_old = node.children[2].expect("For loop increment not found");
-                    let increment = self.visit_expr(&increment_old);
+                    let increment = node.children[2].map(|id| self.visit_expr(&id));
 
                     let body_old = node.children[3].expect("For loop body not found");
                     let body = self.visit_stmt(&body_old);
@@ -488,6 +549,19 @@ impl ConversionContext {
                     let while_stmt = CStmtKind::While { condition, body };
 
                     self.add_stmt(new_id, located(node, while_stmt));
+                }
+
+                ASTEntryTag::TagDoStmt if expected_ty & OTHER_STMT != 0 => {
+
+                    let body_old = node.children[0].expect("Do loop body not found");
+                    let body = self.visit_stmt(&body_old);
+
+                    let condition_old = node.children[1].expect("Do loop condition not found");
+                    let condition = self.visit_expr(&condition_old);
+
+                    let do_stmt = CStmtKind::DoWhile { body, condition };
+
+                    self.add_stmt(new_id, located(node, do_stmt));
                 }
 
                 ASTEntryTag::TagLabelStmt if expected_ty & LABEL_STMT != 0 => {
@@ -550,7 +624,9 @@ impl ConversionContext {
                         "-" => UnOp::Negate,
                         "~" => UnOp::Complement,
                         "!" => UnOp::Not,
-                        _ => unimplemented!(),
+                        "++" => UnOp::Increment,
+                        "--" => UnOp::Decrement,
+                        o => panic!("Unexpected operator: {}", o),
                     };
 
                     let operand_old = node.children[0].expect("Expected operand");
@@ -559,7 +635,9 @@ impl ConversionContext {
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_type(&ty_old);
 
-                    let unary = CExprKind::Unary(ty, operator, operand);
+                    let prefix = expect_bool(&node.extras[1]).expect("Expected prefix information");
+
+                    let unary = CExprKind::Unary(ty, operator, prefix, operand);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, unary);
                 }
@@ -632,6 +710,18 @@ impl ConversionContext {
                         "|" => BinOp::BitOr,
                         "&&" => BinOp::And,
                         "||" => BinOp::Or,
+                        "+=" => BinOp::AssignAdd,
+                        "-=" => BinOp::AssignSubtract,
+                        "*=" => BinOp::AssignMultiply,
+                        "/=" => BinOp::AssignDivide,
+                        "%=" => BinOp::AssignModulus,
+                        "^=" => BinOp::AssignBitXor,
+                        "<<=" => BinOp::AssignShiftLeft,
+                        ">>=" => BinOp::AssignShiftRight,
+                        "|=" => BinOp::AssignBitOr,
+                        "&=" => BinOp::AssignBitAnd,
+                        "=" => BinOp::Assign,
+                        "," => BinOp::Comma,
                         _ => unimplemented!(),
                     };
 
@@ -661,39 +751,81 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, decl);
                 }
 
+                ASTEntryTag::TagArraySubscriptExpr if expected_ty & (EXPR | STMT) != 0 => {
+                    let lhs_old = node.children[0].expect("Expected LHS on array subscript expression");
+                    let lhs = self.visit_expr(&lhs_old);
+
+                    let rhs_old = node.children[1].expect("Expected RHS on array subscript expression");
+                    let rhs = self.visit_expr(&rhs_old);
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_type(&ty_old);
+
+                    let subcript = CExprKind::ArraySubscript(ty, lhs, rhs);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, subcript);
+                }
+
                 // Declarations
 
                 ASTEntryTag::TagFunctionDecl if expected_ty & OTHER_DECL != 0 => {
                     let name = expect_str(&node.extras[0]).expect("Expected to find function name").to_string();
 
                     let typ_old = node.type_id.expect("Expected to find a type on a function decl");
-                    let typ = self.visit_type(&typ_old);
+                    let typ = CTypeId(self.visit_node_type(&typ_old, FUNC_TYPE));
 
-                    let body_old = node.children.last().expect("Function body not found").expect("Function body not found");
+                    let (body_id, parameter_ids) = node.children.split_last().expect("Expected to find a fucntion body");
+
+                    let body_old = body_id.expect("Function body not found");
                     let body = self.visit_stmt(&body_old);
 
-                    let function_decl = CDeclKind::Function { typ, name, body };
+                    let parameters = parameter_ids
+                        .iter()
+                        .map(|id| {
+                            let param = id.expect("Param field decl not found");
+                            CDeclId(self.visit_node_type(&param, VAR_DECL))
+                        })
+                        .collect();
+
+                    let function_decl = CDeclKind::Function { typ, name, parameters, body };
 
                     self.add_decl(new_id, located(node, function_decl));
                     self.processed_nodes.insert(new_id, OTHER_DECL);
                 }
 
-                ASTEntryTag::TagVarDecl if expected_ty & OTHER_DECL != 0 => {
+                ASTEntryTag::TagTypedefDecl if expected_ty & TYPDEF_DECL != 0 => {
+                    let name = expect_str(&node.extras[0]).expect("Expected to find typedef name").to_string();
+
+                    let typ_old = node.type_id.expect("Expected to find type on typedef declaration");
+                    let typ = self.visit_type(&typ_old);
+
+                    let typdef_decl = CDeclKind::Typedef { name, typ };
+
+                    self.add_decl(new_id, located(node, typdef_decl));
+                    self.processed_nodes.insert(new_id, TYPDEF_DECL);
+                }
+
+                ASTEntryTag::TagVarDecl if expected_ty & VAR_DECL != 0 => {
                     let ident = expect_str(&node.extras[0]).expect("Expected to find variable name").to_string();
 
                     let initializer = node.children[0]
                         .map(|id| self.visit_expr(&id));
 
                     let typ_old = node.type_id.expect("Expected to find type on variable declaration");
-                    let typ = self.visit_type(&typ_old);
+                    let typ_old_node = untyped_context.type_nodes
+                        .get(&typ_old)
+                        .expect("Variable type child not found");
+                    let new_typ = self.visit_type(&typ_old);
+
+                    let typ = CQualTypeId { qualifiers: qualifiers(typ_old_node), ctype: new_typ };
 
                     let variable_decl = CDeclKind::Variable { ident, initializer, typ };
 
                     self.add_decl(new_id, located(node, variable_decl));
-                    self. processed_nodes.insert(new_id, OTHER_DECL);
+                    self.processed_nodes.insert(new_id, VAR_DECL);
                 }
 
-                ASTEntryTag::TagRecordDecl if expected_ty & OTHER_DECL != 0 => {
+                ASTEntryTag::TagRecordDecl if expected_ty & RECORD_DECL != 0 => {
                     let name = expect_str(&node.extras[0]).ok().map(str::to_string);
                     let fields: Vec<CDeclId> = node.children
                         .iter()
@@ -706,7 +838,7 @@ impl ConversionContext {
                     let record = CDeclKind::Record { name, fields };
 
                     self.add_decl(new_id, located(node, record));
-                    self.processed_nodes.insert(new_id, OTHER_DECL);
+                    self.processed_nodes.insert(new_id, RECORD_DECL);
                 },
 
                 ASTEntryTag::TagFieldDecl if expected_ty & FIELD_DECL != 0 => {

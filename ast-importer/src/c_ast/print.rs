@@ -29,9 +29,13 @@ impl Printer {
     pub fn print_expr(&mut self, expr_id: CExprId, context: &TypedAstContext) {
         match context.c_exprs.get(&expr_id).map(|l| &l.kind) {
             Some(&CExprKind::Literal(_, lit)) => self.print_lit(&lit, context),
-            Some(&CExprKind::Unary(_, op, rhs)) => {
+            Some(&CExprKind::Unary(_, op, true, rhs)) => {
                 self.print_unop(&op, context);
                 self.print_expr(rhs, context);
+            },
+            Some(&CExprKind::Unary(_, op, false, rhs)) => {
+                self.print_expr(rhs, context);
+                self.print_unop(&op, context);
             },
             Some(&CExprKind::Binary(_, op, lhs, rhs)) => {
                 self.print_expr(lhs, context);
@@ -55,6 +59,12 @@ impl Printer {
                 print!(".");
                 self.print_decl_name(member, context);
             }
+            Some(&CExprKind::ArraySubscript(_, lhs, rhs)) => {
+                self.print_expr(lhs, context);
+                print!("[");
+                self.print_expr(rhs, context);
+                print!("]");
+            }
             None => panic!("Could not find expression with ID {:?}", expr_id),
            // _ => unimplemented!("Printer::print_expr"),
         }
@@ -65,7 +75,9 @@ impl Printer {
             UnOp::AddressOf => print!("&"),
             UnOp::Deref => print!("*"),
             UnOp::Plus => print!("+"),
+            UnOp::Increment => print!("++"),
             UnOp::Negate => print!("-"),
+            UnOp::Decrement => print!("--"),
             UnOp::Complement => print!("~"),
             UnOp::Not => print!("!"),
         }
@@ -91,6 +103,20 @@ impl Printer {
             BinOp::BitOr => print!("|"),
             BinOp::And => print!("&&"),
             BinOp::Or => print!("||"),
+
+            BinOp::AssignAdd => print!("+="),
+            BinOp::AssignSubtract => print!("-="),
+            BinOp::AssignMultiply => print!("*="),
+            BinOp::AssignDivide => print!("/="),
+            BinOp::AssignModulus => print!("%="),
+            BinOp::AssignBitXor => print!("^="),
+            BinOp::AssignShiftLeft => print!("<<="),
+            BinOp::AssignShiftRight => print!(">>="),
+            BinOp::AssignBitOr => print!("|="),
+            BinOp::AssignBitAnd => print!("&="),
+
+            BinOp::Assign => print!("="),
+            BinOp::Comma => print!(","),
         }
     }
 
@@ -147,12 +173,21 @@ impl Printer {
                 println!("for (");
                 self.indent += 2;
                 self.pad();
-                self.print_stmt(*init, context);
+                match init {
+                    &None => println!(";"),
+                    &Some(ref init) => self.print_stmt(*init, context),
+                }
                 self.pad();
-                self.print_expr(*condition, context);
+                match condition {
+                    &None => { },
+                    &Some(ref condition) => self.print_expr(*condition, context),
+                }
                 println!(";");
                 self.pad();
-                self.print_expr(*increment, context);
+                match increment {
+                    &None => { },
+                    &Some(ref increment) => self.print_expr(*increment, context),
+                }
                 println!();
                 self.indent -= 2;
                 self.pad();
@@ -192,36 +227,12 @@ impl Printer {
             Some(&CStmtKind::Break) => println!("break;"),
             Some(&CStmtKind::Continue) => println!("continue;"),
 
-            Some(&CStmtKind::Decl(decl)) => self.print_decl(decl, context),
-        /*    Some(&CStmtKind::Label(stmt)) => {
-                print!("{}: ", stmt);
-                self.print_stmt(stmt, indent);
-            }
-
-            Some(&CStmtKind::Case(stmt)) => {
-                print!("case {}: ", stmt);
-                self.print_stmt(stmt, indent);
-            }
-            Case(CExpr, CStmtId), // The second argument is only the immediately following statement
-            Default(CStmtId),
-
-            Switch {
-                scrutinee: CExprId,
-                body: CStmtId,
+            Some(&CStmtKind::Decls(ref decls)) => {
+                for decl in decls {
+                    self.print_decl(*decl, context)
+                }
             },
 
-
-
-            ForLoop {
-                init: CStmtId,      // This can be an 'Expr'
-                condition: CExprId,
-                increment: CExprId,
-                body: CStmtId,
-            },
-
-            // Jump statements (6.8.6)
-            Goto(CLabelId),
-            */
             None => panic!("Could not find statement with ID {:?}", stmt_id),
 
             _ => unimplemented!("Printer::print_stmt"),
@@ -230,23 +241,40 @@ impl Printer {
 
     pub fn print_decl(&mut self, decl_id: CDeclId, context: &TypedAstContext) {
         match context.c_decls.get(&decl_id).map(|l| &l.kind) {
-            Some(&CDeclKind::Function { ref typ, ref name, ref body }) => {
+            Some(&CDeclKind::Function { ref typ, ref name, ref parameters, ref body }) => {
                 // TODO typ
                 self.pad();
                 print!("{}", name);
-                print!("() ");
+                println!("(");
+                self.indent += 2;
+                for parameter in parameters {
+                    self.print_decl(*parameter, context);
+                }
+                self.indent -= 2;
+                self.pad();
+                print!(") ");
                 self.print_stmt(*body, context);
             },
 
             Some(&CDeclKind::Variable { ref ident, ref initializer, ref typ }) => {
                 self.pad();
-                self.print_type(*typ, context);
-                print!(" {} = ", ident);
+                self.print_qtype(*typ, context);
+                print!(" {}", ident);
                 match initializer {
-                    &Some(ref init) => self.print_expr(*init, context),
+                    &Some(ref init) => {
+                        print!(" = ");
+                        self.print_expr(*init, context)
+                    },
                     &None => { },
                 }
                 println!(";");
+            },
+
+            Some(&CDeclKind::Typedef { ref name, ref typ }) => {
+                self.pad();
+                print!("typedef {} = ", name);
+                self.print_type(*typ, context);
+                println!();
             },
 
             Some(&CDeclKind::Record { ref name, ref fields }) => {
