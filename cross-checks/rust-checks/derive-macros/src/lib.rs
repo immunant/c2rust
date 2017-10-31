@@ -76,7 +76,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                                 },
 
                             syn::MetaItem::NameValue(ref kw, ref val)
-                                if kw == "custom" => match *val {
+                                if kw == "custom_hash" => match *val {
                                     syn::Lit::Str(ref s, syn::StrStyle::Cooked) => {
                                         let id = syn::Ident::from(s.clone());
                                         return quote! { #id(&mut h, #f) };
