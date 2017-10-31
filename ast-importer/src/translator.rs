@@ -500,7 +500,7 @@ impl Translation {
             ASTEntryTag::TagArraySubscriptExpr => {
                 let lhs_node = self.ast_context.ast_nodes.get(&node.children[0].expect("lhs id")).expect("lhs node").to_owned();
                 let lhs_ty = self.ast_context.get_type(lhs_node.type_id.expect("lhs ty id")).expect("lhs ty");
-                let mut lhs = self.convert_expr_node(lhs_node);
+                let lhs = self.convert_expr_node(lhs_node);
 
                 let rhs_node = self.ast_context.ast_nodes.get(&node.children[1].expect("rhs id")).expect("rhs node").to_owned();
                 let rhs_ty = self.ast_context.get_type(rhs_node.type_id.expect("rhs ty id")).expect("rhs ty");

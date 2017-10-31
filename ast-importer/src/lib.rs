@@ -8,6 +8,8 @@ pub mod name_manager;
 pub mod clang_ast;
 pub mod convert_type;
 pub mod translator;
+pub mod typed_convert_type;
+pub mod typed_translator;
 pub mod c_ast;
 
 #[cfg(test)]

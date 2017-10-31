@@ -201,7 +201,7 @@ impl Builder {
         let vis = vis.make(&self);
         Builder {
             vis: vis,
-            .. self
+            ..self
         }
     }
 
@@ -213,7 +213,7 @@ impl Builder {
         let mutbl = mutbl.make(&self);
         Builder {
             mutbl: mutbl,
-            .. self
+            ..self
         }
     }
 
@@ -225,7 +225,7 @@ impl Builder {
         let unsafety = unsafety.make(&self);
         Builder {
             unsafety: unsafety,
-            .. self
+            ..self
         }
     }
 
@@ -237,7 +237,7 @@ impl Builder {
         let constness = constness.make(&self);
         Builder {
             constness: constness,
-            .. self
+            ..self
         }
     }
 
@@ -249,13 +249,13 @@ impl Builder {
         let abi = abi.make(&self);
         Builder {
             abi: abi,
-            .. self
+            ..self
         }
     }
 
 
     pub fn str_attr<K, V>(self, key: K, value: V) -> Self
-            where K: Make<PathSegment>, V: IntoSymbol {
+        where K: Make<PathSegment>, V: IntoSymbol {
         let key = vec![key].make(&self);
 
         let mut attrs = self.attrs;
@@ -272,7 +272,7 @@ impl Builder {
         });
         Builder {
             attrs: attrs,
-            .. self
+            ..self
         }
     }
 
@@ -280,22 +280,22 @@ impl Builder {
     // Simple nodes
 
     pub fn ident<I>(self, name: I) -> Ident
-            where I: Make<Ident> {
+        where I: Make<Ident> {
         name.make(&self)
     }
 
     pub fn path_segment<S>(self, seg: S) -> PathSegment
-            where S: Make<PathSegment> {
+        where S: Make<PathSegment> {
         seg.make(&self)
     }
 
     pub fn path<Pa>(self, path: Pa) -> Path
-            where Pa: Make<Path> {
+        where Pa: Make<Path> {
         path.make(&self)
     }
 
     pub fn spanned<T, U>(self, x: U) -> Spanned<T>
-            where U: Make<T> {
+        where U: Make<T> {
         let x = x.make(&self);
         Spanned {
             node: x,
@@ -319,7 +319,7 @@ impl Builder {
     }
 
     pub fn call_expr<F, A>(self, func: F, args: Vec<A>) -> P<Expr>
-            where F: Make<P<Expr>>, A: Make<P<Expr>> {
+        where F: Make<P<Expr>>, A: Make<P<Expr>> {
         let func = func.make(&self);
         let args = args.into_iter().map(|a| a.make(&self)).collect();
         P(Expr {
@@ -331,7 +331,7 @@ impl Builder {
     }
 
     pub fn method_call_expr<E, S, A>(self, expr: E, seg: S, args: Vec<A>) -> P<Expr>
-            where E: Make<P<Expr>>, S: Make<PathSegment>, A: Make<P<Expr>> {
+        where E: Make<P<Expr>>, S: Make<PathSegment>, A: Make<P<Expr>> {
         let expr = expr.make(&self);
         let seg = seg.make(&self);
 
@@ -350,7 +350,7 @@ impl Builder {
     }
 
     pub fn unary_expr<O, E>(self, op: O, a: E) -> P<Expr>
-            where O: Make<UnOp>, E: Make<P<Expr>> {
+        where O: Make<UnOp>, E: Make<P<Expr>> {
         let op = op.make(&self);
         let a = a.make(&self);
         P(Expr {
@@ -387,7 +387,7 @@ impl Builder {
     }
 
     pub fn lit_expr<L>(self, lit: L) -> P<Expr>
-            where L: Make<P<Lit>> {
+        where L: Make<P<Lit>> {
         let lit = lit.make(&self);
         P(Expr {
             id: DUMMY_NODE_ID,
@@ -398,7 +398,7 @@ impl Builder {
     }
 
     pub fn cast_expr<E, T>(self, e: E, t: T) -> P<Expr>
-            where E: Make<P<Expr>>, T: Make<P<Ty>> {
+        where E: Make<P<Expr>>, T: Make<P<Ty>> {
         let e = e.make(&self);
         let t = t.make(&self);
         P(Expr {
@@ -410,7 +410,7 @@ impl Builder {
     }
 
     pub fn type_expr<E, T>(self, e: E, t: T) -> P<Expr>
-            where E: Make<P<Expr>>, T: Make<P<Ty>> {
+        where E: Make<P<Expr>>, T: Make<P<Ty>> {
         let e = e.make(&self);
         let t = t.make(&self);
         P(Expr {
@@ -422,7 +422,7 @@ impl Builder {
     }
 
     pub fn block_expr<B>(self, blk: B) -> P<Expr>
-            where B: Make<P<Block>> {
+        where B: Make<P<Block>> {
         let blk = blk.make(&self);
         P(Expr {
             id: DUMMY_NODE_ID,
@@ -433,7 +433,7 @@ impl Builder {
     }
 
     pub fn assign_expr<E1, E2>(self, lhs: E1, rhs: E2) -> P<Expr>
-            where E1: Make<P<Expr>>, E2: Make<P<Expr>> {
+        where E1: Make<P<Expr>>, E2: Make<P<Expr>> {
         let lhs = lhs.make(&self);
         let rhs = rhs.make(&self);
         P(Expr {
@@ -445,12 +445,12 @@ impl Builder {
     }
 
     pub fn path_expr<Pa>(self, path: Pa) -> P<Expr>
-            where Pa: Make<Path> {
+        where Pa: Make<Path> {
         self.qpath_expr(None, path)
     }
 
     pub fn qpath_expr<Pa>(self, qself: Option<QSelf>, path: Pa) -> P<Expr>
-            where Pa: Make<Path> {
+        where Pa: Make<Path> {
         let path = path.make(&self);
         P(Expr {
             id: DUMMY_NODE_ID,
@@ -462,12 +462,12 @@ impl Builder {
 
     // Special case of path_expr
     pub fn ident_expr<I>(self, name: I) -> P<Expr>
-            where I: Make<Ident> {
+        where I: Make<Ident> {
         self.path_expr(vec![name])
     }
 
     pub fn addr_of_expr<E>(self, e: E) -> P<Expr>
-            where E: Make<P<Expr>> {
+        where E: Make<P<Expr>> {
         let e = e.make(&self);
         P(Expr {
             id: DUMMY_NODE_ID,
@@ -478,7 +478,7 @@ impl Builder {
     }
 
     pub fn mac_expr<M>(self, mac: M) -> P<Expr>
-            where M: Make<Mac> {
+        where M: Make<Mac> {
         let mac = mac.make(&self);
         P(Expr {
             id: DUMMY_NODE_ID,
@@ -489,7 +489,7 @@ impl Builder {
     }
 
     pub fn struct_expr<Pa>(self, path: Pa, fields: Vec<Field>) -> P<Expr>
-            where Pa: Make<Path> {
+        where Pa: Make<Path> {
         let path = path.make(&self);
         P(Expr {
             id: DUMMY_NODE_ID,
@@ -501,7 +501,7 @@ impl Builder {
 
     // struct_expr, but with optional base expression
     pub fn struct_expr_base<Pa, E>(self, path: Pa, fields: Vec<Field>, base: Option<E>) -> P<Expr>
-            where Pa: Make<Path>, E: Make<P<Expr>> {
+        where Pa: Make<Path>, E: Make<P<Expr>> {
         let path = path.make(&self);
         let base = base.map(|e| e.make(&self));
         P(Expr {
@@ -513,7 +513,7 @@ impl Builder {
     }
 
     pub fn field<I, E>(self, ident: I, expr: E) -> Field
-            where I: Make<Ident>, E: Make<P<Expr>> {
+        where I: Make<Ident>, E: Make<P<Expr>> {
         let ident = ident.make(&self);
         let expr = expr.make(&self);
         Field {
@@ -532,7 +532,7 @@ impl Builder {
     // Literals
 
     pub fn str_lit<S>(self, s: S) -> P<Lit>
-            where S: IntoSymbol {
+        where S: IntoSymbol {
         let s = s.into_symbol();
         P(Lit {
             node: LitKind::Str(s, StrStyle::Cooked),
@@ -555,7 +555,7 @@ impl Builder {
     }
 
     pub fn int_lit<T>(self, i: u128, ty: T) -> P<Lit>
-            where T: Make<LitIntType>{
+        where T: Make<LitIntType> {
         let ty = ty.make(&self);
         P(Lit {
             node: LitKind::Int(i, ty),
@@ -564,7 +564,7 @@ impl Builder {
     }
 
     pub fn float_lit<S, T>(self, s: S, ty: T) -> P<Lit>
-            where S: IntoSymbol, T: Make<FloatTy> {
+        where S: IntoSymbol, T: Make<FloatTy> {
         let s = s.into_symbol();
         let ty = ty.make(&self);
         P(Lit {
@@ -589,13 +589,13 @@ impl Builder {
         })
     }
 
-    pub fn ifte_expr<C,T,E>(self, cond: C, then_case: T, else_case: Option<E>) -> P<Expr>
+    pub fn ifte_expr<C, T, E>(self, cond: C, then_case: T, else_case: Option<E>) -> P<Expr>
         where C: Make<P<Expr>>, T: Make<P<Block>>, E: Make<P<Expr>> {
         let cond = cond.make(&self);
         let then_case = then_case.make(&self);
         let else_case = else_case.map(|x| x.make(&self));
 
-        P(Expr{
+        P(Expr {
             id: DUMMY_NODE_ID,
             node: ExprKind::If(cond, then_case, else_case),
             span: DUMMY_SP,
@@ -603,12 +603,12 @@ impl Builder {
         })
     }
 
-    pub fn while_expr<C,B>(self, cond: C, body: B) -> P<Expr>
+    pub fn while_expr<C, B>(self, cond: C, body: B) -> P<Expr>
         where C: Make<P<Expr>>, B: Make<P<Block>> {
         let cond = cond.make(&self);
         let body = body.make(&self);
 
-        P(Expr{
+        P(Expr {
             id: DUMMY_NODE_ID,
             node: ExprKind::While(cond, body, None),
             span: DUMMY_SP,
@@ -620,7 +620,7 @@ impl Builder {
         where B: Make<P<Block>> {
         let body = body.make(&self);
 
-        P(Expr{
+        P(Expr {
             id: DUMMY_NODE_ID,
             node: ExprKind::Loop(body, None),
             span: DUMMY_SP,
@@ -632,7 +632,7 @@ impl Builder {
     // Patterns
 
     pub fn ident_pat<I>(self, name: I) -> P<Pat>
-            where I: Make<Ident> {
+        where I: Make<Ident> {
         let name = name.make(&self);
         P(Pat {
             id: DUMMY_NODE_ID,
@@ -659,7 +659,7 @@ impl Builder {
     // Types
 
     pub fn array_ty<T, E>(self, ty: T, len: E) -> P<Ty>
-            where T: Make<P<Ty>>, E: Make<P<Expr>> {
+        where T: Make<P<Ty>>, E: Make<P<Expr>> {
         let ty = ty.make(&self);
         let len = len.make(&self);
         P(Ty {
@@ -670,7 +670,7 @@ impl Builder {
     }
 
     pub fn slice_ty<T>(self, ty: T) -> P<Ty>
-            where T: Make<P<Ty>> {
+        where T: Make<P<Ty>> {
         let ty = ty.make(&self);
         P(Ty {
             id: DUMMY_NODE_ID,
@@ -680,7 +680,7 @@ impl Builder {
     }
 
     pub fn ptr_ty<T>(self, ty: T) -> P<Ty>
-            where T: Make<P<Ty>> {
+        where T: Make<P<Ty>> {
         let ty = ty.make(&self);
         P(Ty {
             id: DUMMY_NODE_ID,
@@ -690,7 +690,7 @@ impl Builder {
     }
 
     pub fn ref_ty<T>(self, ty: T) -> P<Ty>
-            where T: Make<P<Ty>> {
+        where T: Make<P<Ty>> {
         let ty = ty.make(&self);
         P(Ty {
             id: DUMMY_NODE_ID,
@@ -708,7 +708,7 @@ impl Builder {
     }
 
     pub fn tuple_ty<T>(self, elem_tys: Vec<T>) -> P<Ty>
-            where T: Make<P<Ty>> {
+        where T: Make<P<Ty>> {
         let elem_tys = elem_tys.into_iter().map(|ty| ty.make(&self)).collect();
         P(Ty {
             id: DUMMY_NODE_ID,
@@ -718,12 +718,12 @@ impl Builder {
     }
 
     pub fn path_ty<Pa>(self, path: Pa) -> P<Ty>
-            where Pa: Make<Path> {
+        where Pa: Make<Path> {
         self.qpath_ty(None, path)
     }
 
     pub fn qpath_ty<Pa>(self, qself: Option<QSelf>, path: Pa) -> P<Ty>
-            where Pa: Make<Path> {
+        where Pa: Make<Path> {
         let path = path.make(&self);
         P(Ty {
             id: DUMMY_NODE_ID,
@@ -733,7 +733,7 @@ impl Builder {
     }
 
     pub fn ident_ty<I>(self, name: I) -> P<Ty>
-            where I: Make<Ident> {
+        where I: Make<Ident> {
         self.path_ty(vec![name])
     }
 
@@ -749,7 +749,7 @@ impl Builder {
     // Stmts
 
     pub fn local_stmt<L>(self, local: L) -> Stmt
-            where L: Make<P<Local>> {
+        where L: Make<P<Local>> {
         let local = local.make(&self);
         Stmt {
             id: DUMMY_NODE_ID,
@@ -759,7 +759,7 @@ impl Builder {
     }
 
     pub fn expr_stmt<E>(self, expr: E) -> Stmt
-            where E: Make<P<Expr>> {
+        where E: Make<P<Expr>> {
         let expr = expr.make(&self);
         Stmt {
             id: DUMMY_NODE_ID,
@@ -769,7 +769,7 @@ impl Builder {
     }
 
     pub fn semi_stmt<E>(self, expr: E) -> Stmt
-            where E: Make<P<Expr>> {
+        where E: Make<P<Expr>> {
         let expr = expr.make(&self);
         Stmt {
             id: DUMMY_NODE_ID,
@@ -794,7 +794,7 @@ impl Builder {
     }
 
     pub fn static_item<I, T, E>(self, name: I, ty: T, init: E) -> P<Item>
-            where I: Make<Ident>, T: Make<P<Ty>>, E: Make<P<Expr>> {
+        where I: Make<Ident>, T: Make<P<Ty>>, E: Make<P<Expr>> {
         let name = name.make(&self);
         let ty = ty.make(&self);
         let init = init.make(&self);
@@ -803,7 +803,7 @@ impl Builder {
     }
 
     pub fn fn_item<I, D, B>(self, name: I, decl: D, block: B) -> P<Item>
-            where I: Make<Ident>, D: Make<P<FnDecl>>, B: Make<P<Block>> {
+        where I: Make<Ident>, D: Make<P<FnDecl>>, B: Make<P<Block>> {
         let name = name.make(&self);
         let decl = decl.make(&self);
         let block = block.make(&self);
@@ -818,7 +818,7 @@ impl Builder {
 
     pub fn fn_decl(self, inputs: Vec<Arg>, output: FunctionRetTy) -> P<FnDecl>
     {
-        P (FnDecl {
+        P(FnDecl {
             inputs,
             output,
             variadic: false,
@@ -826,7 +826,7 @@ impl Builder {
     }
 
     pub fn struct_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
-            where I: Make<Ident> {
+        where I: Make<Ident> {
         let name = name.make(&self);
         Self::item(name, self.attrs, self.vis,
                    ItemKind::Struct(VariantData::Struct(fields, DUMMY_NODE_ID),
@@ -834,7 +834,7 @@ impl Builder {
     }
 
     pub fn struct_field<I, T>(self, ident: I, ty: T) -> StructField
-            where I: Make<Ident>, T: Make<P<Ty>> {
+        where I: Make<Ident>, T: Make<P<Ty>> {
         let ident = ident.make(&self);
         let ty = ty.make(&self);
         StructField {
@@ -851,7 +851,7 @@ impl Builder {
         where I: Make<Ident> {
         let name = name.make(&self);
         Self::item(name, self.attrs, self.vis,
-                   ItemKind::Enum(EnumDef {variants: fields}, self.generics))
+                   ItemKind::Enum(EnumDef { variants: fields }, self.generics))
     }
 
     pub fn enum_field<T>(self, ty: T) -> StructField
@@ -867,9 +867,8 @@ impl Builder {
         }
     }
 
-    pub fn type_item<I,T>(self, name: I, ty: T) -> P<Item>
+    pub fn type_item<I, T>(self, name: I, ty: T) -> P<Item>
         where I: Make<Ident>, T: Make<P<Ty>> {
-
         let ty = ty.make(&self);
         let name = name.make(&self);
         let kind = ItemKind::Ty(ty, self.generics);
@@ -877,7 +876,7 @@ impl Builder {
     }
 
     pub fn variant<I>(self, name: I, dat: VariantData) -> Variant
-      where I: Make<Ident> {
+        where I: Make<Ident> {
         let name = name.make(&self);
         Spanned {
             span: DUMMY_SP,
@@ -907,7 +906,7 @@ impl Builder {
     // Misc nodes
 
     pub fn block<S>(self, stmts: Vec<S>) -> P<Block>
-            where S: Make<Stmt> {
+        where S: Make<Stmt> {
         let stmts = stmts.into_iter().map(|s| s.make(&self)).collect();
         P(Block {
             stmts: stmts,
@@ -921,7 +920,7 @@ impl Builder {
     }
 
     pub fn arg<T, Pt>(self, ty: T, pat: Pt) -> Arg
-            where T: Make<P<Ty>>, Pt: Make<P<Pat>> {
+        where T: Make<P<Ty>>, Pt: Make<P<Pat>> {
         let ty = ty.make(&self);
         let pat = pat.make(&self);
         Arg {
@@ -932,7 +931,7 @@ impl Builder {
     }
 
     pub fn self_arg<S>(self, kind: S) -> Arg
-            where S: Make<SelfKind> {
+        where S: Make<SelfKind> {
         let kind = kind.make(&self);
         let eself = Spanned { node: kind, span: DUMMY_SP };
         let ident = Spanned { node: "self".make(&self), span: DUMMY_SP };
@@ -940,7 +939,7 @@ impl Builder {
     }
 
     pub fn ty_param<I>(self, ident: I) -> TyParam
-            where I: Make<Ident> {
+        where I: Make<Ident> {
         let ident = ident.make(&self);
         TyParam {
             attrs: self.attrs.into(),
@@ -961,7 +960,7 @@ impl Builder {
     }
 
     pub fn mac<Pa, Ts>(self, path: Pa, tts: Ts) -> Mac
-            where Pa: Make<Path>, Ts: Make<ThinTokenStream> {
+        where Pa: Make<Path>, Ts: Make<ThinTokenStream> {
         let path = path.make(&self);
         let tts = tts.make(&self);
         Spanned {
@@ -973,13 +972,15 @@ impl Builder {
         }
     }
 
-    pub fn local<V,T,E>(self, pat: V, ty: Option<T>, init: Option<E>) -> Local
+    pub fn local<V, T, E>(self, pat: V, ty: Option<T>, init: Option<E>) -> Local
         where V: Make<P<Pat>>, T: Make<P<Ty>>, E: Make<P<Expr>> {
         let pat = pat.make(&self);
         let ty = ty.map(|x| x.make(&self));
         let init = init.map(|x| x.make(&self));
         Local {
-            pat, ty, init,
+            pat,
+            ty,
+            init,
             id: DUMMY_NODE_ID,
             span: DUMMY_SP,
             attrs: self.attrs.into(),
