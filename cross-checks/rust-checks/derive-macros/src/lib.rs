@@ -41,11 +41,27 @@ impl<'a> ArgValue<'a> {
     }
 }
 
-type ArgList<'a> = HashMap<&'a str, ArgValue<'a>>;
+#[derive(Default)]
+struct ArgList<'a>(HashMap<&'a str, ArgValue<'a>>);
+
+impl<'a> ArgList<'a> {
+    fn from_map(m: HashMap<&'a str, ArgValue<'a>>) -> ArgList<'a> {
+        ArgList(m)
+    }
+
+    fn get_ident_arg(&self, arg: &str, default: &str) -> syn::Ident {
+        self.0.get(arg).map_or_else(|| syn::Ident::from(default),
+                                    ArgValue::get_str_ident)
+    }
+
+    fn get_token_arg(&self, arg: &str, default: quote::Tokens) -> quote::Tokens {
+        self.0.get(arg).map_or(default, ArgValue::get_str_tokens)
+    }
+}
 
 fn get_item_args(mi: &syn::MetaItem) -> ArgList {
     if let syn::MetaItem::List(_, ref items) = *mi {
-        items.iter().map(|item| {
+        ArgList::from_map(items.iter().map(|item| {
             match *item {
                 syn::NestedMetaItem::MetaItem(ref mi) => {
                     match *mi {
@@ -67,7 +83,7 @@ fn get_item_args(mi: &syn::MetaItem) -> ArgList {
                 },
                 _ => panic!("unknown item passed to by_value: {:?}", *item)
             }
-        }).collect()
+        }).collect())
     } else {
         Default::default()
     }
@@ -83,11 +99,9 @@ fn get_cross_check_args(attrs: &[syn::Attribute]) -> Option<ArgList> {
 fn get_direct_item_config(args: &ArgList, default_filter_tokens: quote::Tokens)
         -> (syn::Ident, quote::Tokens) {
     // Process "tag = ..." argument
-    let tag_ident = args.get("tag").map_or_else(
-        || syn::Ident::from("UNKNOWN_TAG"), ArgValue::get_str_ident);
+    let tag_ident = args.get_ident_arg("tag", "UNKNOWN_TAG");
     // Process "filter = ..." argument
-    let filter_tokens = args.get("filter").map_or(
-        default_filter_tokens, ArgValue::get_str_tokens);
+    let filter_tokens = args.get_token_arg("filter", default_filter_tokens);
     (tag_ident, filter_tokens)
 }
 
@@ -95,21 +109,19 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     let top_args = get_cross_check_args(&s.ast().attrs[..]).unwrap_or_default();
 
     // Allow users to override __XCHA and __XCHS
-    let ahasher_override = top_args.get("ahasher_override").map_or_else(
-        || syn::Ident::from("__XCHA"), ArgValue::get_str_ident);
-    let shasher_override = top_args.get("shasher_override").map_or_else(
-        || syn::Ident::from("__XCHS"), ArgValue::get_str_ident);
+    let ahasher_override = top_args.get_ident_arg("ahasher_override", "__XCHA");
+    let shasher_override = top_args.get_ident_arg("shasher_override", "__XCHS");
 
     // Iterate through all fields, inserting the hash computation for each field
     let hash_fields = s.each(|f| {
         get_cross_check_args(&f.ast().attrs[..]).and_then(|args| {
             // FIXME: figure out the argument priorities here
-            if args.contains_key("no") ||
-               args.contains_key("never") ||
-               args.contains_key("disable") {
+            if args.0.contains_key("no") ||
+               args.0.contains_key("never") ||
+               args.0.contains_key("disable") {
                 // Cross-checking is disabled
                 Some(quote::Tokens::new())
-            } else if let Some(ref sub_args) = args.get("check_value") {
+            } else if let Some(ref sub_args) = args.0.get("check_value") {
                 // Cross-check field directly by value
                 // This has an optional tag parameter (tag="NNN_TAG")
                 let (tag, filter) = get_direct_item_config(sub_args.get_list(),
@@ -117,11 +129,11 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                 Some(quote! { cross_check_value!(#tag, (#filter(#f)),
                                                  #ahasher_override,
                                                  #shasher_override) })
-            } else if let Some(ref sub_args) = args.get("check_raw") {
+            } else if let Some(ref sub_args) = args.0.get("check_raw") {
                 let (tag, filter) = get_direct_item_config(sub_args.get_list(),
                                                            quote! { * });
                 Some(quote! { cross_check_raw!(#tag, (#filter(#f)) as u64) })
-            } else if let Some(ref sub_arg) = args.get("custom_hash") {
+            } else if let Some(ref sub_arg) = args.0.get("custom_hash") {
                 let id = sub_arg.get_str_ident();
                 Some(quote! { #id(&mut h, #f) })
             } else {
@@ -136,13 +148,13 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         })
     });
 
-    let hash_code = top_args.get("custom_hash").map(|sub_arg| {
+    let hash_code = top_args.0.get("custom_hash").map(|sub_arg| {
         // Hash this value by calling the specified function
         let id = sub_arg.get_str_ident();
         quote! { #id::<#ahasher_override, #shasher_override>(&self, _depth) }
     }).unwrap_or_else(|| {
         // Hash this value using the default algorithm
-        let hasher = top_args.get("hasher").map_or(ahasher_override, ArgValue::get_str_ident);
+        let hasher = top_args.0.get("hasher").map_or(ahasher_override, ArgValue::get_str_ident);
         quote! {
             let mut h = #hasher::default();
             match *self { #hash_fields }
