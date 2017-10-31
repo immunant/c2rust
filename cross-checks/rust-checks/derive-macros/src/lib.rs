@@ -8,9 +8,9 @@ extern crate quote;
 use quote::ToTokens;
 
 // Extract the optional tag from a #[cross_check(by_value(...))] attribute
-fn get_direct_item_config(mi: &syn::MetaItem) -> (syn::Ident, quote::Tokens) {
+fn get_direct_item_config(mi: &syn::MetaItem, mut filter_tokens: quote::Tokens)
+        -> (syn::Ident, quote::Tokens) {
     let mut tag_ident = syn::Ident::from("UNKNOWN_TAG");
-    let mut filter_tokens = quote! { };
     if let syn::MetaItem::List(_, ref items) = *mi {
         items.iter().for_each(|item| {
             match *item {
@@ -27,6 +27,7 @@ fn get_direct_item_config(mi: &syn::MetaItem) -> (syn::Ident, quote::Tokens) {
                         syn::MetaItem::NameValue(ref kw, ref val)
                             if kw == "filter" => match *val {
                                 syn::Lit::Str(ref s, syn::StrStyle::Cooked) => {
+                                    filter_tokens = quote::Tokens::new();
                                     syn::Ident::from(s.clone()).to_tokens(&mut filter_tokens);
                                 },
                                 _ => panic!("invalid tag value for by_value: {:?}", *val)
@@ -63,15 +64,15 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                             syn::MetaItem::Word(ref kw) |
                             syn::MetaItem::List(ref kw, _)
                                 if kw == "check_value" => {
-                                    let (tag, filter) = get_direct_item_config(mi);
+                                    let (tag, filter) = get_direct_item_config(mi, quote! { });
                                     return quote! { cross_check_value!(#tag, #filter(#f), __XCHA, __XCHS) }
                                 },
 
                             syn::MetaItem::Word(ref kw) |
                             syn::MetaItem::List(ref kw, _)
                                 if kw == "check_raw" => {
-                                    let (tag, filter) = get_direct_item_config(mi);
-                                    return quote! { cross_check_raw!(#tag, #filter(#f) as u64) }
+                                    let (tag, filter) = get_direct_item_config(mi, quote! { * });
+                                    return quote! { cross_check_raw!(#tag, (#filter(#f)) as u64) }
                                 },
 
                             syn::MetaItem::NameValue(ref kw, ref val)
