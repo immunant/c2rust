@@ -23,6 +23,16 @@ impl<'a> ArgValue<'a> {
         }
     }
 
+    fn get_str_ident(&self) -> syn::Ident {
+        syn::Ident::from(self.get_str().as_str())
+    }
+
+    fn get_str_tokens(&self) -> quote::Tokens {
+        let mut tokens = quote::Tokens::new();
+        self.get_str_ident().to_tokens(&mut tokens);
+        tokens
+    }
+
     fn get_list(&self) -> &ArgList<'a> {
         match *self {
             ArgValue::List(ref l) => l,
@@ -68,64 +78,89 @@ fn get_direct_item_config(args: &ArgList, default_filter_tokens: quote::Tokens)
         -> (syn::Ident, quote::Tokens) {
     // Process "tag = ..." argument
     let tag_ident = match args.get("tag") {
-        Some(ref tag) => syn::Ident::from(tag.get_str().as_str()),
+        Some(ref tag) => tag.get_str_ident(),
         None => syn::Ident::from("UNKNOWN_TAG")
     };
     // Process "filter = ..." argument
     let filter_tokens = match args.get("filter") {
-        Some(ref filter) => {
-            let mut new_tokens = quote::Tokens::new();
-            syn::Ident::from(filter.get_str().as_str()).to_tokens(&mut new_tokens);
-            new_tokens
-        },
+        Some(ref filter) => filter.get_str_tokens(),
         None => default_filter_tokens,
     };
     (tag_ident, filter_tokens)
 }
 
 fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
+    let top_xcheck_attr = s.ast().attrs.iter().find(
+        |f| f.name() == "cross_check");
+    let top_args = if let Some(ref attr) = top_xcheck_attr {
+        get_item_args(&attr.value)
+    } else {
+        Default::default()
+    };
+
+    // Allow users to override __XCHA and __XCHS
+    let ahasher_override = top_args.get("ahasher_override").map_or_else(
+        || quote! { __XCHA }, ArgValue::get_str_tokens);
+    let shasher_override = top_args.get("shasher_override").map_or_else(
+        || quote! { __XCHS }, ArgValue::get_str_tokens);
+
     // Iterate through all fields, inserting the hash computation for each field
     let hash_fields = s.each(|f| {
         let xcheck_attr = f.ast().attrs.iter().find(
             |f| f.name() == "cross_check");
-        if let Some(ref attr) = xcheck_attr {
+        xcheck_attr.and_then(|attr| {
+            // FIXME: figure out the argument priorities here
             let args = get_item_args(&attr.value);
             if args.contains_key("no") ||
                args.contains_key("never") ||
                args.contains_key("disable") {
                 // Cross-checking is disabled
-                return quote::Tokens::new();
-            }
-            if let Some(ref sub_args) = args.get("check_value") {
+                Some(quote::Tokens::new())
+            } else if let Some(ref sub_args) = args.get("check_value") {
                 // Cross-check field directly by value
                 // This has an optional tag parameter (tag="NNN_TAG")
                 let (tag, filter) = get_direct_item_config(sub_args.get_list(),
                                                            quote::Tokens::new());
-                return quote! { cross_check_value!(#tag, (#filter(#f)), __XCHA, __XCHS) };
-            }
-            if let Some(ref sub_args) = args.get("check_raw") {
+                Some(quote! { cross_check_value!(#tag, (#filter(#f)),
+                                                 #ahasher_override,
+                                                 #shasher_override) })
+            } else if let Some(ref sub_args) = args.get("check_raw") {
                 let (tag, filter) = get_direct_item_config(sub_args.get_list(),
                                                            quote! { * });
-                return quote! { cross_check_raw!(#tag, (#filter(#f)) as u64) }
+                Some(quote! { cross_check_raw!(#tag, (#filter(#f)) as u64) })
+            } else if let Some(ref sub_arg) = args.get("custom_hash") {
+                let id = sub_arg.get_str_ident();
+                Some(quote! { #id(&mut h, #f) })
+            } else {
+                None
             }
-            if let Some(ref sub_arg) = args.get("custom_hash") {
-                let id = syn::Ident::from(sub_arg.get_str().as_str());
-                return quote! { #id(&mut h, #f) };
+        }).unwrap_or_else(|| {
+            // Default implementation
+            quote! {
+                use cross_check_runtime::hash::CrossCheckHash;
+                h.write_u64(CrossCheckHash::cross_check_hash_depth::<#ahasher_override, #shasher_override>(#f, _depth - 1));
             }
-        }
-        // Default implementation
+        })
+    });
+
+    let hash_code = top_args.get("custom_hash").map(|sub_arg| {
+        // Hash this value by calling the specified function
+        let id = sub_arg.get_str_ident();
+        quote! { #id::<#ahasher_override, #shasher_override>(&self, _depth) }
+    }).unwrap_or_else(|| {
+        // Hash this value using the default algorithm
+        let hasher = top_args.get("hasher").map_or(ahasher_override, ArgValue::get_str_tokens);
         quote! {
-            use cross_check_runtime::hash::CrossCheckHash;
-            h.write_u64(CrossCheckHash::cross_check_hash_depth::<__XCHA, __XCHS>(#f, _depth - 1));
+            let mut h = #hasher::default();
+            match *self { #hash_fields }
+            h.finish()
         }
     });
     s.bound_impl("::cross_check_runtime::hash::CrossCheckHash", quote! {
         fn cross_check_hash_depth<__XCHA, __XCHS>(&self, _depth: usize) -> u64
                 where __XCHA: ::cross_check_runtime::hash::CrossCheckHasher,
                       __XCHS: ::cross_check_runtime::hash::CrossCheckHasher {
-            let mut h = __XCHA::default();
-            match *self { #hash_fields }
-            h.finish()
+            #hash_code
         }
     })
 }
