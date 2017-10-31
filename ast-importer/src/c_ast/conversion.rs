@@ -551,6 +551,19 @@ impl ConversionContext {
                     self.add_stmt(new_id, located(node, while_stmt));
                 }
 
+                ASTEntryTag::TagDoStmt if expected_ty & OTHER_STMT != 0 => {
+
+                    let body_old = node.children[0].expect("While loop body not found");
+                    let body = self.visit_stmt(&body_old);
+
+                    let condition_old = node.children[1].expect("While loop condition not found");
+                    let condition = self.visit_expr(&condition_old);
+
+                    let do_stmt = CStmtKind::While { body, condition };
+
+                    self.add_stmt(new_id, located(node, do_stmt));
+                }
+
                 ASTEntryTag::TagLabelStmt if expected_ty & LABEL_STMT != 0 => {
                     let pointed_stmt_old = node.children[0].expect("Label statement not found");
                     let pointed_stmt = self.visit_stmt(&pointed_stmt_old);
