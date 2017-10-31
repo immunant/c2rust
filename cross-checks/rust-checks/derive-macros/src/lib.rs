@@ -5,6 +5,31 @@ extern crate synstructure;
 #[macro_use]
 extern crate quote;
 
+// Extract the optional tag from a #[cross_check(by_value(...))] attribute
+fn get_by_value_item_tag(mi: &syn::MetaItem) -> syn::Ident {
+    if let syn::MetaItem::List(_, ref items) = *mi {
+        items.iter().filter_map(|item| {
+            match *item {
+                syn::NestedMetaItem::MetaItem(ref mi) => {
+                    match *mi {
+                        syn::MetaItem::NameValue(ref kw, ref val)
+                            if kw == "tag" => match *val {
+                                syn::Lit::Str(ref s, syn::StrStyle::Cooked) => {
+                                    Some(syn::Ident::from(s.clone()))
+                                },
+                                _ => panic!("invalid tag value for by_value")
+                            },
+                        _ => panic!("unknown item passed to by_value")
+                    }
+                },
+                _ => panic!("unknown item passed to by_value")
+            }
+        }).next().unwrap()
+    } else {
+        syn::Ident::from("UNKNOWN_TAG")
+    }
+}
+
 fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     // Iterate through all fields, inserting the hash computation for each field
     let hash_fields = s.each(|f| {
@@ -20,6 +45,15 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                                 if kw == "no" ||
                                    kw == "never" ||
                                    kw == "disable" => return quote! {},
+
+                            // Cross-check field directly by value
+                            // This has an optional tag parameter (tag="NNN_TAG")
+                            syn::MetaItem::Word(ref kw) |
+                            syn::MetaItem::List(ref kw, _)
+                                if kw == "by_value" => {
+                                    let tag = get_by_value_item_tag(mi);
+                                    return quote! { cross_check_value!(#tag, #f, __XCHA, __XCHS) }
+                                },
 
                             syn::MetaItem::NameValue(ref kw, ref val)
                                 if kw == "custom" => match *val {
