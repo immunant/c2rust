@@ -83,15 +83,11 @@ fn get_cross_check_args(attrs: &[syn::Attribute]) -> Option<ArgList> {
 fn get_direct_item_config(args: &ArgList, default_filter_tokens: quote::Tokens)
         -> (syn::Ident, quote::Tokens) {
     // Process "tag = ..." argument
-    let tag_ident = match args.get("tag") {
-        Some(ref tag) => tag.get_str_ident(),
-        None => syn::Ident::from("UNKNOWN_TAG")
-    };
+    let tag_ident = args.get("tag").map_or_else(
+        || syn::Ident::from("UNKNOWN_TAG"), ArgValue::get_str_ident);
     // Process "filter = ..." argument
-    let filter_tokens = match args.get("filter") {
-        Some(ref filter) => filter.get_str_tokens(),
-        None => default_filter_tokens,
-    };
+    let filter_tokens = args.get("filter").map_or(
+        default_filter_tokens, ArgValue::get_str_tokens);
     (tag_ident, filter_tokens)
 }
 
