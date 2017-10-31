@@ -27,11 +27,6 @@ impl<T: Clone + Eq + Hash> Scope<T> {
         self.used.contains(val)
     }
 
-    pub fn insert(&mut self, key: T, val: &str) {
-        self.name_map.insert(key, val.to_string());
-        self.used.insert(val.to_string());
-    }
-
     pub fn reserve(&mut self, val: String) {
         self.used.insert(val);
     }

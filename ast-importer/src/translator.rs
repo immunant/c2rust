@@ -52,7 +52,13 @@ impl WithStmts<P<Expr>> {
     }
 }
 
-pub fn stmts_block(stmts: Vec<Stmt>) -> P<Block> {
+fn pointer_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
+    let offset = mk().cast_expr(offset, mk().path_ty(vec!["isize"]));
+    mk().method_call_expr(ptr, "offset", vec![offset])
+}
+
+
+pub fn stmts_block(mut stmts: Vec<Stmt>) -> P<Block> {
     if stmts.len() == 1 {
         if let StmtKind::Expr(ref e) = stmts[0].node {
             if let ExprKind::Block(ref b) = e.node {
@@ -60,6 +66,13 @@ pub fn stmts_block(stmts: Vec<Stmt>) -> P<Block> {
             }
         }
     }
+
+    if stmts.len() > 0 {
+        let n = stmts.len() - 1;
+        let s = stmts.remove(n);
+        stmts.push(s.add_trailing_semicolon())
+    }
+
     mk().block(stmts)
 }
 
@@ -282,6 +295,8 @@ impl Translation {
         let rust_cond = cond.to_expr();
         let rust_body = stmts_block(body);
 
+        println!("condition: {:?}", rust_cond);
+
         vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body))]
     }
 
@@ -302,11 +317,11 @@ impl Translation {
         let mut body = self.convert_stmt(body_id);
         body.append(&mut inc);
 
-        let body_block = mk().block(body);
+        let body_block = stmts_block(body);
 
         let looper = match cond_id {
             None => mk().loop_expr(body_block), // loop
-            Some(i) => mk().while_expr(self.convert_expr(i).to_expr(), body_block), // while
+            Some(i) => mk().while_expr(self.convert_condition(i).to_expr(), body_block), // while
         };
 
         init.push(mk().expr_stmt(looper));
@@ -322,7 +337,7 @@ impl Translation {
         let then_stmts = stmts_block(self.convert_stmt(then_id));
         let else_stmts = else_id.map(|x| { mk().block_expr(stmts_block(self.convert_stmt(x)))});
 
-        cond.stmts.push(mk().expr_stmt(mk().ifte_expr(cond.val, then_stmts, else_stmts)));
+        cond.stmts.push(mk().semi_stmt(mk().ifte_expr(cond.val, then_stmts, else_stmts)));
         cond.stmts
     }
 
@@ -464,6 +479,28 @@ impl Translation {
                         }
                     }
                 },
+            ASTEntryTag::TagArraySubscriptExpr => {
+                let lhs_node = self.ast_context.ast_nodes.get(&node.children[0].expect("lhs id")).expect("lhs node").to_owned();
+                let lhs_ty = self.ast_context.get_type(lhs_node.type_id.expect("lhs ty id")).expect("lhs ty");
+                let mut lhs = self.convert_expr_node(lhs_node);
+
+                let rhs_node = self.ast_context.ast_nodes.get(&node.children[1].expect("rhs id")).expect("rhs node").to_owned();
+                let rhs_ty = self.ast_context.get_type(rhs_node.type_id.expect("rhs ty id")).expect("rhs ty");
+                let mut rhs = self.convert_expr_node(rhs_node);
+
+                let val =
+                    if self.ast_context.resolve_type(lhs_ty).is_pointer() {
+                        pointer_offset(lhs.val, rhs.val)
+                    } else {
+                        pointer_offset(rhs.val, lhs.val)
+                    };
+                let val = mk().unary_expr(UnOp::Deref, val);
+
+                let mut stmts = lhs.stmts;
+                stmts.append(&mut rhs.stmts);
+
+                WithStmts { stmts, val }
+            }
             ASTEntryTag::TagCallExpr =>
                 {
                     let mut stmts = vec![];
@@ -495,8 +532,17 @@ impl Translation {
     }
 
     pub fn name_reference(&mut self, reference: P<Expr>) -> WithStmts<P<Expr>> {
-        let is_simple = match reference.node {
-            ExprKind::Path{..} => true,
+
+        fn is_path_expr(e: &Expr) -> bool {
+            match e.node {
+                ExprKind::Path{..} => true,
+                _ => false,
+            }
+        }
+
+        let is_simple = match &reference.node {
+            &ExprKind::Path{..} => true,
+            &ExprKind::Unary(UnOp::Deref, ref e) => is_path_expr(e),
             _ => false,
         };
 
@@ -526,6 +572,8 @@ impl Translation {
         // *p + 1
         let val =
             if self.ast_context.resolve_type(ctype).is_pointer() {
+                // This calls the offset with a number literal directly, and doesn't need
+                // the cast that the pointer_offset function adds
                 let n = if up { one } else { mk().unary_expr(UnOp::Neg, one) };
                 mk().method_call_expr(deref_lhs.clone(), "offset", vec![n])
             } else {
@@ -679,14 +727,10 @@ impl Translation {
         let lhs_type = self.ast_context.resolve_type(lhs_type);
         let rhs_type = self.ast_context.resolve_type(rhs_type);
 
-        fn to_isize(val: P<Expr>) -> P<Expr> {
-            mk().cast_expr(val, mk().path_ty(vec!["isize"]))
-        }
-
         if lhs_type.is_pointer() {
-            mk().method_call_expr(lhs, "offset", vec![to_isize(rhs)])
+            pointer_offset(lhs, rhs)
         } else if rhs_type.is_pointer() {
-            mk().method_call_expr(rhs, "offset", vec![to_isize(lhs)])
+            pointer_offset(rhs, lhs)
         } else if lhs_type.is_unsigned_integral_type() {
             mk().method_call_expr(lhs, mk().path_segment("wrapping_add"), vec![rhs])
         } else {
@@ -709,7 +753,7 @@ impl Translation {
             mk().cast_expr(offset, ty)
         } else if lhs_type.is_pointer() {
             let neg_rhs = mk().unary_expr(UnOp::Neg, rhs);
-            mk().method_call_expr(lhs, "offset", vec![neg_rhs])
+            pointer_offset(lhs, neg_rhs)
         } else if lhs_type.is_unsigned_integral_type() {
             mk().method_call_expr(lhs, mk().path_segment("wrapping_sub"), vec![rhs])
         } else {
