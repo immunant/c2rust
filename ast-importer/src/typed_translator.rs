@@ -270,16 +270,16 @@ impl Translation {
     }
 
     /// Convert a C expression to a rust boolean expression
-    fn convert_condition(&mut self, cond_id: CExprId) -> WithStmts<P<Expr>> {
+    fn convert_condition(&mut self, target: bool, cond_id: CExprId) -> WithStmts<P<Expr>> {
         let ty_id = self.ast_context.index(cond_id).kind.get_type();
 
         self.convert_expr(cond_id)
-            .map(|e| self.to_bool(ty_id, e))
+            .map(|e| self.match_bool(target, ty_id, e))
     }
 
     fn convert_while_stmt(&mut self, cond_id: CExprId, body_id: CStmtId) -> Vec<Stmt> {
 
-        let cond = self.convert_condition(cond_id);
+        let cond = self.convert_condition(true, cond_id);
         let body = self.convert_stmt(body_id);
 
         let rust_cond = cond.to_expr();
@@ -289,7 +289,7 @@ impl Translation {
     }
 
     fn convert_do_stmt(&mut self, body_id: CStmtId, cond_id: CExprId) -> Vec<Stmt> {
-        let cond = self.convert_condition(cond_id);
+        let cond = self.convert_condition(false, cond_id);
         let mut body = self.convert_stmt(body_id);
 
         let rust_cond = cond.to_expr();
@@ -329,7 +329,7 @@ impl Translation {
 
         let looper = match cond_id {
             None => mk().loop_expr(body_block), // loop
-            Some(i) => mk().while_expr(self.convert_condition(i).to_expr(), body_block), // while
+            Some(i) => mk().while_expr(self.convert_condition(true, i).to_expr(), body_block), // while
         };
 
         init.push(mk().expr_stmt(looper));
@@ -346,7 +346,7 @@ impl Translation {
         then_id: CStmtId,
         else_id: Option<CStmtId>
     ) -> Vec<Stmt> {
-        let mut cond = self.convert_condition(cond_id);
+        let mut cond = self.convert_condition(true, cond_id);
         let then_stmts = stmts_block(self.convert_stmt(then_id));
         let else_stmts = else_id.map(|x| { mk().block_expr(stmts_block(self.convert_stmt(x)))});
 
@@ -800,14 +800,22 @@ impl Translation {
     }
 
     /// Convert a boolean expression to a boolean for use in && or || or if
-    fn to_bool(&self, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
+    fn match_bool(&self, target: bool, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
         let ty = self.ast_context.resolve_type(ty_id).kind.clone();
 
         if ty.is_pointer() {
-            mk().unary_expr(ast::UnOp::Not, mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>))
+            let mut res = mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>);
+            if target {
+                res = mk().unary_expr(ast::UnOp::Not, res)
+            }
+            res
         } else {
             let zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
-            mk().binary_expr(BinOpKind::Ne, zero, val)
+            if target {
+                mk().binary_expr(BinOpKind::Ne, zero, val)
+            } else {
+                mk().binary_expr(BinOpKind::Eq, zero, val)
+            }
         }
     }
 

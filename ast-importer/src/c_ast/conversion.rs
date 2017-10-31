@@ -553,13 +553,13 @@ impl ConversionContext {
 
                 ASTEntryTag::TagDoStmt if expected_ty & OTHER_STMT != 0 => {
 
-                    let body_old = node.children[0].expect("While loop body not found");
+                    let body_old = node.children[0].expect("Do loop body not found");
                     let body = self.visit_stmt(&body_old);
 
-                    let condition_old = node.children[1].expect("While loop condition not found");
+                    let condition_old = node.children[1].expect("Do loop condition not found");
                     let condition = self.visit_expr(&condition_old);
 
-                    let do_stmt = CStmtKind::While { body, condition };
+                    let do_stmt = CStmtKind::DoWhile { body, condition };
 
                     self.add_stmt(new_id, located(node, do_stmt));
                 }
