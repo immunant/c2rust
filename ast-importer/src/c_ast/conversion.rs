@@ -611,7 +611,9 @@ impl ConversionContext {
                         "-" => UnOp::Negate,
                         "~" => UnOp::Complement,
                         "!" => UnOp::Not,
-                        _ => unimplemented!(),
+                        "++" => UnOp::Increment,
+                        "--" => UnOp::Decrement,
+                        o => panic!("Unexpected operator: {}", o),
                     };
 
                     let operand_old = node.children[0].expect("Expected operand");

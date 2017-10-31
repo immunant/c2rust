@@ -239,6 +239,9 @@ impl Translation {
                 self.convert_while_stmt(condition, body)
             },
 
+            CStmtKind::DoWhile { body, condition } =>
+                self.convert_do_stmt(body, condition),
+
             CStmtKind::ForLoop { init, condition, increment, body } => {
                 self.convert_for_stmt(init, condition, increment, body)
             },
@@ -282,9 +285,21 @@ impl Translation {
         let rust_cond = cond.to_expr();
         let rust_body = stmts_block(body);
 
-        println!("condition: {:?}", rust_cond);
-
         vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body))]
+    }
+
+    fn convert_do_stmt(&mut self, body_id: CStmtId, cond_id: CExprId) -> Vec<Stmt> {
+        let cond = self.convert_condition(cond_id);
+        let mut body = self.convert_stmt(body_id);
+
+        let rust_cond = cond.to_expr();
+        let break_stmt = mk().semi_stmt(mk().break_expr());
+
+        body.push(mk().expr_stmt(mk().ifte_expr(rust_cond, mk().block(vec![break_stmt]), None as Option<P<Expr>>)));
+
+        let rust_body = stmts_block(body);
+
+        vec![mk().semi_stmt(mk().loop_expr(rust_body))]
     }
 
     fn convert_for_stmt(
