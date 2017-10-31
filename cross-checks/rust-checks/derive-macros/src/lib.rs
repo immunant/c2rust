@@ -15,6 +15,22 @@ enum ArgValue<'a> {
     List(ArgList<'a>),
 }
 
+impl<'a> ArgValue<'a> {
+    fn get_str(&self) -> &String {
+        match *self {
+            ArgValue::Str(ref s) => s,
+            _ => panic!("argument expects string value")
+        }
+    }
+
+    fn get_list(&self) -> &ArgList<'a> {
+        match *self {
+            ArgValue::List(ref l) => l,
+            _ => panic!("argument expects list value")
+        }
+    }
+}
+
 type ArgList<'a> = HashMap<&'a str, ArgValue<'a>>;
 
 fn get_item_args(mi: &syn::MetaItem) -> ArgList {
@@ -48,23 +64,20 @@ fn get_item_args(mi: &syn::MetaItem) -> ArgList {
 }
 
 // Extract the optional tag from a #[cross_check(by_value(...))] attribute
-fn get_direct_item_config(mi: &syn::MetaItem, default_filter_tokens: quote::Tokens)
+fn get_direct_item_config(args: &ArgList, default_filter_tokens: quote::Tokens)
         -> (syn::Ident, quote::Tokens) {
-    let args = get_item_args(mi);
     // Process "tag = ..." argument
     let tag_ident = match args.get("tag") {
-        Some(&ArgValue::Str(ref tag)) => syn::Ident::from(tag.clone()),
-        Some(_) => panic!("tag argument expects string value"),
+        Some(ref tag) => syn::Ident::from(tag.get_str().as_str()),
         None => syn::Ident::from("UNKNOWN_TAG")
     };
     // Process "filter = ..." argument
     let filter_tokens = match args.get("filter") {
-        Some(&ArgValue::Str(ref filter)) => {
+        Some(ref filter) => {
             let mut new_tokens = quote::Tokens::new();
-            syn::Ident::from(filter.clone()).to_tokens(&mut new_tokens);
+            syn::Ident::from(filter.get_str().as_str()).to_tokens(&mut new_tokens);
             new_tokens
         },
-        Some(_) => panic!("filter argument expects string value"),
         None => default_filter_tokens,
     };
     (tag_ident, filter_tokens)
@@ -76,45 +89,28 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         let xcheck_attr = f.ast().attrs.iter().find(
             |f| f.name() == "cross_check");
         if let Some(ref attr) = xcheck_attr {
-            if let syn::MetaItem::List(ref ident, ref items) = attr.value {
-                assert!(ident == "cross_check");
-                for item in items {
-                    if let &syn::NestedMetaItem::MetaItem(ref mi) = item {
-                        match *mi {
-                            syn::MetaItem::Word(ref kw)
-                                if kw == "no" ||
-                                   kw == "never" ||
-                                   kw == "disable" => return quote! {},
-
-                            // Cross-check field directly by value
-                            // This has an optional tag parameter (tag="NNN_TAG")
-                            syn::MetaItem::Word(ref kw) |
-                            syn::MetaItem::List(ref kw, _)
-                                if kw == "check_value" => {
-                                    let (tag, filter) = get_direct_item_config(mi, quote::Tokens::new());
-                                    return quote! { cross_check_value!(#tag, (#filter(#f)), __XCHA, __XCHS) }
-                                },
-
-                            syn::MetaItem::Word(ref kw) |
-                            syn::MetaItem::List(ref kw, _)
-                                if kw == "check_raw" => {
-                                    let (tag, filter) = get_direct_item_config(mi, quote! { * });
-                                    return quote! { cross_check_raw!(#tag, (#filter(#f)) as u64) }
-                                },
-
-                            syn::MetaItem::NameValue(ref kw, ref val)
-                                if kw == "custom_hash" => match *val {
-                                    syn::Lit::Str(ref s, syn::StrStyle::Cooked) => {
-                                        let id = syn::Ident::from(s.clone());
-                                        return quote! { #id(&mut h, #f) };
-                                    }
-                                    _ => panic!("invalid identifier passed to #[cross_check(custom = ...)]: {:?}", *val)
-                            }
-
-                            _ => panic!("unknown parameter for #[cross_check]: {:?}", *mi)
-                        }
-                    }
-                }
+            let args = get_item_args(&attr.value);
+            if args.contains_key("no") ||
+               args.contains_key("never") ||
+               args.contains_key("disable") {
+                // Cross-checking is disabled
+                return quote::Tokens::new();
+            }
+            if let Some(ref sub_args) = args.get("check_value") {
+                // Cross-check field directly by value
+                // This has an optional tag parameter (tag="NNN_TAG")
+                let (tag, filter) = get_direct_item_config(sub_args.get_list(),
+                                                           quote::Tokens::new());
+                return quote! { cross_check_value!(#tag, (#filter(#f)), __XCHA, __XCHS) };
+            }
+            if let Some(ref sub_args) = args.get("check_raw") {
+                let (tag, filter) = get_direct_item_config(sub_args.get_list(),
+                                                           quote! { * });
+                return quote! { cross_check_raw!(#tag, (#filter(#f)) as u64) }
+            }
+            if let Some(ref sub_arg) = args.get("custom_hash") {
+                let id = syn::Ident::from(sub_arg.get_str().as_str());
+                return quote! { #id(&mut h, #f) };
             }
         }
         // Default implementation
