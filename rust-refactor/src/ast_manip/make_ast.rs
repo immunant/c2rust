@@ -996,6 +996,24 @@ impl Builder {
             attrs: self.attrs.into(),
         })
     }
+
+    pub fn continue_expr(self) -> P<Expr> {
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Continue(None),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
+    pub fn break_expr(self) -> P<Expr> {
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Break(None, None),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
 }
 
 pub fn mk() -> Builder {

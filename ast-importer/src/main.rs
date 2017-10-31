@@ -1,12 +1,8 @@
 extern crate cbor;
 extern crate clap;
-extern crate syn;
 extern crate ast_importer;
 
-extern crate quote;
-
 use std::io::Cursor;
-use std::env;
 use std::io::Error;
 use std::io::prelude::*;
 use std::fs::File;
