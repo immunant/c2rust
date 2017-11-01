@@ -522,14 +522,17 @@ class TranslateASTVisitor final
           std::vector<void*> childIds = { ICE->getSubExpr() };
           encode_entry(ICE, TagImplicitCastExpr, childIds,
                              [ICE](CborEncoder *array){
-                                 cbor_encode_uint(array, ICE->getCastKind());
+                                 cbor_encode_text_stringz(array, ICE->getCastKindName());
                              });
           return true;
       }
       
       bool VisitCStyleCastExpr(CStyleCastExpr *E) {
           std::vector<void*> childIds = { E->getSubExpr() };
-          encode_entry(E, TagCStyleCastExpr, childIds);
+          encode_entry(E, TagCStyleCastExpr, childIds,
+                       [E](CborEncoder *array){
+                           cbor_encode_text_stringz(array, E->getCastKindName());
+                       });
           return true;
       }
       

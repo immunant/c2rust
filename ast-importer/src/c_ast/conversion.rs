@@ -116,6 +116,38 @@ fn qualifiers(ty_node: &TypeNode) -> Qualifiers {
     }
 }
 
+fn parse_cast_kind(kind: &str) -> CastKind {
+    match kind {
+        "BitCast" => CastKind::BitCast,
+        "LValueToRValue" => CastKind::LValueToRValue,
+        "NoOp" => CastKind::NoOp,
+        "ToUnion" => CastKind::ToUnion,
+        "ArrayToPointerDecay" => CastKind::ArrayToPointerDecay,
+        "FunctionToPointerDecay" => CastKind::FunctionToPointerDecay,
+        "NullToPointer" => CastKind::NullToPointer,
+        "IntegralToPointer" => CastKind::IntegralToPointer,
+        "PointerToIntegral" => CastKind::PointerToIntegral,
+        "ToVoid" => CastKind::ToVoid,
+        "IntegralCast" => CastKind::IntegralCast,
+        "IntegralToBoolean" => CastKind::IntegralToBoolean,
+        "IntegralToFloating" => CastKind::IntegralToFloating,
+        "FloatingToIntegral" => CastKind::FloatingToIntegral,
+        "FloatingToBoolean" => CastKind::FloatingToBoolean,
+        "BooleanToSignedIntegral" => CastKind::BooleanToSignedIntegral,
+        "FloatingCast" => CastKind::FloatingCast,
+        "FloatingRealToComplex" => CastKind::FloatingRealToComplex,
+        "FloatingComplexToReal" => CastKind::FloatingComplexToReal,
+        "FloatingComplexCast" => CastKind::FloatingComplexCast,
+        "FloatingComplexToIntegralComplex" => CastKind::FloatingComplexToIntegralComplex,
+        "IntegralRealToComplex" => CastKind::IntegralRealToComplex,
+        "IntegralComplexToReal" => CastKind::IntegralComplexToReal,
+        "IntegralComplexToBoolean" => CastKind::IntegralComplexToBoolean,
+        "IntegralComplexCast" => CastKind::IntegralComplexCast,
+        "IntegralComplexToFloatingComplex" => CastKind::IntegralComplexToFloatingComplex,
+        k => panic!("Unsupported implicit cast: {}", k),
+    }
+}
+
 /// This stores the information needed to convert an `AstContext` into a `TypedAstContext`.
 pub struct ConversionContext {
 
@@ -138,7 +170,7 @@ impl ConversionContext {
     pub fn new(untyped_context: &AstContext) -> ConversionContext {
         // This starts out as all of the top-level nodes, which we expect to be 'DECL's
         let mut visit_as: Vec<(ClangId, NodeType)> = Vec::new();
-        for top_node in untyped_context.top_nodes.iter() {
+        for top_node in &untyped_context.top_nodes {
             if untyped_context.ast_nodes.contains_key(&top_node) {
                 visit_as.push((*top_node, node_types::DECL));
             }
@@ -252,7 +284,7 @@ impl ConversionContext {
 
             // If the node is top-level, add it as such to the new context
             if untyped_context.top_nodes.contains(&node_id) {
-                self.typed_context.c_decls_top.insert(CDeclId(new_id));
+                self.typed_context.c_decls_top.push(CDeclId(new_id));
             }
 
             self.visit_node(untyped_context, node_id, new_id, expected_ty)
@@ -275,7 +307,7 @@ impl ConversionContext {
             // Convert the node
             let ty_node: &TypeNode = untyped_context.type_nodes
                 .get(&node_id)
-                .expect("Could not find type node");
+                .expect(format!("Could not find type node {}", node_id).as_ref());
 
             match ty_node.tag {
                 TypeTag::TagBool if expected_ty & OTHER_TYPE != 0 => {
@@ -437,6 +469,22 @@ impl ConversionContext {
 
                     let elaborated_ty = CTypeKind::Elaborated(elaborated);
                     self.add_type(new_id, not_located(elaborated_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
+                TypeTag::TagConstantArrayType => {
+                    let element_id = expect_u64(&ty_node.extras[0]).expect("element id");
+
+                    let count = expect_u64(&ty_node.extras[1]).expect("count");
+
+
+                    let element_ty = CQualTypeId {
+                        qualifiers: qualifiers(ty_node),
+                        ctype: self.visit_type(&element_id),
+                    };
+
+                    let element_ty = CTypeKind::ConstantArray(element_ty, count as usize);
+                    self.add_type(new_id, not_located(element_ty));
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
@@ -617,6 +665,9 @@ impl ConversionContext {
                 }
 
                 ASTEntryTag::TagUnaryOperator if expected_ty & (EXPR | STMT) != 0 => {
+
+                    let prefix = expect_bool(&node.extras[1]).expect("Expected prefix information");
+
                     let operator = match expect_str(&node.extras[0]).expect("Expected operator") {
                         "&" => UnOp::AddressOf,
                         "*" => UnOp::Deref,
@@ -624,8 +675,8 @@ impl ConversionContext {
                         "-" => UnOp::Negate,
                         "~" => UnOp::Complement,
                         "!" => UnOp::Not,
-                        "++" => UnOp::Increment,
-                        "--" => UnOp::Decrement,
+                        "++" => if prefix { UnOp::PreIncrement } else { UnOp::PostIncrement },
+                        "--" => if prefix { UnOp::PreDecrement } else { UnOp::PostDecrement },
                         o => panic!("Unexpected operator: {}", o),
                     };
 
@@ -635,9 +686,8 @@ impl ConversionContext {
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_type(&ty_old);
 
-                    let prefix = expect_bool(&node.extras[1]).expect("Expected prefix information");
 
-                    let unary = CExprKind::Unary(ty, operator, prefix, operand);
+                    let unary = CExprKind::Unary(ty, operator, operand);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, unary);
                 }
@@ -649,7 +699,23 @@ impl ConversionContext {
                     let typ_old = node.type_id.expect("Expected type for implicit cast");
                     let typ = self.visit_type(&typ_old);
 
-                    let implicit = CExprKind::ImplicitCast(typ, expression);
+
+                    let kind = parse_cast_kind(expect_str(&node.extras[0]).expect("Expected cast kind"));
+                    let implicit = CExprKind::ImplicitCast(typ, expression, kind);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, implicit);
+                }
+
+                ASTEntryTag::TagCStyleCastExpr if expected_ty & (EXPR | STMT) != 0 => {
+                    let expression_old = node.children[0].expect("Expected expression for explicit cast");
+                    let expression = self.visit_expr(&expression_old);
+
+                    let typ_old = node.type_id.expect("Expected type for explicit cast");
+                    let typ = self.visit_type(&typ_old);
+
+
+                    let kind = parse_cast_kind(expect_str(&node.extras[0]).expect("Expected cast kind"));
+                    let implicit = CExprKind::ExplicitCast(typ, expression, kind);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, implicit);
                 }
