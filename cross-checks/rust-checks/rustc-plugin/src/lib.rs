@@ -81,12 +81,12 @@ impl CrossCheckConfig {
                         "ahasher" => {
                             res.ahasher = item.value_str()
                                               .map(|s| cx.parse_tts(String::from(&*s.as_str())))
-                                              .unwrap_or_else(|| vec![])
+                                              .unwrap_or_default()
                         }
                         "shasher" => {
                             res.shasher = item.value_str()
                                               .map(|s| cx.parse_tts(String::from(&*s.as_str())))
-                                              .unwrap_or_else(|| vec![])
+                                              .unwrap_or_default()
                         }
 
                         // Ignore arguments for #[derive(CrossCheckHash)]
