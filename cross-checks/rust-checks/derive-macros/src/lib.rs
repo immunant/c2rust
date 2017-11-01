@@ -95,7 +95,8 @@ fn get_item_args(mi: &syn::MetaItem) -> ArgList {
 
 fn get_cross_check_args(attrs: &[syn::Attribute]) -> Option<ArgList> {
     attrs.iter()
-         .find(|f| f.name() == "cross_check")
+         .find(|f| f.name() == "cross_check" ||
+                   f.name() == "cross_check_hash")
          .map(|attr| get_item_args(&attr.value))
 }
 
@@ -179,4 +180,4 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         }
     })
 }
-decl_derive!([CrossCheckHash] => xcheck_hash_derive);
+decl_derive!([CrossCheckHash, attributes(cross_check)] => xcheck_hash_derive);

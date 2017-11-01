@@ -204,10 +204,11 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                 // Prepend #[derive(CrossCheckHash)] automatically
                 // to every structure definition
                 let mut item_attrs = folded_item.attrs;
+                let xcheck_attr = find_cross_check_attr(&item_attrs).cloned();
                 let xcheck_attr_disabled = {
                     // If the structure has #[cross_check(no)] or #[cross_check(disable)],
                     // do not automatically add CrossCheckHash
-                    find_cross_check_attr(&item_attrs)
+                    xcheck_attr.as_ref()
                         .map(|a| a.parse_meta(self.cx.parse_sess).unwrap())
                         .and_then(|mi| mi.meta_item_list().map(
                             |items| items.iter().any(
@@ -217,8 +218,17 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                         .unwrap_or(false)
                 };
                 if !xcheck_attr_disabled {
-                    let xcheck_hash_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
-                    item_attrs.push(xcheck_hash_attr);
+                    let xcheck_hash_derive_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
+                    item_attrs.push(xcheck_hash_derive_attr);
+
+                    // Rename #[cross_check] to #[cross_check_hash] internally
+                    // and pass it to derive-macros (for some reason,
+                    // if we try to pass it as #[cross_check], it disappears)
+                    let xcheck_hash_attr = xcheck_attr.map(|attr| ast::Attribute {
+                        path: quote_path!(self.cx, cross_check_hash),
+                        ..attr
+                    });
+                    item_attrs.extend(xcheck_hash_attr.into_iter());
                 }
                 ast::Item {
                     attrs: item_attrs,
