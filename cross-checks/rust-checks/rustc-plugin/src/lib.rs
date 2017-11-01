@@ -213,7 +213,9 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                         .and_then(|mi| mi.meta_item_list().map(
                             |items| items.iter().any(
                                 |item| item.meta_item()
-                                           .map(|mi| mi.name == "no" || mi.name == "disable")
+                                           .map(|mi| mi.name == "no" ||
+                                                     mi.name == "disable" ||
+                                                     mi.name == "never")
                                            .unwrap_or(false))))
                         .unwrap_or(false)
                 };
