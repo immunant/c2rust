@@ -10,12 +10,13 @@ use syntax::ptr::*;
 use syntax::print::pprust::*;
 use std::collections::HashSet;
 use std::ops::Index;
+use std::cell::RefCell;
 
 pub struct Translation {
     pub items: Vec<P<Item>>,
     pub type_converter: TypeConverter,
     pub ast_context: TypedAstContext,
-    renamer: Renamer<String>,
+    renamer: RefCell<Renamer<String>>,
 }
 
 pub struct WithStmts<T> {
@@ -90,13 +91,13 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
     let mut t = Translation::new(ast_context.clone());
 
     // Populate renamer with top-level names
-    for top_id in ast_context.c_decls_top.iter() {
+    for top_id in &ast_context.c_decls_top {
         if let Some(y) = ast_context.index(*top_id).kind.get_name() {
-            t.renamer.insert(y.to_owned(), &y);
+            t.renamer.borrow_mut().insert(y.to_owned(), &y);
         }
     }
 
-    for top_id in ast_context.c_decls_top.iter() {
+    for top_id in &ast_context.c_decls_top {
 
         match ast_context.index(*top_id).kind {
             CDeclKind::Function { ref typ, ref name, ref parameters, ref body } => {
@@ -146,7 +147,7 @@ impl Translation {
             items: vec![],
             type_converter: TypeConverter::new(),
             ast_context,
-            renamer: Renamer::new(HashSet::new()),
+            renamer: RefCell::new(Renamer::new(HashSet::new())),
             // XXX: Populate reserved words
         }
     }
@@ -174,12 +175,12 @@ impl Translation {
 
     pub fn add_function(&mut self, name: &str, arguments: &[(String, CQualTypeId)], return_type: CQualTypeId, body: CStmtId) {
         // Start scope for function parameters
-        self.renamer.add_scope();
+        self.renamer.borrow_mut().add_scope();
 
         let args: Vec<Arg> = arguments
             .iter()
             .map(|&(ref var, CQualTypeId { ref qualifiers, ref ctype })| {
-                let rust_var = self.renamer.insert(var.to_string(), var.as_str()).expect("Failed to insert argument");
+                let rust_var = self.renamer.borrow_mut().insert(var.to_string(), var.as_str()).expect("Failed to insert argument");
 
                 mk().arg(self.convert_type(*ctype), mk().mutbl().ident_pat(rust_var))
             })
@@ -192,18 +193,18 @@ impl Translation {
         let block = self.convert_function_body(body);
 
         // End scope for function parameters
-        self.renamer.drop_scope();
+        self.renamer.borrow_mut().drop_scope();
 
         self.items.push(mk().unsafe_().fn_item(name, decl, block));
     }
 
-    fn convert_function_body(&mut self, body_id: CStmtId) -> P<Block> {
+    fn convert_function_body(&self, body_id: CStmtId) -> P<Block> {
 
         // Open function body scope
-        self.renamer.add_scope();
+        self.renamer.borrow_mut().add_scope();
 
-        let stmts = match self.ast_context.index(body_id).kind.clone() {
-            CStmtKind::Compound(stmts) => stmts
+        let stmts = match self.ast_context.index(body_id).kind {
+            CStmtKind::Compound(ref stmts) => stmts
                 .iter()
                 .flat_map(|stmt| self.convert_stmt(*stmt))
                 .collect(),
@@ -211,73 +212,73 @@ impl Translation {
         };
 
         // Close function body scope
-        self.renamer.drop_scope();
+        self.renamer.borrow_mut().drop_scope();
 
         stmts_block(stmts)
     }
 
-    fn convert_stmt(&mut self, stmt_id: CStmtId) -> Vec<Stmt> {
-        match self.ast_context.index(stmt_id).kind.clone() {
+    fn convert_stmt(&self, stmt_id: CStmtId) -> Vec<Stmt> {
+        match self.ast_context.index(stmt_id).kind {
             CStmtKind::Empty => vec![],
 
-            CStmtKind::Decls(decls) => {
+            CStmtKind::Decls(ref decls) => {
                 decls
                     .iter()
                     .flat_map(|decl| self.convert_decl_stmt(*decl))
                     .collect()
             },
 
-            CStmtKind::Return(expr) => {
-                self.convert_return_stmt(expr)
+            CStmtKind::Return(ref expr) => {
+                self.convert_return_stmt(*expr)
             },
 
-            CStmtKind::If { scrutinee,true_variant, false_variant } => {
-                self.convert_if_stmt(scrutinee, true_variant, false_variant)
+            CStmtKind::If { ref scrutinee, ref true_variant, ref false_variant } => {
+                self.convert_if_stmt(*scrutinee, *true_variant, *false_variant)
             },
 
-            CStmtKind::While { condition, body } => {
-                self.convert_while_stmt(condition, body)
+            CStmtKind::While { ref condition, ref body } => {
+                self.convert_while_stmt(*condition, *body)
             },
 
-            CStmtKind::DoWhile { body, condition } =>
-                self.convert_do_stmt(body, condition),
+            CStmtKind::DoWhile { ref body, ref condition } =>
+                self.convert_do_stmt(*body, *condition),
 
-            CStmtKind::ForLoop { init, condition, increment, body } => {
-                self.convert_for_stmt(init, condition, increment, body)
+            CStmtKind::ForLoop { ref init, ref condition, ref increment, ref body } => {
+                self.convert_for_stmt(*init, *condition, *increment, *body)
             },
 
-            CStmtKind::Compound(stmts) => {
-                self.renamer.add_scope();
+            CStmtKind::Compound(ref stmts) => {
+                self.renamer.borrow_mut().add_scope();
 
                 let stmts = stmts
                     .iter()
                     .flat_map(|stmt| self.convert_stmt(*stmt))
                     .collect();
 
-                self.renamer.drop_scope();
+                self.renamer.borrow_mut().drop_scope();
 
                 vec![mk().expr_stmt(mk().block_expr(stmts_block(stmts)))]
             },
 
-            CStmtKind::Expr(expr) => {
-                let mut xs = self.convert_expr(expr);
+            CStmtKind::Expr(ref expr) => {
+                let mut xs = self.convert_expr(*expr);
                 xs.stmts.push(mk().expr_stmt(xs.val));
                 xs.stmts
             },
 
-            stmt => unimplemented!("convert_stmt {:?}", stmt),
+            ref stmt => unimplemented!("convert_stmt {:?}", stmt),
         }
     }
 
     /// Convert a C expression to a rust boolean expression
-    fn convert_condition(&mut self, target: bool, cond_id: CExprId) -> WithStmts<P<Expr>> {
+    fn convert_condition(&self, target: bool, cond_id: CExprId) -> WithStmts<P<Expr>> {
         let ty_id = self.ast_context.index(cond_id).kind.get_type();
 
         self.convert_expr(cond_id)
             .map(|e| self.match_bool(target, ty_id, e))
     }
 
-    fn convert_while_stmt(&mut self, cond_id: CExprId, body_id: CStmtId) -> Vec<Stmt> {
+    fn convert_while_stmt(&self, cond_id: CExprId, body_id: CStmtId) -> Vec<Stmt> {
 
         let cond = self.convert_condition(true, cond_id);
         let body = self.convert_stmt(body_id);
@@ -288,7 +289,7 @@ impl Translation {
         vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body))]
     }
 
-    fn convert_do_stmt(&mut self, body_id: CStmtId, cond_id: CExprId) -> Vec<Stmt> {
+    fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Vec<Stmt> {
         let cond = self.convert_condition(false, cond_id);
         let mut body = self.convert_stmt(body_id);
 
@@ -303,14 +304,14 @@ impl Translation {
     }
 
     fn convert_for_stmt(
-        &mut self,
+        &self,
         init_id: Option<CStmtId>,
         cond_id: Option<CExprId>,
         inc_id: Option<CExprId>,
         body_id: CStmtId,
     ) -> Vec<Stmt> {
 
-        self.renamer.add_scope();
+        self.renamer.borrow_mut().add_scope();
 
         let mut init = match init_id {
           Some(i) => self.convert_stmt(i),
@@ -334,14 +335,14 @@ impl Translation {
 
         init.push(mk().expr_stmt(looper));
 
-        self.renamer.drop_scope();
+        self.renamer.borrow_mut().drop_scope();
 
         vec![mk().expr_stmt(mk().block_expr(mk().block(init)))]
 
     }
 
     fn convert_if_stmt(
-        &mut self,
+        &self,
         cond_id: CExprId,
         then_id: CStmtId,
         else_id: Option<CStmtId>
@@ -354,7 +355,7 @@ impl Translation {
         cond.stmts
     }
 
-    fn convert_return_stmt(&mut self, result_id: Option<CExprId>) -> Vec<Stmt> {
+    fn convert_return_stmt(&self, result_id: Option<CExprId>) -> Vec<Stmt> {
         let val = result_id.map(|i| self.convert_expr(i));
         let mut ws = with_stmts_opt(val);
         let ret = mk().expr_stmt(mk().return_expr(ws.val));
@@ -363,11 +364,11 @@ impl Translation {
         ws.stmts
     }
 
-    fn convert_decl_stmt(&mut self, decl_id: CDeclId) -> Vec<Stmt> {
+    fn convert_decl_stmt(&self, decl_id: CDeclId) -> Vec<Stmt> {
 
-        match self.ast_context.index(decl_id).kind.clone() {
-            CDeclKind::Variable { ident, initializer, typ } => {
-                let rust_name = self.renamer.insert(ident.clone(), &ident).unwrap();
+        match self.ast_context.index(decl_id).kind {
+            CDeclKind::Variable { ref ident, ref initializer, ref typ } => {
+                let rust_name = self.renamer.borrow_mut().insert(ident.clone(), &ident).unwrap();
                 let pat = mk().mutbl().ident_pat(rust_name);
                 let init = with_stmts_opt(initializer.map(|x| self.convert_expr(x)));
                 let ty = self.convert_type(typ.ctype);
@@ -377,7 +378,8 @@ impl Translation {
                 stmts.push(mk().local_stmt(P(local)));
                 stmts
             }
-            t => panic!("Declaration not implemented {:?}", t),
+
+            ref t => panic!("Declaration not implemented {:?}", t),
         }
     }
 
@@ -385,61 +387,60 @@ impl Translation {
         self.type_converter.convert(&self.ast_context, type_id)
     }
 
-    fn convert_expr(&mut self, expr_id: CExprId) -> WithStmts<P<Expr>> {
+    fn convert_expr(&self, expr_id: CExprId) -> WithStmts<P<Expr>> {
 
-        match self.ast_context.index(expr_id).kind.clone() {
+        match self.ast_context.index(expr_id).kind {
 
-            CExprKind::DeclRef(_, decl_id) => {
-                let varname = self.ast_context.index(decl_id).kind.get_name().expect("expected variable name").to_owned();
-                let rustname = self.renamer.get(varname).expect("name not declared");
+            CExprKind::DeclRef(_, ref decl_id) => {
+                let varname = self.ast_context.index(*decl_id).kind.get_name().expect("expected variable name").to_owned();
+                let rustname = self.renamer.borrow_mut().get(varname).expect("name not declared");
 
                 WithStmts::new(mk().path_expr(vec![rustname]))
             }
 
-            CExprKind::Literal(_ty, CLiteral::Integer(val)) => {
-                let _ty = self.convert_type(_ty);
+            CExprKind::Literal(_, CLiteral::Integer(ref val)) => {
+                let val: u64 = *val;
                 WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
             }
 
-            CExprKind::Literal(_ty, CLiteral::Character(val)) => {
-                let _ty = self.convert_type(_ty);
+            CExprKind::Literal(_, CLiteral::Character(ref val)) => {
+                let val: u64 = *val;
                 WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
             }
 
-            CExprKind::Literal(_ty, CLiteral::Floating(val)) => {
-                let _ty = self.convert_type(_ty);
+            CExprKind::Literal(_, CLiteral::Floating(ref val)) => {
                 let str = format!("{}", val);
                 WithStmts::new(mk().lit_expr(mk().float_unsuffixed_lit(str)))
             }
 
-            CExprKind::ImplicitCast(ty, expr) => {
+            CExprKind::ImplicitCast(_, ref expr) => {
                 // TODO actually cast
                 // Numeric casts with 'as', pointer casts with transmute
-                self.convert_expr(expr)
+                self.convert_expr(*expr)
             }
 
-            CExprKind::Unary(type_id, op, prefix, expr) => {
-                let arg = self.convert_expr(expr);
-                let ty = self.convert_type(type_id);
+            CExprKind::Unary(ref type_id, ref op, ref prefix, ref expr) => {
+                let arg = self.convert_expr(*expr);
+                let ty = self.convert_type(*type_id);
 
-                arg.and_then(|v| self.convert_unary_operator(op, prefix, type_id, ty, v))
+                arg.and_then(|v| self.convert_unary_operator(*op, *prefix, *type_id, ty, v))
             }
 
-            CExprKind::Binary(type_id, op, lhs, rhs) => {
+            CExprKind::Binary(ref ty, ref op, ref lhs, ref rhs) => {
 
-                let lhs_node = self.ast_context.index(lhs).clone();
-                let rhs_node = self.ast_context.index(rhs).clone();
+                let lhs_node = self.ast_context.index(*lhs);
+                let rhs_node = self.ast_context.index(*rhs);
 
                 let lhs_ty = lhs_node.kind.get_type();
                 let rhs_ty = rhs_node.kind.get_type();
 
-                let cty = self.ast_context.index(type_id).kind.clone();
-                let ty = self.convert_type(type_id);
+                let cty = &self.ast_context.index(*ty).kind;
+                let ty = self.convert_type(*ty);
 
-                let lhs = self.convert_expr(lhs);
-                let rhs = self.convert_expr(rhs);
+                let lhs = self.convert_expr(*lhs);
+                let rhs = self.convert_expr(*rhs);
 
-                match op {
+                match *op {
                     c_ast::BinOp::Comma => {
                         let mut stmts = vec![];
                         stmts.extend(lhs.stmts);
@@ -460,7 +461,7 @@ impl Translation {
                     // No sequence-point cases
                     _ => {
                         let bin =
-                            self.convert_binary_operator(op, ty, cty, lhs_ty, rhs_ty, lhs.val, rhs.val);
+                            self.convert_binary_operator(*op, ty, cty, lhs_ty, rhs_ty, lhs.val, rhs.val);
 
                         WithStmts {
                             stmts: lhs.stmts.into_iter().chain(rhs.stmts).chain(bin.stmts).collect(),
@@ -470,12 +471,12 @@ impl Translation {
                 }
             }
 
-            CExprKind::ArraySubscript(ty, lhs, rhs) => {
-                let lhs_ty = self.ast_context.index(lhs).kind.get_type();
-                let lhs_ty = self.ast_context.resolve_type(lhs_ty).kind.clone();
+            CExprKind::ArraySubscript(ref ty, ref lhs, ref rhs) => {
+                let lhs_ty = self.ast_context.index(*lhs).kind.get_type();
+                let lhs_ty = &self.ast_context.resolve_type(lhs_ty).kind;
 
-                let lhs = self.convert_expr(lhs);
-                let rhs = self.convert_expr(rhs);
+                let lhs = self.convert_expr(*lhs);
+                let rhs = self.convert_expr(*rhs);
 
                 let val = if lhs_ty.is_pointer() {
                     pointer_offset(lhs.val, rhs.val)
@@ -492,19 +493,19 @@ impl Translation {
                 WithStmts { stmts, val }
             }
 
-            CExprKind::Call(ty, func, args) => {
-                let moved_args = args.clone();
+            CExprKind::Call(ref ty, ref func, ref args) => {
+                let moved_args = args;
                 let mut stmts = vec![];
 
                 let func = {
-                    let WithStmts { stmts: ss, val } = self.convert_expr(func);
+                    let WithStmts { stmts: ss, val } = self.convert_expr(*func);
                     stmts.extend(ss);
                     val
                 };
 
                 let mut args_new: Vec<P<Expr>> = vec![];
                 for arg in moved_args {
-                    let WithStmts { stmts: ss, val } = self.convert_expr(arg);
+                    let WithStmts { stmts: ss, val } = self.convert_expr(*arg);
                     stmts.extend(ss);
                     args_new.push(val);
                 }
@@ -515,7 +516,7 @@ impl Translation {
                 }
             }
 
-            CExprKind::Member(ref _ty, ref expr, ref decl) => {
+            CExprKind::Member(_, ref expr, ref decl) => {
                 let struct_val = self.convert_expr(*expr);
                 let field_name = self.ast_context.index(*decl).kind.get_name().expect("expected field name");
 
@@ -526,7 +527,7 @@ impl Translation {
         }
     }
 
-    pub fn name_reference(&mut self, reference: P<Expr>) -> WithStmts<P<Expr>> {
+    pub fn name_reference(&self, reference: P<Expr>) -> WithStmts<P<Expr>> {
         fn is_path_expr(e: &Expr) -> bool {
             match e.node {
                 ExprKind::Path{..} => true,
@@ -543,7 +544,7 @@ impl Translation {
         if is_simple {
             WithStmts::new(reference)
         } else {
-            let ptr_name = self.renamer.fresh();
+            let ptr_name = self.renamer.borrow_mut().fresh();
             // let ref mut p = lhs;
             let compute_ref =
                 mk().local_stmt(
@@ -558,7 +559,7 @@ impl Translation {
         }
     }
 
-    pub fn convert_pre_increment(&mut self, ctype: CTypeId, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
+    pub fn convert_pre_increment(&self, ctype: CTypeId, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
 
         let WithStmts{ val: deref_lhs, stmts: mut lhs_stmts } = self.name_reference(arg);
 
@@ -586,11 +587,11 @@ impl Translation {
         }
     }
 
-    pub fn convert_post_increment(&mut self, ctype: CTypeId, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
+    pub fn convert_post_increment(&self, ctype: CTypeId, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
 
         let WithStmts{ val: deref_lhs, stmts: mut lhs_stmts } = self.name_reference(arg);
 
-        let val_name = self.renamer.fresh();
+        let val_name = self.renamer.borrow_mut().fresh();
         let save_old_val =
             mk().local_stmt(
                 P(mk().local(mk().ident_pat(&val_name),
@@ -621,7 +622,7 @@ impl Translation {
         }
     }
 
-    pub fn convert_unary_operator(&mut self, name: c_ast::UnOp, prefix: bool, ctype: CTypeId, ty: P<Ty>, arg: P<Expr>) -> WithStmts<P<Expr>> {
+    pub fn convert_unary_operator(&self, name: c_ast::UnOp, prefix: bool, ctype: CTypeId, ty: P<Ty>, arg: P<Expr>) -> WithStmts<P<Expr>> {
         match name {
             c_ast::UnOp::AddressOf => {
                 let addr_of_arg = mk().mutbl().addr_of_expr(arg);
@@ -648,10 +649,10 @@ impl Translation {
     }
 
     pub fn convert_binary_operator(
-        &mut self,
+        &self,
         op: c_ast::BinOp,
         ty: P<Ty>,
-        ctype: CTypeKind,
+        ctype: &CTypeKind,
         lhs_type: CTypeId,
         rhs_type: CTypeId,
         lhs: P<Expr>,
@@ -705,10 +706,10 @@ impl Translation {
     }
 
     fn convert_binary_assignment(
-        &mut self,
+        &self,
         name: c_ast::BinOp,
         ty: P<Ty>,
-        ctype: CTypeKind,
+        ctype: &CTypeKind,
         lhs_type: CTypeId,
         rhs_type: CTypeId,
         lhs: P<Expr>,
@@ -733,14 +734,14 @@ impl Translation {
     }
 
     fn convert_addition(
-        &mut self,
+        &self,
         lhs_type_id: CTypeId,
         rhs_type_id: CTypeId,
         lhs: P<Expr>,
         rhs: P<Expr>
     ) -> P<Expr> {
-        let lhs_type = self.ast_context.resolve_type(lhs_type_id).kind.clone();
-        let rhs_type = self.ast_context.resolve_type(rhs_type_id).kind.clone();
+        let lhs_type = &self.ast_context.resolve_type(lhs_type_id).kind;
+        let rhs_type = &self.ast_context.resolve_type(rhs_type_id).kind;
 
         if lhs_type.is_pointer() {
             pointer_offset(lhs, rhs)
@@ -754,15 +755,15 @@ impl Translation {
     }
 
     fn convert_subtraction(
-        &mut self,
+        &self,
         ty: P<Ty>,
         lhs_type_id: CTypeId,
         rhs_type_id: CTypeId,
         lhs: P<Expr>,
         rhs: P<Expr>,
     ) -> P<Expr> {
-        let lhs_type = self.ast_context.resolve_type(lhs_type_id).kind.clone();
-        let rhs_type = self.ast_context.resolve_type(rhs_type_id).kind.clone();
+        let lhs_type = &self.ast_context.resolve_type(lhs_type_id).kind;
+        let rhs_type = &self.ast_context.resolve_type(rhs_type_id).kind;
 
         if rhs_type.is_pointer() {
             // offset_to returns None when a pointer
@@ -783,7 +784,7 @@ impl Translation {
         }
     }
 
-    fn convert_assignment(&mut self, lhs: P<Expr>, rhs: P<Expr>) -> WithStmts<P<Expr>> {
+    fn convert_assignment(&self, lhs: P<Expr>, rhs: P<Expr>) -> WithStmts<P<Expr>> {
         // Improvements:
         // * Don't create block, use += for a statement
 
@@ -801,7 +802,7 @@ impl Translation {
 
     /// Convert a boolean expression to a boolean for use in && or || or if
     fn match_bool(&self, target: bool, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
-        let ty = self.ast_context.resolve_type(ty_id).kind.clone();
+        let ty = &self.ast_context.resolve_type(ty_id).kind;
 
         if ty.is_pointer() {
             let mut res = mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>);
@@ -821,7 +822,7 @@ impl Translation {
 
     /// Convert expression to c_int using '!' behavior
     fn convert_not(&self, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
-        let ty = self.ast_context.resolve_type(ty_id).kind.clone();
+        let ty = &self.ast_context.resolve_type(ty_id).kind;
 
         let b = if ty.is_pointer() {
             mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>)

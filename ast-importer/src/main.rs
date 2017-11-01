@@ -44,28 +44,29 @@ fn main() {
     // Extract from the CBOR file the untyped AST
     let untyped_context = match parse_untyped_ast(file) {
         Err(e) => panic!("{:#?}", e),
-        Ok(cxt) => {
-            if dump_untyped_context {
-                println!("{:#?}", cxt);
-            }
-            cxt
-        },
+        Ok(cxt) => cxt,
     };
 
-    // Conditionally convert this to a typed AST
-    if dump_typed_context || pretty_typed_context {
+    if dump_untyped_context {
+        println!("CBOR Clang AST");
+        println!("{:#?}", untyped_context);
+    }
+
+    // Convert this into a typed AST
+    let typed_context = {
         let mut conv = ConversionContext::new(&untyped_context);
         conv.convert(&untyped_context);
+        conv.typed_context
+    };
 
-        if dump_typed_context {
-            println!("Typed Clang AST");
-            println!("{:#?}", conv.typed_context);
-        }
+    if dump_typed_context {
+        println!("Clang AST");
+        println!("{:#?}", typed_context);
+    }
 
-        if pretty_typed_context {
-            println!("Pretty-printed typed Clang AST");
-            println!("{:#?}", Printer::new().print(&conv.typed_context));
-        }
+    if pretty_typed_context {
+        println!("Pretty-printed Clang AST");
+        println!("{:#?}", Printer::new().print(&typed_context));
     }
 
 
