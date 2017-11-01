@@ -45,7 +45,7 @@ impl CrossCheckConfig {
         }
     }
 
-    fn parse_config(mut self, cx: &mut ExtCtxt, mi: &ast::MetaItem) -> Self {
+    fn parse_attr_config(mut self, cx: &mut ExtCtxt, mi: &ast::MetaItem) -> Self {
         assert!(mi.name == "cross_check");
         if let Some(ref items) = mi.meta_item_list() {
             for ref nested_item in items.iter() {
@@ -126,7 +126,7 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
 
     fn parse_config(&mut self, item: &ast::Item) -> Option<CrossCheckConfig> {
         let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
-        xcheck_attr.map(|attr| self.config().clone().parse_config(
+        xcheck_attr.map(|attr| self.config().clone().parse_attr_config(
                 self.cx, &attr.parse_meta(self.cx.parse_sess).unwrap()))
     }
 
@@ -328,7 +328,7 @@ impl MultiItemModifier for CrossCheckExpander {
               _sp: Span,
               mi: &ast::MetaItem,
               item: Annotatable) -> Vec<Annotatable> {
-        let config = CrossCheckConfig::new(cx).parse_config(cx, mi);
+        let config = CrossCheckConfig::new(cx).parse_attr_config(cx, mi);
         match item {
             Annotatable::Item(i) => {
                 // If we're seeing #![cross_check] at the top of the crate or a module,
