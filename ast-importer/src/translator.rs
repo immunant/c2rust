@@ -434,7 +434,7 @@ impl Translation {
                     CastKind::FunctionToPointerDecay => val,
 
                     CastKind::ArrayToPointerDecay =>
-                        val.map(|x| mk().method_call_expr(x, "as_ptr_mut", vec![] as Vec<P<Expr>>)),
+                        val.map(|x| mk().method_call_expr(x, "as_mut_ptr", vec![] as Vec<P<Expr>>)),
 
                     CastKind::NullToPointer => {
                         assert!(val.stmts.is_empty());
