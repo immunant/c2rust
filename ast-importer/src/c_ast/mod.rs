@@ -202,8 +202,10 @@ pub enum CExprKind {
     Binary(CTypeId, BinOp, CExprId, CExprId),
 
     // Implicit cast
-    // TODO: consider adding the cast type (see OperationKinds.def)
-    ImplicitCast(CTypeId, CExprId),
+    ImplicitCast(CTypeId, CExprId, CastKind),
+
+    // Explicit cast
+    ExplicitCast(CTypeId, CExprId, CastKind),
 
     // Reference to a decl (a variable, for instance)
     // TODO: consider enforcing what types of declarations are allowed here
@@ -225,13 +227,44 @@ impl CExprKind {
             CExprKind::Literal(ty, _) => ty,
             CExprKind::Unary(ty, _, _, _) => ty,
             CExprKind::Binary(ty, _, _, _) => ty,
-            CExprKind::ImplicitCast(ty, _) => ty,
+            CExprKind::ImplicitCast(ty, _, _) => ty,
+            CExprKind::ExplicitCast(ty, _, _) => ty,
             CExprKind::DeclRef(ty, _) => ty,
             CExprKind::Call(ty, _, _) => ty,
             CExprKind::Member(ty, _, _) => ty,
             CExprKind::ArraySubscript(ty, _, _) => ty,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum CastKind {
+    BitCast,
+    LValueToRValue,
+    NoOp,
+    ToUnion,
+    ArrayToPointerDecay,
+    FunctionToPointerDecay,
+    NullToPointer,
+    IntegralToPointer,
+    PointerToIntegral,
+    ToVoid,
+    IntegralCast,
+    IntegralToBoolean,
+    IntegralToFloating,
+    FloatingToIntegral,
+    FloatingToBoolean,
+    BooleanToSignedIntegral,
+    FloatingCast,
+    FloatingRealToComplex,
+    FloatingComplexToReal,
+    FloatingComplexCast,
+    FloatingComplexToIntegralComplex,
+    IntegralRealToComplex,
+    IntegralComplexToReal,
+    IntegralComplexToBoolean,
+    IntegralComplexCast,
+    IntegralComplexToFloatingComplex,
 }
 
 /// Represents a unary operator in C (6.5.3 Unary operators)

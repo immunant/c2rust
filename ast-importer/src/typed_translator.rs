@@ -396,26 +396,32 @@ impl Translation {
                 WithStmts::new(mk().path_expr(vec![rustname]))
             }
 
-            CExprKind::Literal(_ty, CLiteral::Integer(val)) => {
-                let _ty = self.convert_type(_ty);
+            CExprKind::Literal(ty, CLiteral::Integer(val)) => {
+                let _ty = self.convert_type(ty);
                 WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
             }
 
-            CExprKind::Literal(_ty, CLiteral::Character(val)) => {
-                let _ty = self.convert_type(_ty);
+            CExprKind::Literal(ty, CLiteral::Character(val)) => {
                 WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
             }
 
-            CExprKind::Literal(_ty, CLiteral::Floating(val)) => {
-                let _ty = self.convert_type(_ty);
+            CExprKind::Literal(ty, CLiteral::Floating(val)) => {
+                let ty = self.convert_type(ty);
                 let str = format!("{}", val);
                 WithStmts::new(mk().lit_expr(mk().float_unsuffixed_lit(str)))
             }
 
-            CExprKind::ImplicitCast(ty, expr) => {
-                // TODO actually cast
-                // Numeric casts with 'as', pointer casts with transmute
-                self.convert_expr(expr)
+            CExprKind::ImplicitCast(ty, expr, kind) | CExprKind::ExplicitCast(ty, expr, kind) => {
+                let val = self.convert_expr(expr);
+
+                if self.ast_context.resolve_type(ty).kind.is_pointer() {
+                    val.map(|x|
+                   mk().call_expr(mk().path_expr(vec!["std","mem","transmute"]),vec![x])
+                    )
+                } else {
+                    let ty = self.convert_type(ty);
+                    val.map(|x| mk().cast_expr(x, ty))
+                }
             }
 
             CExprKind::Unary(type_id, op, prefix, expr) => {

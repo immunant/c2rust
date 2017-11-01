@@ -116,6 +116,38 @@ fn qualifiers(ty_node: &TypeNode) -> Qualifiers {
     }
 }
 
+fn parse_cast_kind(kind: &str) -> CastKind {
+    match kind {
+        "BitCast" => CastKind::BitCast,
+        "LValueToRValue" => CastKind::LValueToRValue,
+        "NoOp" => CastKind::NoOp,
+        "ToUnion" => CastKind::ToUnion,
+        "ArrayToPointerDecay" => CastKind::ArrayToPointerDecay,
+        "FunctionToPointerDecay" => CastKind::FunctionToPointerDecay,
+        "NullToPointer" => CastKind::NullToPointer,
+        "IntegralToPointer" => CastKind::IntegralToPointer,
+        "PointerToIntegral" => CastKind::PointerToIntegral,
+        "ToVoid" => CastKind::ToVoid,
+        "IntegralCast" => CastKind::IntegralCast,
+        "IntegralToBoolean" => CastKind::IntegralToBoolean,
+        "IntegralToFloating" => CastKind::IntegralToFloating,
+        "FloatingToIntegral" => CastKind::FloatingToIntegral,
+        "FloatingToBoolean" => CastKind::FloatingToBoolean,
+        "BooleanToSignedIntegral" => CastKind::BooleanToSignedIntegral,
+        "FloatingCast" => CastKind::FloatingCast,
+        "FloatingRealToComplex" => CastKind::FloatingRealToComplex,
+        "FloatingComplexToReal" => CastKind::FloatingComplexToReal,
+        "FloatingComplexCast" => CastKind::FloatingComplexCast,
+        "FloatingComplexToIntegralComplex" => CastKind::FloatingComplexToIntegralComplex,
+        "IntegralRealToComplex" => CastKind::IntegralRealToComplex,
+        "IntegralComplexToReal" => CastKind::IntegralComplexToReal,
+        "IntegralComplexToBoolean" => CastKind::IntegralComplexToBoolean,
+        "IntegralComplexCast" => CastKind::IntegralComplexCast,
+        "IntegralComplexToFloatingComplex" => CastKind::IntegralComplexToFloatingComplex,
+        k => panic!("Unsupported implicit cast: {}", k),
+    }
+}
+
 /// This stores the information needed to convert an `AstContext` into a `TypedAstContext`.
 pub struct ConversionContext {
 
@@ -649,7 +681,23 @@ impl ConversionContext {
                     let typ_old = node.type_id.expect("Expected type for implicit cast");
                     let typ = self.visit_type(&typ_old);
 
-                    let implicit = CExprKind::ImplicitCast(typ, expression);
+
+                    let kind = parse_cast_kind(expect_str(&node.extras[0]).expect("Expected cast kind"));
+                    let implicit = CExprKind::ImplicitCast(typ, expression, kind);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, implicit);
+                }
+
+                ASTEntryTag::TagCStyleCastExpr if expected_ty & (EXPR | STMT) != 0 => {
+                    let expression_old = node.children[0].expect("Expected expression for explicit cast");
+                    let expression = self.visit_expr(&expression_old);
+
+                    let typ_old = node.type_id.expect("Expected type for explicit cast");
+                    let typ = self.visit_type(&typ_old);
+
+
+                    let kind = parse_cast_kind(expect_str(&node.extras[0]).expect("Expected cast kind"));
+                    let implicit = CExprKind::ExplicitCast(typ, expression, kind);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, implicit);
                 }

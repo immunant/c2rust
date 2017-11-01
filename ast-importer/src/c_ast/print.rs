@@ -44,7 +44,8 @@ impl Printer {
                 print!(" ");
                 self.print_expr(rhs, context);
             },
-            Some(&CExprKind::ImplicitCast(_, expr)) => self.print_expr(expr, context),
+            Some(&CExprKind::ImplicitCast(_, expr, _)) => self.print_expr(expr, context),
+            Some(&CExprKind::ExplicitCast(_, expr, _)) => self.print_expr(expr, context),
             Some(&CExprKind::DeclRef(_, decl)) => self.print_decl_name(decl, context),
             Some(&CExprKind::Call(_, func, ref args)) => {
                 self.print_expr(func, context);
