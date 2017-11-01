@@ -278,6 +278,11 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
        }).collect()
     }
 
+    fn fold_mod(&mut self, m: ast::Mod) -> ast::Mod {
+        let folded_mod = fold::noop_fold_mod(m, self);
+        folded_mod
+    }
+
     fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
         mac
     }
