@@ -14,7 +14,7 @@ use std::cell::RefCell;
 
 pub struct Translation {
     pub items: Vec<P<Item>>,
-    pub type_converter: TypeConverter,
+    type_converter: TypeConverter,
     pub ast_context: TypedAstContext,
     renamer: RefCell<Renamer<String>>,
 }
@@ -46,6 +46,8 @@ impl<T> WithStmts<T> {
 }
 
 impl WithStmts<P<Expr>> {
+
+    /// Package a series of statements and an expression into one block expression
     pub fn to_expr(mut self) -> P<Expr> {
         if self.stmts.is_empty() {
             self.val
@@ -87,7 +89,7 @@ pub fn with_stmts_opt<T>(opt: Option<WithStmts<T>>) -> WithStmts<Option<T>> {
 }
 
 pub fn translate(ast_context: &TypedAstContext) -> String {
-    use c_ast::*;
+
     let mut t = Translation::new(ast_context.clone());
 
     // Populate renamer with top-level names
@@ -121,7 +123,7 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
                 t.add_function(name, &args, ret, *body);
             }
 
-            /// XXX: Fill in other top-level declaration kinds
+            // XXX: Fill in other top-level declaration kinds
             _ => { },
         }
     }
@@ -157,7 +159,7 @@ impl Translation {
             fields
                 .iter()
                 .map(|&(id, ty)| {
-                    let ty = self.type_converter.convert(&self.ast_context, ty);
+                    let ty = self.convert_type(ty);
                     mk().struct_field(id, ty)
                 })
                 .collect();
@@ -261,9 +263,7 @@ impl Translation {
             },
 
             CStmtKind::Expr(ref expr) => {
-                let mut xs = self.convert_expr(*expr);
-                xs.stmts.push(mk().expr_stmt(xs.val));
-                xs.stmts
+                self.convert_expr(false, *expr).stmts
             },
 
             ref stmt => unimplemented!("convert_stmt {:?}", stmt),
@@ -274,7 +274,7 @@ impl Translation {
     fn convert_condition(&self, target: bool, cond_id: CExprId) -> WithStmts<P<Expr>> {
         let ty_id = self.ast_context.index(cond_id).kind.get_type();
 
-        self.convert_expr(cond_id)
+        self.convert_expr(true, cond_id)
             .map(|e| self.match_bool(target, ty_id, e))
     }
 
@@ -319,7 +319,7 @@ impl Translation {
         };
 
         let mut inc = match inc_id {
-            Some(i) => self.convert_expr(i).stmts,
+            Some(i) => self.convert_expr(false,i).stmts,
             None => vec![],
         };
 
@@ -356,7 +356,7 @@ impl Translation {
     }
 
     fn convert_return_stmt(&self, result_id: Option<CExprId>) -> Vec<Stmt> {
-        let val = result_id.map(|i| self.convert_expr(i));
+        let val = result_id.map(|i| self.convert_expr(true,i));
         let mut ws = with_stmts_opt(val);
         let ret = mk().expr_stmt(mk().return_expr(ws.val));
 
@@ -370,7 +370,7 @@ impl Translation {
             CDeclKind::Variable { ref ident, ref initializer, ref typ } => {
                 let rust_name = self.renamer.borrow_mut().insert(ident.clone(), &ident).unwrap();
                 let pat = mk().mutbl().ident_pat(rust_name);
-                let init = with_stmts_opt(initializer.map(|x| self.convert_expr(x)));
+                let init = with_stmts_opt(initializer.map(|x| self.convert_expr(true, x)));
                 let ty = self.convert_type(typ.ctype);
                 let local = mk().local(pat, Some(ty), init.val);
 
@@ -387,7 +387,11 @@ impl Translation {
         self.type_converter.convert(&self.ast_context, type_id)
     }
 
-    fn convert_expr(&self, expr_id: CExprId) -> WithStmts<P<Expr>> {
+    /// The second argument indicates whether the resulting expression is used or not.
+    ///
+    /// In the case that it is not, all side-effecting components will be in the `stmts` field of
+    /// the output and it is expected that the `val` field of the output will be ignored.
+    fn convert_expr(&self, used: bool, expr_id: CExprId) -> WithStmts<P<Expr>> {
 
         match self.ast_context.index(expr_id).kind {
 
@@ -416,17 +420,16 @@ impl Translation {
             CExprKind::ImplicitCast(_, ref expr) => {
                 // TODO actually cast
                 // Numeric casts with 'as', pointer casts with transmute
-                self.convert_expr(*expr)
+                self.convert_expr(used, *expr)
             }
 
-            CExprKind::Unary(ref type_id, ref op, ref prefix, ref expr) => {
-                let arg = self.convert_expr(*expr);
-                let ty = self.convert_type(*type_id);
+            CExprKind::Unary(ref type_id, ref op, ref expr) => {
+                let arg = self.convert_expr(true,*expr);
 
-                arg.and_then(|v| self.convert_unary_operator(*op, *prefix, *type_id, ty, v))
+                arg.and_then(|v| self.convert_unary_operator(used, *op, *type_id, v))
             }
 
-            CExprKind::Binary(ref ty, ref op, ref lhs, ref rhs) => {
+            CExprKind::Binary(ref type_id, ref op, ref lhs, ref rhs) => {
 
                 let lhs_node = self.ast_context.index(*lhs);
                 let rhs_node = self.ast_context.index(*rhs);
@@ -434,34 +437,44 @@ impl Translation {
                 let lhs_ty = lhs_node.kind.get_type();
                 let rhs_ty = rhs_node.kind.get_type();
 
-                let cty = &self.ast_context.index(*ty).kind;
-                let ty = self.convert_type(*ty);
-
-                let lhs = self.convert_expr(*lhs);
-                let rhs = self.convert_expr(*rhs);
+                let ty = self.convert_type(*type_id);
 
                 match *op {
                     c_ast::BinOp::Comma => {
-                        let mut stmts = vec![];
-                        stmts.extend(lhs.stmts);
-                        stmts.push(mk().expr_stmt(lhs.val));
-                        stmts.extend(rhs.stmts);
 
-                        let val = rhs.val;
+                        // The value of the LHS of a comma expression is always discarded
+                        let lhs = self.convert_expr(false, *lhs);
+                        let rhs = self.convert_expr(used, *rhs);
 
-                        WithStmts { stmts, val }
+                        WithStmts {
+                            stmts: lhs.stmts.into_iter().chain(rhs.stmts).collect(),
+                            val: rhs.val,
+                        }
                     }
 
-                    c_ast::BinOp::And =>
-                        lhs.map(|x| mk().binary_expr(BinOpKind::And, x, rhs.to_expr())),
+                    c_ast::BinOp::And => {
+                        // XXX: do we need the RHS to always be used?
+                        let lhs = self.convert_expr(true, *lhs);
+                        let rhs = self.convert_expr(true, *rhs);
 
-                    c_ast::BinOp::Or =>
-                        lhs.map(|x| mk().binary_expr(BinOpKind::Or, x, rhs.to_expr())),
+                        lhs.map(|x| mk().binary_expr(BinOpKind::And, x, rhs.to_expr()))
+                    }
+
+                    c_ast::BinOp::Or => {
+                        // XXX: do we need the RHS to always be used?
+                        let lhs = self.convert_expr(true,*lhs);
+                        let rhs = self.convert_expr(true,*rhs);
+
+                        lhs.map(|x| mk().binary_expr(BinOpKind::Or, x, rhs.to_expr()))
+                    }
 
                     // No sequence-point cases
                     _ => {
+                        let lhs = self.convert_expr(true,*lhs,);
+                        let rhs = self.convert_expr(true,*rhs,);
+
                         let bin =
-                            self.convert_binary_operator(*op, ty, cty, lhs_ty, rhs_ty, lhs.val, rhs.val);
+                            self.convert_binary_operator(*op, ty, *type_id, lhs_ty, rhs_ty, lhs.val, rhs.val);
 
                         WithStmts {
                             stmts: lhs.stmts.into_iter().chain(rhs.stmts).chain(bin.stmts).collect(),
@@ -471,12 +484,12 @@ impl Translation {
                 }
             }
 
-            CExprKind::ArraySubscript(ref ty, ref lhs, ref rhs) => {
+            CExprKind::ArraySubscript(_, ref lhs, ref rhs) => {
                 let lhs_ty = self.ast_context.index(*lhs).kind.get_type();
                 let lhs_ty = &self.ast_context.resolve_type(lhs_ty).kind;
 
-                let lhs = self.convert_expr(*lhs);
-                let rhs = self.convert_expr(*rhs);
+                let lhs = self.convert_expr(true, *lhs);
+                let rhs = self.convert_expr(true, *rhs);
 
                 let val = if lhs_ty.is_pointer() {
                     pointer_offset(lhs.val, rhs.val)
@@ -493,34 +506,50 @@ impl Translation {
                 WithStmts { stmts, val }
             }
 
-            CExprKind::Call(ref ty, ref func, ref args) => {
+            CExprKind::Call(_, ref func, ref args) => {
                 let moved_args = args;
                 let mut stmts = vec![];
 
                 let func = {
-                    let WithStmts { stmts: ss, val } = self.convert_expr(*func);
+                    let WithStmts { stmts: ss, val } = self.convert_expr(true, *func);
                     stmts.extend(ss);
                     val
                 };
 
                 let mut args_new: Vec<P<Expr>> = vec![];
                 for arg in moved_args {
-                    let WithStmts { stmts: ss, val } = self.convert_expr(*arg);
+                    let WithStmts { stmts: ss, val } = self.convert_expr(true, *arg);
                     stmts.extend(ss);
                     args_new.push(val);
                 }
 
-                WithStmts {
-                    stmts,
-                    val: mk().call_expr(func, args_new),
+                let call_expr = mk().call_expr(func, args_new);
+
+
+                if used {
+                    WithStmts { stmts, val: call_expr }
+                } else {
+                    // Recall that if `used` is false, the `stmts` field of the output must contain
+                    // all side-effects (and a function call can always have side-effects)
+                    stmts.push(mk().semi_stmt(call_expr));
+
+                    // This node should _never_ show up in the final generated code. This is an easy
+                    // way to notice if it does.
+                    let panic = mk().mac_expr(mk().mac(vec!["panic"], vec![]));
+
+                    WithStmts { stmts, val: panic }
                 }
             }
 
             CExprKind::Member(_, ref expr, ref decl) => {
-                let struct_val = self.convert_expr(*expr);
+                let struct_val = self.convert_expr(used, *expr);
                 let field_name = self.ast_context.index(*decl).kind.get_name().expect("expected field name");
 
-                struct_val.map(|v| mk().field_expr(v, field_name))
+                if used {
+                    struct_val.map(|v| mk().field_expr(v, field_name))
+                } else {
+                    struct_val
+                }
             }
 
             ref t => panic!("Expression not implemented {:?}", t),
@@ -587,7 +616,12 @@ impl Translation {
         }
     }
 
-    pub fn convert_post_increment(&self, ctype: CTypeId, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
+    pub fn convert_post_increment(&self, used: bool, ctype: CTypeId, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
+
+        // If we aren't going to be using the result, may as well do a simple pre-increment
+        if !used {
+            return self.convert_pre_increment(ctype, up, arg)
+        }
 
         let WithStmts{ val: deref_lhs, stmts: mut lhs_stmts } = self.name_reference(arg);
 
@@ -622,17 +656,19 @@ impl Translation {
         }
     }
 
-    pub fn convert_unary_operator(&self, name: c_ast::UnOp, prefix: bool, ctype: CTypeId, ty: P<Ty>, arg: P<Expr>) -> WithStmts<P<Expr>> {
+    pub fn convert_unary_operator(&self, used: bool, name: c_ast::UnOp, ctype: CTypeId, arg: P<Expr>) -> WithStmts<P<Expr>> {
+        let ty = self.convert_type(ctype);
+
         match name {
             c_ast::UnOp::AddressOf => {
                 let addr_of_arg = mk().mutbl().addr_of_expr(arg);
                 let ptr = mk().cast_expr(addr_of_arg, ty);
                 WithStmts::new(ptr)
             },
-            c_ast::UnOp::Increment if prefix => self.convert_pre_increment(ctype, true, arg),
-            c_ast::UnOp::Increment => self.convert_post_increment(ctype, true, arg),
-            c_ast::UnOp::Decrement if prefix => self.convert_pre_increment(ctype, false, arg),
-            c_ast::UnOp::Decrement => self.convert_post_increment(ctype, false, arg),
+            c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctype,true, arg),
+            c_ast::UnOp::PreDecrement => self.convert_pre_increment(ctype,false, arg),
+            c_ast::UnOp::PostIncrement => self.convert_post_increment(used, ctype,true, arg),
+            c_ast::UnOp::PostDecrement => self.convert_post_increment(used, ctype,false, arg),
             c_ast::UnOp::Deref => WithStmts::new(mk().unary_expr(ast::UnOp::Deref, arg)),
             c_ast::UnOp::Plus => WithStmts::new(arg), // promotion is explicit in the clang AST
             c_ast::UnOp::Negate => {
@@ -652,84 +688,69 @@ impl Translation {
         &self,
         op: c_ast::BinOp,
         ty: P<Ty>,
-        ctype: &CTypeKind,
-        lhs_type: CTypeId,
-        rhs_type: CTypeId,
-        lhs: P<Expr>,
-        rhs: P<Expr>
-    ) -> WithStmts<P<Expr>> {
-        match op {
-            c_ast::BinOp::Add => WithStmts::new(self.convert_addition(lhs_type, rhs_type, lhs, rhs)),
-            c_ast::BinOp::Subtract => WithStmts::new(self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs)),
-
-            c_ast::BinOp::Multiply if ctype.is_unsigned_integral_type() =>
-                WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_mul"), vec![rhs])),
-            c_ast::BinOp::Multiply => WithStmts::new(mk().binary_expr(BinOpKind::Mul, lhs, rhs)),
-
-            c_ast::BinOp::Divide if ctype.is_unsigned_integral_type() =>
-                WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_div"), vec![rhs])),
-            c_ast::BinOp::Divide => WithStmts::new(mk().binary_expr(BinOpKind::Div, lhs, rhs)),
-
-            c_ast::BinOp::Modulus if ctype.is_unsigned_integral_type() =>
-                WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_rem"), vec![rhs])),
-            c_ast::BinOp::Modulus => WithStmts::new(mk().binary_expr(BinOpKind::Rem, lhs, rhs)),
-
-            c_ast::BinOp::BitXor => WithStmts::new(mk().binary_expr(BinOpKind::BitXor, lhs, rhs)),
-
-            c_ast::BinOp::ShiftRight => WithStmts::new(mk().binary_expr(BinOpKind::Shr, lhs, rhs)),
-
-            c_ast::BinOp::EqualEqual => WithStmts::new(mk().binary_expr(BinOpKind::Eq, lhs, rhs)).map(bool_to_int),
-            c_ast::BinOp::NotEqual => WithStmts::new(mk().binary_expr(BinOpKind::Ne, lhs, rhs)).map(bool_to_int),
-            c_ast::BinOp::Less => WithStmts::new(mk().binary_expr(BinOpKind::Lt, lhs, rhs)).map(bool_to_int),
-            c_ast::BinOp::Greater => WithStmts::new(mk().binary_expr(BinOpKind::Gt, lhs, rhs)).map(bool_to_int),
-            c_ast::BinOp::GreaterEqual => WithStmts::new(mk().binary_expr(BinOpKind::Ge, lhs, rhs)).map(bool_to_int),
-            c_ast::BinOp::LessEqual => WithStmts::new(mk().binary_expr(BinOpKind::Le, lhs, rhs)).map(bool_to_int),
-
-            c_ast::BinOp::BitAnd => WithStmts::new(mk().binary_expr(BinOpKind::BitAnd, lhs, rhs)),
-            c_ast::BinOp::BitOr => WithStmts::new(mk().binary_expr(BinOpKind::BitOr, lhs, rhs)),
-
-            c_ast::BinOp::AssignAdd  => self.convert_binary_assignment(c_ast::BinOp::Add,              ty, ctype, lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::AssignSubtract => self.convert_binary_assignment(c_ast::BinOp::Subtract,     ty, ctype, lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::AssignMultiply => self.convert_binary_assignment(c_ast::BinOp::Multiply,     ty, ctype, lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::AssignDivide => self.convert_binary_assignment(c_ast::BinOp::Divide,         ty, ctype, lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::AssignModulus => self.convert_binary_assignment(c_ast::BinOp::Modulus,       ty, ctype, lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::AssignBitXor => self.convert_binary_assignment(c_ast::BinOp::BitXor,         ty, ctype, lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::AssignShiftLeft => self.convert_binary_assignment(c_ast::BinOp::ShiftLeft,   ty, ctype, lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::AssignShiftRight => self.convert_binary_assignment(c_ast::BinOp::ShiftRight, ty, ctype, lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::AssignBitOr => self.convert_binary_assignment(c_ast::BinOp::BitOr,           ty, ctype, lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::AssignBitAnd => self.convert_binary_assignment(c_ast::BinOp::BitAnd,         ty, ctype, lhs_type, rhs_type, lhs, rhs),
-
-            c_ast::BinOp::Assign => self.convert_assignment(lhs, rhs),
-
-            op => unimplemented!("Translation of binary operator {:?}", op),
-        }
-    }
-
-    fn convert_binary_assignment(
-        &self,
-        name: c_ast::BinOp,
-        ty: P<Ty>,
-        ctype: &CTypeKind,
+        ctype: CTypeId,
         lhs_type: CTypeId,
         rhs_type: CTypeId,
         lhs: P<Expr>,
         rhs: P<Expr>
     ) -> WithStmts<P<Expr>> {
 
-        // Improvements:
-        // * Don't create block, use += for a statement
-        let WithStmts{ val: deref_lhs, stmts: mut lhs_stmts } = self.name_reference(lhs);
-        // *p + rhs
-        let mut val = self.convert_binary_operator(name, ty, ctype, lhs_type, rhs_type, deref_lhs.clone(), rhs);
-        // *p = *p + rhs
-        let assign_stmt = mk().assign_expr(&deref_lhs, val.val);
+        if let Some(op) = op.underlying_assignment() {
+            // Handle compound assignment binary operators
 
-        lhs_stmts.append(&mut val.stmts);
-        lhs_stmts.push(mk().expr_stmt(assign_stmt));
+            // Improvements:
+            // * Don't create block, use += for a statement
+            let WithStmts{ val: deref_lhs, stmts: mut lhs_stmts } = self.name_reference(lhs);
+            // *p + rhs
+            let mut val = self.convert_binary_operator(op, ty, ctype, lhs_type, rhs_type, deref_lhs.clone(), rhs);
+            // *p = *p + rhs
+            let assign_stmt = mk().assign_expr(&deref_lhs, val.val);
 
-        WithStmts {
+            lhs_stmts.append(&mut val.stmts);
+            lhs_stmts.push(mk().expr_stmt(assign_stmt));
+
+            WithStmts {
             stmts: lhs_stmts,
-            val: deref_lhs,
+                val: deref_lhs,
+            }
+        } else {
+            // Handle all other binary operators
+
+            let ctype = &self.ast_context.index(ctype).kind;
+            match op {
+                c_ast::BinOp::Add => WithStmts::new(self.convert_addition(lhs_type, rhs_type, lhs, rhs)),
+                c_ast::BinOp::Subtract => WithStmts::new(self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs)),
+
+                c_ast::BinOp::Multiply if ctype.is_unsigned_integral_type() =>
+                    WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_mul"), vec![rhs])),
+                c_ast::BinOp::Multiply => WithStmts::new(mk().binary_expr(BinOpKind::Mul, lhs, rhs)),
+
+                c_ast::BinOp::Divide if ctype.is_unsigned_integral_type() =>
+                    WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_div"), vec![rhs])),
+                c_ast::BinOp::Divide => WithStmts::new(mk().binary_expr(BinOpKind::Div, lhs, rhs)),
+
+                c_ast::BinOp::Modulus if ctype.is_unsigned_integral_type() =>
+                    WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_rem"), vec![rhs])),
+                c_ast::BinOp::Modulus => WithStmts::new(mk().binary_expr(BinOpKind::Rem, lhs, rhs)),
+
+                c_ast::BinOp::BitXor => WithStmts::new(mk().binary_expr(BinOpKind::BitXor, lhs, rhs)),
+
+                c_ast::BinOp::ShiftRight => WithStmts::new(mk().binary_expr(BinOpKind::Shr, lhs, rhs)),
+
+                c_ast::BinOp::EqualEqual => WithStmts::new(mk().binary_expr(BinOpKind::Eq, lhs, rhs)).map(bool_to_int),
+                c_ast::BinOp::NotEqual => WithStmts::new(mk().binary_expr(BinOpKind::Ne, lhs, rhs)).map(bool_to_int),
+                c_ast::BinOp::Less => WithStmts::new(mk().binary_expr(BinOpKind::Lt, lhs, rhs)).map(bool_to_int),
+                c_ast::BinOp::Greater => WithStmts::new(mk().binary_expr(BinOpKind::Gt, lhs, rhs)).map(bool_to_int),
+                c_ast::BinOp::GreaterEqual => WithStmts::new(mk().binary_expr(BinOpKind::Ge, lhs, rhs)).map(bool_to_int),
+                c_ast::BinOp::LessEqual => WithStmts::new(mk().binary_expr(BinOpKind::Le, lhs, rhs)).map(bool_to_int),
+
+                c_ast::BinOp::BitAnd => WithStmts::new(mk().binary_expr(BinOpKind::BitAnd, lhs, rhs)),
+                c_ast::BinOp::BitOr => WithStmts::new(mk().binary_expr(BinOpKind::BitOr, lhs, rhs)),
+
+                c_ast::BinOp::Assign => self.convert_assignment(lhs, rhs),
+
+                op => unimplemented!("Translation of binary operator {:?}", op),
+            }
         }
     }
 

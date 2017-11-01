@@ -1,4 +1,4 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::HashMap;
 use std::ops::Index;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
@@ -35,7 +35,7 @@ pub struct TypedAstContext {
     pub c_decls: HashMap<CDeclId, CDecl>,
     pub c_stmts: HashMap<CStmtId, CStmt>,
 
-    pub c_decls_top: HashSet<CDeclId>,
+    pub c_decls_top: Vec<CDeclId>,
     pub c_files: HashMap<u64, String>,
 }
 
@@ -47,13 +47,13 @@ impl TypedAstContext {
             c_decls: HashMap::new(),
             c_stmts: HashMap::new(),
 
-            c_decls_top: HashSet::new(),
+            c_decls_top: Vec::new(),
             c_files: HashMap::new(),
         }
     }
 
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
-        match (*self.index(typ)).kind {
+        match self.index(typ).kind {
             CTypeKind::Elaborated(ty) => self.resolve_type_id(ty),
             CTypeKind::Decayed(ty) => self.resolve_type_id(ty),
             CTypeKind::TypeOf(ty) => self.resolve_type_id(ty),
@@ -70,6 +70,32 @@ impl TypedAstContext {
     pub fn resolve_type(&self, typ: CTypeId) -> &CType {
         let resolved_typ_id = self.resolve_type_id(typ);
         self.index(resolved_typ_id)
+    }
+
+    /// Pessimistically try to check if an expression has side effects. If it does, or we can't tell
+    /// that it doesn't, return `true`.
+    pub fn is_expr_pure(&self, expr: CExprId) -> bool {
+        match self.index(expr).kind {
+
+            CExprKind::Call(_, _, _) => false,
+            CExprKind::Literal(_, _) => true,
+            CExprKind::DeclRef(_, _) => true,
+
+            CExprKind::ImplicitCast(_, e) => self.is_expr_pure(e),
+            CExprKind::Member(_, e, _) => self.is_expr_pure(e),
+
+            CExprKind::Unary(_, UnOp::PreIncrement, _) => false,
+            CExprKind::Unary(_, UnOp::PostIncrement, _) => false,
+            CExprKind::Unary(_, UnOp::PreDecrement, _) => false,
+            CExprKind::Unary(_, UnOp::PostDecrement, _) => false,
+            CExprKind::Unary(_, _, e) => self.is_expr_pure(e),
+
+            CExprKind::Binary(_, BinOp::Assign, _, _) => false,
+            CExprKind::Binary(_, op, _, _) if op.underlying_assignment().is_some() => false,
+            CExprKind::Binary(_, _, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+
+            CExprKind::ArraySubscript(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+        }
     }
 }
 
@@ -195,8 +221,8 @@ pub enum CExprKind {
     // Literals
     Literal(CTypeId, CLiteral),
 
-    // Unary operator. The boolean field tells us if the operator is prefix
-    Unary(CTypeId, UnOp, bool, CExprId),
+    // Unary operator.
+    Unary(CTypeId, UnOp, CExprId),
 
     // Binary operator
     Binary(CTypeId, BinOp, CExprId, CExprId),
@@ -223,7 +249,7 @@ impl CExprKind {
     pub fn get_type(&self) -> CTypeId {
         match *self {
             CExprKind::Literal(ty, _) => ty,
-            CExprKind::Unary(ty, _, _, _) => ty,
+            CExprKind::Unary(ty, _, _) => ty,
             CExprKind::Binary(ty, _, _, _) => ty,
             CExprKind::ImplicitCast(ty, _) => ty,
             CExprKind::DeclRef(ty, _) => ty,
@@ -237,14 +263,28 @@ impl CExprKind {
 /// Represents a unary operator in C (6.5.3 Unary operators)
 #[derive(Debug, Clone, Copy)]
 pub enum UnOp {
-    AddressOf,  // &
-    Deref,      // *
-    Plus,       // +
-    Increment,  // ++
-    Negate,     // -
-    Decrement,  // --
-    Complement, // ~
-    Not,        // !
+    AddressOf,      // &x
+    Deref,          // *x
+    Plus,           // +x
+    PostIncrement,  // x++
+    PreIncrement,   // ++x
+    Negate,         // -x
+    PostDecrement,  // x--
+    PreDecrement,   // --x
+    Complement,     // ~x
+    Not,            // !x
+}
+
+impl UnOp {
+
+    /// Check is the operator is rendered before or after is operand.
+    pub fn is_prefix(&self) -> bool {
+        match *self {
+            UnOp::PostIncrement => false,
+            UnOp::PostDecrement => false,
+            _ => true,
+        }
+    }
 }
 
 /// Represents a binary operator in C (6.5.5 Multiplicative operators - 6.5.14 Logical OR operator)
@@ -282,6 +322,29 @@ pub enum BinOp {
 
     Assign,           // =
     Comma,            // ,
+}
+
+impl BinOp {
+
+    /// Maps compound assignment operators to operator underlying them, and returns `None` for all
+    /// other operators.
+    ///
+    /// For example, `AssignAdd` maps to `Some(Add)` but `Add` maps to `None`.
+    pub fn underlying_assignment(&self) -> Option<BinOp> {
+        match *self {
+            BinOp::AssignAdd => Some(BinOp::Add),
+            BinOp::AssignSubtract => Some(BinOp::Subtract),
+            BinOp::AssignMultiply => Some(BinOp::Multiply),
+            BinOp::AssignDivide => Some(BinOp::Divide),
+            BinOp::AssignModulus => Some(BinOp::Modulus),
+            BinOp::AssignBitXor => Some(BinOp::BitXor),
+            BinOp::AssignShiftLeft => Some(BinOp::ShiftLeft),
+            BinOp::AssignShiftRight => Some(BinOp::ShiftRight),
+            BinOp::AssignBitOr => Some(BinOp::BitOr),
+            BinOp::AssignBitAnd => Some(BinOp::BitAnd),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

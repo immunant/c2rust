@@ -138,7 +138,7 @@ impl ConversionContext {
     pub fn new(untyped_context: &AstContext) -> ConversionContext {
         // This starts out as all of the top-level nodes, which we expect to be 'DECL's
         let mut visit_as: Vec<(ClangId, NodeType)> = Vec::new();
-        for top_node in untyped_context.top_nodes.iter() {
+        for top_node in &untyped_context.top_nodes {
             if untyped_context.ast_nodes.contains_key(&top_node) {
                 visit_as.push((*top_node, node_types::DECL));
             }
@@ -252,7 +252,7 @@ impl ConversionContext {
 
             // If the node is top-level, add it as such to the new context
             if untyped_context.top_nodes.contains(&node_id) {
-                self.typed_context.c_decls_top.insert(CDeclId(new_id));
+                self.typed_context.c_decls_top.push(CDeclId(new_id));
             }
 
             self.visit_node(untyped_context, node_id, new_id, expected_ty)
@@ -275,7 +275,7 @@ impl ConversionContext {
             // Convert the node
             let ty_node: &TypeNode = untyped_context.type_nodes
                 .get(&node_id)
-                .expect("Could not find type node");
+                .expect(format!("Could not find type node {}", node_id).as_ref());
 
             match ty_node.tag {
                 TypeTag::TagBool if expected_ty & OTHER_TYPE != 0 => {
@@ -617,6 +617,9 @@ impl ConversionContext {
                 }
 
                 ASTEntryTag::TagUnaryOperator if expected_ty & (EXPR | STMT) != 0 => {
+
+                    let prefix = expect_bool(&node.extras[1]).expect("Expected prefix information");
+
                     let operator = match expect_str(&node.extras[0]).expect("Expected operator") {
                         "&" => UnOp::AddressOf,
                         "*" => UnOp::Deref,
@@ -624,8 +627,8 @@ impl ConversionContext {
                         "-" => UnOp::Negate,
                         "~" => UnOp::Complement,
                         "!" => UnOp::Not,
-                        "++" => UnOp::Increment,
-                        "--" => UnOp::Decrement,
+                        "++" => if prefix { UnOp::PreIncrement } else { UnOp::PostIncrement },
+                        "--" => if prefix { UnOp::PreDecrement } else { UnOp::PostDecrement },
                         o => panic!("Unexpected operator: {}", o),
                     };
 
@@ -635,9 +638,8 @@ impl ConversionContext {
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_type(&ty_old);
 
-                    let prefix = expect_bool(&node.extras[1]).expect("Expected prefix information");
 
-                    let unary = CExprKind::Unary(ty, operator, prefix, operand);
+                    let unary = CExprKind::Unary(ty, operator, operand);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, unary);
                 }

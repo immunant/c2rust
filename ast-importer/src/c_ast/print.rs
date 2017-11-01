@@ -29,13 +29,14 @@ impl Printer {
     pub fn print_expr(&mut self, expr_id: CExprId, context: &TypedAstContext) {
         match context.c_exprs.get(&expr_id).map(|l| &l.kind) {
             Some(&CExprKind::Literal(_, lit)) => self.print_lit(&lit, context),
-            Some(&CExprKind::Unary(_, op, true, rhs)) => {
-                self.print_unop(&op, context);
-                self.print_expr(rhs, context);
-            },
-            Some(&CExprKind::Unary(_, op, false, rhs)) => {
-                self.print_expr(rhs, context);
-                self.print_unop(&op, context);
+            Some(&CExprKind::Unary(_, op, rhs)) => {
+                if op.is_prefix() {
+                    self.print_unop(&op, context);
+                    self.print_expr(rhs, context);
+                } else {
+                    self.print_expr(rhs, context);
+                    self.print_unop(&op, context);
+                }
             },
             Some(&CExprKind::Binary(_, op, lhs, rhs)) => {
                 self.print_expr(lhs, context);
@@ -75,9 +76,11 @@ impl Printer {
             UnOp::AddressOf => print!("&"),
             UnOp::Deref => print!("*"),
             UnOp::Plus => print!("+"),
-            UnOp::Increment => print!("++"),
+            UnOp::PreIncrement => print!("++"),
+            UnOp::PostIncrement => print!("++"),
             UnOp::Negate => print!("-"),
-            UnOp::Decrement => print!("--"),
+            UnOp::PreDecrement => print!("--"),
+            UnOp::PostDecrement => print!("--"),
             UnOp::Complement => print!("~"),
             UnOp::Not => print!("!"),
         }
@@ -241,7 +244,7 @@ impl Printer {
 
     pub fn print_decl(&mut self, decl_id: CDeclId, context: &TypedAstContext) {
         match context.c_decls.get(&decl_id).map(|l| &l.kind) {
-            Some(&CDeclKind::Function { ref typ, ref name, ref parameters, ref body }) => {
+            Some(&CDeclKind::Function { ref name, ref parameters, ref body, .. }) => {
                 // TODO typ
                 self.pad();
                 print!("{}", name);

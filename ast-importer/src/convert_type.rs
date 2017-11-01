@@ -61,7 +61,6 @@ impl TypeConverter {
                 }
             }
 
-
             ref t => panic!("Unsupported type {:?}", t),
         }
     }
