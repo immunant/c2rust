@@ -133,6 +133,12 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                                                  #ahasher_override,
                                                  #shasher_override) })
             } else if let Some(ref sub_args) = args.0.get("check_raw") {
+                // The default filter token here is "*" so we get
+                // a dereference as the default:
+                //   cross_check_raw!(#tag, (*(#f)) as u64)
+                //
+                // When the user specifies a filter "foo", it instead turns into:
+                //   cross_check_raw!(#tag, (foo(#f)) as u64)
                 let (tag, filter) = get_direct_item_config(sub_args.get_list(),
                                                            quote! { * });
                 Some(quote! { cross_check_raw!(#tag, (#filter(#f)) as u64) })
