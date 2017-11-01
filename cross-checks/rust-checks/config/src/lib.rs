@@ -71,7 +71,7 @@ pub struct FunctionConfig {
     ret: XCheckType,
 
     // Nested items
-    nested: Option<Vec<ItemConfig>>,
+    nested: Option<ItemList>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -83,8 +83,29 @@ pub enum ItemConfig {
     Closure, // TODO
 }
 
+impl ItemConfig {
+    fn name(&self) -> Option<&str> {
+        match *self {
+            ItemConfig::Function(FunctionConfig { ref name, .. }) => Some(&name[..]),
+            _ => None
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
-pub struct FileConfig(Vec<ItemConfig>);
+pub struct ItemList(Vec<ItemConfig>);
+
+impl ItemList {
+    // Convert the vector to a name=>item mapping
+    fn as_map(&self) -> HashMap<&str, &ItemConfig> {
+        self.0.iter()
+            .filter_map(|item| item.name().map(|name| (name, item)))
+            .collect()
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct FileConfig(ItemList);
 
 #[derive(Deserialize, Debug)]
 pub struct Config(HashMap<String, FileConfig>);
