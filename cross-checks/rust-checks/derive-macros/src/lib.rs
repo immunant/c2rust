@@ -49,13 +49,16 @@ impl<'a> ArgList<'a> {
         ArgList(m)
     }
 
-    fn get_ident_arg(&self, arg: &str, default: &str) -> syn::Ident {
+    fn get_ident_arg<D>(&self, arg: &str, default: D) -> syn::Ident
+            where syn::Ident: std::convert::From<D> {
         self.0.get(arg).map_or_else(|| syn::Ident::from(default),
                                     ArgValue::get_str_ident)
     }
 
-    fn get_token_arg(&self, arg: &str, default: quote::Tokens) -> quote::Tokens {
-        self.0.get(arg).map_or(default, ArgValue::get_str_tokens)
+    fn get_token_arg<D>(&self, arg: &str, default: D) -> quote::Tokens
+            where quote::Tokens: std::convert::From<D> {
+        self.0.get(arg).map_or_else(|| quote::Tokens::from(default),
+                                    ArgValue::get_str_tokens)
     }
 }
 
@@ -154,7 +157,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         quote! { #id::<#ahasher_override, #shasher_override>(&self, _depth) }
     }).unwrap_or_else(|| {
         // Hash this value using the default algorithm
-        let hasher = top_args.0.get("hasher").map_or(ahasher_override, ArgValue::get_str_ident);
+        let hasher = top_args.get_ident_arg("hasher", ahasher_override);
         quote! {
             let mut h = #hasher::default();
             match *self { #hash_fields }
