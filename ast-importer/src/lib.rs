@@ -1,4 +1,5 @@
 #![feature(rustc_private)]
+#![feature(i128_type)]
 extern crate cbor;
 extern crate syntax;
 extern crate idiomize;

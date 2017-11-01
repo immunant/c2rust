@@ -420,13 +420,39 @@ impl Translation {
             CExprKind::ImplicitCast(ty, expr, kind) | CExprKind::ExplicitCast(ty, expr, kind) => {
                 let val = self.convert_expr(true,expr);
 
-                if self.ast_context.resolve_type(ty).kind.is_pointer() {
-                    val.map(|x|
-                        mk().call_expr(mk().path_expr(vec!["std","mem","transmute"]),vec![x])
-                    )
-                } else {
-                    let ty = self.convert_type(ty);
-                    val.map(|x| mk().cast_expr(x, ty))
+                match kind {
+                    CastKind::BitCast | CastKind::IntegralToPointer | CastKind::PointerToIntegral =>
+                        val.map(|x| mk().call_expr(mk().path_expr(vec!["std","mem","transmute"]),vec![x])),
+
+                    CastKind::IntegralCast | CastKind::FloatingCast | CastKind::FloatingToIntegral | CastKind::IntegralToFloating =>  {
+                        let ty = self.convert_type(ty);
+                        val.map(|x| mk().cast_expr(x, ty))
+                    }
+
+                    CastKind::LValueToRValue | CastKind::NoOp | CastKind::ToVoid => val,
+
+                    CastKind::FunctionToPointerDecay => val,
+
+                    CastKind::ArrayToPointerDecay =>
+                        val.map(|x| mk().method_call_expr(x, "as_ptr_mut", vec![] as Vec<P<Expr>>)),
+
+                    CastKind::NullToPointer => {
+                        assert!(val.stmts.is_empty());
+                        WithStmts::new(mk().call_expr(mk().path_expr(vec!["ptr", "null_mut"]), vec![] as Vec<P<Expr>>))
+                    }
+
+                    CastKind::ToUnion => panic!("TODO cast to union not supported"),
+
+                    CastKind::IntegralToBoolean | CastKind::FloatingToBoolean |
+                    CastKind::BooleanToSignedIntegral | CastKind::IntegralComplexToBoolean =>
+                        panic!("TODO cast to boolean not supported"),
+
+                    CastKind::FloatingRealToComplex | CastKind::FloatingComplexToIntegralComplex |
+                    CastKind::FloatingComplexCast | CastKind::FloatingComplexToReal |
+                    CastKind::FloatingComplexToIntegralComplex | CastKind::IntegralComplexToReal |
+                    CastKind::IntegralRealToComplex | CastKind:: IntegralComplexCast |
+                    CastKind:: IntegralComplexToFloatingComplex =>
+                        panic!("TODO casts with complex numbers not supported"),
                 }
             }
 
@@ -558,8 +584,6 @@ impl Translation {
                     struct_val
                 }
             }
-
-            ref t => panic!("Expression not implemented {:?}", t),
         }
     }
 

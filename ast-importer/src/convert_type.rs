@@ -61,6 +61,11 @@ impl TypeConverter {
                 }
             }
 
+            CTypeKind::ConstantArray(ref element, count) => {
+                let ty = self.convert(ctxt, element.ctype);
+                mk().array_ty(ty, mk().lit_expr(mk().int_lit(count as u128, LitIntType::Unsuffixed)))
+            }
+
             ref t => panic!("Unsupported type {:?}", t),
         }
     }

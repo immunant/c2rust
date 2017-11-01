@@ -472,6 +472,22 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagConstantArrayType => {
+                    let element_id = expect_u64(&ty_node.extras[0]).expect("element id");
+
+                    let count = expect_u64(&ty_node.extras[1]).expect("count");
+
+
+                    let element_ty = CQualTypeId {
+                        qualifiers: qualifiers(ty_node),
+                        ctype: self.visit_type(&element_id),
+                    };
+
+                    let element_ty = CTypeKind::ConstantArray(element_ty, count as usize);
+                    self.add_type(new_id, not_located(element_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
                 t => panic!("Type conversion not implemented for {:?}", t),
             }
 
