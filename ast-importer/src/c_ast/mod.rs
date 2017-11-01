@@ -81,7 +81,8 @@ impl TypedAstContext {
             CExprKind::Literal(_, _) => true,
             CExprKind::DeclRef(_, _) => true,
 
-            CExprKind::ImplicitCast(_, e) => self.is_expr_pure(e),
+            CExprKind::ImplicitCast(_, e, _) => self.is_expr_pure(e),
+            CExprKind::ExplicitCast(_, e, _) => self.is_expr_pure(e),
             CExprKind::Member(_, e, _) => self.is_expr_pure(e),
 
             CExprKind::Unary(_, UnOp::PreIncrement, _) => false,
