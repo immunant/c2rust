@@ -96,6 +96,7 @@ impl TypedAstContext {
             CExprKind::Binary(_, _, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
 
             CExprKind::ArraySubscript(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+            CExprKind::Conditional(_, c, lhs, rhs) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
         }
     }
 }
@@ -246,6 +247,9 @@ pub enum CExprKind {
 
     // Array subscript access
     ArraySubscript(CTypeId, CExprId, CExprId),
+
+    // Ternary conditional operator
+    Conditional(CTypeId, CExprId, CExprId, CExprId),
 }
 
 impl CExprKind {
@@ -260,6 +264,7 @@ impl CExprKind {
             CExprKind::Call(ty, _, _) => ty,
             CExprKind::Member(ty, _, _) => ty,
             CExprKind::ArraySubscript(ty, _, _) => ty,
+            CExprKind::Conditional(ty, _, _, _) => ty,
         }
     }
 }

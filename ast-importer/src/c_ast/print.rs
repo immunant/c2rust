@@ -67,6 +67,13 @@ impl Printer {
                 self.print_expr(rhs, context);
                 print!("]");
             }
+            Some(&CExprKind::Conditional(_, cond, lhs, rhs)) => {
+                self.print_expr(cond, context);
+                print!(" ? ");
+                self.print_expr(lhs, context);
+                print!(" : ");
+                self.print_expr(rhs, context);
+            }
             None => panic!("Could not find expression with ID {:?}", expr_id),
            // _ => unimplemented!("Printer::print_expr"),
         }
