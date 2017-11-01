@@ -9,6 +9,7 @@ use std::collections::{HashMap};
 
 use quote::ToTokens;
 
+#[derive(Debug)]
 enum ArgValue<'a> {
     Nothing,
     Str(String),
@@ -41,7 +42,7 @@ impl<'a> ArgValue<'a> {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct ArgList<'a>(HashMap<&'a str, ArgValue<'a>>);
 
 impl<'a> ArgList<'a> {
