@@ -146,7 +146,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                 Some(quote! { cross_check_raw!(#tag, (#filter(#f)) as u64) })
             } else if let Some(ref sub_arg) = args.0.get("custom_hash") {
                 let id = sub_arg.get_str_ident();
-                Some(quote! { #id(&mut h, #f) })
+                Some(quote! { #id::<#ahasher_override, #shasher_override>(&mut h, #f, _depth) })
             } else {
                 None
             }
