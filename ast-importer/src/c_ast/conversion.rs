@@ -827,9 +827,27 @@ impl ConversionContext {
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_type(&ty_old);
 
-                    let subcript = CExprKind::ArraySubscript(ty, lhs, rhs);
+                    let subscript = CExprKind::ArraySubscript(ty, lhs, rhs);
 
-                    self.expr_possibly_as_stmt(expected_ty, new_id, node, subcript);
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, subscript);
+                }
+
+                ASTEntryTag::TagConditionalOperator if expected_ty & (EXPR | STMT) != 0 => {
+                    let cond_old = node.children[0].expect("Expected condition on if expression");
+                    let cond = self.visit_expr(&cond_old);
+
+                    let lhs_old = node.children[1].expect("Expected 'then' on if expression");
+                    let lhs = self.visit_expr(&lhs_old);
+
+                    let rhs_old = node.children[2].expect("Expected 'else' on if expression");
+                    let rhs = self.visit_expr(&rhs_old);
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_type(&ty_old);
+
+                    let conditional = CExprKind::Conditional(ty, cond, lhs, rhs);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, conditional);
                 }
 
                 // Declarations
