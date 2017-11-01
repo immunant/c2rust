@@ -88,6 +88,13 @@ impl CrossCheckConfig {
                                               .map(|s| cx.parse_tts(String::from(&*s.as_str())))
                                               .unwrap_or_else(|| vec![])
                         }
+
+                        // Ignore arguments for #[derive(CrossCheckHash)]
+                        "custom_hash" |
+                        "ahasher_override" |
+                        "shasher_override" |
+                        "hasher" => (),
+
                         name@_ => panic!("Unknown cross_check item: {}", name)
                     }
                 }
