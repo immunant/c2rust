@@ -80,7 +80,7 @@ fn main() {
 
     // Perform the translation
     //use ast_importer::translator::translate;
-    use ast_importer::typed_translator::translate;
+    use ast_importer::translator::translate;
 
     let mut conv = ConversionContext::new(&untyped_context);
     conv.convert(&untyped_context);
