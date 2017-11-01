@@ -45,9 +45,8 @@ impl CrossCheckConfig {
         }
     }
 
-    fn parse_config(&self, cx: &mut ExtCtxt, mi: &ast::MetaItem) -> Self {
+    fn parse_config(mut self, cx: &mut ExtCtxt, mi: &ast::MetaItem) -> Self {
         assert!(mi.name == "cross_check");
-        let mut res = self.clone();
         if let Some(ref items) = mi.meta_item_list() {
             for ref nested_item in items.iter() {
                 if let Some(ref item) = nested_item.meta_item() {
@@ -55,21 +54,21 @@ impl CrossCheckConfig {
                         "never" |
                         "disable" |
                         "no" => {
-                            res.enabled = false
+                            self.enabled = false
                         }
                         "always" |
                         "enable" |
                         "yes" => {
-                            res.enabled = true
+                            self.enabled = true
                         }
                         "name" => {
-                            res.name = item.value_str().map(|s| String::from(&*s.as_str()))
+                            self.name = item.value_str().map(|s| String::from(&*s.as_str()))
                         }
                         "id" => {
                             if let ast::MetaItemKind::NameValue(ref lit) = item.node {
                                 if let ast::LitKind::Int(id128, _) = lit.node {
                                     if let Ok(id32) = id128.try_into() {
-                                        res.id = Some(id32);
+                                        self.id = Some(id32);
                                     } else {
                                         panic!("Invalid u32 for cross_check id: {}", id128);
                                     }
@@ -79,14 +78,14 @@ impl CrossCheckConfig {
                             }
                         }
                         "ahasher" => {
-                            res.ahasher = item.value_str()
-                                              .map(|s| cx.parse_tts(String::from(&*s.as_str())))
-                                              .unwrap_or_default()
+                            self.ahasher = item.value_str()
+                                               .map(|s| cx.parse_tts(String::from(&*s.as_str())))
+                                               .unwrap_or_default()
                         }
                         "shasher" => {
-                            res.shasher = item.value_str()
-                                              .map(|s| cx.parse_tts(String::from(&*s.as_str())))
-                                              .unwrap_or_default()
+                            self.shasher = item.value_str()
+                                               .map(|s| cx.parse_tts(String::from(&*s.as_str())))
+                                               .unwrap_or_default()
                         }
 
                         // Ignore arguments for #[derive(CrossCheckHash)]
@@ -100,7 +99,7 @@ impl CrossCheckConfig {
                 }
             }
         }
-        res
+        self
     }
 
     // Allow clients to specify the id or name manually, like this:
@@ -113,7 +112,7 @@ impl CrossCheckConfig {
 
 struct CrossChecker<'a, 'cx: 'a> {
     cx: &'a mut ExtCtxt<'cx>,
-    config: CrossCheckConfig,
+    config_stack: Vec<CrossCheckConfig>,
 }
 
 fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
@@ -121,17 +120,14 @@ fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
 }
 
 impl<'a, 'cx> CrossChecker<'a, 'cx> {
-    fn parse_config(&mut self, item: &ast::Item) -> Option<CrossCheckConfig> {
-        let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
-        xcheck_attr.map(|attr| self.config.parse_config(
-                self.cx, &attr.parse_meta(self.cx.parse_sess).unwrap()))
+    fn config(&self) -> &CrossCheckConfig {
+        self.config_stack.last().unwrap()
     }
 
-    fn swap_config(&mut self, new_config: Option<CrossCheckConfig>) -> Option<CrossCheckConfig> {
-        new_config.map(|mut new_config| {
-            std::mem::swap(&mut self.config, &mut new_config);
-            new_config
-        })
+    fn parse_config(&mut self, item: &ast::Item) -> Option<CrossCheckConfig> {
+        let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
+        xcheck_attr.map(|attr| self.config().clone().parse_config(
+                self.cx, &attr.parse_meta(self.cx.parse_sess).unwrap()))
     }
 
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
@@ -139,7 +135,7 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
         match folded_item.node {
             ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) => {
                 let fn_ident = folded_item.ident;
-                let checked_block = if self.config.enabled {
+                let checked_block = if self.config().enabled {
                     // Insert cross-checks for function arguments,
                     // if enabled via the "xcheck-args" feature
                     let mut arg_xchecks: Vec<P<ast::Block>> = vec![];
@@ -160,7 +156,7 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
 
                     // Add the cross-check to the beginning of the function
                     // TODO: only add the checks to C abi functions???
-                    let check_id = self.config.get_hash().unwrap_or_else(
+                    let check_id = self.config().get_hash().unwrap_or_else(
                         || djb2_hash(&*fn_ident.name.as_str()));
                     quote_block!(self.cx, {
                         cross_check_raw!(FUNCTION_ENTRY_TAG, $check_id);
@@ -174,8 +170,8 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
                 // Add our typedefs to the beginning of each function;
                 // whatever the configuration says, we should always add these
                 let block_with_types = {
-                    let (ahasher, shasher) = (&self.config.ahasher,
-                                              &self.config.shasher);
+                    let (ahasher, shasher) = (&self.config().ahasher,
+                                              &self.config().shasher);
                     quote_block!(self.cx, {
                         #[allow(dead_code)]
                         mod cross_check_types {
@@ -245,10 +241,14 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
 impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let new_config = self.parse_config(&item);
-        let old_config = self.swap_config(new_config);
-        let new_item = self.internal_fold_item_simple(item);
-        self.swap_config(old_config);
-        new_item
+        if let Some(new_config) = new_config {
+            self.config_stack.push(new_config);
+            let new_item = self.internal_fold_item_simple(item);
+            self.config_stack.pop();
+            new_item
+        } else {
+            self.internal_fold_item_simple(item)
+        }
     }
 
     fn fold_stmt(&mut self, s: ast::Stmt) -> SmallVector<ast::Stmt> {
@@ -331,7 +331,7 @@ impl MultiItemModifier for CrossCheckExpander {
                 // ignore this expansion and let the higher level one do everything
                 let ni = match i.node {
                     ast::ItemKind::Mod(_) =>
-                        CrossChecker{ cx: cx, config: config }
+                        CrossChecker{ cx: cx, config_stack: vec![config] }
                         .fold_item(i)
                         .expect_one("too many items returned"),
                     _ => i
