@@ -53,7 +53,7 @@ impl Default for XCheckType {
 pub struct FunctionConfig {
     // Name of the function
     // FIXME: where do we get this???
-    name: Option<String>,
+    name: String,
 
     // Overrides for the attribute config items
     no_xchecks: bool,
@@ -69,10 +69,22 @@ pub struct FunctionConfig {
     // How to cross-check the return value
     #[serde(rename = "return")]
     ret: XCheckType,
+
+    // Nested items
+    nested: Option<Vec<ItemConfig>>,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct FileConfig(HashMap<String, FunctionConfig>);
+#[serde(tag = "item")]
+pub enum ItemConfig {
+    Function(FunctionConfig),
+    Struct,  // TODO
+    Value,   // TODO
+    Closure, // TODO
+}
+
+#[derive(Deserialize, Debug)]
+pub struct FileConfig(Vec<ItemConfig>);
 
 #[derive(Deserialize, Debug)]
 pub struct Config(HashMap<String, FileConfig>);
