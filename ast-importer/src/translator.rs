@@ -417,10 +417,17 @@ impl Translation {
                 WithStmts::new(mk().lit_expr(mk().float_unsuffixed_lit(str)))
             }
 
-            CExprKind::ImplicitCast(_, ref expr) => {
-                // TODO actually cast
-                // Numeric casts with 'as', pointer casts with transmute
-                self.convert_expr(used, *expr)
+            CExprKind::ImplicitCast(ty, expr, kind) | CExprKind::ExplicitCast(ty, expr, kind) => {
+                let val = self.convert_expr(true,expr);
+
+                if self.ast_context.resolve_type(ty).kind.is_pointer() {
+                    val.map(|x|
+                        mk().call_expr(mk().path_expr(vec!["std","mem","transmute"]),vec![x])
+                    )
+                } else {
+                    let ty = self.convert_type(ty);
+                    val.map(|x| mk().cast_expr(x, ty))
+                }
             }
 
             CExprKind::Unary(ref type_id, ref op, ref expr) => {
