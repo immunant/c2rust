@@ -66,7 +66,7 @@ pub struct FunctionConfig {
 }
 
 #[derive(Deserialize, Debug)]
-#[serde(tag = "item")]
+#[serde(tag = "item", rename_all = "lowercase")]
 pub enum ItemConfig {
     Function(FunctionConfig),
     Struct,  // TODO
