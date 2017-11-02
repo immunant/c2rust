@@ -335,13 +335,13 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
                 // or external config, so create a new CrossCheckConfig
                 let nc = self.config().clone();
                 // TODO: order???
-                let nc = if let Some(attr) = xcheck_attr {
+                let nc = xcheck_attr.iter().fold(nc, |nc, attr| {
                     let mi = attr.parse_meta(self.cx.parse_sess).unwrap();
                     nc.parse_attr_config(self.cx, &mi)
-                } else { nc };
-                let nc = if let Some(xcfg) = item_xcfg_config {
+                });
+                let nc = item_xcfg_config.iter().fold(nc, |nc, xcfg| {
                     nc.parse_xcfg_config(self.cx, xcfg)
-                } else { nc };
+                });
                 Rc::new(nc)
             } else {
                 // If the new config is the same as the previous one,
