@@ -101,7 +101,7 @@ pub struct NamedItemList<'a> {
 }
 
 impl<'a> NamedItemList<'a> {
-    fn new(items: &'a ItemList) -> NamedItemList<'a> {
+    pub fn new(items: &'a ItemList) -> NamedItemList<'a> {
         let map = items.0.iter()
             .filter_map(|item| item.name().map(|name| (name, item)))
             .collect();
@@ -119,15 +119,15 @@ pub struct FileConfig(ItemList);
 pub struct Config(HashMap<String, FileConfig>);
 
 impl Config {
-    fn get_file_config(&self, file: &str) -> Option<&FileConfig> {
+    pub fn get_file_config(&self, file: &str) -> Option<&FileConfig> {
         self.0.get(file)
     }
 
-    fn get_file_items(&self, file: &str) -> Option<&ItemList> {
+    pub fn get_file_items(&self, file: &str) -> Option<&ItemList> {
         self.get_file_config(file).map(|fc| &fc.0)
     }
 
-    fn merge(mut self, other: Self) -> Self {
+    pub fn merge(mut self, other: Self) -> Self {
         for (file_name, cfg) in other.0.into_iter() {
             // FIXME: check for duplicates???
             (self.0.entry(file_name.clone())
