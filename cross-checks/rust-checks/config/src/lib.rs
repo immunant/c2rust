@@ -105,7 +105,7 @@ pub struct ItemList(Vec<ItemConfig>);
 
 pub struct NamedItemList<'a> {
     items: &'a ItemList,
-    name_map: HashMap<&'a str, &'a ItemConfig>,
+    pub name_map: HashMap<&'a str, &'a ItemConfig>,
 }
 
 impl<'a> NamedItemList<'a> {
