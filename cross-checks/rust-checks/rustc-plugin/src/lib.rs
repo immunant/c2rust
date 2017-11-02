@@ -33,18 +33,34 @@ fn djb2_hash(s: &str) -> u32 {
 #[derive(Clone)]
 struct CrossCheckConfig {
     enabled: bool,
-    name: Option<String>,
-    id: Option<u32>,
+    entry_xcheck: xcfg::XCheckType,
     ahasher: Vec<TokenTree>,
     shasher: Vec<TokenTree>,
+}
+
+trait XCheckHash {
+    fn get_hash(&self, ident: &ast::Ident) -> Option<u64>;
+}
+
+impl XCheckHash for xcfg::XCheckType {
+    // Allow clients to specify the id or name manually, like this:
+    // #[cross_check(name = "foo")]
+    // #[cross_check(id = 0x12345678)]
+    fn get_hash(&self, ident: &ast::Ident) -> Option<u64> {
+        match *self {
+            xcfg::XCheckType::Default => Some(djb2_hash(&*ident.name.as_str()) as u64),
+            xcfg::XCheckType::Skip => None,
+            xcfg::XCheckType::Fixed(id) => Some(id),
+            xcfg::XCheckType::Djb2(ref s) => Some(djb2_hash(s) as u64),
+        }
+    }
 }
 
 impl CrossCheckConfig {
     fn new(cx: &mut ExtCtxt) -> CrossCheckConfig {
         CrossCheckConfig {
             enabled: true,
-            name: None,
-            id: None,
+            entry_xcheck: xcfg::XCheckType::Default,
             ahasher: quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher).to_tokens(cx),
             shasher: quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher).to_tokens(cx),
         }
@@ -67,13 +83,16 @@ impl CrossCheckConfig {
                             self.enabled = true
                         }
                         "name" => {
-                            self.name = item.value_str().map(|s| String::from(&*s.as_str()))
+                            if let Some(s) = item.value_str() {
+                                let name = String::from(&*s.as_str());
+                                self.entry_xcheck = xcfg::XCheckType::Djb2(name)
+                            }
                         }
                         "id" => {
                             if let ast::MetaItemKind::NameValue(ref lit) = item.node {
                                 if let ast::LitKind::Int(id128, _) = lit.node {
-                                    if let Ok(id32) = id128.try_into() {
-                                        self.id = Some(id32);
+                                    if let Ok(id64) = id128.try_into() {
+                                        self.entry_xcheck = xcfg::XCheckType::Fixed(id64);
                                     } else {
                                         panic!("Invalid u32 for cross_check id: {}", id128);
                                     }
@@ -114,21 +133,7 @@ impl CrossCheckConfig {
                     self.enabled = !no_xchecks;
                 }
                 if let Some(ref entry) = func.entry {
-                    match *entry {
-                        xcfg::XCheckType::Default => {
-                            self.name = None;
-                            self.id = None;
-                        },
-                        xcfg::XCheckType::Skip => unimplemented!(), // TODO
-                        xcfg::XCheckType::Fixed(id) => {
-                            self.id = Some(id as u32);
-                            self.name = None;
-                        },
-                        xcfg::XCheckType::Djb2(ref name) => {
-                            self.id = None;
-                            self.name = Some(name.clone());
-                        },
-                    }
+                    self.entry_xcheck = entry.clone();
                 }
                 if let Some(ref ahasher) = func.ahasher {
                     // TODO: add a way for the external config to reset to default
@@ -143,13 +148,6 @@ impl CrossCheckConfig {
             _ => ()
         }
         self
-    }
-
-    // Allow clients to specify the id or name manually, like this:
-    // #[cross_check(name = "foo")]
-    // #[cross_check(id = 0x12345678)]
-    fn get_hash(&self) -> Option<u32> {
-        self.id.or_else(|| self.name.as_ref().map(|ref name| djb2_hash(name)))
     }
 }
 
@@ -240,10 +238,12 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
 
                     // Add the cross-check to the beginning of the function
                     // TODO: only add the checks to C abi functions???
-                    let check_id = self.config().get_hash().unwrap_or_else(
-                        || djb2_hash(&*fn_ident.name.as_str()));
+                    let entry_xcheck = self.config().entry_xcheck
+                        .get_hash(&fn_ident)
+                        .map(|hash| quote_stmt!(self.cx, cross_check_raw!(FUNCTION_ENTRY_TAG, $hash);))
+                        .unwrap_or_default();
                     quote_block!(self.cx, {
-                        cross_check_raw!(FUNCTION_ENTRY_TAG, $check_id);
+                        $entry_xcheck
                         $arg_xchecks
                         $block
                     })
