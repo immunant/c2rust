@@ -335,10 +335,11 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
 impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let new_scope = {
+            let last_scope = self.last_scope();
             let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
             let item_xcfg_config = {
                 let item_name = item.ident.name.as_str();
-                self.last_scope().get_item_config(&*item_name)
+                last_scope.get_item_config(&*item_name)
             };
             let new_config = if xcheck_attr.is_some() || item_xcfg_config.is_some() {
                 // We have either a #[cross_check] attribute
@@ -356,7 +357,7 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
             } else {
                 // If the new config is the same as the previous one,
                 // just take a reference to it via Rc
-                self.last_scope().config.clone()
+                last_scope.config.clone()
             };
 
             let span = match item.node {
@@ -364,13 +365,13 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
                 _ => item.span
             };
             let mod_file_name = self.cx.codemap().span_to_filename(span);
-            if !self.last_scope().same_file(&mod_file_name) {
+            if !last_scope.same_file(&mod_file_name) {
                 // We should only ever get a file name mismatch
                 // at the top of a module
                 assert_matches!(item.node, ast::ItemKind::Mod(_));
                 ScopeConfig::new(self.external_config, &mod_file_name, new_config)
             } else {
-                self.last_scope().from_item(item_xcfg_config, new_config)
+                last_scope.from_item(item_xcfg_config, new_config)
             }
         };
         self.scope_stack.push(new_scope);
