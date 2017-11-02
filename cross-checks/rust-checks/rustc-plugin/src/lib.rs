@@ -70,7 +70,7 @@ impl XCheckHash for xcfg::XCheckType {
 }
 
 impl CrossCheckConfig {
-    fn new(cx: &mut ExtCtxt) -> CrossCheckConfig {
+    fn new(cx: &ExtCtxt) -> CrossCheckConfig {
         CrossCheckConfig {
             enabled: true,
             entry_xcheck: xcfg::XCheckType::Default,
@@ -207,7 +207,7 @@ impl<'xcfg> ScopeConfig<'xcfg> {
 }
 
 struct CrossChecker<'a, 'cx: 'a, 'xcfg> {
-    cx: &'a mut ExtCtxt<'cx>,
+    cx: &'a ExtCtxt<'cx>,
     external_config: &'xcfg xcfg::Config,
     scope_stack: Vec<ScopeConfig<'xcfg>>,
 }
