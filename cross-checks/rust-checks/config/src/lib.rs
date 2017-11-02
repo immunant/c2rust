@@ -92,7 +92,7 @@ impl ItemConfig {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 pub struct ItemList(Vec<ItemConfig>);
 
 pub struct NamedItemList<'a> {
@@ -112,10 +112,10 @@ impl<'a> NamedItemList<'a> {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 pub struct FileConfig(ItemList);
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 pub struct Config(HashMap<String, FileConfig>);
 
 impl Config {
@@ -125,6 +125,16 @@ impl Config {
 
     fn get_file_items(&self, file: &str) -> Option<&ItemList> {
         self.get_file_config(file).map(|fc| &fc.0)
+    }
+
+    fn merge(mut self, other: Self) -> Self {
+        for (file_name, cfg) in other.0.into_iter() {
+            // FIXME: check for duplicates???
+            (self.0.entry(file_name.clone())
+                   .or_insert(Default::default())
+                   .0).0.extend((cfg.0).0);
+        }
+        self
     }
 }
 
