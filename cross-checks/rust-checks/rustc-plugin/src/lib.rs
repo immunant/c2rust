@@ -222,6 +222,47 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
         self.last_scope().config.borrow()
     }
 
+    fn build_new_scope(&self, item: &ast::Item) -> ScopeConfig<'xcfg> {
+        let last_scope = self.last_scope();
+        let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
+        let item_xcfg_config = {
+            let item_name = item.ident.name.as_str();
+            last_scope.get_item_config(&*item_name)
+        };
+        let new_config = if xcheck_attr.is_some() || item_xcfg_config.is_some() {
+            // We have either a #[cross_check] attribute
+            // or external config, so create a new CrossCheckConfig
+            let nc = self.config().clone();
+            // TODO: order???
+            let nc = xcheck_attr.iter().fold(nc, |nc, attr| {
+                let mi = attr.parse_meta(self.cx.parse_sess).unwrap();
+                nc.parse_attr_config(self.cx, &mi)
+            });
+            let nc = item_xcfg_config.iter().fold(nc, |nc, xcfg| {
+                nc.parse_xcfg_config(self.cx, xcfg)
+            });
+            Rc::new(nc)
+        } else {
+            // If the new config is the same as the previous one,
+            // just take a reference to it via Rc
+            last_scope.config.clone()
+        };
+
+        let span = match item.node {
+            ast::ItemKind::Mod(ref m) => m.inner,
+            _ => item.span
+        };
+        let mod_file_name = self.cx.codemap().span_to_filename(span);
+        if !last_scope.same_file(&mod_file_name) {
+            // We should only ever get a file name mismatch
+            // at the top of a module
+            assert_matches!(item.node, ast::ItemKind::Mod(_));
+            ScopeConfig::new(self.external_config, &mod_file_name, new_config)
+        } else {
+            last_scope.from_item(item_xcfg_config, new_config)
+        }
+    }
+
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let folded_item = fold::noop_fold_item_simple(item, self);
         match folded_item.node {
@@ -334,46 +375,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
 
 impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
-        let new_scope = {
-            let last_scope = self.last_scope();
-            let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
-            let item_xcfg_config = {
-                let item_name = item.ident.name.as_str();
-                last_scope.get_item_config(&*item_name)
-            };
-            let new_config = if xcheck_attr.is_some() || item_xcfg_config.is_some() {
-                // We have either a #[cross_check] attribute
-                // or external config, so create a new CrossCheckConfig
-                let nc = self.config().clone();
-                // TODO: order???
-                let nc = xcheck_attr.iter().fold(nc, |nc, attr| {
-                    let mi = attr.parse_meta(self.cx.parse_sess).unwrap();
-                    nc.parse_attr_config(self.cx, &mi)
-                });
-                let nc = item_xcfg_config.iter().fold(nc, |nc, xcfg| {
-                    nc.parse_xcfg_config(self.cx, xcfg)
-                });
-                Rc::new(nc)
-            } else {
-                // If the new config is the same as the previous one,
-                // just take a reference to it via Rc
-                last_scope.config.clone()
-            };
-
-            let span = match item.node {
-                ast::ItemKind::Mod(ref m) => m.inner,
-                _ => item.span
-            };
-            let mod_file_name = self.cx.codemap().span_to_filename(span);
-            if !last_scope.same_file(&mod_file_name) {
-                // We should only ever get a file name mismatch
-                // at the top of a module
-                assert_matches!(item.node, ast::ItemKind::Mod(_));
-                ScopeConfig::new(self.external_config, &mod_file_name, new_config)
-            } else {
-                last_scope.from_item(item_xcfg_config, new_config)
-            }
-        };
+        let new_scope = self.build_new_scope(&item);
         self.scope_stack.push(new_scope);
         let new_item = self.internal_fold_item_simple(item);
         self.scope_stack.pop();
