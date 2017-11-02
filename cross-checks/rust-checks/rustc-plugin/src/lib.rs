@@ -292,7 +292,7 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
         };
         let new_scope = {
             let new_config = find_cross_check_attr(item.attrs.as_slice()).map(|attr| {
-                CrossCheckConfig::clone(self.config()).parse_attr_config(
+                self.config().clone().parse_attr_config(
                     self.cx, &attr.parse_meta(self.cx.parse_sess).unwrap())
             }).map(|c| Rc::new(c))
               .unwrap_or_else(|| self.last_scope().config.clone());
