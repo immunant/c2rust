@@ -39,14 +39,14 @@ struct CrossCheckConfig {
 }
 
 trait XCheckHash {
-    fn get_hash(&self, ident: &ast::Ident) -> Option<u64>;
+    fn get_ident_hash(&self, ident: &ast::Ident) -> Option<u64>;
 }
 
 impl XCheckHash for xcfg::XCheckType {
     // Allow clients to specify the id or name manually, like this:
     // #[cross_check(name = "foo")]
     // #[cross_check(id = 0x12345678)]
-    fn get_hash(&self, ident: &ast::Ident) -> Option<u64> {
+    fn get_ident_hash(&self, ident: &ast::Ident) -> Option<u64> {
         match *self {
             xcfg::XCheckType::Default => Some(djb2_hash(&*ident.name.as_str()) as u64),
             xcfg::XCheckType::Skip => None,
@@ -239,7 +239,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                     // Add the cross-check to the beginning of the function
                     // TODO: only add the checks to C abi functions???
                     let entry_xcheck = self.config().entry_xcheck
-                        .get_hash(&fn_ident)
+                        .get_ident_hash(&fn_ident)
                         .map(|hash| quote_stmt!(self.cx, cross_check_raw!(FUNCTION_ENTRY_TAG, $hash);))
                         .unwrap_or_default();
                     quote_block!(self.cx, {
