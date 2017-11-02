@@ -344,6 +344,8 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
                 } else { nc };
                 Rc::new(nc)
             } else {
+                // If the new config is the same as the previous one,
+                // just take a reference to it via Rc
                 self.last_scope().config.clone()
             };
 
