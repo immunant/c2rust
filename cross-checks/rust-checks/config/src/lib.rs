@@ -158,12 +158,12 @@ mod tests {
     fn test_types() {
         assert_eq!(parse_test_yaml::<XCheckBasicType>("default"),
                    XCheckBasicType::Default);
-        assert_eq!(parse_test_yaml::<XCheckComplexType>("type: skip").ty,
-                   XCheckBasicType::Skip);
-        assert_eq!(parse_test_yaml::<XCheckComplexType>("{ \"type\": \"default\" }").ty,
-                   XCheckBasicType::Default);
-
-        // TODO: test XCheckComplexType
+        assert_eq!(parse_test_yaml::<XCheckComplexType>("skip"),
+                   XCheckComplexType::Skip);
+        assert_eq!(parse_test_yaml::<XCheckComplexType>("{ \"fixed\": 1234 }"),
+                   XCheckComplexType::Fixed(1234));
+        assert_eq!(parse_test_yaml::<XCheckComplexType>("{ \"djb2\": \"foo\" }"),
+                   XCheckComplexType::Djb2(String::from("foo")));
     }
 
     #[test]
