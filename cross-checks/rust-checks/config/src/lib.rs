@@ -5,7 +5,6 @@ extern crate serde_derive;
 extern crate serde;
 extern crate serde_yaml;
 
-use std::cell::{RefCell, Ref};
 use std::collections::HashMap;
 
 #[derive(Deserialize, Debug, PartialEq)]
@@ -97,26 +96,19 @@ impl ItemConfig {
 pub struct ItemList(Vec<ItemConfig>);
 
 pub struct NamedItemList<'a> {
-    items: ItemList,
-    name_map: RefCell<Option<HashMap<&'a str, &'a ItemConfig>>>,
+    items: &'a ItemList,
+    name_map: HashMap<&'a str, &'a ItemConfig>,
 }
 
 impl<'a> NamedItemList<'a> {
-    fn from(items: ItemList) -> NamedItemList<'a> {
+    fn new(items: &'a ItemList) -> NamedItemList<'a> {
+        let map = items.0.iter()
+            .filter_map(|item| item.name().map(|name| (name, item)))
+            .collect();
         NamedItemList {
             items: items,
-            name_map: RefCell::new(None),
+            name_map: map,
         }
-    }
-
-    fn get_map(&'a self) -> Ref<HashMap<&'a str, &'a ItemConfig>> {
-        if self.name_map.borrow().is_none() {
-            let map = self.items.0.iter()
-                .filter_map(|item| item.name().map(|name| (name, item)))
-                .collect();
-            *self.name_map.borrow_mut() = Some(map);
-        }
-        Ref::map(self.name_map.borrow(), |opt| opt.as_ref().unwrap())
     }
 }
 
