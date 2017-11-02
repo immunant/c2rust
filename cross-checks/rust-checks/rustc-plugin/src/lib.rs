@@ -119,15 +119,18 @@ impl CrossCheckConfig {
 struct ScopeConfig<'xcfg> {
     file_name: Rc<String>, // FIXME: this should be a &str
     items: Option<Rc<xcfg::NamedItemList<'xcfg>>>,
+    config: Rc<CrossCheckConfig>,
 }
 
 impl<'xcfg> ScopeConfig<'xcfg> {
-    fn new(cfg: &'xcfg xcfg::Config, file_name: &str) -> ScopeConfig<'xcfg> {
+    fn new(cfg: &'xcfg xcfg::Config, file_name: &str,
+           ccc: Rc<CrossCheckConfig>) -> ScopeConfig<'xcfg> {
         ScopeConfig {
             file_name: Rc::new(String::from(file_name)),
             items: cfg.get_file_items(file_name)
                       .map(xcfg::NamedItemList::new)
                       .map(Rc::new),
+            config: ccc,
         }
     }
 
@@ -138,12 +141,14 @@ impl<'xcfg> ScopeConfig<'xcfg> {
             .cloned()
     }
 
-    fn from_item(&self, item_config: Option<&'xcfg xcfg::ItemConfig>) -> Self {
+    fn from_item(&self, item_config: Option<&'xcfg xcfg::ItemConfig>,
+                 ccc: Rc<CrossCheckConfig>) -> Self {
         ScopeConfig {
             file_name: self.file_name.clone(),
             items: item_config.and_then(xcfg::ItemConfig::nested_items)
                               .map(xcfg::NamedItemList::new)
                               .map(Rc::new),
+            config: ccc,
         }
     }
 
@@ -155,7 +160,6 @@ impl<'xcfg> ScopeConfig<'xcfg> {
 struct CrossChecker<'a, 'cx: 'a, 'xcfg> {
     cx: &'a mut ExtCtxt<'cx>,
     external_config: &'xcfg xcfg::Config,
-    config_stack: Vec<Rc<CrossCheckConfig>>,
     scope_stack: Vec<ScopeConfig<'xcfg>>,
 }
 
@@ -164,8 +168,12 @@ fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
 }
 
 impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
+    fn last_scope(&self) -> &ScopeConfig<'xcfg> {
+        self.scope_stack.last().unwrap()
+    }
+
     fn config(&self) -> &CrossCheckConfig {
-        self.config_stack.last().unwrap().borrow()
+        self.last_scope().config.borrow()
     }
 
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
@@ -279,36 +287,32 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
 impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let item_xcfg_config = {
-            let last_scope = self.scope_stack.last().unwrap();
             let item_name = item.ident.name.as_str();
-            last_scope.get_item_config(&*item_name)
+            self.last_scope().get_item_config(&*item_name)
         };
         let new_scope = {
+            let new_config = find_cross_check_attr(item.attrs.as_slice()).map(|attr| {
+                CrossCheckConfig::clone(self.config()).parse_attr_config(
+                    self.cx, &attr.parse_meta(self.cx.parse_sess).unwrap())
+            }).map(|c| Rc::new(c))
+              .unwrap_or_else(|| self.last_scope().config.clone());
+
             let span = match item.node {
                 ast::ItemKind::Mod(ref m) => m.inner,
                 _ => item.span
             };
             let mod_file_name = self.cx.codemap().span_to_filename(span);
-            let last_scope = self.scope_stack.last().unwrap();
-            if !last_scope.same_file(&mod_file_name) {
+            if !self.last_scope().same_file(&mod_file_name) {
                 // We should only ever get a file name mismatch
                 // at the top of a module
                 assert_matches!(item.node, ast::ItemKind::Mod(_));
-                ScopeConfig::new(self.external_config, &mod_file_name)
+                ScopeConfig::new(self.external_config, &mod_file_name, new_config)
             } else {
-                last_scope.from_item(item_xcfg_config)
+                self.last_scope().from_item(item_xcfg_config, new_config)
             }
         };
         self.scope_stack.push(new_scope);
-
-        let new_config = find_cross_check_attr(item.attrs.as_slice()).map(|attr| {
-            self.config().clone().parse_attr_config(
-                self.cx, &attr.parse_meta(self.cx.parse_sess).unwrap())
-        }).map(|c| Rc::new(c))
-          .unwrap_or_else(|| self.config_stack.last().cloned().unwrap());
-        self.config_stack.push(new_config);
         let new_item = self.internal_fold_item_simple(item);
-        self.config_stack.pop();
         self.scope_stack.pop();
         new_item
     }
@@ -392,7 +396,9 @@ impl MultiItemModifier for CrossCheckExpander {
               item: Annotatable) -> Vec<Annotatable> {
         let config = CrossCheckConfig::new(cx).parse_attr_config(cx, mi);
         let top_file_name = cx.codemap().span_to_filename(sp);
-        let top_scope = ScopeConfig::new(&self.external_config, &top_file_name);
+        let top_scope = ScopeConfig::new(&self.external_config,
+                                         &top_file_name,
+                                         Rc::new(config));
         match item {
             Annotatable::Item(i) => {
                 // If we're seeing #![cross_check] at the top of the crate or a module,
@@ -403,7 +409,6 @@ impl MultiItemModifier for CrossCheckExpander {
                         CrossChecker {
                             cx: cx,
                             external_config: &self.external_config,
-                            config_stack: vec![Rc::new(config)],
                             scope_stack: vec![top_scope]
                         }.fold_item(i)
                          .expect_one("too many items returned"),
