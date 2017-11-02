@@ -138,14 +138,12 @@ impl<'a> ScopeConfig<'a> {
             .cloned()
     }
 
-    fn from_item(&self, item: &str) -> Self {
-        let new_items = self.get_item_config(item)
-                            .and_then(xcfg::ItemConfig::nested_items)
-                            .map(xcfg::NamedItemList::new)
-                            .map(Rc::new);
+    fn from_item(&self, item_config: Option<&'a xcfg::ItemConfig>) -> Self {
         ScopeConfig {
             file_name: self.file_name.clone(),
-            items: new_items,
+            items: item_config.and_then(xcfg::ItemConfig::nested_items)
+                              .map(xcfg::NamedItemList::new)
+                              .map(Rc::new),
         }
     }
 
@@ -286,6 +284,11 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
 
 impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
+        let item_xcfg_config = {
+            let last_scope = self.scope_stack.last().unwrap();
+            let item_name = item.ident.name.as_str();
+            last_scope.get_item_config(&*item_name)
+        };
         let new_scope = {
             let span = match item.node {
                 ast::ItemKind::Mod(ref m) => m.inner,
@@ -299,7 +302,7 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
                 assert_matches!(item.node, ast::ItemKind::Mod(_));
                 ScopeConfig::new(self.external_config, &mod_file_name)
             } else {
-                last_scope.from_item(&*item.ident.name.as_str())
+                last_scope.from_item(item_xcfg_config)
             }
         };
         self.scope_stack.push(new_scope);
