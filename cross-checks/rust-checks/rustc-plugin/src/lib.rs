@@ -9,8 +9,10 @@ use rustc_plugin::Registry;
 use syntax::ast;
 use syntax::fold;
 
+use std::borrow::Borrow;
 use std::convert::TryInto;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier};
 use syntax::ext::quote::rt::{ToTokens, ExtParseUtils};
@@ -110,9 +112,38 @@ impl CrossCheckConfig {
     }
 }
 
+#[derive(Clone)]
+struct ScopeConfig<'a> {
+    file_name: Rc<String>, // FIXME: this should be a &str
+    items: Option<Rc<xcfg::NamedItemList<'a>>>,
+}
+
+impl<'a> ScopeConfig<'a> {
+    fn new(cfg: &'a xcfg::Config, file_name: &str) -> ScopeConfig<'a> {
+        ScopeConfig {
+            file_name: Rc::new(String::from(file_name)),
+            items: cfg.get_file_items(file_name)
+                      .map(|il| Rc::new(xcfg::NamedItemList::new(il))),
+        }
+    }
+
+    fn from_item(&self, item: &str) -> Self {
+        ScopeConfig {
+            file_name: self.file_name.clone(),
+            items: self.items.clone(),
+        }
+    }
+
+    fn same_file(&self, file_name: &str) -> bool {
+        self.file_name.as_ref() == file_name
+    }
+}
+
 struct CrossChecker<'a, 'cx: 'a> {
     cx: &'a mut ExtCtxt<'cx>,
-    config_stack: Vec<CrossCheckConfig>,
+    external_config: &'a xcfg::Config,
+    config_stack: Vec<Rc<CrossCheckConfig>>,
+    scope_stack: Vec<ScopeConfig<'a>>,
 }
 
 fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
@@ -121,7 +152,7 @@ fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
 
 impl<'a, 'cx> CrossChecker<'a, 'cx> {
     fn config(&self) -> &CrossCheckConfig {
-        self.config_stack.last().unwrap()
+        self.config_stack.last().unwrap().borrow()
     }
 
     fn parse_config(&mut self, item: &ast::Item) -> Option<CrossCheckConfig> {
@@ -240,15 +271,27 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
 
 impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
-        let new_config = self.parse_config(&item);
-        if let Some(new_config) = new_config {
-            self.config_stack.push(new_config);
-            let new_item = self.internal_fold_item_simple(item);
-            self.config_stack.pop();
-            new_item
-        } else {
-            self.internal_fold_item_simple(item)
-        }
+        let new_scope = {
+            let mod_file_name = self.cx.codemap().span_to_filename(item.span);
+            let last_scope = self.scope_stack.last().unwrap();
+            if !last_scope.same_file(&mod_file_name) {
+                // TODO: this should only ever happen for ast::ItemKind::Mod,
+                // so we should assert on that
+                ScopeConfig::new(self.external_config, &mod_file_name)
+            } else {
+                last_scope.from_item(&*item.ident.name.as_str())
+            }
+        };
+        self.scope_stack.push(new_scope);
+
+        let new_config = self.parse_config(&item)
+            .map(|c| Rc::new(c))
+            .unwrap_or_else(|| self.config_stack.last().cloned().unwrap());
+        self.config_stack.push(new_config);
+        let new_item = self.internal_fold_item_simple(item);
+        self.config_stack.pop();
+        self.scope_stack.pop();
+        new_item
     }
 
     fn fold_stmt(&mut self, s: ast::Stmt) -> SmallVector<ast::Stmt> {
@@ -292,18 +335,18 @@ struct CrossCheckExpander {
     // Arguments passed to plugin
     // TODO: pre-parse them???
     args: Vec<ast::NestedMetaItem>,
-    config_files: Vec<xcfg::Config>,
+    external_config: xcfg::Config,
 }
 
 impl CrossCheckExpander {
     fn new(args: &[ast::NestedMetaItem]) -> CrossCheckExpander {
         CrossCheckExpander {
             args: args.to_vec(),
-            config_files: CrossCheckExpander::parse_config_files(args),
+            external_config: CrossCheckExpander::parse_config_files(args),
         }
     }
 
-    fn parse_config_files(args: &[ast::NestedMetaItem]) -> Vec<xcfg::Config> {
+    fn parse_config_files(args: &[ast::NestedMetaItem]) -> xcfg::Config {
         // Parse arguments of the form
         // #[plugin(cross_check_plugin(config_file = "..."))]
         let fl = RealFileLoader;
@@ -318,17 +361,19 @@ impl CrossCheckExpander {
             // TODO: use a Reader to read&parse each configuration file
             // without storing its contents in an intermediate String buffer???
             .map(|fd| xcfg::parse_string(&fd).expect("could not parse config file"))
-            .collect()
+            .fold(Default::default(), |acc, fc| acc.merge(fc))
     }
 }
 
 impl MultiItemModifier for CrossCheckExpander {
     fn expand(&self,
               cx: &mut ExtCtxt,
-              _sp: Span,
+              sp: Span,
               mi: &ast::MetaItem,
               item: Annotatable) -> Vec<Annotatable> {
         let config = CrossCheckConfig::new(cx).parse_attr_config(cx, mi);
+        let top_file_name = cx.codemap().span_to_filename(sp);
+        let top_scope = ScopeConfig::new(&self.external_config, &top_file_name);
         match item {
             Annotatable::Item(i) => {
                 // If we're seeing #![cross_check] at the top of the crate or a module,
@@ -336,9 +381,13 @@ impl MultiItemModifier for CrossCheckExpander {
                 // ignore this expansion and let the higher level one do everything
                 let ni = match i.node {
                     ast::ItemKind::Mod(_) =>
-                        CrossChecker{ cx: cx, config_stack: vec![config] }
-                        .fold_item(i)
-                        .expect_one("too many items returned"),
+                        CrossChecker {
+                            cx: cx,
+                            external_config: &self.external_config,
+                            config_stack: vec![Rc::new(config)],
+                            scope_stack: vec![top_scope]
+                        }.fold_item(i)
+                         .expect_one("too many items returned"),
                     _ => i
                 };
                 Annotatable::Item(ni).into()
