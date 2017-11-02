@@ -11,4 +11,5 @@ plugin = true
 xcheck-args = []
 
 [dependencies]
+matches = "0.1.6"
 cross-check-config = { path = "../config" }

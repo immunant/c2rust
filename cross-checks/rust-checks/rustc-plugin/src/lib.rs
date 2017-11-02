@@ -3,6 +3,9 @@
 extern crate rustc_plugin;
 extern crate syntax;
 
+#[macro_use]
+extern crate matches;
+
 extern crate cross_check_config as xcfg;
 
 use rustc_plugin::Registry;
@@ -275,8 +278,9 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
             let mod_file_name = self.cx.codemap().span_to_filename(item.span);
             let last_scope = self.scope_stack.last().unwrap();
             if !last_scope.same_file(&mod_file_name) {
-                // TODO: this should only ever happen for ast::ItemKind::Mod,
-                // so we should assert on that
+                // We should only ever get a file name mismatch
+                // at the top of a module
+                assert_matches!(item.node, ast::ItemKind::Mod(_));
                 ScopeConfig::new(self.external_config, &mod_file_name)
             } else {
                 last_scope.from_item(&*item.ident.name.as_str())
