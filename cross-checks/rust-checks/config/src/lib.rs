@@ -24,6 +24,7 @@ pub enum XCheckComplexType {
 
     // Complex types (which use other fields from TypeInfo below)
     Fixed,
+    Djb2,
 }
 
 #[derive(Deserialize, Debug)]
@@ -32,7 +33,21 @@ pub struct XCheckComplexTypeInfo {
     ty: XCheckComplexType,
 
     #[serde(default)]
-    id: Option<u64>,
+    value: XCheckValue,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum XCheckValue {
+    Nothing,
+    Int(u64),
+    Str(String),
+}
+
+impl Default for XCheckValue {
+    fn default() -> XCheckValue {
+        XCheckValue::Nothing
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -57,7 +72,6 @@ pub struct FunctionConfig {
 
     // Overrides for the attribute config items
     no_xchecks: bool,
-    xcheck_name: Option<String>,
 
     // How to cross-check function entry and exit
     entry: XCheckType,
