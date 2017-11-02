@@ -80,7 +80,8 @@ impl ItemConfig {
 pub struct ItemList(Vec<ItemConfig>);
 
 pub struct NamedItemList<'a> {
-    items: &'a ItemList,
+    // FIXME: _items is unused; do we really need it???
+    _items: &'a ItemList,
     pub name_map: HashMap<&'a str, &'a ItemConfig>,
 }
 
@@ -90,7 +91,7 @@ impl<'a> NamedItemList<'a> {
             .filter_map(|item| item.name().map(|name| (name, item)))
             .collect();
         NamedItemList {
-            items: items,
+            _items: items,
             name_map: map,
         }
     }
