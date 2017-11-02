@@ -113,20 +113,22 @@ impl CrossCheckConfig {
                 if let Some(no_xchecks) = func.no_xchecks {
                     self.enabled = !no_xchecks;
                 }
-                match func.entry {
-                    xcfg::XCheckType::Default => {
-                        self.name = None;
-                        self.id = None;
-                    },
-                    xcfg::XCheckType::Skip => unimplemented!(), // TODO
-                    xcfg::XCheckType::Fixed(id) => {
-                        self.id = Some(id as u32);
-                        self.name = None;
-                    },
-                    xcfg::XCheckType::Djb2(ref name) => {
-                        self.id = None;
-                        self.name = Some(name.clone());
-                    },
+                if let Some(ref entry) = func.entry {
+                    match *entry {
+                        xcfg::XCheckType::Default => {
+                            self.name = None;
+                            self.id = None;
+                        },
+                        xcfg::XCheckType::Skip => unimplemented!(), // TODO
+                        xcfg::XCheckType::Fixed(id) => {
+                            self.id = Some(id as u32);
+                            self.name = None;
+                        },
+                        xcfg::XCheckType::Djb2(ref name) => {
+                            self.id = None;
+                            self.name = Some(name.clone());
+                        },
+                    }
                 }
                 if let Some(ref ahasher) = func.ahasher {
                     // TODO: add a way for the external config to reset to default

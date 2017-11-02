@@ -36,15 +36,15 @@ pub struct FunctionConfig {
     pub no_xchecks: Option<bool>,
 
     // How to cross-check function entry and exit
-    pub entry: XCheckType,
-    pub exit: XCheckType,
+    pub entry: Option<XCheckType>,
+    pub exit: Option<XCheckType>,
 
     // How to cross-check each argument
     pub args: HashMap<String, XCheckType>,
 
     // How to cross-check the return value
     #[serde(rename = "return")]
-    pub ret: XCheckType,
+    pub ret: Option<XCheckType>,
 
     // Overrides for the aggregate/simple hashers
     pub ahasher: Option<String>,
