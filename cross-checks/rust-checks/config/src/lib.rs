@@ -126,6 +126,16 @@ pub struct FileConfig(ItemList);
 #[derive(Deserialize, Debug)]
 pub struct Config(HashMap<String, FileConfig>);
 
+impl Config {
+    fn get_file_config(&self, file: &str) -> Option<&FileConfig> {
+        self.0.get(file)
+    }
+
+    fn get_file_items(&self, file: &str) -> Option<&ItemList> {
+        self.get_file_config(file).map(|fc| &fc.0)
+    }
+}
+
 pub fn parse_string(s: &str) -> Result<Config, String> {
     serde_yaml::from_str(s).map_err(|e| format!("serde_yaml error: {}", e))
 }
