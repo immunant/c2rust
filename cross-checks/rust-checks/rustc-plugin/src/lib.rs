@@ -275,7 +275,11 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
 impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let new_scope = {
-            let mod_file_name = self.cx.codemap().span_to_filename(item.span);
+            let span = match item.node {
+                ast::ItemKind::Mod(ref m) => m.inner,
+                _ => item.span
+            };
+            let mod_file_name = self.cx.codemap().span_to_filename(span);
             let last_scope = self.scope_stack.last().unwrap();
             if !last_scope.same_file(&mod_file_name) {
                 // We should only ever get a file name mismatch
