@@ -409,14 +409,12 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
 struct CrossCheckExpander {
     // Arguments passed to plugin
     // TODO: pre-parse them???
-    args: Vec<ast::NestedMetaItem>,
     external_config: xcfg::Config,
 }
 
 impl CrossCheckExpander {
     fn new(args: &[ast::NestedMetaItem]) -> CrossCheckExpander {
         CrossCheckExpander {
-            args: args.to_vec(),
             external_config: CrossCheckExpander::parse_config_files(args),
         }
     }
