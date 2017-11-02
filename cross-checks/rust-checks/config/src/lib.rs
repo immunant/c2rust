@@ -23,38 +23,15 @@ pub enum XCheckComplexType {
     Skip,
 
     // Complex types (which use other fields from TypeInfo below)
-    Fixed,
-    Djb2,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct XCheckComplexTypeInfo {
-    #[serde(rename = "type")]
-    ty: XCheckComplexType,
-
-    #[serde(default)]
-    value: XCheckValue,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-pub enum XCheckValue {
-    Nothing,
-    Int(u64),
-    Str(String),
-}
-
-impl Default for XCheckValue {
-    fn default() -> XCheckValue {
-        XCheckValue::Nothing
-    }
+    Fixed(u64),
+    Djb2(String),
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum XCheckType {
     Basic(XCheckBasicType),
-    Complex(XCheckComplexTypeInfo),
+    Complex(XCheckComplexType),
 }
 
 impl Default for XCheckType {
