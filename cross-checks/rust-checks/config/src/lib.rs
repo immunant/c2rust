@@ -45,21 +45,21 @@ impl Default for XCheckType {
 pub struct FunctionConfig {
     // Name of the function
     // FIXME: where do we get this???
-    name: String,
+    pub name: String,
 
     // Overrides for the attribute config items
-    no_xchecks: bool,
+    pub no_xchecks: bool,
 
     // How to cross-check function entry and exit
-    entry: XCheckType,
-    exit: XCheckType,
+    pub entry: XCheckType,
+    pub exit: XCheckType,
 
     // How to cross-check each argument
-    args: HashMap<String, XCheckType>,
+    pub args: HashMap<String, XCheckType>,
 
     // How to cross-check the return value
     #[serde(rename = "return")]
-    ret: XCheckType,
+    pub ret: XCheckType,
 
     // Nested items
     nested: Option<ItemList>,
