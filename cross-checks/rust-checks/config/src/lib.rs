@@ -22,7 +22,7 @@ pub enum XCheckComplexType {
     Default,
     Skip,
 
-    // Complex types (which use other fields from TypeInfo below)
+    // Complex types which require additional parameters
     Fixed(u64),
     Djb2(String),
 }
