@@ -39,19 +39,29 @@ struct CrossCheckConfig {
 }
 
 trait XCheckHash {
-    fn get_ident_hash(&self, ident: &ast::Ident) -> Option<u64>;
+    fn get_ident_hash(&self, cx: &ExtCtxt, ident: &ast::Ident) -> Option<P<ast::Expr>>;
+    fn get_hash(&self, cx: &ExtCtxt, default: P<ast::Expr>) -> Option<P<ast::Expr>>;
 }
 
 impl XCheckHash for xcfg::XCheckType {
+    fn get_ident_hash(&self, cx: &ExtCtxt, ident: &ast::Ident) -> Option<P<ast::Expr>> {
+        let id = djb2_hash(&*ident.name.as_str()) as u64;
+        let default = quote_expr!(cx, $id);
+        self.get_hash(cx, default)
+    }
+
     // Allow clients to specify the id or name manually, like this:
     // #[cross_check(name = "foo")]
     // #[cross_check(id = 0x12345678)]
-    fn get_ident_hash(&self, ident: &ast::Ident) -> Option<u64> {
+    fn get_hash(&self, cx: &ExtCtxt, default: P<ast::Expr>) -> Option<P<ast::Expr>> {
         match *self {
-            xcfg::XCheckType::Default => Some(djb2_hash(&*ident.name.as_str()) as u64),
+            xcfg::XCheckType::Default => Some(default),
             xcfg::XCheckType::Skip => None,
-            xcfg::XCheckType::Fixed(id) => Some(id),
-            xcfg::XCheckType::Djb2(ref s) => Some(djb2_hash(s) as u64),
+            xcfg::XCheckType::Fixed(id) => Some(quote_expr!(cx, $id)),
+            xcfg::XCheckType::Djb2(ref s) => {
+                let id = djb2_hash(s) as u64;
+                Some(quote_expr!(cx, $id))
+            },
         }
     }
 }
@@ -239,7 +249,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                     // Add the cross-check to the beginning of the function
                     // TODO: only add the checks to C abi functions???
                     let entry_xcheck = self.config().entry_xcheck
-                        .get_ident_hash(&fn_ident)
+                        .get_ident_hash(self.cx, &fn_ident)
                         .map(|hash| quote_stmt!(self.cx, cross_check_raw!(FUNCTION_ENTRY_TAG, $hash);))
                         .unwrap_or_default();
                     quote_block!(self.cx, {
