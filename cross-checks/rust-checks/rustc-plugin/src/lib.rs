@@ -131,9 +131,15 @@ impl<'a> ScopeConfig<'a> {
     }
 
     fn from_item(&self, item: &str) -> Self {
+        let item_cfg = self.items.as_ref().and_then(|nil| nil.name_map.get(item));
+        // TODO: use item_cfg to update the CrossCheckConfig
+        let new_items = item_cfg.cloned()
+                                .and_then(xcfg::ItemConfig::nested_items)
+                                .map(xcfg::NamedItemList::new)
+                                .map(Rc::new);
         ScopeConfig {
             file_name: self.file_name.clone(),
-            items: self.items.clone(),
+            items: new_items,
         }
     }
 
