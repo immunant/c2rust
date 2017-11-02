@@ -168,12 +168,6 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
         self.config_stack.last().unwrap().borrow()
     }
 
-    fn parse_attr_config(&mut self, item: &ast::Item) -> Option<CrossCheckConfig> {
-        let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
-        xcheck_attr.map(|attr| self.config().clone().parse_attr_config(
-                self.cx, &attr.parse_meta(self.cx.parse_sess).unwrap()))
-    }
-
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let folded_item = fold::noop_fold_item_simple(item, self);
         match folded_item.node {
@@ -307,9 +301,11 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
         };
         self.scope_stack.push(new_scope);
 
-        let new_config = self.parse_attr_config(&item)
-            .map(|c| Rc::new(c))
-            .unwrap_or_else(|| self.config_stack.last().cloned().unwrap());
+        let new_config = find_cross_check_attr(item.attrs.as_slice()).map(|attr| {
+            self.config().clone().parse_attr_config(
+                self.cx, &attr.parse_meta(self.cx.parse_sess).unwrap())
+        }).map(|c| Rc::new(c))
+          .unwrap_or_else(|| self.config_stack.last().cloned().unwrap());
         self.config_stack.push(new_config);
         let new_item = self.internal_fold_item_simple(item);
         self.config_stack.pop();
