@@ -76,7 +76,7 @@ impl CrossCheckConfig {
         }
     }
 
-    fn parse_attr_config(mut self, cx: &mut ExtCtxt, mi: &ast::MetaItem) -> Self {
+    fn parse_attr_config(mut self, cx: &ExtCtxt, mi: &ast::MetaItem) -> Self {
         assert!(mi.name == "cross_check");
         if let Some(ref items) = mi.meta_item_list() {
             for ref nested_item in items.iter() {
@@ -136,7 +136,7 @@ impl CrossCheckConfig {
         self
     }
 
-    fn parse_xcfg_config(mut self, cx: &mut ExtCtxt, xcfg: &xcfg::ItemConfig) -> Self {
+    fn parse_xcfg_config(mut self, cx: &ExtCtxt, xcfg: &xcfg::ItemConfig) -> Self {
         match *xcfg {
             xcfg::ItemConfig::Function(ref func) => {
                 if let Some(no_xchecks) = func.no_xchecks {
