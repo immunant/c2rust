@@ -107,6 +107,42 @@ impl CrossCheckConfig {
         self
     }
 
+    fn parse_xcfg_config(mut self, cx: &mut ExtCtxt, xcfg: &xcfg::ItemConfig) -> Self {
+        match *xcfg {
+            xcfg::ItemConfig::Function(ref func) => {
+                if func.no_xchecks {
+                    self.enabled = false;
+                }
+                match func.entry {
+                    xcfg::XCheckType::Default => {
+                        self.name = None;
+                        self.id = None;
+                    },
+                    xcfg::XCheckType::Skip => unimplemented!(), // TODO
+                    xcfg::XCheckType::Fixed(id) => {
+                        self.id = Some(id as u32);
+                        self.name = None;
+                    },
+                    xcfg::XCheckType::Djb2(ref name) => {
+                        self.id = None;
+                        self.name = Some(name.clone());
+                    },
+                }
+                if let Some(ref ahasher) = func.ahasher {
+                    // TODO: add a way for the external config to reset to default
+                    self.ahasher = cx.parse_tts(ahasher.clone());
+                }
+                if let Some(ref shasher) = func.shasher {
+                    // TODO: add a way for the external config to reset to default
+                    self.shasher = cx.parse_tts(shasher.clone());
+                }
+                // TODO: parse more fields: exit, args, ret
+            },
+            _ => ()
+        }
+        self
+    }
+
     // Allow clients to specify the id or name manually, like this:
     // #[cross_check(name = "foo")]
     // #[cross_check(id = 0x12345678)]
@@ -286,16 +322,28 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
 
 impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
-        let item_xcfg_config = {
-            let item_name = item.ident.name.as_str();
-            self.last_scope().get_item_config(&*item_name)
-        };
         let new_scope = {
-            let new_config = find_cross_check_attr(item.attrs.as_slice()).map(|attr| {
-                self.config().clone().parse_attr_config(
-                    self.cx, &attr.parse_meta(self.cx.parse_sess).unwrap())
-            }).map(|c| Rc::new(c))
-              .unwrap_or_else(|| self.last_scope().config.clone());
+            let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
+            let item_xcfg_config = {
+                let item_name = item.ident.name.as_str();
+                self.last_scope().get_item_config(&*item_name)
+            };
+            let new_config = if xcheck_attr.is_some() || item_xcfg_config.is_some() {
+                // We have either a #[cross_check] attribute
+                // or external config, so create a new CrossCheckConfig
+                let nc = self.config().clone();
+                // TODO: order???
+                let nc = if let Some(attr) = xcheck_attr {
+                    let mi = attr.parse_meta(self.cx.parse_sess).unwrap();
+                    nc.parse_attr_config(self.cx, &mi)
+                } else { nc };
+                let nc = if let Some(xcfg) = item_xcfg_config {
+                    nc.parse_xcfg_config(self.cx, xcfg)
+                } else { nc };
+                Rc::new(nc)
+            } else {
+                self.last_scope().config.clone()
+            };
 
             let span = match item.node {
                 ast::ItemKind::Mod(ref m) => m.inner,
