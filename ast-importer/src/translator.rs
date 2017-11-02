@@ -56,6 +56,12 @@ impl WithStmts<P<Expr>> {
             mk().block_expr(mk().block(self.stmts))
         }
     }
+
+    /// Package a series of statements and an expression into one block
+    pub fn to_block(mut self) -> P<Block> {
+        self.stmts.push(mk().expr_stmt(self.val));
+        mk().block(self.stmts)
+    }
 }
 
 fn pointer_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
@@ -434,7 +440,7 @@ impl Translation {
                     CastKind::FunctionToPointerDecay => val,
 
                     CastKind::ArrayToPointerDecay =>
-                        val.map(|x| mk().method_call_expr(x, "as_ptr_mut", vec![] as Vec<P<Expr>>)),
+                        val.map(|x| mk().method_call_expr(x, "as_mut_ptr", vec![] as Vec<P<Expr>>)),
 
                     CastKind::NullToPointer => {
                         assert!(val.stmts.is_empty());
@@ -462,15 +468,33 @@ impl Translation {
                 arg.and_then(|v| self.convert_unary_operator(used, *op, *type_id, v))
             }
 
+            CExprKind::Conditional(_, ref cond, ref lhs, ref rhs) => {
+                let cond = self.convert_condition(true, *cond);
+
+                let lhs = self.convert_expr(used, *lhs);
+                let rhs = self.convert_expr(used, *rhs);
+
+                if used {
+                    let then: P<Block> = lhs.to_block();
+                    let els: P<Expr> = rhs.to_expr();
+
+                    cond.map(|c| mk().ifte_expr(c, then, Some(els)))
+                } else {
+                    // This node should _never_ show up in the final generated code. This is an easy
+                    // way to notice if it does.
+                    let panic = mk().mac_expr(mk().mac(vec!["panic"], vec![]));
+
+                    let then: P<Block> = mk().block(lhs.stmts);
+                    let els: P<Expr> = mk().block_expr(mk().block(rhs.stmts));
+
+                    cond.and_then(|c| WithStmts {
+                        stmts: vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(els)))],
+                        val: panic,
+                    })
+                }
+            },
+
             CExprKind::Binary(ref type_id, ref op, ref lhs, ref rhs) => {
-
-                let lhs_node = self.ast_context.index(*lhs);
-                let rhs_node = self.ast_context.index(*rhs);
-
-                let lhs_ty = lhs_node.kind.get_type();
-                let rhs_ty = rhs_node.kind.get_type();
-
-                let ty = self.convert_type(*type_id);
 
                 match *op {
                     c_ast::BinOp::Comma => {
@@ -503,6 +527,12 @@ impl Translation {
 
                     // No sequence-point cases
                     _ => {
+
+                        let lhs_ty = self.ast_context.index(*lhs).kind.get_type();
+                        let rhs_ty = self.ast_context.index(*rhs).kind.get_type();
+
+                        let ty = self.convert_type(*type_id);
+
                         let lhs = self.convert_expr(true,*lhs,);
                         let rhs = self.convert_expr(true,*rhs,);
 
