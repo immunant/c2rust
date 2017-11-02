@@ -116,13 +116,13 @@ impl CrossCheckConfig {
 }
 
 #[derive(Clone)]
-struct ScopeConfig<'a> {
+struct ScopeConfig<'xcfg> {
     file_name: Rc<String>, // FIXME: this should be a &str
-    items: Option<Rc<xcfg::NamedItemList<'a>>>,
+    items: Option<Rc<xcfg::NamedItemList<'xcfg>>>,
 }
 
-impl<'a> ScopeConfig<'a> {
-    fn new(cfg: &'a xcfg::Config, file_name: &str) -> ScopeConfig<'a> {
+impl<'xcfg> ScopeConfig<'xcfg> {
+    fn new(cfg: &'xcfg xcfg::Config, file_name: &str) -> ScopeConfig<'xcfg> {
         ScopeConfig {
             file_name: Rc::new(String::from(file_name)),
             items: cfg.get_file_items(file_name)
@@ -131,14 +131,14 @@ impl<'a> ScopeConfig<'a> {
         }
     }
 
-    fn get_item_config(&self, item: &str) -> Option<&'a xcfg::ItemConfig> {
+    fn get_item_config(&self, item: &str) -> Option<&'xcfg xcfg::ItemConfig> {
         self.items
             .as_ref()
             .and_then(|nil| nil.name_map.get(item))
             .cloned()
     }
 
-    fn from_item(&self, item_config: Option<&'a xcfg::ItemConfig>) -> Self {
+    fn from_item(&self, item_config: Option<&'xcfg xcfg::ItemConfig>) -> Self {
         ScopeConfig {
             file_name: self.file_name.clone(),
             items: item_config.and_then(xcfg::ItemConfig::nested_items)
@@ -152,18 +152,18 @@ impl<'a> ScopeConfig<'a> {
     }
 }
 
-struct CrossChecker<'a, 'cx: 'a> {
+struct CrossChecker<'a, 'cx: 'a, 'xcfg> {
     cx: &'a mut ExtCtxt<'cx>,
-    external_config: &'a xcfg::Config,
+    external_config: &'xcfg xcfg::Config,
     config_stack: Vec<Rc<CrossCheckConfig>>,
-    scope_stack: Vec<ScopeConfig<'a>>,
+    scope_stack: Vec<ScopeConfig<'xcfg>>,
 }
 
 fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
     attrs.iter().find(|attr| attr.check_name("cross_check"))
 }
 
-impl<'a, 'cx> CrossChecker<'a, 'cx> {
+impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
     fn config(&self) -> &CrossCheckConfig {
         self.config_stack.last().unwrap().borrow()
     }
@@ -282,7 +282,7 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
     }
 }
 
-impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
+impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let item_xcfg_config = {
             let last_scope = self.scope_stack.last().unwrap();
