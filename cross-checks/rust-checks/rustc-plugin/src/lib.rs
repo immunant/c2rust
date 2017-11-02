@@ -110,8 +110,8 @@ impl CrossCheckConfig {
     fn parse_xcfg_config(mut self, cx: &mut ExtCtxt, xcfg: &xcfg::ItemConfig) -> Self {
         match *xcfg {
             xcfg::ItemConfig::Function(ref func) => {
-                if func.no_xchecks {
-                    self.enabled = false;
+                if let Some(no_xchecks) = func.no_xchecks {
+                    self.enabled = !no_xchecks;
                 }
                 match func.entry {
                     xcfg::XCheckType::Default => {

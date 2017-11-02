@@ -33,7 +33,7 @@ pub struct FunctionConfig {
     pub name: String,
 
     // Overrides for the attribute config items
-    pub no_xchecks: bool,
+    pub no_xchecks: Option<bool>,
 
     // How to cross-check function entry and exit
     pub entry: XCheckType,
