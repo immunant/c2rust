@@ -46,6 +46,10 @@ pub struct FunctionConfig {
     #[serde(rename = "return")]
     pub ret: XCheckType,
 
+    // Overrides for the aggregate/simple hashers
+    pub ahasher: Option<String>,
+    pub shasher: Option<String>,
+
     // Nested items
     nested: Option<ItemList>,
 }
