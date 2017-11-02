@@ -90,6 +90,14 @@ impl ItemConfig {
             _ => None
         }
     }
+
+    pub fn nested_items(&self) -> Option<&ItemList> {
+        match *self {
+            ItemConfig::Function(FunctionConfig { ref nested, .. }) => nested.as_ref(),
+            // TODO: other cases
+            _ => None
+        }
+    }
 }
 
 #[derive(Deserialize, Debug, Default)]
