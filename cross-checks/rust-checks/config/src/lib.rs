@@ -7,7 +7,7 @@ extern crate serde_yaml;
 
 use std::collections::HashMap;
 
-#[derive(Deserialize, Debug, PartialEq)]
+#[derive(Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum XCheckType {
     // Basic types
@@ -52,6 +52,24 @@ pub struct FunctionConfig {
 
     // Nested items
     nested: Option<ItemList>,
+}
+
+impl FunctionConfig {
+    // Create a copy of the current config, but without
+    // the metadata for nested functions, e.g., the "nested" field
+    pub fn clone_current(&self) -> FunctionConfig {
+        FunctionConfig {
+            name: self.name.clone(),
+            no_xchecks: self.no_xchecks,
+            entry: self.entry.clone(),
+            exit: self.exit.clone(),
+            args: self.args.clone(),
+            ret: self.ret.clone(),
+            ahasher: self.ahasher.clone(),
+            shasher: self.shasher.clone(),
+            nested: Default::default(),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
