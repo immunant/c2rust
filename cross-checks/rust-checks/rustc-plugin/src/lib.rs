@@ -126,7 +126,8 @@ impl<'a> ScopeConfig<'a> {
         ScopeConfig {
             file_name: Rc::new(String::from(file_name)),
             items: cfg.get_file_items(file_name)
-                      .map(|il| Rc::new(xcfg::NamedItemList::new(il))),
+                      .map(xcfg::NamedItemList::new)
+                      .map(Rc::new),
         }
     }
 
