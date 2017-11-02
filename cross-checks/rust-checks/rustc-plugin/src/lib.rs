@@ -168,7 +168,7 @@ impl<'a, 'cx> CrossChecker<'a, 'cx> {
         self.config_stack.last().unwrap().borrow()
     }
 
-    fn parse_config(&mut self, item: &ast::Item) -> Option<CrossCheckConfig> {
+    fn parse_attr_config(&mut self, item: &ast::Item) -> Option<CrossCheckConfig> {
         let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
         xcheck_attr.map(|attr| self.config().clone().parse_attr_config(
                 self.cx, &attr.parse_meta(self.cx.parse_sess).unwrap()))
@@ -307,7 +307,7 @@ impl<'a, 'cx> Folder for CrossChecker<'a, 'cx> {
         };
         self.scope_stack.push(new_scope);
 
-        let new_config = self.parse_config(&item)
+        let new_config = self.parse_attr_config(&item)
             .map(|c| Rc::new(c))
             .unwrap_or_else(|| self.config_stack.last().cloned().unwrap());
         self.config_stack.push(new_config);
