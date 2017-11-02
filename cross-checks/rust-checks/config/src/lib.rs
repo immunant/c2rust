@@ -9,34 +9,19 @@ use std::collections::HashMap;
 
 #[derive(Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
-pub enum XCheckBasicType {
-    Default,
-    Skip,
-}
-
-#[derive(Deserialize, Debug, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum XCheckComplexType {
+pub enum XCheckType {
     // Basic types
-    // FIXME: ideally, we'd extend or include XCheckBasicType here
     Default,
     Skip,
 
-    // Complex types which require additional parameters
+    // Types with additional parameters
     Fixed(u64),
     Djb2(String),
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-pub enum XCheckType {
-    Basic(XCheckBasicType),
-    Complex(XCheckComplexType),
-}
-
 impl Default for XCheckType {
     fn default() -> XCheckType {
-        XCheckType::Basic(XCheckBasicType::Default)
+        XCheckType::Default
     }
 }
 
@@ -156,14 +141,14 @@ mod tests {
 
     #[test]
     fn test_types() {
-        assert_eq!(parse_test_yaml::<XCheckBasicType>("default"),
-                   XCheckBasicType::Default);
-        assert_eq!(parse_test_yaml::<XCheckComplexType>("skip"),
-                   XCheckComplexType::Skip);
-        assert_eq!(parse_test_yaml::<XCheckComplexType>("{ \"fixed\": 1234 }"),
-                   XCheckComplexType::Fixed(1234));
-        assert_eq!(parse_test_yaml::<XCheckComplexType>("{ \"djb2\": \"foo\" }"),
-                   XCheckComplexType::Djb2(String::from("foo")));
+        assert_eq!(parse_test_yaml::<XCheckType>("default"),
+                   XCheckType::Default);
+        assert_eq!(parse_test_yaml::<XCheckType>("skip"),
+                   XCheckType::Skip);
+        assert_eq!(parse_test_yaml::<XCheckType>("{ \"fixed\": 1234 }"),
+                   XCheckType::Fixed(1234));
+        assert_eq!(parse_test_yaml::<XCheckType>("{ \"djb2\": \"foo\" }"),
+                   XCheckType::Djb2(String::from("foo")));
     }
 
     #[test]
