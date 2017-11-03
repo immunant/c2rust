@@ -10,6 +10,14 @@ llvm.build*
 **/target/
 **/dependencies/
 **/tests/
-!tests
 *.pyc
 .vagrant
+
+# Testing directory
+!tests
+tests/*.rs
+tests/*.cbor
+tests/*_c
+tests/*_rust
+tests/*_c.txt
+tests/*_rust.txt

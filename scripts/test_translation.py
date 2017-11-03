@@ -26,15 +26,21 @@ WARNING   = '\033[93m'
 FAIL      = '\033[91m'
 NO_COLOUR = '\033[0m'
 
+# Intermediate files
+intermediate_files = [
+    'cc_db', 'cbor', 'c_exec', 'c_out',
+    'rust_src', 'rust_obj', 'rust_exec', 'rust_out'
+]
 
 class TestCase:
-    def __init__(self, path: str, pass_expected: bool) -> None:
+    def __init__(self, path: str, pass_expected: bool, keep: List[str]) -> None:
         directory, cfile = os.path.split(path)
         filebase, ext = os.path.splitext(cfile)
 
         self.shortname = filebase
         self.directory = directory
         self.pass_expected = pass_expected
+        self.keep = keep
 
         # Absolute paths to all of the files we will attempt to generate
         self.src_c     = path
@@ -44,8 +50,8 @@ class TestCase:
         self.rust_obj  = os.path.join(directory, 'lib' + filebase + '.a')
         self.rust_exec = os.path.join(directory, filebase + '_rust')
         self.c_exec    = os.path.join(directory, filebase + '_c')
-        self.rust_out  = os.path.join(directory, filebase + '_out.txt')
-        self.c_out     = os.path.join(directory, filebase + '_out.txt')
+        self.rust_out  = os.path.join(directory, filebase + '_rust.txt')
+        self.c_out     = os.path.join(directory, filebase + '_c.txt')
 
     def print_status(self, color: str, status: str, message):
         """
@@ -183,7 +189,7 @@ class TestCase:
         if bool(failed_message) == self.pass_expected:
             self.print_status(FAIL, "FAILED", failed_message or "(unexpected success)")
         elif failed_message:
-            self.print_status(OKBLUE, "FAILED", failed_message + "(expected)")
+            self.print_status(OKBLUE, "FAILED", failed_message + " (expected)")
         else:
             self.print_status(OKGREEN, "OK", None)
 
@@ -191,16 +197,7 @@ class TestCase:
 
     def cleanup(self):
 
-        files = [
-            self.cc_db,
-            self.cbor,
-            self.c_exec,
-            self.c_out,
-            self.rust_src,
-            self.rust_obj,
-            self.rust_exec,
-            self.rust_out
-        ]
+        files = [ getattr(self, f) for f in intermediate_files if f not in self.keep ]
 
         # Try remove files and don't barf if they don't exist
         for filename in files:
@@ -231,10 +228,10 @@ def regex(raw: str):
     try:
         return re.compile(raw)
     except:
-        msg = "what:{0} is not a valid regular expression".format(raw)
+        msg = "only:{0} is not a valid regular expression".format(raw)
         raise argparse.ArgumentTypeError(msg)
 
-def get_testcases(directory: str) -> List[TestCase]:
+def get_testcases(directory: str, keep: List[str]) -> List[TestCase]:
     """
     Find the test cases in a directory
     """
@@ -255,7 +252,7 @@ def get_testcases(directory: str) -> List[TestCase]:
             except:
                 pass_expected = False
 
-            testcases.append(TestCase(path, pass_expected))
+            testcases.append(TestCase(path, pass_expected, keep))
 
     return testcases
 
@@ -265,7 +262,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('directory', type=readable_directory)
     parser.add_argument(
-        '--what', dest='regex', type=regex,
+        '--only', dest='regex', type=regex,
         default='.*', help="Regular expression to filter which tests to run"
     )
     parser.add_argument(
@@ -273,9 +270,14 @@ if __name__ == "__main__":
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
         default='CRITICAL', help="Set the logging level"
     )
+    parser.add_argument(
+        '--keep', dest='keep', action='append',
+        choices=intermediate_files, default=[],
+        help="Which intermediate files to not clear"
+    )
 
     args = parser.parse_args()
-    testcases = get_testcases(args.directory)
+    testcases = get_testcases(args.directory, args.keep)
     setup_logging(args.logLevel)
 
     logging.debug("args: %s", " ".join(sys.argv))
@@ -292,7 +294,7 @@ if __name__ == "__main__":
     if not testcases:
         die("nothing to test")
 
-    # Testcases are run one after another. Only tests that match the '--what'
+    # Testcases are run one after another. Only tests that match the '--only'
     # argument are run. We make a best effort to clean up all files left behind.
     for testcase in testcases:
         if args.regex.fullmatch(testcase.shortname):
