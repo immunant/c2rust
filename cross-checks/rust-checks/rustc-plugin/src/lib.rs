@@ -13,6 +13,7 @@ use syntax::ast;
 use syntax::fold;
 
 use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -35,6 +36,7 @@ struct CrossCheckConfig {
     enabled: bool,
     entry_xcheck: xcfg::XCheckType,
     all_args_xcheck: xcfg::XCheckType,
+    arg_xchecks: HashMap<String, xcfg::XCheckType>,
     ahasher: Vec<TokenTree>,
     shasher: Vec<TokenTree>,
 }
@@ -81,6 +83,7 @@ impl CrossCheckConfig {
             } else {
                 xcfg::XCheckType::Skip
             },
+            arg_xchecks: Default::default(),
             ahasher: quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher).to_tokens(cx),
             shasher: quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher).to_tokens(cx),
         }
@@ -158,6 +161,7 @@ impl CrossCheckConfig {
                 if let Some(ref all_args) = func.all_args {
                     self.all_args_xcheck = all_args.clone();
                 }
+                self.arg_xchecks.extend(func.args.clone().into_iter());
                 if let Some(ref ahasher) = func.ahasher {
                     // TODO: add a way for the external config to reset to default
                     self.ahasher = cx.parse_tts(ahasher.clone());
@@ -276,47 +280,48 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
         }
     }
 
+    // Get the cross-check block for this argument
+    fn get_arg_xcheck(&self, arg: &ast::Arg) -> Option<P<ast::Block>> {
+        match arg.pat.node {
+            ast::PatKind::Ident(_, ref ident, _) => {
+                // Parameter pattern is just an identifier,
+                // so we can reference it directly by name
+                let arg_xcheck_cfg = self.config().arg_xchecks
+                    .get(&*ident.node.name.as_str())
+                    .unwrap_or(&self.config().all_args_xcheck);
+                arg_xcheck_cfg.get_hash(self.cx, || {
+                    // By default, we use cross_check_hash
+                    // to hash the value of the identifier
+                    let (ahasher, shasher) = (&self.config().ahasher,
+                                              &self.config().shasher);
+                    Some(quote_expr!(self.cx, {
+                        use cross_check_runtime::hash::CrossCheckHash as XCH;
+                        XCH::cross_check_hash::<$ahasher, $shasher>(&$ident)
+                    }))
+                }).map(|val| quote_block!(self.cx, {
+                    cross_check_raw!(FUNCTION_ARG_TAG, $val)
+                }))
+            }
+            _ => unimplemented!()
+        }
+    }
+
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let folded_item = fold::noop_fold_item_simple(item, self);
         match folded_item.node {
             ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) => {
                 let fn_ident = folded_item.ident;
-                let (ahasher, shasher) = (&self.config().ahasher,
-                                          &self.config().shasher);
                 let checked_block = if self.config().enabled {
-                    // Insert cross-checks for function arguments,
-                    // if enabled via the "xcheck-args" feature
-                    let mut arg_xchecks: Vec<P<ast::Block>> = vec![];
-                    fn_decl.inputs.iter().for_each(|ref arg| {
-                        match arg.pat.node {
-                            ast::PatKind::Ident(_, ident, _) => {
-                                // Parameter pattern is just an identifier,
-                                // so we can reference it directly by name
-                                let arg_xcheck_cfg = &self.config().all_args_xcheck;
-                                // TODO: retrieve per-argument setting
-                                let arg_xcheck = arg_xcheck_cfg
-                                    .get_hash(self.cx, || {
-                                        // By default, we use cross_check_hash
-                                        // to hash the value of the identifier
-                                        Some(quote_expr!(self.cx, {
-                                            use cross_check_runtime::hash::CrossCheckHash as XCH;
-                                            XCH::cross_check_hash::<$ahasher, $shasher>(&$ident)
-                                        }))
-                                    }).map(|val| quote_block!(self.cx, {
-                                        cross_check_raw!(FUNCTION_ARG_TAG, $val)
-                                    }));
-                                arg_xchecks.extend(arg_xcheck.into_iter());
-                            }
-                            _ => unimplemented!()
-                        }
-                    });
-
                     // Add the cross-check to the beginning of the function
                     // TODO: only add the checks to C abi functions???
                     let entry_xcheck = self.config().entry_xcheck
                         .get_ident_hash(self.cx, &fn_ident)
                         .map(|hash| quote_stmt!(self.cx, cross_check_raw!(FUNCTION_ENTRY_TAG, $hash);))
                         .unwrap_or_default();
+                    // Insert cross-checks for function arguments
+                    let arg_xchecks = fn_decl.inputs.iter()
+                        .flat_map(|ref arg| self.get_arg_xcheck(arg))
+                        .collect::<Vec<P<ast::Block>>>();
                     quote_block!(self.cx, {
                         $entry_xcheck
                         $arg_xchecks
@@ -329,6 +334,8 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                 // Add our typedefs to the beginning of each function;
                 // whatever the configuration says, we should always add these
                 let block_with_types = {
+                    let (ahasher, shasher) = (&self.config().ahasher,
+                                              &self.config().shasher);
                     quote_block!(self.cx, {
                         #[allow(dead_code)]
                         mod cross_check_types {
