@@ -66,6 +66,7 @@ impl XCheckHash for xcfg::XCheckType {
                 let id = djb2_hash(s) as u64;
                 Some(quote_expr!(cx, $id))
             },
+            xcfg::XCheckType::Custom(ref s) => Some(cx.parse_expr(s.clone())),
         }
     }
 }

@@ -17,6 +17,7 @@ pub enum XCheckType {
     // Types with additional parameters
     Fixed(u64),
     Djb2(String),
+    Custom(String),
 }
 
 impl Default for XCheckType {
