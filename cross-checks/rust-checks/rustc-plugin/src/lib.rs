@@ -372,14 +372,15 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                     // do not automatically add CrossCheckHash
                     xcheck_attr.as_ref()
                         .map(|a| a.parse_meta(self.cx.parse_sess).unwrap())
-                        .and_then(|mi| mi.meta_item_list().map(
-                            |items| items.iter().any(
-                                |item| item.meta_item()
-                                           .map(|mi| mi.name == "no" ||
-                                                     mi.name == "disable" ||
-                                                     mi.name == "never")
-                                           .unwrap_or(false))))
-                        .unwrap_or(false)
+                        .and_then(|mi| mi.meta_item_list().map(|items| {
+                            items.iter().any(|item| {
+                                item.meta_item()
+                                    .map(|mi| mi.name == "no" ||
+                                              mi.name == "disable" ||
+                                              mi.name == "never")
+                                    .unwrap_or(false)
+                            })
+                        })).unwrap_or(false)
                 };
                 if !xcheck_attr_disabled {
                     let xcheck_hash_derive_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
