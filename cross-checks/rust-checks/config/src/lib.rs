@@ -39,6 +39,8 @@ pub struct FunctionConfig {
     pub entry: Option<XCheckType>,
     pub exit: Option<XCheckType>,
 
+    // The default check for all arguments not in "args"
+    pub all_args: Option<XCheckType>,
     // How to cross-check each argument
     pub args: HashMap<String, XCheckType>,
 
@@ -63,6 +65,7 @@ impl FunctionConfig {
             no_xchecks: self.no_xchecks,
             entry: self.entry.clone(),
             exit: self.exit.clone(),
+            all_args: self.all_args.clone(),
             args: self.args.clone(),
             ret: self.ret.clone(),
             ahasher: self.ahasher.clone(),
