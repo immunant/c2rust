@@ -170,7 +170,7 @@ impl CrossCheckConfig {
                     // TODO: add a way for the external config to reset to default
                     self.shasher = cx.parse_tts(shasher.clone());
                 }
-                // TODO: parse more fields: exit, args, ret
+                // TODO: parse more fields: exit, ret
             },
             _ => ()
         }
