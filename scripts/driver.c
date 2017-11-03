@@ -1,4 +1,4 @@
-/* This is the driver program for the 'test_translation.py' script.
+/* This is the driver program for the 'test_translator.py' script.
  * 
  * It is linked once against the initial C testcase and once against the
  * static Rust library obtained by compiling the translated source.

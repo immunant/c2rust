@@ -14,7 +14,7 @@ dependencies, automatically pulling them in if necessary.
 
 Building from scratch takes on the order of 30 minutes. This script works on at least MacOS.
 
-    $ ./scripts/build_translation.py
+    $ ./scripts/build_translator.py
 
 To manually build the `ast-extractor`, check out [this Wiki page][0]. To manually build the
 `ast-importer`, check out [its README](ast-importer/README.md).
@@ -24,7 +24,7 @@ To manually build the `ast-extractor`, check out [this Wiki page][0]. To manuall
 Tests are found in the [`tests`](tests) folder. If both the `ast-extractor` and `ast-importer` are
 built, you should be able to run the tests with
 
-    $ ./scripts/test_translation.py tests
+    $ ./scripts/test_translator.py tests
 
 This basically tests that the original C file and translated Rust file produce the same output when
 compiled and run. More details about tests are in [this README](tests/README.md).

@@ -18,14 +18,14 @@ in the console output.
 
 ## Running the tests
 
-_From the project root_, run `./scripts/test_translation.py tests` to run all of the tests in the
+_From the project root_, run `./scripts/test_translator.py tests` to run all of the tests in the
 `tests` folder. Here are a couple other handy options:
 
-    $ ./scripts/test_translation.py --only "q?sort"    tests    # run a subset of the tests
-    $ ./scripts/test_translation.py --log ERROR        tests    # show output of failed tests
-    $ ./scripts/test_translation.py --keep rust_src    tests    # keep some of the generated files
+    $ ./scripts/test_translator.py --only "q?sort"    tests    # run a subset of the tests
+    $ ./scripts/test_translator.py --log ERROR        tests    # show output of failed tests
+    $ ./scripts/test_translator.py --keep rust_src    tests    # keep some of the generated files
 
-Run `./scripts/test_translation.py --help` for more information.
+Run `./scripts/test_translator.py --help` for more information.
 
 ## What happens under the hood
 
