@@ -152,8 +152,8 @@ impl CrossCheckConfig {
     fn parse_xcfg_config(mut self, cx: &ExtCtxt, xcfg: &xcfg::ItemConfig) -> Self {
         match *xcfg {
             xcfg::ItemConfig::Function(ref func) => {
-                if let Some(no_xchecks) = func.no_xchecks {
-                    self.enabled = !no_xchecks;
+                if let Some(disable_xchecks) = func.disable_xchecks {
+                    self.enabled = !disable_xchecks;
                 }
                 if let Some(ref entry) = func.entry {
                     self.entry_xcheck = entry.clone();

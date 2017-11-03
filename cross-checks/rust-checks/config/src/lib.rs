@@ -36,7 +36,7 @@ pub struct FunctionConfig {
     pub name: String,
 
     // Overrides for the attribute config items
-    pub no_xchecks: Option<bool>,
+    pub disable_xchecks: Option<bool>,
 
     // How to cross-check function entry and exit
     pub entry: Option<XCheckType>,
@@ -65,7 +65,7 @@ impl FunctionConfig {
     pub fn clone_current(&self) -> FunctionConfig {
         FunctionConfig {
             name: self.name.clone(),
-            no_xchecks: self.no_xchecks,
+            disable_xchecks: self.disable_xchecks,
             entry: self.entry.clone(),
             exit: self.exit.clone(),
             all_args: self.all_args.clone(),
