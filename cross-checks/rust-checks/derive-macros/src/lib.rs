@@ -144,6 +144,10 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                 let (tag, filter) = get_direct_item_config(sub_args.get_list(),
                                                            quote! { * });
                 Some(quote! { cross_check_raw!(#tag, (#filter(#f)) as u64) })
+            } else if let Some(ref sub_arg) = args.0.get("id") {
+                // FIXME: should try parsing this as an integer
+                let id = sub_arg.get_str_ident();
+                Some(quote! { h.write_u64(#id) })
             } else if let Some(ref sub_arg) = args.0.get("custom_hash") {
                 let id = sub_arg.get_str_ident();
                 Some(quote! { #id::<#ahasher_override, #shasher_override>(&mut h, #f, _depth) })
