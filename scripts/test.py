@@ -39,9 +39,9 @@ int main() { return 0; }
 
 hello_world_snippet = """ \
 #include <stdio.h>
-int main() { 
+int main() {
   printf("Hello, World!\\n");
-  return 0; 
+  return 0;
 }
 """
 

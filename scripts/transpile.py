@@ -39,7 +39,7 @@ def try_locate_elf_object(cmd: dict) -> Optional[str]:
     m = re.search(r"\s-o\s+([^\0]+\.o)\s", command)
     if m:
         outfile = m.group(1)
-        outpath = os.path.join(dir, outfile)        
+        outpath = os.path.join(dir, outfile)
     else:
         # try replacing suffix of C file with .c
         inpath = os.path.join(dir, cmd['file'])
@@ -58,7 +58,7 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
     # filter non C code commands first
     c_cc_db = [c for c in cc_db if c['file'].endswith(".c")]
     if not len(c_cc_db):
-        msg = "didn't find any commands compling C files"
+        msg = "didn't find any commands compiling C files"
         die(msg)
 
     obj_files = [try_locate_elf_object(c) for c in c_cc_db]
@@ -130,9 +130,9 @@ def transpile_files(cc_db: TextIO,
         if exception_raised:
             quit(1)
     else:
-        # We use the ThreadPoolExecutor (not ProcesssPoolExecutor) because
+        # We use the ThreadPoolExecutor (not ProcessPoolExecutor) because
         # 1. we spend most of the time outside the python interpreter, and
-        # 2. it does not require that shared objects can be pickled.
+        # 2. it does not require that shared objects be pickled
         # 3. we can use a shared flag variable to acquiesce on error
         with ThreadPoolExecutor(jobs) as executor:
             futures = [executor.submit(transpile_single, cmd)
