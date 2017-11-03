@@ -283,7 +283,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
     }
 
     // Get the cross-check block for this argument
-    fn get_arg_xcheck(&self, arg: &ast::Arg) -> Option<P<ast::Block>> {
+    fn build_arg_xcheck(&self, arg: &ast::Arg) -> Option<P<ast::Block>> {
         match arg.pat.node {
             ast::PatKind::Ident(_, ref ident, _) => {
                 // Parameter pattern is just an identifier,
@@ -322,7 +322,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                         .unwrap_or_default();
                     // Insert cross-checks for function arguments
                     let arg_xchecks = fn_decl.inputs.iter()
-                        .flat_map(|ref arg| self.get_arg_xcheck(arg))
+                        .flat_map(|ref arg| self.build_arg_xcheck(arg))
                         .collect::<Vec<P<ast::Block>>>();
                     quote_block!(self.cx, {
                         $entry_xcheck
