@@ -97,6 +97,7 @@ enum TypeTag {
     
     TagBool,
     TagDecayedType,
+    TagParenType,
 };
 
 enum StringTypeTag {

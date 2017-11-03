@@ -485,6 +485,17 @@ impl Builder {
         })
     }
 
+    pub fn paren_expr<E>(self, e: E) -> P<Expr>
+        where E: Make<P<Expr>> {
+        let e = e.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Paren(e),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
     // Special case of path_expr
     pub fn ident_expr<I>(self, name: I) -> P<Expr>
         where I: Make<Ident> {

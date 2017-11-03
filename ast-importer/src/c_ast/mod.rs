@@ -57,6 +57,7 @@ impl TypedAstContext {
             CTypeKind::Elaborated(ty) => self.resolve_type_id(ty),
             CTypeKind::Decayed(ty) => self.resolve_type_id(ty),
             CTypeKind::TypeOf(ty) => self.resolve_type_id(ty),
+            CTypeKind::Paren(ty) => self.resolve_type_id(ty),
             CTypeKind::Typedef(decl) => {
                 match self.index(decl).kind {
                     CDeclKind::Typedef { typ: ty, .. } => self.resolve_type_id(ty),
@@ -538,6 +539,9 @@ pub enum CTypeKind {
     // Represents a pointer type decayed from an array or function type.
     Decayed(CTypeId),
     Elaborated(CTypeId),
+
+    // Type wrapped in parentheses
+    Paren(CTypeId),
 
     // Struct or union type
     //

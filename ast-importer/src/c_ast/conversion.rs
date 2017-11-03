@@ -472,6 +472,15 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagParenType => {
+                    let paren_id = expect_u64(&ty_node.extras[0]).expect("Paren type child not found");
+                    let paren = self.visit_type(&paren_id);
+
+                    let paren_ty = CTypeKind::Paren(paren);
+                    self.add_type(new_id, not_located(paren_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
                 TypeTag::TagConstantArrayType => {
                     let element_id = expect_u64(&ty_node.extras[0]).expect("element id");
 
