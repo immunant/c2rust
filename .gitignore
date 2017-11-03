@@ -10,5 +10,6 @@ llvm.build*
 **/target/
 **/dependencies/
 **/tests/
+!tests
 *.pyc
 .vagrant

@@ -145,7 +145,7 @@ def build_ast_importer():
     # assert os.path.isdir(os.path.join(COMPILER_SUBMOD_DIR, 'src'))
 
     with pb.local.cwd(os.path.join(ROOT_DIR, "ast-importer")):
-        # we build with custom rust toolchain here 
+        # we build with custom rust toolchain here
         invoke(cargo, "+" + CUSTOM_RUST_NAME, "build")
 
 
@@ -330,7 +330,7 @@ def _main():
 
     # prerequisites
     if not have_rust_toolchain(CUSTOM_RUST_NAME):
-        die("mising rust toolchain: " + CUSTOM_RUST_NAME, errno.ENOENT)
+        die("missing rust toolchain: " + CUSTOM_RUST_NAME, errno.ENOENT)
 
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])
