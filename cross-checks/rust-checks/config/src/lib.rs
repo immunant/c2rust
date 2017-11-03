@@ -17,6 +17,8 @@ pub enum XCheckType {
     // Types with additional parameters
     Fixed(u64),
     Djb2(String),
+
+    // Compute the cross-check value from an arbitrary Rust expression
     Custom(String),
 }
 
