@@ -503,12 +503,12 @@ class TranslateASTVisitor final
       }
       
       bool VisitInitListExpr(InitListExpr *ILE) {
-          std::vector<void*> childIds =
-          { ILE->getArrayFiller() };
+          std::vector<void*> childIds;
           for (auto x : ILE->inits()) {
               childIds.push_back(x);
           }
           encode_entry(ILE, TagInitListExpr, childIds);
+          
           return true;
       }
       

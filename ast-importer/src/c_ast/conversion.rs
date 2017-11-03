@@ -850,6 +850,29 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, conditional);
                 }
 
+                ASTEntryTag::TagImplicitValueInitExpr => {
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_type(&ty_old);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, CExprKind::ImplicitValueInit(ty))
+                }
+
+                ASTEntryTag::TagInitListExpr => {
+
+                    let exprs: Vec<CExprId> = node.children
+                        .iter()
+                        .map(|id| {
+                            let expr_id = id.expect("init expression id");
+                            self.visit_expr(&expr_id)
+                        })
+                        .collect();
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_type(&ty_old);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, CExprKind::InitList(ty, exprs))
+                }
+
                 // Declarations
 
                 ASTEntryTag::TagFunctionDecl if expected_ty & OTHER_DECL != 0 => {

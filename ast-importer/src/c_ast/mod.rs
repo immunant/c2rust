@@ -97,6 +97,9 @@ impl TypedAstContext {
 
             CExprKind::ArraySubscript(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
             CExprKind::Conditional(_, c, lhs, rhs) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+
+            CExprKind::InitList{..} => false,
+            CExprKind::ImplicitValueInit{..} => false,
         }
     }
 }
@@ -250,6 +253,12 @@ pub enum CExprKind {
 
     // Ternary conditional operator
     Conditional(CTypeId, CExprId, CExprId, CExprId),
+
+    // Initializer list
+    InitList(CTypeId, Vec<CExprId>),
+
+    // Designated initializer
+    ImplicitValueInit(CTypeId),
 }
 
 impl CExprKind {
@@ -265,6 +274,8 @@ impl CExprKind {
             CExprKind::Member(ty, _, _) => ty,
             CExprKind::ArraySubscript(ty, _, _) => ty,
             CExprKind::Conditional(ty, _, _, _) => ty,
+            CExprKind::InitList(ty, _) => ty,
+            CExprKind::ImplicitValueInit(ty) => ty,
         }
     }
 }

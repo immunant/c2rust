@@ -455,9 +455,8 @@ impl Translation {
 
                     CastKind::FloatingRealToComplex | CastKind::FloatingComplexToIntegralComplex |
                     CastKind::FloatingComplexCast | CastKind::FloatingComplexToReal |
-                    CastKind::FloatingComplexToIntegralComplex | CastKind::IntegralComplexToReal |
-                    CastKind::IntegralRealToComplex | CastKind:: IntegralComplexCast |
-                    CastKind:: IntegralComplexToFloatingComplex =>
+                    CastKind::IntegralComplexToReal | CastKind::IntegralRealToComplex |
+                    CastKind::IntegralComplexCast | CastKind:: IntegralComplexToFloatingComplex =>
                         panic!("TODO casts with complex numbers not supported"),
                 }
             }
@@ -614,6 +613,9 @@ impl Translation {
                     struct_val
                 }
             }
+
+            CExprKind::InitList{..} => panic!("Init list not implemented"),
+            CExprKind::ImplicitValueInit{..} => panic!("Designated init not implemented"),
         }
     }
 
