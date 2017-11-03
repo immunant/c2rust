@@ -106,7 +106,7 @@ class TestCase:
 
         # run rustc
         args = [
-            '--crate-type=staticlib',
+            '--crate-type=staticlib',  # could just as well be 'cdylib'
             '-o', self.rust_obj,
             self.rust_src
         ]
@@ -188,10 +188,13 @@ class TestCase:
 
         if bool(failed_message) == self.pass_expected:
             self.print_status(FAIL, "FAILED", failed_message or "(unexpected success)")
+            self.status = "unexpected failures" if failed_message else "unexpected successes"
         elif failed_message:
             self.print_status(OKBLUE, "FAILED", failed_message + " (expected)")
+            self.status = "expected failures"
         else:
             self.print_status(OKGREEN, "OK", None)
+            self.status = "successes"
 
         sys.stdout.write("\n")
 
@@ -294,6 +297,14 @@ if __name__ == "__main__":
     if not testcases:
         die("nothing to test")
 
+    # Accumulate test case stats
+    test_results = {
+        "unexpected failures": 0,
+        "unexpected successes": 0,
+        "expected failures": 0,
+        "successes": 0
+    }
+
     # Testcases are run one after another. Only tests that match the '--only'
     # argument are run. We make a best effort to clean up all files left behind.
     for testcase in testcases:
@@ -303,6 +314,19 @@ if __name__ == "__main__":
                 testcase.run()
             finally:
                 testcase.cleanup()
+
+            if testcase.status:
+                test_results[testcase.status] += 1
+
         else:
             logging.debug("skipping test: %s", testcase.src_c)
+
+    # Print out test case stats
+    sys.stdout.write("\nTest summary:\n")
+    for variant, count in test_results.items():
+        sys.stdout.write("  {}: {}\n".format(variant, count))
+
+    # If anything failed (or there is something unknown), exit with error code 1
+    if 0 < test_results["unexpected failures"] + test_results["unexpected successes"]:
+        quit(1)
 
