@@ -231,10 +231,12 @@ fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
 }
 
 impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
+    #[inline]
     fn last_scope(&self) -> &ScopeConfig<'xcfg> {
         self.scope_stack.last().unwrap()
     }
 
+    #[inline]
     fn config(&self) -> &CrossCheckConfig {
         self.last_scope().config.borrow()
     }
