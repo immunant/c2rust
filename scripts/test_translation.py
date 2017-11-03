@@ -2,11 +2,9 @@
 
 import os
 import sys
-import errno
 import logging
 import argparse
-import multiprocessing
-import subprocess
+import re
 
 from common import *
 
@@ -21,13 +19,22 @@ diff  = get_cmd_or_die("diff")
 
 driver = os.path.join(ROOT_DIR, "scripts/driver.c")
 
+# Terminal escape codes
+OKBLUE    = '\033[94m'
+OKGREEN   = '\033[92m'
+WARNING   = '\033[93m'
+FAIL      = '\033[91m'
+NO_COLOUR = '\033[0m'
+
+
 class TestCase:
     def __init__(self, path: str, pass_expected: bool) -> None:
         directory, cfile = os.path.split(path)
         filebase, ext = os.path.splitext(cfile)
 
-        self.pass_expected = pass_expected
+        self.shortname = filebase
         self.directory = directory
+        self.pass_expected = pass_expected
 
         # Absolute paths to all of the files we will attempt to generate
         self.src_c     = path
@@ -39,6 +46,18 @@ class TestCase:
         self.c_exec    = os.path.join(directory, filebase + '_c')
         self.rust_out  = os.path.join(directory, filebase + '_out.txt')
         self.c_out     = os.path.join(directory, filebase + '_out.txt')
+
+    def print_status(self, color: str, status: str, message):
+        """
+        Print coloured status information. Overwrites current line.
+        """
+        sys.stdout.write('\r')
+        sys.stdout.write('\033[K')
+
+        sys.stdout.write(color + ' [ ' + status + ' ] ' + NO_COLOUR)
+        sys.stdout.write(self.shortname)
+        if message:
+            sys.stdout.write(": " + message)
 
     def generate_cc_db(self):
         directory, cfile = os.path.split(self.src_c)
@@ -62,7 +81,7 @@ class TestCase:
 
         # run the extractor
         args = [ self.src_c ]
-        return ast_extractor[args].run()
+        return ast_extractor[args].run(retcode = None)
 
 
     def translate(self):
@@ -75,7 +94,7 @@ class TestCase:
         # run the importer
         args = [ self.cbor ]
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
-            return ( ast_importer[args] > self.rust_src ).run()
+            return ( ast_importer[args] > self.rust_src ).run(retcode = None)
 
     def compile_translated_rustc(self):
 
@@ -85,7 +104,7 @@ class TestCase:
             '-o', self.rust_obj,
             self.rust_src
         ]
-        return rustc[args].run()
+        return rustc[args].run(retcode = None)
 
     def compile_translated_clang(self):
 
@@ -95,7 +114,7 @@ class TestCase:
             '-o', self.rust_exec,
             self.rust_obj, driver,
         ]
-        return clang[args].run()
+        return clang[args].run(retcode = None)
 
     def compile_original_clang(self):
 
@@ -104,21 +123,21 @@ class TestCase:
             '-o', self.c_exec,
             driver, self.src_c
         ]
-        return clang[args].run()
+        return clang[args].run(retcode = None)
 
     def compare_run_outputs(self):
 
         # run the Rust executable
-        run_result = ( get_cmd_or_die(self.rust_exec) > self.rust_out ).run()
+        run_result = ( get_cmd_or_die(self.rust_exec) > self.rust_out ).run(retcode = None)
         if run_result[0]: return run_result
 
         # run the C executable
-        run_result = ( get_cmd_or_die(self.c_exec) > self.c_out ).run()
+        run_result = ( get_cmd_or_die(self.c_exec) > self.c_out ).run(retcode = None)
         if run_result[0]: return run_result
 
         # diff the two outputs
         args = [ '--minimal', self.rust_out, self.c_out ]
-        return diff[args].run()
+        return diff[args].run(retcode = None)
 
 
     def run(self):
@@ -134,28 +153,41 @@ class TestCase:
             ("compare their outputs",            self.compare_run_outputs)
         ]
 
-        failed = False
+        failed_message = None
 
         for description, command in commands:
 
             # Run the step
+            self.print_status(WARNING, "RUNNING", description + "...")
             retcode, stdout, stderr = command()
 
             # Document failures
             if retcode:
-                failed = True
+                failed_message = "failed to " + description + "."
 
                 if self.pass_expected:
-                    print("Unexpected failure", self.src_c)
-                    print("Failed to", description)
-                    if stdout: print("STDOUT:\n", stdout)
-                    if stderr: print("STDERR:\n", stderr)
+                    logging.error("Unexpected failure for " + self.shortname)
+                    logging.error("Failed to " + description)
+                    if stdout: logging.error("STDOUT:\n" + stdout)
+                    if stderr: logging.error("STDERR:\n" + stderr)
+                else:
+                    logging.warning("Expected failure for " + self.shortname)
+                    logging.warning("Failed to " + description)
+                    if stdout: logging.warning("STDOUT:\n" + stdout)
+                    if stderr: logging.warning("STDERR:\n" + stderr)
 
                 break
+        else:
+            logging.info("Expected success for " + self.shortname)
 
-        expect = "Unexpected" if self.pass_expected == failed else "(expected)"
-        status = "failure" if failed else "success"
-        print(self.src_c, ":", expect, status)
+        if bool(failed_message) == self.pass_expected:
+            self.print_status(FAIL, "FAILED", failed_message or "(unexpected success)")
+        elif failed_message:
+            self.print_status(OKBLUE, "FAILED", failed_message + "(expected)")
+        else:
+            self.print_status(OKGREEN, "OK", None)
+
+        sys.stdout.write("\n")
 
     def cleanup(self):
 
@@ -191,6 +223,17 @@ def readable_directory(directory: str) -> str:
     else:
         return directory
 
+def regex(raw: str):
+    """
+    Check that a string is a valid regex
+    """
+
+    try:
+        return re.compile(raw)
+    except:
+        msg = "what:{0} is not a valid regular expression".format(raw)
+        raise argparse.ArgumentTypeError(msg)
+
 def get_testcases(directory: str) -> List[TestCase]:
     """
     Find the test cases in a directory
@@ -203,7 +246,16 @@ def get_testcases(directory: str) -> List[TestCase]:
 
         # Expect all C files to be test cases that should pass
         if os.path.isfile(path) and os.path.splitext(path)[1] == ".c":
-            testcases.append(TestCase(path, True))
+
+            # Files that mention the word "fail" in their first line are marked
+            # as being expected to fail.
+            try:
+                with open(path, 'r') as f:
+                    pass_expected = not "fail" in f.readline()
+            except:
+                pass_expected = False
+
+            testcases.append(TestCase(path, pass_expected))
 
     return testcases
 
@@ -212,9 +264,20 @@ if __name__ == "__main__":
     desc = 'run regression / unit / feature tests.'
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('directory', type=readable_directory)
-    parser.add_argument('-d', '--what', type=str, default='.*')
+    parser.add_argument(
+        '--what', dest='regex', type=regex,
+        default='.*', help="Regular expression to filter which tests to run"
+    )
+    parser.add_argument(
+        '--log', dest='logLevel',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+        default='CRITICAL', help="Set the logging level"
+    )
 
-    setup_logging()
+    args = parser.parse_args()
+    testcases = get_testcases(args.directory)
+    setup_logging(args.logLevel)
+
     logging.debug("args: %s", " ".join(sys.argv))
 
     # check that the binaries have been built first
@@ -226,18 +289,18 @@ if __name__ == "__main__":
 
     ensure_dir(DEPS_DIR)
 
-    args = parser.parse_args()
-    testcases = get_testcases(args.directory)
-
-    # TODO: filter what gets tested using `what` argument
-
     if not testcases:
         die("nothing to test")
 
+    # Testcases are run one after another. Only tests that match the '--what'
+    # argument are run. We make a best effort to clean up all files left behind.
     for testcase in testcases:
-        logging.debug("running test: %s", testcase.src_c)
-        try:
-            testcase.run()
-        finally:
-            testcase.cleanup()
+        if args.regex.fullmatch(testcase.shortname):
+            logging.debug("running test: %s", testcase.src_c)
+            try:
+                testcase.run()
+            finally:
+                testcase.cleanup()
+        else:
+            logging.debug("skipping test: %s", testcase.src_c)
 

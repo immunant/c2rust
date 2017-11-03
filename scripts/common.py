@@ -27,7 +27,7 @@ DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
 RREF_DIR = os.path.join(ROOT_DIR, 'rust-refactor')
 COMPILER_SUBMOD_DIR = os.path.join(RREF_DIR, 'compiler')
 
-AST_IMPO = os.path.join(ROOT_DIR, "ast-importer/target/debug/ast_importer") 
+AST_IMPO = os.path.join(ROOT_DIR, "ast-importer/target/debug/ast_importer")
 
 CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
 CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.1.tar.gz")
@@ -46,10 +46,10 @@ BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
 LLVM_SRC = os.path.join(ROOT_DIR, 'llvm.src')
 LLVM_BLD = os.path.join(ROOT_DIR, 'llvm.build.')
-# make the build directory unique to the hostname such that 
-# building inside a vagrant/docker environment uses a different 
+# make the build directory unique to the hostname such that
+# building inside a vagrant/docker environment uses a different
 # folder than building directly on the host.
-LLVM_BLD += platform.node()  # returns hostname 
+LLVM_BLD += platform.node()  # returns hostname
 LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
 # LLVM_PUBKEY = "8F0871F202119294"  # signed v4.0.1
 LLVM_PUBKEY = "345AD05D"  # signed v5.0.0
@@ -104,7 +104,7 @@ def have_rust_toolchain(name: str) -> bool:
 def get_rust_toolchain_libpath(name: str) -> str:
     """
     returns library path to custom rust libdir
-    
+
     """
     if platform.architecture()[0] != '64bit':
         die("must be on 64-bit host")
@@ -255,11 +255,12 @@ def ensure_dir(path):
         die("%s is not a directory", path)
 
 
-def setup_logging():
+def setup_logging(logLevel = logging.DEBUG):
     logging.basicConfig(
         filename=sys.argv[0].replace(".py", ".log"),
         filemode='w',
-        level=logging.DEBUG)
+        level=logLevel
+    )
 
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
@@ -315,7 +316,7 @@ def get_system_include_dirs() -> List[str]:
     """
     note: assumes code was compiled with clang installed locally.
     """
-    cc = get_cmd_or_die("clang") 
+    cc = get_cmd_or_die("clang")
     cmd = cc["-E", "-Wp,-v", "-"]
     _, _, stderr = cmd.run()
     dirs = stderr.split(os.linesep)
@@ -375,7 +376,7 @@ def check_sig(afile: str, asigfile: str) -> None:
     def init_gpg_keys():
         """
         make sure we have the LLVM public key installed
-        """ 
+        """
         keys = gpg('--list-keys')
         for line in keys.split("\n"):
             if line.endswith(LLVM_PUBKEY):

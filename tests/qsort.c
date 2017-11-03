@@ -32,7 +32,7 @@ void quickSort(int arr[], int low, int high)
 
 void entry(unsigned buffer_size, int buffer[])
 {
-    if (buffer_size >= 5) {
+    if (buffer_size >= 10) {
         buffer[0] = 6;
         buffer[1] = 1;
         buffer[2] = 5;
@@ -42,8 +42,8 @@ void entry(unsigned buffer_size, int buffer[])
         buffer[6] = 9;
         buffer[7] = 2;
         buffer[9] = 5;
+        
+        quickSort(buffer, 0, 10);
     }
-
-    quickSort(buffer, 0, 10);
 }
 
