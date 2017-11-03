@@ -298,7 +298,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                                         // By default, we use cross_check_hash
                                         // to hash the value of the identifier
                                         Some(quote_expr!(self.cx, {
-                                            extern crate cross_check_runtime as XCH;
+                                            use cross_check_runtime::hash::CrossCheckHash as XCH;
                                             XCH::cross_check_hash::<$ahasher, $shasher>(&$ident)
                                         }))
                                     }).map(|val| quote_block!(self.cx, {
