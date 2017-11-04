@@ -114,8 +114,8 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     let top_args = get_cross_check_args(&s.ast().attrs[..]).unwrap_or_default();
 
     // Allow users to override __XCHA and __XCHS
-    let ahasher_override = top_args.get_ident_arg("ahasher_override", "__XCHA");
-    let shasher_override = top_args.get_ident_arg("shasher_override", "__XCHS");
+    let ahasher = top_args.get_ident_arg("ahasher", "__XCHA");
+    let shasher = top_args.get_ident_arg("shasher", "__XCHS");
 
     // Iterate through all fields, inserting the hash computation for each field
     let hash_fields = s.each(|f| {
@@ -132,8 +132,8 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                 let (tag, filter) = get_direct_item_config(sub_args.get_list(),
                                                            quote::Tokens::new());
                 Some(quote! { cross_check_value!(#tag, (#filter(#f)),
-                                                 #ahasher_override,
-                                                 #shasher_override) })
+                                                 #ahasher,
+                                                 #shasher) })
             } else if let Some(ref sub_args) = args.0.get("check_raw") {
                 // The default filter token here is "*" so we get
                 // a dereference as the default:
@@ -150,7 +150,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                 Some(quote! { h.write_u64(#id) })
             } else if let Some(ref sub_arg) = args.0.get("custom_hash") {
                 let id = sub_arg.get_str_ident();
-                Some(quote! { #id::<#ahasher_override, #shasher_override>(&mut h, #f, _depth) })
+                Some(quote! { #id::<#ahasher, #shasher>(&mut h, #f, _depth) })
             } else {
                 None
             }
@@ -158,7 +158,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
             // Default implementation
             quote! {
                 use cross_check_runtime::hash::CrossCheckHash;
-                h.write_u64(CrossCheckHash::cross_check_hash_depth::<#ahasher_override, #shasher_override>(#f, _depth - 1));
+                h.write_u64(CrossCheckHash::cross_check_hash_depth::<#ahasher, #shasher>(#f, _depth - 1));
             }
         })
     });
@@ -166,10 +166,10 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     let hash_code = top_args.0.get("custom_hash").map(|sub_arg| {
         // Hash this value by calling the specified function
         let id = sub_arg.get_str_ident();
-        quote! { #id::<#ahasher_override, #shasher_override>(&self, _depth) }
+        quote! { #id::<#ahasher, #shasher>(&self, _depth) }
     }).unwrap_or_else(|| {
         // Hash this value using the default algorithm
-        let hasher = top_args.get_ident_arg("field_hasher", ahasher_override);
+        let hasher = top_args.get_ident_arg("field_hasher", ahasher);
         quote! {
             let mut h = #hasher::default();
             match *self { #hash_fields }

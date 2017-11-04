@@ -152,8 +152,6 @@ impl CrossCheckConfig {
 
                         // Ignore arguments for #[derive(CrossCheckHash)]
                         "custom_hash" |
-                        "ahasher_override" |
-                        "shasher_override" |
                         "field_hasher" => (),
 
                         name@_ => panic!("Unknown cross_check item: {}", name)
@@ -189,8 +187,8 @@ impl CrossCheckConfig {
                 parse_optional_field!(field_hasher, struc, field_hasher, Some(field_hasher.clone()));
                 self.sub_xchecks.extend(struc.fields.clone().into_iter());
                 // TODO: add a way for the external config to reset these to default
-                parse_optional_field!(ahasher, struc, ahasher_override, cx.parse_tts(ahasher_override.clone()));
-                parse_optional_field!(shasher, struc, shasher_override, cx.parse_tts(shasher_override.clone()));
+                parse_optional_field!(ahasher, struc, ahasher, cx.parse_tts(ahasher.clone()));
+                parse_optional_field!(shasher, struc, shasher, cx.parse_tts(shasher.clone()));
             },
             _ => ()
         }

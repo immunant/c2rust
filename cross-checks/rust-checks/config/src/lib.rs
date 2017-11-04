@@ -84,8 +84,8 @@ pub struct StructConfig {
     pub name: String,
 
     // Overrides for ahasher/shasher
-    pub ahasher_override: Option<String>,
-    pub shasher_override: Option<String>,
+    pub ahasher: Option<String>,
+    pub shasher: Option<String>,
 
     // Replacement hasher for this structure
     pub field_hasher: Option<String>,
