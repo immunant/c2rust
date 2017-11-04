@@ -78,11 +78,29 @@ impl FunctionConfig {
     }
 }
 
+#[derive(Deserialize, Debug, Default)]
+#[serde(default)]
+pub struct StructConfig {
+    pub name: String,
+
+    // Overrides for ahasher/shasher
+    pub ahasher_override: Option<String>,
+    pub shasher_override: Option<String>,
+
+    // Replacement hasher for this structure
+    pub hasher: Option<String>,
+
+    // Custom hash function to call to hash this structure
+    pub custom_hash: Option<String>,
+
+    pub fields: HashMap<String, XCheckType>,
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(tag = "item", rename_all = "lowercase")]
 pub enum ItemConfig {
     Function(FunctionConfig),
-    Struct,  // TODO
+    Struct(StructConfig),
     Value,   // TODO
     Closure, // TODO
 }
@@ -91,6 +109,7 @@ impl ItemConfig {
     fn name(&self) -> Option<&str> {
         match *self {
             ItemConfig::Function(FunctionConfig { ref name, .. }) => Some(&name[..]),
+            ItemConfig::Struct(StructConfig { ref name, .. }) => Some(&name[..]),
             _ => None
         }
     }
