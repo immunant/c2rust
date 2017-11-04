@@ -89,6 +89,9 @@ class TestCase:
 
         # run the extractor
         args = [self.src_c]
+        # make sure we can locate system libraries
+        sys_incl_dirs = get_system_include_dirs()
+        args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
         return ast_extractor[args].run(retcode=None)
 
     def translate(self):
