@@ -472,6 +472,15 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagParenType => {
+                    let paren_id = expect_u64(&ty_node.extras[0]).expect("Paren type child not found");
+                    let paren = self.visit_type(&paren_id);
+
+                    let paren_ty = CTypeKind::Paren(paren);
+                    self.add_type(new_id, not_located(paren_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
                 TypeTag::TagConstantArrayType => {
                     let element_id = expect_u64(&ty_node.extras[0]).expect("element id");
 
@@ -848,6 +857,29 @@ impl ConversionContext {
                     let conditional = CExprKind::Conditional(ty, cond, lhs, rhs);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, conditional);
+                }
+
+                ASTEntryTag::TagImplicitValueInitExpr => {
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_type(&ty_old);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, CExprKind::ImplicitValueInit(ty))
+                }
+
+                ASTEntryTag::TagInitListExpr => {
+
+                    let exprs: Vec<CExprId> = node.children
+                        .iter()
+                        .map(|id| {
+                            let expr_id = id.expect("init expression id");
+                            self.visit_expr(&expr_id)
+                        })
+                        .collect();
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_type(&ty_old);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, CExprKind::InitList(ty, exprs))
                 }
 
                 // Declarations

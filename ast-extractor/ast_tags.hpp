@@ -56,7 +56,6 @@ enum ASTEntryTag {
     TagMemberExpr,
     TagParenExpr,
     
-    
     TagIntegerLiteral = 300,
     TagStringLiteral,
     TagCharacterLiteral,
@@ -98,6 +97,7 @@ enum TypeTag {
     
     TagBool,
     TagDecayedType,
+    TagParenType,
 };
 
 enum StringTypeTag {

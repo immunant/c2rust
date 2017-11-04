@@ -74,6 +74,21 @@ impl Printer {
                 print!(" : ");
                 self.print_expr(rhs, context);
             }
+            Some(&CExprKind::InitList(_, ref xs)) => {
+                print!("{{ ");
+                let mut started = false;
+                for x in xs {
+                    if started {
+                        print!(", ");
+                    } else {
+                        started = true;
+                    }
+                    self.print_expr(*x, context);
+                }
+                print!(" }}");
+            }
+            Some(&CExprKind::ImplicitValueInit{..}) =>
+                print!("{{}}"),
             None => panic!("Could not find expression with ID {:?}", expr_id),
            // _ => unimplemented!("Printer::print_expr"),
         }

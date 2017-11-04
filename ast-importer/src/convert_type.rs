@@ -44,6 +44,7 @@ impl TypeConverter {
 
             CTypeKind::Elaborated(ref ctype) => self.convert(ctxt, *ctype),
             CTypeKind::Decayed(ref ctype) => self.convert(ctxt, *ctype),
+            CTypeKind::Paren(ref ctype) => self.convert(ctxt, *ctype),
 
             CTypeKind::Record(ref decl) => {
                 if let CDeclKind::Record { ref name, .. } = ctxt.index(*decl).kind {

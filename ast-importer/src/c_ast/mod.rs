@@ -57,6 +57,7 @@ impl TypedAstContext {
             CTypeKind::Elaborated(ty) => self.resolve_type_id(ty),
             CTypeKind::Decayed(ty) => self.resolve_type_id(ty),
             CTypeKind::TypeOf(ty) => self.resolve_type_id(ty),
+            CTypeKind::Paren(ty) => self.resolve_type_id(ty),
             CTypeKind::Typedef(decl) => {
                 match self.index(decl).kind {
                     CDeclKind::Typedef { typ: ty, .. } => self.resolve_type_id(ty),
@@ -97,6 +98,9 @@ impl TypedAstContext {
 
             CExprKind::ArraySubscript(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
             CExprKind::Conditional(_, c, lhs, rhs) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+
+            CExprKind::InitList{..} => false,
+            CExprKind::ImplicitValueInit{..} => false,
         }
     }
 }
@@ -250,6 +254,12 @@ pub enum CExprKind {
 
     // Ternary conditional operator
     Conditional(CTypeId, CExprId, CExprId, CExprId),
+
+    // Initializer list
+    InitList(CTypeId, Vec<CExprId>),
+
+    // Designated initializer
+    ImplicitValueInit(CTypeId),
 }
 
 impl CExprKind {
@@ -265,6 +275,8 @@ impl CExprKind {
             CExprKind::Member(ty, _, _) => ty,
             CExprKind::ArraySubscript(ty, _, _) => ty,
             CExprKind::Conditional(ty, _, _, _) => ty,
+            CExprKind::InitList(ty, _) => ty,
+            CExprKind::ImplicitValueInit(ty) => ty,
         }
     }
 }
@@ -527,6 +539,9 @@ pub enum CTypeKind {
     // Represents a pointer type decayed from an array or function type.
     Decayed(CTypeId),
     Elaborated(CTypeId),
+
+    // Type wrapped in parentheses
+    Paren(CTypeId),
 
     // Struct or union type
     //

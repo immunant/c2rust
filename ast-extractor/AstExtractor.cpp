@@ -89,6 +89,17 @@ public:
         }
     }
     
+    void VisitParenType(const ParenType *T) {
+        auto t = T->getInnerType();
+        auto s = t.split();
+        
+        encodeType(T, TagParenType, [T,&s](CborEncoder *local) {
+            cbor_encode_uint(local, uintptr_t(s.Ty));
+        });
+        
+        VisitQualType(t);
+    }
+    
     void VisitEnumType(const EnumType *T) {
         encodeType(T, TagEnumType, [T](CborEncoder *local) {
             cbor_encode_uint(local, uintptr_t(T->getDecl()));
@@ -503,12 +514,12 @@ class TranslateASTVisitor final
       }
       
       bool VisitInitListExpr(InitListExpr *ILE) {
-          std::vector<void*> childIds =
-          { ILE->getArrayFiller() };
+          std::vector<void*> childIds;
           for (auto x : ILE->inits()) {
               childIds.push_back(x);
           }
           encode_entry(ILE, TagInitListExpr, childIds);
+          
           return true;
       }
       

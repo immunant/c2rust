@@ -160,8 +160,14 @@ impl Make<ThinTokenStream> for TokenStream {
 }
 
 impl Make<ThinTokenStream> for Vec<TokenTree> {
-    fn make(self, _mk: &Builder) -> ThinTokenStream {
+    fn make(self, mk: &Builder) -> ThinTokenStream {
         self.into_iter().collect::<TokenStream>().into()
+    }
+}
+
+impl Make<TokenTree> for Token {
+    fn make(self, mk: &Builder) -> TokenTree {
+        TokenTree::Token(DUMMY_SP, self)
     }
 }
 
@@ -267,6 +273,25 @@ impl Builder {
                 Token::Eq,
                 Token::Literal(token::Lit::Str_(value.into_symbol()), None),
             ].into_iter().collect(),
+            is_sugared_doc: false,
+            span: DUMMY_SP,
+        });
+        Builder {
+            attrs: attrs,
+            ..self
+        }
+    }
+
+    pub fn single_attr<K>(self, key: K) -> Self
+        where K: Make<PathSegment> {
+        let key = vec![key].make(&self);
+
+        let mut attrs = self.attrs;
+        attrs.push(Attribute {
+            id: AttrId(0),
+            style: AttrStyle::Outer,
+            path: key,
+            tokens: TokenStream::empty(),
             is_sugared_doc: false,
             span: DUMMY_SP,
         });
@@ -455,6 +480,17 @@ impl Builder {
         P(Expr {
             id: DUMMY_NODE_ID,
             node: ExprKind::Path(qself, path),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
+    pub fn paren_expr<E>(self, e: E) -> P<Expr>
+        where E: Make<P<Expr>> {
+        let e = e.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Paren(e),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })
@@ -903,6 +939,14 @@ impl Builder {
                                   items))
     }
 
+    pub fn extern_crate_item<I>(self, name: I, rename: Option<I>) -> P<Item>
+        where I: Make<Ident>
+    {
+        let name = name.make(&self);
+        let rename = rename.map(|n| n.make(&self).name);
+        Self::item(name, self.attrs, self.vis, ItemKind::ExternCrate(rename))
+    }
+
     // Misc nodes
 
     pub fn block<S>(self, stmts: Vec<S>) -> P<Block>
@@ -955,6 +999,21 @@ impl Builder {
         Ty {
             id: DUMMY_NODE_ID,
             node,
+            span: DUMMY_SP,
+        }
+    }
+
+    pub fn attribute<Pa, Ts>(self, style: AttrStyle, path: Pa, tokens: Ts) -> Attribute
+        where Pa: Make<Path>, Ts: Make<ThinTokenStream>
+    {
+        let path = path.make(&self);
+        let tokens = tokens.make(&self).into();
+        Attribute {
+            id: AttrId(0),
+            style,
+            path,
+            tokens,
+            is_sugared_doc: false,
             span: DUMMY_SP,
         }
     }

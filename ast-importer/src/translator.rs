@@ -1,6 +1,9 @@
 
 use syntax::ast;
 use syntax::ast::*;
+use syntax::tokenstream::{TokenStream, TokenTree};
+use syntax::parse::token::{DelimToken,Token};
+use syntax::abi::Abi;
 use renamer::Renamer;
 use convert_type::TypeConverter;
 use idiomize::ast_manip::make_ast::*;
@@ -136,6 +139,21 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
 
     to_string(|s| {
 
+        // Add `#[feature(libc)]` to the top of the file
+        s.print_attribute(&mk().attribute::<_,TokenStream>(
+            AttrStyle::Inner,
+            vec!["feature"],
+            vec![
+                Token::OpenDelim(DelimToken::Paren),
+                Token::Ident(mk().ident("libc")),
+                Token::CloseDelim(DelimToken::Paren),
+            ].into_iter().collect(),
+        ));
+
+        // Add `extern crate libc` to the top of the file
+        s.print_item(&mk().extern_crate_item("libc", None));
+
+        // Add the items accumulated
         for x in t.items.iter() {
             s.print_item(x)?
         }
@@ -203,7 +221,14 @@ impl Translation {
         // End scope for function parameters
         self.renamer.borrow_mut().drop_scope();
 
-        self.items.push(mk().unsafe_().fn_item(name, decl, block));
+        let function =mk()
+            .single_attr("no_mangle")
+            .vis(Visibility::Public)
+            .unsafe_()
+            .abi(Abi::C)
+            .fn_item(name, decl, block);
+
+        self.items.push(function);
     }
 
     fn convert_function_body(&self, body_id: CStmtId) -> P<Block> {
@@ -432,7 +457,10 @@ impl Translation {
 
                     CastKind::IntegralCast | CastKind::FloatingCast | CastKind::FloatingToIntegral | CastKind::IntegralToFloating =>  {
                         let ty = self.convert_type(ty);
-                        val.map(|x| mk().cast_expr(x, ty))
+                        // this explicit use of paren_expr is to work around a bug in libsyntax
+                        // Normally parentheses are added automatically as needed
+                        // The library is rendering ''(x as uint) as < y'' as ''x as uint < y''
+                        val.map(|x| mk().paren_expr(mk().cast_expr(x, ty)))
                     }
 
                     CastKind::LValueToRValue | CastKind::NoOp | CastKind::ToVoid => val,
@@ -455,9 +483,8 @@ impl Translation {
 
                     CastKind::FloatingRealToComplex | CastKind::FloatingComplexToIntegralComplex |
                     CastKind::FloatingComplexCast | CastKind::FloatingComplexToReal |
-                    CastKind::FloatingComplexToIntegralComplex | CastKind::IntegralComplexToReal |
-                    CastKind::IntegralRealToComplex | CastKind:: IntegralComplexCast |
-                    CastKind:: IntegralComplexToFloatingComplex =>
+                    CastKind::IntegralComplexToReal | CastKind::IntegralRealToComplex |
+                    CastKind::IntegralComplexCast | CastKind:: IntegralComplexToFloatingComplex =>
                         panic!("TODO casts with complex numbers not supported"),
                 }
             }
@@ -614,6 +641,9 @@ impl Translation {
                     struct_val
                 }
             }
+
+            CExprKind::InitList{..} => panic!("Init list not implemented"),
+            CExprKind::ImplicitValueInit{..} => panic!("Designated init not implemented"),
         }
     }
 
