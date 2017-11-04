@@ -150,26 +150,22 @@ impl CrossCheckConfig {
     }
 
     fn parse_xcfg_config(mut self, cx: &ExtCtxt, xcfg: &xcfg::ItemConfig) -> Self {
+        macro_rules! parse_optional_field {
+            ($self_name:ident, $parent:ident, $xcfg_name:ident, $new_value:expr) => (
+                if let Some(ref $xcfg_name) = $parent.$xcfg_name {
+                    self.$self_name = $new_value;
+                }
+            )
+        }
         match *xcfg {
             xcfg::ItemConfig::Function(ref func) => {
-                if let Some(disable_xchecks) = func.disable_xchecks {
-                    self.enabled = !disable_xchecks;
-                }
-                if let Some(ref entry) = func.entry {
-                    self.entry_xcheck = entry.clone();
-                }
-                if let Some(ref all_args) = func.all_args {
-                    self.all_args_xcheck = all_args.clone();
-                }
+                parse_optional_field!(enabled,         func, disable_xchecks, !disable_xchecks);
+                parse_optional_field!(entry_xcheck,    func, entry,           entry.clone());
+                parse_optional_field!(all_args_xcheck, func, all_args,        all_args.clone());
+                // TODO: add a way for the external config to reset these to default
+                parse_optional_field!(ahasher, func, ahasher, cx.parse_tts(ahasher.clone()));
+                parse_optional_field!(shasher, func, shasher, cx.parse_tts(shasher.clone()));
                 self.arg_xchecks.extend(func.args.clone().into_iter());
-                if let Some(ref ahasher) = func.ahasher {
-                    // TODO: add a way for the external config to reset to default
-                    self.ahasher = cx.parse_tts(ahasher.clone());
-                }
-                if let Some(ref shasher) = func.shasher {
-                    // TODO: add a way for the external config to reset to default
-                    self.shasher = cx.parse_tts(shasher.clone());
-                }
                 // TODO: parse more fields: exit, ret
             },
             _ => ()
