@@ -150,9 +150,20 @@ impl CrossCheckConfig {
                                                .unwrap_or_default()
                         }
 
-                        // Ignore arguments for #[derive(CrossCheckHash)]
-                        "custom_hash" |
-                        "field_hasher" => (),
+                        // Structure-specific attributes
+                        "custom_hash" => {
+                            if let Some(s) = item.value_str() {
+                                let s = String::from(&*s.as_str());
+                                self.main_xcheck = xcfg::XCheckType::Custom(s)
+                            }
+                        }
+
+                        "field_hasher" => {
+                            if let Some(s) = item.value_str() {
+                                let s = String::from(&*s.as_str());
+                                self.field_hasher = Some(s)
+                            }
+                        }
 
                         name@_ => panic!("Unknown cross_check item: {}", name)
                     }
