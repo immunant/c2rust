@@ -33,12 +33,25 @@ fn djb2_hash(s: &str) -> u32 {
 
 #[derive(Clone)]
 struct CrossCheckConfig {
+    // Generic cross-check fields
     enabled: bool,
+
+    // The main xcheck for this item (entry point for function, contents for structure)
     main_xcheck: xcfg::XCheckType,
-    all_args_xcheck: xcfg::XCheckType,
+
+    // Cross-check types for subcomponents: function arguments or structure fields
     sub_xchecks: HashMap<String, xcfg::XCheckType>,
+
+    // Overrides for ahasher/shasher
     ahasher: Vec<TokenTree>,
     shasher: Vec<TokenTree>,
+
+    // Item-specific configuration starts here
+    // ---------------------------------------
+    // Function item configuration
+    all_args_xcheck: xcfg::XCheckType,
+
+    // Structure item configuration
     field_hasher: Option<String>,
 }
 
