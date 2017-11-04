@@ -55,13 +55,13 @@ struct CrossCheckConfig {
     field_hasher: Option<String>,
 }
 
-trait XCheckHash {
+trait CrossCheckHash {
     fn get_ident_hash(&self, cx: &ExtCtxt, ident: &ast::Ident) -> Option<P<ast::Expr>>;
     fn get_hash<F>(&self, cx: &ExtCtxt, f: F) -> Option<P<ast::Expr>>
         where F: FnOnce() -> Option<P<ast::Expr>>;
 }
 
-impl XCheckHash for xcfg::XCheckType {
+impl CrossCheckHash for xcfg::XCheckType {
     fn get_ident_hash(&self, cx: &ExtCtxt, ident: &ast::Ident) -> Option<P<ast::Expr>> {
         self.get_hash(cx, || {
             let id = djb2_hash(&*ident.name.as_str()) as u64;
