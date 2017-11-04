@@ -88,7 +88,7 @@ pub struct StructConfig {
     pub shasher_override: Option<String>,
 
     // Replacement hasher for this structure
-    pub hasher: Option<String>,
+    pub field_hasher: Option<String>,
 
     // Custom hash function to call to hash this structure
     pub custom_hash: Option<String>,

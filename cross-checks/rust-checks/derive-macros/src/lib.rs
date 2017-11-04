@@ -169,7 +169,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         quote! { #id::<#ahasher_override, #shasher_override>(&self, _depth) }
     }).unwrap_or_else(|| {
         // Hash this value using the default algorithm
-        let hasher = top_args.get_ident_arg("hasher", ahasher_override);
+        let hasher = top_args.get_ident_arg("field_hasher", ahasher_override);
         quote! {
             let mut h = #hasher::default();
             match *self { #hash_fields }

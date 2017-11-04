@@ -139,7 +139,7 @@ impl CrossCheckConfig {
                         "custom_hash" |
                         "ahasher_override" |
                         "shasher_override" |
-                        "hasher" => (),
+                        "field_hasher" => (),
 
                         name@_ => panic!("Unknown cross_check item: {}", name)
                     }
