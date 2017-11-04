@@ -34,11 +34,12 @@ fn djb2_hash(s: &str) -> u32 {
 #[derive(Clone)]
 struct CrossCheckConfig {
     enabled: bool,
-    entry_xcheck: xcfg::XCheckType,
+    main_xcheck: xcfg::XCheckType,
     all_args_xcheck: xcfg::XCheckType,
-    arg_xchecks: HashMap<String, xcfg::XCheckType>,
+    sub_xchecks: HashMap<String, xcfg::XCheckType>,
     ahasher: Vec<TokenTree>,
     shasher: Vec<TokenTree>,
+    field_hasher: Option<String>,
 }
 
 trait XCheckHash {
@@ -77,15 +78,16 @@ impl CrossCheckConfig {
     fn new(cx: &ExtCtxt) -> CrossCheckConfig {
         CrossCheckConfig {
             enabled: true,
-            entry_xcheck: xcfg::XCheckType::Default,
+            main_xcheck: xcfg::XCheckType::Default,
             all_args_xcheck: if cfg!(feature = "xcheck-args") {
                 xcfg::XCheckType::Default
             } else {
                 xcfg::XCheckType::Skip
             },
-            arg_xchecks: Default::default(),
+            sub_xchecks: Default::default(),
             ahasher: quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher).to_tokens(cx),
             shasher: quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher).to_tokens(cx),
+            field_hasher: None,
         }
     }
 
@@ -108,14 +110,14 @@ impl CrossCheckConfig {
                         "name" => {
                             if let Some(s) = item.value_str() {
                                 let name = String::from(&*s.as_str());
-                                self.entry_xcheck = xcfg::XCheckType::Djb2(name)
+                                self.main_xcheck = xcfg::XCheckType::Djb2(name)
                             }
                         }
                         "id" => {
                             if let ast::MetaItemKind::NameValue(ref lit) = item.node {
                                 if let ast::LitKind::Int(id128, _) = lit.node {
                                     if let Ok(id64) = id128.try_into() {
-                                        self.entry_xcheck = xcfg::XCheckType::Fixed(id64);
+                                        self.main_xcheck = xcfg::XCheckType::Fixed(id64);
                                     } else {
                                         panic!("Invalid u32 for cross_check id: {}", id128);
                                     }
@@ -160,13 +162,22 @@ impl CrossCheckConfig {
         match *xcfg {
             xcfg::ItemConfig::Function(ref func) => {
                 parse_optional_field!(enabled,         func, disable_xchecks, !disable_xchecks);
-                parse_optional_field!(entry_xcheck,    func, entry,           entry.clone());
+                parse_optional_field!(main_xcheck,     func, entry,           entry.clone());
                 parse_optional_field!(all_args_xcheck, func, all_args,        all_args.clone());
+                self.sub_xchecks.extend(func.args.clone().into_iter());
                 // TODO: add a way for the external config to reset these to default
                 parse_optional_field!(ahasher, func, ahasher, cx.parse_tts(ahasher.clone()));
                 parse_optional_field!(shasher, func, shasher, cx.parse_tts(shasher.clone()));
-                self.arg_xchecks.extend(func.args.clone().into_iter());
                 // TODO: parse more fields: exit, ret
+            },
+
+            xcfg::ItemConfig::Struct(ref struc) => {
+                parse_optional_field!(main_xcheck,  struc, custom_hash,  xcfg::XCheckType::Custom(custom_hash.clone()));
+                parse_optional_field!(field_hasher, struc, field_hasher, Some(field_hasher.clone()));
+                self.sub_xchecks.extend(struc.fields.clone().into_iter());
+                // TODO: add a way for the external config to reset these to default
+                parse_optional_field!(ahasher, struc, ahasher_override, cx.parse_tts(ahasher_override.clone()));
+                parse_optional_field!(shasher, struc, shasher_override, cx.parse_tts(shasher_override.clone()));
             },
             _ => ()
         }
@@ -284,7 +295,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
             ast::PatKind::Ident(_, ref ident, _) => {
                 // Parameter pattern is just an identifier,
                 // so we can reference it directly by name
-                let arg_xcheck_cfg = self.config().arg_xchecks
+                let arg_xcheck_cfg = self.config().sub_xchecks
                     .get(&*ident.node.name.as_str())
                     .unwrap_or(&self.config().all_args_xcheck);
                 arg_xcheck_cfg.get_hash(self.cx, || {
@@ -312,7 +323,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                 let checked_block = if self.config().enabled {
                     // Add the cross-check to the beginning of the function
                     // TODO: only add the checks to C abi functions???
-                    let entry_xcheck = self.config().entry_xcheck
+                    let entry_xcheck = self.config().main_xcheck
                         .get_ident_hash(self.cx, &fn_ident)
                         .map(|hash| quote_stmt!(self.cx, cross_check_raw!(FUNCTION_ENTRY_TAG, $hash);))
                         .unwrap_or_default();
