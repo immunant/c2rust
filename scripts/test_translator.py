@@ -42,6 +42,7 @@ class TestCase:
         self.directory = directory
         self.pass_expected = pass_expected
         self.keep = keep
+        self.status = "unknown"
 
         # Absolute paths to all of the files we will attempt to generate
         self.src_c = path
@@ -100,7 +101,7 @@ class TestCase:
         # run the importer
         args = [self.cbor]
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
-            return (ast_importer[args] > self.rust_src ).run(retcode=None)
+            return (ast_importer[args] > self.rust_src).run(retcode=None)
 
     def compile_translated_rustc(self):
 
@@ -174,13 +175,17 @@ class TestCase:
                 if self.pass_expected:
                     logging.error("Unexpected failure for " + self.shortname)
                     logging.error("Failed to " + description)
-                    if stdout: logging.error("STDOUT:\n" + stdout)
-                    if stderr: logging.error("STDERR:\n" + stderr)
+                    if stdout:
+                        logging.error("STDOUT:\n" + stdout)
+                    if stderr:
+                        logging.error("STDERR:\n" + stderr)
                 else:
                     logging.warning("Expected failure for " + self.shortname)
                     logging.warning("Failed to " + description)
-                    if stdout: logging.warning("STDOUT:\n" + stdout)
-                    if stderr: logging.warning("STDERR:\n" + stderr)
+                    if stdout:
+                        logging.warning("STDOUT:\n" + stdout)
+                    if stderr:
+                        logging.warning("STDERR:\n" + stderr)
 
                 break
         else:
@@ -232,7 +237,7 @@ def regex(raw: str):
 
     try:
         return re.compile(raw)
-    except:
+    except re.error:
         msg = "only:{0} is not a valid regular expression".format(raw)
         raise argparse.ArgumentTypeError(msg)
 
