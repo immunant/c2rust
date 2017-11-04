@@ -10,20 +10,20 @@ from common import *
 
 # Executables we are going to test
 ast_extractor = get_cmd_or_die(AST_EXTR)
-ast_importer  = get_cmd_or_die(AST_IMPO)
+ast_importer = get_cmd_or_die(AST_IMPO)
 
 # Tools we will need
 clang = get_cmd_or_die("clang")
 rustc = get_cmd_or_die("rustc")
-diff  = get_cmd_or_die("diff")
+diff = get_cmd_or_die("diff")
 
 driver = os.path.join(ROOT_DIR, "scripts/driver.c")
 
 # Terminal escape codes
-OKBLUE    = '\033[94m'
-OKGREEN   = '\033[92m'
-WARNING   = '\033[93m'
-FAIL      = '\033[91m'
+OKBLUE = '\033[94m'
+OKGREEN = '\033[92m'
+WARNING = '\033[93m'
+FAIL = '\033[91m'
 NO_COLOUR = '\033[0m'
 
 # Intermediate files
@@ -31,6 +31,7 @@ intermediate_files = [
     'cc_db', 'cbor', 'c_exec', 'c_out',
     'rust_src', 'rust_obj', 'rust_exec', 'rust_out'
 ]
+
 
 class TestCase:
     def __init__(self, path: str, pass_expected: bool, keep: List[str]) -> None:
@@ -43,17 +44,17 @@ class TestCase:
         self.keep = keep
 
         # Absolute paths to all of the files we will attempt to generate
-        self.src_c     = path
-        self.rust_src  = os.path.join(directory, filebase + '.rs')
-        self.cc_db     = os.path.join(directory, 'compile_commands.json')
-        self.cbor      = path + '.cbor'
-        self.rust_obj  = os.path.join(directory, 'lib' + filebase + '.a')
+        self.src_c = path
+        self.rust_src = os.path.join(directory, filebase + '.rs')
+        self.cc_db = os.path.join(directory, 'compile_commands.json')
+        self.cbor = path + '.cbor'
+        self.rust_obj = os.path.join(directory, 'lib' + filebase + '.a')
         self.rust_exec = os.path.join(directory, filebase + '_rust')
-        self.c_exec    = os.path.join(directory, filebase + '_c')
-        self.rust_out  = os.path.join(directory, filebase + '_rust.txt')
-        self.c_out     = os.path.join(directory, filebase + '_c.txt')
+        self.c_exec = os.path.join(directory, filebase + '_c')
+        self.rust_out = os.path.join(directory, filebase + '_rust.txt')
+        self.c_out = os.path.join(directory, filebase + '_c.txt')
 
-    def print_status(self, color: str, status: str, message):
+    def print_status(self, color: str, status: str, message) -> None:
         """
         Print coloured status information. Overwrites current line.
         """
@@ -86,9 +87,8 @@ class TestCase:
     def export_cbor(self):
 
         # run the extractor
-        args = [ self.src_c ]
-        return ast_extractor[args].run(retcode = None)
-
+        args = [self.src_c]
+        return ast_extractor[args].run(retcode=None)
 
     def translate(self):
 
@@ -98,9 +98,9 @@ class TestCase:
             ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
         # run the importer
-        args = [ self.cbor ]
+        args = [self.cbor]
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
-            return ( ast_importer[args] > self.rust_src ).run(retcode = None)
+            return (ast_importer[args] > self.rust_src ).run(retcode=None)
 
     def compile_translated_rustc(self):
 
@@ -110,7 +110,7 @@ class TestCase:
             '-o', self.rust_obj,
             self.rust_src
         ]
-        return rustc[args].run(retcode = None)
+        return rustc[args].run(retcode=None)
 
     def compile_translated_clang(self):
 
@@ -134,17 +134,17 @@ class TestCase:
     def compare_run_outputs(self):
 
         # run the Rust executable
-        run_result = ( get_cmd_or_die(self.rust_exec) > self.rust_out ).run(retcode = None)
+        run_result = (get_cmd_or_die(self.rust_exec) > self.rust_out).run(retcode=None)
         if run_result[0]: return run_result
 
         # run the C executable
-        run_result = ( get_cmd_or_die(self.c_exec) > self.c_out ).run(retcode = None)
-        if run_result[0]: return run_result
+        run_result = (get_cmd_or_die(self.c_exec) > self.c_out).run(retcode=None)
+        if run_result[0]:
+            return run_result
 
         # diff the two outputs
-        args = [ '--minimal', self.rust_out, self.c_out ]
-        return diff[args].run(retcode = None)
-
+        args = ['--minimal', self.rust_out, self.c_out]
+        return diff[args].run(retcode=None)
 
     def run(self):
 
@@ -200,7 +200,7 @@ class TestCase:
 
     def cleanup(self):
 
-        files = [ getattr(self, f) for f in intermediate_files if f not in self.keep ]
+        files = [getattr(self, f) for f in intermediate_files if f not in self.keep]
 
         # Try remove files and don't barf if they don't exist
         for filename in files:
@@ -208,6 +208,7 @@ class TestCase:
                 os.remove(filename)
             except OSError:
                 pass
+
 
 def readable_directory(directory: str) -> str:
     """
@@ -223,6 +224,7 @@ def readable_directory(directory: str) -> str:
     else:
         return directory
 
+
 def regex(raw: str):
     """
     Check that a string is a valid regex
@@ -233,6 +235,7 @@ def regex(raw: str):
     except:
         msg = "only:{0} is not a valid regular expression".format(raw)
         raise argparse.ArgumentTypeError(msg)
+
 
 def get_testcases(directory: str, keep: List[str]) -> List[TestCase]:
     """
@@ -251,8 +254,8 @@ def get_testcases(directory: str, keep: List[str]) -> List[TestCase]:
             # as being expected to fail.
             try:
                 with open(path, 'r') as f:
-                    pass_expected = not "fail" in f.readline()
-            except:
+                    pass_expected = "fail" not in f.readline()
+            except IOError:
                 pass_expected = False
 
             testcases.append(TestCase(path, pass_expected, keep))
@@ -260,7 +263,7 @@ def get_testcases(directory: str, keep: List[str]) -> List[TestCase]:
     return testcases
 
 
-if __name__ == "__main__":
+def main() -> None:
     desc = 'run regression / unit / feature tests.'
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('directory', type=readable_directory)
@@ -289,7 +292,7 @@ if __name__ == "__main__":
     bins = [AST_EXTR, AST_IMPO]
     for b in bins:
         if not os.path.isfile(b):
-            msg = b + " not found; run build_ast_extractor.py first?"
+            msg = b + " not found; run build_translator.py first?"
             die(msg, errno.ENOENT)
 
     ensure_dir(DEPS_DIR)
@@ -330,3 +333,6 @@ if __name__ == "__main__":
     if 0 < test_results["unexpected failures"] + test_results["unexpected successes"]:
         quit(1)
 
+
+if __name__ == "__main__":
+    main()
