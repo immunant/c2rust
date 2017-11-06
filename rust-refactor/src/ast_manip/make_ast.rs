@@ -171,6 +171,18 @@ impl Make<TokenTree> for Token {
     }
 }
 
+impl Make<PathParameters> for AngleBracketedParameterData {
+    fn make(self, mk: &Builder) -> PathParameters {
+        AngleBracketed(self)
+    }
+}
+
+impl Make<PathParameters> for ParenthesizedParameterData {
+    fn make(self, mk: &Builder) -> PathParameters {
+        Parenthesized(self)
+    }
+}
+
 
 #[derive(Clone)]
 pub struct Builder {
@@ -301,6 +313,30 @@ impl Builder {
         }
     }
 
+    // Path segments with parameters
+
+    pub fn path_segment_with_params<I,P>(self, identifier: I, parameters: P) -> PathSegment
+        where I: Make<Ident>, P: Make<PathParameters> {
+        let identifier = identifier.make(&self);
+        let parameters = parameters.make(&self);
+        PathSegment {
+            identifier: identifier,
+            span: DUMMY_SP,
+            parameters: Some(P(parameters)),
+        }
+    }
+
+    pub fn angle_bracketed_param_types<Ps>(self, params: Ps) -> AngleBracketedParameterData
+        where Ps: Make<Vec<P<Ty>>> {
+
+        let params = params.make(&self);
+        AngleBracketedParameterData {
+            span: DUMMY_SP,
+            lifetimes: vec![],
+            types: params,
+            bindings: vec![],
+        }
+    }
 
     // Simple nodes
 

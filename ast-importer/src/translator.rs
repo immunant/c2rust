@@ -452,8 +452,20 @@ impl Translation {
                 let val = self.convert_expr(true,expr);
 
                 match kind {
-                    CastKind::BitCast | CastKind::IntegralToPointer | CastKind::PointerToIntegral =>
-                        val.map(|x| mk().call_expr(mk().path_expr(vec!["std","mem","transmute"]),vec![x])),
+                    CastKind::BitCast | CastKind::IntegralToPointer | CastKind::PointerToIntegral => {
+                        val.map(|x| {
+                            let source_ty = self.convert_type(self.ast_context.index(expr).kind.get_type());
+                            let target_ty = self.convert_type(ty);
+                            let type_args = vec![source_ty, target_ty];
+                            let path = vec![
+                                mk().path_segment("std"),
+                                mk().path_segment("mem"),
+                                mk().path_segment_with_params("transmute",
+                                                              mk().angle_bracketed_param_types(type_args)),
+                            ];
+                            mk().call_expr(mk().path_expr(path), vec![x])
+                        })
+                    }
 
                     CastKind::IntegralCast | CastKind::FloatingCast | CastKind::FloatingToIntegral | CastKind::IntegralToFloating =>  {
                         let ty = self.convert_type(ty);
