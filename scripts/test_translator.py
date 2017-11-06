@@ -175,6 +175,7 @@ class TestCase:
             if retcode:
                 failed_message = "failed to " + description + "."
 
+                sys.stdout.write('\033[1000D\033[K\r')
                 if self.pass_expected:
                     logging.error("Unexpected failure for " + self.shortname)
                     logging.error("Failed to " + description)
@@ -192,6 +193,7 @@ class TestCase:
 
                 break
         else:
+            sys.stdout.write('\033[1000D\033[K\r')
             logging.info("Expected success for " + self.shortname)
 
         if bool(failed_message) == self.pass_expected:
