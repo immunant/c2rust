@@ -338,6 +338,40 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
         }
     }
 
+    // Create the arguments for #[cross_check_hash]
+    // FIXME: we need to store them as strings, since there
+    // doesn't seem to be a good way to create NestedMetaItems
+    fn build_hash_attr_args(&self) -> Vec<String> {
+        let mut res: Vec<String> = vec![];
+        let (ahasher, shasher) = (&self.config().ahasher,
+                                  &self.config().shasher);
+        if !ahasher.is_empty() {
+            let ahasher_str = pprust::tts_to_string(
+                &ahasher.to_tokens(self.cx));
+            let mi = format!("ahasher=\"{}\"", ahasher_str);
+            res.push(mi);
+        }
+        if !shasher.is_empty() {
+            let shasher_str = pprust::tts_to_string(
+                &shasher.to_tokens(self.cx));
+            let mi = format!("shasher=\"{}\"", shasher_str);
+            res.push(mi);
+        }
+        if let Some(ref field_hasher) = self.config().field_hasher {
+            let mi = format!("field_hasher=\"{}\"", field_hasher);
+            res.push(mi);
+        }
+        match self.config().main_xcheck {
+            xcfg::XCheckType::Default => (),
+            xcfg::XCheckType::Custom(ref s) => {
+                let mi = format!("custom_hash=\"{}\"", s);
+                res.push(mi);
+            }
+            ref xc@_ => panic!("invalid cross-check type for structure:{:?}", xc)
+        }
+        res
+    }
+
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let folded_item = fold::noop_fold_item_simple(item, self);
         match folded_item.node {
@@ -400,38 +434,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                     let xcheck_hash_derive_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
                     item_attrs.push(xcheck_hash_derive_attr);
 
-                    // Create the arguments for #[cross_check_hash]
-                    // FIXME: we need to store them as strings, since there
-                    // doesn't seem to be a good way to create NestedMetaItems
-                    let mut attr_args: Vec<String> = vec![];
-                    let (ahasher, shasher) = (&self.config().ahasher,
-                                              &self.config().shasher);
-                    if !ahasher.is_empty() {
-                        let ahasher_str = pprust::tts_to_string(
-                            &ahasher.to_tokens(self.cx));
-                        let mi = format!("ahasher=\"{}\"", ahasher_str);
-                        attr_args.push(mi);
-                    }
-                    if !shasher.is_empty() {
-                        let shasher_str = pprust::tts_to_string(
-                            &shasher.to_tokens(self.cx));
-                        let mi = format!("shasher=\"{}\"", shasher_str);
-                        attr_args.push(mi);
-                    }
-                    if let Some(ref field_hasher) = self.config().field_hasher {
-                        let mi = format!("field_hasher=\"{}\"", field_hasher);
-                        attr_args.push(mi);
-                    }
-                    match self.config().main_xcheck {
-                        xcfg::XCheckType::Default => (),
-                        xcfg::XCheckType::Custom(ref s) => {
-                            let mi = format!("custom_hash=\"{}\"", s);
-                            attr_args.push(mi);
-                        }
-                        ref xc@_ => panic!("invalid cross-check type for structure:{:?}", xc)
-                    }
-
-                    let attr_args = self.cx.parse_tts(attr_args.join(","));
+                    let attr_args = self.cx.parse_tts(self.build_hash_attr_args().join(","));
                     let xcheck_hash_attr = quote_attr!(self.cx, #[cross_check_hash($attr_args)]);
                     item_attrs.push(xcheck_hash_attr);
                 }
