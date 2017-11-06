@@ -23,6 +23,7 @@ use syntax::ext::quote::rt::{ToTokens, ExtParseUtils};
 use syntax::codemap::{Span, FileLoader, RealFileLoader};
 use syntax::fold::Folder;
 use syntax::symbol::Symbol;
+use syntax::print::pprust;
 use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
 use syntax::util::small_vector::SmallVector;
@@ -399,15 +400,40 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                     let xcheck_hash_derive_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
                     item_attrs.push(xcheck_hash_derive_attr);
 
-                    // Rename #[cross_check] to #[cross_check_hash] internally
-                    // and pass it to derive-macros (for some reason,
-                    // if we try to pass it as #[cross_check], it disappears)
-                    let xcheck_attr = find_cross_check_attr(&item_attrs).cloned();
-                    let xcheck_hash_attr = xcheck_attr.map(|attr| ast::Attribute {
-                        path: quote_path!(self.cx, cross_check_hash),
-                        ..attr
-                    });
-                    item_attrs.extend(xcheck_hash_attr.into_iter());
+                    // Create the arguments for #[cross_check_hash]
+                    // FIXME: we need to store them as strings, since there
+                    // doesn't seem to be a good way to create NestedMetaItems
+                    let mut attr_args: Vec<String> = vec![];
+                    let (ahasher, shasher) = (&self.config().ahasher,
+                                              &self.config().shasher);
+                    if !ahasher.is_empty() {
+                        let ahasher_str = pprust::tts_to_string(
+                            &ahasher.to_tokens(self.cx));
+                        let mi = format!("ahasher=\"{}\"", ahasher_str);
+                        attr_args.push(mi);
+                    }
+                    if !shasher.is_empty() {
+                        let shasher_str = pprust::tts_to_string(
+                            &shasher.to_tokens(self.cx));
+                        let mi = format!("shasher=\"{}\"", shasher_str);
+                        attr_args.push(mi);
+                    }
+                    if let Some(ref field_hasher) = self.config().field_hasher {
+                        let mi = format!("field_hasher=\"{}\"", field_hasher);
+                        attr_args.push(mi);
+                    }
+                    match self.config().main_xcheck {
+                        xcfg::XCheckType::Default => (),
+                        xcfg::XCheckType::Custom(ref s) => {
+                            let mi = format!("custom_hash=\"{}\"", s);
+                            attr_args.push(mi);
+                        }
+                        ref xc@_ => panic!("invalid cross-check type for structure:{:?}", xc)
+                    }
+
+                    let attr_args = self.cx.parse_tts(attr_args.join(","));
+                    let xcheck_hash_attr = quote_attr!(self.cx, #[cross_check_hash($attr_args)]);
+                    item_attrs.push(xcheck_hash_attr);
                 }
                 ast::Item {
                     attrs: item_attrs,
