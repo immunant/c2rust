@@ -95,8 +95,7 @@ fn get_item_args(mi: &syn::MetaItem) -> ArgList {
 
 fn get_cross_check_args(attrs: &[syn::Attribute]) -> Option<ArgList> {
     attrs.iter()
-         .find(|f| f.name() == "cross_check" ||
-                   f.name() == "cross_check_hash")
+         .find(|f| f.name() == "cross_check_hash")
          .map(|attr| get_item_args(&attr.value))
 }
 
