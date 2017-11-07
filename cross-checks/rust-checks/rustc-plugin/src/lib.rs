@@ -13,6 +13,7 @@ use syntax::ast;
 use syntax::fold;
 
 use std::borrow::Borrow;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::path::PathBuf;
@@ -213,6 +214,11 @@ struct ScopeConfig<'xcfg> {
     file_name: Rc<String>, // FIXME: this should be a &str
     items: Option<Rc<xcfg::NamedItemList<'xcfg>>>,
     config: Rc<CrossCheckConfig>,
+
+    // Index of the next field in this scope (if the scope is a structure)
+    // We use this to keep track of the index/ident of the next field
+    // in a tuple
+    field_idx: Cell<usize>,
 }
 
 impl<'xcfg> ScopeConfig<'xcfg> {
@@ -224,6 +230,7 @@ impl<'xcfg> ScopeConfig<'xcfg> {
                       .map(xcfg::NamedItemList::new)
                       .map(Rc::new),
             config: ccc,
+            field_idx: Cell::new(0),
         }
     }
 
@@ -242,6 +249,7 @@ impl<'xcfg> ScopeConfig<'xcfg> {
                               .map(xcfg::NamedItemList::new)
                               .map(Rc::new),
             config: ccc,
+            field_idx: Cell::new(0),
         }
     }
 
@@ -482,6 +490,55 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
            res.extend(new_stmt.into_iter());
            res
        }).collect()
+    }
+
+    fn fold_variant_data(&mut self, vdata: ast::VariantData) -> ast::VariantData {
+        self.last_scope().field_idx.set(0);
+        fold::noop_fold_variant_data(vdata, self)
+    }
+
+    fn fold_struct_field(&mut self, sf: ast::StructField) -> ast::StructField {
+        let folded_sf = fold::noop_fold_struct_field(sf, self);
+
+        // Get the name of the field; the compiler should give us the name
+        // if the field is in a Struct. If it's in a Tuple, we use
+        // the field index, which we need to compute ourselves from field_idx.
+        let sf_name = folded_sf.ident
+            .map(|ident| String::from(&*ident.name.as_str()))
+            .unwrap_or_else(|| {
+                // We use field_idx to keep track of the index/name
+                // of the fields inside a VariantData
+                let idx = self.last_scope().field_idx.get();
+                self.last_scope().field_idx.set(idx + 1);
+                format!("{}", idx)
+            });
+
+        let mut sf_attrs = folded_sf.attrs;
+        let hash_attr = self.config().sub_xchecks.get(&sf_name).and_then(|arg_xcheck| {
+            match *arg_xcheck {
+                xcfg::XCheckType::Default => None,
+
+                xcfg::XCheckType::Skip =>
+                    Some(quote_attr!(self.cx, #[cross_check_hash(no)])),
+
+                xcfg::XCheckType::Djb2(_) => unimplemented!(),
+
+                xcfg::XCheckType::Fixed(id) => {
+                    // FIXME: we're passing the id in as a string because
+                    // that's how derive-macros parses it
+                    let sid = format!("{}", id);
+                    Some(quote_attr!(self.cx, #[cross_check_hash(id=$sid)]))
+                },
+
+                xcfg::XCheckType::Custom(ref s) =>
+                    Some(quote_attr!(self.cx, #[cross_check_hash(custom_hash=$s)])),
+            }
+        });
+        sf_attrs.extend(hash_attr.into_iter());
+        ast::StructField {
+            attrs: sf_attrs,
+            ..folded_sf
+        }
     }
 
     fn fold_mod(&mut self, m: ast::Mod) -> ast::Mod {
