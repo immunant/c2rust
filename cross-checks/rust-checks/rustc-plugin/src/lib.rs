@@ -299,7 +299,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
 
     fn build_new_scope(&self, item: &ast::Item) -> ScopeConfig<'xcfg> {
         let last_scope = self.last_scope();
-        let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
+        let xcheck_attr = find_cross_check_attr(&item.attrs);
         let item_xcfg_config = {
             let item_name = item.ident.name.as_str();
             last_scope.get_item_config(&*item_name)
