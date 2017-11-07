@@ -28,12 +28,14 @@ impl<'a> ArgValue<'a> {
         syn::Ident::from(self.get_str().as_str())
     }
 
+    #[allow(dead_code)] // Not used right now, but we might need it
     fn get_str_tokens(&self) -> quote::Tokens {
         let mut tokens = quote::Tokens::new();
         self.get_str_ident().to_tokens(&mut tokens);
         tokens
     }
 
+    #[allow(dead_code)] // Not used right now, but we might need it
     fn get_list(&self) -> &ArgList<'a> {
         match *self {
             ArgValue::List(ref l) => l,
@@ -56,6 +58,7 @@ impl<'a> ArgList<'a> {
                                     ArgValue::get_str_ident)
     }
 
+    #[allow(dead_code)] // Not used right now, but we might need it
     fn get_token_arg<D>(&self, arg: &str, default: D) -> quote::Tokens
             where quote::Tokens: std::convert::From<D> {
         self.0.get(arg).map_or_else(|| quote::Tokens::from(default),
@@ -99,16 +102,6 @@ fn get_cross_check_args(attrs: &[syn::Attribute]) -> Option<ArgList> {
          .map(|attr| get_item_args(&attr.value))
 }
 
-// Extract the optional tag from a #[cross_check(by_value(...))] attribute
-fn get_direct_item_config(args: &ArgList, default_filter_tokens: quote::Tokens)
-        -> (syn::Ident, quote::Tokens) {
-    // Process "tag = ..." argument
-    let tag_ident = args.get_ident_arg("tag", "UNKNOWN_TAG");
-    // Process "filter = ..." argument
-    let filter_tokens = args.get_token_arg("filter", default_filter_tokens);
-    (tag_ident, filter_tokens)
-}
-
 fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     let top_args = get_cross_check_args(&s.ast().attrs[..]).unwrap_or_default();
 
@@ -125,24 +118,6 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                args.0.contains_key("disable") {
                 // Cross-checking is disabled
                 Some(quote::Tokens::new())
-            } else if let Some(ref sub_args) = args.0.get("check_value") {
-                // Cross-check field directly by value
-                // This has an optional tag parameter (tag="NNN_TAG")
-                let (tag, filter) = get_direct_item_config(sub_args.get_list(),
-                                                           quote::Tokens::new());
-                Some(quote! { cross_check_value!(#tag, (#filter(#f)),
-                                                 #ahasher,
-                                                 #shasher) })
-            } else if let Some(ref sub_args) = args.0.get("check_raw") {
-                // The default filter token here is "*" so we get
-                // a dereference as the default:
-                //   cross_check_raw!(#tag, (*(#f)) as u64)
-                //
-                // When the user specifies a filter "foo", it instead turns into:
-                //   cross_check_raw!(#tag, (foo(#f)) as u64)
-                let (tag, filter) = get_direct_item_config(sub_args.get_list(),
-                                                           quote! { * });
-                Some(quote! { cross_check_raw!(#tag, (#filter(#f)) as u64) })
             } else if let Some(ref sub_arg) = args.0.get("id") {
                 // FIXME: should try parsing this as an integer
                 let id = sub_arg.get_str_ident();
