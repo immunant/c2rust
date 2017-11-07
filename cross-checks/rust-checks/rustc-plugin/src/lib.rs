@@ -13,6 +13,7 @@ use syntax::ast;
 use syntax::fold;
 
 use std::borrow::Borrow;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::path::PathBuf;
@@ -23,6 +24,7 @@ use syntax::ext::quote::rt::{ToTokens, ExtParseUtils};
 use syntax::codemap::{Span, FileLoader, RealFileLoader};
 use syntax::fold::Folder;
 use syntax::symbol::Symbol;
+use syntax::print::pprust;
 use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
 use syntax::util::small_vector::SmallVector;
@@ -87,6 +89,42 @@ impl CrossCheckHash for xcfg::XCheckType {
     }
 }
 
+fn parse_xcheck_type(mi: &ast::MetaItem) -> Option<xcfg::XCheckType> {
+    match &*mi.name.as_str() {
+        "name" => {
+            mi.value_str().map(|s| {
+                let name = String::from(&*s.as_str());
+                xcfg::XCheckType::Djb2(name)
+            })
+        },
+        "id" => {
+            if let ast::MetaItemKind::NameValue(ref lit) = mi.node {
+                match lit.node {
+                    // TODO: handle LitKind::Str
+
+                    ast::LitKind::Int(id128, _) => {
+                        if let Ok(id64) = id128.try_into() {
+                            Some(xcfg::XCheckType::Fixed(id64))
+                        } else {
+                            panic!("Invalid u32 for cross_check id: {}", id128)
+                        }
+                    },
+
+                    _ => panic!("Invalid literal for cross_check id: {:?}", lit.node)
+                }
+            } else { None }
+        },
+        // Structure-specific attributes
+        "custom_hash" => {
+            mi.value_str().map(|s| {
+                let s = String::from(&*s.as_str());
+                xcfg::XCheckType::Custom(s)
+            })
+        },
+        _ => None
+     }
+}
+
 impl CrossCheckConfig {
     fn new(cx: &ExtCtxt) -> CrossCheckConfig {
         CrossCheckConfig {
@@ -120,25 +158,6 @@ impl CrossCheckConfig {
                         "yes" => {
                             self.enabled = true
                         }
-                        "name" => {
-                            if let Some(s) = item.value_str() {
-                                let name = String::from(&*s.as_str());
-                                self.main_xcheck = xcfg::XCheckType::Djb2(name)
-                            }
-                        }
-                        "id" => {
-                            if let ast::MetaItemKind::NameValue(ref lit) = item.node {
-                                if let ast::LitKind::Int(id128, _) = lit.node {
-                                    if let Ok(id64) = id128.try_into() {
-                                        self.main_xcheck = xcfg::XCheckType::Fixed(id64);
-                                    } else {
-                                        panic!("Invalid u32 for cross_check id: {}", id128);
-                                    }
-                                } else {
-                                    panic!("Invalid literal for cross_check id: {:?}", lit.node);
-                                }
-                            }
-                        }
                         "ahasher" => {
                             self.ahasher = item.value_str()
                                                .map(|s| cx.parse_tts(String::from(&*s.as_str())))
@@ -150,14 +169,15 @@ impl CrossCheckConfig {
                                                .unwrap_or_default()
                         }
 
-                        // Structure-specific attributes
+                        // Cross-check type
+                        "name" |
+                        "id" |
                         "custom_hash" => {
-                            if let Some(s) = item.value_str() {
-                                let s = String::from(&*s.as_str());
-                                self.main_xcheck = xcfg::XCheckType::Custom(s)
-                            }
-                        }
+                            self.main_xcheck = parse_xcheck_type(&item)
+                                .unwrap_or(xcfg::XCheckType::Default);
+                        },
 
+                        // Structure-specific attributes
                         "field_hasher" => {
                             if let Some(s) = item.value_str() {
                                 let s = String::from(&*s.as_str());
@@ -212,6 +232,11 @@ struct ScopeConfig<'xcfg> {
     file_name: Rc<String>, // FIXME: this should be a &str
     items: Option<Rc<xcfg::NamedItemList<'xcfg>>>,
     config: Rc<CrossCheckConfig>,
+
+    // Index of the next field in this scope (if the scope is a structure)
+    // We use this to keep track of the index/ident of the next field
+    // in a tuple
+    field_idx: Cell<usize>,
 }
 
 impl<'xcfg> ScopeConfig<'xcfg> {
@@ -223,6 +248,7 @@ impl<'xcfg> ScopeConfig<'xcfg> {
                       .map(xcfg::NamedItemList::new)
                       .map(Rc::new),
             config: ccc,
+            field_idx: Cell::new(0),
         }
     }
 
@@ -241,6 +267,7 @@ impl<'xcfg> ScopeConfig<'xcfg> {
                               .map(xcfg::NamedItemList::new)
                               .map(Rc::new),
             config: ccc,
+            field_idx: Cell::new(0),
         }
     }
 
@@ -337,6 +364,40 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
         }
     }
 
+    // Create the arguments for #[cross_check_hash]
+    // FIXME: we need to store them as strings, since there
+    // doesn't seem to be a good way to create NestedMetaItems
+    fn build_hash_attr_args(&self) -> Vec<String> {
+        let mut res: Vec<String> = vec![];
+        let (ahasher, shasher) = (&self.config().ahasher,
+                                  &self.config().shasher);
+        if !ahasher.is_empty() {
+            let ahasher_str = pprust::tts_to_string(
+                &ahasher.to_tokens(self.cx));
+            let mi = format!("ahasher=\"{}\"", ahasher_str);
+            res.push(mi);
+        }
+        if !shasher.is_empty() {
+            let shasher_str = pprust::tts_to_string(
+                &shasher.to_tokens(self.cx));
+            let mi = format!("shasher=\"{}\"", shasher_str);
+            res.push(mi);
+        }
+        if let Some(ref field_hasher) = self.config().field_hasher {
+            let mi = format!("field_hasher=\"{}\"", field_hasher);
+            res.push(mi);
+        }
+        match self.config().main_xcheck {
+            xcfg::XCheckType::Default => (),
+            xcfg::XCheckType::Custom(ref s) => {
+                let mi = format!("custom_hash=\"{}\"", s);
+                res.push(mi);
+            }
+            ref xc@_ => panic!("invalid cross-check type for structure:{:?}", xc)
+        }
+        res
+    }
+
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let folded_item = fold::noop_fold_item_simple(item, self);
         match folded_item.node {
@@ -399,15 +460,9 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                     let xcheck_hash_derive_attr = quote_attr!(self.cx, #[derive(CrossCheckHash)]);
                     item_attrs.push(xcheck_hash_derive_attr);
 
-                    // Rename #[cross_check] to #[cross_check_hash] internally
-                    // and pass it to derive-macros (for some reason,
-                    // if we try to pass it as #[cross_check], it disappears)
-                    let xcheck_attr = find_cross_check_attr(&item_attrs).cloned();
-                    let xcheck_hash_attr = xcheck_attr.map(|attr| ast::Attribute {
-                        path: quote_path!(self.cx, cross_check_hash),
-                        ..attr
-                    });
-                    item_attrs.extend(xcheck_hash_attr.into_iter());
+                    let attr_args = self.cx.parse_tts(self.build_hash_attr_args().join(","));
+                    let xcheck_hash_attr = quote_attr!(self.cx, #[cross_check_hash($attr_args)]);
+                    item_attrs.push(xcheck_hash_attr);
                 }
                 ast::Item {
                     attrs: item_attrs,
@@ -416,6 +471,21 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
             }
             _ => folded_item
         }
+    }
+
+    // Parse the #[cross_check(...)] attribute and turn it into a XCheck
+    fn parse_field_attr(&self, attrs: &[ast::Attribute]) -> Option<xcfg::XCheckType> {
+        let xcheck_attr = find_cross_check_attr(attrs);
+        xcheck_attr.and_then(|attr| {
+            attr.parse_meta(self.cx.parse_sess).ok().and_then(|mi| {
+                mi.meta_item_list().and_then(|items| {
+                    if items.len() == 1 {
+                        let mi = &items[0];
+                        mi.meta_item().and_then(parse_xcheck_type)
+                    } else { None }
+                })
+            })
+        })
     }
 }
 
@@ -453,6 +523,62 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
            res.extend(new_stmt.into_iter());
            res
        }).collect()
+    }
+
+    fn fold_variant_data(&mut self, vdata: ast::VariantData) -> ast::VariantData {
+        self.last_scope().field_idx.set(0);
+        fold::noop_fold_variant_data(vdata, self)
+    }
+
+    fn fold_struct_field(&mut self, sf: ast::StructField) -> ast::StructField {
+        let folded_sf = fold::noop_fold_struct_field(sf, self);
+
+        // Get the name of the field; the compiler should give us the name
+        // if the field is in a Struct. If it's in a Tuple, we use
+        // the field index, which we need to compute ourselves from field_idx.
+        let sf_name = folded_sf.ident
+            .map(|ident| String::from(&*ident.name.as_str()))
+            .unwrap_or_else(|| {
+                // We use field_idx to keep track of the index/name
+                // of the fields inside a VariantData
+                let idx = self.last_scope().field_idx.get();
+                self.last_scope().field_idx.set(idx + 1);
+                format!("{}", idx)
+            });
+
+        let sf_attr_xcheck = self.parse_field_attr(&folded_sf.attrs);
+        let sf_xcfg_xcheck = self.config().sub_xchecks.get(&sf_name);
+        let sf_xcheck = sf_xcfg_xcheck.or(sf_attr_xcheck.as_ref());
+        let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
+            match *sf_xcheck {
+                xcfg::XCheckType::Default => None,
+
+                xcfg::XCheckType::Skip =>
+                    Some(quote_attr!(self.cx, #[cross_check_hash(no)])),
+
+                xcfg::XCheckType::Djb2(_) => unimplemented!(),
+
+                xcfg::XCheckType::Fixed(id) => {
+                    // FIXME: we're passing the id in as a string because
+                    // that's how derive-macros parses it
+                    let sid = format!("{}", id);
+                    Some(quote_attr!(self.cx, #[cross_check_hash(id=$sid)]))
+                },
+
+                xcfg::XCheckType::Custom(ref s) =>
+                    Some(quote_attr!(self.cx, #[cross_check_hash(custom_hash=$s)])),
+            }
+        });
+
+        // Remove #[cross_check] from attributes, then append #[cross_check_hash]
+        let sf_attrs = folded_sf.attrs.into_iter()
+            .filter(|attr| !attr.check_name("cross_check"))
+            .chain(hash_attr.into_iter())
+            .collect();
+        ast::StructField {
+            attrs: sf_attrs,
+            ..folded_sf
+        }
     }
 
     fn fold_mod(&mut self, m: ast::Mod) -> ast::Mod {

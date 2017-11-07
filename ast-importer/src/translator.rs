@@ -148,14 +148,14 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
                 Token::Ident(mk().ident("libc")),
                 Token::CloseDelim(DelimToken::Paren),
             ].into_iter().collect(),
-        ));
+        ))?;
 
         // Add `extern crate libc` to the top of the file
-        s.print_item(&mk().extern_crate_item("libc", None));
+        s.print_item(&mk().extern_crate_item("libc", None))?;
 
         // Add the items accumulated
         for x in t.items.iter() {
-            s.print_item(x)?
+            s.print_item(x)?;
         }
 
         Ok(())

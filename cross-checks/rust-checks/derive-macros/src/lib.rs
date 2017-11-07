@@ -95,8 +95,7 @@ fn get_item_args(mi: &syn::MetaItem) -> ArgList {
 
 fn get_cross_check_args(attrs: &[syn::Attribute]) -> Option<ArgList> {
     attrs.iter()
-         .find(|f| f.name() == "cross_check" ||
-                   f.name() == "cross_check_hash")
+         .find(|f| f.name() == "cross_check_hash")
          .map(|attr| get_item_args(&attr.value))
 }
 
@@ -180,6 +179,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         fn cross_check_hash_depth<__XCHA, __XCHS>(&self, _depth: usize) -> u64
                 where __XCHA: ::cross_check_runtime::hash::CrossCheckHasher,
                       __XCHS: ::cross_check_runtime::hash::CrossCheckHasher {
+            use std::hash::Hasher;
             #hash_code
         }
     })
