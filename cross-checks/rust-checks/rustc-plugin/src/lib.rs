@@ -571,6 +571,11 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
             }
         });
         sf_attrs.extend(hash_attr.into_iter());
+
+        // Remove #[cross_check] from attributes
+        let sf_attrs = sf_attrs.into_iter()
+            .filter(|attr| !attr.check_name("cross_check"))
+            .collect();
         ast::StructField {
             attrs: sf_attrs,
             ..folded_sf
