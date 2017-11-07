@@ -546,8 +546,7 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
                 format!("{}", idx)
             });
 
-        let mut sf_attrs = folded_sf.attrs;
-        let sf_attr_xcheck = self.parse_field_attr(&sf_attrs);
+        let sf_attr_xcheck = self.parse_field_attr(&folded_sf.attrs);
         let sf_xcfg_xcheck = self.config().sub_xchecks.get(&sf_name);
         let sf_xcheck = sf_xcfg_xcheck.or(sf_attr_xcheck.as_ref());
         let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
@@ -570,11 +569,11 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
                     Some(quote_attr!(self.cx, #[cross_check_hash(custom_hash=$s)])),
             }
         });
-        sf_attrs.extend(hash_attr.into_iter());
 
-        // Remove #[cross_check] from attributes
-        let sf_attrs = sf_attrs.into_iter()
+        // Remove #[cross_check] from attributes, then append #[cross_check_hash]
+        let sf_attrs = folded_sf.attrs.into_iter()
             .filter(|attr| !attr.check_name("cross_check"))
+            .chain(hash_attr.into_iter())
             .collect();
         ast::StructField {
             attrs: sf_attrs,
