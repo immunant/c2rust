@@ -472,6 +472,21 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
             _ => folded_item
         }
     }
+
+    // Parse the #[cross_check(...)] attribute and turn it into a XCheck
+    fn parse_field_attr(&self, attrs: &[ast::Attribute]) -> Option<xcfg::XCheckType> {
+        let xcheck_attr = find_cross_check_attr(attrs);
+        xcheck_attr.and_then(|attr| {
+            attr.parse_meta(self.cx.parse_sess).ok().and_then(|mi| {
+                mi.meta_item_list().and_then(|items| {
+                    if items.len() == 1 {
+                        let mi = &items[0];
+                        mi.meta_item().and_then(parse_xcheck_type)
+                    } else { None }
+                })
+            })
+        })
+    }
 }
 
 impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
@@ -532,8 +547,11 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
             });
 
         let mut sf_attrs = folded_sf.attrs;
-        let hash_attr = self.config().sub_xchecks.get(&sf_name).and_then(|arg_xcheck| {
-            match *arg_xcheck {
+        let sf_attr_xcheck = self.parse_field_attr(&sf_attrs);
+        let sf_xcfg_xcheck = self.config().sub_xchecks.get(&sf_name);
+        let sf_xcheck = sf_attr_xcheck.as_ref().or(sf_xcfg_xcheck);
+        let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
+            match *sf_xcheck {
                 xcfg::XCheckType::Default => None,
 
                 xcfg::XCheckType::Skip =>
