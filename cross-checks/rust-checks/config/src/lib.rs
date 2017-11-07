@@ -78,6 +78,21 @@ impl FunctionConfig {
     }
 }
 
+// Index of a structure/aggregate field
+// Can be an integer (for tuples) or a string (for structures)
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(untagged)]
+pub enum FieldIndex {
+    Int(usize),
+    Str(String),
+}
+
+impl FieldIndex {
+    pub fn from_str(s: &str) -> FieldIndex {
+        FieldIndex::Str(String::from(s))
+    }
+}
+
 #[derive(Deserialize, Debug, Default)]
 #[serde(default)]
 pub struct StructConfig {
@@ -93,7 +108,7 @@ pub struct StructConfig {
     // Custom hash function to call to hash this structure
     pub custom_hash: Option<String>,
 
-    pub fields: HashMap<String, XCheckType>,
+    pub fields: HashMap<FieldIndex, XCheckType>,
 }
 
 #[derive(Deserialize, Debug)]

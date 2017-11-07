@@ -42,7 +42,7 @@ struct CrossCheckConfig {
     main_xcheck: xcfg::XCheckType,
 
     // Cross-check types for subcomponents: function arguments or structure fields
-    sub_xchecks: HashMap<String, xcfg::XCheckType>,
+    sub_xchecks: HashMap<xcfg::FieldIndex, xcfg::XCheckType>,
 
     // Overrides for ahasher/shasher
     ahasher: Vec<TokenTree>,
@@ -206,7 +206,9 @@ impl CrossCheckConfig {
                 parse_optional_field!(enabled,         func, disable_xchecks, !disable_xchecks);
                 parse_optional_field!(main_xcheck,     func, entry,           entry.clone());
                 parse_optional_field!(all_args_xcheck, func, all_args,        all_args.clone());
-                self.sub_xchecks.extend(func.args.clone().into_iter());
+                self.sub_xchecks.extend(func.args.iter().map(|(k, v)| {
+                    (xcfg::FieldIndex::from_str(k), v.clone())
+                }));
                 // TODO: add a way for the external config to reset these to default
                 parse_optional_field!(ahasher, func, ahasher, cx.parse_tts(ahasher.clone()));
                 parse_optional_field!(shasher, func, shasher, cx.parse_tts(shasher.clone()));
@@ -344,8 +346,8 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
             ast::PatKind::Ident(_, ref ident, _) => {
                 // Parameter pattern is just an identifier,
                 // so we can reference it directly by name
-                let arg_xcheck_cfg = self.config().sub_xchecks
-                    .get(&*ident.node.name.as_str())
+                let arg_idx = xcfg::FieldIndex::from_str(&*ident.node.name.as_str());
+                let arg_xcheck_cfg = self.config().sub_xchecks.get(&arg_idx)
                     .unwrap_or(&self.config().all_args_xcheck);
                 arg_xcheck_cfg.get_hash(self.cx, || {
                     // By default, we use cross_check_hash
@@ -537,13 +539,13 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
         // if the field is in a Struct. If it's in a Tuple, we use
         // the field index, which we need to compute ourselves from field_idx.
         let sf_name = folded_sf.ident
-            .map(|ident| String::from(&*ident.name.as_str()))
+            .map(|ident| xcfg::FieldIndex::from_str(&*ident.name.as_str()))
             .unwrap_or_else(|| {
                 // We use field_idx to keep track of the index/name
                 // of the fields inside a VariantData
                 let idx = self.last_scope().field_idx.get();
                 self.last_scope().field_idx.set(idx + 1);
-                format!("{}", idx)
+                xcfg::FieldIndex::Int(idx)
             });
 
         let sf_attr_xcheck = self.parse_field_attr(&folded_sf.attrs);
