@@ -549,7 +549,7 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
         let mut sf_attrs = folded_sf.attrs;
         let sf_attr_xcheck = self.parse_field_attr(&sf_attrs);
         let sf_xcfg_xcheck = self.config().sub_xchecks.get(&sf_name);
-        let sf_xcheck = sf_attr_xcheck.as_ref().or(sf_xcfg_xcheck);
+        let sf_xcheck = sf_xcfg_xcheck.or(sf_attr_xcheck.as_ref());
         let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
             match *sf_xcheck {
                 xcfg::XCheckType::Default => None,
