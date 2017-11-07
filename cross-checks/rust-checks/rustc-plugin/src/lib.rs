@@ -89,6 +89,42 @@ impl CrossCheckHash for xcfg::XCheckType {
     }
 }
 
+fn parse_xcheck_type(mi: &ast::MetaItem) -> Option<xcfg::XCheckType> {
+    match &*mi.name.as_str() {
+        "name" => {
+            mi.value_str().map(|s| {
+                let name = String::from(&*s.as_str());
+                xcfg::XCheckType::Djb2(name)
+            })
+        },
+        "id" => {
+            if let ast::MetaItemKind::NameValue(ref lit) = mi.node {
+                match lit.node {
+                    // TODO: handle LitKind::Str
+
+                    ast::LitKind::Int(id128, _) => {
+                        if let Ok(id64) = id128.try_into() {
+                            Some(xcfg::XCheckType::Fixed(id64))
+                        } else {
+                            panic!("Invalid u32 for cross_check id: {}", id128)
+                        }
+                    },
+
+                    _ => panic!("Invalid literal for cross_check id: {:?}", lit.node)
+                }
+            } else { None }
+        },
+        // Structure-specific attributes
+        "custom_hash" => {
+            mi.value_str().map(|s| {
+                let s = String::from(&*s.as_str());
+                xcfg::XCheckType::Custom(s)
+            })
+        },
+        _ => None
+     }
+}
+
 impl CrossCheckConfig {
     fn new(cx: &ExtCtxt) -> CrossCheckConfig {
         CrossCheckConfig {
@@ -122,25 +158,6 @@ impl CrossCheckConfig {
                         "yes" => {
                             self.enabled = true
                         }
-                        "name" => {
-                            if let Some(s) = item.value_str() {
-                                let name = String::from(&*s.as_str());
-                                self.main_xcheck = xcfg::XCheckType::Djb2(name)
-                            }
-                        }
-                        "id" => {
-                            if let ast::MetaItemKind::NameValue(ref lit) = item.node {
-                                if let ast::LitKind::Int(id128, _) = lit.node {
-                                    if let Ok(id64) = id128.try_into() {
-                                        self.main_xcheck = xcfg::XCheckType::Fixed(id64);
-                                    } else {
-                                        panic!("Invalid u32 for cross_check id: {}", id128);
-                                    }
-                                } else {
-                                    panic!("Invalid literal for cross_check id: {:?}", lit.node);
-                                }
-                            }
-                        }
                         "ahasher" => {
                             self.ahasher = item.value_str()
                                                .map(|s| cx.parse_tts(String::from(&*s.as_str())))
@@ -152,14 +169,15 @@ impl CrossCheckConfig {
                                                .unwrap_or_default()
                         }
 
-                        // Structure-specific attributes
+                        // Cross-check type
+                        "name" |
+                        "id" |
                         "custom_hash" => {
-                            if let Some(s) = item.value_str() {
-                                let s = String::from(&*s.as_str());
-                                self.main_xcheck = xcfg::XCheckType::Custom(s)
-                            }
-                        }
+                            self.main_xcheck = parse_xcheck_type(&item)
+                                .unwrap_or(xcfg::XCheckType::Default);
+                        },
 
+                        // Structure-specific attributes
                         "field_hasher" => {
                             if let Some(s) = item.value_str() {
                                 let s = String::from(&*s.as_str());
