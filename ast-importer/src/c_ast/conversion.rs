@@ -509,6 +509,16 @@ impl ConversionContext {
             match node.tag {
                 // Statements
 
+                ASTEntryTag::TagBreakStmt if expected_ty & OTHER_STMT != 0 => {
+                    self.add_stmt(new_id, located(node, CStmtKind::Break));
+                    self.processed_nodes.insert(new_id, OTHER_STMT);
+                }
+
+                ASTEntryTag::TagContinueStmt if expected_ty & OTHER_STMT != 0 => {
+                    self.add_stmt(new_id, located(node, CStmtKind::Continue));
+                    self.processed_nodes.insert(new_id, OTHER_STMT);
+                }
+
                 ASTEntryTag::TagCompoundStmt if expected_ty & OTHER_STMT != 0 => {
                     let constituent_stmts: Vec<CStmtId> = node.children
                         .iter()

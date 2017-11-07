@@ -297,6 +297,8 @@ impl Translation {
                 self.convert_expr(false, *expr).stmts
             },
 
+            CStmtKind::Break => vec![mk().expr_stmt(mk().break_expr())],
+
             ref stmt => unimplemented!("convert_stmt {:?}", stmt),
         }
     }
@@ -654,8 +656,47 @@ impl Translation {
                 }
             }
 
-            CExprKind::InitList{..} => panic!("Init list not implemented"),
-            CExprKind::ImplicitValueInit{..} => panic!("Designated init not implemented"),
+            CExprKind::InitList(ty, ref ids) => {
+                let resolved = &self.ast_context.resolve_type(ty).kind;
+
+                if let &CTypeKind::ConstantArray(ty, n) = resolved {
+
+                    // Convert all of the provided initializer values
+                    let mut stmts: Vec<Stmt> = vec![];
+                    let mut vals: Vec<P<Expr>> = vec![];
+                    for v in ids {
+                        let mut x = self.convert_expr(true, *v);
+                        stmts.append(&mut x.stmts);
+                        vals.push(x.val);
+                    }
+
+                    // Pad out the array literal with default values to the desired size
+                    for i in ids.len() .. n {
+                        vals.push(self.implicit_default_expr(ty.ctype))
+                    }
+
+                    WithStmts {
+                        stmts,
+                        val: mk().array_expr(vals),
+                    }
+                } else {
+                    panic!("Init list not implemented for structs");
+                }
+            }
+            CExprKind::ImplicitValueInit(ty) =>
+                WithStmts::new(self.implicit_default_expr(ty)),
+        }
+    }
+
+    pub fn implicit_default_expr(&self, ty_id: CTypeId) -> P<Expr> {
+        let resolved_ty = &self.ast_context.resolve_type(ty_id).kind;
+
+        if resolved_ty.is_integral_type() {
+            mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
+        } else if resolved_ty.is_floating_type() {
+            mk().lit_expr(mk().float_unsuffixed_lit("0."))
+        } else {
+            mk().call_expr(mk().ident_expr("default"), vec![] as Vec<P<Expr>>)
         }
     }
 
@@ -764,6 +805,8 @@ impl Translation {
 
         match name {
             c_ast::UnOp::AddressOf => {
+                // TODO: Only make mutable if required by the target type
+                // TODO: Don't use addr_of for function types
                 let addr_of_arg = mk().mutbl().addr_of_expr(arg);
                 let ptr = mk().cast_expr(addr_of_arg, ty);
                 WithStmts::new(ptr)
