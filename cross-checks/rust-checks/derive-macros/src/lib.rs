@@ -159,4 +159,4 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         }
     })
 }
-decl_derive!([CrossCheckHash, attributes(cross_check)] => xcheck_hash_derive);
+decl_derive!([CrossCheckHash, attributes(cross_check_hash)] => xcheck_hash_derive);
