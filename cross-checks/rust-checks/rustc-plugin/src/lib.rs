@@ -159,7 +159,7 @@ impl ScopeCheckConfig {
         }
     }
 
-    fn parse_attr_config(mut self, cx: &ExtCtxt, mi: &ast::MetaItem) -> Self {
+    fn parse_attr_config(&mut self, cx: &ExtCtxt, mi: &ast::MetaItem) {
         assert!(mi.name == "cross_check");
         if let Some(ref items) = mi.meta_item_list() {
             for ref nested_item in items.iter() {
@@ -207,10 +207,9 @@ impl ScopeCheckConfig {
                 }
             }
         }
-        self
     }
 
-    fn parse_xcfg_config(mut self, cx: &ExtCtxt, xcfg: &xcfg::ItemConfig) -> Self {
+    fn parse_xcfg_config(&mut self, cx: &ExtCtxt, xcfg: &xcfg::ItemConfig) {
         macro_rules! parse_optional_field {
             // Field for the current scope
             (>$self_name:ident, $parent:ident, $xcfg_name:ident, $new_value:expr) => (
@@ -249,7 +248,6 @@ impl ScopeCheckConfig {
             },
             _ => ()
         }
-        self
     }
 }
 
@@ -328,22 +326,22 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
     fn build_new_scope(&self, item: &ast::Item) -> ScopeConfig<'xcfg> {
         // We have either a #[cross_check] attribute
         // or external config, so create a new ScopeCheckConfig
-        let new_config = self.config().inherit();
+        let mut new_config = self.config().inherit();
         // TODO: order???
         let xcheck_attr = find_cross_check_attr(&item.attrs);
-        let new_config = xcheck_attr.iter().fold(new_config, |nc, attr| {
+        if let Some(ref attr) = xcheck_attr {
             let mi = attr.parse_meta(self.cx.parse_sess).unwrap();
-            nc.parse_attr_config(self.cx, &mi)
-        });
+            new_config.parse_attr_config(self.cx, &mi);
+        };
 
         let last_scope = self.last_scope();
         let item_xcfg_config = {
             let item_name = item.ident.name.as_str();
             last_scope.get_item_config(&*item_name)
         };
-        let new_config = item_xcfg_config.iter().fold(new_config, |nc, xcfg| {
-            nc.parse_xcfg_config(self.cx, xcfg)
-        });
+        if let Some(ref xcfg) = item_xcfg_config {
+            new_config.parse_xcfg_config(self.cx, xcfg);
+        };
 
         let span = match item.node {
             ast::ItemKind::Mod(ref m) => m.inner,
@@ -650,7 +648,8 @@ impl MultiItemModifier for CrossCheckExpander {
               sp: Span,
               mi: &ast::MetaItem,
               item: Annotatable) -> Vec<Annotatable> {
-        let top_config = ScopeCheckConfig::new().parse_attr_config(cx, mi);
+        let mut top_config = ScopeCheckConfig::new();
+        top_config.parse_attr_config(cx, mi);
         let top_file_name = cx.codemap().span_to_filename(sp);
         let top_scope = ScopeConfig::new(&self.external_config,
                                          &top_file_name,
