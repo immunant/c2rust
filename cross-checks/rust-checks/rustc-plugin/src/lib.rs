@@ -467,8 +467,10 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                     item_attrs.push(xcheck_hash_derive_attr);
 
                     let attr_args = self.cx.parse_tts(self.build_hash_attr_args().join(","));
-                    let xcheck_hash_attr = quote_attr!(self.cx, #[cross_check_hash($attr_args)]);
-                    item_attrs.push(xcheck_hash_attr);
+                    if !attr_args.is_empty() {
+                        let xcheck_hash_attr = quote_attr!(self.cx, #[cross_check_hash($attr_args)]);
+                        item_attrs.push(xcheck_hash_attr);
+                    }
                 }
                 ast::Item {
                     attrs: item_attrs,
