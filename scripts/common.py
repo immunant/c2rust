@@ -4,9 +4,9 @@ import re
 import sys
 import json
 import errno
-import shutil
 import signal
 import logging
+import argparse
 import platform
 import multiprocessing
 
@@ -200,6 +200,18 @@ def on_ubuntu() -> bool:
     """
     match = re.match(r'^.+Ubuntu-\d\d\.\d\d-\w+', platform.platform())
     return match is not None
+
+
+def regex(raw: str):
+    """
+    Check that a string is a valid regex
+    """
+
+    try:
+        return re.compile(raw)
+    except re.error:
+        msg = "only:{0} is not a valid regular expression".format(raw)
+        raise argparse.ArgumentTypeError(msg)
 
 
 def die(emsg, ecode=1):

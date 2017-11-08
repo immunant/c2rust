@@ -240,18 +240,6 @@ def readable_directory(directory: str) -> str:
         return directory
 
 
-def regex(raw: str):
-    """
-    Check that a string is a valid regex
-    """
-
-    try:
-        return re.compile(raw)
-    except re.error:
-        msg = "only:{0} is not a valid regular expression".format(raw)
-        raise argparse.ArgumentTypeError(msg)
-
-
 def get_testcases(directory: str, keep: List[str]) -> List[TestCase]:
     """
     Find the test cases in a directory
