@@ -8,7 +8,7 @@ be main. It should be a function `entry` which expects to receive a zero-initial
     }
 
 Your C code should modify this buffer. We simply test that the translated Rust `entry` function
-modifies the buffer in the _same_ way as the inital C `entry` function. Bugs in translation should
+modifies the buffer in the _same_ way as the initial C `entry` function. Bugs in translation should
 be reduced to cases where the translated Rust `entry` function does _not_ modify the buffer in the
 same way as the initial C `entry` function.
 
@@ -49,8 +49,3 @@ of steps
   6. the same C driver program is compiled (using Clang) with the C source file (from step 2)
 
   7. the executables from steps 5 and 6 are both run and their outputs are compared for differences
-
-
-
-
-
