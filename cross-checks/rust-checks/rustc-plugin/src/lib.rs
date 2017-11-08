@@ -12,7 +12,6 @@ use rustc_plugin::Registry;
 use syntax::ast;
 use syntax::fold;
 
-use std::borrow::Cow;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -122,9 +121,9 @@ impl Default for InheritedCheckConfig {
 }
 
 #[derive(Clone, Default)]
-struct ScopeCheckConfig<'ic> {
+struct ScopeCheckConfig {
     // Cross-check configuration inherited from parent
-    inherited: Cow<'ic, InheritedCheckConfig>,
+    inherited: Rc<InheritedCheckConfig>,
 
     // The main xcheck for this item (entry point for function, contents for structure)
     main_xcheck: xcfg::XCheckType,
@@ -141,8 +140,8 @@ struct ScopeCheckConfig<'ic> {
     field_hasher: Option<String>,
 }
 
-impl<'ic> ScopeCheckConfig<'ic> {
-    fn new() -> ScopeCheckConfig<'ic> {
+impl ScopeCheckConfig {
+    fn new() -> ScopeCheckConfig {
         ScopeCheckConfig {
             all_args_xcheck: if cfg!(feature = "xcheck-args") {
                 xcfg::XCheckType::Default
@@ -169,20 +168,20 @@ impl<'ic> ScopeCheckConfig<'ic> {
                         "never" |
                         "disable" |
                         "no" => {
-                            self.inherited.to_mut().enabled = false
+                            Rc::make_mut(&mut self.inherited).enabled = false
                         }
                         "always" |
                         "enable" |
                         "yes" => {
-                            self.inherited.to_mut().enabled = true
+                            Rc::make_mut(&mut self.inherited).enabled = true
                         }
                         "ahasher" => {
-                            self.inherited.to_mut().ahasher =
+                            Rc::make_mut(&mut self.inherited).ahasher =
                                 item.value_str()
                                     .map(|s| cx.parse_tts(String::from(&*s.as_str())))
                         }
                         "shasher" => {
-                            self.inherited.to_mut().shasher =
+                            Rc::make_mut(&mut self.inherited).shasher =
                                 item.value_str()
                                     .map(|s| cx.parse_tts(String::from(&*s.as_str())))
                         }
@@ -222,7 +221,7 @@ impl<'ic> ScopeCheckConfig<'ic> {
             // Inherited field
             (^$self_name:ident, $parent:ident, $xcfg_name:ident, $new_value:expr) => (
                 if let Some(ref $xcfg_name) = $parent.$xcfg_name {
-                    self.inherited.to_mut().$self_name = $new_value;
+                    Rc::make_mut(&mut self.inherited).$self_name = $new_value;
                 }
             )
         }
@@ -255,10 +254,10 @@ impl<'ic> ScopeCheckConfig<'ic> {
 }
 
 #[derive(Clone)]
-struct ScopeConfig<'xcfg, 'ic> {
+struct ScopeConfig<'xcfg> {
     file_name: Rc<String>, // FIXME: this should be a &str
     items: Option<Rc<xcfg::NamedItemList<'xcfg>>>,
-    check_config: ScopeCheckConfig<'ic>,
+    check_config: ScopeCheckConfig,
 
     // Index of the next field in this scope (if the scope is a structure)
     // We use this to keep track of the index/ident of the next field
@@ -266,9 +265,9 @@ struct ScopeConfig<'xcfg, 'ic> {
     field_idx: Cell<usize>,
 }
 
-impl<'xcfg, 'ic> ScopeConfig<'xcfg, 'ic> {
+impl<'xcfg> ScopeConfig<'xcfg> {
     fn new(cfg: &'xcfg xcfg::Config, file_name: &str,
-           ccc: ScopeCheckConfig<'ic>) -> ScopeConfig<'xcfg, 'ic> {
+           ccc: ScopeCheckConfig) -> ScopeConfig<'xcfg> {
         ScopeConfig {
             file_name: Rc::new(String::from(file_name)),
             items: cfg.get_file_items(file_name)
@@ -287,7 +286,7 @@ impl<'xcfg, 'ic> ScopeConfig<'xcfg, 'ic> {
     }
 
     fn from_item(&self, item_config: Option<&'xcfg xcfg::ItemConfig>,
-                 ccc: ScopeCheckConfig<'ic>) -> Self {
+                 ccc: ScopeCheckConfig) -> Self {
         ScopeConfig {
             file_name: self.file_name.clone(),
             items: item_config.and_then(xcfg::ItemConfig::nested_items)
@@ -303,10 +302,10 @@ impl<'xcfg, 'ic> ScopeConfig<'xcfg, 'ic> {
     }
 }
 
-struct CrossChecker<'a, 'cx: 'a, 'xcfg, 'ic> {
+struct CrossChecker<'a, 'cx: 'a, 'xcfg> {
     cx: &'a ExtCtxt<'cx>,
     external_config: &'xcfg xcfg::Config,
-    scope_stack: Vec<ScopeConfig<'xcfg, 'ic>>,
+    scope_stack: Vec<ScopeConfig<'xcfg>>,
     default_ahasher: Vec<TokenTree>,
     default_shasher: Vec<TokenTree>,
 }
@@ -315,18 +314,18 @@ fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
     attrs.iter().find(|attr| attr.check_name("cross_check"))
 }
 
-impl<'a, 'cx, 'xcfg, 'ic> CrossChecker<'a, 'cx, 'xcfg, 'ic> {
+impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
     #[inline]
-    fn last_scope(&self) -> &ScopeConfig<'xcfg, 'ic> {
+    fn last_scope(&self) -> &ScopeConfig<'xcfg> {
         self.scope_stack.last().unwrap()
     }
 
     #[inline]
-    fn config(&self) -> &ScopeCheckConfig<'ic> {
+    fn config(&self) -> &ScopeCheckConfig {
         &self.last_scope().check_config
     }
 
-    fn build_new_scope(&self, item: &ast::Item) -> ScopeConfig<'xcfg, 'ic> {
+    fn build_new_scope(&self, item: &ast::Item) -> ScopeConfig<'xcfg> {
         // We have either a #[cross_check] attribute
         // or external config, so create a new ScopeCheckConfig
         let new_config = self.config().inherit();
@@ -516,7 +515,7 @@ impl<'a, 'cx, 'xcfg, 'ic> CrossChecker<'a, 'cx, 'xcfg, 'ic> {
     }
 }
 
-impl<'a, 'cx, 'xcfg, 'ic> Folder for CrossChecker<'a, 'cx, 'xcfg, 'ic> {
+impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let new_scope = self.build_new_scope(&item);
         self.scope_stack.push(new_scope);
