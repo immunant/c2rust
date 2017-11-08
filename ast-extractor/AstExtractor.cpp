@@ -79,7 +79,18 @@ public:
     static uintptr_t encodeQualType(QualType t) {
         auto s = t.split();
         auto i = uintptr_t(s.Ty);
-        return t.isConstQualified() ? (i | 1) : i;
+
+        if (t.isConstQualified()) {
+          i |= 1;
+        }
+        if (t.isRestrictQualified()) {
+          i |= 2;
+        }
+        if (t.isVolatileQualified()) {
+          i |= 4;
+        }
+
+        return i;
     }
     
     explicit TypeEncoder(ASTContext *Context, CborEncoder *encoder, TranslateASTVisitor *ast)

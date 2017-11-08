@@ -496,9 +496,9 @@ impl<W: Write> Printer<W> {
 
         self.print_type(type_id.ctype, context)?;
 
-        if is_const { self.writer.write_all(b"const ")? }
-        if is_restrict { self.writer.write_all(b"restrict ")? }
-        if is_volatile { self.writer.write_all(b"volatile ")? }
+        if is_const { self.writer.write_all(b" const")? }
+        if is_restrict { self.writer.write_all(b" restrict")? }
+        if is_volatile { self.writer.write_all(b" volatile")? }
 
         Ok(())
     }

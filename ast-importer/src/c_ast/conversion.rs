@@ -185,7 +185,7 @@ impl ConversionContext {
 
     /// Like `visit_node_type`, but specifically for type nodes
     fn visit_type(&mut self, node_id: ClangId) -> CTypeId {
-        let node_id = node_id & !1;
+        let node_id = node_id & TypeNode::ID_MASK;
         CTypeId(self.visit_node_type(node_id, node_types::TYPE))
     }
 
@@ -195,9 +195,9 @@ impl ConversionContext {
     /// look the node up in the context.
     fn visit_qualified_type(&mut self, node_id: ClangId) -> CQualTypeId {
         let qualifiers = Qualifiers {
-            is_const: node_id & 1 == 1,
-            is_restrict: false,
-            is_volatile: false,
+            is_const: node_id & TypeNode::CONST_MASK != 0,
+            is_restrict: node_id & TypeNode::RESTRICT_MASK != 0,
+            is_volatile: node_id & TypeNode::VOLATILE_MASK != 0,
         };
         let ctype = self.visit_type(node_id);
 
@@ -474,7 +474,7 @@ impl ConversionContext {
                 TypeTag::TagParenType => {
                     let wrapped = expect_u64(&ty_node.extras[0]).expect("Paren type child not found");
 
-                    self.id_mapper.merge_old(node_id & !1, wrapped & !1);
+                    self.id_mapper.merge_old(node_id & TypeNode::ID_MASK, wrapped & TypeNode::ID_MASK);
                     self.visit_type(wrapped);
                 }
 

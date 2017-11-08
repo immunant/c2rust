@@ -21,8 +21,15 @@ pub struct AstNode {
 #[derive(Debug,Clone)]
 pub struct TypeNode {
     pub tag: TypeTag,
-    pub constant: bool,
     pub extras: Vec<Cbor>,
+}
+
+impl TypeNode {
+    // Masks used to decode the IDs given to type nodes
+    pub const ID_MASK: u64 = !0b111;
+    pub const CONST_MASK: u64 = 0b001;
+    pub const RESTRICT_MASK: u64 = 0b010;
+    pub const VOLATILE_MASK: u64 = 0b100;
 }
 
 #[derive(Debug, Clone)]
@@ -36,65 +43,6 @@ pub struct AstContext {
 pub enum DecodeError {
     DecodeCborError(CborError),
     TypeMismatch,
-}
-
-impl AstContext {
-    pub fn get_type(&self, node_id: u64) -> Option<TypeNode> {
-        self.type_nodes
-            .get(&(node_id & !1u64))
-            .cloned()
-            .map(|mut x| {
-                if node_id & 1 == 1 {
-                    x.constant = true
-                }
-                x
-            })
-    }
-
-    pub fn resolve_type(&self, node: TypeNode) -> TypeNode {
-        match node.tag {
-            TypeTag::TagElaboratedType | TypeTag::TagDecayedType | TypeTag::TagTypeOfType => {
-                let child_id = expect_u64(&node.extras[0]).expect("child id");
-                let node = self.get_type(child_id).expect("child node");
-                self.resolve_type(node)
-            }
-            TypeTag::TagTypedefType => {
-                let child_id = expect_u64(&node.extras[0]).expect("child id");
-                let decl = self.ast_nodes.get(&child_id).expect("child node");
-                assert_eq!(decl.tag, ASTEntryTag::TagTypedefDecl);
-                let type_id = decl.type_id.expect("typedef type");
-                let type_node = self.get_type(type_id).expect("type node");
-                self.resolve_type(type_node)
-            }
-            _ => node,
-        }
-    }
-}
-
-impl AstNode {
-    pub fn get_decl_name(&self) -> Option<&str> {
-        match self.tag {
-            ASTEntryTag::TagVarDecl => Some(expect_str(&self.extras[0]).unwrap()),
-            ASTEntryTag::TagFunctionDecl => Some(expect_str(&self.extras[0]).unwrap()),
-            _ => None,
-        }
-    }
-}
-
-impl TypeNode {
-    pub fn is_pointer(&self) -> bool {
-        match self.tag {
-            TypeTag::TagPointer => true,
-            _ => false,
-        }
-    }
-    pub fn is_unsigned_integral_type(&self) -> bool {
-        match self.tag {
-            TypeTag::TagUInt | TypeTag::TagUShort | TypeTag::TagULong | TypeTag::TagULongLong => true,
-            _ => false
-        }
-
-    }
 }
 
 pub fn expect_array<'a>(val: &'a Cbor) -> Result<&'a Vec<Cbor>, DecodeError> {
@@ -209,7 +157,6 @@ pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError>
         } else {
             let node = TypeNode {
                 tag: import_type_tag(tag),
-                constant: false,
                 extras: entry[2..].to_vec(),
             };
 
