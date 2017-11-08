@@ -33,46 +33,6 @@ fn djb2_hash(s: &str) -> u32 {
     s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
 }
 
-#[derive(Clone)]
-struct InheritedConfig {
-    // Whether cross-checks are enabled overall
-    enabled: bool,
-
-    // Overrides for ahasher/shasher
-    ahasher: Option<Vec<TokenTree>>,
-    shasher: Option<Vec<TokenTree>>,
-}
-
-impl Default for InheritedConfig {
-    fn default() -> InheritedConfig {
-        InheritedConfig {
-            enabled: true,
-            ahasher: None,
-            shasher: None,
-        }
-    }
-}
-
-#[derive(Clone, Default)]
-struct CrossCheckConfig<'ic> {
-    // Cross-check configuration inherited from parent
-    inherited: Cow<'ic, InheritedConfig>,
-
-    // The main xcheck for this item (entry point for function, contents for structure)
-    main_xcheck: xcfg::XCheckType,
-
-    // Cross-check types for subcomponents: function arguments or structure fields
-    sub_xchecks: HashMap<xcfg::FieldIndex, xcfg::XCheckType>,
-
-    // Item-specific configuration starts here
-    // ---------------------------------------
-    // Function item configuration
-    all_args_xcheck: xcfg::XCheckType,
-
-    // Structure item configuration
-    field_hasher: Option<String>,
-}
-
 trait CrossCheckHash {
     fn get_ident_hash(&self, cx: &ExtCtxt, ident: &ast::Ident) -> Option<P<ast::Expr>>;
     fn get_hash<F>(&self, cx: &ExtCtxt, f: F) -> Option<P<ast::Expr>>
@@ -141,9 +101,49 @@ fn parse_xcheck_type(mi: &ast::MetaItem) -> Option<xcfg::XCheckType> {
      }
 }
 
-impl<'ic> CrossCheckConfig<'ic> {
-    fn new() -> CrossCheckConfig<'ic> {
-        CrossCheckConfig {
+#[derive(Clone)]
+struct InheritedCheckConfig {
+    // Whether cross-checks are enabled overall
+    enabled: bool,
+
+    // Overrides for ahasher/shasher
+    ahasher: Option<Vec<TokenTree>>,
+    shasher: Option<Vec<TokenTree>>,
+}
+
+impl Default for InheritedCheckConfig {
+    fn default() -> InheritedCheckConfig {
+        InheritedCheckConfig {
+            enabled: true,
+            ahasher: None,
+            shasher: None,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct ScopeCheckConfig<'ic> {
+    // Cross-check configuration inherited from parent
+    inherited: Cow<'ic, InheritedCheckConfig>,
+
+    // The main xcheck for this item (entry point for function, contents for structure)
+    main_xcheck: xcfg::XCheckType,
+
+    // Cross-check types for subcomponents: function arguments or structure fields
+    sub_xchecks: HashMap<xcfg::FieldIndex, xcfg::XCheckType>,
+
+    // Item-specific configuration starts here
+    // ---------------------------------------
+    // Function item configuration
+    all_args_xcheck: xcfg::XCheckType,
+
+    // Structure item configuration
+    field_hasher: Option<String>,
+}
+
+impl<'ic> ScopeCheckConfig<'ic> {
+    fn new() -> ScopeCheckConfig<'ic> {
+        ScopeCheckConfig {
             all_args_xcheck: if cfg!(feature = "xcheck-args") {
                 xcfg::XCheckType::Default
             } else {
@@ -154,9 +154,9 @@ impl<'ic> CrossCheckConfig<'ic> {
     }
 
     fn inherit(&self) -> Self {
-        CrossCheckConfig {
+        ScopeCheckConfig {
             inherited: self.inherited.clone(),
-            ..CrossCheckConfig::new()
+            ..ScopeCheckConfig::new()
         }
     }
 
@@ -258,7 +258,7 @@ impl<'ic> CrossCheckConfig<'ic> {
 struct ScopeConfig<'xcfg, 'ic> {
     file_name: Rc<String>, // FIXME: this should be a &str
     items: Option<Rc<xcfg::NamedItemList<'xcfg>>>,
-    config: CrossCheckConfig<'ic>,
+    check_config: ScopeCheckConfig<'ic>,
 
     // Index of the next field in this scope (if the scope is a structure)
     // We use this to keep track of the index/ident of the next field
@@ -268,13 +268,13 @@ struct ScopeConfig<'xcfg, 'ic> {
 
 impl<'xcfg, 'ic> ScopeConfig<'xcfg, 'ic> {
     fn new(cfg: &'xcfg xcfg::Config, file_name: &str,
-           ccc: CrossCheckConfig<'ic>) -> ScopeConfig<'xcfg, 'ic> {
+           ccc: ScopeCheckConfig<'ic>) -> ScopeConfig<'xcfg, 'ic> {
         ScopeConfig {
             file_name: Rc::new(String::from(file_name)),
             items: cfg.get_file_items(file_name)
                       .map(xcfg::NamedItemList::new)
                       .map(Rc::new),
-            config: ccc,
+            check_config: ccc,
             field_idx: Cell::new(0),
         }
     }
@@ -287,13 +287,13 @@ impl<'xcfg, 'ic> ScopeConfig<'xcfg, 'ic> {
     }
 
     fn from_item(&self, item_config: Option<&'xcfg xcfg::ItemConfig>,
-                 ccc: CrossCheckConfig<'ic>) -> Self {
+                 ccc: ScopeCheckConfig<'ic>) -> Self {
         ScopeConfig {
             file_name: self.file_name.clone(),
             items: item_config.and_then(xcfg::ItemConfig::nested_items)
                               .map(xcfg::NamedItemList::new)
                               .map(Rc::new),
-            config: ccc,
+            check_config: ccc,
             field_idx: Cell::new(0),
         }
     }
@@ -322,13 +322,13 @@ impl<'a, 'cx, 'xcfg, 'ic> CrossChecker<'a, 'cx, 'xcfg, 'ic> {
     }
 
     #[inline]
-    fn config(&self) -> &CrossCheckConfig<'ic> {
-        &self.last_scope().config
+    fn config(&self) -> &ScopeCheckConfig<'ic> {
+        &self.last_scope().check_config
     }
 
     fn build_new_scope(&self, item: &ast::Item) -> ScopeConfig<'xcfg, 'ic> {
         // We have either a #[cross_check] attribute
-        // or external config, so create a new CrossCheckConfig
+        // or external config, so create a new ScopeCheckConfig
         let new_config = self.config().inherit();
         // TODO: order???
         let xcheck_attr = find_cross_check_attr(&item.attrs);
@@ -651,7 +651,7 @@ impl MultiItemModifier for CrossCheckExpander {
               sp: Span,
               mi: &ast::MetaItem,
               item: Annotatable) -> Vec<Annotatable> {
-        let top_config = CrossCheckConfig::new().parse_attr_config(cx, mi);
+        let top_config = ScopeCheckConfig::new().parse_attr_config(cx, mi);
         let top_file_name = cx.codemap().span_to_filename(sp);
         let top_scope = ScopeConfig::new(&self.external_config,
                                          &top_file_name,
