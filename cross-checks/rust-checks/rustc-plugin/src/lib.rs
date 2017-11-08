@@ -572,7 +572,7 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
                     // FIXME: we're passing the id in as a string because
                     // that's how derive-macros parses it
                     let sid = format!("{}", id);
-                    Some(quote_attr!(self.cx, #[cross_check_hash(id=$sid)]))
+                    Some(quote_attr!(self.cx, #[cross_check_hash(fixed_hash=$sid)]))
                 },
 
                 xcfg::XCheckType::Custom(ref s) =>

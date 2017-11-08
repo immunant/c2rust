@@ -118,7 +118,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                args.0.contains_key("disable") {
                 // Cross-checking is disabled
                 Some(quote::Tokens::new())
-            } else if let Some(ref sub_arg) = args.0.get("id") {
+            } else if let Some(ref sub_arg) = args.0.get("fixed_hash") {
                 // FIXME: should try parsing this as an integer
                 let id = sub_arg.get_str_ident();
                 Some(quote! { h.write_u64(#id) })
