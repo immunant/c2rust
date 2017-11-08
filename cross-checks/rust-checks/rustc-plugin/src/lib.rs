@@ -467,6 +467,8 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                     let attr_args = self.cx.parse_tts(self.build_hash_attr_args().join(","));
                     if !attr_args.is_empty() {
                         let xcheck_hash_attr = quote_attr!(self.cx, #[cross_check_hash($attr_args)]);
+                        // Mark the attribute as used so the compiler doesn't emit a warning
+                        syntax::attr::mark_used(&xcheck_hash_attr);
                         item_attrs.push(xcheck_hash_attr);
                     }
                 }
@@ -575,6 +577,8 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
                     Some(quote_attr!(self.cx, #[cross_check_hash(custom_hash=$s)])),
             }
         });
+        // Mark the attribute as used so the compiler doesn't emit a warning
+        hash_attr.iter().for_each(|attr| syntax::attr::mark_used(attr));
 
         // Remove #[cross_check] from attributes, then append #[cross_check_hash]
         let sf_attrs = folded_sf.attrs.into_iter()
