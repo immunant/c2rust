@@ -42,11 +42,11 @@ struct CrossCheckConfig {
     main_xcheck: xcfg::XCheckType,
 
     // Cross-check types for subcomponents: function arguments or structure fields
-    sub_xchecks: HashMap<String, xcfg::XCheckType>,
+    sub_xchecks: HashMap<xcfg::FieldIndex, xcfg::XCheckType>,
 
     // Overrides for ahasher/shasher
-    ahasher: Vec<TokenTree>,
-    shasher: Vec<TokenTree>,
+    ahasher: Option<Vec<TokenTree>>,
+    shasher: Option<Vec<TokenTree>>,
 
     // Item-specific configuration starts here
     // ---------------------------------------
@@ -126,7 +126,7 @@ fn parse_xcheck_type(mi: &ast::MetaItem) -> Option<xcfg::XCheckType> {
 }
 
 impl CrossCheckConfig {
-    fn new(cx: &ExtCtxt) -> CrossCheckConfig {
+    fn new(_cx: &ExtCtxt) -> CrossCheckConfig {
         CrossCheckConfig {
             enabled: true,
             main_xcheck: xcfg::XCheckType::Default,
@@ -136,8 +136,8 @@ impl CrossCheckConfig {
                 xcfg::XCheckType::Skip
             },
             sub_xchecks: Default::default(),
-            ahasher: quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher).to_tokens(cx),
-            shasher: quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher).to_tokens(cx),
+            ahasher: None,
+            shasher: None,
             field_hasher: None,
         }
     }
@@ -161,12 +161,10 @@ impl CrossCheckConfig {
                         "ahasher" => {
                             self.ahasher = item.value_str()
                                                .map(|s| cx.parse_tts(String::from(&*s.as_str())))
-                                               .unwrap_or_default()
                         }
                         "shasher" => {
                             self.shasher = item.value_str()
                                                .map(|s| cx.parse_tts(String::from(&*s.as_str())))
-                                               .unwrap_or_default()
                         }
 
                         // Cross-check type
@@ -206,10 +204,12 @@ impl CrossCheckConfig {
                 parse_optional_field!(enabled,         func, disable_xchecks, !disable_xchecks);
                 parse_optional_field!(main_xcheck,     func, entry,           entry.clone());
                 parse_optional_field!(all_args_xcheck, func, all_args,        all_args.clone());
-                self.sub_xchecks.extend(func.args.clone().into_iter());
+                self.sub_xchecks.extend(func.args.iter().map(|(k, v)| {
+                    (xcfg::FieldIndex::from_str(k), v.clone())
+                }));
                 // TODO: add a way for the external config to reset these to default
-                parse_optional_field!(ahasher, func, ahasher, cx.parse_tts(ahasher.clone()));
-                parse_optional_field!(shasher, func, shasher, cx.parse_tts(shasher.clone()));
+                parse_optional_field!(ahasher, func, ahasher, Some(cx.parse_tts(ahasher.clone())));
+                parse_optional_field!(shasher, func, shasher, Some(cx.parse_tts(shasher.clone())));
                 // TODO: parse more fields: exit, ret
             },
 
@@ -218,8 +218,8 @@ impl CrossCheckConfig {
                 parse_optional_field!(field_hasher, struc, field_hasher, Some(field_hasher.clone()));
                 self.sub_xchecks.extend(struc.fields.clone().into_iter());
                 // TODO: add a way for the external config to reset these to default
-                parse_optional_field!(ahasher, struc, ahasher, cx.parse_tts(ahasher.clone()));
-                parse_optional_field!(shasher, struc, shasher, cx.parse_tts(shasher.clone()));
+                parse_optional_field!(ahasher, struc, ahasher, Some(cx.parse_tts(ahasher.clone())));
+                parse_optional_field!(shasher, struc, shasher, Some(cx.parse_tts(shasher.clone())));
             },
             _ => ()
         }
@@ -280,6 +280,8 @@ struct CrossChecker<'a, 'cx: 'a, 'xcfg> {
     cx: &'a ExtCtxt<'cx>,
     external_config: &'xcfg xcfg::Config,
     scope_stack: Vec<ScopeConfig<'xcfg>>,
+    default_ahasher: Vec<TokenTree>,
+    default_shasher: Vec<TokenTree>,
 }
 
 fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
@@ -299,7 +301,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
 
     fn build_new_scope(&self, item: &ast::Item) -> ScopeConfig<'xcfg> {
         let last_scope = self.last_scope();
-        let xcheck_attr = find_cross_check_attr(item.attrs.as_slice());
+        let xcheck_attr = find_cross_check_attr(&item.attrs);
         let item_xcfg_config = {
             let item_name = item.ident.name.as_str();
             last_scope.get_item_config(&*item_name)
@@ -344,14 +346,17 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
             ast::PatKind::Ident(_, ref ident, _) => {
                 // Parameter pattern is just an identifier,
                 // so we can reference it directly by name
-                let arg_xcheck_cfg = self.config().sub_xchecks
-                    .get(&*ident.node.name.as_str())
+                let arg_idx = xcfg::FieldIndex::from_str(&*ident.node.name.as_str());
+                let arg_xcheck_cfg = self.config().sub_xchecks.get(&arg_idx)
                     .unwrap_or(&self.config().all_args_xcheck);
                 arg_xcheck_cfg.get_hash(self.cx, || {
                     // By default, we use cross_check_hash
                     // to hash the value of the identifier
-                    let (ahasher, shasher) = (&self.config().ahasher,
-                                              &self.config().shasher);
+                    let (ahasher, shasher) =
+                        (self.config().ahasher.as_ref()
+                             .unwrap_or(self.default_ahasher.as_ref()),
+                         self.config().shasher.as_ref()
+                             .unwrap_or(self.default_shasher.as_ref()));
                     Some(quote_expr!(self.cx, {
                         use cross_check_runtime::hash::CrossCheckHash as XCH;
                         XCH::cross_check_hash::<$ahasher, $shasher>(&$ident)
@@ -369,15 +374,13 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
     // doesn't seem to be a good way to create NestedMetaItems
     fn build_hash_attr_args(&self) -> Vec<String> {
         let mut res: Vec<String> = vec![];
-        let (ahasher, shasher) = (&self.config().ahasher,
-                                  &self.config().shasher);
-        if !ahasher.is_empty() {
+        if let Some(ref ahasher) = self.config().ahasher {
             let ahasher_str = pprust::tts_to_string(
                 &ahasher.to_tokens(self.cx));
             let mi = format!("ahasher=\"{}\"", ahasher_str);
             res.push(mi);
         }
-        if !shasher.is_empty() {
+        if let Some(ref shasher) = self.config().shasher {
             let shasher_str = pprust::tts_to_string(
                 &shasher.to_tokens(self.cx));
             let mi = format!("shasher=\"{}\"", shasher_str);
@@ -426,8 +429,11 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                 // Add our typedefs to the beginning of each function;
                 // whatever the configuration says, we should always add these
                 let block_with_types = {
-                    let (ahasher, shasher) = (&self.config().ahasher,
-                                              &self.config().shasher);
+                    let (ahasher, shasher) =
+                        (self.config().ahasher.as_ref()
+                             .unwrap_or(self.default_ahasher.as_ref()),
+                         self.config().shasher.as_ref()
+                             .unwrap_or(self.default_shasher.as_ref()));
                     quote_block!(self.cx, {
                         #[allow(dead_code)]
                         mod cross_check_types {
@@ -461,8 +467,10 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                     item_attrs.push(xcheck_hash_derive_attr);
 
                     let attr_args = self.cx.parse_tts(self.build_hash_attr_args().join(","));
-                    let xcheck_hash_attr = quote_attr!(self.cx, #[cross_check_hash($attr_args)]);
-                    item_attrs.push(xcheck_hash_attr);
+                    if !attr_args.is_empty() {
+                        let xcheck_hash_attr = quote_attr!(self.cx, #[cross_check_hash($attr_args)]);
+                        item_attrs.push(xcheck_hash_attr);
+                    }
                 }
                 ast::Item {
                     attrs: item_attrs,
@@ -537,19 +545,21 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
         // if the field is in a Struct. If it's in a Tuple, we use
         // the field index, which we need to compute ourselves from field_idx.
         let sf_name = folded_sf.ident
-            .map(|ident| String::from(&*ident.name.as_str()))
+            .map(|ident| xcfg::FieldIndex::from_str(&*ident.name.as_str()))
             .unwrap_or_else(|| {
                 // We use field_idx to keep track of the index/name
                 // of the fields inside a VariantData
                 let idx = self.last_scope().field_idx.get();
                 self.last_scope().field_idx.set(idx + 1);
-                format!("{}", idx)
+                xcfg::FieldIndex::Int(idx)
             });
 
         let sf_attr_xcheck = self.parse_field_attr(&folded_sf.attrs);
         let sf_xcfg_xcheck = self.config().sub_xchecks.get(&sf_name);
         let sf_xcheck = sf_xcfg_xcheck.or(sf_attr_xcheck.as_ref());
         let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
+            // TODO: we don't support derive-macros' "check_value"
+            // and "check_raw" here, and I'm not sure we should
             match *sf_xcheck {
                 xcfg::XCheckType::Default => None,
 
@@ -579,11 +589,6 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
             attrs: sf_attrs,
             ..folded_sf
         }
-    }
-
-    fn fold_mod(&mut self, m: ast::Mod) -> ast::Mod {
-        let folded_mod = fold::noop_fold_mod(m, self);
-        folded_mod
     }
 
     fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
@@ -644,7 +649,9 @@ impl MultiItemModifier for CrossCheckExpander {
                         CrossChecker {
                             cx: cx,
                             external_config: &self.external_config,
-                            scope_stack: vec![top_scope]
+                            scope_stack: vec![top_scope],
+                            default_ahasher: quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher).to_tokens(cx),
+                            default_shasher: quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher).to_tokens(cx),
                         }.fold_item(i)
                          .expect_one("too many items returned"),
                     _ => i
