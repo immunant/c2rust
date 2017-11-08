@@ -67,7 +67,7 @@ class TestCase:
         if message:
             sys.stdout.write(": " + message)
 
-    def generate_cc_db(self):
+    def generate_cc_db(self) -> (int, str, str):
         directory, cfile = os.path.split(self.src_c)
 
         compile_commands = """ \
@@ -85,7 +85,7 @@ class TestCase:
 
         return 0, "", ""
 
-    def export_cbor(self):
+    def export_cbor(self) -> (int, str, str):
 
         # run the extractor
         args = [self.src_c]
@@ -94,7 +94,7 @@ class TestCase:
         args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
         return ast_extractor[args].run(retcode=None)
 
-    def translate(self):
+    def translate(self) -> (int, str, str):
 
         # help plumbum find rust
         ld_lib_path = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
@@ -106,7 +106,7 @@ class TestCase:
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
             return (ast_importer[args] > self.rust_src).run(retcode=None)
 
-    def compile_translated_rustc(self):
+    def compile_translated_rustc(self) -> (int, str, str):
 
         # run rustc
         args = [
@@ -116,30 +116,35 @@ class TestCase:
         ]
         return rustc[args].run(retcode=None)
 
-    def compile_translated_clang(self):
+    def compile_translated_clang(self) -> (int, str, str):
 
         # run clang linking in the rust object file
         args = [
-            '-lSystem', '-lresolv', '-lc', '-lm',
+            '-lc', '-lm',
             '-o', self.rust_exec,
-            self.rust_obj, driver,
+            driver, self.rust_obj,
         ]
-        return clang[args].run(retcode = None)
+        if on_mac():
+            args = ['-lSystem', '-lresolv'] + args
+        else:
+            args = ['-pthread', '-ldl'] + args
+        return clang[args].run(retcode=None)
 
-    def compile_original_clang(self):
+    def compile_original_clang(self) -> (int, str, str):
 
         # run clang
         args = [
             '-o', self.c_exec,
             driver, self.src_c
         ]
-        return clang[args].run(retcode = None)
+        return clang[args].run(retcode=None)
 
-    def compare_run_outputs(self):
+    def compare_run_outputs(self) -> (int, str, str):
 
         # run the Rust executable
         run_result = (get_cmd_or_die(self.rust_exec) > self.rust_out).run(retcode=None)
-        if run_result[0]: return run_result
+        if run_result[0]:
+            return run_result
 
         # run the C executable
         run_result = (get_cmd_or_die(self.c_exec) > self.c_out).run(retcode=None)
@@ -233,18 +238,6 @@ def readable_directory(directory: str) -> str:
         raise argparse.ArgumentTypeError(msg)
     else:
         return directory
-
-
-def regex(raw: str):
-    """
-    Check that a string is a valid regex
-    """
-
-    try:
-        return re.compile(raw)
-    except re.error:
-        msg = "only:{0} is not a valid regular expression".format(raw)
-        raise argparse.ArgumentTypeError(msg)
 
 
 def get_testcases(directory: str, keep: List[str]) -> List[TestCase]:

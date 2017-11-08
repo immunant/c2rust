@@ -171,7 +171,10 @@ def parse_args() -> argparse.Namespace:
     """
     desc = 'run integration tests.'
     parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument('-w', '--what', type=str, default='')
+    parser.add_argument(
+        '--only', dest='regex', type=regex,
+        default='.*', help="Regular expression to filter which tests to run"
+    )
     parser.add_argument('-j', '--jobs', type=int, dest="jobs",
                         default=multiprocessing.cpu_count(),
                         help='max number of concurrent jobs')
@@ -183,11 +186,14 @@ def main() -> None:
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
+    if on_mac():
+        die("this script only runs on Linux")
+
     # check that the binaries have been built first
     bins = [BEAR_BIN, AST_EXTR, AST_IMPO]
     for b in bins:
         if not os.path.isfile(b):
-            msg = b + " not found; run build_ast_extractor.py first?"
+            msg = b + " not found; run build_translator.py first?"
             die(msg, errno.ENOENT)
 
     ensure_dir(DEPS_DIR)
@@ -201,7 +207,7 @@ def main() -> None:
              test_json_c,
              test_ruby,
              test_lua]
-    tests = [t for t in tests if args.what in t.__name__]
+    tests = [t for t in tests if args.regex.match(t.__name__)]
 
     if not tests:
         die("nothing to test")
