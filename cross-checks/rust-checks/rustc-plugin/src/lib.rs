@@ -340,6 +340,12 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
         }
     }
 
+    // Get the ahasher/shasher pair
+    fn get_hasher_pair(&self) -> (&Vec<TokenTree>, &Vec<TokenTree>) {
+        (self.config().ahasher.as_ref().unwrap_or(self.default_ahasher.as_ref()),
+         self.config().shasher.as_ref().unwrap_or(self.default_shasher.as_ref()))
+    }
+
     // Get the cross-check block for this argument
     fn build_arg_xcheck(&self, arg: &ast::Arg) -> Option<P<ast::Block>> {
         match arg.pat.node {
@@ -352,11 +358,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                 arg_xcheck_cfg.get_hash(self.cx, || {
                     // By default, we use cross_check_hash
                     // to hash the value of the identifier
-                    let (ahasher, shasher) =
-                        (self.config().ahasher.as_ref()
-                             .unwrap_or(self.default_ahasher.as_ref()),
-                         self.config().shasher.as_ref()
-                             .unwrap_or(self.default_shasher.as_ref()));
+                    let (ahasher, shasher) = self.get_hasher_pair();
                     Some(quote_expr!(self.cx, {
                         use cross_check_runtime::hash::CrossCheckHash as XCH;
                         XCH::cross_check_hash::<$ahasher, $shasher>(&$ident)
@@ -429,11 +431,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                 // Add our typedefs to the beginning of each function;
                 // whatever the configuration says, we should always add these
                 let block_with_types = {
-                    let (ahasher, shasher) =
-                        (self.config().ahasher.as_ref()
-                             .unwrap_or(self.default_ahasher.as_ref()),
-                         self.config().shasher.as_ref()
-                             .unwrap_or(self.default_shasher.as_ref()));
+                    let (ahasher, shasher) = self.get_hasher_pair();
                     quote_block!(self.cx, {
                         #[allow(dead_code)]
                         mod cross_check_types {
@@ -558,8 +556,6 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
         let sf_xcfg_xcheck = self.config().sub_xchecks.get(&sf_name);
         let sf_xcheck = sf_xcfg_xcheck.or(sf_attr_xcheck.as_ref());
         let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
-            // TODO: we don't support derive-macros' "check_value"
-            // and "check_raw" here, and I'm not sure we should
             match *sf_xcheck {
                 xcfg::XCheckType::Default => None,
 
@@ -572,7 +568,7 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
                     // FIXME: we're passing the id in as a string because
                     // that's how derive-macros parses it
                     let sid = format!("{}", id);
-                    Some(quote_attr!(self.cx, #[cross_check_hash(id=$sid)]))
+                    Some(quote_attr!(self.cx, #[cross_check_hash(fixed_hash=$sid)]))
                 },
 
                 xcfg::XCheckType::Custom(ref s) =>

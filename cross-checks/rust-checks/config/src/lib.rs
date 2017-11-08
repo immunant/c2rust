@@ -12,7 +12,7 @@ use std::collections::HashMap;
 pub enum XCheckType {
     // Basic types
     Default,
-    Skip,
+    No,
 
     // Types with additional parameters
     Fixed(u64),
@@ -206,8 +206,8 @@ mod tests {
     fn test_types() {
         assert_eq!(parse_test_yaml::<XCheckType>("default"),
                    XCheckType::Default);
-        assert_eq!(parse_test_yaml::<XCheckType>("skip"),
-                   XCheckType::Skip);
+        assert_eq!(parse_test_yaml::<XCheckType>("no"),
+                   XCheckType::No);
         assert_eq!(parse_test_yaml::<XCheckType>("{ \"fixed\": 1234 }"),
                    XCheckType::Fixed(1234));
         assert_eq!(parse_test_yaml::<XCheckType>("{ \"djb2\": \"foo\" }"),
