@@ -600,11 +600,17 @@ class TranslateASTVisitor final
       //
       
       bool VisitFunctionDecl(FunctionDecl *FD)
-      {
+      {              
+          // For now, skip function decls that are not also function defs
+          if(!FD->hasBody()) {
+              return true;
+          }
+
           std::vector<void*> childIds;
           for (auto x : FD->parameters()) {
               childIds.push_back(x);
           }
+
           childIds.push_back(FD->getBody());
 
           auto functionType = FD->getType();
