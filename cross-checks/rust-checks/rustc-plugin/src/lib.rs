@@ -558,8 +558,6 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
         let sf_xcfg_xcheck = self.config().sub_xchecks.get(&sf_name);
         let sf_xcheck = sf_xcfg_xcheck.or(sf_attr_xcheck.as_ref());
         let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
-            // TODO: we don't support derive-macros' "check_value"
-            // and "check_raw" here, and I'm not sure we should
             match *sf_xcheck {
                 xcfg::XCheckType::Default => None,
 
