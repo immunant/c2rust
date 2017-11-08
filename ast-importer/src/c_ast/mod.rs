@@ -463,8 +463,25 @@ pub enum CStmtKind {
 /// Type qualifiers (6.7.3)
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Qualifiers {
+
+    /// The `const` qualifier, which marks lvalues as non-assignable.
+    ///
+    /// We make use of `const` in only two places:
+    ///   * Variable and function bindings (which matches up to Rust's `mut` or not bindings)
+    ///   * The pointed type in pointers (which matches up to Rust's `*const`/`*mut`)
     pub is_const: bool,
+
     pub is_restrict: bool,
+
+    /// The `volatile` qualifier, which prevents the compiler from reordering accesses through such
+    /// qualified lvalues past other observable side effects (other accesses, or sequence points).
+    ///
+    /// The part here about not reordering (or changing in any way) access to something volatile
+    /// can be replicated in Rust via `std::ptr::read_volatile`  and `std::ptr::write_volatile`.
+    /// Since Rust's execution model is still unclear, I am unsure that we get all of the guarantees
+    /// `volatile` needs, especially regarding reordering of other side-effects.
+    ///
+    /// TODO ALEC: Implement this in the translator
     pub is_volatile: bool,
 }
 
