@@ -154,7 +154,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         fn cross_check_hash_depth<__XCHA, __XCHS>(&self, _depth: usize) -> u64
                 where __XCHA: ::cross_check_runtime::hash::CrossCheckHasher,
                       __XCHS: ::cross_check_runtime::hash::CrossCheckHasher {
-            use std::hash::Hasher;
+            #[allow(unused_imports)] use std::hash::Hasher;
             #hash_code
         }
     })
