@@ -369,16 +369,16 @@ impl Builder {
     // These are sorted in the same order as the corresponding ExprKind variants, with additional
     // variant-specific details following each variant.
 
-    pub fn tuple_expr<E>(self, exprs: Vec<E>) -> P<Expr> where E: Make<P<Expr>> {
-        let exprs: Vec<P<Expr>> = exprs.into_iter().map(|x| x.make(&self)).collect();
+    pub fn array_expr<A>(self, args: Vec<A>) -> P<Expr>
+        where A: Make<P<Expr>> {
+        let args = args.into_iter().map(|a| a.make(&self)).collect();
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Tup(exprs),
+            node: ExprKind::Array(args),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })
     }
-
     pub fn call_expr<F, A>(self, func: F, args: Vec<A>) -> P<Expr>
         where F: Make<P<Expr>>, A: Make<P<Expr>> {
         let func = func.make(&self);
@@ -410,13 +410,11 @@ impl Builder {
         })
     }
 
-    pub fn unary_expr<O, E>(self, op: O, a: E) -> P<Expr>
-        where O: Make<UnOp>, E: Make<P<Expr>> {
-        let op = op.make(&self);
-        let a = a.make(&self);
+    pub fn tuple_expr<E>(self, exprs: Vec<E>) -> P<Expr> where E: Make<P<Expr>> {
+        let exprs: Vec<P<Expr>> = exprs.into_iter().map(|x| x.make(&self)).collect();
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Unary(op, a),
+            node: ExprKind::Tup(exprs),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })
@@ -435,13 +433,13 @@ impl Builder {
         })
     }
 
-    pub fn field_expr<E, F>(self, val: E, field: F) -> P<Expr>
-        where E: Make<P<Expr>>, F: Make<Ident> {
-        let val = val.make(&self);
-        let field = field.make(&self);
+    pub fn unary_expr<O, E>(self, op: O, a: E) -> P<Expr>
+        where O: Make<UnOp>, E: Make<P<Expr>> {
+        let op = op.make(&self);
+        let a = a.make(&self);
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Field(val, mk().spanned(field)),
+            node: ExprKind::Unary(op, a),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })
@@ -584,6 +582,19 @@ impl Builder {
         })
     }
 
+    pub fn field_expr<E, F>(self, val: E, field: F) -> P<Expr>
+        where E: Make<P<Expr>>, F: Make<Ident> {
+        let val = val.make(&self);
+        let field = field.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Field(val, mk().spanned(field)),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
+
     pub fn field<I, E>(self, ident: I, expr: E) -> Field
         where I: Make<Ident>, E: Make<P<Expr>> {
         let ident = ident.make(&self);
@@ -715,6 +726,14 @@ impl Builder {
         })
     }
 
+    pub fn wild_pat(self) -> P<Pat> {
+        P(Pat {
+            id: DUMMY_NODE_ID,
+            node: PatKind::Wild,
+            span: DUMMY_SP,
+        })
+    }
+
     pub fn ident_ref_pat<I>(self, name: I) -> P<Pat>
         where I: Make<Ident> {
         let name = name.make(&self);
@@ -729,6 +748,26 @@ impl Builder {
 
 
     // Types
+
+    pub fn barefn_ty<T>(self, decl: T) -> P<Ty>
+        where T: Make<P<FnDecl>> {
+
+        let decl = decl.make(&self);
+
+        let barefn = BareFnTy {
+            unsafety: self.unsafety,
+            abi: self.abi,
+            lifetimes: vec![],
+            decl,
+        };
+
+        P(Ty {
+            id: DUMMY_NODE_ID,
+            node: TyKind::BareFn(P(barefn)),
+            span: DUMMY_SP,
+        })
+
+    }
 
     pub fn array_ty<T, E>(self, ty: T, len: E) -> P<Ty>
         where T: Make<P<Ty>>, E: Make<P<Expr>> {

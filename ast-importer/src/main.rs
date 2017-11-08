@@ -2,8 +2,7 @@ extern crate cbor;
 extern crate clap;
 extern crate ast_importer;
 
-use std::io::Cursor;
-use std::io::Error;
+use std::io::{Error, stdout, Cursor};
 use std::io::prelude::*;
 use std::fs::File;
 use cbor::Decoder;
@@ -66,7 +65,7 @@ fn main() {
 
     if pretty_typed_context {
         println!("Pretty-printed Clang AST");
-        println!("{:#?}", Printer::new().print(&typed_context));
+        println!("{:#?}", Printer::new(stdout()).print(&typed_context));
     }
 
 

@@ -1,262 +1,344 @@
 use c_ast::*;
+use std::io::{Write, Result};
 
-pub struct Printer {
+pub struct Printer<W: Write> {
     indent: u64,
+    writer: W,
 }
 
-impl Printer {
+impl<W: Write> Printer<W> {
 
-    pub fn new() -> Printer {
-        Printer { indent: 0 }
-    }
-
-    pub fn pad(&self) {
-        for _i in 0..self.indent { print!(" "); }
-    }
-
-    pub fn newline(&self) {
-        println!();
-        self.pad();
-    }
-
-    pub fn print(&mut self, context: &TypedAstContext) {
-        for top_decl in context.c_decls_top.iter() {
-            self.print_decl(*top_decl, context);
-            println!();
+    pub fn new(writer: W) -> Printer<W> {
+        Printer {
+            indent: 0,
+            writer,
         }
     }
 
-    pub fn print_expr(&mut self, expr_id: CExprId, context: &TypedAstContext) {
+    pub fn pad(&mut self) -> Result<()> {
+        for _i in 0..self.indent {
+            self.writer.write_all(b" ")?;
+        }
+        Ok(())
+    }
+
+    fn indent(&mut self) {
+        self.indent += 2;
+    }
+
+    fn dedent(&mut self) {
+        self.indent -= 2;
+    }
+
+    pub fn newline(&mut self) -> Result<()> {
+        self.writer.write_all(b"\n")?;
+        self.pad()
+    }
+
+    pub fn print(&mut self, context: &TypedAstContext) -> Result<()> {
+        for top_decl in context.c_decls_top.iter() {
+            self.print_decl(*top_decl, true, true,context)?;
+            self.writer.write_all(b"\n")?;
+        }
+        self.writer.flush()
+    }
+
+    pub fn print_expr(&mut self, expr_id: CExprId, context: &TypedAstContext) -> Result<()> {
         match context.c_exprs.get(&expr_id).map(|l| &l.kind) {
             Some(&CExprKind::Literal(_, lit)) => self.print_lit(&lit, context),
             Some(&CExprKind::Unary(_, op, rhs)) => {
                 if op.is_prefix() {
-                    self.print_unop(&op, context);
-                    self.print_expr(rhs, context);
+                    self.print_unop(&op, context)?;
+                    self.print_expr(rhs, context)
                 } else {
-                    self.print_expr(rhs, context);
-                    self.print_unop(&op, context);
+                    self.print_expr(rhs, context)?;
+                    self.print_unop(&op, context)
                 }
             },
             Some(&CExprKind::Binary(_, op, lhs, rhs)) => {
-                self.print_expr(lhs, context);
-                print!(" ");
-                self.print_binop(&op, context);
-                print!(" ");
-                self.print_expr(rhs, context);
+                self.print_expr(lhs, context)?;
+                self.writer.write_all(b" ")?;
+                self.print_binop(&op, context)?;
+                self.writer.write_all(b" ")?;
+                self.print_expr(rhs, context)
             },
             Some(&CExprKind::ImplicitCast(_, expr, _)) => self.print_expr(expr, context),
             Some(&CExprKind::ExplicitCast(_, expr, _)) => self.print_expr(expr, context),
             Some(&CExprKind::DeclRef(_, decl)) => self.print_decl_name(decl, context),
             Some(&CExprKind::Call(_, func, ref args)) => {
-                self.print_expr(func, context);
-                print!("(");
+                self.print_expr(func, context)?;
+                self.writer.write_all(b"(")?;
+
+                let mut first: bool = true;
                 for arg in args {
-                    self.print_expr(*arg, context);
+                    if !first {
+                        self.writer.write_all(b", ")?;
+                    }
+                    first = false;
+                    self.print_expr(*arg, context)?;
                 }
-                print!(")");
+
+                self.writer.write_all(b")")
             },
             Some(&CExprKind::Member(_, base, member)) => {
-                self.print_expr(base, context);
-                print!(".");
-                self.print_decl_name(member, context);
+                self.print_expr(base, context)?;
+                self.writer.write_all(b".")?;
+                self.print_decl_name(member, context)
             }
             Some(&CExprKind::ArraySubscript(_, lhs, rhs)) => {
-                self.print_expr(lhs, context);
-                print!("[");
-                self.print_expr(rhs, context);
-                print!("]");
+                self.print_expr(lhs, context)?;
+                self.writer.write_all(b"[")?;
+                self.print_expr(rhs, context)?;
+                self.writer.write_all(b"]")
             }
             Some(&CExprKind::Conditional(_, cond, lhs, rhs)) => {
-                self.print_expr(cond, context);
-                print!(" ? ");
-                self.print_expr(lhs, context);
-                print!(" : ");
-                self.print_expr(rhs, context);
+                self.print_expr(cond, context)?;
+                self.writer.write_all(b" ? ")?;
+                self.print_expr(lhs, context)?;
+                self.writer.write_all(b" : ")?;
+                self.print_expr(rhs, context)
             }
             Some(&CExprKind::InitList(_, ref xs)) => {
-                print!("{{ ");
+                self.writer.write_all(b"{")?;
                 let mut started = false;
                 for x in xs {
                     if started {
-                        print!(", ");
+                        self.writer.write_all(b" : ")?;
                     } else {
                         started = true;
                     }
-                    self.print_expr(*x, context);
+                    self.print_expr(*x, context)?;
                 }
-                print!(" }}");
+                self.writer.write_all(b"?")
             }
             Some(&CExprKind::ImplicitValueInit{..}) =>
-                print!("{{}}"),
+                self.writer.write_all(b"{}"),
             None => panic!("Could not find expression with ID {:?}", expr_id),
            // _ => unimplemented!("Printer::print_expr"),
         }
     }
 
-    pub fn print_unop(&mut self, op: &UnOp, _context: &TypedAstContext) {
+    pub fn print_unop(&mut self, op: &UnOp, _context: &TypedAstContext) -> Result<()> {
         match *op {
-            UnOp::AddressOf => print!("&"),
-            UnOp::Deref => print!("*"),
-            UnOp::Plus => print!("+"),
-            UnOp::PreIncrement => print!("++"),
-            UnOp::PostIncrement => print!("++"),
-            UnOp::Negate => print!("-"),
-            UnOp::PreDecrement => print!("--"),
-            UnOp::PostDecrement => print!("--"),
-            UnOp::Complement => print!("~"),
-            UnOp::Not => print!("!"),
+            UnOp::AddressOf => self.writer.write_all(b"&"),
+            UnOp::Deref => self.writer.write_all(b"*"),
+            UnOp::Plus => self.writer.write_all(b"+"),
+            UnOp::PreIncrement => self.writer.write_all(b"++"),
+            UnOp::PostIncrement => self.writer.write_all(b"++"),
+            UnOp::Negate => self.writer.write_all(b"-"),
+            UnOp::PreDecrement => self.writer.write_all(b"--"),
+            UnOp::PostDecrement => self.writer.write_all(b"--"),
+            UnOp::Complement => self.writer.write_all(b"~"),
+            UnOp::Not => self.writer.write_all(b"!"),
         }
     }
 
-    pub fn print_binop(&mut self, op: &BinOp, _context: &TypedAstContext) {
+    pub fn print_binop(&mut self, op: &BinOp, _context: &TypedAstContext) -> Result<()> {
         match *op {
-            BinOp::Multiply => print!("*"),
-            BinOp::Divide => print!("/"),
-            BinOp::Modulus => print!("%"),
-            BinOp::Add => print!("+"),
-            BinOp::Subtract => print!("-"),
-            BinOp::ShiftLeft => print!("<<"),
-            BinOp::ShiftRight => print!(">>"),
-            BinOp::Less => print!("<"),
-            BinOp::Greater => print!(">"),
-            BinOp::LessEqual => print!("<="),
-            BinOp::GreaterEqual => print!(">="),
-            BinOp::EqualEqual => print!("=="),
-            BinOp::NotEqual => print!("!="),
-            BinOp::BitAnd => print!("&"),
-            BinOp::BitXor => print!("^"),
-            BinOp::BitOr => print!("|"),
-            BinOp::And => print!("&&"),
-            BinOp::Or => print!("||"),
+            BinOp::Multiply => self.writer.write_all(b"*"),
+            BinOp::Divide => self.writer.write_all(b"/"),
+            BinOp::Modulus => self.writer.write_all(b"%"),
+            BinOp::Add => self.writer.write_all(b"+"),
+            BinOp::Subtract => self.writer.write_all(b"-"),
+            BinOp::ShiftLeft => self.writer.write_all(b"<<"),
+            BinOp::ShiftRight => self.writer.write_all(b">>"),
+            BinOp::Less => self.writer.write_all(b"<"),
+            BinOp::Greater => self.writer.write_all(b">"),
+            BinOp::LessEqual => self.writer.write_all(b"<="),
+            BinOp::GreaterEqual => self.writer.write_all(b">="),
+            BinOp::EqualEqual => self.writer.write_all(b"=="),
+            BinOp::NotEqual => self.writer.write_all(b"!="),
+            BinOp::BitAnd => self.writer.write_all(b"&"),
+            BinOp::BitXor => self.writer.write_all(b"^"),
+            BinOp::BitOr => self.writer.write_all(b"|"),
+            BinOp::And => self.writer.write_all(b"&&"),
+            BinOp::Or => self.writer.write_all(b"||"),
 
-            BinOp::AssignAdd => print!("+="),
-            BinOp::AssignSubtract => print!("-="),
-            BinOp::AssignMultiply => print!("*="),
-            BinOp::AssignDivide => print!("/="),
-            BinOp::AssignModulus => print!("%="),
-            BinOp::AssignBitXor => print!("^="),
-            BinOp::AssignShiftLeft => print!("<<="),
-            BinOp::AssignShiftRight => print!(">>="),
-            BinOp::AssignBitOr => print!("|="),
-            BinOp::AssignBitAnd => print!("&="),
+            BinOp::AssignAdd => self.writer.write_all(b"+="),
+            BinOp::AssignSubtract => self.writer.write_all(b"-="),
+            BinOp::AssignMultiply => self.writer.write_all(b"*="),
+            BinOp::AssignDivide => self.writer.write_all(b"/="),
+            BinOp::AssignModulus => self.writer.write_all(b"%="),
+            BinOp::AssignBitXor => self.writer.write_all(b"^="),
+            BinOp::AssignShiftLeft => self.writer.write_all(b"<<="),
+            BinOp::AssignShiftRight => self.writer.write_all(b">>="),
+            BinOp::AssignBitOr => self.writer.write_all(b"|="),
+            BinOp::AssignBitAnd => self.writer.write_all(b"&="),
 
-            BinOp::Assign => print!("="),
-            BinOp::Comma => print!(","),
+            BinOp::Assign => self.writer.write_all(b"="),
+            BinOp::Comma => self.writer.write_all(b", "),
         }
     }
 
-    pub fn print_lit(&mut self, lit: &CLiteral, _context: &TypedAstContext) {
+    pub fn print_lit(&mut self, lit: &CLiteral, _context: &TypedAstContext) -> Result<()> {
         match *lit {
-            CLiteral::Integer(i) => print!("{}", i),
-            CLiteral::Floating(f) => print!("{}", f),
+            CLiteral::Integer(i) => self.writer.write_fmt(format_args!("{}", i)),
+            CLiteral::Floating(f) => self.writer.write_fmt(format_args!("{}", f)),
             _ => unimplemented!("Printer::print_lit"),
         }
     }
+    
+    pub fn print_stmt(&mut self, stmt_id: CStmtId, newline: bool, pad: bool, context: &TypedAstContext) -> Result<()> {
+        if pad {
+            self.pad()?;
+        }
 
-    pub fn print_stmt(&mut self, stmt_id: CStmtId, context: &TypedAstContext) {
         match context.c_stmts.get(&stmt_id).map(|l| &l.kind) {
             Some(&CStmtKind::Compound(ref stmts)) => {
-                println!("{{");
-                self.indent += 2;
+                self.writer.write_all(b"{\n")?;
+                self.indent();
+
+                let mut first: bool = true;
                 for stmt in stmts {
-                    self.print_stmt(*stmt, context);
+                    if !first {
+                        self.writer.write_all(b"\n")?;
+                    }
+                    first = false;
+                    self.print_stmt(*stmt, false,true, context)?;
                 }
-                self.indent -= 2;
-                self.pad();
-                println!("}}");
+
+                self.writer.write_all(b"\n")?;
+                self.dedent();
+                self.pad()?;
+                self.writer.write_all(b"}")?;
+                if newline {
+                    self.writer.write_all(b"\n")?;
+                }
+
+                Ok(())
             },
 
             Some(&CStmtKind::Expr(ref expr)) => {
-                self.pad();
-                self.print_expr(*expr, context);
-                println!();
+                self.print_expr(*expr, context)?;
+                self.writer.write_all(b";")?;
+                if newline {
+                    self.writer.write_all(b"\n")?;
+                }
+
+                Ok(())
             },
 
             Some(&CStmtKind::Empty) => {
-                self.pad();
-                println!(";");
+                self.writer.write_all(b";")?;
+                if newline {
+                    self.writer.write_all(b"\n")?;
+                }
+
+                Ok(())
             },
 
             Some(&CStmtKind::If { ref scrutinee, ref true_variant, ref false_variant }) => {
-                self.pad();
-                print!("if (");
-                self.print_expr(*scrutinee, context);
-                print!(") ");
-                self.print_stmt(*true_variant, context);
+                self.writer.write_all(b"if (")?;
+                self.print_expr(*scrutinee, context)?;
+                self.writer.write_all(b") ")?;
+                self.print_stmt(*true_variant, false_variant.is_none() && newline,false, context)?;
                 match false_variant {
                     &Some(ref f) => {
-                        self.pad();
-                        print!("else ");
-                        self.print_stmt(*f, context);
+                        self.pad()?;
+                        self.writer.write_all(b"else ")?;
+                        self.print_stmt(*f, newline, false, context)?;
                     },
-                    &None => println!(),
+                    &None if newline => {
+                        self.writer.write_all(b"\n")?;
+                    },
+                    _ => { },
                 }
+
+                Ok(())
             },
 
             Some(&CStmtKind::ForLoop { ref init, ref condition, ref increment, ref body }) => {
-                self.pad();
-                println!("for (");
-                self.indent += 2;
-                self.pad();
+                self.writer.write_all(b"for (")?;
                 match init {
-                    &None => println!(";"),
-                    &Some(ref init) => self.print_stmt(*init, context),
+                    &None => self.writer.write_all(b";")?,
+                    &Some(ref init) => self.print_stmt(*init, false, false, context)?,
                 }
-                self.pad();
                 match condition {
                     &None => { },
-                    &Some(ref condition) => self.print_expr(*condition, context),
+                    &Some(ref condition) => {
+                        self.writer.write_all(b" ")?;
+                        self.print_expr(*condition, context)?;
+                    },
                 }
-                println!(";");
-                self.pad();
+                self.writer.write_all(b";")?;
                 match increment {
                     &None => { },
-                    &Some(ref increment) => self.print_expr(*increment, context),
+                    &Some(ref increment) => {
+                        self.writer.write_all(b" ")?;
+                        self.print_expr(*increment, context)?;
+                    },
                 }
-                println!();
-                self.indent -= 2;
-                self.pad();
-                print!(") ");
-                self.print_stmt(*body, context);
+                self.writer.write_all(b") ")?;
+                self.print_stmt(*body, newline,false, context)
             },
 
             Some(&CStmtKind::While { ref condition, ref body }) => {
-                self.pad();
-                print!("while (");
-                self.print_expr(*condition, context);
-                print!(") ");
-                self.print_stmt(*body, context);
+                self.writer.write_all(b"while (")?;
+                self.print_expr(*condition, context)?;
+                self.writer.write_all(b") ")?;
+                self.print_stmt(*body, newline, false, context)
             },
 
             Some(&CStmtKind::DoWhile { ref body, ref condition }) => {
-                self.pad();
-                print!("do ");
-                self.print_stmt(*body, context);
-                print!("while (");
-                self.print_expr(*condition, context);
-                println!(")");
+                self.writer.write_all(b"do ")?;
+                self.print_stmt(*body, false, false,context)?;
+                self.writer.write_all(b" while (")?;
+                self.print_expr(*condition, context)?;
+                self.writer.write_all(b")")?;
+                if newline {
+                    self.writer.write_all(b"\n")?;
+                }
+
+                Ok(())
             },
 
             Some(&CStmtKind::Return(ref returned)) => {
-                self.pad();
                 match returned {
                     &Some(ref ret) => {
-                        print!("return ");
-                        self.print_expr(*ret, context);
-                        println!(";");
+                        self.writer.write_all(b"return ")?;
+                        self.print_expr(*ret, context)?;
+                        self.writer.write_all(b";")?;
                     },
-                    &None => println!("return;"),
+                    &None => self.writer.write_all(b"return;")?,
+                }
+                if newline {
+                    self.writer.write_all(b"\n")?;
                 }
 
+                Ok(())
             },
-            Some(&CStmtKind::Break) => println!("break;"),
-            Some(&CStmtKind::Continue) => println!("continue;"),
+            Some(&CStmtKind::Break) => {
+                self.writer.write_all(b"break;")?;
+                if newline {
+                    self.writer.write_all(b"\n")?;
+                }
+
+                Ok(())
+            },
+            Some(&CStmtKind::Continue) => {
+                self.writer.write_all(b"continue;")?;
+                if newline {
+                    self.writer.write_all(b"\n")?;
+                }
+
+                Ok(())
+            },
 
             Some(&CStmtKind::Decls(ref decls)) => {
+                let mut first: bool = true;
                 for decl in decls {
-                    self.print_decl(*decl, context)
+                    if !first {
+                        self.writer.write_all(b"\n")?;
+                    }
+                    first = false;
+                    self.print_decl(*decl, false, false, context)?;
                 }
+
+                if newline {
+                    self.writer.write_all(b"\n")?;
+                }
+
+                Ok(())
             },
 
             None => panic!("Could not find statement with ID {:?}", stmt_id),
@@ -265,64 +347,89 @@ impl Printer {
         }
     }
 
-    pub fn print_decl(&mut self, decl_id: CDeclId, context: &TypedAstContext) {
+    pub fn print_decl(&mut self, decl_id: CDeclId, newline: bool, pad: bool, context: &TypedAstContext) -> Result<()> {
+        if pad {
+            self.pad()?;
+        }
+
         match context.c_decls.get(&decl_id).map(|l| &l.kind) {
             Some(&CDeclKind::Function { ref name, ref parameters, ref body, .. }) => {
                 // TODO typ
-                self.pad();
-                print!("{}", name);
-                println!("(");
-                self.indent += 2;
+                self.writer.write_fmt(format_args!("{}", name))?;
+                self.writer.write_all(b"(\n")?;
+                self.indent();
                 for parameter in parameters {
-                    self.print_decl(*parameter, context);
+                    match context.c_decls.get(&parameter).map(|l| &l.kind) {
+                        Some(&CDeclKind::Variable { ref ident, ref typ, .. }) => {
+                            self.pad()?;
+                            self.print_qtype(*typ, context)?;
+                            self.writer.write_fmt(format_args!(" {},\n", ident))?;
+                        }
+                        _ => panic!("Function argument is not VarDecl"),
+                    }
                 }
-                self.indent -= 2;
-                self.pad();
-                print!(") ");
-                self.print_stmt(*body, context);
+                self.dedent();
+                self.pad()?;
+                self.writer.write_all(b") ")?;
+                self.print_stmt(*body, newline, false, context)
             },
 
             Some(&CDeclKind::Variable { ref ident, ref initializer, ref typ }) => {
-                self.pad();
-                self.print_qtype(*typ, context);
-                print!(" {}", ident);
+                self.print_qtype(*typ, context)?;
+                self.writer.write_fmt(format_args!(" {}", ident))?;
                 match initializer {
                     &Some(ref init) => {
-                        print!(" = ");
-                        self.print_expr(*init, context)
+                        self.writer.write_all(b" = ")?;
+                        self.print_expr(*init, context)?;
                     },
                     &None => { },
                 }
-                println!(";");
+
+                if newline {
+                    self.writer.write_all(b";\n")
+                } else {
+                    self.writer.write_all(b";")
+                }
             },
 
             Some(&CDeclKind::Typedef { ref name, ref typ }) => {
-                self.pad();
-                print!("typedef {} = ", name);
-                self.print_type(*typ, context);
-                println!();
+                self.writer.write_fmt(format_args!("typedef {} = ", name))?;
+                self.print_type(*typ, context)?;
+                if newline {
+                    self.writer.write_all(b"\n")?;
+                }
+
+                Ok(())
             },
 
             Some(&CDeclKind::Record { ref name, ref fields }) => {
-                self.pad();
-                print!("struct ");
+                self.writer.write_all(b"struct ")?;
                 match name {
-                    &Some(ref n) => println!("{} {{", n),
-                    &None => println!("{{"),
+                    &Some(ref n) => self.writer.write_fmt(format_args!("{} {{", n))?,
+                    &None => self.writer.write_all(b"{\n")?,
                 }
-                self.indent += 2;
+                self.indent();
                 for field in fields {
-                    self.pad();
-                    self.print_decl(*field, context);
+                    self.pad()?;
+                    self.print_decl(*field, true, true,context)?;
                 }
-                self.indent -= 2;
-                self.pad();
-                print!("}}");
+                self.indent();
+                self.pad()?;
+                self.writer.write_all(b"};")?;
+                if newline {
+                    self.writer.write_all(b"\n")?;
+                }
+
+                Ok(())
             },
 
             Some(&CDeclKind::Field { ref name }) => {
-                self.pad();
-                println!("{},", &name);
+                self.writer.write_fmt(format_args!("{}", &name))?;
+                if newline {
+                    self.writer.write_all(b"\n")?;
+                }
+
+                Ok(())
             },
 
             None => panic!("Could not find declaration with ID {:?}", decl_id),
@@ -331,40 +438,52 @@ impl Printer {
         }
     }
 
-    pub fn print_decl_name(&mut self, decl_id: CDeclId, context: &TypedAstContext) {
+    pub fn print_decl_name(&mut self, decl_id: CDeclId, context: &TypedAstContext) -> Result<()> {
         let name = context.c_decls
             .get(&decl_id)
             .and_then(|l| l.kind.get_name());
-        match name {
-            None => print!("<some_decl {:?}>", decl_id),
-            Some(s) => print!("{}", s),
-        }
 
+        match name {
+            None => self.writer.write_fmt(format_args!("<some_decl {:?}>", decl_id)),
+            Some(s) => self.writer.write_fmt(format_args!("{}", s)),
+        }
     }
 
-    pub fn print_type(&mut self, type_id: CTypeId, context: &TypedAstContext) {
+    pub fn print_type(&mut self, type_id: CTypeId, context: &TypedAstContext) -> Result<()> {
         match context.c_types.get(&type_id).map(|l| &l.kind) {
-            Some(&CTypeKind::Void) => print!("void"),
-            Some(&CTypeKind::Bool) => print!("_Bool"),
-            Some(&CTypeKind::Size) => print!("size_t"),
-            Some(&CTypeKind::Char) => print!("char"),
-            Some(&CTypeKind::SChar) => print!("signed char"),
-            Some(&CTypeKind::Short) => print!("signed short"),
-            Some(&CTypeKind::Int) => print!("int"),
-            Some(&CTypeKind::Long) => print!("long"),
-            Some(&CTypeKind::LongLong) => print!("long long"),
-            Some(&CTypeKind::UChar) => print!("unsigned char"),
-            Some(&CTypeKind::UShort) => print!("unsigned short"),
-            Some(&CTypeKind::UInt) => print!("unsigned int"),
-            Some(&CTypeKind::ULong) => print!("unsigned long"),
-            Some(&CTypeKind::ULongLong) => print!("unsigned long long"),
-            Some(&CTypeKind::Float) => print!("float"),
-            Some(&CTypeKind::Double) => print!("double"),
-            Some(&CTypeKind::LongDouble) => print!("long double"),
+            Some(&CTypeKind::Void) => self.writer.write_all(b"void"),
+            Some(&CTypeKind::Bool) => self.writer.write_all(b"_Bool"),
+            Some(&CTypeKind::Size) => self.writer.write_all(b"size_t"),
+            Some(&CTypeKind::Char) => self.writer.write_all(b"char"),
+            Some(&CTypeKind::SChar) => self.writer.write_all(b"signed char"),
+            Some(&CTypeKind::Short) => self.writer.write_all(b"signed short"),
+            Some(&CTypeKind::Int) => self.writer.write_all(b"int"),
+            Some(&CTypeKind::Long) => self.writer.write_all(b"long"),
+            Some(&CTypeKind::LongLong) => self.writer.write_all(b"long long"),
+            Some(&CTypeKind::UChar) => self.writer.write_all(b"unsigned char"),
+            Some(&CTypeKind::UShort) => self.writer.write_all(b"unsigned short"),
+            Some(&CTypeKind::UInt) => self.writer.write_all(b"unsigned int"),
+            Some(&CTypeKind::ULong) => self.writer.write_all(b"unsigned long"),
+            Some(&CTypeKind::ULongLong) => self.writer.write_all(b"unsigned long long"),
+            Some(&CTypeKind::Float) => self.writer.write_all(b"float"),
+            Some(&CTypeKind::Double) => self.writer.write_all(b"double"),
+            Some(&CTypeKind::LongDouble) => self.writer.write_all(b"long double"),
             Some(&CTypeKind::Pointer(ref qual_ty)) => {
-                print!("* ");
-                self.print_qtype( *qual_ty, context);
+                self.print_qtype( *qual_ty, context)?;
+                self.writer.write_all(b"*")
             },
+            Some(&CTypeKind::ConstantArray(ref qtype, ref len)) => {
+                self.print_qtype(*qtype, context)?;
+                self.writer.write_fmt(format_args!("[{}]", len))
+            }
+            Some(&CTypeKind::IncompleteArray(ref qtype)) => {
+                self.print_qtype(*qtype, context)?;
+                self.writer.write_all(b"[]")
+            },
+
+            Some(&CTypeKind::Elaborated(ref ctype)) => self.print_type( *ctype, context),
+            Some(&CTypeKind::Decayed(ref ctype)) => self.print_type(*ctype, context),
+            Some(&CTypeKind::Paren(ref ctype)) => self.print_type(*ctype, context),
 
             None => panic!("Could not find type with ID {:?}", type_id),
 
@@ -372,15 +491,17 @@ impl Printer {
         }
     }
 
-    pub fn print_qtype(&mut self, type_id: CQualTypeId, context: &TypedAstContext) {
+    pub fn print_qtype(&mut self, type_id: CQualTypeId, context: &TypedAstContext) -> Result<()> {
 
         let Qualifiers { is_const, is_restrict, is_volatile } = type_id.qualifiers;
 
-        if is_const { print!("const ") }
-        if is_restrict { print!("restrict ") }
-        if is_volatile { print!("volatile ") }
+        self.print_type(type_id.ctype, context)?;
 
-        self.print_type(type_id.ctype, context);
+        if is_const { self.writer.write_all(b"const ")? }
+        if is_restrict { self.writer.write_all(b"restrict ")? }
+        if is_volatile { self.writer.write_all(b"volatile ")? }
+
+        Ok(())
     }
 
 }

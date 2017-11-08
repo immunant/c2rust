@@ -38,8 +38,20 @@ impl TypeConverter {
             CTypeKind::Float => mk().path_ty(mk().path(vec!["libc","c_float"])),
 
             CTypeKind::Pointer(CQualTypeId { ref qualifiers, ref ctype }) => {
-                let child_ty = self.convert(ctxt, *ctype);
-                mk_qualified(qualifiers).ptr_ty(child_ty)
+                match ctxt.resolve_type(*ctype).kind {
+                    CTypeKind::Function(ref ret, ref params) => {
+                        let inputs = params.iter().map(|x|
+                            mk().arg(self.convert(ctxt, x.ctype), mk().wild_pat())
+                        ).collect();
+                        let output = self.convert(ctxt, ret.ctype);
+                        mk().unsafe_().barefn_ty(mk().fn_decl(inputs, FunctionRetTy::Ty(output)))
+                    }
+
+                    _ => {
+                        let child_ty = self.convert(ctxt, *ctype);
+                        mk_qualified(qualifiers).ptr_ty(child_ty)
+                    }
+                }
             }
 
             CTypeKind::Elaborated(ref ctype) => self.convert(ctxt, *ctype),
@@ -58,7 +70,7 @@ impl TypeConverter {
                 if let CDeclKind::Typedef { ref name, .. }  = ctxt.index(*decl).kind {
                     mk().path_ty(mk().path(vec![name]))
                 } else {
-                    panic!("{:?} in typdef type does not point to a typdef decl", decl)
+                    panic!("{:?} in typedef type does not point to a typedef decl", decl)
                 }
             }
 

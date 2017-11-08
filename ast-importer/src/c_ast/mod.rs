@@ -555,17 +555,43 @@ impl CTypeKind {
 
     pub fn is_pointer(&self) -> bool {
         match *self {
-            CTypeKind::Pointer(_) => true,
+            CTypeKind::Pointer{..} => true,
             _ => false,
         }
     }
 
+    pub fn is_integral_type(&self) -> bool {
+        self.is_unsigned_integral_type() || self.is_signed_integral_type()
+    }
+
     pub fn is_unsigned_integral_type(&self) -> bool {
         match *self {
+            CTypeKind::Bool => true,
+            CTypeKind::UChar => true,
             CTypeKind::UInt => true,
             CTypeKind::UShort => true,
             CTypeKind::ULong => true,
             CTypeKind::ULongLong => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_signed_integral_type(&self) -> bool {
+        match *self {
+            CTypeKind::SChar => true,
+            CTypeKind::Int => true,
+            CTypeKind::Short => true,
+            CTypeKind::Long => true,
+            CTypeKind::LongLong => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_floating_type(&self) -> bool {
+        match *self {
+            CTypeKind::Float => true,
+            CTypeKind::Double => true,
+            CTypeKind::LongDouble => true,
             _ => false,
         }
     }
