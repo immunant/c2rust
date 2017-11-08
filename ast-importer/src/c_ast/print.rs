@@ -80,9 +80,13 @@ impl<W: Write> Printer<W> {
 
                 self.writer.write_all(b")")
             },
-            Some(&CExprKind::Member(_, base, member)) => {
+            Some(&CExprKind::Member(_, base, member, kind)) => {
+                let operator: &[u8] = match kind {
+                    MemberKind::Arrow => b"->".as_ref(),
+                    MemberKind::Dot => b".".as_ref(),
+                };
                 self.print_expr(base, context)?;
-                self.writer.write_all(b".")?;
+                self.writer.write_all(operator)?;
                 self.print_decl_name(member, context)
             }
             Some(&CExprKind::ArraySubscript(_, lhs, rhs)) => {

@@ -515,7 +515,9 @@ class TranslateASTVisitor final
       bool VisitMemberExpr(MemberExpr *E) {
           std::vector<void*> childIds =
             { E->getBase(), E->getMemberDecl() };
-          encode_entry(E, TagMemberExpr, childIds);
+          encode_entry(E, TagMemberExpr, childIds, [E](CborEncoder *extras) {
+              cbor_encode_boolean(extras, E->isArrow());
+          });
           return true;
       }
       

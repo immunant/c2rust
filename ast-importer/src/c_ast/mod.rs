@@ -84,7 +84,7 @@ impl TypedAstContext {
 
             CExprKind::ImplicitCast(_, e, _) => self.is_expr_pure(e),
             CExprKind::ExplicitCast(_, e, _) => self.is_expr_pure(e),
-            CExprKind::Member(_, e, _) => self.is_expr_pure(e),
+            CExprKind::Member(_, e, _, _) => self.is_expr_pure(e),
 
             CExprKind::Unary(_, UnOp::PreIncrement, _) => false,
             CExprKind::Unary(_, UnOp::PostIncrement, _) => false,
@@ -247,7 +247,7 @@ pub enum CExprKind {
     Call(CTypeId, CExprId, Vec<CExprId>),
 
     // Member access
-    Member(CTypeId, CExprId, CDeclId),
+    Member(CTypeId, CExprId, CDeclId, MemberKind),
 
     // Array subscript access
     ArraySubscript(CTypeId, CExprId, CExprId),
@@ -262,6 +262,12 @@ pub enum CExprKind {
     ImplicitValueInit(CTypeId),
 }
 
+#[derive(Copy, Debug, Clone)]
+pub enum MemberKind {
+    Arrow,
+    Dot,
+}
+
 impl CExprKind {
     pub fn get_type(&self) -> CTypeId {
         match *self {
@@ -272,7 +278,7 @@ impl CExprKind {
             CExprKind::ExplicitCast(ty, _, _) => ty,
             CExprKind::DeclRef(ty, _) => ty,
             CExprKind::Call(ty, _, _) => ty,
-            CExprKind::Member(ty, _, _) => ty,
+            CExprKind::Member(ty, _, _, _) => ty,
             CExprKind::ArraySubscript(ty, _, _) => ty,
             CExprKind::Conditional(ty, _, _, _) => ty,
             CExprKind::InitList(ty, _) => ty,

@@ -775,7 +775,11 @@ impl ConversionContext {
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_type(ty_old);
 
-                    let member = CExprKind::Member(ty, base, field);
+                    let member_kind =
+                        if expect_bool(&node.extras[0]).expect("is arrow")
+                            { MemberKind::Arrow } else { MemberKind::Dot };
+
+                    let member = CExprKind::Member(ty, base, field, member_kind);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, member);
                 }

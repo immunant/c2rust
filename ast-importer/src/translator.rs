@@ -1,7 +1,7 @@
 
 use syntax::ast;
 use syntax::ast::*;
-use syntax::tokenstream::{TokenStream, TokenTree};
+use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{DelimToken,Token};
 use syntax::abi::Abi;
 use renamer::Renamer;
@@ -512,10 +512,9 @@ impl Translation {
                 }
             }
 
-            CExprKind::Unary(ref type_id, ref op, ref expr) => {
-                let arg = self.convert_expr(true,*expr);
-
-                arg.and_then(|v| self.convert_unary_operator(used, *op, *type_id, v))
+            CExprKind::Unary(type_id, ref op, expr) => {
+                let arg = self.convert_expr(true,expr);
+                arg.and_then(|v| self.convert_unary_operator(used, *op, type_id, v))
             }
 
             CExprKind::Conditional(_, ref cond, ref lhs, ref rhs) => {
@@ -654,12 +653,18 @@ impl Translation {
                 }
             }
 
-            CExprKind::Member(_, ref expr, ref decl) => {
-                let struct_val = self.convert_expr(used, *expr);
-                let field_name = self.ast_context.index(*decl).kind.get_name().expect("expected field name");
+            CExprKind::Member(_, expr, decl, kind) => {
+                let struct_val = self.convert_expr(used, expr);
+                let field_name = self.ast_context.index(decl).kind.get_name().expect("expected field name");
 
                 if used {
-                    struct_val.map(|v| mk().field_expr(v, field_name))
+                    struct_val.map(|v| {
+                        let v = match kind {
+                            MemberKind::Arrow => mk().unary_expr(ast::UnOp::Deref, v),
+                            MemberKind::Dot => v,
+                        };
+                        mk().field_expr(v, field_name)}
+                    )
                 } else {
                     struct_val
                 }
