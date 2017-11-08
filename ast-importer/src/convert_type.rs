@@ -39,6 +39,12 @@ impl TypeConverter {
 
             CTypeKind::Pointer(CQualTypeId { ref qualifiers, ref ctype }) => {
                 match ctxt.resolve_type(*ctype).kind {
+
+                    // While void converts to () in function returns, it converts to c_void
+                    // in the case of pointers.
+                    CTypeKind::Void =>
+                        mk().ptr_ty(mk().path_ty(vec!["libc","c_void"])),
+
                     CTypeKind::Function(ref ret, ref params) => {
                         let inputs = params.iter().map(|x|
                             mk().arg(self.convert(ctxt, x.ctype), mk().wild_pat())

@@ -671,7 +671,7 @@ impl Translation {
                     }
 
                     // Pad out the array literal with default values to the desired size
-                    for i in ids.len() .. n {
+                    for _i in ids.len() .. n {
                         vals.push(self.implicit_default_expr(ty.ctype))
                     }
 
