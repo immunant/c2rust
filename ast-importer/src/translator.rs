@@ -819,11 +819,25 @@ impl Translation {
 
         match name {
             c_ast::UnOp::AddressOf => {
-                // TODO: Only make mutable if required by the target type
-                // TODO: Don't use addr_of for function types
-                let addr_of_arg = mk().mutbl().addr_of_expr(arg);
-                let ptr = mk().cast_expr(addr_of_arg, ty);
-                WithStmts::new(ptr)
+
+                // In this translation, there are only pointers to functions and
+                // & becomes a no-op when applied to a function.
+
+                let is_function_pointer =
+                if let CTypeKind::Pointer(p) = self.ast_context.resolve_type(ctype).kind {
+                    if let CTypeKind::Function{..} = self.ast_context.resolve_type(p.ctype).kind {
+                        true
+                    } else { false }
+                } else { false };
+
+                if is_function_pointer {
+                    WithStmts::new(arg)
+                } else {
+                    // TODO: Only make mutable if required by the target type
+                    let addr_of_arg = mk().mutbl().addr_of_expr(arg);
+                    let ptr = mk().cast_expr(addr_of_arg, ty);
+                    WithStmts::new(ptr)
+                }
             },
             c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctype,true, arg),
             c_ast::UnOp::PreDecrement => self.convert_pre_increment(ctype,false, arg),
