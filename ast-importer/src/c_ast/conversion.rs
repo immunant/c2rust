@@ -107,15 +107,6 @@ fn not_located<T>(t: T) -> Located<T> {
     }
 }
 
-/// Extract the qualifiers off of a `TypeNode`
-fn qualifiers(ty_node: &TypeNode) -> Qualifiers {
-    Qualifiers {
-        is_const: ty_node.constant,
-        is_restrict: false,
-        is_volatile: false,
-    }
-}
-
 fn parse_cast_kind(kind: &str) -> CastKind {
     match kind {
         "BitCast" => CastKind::BitCast,
@@ -170,7 +161,7 @@ impl ConversionContext {
     pub fn new(untyped_context: &AstContext) -> ConversionContext {
         // This starts out as all of the top-level nodes, which we expect to be 'DECL's
         let mut visit_as: Vec<(ClangId, NodeType)> = Vec::new();
-        for top_node in &untyped_context.top_nodes {
+        for top_node in untyped_context.top_nodes.iter().rev() {
             if untyped_context.ast_nodes.contains_key(&top_node) {
                 visit_as.push((*top_node, node_types::DECL));
             }
@@ -196,6 +187,21 @@ impl ConversionContext {
     fn visit_type(&mut self, node_id: ClangId) -> CTypeId {
         let node_id = node_id & !1;
         CTypeId(self.visit_node_type(node_id, node_types::TYPE))
+    }
+
+    /// Like `visit_node_type`, but specifically for qualified type nodes
+    ///
+    /// Since we store qualifier information on the low-bits of the `ClangId`, we don't even need to
+    /// look the node up in the context.
+    fn visit_qualified_type(&mut self, node_id: ClangId) -> CQualTypeId {
+        let qualifiers = Qualifiers {
+            is_const: node_id & 1 == 1,
+            is_restrict: false,
+            is_volatile: false,
+        };
+        let ctype = self.visit_type(node_id);
+
+        CQualTypeId { qualifiers, ctype }
     }
 
     /// Like `visit_node_type`, but specifically for statement nodes
@@ -394,13 +400,9 @@ impl ConversionContext {
                 TypeTag::TagPointer if expected_ty & OTHER_TYPE != 0 => {
                     let pointed = expect_u64(&ty_node.extras[0])
                         .expect("Pointer child not found");
-                    let pointed_new = self.visit_type( pointed);
+                    let pointed_new = self.visit_qualified_type( pointed);
 
-                    let pointed_ty = CQualTypeId {
-                        qualifiers: qualifiers(ty_node),
-                        ctype: pointed_new
-                    };
-                    let pointer_ty = CTypeKind::Pointer(pointed_ty);
+                    let pointer_ty = CTypeKind::Pointer(pointed_new);
                     self.add_type(new_id, not_located(pointer_ty));
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
@@ -420,14 +422,10 @@ impl ConversionContext {
                         .expect("Function type expects array argument")
                         .iter()
                         .map(|cbor| {
-                            let ty_node_id = expect_u64(cbor).expect("Bad function type child id");
-                            let ty_node = untyped_context.type_nodes
-                                .get(&ty_node_id)
-                                .expect("Function type child not found");
+                            let arg = expect_u64(cbor).expect("Bad function type child id");
+                            let arg_new = self.visit_qualified_type(arg);
 
-                            let ty_node_new_id = self.visit_type( ty_node_id);
-
-                            CQualTypeId { qualifiers: qualifiers(ty_node), ctype: ty_node_new_id }
+                            arg_new
                         })
                         .collect();
                     let ret = arguments.remove(0);
@@ -474,26 +472,19 @@ impl ConversionContext {
                 }
 
                 TypeTag::TagParenType => {
-                    let paren_id = expect_u64(&ty_node.extras[0]).expect("Paren type child not found");
-                    let paren = self.visit_type(paren_id);
+                    let wrapped = expect_u64(&ty_node.extras[0]).expect("Paren type child not found");
 
-                    let paren_ty = CTypeKind::Paren(paren);
-                    self.add_type(new_id, not_located(paren_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                    self.id_mapper.merge_old(node_id & !1, wrapped & !1);
+                    self.visit_type(wrapped);
                 }
 
                 TypeTag::TagConstantArrayType => {
                     let element_id = expect_u64(&ty_node.extras[0]).expect("element id");
+                    let element = self.visit_type(element_id);
 
                     let count = expect_u64(&ty_node.extras[1]).expect("count");
 
-
-                    let element_ty = CQualTypeId {
-                        qualifiers: qualifiers(ty_node),
-                        ctype: self.visit_type(element_id),
-                    };
-
-                    let element_ty = CTypeKind::ConstantArray(element_ty, count as usize);
+                    let element_ty = CTypeKind::ConstantArray(element, count as usize);
                     self.add_type(new_id, not_located(element_ty));
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
@@ -924,7 +915,7 @@ impl ConversionContext {
                     let name = expect_str(&node.extras[0]).expect("Expected to find typedef name").to_string();
 
                     let typ_old = node.type_id.expect("Expected to find type on typedef declaration");
-                    let typ = self.visit_type(typ_old);
+                    let typ = self.visit_qualified_type(typ_old);
 
                     let typdef_decl = CDeclKind::Typedef { name, typ };
 
@@ -938,13 +929,8 @@ impl ConversionContext {
                     let initializer = node.children[0]
                         .map(|id| self.visit_expr(id));
 
-                    let typ_old = node.type_id.expect("Expected to find type on variable declaration");
-                    let typ_old_node = untyped_context.type_nodes
-                        .get(&typ_old)
-                        .expect("Variable type child not found");
-                    let new_typ = self.visit_type(typ_old);
-
-                    let typ = CQualTypeId { qualifiers: qualifiers(typ_old_node), ctype: new_typ };
+                    let typ_id = node.type_id.expect("Expected to find type on variable declaration");
+                    let typ = self.visit_qualified_type(typ_id);
 
                     let variable_decl = CDeclKind::Variable { ident, initializer, typ };
 

@@ -7,7 +7,7 @@ use std::ops::Index;
 pub struct TypeConverter {
 }
 
-fn mk_qualified(quals: &Qualifiers) -> Builder {
+pub fn mk_qualified(quals: &Qualifiers) -> Builder {
     mk().set_mutbl(if quals.is_const { Mutability::Immutable } else { Mutability:: Mutable })
 }
 
@@ -62,7 +62,6 @@ impl TypeConverter {
 
             CTypeKind::Elaborated(ref ctype) => self.convert(ctxt, *ctype),
             CTypeKind::Decayed(ref ctype) => self.convert(ctxt, *ctype),
-            CTypeKind::Paren(ref ctype) => self.convert(ctxt, *ctype),
 
             CTypeKind::Record(ref decl) => {
                 if let CDeclKind::Record { ref name, .. } = ctxt.index(*decl).kind {
@@ -80,8 +79,8 @@ impl TypeConverter {
                 }
             }
 
-            CTypeKind::ConstantArray(ref element, count) => {
-                let ty = self.convert(ctxt, element.ctype);
+            CTypeKind::ConstantArray(element, count) => {
+                let ty = self.convert(ctxt, element);
                 mk().array_ty(ty, mk().lit_expr(mk().int_lit(count as u128, LitIntType::Unsuffixed)))
             }
 

@@ -394,7 +394,7 @@ impl<W: Write> Printer<W> {
 
             Some(&CDeclKind::Typedef { ref name, ref typ }) => {
                 self.writer.write_fmt(format_args!("typedef {} = ", name))?;
-                self.print_type(*typ, context)?;
+                self.print_qtype(*typ, context)?;
                 if newline {
                     self.writer.write_all(b"\n")?;
                 }
@@ -472,18 +472,17 @@ impl<W: Write> Printer<W> {
                 self.print_qtype( *qual_ty, context)?;
                 self.writer.write_all(b"*")
             },
-            Some(&CTypeKind::ConstantArray(ref qtype, ref len)) => {
-                self.print_qtype(*qtype, context)?;
-                self.writer.write_fmt(format_args!("[{}]", len))
+            Some(&CTypeKind::ConstantArray(typ, len)) => {
+                self.print_type(typ, context)?;
+                self.writer.write_fmt(format_args!("[{}]", &len))
             }
-            Some(&CTypeKind::IncompleteArray(ref qtype)) => {
-                self.print_qtype(*qtype, context)?;
+            Some(&CTypeKind::IncompleteArray(typ)) => {
+                self.print_type(typ, context)?;
                 self.writer.write_all(b"[]")
             },
 
             Some(&CTypeKind::Elaborated(ref ctype)) => self.print_type( *ctype, context),
             Some(&CTypeKind::Decayed(ref ctype)) => self.print_type(*ctype, context),
-            Some(&CTypeKind::Paren(ref ctype)) => self.print_type(*ctype, context),
 
             None => panic!("Could not find type with ID {:?}", type_id),
 

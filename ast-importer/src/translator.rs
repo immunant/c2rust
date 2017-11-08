@@ -5,7 +5,7 @@ use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::parse::token::{DelimToken,Token};
 use syntax::abi::Abi;
 use renamer::Renamer;
-use convert_type::TypeConverter;
+use convert_type::{TypeConverter, mk_qualified};
 use idiomize::ast_manip::make_ast::*;
 use c_ast;
 use c_ast::*;
@@ -130,7 +130,11 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
                     .collect();
 
                 t.add_function(name, &args, ret, *body);
-            }
+            },
+
+            CDeclKind::Typedef { ref name, ref typ } => {
+                t.add_typedef(name, typ.ctype);
+            },
 
             // XXX: Fill in other top-level declaration kinds
             _ => { },
@@ -205,10 +209,13 @@ impl Translation {
 
         let args: Vec<Arg> = arguments
             .iter()
-            .map(|&(ref var, CQualTypeId { ref qualifiers, ref ctype })| {
+            .map(|&(ref var, ref typ)| {
                 let rust_var = self.renamer.borrow_mut().insert(var.to_string(), var.as_str()).expect("Failed to insert argument");
 
-                mk().arg(self.convert_type(*ctype), mk().mutbl().ident_pat(rust_var))
+                let ty = self.convert_type(typ.ctype);
+
+                let pat = mk_qualified(&typ.qualifiers).ident_pat(rust_var);
+                mk().arg(ty , pat)
             })
             .collect();
 
@@ -402,8 +409,10 @@ impl Translation {
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Variable { ref ident, ref initializer, ref typ } => {
                 let rust_name = self.renamer.borrow_mut().insert(ident.clone(), &ident).unwrap();
-                let pat = mk().mutbl().ident_pat(rust_name);
+                let pat = mk_qualified(&typ.qualifiers).ident_pat(rust_name);
+
                 let init = with_stmts_opt(initializer.map(|x| self.convert_expr(true, x)));
+
                 let ty = self.convert_type(typ.ctype);
                 let local = mk().local(pat, Some(ty), init.val);
 
@@ -672,7 +681,7 @@ impl Translation {
 
                     // Pad out the array literal with default values to the desired size
                     for _i in ids.len() .. n {
-                        vals.push(self.implicit_default_expr(ty.ctype))
+                        vals.push(self.implicit_default_expr(ty))
                     }
 
                     WithStmts {

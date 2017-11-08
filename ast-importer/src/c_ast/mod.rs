@@ -57,10 +57,9 @@ impl TypedAstContext {
             CTypeKind::Elaborated(ty) => self.resolve_type_id(ty),
             CTypeKind::Decayed(ty) => self.resolve_type_id(ty),
             CTypeKind::TypeOf(ty) => self.resolve_type_id(ty),
-            CTypeKind::Paren(ty) => self.resolve_type_id(ty),
             CTypeKind::Typedef(decl) => {
                 match self.index(decl).kind {
-                    CDeclKind::Typedef { typ: ty, .. } => self.resolve_type_id(ty),
+                    CDeclKind::Typedef { typ: ty, .. } => self.resolve_type_id(ty.ctype),
                     _ => panic!("Typedef decl did not point to a typedef"),
                 }
             },
@@ -193,7 +192,7 @@ pub enum CDeclKind {
     // Typedef
     Typedef {
         name: String,
-        typ: CTypeId,
+        typ: CQualTypeId,
     },
 
     // Record
@@ -462,11 +461,23 @@ pub enum CStmtKind {
 }
 
 /// Type qualifiers (6.7.3)
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct Qualifiers {
     pub is_const: bool,
     pub is_restrict: bool,
     pub is_volatile: bool,
+}
+
+impl Qualifiers {
+
+    /// Aggregate qualifier information from two sources.
+    pub fn and(self, other: Qualifiers) -> Qualifiers {
+        Qualifiers {
+            is_const: self.is_const || other.is_const,
+            is_restrict: self.is_restrict || other.is_restrict,
+            is_volatile: self.is_volatile || other.is_volatile,
+        }
+    }
 }
 
 /// Qualified type
@@ -519,9 +530,13 @@ pub enum CTypeKind {
     Pointer(CQualTypeId),
 
     // Array types (6.7.5.2)
-    ConstantArray(CQualTypeId, usize),
-    IncompleteArray(CQualTypeId),
-    VariableArray(CQualTypeId, CExprId),
+    //
+    // A qualifier on an array type means the same thing as a qualifier on its element type. Since
+    // Clang tracks the qualifiers in both places, we choose to discard qualifiers on the element
+    // type.
+    ConstantArray(CTypeId, usize),
+    IncompleteArray(CTypeId),
+    VariableArray(CTypeId, CExprId),
 
     // Type of type or expression (GCC extension)
     TypeOf(CTypeId),
@@ -539,9 +554,6 @@ pub enum CTypeKind {
     // Represents a pointer type decayed from an array or function type.
     Decayed(CTypeId),
     Elaborated(CTypeId),
-
-    // Type wrapped in parentheses
-    Paren(CTypeId),
 
     // Struct or union type
     //
