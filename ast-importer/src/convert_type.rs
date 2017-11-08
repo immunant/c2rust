@@ -1,5 +1,6 @@
 use c_ast::*;
 use syntax::ast::*;
+use syntax::abi::Abi;
 use idiomize::ast_manip::make_ast::*;
 use syntax::ptr::P;
 use std::ops::Index;
@@ -50,7 +51,7 @@ impl TypeConverter {
                             mk().arg(self.convert(ctxt, x.ctype), mk().wild_pat())
                         ).collect();
                         let output = self.convert(ctxt, ret.ctype);
-                        mk().unsafe_().barefn_ty(mk().fn_decl(inputs, FunctionRetTy::Ty(output)))
+                        mk().unsafe_().abi(Abi::C).barefn_ty(mk().fn_decl(inputs, FunctionRetTy::Ty(output)))
                     }
 
                     _ => {
@@ -62,6 +63,7 @@ impl TypeConverter {
 
             CTypeKind::Elaborated(ref ctype) => self.convert(ctxt, *ctype),
             CTypeKind::Decayed(ref ctype) => self.convert(ctxt, *ctype),
+            CTypeKind::Paren(ref ctype) => self.convert(ctxt, *ctype),
 
             CTypeKind::Record(ref decl) => {
                 if let CDeclKind::Record { ref name, .. } = ctxt.index(*decl).kind {

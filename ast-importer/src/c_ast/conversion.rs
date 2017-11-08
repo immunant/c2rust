@@ -38,6 +38,7 @@ type NewId = u64;
 /// We need to re-ID nodes since the mapping from Clang's AST to ours is not one-to-one. Sometimes
 /// we need to add nodes (such as 'Semi' nodes to make the lifting of expressions into statements
 /// explicit), sometimes we need to collapse (such as inlining 'FieldDecl' into the 'StructDecl').
+#[derive(Debug)]
 pub struct IdMapper {
     new_id_source: NewId,
     old_to_new: HashMap<ClangId, NewId>,
@@ -70,7 +71,8 @@ impl IdMapper {
             Some(new_id) => new_id,
             None => {
                 let new_id = self.fresh_id();
-                self.old_to_new.insert(old_id, new_id);
+                let inserted = self.old_to_new.insert(old_id, new_id).is_some();
+                assert!(!inserted, "get_or_create_new: overwrote an old id at {}", old_id);
                 new_id
             }
         }
@@ -81,11 +83,13 @@ impl IdMapper {
         self.new_to_old.get(&new_id).map(|n| *n)
     }
 
-    /// If the `old_id` is already present, map the `other_old_id` to point to the same `NewID`.
+    /// If the `old_id` is present in the mapper, make `other_old_id` map to the same value. Note
+    /// that `other_old_id` should not already be in the mapper.
     pub fn merge_old(&mut self, old_id: ClangId, other_old_id: ClangId) -> Option<NewId> {
         self.get_new(old_id)
             .map(|new_id| {
-                self.old_to_new.insert(other_old_id, new_id);
+                let inserted = self.old_to_new.insert(other_old_id, new_id).is_some();
+                assert!(!inserted, "get_or_create_new: overwrote an old id at {}", other_old_id);
                 new_id
             })
     }
@@ -179,13 +183,20 @@ impl ConversionContext {
     ///
     /// Returns the new ID that identifies this new node.
     fn visit_node_type(&mut self, node_id: ClangId, node_ty: NodeType) -> NewId {
+
+        // Type node IDs have extract information on them
+        let node_id = if node_ty & node_types::TYPE != 0 {
+            node_id & TypeNode::ID_MASK
+        } else {
+            node_id
+        };
+
         self.visit_as.push((node_id, node_ty));
         self.id_mapper.get_or_create_new(node_id)
     }
 
     /// Like `visit_node_type`, but specifically for type nodes
     fn visit_type(&mut self, node_id: ClangId) -> CTypeId {
-        let node_id = node_id & TypeNode::ID_MASK;
         CTypeId(self.visit_node_type(node_id, node_types::TYPE))
     }
 
@@ -472,10 +483,12 @@ impl ConversionContext {
                 }
 
                 TypeTag::TagParenType => {
-                    let wrapped = expect_u64(&ty_node.extras[0]).expect("Paren type child not found");
+                    let paren_id = expect_u64(&ty_node.extras[0]).expect("Paren type child not found");
+                    let paren = self.visit_type(paren_id);
 
-                    self.id_mapper.merge_old(node_id & TypeNode::ID_MASK, wrapped & TypeNode::ID_MASK);
-                    self.visit_type(wrapped);
+                    let paren_ty = CTypeKind::Paren(paren);
+                    self.add_type(new_id, not_located(paren_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
                 TypeTag::TagConstantArrayType => {
@@ -961,7 +974,7 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, FIELD_DECL);
                 }
 
-                t => println!("Could not translate node {:?} as type {}", t, expected_ty),
+                t => panic!("Could not translate node {:?} as type {}", t, expected_ty),
             }
         }
     }

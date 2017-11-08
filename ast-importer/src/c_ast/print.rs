@@ -483,6 +483,7 @@ impl<W: Write> Printer<W> {
 
             Some(&CTypeKind::Elaborated(ref ctype)) => self.print_type( *ctype, context),
             Some(&CTypeKind::Decayed(ref ctype)) => self.print_type(*ctype, context),
+            Some(&CTypeKind::Paren(ref ctype)) => self.print_type(*ctype, context),
 
             None => panic!("Could not find type with ID {:?}", type_id),
 
