@@ -78,7 +78,7 @@ impl CrossCheckHash for xcfg::XCheckType {
             where F: FnOnce() -> Option<P<ast::Expr>> {
         match *self {
             xcfg::XCheckType::Default => f(),
-            xcfg::XCheckType::Skip => None,
+            xcfg::XCheckType::No => None,
             xcfg::XCheckType::Fixed(id) => Some(quote_expr!(cx, $id)),
             xcfg::XCheckType::Djb2(ref s) => {
                 let id = djb2_hash(s) as u64;
@@ -133,7 +133,7 @@ impl CrossCheckConfig {
             all_args_xcheck: if cfg!(feature = "xcheck-args") {
                 xcfg::XCheckType::Default
             } else {
-                xcfg::XCheckType::Skip
+                xcfg::XCheckType::No
             },
             sub_xchecks: Default::default(),
             ahasher: None,
@@ -559,7 +559,7 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
             match *sf_xcheck {
                 xcfg::XCheckType::Default => None,
 
-                xcfg::XCheckType::Skip =>
+                xcfg::XCheckType::No =>
                     Some(quote_attr!(self.cx, #[cross_check_hash(no)])),
 
                 xcfg::XCheckType::Djb2(_) => unimplemented!(),
