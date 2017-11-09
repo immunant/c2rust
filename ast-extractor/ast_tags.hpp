@@ -55,6 +55,7 @@ enum ASTEntryTag {
     TagBinaryConditionalOperator,
     TagMemberExpr,
     TagParenExpr,
+    TagUnaryExprOrTypeTraitExpr,
     
     TagIntegerLiteral = 300,
     TagStringLiteral,
