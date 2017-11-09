@@ -154,7 +154,7 @@ impl ScopeCheckConfig {
 
     fn inherit(&self) -> Self {
         ScopeCheckConfig {
-            inherited: self.inherited.clone(),
+            inherited: Rc::clone(&self.inherited),
             ..ScopeCheckConfig::new()
         }
     }
