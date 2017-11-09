@@ -60,7 +60,7 @@ impl TypedAstContext {
             CTypeKind::Paren(ty) => self.resolve_type_id(ty),
             CTypeKind::Typedef(decl) => {
                 match self.index(decl).kind {
-                    CDeclKind::Typedef { typ: ty, .. } => self.resolve_type_id(ty),
+                    CDeclKind::Typedef { typ: ty, .. } => self.resolve_type_id(ty.ctype),
                     _ => panic!("Typedef decl did not point to a typedef"),
                 }
             },
@@ -84,7 +84,7 @@ impl TypedAstContext {
 
             CExprKind::ImplicitCast(_, e, _) => self.is_expr_pure(e),
             CExprKind::ExplicitCast(_, e, _) => self.is_expr_pure(e),
-            CExprKind::Member(_, e, _) => self.is_expr_pure(e),
+            CExprKind::Member(_, e, _, _) => self.is_expr_pure(e),
 
             CExprKind::Unary(_, UnOp::PreIncrement, _) => false,
             CExprKind::Unary(_, UnOp::PostIncrement, _) => false,
@@ -193,7 +193,7 @@ pub enum CDeclKind {
     // Typedef
     Typedef {
         name: String,
-        typ: CTypeId,
+        typ: CQualTypeId,
     },
 
     // Record
@@ -247,7 +247,7 @@ pub enum CExprKind {
     Call(CTypeId, CExprId, Vec<CExprId>),
 
     // Member access
-    Member(CTypeId, CExprId, CDeclId),
+    Member(CTypeId, CExprId, CDeclId, MemberKind),
 
     // Array subscript access
     ArraySubscript(CTypeId, CExprId, CExprId),
@@ -262,6 +262,12 @@ pub enum CExprKind {
     ImplicitValueInit(CTypeId),
 }
 
+#[derive(Copy, Debug, Clone)]
+pub enum MemberKind {
+    Arrow,
+    Dot,
+}
+
 impl CExprKind {
     pub fn get_type(&self) -> CTypeId {
         match *self {
@@ -272,7 +278,7 @@ impl CExprKind {
             CExprKind::ExplicitCast(ty, _, _) => ty,
             CExprKind::DeclRef(ty, _) => ty,
             CExprKind::Call(ty, _, _) => ty,
-            CExprKind::Member(ty, _, _) => ty,
+            CExprKind::Member(ty, _, _, _) => ty,
             CExprKind::ArraySubscript(ty, _, _) => ty,
             CExprKind::Conditional(ty, _, _, _) => ty,
             CExprKind::InitList(ty, _) => ty,
@@ -462,11 +468,40 @@ pub enum CStmtKind {
 }
 
 /// Type qualifiers (6.7.3)
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct Qualifiers {
+
+    /// The `const` qualifier, which marks lvalues as non-assignable.
+    ///
+    /// We make use of `const` in only two places:
+    ///   * Variable and function bindings (which matches up to Rust's `mut` or not bindings)
+    ///   * The pointed type in pointers (which matches up to Rust's `*const`/`*mut`)
     pub is_const: bool,
+
     pub is_restrict: bool,
+
+    /// The `volatile` qualifier, which prevents the compiler from reordering accesses through such
+    /// qualified lvalues past other observable side effects (other accesses, or sequence points).
+    ///
+    /// The part here about not reordering (or changing in any way) access to something volatile
+    /// can be replicated in Rust via `std::ptr::read_volatile`  and `std::ptr::write_volatile`.
+    /// Since Rust's execution model is still unclear, I am unsure that we get all of the guarantees
+    /// `volatile` needs, especially regarding reordering of other side-effects.
+    ///
+    /// TODO ALEC: Implement this in the translator
     pub is_volatile: bool,
+}
+
+impl Qualifiers {
+
+    /// Aggregate qualifier information from two sources.
+    pub fn and(self, other: Qualifiers) -> Qualifiers {
+        Qualifiers {
+            is_const: self.is_const || other.is_const,
+            is_restrict: self.is_restrict || other.is_restrict,
+            is_volatile: self.is_volatile || other.is_volatile,
+        }
+    }
 }
 
 /// Qualified type
@@ -519,9 +554,13 @@ pub enum CTypeKind {
     Pointer(CQualTypeId),
 
     // Array types (6.7.5.2)
-    ConstantArray(CQualTypeId, usize),
-    IncompleteArray(CQualTypeId),
-    VariableArray(CQualTypeId, CExprId),
+    //
+    // A qualifier on an array type means the same thing as a qualifier on its element type. Since
+    // Clang tracks the qualifiers in both places, we choose to discard qualifiers on the element
+    // type.
+    ConstantArray(CTypeId, usize),
+    IncompleteArray(CTypeId),
+    VariableArray(CTypeId, CExprId),
 
     // Type of type or expression (GCC extension)
     TypeOf(CTypeId),

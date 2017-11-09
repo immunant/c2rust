@@ -80,9 +80,13 @@ impl<W: Write> Printer<W> {
 
                 self.writer.write_all(b")")
             },
-            Some(&CExprKind::Member(_, base, member)) => {
+            Some(&CExprKind::Member(_, base, member, kind)) => {
+                let operator: &[u8] = match kind {
+                    MemberKind::Arrow => b"->".as_ref(),
+                    MemberKind::Dot => b".".as_ref(),
+                };
                 self.print_expr(base, context)?;
-                self.writer.write_all(b".")?;
+                self.writer.write_all(operator)?;
                 self.print_decl_name(member, context)
             }
             Some(&CExprKind::ArraySubscript(_, lhs, rhs)) => {
@@ -394,7 +398,7 @@ impl<W: Write> Printer<W> {
 
             Some(&CDeclKind::Typedef { ref name, ref typ }) => {
                 self.writer.write_fmt(format_args!("typedef {} = ", name))?;
-                self.print_type(*typ, context)?;
+                self.print_qtype(*typ, context)?;
                 if newline {
                     self.writer.write_all(b"\n")?;
                 }
@@ -472,12 +476,12 @@ impl<W: Write> Printer<W> {
                 self.print_qtype( *qual_ty, context)?;
                 self.writer.write_all(b"*")
             },
-            Some(&CTypeKind::ConstantArray(ref qtype, ref len)) => {
-                self.print_qtype(*qtype, context)?;
-                self.writer.write_fmt(format_args!("[{}]", len))
+            Some(&CTypeKind::ConstantArray(typ, len)) => {
+                self.print_type(typ, context)?;
+                self.writer.write_fmt(format_args!("[{}]", &len))
             }
-            Some(&CTypeKind::IncompleteArray(ref qtype)) => {
-                self.print_qtype(*qtype, context)?;
+            Some(&CTypeKind::IncompleteArray(typ)) => {
+                self.print_type(typ, context)?;
                 self.writer.write_all(b"[]")
             },
 
@@ -497,9 +501,9 @@ impl<W: Write> Printer<W> {
 
         self.print_type(type_id.ctype, context)?;
 
-        if is_const { self.writer.write_all(b"const ")? }
-        if is_restrict { self.writer.write_all(b"restrict ")? }
-        if is_volatile { self.writer.write_all(b"volatile ")? }
+        if is_const { self.writer.write_all(b" const")? }
+        if is_restrict { self.writer.write_all(b" restrict")? }
+        if is_volatile { self.writer.write_all(b" volatile")? }
 
         Ok(())
     }

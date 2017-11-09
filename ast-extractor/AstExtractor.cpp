@@ -79,7 +79,18 @@ public:
     static uintptr_t encodeQualType(QualType t) {
         auto s = t.split();
         auto i = uintptr_t(s.Ty);
-        return t.isConstQualified() ? (i | 1) : i;
+
+        if (t.isConstQualified()) {
+          i |= 1;
+        }
+        if (t.isRestrictQualified()) {
+          i |= 2;
+        }
+        if (t.isVolatileQualified()) {
+          i |= 4;
+        }
+
+        return i;
     }
     
     explicit TypeEncoder(ASTContext *Context, CborEncoder *encoder, TranslateASTVisitor *ast)
@@ -504,7 +515,9 @@ class TranslateASTVisitor final
       bool VisitMemberExpr(MemberExpr *E) {
           std::vector<void*> childIds =
             { E->getBase(), E->getMemberDecl() };
-          encode_entry(E, TagMemberExpr, childIds);
+          encode_entry(E, TagMemberExpr, childIds, [E](CborEncoder *extras) {
+              cbor_encode_boolean(extras, E->isArrow());
+          });
           return true;
       }
       
@@ -600,11 +613,17 @@ class TranslateASTVisitor final
       //
       
       bool VisitFunctionDecl(FunctionDecl *FD)
-      {
+      {              
+          // For now, skip function decls that are not also function defs
+          if(!FD->hasBody()) {
+              return true;
+          }
+
           std::vector<void*> childIds;
           for (auto x : FD->parameters()) {
               childIds.push_back(x);
           }
+
           childIds.push_back(FD->getBody());
 
           auto functionType = FD->getType();

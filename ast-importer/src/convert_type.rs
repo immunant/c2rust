@@ -1,5 +1,6 @@
 use c_ast::*;
 use syntax::ast::*;
+use syntax::abi::Abi;
 use idiomize::ast_manip::make_ast::*;
 use syntax::ptr::P;
 use std::ops::Index;
@@ -7,7 +8,7 @@ use std::ops::Index;
 pub struct TypeConverter {
 }
 
-fn mk_qualified(quals: &Qualifiers) -> Builder {
+pub fn mk_qualified(quals: &Qualifiers) -> Builder {
     mk().set_mutbl(if quals.is_const { Mutability::Immutable } else { Mutability:: Mutable })
 }
 
@@ -50,7 +51,7 @@ impl TypeConverter {
                             mk().arg(self.convert(ctxt, x.ctype), mk().wild_pat())
                         ).collect();
                         let output = self.convert(ctxt, ret.ctype);
-                        mk().unsafe_().barefn_ty(mk().fn_decl(inputs, FunctionRetTy::Ty(output)))
+                        mk().unsafe_().abi(Abi::C).barefn_ty(mk().fn_decl(inputs, FunctionRetTy::Ty(output)))
                     }
 
                     _ => {
@@ -80,8 +81,8 @@ impl TypeConverter {
                 }
             }
 
-            CTypeKind::ConstantArray(ref element, count) => {
-                let ty = self.convert(ctxt, element.ctype);
+            CTypeKind::ConstantArray(element, count) => {
+                let ty = self.convert(ctxt, element);
                 mk().array_ty(ty, mk().lit_expr(mk().int_lit(count as u128, LitIntType::Unsuffixed)))
             }
 
