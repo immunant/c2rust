@@ -498,7 +498,17 @@ pub struct Qualifiers {
     /// Since Rust's execution model is still unclear, I am unsure that we get all of the guarantees
     /// `volatile` needs, especially regarding reordering of other side-effects.
     ///
-    /// TODO ALEC: Implement this in the translator
+    /// We capture reads and writes to `volatile` lvalues in:
+    ///   * assignment operations (`l = ...`, `l += ...`, `l *= ...`, etc.)
+    ///   * increment and decrement operations (`l++`, `++l`, `l--`, `--l`)
+    ///
+    /// We capture additional reads from `volatile` memory in:
+    ///   * assignment operations (`l = ...`, `l += ...`, `l *= ...`, etc.)
+    ///   * dereference operations (`*l`)
+    ///   * variable references (`l`)
+    ///   * member accesses (`l. ...`)
+    ///   * subscript access (`l[...]`)
+    ///
     pub is_volatile: bool,
 }
 
