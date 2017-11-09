@@ -72,7 +72,7 @@ fn parse_xcheck_type(mi: &ast::MetaItem) -> Option<xcfg::XCheckType> {
                 xcfg::XCheckType::Djb2(name)
             })
         },
-        "id" => {
+        "fixed" => {
             if let ast::MetaItemKind::NameValue(ref lit) = mi.node {
                 match lit.node {
                     // TODO: handle LitKind::Str
@@ -188,7 +188,7 @@ impl ScopeCheckConfig {
 
                         // Cross-check type
                         "name" |
-                        "id" |
+                        "fixed" |
                         "custom_hash" => {
                             self.main_xcheck = parse_xcheck_type(&item)
                                 .unwrap_or(xcfg::XCheckType::Default);
