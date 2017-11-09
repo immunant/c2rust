@@ -15,6 +15,8 @@ impl<W: Write> Printer<W> {
         }
     }
 
+    /// Assuming the cursor is at the beginning of a line, print out whitespace to reach the indent
+    /// stored in the `Printer`.
     pub fn pad(&mut self) -> Result<()> {
         for _i in 0..self.indent {
             self.writer.write_all(b" ")?;
@@ -22,17 +24,35 @@ impl<W: Write> Printer<W> {
         Ok(())
     }
 
+    /// Increase the indent stored in the `Printer`
     fn indent(&mut self) {
         self.indent += 2;
     }
 
+    /// Decrease the indent stored in the `Printer`
     fn dedent(&mut self) {
         self.indent -= 2;
     }
 
+    /// Print out a new line and pad to the right indent stored in the `Printer`.
     pub fn newline(&mut self) -> Result<()> {
         self.writer.write_all(b"\n")?;
         self.pad()
+    }
+
+    /// Pass in an action that will be optionally wrapped in parentheses
+    pub fn parenthesize<F: FnMut(&mut Self) -> Result<()>>(&mut self, print_parens: bool, mut action: F) -> Result<()> {
+        if print_parens {
+            self.writer.write_all(b"(")?;
+        }
+
+        action(self)?;
+
+        if print_parens {
+            self.writer.write_all(b")")?;
+        }
+
+        Ok(())
     }
 
     pub fn print(&mut self, context: &TypedAstContext) -> Result<()> {
@@ -44,6 +64,11 @@ impl<W: Write> Printer<W> {
     }
 
     pub fn print_expr(&mut self, expr_id: CExprId, context: &TypedAstContext) -> Result<()> {
+        self.print_expr_prec(15, expr_id, context)
+    }
+
+    pub fn print_expr_prec(&mut self, precedence: i32, expr_id: CExprId, context: &TypedAstContext) -> Result<()> {
+
         match context.c_exprs.get(&expr_id).map(|l| &l.kind) {
             Some(&CExprKind::Literal(_, lit)) => self.print_lit(&lit, context),
             Some(&CExprKind::Unary(_, op, rhs)) => {
@@ -63,7 +88,14 @@ impl<W: Write> Printer<W> {
                 self.print_expr(rhs, context)
             },
             Some(&CExprKind::ImplicitCast(_, expr, _)) => self.print_expr(expr, context),
-            Some(&CExprKind::ExplicitCast(_, expr, _)) => self.print_expr(expr, context),
+            Some(&CExprKind::ExplicitCast(ty, expr, _)) => {
+                self.writer.write_all(b"(")?;
+                self.print_type(ty, None, context)?;
+                self.writer.write_all(b") ")?;
+                self.print_expr(expr, context)?;
+
+                Ok(())
+            },
             Some(&CExprKind::DeclRef(_, decl)) => self.print_decl_name(decl, context),
             Some(&CExprKind::Call(_, func, ref args)) => {
                 self.print_expr(func, context)?;
@@ -366,7 +398,7 @@ impl<W: Write> Printer<W> {
                     match context.c_decls.get(&parameter).map(|l| &l.kind) {
                         Some(&CDeclKind::Variable { ref ident, ref typ, .. }) => {
                             self.pad()?;
-                            self.print_qtype(*typ, context)?;
+                            self.print_qtype(*typ, Some(ident.as_str()), context)?;
                             self.writer.write_fmt(format_args!(" {},\n", ident))?;
                         }
                         _ => panic!("Function argument is not VarDecl"),
@@ -379,8 +411,7 @@ impl<W: Write> Printer<W> {
             },
 
             Some(&CDeclKind::Variable { ref ident, ref initializer, ref typ }) => {
-                self.print_qtype(*typ, context)?;
-                self.writer.write_fmt(format_args!(" {}", ident))?;
+                self.print_qtype(*typ, Some(ident.as_str()), context)?;
                 match initializer {
                     &Some(ref init) => {
                         self.writer.write_all(b" = ")?;
@@ -398,7 +429,7 @@ impl<W: Write> Printer<W> {
 
             Some(&CDeclKind::Typedef { ref name, ref typ }) => {
                 self.writer.write_fmt(format_args!("typedef {} = ", name))?;
-                self.print_qtype(*typ, context)?;
+                self.print_qtype(*typ, None, context)?;
                 if newline {
                     self.writer.write_all(b"\n")?;
                 }
@@ -453,53 +484,68 @@ impl<W: Write> Printer<W> {
         }
     }
 
-    pub fn print_type(&mut self, type_id: CTypeId, context: &TypedAstContext) -> Result<()> {
+    pub fn print_type(&mut self, type_id: CTypeId, ident: Option<&str>, context: &TypedAstContext) -> Result<()> {
         match context.c_types.get(&type_id).map(|l| &l.kind) {
-            Some(&CTypeKind::Void) => self.writer.write_all(b"void"),
-            Some(&CTypeKind::Bool) => self.writer.write_all(b"_Bool"),
-            Some(&CTypeKind::Size) => self.writer.write_all(b"size_t"),
-            Some(&CTypeKind::Char) => self.writer.write_all(b"char"),
-            Some(&CTypeKind::SChar) => self.writer.write_all(b"signed char"),
-            Some(&CTypeKind::Short) => self.writer.write_all(b"signed short"),
-            Some(&CTypeKind::Int) => self.writer.write_all(b"int"),
-            Some(&CTypeKind::Long) => self.writer.write_all(b"long"),
-            Some(&CTypeKind::LongLong) => self.writer.write_all(b"long long"),
-            Some(&CTypeKind::UChar) => self.writer.write_all(b"unsigned char"),
-            Some(&CTypeKind::UShort) => self.writer.write_all(b"unsigned short"),
-            Some(&CTypeKind::UInt) => self.writer.write_all(b"unsigned int"),
-            Some(&CTypeKind::ULong) => self.writer.write_all(b"unsigned long"),
-            Some(&CTypeKind::ULongLong) => self.writer.write_all(b"unsigned long long"),
-            Some(&CTypeKind::Float) => self.writer.write_all(b"float"),
-            Some(&CTypeKind::Double) => self.writer.write_all(b"double"),
-            Some(&CTypeKind::LongDouble) => self.writer.write_all(b"long double"),
             Some(&CTypeKind::Pointer(ref qual_ty)) => {
-                self.print_qtype( *qual_ty, context)?;
-                self.writer.write_all(b"*")
+                self.print_qtype( *qual_ty, None, context)?;
+                self.writer.write_all(b"*")?;
+                if let Some(i) = ident {
+                    self.writer.write_fmt(format_args!("{}", i))?;
+                }
+
+                Ok(())
             },
             Some(&CTypeKind::ConstantArray(typ, len)) => {
-                self.print_type(typ, context)?;
+                self.print_type(typ, ident, context)?;
                 self.writer.write_fmt(format_args!("[{}]", &len))
             }
             Some(&CTypeKind::IncompleteArray(typ)) => {
-                self.print_type(typ, context)?;
+                self.print_type(typ, ident, context)?;
                 self.writer.write_all(b"[]")
             },
 
-            Some(&CTypeKind::Elaborated(ref ctype)) => self.print_type( *ctype, context),
-            Some(&CTypeKind::Decayed(ref ctype)) => self.print_type(*ctype, context),
-            Some(&CTypeKind::Paren(ref ctype)) => self.print_type(*ctype, context),
+            Some(&CTypeKind::Elaborated(ref ctype)) => self.print_type( *ctype, ident, context),
+            Some(&CTypeKind::Decayed(ref ctype)) => self.print_type(*ctype, ident, context),
+            Some(&CTypeKind::Paren(ref ctype)) => self.parenthesize(true, |slf| slf.print_type(*ctype, ident, context)),
+
+            Some(ty) => {
+                match ty {
+                    &CTypeKind::Void => self.writer.write_all(b"void"),
+                    &CTypeKind::Bool => self.writer.write_all(b"_Bool"),
+                    &CTypeKind::Size => self.writer.write_all(b"size_t"),
+                    &CTypeKind::Char => self.writer.write_all(b"char"),
+                    &CTypeKind::SChar => self.writer.write_all(b"signed char"),
+                    &CTypeKind::Short => self.writer.write_all(b"signed short"),
+                    &CTypeKind::Int => self.writer.write_all(b"int"),
+                    &CTypeKind::Long => self.writer.write_all(b"long"),
+                    &CTypeKind::LongLong => self.writer.write_all(b"long long"),
+                    &CTypeKind::UChar => self.writer.write_all(b"unsigned char"),
+                    &CTypeKind::UShort => self.writer.write_all(b"unsigned short"),
+                    &CTypeKind::UInt => self.writer.write_all(b"unsigned int"),
+                    &CTypeKind::ULong => self.writer.write_all(b"unsigned long"),
+                    &CTypeKind::ULongLong => self.writer.write_all(b"unsigned long long"),
+                    &CTypeKind::Float => self.writer.write_all(b"float"),
+                    &CTypeKind::Double => self.writer.write_all(b"double"),
+                    &CTypeKind::LongDouble => self.writer.write_all(b"long double"),
+                    _ => unimplemented!("Printer::print_type")
+                }?;
+
+                if let Some(i) = ident {
+                    self.writer.write_fmt(format_args!(" {}", i))?;
+                }
+
+                Ok(())
+            },
 
             None => panic!("Could not find type with ID {:?}", type_id),
-
-            _ => unimplemented!("Printer::print_type"),
         }
     }
 
-    pub fn print_qtype(&mut self, type_id: CQualTypeId, context: &TypedAstContext) -> Result<()> {
+    pub fn print_qtype(&mut self, type_id: CQualTypeId, ident: Option<&str>, context: &TypedAstContext) -> Result<()> {
 
         let Qualifiers { is_const, is_restrict, is_volatile } = type_id.qualifiers;
 
-        self.print_type(type_id.ctype, context)?;
+        self.print_type(type_id.ctype, ident, context)?;
 
         if is_const { self.writer.write_all(b" const")? }
         if is_restrict { self.writer.write_all(b" restrict")? }
