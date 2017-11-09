@@ -117,24 +117,19 @@ Vagrant.configure("2") do |config|
     s.inline = "sudo sed -i '/tty/!s/mesg n/tty -s \\&\\& mesg n/' /root/.profile"
   end
   
-  config.vm.provision "file", source: "../scripts/provision_cmake.sh", destination: "/tmp/provision_cmake.sh"
+  # config.vm.provision "file", source: "../scripts/provision_cmake.sh", destination: "/tmp/provision_cmake.sh"
+  
   config.vm.provision "shell" do |s|
     s.path = "../scripts/provision.sh"
-
     # Run as root
     s.privileged = true
   end
-
-$rustup_script = <<SCRIPT
-# FIXME: rustup is the most convenient way to install rust 
-# but it doesn't check signatures of downloaded packages :/
-# https://github.com/rust-lang-nursery/rustup.rs#security
-# NOTE: must run as vagrant user, not root.
-curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2017-09-18
-echo "source ~/.cargo/env" >> ~/.bashrc
-SCRIPT
   
-  config.vm.provision "shell", inline: $rustup_script, privileged: false
+  config.vm.provision "shell" do |s|
+    s.path = "../scripts/provision_rust.sh"      
+    # don't run as root
+    s.privileged = false 
+  end
 
   config.vm.provision "shell" do |s|
     s.path = "../scripts/provision_git.sh"
@@ -143,9 +138,8 @@ SCRIPT
       "GIT_USER_NAME":  `git config --global user.name`,
       "GIT_USER_EMAIL": `git config --global user.email`
     }
-
-    # Run as root
-    s.privileged = false
+    # don't run as root
+    s.privileged = false 
   end
 
 $git_clone_script = <<SCRIPT

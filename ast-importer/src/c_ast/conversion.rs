@@ -659,7 +659,7 @@ impl ConversionContext {
                     let value = expect_u64(&node.extras[0]).expect("Expected integer literal value");
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
 
                     let integer_literal = CExprKind::Literal(ty, CLiteral::Integer(value));
 
@@ -670,7 +670,7 @@ impl ConversionContext {
                     let value = expect_u64(&node.extras[0]).expect("Expected character literal value");
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
 
                     let character_literal = CExprKind::Literal(ty, CLiteral::Character(value));
 
@@ -681,7 +681,7 @@ impl ConversionContext {
                     let value = expect_f64(&node.extras[0]).expect("Expected float literal value");
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
 
                     let floating_literal = CExprKind::Literal(ty, CLiteral::Floating(value));
 
@@ -708,7 +708,7 @@ impl ConversionContext {
                     let operand = self.visit_expr(operand_old);
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
 
 
                     let unary = CExprKind::Unary(ty, operator, operand);
@@ -721,7 +721,7 @@ impl ConversionContext {
                     let expression = self.visit_expr(expression_old);
 
                     let typ_old = node.type_id.expect("Expected type for implicit cast");
-                    let typ = self.visit_type(typ_old);
+                    let typ = self.visit_qualified_type(typ_old);
 
 
                     let kind = parse_cast_kind(expect_str(&node.extras[0]).expect("Expected cast kind"));
@@ -735,7 +735,7 @@ impl ConversionContext {
                     let expression = self.visit_expr(expression_old);
 
                     let typ_old = node.type_id.expect("Expected type for explicit cast");
-                    let typ = self.visit_type(typ_old);
+                    let typ = self.visit_qualified_type(typ_old);
 
 
                     let kind = parse_cast_kind(expect_str(&node.extras[0]).expect("Expected cast kind"));
@@ -758,7 +758,7 @@ impl ConversionContext {
                         .collect();
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
 
                     let call = CExprKind::Call(ty, func, args);
 
@@ -773,7 +773,7 @@ impl ConversionContext {
                     let field = self.visit_decl(field_old);
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
 
                     let member_kind =
                         if expect_bool(&node.extras[0]).expect("is arrow")
@@ -826,7 +826,7 @@ impl ConversionContext {
                     let right_operand = self.visit_expr(right_operand_old);
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
 
                     let binary = CExprKind::Binary(ty, operator, left_operand, right_operand);
 
@@ -838,7 +838,7 @@ impl ConversionContext {
                     let declaration = self.visit_decl(declaration_old);
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
 
                     let decl = CExprKind::DeclRef(ty, declaration);
 
@@ -853,7 +853,7 @@ impl ConversionContext {
                     let rhs = self.visit_expr(rhs_old);
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
 
                     let subscript = CExprKind::ArraySubscript(ty, lhs, rhs);
 
@@ -871,7 +871,7 @@ impl ConversionContext {
                     let rhs = self.visit_expr(rhs_old);
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
 
                     let conditional = CExprKind::Conditional(ty, cond, lhs, rhs);
 
@@ -880,7 +880,7 @@ impl ConversionContext {
 
                 ASTEntryTag::TagImplicitValueInitExpr => {
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, CExprKind::ImplicitValueInit(ty))
                 }
@@ -896,7 +896,7 @@ impl ConversionContext {
                         .collect();
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, CExprKind::InitList(ty, exprs))
                 }

@@ -222,44 +222,50 @@ impl CDeclKind {
 }
 
 /// Represents an expression in C (6.5 Expressions)
+///
+/// We've kept a qualified type on every node since Clang has this information available, and since
+/// the semantics of translations of certain constructs often depend on the type of the things they
+/// are given.
+///
+/// As per the C standard, qualifiers on types make sense only on lvalues.
 #[derive(Debug, Clone)]
 pub enum CExprKind {
     // Literals
-    Literal(CTypeId, CLiteral),
+    Literal(CQualTypeId, CLiteral),
 
     // Unary operator.
-    Unary(CTypeId, UnOp, CExprId),
+    Unary(CQualTypeId, UnOp, CExprId),
 
     // Binary operator
-    Binary(CTypeId, BinOp, CExprId, CExprId),
+    Binary(CQualTypeId, BinOp, CExprId, CExprId),
 
     // Implicit cast
-    ImplicitCast(CTypeId, CExprId, CastKind),
+    ImplicitCast(CQualTypeId, CExprId, CastKind),
 
     // Explicit cast
-    ExplicitCast(CTypeId, CExprId, CastKind),
+    ExplicitCast(CQualTypeId, CExprId, CastKind),
 
     // Reference to a decl (a variable, for instance)
     // TODO: consider enforcing what types of declarations are allowed here
-    DeclRef(CTypeId, CDeclId),
+    DeclRef(CQualTypeId, CDeclId),
 
     // Function call
-    Call(CTypeId, CExprId, Vec<CExprId>),
+    Call(CQualTypeId, CExprId, Vec<CExprId>),
 
     // Member access
-    Member(CTypeId, CExprId, CDeclId, MemberKind),
+    Member(CQualTypeId, CExprId, CDeclId, MemberKind),
 
     // Array subscript access
-    ArraySubscript(CTypeId, CExprId, CExprId),
+    ArraySubscript(CQualTypeId, CExprId, CExprId),
 
     // Ternary conditional operator
-    Conditional(CTypeId, CExprId, CExprId, CExprId),
+    Conditional(CQualTypeId, CExprId, CExprId, CExprId),
 
     // Initializer list
-    InitList(CTypeId, Vec<CExprId>),
+    InitList(CQualTypeId, Vec<CExprId>),
 
     // Designated initializer
-    ImplicitValueInit(CTypeId),
+    ImplicitValueInit(CQualTypeId),
 }
 
 #[derive(Copy, Debug, Clone)]
@@ -269,7 +275,7 @@ pub enum MemberKind {
 }
 
 impl CExprKind {
-    pub fn get_type(&self) -> CTypeId {
+    pub fn get_qual_type(&self) -> CQualTypeId {
         match *self {
             CExprKind::Literal(ty, _) => ty,
             CExprKind::Unary(ty, _, _) => ty,
@@ -284,6 +290,10 @@ impl CExprKind {
             CExprKind::InitList(ty, _) => ty,
             CExprKind::ImplicitValueInit(ty) => ty,
         }
+    }
+
+    pub fn get_type(&self) -> CTypeId {
+        self.get_qual_type().ctype
     }
 }
 
@@ -488,7 +498,17 @@ pub struct Qualifiers {
     /// Since Rust's execution model is still unclear, I am unsure that we get all of the guarantees
     /// `volatile` needs, especially regarding reordering of other side-effects.
     ///
-    /// TODO ALEC: Implement this in the translator
+    /// We capture reads and writes to `volatile` lvalues in:
+    ///   * assignment operations (`l = ...`, `l += ...`, `l *= ...`, etc.)
+    ///   * increment and decrement operations (`l++`, `++l`, `l--`, `--l`)
+    ///
+    /// We capture additional reads from `volatile` memory in:
+    ///   * assignment operations (`l = ...`, `l += ...`, `l *= ...`, etc.)
+    ///   * dereference operations (`*l`)
+    ///   * variable references (`l`)
+    ///   * member accesses (`l. ...`)
+    ///   * subscript access (`l[...]`)
+    ///
     pub is_volatile: bool,
 }
 
