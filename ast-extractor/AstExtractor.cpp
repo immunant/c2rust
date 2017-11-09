@@ -628,19 +628,20 @@ class TranslateASTVisitor final
       // Declarations
       //
       
+      // Some function declarations are also function definitions.
+      // This method handles both types of declarations.
       bool VisitFunctionDecl(FunctionDecl *FD)
       {              
-          // For now, skip function decls that are not also function defs
-          if(!FD->hasBody()) {
-              return true;
-          }
-
           std::vector<void*> childIds;
           for (auto x : FD->parameters()) {
               childIds.push_back(x);
           }
 
-          childIds.push_back(FD->getBody());
+          if(FD->hasBody()) {
+              childIds.push_back(FD->getBody());
+          } else {
+            childIds.push_back(0);
+          }
 
           auto functionType = FD->getType();
           encode_entry(FD, TagFunctionDecl, childIds, functionType,
