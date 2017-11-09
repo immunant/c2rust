@@ -90,7 +90,7 @@ impl<W: Write> Printer<W> {
             Some(&CExprKind::ImplicitCast(_, expr, _)) => self.print_expr(expr, context),
             Some(&CExprKind::ExplicitCast(ty, expr, _)) => {
                 self.writer.write_all(b"(")?;
-                self.print_type(ty, None, context)?;
+                self.print_qtype(ty, None, context)?;
                 self.writer.write_all(b") ")?;
                 self.print_expr(expr, context)?;
 

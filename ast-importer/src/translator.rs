@@ -466,7 +466,7 @@ impl Translation {
                     CastKind::BitCast | CastKind::IntegralToPointer | CastKind::PointerToIntegral => {
                         val.map(|x| {
                             let source_ty = self.convert_type(self.ast_context.index(expr).kind.get_type());
-                            let target_ty = self.convert_type(ty);
+                            let target_ty = self.convert_type(ty.ctype);
                             let type_args = vec![source_ty, target_ty];
                             let path = vec![
                                 mk().path_segment("std"),
@@ -479,7 +479,7 @@ impl Translation {
                     }
 
                     CastKind::IntegralCast | CastKind::FloatingCast | CastKind::FloatingToIntegral | CastKind::IntegralToFloating =>  {
-                        let ty = self.convert_type(ty);
+                        let ty = self.convert_type(ty.ctype);
                         // this explicit use of paren_expr is to work around a bug in libsyntax
                         // Normally parentheses are added automatically as needed
                         // The library is rendering ''(x as uint) as < y'' as ''x as uint < y''
@@ -512,16 +512,17 @@ impl Translation {
                 }
             }
 
-            CExprKind::Unary(type_id, ref op, expr) => {
+            CExprKind::Unary(ref type_id, ref op, expr) => {
                 let arg = self.convert_expr(true,expr);
-                arg.and_then(|v| self.convert_unary_operator(used, *op, type_id, v))
+
+                arg.and_then(|v| self.convert_unary_operator(used, *op, type_id.ctype, v))
             }
 
-            CExprKind::Conditional(_, ref cond, ref lhs, ref rhs) => {
+            CExprKind::Conditional(_, ref cond, lhs, rhs) => {
                 let cond = self.convert_condition(true, *cond);
 
-                let lhs = self.convert_expr(used, *lhs);
-                let rhs = self.convert_expr(used, *rhs);
+                let lhs = self.convert_expr(used, lhs);
+                let rhs = self.convert_expr(used, rhs);
 
                 if used {
                     let then: P<Block> = lhs.to_block();
@@ -543,14 +544,14 @@ impl Translation {
                 }
             },
 
-            CExprKind::Binary(ref type_id, ref op, ref lhs, ref rhs) => {
+            CExprKind::Binary(ref type_id, ref op, lhs, rhs) => {
 
                 match *op {
                     c_ast::BinOp::Comma => {
 
                         // The value of the LHS of a comma expression is always discarded
-                        let lhs = self.convert_expr(false, *lhs);
-                        let rhs = self.convert_expr(used, *rhs);
+                        let lhs = self.convert_expr(false, lhs);
+                        let rhs = self.convert_expr(used, rhs);
 
                         WithStmts {
                             stmts: lhs.stmts.into_iter().chain(rhs.stmts).collect(),
@@ -560,16 +561,16 @@ impl Translation {
 
                     c_ast::BinOp::And => {
                         // XXX: do we need the RHS to always be used?
-                        let lhs = self.convert_expr(true, *lhs);
-                        let rhs = self.convert_expr(true, *rhs);
+                        let lhs = self.convert_expr(true, lhs);
+                        let rhs = self.convert_expr(true, rhs);
 
                         lhs.map(|x| mk().binary_expr(BinOpKind::And, x, rhs.to_expr()))
                     }
 
                     c_ast::BinOp::Or => {
                         // XXX: do we need the RHS to always be used?
-                        let lhs = self.convert_expr(true,*lhs);
-                        let rhs = self.convert_expr(true,*rhs);
+                        let lhs = self.convert_expr(true,lhs);
+                        let rhs = self.convert_expr(true,rhs);
 
                         lhs.map(|x| mk().binary_expr(BinOpKind::Or, x, rhs.to_expr()))
                     }
@@ -577,16 +578,16 @@ impl Translation {
                     // No sequence-point cases
                     _ => {
 
-                        let lhs_ty = self.ast_context.index(*lhs).kind.get_type();
-                        let rhs_ty = self.ast_context.index(*rhs).kind.get_type();
+                        let lhs_ty = self.ast_context.index(lhs).kind.get_type();
+                        let rhs_ty = self.ast_context.index(rhs).kind.get_type();
 
-                        let ty = self.convert_type(*type_id);
+                        let ty = self.convert_type(type_id.ctype);
 
-                        let lhs = self.convert_expr(true,*lhs,);
-                        let rhs = self.convert_expr(true,*rhs,);
+                        let lhs = self.convert_expr(true,lhs,);
+                        let rhs = self.convert_expr(true,rhs,);
 
                         let bin =
-                            self.convert_binary_operator(*op, ty, *type_id, lhs_ty, rhs_ty, lhs.val, rhs.val);
+                            self.convert_binary_operator(*op, ty, type_id.ctype, lhs_ty, rhs_ty, lhs.val, rhs.val);
 
                         WithStmts {
                             stmts: lhs.stmts.into_iter().chain(rhs.stmts).chain(bin.stmts).collect(),
@@ -671,7 +672,7 @@ impl Translation {
             }
 
             CExprKind::InitList(ty, ref ids) => {
-                let resolved = &self.ast_context.resolve_type(ty).kind;
+                let resolved = &self.ast_context.resolve_type(ty.ctype).kind;
 
                 if let &CTypeKind::ConstantArray(ty, n) = resolved {
 
@@ -697,8 +698,8 @@ impl Translation {
                     panic!("Init list not implemented for structs");
                 }
             }
-            CExprKind::ImplicitValueInit(ty) =>
-                WithStmts::new(self.implicit_default_expr(ty)),
+            CExprKind::ImplicitValueInit(ref ty) =>
+                WithStmts::new(self.implicit_default_expr(ty.ctype)),
         }
     }
 
