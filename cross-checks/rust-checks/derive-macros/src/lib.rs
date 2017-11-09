@@ -124,7 +124,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                 Some(quote! { h.write_u64(#id) })
             } else if let Some(ref sub_arg) = args.0.get("custom_hash") {
                 let id = sub_arg.get_str_ident();
-                Some(quote! { #id::<#ahasher, #shasher, Self>(&mut h, self, #f, _depth) })
+                Some(quote! { #id::<#ahasher, #shasher, Self, _>(&mut h, self, #f, _depth) })
             } else {
                 None
             }
