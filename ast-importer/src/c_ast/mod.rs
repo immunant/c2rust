@@ -74,7 +74,7 @@ impl TypedAstContext {
     }
 
     /// Pessimistically try to check if an expression has side effects. If it does, or we can't tell
-    /// that it doesn't, return `true`.
+    /// that it doesn't, return `false`.
     pub fn is_expr_pure(&self, expr: CExprId) -> bool {
         match self.index(expr).kind {
 
@@ -91,6 +91,7 @@ impl TypedAstContext {
             CExprKind::Unary(_, UnOp::PreDecrement, _) => false,
             CExprKind::Unary(_, UnOp::PostDecrement, _) => false,
             CExprKind::Unary(_, _, e) => self.is_expr_pure(e),
+            CExprKind::UnaryType(_, _, _) => true,
 
             CExprKind::Binary(_, BinOp::Assign, _, _) => false,
             CExprKind::Binary(_, op, _, _) if op.underlying_assignment().is_some() => false,
@@ -236,6 +237,9 @@ pub enum CExprKind {
     // Unary operator.
     Unary(CQualTypeId, UnOp, CExprId),
 
+    // Unary type operator.
+    UnaryType(CQualTypeId, UnTypeOp, CQualTypeId),
+
     // Binary operator
     Binary(CQualTypeId, BinOp, CExprId, CExprId),
 
@@ -279,6 +283,7 @@ impl CExprKind {
         match *self {
             CExprKind::Literal(ty, _) => ty,
             CExprKind::Unary(ty, _, _) => ty,
+            CExprKind::UnaryType(ty, _, _) => ty,
             CExprKind::Binary(ty, _, _, _) => ty,
             CExprKind::ImplicitCast(ty, _, _) => ty,
             CExprKind::ExplicitCast(ty, _, _) => ty,
@@ -340,6 +345,13 @@ pub enum UnOp {
     PreDecrement,   // --x
     Complement,     // ~x
     Not,            // !x
+}
+
+/// Represents a unary type operator in C
+#[derive(Debug, Clone, Copy)]
+pub enum UnTypeOp {
+    SizeOf,
+    AlignOf,
 }
 
 impl UnOp {
@@ -414,14 +426,13 @@ impl BinOp {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum CLiteral {
     Integer(u64),
     Character(u64),
     Floating(f64),
-    // TODO: String
+    String(Vec<u8>, u8), // Literal bytes and unit byte width
 }
-
 
 /// Represents a statement in C (6.8 Statements)
 ///

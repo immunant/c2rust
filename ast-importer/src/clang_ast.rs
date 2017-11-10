@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use cbor::Items;
 use cbor::Cbor;
+use cbor::CborBytes;
 use cbor::CborError;
 use std;
 
@@ -43,6 +44,13 @@ pub struct AstContext {
 pub enum DecodeError {
     DecodeCborError(CborError),
     TypeMismatch,
+}
+
+pub fn expect_vec8<'a>(val: &'a Cbor) -> Result<&'a Vec<u8>, DecodeError> {
+    match val {
+        &Cbor::Bytes(CborBytes(ref bytes)) => Ok(bytes),
+        _ => Err(DecodeError::TypeMismatch),
+    }
 }
 
 pub fn expect_array<'a>(val: &'a Cbor) -> Result<&'a Vec<Cbor>, DecodeError> {

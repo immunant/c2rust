@@ -666,6 +666,15 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, integer_literal);
                 }
 
+                ASTEntryTag::TagStringLiteral if expected_ty & (EXPR | STMT) != 0 => {
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty_old);
+                    let width = expect_u64(&node.extras[1]).expect("string literal char width") as u8;
+                    let bytes = expect_vec8(&node.extras[2]).expect("string literal bytes");
+                    let string_literal = CExprKind::Literal(ty, CLiteral::String(bytes.to_owned(), width));
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, string_literal);
+                }
+
                 ASTEntryTag::TagCharacterLiteral if expected_ty & (EXPR | STMT) != 0 => {
                     let value = expect_u64(&node.extras[0]).expect("Expected character literal value");
 
@@ -876,6 +885,25 @@ impl ConversionContext {
                     let conditional = CExprKind::Conditional(ty, cond, lhs, rhs);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, conditional);
+                }
+
+                ASTEntryTag::TagUnaryExprOrTypeTraitExpr if expected_ty & (EXPR | STMT) != 0 => {
+                    let ty = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty);
+
+                    let kind_name = expect_str(&node.extras[0]).expect("expected kind");
+                    let kind = match kind_name {
+                        "sizeof" => UnTypeOp::SizeOf,
+                        "alignof" => UnTypeOp::AlignOf,
+                        str => panic!("Unsupported operation: {}", str),
+                    };
+
+                    let arg_ty = expect_u64(&node.extras[1]).expect("expected type id");
+                    let arg_ty = self.visit_qualified_type(arg_ty);
+
+                    let operator = CExprKind::UnaryType(ty, kind, arg_ty);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, operator);
                 }
 
                 ASTEntryTag::TagImplicitValueInitExpr => {

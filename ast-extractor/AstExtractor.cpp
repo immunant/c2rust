@@ -506,6 +506,22 @@ class TranslateASTVisitor final
       // Expressions
       //
       
+      bool VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *E) {
+          std::vector<void*> childIds { E->isArgumentType() ? nullptr : E->getArgumentExpr() };
+          auto t = E->getTypeOfArgument();
+          encode_entry(E, TagUnaryExprOrTypeTraitExpr, childIds, [E,t](CborEncoder *extras){
+              switch(E->getKind()) {
+                  case UETT_SizeOf: cbor_encode_text_stringz(extras, "sizeof"); break;
+                  case UETT_AlignOf: cbor_encode_text_stringz(extras, "alignof"); break;
+                  case UETT_VecStep: cbor_encode_text_stringz(extras, "vecstep"); break;
+                  case UETT_OpenMPRequiredSimdAlign: cbor_encode_text_stringz(extras, "openmprequiredsimdalign"); break;
+              }
+              cbor_encode_uint(extras, TypeEncoder::encodeQualType(t));
+          });
+          typeEncoder.VisitQualType(t);
+          return true;
+      }
+      
       bool VisitParenExpr(ParenExpr *E) {
           std::vector<void*> childIds { E->getSubExpr() };
           encode_entry(E, TagParenExpr, childIds);

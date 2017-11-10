@@ -474,6 +474,23 @@ impl Translation {
 
         match self.ast_context.index(expr_id).kind {
 
+            CExprKind::UnaryType(ty, kind, arg_ty) => {
+                let ty = self.convert_type(arg_ty.ctype);
+                let name = match kind {
+                    UnTypeOp::SizeOf => "size_of",
+                    UnTypeOp::AlignOf => "align_of",
+                };
+                let tys = vec![ty];
+                let path = vec![mk().path_segment("std"),
+                                mk().path_segment("mem"),
+                                mk().path_segment_with_params(name,
+                                mk().angle_bracketed_param_types(tys)),
+                ];
+                let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
+                let casted = mk().cast_expr(call, mk().path_ty(vec!["libc","size_t"]));
+                WithStmts::new(casted)
+            }
+
             CExprKind::DeclRef(_, ref decl_id) => {
                 let varname = self.ast_context.index(*decl_id).kind.get_name().expect("expected variable name").to_owned();
                 let rustname = self.renamer.borrow_mut().get(varname).expect("name not declared");
@@ -494,6 +511,30 @@ impl Translation {
             CExprKind::Literal(_, CLiteral::Floating(ref val)) => {
                 let str = format!("{}", val);
                 WithStmts::new(mk().lit_expr(mk().float_unsuffixed_lit(str)))
+            }
+
+            CExprKind::Literal(ty, CLiteral::String(ref val, width)) => {
+                let mut val = val.to_owned();
+
+                // Add zero terminator
+                for _ in 0..width { val.push(0); }
+
+                let u8_ty = mk().path_ty(vec!["u8"]);
+                let width_lit = mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
+                let array_ty = mk().array_ty(u8_ty, width_lit);
+                let source_ty = mk().ref_ty(array_ty);
+                let target_ty = mk().ref_ty(self.convert_type(ty.ctype));
+
+                let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
+                let type_args = vec![source_ty, target_ty];
+                let path = vec![
+                    mk().path_segment("std"),
+                    mk().path_segment("mem"),
+                    mk().path_segment_with_params("transmute",
+                                                  mk().angle_bracketed_param_types(type_args)),
+                ];
+                let pointer = mk().call_expr(mk().path_expr(path), vec![byte_literal]);
+                WithStmts::new(pointer)
             }
 
             CExprKind::ImplicitCast(ty, expr, kind) | CExprKind::ExplicitCast(ty, expr, kind) => {

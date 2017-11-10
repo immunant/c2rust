@@ -70,7 +70,17 @@ impl<W: Write> Printer<W> {
     pub fn print_expr_prec(&mut self, precedence: i32, expr_id: CExprId, context: &TypedAstContext) -> Result<()> {
 
         match context.c_exprs.get(&expr_id).map(|l| &l.kind) {
-            Some(&CExprKind::Literal(_, lit)) => self.print_lit(&lit, context),
+            Some(&CExprKind::UnaryType(_, kind, arg_ty)) => {
+                let kind_str = match kind {
+                    UnTypeOp::SizeOf => b"sizeof(".as_ref(),
+                    UnTypeOp::AlignOf => b"alignof(".as_ref(),
+                };
+                self.writer.write_all(kind_str)?;
+                self.print_qtype(arg_ty, None,context)?;
+                self.writer.write_all(b" ")?;
+                Ok(())
+            }
+            Some(&CExprKind::Literal(_, ref lit)) => self.print_lit(&lit, context),
             Some(&CExprKind::Unary(_, op, rhs)) => {
                 if op.is_prefix() {
                     self.print_unop(&op, context)?;
