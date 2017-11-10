@@ -11,15 +11,13 @@ use cross_check_runtime::hash::djb2::Djb2Hasher;
 fn test_custom_hash() {
     #[derive(CrossCheckHash)]
     #[cross_check_hash(custom_hash="custom1")]
-    struct A {
-        _a: u64,
-    }
+    struct A;
 
     fn custom1<XCHA, XCHS>(_a: &A, _: usize) -> u64 {
         0x12345678
     }
 
-    let a = A { _a: 0x1234 };
+    let a = A;
     assert_eq!(
         XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&a),
         0x12345678);
