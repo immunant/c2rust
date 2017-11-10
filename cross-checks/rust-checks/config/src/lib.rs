@@ -15,8 +15,8 @@ pub enum XCheckType {
 
     // FIXME: these are aliases of each other and should really
     // only be one value, but I'm not sure how to make serde parse that
-    No,
-    Disable,
+    None,
+    Disabled,
 
     // Types with additional parameters
     Fixed(u64),
@@ -29,8 +29,8 @@ pub enum XCheckType {
 impl XCheckType {
     pub fn is_disabled(&self) -> bool {
         match *self {
-            XCheckType::No |
-            XCheckType::Disable => true,
+            XCheckType::None |
+            XCheckType::Disabled => true,
             _ => false
         }
     }
@@ -220,10 +220,10 @@ mod tests {
     fn test_types() {
         assert_eq!(parse_test_yaml::<XCheckType>("default"),
                    XCheckType::Default);
-        assert_eq!(parse_test_yaml::<XCheckType>("no"),
-                   XCheckType::No);
-        assert_eq!(parse_test_yaml::<XCheckType>("disable"),
-                   XCheckType::Disable);
+        assert_eq!(parse_test_yaml::<XCheckType>("none"),
+                   XCheckType::None);
+        assert_eq!(parse_test_yaml::<XCheckType>("disabled"),
+                   XCheckType::Disabled);
         assert_eq!(parse_test_yaml::<XCheckType>("{ \"fixed\": 1234 }"),
                    XCheckType::Fixed(1234));
         assert_eq!(parse_test_yaml::<XCheckType>("{ \"djb2\": \"foo\" }"),

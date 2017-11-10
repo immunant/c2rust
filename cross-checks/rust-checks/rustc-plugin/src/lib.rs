@@ -53,8 +53,8 @@ impl CrossCheckHash for xcfg::XCheckType {
             where F: FnOnce() -> Option<P<ast::Expr>> {
         match *self {
             xcfg::XCheckType::Default => f(),
-            xcfg::XCheckType::No |
-            xcfg::XCheckType::Disable => None,
+            xcfg::XCheckType::None |
+            xcfg::XCheckType::Disabled => None,
             xcfg::XCheckType::Fixed(id) => Some(quote_expr!(cx, $id)),
             xcfg::XCheckType::Djb2(ref s) => {
                 let id = djb2_hash(s) as u64;
@@ -147,7 +147,7 @@ impl ScopeCheckConfig {
             all_args_xcheck: if cfg!(feature = "xcheck-args") {
                 xcfg::XCheckType::Default
             } else {
-                xcfg::XCheckType::No
+                xcfg::XCheckType::None
             },
             ..Default::default()
         }
@@ -166,11 +166,11 @@ impl ScopeCheckConfig {
             for ref nested_item in items.iter() {
                 if let Some(ref item) = nested_item.meta_item() {
                     match &*item.name.as_str() {
-                        "disable" |
-                        "no" => {
+                        "disabled" |
+                        "none" => {
                             Rc::make_mut(&mut self.inherited).enabled = false
                         }
-                        "enable" |
+                        "enabled" |
                         "yes" => {
                             Rc::make_mut(&mut self.inherited).enabled = true
                         }
@@ -576,8 +576,8 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
             match *sf_xcheck {
                 xcfg::XCheckType::Default => None,
 
-                xcfg::XCheckType::No |
-                xcfg::XCheckType::Disable =>
+                xcfg::XCheckType::None |
+                xcfg::XCheckType::Disabled =>
                     Some(quote_attr!(self.cx, #[cross_check_hash(no)])),
 
                 xcfg::XCheckType::Djb2(_) => unimplemented!(),
