@@ -138,7 +138,9 @@ mod tests {
         test_value!(0x12345789abcdef_i64, write_i64,  0xd2c0e6855b791f3f_u64);
         test_value!(false,                write_bool, 0x8787878787878784_u64);
         test_value!(true,                 write_bool, 0x8787878787878785_u64);
+        test_value!(1.0_f32,              write_f32,  0x3c3c3c3c03bc3c38_u64);
         test_value!(consts_f32::PI,       write_f32,  0x3c3c3c3c7c7533e3_u64);
+        test_value!(1.0_f64,              write_f64,  0xa966969696969692_u64);
         test_value!(consts_f64::PI,       write_f64,  0xd69fb76dc2d2bb8a_u64);
     }
 }
