@@ -11,12 +11,12 @@ use cross_check_runtime::hash::simple::SimpleHasher;
 use cross_check_runtime::hash::djb2::Djb2Hasher;
 
 macro_rules! test_struct {
-    ([$($attrs:meta)*]
+    ([$($attrs:meta),*]
      {$($field_def:ident:$field_ty:ty),*}
      ($($field_init:ident:$val:expr),*)
      $test_fn:expr) => {
         #[derive(CrossCheckHash)]
-        #[cross_check_hash($($attrs)*)]
+        #[cross_check_hash($($attrs),*)]
         struct TestStruct {
             $($field_def: $field_ty),*
         };
