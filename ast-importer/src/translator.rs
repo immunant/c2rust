@@ -639,18 +639,32 @@ impl Translation {
 
                     c_ast::BinOp::And => {
                         // XXX: do we need the RHS to always be used?
-                        let lhs = self.convert_expr(true, lhs);
-                        let rhs = self.convert_expr(true, rhs);
+                        let lhs_ty = self.ast_context.index(lhs).kind.get_type();
+                        let rhs_ty = self.ast_context.index(rhs).kind.get_type();
 
-                        lhs.map(|x| mk().binary_expr(BinOpKind::And, x, rhs.to_expr()))
+                        let lhs =
+                            self.convert_expr(true, lhs)
+                                .map(|x| self.match_bool(true, lhs_ty, x));
+                        let rhs =
+                            self.convert_expr(true, rhs)
+                                .map(|x| self.match_bool(true, rhs_ty, x));
+
+                        lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::And, x, rhs.to_expr())))
                     }
 
                     c_ast::BinOp::Or => {
                         // XXX: do we need the RHS to always be used?
-                        let lhs = self.convert_expr(true,lhs);
-                        let rhs = self.convert_expr(true,rhs);
+                        let lhs_ty = self.ast_context.index(lhs).kind.get_type();
+                        let rhs_ty = self.ast_context.index(rhs).kind.get_type();
 
-                        lhs.map(|x| mk().binary_expr(BinOpKind::Or, x, rhs.to_expr()))
+                        let lhs =
+                            self.convert_expr(true, lhs)
+                                .map(|x| self.match_bool(true, lhs_ty, x));
+                        let rhs =
+                            self.convert_expr(true, rhs)
+                                .map(|x| self.match_bool(true, rhs_ty, x));
+
+                        lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::Or, x, rhs.to_expr())))
                     }
 
                     // No sequence-point cases
@@ -1004,6 +1018,7 @@ impl Translation {
                 c_ast::BinOp::BitXor => WithStmts::new(mk().binary_expr(BinOpKind::BitXor, lhs, rhs)),
 
                 c_ast::BinOp::ShiftRight => WithStmts::new(mk().binary_expr(BinOpKind::Shr, lhs, rhs)),
+                c_ast::BinOp::ShiftLeft => WithStmts::new(mk().binary_expr(BinOpKind::Shl, lhs, rhs)),
 
                 c_ast::BinOp::EqualEqual => WithStmts::new(mk().binary_expr(BinOpKind::Eq, lhs, rhs)).map(bool_to_int),
                 c_ast::BinOp::NotEqual => WithStmts::new(mk().binary_expr(BinOpKind::Ne, lhs, rhs)).map(bool_to_int),
