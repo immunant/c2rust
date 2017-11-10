@@ -12,7 +12,11 @@ use std::collections::HashMap;
 pub enum XCheckType {
     // Basic types
     Default,
+
+    // FIXME: these are aliases of each other and should really
+    // only be one value, but I'm not sure how to make serde parse that
     No,
+    Disable,
 
     // Types with additional parameters
     Fixed(u64),
@@ -20,6 +24,16 @@ pub enum XCheckType {
 
     // Compute the cross-check value from an arbitrary Rust expression
     Custom(String),
+}
+
+impl XCheckType {
+    pub fn is_disabled(&self) -> bool {
+        match *self {
+            XCheckType::No |
+            XCheckType::Disable => true,
+            _ => false
+        }
+    }
 }
 
 impl Default for XCheckType {
@@ -208,6 +222,8 @@ mod tests {
                    XCheckType::Default);
         assert_eq!(parse_test_yaml::<XCheckType>("no"),
                    XCheckType::No);
+        assert_eq!(parse_test_yaml::<XCheckType>("disable"),
+                   XCheckType::Disable);
         assert_eq!(parse_test_yaml::<XCheckType>("{ \"fixed\": 1234 }"),
                    XCheckType::Fixed(1234));
         assert_eq!(parse_test_yaml::<XCheckType>("{ \"djb2\": \"foo\" }"),

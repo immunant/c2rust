@@ -1,5 +1,4 @@
-`idiomize` has a simple plugin system, which is useful for mitigating the long
-compile times of the main `idiomize` binary.
+`idiomize` has a simple plugin system, which is useful for mitigating the long compile times of the main `idiomize` binary.
 
 
 # Plugin API
@@ -20,16 +19,18 @@ like any built-in command.
 
 Compile with a command like the following:
 
-    rustc plugin.rs \
+```bash
+    rustc plugin_stub.rs \
         --crate-type dylib \
         -L target/debug/deps \
         --extern idiomize=target/debug/libidiomize.rlib \
-        --extern log=target/debug/deps/liblog-13650bc330e727e7.rlib \
-        --extern libc=target/debug/deps/liblibc-b8ac65d1a79b98ae.rlib
+        --extern log=target/debug/deps/liblog-d13cea69eadf9021.rlib \
+        --extern libc=target/debug/deps/liblibc-245f0779ba681f77.rlib
+```
 
 The hashes for `liblog` and `liblibc` may change depending on the details of
-your build environment - check the contents of `target/debug/deps` to find the
-right hash.
+your build environment - check the contents of `target/debug/deps` to find 
+the right hash.
 
 
 # Loading plugins

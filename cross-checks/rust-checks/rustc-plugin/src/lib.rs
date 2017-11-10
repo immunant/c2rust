@@ -53,7 +53,8 @@ impl CrossCheckHash for xcfg::XCheckType {
             where F: FnOnce() -> Option<P<ast::Expr>> {
         match *self {
             xcfg::XCheckType::Default => f(),
-            xcfg::XCheckType::No => None,
+            xcfg::XCheckType::No |
+            xcfg::XCheckType::Disable => None,
             xcfg::XCheckType::Fixed(id) => Some(quote_expr!(cx, $id)),
             xcfg::XCheckType::Djb2(ref s) => {
                 let id = djb2_hash(s) as u64;
@@ -72,7 +73,7 @@ fn parse_xcheck_type(mi: &ast::MetaItem) -> Option<xcfg::XCheckType> {
                 xcfg::XCheckType::Djb2(name)
             })
         },
-        "id" => {
+        "fixed" => {
             if let ast::MetaItemKind::NameValue(ref lit) = mi.node {
                 match lit.node {
                     // TODO: handle LitKind::Str
@@ -165,12 +166,10 @@ impl ScopeCheckConfig {
             for ref nested_item in items.iter() {
                 if let Some(ref item) = nested_item.meta_item() {
                     match &*item.name.as_str() {
-                        "never" |
                         "disable" |
                         "no" => {
                             Rc::make_mut(&mut self.inherited).enabled = false
                         }
-                        "always" |
                         "enable" |
                         "yes" => {
                             Rc::make_mut(&mut self.inherited).enabled = true
@@ -188,7 +187,7 @@ impl ScopeCheckConfig {
 
                         // Cross-check type
                         "name" |
-                        "id" |
+                        "fixed" |
                         "custom_hash" => {
                             self.main_xcheck = parse_xcheck_type(&item)
                                 .unwrap_or(xcfg::XCheckType::Default);
@@ -577,7 +576,8 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
             match *sf_xcheck {
                 xcfg::XCheckType::Default => None,
 
-                xcfg::XCheckType::No =>
+                xcfg::XCheckType::No |
+                xcfg::XCheckType::Disable =>
                     Some(quote_attr!(self.cx, #[cross_check_hash(no)])),
 
                 xcfg::XCheckType::Djb2(_) => unimplemented!(),

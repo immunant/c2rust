@@ -114,7 +114,6 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         get_cross_check_args(&f.ast().attrs[..]).and_then(|args| {
             // FIXME: figure out the argument priorities here
             if args.0.contains_key("no") ||
-               args.0.contains_key("never") ||
                args.0.contains_key("disable") {
                 // Cross-checking is disabled
                 Some(quote::Tokens::new())
