@@ -542,9 +542,9 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
                },
                _ => None
            };
-           let mut res = vec![s];
-           res.extend(new_stmt.into_iter());
-           res
+           Some(s).into_iter()
+                  .chain(new_stmt.into_iter())
+                  .collect::<Vec<_>>()
        }).collect()
     }
 
