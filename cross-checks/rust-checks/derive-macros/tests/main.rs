@@ -22,3 +22,14 @@ fn test_custom_hash() {
         XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&a),
         0x12345678);
 }
+
+#[test]
+fn test_empty_struct_djb2() {
+    #[derive(CrossCheckHash)]
+    struct A;
+
+    let a = A;
+    assert_eq!(
+        XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&a),
+        5381_u64);
+}
