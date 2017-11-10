@@ -7,6 +7,7 @@ use syntax::parse::token::{self, Token};
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, TokenStream, ThinTokenStream};
 use syntax::symbol::keywords;
+use std::rc::Rc;
 
 use util::IntoSymbol;
 
@@ -613,6 +614,13 @@ impl Builder {
 
 
     // Literals
+
+    pub fn bytestr_lit(self, s: Vec<u8>) -> P<Lit> {
+        P(Lit {
+            node: LitKind::ByteStr(Rc::new(s)),
+            span: DUMMY_SP,
+        })
+    }
 
     pub fn str_lit<S>(self, s: S) -> P<Lit>
         where S: IntoSymbol {

@@ -666,6 +666,15 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, integer_literal);
                 }
 
+                ASTEntryTag::TagStringLiteral if expected_ty & (EXPR | STMT) != 0 => {
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_type(ty_old);
+                    let width = expect_u64(&node.extras[1]).expect("string literal char width") as u8;
+                    let bytes = expect_vec8(&node.extras[2]).expect("string literal bytes");
+                    let string_literal = CExprKind::Literal(ty, CLiteral::String(bytes.to_owned(), width));
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, string_literal);
+                }
+
                 ASTEntryTag::TagCharacterLiteral if expected_ty & (EXPR | STMT) != 0 => {
                     let value = expect_u64(&node.extras[0]).expect("Expected character literal value");
 

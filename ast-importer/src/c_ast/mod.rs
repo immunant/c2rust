@@ -416,14 +416,13 @@ impl BinOp {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum CLiteral {
     Integer(u64),
     Character(u64),
     Floating(f64),
-    // TODO: String
+    String(Vec<u8>, u8), // Literal bytes and unit byte width
 }
-
 
 /// Represents a statement in C (6.8 Statements)
 ///

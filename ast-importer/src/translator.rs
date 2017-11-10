@@ -476,6 +476,30 @@ impl Translation {
                 WithStmts::new(mk().lit_expr(mk().float_unsuffixed_lit(str)))
             }
 
+            CExprKind::Literal(ty, CLiteral::String(ref val, width)) => {
+                let mut val = val.to_owned();
+
+                // Add zero terminator
+                for _ in 0..width { val.push(0); }
+
+                let u8_ty = mk().path_ty(vec!["u8"]);
+                let width_lit = mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
+                let array_ty = mk().array_ty(u8_ty, width_lit);
+                let source_ty = mk().ref_ty(array_ty);
+                let target_ty = mk().ref_ty(self.convert_type(ty));
+
+                let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
+                let type_args = vec![source_ty, target_ty];
+                let path = vec![
+                    mk().path_segment("std"),
+                    mk().path_segment("mem"),
+                    mk().path_segment_with_params("transmute",
+                                                  mk().angle_bracketed_param_types(type_args)),
+                ];
+                let pointer = mk().call_expr(mk().path_expr(path), vec![byte_literal]);
+                WithStmts::new(pointer)
+            }
+
             CExprKind::ImplicitCast(ty, expr, kind) | CExprKind::ExplicitCast(ty, expr, kind) => {
                 let val = self.convert_expr(true,expr);
 
