@@ -668,7 +668,7 @@ impl ConversionContext {
 
                 ASTEntryTag::TagStringLiteral if expected_ty & (EXPR | STMT) != 0 => {
                     let ty_old = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty_old);
+                    let ty = self.visit_qualified_type(ty_old);
                     let width = expect_u64(&node.extras[1]).expect("string literal char width") as u8;
                     let bytes = expect_vec8(&node.extras[2]).expect("string literal bytes");
                     let string_literal = CExprKind::Literal(ty, CLiteral::String(bytes.to_owned(), width));
@@ -889,7 +889,7 @@ impl ConversionContext {
 
                 ASTEntryTag::TagUnaryExprOrTypeTraitExpr if expected_ty & (EXPR | STMT) != 0 => {
                     let ty = node.type_id.expect("Expected expression to have type");
-                    let ty = self.visit_type(ty);
+                    let ty = self.visit_qualified_type(ty);
 
                     let kind_name = expect_str(&node.extras[0]).expect("expected kind");
                     let kind = match kind_name {

@@ -238,7 +238,7 @@ pub enum CExprKind {
     Unary(CQualTypeId, UnOp, CExprId),
 
     // Unary type operator.
-    UnaryType(CTypeId, UnTypeOp, CQualTypeId),
+    UnaryType(CQualTypeId, UnTypeOp, CQualTypeId),
 
     // Binary operator
     Binary(CQualTypeId, BinOp, CExprId, CExprId),

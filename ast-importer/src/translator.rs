@@ -523,7 +523,7 @@ impl Translation {
                 let width_lit = mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
                 let array_ty = mk().array_ty(u8_ty, width_lit);
                 let source_ty = mk().ref_ty(array_ty);
-                let target_ty = mk().ref_ty(self.convert_type(ty));
+                let target_ty = mk().ref_ty(self.convert_type(ty.ctype));
 
                 let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
                 let type_args = vec![source_ty, target_ty];

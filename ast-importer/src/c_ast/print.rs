@@ -76,7 +76,7 @@ impl<W: Write> Printer<W> {
                     UnTypeOp::AlignOf => b"alignof(".as_ref(),
                 };
                 self.writer.write_all(kind_str)?;
-                self.print_qtype(arg_ty, context)?;
+                self.print_qtype(arg_ty, None,context)?;
                 self.writer.write_all(b" ")?;
                 Ok(())
             }
