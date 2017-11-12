@@ -202,8 +202,10 @@ class TestCase:
             logging.info("Expected success for " + self.shortname)
 
         if bool(failed_message) == self.pass_expected:
-            self.print_status(FAIL, "FAILED", failed_message or "(unexpected success)")
-            self.status = "unexpected failures" if failed_message else "unexpected successes"
+            self.print_status(FAIL, "FAILED",
+                              failed_message or "(unexpected success)")
+            self.status = "unexpected failures" if failed_message else \
+                          "unexpected successes"
         elif failed_message:
             self.print_status(OKBLUE, "FAILED", failed_message + " (expected)")
             self.status = "expected failures"
@@ -299,6 +301,7 @@ def main() -> None:
             die(msg, errno.ENOENT)
 
     ensure_dir(DEPS_DIR)
+    ensure_rustc_version(CUSTOM_RUST_RUSTC_VERSION)
 
     if not testcases:
         die("nothing to test")
@@ -312,7 +315,7 @@ def main() -> None:
     }
 
     # Testcases are run one after another. Only tests that match the '--only'
-    # argument are run. We make a best effort to clean up all files left behind.
+    # argument are run. We make a best effort to clean up files we left behind.
     for testcase in testcases:
         if args.regex.fullmatch(testcase.shortname):
             logging.debug("running test: %s", testcase.src_c)
@@ -332,8 +335,11 @@ def main() -> None:
     for variant, count in test_results.items():
         sys.stdout.write("  {}: {}\n".format(variant, count))
 
-    # If anything failed (or there is something unknown), exit with error code 1
-    if 0 < test_results["unexpected failures"] + test_results["unexpected successes"]:
+    # If anything unexpected happened, exit with error code 1
+    unepected = \
+        test_results["unexpected failures"] + \
+        test_results["unexpected successes"]
+    if 0 < unepected:
         quit(1)
 
 
