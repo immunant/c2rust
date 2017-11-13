@@ -239,6 +239,12 @@ impl Translation {
         self.items.push(function);
     }
 
+    // This node should _never_ show up in the final generated code. This is an easy way to notice
+    // if it does.
+    fn panic() -> P<Expr> {
+        mk().mac_expr(mk().mac(vec!["panic"], vec![]))
+    }
+
     fn convert_function_body(&self, body_id: CStmtId) -> P<Block> {
 
         // Open function body scope
@@ -360,7 +366,7 @@ impl Translation {
         };
 
         let mut inc = match inc_id {
-            Some(i) => self.convert_expr(false,i).stmts,
+            Some(i) => self.convert_expr(false, i).stmts,
             None => vec![],
         };
 
@@ -397,7 +403,7 @@ impl Translation {
     }
 
     fn convert_return_stmt(&self, result_id: Option<CExprId>) -> Vec<Stmt> {
-        let val = result_id.map(|i| self.convert_expr(true,i));
+        let val = result_id.map(|i| self.convert_expr(true, i));
         let mut ws = with_stmts_opt(val);
         let ret = mk().expr_stmt(mk().return_expr(ws.val));
 
@@ -591,7 +597,7 @@ impl Translation {
             }
 
             CExprKind::Unary(type_id, ref op, expr) => {
-                let arg = self.convert_expr(true,expr);
+                let arg = self.convert_expr(true, expr);
 
                 arg.and_then(|v| self.convert_unary_operator(used,*op, type_id, v))
             }
@@ -608,16 +614,12 @@ impl Translation {
 
                     cond.map(|c| mk().ifte_expr(c, then, Some(els)))
                 } else {
-                    // This node should _never_ show up in the final generated code. This is an easy
-                    // way to notice if it does.
-                    let panic = mk().mac_expr(mk().mac(vec!["panic"], vec![]));
-
                     let then: P<Block> = mk().block(lhs.stmts);
                     let els: P<Expr> = mk().block_expr(mk().block(rhs.stmts));
 
                     cond.and_then(|c| WithStmts {
                         stmts: vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(els)))],
-                        val: panic,
+                        val: Translation::panic(),
                     })
                 }
             },
@@ -679,7 +681,7 @@ impl Translation {
                         let rhs = self.convert_expr(true,rhs,);
 
                         let bin =
-                            self.convert_binary_operator(*op, ty, type_id.ctype, lhs_ty, rhs_ty, lhs.val, rhs.val);
+                            self.convert_binary_operator(used, *op, ty, type_id.ctype, lhs_ty, rhs_ty, lhs.val, rhs.val);
 
                         WithStmts {
                             stmts: lhs.stmts.into_iter().chain(rhs.stmts).chain(bin.stmts).collect(),
@@ -738,11 +740,7 @@ impl Translation {
                     // all side-effects (and a function call can always have side-effects)
                     stmts.push(mk().semi_stmt(call_expr));
 
-                    // This node should _never_ show up in the final generated code. This is an easy
-                    // way to notice if it does.
-                    let panic = mk().mac_expr(mk().mac(vec!["panic"], vec![]));
-
-                    WithStmts { stmts, val: panic }
+                    WithStmts { stmts, val: Translation::panic() }
                 }
             }
 
@@ -756,8 +754,8 @@ impl Translation {
                             MemberKind::Arrow => mk().unary_expr(ast::UnOp::Deref, v),
                             MemberKind::Dot => v,
                         };
-                        mk().field_expr(v, field_name)}
-                    )
+                        mk().field_expr(v, field_name)
+                    })
                 } else {
                     struct_val
                 }
@@ -807,24 +805,91 @@ impl Translation {
         }
     }
 
-    pub fn name_reference(&self, reference: P<Expr>) -> WithStmts<P<Expr>> {
-        fn is_path_expr(e: &Expr) -> bool {
+    /// Get back a Rust lvalue corresponding to the expression passed in.
+    ///
+    /// Do not use the output lvalue expression more than once.
+    pub fn name_reference_write(
+        &self,
+        reference: P<Expr>,
+        reference_ty: CQualTypeId,
+    ) -> WithStmts<P<Expr>> {
+        self.name_reference(reference, reference_ty, false)
+            .map(|(lvalue, _)| lvalue)
+    }
+
+    /// Get back a Rust (lvalue, rvalue) pair corresponding to the expression passed in.
+    ///
+    /// You may reuse either of these expressions.
+    pub fn name_reference_write_read(
+        &self,
+        reference: P<Expr>,
+        reference_ty: CQualTypeId,
+    ) -> WithStmts<(P<Expr>, P<Expr>)> {
+        let msg: &str = "When called with `uses_read = true`, `name_reference` should always \
+                       return an rvalue (something from which to read the memory location)";
+
+        self.name_reference(reference, reference_ty, true)
+            .map(|(lvalue, rvalue)| (lvalue, rvalue.expect(msg)))
+    }
+
+    /// This function transforms an expression that should refer to a memory location (a C lvalue)
+    /// into a Rust lvalue for writing to that location.
+    ///
+    /// When called with `uses_read`, this function returns an rvalue too. The rvalue can be used to
+    /// read multiple times without duplicating side-effects.
+    ///
+    /// NOTE: Use [`name_reference_write`] or [`name_reference_write_read`] instead of calling this
+    ///       directly.
+    fn name_reference(
+        &self,
+        reference: P<Expr>,
+        reference_ty: CQualTypeId,
+        uses_read: bool,
+    ) -> WithStmts<(P<Expr>, Option<P<Expr>>)> {
+
+        /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
+        fn is_lvalue(e: &Expr) -> bool {
             match e.node {
-                ExprKind::Path{..} => true,
+                ExprKind::Path(..) |
+                ExprKind::Unary(ast::UnOp::Deref, _) |
+                ExprKind::Field(..) |
+                ExprKind::TupField(..) |
+                ExprKind::Index(..) => true,
                 _ => false,
             }
         }
 
-        let is_simple = match &reference.node {
-            &ExprKind::Path{..} => true,
-            &ExprKind::Unary(ast::UnOp::Deref, ref e) => is_path_expr(e),
-            _ => false,
+        // Check if something is a side-effect free Rust lvalue.
+        fn is_simple_lvalue(e: &Expr) -> bool {
+            match e.node {
+                ExprKind::Path(..) => true,
+                ExprKind::Unary(ast::UnOp::Deref, ref e)  |
+                ExprKind::Field(ref e, _) |
+                ExprKind::TupField(ref e, _) |
+                ExprKind::Index(ref e, _) => is_simple_lvalue(e),
+                _ => false,
+            }
+        }
+
+        // Given the LHS access to a variable, produce the RHS one
+        let read = |write: P<Expr>| -> P<Expr> {
+            if reference_ty.qualifiers.is_volatile {
+                self.volatile_read(&write, reference_ty.ctype)
+            } else {
+                write
+            }
         };
 
-        if is_simple {
-            WithStmts::new(reference)
+        if !uses_read && is_lvalue(&*reference) {
+            WithStmts::new((reference, None))
+        } else if is_simple_lvalue(&*reference) {
+            let write = reference;
+            WithStmts::new((write.clone(), Some(read(write))))
         } else {
+            // This is the case where we explicitly need to factor out possible side-effects.
+
             let ptr_name = self.renamer.borrow_mut().fresh();
+
             // let ref mut p = lhs;
             let compute_ref =
                 mk().local_stmt(
@@ -832,71 +897,74 @@ impl Translation {
                                  None as Option<P<Ty>>,
                                  Some(reference)))
                 );
+
+            let write = mk().unary_expr(ast::UnOp::Deref, mk().ident_expr(&ptr_name));
+
             WithStmts {
-                val: mk().unary_expr(ast::UnOp::Deref, mk().ident_expr(&ptr_name)),
                 stmts: vec![compute_ref],
+                val: (write.clone(), Some(read(write))),
             }
         }
     }
 
-    pub fn convert_pre_increment(&self, ctype: CTypeId, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
+    pub fn convert_pre_increment(&self, ty: CQualTypeId, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
 
-        let WithStmts{ val: deref_lhs, stmts: mut lhs_stmts } = self.name_reference(arg);
+        let WithStmts{ val: (write, read), stmts: mut lhs_stmts } = self.name_reference_write_read(arg, ty);
 
         let one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
         // *p + 1
         let val =
-            if self.ast_context.resolve_type(ctype).kind.is_pointer() {
+            if self.ast_context.resolve_type(ty.ctype).kind.is_pointer() {
                 // This calls the offset with a number literal directly, and doesn't need
                 // the cast that the pointer_offset function adds
                 let n = if up { one } else { mk().unary_expr(ast::UnOp::Neg, one) };
-                mk().method_call_expr(deref_lhs.clone(), "offset", vec![n])
+                mk().method_call_expr(read.clone(), "offset", vec![n])
             } else {
                 let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
-                mk().binary_expr(k, deref_lhs.clone(), one)
+                mk().binary_expr(k, read.clone(), one)
             };
 
         // *p = *p + rhs
-        let assign_stmt = mk().assign_expr(&deref_lhs.clone(), val);
+        let assign_stmt = mk().assign_expr(&write, val);
 
         lhs_stmts.push(mk().expr_stmt(assign_stmt));
 
         WithStmts {
             stmts: lhs_stmts,
-            val: deref_lhs,
+            val: read,
         }
     }
 
-    pub fn convert_post_increment(&self, used: bool, ctype: CTypeId, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
+    pub fn convert_post_increment(&self, used: bool, ty: CQualTypeId, up: bool, arg: P<Expr>) -> WithStmts<P<Expr>> {
 
         // If we aren't going to be using the result, may as well do a simple pre-increment
         if !used {
-            return self.convert_pre_increment(ctype, up, arg)
+            return self.convert_pre_increment(ty, up, arg)
         }
 
-        let WithStmts{ val: deref_lhs, stmts: mut lhs_stmts } = self.name_reference(arg);
+        let WithStmts{ val: (write, read), stmts: mut lhs_stmts } = self.name_reference_write_read(arg, ty);
 
         let val_name = self.renamer.borrow_mut().fresh();
         let save_old_val =
             mk().local_stmt(
                 P(mk().local(mk().ident_pat(&val_name),
                              None as Option<P<Ty>>,
-                             Some(deref_lhs.clone())))
+                             Some(read.clone())))
             );
 
         let one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
         // *p + 1
         let val =
-            if self.ast_context.resolve_type(ctype).kind.is_pointer() {
+            if self.ast_context.resolve_type(ty.ctype).kind.is_pointer() {
                 let n = if up { one } else { mk().unary_expr(ast::UnOp::Neg, one) };
-                mk().method_call_expr(deref_lhs.clone(), "offset", vec![n])
+                mk().method_call_expr(read.clone(), "offset", vec![n])
             } else {
                 let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
-                mk().binary_expr(k, deref_lhs.clone(), one)
+                mk().binary_expr(k, read.clone(), one)
             };
 
         // *p = *p + rhs
-        let assign_stmt = mk().assign_expr(&deref_lhs.clone(), val);
+        let assign_stmt = mk().assign_expr(&write, val);
 
         lhs_stmts.push(save_old_val);
         lhs_stmts.push(mk().expr_stmt(assign_stmt));
@@ -907,10 +975,17 @@ impl Translation {
         }
     }
 
-    pub fn convert_unary_operator(&self, used: bool, name: c_ast::UnOp, cqual_type: CQualTypeId, arg: P<Expr>) -> WithStmts<P<Expr>> {
+    pub fn convert_unary_operator(
+        &self,
+        used: bool,
+        name: c_ast::UnOp,
+        cqual_type: CQualTypeId,
+        arg: P<Expr>,
+    ) -> WithStmts<P<Expr>> {
 
         let CQualTypeId { ctype, qualifiers } = cqual_type;
         let ty = self.convert_type(ctype);
+        let resolved_ctype = self.ast_context.resolve_type(ctype);
 
         match name {
             c_ast::UnOp::AddressOf => {
@@ -919,7 +994,7 @@ impl Translation {
                 // & becomes a no-op when applied to a function.
 
                 let is_function_pointer =
-                if let CTypeKind::Pointer(p) = self.ast_context.resolve_type(ctype).kind {
+                if let CTypeKind::Pointer(p) = resolved_ctype.kind {
                     if let CTypeKind::Function{..} = self.ast_context.resolve_type(p.ctype).kind {
                         true
                     } else { false }
@@ -934,18 +1009,19 @@ impl Translation {
                     WithStmts::new(ptr)
                 }
             },
-            c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctype,true, arg),
-            c_ast::UnOp::PreDecrement => self.convert_pre_increment(ctype,false, arg),
-            c_ast::UnOp::PostIncrement => self.convert_post_increment(used, ctype,true, arg),
-            c_ast::UnOp::PostDecrement => self.convert_post_increment(used, ctype,false, arg),
+            c_ast::UnOp::PreIncrement => self.convert_pre_increment(cqual_type,true, arg),
+            c_ast::UnOp::PreDecrement => self.convert_pre_increment(cqual_type,false, arg),
+            c_ast::UnOp::PostIncrement => self.convert_post_increment(used, cqual_type,true, arg),
+            c_ast::UnOp::PostDecrement => self.convert_post_increment(used, cqual_type,false, arg),
             c_ast::UnOp::Deref => {
+
                 // This should be a `self.volatile_read` if the type on the other side of the pointer
                 // is volatile, _and_ if it is used as an rvalue
                 WithStmts::new(mk().unary_expr(ast::UnOp::Deref, arg))
             },
             c_ast::UnOp::Plus => WithStmts::new(arg), // promotion is explicit in the clang AST
             c_ast::UnOp::Negate => {
-                let val = if self.ast_context.resolve_type(ctype).kind.is_unsigned_integral_type() {
+                let val = if resolved_ctype.kind.is_unsigned_integral_type() {
                     mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<P<Expr>>)
                 } else {
                     mk().unary_expr(ast::UnOp::Neg, arg)
@@ -959,13 +1035,14 @@ impl Translation {
 
     pub fn convert_binary_operator(
         &self,
+        used: bool,
         op: c_ast::BinOp,
         ty: P<Ty>,
         ctype: CTypeId,
         lhs_type: CQualTypeId,
         rhs_type: CQualTypeId,
         lhs: P<Expr>,
-        rhs: P<Expr>
+        rhs: P<Expr>,
     ) -> WithStmts<P<Expr>> {
 
         if let Some(op) = op.underlying_assignment() {
@@ -973,15 +1050,15 @@ impl Translation {
 
             // Improvements:
             // * Don't create block, use += for a statement
-            let WithStmts{ val: deref_lhs, stmts: lhs_stmts } = self.name_reference(lhs);
+            let WithStmts{ val: (write, read), stmts: lhs_stmts } = self.name_reference_write_read(lhs, lhs_type);
             // *p + rhs
-            let mut val = self.convert_binary_operator(op, ty, ctype, lhs_type, rhs_type, deref_lhs.clone(), rhs);
+            let mut val = self.convert_binary_operator(used, op, ty, ctype, lhs_type, rhs_type, read.clone(), rhs);
             // *p = *p + rhs
 
             let assign_stmt = if lhs_type.qualifiers.is_volatile {
-                self.volatile_write(&deref_lhs, lhs_type.ctype, val.val)
+                self.volatile_write(&write, lhs_type.ctype, val.val)
             } else {
-                mk().assign_expr(&deref_lhs, val.val)
+                mk().assign_expr(&write, val.val)
             };
 
             let mut stmts = lhs_stmts;
@@ -989,17 +1066,19 @@ impl Translation {
             stmts.push(mk().expr_stmt(assign_stmt));
 
             let val = if lhs_type.qualifiers.is_volatile {
-                self.volatile_read(&deref_lhs, lhs_type.ctype)
+                self.volatile_read(&read, lhs_type.ctype)
             } else {
-                deref_lhs
+                read
             };
 
             WithStmts { stmts, val }
+        } else if let c_ast::BinOp::Assign = op {
+            self.convert_assignment(used, lhs, lhs_type, rhs)
         } else {
             // Handle all other binary operators
 
             let ctype = &self.ast_context.index(ctype).kind;
-            match op {
+            let expr = match op {
                 c_ast::BinOp::Add => WithStmts::new(self.convert_addition(lhs_type, rhs_type, lhs, rhs)),
                 c_ast::BinOp::Subtract => WithStmts::new(self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs)),
 
@@ -1030,10 +1109,10 @@ impl Translation {
                 c_ast::BinOp::BitAnd => WithStmts::new(mk().binary_expr(BinOpKind::BitAnd, lhs, rhs)),
                 c_ast::BinOp::BitOr => WithStmts::new(mk().binary_expr(BinOpKind::BitOr, lhs, rhs)),
 
-                c_ast::BinOp::Assign => self.convert_assignment(lhs, lhs_type, rhs),
-
                 op => unimplemented!("Translation of binary operator {:?}", op),
-            }
+            };
+
+            expr
         }
     }
 
@@ -1088,28 +1167,28 @@ impl Translation {
         }
     }
 
-    fn convert_assignment(&self, lhs: P<Expr>, lhs_type: CQualTypeId, rhs: P<Expr>) -> WithStmts<P<Expr>> {
+    fn convert_assignment(&self, used: bool, lhs: P<Expr>, lhs_type: CQualTypeId, rhs: P<Expr>) -> WithStmts<P<Expr>> {
         // Improvements:
         // * Don't create block, use += for a statement
 
-        let WithStmts{ val: deref_lhs, stmts: lhs_stmts } = self.name_reference(lhs);
+        let (write, read, lhs_stmts) = if used {
+            let WithStmts{ val: (write, read), stmts: lhs_stmts } = self.name_reference_write_read(lhs, lhs_type);
+            (write, read, lhs_stmts)
+        } else {
+            let WithStmts{ val: write, stmts: lhs_stmts } = self.name_reference_write(lhs, lhs_type);
+            (write, Translation::panic(), lhs_stmts)
+        };
 
         let assign_stmt = if lhs_type.qualifiers.is_volatile {
-            self.volatile_write(&deref_lhs, lhs_type.ctype, rhs)
+            self.volatile_write(&write, lhs_type.ctype, rhs)
         } else {
-            mk().assign_expr(&deref_lhs, rhs)
+            mk().assign_expr(&write, rhs)
         };
 
         let mut stmts = lhs_stmts;
         stmts.push(mk().expr_stmt(assign_stmt));
 
-        let val = if lhs_type.qualifiers.is_volatile {
-            self.volatile_read(&deref_lhs, lhs_type.ctype)
-        } else {
-            deref_lhs
-        };
-
-        WithStmts { stmts, val }
+        WithStmts { stmts, val: read }
     }
 
     /// Convert a boolean expression to a boolean for use in && or || or if
