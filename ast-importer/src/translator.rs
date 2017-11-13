@@ -699,23 +699,33 @@ impl Translation {
             }
 
             CExprKind::ArraySubscript(_, ref lhs, ref rhs) => {
-                let lhs_ty = self.ast_context.index(*lhs).kind.get_type();
-                let lhs_ty = &self.ast_context.resolve_type(lhs_ty).kind;
+                let lhs_node = &self.ast_context.index(*lhs).kind;
+                let lhs_is_pointer = self.ast_context.resolve_type(lhs_node.get_type()).kind.is_pointer();
 
-                let lhs = self.convert_expr(true, *lhs);
-                let rhs = self.convert_expr(true, *rhs);
-
-                let val = if lhs_ty.is_pointer() {
-                    pointer_offset(lhs.val, rhs.val)
-                } else {
-                    pointer_offset(rhs.val, lhs.val)
-                };
-
-                let val = mk().unary_expr(ast::UnOp::Deref, val);
+                // From here on in, the LHS is the pointer/array and the RHS the index
+                let (lhs,rhs) = if lhs_is_pointer { (lhs, rhs) } else { (rhs, lhs) };
 
                 let mut stmts = vec![];
-                stmts.extend(lhs.stmts);
+
+                let rhs = self.convert_expr(true, *rhs);
                 stmts.extend(rhs.stmts);
+
+                let val = if let &CExprKind::ImplicitCast(_, ref arr, CastKind::ArrayToPointerDecay) = lhs_node {
+                    // If the LHS just underwent an implicit cast from array to pointer, bypass that
+                    // to make an actual Rust indexing operation
+
+                    let lhs = self.convert_expr(true, *arr);
+                    stmts.extend(lhs.stmts);
+
+                    mk().index_expr(lhs.val, rhs.val)
+                } else {
+                    // Otherwise, use the pointer and make a deref of a pointer offset expression
+
+                    let lhs = self.convert_expr(true, *lhs);
+                    stmts.extend(lhs.stmts);
+
+                    mk().unary_expr(ast::UnOp::Deref, pointer_offset(lhs.val, rhs.val))
+                };
 
                 WithStmts { stmts, val }
             }

@@ -520,6 +520,18 @@ impl Builder {
         })
     }
 
+    pub fn index_expr<E1, E2>(self, lhs: E1, rhs: E2) -> P<Expr>
+        where E1: Make<P<Expr>>, E2: Make<P<Expr>> {
+        let lhs = lhs.make(&self);
+        let rhs = rhs.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Index(lhs, rhs),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
     pub fn path_expr<Pa>(self, path: Pa) -> P<Expr>
         where Pa: Make<Path> {
         self.qpath_expr(None, path)
