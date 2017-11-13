@@ -108,4 +108,13 @@ fn test_skip_field() {
     });
 }
 
-
+#[test]
+fn test_fixed_hash() {
+    test_struct!([]
+                 { [fixed_hash="0x0f0f0f0f0f0f0f0f"] x: u64 = 0x12345678 }
+                 |ts| {
+        assert_eq!(
+            XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
+            1u64);
+    });
+}
