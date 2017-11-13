@@ -118,3 +118,36 @@ fn test_fixed_hash() {
             1u64);
     });
 }
+
+#[test]
+fn test_custom_field_hash() {
+    fn custom_hash<XCHA, XCHS, S, F>(h: &mut XCHA, _: &S, field: F, _: usize)
+        where XCHA: ::cross_check_runtime::hash::CrossCheckHasher,
+              F: ::std::borrow::Borrow<u64> {
+        assert_eq!(*field.borrow(), 0x12345678);
+        h.write_u64(0x0f0f0f0f0f0f0f0f)
+    }
+    test_struct!([]
+                 { [custom_hash="custom_hash"] x: u64 = 0x12345678 }
+                 |ts| {
+        assert_eq!(
+            XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
+            1u64);
+    });
+}
+
+#[test]
+fn test_custom_hash_skip() {
+    fn custom_hash<XCHA, XCHS, S, F>(_: &mut XCHA, _: &S, field: F, _: usize)
+        where XCHA: ::cross_check_runtime::hash::CrossCheckHasher,
+              F: ::std::borrow::Borrow<u64> {
+        assert_eq!(*field.borrow(), 0x12345678);
+    }
+    test_struct!([]
+                 { [custom_hash="custom_hash"] x: u64 = 0x12345678 }
+                 |ts| {
+        assert_eq!(
+            XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&ts),
+            5381u64);
+    });
+}
