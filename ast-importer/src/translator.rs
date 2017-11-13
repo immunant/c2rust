@@ -547,7 +547,7 @@ impl Translation {
                 let val = self.convert_expr(true, expr);
 
                 match kind {
-                    CastKind::BitCast | CastKind::IntegralToPointer | CastKind::PointerToIntegral => {
+                    CastKind::BitCast => {
                         val.map(|x| {
                             let source_ty = self.convert_type(self.ast_context.index(expr).kind.get_type());
                             let target_ty = self.convert_type(ty.ctype);
@@ -562,7 +562,8 @@ impl Translation {
                         })
                     }
 
-                    CastKind::IntegralCast | CastKind::FloatingCast | CastKind::FloatingToIntegral | CastKind::IntegralToFloating =>  {
+                    CastKind::IntegralToPointer | CastKind::PointerToIntegral |
+                    CastKind::IntegralCast | CastKind::FloatingCast | CastKind::FloatingToIntegral | CastKind::IntegralToFloating => {
                         let ty = self.convert_type(ty.ctype);
                         // this explicit use of paren_expr is to work around a bug in libsyntax
                         // Normally parentheses are added automatically as needed
@@ -579,19 +580,25 @@ impl Translation {
 
                     CastKind::NullToPointer => {
                         assert!(val.stmts.is_empty());
-                        WithStmts::new(mk().call_expr(mk().path_expr(vec!["ptr", "null_mut"]), vec![] as Vec<P<Expr>>))
+                        WithStmts::new(mk().call_expr(mk().path_expr(vec!["std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>))
                     }
 
                     CastKind::ToUnion => panic!("TODO cast to union not supported"),
 
-                    CastKind::IntegralToBoolean | CastKind::FloatingToBoolean |
-                    CastKind::BooleanToSignedIntegral | CastKind::IntegralComplexToBoolean =>
+                    CastKind::IntegralToBoolean => {
+                        let ty = self.convert_type(ty.ctype);
+                        let val_ty = self. ast_context. index(expr).kind.get_type();
+                        val.map(|x| mk().cast_expr(self.match_bool(true, val_ty, x), ty))
+                    }
+
+                    CastKind::FloatingToBoolean | CastKind::BooleanToSignedIntegral =>
                         panic!("TODO cast to boolean not supported"),
 
                     CastKind::FloatingRealToComplex | CastKind::FloatingComplexToIntegralComplex |
                     CastKind::FloatingComplexCast | CastKind::FloatingComplexToReal |
                     CastKind::IntegralComplexToReal | CastKind::IntegralRealToComplex |
-                    CastKind::IntegralComplexCast | CastKind:: IntegralComplexToFloatingComplex =>
+                    CastKind::IntegralComplexCast | CastKind:: IntegralComplexToFloatingComplex |
+                    CastKind::IntegralComplexToBoolean =>
                         panic!("TODO casts with complex numbers not supported"),
                 }
             }

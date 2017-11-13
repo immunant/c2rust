@@ -1,19 +1,20 @@
 void entry(unsigned buffer_size, int buffer[]) {
-        int *intp;
-        int inta[10];
-        (char*) intp;
-        (int*) intp;
-        //void(*f)(unsigned, int*) = entry;
+        int inta[10] = {0};
+        int *intp = 0;
+        const int *cintp = 0;
+        char *x1 = (char*) intp;
+        int *x2 = (int*) intp;
+        void(*f)(unsigned, int*) = entry;
         //(union intfloat)1;
-        (int*)inta;
-        (int*)0;
-        (int*)1;
-        (int)intp;
+        int *x3 = (int*)inta;
+        int *x4 = (int*)0;
+        int *x5 = (int*)1;
+        int x6 = (int)intp;
         (void)intp;
-        (long)10;
-        (float)10;
-        (int)10.0;
-        // (_Bool)10;
+        long x7 = (long)10;
+        float x8 = (float)10;
+        int x9 = (int)10.0;
+        _Bool x10 = (_Bool)10;
         // (_Bool)10.0;
-        (double)10.0f;
+        double x11 = (double)10.0f;
 }

@@ -90,6 +90,7 @@ CC_DB_JSON = "compile_commands.json"
 # NOTE: `rustup run nightly-2017-09-18 -- rustc --version` should output
 # rustc 1.22.0-nightly (cfcac3720 2017-09-17)
 CUSTOM_RUST_NAME = 'nightly-2017-09-18'
+CUSTOM_RUST_RUSTC_VERSION = "rustc 1.22.0-nightly (cfcac3720 2017-09-17)"
 
 
 def have_rust_toolchain(name: str) -> bool:
@@ -293,6 +294,16 @@ def json_pp_obj(json_obj) -> str:
                       sort_keys=True,
                       indent=2,
                       separators=(',', ': '))
+
+
+def ensure_rustc_version(expected_version_str: str):
+    rustc = get_cmd_or_die("rustc")
+    actual_version = rustc("--version")
+    if expected_version_str not in actual_version:
+        emsg = "expected version: {}\n"
+        emsg = emsg + 9 * "." + "actual version: {}"
+        emsg = emsg.format(expected_version_str, actual_version)
+        die(emsg)
 
 
 def ensure_clang_version(min_ver: List[int]):

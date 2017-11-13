@@ -25,7 +25,7 @@ impl TypeConverter {
 
         match ctxt.index(ctype).kind {
             CTypeKind::Void => mk().tuple_ty(vec![] as Vec<P<Ty>>),
-            CTypeKind::Bool => mk().path_ty(mk().path(vec!["bool"])),
+            CTypeKind::Bool => mk().path_ty(mk().path(vec!["libc","boolean_t"])),
             CTypeKind::Short => mk().path_ty(mk().path(vec!["libc","c_short"])),
             CTypeKind::Int => mk().path_ty(mk().path(vec!["libc","c_int"])),
             CTypeKind::Long => mk().path_ty(mk().path(vec!["libc","c_long"])),
