@@ -60,3 +60,36 @@ fn test_simple_one_field() {
             0x12345678_u64);
     });
 }
+
+#[test]
+fn test_field_hasher() {
+    test_struct!([field_hasher="SimpleHasher"]
+                 { x: u64 = 0x12345678 }
+                 |ts| {
+        assert_eq!(
+            XCH::cross_check_hash::<Djb2Hasher, SimpleHasher>(&ts),
+            0x12345678_u64);
+    });
+}
+
+#[test]
+fn test_ahasher() {
+    test_struct!([ahasher="SimpleHasher"]
+                 { x: u64 = 0x12345678 }
+                 |ts| {
+        assert_eq!(
+            XCH::cross_check_hash::<Djb2Hasher, SimpleHasher>(&ts),
+            0x12345678_u64);
+    });
+}
+
+#[test]
+fn test_shasher() {
+    test_struct!([shasher="SimpleHasher"]
+                 { x: u64 = 0x12345678 }
+                 |ts| {
+        assert_eq!(
+            XCH::cross_check_hash::<SimpleHasher, Djb2Hasher>(&ts),
+            0x12345678_u64);
+    });
+}
