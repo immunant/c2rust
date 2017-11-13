@@ -15,7 +15,7 @@ use cross_check_runtime::hash::djb2::Djb2Hasher;
 // passes the object to the provided test function
 macro_rules! test_struct {
     ([$($attrs:meta),*]
-     {$([$($field_attrs:meta),*] $field:ident:$field_ty:ty = $field_val:expr),*}
+     {$([$($field_attrs:meta),*] $field:ident : $field_ty:ty = $field_val:expr),*}
      $test_fn:expr) => {
         #[derive(CrossCheckHash)]
         #[cross_check_hash($($attrs),*)]
