@@ -12,15 +12,14 @@ use cross_check_runtime::hash::djb2::Djb2Hasher;
 
 macro_rules! test_struct {
     ([$($attrs:meta),*]
-     {$($field_def:ident:$field_ty:ty),*}
-     ($($field_init:ident:$val:expr),*)
+     {$($field:ident:$field_ty:ty=$field_val:expr),*}
      $test_fn:expr) => {
         #[derive(CrossCheckHash)]
         #[cross_check_hash($($attrs),*)]
         struct TestStruct {
-            $($field_def: $field_ty),*
+            $($field: $field_ty),*
         };
-        let ts = TestStruct { $($field_init: $val),* };
+        let ts = TestStruct { $($field: $field_val),* };
         $test_fn(ts)
     }
 }
@@ -33,7 +32,6 @@ fn test_custom_hash() {
 
     test_struct!([custom_hash="custom1"]
                  {}
-                 ()
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&ts),
@@ -45,7 +43,6 @@ fn test_custom_hash() {
 fn test_empty_struct_djb2() {
     test_struct!([]
                  {}
-                 ()
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&ts),
