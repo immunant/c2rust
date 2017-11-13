@@ -334,6 +334,7 @@ def _main():
 
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])
+    ensure_rustc_version(CUSTOM_RUST_RUSTC_VERSION)
 
     ensure_dir(LLVM_BLD)
     ensure_dir(DEPS_DIR)
