@@ -504,6 +504,22 @@ impl Builder {
         })
     }
 
+    pub fn assign_op_expr<O, E1, E2>(self, op: O, lhs: E1, rhs: E2) -> P<Expr>
+        where O: Make<BinOpKind>, E1: Make<P<Expr>>, E2: Make<P<Expr>> {
+        let op = Spanned {
+            node: op.make(&self),
+            span: DUMMY_SP,
+        };
+        let lhs = lhs.make(&self);
+        let rhs = rhs.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::AssignOp(op, lhs, rhs),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
     pub fn path_expr<Pa>(self, path: Pa) -> P<Expr>
         where Pa: Make<Path> {
         self.qpath_expr(None, path)

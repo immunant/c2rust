@@ -1052,74 +1052,103 @@ impl Translation {
         rhs: P<Expr>,
     ) -> WithStmts<P<Expr>> {
 
-        if let Some(op) = op.underlying_assignment() {
-            // Handle compound assignment binary operators
+        let is_unsigned_integral_type = self.ast_context.index(ctype).kind.is_unsigned_integral_type();
 
-            // Improvements:
-            // * Don't create block, use += for a statement
-            let WithStmts{ val: (write, read), stmts: lhs_stmts } = self.name_reference_write_read(lhs, lhs_type);
-            // *p + rhs
-            let mut val = self.convert_binary_operator(used, op, ty, ctype, lhs_type, rhs_type, read.clone(), rhs);
-            // *p = *p + rhs
+        match op {
+            c_ast::BinOp::Assign |
+            c_ast::BinOp::AssignAdd |
+            c_ast::BinOp::AssignSubtract |
+            c_ast::BinOp::AssignMultiply |
+            c_ast::BinOp::AssignDivide |
+            c_ast::BinOp::AssignModulus |
+            c_ast::BinOp::AssignBitXor |
+            c_ast::BinOp::AssignShiftLeft |
+            c_ast::BinOp::AssignShiftRight |
+            c_ast::BinOp::AssignBitOr |
+            c_ast::BinOp::AssignBitAnd => {
 
-            let assign_stmt = if lhs_type.qualifiers.is_volatile {
-                self.volatile_write(&write, lhs_type.ctype, val.val)
-            } else {
-                mk().assign_expr(&write, val.val)
-            };
+                let is_volatile = lhs_type.qualifiers.is_volatile;
+                let is_volatile_compound_assign = op.underlying_assignment().is_some() && is_volatile;
 
-            let mut stmts = lhs_stmts;
-            stmts.append(&mut val.stmts);
-            stmts.push(mk().expr_stmt(assign_stmt));
+                let (write, read, lhs_stmts) = if used || is_volatile_compound_assign {
+                    let WithStmts { val: (write, read), stmts: lhs_stmts } = self.name_reference_write_read(lhs, lhs_type);
+                    (write, read, lhs_stmts)
+                } else {
+                    let WithStmts { val: write, stmts: lhs_stmts } = self.name_reference_write(lhs, lhs_type);
+                    (write, Translation::panic(), lhs_stmts)
+                };
 
-            let val = if lhs_type.qualifiers.is_volatile {
-                self.volatile_read(&read, lhs_type.ctype)
-            } else {
-                read
-            };
+                // Side effects to accumulate
+                let mut stmts = lhs_stmts;
 
-            WithStmts { stmts, val }
-        } else if let c_ast::BinOp::Assign = op {
-            self.convert_assignment(used, lhs, lhs_type, rhs)
-        } else {
-            // Handle all other binary operators
+                // Assignment expression itself
+                let assign_stmt = match op {
 
-            let ctype = &self.ast_context.index(ctype).kind;
-            let expr = match op {
-                c_ast::BinOp::Add => WithStmts::new(self.convert_addition(lhs_type, rhs_type, lhs, rhs)),
-                c_ast::BinOp::Subtract => WithStmts::new(self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs)),
+                    // Regular (possibly volatile) assignment
+                    c_ast::BinOp::Assign if !is_volatile => mk().assign_expr(&write, rhs),
+                    c_ast::BinOp::Assign => self.volatile_write(&write, lhs_type.ctype, rhs),
 
-                c_ast::BinOp::Multiply if ctype.is_unsigned_integral_type() =>
-                    WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_mul"), vec![rhs])),
-                c_ast::BinOp::Multiply => WithStmts::new(mk().binary_expr(BinOpKind::Mul, lhs, rhs)),
+                    // Anything volatile needs to be desugared into explicit reads and writes
+                    op if is_volatile => {
+                        let op = op.underlying_assignment().expect("Cannot convert non-assignment operator");
 
-                c_ast::BinOp::Divide if ctype.is_unsigned_integral_type() =>
-                    WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_div"), vec![rhs])),
-                c_ast::BinOp::Divide => WithStmts::new(mk().binary_expr(BinOpKind::Div, lhs, rhs)),
+                        let val = self.convert_binary_operator(used, op, ty, ctype, lhs_type, rhs_type, read.clone(), rhs);
 
-                c_ast::BinOp::Modulus if ctype.is_unsigned_integral_type() =>
-                    WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_rem"), vec![rhs])),
-                c_ast::BinOp::Modulus => WithStmts::new(mk().binary_expr(BinOpKind::Rem, lhs, rhs)),
+                        stmts.extend(val.stmts);
+                        self.volatile_write(&write, lhs_type.ctype, val.val)
+                    },
 
-                c_ast::BinOp::BitXor => WithStmts::new(mk().binary_expr(BinOpKind::BitXor, lhs, rhs)),
+                    // Everything else
+                    c_ast::BinOp::AssignAdd => mk().assign_op_expr(BinOpKind::Add, &write, rhs),
+                    c_ast::BinOp::AssignSubtract => mk().assign_op_expr(BinOpKind::Sub, &write, rhs),
+                    c_ast::BinOp::AssignMultiply => mk().assign_op_expr(BinOpKind::Mul, &write, rhs),
+                    c_ast::BinOp::AssignDivide => mk().assign_op_expr(BinOpKind::Div, &write, rhs),
+                    c_ast::BinOp::AssignModulus => mk().assign_op_expr(BinOpKind::Rem, &write, rhs),
+                    c_ast::BinOp::AssignBitXor => mk().assign_op_expr(BinOpKind::BitXor, &write, rhs),
+                    c_ast::BinOp::AssignShiftLeft => mk().assign_op_expr(BinOpKind::Shl, &write, rhs),
+                    c_ast::BinOp::AssignShiftRight => mk().assign_op_expr(BinOpKind::Shr, &write, rhs),
+                    c_ast::BinOp::AssignBitOr => mk().assign_op_expr(BinOpKind::BitOr, &write, rhs),
+                    c_ast::BinOp::AssignBitAnd => mk().assign_op_expr(BinOpKind::BitAnd, &write, rhs),
 
-                c_ast::BinOp::ShiftRight => WithStmts::new(mk().binary_expr(BinOpKind::Shr, lhs, rhs)),
-                c_ast::BinOp::ShiftLeft => WithStmts::new(mk().binary_expr(BinOpKind::Shl, lhs, rhs)),
+                    _ => panic!("Cannot convert non-assignment operator"),
+                };
 
-                c_ast::BinOp::EqualEqual => WithStmts::new(mk().binary_expr(BinOpKind::Eq, lhs, rhs)).map(bool_to_int),
-                c_ast::BinOp::NotEqual => WithStmts::new(mk().binary_expr(BinOpKind::Ne, lhs, rhs)).map(bool_to_int),
-                c_ast::BinOp::Less => WithStmts::new(mk().binary_expr(BinOpKind::Lt, lhs, rhs)).map(bool_to_int),
-                c_ast::BinOp::Greater => WithStmts::new(mk().binary_expr(BinOpKind::Gt, lhs, rhs)).map(bool_to_int),
-                c_ast::BinOp::GreaterEqual => WithStmts::new(mk().binary_expr(BinOpKind::Ge, lhs, rhs)).map(bool_to_int),
-                c_ast::BinOp::LessEqual => WithStmts::new(mk().binary_expr(BinOpKind::Le, lhs, rhs)).map(bool_to_int),
+                stmts.push(mk().expr_stmt(assign_stmt));
 
-                c_ast::BinOp::BitAnd => WithStmts::new(mk().binary_expr(BinOpKind::BitAnd, lhs, rhs)),
-                c_ast::BinOp::BitOr => WithStmts::new(mk().binary_expr(BinOpKind::BitOr, lhs, rhs)),
+                WithStmts { stmts, val: read }
+            },
 
-                op => unimplemented!("Translation of binary operator {:?}", op),
-            };
+            c_ast::BinOp::Add => WithStmts::new(self.convert_addition(lhs_type, rhs_type, lhs, rhs)),
+            c_ast::BinOp::Subtract => WithStmts::new(self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs)),
 
-            expr
+            c_ast::BinOp::Multiply if is_unsigned_integral_type =>
+                WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_mul"), vec![rhs])),
+            c_ast::BinOp::Multiply => WithStmts::new(mk().binary_expr(BinOpKind::Mul, lhs, rhs)),
+
+            c_ast::BinOp::Divide if is_unsigned_integral_type =>
+                WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_div"), vec![rhs])),
+            c_ast::BinOp::Divide => WithStmts::new(mk().binary_expr(BinOpKind::Div, lhs, rhs)),
+
+            c_ast::BinOp::Modulus if is_unsigned_integral_type =>
+                WithStmts::new(mk().method_call_expr(lhs, mk().path_segment("wrapping_rem"), vec![rhs])),
+            c_ast::BinOp::Modulus => WithStmts::new(mk().binary_expr(BinOpKind::Rem, lhs, rhs)),
+
+            c_ast::BinOp::BitXor => WithStmts::new(mk().binary_expr(BinOpKind::BitXor, lhs, rhs)),
+
+            c_ast::BinOp::ShiftRight => WithStmts::new(mk().binary_expr(BinOpKind::Shr, lhs, rhs)),
+            c_ast::BinOp::ShiftLeft => WithStmts::new(mk().binary_expr(BinOpKind::Shl, lhs, rhs)),
+
+            c_ast::BinOp::EqualEqual => WithStmts::new(mk().binary_expr(BinOpKind::Eq, lhs, rhs)).map(bool_to_int),
+            c_ast::BinOp::NotEqual => WithStmts::new(mk().binary_expr(BinOpKind::Ne, lhs, rhs)).map(bool_to_int),
+            c_ast::BinOp::Less => WithStmts::new(mk().binary_expr(BinOpKind::Lt, lhs, rhs)).map(bool_to_int),
+            c_ast::BinOp::Greater => WithStmts::new(mk().binary_expr(BinOpKind::Gt, lhs, rhs)).map(bool_to_int),
+            c_ast::BinOp::GreaterEqual => WithStmts::new(mk().binary_expr(BinOpKind::Ge, lhs, rhs)).map(bool_to_int),
+            c_ast::BinOp::LessEqual => WithStmts::new(mk().binary_expr(BinOpKind::Le, lhs, rhs)).map(bool_to_int),
+
+            c_ast::BinOp::BitAnd => WithStmts::new(mk().binary_expr(BinOpKind::BitAnd, lhs, rhs)),
+            c_ast::BinOp::BitOr => WithStmts::new(mk().binary_expr(BinOpKind::BitOr, lhs, rhs)),
+
+            op => unimplemented!("Translation of binary operator {:?}", op),
         }
     }
 
@@ -1172,30 +1201,6 @@ impl Translation {
         } else {
             mk().binary_expr(BinOpKind::Sub, lhs, rhs)
         }
-    }
-
-    fn convert_assignment(&self, used: bool, lhs: P<Expr>, lhs_type: CQualTypeId, rhs: P<Expr>) -> WithStmts<P<Expr>> {
-        // Improvements:
-        // * Don't create block, use += for a statement
-
-        let (write, read, lhs_stmts) = if used {
-            let WithStmts{ val: (write, read), stmts: lhs_stmts } = self.name_reference_write_read(lhs, lhs_type);
-            (write, read, lhs_stmts)
-        } else {
-            let WithStmts{ val: write, stmts: lhs_stmts } = self.name_reference_write(lhs, lhs_type);
-            (write, Translation::panic(), lhs_stmts)
-        };
-
-        let assign_stmt = if lhs_type.qualifiers.is_volatile {
-            self.volatile_write(&write, lhs_type.ctype, rhs)
-        } else {
-            mk().assign_expr(&write, rhs)
-        };
-
-        let mut stmts = lhs_stmts;
-        stmts.push(mk().expr_stmt(assign_stmt));
-
-        WithStmts { stmts, val: read }
     }
 
     /// Convert a boolean expression to a boolean for use in && or || or if
