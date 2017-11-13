@@ -97,7 +97,7 @@ fn test_shasher() {
 #[test]
 fn test_skip_field() {
     test_struct!([]
-                 { [no] x: u64 = 0x12345678 }
+                 { [none] x: u64 = 0x12345678 }
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&ts),

@@ -578,7 +578,7 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
 
                 xcfg::XCheckType::None |
                 xcfg::XCheckType::Disabled =>
-                    Some(quote_attr!(self.cx, #[cross_check_hash(no)])),
+                    Some(quote_attr!(self.cx, #[cross_check_hash(none)])),
 
                 xcfg::XCheckType::Djb2(_) => unimplemented!(),
 

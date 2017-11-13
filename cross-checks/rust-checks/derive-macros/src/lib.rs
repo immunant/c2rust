@@ -113,8 +113,8 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     let hash_fields = s.each(|f| {
         get_cross_check_args(&f.ast().attrs[..]).and_then(|args| {
             // FIXME: figure out the argument priorities here
-            if args.0.contains_key("no") ||
-               args.0.contains_key("disable") {
+            if args.0.contains_key("none") ||
+               args.0.contains_key("disabled") {
                 // Cross-checking is disabled
                 Some(quote::Tokens::new())
             } else if let Some(ref sub_arg) = args.0.get("fixed_hash") {
