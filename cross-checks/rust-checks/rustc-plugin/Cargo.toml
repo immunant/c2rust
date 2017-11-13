@@ -13,3 +13,5 @@ xcheck-args = []
 [dependencies]
 matches = "0.1.6"
 cross-check-config = { path = "../config" }
+cross-check-derive = { path = "../derive-macros" }
+cross-check-runtime = { path = "../runtime" }
