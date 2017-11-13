@@ -188,3 +188,16 @@ fn test_skip_multi_fields() {
         });
     }
 }
+
+#[test]
+fn test_multi_field_hash() {
+    test_struct!([]
+                 { [] x: u16 = 0xa5a5,
+                   [] y: u64 = 1 }
+                 |ts| {
+        assert_eq!(
+            XCH::cross_check_hash::<Djb2Hasher, SimpleHasher>(&ts),
+            0x3d17c937_u64);
+    });
+
+}
