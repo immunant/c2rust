@@ -10,6 +10,9 @@ use cross_check_runtime::hash::CrossCheckHash as XCH;
 use cross_check_runtime::hash::simple::SimpleHasher;
 use cross_check_runtime::hash::djb2::Djb2Hasher;
 
+// This macro creates a structure with the given structure and field attributes,
+// builds and initializes an object with the given values, then
+// passes the object to the provided test function
 macro_rules! test_struct {
     ([$($attrs:meta),*]
      {$([$($field_attrs:meta),*] $field:ident:$field_ty:ty = $field_val:expr),*}
