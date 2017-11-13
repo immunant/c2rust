@@ -49,3 +49,14 @@ fn test_empty_struct_djb2() {
             5381_u64);
     });
 }
+
+#[test]
+fn test_simple_one_field() {
+    test_struct!([]
+                 { x: u64 = 0x12345678 }
+                 |ts| {
+        assert_eq!(
+            XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
+            0x12345678_u64);
+    });
+}
