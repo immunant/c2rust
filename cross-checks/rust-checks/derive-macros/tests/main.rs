@@ -151,3 +151,40 @@ fn test_custom_hash_skip() {
             5381u64);
     });
 }
+
+#[test]
+fn test_skip_multi_fields() {
+    {
+        test_struct!([]
+                     { []     x: u64 = 0x12345678,
+                       [none] y: u64 = 0x34567812,
+                       [none] z: u64 = 0x87654321 }
+                     |ts| {
+            assert_eq!(
+                XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
+                0x12345678u64);
+        });
+    }
+    {
+        test_struct!([]
+                     { [none] x: u64 = 0x12345678,
+                       []     y: u64 = 0x34567812,
+                       [none] z: u64 = 0x87654321 }
+                     |ts| {
+            assert_eq!(
+                XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
+                0x34567812u64);
+        });
+    }
+    {
+        test_struct!([]
+                     { [none] x: u64 = 0x12345678,
+                       [none] y: u64 = 0x34567812,
+                       []     z: u64 = 0x87654321 }
+                     |ts| {
+            assert_eq!(
+                XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
+                0x87654321u64);
+        });
+    }
+}
