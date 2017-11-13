@@ -12,12 +12,12 @@ use cross_check_runtime::hash::djb2::Djb2Hasher;
 
 macro_rules! test_struct {
     ([$($attrs:meta),*]
-     {$($field:ident:$field_ty:ty=$field_val:expr),*}
+     {$([$($field_attrs:meta),*] $field:ident:$field_ty:ty = $field_val:expr),*}
      $test_fn:expr) => {
         #[derive(CrossCheckHash)]
         #[cross_check_hash($($attrs),*)]
         struct TestStruct {
-            $($field: $field_ty),*
+            $(#[cross_check_hash($($field_attrs),*)] $field: $field_ty),*
         };
         let ts = TestStruct { $($field: $field_val),* };
         $test_fn(ts)
@@ -53,7 +53,7 @@ fn test_empty_struct_djb2() {
 #[test]
 fn test_simple_one_field() {
     test_struct!([]
-                 { x: u64 = 0x12345678 }
+                 { [] x: u64 = 0x12345678 }
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
@@ -64,7 +64,7 @@ fn test_simple_one_field() {
 #[test]
 fn test_field_hasher() {
     test_struct!([field_hasher="SimpleHasher"]
-                 { x: u64 = 0x12345678 }
+                 { [] x: u64 = 0x12345678 }
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, SimpleHasher>(&ts),
@@ -75,7 +75,7 @@ fn test_field_hasher() {
 #[test]
 fn test_ahasher() {
     test_struct!([ahasher="SimpleHasher"]
-                 { x: u64 = 0x12345678 }
+                 { [] x: u64 = 0x12345678 }
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, SimpleHasher>(&ts),
@@ -86,10 +86,23 @@ fn test_ahasher() {
 #[test]
 fn test_shasher() {
     test_struct!([shasher="SimpleHasher"]
-                 { x: u64 = 0x12345678 }
+                 { [] x: u64 = 0x12345678 }
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<SimpleHasher, Djb2Hasher>(&ts),
             0x12345678_u64);
     });
 }
+
+#[test]
+fn test_skip_field() {
+    test_struct!([]
+                 { [no] x: u64 = 0x12345678 }
+                 |ts| {
+        assert_eq!(
+            XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&ts),
+            5381_u64);
+    });
+}
+
+
