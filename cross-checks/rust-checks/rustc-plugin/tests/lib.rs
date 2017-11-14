@@ -10,6 +10,8 @@ extern crate cross_check_runtime;
 use std::collections::VecDeque;
 use std::cell::RefCell;
 
+use cross_check_runtime::xcheck;
+
 #[derive(Debug, PartialEq, Eq)]
 struct XCheck(u8, u64);
 
@@ -33,7 +35,7 @@ fn test_entry() {
     fn abcd() { }
 
     abcd();
-    expect_xcheck(1, 0x7c93ee4f_u64);
+    expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
 }
 
 #[test]
@@ -43,7 +45,7 @@ fn test_no_xcheck() {
     fn abcd() { }
 
     abcd();
-    expect_xcheck(1, 0x7c93ee4f_u64);
+    expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
 }
 
 #[test]
@@ -52,7 +54,7 @@ fn test_custom_fn_name() {
     fn abcd() { }
 
     abcd();
-    expect_xcheck(1, 0x7c95b527_u64);
+    expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x7c95b527_u64);
 }
 
 #[test]
@@ -61,5 +63,5 @@ fn test_custom_fn_id() {
     fn abcd() { }
 
     abcd();
-    expect_xcheck(1, 0x12345678_u64);
+    expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x12345678_u64);
 }
