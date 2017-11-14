@@ -46,3 +46,20 @@ fn test_no_xcheck() {
     expect_xcheck(1, 0x7c93ee4f_u64);
 }
 
+#[test]
+fn test_custom_fn_name() {
+    #[cross_check(yes, name="djb2")]
+    fn abcd() { }
+
+    abcd();
+    expect_xcheck(1, 0x7c95b527_u64);
+}
+
+#[test]
+fn test_custom_fn_id() {
+    #[cross_check(yes, fixed=0x12345678)]
+    fn abcd() { }
+
+    abcd();
+    expect_xcheck(1, 0x12345678_u64);
+}
