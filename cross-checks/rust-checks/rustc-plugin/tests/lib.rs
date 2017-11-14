@@ -29,6 +29,11 @@ fn expect_xcheck(tag: u8, val: u64) {
     assert_eq!(xc, XCheck(tag, val));
 }
 
+fn expect_no_xchecks() {
+    assert!(XCHECKS.with(|xc| xc.borrow_mut().is_empty()),
+            "found more cross-checks than expected");
+}
+
 #[test]
 fn test_entry() {
     #[cross_check(yes)]
@@ -36,6 +41,7 @@ fn test_entry() {
 
     abcd();
     expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
+    expect_no_xchecks();
 }
 
 #[test]
@@ -46,6 +52,7 @@ fn test_no_xcheck() {
 
     abcd();
     expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
+    expect_no_xchecks();
 }
 
 #[test]
@@ -55,6 +62,7 @@ fn test_custom_fn_name() {
 
     abcd();
     expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x7c95b527_u64);
+    expect_no_xchecks();
 }
 
 #[test]
@@ -64,6 +72,7 @@ fn test_custom_fn_id() {
 
     abcd();
     expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x12345678_u64);
+    expect_no_xchecks();
 }
 
 #[test]
@@ -78,4 +87,5 @@ fn test_args_simple() {
         expect_xcheck(xcheck::FUNCTION_ARG_TAG, 0x7f_u64);
         expect_xcheck(xcheck::FUNCTION_ARG_TAG, 0x0f0f0f0f_0f0f0f0f_u64);
     }
+    expect_no_xchecks();
 }
