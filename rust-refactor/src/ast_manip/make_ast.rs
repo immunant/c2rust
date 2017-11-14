@@ -925,6 +925,16 @@ impl Builder {
         }
     }
 
+    pub fn item_stmt<I>(self, item: I)  -> Stmt
+        where I: Make<P<Item>> {
+        let item = item.make(&self);
+        Stmt {
+            id: DUMMY_NODE_ID,
+            node: StmtKind::Item(item),
+            span: DUMMY_SP,
+        }
+    }
+
 
     // Items
 
@@ -1057,6 +1067,42 @@ impl Builder {
         let rename = rename.map(|n| n.make(&self).name);
         Self::item(name, self.attrs, self.vis, ItemKind::ExternCrate(rename))
     }
+
+    pub fn foreign_items(self, items: Vec<ForeignItem>) -> P<Item>
+    {
+        let fgn_mod = ForeignMod { abi: self.abi, items };
+        Self::item(keywords::Invalid.ident(), self.attrs, self.vis, ItemKind::ForeignMod(fgn_mod))
+    }
+
+
+    // Foreign Items
+
+    fn foreign_item(name: Ident, attrs: Vec<Attribute>, vis: Visibility, node: ForeignItemKind) -> ForeignItem {
+        ForeignItem {
+            ident: name,
+            attrs: attrs,
+            id: DUMMY_NODE_ID,
+            node: node,
+            vis: vis,
+            span: DUMMY_SP,
+        }
+    }
+
+    pub fn foreign_fn<I, D>(self, name: I, decl: D) -> ForeignItem
+        where I: Make<Ident>, D: Make<P<FnDecl>> {
+        let name = name.make(&self);
+        let decl = decl.make(&self);
+        Self::foreign_item(name, self.attrs, self.vis, ForeignItemKind::Fn(decl, self.generics))
+    }
+
+    pub fn foreign_static<I, T>(self, name: I, ty: T) -> ForeignItem
+        where I: Make<Ident>, T: Make<P<Ty>> {
+        let name = name.make(&self);
+        let ty = ty.make(&self);
+        let is_mut = self.mutbl == Mutability::Mutable;
+        Self::foreign_item(name, self.attrs, self.vis, ForeignItemKind::Static(ty, is_mut))
+    }
+
 
     // Misc nodes
 

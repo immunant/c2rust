@@ -934,13 +934,14 @@ impl ConversionContext {
                 ASTEntryTag::TagFunctionDecl if expected_ty & OTHER_DECL != 0 => {
                     let name = expect_str(&node.extras[0]).expect("Expected to find function name").to_string();
 
+                    let is_extern = expect_bool(&node.extras[1]).expect("Expected to find visibility");
+
                     let typ_old = node.type_id.expect("Expected to find a type on a function decl");
                     let typ = CTypeId(self.visit_node_type(typ_old, FUNC_TYPE));
 
                     let (body_id, parameter_ids) = node.children.split_last().expect("Expected to find a function body");
 
-                    let body_old = body_id.expect("Function body not found");
-                    let body = self.visit_stmt(body_old);
+                    let body = body_id.map(|b| self.visit_stmt(b));
 
                     let parameters = parameter_ids
                         .iter()
@@ -950,7 +951,7 @@ impl ConversionContext {
                         })
                         .collect();
 
-                    let function_decl = CDeclKind::Function { typ, name, parameters, body };
+                    let function_decl = CDeclKind::Function { is_extern, typ, name, parameters, body };
 
                     self.add_decl(new_id, located(node, function_decl));
                     self.processed_nodes.insert(new_id, OTHER_DECL);
@@ -971,13 +972,17 @@ impl ConversionContext {
                 ASTEntryTag::TagVarDecl if expected_ty & VAR_DECL != 0 => {
                     let ident = expect_str(&node.extras[0]).expect("Expected to find variable name").to_string();
 
+                    let is_static = expect_bool(&node.extras[1]).expect("Expected to find duration");
+                    let is_extern = expect_bool(&node.extras[2]).expect("Expected to find visibility");
+                    assert!(if is_extern { is_static } else { true }, "Something cannot be extern without also being static");
+
                     let initializer = node.children[0]
                         .map(|id| self.visit_expr(id));
 
                     let typ_id = node.type_id.expect("Expected to find type on variable declaration");
                     let typ = self.visit_qualified_type(typ_id);
 
-                    let variable_decl = CDeclKind::Variable { ident, initializer, typ };
+                    let variable_decl = CDeclKind::Variable { is_static, is_extern, ident, initializer, typ };
 
                     self.add_decl(new_id, located(node, variable_decl));
                     self.processed_nodes.insert(new_id, VAR_DECL);

@@ -112,9 +112,9 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
 
     /// Lookup the given key in all of the scopes returning Some of the matched mangled name
     /// if one exists, otherwise None.
-    pub fn get(&self, key: T) -> Option<String> {
+    pub fn get(&self, key: &T) -> Option<String> {
         for scope in self.scopes.iter().rev() {
-            if let Some(target) = scope.name_map.get(&key) {
+            if let Some(target) = scope.name_map.get(key) {
                 return Some(target.to_string())
             }
         }

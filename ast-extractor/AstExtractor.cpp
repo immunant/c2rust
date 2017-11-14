@@ -115,7 +115,7 @@ public:
     
     void VisitEnumType(const EnumType *T) {
         encodeType(T, TagEnumType, [T](CborEncoder *local) {
-            cbor_encode_uint(local, uintptr_t(T->getDecl()));
+            cbor_encode_uint(local, uintptr_t(T->getDecl()->getCanonicalDecl()));
         });
     }
     
@@ -235,7 +235,7 @@ public:
     }
     
     void VisitTypedefType(const TypedefType *T) {
-        auto D = T->getDecl();
+        auto D = T->getDecl()->getCanonicalDecl();
         encodeType(T, TagTypedefType, [D](CborEncoder *local) {
             cbor_encode_uint(local, uintptr_t(D));
         });
@@ -349,7 +349,7 @@ class TranslateASTVisitor final
           
           cbor_encoder_close_container(encoder, &local);
       }
-      
+
       void encode_entry
       (Expr *ast,
        ASTEntryTag tag,
@@ -464,7 +464,25 @@ class TranslateASTVisitor final
       
 
       bool VisitDeclStmt(DeclStmt *DS) {
-          std::vector<void*> childIds(DS->decl_begin(), DS->decl_end());
+
+          // We copy only canonical decls and VarDecl's that are extern/local. For more on the
+          // latter, see the comment at the top of `VisitVarDecl`
+          std::vector<void*> childIds;
+          std::copy_if(
+              DS->decl_begin(),
+              DS->decl_end(),
+              std::back_inserter(childIds),
+              [](Decl *decl){
+                  if (decl->isCanonicalDecl())
+                      return true;
+
+                  if (VarDecl *var_decl = dyn_cast<VarDecl>(decl))
+                      return var_decl->isExternC() && var_decl->isLocalVarDecl();
+
+                  return false;
+              }
+          );
+
           encode_entry(DS, TagDeclStmt, childIds);
           return true;
       }
@@ -530,7 +548,7 @@ class TranslateASTVisitor final
       
       bool VisitMemberExpr(MemberExpr *E) {
           std::vector<void*> childIds =
-            { E->getBase(), E->getMemberDecl() };
+            { E->getBase(), E->getMemberDecl()->getCanonicalDecl() };
           encode_entry(E, TagMemberExpr, childIds, [E](CborEncoder *extras) {
               cbor_encode_boolean(extras, E->isArrow());
           });
@@ -603,7 +621,7 @@ class TranslateASTVisitor final
       }
       
       bool VisitDeclRefExpr(DeclRefExpr *DRE) {
-          std::vector<void*> childIds = { DRE->getDecl() };
+          std::vector<void*> childIds = { DRE->getDecl()->getCanonicalDecl() };
           encode_entry(DRE, TagDeclRefExpr, childIds);
           return true;
       }
@@ -630,14 +648,13 @@ class TranslateASTVisitor final
       
       bool VisitFunctionDecl(FunctionDecl *FD)
       {              
-          // For now, skip function decls that are not also function defs
-          if(!FD->hasBody()) {
+          // Skip non-canonical decls
+          if(!FD->isCanonicalDecl())
               return true;
-          }
 
           std::vector<void*> childIds;
           for (auto x : FD->parameters()) {
-              childIds.push_back(x);
+              childIds.push_back(x->getCanonicalDecl());
           }
 
           childIds.push_back(FD->getBody());
@@ -647,6 +664,9 @@ class TranslateASTVisitor final
                              [FD](CborEncoder *array) {
                                  auto name = FD->getNameAsString();
                                  cbor_encode_string(array, name);
+
+                                 auto is_extern = FD->isExternC();
+                                 cbor_encode_boolean(array, is_extern);
                              });
           typeEncoder.VisitQualType(functionType);
 
@@ -668,6 +688,13 @@ class TranslateASTVisitor final
       
       bool VisitVarDecl(VarDecl *VD)
       {
+          // Skip non-canonical decls, as long as they aren't 'extern'. Unfortunately, if there
+          // are two 'extern' variables in different functions that should be the same at link
+          // time, Clang groups them. That is unhelpful for us though, since we need to convert
+          // them into two seperate `extern` blocks.
+          if(!VD->isCanonicalDecl() && !(VD->isExternC() && VD->isLocalVarDecl()))
+              return true;
+
           std::vector<void*> childIds =
           { VD->getInit() } ;
           auto T = VD->getType();
@@ -676,6 +703,12 @@ class TranslateASTVisitor final
                              [VD](CborEncoder *array){
                                  auto name = VD->getNameAsString();
                                  cbor_encode_string(array, name);
+
+                                 auto is_static = VD->getStorageDuration() == clang::SD_Static;
+                                 cbor_encode_boolean(array, is_static);
+
+                                 auto is_extern = VD->isExternC();
+                                 cbor_encode_boolean(array, is_extern);
                              });
           
           typeEncoder.VisitQualType(T);
@@ -684,10 +717,15 @@ class TranslateASTVisitor final
       }
       
       
-      bool VisitRecordDecl(RecordDecl *D) {
+      bool VisitRecordDecl(RecordDecl *D)
+      {
+          // Skip non-canonical decls
+          if(!D->isCanonicalDecl())
+              return true;
+
           std::vector<void*> childIds;
           for (auto x : D->fields()) {
-              childIds.push_back(x);
+              childIds.push_back(x->getCanonicalDecl());
           }
           encode_entry(D, TagRecordDecl, childIds, QualType(),
           [D](CborEncoder *local){
@@ -697,10 +735,15 @@ class TranslateASTVisitor final
           return true;
       }
       
-      bool VisitEnumDecl(EnumDecl *D) {
+      bool VisitEnumDecl(EnumDecl *D)
+      {
+          // Skip non-canonical decls
+          if(!D->isCanonicalDecl())
+              return true;
+
           std::vector<void*> childIds;
           for (auto x : D->enumerators()) {
-              childIds.push_back(x);
+              childIds.push_back(x->getCanonicalDecl());
           }
           
           encode_entry(D, TagEnumDecl, childIds, QualType(),
@@ -711,7 +754,12 @@ class TranslateASTVisitor final
           return true;
       }
       
-      bool VisitEnumConstantDecl(EnumConstantDecl *D) {
+      bool VisitEnumConstantDecl(EnumConstantDecl *D)
+      {
+          // Skip non-canonical decls
+          if(!D->isCanonicalDecl())
+              return true;
+
           std::vector<void*> childIds = { D->getInitExpr() };
           
           encode_entry(D, TagEnumConstantDecl, childIds, QualType(),
@@ -722,7 +770,12 @@ class TranslateASTVisitor final
           return true;
       }
       
-      bool VisitFieldDecl(FieldDecl *D) {
+      bool VisitFieldDecl(FieldDecl *D)
+      {
+          // Skip non-canonical decls
+          if(!D->isCanonicalDecl())
+              return true;
+
           std::vector<void*> childIds;
           encode_entry(D, TagFieldDecl, childIds, QualType(),
                              [D](CborEncoder *array) {
@@ -732,7 +785,12 @@ class TranslateASTVisitor final
           return true;
       }
       
-      bool VisitTypedefDecl(TypedefDecl *D) {
+      bool VisitTypedefDecl(TypedefDecl *D)
+      {
+          // Skip non-canonical decls
+          if(!D->isCanonicalDecl())
+              return true;
+
           std::vector<void*> childIds;
           auto typeForDecl = D->getUnderlyingType();
           encode_entry(D, TagTypedefDecl, childIds, typeForDecl,
@@ -818,7 +876,7 @@ class TranslateASTVisitor final
 void TypeEncoder::VisitRecordType(const RecordType *T) {
     
     encodeType(T, TagRecordType, [T](CborEncoder *local) {
-        cbor_encode_uint(local, uintptr_t(T->getDecl()));
+        cbor_encode_uint(local, uintptr_t(T->getDecl()->getCanonicalDecl()));
     });
     
     // record type might be anonymous and have no top-level declaration
@@ -857,7 +915,8 @@ public:
             // Track all of the top-level declarations
             cbor_encoder_create_array(&encoder, &array, CborIndefiniteLength);
             for (auto d : translation_unit->decls()) {
-                cbor_encode_uint(&array, reinterpret_cast<std::uintptr_t>(d));
+                if (d->isCanonicalDecl())
+                  cbor_encode_uint(&array, reinterpret_cast<std::uintptr_t>(d));
             }
             cbor_encoder_close_container(&encoder, &array);
             
