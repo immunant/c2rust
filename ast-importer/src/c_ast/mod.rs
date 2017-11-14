@@ -179,7 +179,7 @@ pub enum CDeclKind {
         typ: CFuncTypeId,
         name: String,
         parameters: Vec<CParamId>,
-        body: CStmtId,
+        body: Option<CStmtId>,
     },
 
     // http://clang.llvm.org/doxygen/classclang_1_1VarDecl.html

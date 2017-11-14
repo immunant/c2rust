@@ -130,7 +130,10 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
                     })
                     .collect();
 
-                t.add_function(name, &args, ret, *body);
+                match body {
+                    &Some(b) => t.add_function(name, &args, ret, b),
+                    &None => ()
+                };
             },
 
             CDeclKind::Typedef { ref name, ref typ } => {
