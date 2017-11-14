@@ -130,7 +130,10 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
                     })
                     .collect();
 
-                t.add_function(name, &args, ret, *body);
+                match body {
+                    &Some(b) => t.add_function(name, &args, ret, b),
+                    &None => ()
+                };
             },
 
             CDeclKind::Typedef { ref name, ref typ } => {
@@ -204,7 +207,7 @@ impl Translation {
         self.items.push(item);
     }
 
-    pub fn add_function(&mut self, name: &str, arguments: &[(String, CQualTypeId)], return_type: CQualTypeId, body: Option<CStmtId>) {
+    pub fn add_function(&mut self, name: &str, arguments: &[(String, CQualTypeId)], return_type: CQualTypeId, body: CStmtId) {
         // Start scope for function parameters
         self.renamer.borrow_mut().add_scope();
 
@@ -224,7 +227,7 @@ impl Translation {
 
         let decl = mk().fn_decl(args, ret);
 
-        let block = self.convert_function_body(body.expect("Expected function body"));
+        let block = self.convert_function_body(body);
 
         // End scope for function parameters
         self.renamer.borrow_mut().drop_scope();
