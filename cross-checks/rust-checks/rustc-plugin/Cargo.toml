@@ -8,7 +8,6 @@ readme = "README.md"
 plugin = true
 
 [features]
-xcheck-args = []
 
 [dependencies]
 matches = "0.1.6"

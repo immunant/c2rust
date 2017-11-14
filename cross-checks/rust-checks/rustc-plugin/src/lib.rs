@@ -144,11 +144,7 @@ struct ScopeCheckConfig {
 impl ScopeCheckConfig {
     fn new() -> ScopeCheckConfig {
         ScopeCheckConfig {
-            all_args_xcheck: if cfg!(feature = "xcheck-args") {
-                xcfg::XCheckType::Default
-            } else {
-                xcfg::XCheckType::None
-            },
+            all_args_xcheck: xcfg::XCheckType::None,
             ..Default::default()
         }
     }
@@ -192,6 +188,12 @@ impl ScopeCheckConfig {
                             self.main_xcheck = parse_xcheck_type(&item)
                                 .unwrap_or(xcfg::XCheckType::Default);
                         },
+
+                        "args" => {
+                            // Enable cross-checking for arguments
+                            // FIXME: enable by default???
+                            self.all_args_xcheck = xcfg::XCheckType::Default;
+                        }
 
                         // Structure-specific attributes
                         "field_hasher" => {

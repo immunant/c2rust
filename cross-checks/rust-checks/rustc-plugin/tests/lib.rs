@@ -77,15 +77,12 @@ fn test_custom_fn_id() {
 
 #[test]
 fn test_args_simple() {
-    #[cross_check(yes)]
+    #[cross_check(yes, args)]
     fn abcd(_a: u8, _b: u64) { }
 
     abcd(0x7fu8, 1u64);
     expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
-    if cfg!(feature="xcheck-args") {
-        // TODO: always test this
-        expect_xcheck(xcheck::FUNCTION_ARG_TAG, 0x7f_u64);
-        expect_xcheck(xcheck::FUNCTION_ARG_TAG, 0x0f0f0f0f_0f0f0f0f_u64);
-    }
+    expect_xcheck(xcheck::FUNCTION_ARG_TAG, 0x7f_u64);
+    expect_xcheck(xcheck::FUNCTION_ARG_TAG, 0x0f0f0f0f_0f0f0f0f_u64);
     expect_no_xchecks();
 }
