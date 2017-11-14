@@ -1,3 +1,4 @@
+#![feature(i128_type)]
 #![cfg_attr(feature="parse-syntax", feature(rustc_private))]
 
 #[macro_use]

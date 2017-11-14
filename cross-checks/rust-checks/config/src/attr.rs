@@ -18,6 +18,7 @@ use quote::ToTokens;
 pub enum ArgValue<'a> {
     Nothing,
     Str(String),
+    Int(u128),
     List(ArgList<'a>),
 }
 
@@ -100,6 +101,8 @@ pub fn get_syn_item_args(mi: &syn::MetaItem) -> ArgList {
                                 syn::Lit::Str(ref s, syn::StrStyle::Cooked) =>
                                     (kw.as_ref(), ArgValue::Str(s.clone())),
 
+                                syn::Lit::Int(i, _) => (kw.as_ref(), ArgValue::Int(i as u128)),
+
                                 _ => panic!("invalid tag value for by_value: {:?}", *val)
                             }
                         },
@@ -139,6 +142,8 @@ pub fn get_syntax_item_args(mi: &ast::MetaItem) -> ArgList<'static> {
                             match val.node {
                                 ast::LitKind::Str(ref s, ast::StrStyle::Cooked) =>
                                     (kw, ArgValue::Str(String::from(&*s.as_str()))),
+
+                                ast::LitKind::Int(i, _) => (kw, ArgValue::Int(i)),
 
                                 _ => panic!("invalid tag value for by_value: {:?}", *val)
                             }
