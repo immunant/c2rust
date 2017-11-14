@@ -87,7 +87,7 @@ impl<'a> ArgList<'a> {
 }
 
 #[cfg(feature="parse-syn")]
-pub fn get_item_args(mi: &syn::MetaItem) -> ArgList {
+pub fn get_syn_item_args(mi: &syn::MetaItem) -> ArgList {
     if let syn::MetaItem::List(_, ref items) = *mi {
         ArgList::from_map(items.iter().map(|item| {
             match *item {
@@ -105,7 +105,7 @@ pub fn get_item_args(mi: &syn::MetaItem) -> ArgList {
                         },
 
                         syn::MetaItem::List(ref kw, _) => {
-                            (kw.as_ref(), ArgValue::List(get_item_args(mi)))
+                            (kw.as_ref(), ArgValue::List(get_syn_item_args(mi)))
                         }
                     }
                 },
@@ -118,7 +118,7 @@ pub fn get_item_args(mi: &syn::MetaItem) -> ArgList {
 }
 
 #[cfg(feature="parse-syntax")]
-pub fn get_item_args(mi: &ast::MetaItem) -> ArgList<'static> {
+pub fn get_syntax_item_args(mi: &ast::MetaItem) -> ArgList<'static> {
     if let Some(ref items) = mi.meta_item_list() {
         ArgList::from_map(items.iter().map(|item| {
             match item.node {
@@ -145,7 +145,7 @@ pub fn get_item_args(mi: &ast::MetaItem) -> ArgList<'static> {
                         },
 
                         ast::MetaItemKind::List(_) => {
-                            (kw, ArgValue::List(get_item_args(mi)))
+                            (kw, ArgValue::List(get_syntax_item_args(mi)))
                         }
                     }
                 },

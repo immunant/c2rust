@@ -10,7 +10,7 @@ extern crate cross_check_config as xcfg;
 fn get_cross_check_args(attrs: &[syn::Attribute]) -> Option<xcfg::attr::ArgList> {
     attrs.iter()
          .find(|f| f.name() == "cross_check_hash")
-         .map(|attr| xcfg::attr::get_item_args(&attr.value))
+         .map(|attr| xcfg::attr::get_syn_item_args(&attr.value))
 }
 
 fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
