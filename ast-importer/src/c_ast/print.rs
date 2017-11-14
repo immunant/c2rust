@@ -417,9 +417,10 @@ impl<W: Write> Printer<W> {
                 self.dedent();
                 self.pad()?;
                 self.writer.write_all(b") ")?;
-                // FIXME: may fail for function declarations
-                let body = body.expect("Expected function body");
-                self.print_stmt(body, newline, false, context)
+                match body {
+                    &Some(b) => self.print_stmt(b, newline, false, context),
+                    &None => { self.writer.write_all(b"; "); Ok(()) }
+                }
             },
 
             Some(&CDeclKind::Variable { ref ident, ref initializer, ref typ }) => {
