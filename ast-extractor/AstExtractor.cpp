@@ -725,7 +725,8 @@ class TranslateASTVisitor final
       
       bool VisitFieldDecl(FieldDecl *D) {
           std::vector<void*> childIds;
-          encode_entry(D, TagFieldDecl, childIds, QualType(),
+          auto t = D->getType();
+          encode_entry(D, TagFieldDecl, childIds, t,
                              [D](CborEncoder *array) {
                                  auto name = D->getNameAsString();
                                  cbor_encode_string(array, name);

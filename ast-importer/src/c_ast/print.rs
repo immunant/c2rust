@@ -471,8 +471,9 @@ impl<W: Write> Printer<W> {
                 Ok(())
             },
 
-            Some(&CDeclKind::Field { ref name }) => {
-                self.writer.write_fmt(format_args!("{}", &name))?;
+            Some(&CDeclKind::Field { ref name, typ }) => {
+                self.writer.write_fmt(format_args!("{}: ", &name))?;
+                self.print_qtype(typ, None, context)?;
                 if newline {
                     self.writer.write_all(b"\n")?;
                 }

@@ -205,8 +205,8 @@ pub enum CDeclKind {
 
     // Field
     Field {
-        /* TODO: type */
         name: String,
+        typ: CQualTypeId,
     },
 }
 

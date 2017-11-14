@@ -112,6 +112,20 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
     for top_id in &ast_context.c_decls_top {
 
         match ast_context.index(*top_id).kind {
+            CDeclKind::Record{ref name, ref fields} => {
+                // TODO: Add mapping from declaration ID to struct name to support unnamed structs
+                if let &Some(ref name) = name {
+                    let fields: Vec<(String, CTypeId)> = fields.into_iter().map(|x| {
+                        let field_decl = ast_context.index(*x);
+                        match &field_decl.kind {
+                            &CDeclKind::Field {ref name, typ} => (name.to_owned(), typ.ctype),
+                            _ => panic!("Found non-field in record field list"),
+                        }
+                    }).collect();
+                    t.add_struct(mk().ident(name), fields.as_ref())
+                }
+            }
+
             CDeclKind::Function { ref typ, ref name, ref parameters, ref body } => {
 
                 let ret: CQualTypeId = match ast_context.index(*typ).kind {
@@ -185,11 +199,11 @@ impl Translation {
         }
     }
 
-    pub fn add_struct(&mut self, name: Ident, fields: &[(&str, CTypeId)]) {
+    pub fn add_struct(&mut self, name: Ident, fields: &[(String, CTypeId)]) {
         let struct_fields =
             fields
                 .iter()
-                .map(|&(id, ty)| {
+                .map(|&(ref id, ty)| {
                     let ty = self.convert_type(ty);
                     mk().struct_field(id, ty)
                 })
@@ -482,7 +496,7 @@ impl Translation {
 
         match self.ast_context.index(expr_id).kind {
 
-            CExprKind::UnaryType(ty, kind, arg_ty) => {
+            CExprKind::UnaryType(_ty, kind, arg_ty) => {
                 let ty = self.convert_type(arg_ty.ctype);
                 let name = match kind {
                     UnTypeOp::SizeOf => "size_of",
@@ -1001,7 +1015,7 @@ impl Translation {
         arg: P<Expr>,
     ) -> WithStmts<P<Expr>> {
 
-        let CQualTypeId { ctype, qualifiers } = cqual_type;
+        let CQualTypeId { ctype, .. } = cqual_type;
         let ty = self.convert_type(ctype);
         let resolved_ctype = self.ast_context.resolve_type(ctype);
 

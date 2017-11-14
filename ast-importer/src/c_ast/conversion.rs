@@ -1006,7 +1006,9 @@ impl ConversionContext {
 
                 ASTEntryTag::TagFieldDecl if expected_ty & FIELD_DECL != 0 => {
                     let name = expect_str(&node.extras[0]).expect("A field needs a name").to_string();
-                    let field = CDeclKind::Field { name };
+                    let typ_id = node.type_id.expect("Expected to find type on field declaration");
+                    let typ = self.visit_qualified_type(typ_id);
+                    let field = CDeclKind::Field { name, typ };
                     self.add_decl(new_id, located(node, field));
                     self.processed_nodes.insert(new_id, FIELD_DECL);
                 }
