@@ -11,7 +11,7 @@ plugin = true
 
 [dependencies]
 matches = "0.1.6"
-cross-check-config = { path = "../config" }
+cross-check-config = { path = "../config", features = ["parse-syntax"] }
 
 [dev-dependencies]
 cross-check-derive = { path = "../derive-macros" }
