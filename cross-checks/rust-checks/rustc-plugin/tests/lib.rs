@@ -35,3 +35,14 @@ fn test_entry() {
     abcd();
     expect_xcheck(1, 0x7c93ee4f_u64);
 }
+
+#[test]
+#[should_panic]
+fn test_no_xcheck() {
+    #[cross_check(none)]
+    fn abcd() { }
+
+    abcd();
+    expect_xcheck(1, 0x7c93ee4f_u64);
+}
+
