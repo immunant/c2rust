@@ -399,7 +399,10 @@ impl<W: Write> Printer<W> {
         }
 
         match context.c_decls.get(&decl_id).map(|l| &l.kind) {
-            Some(&CDeclKind::Function { ref name, ref parameters, ref body, .. }) => {
+            Some(&CDeclKind::Function { is_extern, ref name, ref parameters, ref body, .. }) => {
+                if is_extern {
+                    self.writer.write_all(b"extern ")?;
+                }
                 // TODO typ
                 self.writer.write_fmt(format_args!("{}", name))?;
                 self.writer.write_all(b"(\n")?;
@@ -409,7 +412,7 @@ impl<W: Write> Printer<W> {
                         Some(&CDeclKind::Variable { ref ident, ref typ, .. }) => {
                             self.pad()?;
                             self.print_qtype(*typ, Some(ident.as_str()), context)?;
-                            self.writer.write_fmt(format_args!(" {},\n", ident))?;
+                            self.writer.write(b",\n")?;
                         }
                         _ => panic!("Function argument is not VarDecl"),
                     }
@@ -423,7 +426,12 @@ impl<W: Write> Printer<W> {
                 }
             },
 
-            Some(&CDeclKind::Variable { ref ident, ref initializer, ref typ }) => {
+            Some(&CDeclKind::Variable { is_static, is_extern, ref ident, ref initializer, ref typ }) => {
+                if is_extern {
+                    self.writer.write_all(b"extern ")?;
+                } else if is_static {
+                    self.writer.write_all(b"static ")?;
+                }
                 self.print_qtype(*typ, Some(ident.as_str()), context)?;
                 match initializer {
                     &Some(ref init) => {

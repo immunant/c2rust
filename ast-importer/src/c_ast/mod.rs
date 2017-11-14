@@ -171,11 +171,11 @@ pub type CStmt = Located<CStmtKind>;
 pub type CExpr = Located<CExprKind>;
 pub type CType = Located<CTypeKind>;
 
-
 #[derive(Debug, Clone)]
 pub enum CDeclKind {
     // http://clang.llvm.org/doxygen/classclang_1_1FunctionDecl.html
     Function {
+        is_extern: bool,
         typ: CFuncTypeId,
         name: String,
         parameters: Vec<CParamId>,
@@ -184,6 +184,8 @@ pub enum CDeclKind {
 
     // http://clang.llvm.org/doxygen/classclang_1_1VarDecl.html
     Variable {
+        is_static: bool,
+        is_extern: bool,
         ident: String,
         initializer: Option<CExprId>,
         typ: CQualTypeId,
