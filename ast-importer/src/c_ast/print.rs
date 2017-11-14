@@ -419,7 +419,7 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b") ")?;
                 match body {
                     &Some(b) => self.print_stmt(b, newline, false, context),
-                    &None => { self.writer.write_all(b"; "); Ok(()) }
+                    &None => { self.writer.write_all(b"; ")?; Ok(()) }
                 }
             },
 

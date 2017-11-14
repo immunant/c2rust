@@ -130,9 +130,8 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
                     })
                     .collect();
 
-                match body {
-                    &Some(b) => t.add_function(name, &args, ret, b),
-                    &None => ()
+                if let &Some(b) = body {
+                    t.add_function(name, &args, ret, b)
                 };
             },
 
