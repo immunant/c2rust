@@ -23,6 +23,13 @@ impl<'a> ArgValue<'a> {
         }
     }
 
+    pub fn get_list(&self) -> &ArgList<'a> {
+        match *self {
+            ArgValue::List(ref l) => l,
+            _ => panic!("argument expects list value")
+        }
+    }
+
     #[cfg(feature="parse-syn")]
     pub fn get_str_ident(&self) -> syn::Ident {
         syn::Ident::from(self.get_str().as_str())
@@ -33,13 +40,6 @@ impl<'a> ArgValue<'a> {
         let mut tokens = quote::Tokens::new();
         self.get_str_ident().to_tokens(&mut tokens);
         tokens
-    }
-
-    pub fn get_list(&self) -> &ArgList<'a> {
-        match *self {
-            ArgValue::List(ref l) => l,
-            _ => panic!("argument expects list value")
-        }
     }
 }
 
