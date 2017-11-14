@@ -5,6 +5,8 @@ extern crate serde_derive;
 extern crate serde;
 extern crate serde_yaml;
 
+pub mod attr;
+
 use std::collections::HashMap;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
