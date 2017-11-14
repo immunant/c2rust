@@ -16,4 +16,4 @@ cross-check-config = { path = "../config" }
 
 [dev-dependencies]
 cross-check-derive = { path = "../derive-macros" }
-cross-check-runtime = { path = "../runtime", features = ["xcheck-with-dlsym"] }
+cross-check-runtime = { path = "../runtime", features = ["xcheck-provided"] }
