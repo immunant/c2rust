@@ -932,14 +932,16 @@ impl ConversionContext {
                 // Declarations
 
                 ASTEntryTag::TagFunctionDecl if expected_ty & OTHER_DECL != 0 => {
-                    let name = expect_str(&node.extras[0]).expect("Expected to find function name").to_string();
+                    let name = expect_str(&node.extras[0])
+                        .expect("Expected to find function name").to_string();
 
                     let is_extern = expect_bool(&node.extras[1]).expect("Expected to find visibility");
 
                     let typ_old = node.type_id.expect("Expected to find a type on a function decl");
                     let typ = CTypeId(self.visit_node_type(typ_old, FUNC_TYPE));
 
-                    let (body_id, parameter_ids) = node.children.split_last().expect("Expected to find a function body");
+                    let (body_id, parameter_ids) = node.children.split_last()
+                        .expect("Expected to find a function body");
 
                     let body = body_id.map(|b| self.visit_stmt(b));
 

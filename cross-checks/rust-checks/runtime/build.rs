@@ -1,8 +1,8 @@
-#[cfg(any(feature="xcheck-with-dlsym", feature="xcheck-with-weak"))]
+#[cfg(any(feature="xcheck-with-dlsym", feature="xcheck-with-weak", feature="xcheck-provided"))]
 fn add_libclevrbuf() {
 }
 
-#[cfg(not(any(feature="xcheck-with-dlsym", feature="xcheck-with-weak")))]
+#[cfg(not(any(feature="xcheck-with-dlsym", feature="xcheck-with-weak", feature="xcheck-provided")))]
 fn add_libclevrbuf() {
     let here = ::std::path::PathBuf::from(::std::env::current_dir().unwrap());
     let cross_checks_path = here.parent().and_then(|x| x.parent()).unwrap();

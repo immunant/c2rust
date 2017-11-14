@@ -8,6 +8,7 @@ build = "build.rs"
 [features]
 xcheck-with-dlsym = []
 xcheck-with-weak = []
+xcheck-provided = []
 djb2-ssse3 = ["simd"]
 
 [dependencies]

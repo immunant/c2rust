@@ -692,9 +692,8 @@ impl Translation {
                     CastKind::ToUnion => panic!("TODO cast to union not supported"),
 
                     CastKind::IntegralToBoolean => {
-                        let ty = self.convert_type(ty.ctype);
-                        let val_ty = self. ast_context. index(expr).kind.get_type();
-                        val.map(|x| mk().cast_expr(self.match_bool(true, val_ty, x), ty))
+                        let val_ty = self.ast_context.index(expr).kind.get_type();
+                        val.map(|x| self.match_bool(true, val_ty, x))
                     }
 
                     CastKind::FloatingToBoolean | CastKind::BooleanToSignedIntegral =>

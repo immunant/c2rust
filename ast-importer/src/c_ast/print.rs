@@ -421,8 +421,8 @@ impl<W: Write> Printer<W> {
                 self.pad()?;
                 self.writer.write_all(b") ")?;
                 match body {
-                    &None => self.writer.write_all(b";"),
-                    &Some(body) => self.print_stmt(body, newline, false, context),
+                    &Some(b) => self.print_stmt(b, newline, false, context),
+                    &None => { self.writer.write_all(b"; ")?; Ok(()) }
                 }
             },
 
