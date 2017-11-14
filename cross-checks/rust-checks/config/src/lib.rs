@@ -1,3 +1,4 @@
+#![cfg_attr(feature="parse-syntax", feature(rustc_private))]
 
 #[macro_use]
 extern crate serde_derive;

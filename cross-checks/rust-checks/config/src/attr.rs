@@ -2,8 +2,14 @@
 #[cfg(feature="parse-syn")]
 extern crate syn;
 
+#[cfg(feature="parse-syntax")]
+extern crate syntax;
+
 use std::collections::HashMap;
 use std::ops::Deref;
+
+#[cfg(feature="parse-syntax")]
+use self::syntax::ast;
 
 #[cfg(feature="with-quote")]
 use quote::ToTokens;
@@ -100,6 +106,46 @@ pub fn get_item_args(mi: &syn::MetaItem) -> ArgList {
 
                         syn::MetaItem::List(ref kw, _) => {
                             (kw.as_ref(), ArgValue::List(get_item_args(mi)))
+                        }
+                    }
+                },
+                _ => panic!("unknown item passed to by_value: {:?}", *item)
+            }
+        }).collect())
+    } else {
+        Default::default()
+    }
+}
+
+#[cfg(feature="parse-syntax")]
+pub fn get_item_args(mi: &ast::MetaItem) -> ArgList<'static> {
+    if let Some(ref items) = mi.meta_item_list() {
+        ArgList::from_map(items.iter().map(|item| {
+            match item.node {
+                ast::NestedMetaItemKind::MetaItem(ref mi) => {
+                    let kw = unsafe {
+                        let kw_str = mi.name.interned().as_str();
+                        // FIXME: this looks unsafe, but mi.name.as_str()
+                        // returns an InternedString whose sole member is
+                        // a &'static str (which we're forcing the conversion to)
+                        // Ideally, InternedString's as_ref() or deref() would
+                        // correctly return a &'static str reference
+                        ::std::mem::transmute::<&str, &'static str>(kw_str.as_ref())
+                    };
+                    match mi.node {
+                        ast::MetaItemKind::Word => (kw, ArgValue::Nothing),
+
+                        ast::MetaItemKind::NameValue(ref val) => {
+                            match val.node {
+                                ast::LitKind::Str(ref s, ast::StrStyle::Cooked) =>
+                                    (kw, ArgValue::Str(String::from(&*s.as_str()))),
+
+                                _ => panic!("invalid tag value for by_value: {:?}", *val)
+                            }
+                        },
+
+                        ast::MetaItemKind::List(_) => {
+                            (kw, ArgValue::List(get_item_args(mi)))
                         }
                     }
                 },
