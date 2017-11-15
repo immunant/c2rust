@@ -8,10 +8,6 @@ use std::ops::Index;
 pub struct TypeConverter {
 }
 
-pub fn mk_qualified(quals: &Qualifiers) -> Builder {
-    mk().set_mutbl(if quals.is_const { Mutability::Immutable } else { Mutability:: Mutable })
-}
-
 impl TypeConverter {
 
     pub fn new() -> TypeConverter {
@@ -58,7 +54,8 @@ impl TypeConverter {
 
                     _ => {
                         let child_ty = self.convert(ctxt, *ctype);
-                        mk_qualified(qualifiers).ptr_ty(child_ty)
+                        let mutbl = if qualifiers.is_const { Mutability::Immutable } else { Mutability:: Mutable };
+                        mk().set_mutbl(mutbl).ptr_ty(child_ty)
                     }
                 }
             }
