@@ -192,13 +192,11 @@ impl ScopeCheckConfig {
                 }
                 "ahasher" => {
                     Rc::make_mut(&mut self.inherited).ahasher =
-                        arg.get_str()
-                           .map(|s| cx.parse_tts(String::from(s)))
+                        Some(cx.parse_tts(String::from(arg.as_str())));
                 }
                 "shasher" => {
                     Rc::make_mut(&mut self.inherited).shasher =
-                        arg.get_str()
-                           .map(|s| cx.parse_tts(String::from(s)))
+                        Some(cx.parse_tts(String::from(arg.as_str())));
                 }
 
                 // Cross-check type
