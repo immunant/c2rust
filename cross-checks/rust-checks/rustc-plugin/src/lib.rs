@@ -68,6 +68,8 @@ impl CrossCheckHash for xcfg::XCheckType {
 fn parse_xcheck_type(name: &'static str,
                      arg: &xcfg::attr::ArgValue) -> Option<xcfg::XCheckType> {
     match name {
+        "disabled" |
+        "none" => Some(xcfg::XCheckType::None),
         "name" => {
             arg.get_str().map(|s| {
                 let name = String::from(&*s.as_str());
