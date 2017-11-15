@@ -418,12 +418,22 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagRecordType if expected_ty & OTHER_TYPE != 0 => {
+                TypeTag::TagStructType if expected_ty & OTHER_TYPE != 0 => {
                     let decl = expect_u64(&ty_node.extras[0])
-                        .expect("Record decl not found");
+                        .expect("Struct decl not found");
                     let decl_new = CDeclId(self.visit_node_type(decl, RECORD_DECL));
 
-                    let record_ty = CTypeKind::Record(decl_new);
+                    let record_ty = CTypeKind::Struct(decl_new);
+                    self.add_type(new_id, not_located(record_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
+                TypeTag::TagUnionType if expected_ty & OTHER_TYPE != 0 => {
+                    let decl = expect_u64(&ty_node.extras[0])
+                        .expect("Union decl not found");
+                    let decl_new = CDeclId(self.visit_node_type(decl, RECORD_DECL));
+
+                    let record_ty = CTypeKind::Union(decl_new);
                     self.add_type(new_id, not_located(record_ty));
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
@@ -990,7 +1000,7 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, VAR_DECL);
                 }
 
-                ASTEntryTag::TagRecordDecl if expected_ty & RECORD_DECL != 0 => {
+                ASTEntryTag::TagStructDecl if expected_ty & RECORD_DECL != 0 => {
                     let name = expect_str(&node.extras[0]).ok().map(str::to_string);
                     let fields: Vec<CDeclId> = node.children
                         .iter()
@@ -1000,7 +1010,23 @@ impl ConversionContext {
                         })
                         .collect();
 
-                    let record = CDeclKind::Record { name, fields };
+                    let record = CDeclKind::Struct { name, fields };
+
+                    self.add_decl(new_id, located(node, record));
+                    self.processed_nodes.insert(new_id, RECORD_DECL);
+                },
+
+                ASTEntryTag::TagUnionDecl if expected_ty & RECORD_DECL != 0 => {
+                    let name = expect_str(&node.extras[0]).ok().map(str::to_string);
+                    let fields: Vec<CDeclId> = node.children
+                        .iter()
+                        .map(|id| {
+                            let field = id.expect("Record field decl not found");
+                            CDeclId(self.visit_node_type(field, FIELD_DECL))
+                        })
+                        .collect();
+
+                    let record = CDeclKind::Union { name, fields };
 
                     self.add_decl(new_id, located(node, record));
                     self.processed_nodes.insert(new_id, RECORD_DECL);

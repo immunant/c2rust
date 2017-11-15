@@ -193,7 +193,7 @@ impl Translation {
 
     fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> P<Item> {
         match self.ast_context.index(decl_id).kind {
-            CDeclKind::Record{ref name, ref fields} => {
+            CDeclKind::Struct{ref name, ref fields} => {
                 // TODO: Add mapping from declaration ID to struct name to support unnamed structs
                 if let &Some(ref name) = name {
                     let fields: Vec<StructField> = fields.into_iter().map(|x| {
@@ -370,19 +370,6 @@ impl Translation {
         self.renamer.borrow_mut().drop_scope();
 
         stmts_block(stmts)
-    }
-
-    fn convert_struct(&mut self, name: Ident, fields: &[(&str, CTypeId)]) -> P<Item> {
-        let struct_fields =
-            fields
-                .iter()
-                .map(|&(id, ty)| {
-                    let ty = self.convert_type(ty);
-                    mk().struct_field(id, ty)
-                })
-                .collect();
-
-        mk().struct_item(name, struct_fields)
     }
 
     fn convert_stmt(&self, stmt_id: CStmtId) -> Vec<Stmt> {
