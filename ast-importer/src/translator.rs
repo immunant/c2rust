@@ -905,28 +905,35 @@ impl Translation {
             CExprKind::InitList(ty, ref ids) => {
                 let resolved = &self.ast_context.resolve_type(ty.ctype).kind;
 
-                if let &CTypeKind::ConstantArray(ty, n) = resolved {
+                match resolved {
+                    &CTypeKind::ConstantArray(ty, n) => {
+                        // Convert all of the provided initializer values
+                        let mut stmts: Vec<Stmt> = vec![];
+                        let mut vals: Vec<P<Expr>> = vec![];
+                        for v in ids {
+                            let mut x = self.convert_expr(true, *v);
+                            stmts.append(&mut x.stmts);
+                            vals.push(x.val);
+                        }
 
-                    // Convert all of the provided initializer values
-                    let mut stmts: Vec<Stmt> = vec![];
-                    let mut vals: Vec<P<Expr>> = vec![];
-                    for v in ids {
-                        let mut x = self.convert_expr(true, *v);
-                        stmts.append(&mut x.stmts);
-                        vals.push(x.val);
-                    }
+                        // Pad out the array literal with default values to the desired size
+                        for _i in ids.len()..n {
+                            vals.push(self.implicit_default_expr(ty))
+                        }
 
-                    // Pad out the array literal with default values to the desired size
-                    for _i in ids.len() .. n {
-                        vals.push(self.implicit_default_expr(ty))
+                        WithStmts {
+                            stmts,
+                            val: mk().array_expr(vals),
+                        }
                     }
-
-                    WithStmts {
-                        stmts,
-                        val: mk().array_expr(vals),
+                    &CTypeKind::Record { .. } => {
+                        WithStmts::new(
+                            mk().call_expr(mk().ident_expr("default"), vec![] as Vec<P<Expr>>)
+                        )
                     }
-                } else {
-                    panic!("Init list not implemented for structs");
+                    _ => {
+                        panic!("Init list not implemented for structs");
+                    }
                 }
             }
             CExprKind::ImplicitValueInit(ref ty) =>
