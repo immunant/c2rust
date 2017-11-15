@@ -72,7 +72,7 @@ fn parse_xcheck_type(name: &'static str,
         "none"     => xcfg::XCheckType::None,
         "disabled" => xcfg::XCheckType::Disabled,
 
-        "name" | "djb2" => xcfg::XCheckType::Djb2(String::from(arg.as_str())),
+        "djb2" => xcfg::XCheckType::Djb2(String::from(arg.as_str())),
         "fixed" => {
             match *arg {
                 // TODO: handle LitKind::Str
@@ -206,12 +206,6 @@ impl ScopeCheckConfig {
                     Rc::make_mut(&mut self.inherited).shasher =
                         Some(cx.parse_tts(String::from(arg.as_str())));
                 }
-
-                // Cross-check type
-                "name" |
-                "fixed" => {
-                    self.main_xcheck = parse_xcheck_type(name, &arg);
-                },
 
                 // Function-specific attributes
                 "entry" if scope == AttrScope::Function => {

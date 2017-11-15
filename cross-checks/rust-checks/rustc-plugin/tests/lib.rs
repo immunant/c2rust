@@ -57,7 +57,7 @@ fn test_no_xcheck() {
 
 #[test]
 fn test_custom_fn_name() {
-    #[cross_check(yes, name="djb2")]
+    #[cross_check(yes, entry(djb2="djb2"))]
     fn abcd() { }
 
     abcd();
@@ -67,7 +67,7 @@ fn test_custom_fn_name() {
 
 #[test]
 fn test_custom_fn_id() {
-    #[cross_check(yes, fixed=0x12345678)]
+    #[cross_check(yes, entry(fixed=0x12345678))]
     fn abcd() { }
 
     abcd();
