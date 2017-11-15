@@ -93,12 +93,20 @@ fn parse_xcheck_type(name: &'static str,
      }
 }
 
-fn parse_xcheck_arg(args: &xcfg::attr::ArgList<'static>) -> Option<xcfg::XCheckType> {
+fn parse_xcheck_arglist(args: &xcfg::attr::ArgList<'static>) -> Option<xcfg::XCheckType> {
     if args.len() > 1 {
         panic!("expected single argument for cross-check type attribute");
     }
     args.iter().next()
         .map(|(name, ref arg)| parse_xcheck_type(name, arg))
+}
+
+fn parse_xcheck_arg(arg: &xcfg::attr::ArgValue<'static>) -> Option<xcfg::XCheckType> {
+    match *arg {
+        xcfg::attr::ArgValue::Nothing => None,
+        xcfg::attr::ArgValue::List(ref l) => parse_xcheck_arglist(l),
+        _ => panic!("unexpected argument to all_args():{:?}", *arg)
+    }
 }
 
 #[derive(Clone)]
@@ -206,19 +214,15 @@ impl ScopeCheckConfig {
                 },
 
                 // Function-specific attributes
+                "entry" if scope == AttrScope::Function => {
+                    self.main_xcheck = parse_xcheck_arg(&arg)
+                        .unwrap_or(xcfg::XCheckType::Default);
+                }
+
                 "all_args" if scope == AttrScope::Function => {
                     // Enable cross-checking for arguments
-                    match *arg {
-                        xcfg::attr::ArgValue::Nothing => {
-                            // #[cross_check(all_args)] just enables cross-checking
-                            self.all_args_xcheck = xcfg::XCheckType::Default;
-                        }
-                        xcfg::attr::ArgValue::List(ref l) => {
-                            self.all_args_xcheck = parse_xcheck_arg(l)
-                                .unwrap_or(xcfg::XCheckType::Default);
-                        }
-                        _ => panic!("unexpected argument to all_args():{:?}", *arg)
-                    }
+                    self.all_args_xcheck = parse_xcheck_arg(&arg)
+                        .unwrap_or(xcfg::XCheckType::Default);
                 }
 
                 "args" if scope == AttrScope::Function => {
@@ -226,7 +230,7 @@ impl ScopeCheckConfig {
                     if let xcfg::attr::ArgValue::List(ref l) = *arg {
                         self.sub_xchecks.extend(l.iter().filter_map(|(name, arg)| {
                             if let xcfg::attr::ArgValue::List(ref l) = *arg {
-                                let arg_xcheck = parse_xcheck_arg(l)
+                                let arg_xcheck = parse_xcheck_arglist(l)
                                     .expect(&format!("expected valid cross-check type \
                                                       for argument: {}", name));
                                 Some((xcfg::FieldIndex::from_str(name), arg_xcheck))
@@ -546,7 +550,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
         xcheck_attr.and_then(|attr| {
             attr.parse_meta(self.cx.parse_sess).ok().and_then(|mi| {
                 let args = xcfg::attr::get_syntax_item_args(&mi);
-                parse_xcheck_arg(&args)
+                parse_xcheck_arglist(&args)
             })
         })
     }
