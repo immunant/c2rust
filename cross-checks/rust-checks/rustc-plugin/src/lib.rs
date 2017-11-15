@@ -198,11 +198,23 @@ impl ScopeCheckConfig {
                         .unwrap_or(xcfg::XCheckType::Default);
                 },
 
-                "args" => {
+                "all_args" => {
                     // Enable cross-checking for arguments
-                    // FIXME: enable by default???
-                    self.all_args_xcheck = xcfg::XCheckType::Default;
-                    // TODO: recursively parse arg if it's an ArgValue::List
+                    match *arg {
+                        xcfg::attr::ArgValue::Nothing => {
+                            // #[cross_check(all_args)] just enables cross-checking
+                            self.all_args_xcheck = xcfg::XCheckType::Default;
+                        }
+                        xcfg::attr::ArgValue::List(ref l) => {
+                            self.all_args_xcheck = parse_xcheck_arg(l)
+                                .unwrap_or(xcfg::XCheckType::Default);
+                        }
+                        _ => panic!("unexpected argument to all_args():{:?}", *arg)
+                    }
+                }
+
+                "args" => {
+                    // TODO
                 }
 
                 // Structure-specific attributes
