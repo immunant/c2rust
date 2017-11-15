@@ -93,8 +93,7 @@ fn parse_xcheck_type(name: &'static str,
                 _ => panic!("invalid literal for cross_check id: {:?}", arg)
             }
         },
-        // Structure-specific attributes
-        "custom_hash" => {
+        "custom" => {
             arg.get_str().map(|s| {
                 let s = String::from(&*s.as_str());
                 xcfg::XCheckType::Custom(s)
@@ -214,9 +213,13 @@ impl ScopeCheckConfig {
 
                 // Cross-check type
                 "name" |
-                "fixed" |
-                "custom_hash" => {
+                "fixed" => {
                     self.main_xcheck = parse_xcheck_type(name, &arg);
+                },
+
+                "custom_hash" if scope == AttrScope::Struct => {
+                    let s = arg.as_str().clone();
+                    self.main_xcheck = xcfg::XCheckType::Custom(s);
                 },
 
                 "all_args" if scope == AttrScope::Function => {
