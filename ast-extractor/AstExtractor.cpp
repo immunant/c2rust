@@ -555,6 +555,17 @@ class TranslateASTVisitor final
           return true;
       }
       
+      /*
+       [C99 6.5.2.5] Compound literal expression
+       Children:
+       - initializer expression
+       Extras: (none)
+       */
+      bool VisitCompoundLiteralExpr(CompoundLiteralExpr *E) {
+          std::vector<void*> childIds { E->getInitializer() };
+          encode_entry(E, TagCompoundLiteralExpr, childIds);
+          return true;
+      }
       bool VisitInitListExpr(InitListExpr *ILE) {
           std::vector<void*> childIds;
           for (auto x : ILE->inits()) {
