@@ -159,6 +159,12 @@ impl<W: Write> Printer<W> {
             }
             Some(&CExprKind::ImplicitValueInit{..}) =>
                 self.writer.write_all(b"{}"),
+            Some(&CExprKind::CompoundLiteral(ty, val)) => {
+                self.writer.write_all(b"(")?;
+                self.print_qtype(ty, None, context)?;
+                self.writer.write_all(b")")?;
+                self.print_expr(val, context)
+            }
             None => panic!("Could not find expression with ID {:?}", expr_id),
            // _ => unimplemented!("Printer::print_expr"),
         }

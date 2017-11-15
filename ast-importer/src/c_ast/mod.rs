@@ -102,6 +102,7 @@ impl TypedAstContext {
 
             CExprKind::InitList{..} => false,
             CExprKind::ImplicitValueInit{..} => false,
+            CExprKind::CompoundLiteral(_, val) => self.is_expr_pure(val),
         }
     }
 }
@@ -278,6 +279,9 @@ pub enum CExprKind {
 
     // Designated initializer
     ImplicitValueInit(CQualTypeId),
+
+    // Compound literal
+    CompoundLiteral(CQualTypeId, CExprId),
 }
 
 #[derive(Copy, Debug, Clone)]
@@ -302,6 +306,7 @@ impl CExprKind {
             CExprKind::Conditional(ty, _, _, _) => ty,
             CExprKind::InitList(ty, _) => ty,
             CExprKind::ImplicitValueInit(ty) => ty,
+            CExprKind::CompoundLiteral(ty, _) => ty,
         }
     }
 

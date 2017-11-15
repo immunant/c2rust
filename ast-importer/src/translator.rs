@@ -935,6 +935,9 @@ impl Translation {
                 }
             }
 
+            CExprKind::CompoundLiteral(_, val) =>
+                self.convert_expr(use_, val),
+
             CExprKind::InitList(ty, ref ids) => {
                 let resolved = &self.ast_context.resolve_type(ty.ctype).kind;
 
@@ -960,18 +963,60 @@ impl Translation {
                             val: mk().array_expr(vals),
                         }
                     }
-                    &CTypeKind::Struct { .. } => {
-                        WithStmts::new(
-                            mk().call_expr(mk().ident_expr("default"), vec![] as Vec<P<Expr>>)
-                        )
+                    &CTypeKind::Struct(struct_id) => {
+                        self.convert_struct_literal(struct_id,  ids.as_ref(), ty)
                     }
-                    _ => {
-                        panic!("Init list not implemented for structs");
+                    t => {
+                        panic!("Init list not implemented for {:?}", t);
                     }
                 }
             }
             CExprKind::ImplicitValueInit(ty) =>
                 WithStmts::new(self.implicit_default_expr(ty.ctype)),
+        }
+    }
+
+    fn convert_struct_literal(&self, struct_id: CRecordId, ids: &[CExprId], ty: CQualTypeId) -> WithStmts<P<Expr>> {
+
+        let struct_decl = &self.ast_context.index(struct_id).kind;
+
+        let (struct_name, field_decls) = match struct_decl {
+            &CDeclKind::Struct { ref name, ref fields } => {
+                let fieldnames: Vec<(String, CQualTypeId)> = fields.iter().map(|x| {
+                    if let &CDeclKind::Field { ref name, typ } = &self.ast_context.index(*x).kind {
+                        (name.to_owned(), typ)
+                    } else {
+                        panic!("Struct field decl type mismatch")
+                    }
+                }).collect();
+
+                (name.to_owned().unwrap(), fieldnames)
+            }
+            _ => panic!("Struct literal declaration mismatch"),
+        };
+
+        let mut stmts: Vec<Stmt> = vec![];
+        let mut fields: Vec<Field> = vec![];
+
+        // Add specified record fields
+        for i in 0usize..ids.len() {
+            let v = ids[i];
+            let &(ref field_name, _) = &field_decls[i];
+
+            let mut x = self.convert_expr(ExprUse::RValue, v);
+            stmts.append(&mut x.stmts);
+            fields.push(mk().field(field_name, x.val));
+        }
+
+        // Pad out remaining omitted record fields
+        for i in ids.len()..fields.len() {
+            let &(ref field_name, ty) = &field_decls[i];
+            fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype)));
+        }
+        
+        WithStmts {
+            stmts,
+            val: mk().struct_expr(vec![mk().path_segment(struct_name)], fields)
         }
     }
 
