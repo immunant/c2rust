@@ -110,36 +110,8 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
     }
 
     for top_id in &ast_context.c_decls_top {
-
-        match ast_context.index(*top_id).kind {
-            CDeclKind::Function { ref typ, ref name, ref parameters, ref body } => {
-
-                let ret: CQualTypeId = match ast_context.index(*typ).kind {
-                    CTypeKind::Function(ret, _) => ret,
-                    _ => panic!("Type of function {:?} was not a function type", *top_id)
-                };
-
-                let args: Vec<(String, CQualTypeId)> = parameters
-                    .iter()
-                    .map(|param_id  | {
-                        if let CDeclKind::Variable { ref ident, ref typ, .. } = ast_context.index(*param_id).kind {
-                            (ident.clone(), *typ)
-                        } else {
-                            panic!("Parameter is not variable declaration")
-                        }
-                    })
-                    .collect();
-
-                t.add_function(name, &args, ret, *body);
-            },
-
-            CDeclKind::Typedef { ref name, ref typ } => {
-                t.add_typedef(name, typ.ctype);
-            },
-
-            // XXX: Fill in other top-level declaration kinds
-            _ => { },
-        }
+        let item = t.convert_decl(true, *top_id);
+        t.items.push(item);
     }
 
     to_string(|s| {
@@ -183,40 +155,134 @@ impl Translation {
         }
     }
 
-    pub fn add_struct(&mut self, name: Ident, fields: &[(&str, CTypeId)]) {
-        let struct_fields =
-            fields
-                .iter()
-                .map(|&(id, ty)| {
-                    let ty = self.convert_type(ty);
-                    mk().struct_field(id, ty)
-                })
-                .collect();
-
-        let item = mk().struct_item(name, struct_fields);
-
-        self.items.push(item);
+    // This node should _never_ show up in the final generated code. This is an easy way to notice
+    // if it does.
+    fn panic() -> P<Expr> {
+        mk().mac_expr(mk().mac(vec!["panic"], vec![]))
     }
 
-    pub fn add_typedef(&mut self, name: &str, typeid: CTypeId) {
-        let ty = self.convert_type(typeid);
-        let item = mk().type_item(name, ty);
-        self.items.push(item);
+    fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> P<Item> {
+        match self.ast_context.index(decl_id).kind {
+            CDeclKind::Record{ref name, ref fields} => {
+                // TODO: Add mapping from declaration ID to struct name to support unnamed structs
+                if let &Some(ref name) = name {
+                    let fields: Vec<StructField> = fields.into_iter().map(|x| {
+                        let field_decl = self.ast_context.index(*x);
+                        match &field_decl.kind {
+                            &CDeclKind::Field {ref name, typ} => {
+                                let typ = self.convert_type(typ.ctype);
+                                mk().struct_field(name, typ)
+                            }
+                            _ => panic!("Found non-field in record field list"),
+                        }
+                    }).collect();
+
+                    mk().pub_().struct_item(name, fields)
+                } else {
+                    panic!("Anonymous struct declarations not implemented")
+                }
+            }
+
+            CDeclKind::Function { .. } if !toplevel => panic!("Function declarations must be top-level"),
+            CDeclKind::Function { is_extern, typ, ref name, ref parameters, body } => {
+
+                let ret: CQualTypeId = match self.ast_context.index(typ).kind {
+                    CTypeKind::Function(ret, _) => ret,
+                    _ => panic!("Type of function {:?} was not a function type", decl_id)
+                };
+
+                let args: Vec<(String, CQualTypeId)> = parameters
+                    .iter()
+                    .map(|param_id  | {
+                        if let CDeclKind::Variable { ref ident, typ, .. } = self.ast_context.index(*param_id).kind {
+                            (ident.clone(), typ)
+                        } else {
+                            panic!("Parameter is not variable declaration")
+                        }
+                    })
+                    .collect();
+
+                self.convert_function(is_extern, name, &args, ret, body)
+            },
+
+            CDeclKind::Typedef { ref name, ref typ } => {
+                let ty = self.convert_type(typ.ctype);
+                mk().type_item(name, ty)
+            },
+
+            // Extern variable without intializer (definition elsewhere)
+            CDeclKind::Variable { is_extern: true, is_static, ref ident, initializer: None, typ } => {
+                assert!(is_static, "An extern variable must be static");
+
+                let (ty, mutbl, _) = self.convert_variable(None, typ);
+
+                let extern_item = mk()
+                    .set_mutbl(mutbl)
+                    .foreign_static(ident, ty);
+
+                mk().abi(Abi::C)
+                    .foreign_items(vec![extern_item])
+            }
+
+            // Extern variable with intializer (definition here)
+            CDeclKind::Variable { is_extern: true, is_static, ref ident, initializer, typ } => {
+                assert!(is_static, "An extern variable must be static");
+
+                let (ty, mutbl, init) = self.convert_variable(initializer, typ);
+
+                let init = init
+                    .expect("Initializer expected")
+                    .to_expr();
+
+                mk().single_attr("no_mangle")
+                    .vis(Visibility::Public)
+                    .abi(Abi::C)
+                    .set_mutbl(mutbl)
+                    .static_item(ident, ty, init)
+            }
+
+            // Static variable (definition here)
+            CDeclKind::Variable { is_static: true, ref ident, initializer, typ, .. } => {
+
+                let (ty, mutbl, init) = self.convert_variable(initializer, typ);
+
+                // Static storage variables are zero-initialized
+                let init = init
+                    .map(|w| w.to_expr())
+                    .unwrap_or(self.implicit_default_expr(typ.ctype));
+
+                mk().set_mutbl(mutbl)
+                    .static_item(ident, ty, init)
+            }
+
+            CDeclKind::Variable { .. } => panic!("This should be handled in 'convert_decl_stmt'"),
+
+            _ => unimplemented!()
+        }
     }
 
-    pub fn add_function(&mut self, name: &str, arguments: &[(String, CQualTypeId)], return_type: CQualTypeId, body: CStmtId) {
+    fn convert_function(
+        &self,
+        is_extern: bool,
+        name: &str,
+        arguments: &[(String, CQualTypeId)],
+        return_type: CQualTypeId,
+        body: Option<CStmtId>,
+    ) -> P<Item> {
         // Start scope for function parameters
         self.renamer.borrow_mut().add_scope();
 
         let args: Vec<Arg> = arguments
             .iter()
             .map(|&(ref var, ref typ)| {
-                let rust_var = self.renamer.borrow_mut().insert(var.to_string(), var.as_str()).expect("Failed to insert argument");
+                let rust_var = self.renamer.borrow_mut()
+                    .insert(var.to_string(), var.as_str())
+                    .expect(&format!("Failed to insert argument '{}'", var));
 
                 let ty = self.convert_type(typ.ctype);
 
                 let pat = mk_qualified(&typ.qualifiers).ident_pat(rust_var);
-                mk().arg(ty , pat)
+                mk().arg(ty, pat)
             })
             .collect();
 
@@ -224,25 +290,36 @@ impl Translation {
 
         let decl = mk().fn_decl(args, ret);
 
-        let block = self.convert_function_body(body);
+        let item = if let Some(body) = body {
+            // Translating an actual function
+
+            let block = self.convert_function_body(body);
+
+            let mut mk_ = mk();
+
+            // Only make `#[no_mangle] pub extern "C"` if the function is `extern`
+            if is_extern {
+                mk_ = mk_
+                    .single_attr("no_mangle")
+                    .vis(Visibility::Public)
+                    .abi(Abi::C);
+            }
+
+            mk_.unsafe_().fn_item(name, decl, block)
+
+        } else {
+            // Translating an extern function declaration
+
+            let function_decl = mk().foreign_fn(name, decl);
+
+            mk().abi(Abi::C)
+                .foreign_items(vec![function_decl])
+        };
 
         // End scope for function parameters
         self.renamer.borrow_mut().drop_scope();
 
-        let function =mk()
-            .single_attr("no_mangle")
-            .vis(Visibility::Public)
-            .unsafe_()
-            .abi(Abi::C)
-            .fn_item(name, decl, block);
-
-        self.items.push(function);
-    }
-
-    // This node should _never_ show up in the final generated code. This is an easy way to notice
-    // if it does.
-    fn panic() -> P<Expr> {
-        mk().mac_expr(mk().mac(vec!["panic"], vec![]))
+        item
     }
 
     fn convert_function_body(&self, body_id: CStmtId) -> P<Block> {
@@ -262,6 +339,19 @@ impl Translation {
         self.renamer.borrow_mut().drop_scope();
 
         stmts_block(stmts)
+    }
+
+    fn convert_struct(&mut self, name: Ident, fields: &[(&str, CTypeId)]) -> P<Item> {
+        let struct_fields =
+            fields
+                .iter()
+                .map(|&(id, ty)| {
+                    let ty = self.convert_type(ty);
+                    mk().struct_field(id, ty)
+                })
+                .collect();
+
+        mk().struct_item(name, struct_fields)
     }
 
     fn convert_stmt(&self, stmt_id: CStmtId) -> Vec<Stmt> {
@@ -414,13 +504,16 @@ impl Translation {
     fn convert_decl_stmt(&self, decl_id: CDeclId) -> Vec<Stmt> {
 
         match self.ast_context.index(decl_id).kind {
-            CDeclKind::Variable { ref ident, ref initializer, ref typ } => {
-                let rust_name = self.renamer.borrow_mut().insert(ident.clone(), &ident).unwrap();
+
+            CDeclKind::Variable { is_static, is_extern, ref ident, initializer, typ } if !is_static && !is_extern => {
+
+                let rust_name = self.renamer.borrow_mut()
+                    .insert(ident.clone(), &ident)
+                    .expect(&format!("Failed to insert variable '{}'", ident));
+                let (ty, mutbl, init) = self.convert_variable(initializer, typ);
+                let init = with_stmts_opt(init);
+
                 let pat = mk_qualified(&typ.qualifiers).ident_pat(rust_name);
-
-                let init = with_stmts_opt(initializer.map(|x| self.convert_expr(true, x)));
-
-                let ty = self.convert_type(typ.ctype);
                 let local = mk().local(pat, Some(ty), init.val);
 
                 let mut stmts = init.stmts;
@@ -428,8 +521,38 @@ impl Translation {
                 stmts
             }
 
-            ref t => panic!("Declaration not implemented {:?}", t),
+            ref decl => {
+
+                // TODO: We need this because we can have multiple 'extern' decls of the same variable.
+                //       When we do, we must make sure to insert into the renamer the first time, and
+                //       then skip subsequent times.
+                let skip = match decl {
+                    &CDeclKind::Variable { ref ident, .. } => self.renamer.borrow_mut()
+                        .insert(ident.clone(), &ident)
+                        .is_none(),
+                    _ => false,
+                };
+
+                if skip {
+                    vec![]
+                } else {
+                    let item = self.convert_decl(false, decl_id);
+                    vec![mk().item_stmt(item)]
+                }
+            },
         }
+    }
+
+    fn convert_variable(
+        &self,
+        initializer: Option<CExprId>,
+        typ: CQualTypeId
+    ) -> (P<Ty>, Mutability, Option<WithStmts<P<Expr>>>) {
+        let init = initializer.map(|x| self.convert_expr(true, x));
+        let ty = self.convert_type(typ.ctype);
+        let mutbl = if typ.qualifiers.is_const { Mutability::Immutable } else { Mutability:: Mutable };
+
+        (ty, mutbl, init)
     }
 
     fn convert_type(&self, type_id: CTypeId) -> P<Ty> {
@@ -480,7 +603,7 @@ impl Translation {
 
         match self.ast_context.index(expr_id).kind {
 
-            CExprKind::UnaryType(ty, kind, arg_ty) => {
+            CExprKind::UnaryType(_ty, kind, arg_ty) => {
                 let ty = self.convert_type(arg_ty.ctype);
                 let name = match kind {
                     UnTypeOp::SizeOf => "size_of",
@@ -499,7 +622,9 @@ impl Translation {
 
             CExprKind::DeclRef(_, ref decl_id) => {
                 let varname = self.ast_context.index(*decl_id).kind.get_name().expect("expected variable name").to_owned();
-                let rustname = self.renamer.borrow_mut().get(varname).expect("name not declared");
+                let rustname = self.renamer.borrow_mut()
+                    .get(&varname)
+                    .expect(&format!("name not declared: '{}'", varname));
 
                 WithStmts::new(mk().path_expr(vec![rustname]))
             }
@@ -817,7 +942,7 @@ impl Translation {
         } else if resolved_ty.is_floating_type() {
             mk().lit_expr(mk().float_unsuffixed_lit("0."))
         } else {
-            mk().call_expr(mk().ident_expr("default"), vec![] as Vec<P<Expr>>)
+            mk().call_expr(mk().path_expr(vec!["Default", "default"]), vec![] as Vec<P<Expr>>)
         }
     }
 
@@ -999,7 +1124,7 @@ impl Translation {
         arg: P<Expr>,
     ) -> WithStmts<P<Expr>> {
 
-        let CQualTypeId { ctype, qualifiers } = cqual_type;
+        let CQualTypeId { ctype, .. } = cqual_type;
         let ty = self.convert_type(ctype);
         let resolved_ctype = self.ast_context.resolve_type(ctype);
 

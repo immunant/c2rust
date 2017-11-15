@@ -15,5 +15,12 @@ void entry(unsigned buffer_size, int buffer[])
     const_int_ptr w = &x;                    // 'w: const_int_ptr'
     const const_int_ptr v = &x;              // 'v: const_int_ptr'
     indirectly_const_ptr u = &x;             // 'u: indirectly_const_ptr'
+
+    typedef int shadowed;
+    shadowed n = 1;
+    {
+        typedef long shadowed;
+        shadowed n = 2;
+    }
 }
 
