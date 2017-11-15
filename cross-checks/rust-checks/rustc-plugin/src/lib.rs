@@ -245,6 +245,8 @@ impl ScopeCheckConfig {
                                 Some((xcfg::FieldIndex::from_str(name), arg_xcheck))
                             } else { None }
                         }));
+                    } else {
+                        panic!("expected a sub-list");
                     }
                 }
 
