@@ -77,7 +77,7 @@ fn test_custom_fn_id() {
 
 #[test]
 fn test_args_simple() {
-    #[cross_check(yes, args)]
+    #[cross_check(yes, all_args)]
     fn abcd(_a: u8, _b: u64) { }
 
     abcd(0x7fu8, 1u64);
