@@ -86,11 +86,11 @@ fn parse_xcheck_type(name: &'static str,
                     if let Ok(id64) = id128.try_into() {
                         Some(xcfg::XCheckType::Fixed(id64))
                     } else {
-                        panic!("Invalid u32 for cross_check id: {}", id128)
+                        panic!("invalid u32 for cross_check id: {}", id128)
                     }
                 },
 
-                _ => panic!("Invalid literal for cross_check id: {:?}", arg)
+                _ => panic!("invalid literal for cross_check id: {:?}", arg)
             }
         },
         // Structure-specific attributes
@@ -258,7 +258,7 @@ impl ScopeCheckConfig {
                     }
                 }
 
-                name@_ => panic!("Unknown cross_check item: {}", name)
+                name@_ => panic!("unknown cross_check item: {}", name)
             }
         }
     }
@@ -727,7 +727,7 @@ impl MultiItemModifier for CrossCheckExpander {
             }
             // TODO: handle TraitItem
             // TODO: handle ImplItem
-            _ => panic!("Unexpected item: {:?}", item),
+            _ => panic!("unexpected item: {:?}", item),
         }
     }
 }
