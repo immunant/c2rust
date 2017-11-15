@@ -86,3 +86,16 @@ fn test_args_simple() {
     expect_xcheck(xcheck::FUNCTION_ARG_TAG, 0x0f0f0f0f_0f0f0f0f_u64);
     expect_no_xchecks();
 }
+
+#[test]
+fn test_args_override() {
+    #[cross_check(yes, args(_a(fixed=0x1234), _b(none)))]
+    fn abcd(_a: u8, _b: u64) { }
+
+    abcd(0x7fu8, 1u64);
+    expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
+    expect_xcheck(xcheck::FUNCTION_ARG_TAG, 0x1234_u64);
+    expect_no_xchecks();
+}
+
+
