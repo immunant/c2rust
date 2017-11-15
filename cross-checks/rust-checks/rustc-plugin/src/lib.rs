@@ -66,17 +66,17 @@ impl CrossCheckHash for xcfg::XCheckType {
 }
 
 fn parse_xcheck_type(name: &'static str,
-                     arg: &xcfg::attr::ArgValue) -> Option<xcfg::XCheckType> {
+                     arg: &xcfg::attr::ArgValue) -> xcfg::XCheckType {
     match name {
-        "default" => Some(xcfg::XCheckType::Default),
-        "none" => Some(xcfg::XCheckType::None),
-        "disabled" => Some(xcfg::XCheckType::Disabled),
+        "default"  => xcfg::XCheckType::Default,
+        "none"     => xcfg::XCheckType::None,
+        "disabled" => xcfg::XCheckType::Disabled,
 
         "name" | "djb2" => {
             arg.get_str().map(|s| {
                 let name = String::from(&*s.as_str());
                 xcfg::XCheckType::Djb2(name)
-            })
+            }).expect("expected string argument for djb2() cross-check")
         },
         "fixed" => {
             match *arg {
@@ -84,7 +84,7 @@ fn parse_xcheck_type(name: &'static str,
 
                 xcfg::attr::ArgValue::Int(id128) => {
                     if let Ok(id64) = id128.try_into() {
-                        Some(xcfg::XCheckType::Fixed(id64))
+                        xcfg::XCheckType::Fixed(id64)
                     } else {
                         panic!("invalid u32 for cross_check id: {}", id128)
                     }
@@ -98,9 +98,9 @@ fn parse_xcheck_type(name: &'static str,
             arg.get_str().map(|s| {
                 let s = String::from(&*s.as_str());
                 xcfg::XCheckType::Custom(s)
-            })
+            }).expect("expected string argument for custom(...) cross-check")
         },
-        _ => None
+        _ => panic!("unknown cross-check type: {}", name)
      }
 }
 
@@ -108,7 +108,8 @@ fn parse_xcheck_arg(args: &xcfg::attr::ArgList<'static>) -> Option<xcfg::XCheckT
     if args.len() > 1 {
         panic!("expected single argument for cross-check type attribute");
     }
-    args.iter().next().and_then(|(name, ref arg)| parse_xcheck_type(name, arg))
+    args.iter().next()
+        .map(|(name, ref arg)| parse_xcheck_type(name, arg))
 }
 
 #[derive(Clone)]
@@ -215,8 +216,7 @@ impl ScopeCheckConfig {
                 "name" |
                 "fixed" |
                 "custom_hash" => {
-                    self.main_xcheck = parse_xcheck_type(name, &arg)
-                        .unwrap_or(xcfg::XCheckType::Default);
+                    self.main_xcheck = parse_xcheck_type(name, &arg);
                 },
 
                 "all_args" if scope == AttrScope::Function => {
