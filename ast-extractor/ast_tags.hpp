@@ -13,12 +13,13 @@ enum ASTEntryTag {
     TagFunctionDecl = 0,
     TagParmVarDecl,
     TagVarDecl,
-    TagRecordDecl,
+    TagStructDecl,
     TagFieldDecl,
     
     TagEnumDecl,
     TagEnumConstantDecl,
     TagTypedefDecl,
+    TagUnionDecl,
     
     
     TagCompoundStmt = 100,
@@ -77,26 +78,27 @@ enum TypeTag {
     TagULong,
     TagULongLong,
     TagPointer,
-    TagRecordType,
+    TagStructType,
     
+    TagUnionType,
     TagDouble,
     TagLongDouble,
     TagFloat,
     TagConstantArrayType,
-    TagVariableArrayType,
     
+    TagVariableArrayType,
     TagIncompleteArrayType,
     TagEnumType,
     TagFunctionType,
     TagTypeOfType,
-    TagTypedefType,
     
+    TagTypedefType,
     TagElaboratedType,
     TagUChar,
     TagSChar,
     TagChar,
-    TagVoid,
     
+    TagVoid,
     TagBool,
     TagDecayedType,
     TagParenType,

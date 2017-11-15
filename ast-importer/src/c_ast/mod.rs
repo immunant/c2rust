@@ -199,8 +199,14 @@ pub enum CDeclKind {
         typ: CQualTypeId,
     },
 
-    // Record
-    Record {
+    // Struct
+    Struct {
+        name: Option<String>,
+        fields: Vec<CFieldId>,
+    },
+
+    // Union
+    Union {
         name: Option<String>,
         fields: Vec<CFieldId>,
     },
@@ -615,10 +621,11 @@ pub enum CTypeKind {
     // Type wrapped in parentheses
     Paren(CTypeId),
 
-    // Struct or union type
-    //
-    // XXX: distinction between `struct` and `union`
-    Record(CRecordId),
+    // Struct type
+    Struct(CRecordId),
+
+    // Union type
+    Union(CRecordId),
 
     Enum(CDeclId),    // TODO same comment as Typedef
 }
