@@ -3,8 +3,14 @@ name = "cross-check-config"
 version = "0.1.0"
 authors = ["Andrei Homescu <ah@immunant.com>"]
 
+[features]
+parse-syn = ["syn"]
+parse-syntax = []
+with-quote = []
+
 [dependencies]
 serde = "1.0"
 serde_derive = "1.0"
 serde_yaml = "0.7"
 
+syn = { version = "0.11.11", features = ["full", "visit"], optional = true }

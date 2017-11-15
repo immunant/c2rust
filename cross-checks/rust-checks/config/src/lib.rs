@@ -1,9 +1,13 @@
+#![feature(i128_type)]
+#![cfg_attr(feature="parse-syntax", feature(rustc_private))]
 
 #[macro_use]
 extern crate serde_derive;
 
 extern crate serde;
 extern crate serde_yaml;
+
+pub mod attr;
 
 use std::collections::HashMap;
 

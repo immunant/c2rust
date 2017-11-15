@@ -8,10 +8,6 @@ use std::ops::Index;
 pub struct TypeConverter {
 }
 
-pub fn mk_qualified(quals: &Qualifiers) -> Builder {
-    mk().set_mutbl(if quals.is_const { Mutability::Immutable } else { Mutability:: Mutable })
-}
-
 impl TypeConverter {
 
     pub fn new() -> TypeConverter {
@@ -58,7 +54,8 @@ impl TypeConverter {
 
                     _ => {
                         let child_ty = self.convert(ctxt, *ctype);
-                        mk_qualified(qualifiers).ptr_ty(child_ty)
+                        let mutbl = if qualifiers.is_const { Mutability::Immutable } else { Mutability:: Mutable };
+                        mk().set_mutbl(mutbl).ptr_ty(child_ty)
                     }
                 }
             }
@@ -67,11 +64,19 @@ impl TypeConverter {
             CTypeKind::Decayed(ref ctype) => self.convert(ctxt, *ctype),
             CTypeKind::Paren(ref ctype) => self.convert(ctxt, *ctype),
 
-            CTypeKind::Record(ref decl) => {
-                if let CDeclKind::Record { ref name, .. } = ctxt.index(*decl).kind {
+            CTypeKind::Struct(ref decl) => {
+                if let CDeclKind::Struct { ref name, .. } = ctxt.index(*decl).kind {
                     mk().path_ty(mk().path(vec![name.clone().unwrap()]))
                 } else {
-                    panic!("{:?} in record type does not point to a record decl", decl)
+                    panic!("{:?} in struct type does not point to a record decl", decl)
+                }
+            }
+
+            CTypeKind::Union(ref decl) => {
+                if let CDeclKind::Union { ref name, .. } = ctxt.index(*decl).kind {
+                    mk().path_ty(mk().path(vec![name.clone().unwrap()]))
+                } else {
+                    panic!("{:?} in union type does not point to a record decl", decl)
                 }
             }
 

@@ -65,40 +65,50 @@ impl CrossCheckHash for xcfg::XCheckType {
     }
 }
 
-fn parse_xcheck_type(mi: &ast::MetaItem) -> Option<xcfg::XCheckType> {
-    match &*mi.name.as_str() {
-        "name" => {
-            mi.value_str().map(|s| {
+fn parse_xcheck_type(name: &'static str,
+                     arg: &xcfg::attr::ArgValue) -> Option<xcfg::XCheckType> {
+    match name {
+        "default" => Some(xcfg::XCheckType::Default),
+        "none" => Some(xcfg::XCheckType::None),
+        "disabled" => Some(xcfg::XCheckType::Disabled),
+
+        "name" | "djb2" => {
+            arg.get_str().map(|s| {
                 let name = String::from(&*s.as_str());
                 xcfg::XCheckType::Djb2(name)
             })
         },
         "fixed" => {
-            if let ast::MetaItemKind::NameValue(ref lit) = mi.node {
-                match lit.node {
-                    // TODO: handle LitKind::Str
+            match *arg {
+                // TODO: handle LitKind::Str
 
-                    ast::LitKind::Int(id128, _) => {
-                        if let Ok(id64) = id128.try_into() {
-                            Some(xcfg::XCheckType::Fixed(id64))
-                        } else {
-                            panic!("Invalid u32 for cross_check id: {}", id128)
-                        }
-                    },
+                xcfg::attr::ArgValue::Int(id128) => {
+                    if let Ok(id64) = id128.try_into() {
+                        Some(xcfg::XCheckType::Fixed(id64))
+                    } else {
+                        panic!("Invalid u32 for cross_check id: {}", id128)
+                    }
+                },
 
-                    _ => panic!("Invalid literal for cross_check id: {:?}", lit.node)
-                }
-            } else { None }
+                _ => panic!("Invalid literal for cross_check id: {:?}", arg)
+            }
         },
         // Structure-specific attributes
         "custom_hash" => {
-            mi.value_str().map(|s| {
+            arg.get_str().map(|s| {
                 let s = String::from(&*s.as_str());
                 xcfg::XCheckType::Custom(s)
             })
         },
         _ => None
      }
+}
+
+fn parse_xcheck_arg(args: &xcfg::attr::ArgList<'static>) -> Option<xcfg::XCheckType> {
+    if args.len() > 1 {
+        panic!("expected single argument for cross-check type attribute");
+    }
+    args.iter().next().and_then(|(name, ref arg)| parse_xcheck_type(name, arg))
 }
 
 #[derive(Clone)]
@@ -144,11 +154,7 @@ struct ScopeCheckConfig {
 impl ScopeCheckConfig {
     fn new() -> ScopeCheckConfig {
         ScopeCheckConfig {
-            all_args_xcheck: if cfg!(feature = "xcheck-args") {
-                xcfg::XCheckType::Default
-            } else {
-                xcfg::XCheckType::None
-            },
+            all_args_xcheck: xcfg::XCheckType::None,
             ..Default::default()
         }
     }
@@ -162,48 +168,74 @@ impl ScopeCheckConfig {
 
     fn parse_attr_config(&mut self, cx: &ExtCtxt, mi: &ast::MetaItem) {
         assert!(mi.name == "cross_check");
-        if let Some(ref items) = mi.meta_item_list() {
-            for ref nested_item in items.iter() {
-                if let Some(ref item) = nested_item.meta_item() {
-                    match &*item.name.as_str() {
-                        "disabled" |
-                        "none" => {
-                            Rc::make_mut(&mut self.inherited).enabled = false
-                        }
-                        "enabled" |
-                        "yes" => {
-                            Rc::make_mut(&mut self.inherited).enabled = true
-                        }
-                        "ahasher" => {
-                            Rc::make_mut(&mut self.inherited).ahasher =
-                                item.value_str()
-                                    .map(|s| cx.parse_tts(String::from(&*s.as_str())))
-                        }
-                        "shasher" => {
-                            Rc::make_mut(&mut self.inherited).shasher =
-                                item.value_str()
-                                    .map(|s| cx.parse_tts(String::from(&*s.as_str())))
-                        }
+        let args = xcfg::attr::get_syntax_item_args(mi);
+        for (name, arg) in args.iter() {
+            match *name {
+                "disabled" |
+                "none" => {
+                    Rc::make_mut(&mut self.inherited).enabled = false
+                }
+                "enabled" |
+                "yes" => {
+                    Rc::make_mut(&mut self.inherited).enabled = true
+                }
+                "ahasher" => {
+                    Rc::make_mut(&mut self.inherited).ahasher =
+                        arg.get_str()
+                           .map(|s| cx.parse_tts(String::from(&*s.as_str())))
+                }
+                "shasher" => {
+                    Rc::make_mut(&mut self.inherited).shasher =
+                        arg.get_str()
+                           .map(|s| cx.parse_tts(String::from(&*s.as_str())))
+                }
 
-                        // Cross-check type
-                        "name" |
-                        "fixed" |
-                        "custom_hash" => {
-                            self.main_xcheck = parse_xcheck_type(&item)
+                // Cross-check type
+                "name" |
+                "fixed" |
+                "custom_hash" => {
+                    self.main_xcheck = parse_xcheck_type(name, &arg)
+                        .unwrap_or(xcfg::XCheckType::Default);
+                },
+
+                "all_args" => {
+                    // Enable cross-checking for arguments
+                    match *arg {
+                        xcfg::attr::ArgValue::Nothing => {
+                            // #[cross_check(all_args)] just enables cross-checking
+                            self.all_args_xcheck = xcfg::XCheckType::Default;
+                        }
+                        xcfg::attr::ArgValue::List(ref l) => {
+                            self.all_args_xcheck = parse_xcheck_arg(l)
                                 .unwrap_or(xcfg::XCheckType::Default);
-                        },
-
-                        // Structure-specific attributes
-                        "field_hasher" => {
-                            if let Some(s) = item.value_str() {
-                                let s = String::from(&*s.as_str());
-                                self.field_hasher = Some(s)
-                            }
                         }
-
-                        name@_ => panic!("Unknown cross_check item: {}", name)
+                        _ => panic!("unexpected argument to all_args():{:?}", *arg)
                     }
                 }
+
+                "args" => {
+                    // Parse per-argument cross-check types
+                    if let xcfg::attr::ArgValue::List(ref l) = *arg {
+                        self.sub_xchecks.extend(l.iter().filter_map(|(name, arg)| {
+                            if let xcfg::attr::ArgValue::List(ref l) = *arg {
+                                let arg_xcheck = parse_xcheck_arg(l)
+                                    .expect(&format!("expected valid cross-check type \
+                                                      for argument: {}", name));
+                                Some((xcfg::FieldIndex::from_str(name), arg_xcheck))
+                            } else { None }
+                        }));
+                    }
+                }
+
+                // Structure-specific attributes
+                "field_hasher" => {
+                    if let Some(s) = arg.get_str() {
+                        let s = String::from(&*s.as_str());
+                        self.field_hasher = Some(s)
+                    }
+                }
+
+                name@_ => panic!("Unknown cross_check item: {}", name)
             }
         }
     }
@@ -501,12 +533,8 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
         let xcheck_attr = find_cross_check_attr(attrs);
         xcheck_attr.and_then(|attr| {
             attr.parse_meta(self.cx.parse_sess).ok().and_then(|mi| {
-                mi.meta_item_list().and_then(|items| {
-                    if items.len() == 1 {
-                        let mi = &items[0];
-                        mi.meta_item().and_then(parse_xcheck_type)
-                    } else { None }
-                })
+                let args = xcfg::attr::get_syntax_item_args(&mi);
+                parse_xcheck_arg(&args)
             })
         })
     }

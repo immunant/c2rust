@@ -5,101 +5,12 @@ extern crate synstructure;
 #[macro_use]
 extern crate quote;
 
-use std::collections::{HashMap};
+extern crate cross_check_config as xcfg;
 
-use quote::ToTokens;
-
-#[derive(Debug)]
-enum ArgValue<'a> {
-    Nothing,
-    Str(String),
-    List(ArgList<'a>),
-}
-
-impl<'a> ArgValue<'a> {
-    fn get_str(&self) -> &String {
-        match *self {
-            ArgValue::Str(ref s) => s,
-            _ => panic!("argument expects string value")
-        }
-    }
-
-    fn get_str_ident(&self) -> syn::Ident {
-        syn::Ident::from(self.get_str().as_str())
-    }
-
-    #[allow(dead_code)] // Not used right now, but we might need it
-    fn get_str_tokens(&self) -> quote::Tokens {
-        let mut tokens = quote::Tokens::new();
-        self.get_str_ident().to_tokens(&mut tokens);
-        tokens
-    }
-
-    #[allow(dead_code)] // Not used right now, but we might need it
-    fn get_list(&self) -> &ArgList<'a> {
-        match *self {
-            ArgValue::List(ref l) => l,
-            _ => panic!("argument expects list value")
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-struct ArgList<'a>(HashMap<&'a str, ArgValue<'a>>);
-
-impl<'a> ArgList<'a> {
-    fn from_map(m: HashMap<&'a str, ArgValue<'a>>) -> ArgList<'a> {
-        ArgList(m)
-    }
-
-    fn get_ident_arg<D>(&self, arg: &str, default: D) -> syn::Ident
-            where syn::Ident: std::convert::From<D> {
-        self.0.get(arg).map_or_else(|| syn::Ident::from(default),
-                                    ArgValue::get_str_ident)
-    }
-
-    #[allow(dead_code)] // Not used right now, but we might need it
-    fn get_token_arg<D>(&self, arg: &str, default: D) -> quote::Tokens
-            where quote::Tokens: std::convert::From<D> {
-        self.0.get(arg).map_or_else(|| quote::Tokens::from(default),
-                                    ArgValue::get_str_tokens)
-    }
-}
-
-fn get_item_args(mi: &syn::MetaItem) -> ArgList {
-    if let syn::MetaItem::List(_, ref items) = *mi {
-        ArgList::from_map(items.iter().map(|item| {
-            match *item {
-                syn::NestedMetaItem::MetaItem(ref mi) => {
-                    match *mi {
-                        syn::MetaItem::Word(ref kw) => (kw.as_ref(), ArgValue::Nothing),
-
-                        syn::MetaItem::NameValue(ref kw, ref val) => {
-                            match *val {
-                                syn::Lit::Str(ref s, syn::StrStyle::Cooked) =>
-                                    (kw.as_ref(), ArgValue::Str(s.clone())),
-
-                                _ => panic!("invalid tag value for by_value: {:?}", *val)
-                            }
-                        },
-
-                        syn::MetaItem::List(ref kw, _) => {
-                            (kw.as_ref(), ArgValue::List(get_item_args(mi)))
-                        }
-                    }
-                },
-                _ => panic!("unknown item passed to by_value: {:?}", *item)
-            }
-        }).collect())
-    } else {
-        Default::default()
-    }
-}
-
-fn get_cross_check_args(attrs: &[syn::Attribute]) -> Option<ArgList> {
+fn get_cross_check_args(attrs: &[syn::Attribute]) -> Option<xcfg::attr::ArgList> {
     attrs.iter()
          .find(|f| f.name() == "cross_check_hash")
-         .map(|attr| get_item_args(&attr.value))
+         .map(|attr| xcfg::attr::get_syn_item_args(&attr.value))
 }
 
 fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
@@ -113,15 +24,15 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     let hash_fields = s.each(|f| {
         get_cross_check_args(&f.ast().attrs[..]).and_then(|args| {
             // FIXME: figure out the argument priorities here
-            if args.0.contains_key("none") ||
-               args.0.contains_key("disabled") {
+            if args.contains_key("none") ||
+               args.contains_key("disabled") {
                 // Cross-checking is disabled
                 Some(quote::Tokens::new())
-            } else if let Some(ref sub_arg) = args.0.get("fixed_hash") {
+            } else if let Some(ref sub_arg) = args.get("fixed_hash") {
                 // FIXME: should try parsing this as an integer
                 let id = sub_arg.get_str_ident();
                 Some(quote! { h.write_u64(#id) })
-            } else if let Some(ref sub_arg) = args.0.get("custom_hash") {
+            } else if let Some(ref sub_arg) = args.get("custom_hash") {
                 let id = sub_arg.get_str_ident();
                 Some(quote! { #id::<#ahasher, #shasher, Self, _>(&mut h, self, #f, _depth) })
             } else {
@@ -136,7 +47,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         })
     });
 
-    let hash_code = top_args.0.get("custom_hash").map(|sub_arg| {
+    let hash_code = top_args.get("custom_hash").map(|sub_arg| {
         // Hash this value by calling the specified function
         let id = sub_arg.get_str_ident();
         quote! { #id::<#ahasher, #shasher>(&self, _depth) }
