@@ -72,12 +72,7 @@ fn parse_xcheck_type(name: &'static str,
         "none"     => xcfg::XCheckType::None,
         "disabled" => xcfg::XCheckType::Disabled,
 
-        "name" | "djb2" => {
-            arg.get_str().map(|s| {
-                let name = String::from(&*s.as_str());
-                xcfg::XCheckType::Djb2(name)
-            }).expect("expected string argument for djb2() cross-check")
-        },
+        "name" | "djb2" => xcfg::XCheckType::Djb2(arg.as_str().clone()),
         "fixed" => {
             match *arg {
                 // TODO: handle LitKind::Str
@@ -93,12 +88,7 @@ fn parse_xcheck_type(name: &'static str,
                 _ => panic!("invalid literal for cross_check id: {:?}", arg)
             }
         },
-        "custom" => {
-            arg.get_str().map(|s| {
-                let s = String::from(&*s.as_str());
-                xcfg::XCheckType::Custom(s)
-            }).expect("expected string argument for custom(...) cross-check")
-        },
+        "custom" => xcfg::XCheckType::Custom(arg.as_str().clone()),
         _ => panic!("unknown cross-check type: {}", name)
      }
 }
