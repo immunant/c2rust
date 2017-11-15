@@ -100,6 +100,13 @@ fn parse_xcheck_type(name: &'static str,
      }
 }
 
+fn parse_xcheck_arg(args: &xcfg::attr::ArgList<'static>) -> Option<xcfg::XCheckType> {
+    if args.len() > 1 {
+        panic!("expected single argument for cross-check type attribute");
+    }
+    args.iter().next().and_then(|(name, ref arg)| parse_xcheck_type(name, arg))
+}
+
 #[derive(Clone)]
 struct InheritedCheckConfig {
     // Whether cross-checks are enabled overall
@@ -501,11 +508,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
         xcheck_attr.and_then(|attr| {
             attr.parse_meta(self.cx.parse_sess).ok().and_then(|mi| {
                 let args = xcfg::attr::get_syntax_item_args(&mi);
-                if args.len() == 1 {
-                    args.iter().next().and_then(|(name, ref arg)| {
-                        parse_xcheck_type(name, arg)
-                    })
-                } else { None }
+                parse_xcheck_arg(&args)
             })
         })
     }
