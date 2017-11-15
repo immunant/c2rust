@@ -151,6 +151,26 @@ struct ScopeCheckConfig {
     field_hasher: Option<String>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum AttrScope {
+    Top,
+    Struct,
+    Function,
+}
+
+impl AttrScope {
+    fn from_item(item: &ast::Item) -> AttrScope {
+        match item.node {
+            ast::ItemKind::Fn(..) => AttrScope::Function,
+            ast::ItemKind::Enum(..) |
+            ast::ItemKind::Struct(..) |
+            ast::ItemKind::Union(..) => AttrScope::Struct,
+
+            _ => panic!("found #[cross_check] attribute on invalid item")
+        }
+    }
+}
+
 impl ScopeCheckConfig {
     fn new() -> ScopeCheckConfig {
         ScopeCheckConfig {
@@ -166,7 +186,8 @@ impl ScopeCheckConfig {
         }
     }
 
-    fn parse_attr_config(&mut self, cx: &ExtCtxt, mi: &ast::MetaItem) {
+    fn parse_attr_config(&mut self, cx: &ExtCtxt, mi: &ast::MetaItem,
+                         scope: AttrScope) {
         assert!(mi.name == "cross_check");
         let args = xcfg::attr::get_syntax_item_args(mi);
         for (name, arg) in args.iter() {
@@ -198,7 +219,7 @@ impl ScopeCheckConfig {
                         .unwrap_or(xcfg::XCheckType::Default);
                 },
 
-                "all_args" => {
+                "all_args" if scope == AttrScope::Function => {
                     // Enable cross-checking for arguments
                     match *arg {
                         xcfg::attr::ArgValue::Nothing => {
@@ -213,7 +234,7 @@ impl ScopeCheckConfig {
                     }
                 }
 
-                "args" => {
+                "args" if scope == AttrScope::Function => {
                     // Parse per-argument cross-check types
                     if let xcfg::attr::ArgValue::List(ref l) = *arg {
                         self.sub_xchecks.extend(l.iter().filter_map(|(name, arg)| {
@@ -228,7 +249,7 @@ impl ScopeCheckConfig {
                 }
 
                 // Structure-specific attributes
-                "field_hasher" => {
+                "field_hasher" if scope == AttrScope::Struct => {
                     if let Some(s) = arg.get_str() {
                         let s = String::from(&*s.as_str());
                         self.field_hasher = Some(s)
@@ -362,7 +383,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
         let xcheck_attr = find_cross_check_attr(&item.attrs);
         if let Some(ref attr) = xcheck_attr {
             let mi = attr.parse_meta(self.cx.parse_sess).unwrap();
-            new_config.parse_attr_config(self.cx, &mi);
+            new_config.parse_attr_config(self.cx, &mi, AttrScope::from_item(item));
         };
 
         let last_scope = self.last_scope();
@@ -676,19 +697,19 @@ impl MultiItemModifier for CrossCheckExpander {
               sp: Span,
               mi: &ast::MetaItem,
               item: Annotatable) -> Vec<Annotatable> {
-        let mut top_config = ScopeCheckConfig::new();
-        top_config.parse_attr_config(cx, mi);
-        let top_file_name = cx.codemap().span_to_filename(sp);
-        let top_scope = ScopeConfig::new(&self.external_config,
-                                         &top_file_name,
-                                         top_config);
         match item {
             Annotatable::Item(i) => {
                 // If we're seeing #![cross_check] at the top of the crate or a module,
                 // create a fresh configuration and perform a folding; otherwise, just
                 // ignore this expansion and let the higher level one do everything
                 let ni = match i.node {
-                    ast::ItemKind::Mod(_) =>
+                    ast::ItemKind::Mod(_) => {
+                        let mut top_config = ScopeCheckConfig::new();
+                        top_config.parse_attr_config(cx, mi, AttrScope::Top);
+                        let top_file_name = cx.codemap().span_to_filename(sp);
+                        let top_scope = ScopeConfig::new(&self.external_config,
+                                                         &top_file_name,
+                                                         top_config);
                         CrossChecker {
                             cx: cx,
                             external_config: &self.external_config,
@@ -696,7 +717,8 @@ impl MultiItemModifier for CrossCheckExpander {
                             default_ahasher: quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher).to_tokens(cx),
                             default_shasher: quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher).to_tokens(cx),
                         }.fold_item(i)
-                         .expect_one("too many items returned"),
+                         .expect_one("too many items returned")
+                    }
                     _ => i
                 };
                 Annotatable::Item(ni).into()
