@@ -23,14 +23,14 @@ pub enum ArgValue<'a> {
 }
 
 impl<'a> ArgValue<'a> {
-    pub fn get_str(&self) -> Option<&String> {
+    pub fn get_str(&self) -> Option<&str> {
         match *self {
-            ArgValue::Str(ref s) => Some(s),
+            ArgValue::Str(ref s) => Some(&s[..]),
             _ => None
         }
     }
 
-    pub fn as_str(&self) -> &String {
+    pub fn as_str(&self) -> &str {
         self.get_str().expect("argument expects string value")
     }
 
@@ -47,7 +47,7 @@ impl<'a> ArgValue<'a> {
 
     #[cfg(feature="parse-syn")]
     pub fn get_str_ident(&self) -> syn::Ident {
-        syn::Ident::from(self.as_str().as_str())
+        syn::Ident::from(self.as_str())
     }
 
     #[cfg(feature="with-quote")]

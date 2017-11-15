@@ -72,7 +72,7 @@ fn parse_xcheck_type(name: &'static str,
         "none"     => xcfg::XCheckType::None,
         "disabled" => xcfg::XCheckType::Disabled,
 
-        "name" | "djb2" => xcfg::XCheckType::Djb2(arg.as_str().clone()),
+        "name" | "djb2" => xcfg::XCheckType::Djb2(String::from(arg.as_str())),
         "fixed" => {
             match *arg {
                 // TODO: handle LitKind::Str
@@ -88,7 +88,7 @@ fn parse_xcheck_type(name: &'static str,
                 _ => panic!("invalid literal for cross_check id: {:?}", arg)
             }
         },
-        "custom" => xcfg::XCheckType::Custom(arg.as_str().clone()),
+        "custom" => xcfg::XCheckType::Custom(String::from(arg.as_str())),
         _ => panic!("unknown cross-check type: {}", name)
      }
 }
@@ -193,12 +193,12 @@ impl ScopeCheckConfig {
                 "ahasher" => {
                     Rc::make_mut(&mut self.inherited).ahasher =
                         arg.get_str()
-                           .map(|s| cx.parse_tts(String::from(&*s.as_str())))
+                           .map(|s| cx.parse_tts(String::from(s)))
                 }
                 "shasher" => {
                     Rc::make_mut(&mut self.inherited).shasher =
                         arg.get_str()
-                           .map(|s| cx.parse_tts(String::from(&*s.as_str())))
+                           .map(|s| cx.parse_tts(String::from(s)))
                 }
 
                 // Cross-check type
@@ -208,7 +208,7 @@ impl ScopeCheckConfig {
                 },
 
                 "custom_hash" if scope == AttrScope::Struct => {
-                    let s = arg.as_str().clone();
+                    let s = String::from(arg.as_str());
                     self.main_xcheck = xcfg::XCheckType::Custom(s);
                 },
 
@@ -245,10 +245,7 @@ impl ScopeCheckConfig {
 
                 // Structure-specific attributes
                 "field_hasher" if scope == AttrScope::Struct => {
-                    if let Some(s) = arg.get_str() {
-                        let s = String::from(&*s.as_str());
-                        self.field_hasher = Some(s)
-                    }
+                    self.field_hasher = Some(String::from(arg.as_str()));
                 }
 
                 name@_ => panic!("unknown cross_check item: {}", name)
