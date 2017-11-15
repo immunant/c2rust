@@ -205,11 +205,7 @@ impl ScopeCheckConfig {
                     self.main_xcheck = parse_xcheck_type(name, &arg);
                 },
 
-                "custom_hash" if scope == AttrScope::Struct => {
-                    let s = String::from(arg.as_str());
-                    self.main_xcheck = xcfg::XCheckType::Custom(s);
-                },
-
+                // Function-specific attributes
                 "all_args" if scope == AttrScope::Function => {
                     // Enable cross-checking for arguments
                     match *arg {
@@ -242,6 +238,11 @@ impl ScopeCheckConfig {
                 }
 
                 // Structure-specific attributes
+                "custom_hash" if scope == AttrScope::Struct => {
+                    let s = String::from(arg.as_str());
+                    self.main_xcheck = xcfg::XCheckType::Custom(s);
+                },
+
                 "field_hasher" if scope == AttrScope::Struct => {
                     self.field_hasher = Some(String::from(arg.as_str()));
                 }
