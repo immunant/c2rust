@@ -214,7 +214,17 @@ impl ScopeCheckConfig {
                 }
 
                 "args" => {
-                    // TODO
+                    // Parse per-argument cross-check types
+                    if let xcfg::attr::ArgValue::List(ref l) = *arg {
+                        self.sub_xchecks.extend(l.iter().filter_map(|(name, arg)| {
+                            if let xcfg::attr::ArgValue::List(ref l) = *arg {
+                                let arg_xcheck = parse_xcheck_arg(l)
+                                    .expect(&format!("expected valid cross-check type \
+                                                      for argument: {}", name));
+                                Some((xcfg::FieldIndex::from_str(name), arg_xcheck))
+                            } else { None }
+                        }));
+                    }
                 }
 
                 // Structure-specific attributes
