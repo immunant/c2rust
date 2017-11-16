@@ -820,6 +820,10 @@ class TranslateASTVisitor final
                                  auto name = D->getNameAsString();
                                  cbor_encode_string(array, name);
                              });
+          
+          // This might be the only occurence of this type in the translation unit
+          typeEncoder.VisitQualType(t);
+          
           return true;
       }
       
