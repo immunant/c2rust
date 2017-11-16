@@ -745,13 +745,14 @@ impl Translation {
 
                     CastKind::ToUnion => panic!("TODO cast to union not supported"),
 
-                    CastKind::IntegralToBoolean => {
+                    CastKind::IntegralToBoolean | CastKind::FloatingToBoolean => {
                         let val_ty = self.ast_context.index(expr).kind.get_type();
                         val.map(|x| self.match_bool(true, val_ty, x))
                     }
 
-                    CastKind::FloatingToBoolean | CastKind::BooleanToSignedIntegral =>
-                        panic!("TODO cast to boolean not supported"),
+                    // I don't know how to actually cause clang to generate this
+                    CastKind::BooleanToSignedIntegral =>
+                        panic!("TODO boolean to signed integral not supported"),
 
                     CastKind::FloatingRealToComplex | CastKind::FloatingComplexToIntegralComplex |
                     CastKind::FloatingComplexCast | CastKind::FloatingComplexToReal |
@@ -1467,7 +1468,12 @@ impl Translation {
             }
             res
         } else {
-            let zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
+            let zero = if ty.is_floating_type() {
+                mk().lit_expr(mk().float_unsuffixed_lit("0."))
+            } else {
+                mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
+            };
+
             if target {
                 mk().binary_expr(BinOpKind::Ne, zero, val)
             } else {
