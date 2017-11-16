@@ -727,7 +727,29 @@ impl Translation {
 
                     CastKind::NullToPointer => {
                         assert!(val.stmts.is_empty());
-                        WithStmts::new(mk().call_expr(mk().path_expr(vec!["std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>))
+
+                        let null_expr = mk().call_expr(mk().path_expr(vec!["std", "ptr", "null"]), vec![] as Vec<P<Expr>>);
+                        let null_mut_expr = mk().call_expr(mk().path_expr(vec!["std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>);
+
+                        let res = if self.is_function_pointer(ty.ctype) {
+                            let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
+                            let target_ty = self.convert_type(ty.ctype);
+                            let type_args = vec![source_ty, target_ty];
+                            let path = vec![
+                                mk().path_segment("std"),
+                                mk().path_segment("mem"),
+                                mk().path_segment_with_params("transmute",
+                                                              mk().angle_bracketed_param_types(type_args)),
+                            ];
+                            mk().call_expr(mk().path_expr(path), vec![null_expr])
+                        } else {
+                            match &self.ast_context.resolve_type(ty.ctype).kind {
+                                &CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => null_expr,
+                                _ => null_mut_expr,
+                            }
+                        };
+
+                        WithStmts::new(res)
                     }
 
                     CastKind::ToUnion => panic!("TODO cast to union not supported"),
@@ -1013,7 +1035,7 @@ impl Translation {
             let &(ref field_name, ty) = &field_decls[i];
             fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype)));
         }
-        
+
         WithStmts {
             stmts,
             val: mk().struct_expr(vec![mk().path_segment(struct_name)], fields)
@@ -1227,14 +1249,7 @@ impl Translation {
 
                 let arg = self.convert_expr(ExprUse::LValue, arg);
 
-                let is_function_pointer =
-                if let CTypeKind::Pointer(p) = resolved_ctype.kind {
-                    if let CTypeKind::Function{..} = self.ast_context.resolve_type(p.ctype).kind {
-                        true
-                    } else { false }
-                } else { false };
-
-                if is_function_pointer {
+                if self.is_function_pointer(ctype) {
                     arg
                 } else {
                     arg.map(|a| {
@@ -1482,5 +1497,14 @@ impl Translation {
         };
 
         mk().cast_expr(b, mk().path_ty(vec!["libc","c_int"]))
+    }
+
+    fn is_function_pointer(&self, typ: CTypeId) -> bool {
+        let resolved_ctype = self.ast_context.resolve_type(typ);
+        if let CTypeKind::Pointer(p) = resolved_ctype.kind {
+            if let CTypeKind::Function { .. } = self.ast_context.resolve_type(p.ctype).kind {
+                true
+            } else { false }
+        } else { false }
     }
 }
