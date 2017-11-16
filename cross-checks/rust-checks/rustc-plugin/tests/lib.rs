@@ -76,6 +76,15 @@ fn test_custom_fn_id() {
 }
 
 #[test]
+fn test_entry_disabled() {
+    #[cross_check(yes, entry(disabled))]
+    fn abcd() { }
+
+    abcd();
+    expect_no_xchecks();
+}
+
+#[test]
 fn test_all_args_default() {
     #[cross_check(yes, all_args)]
     fn abcd(_a: u8, _b: u64) { }
