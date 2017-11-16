@@ -43,13 +43,14 @@ struct ScopeConfig<'xcfg> {
 }
 
 impl<'xcfg> ScopeConfig<'xcfg> {
-    fn new(cfg: &'xcfg xcfg::Config, file_name: &str,
+    fn new(cfg: &'xcfg xcfg::Config, file_name: String,
            ccc: config::ScopeCheckConfig) -> ScopeConfig<'xcfg> {
+        let items = cfg.get_file_items(&file_name)
+                       .map(xcfg::NamedItemList::new)
+                       .map(Rc::new);
         ScopeConfig {
-            file_name: Rc::new(String::from(file_name)),
-            items: cfg.get_file_items(file_name)
-                      .map(xcfg::NamedItemList::new)
-                      .map(Rc::new),
+            file_name: Rc::new(file_name),
+            items: items,
             check_config: ccc,
             field_idx: Cell::new(0),
         }
@@ -131,7 +132,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
             // We should only ever get a file name mismatch
             // at the top of a module
             assert_matches!(item.node, ast::ItemKind::Mod(_));
-            ScopeConfig::new(self.external_config, &mod_file_name, new_config)
+            ScopeConfig::new(self.external_config, mod_file_name, new_config)
         } else {
             last_scope.from_item(item_xcfg_config, new_config)
         }
@@ -433,7 +434,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         top_config.parse_attr_config(cx, mi);
                         let top_file_name = cx.codemap().span_to_filename(sp);
                         let top_scope = ScopeConfig::new(&self.external_config,
-                                                         &top_file_name,
+                                                         top_file_name,
                                                          top_config);
                         CrossChecker {
                             cx: cx,
