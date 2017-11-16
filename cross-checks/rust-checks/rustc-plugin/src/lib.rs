@@ -76,7 +76,7 @@ impl<'xcfg> ScopeConfig<'xcfg> {
     }
 
     fn same_file(&self, file_name: &str) -> bool {
-        self.file_name.as_ref() == file_name
+        *self.file_name == file_name
     }
 }
 
