@@ -8,6 +8,7 @@ use syntax::ptr::P;
 use std::convert::TryInto;
 
 use xcfg;
+use xcfg::attr::{ArgValue, ArgList};
 
 fn djb2_hash(s: &str) -> u32 {
     s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
@@ -46,8 +47,7 @@ impl CrossCheckHash for xcfg::XCheckType {
     }
 }
 
-fn parse_xcheck_type(name: &'static str,
-                     arg: &xcfg::attr::ArgValue) -> xcfg::XCheckType {
+fn parse_xcheck_type(name: &'static str, arg: &ArgValue) -> xcfg::XCheckType {
     match name {
         "default"  => xcfg::XCheckType::Default,
         "none"     => xcfg::XCheckType::None,
@@ -58,7 +58,7 @@ fn parse_xcheck_type(name: &'static str,
             match *arg {
                 // TODO: handle LitKind::Str
 
-                xcfg::attr::ArgValue::Int(id128) => {
+                ArgValue::Int(id128) => {
                     if let Ok(id64) = id128.try_into() {
                         xcfg::XCheckType::Fixed(id64)
                     } else {
@@ -74,7 +74,7 @@ fn parse_xcheck_type(name: &'static str,
      }
 }
 
-pub fn parse_xcheck_arglist(args: &xcfg::attr::ArgList<'static>) -> Option<xcfg::XCheckType> {
+pub fn parse_xcheck_arglist(args: &ArgList<'static>) -> Option<xcfg::XCheckType> {
     if args.len() > 1 {
         panic!("expected single argument for cross-check type attribute");
     }
@@ -82,10 +82,10 @@ pub fn parse_xcheck_arglist(args: &xcfg::attr::ArgList<'static>) -> Option<xcfg:
         .map(|(name, ref arg)| parse_xcheck_type(name, arg))
 }
 
-pub fn parse_xcheck_arg(arg: &xcfg::attr::ArgValue<'static>) -> Option<xcfg::XCheckType> {
+pub fn parse_xcheck_arg(arg: &ArgValue<'static>) -> Option<xcfg::XCheckType> {
     match *arg {
-        xcfg::attr::ArgValue::Nothing => None,
-        xcfg::attr::ArgValue::List(ref l) => parse_xcheck_arglist(l),
+        ArgValue::Nothing => None,
+        ArgValue::List(ref l) => parse_xcheck_arglist(l),
         _ => panic!("unexpected argument to all_args():{:?}", *arg)
     }
 }
