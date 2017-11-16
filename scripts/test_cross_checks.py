@@ -8,6 +8,10 @@ from common import *
 
 
 def checkout_and_build_libclevrbuf():
+    """
+    NOTE: we don't need libclevrbuf if we simply pass
+    `--features "xcheck-with-dlsym"` in the `runtime/` dir.
+    """
     git = get_cmd_or_die("git")
     make = get_cmd_or_die("make")
 
@@ -30,7 +34,12 @@ def test_cross_checks():
         rust_proj_path = os.path.dirname(line)
         logging.info("entering %s", rust_proj_path)
         with pb.local.cwd(rust_proj_path):
-            invoke(rustup, "run", CUSTOM_RUST_NAME, "cargo", "test")
+            args = ["run", CUSTOM_RUST_NAME, "cargo", "test"]
+            if rust_proj_path.endswith("runtime"):
+                # adding these args avoids taking a dependency on
+                # ReMon's libclevrbuf.
+                args += ["--features", "xcheck-with-dlsym"]
+            invoke(rustup, *args)
 
 
 def main():
@@ -40,7 +49,7 @@ def main():
     if not have_rust_toolchain(CUSTOM_RUST_NAME):
         die("missing rust toolchain: " + CUSTOM_RUST_NAME, errno.ENOENT)
 
-    checkout_and_build_libclevrbuf()
+    # checkout_and_build_libclevrbuf()
     test_cross_checks()
 
 
