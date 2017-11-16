@@ -72,6 +72,18 @@ fn pointer_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
     mk().method_call_expr(ptr, "offset", vec![offset])
 }
 
+
+fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> {
+    let type_args = vec![source_ty, target_ty];
+    let path = vec![
+        mk().path_segment("std"),
+        mk().path_segment("mem"),
+        mk().path_segment_with_params("transmute",
+                                      mk().angle_bracketed_param_types(type_args)),
+    ];
+    mk().call_expr(mk().path_expr(path), vec![expr])
+}
+
 pub fn stmts_block(mut stmts: Vec<Stmt>) -> P<Block> {
     if stmts.len() == 1 {
         if let StmtKind::Expr(ref e) = stmts[0].node {
@@ -679,14 +691,7 @@ impl Translation {
                 let target_ty = mk().ref_ty(self.convert_type(ty.ctype));
 
                 let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
-                let type_args = vec![source_ty, target_ty];
-                let path = vec![
-                    mk().path_segment("std"),
-                    mk().path_segment("mem"),
-                    mk().path_segment_with_params("transmute",
-                                                  mk().angle_bracketed_param_types(type_args)),
-                ];
-                let pointer = mk().call_expr(mk().path_expr(path), vec![byte_literal]);
+                let pointer = transmute_expr(source_ty, target_ty, byte_literal);
                 WithStmts::new(pointer)
             }
 
@@ -698,14 +703,7 @@ impl Translation {
                         val.map(|x| {
                             let source_ty = self.convert_type(self.ast_context.index(expr).kind.get_type());
                             let target_ty = self.convert_type(ty.ctype);
-                            let type_args = vec![source_ty, target_ty];
-                            let path = vec![
-                                mk().path_segment("std"),
-                                mk().path_segment("mem"),
-                                mk().path_segment_with_params("transmute",
-                                                              mk().angle_bracketed_param_types(type_args)),
-                            ];
-                            mk().call_expr(mk().path_expr(path), vec![x])
+                            transmute_expr(source_ty, target_ty, x)
                         })
                     }
 
@@ -734,14 +732,7 @@ impl Translation {
                         let res = if self.is_function_pointer(ty.ctype) {
                             let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
                             let target_ty = self.convert_type(ty.ctype);
-                            let type_args = vec![source_ty, target_ty];
-                            let path = vec![
-                                mk().path_segment("std"),
-                                mk().path_segment("mem"),
-                                mk().path_segment_with_params("transmute",
-                                                              mk().angle_bracketed_param_types(type_args)),
-                            ];
-                            mk().call_expr(mk().path_expr(path), vec![null_expr])
+                            transmute_expr(source_ty, target_ty, null_expr)
                         } else {
                             match &self.ast_context.resolve_type(ty.ctype).kind {
                                 &CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => null_expr,
