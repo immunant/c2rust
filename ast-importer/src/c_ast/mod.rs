@@ -102,6 +102,7 @@ impl TypedAstContext {
 
             CExprKind::InitList{..} => false,
             CExprKind::ImplicitValueInit{..} => false,
+            CExprKind::CompoundLiteral(_, val) => self.is_expr_pure(val),
         }
     }
 }
@@ -199,8 +200,14 @@ pub enum CDeclKind {
         typ: CQualTypeId,
     },
 
-    // Record
-    Record {
+    // Struct
+    Struct {
+        name: Option<String>,
+        fields: Vec<CFieldId>,
+    },
+
+    // Union
+    Union {
         name: Option<String>,
         fields: Vec<CFieldId>,
     },
@@ -272,6 +279,9 @@ pub enum CExprKind {
 
     // Designated initializer
     ImplicitValueInit(CQualTypeId),
+
+    // Compound literal
+    CompoundLiteral(CQualTypeId, CExprId),
 }
 
 #[derive(Copy, Debug, Clone)]
@@ -296,6 +306,7 @@ impl CExprKind {
             CExprKind::Conditional(ty, _, _, _) => ty,
             CExprKind::InitList(ty, _) => ty,
             CExprKind::ImplicitValueInit(ty) => ty,
+            CExprKind::CompoundLiteral(ty, _) => ty,
         }
     }
 
@@ -511,17 +522,8 @@ pub struct Qualifiers {
     /// Since Rust's execution model is still unclear, I am unsure that we get all of the guarantees
     /// `volatile` needs, especially regarding reordering of other side-effects.
     ///
-    /// We capture reads and writes to `volatile` lvalues in:
-    ///   * assignment operations (`l = ...`, `l += ...`, `l *= ...`, etc.)
-    ///   * increment and decrement operations (`l++`, `++l`, `l--`, `--l`)
-    ///
-    /// We capture additional reads from `volatile` memory in:
-    ///   * assignment operations (`l = ...`, `l += ...`, `l *= ...`, etc.)
-    ///   * dereference operations (`*l`)
-    ///   * variable references (`l`)
-    ///   * member accesses (`l. ...`)
-    ///   * subscript access (`l[...]`)
-    ///
+    /// To see where we use `volatile`, check the call-sites of `Translation::volatile_write` and
+    /// `Translation::volatile_read`.
     pub is_volatile: bool,
 }
 
@@ -615,10 +617,11 @@ pub enum CTypeKind {
     // Type wrapped in parentheses
     Paren(CTypeId),
 
-    // Struct or union type
-    //
-    // XXX: distinction between `struct` and `union`
-    Record(CRecordId),
+    // Struct type
+    Struct(CRecordId),
+
+    // Union type
+    Union(CRecordId),
 
     Enum(CDeclId),    // TODO same comment as Typedef
 }

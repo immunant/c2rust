@@ -153,7 +153,6 @@ public:
     
     // definition below due to recursive call into AST translator
     void VisitRecordType(const RecordType *T);
-
     
     void VisitBuiltinType(const BuiltinType *T) {
         TypeTag tag;
@@ -546,8 +545,16 @@ class TranslateASTVisitor final
           return true;
       }
       
+      /*
+       [C99 6.5.2.3] Structure and Union Members.
+       Children:
+       - base expression
+       - field declaration
+       Extras:
+       - true: is arrow; false: is dot
+       */
       bool VisitMemberExpr(MemberExpr *E) {
-          std::vector<void*> childIds =
+          std::vector<void*> childIds
             { E->getBase(), E->getMemberDecl()->getCanonicalDecl() };
           encode_entry(E, TagMemberExpr, childIds, [E](CborEncoder *extras) {
               cbor_encode_boolean(extras, E->isArrow());
@@ -555,11 +562,26 @@ class TranslateASTVisitor final
           return true;
       }
       
+      /*
+       [C99 6.5.2.5] Compound literal expression
+       Children:
+       - initializer expression
+       Extras: (none)
+       */
+      bool VisitCompoundLiteralExpr(CompoundLiteralExpr *E) {
+          std::vector<void*> childIds { E->getInitializer() };
+          encode_entry(E, TagCompoundLiteralExpr, childIds);
+          return true;
+      }
+      
+      /*
+       Describes a C initializer list
+       Children: expressions
+       Extras: (none)
+       */
       bool VisitInitListExpr(InitListExpr *ILE) {
-          std::vector<void*> childIds;
-          for (auto x : ILE->inits()) {
-              childIds.push_back(x);
-          }
+          auto inits = ILE->inits();
+          std::vector<void*> childIds(inits.begin(), inits.end());
           encode_entry(ILE, TagInitListExpr, childIds);
           
           return true;
@@ -722,7 +744,13 @@ class TranslateASTVisitor final
           return true;
       }
       
-      
+      /*
+       Represents a struct/union
+       Children:
+       - canonical field declarations
+       Extras:
+       - name as string
+       */
       bool VisitRecordDecl(RecordDecl *D)
       {
           // Skip non-canonical decls
@@ -733,11 +761,14 @@ class TranslateASTVisitor final
           for (auto x : D->fields()) {
               childIds.push_back(x->getCanonicalDecl());
           }
-          encode_entry(D, TagRecordDecl, childIds, QualType(),
+          
+          auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;
+          
+          encode_entry(D, tag, childIds, QualType(),
           [D](CborEncoder *local){
-              auto name = D->getNameAsString();
-              cbor_encode_string(local, name);
+              cbor_encode_string(local, D->getNameAsString());
           });
+          
           return true;
       }
       
@@ -878,11 +909,13 @@ class TranslateASTVisitor final
                        });
           return true;
       }
-  };
+};
 
 void TypeEncoder::VisitRecordType(const RecordType *T) {
     
-    encodeType(T, TagRecordType, [T](CborEncoder *local) {
+    auto tag = T->isStructureType() ? TagStructType : TagUnionType;
+    
+    encodeType(T, tag, [T](CborEncoder *local) {
         cbor_encode_uint(local, uintptr_t(T->getDecl()->getCanonicalDecl()));
     });
     

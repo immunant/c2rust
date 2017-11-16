@@ -1,15 +1,23 @@
 
-void entry(void)
-{
-    // direct write
-    volatile int n = 0;
-    int x = (n = 5);
-    n += 4;
+// Remark: This test case isn't super useful as we do not really check anything about the order of
+//         the reads and writes in the generated assembly.
 
-    // indirect write
+void entry(const unsigned buffer_size, int buffer[])
+{
+    if (buffer_size < 5) { return; }
+
+    // direct write/read
+    volatile int n = 0;
+    buffer[0] = (n = 5);
+    n += 4;
+    buffer[1] = n + 2;
+
+    // indirect write/read
     volatile int *p = &n;
     *p = 5;
+    buffer[2] = n;
     *p += 4;
+    buffer[3] = *p;
 }
 
 
