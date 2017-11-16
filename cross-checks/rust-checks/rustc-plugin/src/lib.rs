@@ -129,99 +129,128 @@ impl Default for InheritedCheckConfig {
     }
 }
 
-#[derive(Clone, Default)]
+struct FunctionCheckConfig {
+    entry: xcfg::XCheckType,
+    all_args: xcfg::XCheckType,
+    args: HashMap<xcfg::FieldIndex, xcfg::XCheckType>,
+}
+
+// We want all_args set to None, so we need a custom Default implementation
+impl Default for FunctionCheckConfig {
+    fn default() -> FunctionCheckConfig {
+        FunctionCheckConfig {
+            entry: xcfg::XCheckType::Default,
+            all_args: xcfg::XCheckType::None,
+            args: Default::default(),
+        }
+    }
+}
+
+#[derive(Default)]
+struct StructCheckConfig {
+    custom_hash: Option<String>,
+    field_hasher: Option<String>,
+    fields: HashMap<xcfg::FieldIndex, xcfg::XCheckType>,
+}
+
+enum ItemCheckConfig {
+    // Top-level configuration
+    Top,
+
+    // Function item configuration
+    Function(FunctionCheckConfig),
+
+    // Structure item configuration
+    Struct(StructCheckConfig),
+
+    // Other items (for now, this shouldn't really occur)
+    Other,
+}
+
 struct ScopeCheckConfig {
     // Cross-check configuration inherited from parent
     inherited: Rc<InheritedCheckConfig>,
 
-    // The main xcheck for this item (entry point for function, contents for structure)
-    main_xcheck: xcfg::XCheckType,
-
-    // Cross-check types for subcomponents: function arguments or structure fields
-    sub_xchecks: HashMap<xcfg::FieldIndex, xcfg::XCheckType>,
-
-    // Item-specific configuration starts here
-    // ---------------------------------------
-    // Function item configuration
-    all_args_xcheck: xcfg::XCheckType,
-
-    // Structure item configuration
-    field_hasher: Option<String>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum AttrScope {
-    Top,
-    Struct,
-    Function,
-}
-
-impl AttrScope {
-    fn from_item(item: &ast::Item) -> AttrScope {
-        match item.node {
-            ast::ItemKind::Fn(..) => AttrScope::Function,
-            ast::ItemKind::Enum(..) |
-            ast::ItemKind::Struct(..) |
-            ast::ItemKind::Union(..) => AttrScope::Struct,
-
-            _ => panic!("found #[cross_check] attribute on invalid item")
-        }
-    }
+    // Configuration for this item
+    item: ItemCheckConfig,
 }
 
 impl ScopeCheckConfig {
     fn new() -> ScopeCheckConfig {
         ScopeCheckConfig {
-            all_args_xcheck: xcfg::XCheckType::None,
-            ..Default::default()
+            inherited: Default::default(),
+            item: ItemCheckConfig::Top,
         }
     }
 
-    fn inherit(&self) -> Self {
+    fn inherit(&self, item: &ast::Item) -> Self {
+        let item_config = match item.node {
+            ast::ItemKind::Fn(..) => ItemCheckConfig::Function(Default::default()),
+            ast::ItemKind::Enum(..) |
+            ast::ItemKind::Struct(..) |
+            ast::ItemKind::Union(..) => ItemCheckConfig::Struct(Default::default()),
+            _ => ItemCheckConfig::Other,
+        };
         ScopeCheckConfig {
             inherited: Rc::clone(&self.inherited),
-            ..ScopeCheckConfig::new()
+            item: item_config,
         }
     }
 
-    fn parse_attr_config(&mut self, cx: &ExtCtxt, mi: &ast::MetaItem,
-                         scope: AttrScope) {
+    // Getters for various options
+    fn function_config(&self) -> &FunctionCheckConfig {
+        if let ItemCheckConfig::Function(ref func) = self.item {
+            func
+        } else {
+            panic!("expected function item configuration");
+        }
+    }
+
+    fn struct_config(&self) -> &StructCheckConfig {
+        if let ItemCheckConfig::Struct(ref struc) = self.item {
+            struc
+        } else {
+            panic!("expected structure item configuration");
+        }
+    }
+
+    fn parse_attr_config(&mut self, cx: &ExtCtxt, mi: &ast::MetaItem) {
         assert!(mi.name == "cross_check");
         let args = xcfg::attr::get_syntax_item_args(mi);
         for (name, arg) in args.iter() {
-            match *name {
-                "disabled" |
-                "none" => {
+            match (*name, &mut self.item) {
+                ("disabled", _) |
+                ("none", _) => {
                     Rc::make_mut(&mut self.inherited).enabled = false
                 }
-                "enabled" |
-                "yes" => {
+                ("enabled", _) |
+                ("yes", _) => {
                     Rc::make_mut(&mut self.inherited).enabled = true
                 }
-                "ahasher" => {
+                ("ahasher", _) => {
                     Rc::make_mut(&mut self.inherited).ahasher =
                         Some(cx.parse_tts(String::from(arg.as_str())));
                 }
-                "shasher" => {
+                ("shasher", _) => {
                     Rc::make_mut(&mut self.inherited).shasher =
                         Some(cx.parse_tts(String::from(arg.as_str())));
                 }
 
                 // Function-specific attributes
-                "entry" if scope == AttrScope::Function => {
-                    self.main_xcheck = parse_xcheck_arg(&arg)
+                ("entry", &mut ItemCheckConfig::Function(ref mut func)) => {
+                    func.entry = parse_xcheck_arg(&arg)
                         .unwrap_or(xcfg::XCheckType::Default);
                 }
 
-                "all_args" if scope == AttrScope::Function => {
+                ("all_args", &mut ItemCheckConfig::Function(ref mut func)) => {
                     // Enable cross-checking for arguments
-                    self.all_args_xcheck = parse_xcheck_arg(&arg)
+                    func.all_args = parse_xcheck_arg(&arg)
                         .unwrap_or(xcfg::XCheckType::Default);
                 }
 
-                "args" if scope == AttrScope::Function => {
+                ("args", &mut ItemCheckConfig::Function(ref mut func)) => {
                     // Parse per-argument cross-check types
-                    self.sub_xchecks.extend(arg.as_list().iter().filter_map(|(name, arg)| {
+                    func.args.extend(arg.as_list().iter().filter_map(|(name, arg)| {
                         if let xcfg::attr::ArgValue::List(ref l) = *arg {
                             let arg_xcheck = parse_xcheck_arglist(l)
                                 .expect(&format!("expected valid cross-check type \
@@ -232,16 +261,15 @@ impl ScopeCheckConfig {
                 }
 
                 // Structure-specific attributes
-                "custom_hash" if scope == AttrScope::Struct => {
-                    let s = String::from(arg.as_str());
-                    self.main_xcheck = xcfg::XCheckType::Custom(s);
+                ("custom_hash", &mut ItemCheckConfig::Struct(ref mut struc)) => {
+                    struc.custom_hash = Some(String::from(arg.as_str()));
                 },
 
-                "field_hasher" if scope == AttrScope::Struct => {
-                    self.field_hasher = Some(String::from(arg.as_str()));
+                ("field_hasher", &mut ItemCheckConfig::Struct(ref mut struc)) => {
+                    struc.field_hasher = Some(String::from(arg.as_str()));
                 }
 
-                name@_ => panic!("unknown cross_check item: {}", name)
+                (name@_, _) => panic!("unknown cross_check item: {}", name)
             }
         }
     }
@@ -249,46 +277,49 @@ impl ScopeCheckConfig {
     fn parse_xcfg_config(&mut self, cx: &ExtCtxt, xcfg: &xcfg::ItemConfig) {
         macro_rules! parse_optional_field {
             // Field for the current scope
-            (>$self_name:ident, $parent:ident, $xcfg_name:ident, $new_value:expr) => (
-                if let Some(ref $xcfg_name) = $parent.$xcfg_name {
-                    self.$self_name = $new_value;
+            (>$self_name:ident, $self_parent:ident, $xcfg_parent:ident, $xcfg_name:ident, $new_value:expr) => (
+                if let Some(ref $xcfg_name) = $xcfg_parent.$xcfg_name {
+                    $self_parent.$self_name = $new_value;
                 }
             );
             // Inherited field
-            (^$self_name:ident, $parent:ident, $xcfg_name:ident, $new_value:expr) => (
-                if let Some(ref $xcfg_name) = $parent.$xcfg_name {
+            (^$self_name:ident, $xcfg_parent:ident, $xcfg_name:ident, $new_value:expr) => (
+                if let Some(ref $xcfg_name) = $xcfg_parent.$xcfg_name {
                     Rc::make_mut(&mut self.inherited).$self_name = $new_value;
                 }
             )
         }
-        match *xcfg {
-            xcfg::ItemConfig::Function(ref func) => {
-                parse_optional_field!(^enabled,         func, disable_xchecks, !disable_xchecks);
-                parse_optional_field!(>main_xcheck,     func, entry,           entry.clone());
-                parse_optional_field!(>all_args_xcheck, func, all_args,        all_args.clone());
-                self.sub_xchecks.extend(func.args.iter().map(|(k, v)| {
+        match (&mut self.item, xcfg) {
+            (&mut ItemCheckConfig::Function(ref mut self_func), &xcfg::ItemConfig::Function(ref xcfg_func)) => {
+                // Inherited fields
+                parse_optional_field!(^enabled, xcfg_func, disable_xchecks, !disable_xchecks);
+                // TODO: add a way for the external config to reset these to default
+                parse_optional_field!(^ahasher, xcfg_func, ahasher, Some(cx.parse_tts(ahasher.clone())));
+                parse_optional_field!(^shasher, xcfg_func, shasher, Some(cx.parse_tts(shasher.clone())));
+                // Function-specific fields
+                parse_optional_field!(>entry,    self_func, xcfg_func, entry,    entry.clone());
+                parse_optional_field!(>all_args, self_func, xcfg_func, all_args, all_args.clone());
+                self_func.args.extend(xcfg_func.args.iter().map(|(k, v)| {
                     (xcfg::FieldIndex::from_str(k), v.clone())
                 }));
-                // TODO: add a way for the external config to reset these to default
-                parse_optional_field!(^ahasher, func, ahasher, Some(cx.parse_tts(ahasher.clone())));
-                parse_optional_field!(^shasher, func, shasher, Some(cx.parse_tts(shasher.clone())));
                 // TODO: parse more fields: exit, ret
             },
 
-            xcfg::ItemConfig::Struct(ref struc) => {
-                parse_optional_field!(>main_xcheck,  struc, custom_hash,  xcfg::XCheckType::Custom(custom_hash.clone()));
-                parse_optional_field!(>field_hasher, struc, field_hasher, Some(field_hasher.clone()));
-                self.sub_xchecks.extend(struc.fields.clone().into_iter());
+            (&mut ItemCheckConfig::Struct(ref mut self_struc), &xcfg::ItemConfig::Struct(ref xcfg_struc)) => {
+                // Inherited fields
                 // TODO: add a way for the external config to reset these to default
-                parse_optional_field!(^ahasher, struc, ahasher, Some(cx.parse_tts(ahasher.clone())));
-                parse_optional_field!(^shasher, struc, shasher, Some(cx.parse_tts(shasher.clone())));
+                parse_optional_field!(^ahasher, xcfg_struc, ahasher, Some(cx.parse_tts(ahasher.clone())));
+                parse_optional_field!(^shasher, xcfg_struc, shasher, Some(cx.parse_tts(shasher.clone())));
+                // Structure-specific fields
+                parse_optional_field!(>custom_hash,  self_struc, xcfg_struc, custom_hash,  Some(custom_hash.clone()));
+                parse_optional_field!(>field_hasher, self_struc, xcfg_struc, field_hasher, Some(field_hasher.clone()));
+                self_struc.fields.extend(xcfg_struc.fields.clone().into_iter());
             },
-            _ => ()
+            (_, _) => ()
         }
     }
 }
 
-#[derive(Clone)]
 struct ScopeConfig<'xcfg> {
     file_name: Rc<String>, // FIXME: this should be a &str
     items: Option<Rc<xcfg::NamedItemList<'xcfg>>>,
@@ -363,12 +394,12 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
     fn build_new_scope(&self, item: &ast::Item) -> ScopeConfig<'xcfg> {
         // We have either a #[cross_check] attribute
         // or external config, so create a new ScopeCheckConfig
-        let mut new_config = self.config().inherit();
+        let mut new_config = self.config().inherit(item);
         // TODO: order???
         let xcheck_attr = find_cross_check_attr(&item.attrs);
         if let Some(ref attr) = xcheck_attr {
             let mi = attr.parse_meta(self.cx.parse_sess).unwrap();
-            new_config.parse_attr_config(self.cx, &mi, AttrScope::from_item(item));
+            new_config.parse_attr_config(self.cx, &mi);
         };
 
         let last_scope = self.last_scope();
@@ -408,8 +439,9 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                 // Parameter pattern is just an identifier,
                 // so we can reference it directly by name
                 let arg_idx = xcfg::FieldIndex::from_str(&*ident.node.name.as_str());
-                let arg_xcheck_cfg = self.config().sub_xchecks.get(&arg_idx)
-                    .unwrap_or(&self.config().all_args_xcheck);
+                let arg_xcheck_cfg = self.config().function_config()
+                    .args.get(&arg_idx)
+                    .unwrap_or(&self.config().function_config().all_args);
                 arg_xcheck_cfg.get_hash(self.cx, || {
                     // By default, we use cross_check_hash
                     // to hash the value of the identifier
@@ -443,17 +475,14 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
             let mi = format!("shasher=\"{}\"", shasher_str);
             res.push(mi);
         }
-        if let Some(ref field_hasher) = self.config().field_hasher {
+        let struct_config = self.config().struct_config();
+        if let Some(ref field_hasher) = struct_config.field_hasher.as_ref() {
             let mi = format!("field_hasher=\"{}\"", field_hasher);
             res.push(mi);
         }
-        match self.config().main_xcheck {
-            xcfg::XCheckType::Default => (),
-            xcfg::XCheckType::Custom(ref s) => {
-                let mi = format!("custom_hash=\"{}\"", s);
-                res.push(mi);
-            }
-            ref xc@_ => panic!("invalid cross-check type for structure:{:?}", xc)
+        if let Some(ref custom_hash) = struct_config.custom_hash.as_ref() {
+            let mi = format!("custom_hash=\"{}\"", custom_hash);
+            res.push(mi);
         }
         res
     }
@@ -466,7 +495,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
                 let checked_block = if self.config().inherited.enabled {
                     // Add the cross-check to the beginning of the function
                     // TODO: only add the checks to C abi functions???
-                    let entry_xcheck = self.config().main_xcheck
+                    let entry_xcheck = self.config().function_config().entry
                         .get_ident_hash(self.cx, &fn_ident)
                         .map(|hash| quote_stmt!(self.cx, cross_check_raw!(FUNCTION_ENTRY_TAG, $hash);))
                         .unwrap_or_default();
@@ -604,7 +633,7 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
             });
 
         let sf_attr_xcheck = self.parse_field_attr(&folded_sf.attrs);
-        let sf_xcfg_xcheck = self.config().sub_xchecks.get(&sf_name);
+        let sf_xcfg_xcheck = self.config().struct_config().fields.get(&sf_name);
         let sf_xcheck = sf_xcfg_xcheck.or(sf_attr_xcheck.as_ref());
         let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
             match *sf_xcheck {
@@ -690,7 +719,7 @@ impl MultiItemModifier for CrossCheckExpander {
                 let ni = match i.node {
                     ast::ItemKind::Mod(_) => {
                         let mut top_config = ScopeCheckConfig::new();
-                        top_config.parse_attr_config(cx, mi, AttrScope::Top);
+                        top_config.parse_attr_config(cx, mi);
                         let top_file_name = cx.codemap().span_to_filename(sp);
                         let top_scope = ScopeConfig::new(&self.external_config,
                                                          &top_file_name,
