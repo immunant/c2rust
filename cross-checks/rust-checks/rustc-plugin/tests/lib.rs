@@ -76,7 +76,7 @@ fn test_custom_fn_id() {
 }
 
 #[test]
-fn test_args_simple() {
+fn test_all_args_default() {
     #[cross_check(yes, all_args)]
     fn abcd(_a: u8, _b: u64) { }
 
@@ -84,6 +84,28 @@ fn test_args_simple() {
     expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
     expect_xcheck(xcheck::FUNCTION_ARG_TAG, 0x7f_u64);
     expect_xcheck(xcheck::FUNCTION_ARG_TAG, 0x0f0f0f0f_0f0f0f0f_u64);
+    expect_no_xchecks();
+}
+
+#[test]
+fn test_all_args_fixed() {
+    #[cross_check(yes, all_args(fixed=0x1234))]
+    fn abcd(_a: u8, _b: u64) { }
+
+    abcd(0x7fu8, 1u64);
+    expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
+    expect_xcheck(xcheck::FUNCTION_ARG_TAG, 0x1234_u64);
+    expect_xcheck(xcheck::FUNCTION_ARG_TAG, 0x1234_u64);
+    expect_no_xchecks();
+}
+
+#[test]
+fn test_all_args_disabled() {
+    #[cross_check(yes, all_args(disabled))]
+    fn abcd(_a: u8, _b: u64) { }
+
+    abcd(0x7fu8, 1u64);
+    expect_xcheck(xcheck::FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
     expect_no_xchecks();
 }
 
