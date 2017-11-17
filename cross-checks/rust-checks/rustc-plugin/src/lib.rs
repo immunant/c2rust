@@ -381,7 +381,7 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
     }
 
     fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
-        mac
+        fold::noop_fold_mac(mac, self)
     }
 }
 
