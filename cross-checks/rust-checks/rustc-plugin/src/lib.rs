@@ -80,10 +80,10 @@ impl<'xcfg> ScopeConfig<'xcfg> {
     }
 }
 
-struct CrossChecker<'a, 'cx: 'a, 'xcfg> {
+struct CrossChecker<'a, 'cx: 'a, 'exp> {
+    expander: &'exp CrossCheckExpander,
     cx: &'a mut ExtCtxt<'cx>,
-    external_config: &'xcfg xcfg::Config,
-    scope_stack: Vec<ScopeConfig<'xcfg>>,
+    scope_stack: Vec<ScopeConfig<'exp>>,
     default_ahasher: Vec<TokenTree>,
     default_shasher: Vec<TokenTree>,
 }
@@ -92,9 +92,9 @@ fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
     attrs.iter().find(|attr| attr.check_name("cross_check"))
 }
 
-impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
+impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     #[inline]
-    fn last_scope(&self) -> &ScopeConfig<'xcfg> {
+    fn last_scope(&self) -> &ScopeConfig<'exp> {
         self.scope_stack.last().unwrap()
     }
 
@@ -103,7 +103,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
         &self.last_scope().check_config
     }
 
-    fn build_new_scope(&self, item: &ast::Item) -> ScopeConfig<'xcfg> {
+    fn build_new_scope(&self, item: &ast::Item) -> ScopeConfig<'exp> {
         // We have either a #[cross_check] attribute
         // or external config, so create a new ScopeCheckConfig
         let mut new_config = self.config().inherit(item);
@@ -132,7 +132,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
             // We should only ever get a file name mismatch
             // at the top of a module
             assert_matches!(item.node, ast::ItemKind::Mod(_));
-            ScopeConfig::new(self.external_config, mod_file_name, new_config)
+            ScopeConfig::new(&self.expander.external_config, mod_file_name, new_config)
         } else {
             last_scope.from_item(item_xcfg_config, new_config)
         }
@@ -287,7 +287,7 @@ impl<'a, 'cx, 'xcfg> CrossChecker<'a, 'cx, 'xcfg> {
     }
 }
 
-impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
+impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let new_scope = self.build_new_scope(&item);
         self.scope_stack.push(new_scope);
@@ -479,8 +479,8 @@ impl MultiItemModifier for CrossCheckExpander {
                             q.to_tokens(cx)
                         };
                         CrossChecker {
+                            expander: &self,
                             cx: cx,
-                            external_config: &self.external_config,
                             scope_stack: vec![top_scope],
                             default_ahasher: default_ahasher,
                             default_shasher: default_shasher,
