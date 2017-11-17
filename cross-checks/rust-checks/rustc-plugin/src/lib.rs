@@ -81,7 +81,7 @@ impl<'xcfg> ScopeConfig<'xcfg> {
 }
 
 struct CrossChecker<'a, 'cx: 'a, 'xcfg> {
-    cx: &'a ExtCtxt<'cx>,
+    cx: &'a mut ExtCtxt<'cx>,
     external_config: &'xcfg xcfg::Config,
     scope_stack: Vec<ScopeConfig<'xcfg>>,
     default_ahasher: Vec<TokenTree>,
@@ -380,8 +380,27 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
         }
     }
 
+    // Fold functions that handle macro expansion
+    fn fold_item(&mut self, item: P<ast::Item>) -> SmallVector<P<ast::Item>> {
+        if let ast::ItemKind::Mac(_) = item.node {
+            self.cx.expander().fold_item(item)
+                .into_iter()
+                .flat_map(|item| fold::noop_fold_item(item, self).into_iter())
+                .collect()
+        } else {
+            fold::noop_fold_item(item, self)
+        }
+    }
+
+    fn fold_expr(&mut self, expr: P<ast::Expr>) -> P<ast::Expr> {
+        let expr = if let ast::ExprKind::Mac(_) = expr.node {
+            self.cx.expander().fold_expr(expr)
+        } else { expr };
+        expr.map(|e| fold::noop_fold_expr(e, self))
+    }
+
     fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
-        fold::noop_fold_mac(mac, self)
+       mac
     }
 }
 
@@ -436,12 +455,20 @@ impl MultiItemModifier for CrossCheckExpander {
                         let top_scope = ScopeConfig::new(&self.external_config,
                                                          top_file_name,
                                                          top_config);
+                        let default_ahasher = {
+                            let q = quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher);
+                            q.to_tokens(cx)
+                        };
+                        let default_shasher = {
+                            let q = quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher);
+                            q.to_tokens(cx)
+                        };
                         CrossChecker {
                             cx: cx,
                             external_config: &self.external_config,
                             scope_stack: vec![top_scope],
-                            default_ahasher: quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher).to_tokens(cx),
-                            default_shasher: quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher).to_tokens(cx),
+                            default_ahasher: default_ahasher,
+                            default_shasher: default_shasher,
                         }.fold_item(i)
                          .expect_one("too many items returned")
                     }
