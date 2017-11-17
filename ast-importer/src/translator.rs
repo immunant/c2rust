@@ -740,7 +740,9 @@ impl Translation {
                 match kind {
                     CastKind::BitCast => {
                         val.map(|x| {
-                            let source_ty = self.convert_type(self.ast_context.index(expr).kind.get_type());
+                            // TODO: Detect cast from mutable to constant pointer to same type
+                            let source_ty_id = self.ast_context.index(expr).kind.get_type();
+                            let source_ty = self.convert_type(source_ty_id);
                             let target_ty = self.convert_type(ty.ctype);
                             transmute_expr(source_ty, target_ty, x)
                         })

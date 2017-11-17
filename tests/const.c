@@ -25,3 +25,14 @@ void entry(unsigned buffer_size, int buffer[])
     }
 }
 
+// Check that taking the address of a pointer works correctly with
+// constant and mutable variables. This is a compilation check to
+// ensure that the correct & and &mut variants are used.
+void addr_of_const(void) {
+        const int ci = 0;
+        int i = 0;
+
+        const int *p1 = &ci;
+        const int *p2 = &i;
+        int *p3 = &i;
+}
