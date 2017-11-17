@@ -549,7 +549,7 @@ pub struct CQualTypeId {
 
 // TODO: these may be interesting, but I'm not sure if they fit here:
 //
-//  * UnaryTranformType <http://clang.llvm.org/doxygen/classclang_1_1UnaryTransformType.html>
+//  * UnaryTransformType <http://clang.llvm.org/doxygen/classclang_1_1UnaryTransformType.html>
 //  * AdjustedType <http://clang.llvm.org/doxygen/classclang_1_1AdjustedType.html>
 
 /// Represents a type in C (6.2.5 Types)

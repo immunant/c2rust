@@ -72,6 +72,15 @@ fn pointer_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
     mk().method_call_expr(ptr, "offset", vec![offset])
 }
 
+/// Construct a new constant null pointer expression
+fn null_expr() -> P<Expr>  {
+    mk().call_expr(mk().path_expr(vec!["std", "ptr", "null"]), vec![] as Vec<P<Expr>>)
+}
+
+/// Construct a new mutable null pointer expression
+fn null_mut_expr() -> P<Expr> {
+    mk().call_expr(mk().path_expr(vec!["std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>)
+}
 
 fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> {
     let type_args = vec![source_ty, target_ty];
@@ -106,6 +115,18 @@ pub fn with_stmts_opt<T>(opt: Option<WithStmts<T>>) -> WithStmts<Option<T>> {
     match opt {
         None => WithStmts::new(None),
         Some(x) => WithStmts { stmts: x.stmts, val: Some(x.val) },
+    }
+}
+
+// Generate link attributes needed to ensure that the generated Rust libraries have the right symbol
+// values.
+fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder {
+    if new_name == old_name {
+        mk().single_attr("no_mangle")          // Don't touch my name Rust!
+    } else if in_extern_block {
+        mk().str_attr("link_name", old_name)   // Look for this name
+    } else {
+        mk().str_attr("export_name", old_name) // Make sure you actually name it this
     }
 }
 
@@ -192,8 +213,18 @@ impl Translation {
             items: vec![],
             type_converter: TypeConverter::new(),
             ast_context,
-            renamer: RefCell::new(Renamer::new(HashSet::new())),
-            // XXX: Populate reserved words
+            renamer: RefCell::new(Renamer::new(vec![
+                // Keywords currently in use
+                "as", "break", "const", "continue", "crate","else", "enum", "extern", "false", "fn",
+                "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+                "ref", "return", "Self", "self", "static", "struct", "super", "trait", "true",
+                "type", "unsafe", "use", "where", "while",
+
+                // Keywords reserved for future use
+                "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof",
+                "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual",
+                "yield",
+            ].iter().map(|s| s.to_string()).collect())),
         }
     }
 
@@ -228,6 +259,8 @@ impl Translation {
             CDeclKind::Function { .. } if !toplevel => panic!("Function declarations must be top-level"),
             CDeclKind::Function { is_extern, typ, ref name, ref parameters, body } => {
 
+                let new_name = &self.renamer.borrow().get(name).expect("Functions should already be renamed");
+
                 let ret: CQualTypeId = match self.ast_context.index(typ).kind {
                     CTypeKind::Function(ret, _) => ret,
                     _ => panic!("Type of function {:?} was not a function type", decl_id)
@@ -244,7 +277,7 @@ impl Translation {
                     })
                     .collect();
 
-                self.convert_function(is_extern, name, &args, ret, body)
+                self.convert_function(is_extern, new_name, name, &args, ret, body)
             },
 
             CDeclKind::Typedef { ref name, ref typ } => {
@@ -256,11 +289,12 @@ impl Translation {
             CDeclKind::Variable { is_extern: true, is_static, ref ident, initializer: None, typ } => {
                 assert!(is_static, "An extern variable must be static");
 
+                let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
                 let (ty, mutbl, _) = self.convert_variable(None, typ);
 
-                let extern_item = mk()
+                let extern_item = mk_linkage(true, new_name, ident)
                     .set_mutbl(mutbl)
-                    .foreign_static(ident, ty);
+                    .foreign_static(new_name, ty);
 
                 mk().abi(Abi::C)
                     .foreign_items(vec![extern_item])
@@ -270,22 +304,24 @@ impl Translation {
             CDeclKind::Variable { is_extern: true, is_static, ref ident, initializer, typ } => {
                 assert!(is_static, "An extern variable must be static");
 
+                let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ);
 
                 let init = init
                     .expect("Initializer expected")
                     .to_expr();
 
-                mk().single_attr("no_mangle")
+                mk_linkage(false, new_name, ident)
                     .vis(Visibility::Public)
                     .abi(Abi::C)
                     .set_mutbl(mutbl)
-                    .static_item(ident, ty, init)
+                    .static_item(new_name, ty, init)
             }
 
             // Static variable (definition here)
             CDeclKind::Variable { is_static: true, ref ident, initializer, typ, .. } => {
 
+                let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ);
 
                 // Static storage variables are zero-initialized
@@ -294,7 +330,7 @@ impl Translation {
                     .unwrap_or(self.implicit_default_expr(typ.ctype));
 
                 mk().set_mutbl(mutbl)
-                    .static_item(ident, ty, init)
+                    .static_item(new_name, ty, init)
             }
 
             CDeclKind::Variable { .. } => panic!("This should be handled in 'convert_decl_stmt'"),
@@ -306,11 +342,13 @@ impl Translation {
     fn convert_function(
         &self,
         is_extern: bool,
+        new_name: &str,
         name: &str,
         arguments: &[(String, CQualTypeId)],
         return_type: CQualTypeId,
         body: Option<CStmtId>,
     ) -> P<Item> {
+
         // Start scope for function parameters
         self.renamer.borrow_mut().add_scope();
 
@@ -318,8 +356,8 @@ impl Translation {
             .iter()
             .map(|&(ref var, typ)| {
                 let rust_var = self.renamer.borrow_mut()
-                    .insert(var.to_string(), var.as_str())
-                    .expect(&format!("Failed to insert argument '{}'", var));
+                .insert(var.to_string(), var.as_str())
+                .expect(&format!("Failed to insert argument '{}'", var));
 
                 let (ty, mutbl, _) = self.convert_variable(None, typ);
 
@@ -338,22 +376,22 @@ impl Translation {
 
             let block = self.convert_function_body(body);
 
-            let mut mk_ = mk();
-
-            // Only make `#[no_mangle] pub extern "C"` if the function is `extern`
-            if is_extern {
-                mk_ = mk_
-                    .single_attr("no_mangle")
+            // Only add linkage attributes if the function is `extern`
+            let mk_ = if is_extern {
+                mk_linkage(false, new_name, name)
+                    .abi(Abi::C)
                     .vis(Visibility::Public)
-                    .abi(Abi::C);
-            }
+            } else {
+                mk().abi(Abi::C)
+            };
 
-            mk_.unsafe_().fn_item(name, decl, block)
+            mk_.unsafe_().fn_item(new_name, decl, block)
 
         } else {
             // Translating an extern function declaration
 
-            let function_decl = mk().foreign_fn(name, decl);
+            let function_decl = mk_linkage(true, new_name, name)
+                .foreign_fn(new_name, decl);
 
             mk().abi(Abi::C)
                 .foreign_items(vec![function_decl])
@@ -674,7 +712,8 @@ impl Translation {
             }
 
             CExprKind::Literal(_, CLiteral::Floating(ref val)) => {
-                let str = format!("{}", val);
+                let mut str = format!("{}", val);
+                if str.find('.').is_none() { str.push('.') }
                 WithStmts::new(mk().lit_expr(mk().float_unsuffixed_lit(str)))
             }
 
@@ -701,7 +740,9 @@ impl Translation {
                 match kind {
                     CastKind::BitCast => {
                         val.map(|x| {
-                            let source_ty = self.convert_type(self.ast_context.index(expr).kind.get_type());
+                            // TODO: Detect cast from mutable to constant pointer to same type
+                            let source_ty_id = self.ast_context.index(expr).kind.get_type();
+                            let source_ty = self.convert_type(source_ty_id);
                             let target_ty = self.convert_type(ty.ctype);
                             transmute_expr(source_ty, target_ty, x)
                         })
@@ -726,17 +767,14 @@ impl Translation {
                     CastKind::NullToPointer => {
                         assert!(val.stmts.is_empty());
 
-                        let null_expr = mk().call_expr(mk().path_expr(vec!["std", "ptr", "null"]), vec![] as Vec<P<Expr>>);
-                        let null_mut_expr = mk().call_expr(mk().path_expr(vec!["std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>);
-
                         let res = if self.is_function_pointer(ty.ctype) {
                             let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
                             let target_ty = self.convert_type(ty.ctype);
-                            transmute_expr(source_ty, target_ty, null_expr)
+                            transmute_expr(source_ty, target_ty, null_expr())
                         } else {
                             match &self.ast_context.resolve_type(ty.ctype).kind {
-                                &CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => null_expr,
-                                _ => null_mut_expr,
+                                &CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => null_expr(),
+                                _ => null_mut_expr(),
                             }
                         };
 
@@ -1244,8 +1282,13 @@ impl Translation {
                 if self.is_function_pointer(ctype) {
                     arg
                 } else {
+                    let mutbl = match resolved_ctype.kind {
+                        CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => Mutability::Immutable,
+                        _ => Mutability::Mutable,
+                    };
+
                     arg.map(|a| {
-                        let addr_of_arg = mk().mutbl().addr_of_expr(a);
+                        let addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
                         mk().cast_expr(addr_of_arg, ty)
                     })
                 }
@@ -1460,15 +1503,20 @@ impl Translation {
     /// Convert a boolean expression to a boolean for use in && or || or if
     fn match_bool(&self, target: bool, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
+        let is_fp = self.is_function_pointer(ty_id);
 
-        if ty.is_pointer() {
+        if ty.is_pointer() && !is_fp {
             let mut res = mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>);
             if target {
                 res = mk().unary_expr(ast::UnOp::Not, res)
             }
             res
         } else {
-            let zero = if ty.is_floating_type() {
+            let zero = if is_fp {
+                let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
+                let target_ty = self.convert_type(ty_id);
+                transmute_expr(source_ty, target_ty, null_expr())
+            } else if ty.is_floating_type() {
                 mk().lit_expr(mk().float_unsuffixed_lit("0."))
             } else {
                 mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
