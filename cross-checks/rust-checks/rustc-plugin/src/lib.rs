@@ -399,6 +399,9 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
         expr.map(|e| fold::noop_fold_expr(e, self))
     }
 
+    // TODO: fold_stmt???
+    // TODO: fold_block???
+
     fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
        mac
     }
