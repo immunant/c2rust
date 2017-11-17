@@ -8,6 +8,7 @@ readme = "README.md"
 plugin = true
 
 [features]
+expand-macros = []
 
 [dependencies]
 matches = "0.1.6"

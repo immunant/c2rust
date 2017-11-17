@@ -297,11 +297,13 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
     }
 
     fn fold_stmt(&mut self, s: ast::Stmt) -> SmallVector<ast::Stmt> {
-       if let ast::StmtKind::Mac(_) = s.node {
-           return self.cx.expander().fold_stmt(s)
-               .into_iter()
-               .flat_map(|stmt| self.fold_stmt(stmt).into_iter())
-               .collect();
+       if cfg!(feature = "expand-macros") {
+           if let ast::StmtKind::Mac(_) = s.node {
+               return self.cx.expander().fold_stmt(s)
+                   .into_iter()
+                   .flat_map(|stmt| self.fold_stmt(stmt).into_iter())
+                   .collect();
+           }
        }
 
        let folded_stmt = fold::noop_fold_stmt(s, self);
@@ -389,20 +391,24 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
 
     // Fold functions that handle macro expansion
     fn fold_item(&mut self, item: P<ast::Item>) -> SmallVector<P<ast::Item>> {
-        if let ast::ItemKind::Mac(_) = item.node {
-            self.cx.expander().fold_item(item)
-                .into_iter()
-                .flat_map(|item| self.fold_item(item).into_iter())
-                .collect()
-        } else {
-            fold::noop_fold_item(item, self)
+        if cfg!(feature = "expand-macros") {
+            if let ast::ItemKind::Mac(_) = item.node {
+                return self.cx.expander().fold_item(item)
+                    .into_iter()
+                    .flat_map(|item| self.fold_item(item).into_iter())
+                    .collect();
+            }
         }
+        fold::noop_fold_item(item, self)
     }
 
     fn fold_expr(&mut self, expr: P<ast::Expr>) -> P<ast::Expr> {
-        let expr = if let ast::ExprKind::Mac(_) = expr.node {
-            self.cx.expander().fold_expr(expr)
-        } else { expr };
+        if cfg!(feature = "expand-macros") {
+            if let ast::ExprKind::Mac(_) = expr.node {
+                return self.cx.expander().fold_expr(expr)
+                    .map(|e| fold::noop_fold_expr(e, self));
+            }
+        }
         expr.map(|e| fold::noop_fold_expr(e, self))
     }
 
