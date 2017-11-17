@@ -674,7 +674,8 @@ impl Translation {
             }
 
             CExprKind::Literal(_, CLiteral::Floating(ref val)) => {
-                let str = format!("{}", val);
+                let mut str = format!("{}", val);
+                if str.find('.').is_none() { str.push('.') }
                 WithStmts::new(mk().lit_expr(mk().float_unsuffixed_lit(str)))
             }
 
