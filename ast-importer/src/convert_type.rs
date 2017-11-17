@@ -41,8 +41,10 @@ impl TypeConverter {
 
                     // While void converts to () in function returns, it converts to c_void
                     // in the case of pointers.
-                    CTypeKind::Void =>
-                        mk().ptr_ty(mk().path_ty(vec!["libc","c_void"])),
+                    CTypeKind::Void => {
+                            let mutbl = if qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
+                            mk().set_mutbl(mutbl).ptr_ty(mk().path_ty(vec!["libc","c_void"]))
+                    }
 
                     CTypeKind::Function(ref ret, ref params) => {
                         let inputs = params.iter().map(|x|
@@ -54,7 +56,7 @@ impl TypeConverter {
 
                     _ => {
                         let child_ty = self.convert(ctxt, *ctype);
-                        let mutbl = if qualifiers.is_const { Mutability::Immutable } else { Mutability:: Mutable };
+                        let mutbl = if qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
                         mk().set_mutbl(mutbl).ptr_ty(child_ty)
                     }
                 }

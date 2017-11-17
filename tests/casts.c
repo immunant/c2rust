@@ -5,6 +5,7 @@ void entry(unsigned buffer_size, int buffer[]) {
         char *x1 = (char*) intp;
         int *x2 = (int*) intp;
         void(*f)(unsigned, int*) = entry;
+        void(*g)(unsigned, int*) = &entry;
         //(union intfloat)1;
         int *x3 = (int*)inta;
         int *x4 = (int*)0;
@@ -15,6 +16,6 @@ void entry(unsigned buffer_size, int buffer[]) {
         float x8 = (float)10;
         int x9 = (int)10.0;
         _Bool x10 = (_Bool)10;
-        // (_Bool)10.0;
-        double x11 = (double)10.0f;
+        _Bool x11 = (_Bool)10.5;
+        double x12 = (double)10.5f;
 }
