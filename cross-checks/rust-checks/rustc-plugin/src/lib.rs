@@ -15,7 +15,8 @@ use rustc_plugin::Registry;
 use syntax::ast;
 use syntax::fold;
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -93,6 +94,26 @@ fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
 }
 
 impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
+    fn new(expander: &'exp CrossCheckExpander,
+           cx: &'a mut ExtCtxt<'cx>,
+           top_scope: ScopeConfig<'exp>) -> CrossChecker<'a, 'cx, 'exp> {
+        let default_ahasher = {
+            let q = quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher);
+            q.to_tokens(cx)
+        };
+        let default_shasher = {
+            let q = quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher);
+            q.to_tokens(cx)
+        };
+        CrossChecker {
+            expander: expander,
+            cx: cx,
+            scope_stack: vec![top_scope],
+            default_ahasher: default_ahasher,
+            default_shasher: default_shasher,
+        }
+    }
+
     #[inline]
     fn last_scope(&self) -> &ScopeConfig<'exp> {
         self.scope_stack.last().unwrap()
@@ -271,6 +292,12 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     ..folded_item
                 }
             }
+            ast::ItemKind::Mac(_) => {
+                if !cfg!(feature = "expand_macros") {
+                    self.expander.insert_macro_scope(folded_item.span, &self.config());
+                }
+                folded_item
+            }
             _ => folded_item
         }
     }
@@ -304,6 +331,8 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                    .flat_map(|stmt| self.fold_stmt(stmt).into_iter())
                    .collect();
            }
+       } else {
+           self.expander.insert_macro_scope(s.span, &self.config());
        }
 
        let folded_stmt = fold::noop_fold_stmt(s, self);
@@ -408,6 +437,8 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                 return self.cx.expander().fold_expr(expr)
                     .map(|e| fold::noop_fold_expr(e, self));
             }
+        } else {
+           self.expander.insert_macro_scope(expr.span, &self.config());
         }
         expr.map(|e| fold::noop_fold_expr(e, self))
     }
@@ -423,12 +454,14 @@ struct CrossCheckExpander {
     // Arguments passed to plugin
     // TODO: pre-parse them???
     external_config: xcfg::Config,
+    macro_scopes: RefCell<HashMap<Span, Rc<config::InheritedCheckConfig>>>,
 }
 
 impl CrossCheckExpander {
     fn new(args: &[ast::NestedMetaItem]) -> CrossCheckExpander {
         CrossCheckExpander {
             external_config: CrossCheckExpander::parse_config_files(args),
+            macro_scopes: Default::default(),
         }
     }
 
@@ -449,6 +482,19 @@ impl CrossCheckExpander {
             .map(|fd| xcfg::parse_string(&fd).expect("could not parse config file"))
             .fold(Default::default(), |acc, fc| acc.merge(fc))
     }
+
+    fn insert_macro_scope(&self, sp: Span, config: &config::ScopeCheckConfig) {
+        self.macro_scopes.borrow_mut().insert(sp, Rc::clone(&config.inherited));
+    }
+
+    fn find_span_scope(&self, sp: Span) -> Option<Rc<config::InheritedCheckConfig>> {
+        let macro_scopes = self.macro_scopes.borrow();
+        macro_scopes.get(&sp).cloned().or_else(|| {
+            sp.ctxt().outer().expn_info().and_then(|ei| {
+                self.find_span_scope(ei.call_site)
+            })
+        })
+    }
 }
 
 impl MultiItemModifier for CrossCheckExpander {
@@ -459,6 +505,7 @@ impl MultiItemModifier for CrossCheckExpander {
               item: Annotatable) -> Vec<Annotatable> {
         match item {
             Annotatable::Item(i) => {
+                let span_scope = self.find_span_scope(sp);
                 // If we're seeing #![cross_check] at the top of the crate or a module,
                 // create a fresh configuration and perform a folding; otherwise, just
                 // ignore this expansion and let the higher level one do everything
@@ -470,24 +517,23 @@ impl MultiItemModifier for CrossCheckExpander {
                         let top_scope = ScopeConfig::new(&self.external_config,
                                                          top_file_name,
                                                          top_config);
-                        let default_ahasher = {
-                            let q = quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher);
-                            q.to_tokens(cx)
-                        };
-                        let default_shasher = {
-                            let q = quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher);
-                            q.to_tokens(cx)
-                        };
-                        CrossChecker {
-                            expander: &self,
-                            cx: cx,
-                            scope_stack: vec![top_scope],
-                            default_ahasher: default_ahasher,
-                            default_shasher: default_shasher,
-                        }.fold_item(i)
-                         .expect_one("too many items returned")
+                        CrossChecker::new(self, cx, top_scope)
+                            .fold_item(i)
+                            .expect_one("too many items returned")
                     }
-                    _ => i
+                    _ => if let Some(scope_config) = span_scope {
+                        // If this #[cross_check(...)] expansion is caused by a
+                        // macro expansion, handle it here
+                        let mut config = config::ScopeCheckConfig::from_item(&i, scope_config);
+                        config.parse_attr_config(cx, mi);
+                        let file_name = cx.codemap().span_to_filename(sp);
+                        let scope = ScopeConfig::new(&self.external_config,
+                                                     file_name,
+                                                     config);
+                        CrossChecker::new(self, cx, scope)
+                            .fold_item(i)
+                            .expect_one("too many items returned")
+                    } else { i }
                 };
                 Annotatable::Item(ni).into()
             }

@@ -86,7 +86,7 @@ impl ScopeCheckConfig {
         }
     }
 
-    pub fn inherit(&self, item: &ast::Item) -> Self {
+    pub fn from_item(item: &ast::Item, inherited: Rc<InheritedCheckConfig>) -> Self {
         let item_config = match item.node {
             ast::ItemKind::Fn(..) => ItemCheckConfig::Function(Default::default()),
             ast::ItemKind::Enum(..) |
@@ -95,9 +95,13 @@ impl ScopeCheckConfig {
             _ => ItemCheckConfig::Other,
         };
         ScopeCheckConfig {
-            inherited: Rc::clone(&self.inherited),
+            inherited: inherited,
             item: item_config,
         }
+    }
+
+    pub fn inherit(&self, item: &ast::Item) -> Self {
+        Self::from_item(item, Rc::clone(&self.inherited))
     }
 
     // Getters for various options
