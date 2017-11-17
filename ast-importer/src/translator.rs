@@ -1251,8 +1251,13 @@ impl Translation {
                 if self.is_function_pointer(ctype) {
                     arg
                 } else {
+                    let mutbl = match resolved_ctype.kind {
+                        CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => Mutability::Immutable,
+                        _ => Mutability::Mutable,
+                    };
+
                     arg.map(|a| {
-                        let addr_of_arg = mk().mutbl().addr_of_expr(a);
+                        let addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
                         mk().cast_expr(addr_of_arg, ty)
                     })
                 }
