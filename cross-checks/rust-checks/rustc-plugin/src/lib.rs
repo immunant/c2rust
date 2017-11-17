@@ -297,6 +297,13 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
     }
 
     fn fold_stmt(&mut self, s: ast::Stmt) -> SmallVector<ast::Stmt> {
+       if let ast::StmtKind::Mac(_) = s.node {
+           return self.cx.expander().fold_stmt(s)
+               .into_iter()
+               .flat_map(|stmt| self.fold_stmt(stmt).into_iter())
+               .collect();
+       }
+
        let folded_stmt = fold::noop_fold_stmt(s, self);
        folded_stmt.into_iter().flat_map(|s| {
            let new_stmt = match s.node {
@@ -385,7 +392,7 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
         if let ast::ItemKind::Mac(_) = item.node {
             self.cx.expander().fold_item(item)
                 .into_iter()
-                .flat_map(|item| fold::noop_fold_item(item, self).into_iter())
+                .flat_map(|item| self.fold_item(item).into_iter())
                 .collect()
         } else {
             fold::noop_fold_item(item, self)
@@ -399,7 +406,6 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
         expr.map(|e| fold::noop_fold_expr(e, self))
     }
 
-    // TODO: fold_stmt???
     // TODO: fold_block???
 
     fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
