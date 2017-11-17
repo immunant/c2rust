@@ -307,9 +307,7 @@ impl Translation {
                 let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ);
 
-                let init = init
-                    .expect("Initializer expected")
-                    .to_expr();
+                let init = init.to_expr();
 
                 mk_linkage(false, new_name, ident)
                     .vis(Visibility::Public)
@@ -324,10 +322,7 @@ impl Translation {
                 let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ);
 
-                // Static storage variables are zero-initialized
-                let init = init
-                    .map(|w| w.to_expr())
-                    .unwrap_or(self.implicit_default_expr(typ.ctype));
+                let init = init.to_expr();
 
                 mk().set_mutbl(mutbl)
                     .static_item(new_name, ty, init)
@@ -570,10 +565,9 @@ impl Translation {
                     .insert(ident.clone(), &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ);
-                let init = with_stmts_opt(init);
 
                 let pat = mk().set_mutbl(mutbl).ident_pat(rust_name);
-                let local = mk().local(pat, Some(ty), init.val);
+                let local = mk().local(pat, Some(ty), Some(init.val));
 
                 let mut stmts = init.stmts;
                 stmts.push(mk().local_stmt(P(local)));
@@ -606,8 +600,11 @@ impl Translation {
         &self,
         initializer: Option<CExprId>,
         typ: CQualTypeId
-    ) -> (P<Ty>, Mutability, Option<WithStmts<P<Expr>>>) {
-        let init = initializer.map(|x| self.convert_expr(ExprUse::RValue, x));
+    ) -> (P<Ty>, Mutability, WithStmts<P<Expr>>) {
+        let init = match initializer {
+            Some(x) => self.convert_expr(ExprUse::RValue, x),
+            None => WithStmts::new(self.implicit_default_expr(typ.ctype)),
+        };
         let ty = self.convert_type(typ.ctype);
         let mutbl = if typ.qualifiers.is_const { Mutability::Immutable } else { Mutability:: Mutable };
 
@@ -1079,6 +1076,8 @@ impl Translation {
             mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
         } else if resolved_ty.is_floating_type() {
             mk().lit_expr(mk().float_unsuffixed_lit("0."))
+        } else if let &CTypeKind::Pointer(p) = resolved_ty {
+            if p.qualifiers.is_const { null_expr() } else { null_mut_expr() }
         } else {
             mk().call_expr(mk().path_expr(vec!["Default", "default"]), vec![] as Vec<P<Expr>>)
         }
