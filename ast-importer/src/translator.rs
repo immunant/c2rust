@@ -72,6 +72,15 @@ fn pointer_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
     mk().method_call_expr(ptr, "offset", vec![offset])
 }
 
+/// Construct a new constant null pointer expression
+fn null_expr() -> P<Expr>  {
+    mk().call_expr(mk().path_expr(vec!["std", "ptr", "null"]), vec![] as Vec<P<Expr>>)
+}
+
+/// Construct a new mutable null pointer expression
+fn null_mut_expr() -> P<Expr> {
+    mk().call_expr(mk().path_expr(vec!["std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>)
+}
 
 fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> {
     let type_args = vec![source_ty, target_ty];
@@ -703,7 +712,8 @@ impl Translation {
             }
 
             CExprKind::Literal(_, CLiteral::Floating(ref val)) => {
-                let str = format!("{}", val);
+                let mut str = format!("{}", val);
+                if str.find('.').is_none() { str.push('.') }
                 WithStmts::new(mk().lit_expr(mk().float_unsuffixed_lit(str)))
             }
 
@@ -755,17 +765,14 @@ impl Translation {
                     CastKind::NullToPointer => {
                         assert!(val.stmts.is_empty());
 
-                        let null_expr = mk().call_expr(mk().path_expr(vec!["std", "ptr", "null"]), vec![] as Vec<P<Expr>>);
-                        let null_mut_expr = mk().call_expr(mk().path_expr(vec!["std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>);
-
                         let res = if self.is_function_pointer(ty.ctype) {
                             let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
                             let target_ty = self.convert_type(ty.ctype);
-                            transmute_expr(source_ty, target_ty, null_expr)
+                            transmute_expr(source_ty, target_ty, null_expr())
                         } else {
                             match &self.ast_context.resolve_type(ty.ctype).kind {
-                                &CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => null_expr,
-                                _ => null_mut_expr,
+                                &CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => null_expr(),
+                                _ => null_mut_expr(),
                             }
                         };
 
@@ -1489,15 +1496,20 @@ impl Translation {
     /// Convert a boolean expression to a boolean for use in && or || or if
     fn match_bool(&self, target: bool, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
+        let is_fp = self.is_function_pointer(ty_id);
 
-        if ty.is_pointer() {
+        if ty.is_pointer() && !is_fp {
             let mut res = mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>);
             if target {
                 res = mk().unary_expr(ast::UnOp::Not, res)
             }
             res
         } else {
-            let zero = if ty.is_floating_type() {
+            let zero = if is_fp {
+                let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
+                let target_ty = self.convert_type(ty_id);
+                transmute_expr(source_ty, target_ty, null_expr())
+            } else if ty.is_floating_type() {
                 mk().lit_expr(mk().float_unsuffixed_lit("0."))
             } else {
                 mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))

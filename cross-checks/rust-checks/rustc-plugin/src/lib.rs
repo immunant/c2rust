@@ -81,7 +81,7 @@ impl<'xcfg> ScopeConfig<'xcfg> {
 }
 
 struct CrossChecker<'a, 'cx: 'a, 'xcfg> {
-    cx: &'a ExtCtxt<'cx>,
+    cx: &'a mut ExtCtxt<'cx>,
     external_config: &'xcfg xcfg::Config,
     scope_stack: Vec<ScopeConfig<'xcfg>>,
     default_ahasher: Vec<TokenTree>,
@@ -297,6 +297,15 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
     }
 
     fn fold_stmt(&mut self, s: ast::Stmt) -> SmallVector<ast::Stmt> {
+       if cfg!(feature = "expand-macros") {
+           if let ast::StmtKind::Mac(_) = s.node {
+               return self.cx.expander().fold_stmt(s)
+                   .into_iter()
+                   .flat_map(|stmt| self.fold_stmt(stmt).into_iter())
+                   .collect();
+           }
+       }
+
        let folded_stmt = fold::noop_fold_stmt(s, self);
        folded_stmt.into_iter().flat_map(|s| {
            let new_stmt = match s.node {
@@ -380,8 +389,33 @@ impl<'a, 'cx, 'xcfg> Folder for CrossChecker<'a, 'cx, 'xcfg> {
         }
     }
 
+    // Fold functions that handle macro expansion
+    fn fold_item(&mut self, item: P<ast::Item>) -> SmallVector<P<ast::Item>> {
+        if cfg!(feature = "expand-macros") {
+            if let ast::ItemKind::Mac(_) = item.node {
+                return self.cx.expander().fold_item(item)
+                    .into_iter()
+                    .flat_map(|item| self.fold_item(item).into_iter())
+                    .collect();
+            }
+        }
+        fold::noop_fold_item(item, self)
+    }
+
+    fn fold_expr(&mut self, expr: P<ast::Expr>) -> P<ast::Expr> {
+        if cfg!(feature = "expand-macros") {
+            if let ast::ExprKind::Mac(_) = expr.node {
+                return self.cx.expander().fold_expr(expr)
+                    .map(|e| fold::noop_fold_expr(e, self));
+            }
+        }
+        expr.map(|e| fold::noop_fold_expr(e, self))
+    }
+
+    // TODO: fold_block???
+
     fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
-        mac
+       mac
     }
 }
 
@@ -436,12 +470,20 @@ impl MultiItemModifier for CrossCheckExpander {
                         let top_scope = ScopeConfig::new(&self.external_config,
                                                          top_file_name,
                                                          top_config);
+                        let default_ahasher = {
+                            let q = quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher);
+                            q.to_tokens(cx)
+                        };
+                        let default_shasher = {
+                            let q = quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher);
+                            q.to_tokens(cx)
+                        };
                         CrossChecker {
                             cx: cx,
                             external_config: &self.external_config,
                             scope_stack: vec![top_scope],
-                            default_ahasher: quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher).to_tokens(cx),
-                            default_shasher: quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher).to_tokens(cx),
+                            default_ahasher: default_ahasher,
+                            default_shasher: default_shasher,
                         }.fold_item(i)
                          .expect_one("too many items returned")
                     }
