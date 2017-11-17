@@ -756,7 +756,8 @@ impl Translation {
 
                     CastKind::LValueToRValue | CastKind::NoOp | CastKind::ToVoid => val,
 
-                    CastKind::FunctionToPointerDecay => val,
+                    CastKind::FunctionToPointerDecay =>
+                        val.map (|x| mk().call_expr(mk().ident_expr("Some"), vec![x])),
 
                     CastKind::ArrayToPointerDecay =>
                         val.map(|x| mk().method_call_expr(x, "as_mut_ptr", vec![] as Vec<P<Expr>>)),
@@ -939,12 +940,14 @@ impl Translation {
             }
 
             CExprKind::Call(_, func, ref args) => {
-                let mut stmts = vec![];
 
-                let func = {
-                    let WithStmts { stmts: ss, val } = self.convert_expr(ExprUse::RValue, func);
-                    stmts.extend(ss);
-                    val
+                let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
+                    CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay) =>
+                        self.convert_expr(ExprUse::RValue, fexp),
+                    _ => {
+                        self.convert_expr(ExprUse::RValue, func).map(|x|
+                        mk().method_call_expr(x, "unwrap", vec![] as Vec<P<Expr>>))
+                    }
                 };
 
                 let mut args_new: Vec<P<Expr>> = vec![];
@@ -1076,6 +1079,10 @@ impl Translation {
             mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
         } else if resolved_ty.is_floating_type() {
             mk().lit_expr(mk().float_unsuffixed_lit("0."))
+        } else if self.is_function_pointer(ty_id) {
+            let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
+            let target_ty = self.convert_type(ty_id);
+            transmute_expr(source_ty, target_ty, null_expr())
         } else if let &CTypeKind::Pointer(p) = resolved_ty {
             if p.qualifiers.is_const { null_expr() } else { null_mut_expr() }
         } else {
@@ -1279,7 +1286,7 @@ impl Translation {
                 let arg = self.convert_expr(ExprUse::LValue, arg);
 
                 if self.is_function_pointer(ctype) {
-                    arg
+                    arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))
                 } else {
                     let mutbl = match resolved_ctype.kind {
                         CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => Mutability::Immutable,
@@ -1502,20 +1509,21 @@ impl Translation {
     /// Convert a boolean expression to a boolean for use in && or || or if
     fn match_bool(&self, target: bool, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
-        let is_fp = self.is_function_pointer(ty_id);
 
-        if ty.is_pointer() && !is_fp {
+        if self.is_function_pointer(ty_id) {
+            if target {
+                mk().method_call_expr(val, "is_some", vec![] as Vec<P<Expr>>)
+            } else {
+                mk().method_call_expr(val, "is_none", vec![] as Vec<P<Expr>>)
+            }
+        } else if ty.is_pointer() {
             let mut res = mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>);
             if target {
                 res = mk().unary_expr(ast::UnOp::Not, res)
             }
             res
         } else {
-            let zero = if is_fp {
-                let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
-                let target_ty = self.convert_type(ty_id);
-                transmute_expr(source_ty, target_ty, null_expr())
-            } else if ty.is_floating_type() {
+            let zero = if ty.is_floating_type() {
                 mk().lit_expr(mk().float_unsuffixed_lit("0."))
             } else {
                 mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))

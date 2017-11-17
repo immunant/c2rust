@@ -12,4 +12,8 @@ void entry(const unsigned sz, int buf[const]) {
        const int * q2;
        int * const q3;
        int * q4;
+       void (*f)(void);
+       void (*fs[2])(void);
+       int xs[10];
+       int ys[4][5];
 }
