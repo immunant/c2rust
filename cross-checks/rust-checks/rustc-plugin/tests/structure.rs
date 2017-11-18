@@ -15,6 +15,7 @@ use xcheck::{expect_xcheck, expect_no_xchecks};
 
 use cross_check_runtime::hash::simple::SimpleHasher;
 use cross_check_runtime::hash::djb2::Djb2Hasher;
+use cross_check_runtime::xcheck::UNKNOWN_TAG;
 
 //trace_macros!(true);
 
@@ -31,7 +32,6 @@ macro_rules! test_struct {
         };
         let ts = TestStruct { $($field: $field_val),* };
         $({
-            use cross_check_runtime::xcheck::UNKNOWN_TAG;
             cross_check_value!(UNKNOWN_TAG, ts, $ahasher, $shasher);
             expect_xcheck(UNKNOWN_TAG, $val);
         })*
