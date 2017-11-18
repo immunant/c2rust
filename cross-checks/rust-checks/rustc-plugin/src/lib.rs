@@ -526,7 +526,7 @@ impl MultiItemModifier for CrossCheckExpander {
                 // create a fresh configuration and perform a folding; otherwise, just
                 // ignore this expansion and let the higher level one do everything
                 let ni = match i.node {
-                    ast::ItemKind::Mod(_) => {
+                    ast::ItemKind::Mod(_) if span_scope.is_none() => {
                         let mut top_config = config::ScopeCheckConfig::new();
                         top_config.parse_attr_config(cx, mi);
                         let top_file_name = cx.codemap().span_to_filename(sp);
