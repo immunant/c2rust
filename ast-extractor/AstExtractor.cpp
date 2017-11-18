@@ -797,7 +797,7 @@ class TranslateASTVisitor final
           if(!D->isCanonicalDecl())
               return true;
 
-          std::vector<void*> childIds = { D->getInitExpr() };
+          std::vector<void*> childIds { D->getInitExpr() };
           
           encode_entry(D, TagEnumConstantDecl, childIds, QualType(),
             [D](CborEncoder *local){
@@ -816,9 +816,14 @@ class TranslateASTVisitor final
           std::vector<void*> childIds;
           auto t = D->getType();
           encode_entry(D, TagFieldDecl, childIds, t,
-                             [D](CborEncoder *array) {
+                             [D, this](CborEncoder *array) {
                                  auto name = D->getNameAsString();
                                  cbor_encode_string(array, name);
+                                 if (D->isBitField()) {
+                                     cbor_encode_uint(array, D->getBitWidthValue(*this->Context));
+                                 } else {
+                                     cbor_encode_null(array);
+                                 };
                              });
           
           // This might be the only occurence of this type in the translation unit
