@@ -87,6 +87,13 @@ struct CrossChecker<'a, 'cx: 'a, 'exp> {
     scope_stack: Vec<ScopeConfig<'exp>>,
     default_ahasher: Vec<TokenTree>,
     default_shasher: Vec<TokenTree>,
+
+    // Whether to skip calling build_new_scope() on the first scope.
+    // We set this to true for #[cross_check(...)] invocations caused
+    // by macro expansions, since the compiler passes the attribute to us
+    // in mi: &MetaItem and not in the item's actual attribute list,
+    // so we need to skip parsing the latter.
+    skip_first_scope: bool,
 }
 
 fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
@@ -96,7 +103,8 @@ fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
 impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     fn new(expander: &'exp CrossCheckExpander,
            cx: &'a mut ExtCtxt<'cx>,
-           top_scope: ScopeConfig<'exp>) -> CrossChecker<'a, 'cx, 'exp> {
+           top_scope: ScopeConfig<'exp>,
+           skip_first_scope: bool) -> CrossChecker<'a, 'cx, 'exp> {
         let default_ahasher = {
             let q = quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher);
             q.to_tokens(cx)
@@ -111,6 +119,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             scope_stack: vec![top_scope],
             default_ahasher: default_ahasher,
             default_shasher: default_shasher,
+            skip_first_scope: skip_first_scope,
         }
     }
 
@@ -316,11 +325,18 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
 
 impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
     fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
-        let new_scope = self.build_new_scope(&item);
-        self.scope_stack.push(new_scope);
-        let new_item = self.internal_fold_item_simple(item);
-        self.scope_stack.pop();
-        new_item
+        if self.skip_first_scope {
+            // If skip_first_scope is true, skip building a new scope
+            // (see the comment for skip_first_scope in CrossChecker above)
+            self.skip_first_scope = false;
+            self.internal_fold_item_simple(item)
+        } else {
+            let new_scope = self.build_new_scope(&item);
+            self.scope_stack.push(new_scope);
+            let new_item = self.internal_fold_item_simple(item);
+            self.scope_stack.pop();
+            new_item
+        }
     }
 
     fn fold_stmt(&mut self, s: ast::Stmt) -> SmallVector<ast::Stmt> {
@@ -517,7 +533,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         let top_scope = ScopeConfig::new(&self.external_config,
                                                          top_file_name,
                                                          top_config);
-                        CrossChecker::new(self, cx, top_scope)
+                        CrossChecker::new(self, cx, top_scope, false)
                             .fold_item(i)
                             .expect_one("too many items returned")
                     }
@@ -530,7 +546,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         let scope = ScopeConfig::new(&self.external_config,
                                                      file_name,
                                                      config);
-                        CrossChecker::new(self, cx, scope)
+                        CrossChecker::new(self, cx, scope, true)
                             .fold_item(i)
                             .expect_one("too many items returned")
                     } else { i }
