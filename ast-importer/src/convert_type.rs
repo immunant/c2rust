@@ -46,12 +46,16 @@ impl TypeConverter {
                             mk().set_mutbl(mutbl).ptr_ty(mk().path_ty(vec!["libc","c_void"]))
                     }
 
+                    // Function pointers are translated to Option applied to the function type
+                    // in order to support NULL function pointers natively
                     CTypeKind::Function(ref ret, ref params) => {
                         let inputs = params.iter().map(|x|
                             mk().arg(self.convert(ctxt, x.ctype), mk().wild_pat())
                         ).collect();
                         let output = self.convert(ctxt, ret.ctype);
-                        mk().unsafe_().abi(Abi::C).barefn_ty(mk().fn_decl(inputs, FunctionRetTy::Ty(output)))
+                        let fn_ptr = mk().unsafe_().abi(Abi::C).barefn_ty(mk().fn_decl(inputs, FunctionRetTy::Ty(output)));
+                        let param = mk().angle_bracketed_param_types(vec![fn_ptr]);
+                        mk().path_ty(vec![mk().path_segment_with_params("Option", param)])
                     }
 
                     _ => {
