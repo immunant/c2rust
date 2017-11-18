@@ -525,8 +525,8 @@ impl MultiItemModifier for CrossCheckExpander {
                 // If we're seeing #![cross_check] at the top of the crate or a module,
                 // create a fresh configuration and perform a folding; otherwise, just
                 // ignore this expansion and let the higher level one do everything
-                let ni = match i.node {
-                    ast::ItemKind::Mod(_) if span_scope.is_none() => {
+                let ni = match (&i.node, span_scope) {
+                    (&ast::ItemKind::Mod(_), None) => {
                         let mut top_config = config::ScopeCheckConfig::new();
                         top_config.parse_attr_config(cx, mi);
                         let top_file_name = cx.codemap().span_to_filename(sp);
@@ -537,7 +537,7 @@ impl MultiItemModifier for CrossCheckExpander {
                             .fold_item(i)
                             .expect_one("too many items returned")
                     }
-                    _ => if let Some(scope_config) = span_scope {
+                    (_, Some(scope_config)) => {
                         // If this #[cross_check(...)] expansion is caused by a
                         // macro expansion, handle it here
                         let mut config = config::ScopeCheckConfig::from_item(&i, scope_config);
@@ -549,7 +549,8 @@ impl MultiItemModifier for CrossCheckExpander {
                         CrossChecker::new(self, cx, scope, true)
                             .fold_item(i)
                             .expect_one("too many items returned")
-                    } else { i }
+                    }
+                    (_, None) => i
                 };
                 Annotatable::Item(ni).into()
             }
