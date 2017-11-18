@@ -14,6 +14,7 @@ use syntax::print::pprust::*;
 use std::collections::HashSet;
 use std::ops::Index;
 use std::cell::RefCell;
+use dtoa;
 
 pub struct Translation {
     pub items: Vec<P<Item>>,
@@ -698,20 +699,25 @@ impl Translation {
                 WithStmts::new(val)
             }
 
-            CExprKind::Literal(_, CLiteral::Integer(ref val)) => {
-                let val: u64 = *val;
+            CExprKind::Literal(_, CLiteral::Integer(val)) => {
                 WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
             }
 
-            CExprKind::Literal(_, CLiteral::Character(ref val)) => {
-                let val: u64 = *val;
+            CExprKind::Literal(_, CLiteral::Character(val)) => {
                 WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
             }
 
-            CExprKind::Literal(_, CLiteral::Floating(ref val)) => {
-                let mut str = format!("{}", val);
-                if str.find('.').is_none() { str.push('.') }
-                WithStmts::new(mk().lit_expr(mk().float_unsuffixed_lit(str)))
+            CExprKind::Literal(ty, CLiteral::Floating(val)) => {
+
+                let mut bytes: Vec<u8> = vec![];
+                dtoa::write(&mut bytes, val);
+                let str = String::from_utf8(bytes).unwrap();
+                let float_ty = match &self.ast_context.resolve_type(ty.ctype).kind {
+                    &CTypeKind::Double => FloatTy::F64,
+                    &CTypeKind::Float => FloatTy::F32,
+                    k => panic!("Unsupported floating point literal type {:?}", k),
+                };
+                WithStmts::new(mk().lit_expr(mk().float_lit(str, float_ty)))
             }
 
             CExprKind::Literal(ty, CLiteral::String(ref val, width)) => {
