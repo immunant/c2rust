@@ -797,12 +797,15 @@ class TranslateASTVisitor final
           if(!D->isCanonicalDecl())
               return true;
 
-          std::vector<void*> childIds = { D->getInitExpr() };
+          std::vector<void*> childIds; // = { D->getInitExpr() };
           
           encode_entry(D, TagEnumConstantDecl, childIds, QualType(),
             [D](CborEncoder *local){
               auto name = D->getNameAsString();
               cbor_encode_string(local, name);
+
+              auto val = D->getInitVal().getExtValue();
+              cbor_encode_uint(local, val);
           });
           return true;
       }

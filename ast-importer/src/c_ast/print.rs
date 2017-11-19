@@ -464,6 +464,37 @@ impl<W: Write> Printer<W> {
                 Ok(())
             },
 
+            Some(&CDeclKind::Enum { ref name, ref variants }) => {
+                self.writer.write_all(b"enum ")?;
+                match name {
+                    &Some(ref n) => self.writer.write_fmt(format_args!("{} {{\n", n))?,
+                    &None => self.writer.write_all(b"{\n")?,
+                }
+
+                self.indent();
+                for variant in variants {
+                    self.print_decl(*variant, true, true, context)?;
+                }
+                self.dedent();
+
+                self.pad()?;
+                self.writer.write_all(b"}")?;
+                if newline {
+                    self.writer.write_all(b"\n")?;
+                }
+
+                Ok(())
+            },
+
+            Some(&CDeclKind::EnumConstant { ref name, value }) => {
+                self.writer.write_fmt(format_args!("{} = {},", name, value))?;
+                if newline {
+                    self.writer.write_all(b"\n")?;
+                }
+
+                Ok(())
+            }
+
             Some(&CDeclKind::Struct { ref name, ref fields }) => {
                 self.writer.write_all(b"struct ")?;
                 match name {
@@ -556,6 +587,20 @@ impl<W: Write> Printer<W> {
             Some(&CTypeKind::Elaborated(ref ctype)) => self.print_type( *ctype, ident, context),
             Some(&CTypeKind::Decayed(ref ctype)) => self.print_type(*ctype, ident, context),
             Some(&CTypeKind::Paren(ref ctype)) => self.parenthesize(true, |slf| slf.print_type(*ctype, ident, context)),
+
+            Some(&CTypeKind::Enum(ref enum_id)) => {
+                match context.c_decls.get(&enum_id).map(|l| &l.kind) {
+                    Some(&CDeclKind::Enum { name: Some(ref n), .. }) => self.writer.write_fmt(format_args!(" {}", n))?,
+                    Some(&CDeclKind::Enum { name: None, .. }) => unimplemented!(),
+                    Some(_) => panic!("An enum type  is supposed to point to an enum decl"),
+                    None => panic!("Could not find enum decl"),
+                }
+                if let Some(i) = ident {
+                    self.writer.write_fmt(format_args!(" {}", i))?;
+                }
+
+                Ok(())
+            }
 
             Some(ty) => {
                 match ty {

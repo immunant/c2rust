@@ -8,26 +8,27 @@ use clang_ast::*;
 pub type NodeType = u16;
 
 mod node_types {
-    pub const FUNC_TYPE  : super::NodeType = 0b0000000001;
-    pub const OTHER_TYPE : super::NodeType = 0b0000000010;
+    pub const FUNC_TYPE  : super::NodeType = 0b000000000001;
+    pub const OTHER_TYPE : super::NodeType = 0b000000000010;
     pub const TYPE       : super::NodeType = FUNC_TYPE | OTHER_TYPE;
 
-    pub const EXPR       : super::NodeType = 0b0000000100;
+    pub const EXPR       : super::NodeType = 0b000000000100;
 
-    pub const FIELD_DECL : super::NodeType = 0b0000001000;
-    pub const VAR_DECL   : super::NodeType = 0b0000010000;
-    pub const RECORD_DECL: super::NodeType = 0b0000100000;
-    pub const TYPDEF_DECL: super::NodeType = 0b0001000000;
-    pub const OTHER_DECL : super::NodeType = 0b0010000000;
-    pub const DECL       : super::NodeType = FIELD_DECL | VAR_DECL | RECORD_DECL | TYPDEF_DECL | OTHER_DECL;
+    pub const FIELD_DECL : super::NodeType = 0b000000001000;
+    pub const VAR_DECL   : super::NodeType = 0b000000010000;
+    pub const RECORD_DECL: super::NodeType = 0b000000100000;
+    pub const TYPDEF_DECL: super::NodeType = 0b000001000000;
+    pub const ENUM_DECL  : super::NodeType = 0b000010000000;
+    pub const ENUM_CON   : super::NodeType = 0b000100000000;
+    pub const OTHER_DECL : super::NodeType = 0b001000000000;
+    pub const DECL       : super::NodeType = FIELD_DECL | VAR_DECL | RECORD_DECL | TYPDEF_DECL
+                                           | ENUM_DECL | ENUM_CON | OTHER_DECL;
 
-    pub const LABEL_STMT : super::NodeType = 0b0100000000;
-    pub const OTHER_STMT : super::NodeType = 0b1000000000;
+    pub const LABEL_STMT : super::NodeType = 0b010000000000;
+    pub const OTHER_STMT : super::NodeType = 0b100000000000;
     pub const STMT       : super::NodeType = LABEL_STMT | OTHER_STMT;
 
     pub const ANYTHING   : super::NodeType = TYPE | EXPR | DECL | STMT;
-
-    // TODO
 }
 
 type ClangId = u64;
@@ -471,6 +472,16 @@ impl ConversionContext {
 
                     let typedef_ty = CTypeKind::Typedef(decl_new);
                     self.add_type(new_id, not_located(typedef_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
+                TypeTag::TagEnumType if expected_ty & OTHER_TYPE != 0 => {
+                    let decl = expect_u64(&ty_node.extras[0])
+                        .expect("Enum decl not found");
+                    let decl_new = CDeclId(self.visit_node_type(decl, ENUM_DECL));
+
+                    let enum_ty = CTypeKind::Enum(decl_new);
+                    self.add_type(new_id, not_located(enum_ty));
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
@@ -989,6 +1000,34 @@ impl ConversionContext {
 
                     self.add_decl(new_id, located(node, typdef_decl));
                     self.processed_nodes.insert(new_id, TYPDEF_DECL);
+                }
+
+                ASTEntryTag::TagEnumDecl if expected_ty & ENUM_DECL != 0 => {
+                    let name = expect_str(&node.extras[0]).ok().map(str::to_string);
+
+                    let variants = node.children
+                        .iter()
+                        .map(|id| {
+                            let con = id.expect("Enum constant not found");
+                            CDeclId(self.visit_node_type(con, ENUM_CON))
+                        })
+                        .collect();
+
+                    let enum_decl = CDeclKind::Enum { name, variants };
+
+                    self.add_decl(new_id, located(node, enum_decl));
+                    self.processed_nodes.insert(new_id, ENUM_DECL);
+                }
+
+                ASTEntryTag::TagEnumConstantDecl if expected_ty & ENUM_CON != 0 => {
+                    let name = expect_str(&node.extras[0]).expect("Expected to find enum constant name").to_string();
+
+                    let value = expect_u64(&node.extras[1]).expect("Expected to find enum constant's value");
+
+                    let enum_constant_decl = CDeclKind::EnumConstant { name, value };
+
+                    self.add_decl(new_id, located(node, enum_constant_decl));
+                    self.processed_nodes.insert(new_id, ENUM_CON);
                 }
 
                 ASTEntryTag::TagVarDecl if expected_ty & VAR_DECL != 0 => {
