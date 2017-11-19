@@ -256,6 +256,31 @@ impl Translation {
                 }
             }
 
+            CDeclKind::Field { .. } => panic!("Field declarations should be handled inside structs/unions"),
+
+            CDeclKind::Enum { ref name, ref variants } => {
+                let variants: Vec<Variant> = variants
+                    .into_iter()
+                    .map(|v| {
+                        let enum_constant_decl = self.ast_context.index(*v);
+                        match &enum_constant_decl.kind {
+                            &CDeclKind::EnumConstant { ref name, value } => {
+                                let disc = mk().lit_expr(mk().int_lit(value as u128, ""));
+                                mk().unit_variant(name, Some(disc))
+                            }
+                            _ => panic!("Found non-variant in enum variant list"),
+                        }
+                    })
+                    .collect();
+
+                let name = name.clone().expect("Anonymous enum declarations not implemented");
+
+                mk().pub_().enum_item(name, variants)
+            },
+
+            CDeclKind::EnumConstant { .. } => panic!("Enum variants should be handled inside enums"),
+
+
             CDeclKind::Function { .. } if !toplevel => panic!("Function declarations must be top-level"),
             CDeclKind::Function { is_extern, typ, ref name, ref parameters, body } => {
 
