@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use xcfg;
 use xcheck_util;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct InheritedCheckConfig {
     // Whether cross-checks are enabled overall
     pub enabled: bool,
@@ -32,6 +32,7 @@ impl Default for InheritedCheckConfig {
     }
 }
 
+#[derive(Debug)]
 pub struct FunctionCheckConfig {
     pub entry: xcfg::XCheckType,
     pub all_args: xcfg::XCheckType,
@@ -49,13 +50,14 @@ impl Default for FunctionCheckConfig {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct StructCheckConfig {
     pub custom_hash: Option<String>,
     pub field_hasher: Option<String>,
     pub fields: HashMap<xcfg::FieldIndex, xcfg::XCheckType>,
 }
 
+#[derive(Debug)]
 pub enum ItemCheckConfig {
     // Top-level configuration
     Top,
@@ -70,6 +72,7 @@ pub enum ItemCheckConfig {
     Other,
 }
 
+#[derive(Debug)]
 pub struct ScopeCheckConfig {
     // Cross-check configuration inherited from parent
     pub inherited: Rc<InheritedCheckConfig>,
@@ -86,7 +89,7 @@ impl ScopeCheckConfig {
         }
     }
 
-    pub fn inherit(&self, item: &ast::Item) -> Self {
+    pub fn from_item(item: &ast::Item, inherited: Rc<InheritedCheckConfig>) -> Self {
         let item_config = match item.node {
             ast::ItemKind::Fn(..) => ItemCheckConfig::Function(Default::default()),
             ast::ItemKind::Enum(..) |
@@ -95,9 +98,13 @@ impl ScopeCheckConfig {
             _ => ItemCheckConfig::Other,
         };
         ScopeCheckConfig {
-            inherited: Rc::clone(&self.inherited),
+            inherited: inherited,
             item: item_config,
         }
+    }
+
+    pub fn inherit(&self, item: &ast::Item) -> Self {
+        Self::from_item(item, Rc::clone(&self.inherited))
     }
 
     // Getters for various options

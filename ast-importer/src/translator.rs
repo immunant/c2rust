@@ -14,6 +14,7 @@ use syntax::print::pprust::*;
 use std::collections::HashSet;
 use std::ops::Index;
 use std::cell::RefCell;
+use dtoa;
 
 pub struct Translation {
     pub items: Vec<P<Item>>,
@@ -332,9 +333,7 @@ impl Translation {
                 let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ);
 
-                let init = init
-                    .expect("Initializer expected")
-                    .to_expr();
+                let init = init.to_expr();
 
                 mk_linkage(false, new_name, ident)
                     .vis(Visibility::Public)
@@ -349,10 +348,7 @@ impl Translation {
                 let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ);
 
-                // Static storage variables are zero-initialized
-                let init = init
-                    .map(|w| w.to_expr())
-                    .unwrap_or(self.implicit_default_expr(typ.ctype));
+                let init = init.to_expr();
 
                 mk().set_mutbl(mutbl)
                     .static_item(new_name, ty, init)
@@ -595,10 +591,9 @@ impl Translation {
                     .insert(ident.clone(), &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ);
-                let init = with_stmts_opt(init);
 
                 let pat = mk().set_mutbl(mutbl).ident_pat(rust_name);
-                let local = mk().local(pat, Some(ty), init.val);
+                let local = mk().local(pat, Some(ty), Some(init.val));
 
                 let mut stmts = init.stmts;
                 stmts.push(mk().local_stmt(P(local)));
@@ -631,8 +626,11 @@ impl Translation {
         &self,
         initializer: Option<CExprId>,
         typ: CQualTypeId
-    ) -> (P<Ty>, Mutability, Option<WithStmts<P<Expr>>>) {
-        let init = initializer.map(|x| self.convert_expr(ExprUse::RValue, x));
+    ) -> (P<Ty>, Mutability, WithStmts<P<Expr>>) {
+        let init = match initializer {
+            Some(x) => self.convert_expr(ExprUse::RValue, x),
+            None => WithStmts::new(self.implicit_default_expr(typ.ctype)),
+        };
         let ty = self.convert_type(typ.ctype);
         let mutbl = if typ.qualifiers.is_const { Mutability::Immutable } else { Mutability:: Mutable };
 
@@ -726,20 +724,25 @@ impl Translation {
                 WithStmts::new(val)
             }
 
-            CExprKind::Literal(_, CLiteral::Integer(ref val)) => {
-                let val: u64 = *val;
+            CExprKind::Literal(_, CLiteral::Integer(val)) => {
                 WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
             }
 
-            CExprKind::Literal(_, CLiteral::Character(ref val)) => {
-                let val: u64 = *val;
+            CExprKind::Literal(_, CLiteral::Character(val)) => {
                 WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
             }
 
-            CExprKind::Literal(_, CLiteral::Floating(ref val)) => {
-                let mut str = format!("{}", val);
-                if str.find('.').is_none() { str.push('.') }
-                WithStmts::new(mk().lit_expr(mk().float_unsuffixed_lit(str)))
+            CExprKind::Literal(ty, CLiteral::Floating(val)) => {
+
+                let mut bytes: Vec<u8> = vec![];
+                dtoa::write(&mut bytes, val);
+                let str = String::from_utf8(bytes).unwrap();
+                let float_ty = match &self.ast_context.resolve_type(ty.ctype).kind {
+                    &CTypeKind::Double => FloatTy::F64,
+                    &CTypeKind::Float => FloatTy::F32,
+                    k => panic!("Unsupported floating point literal type {:?}", k),
+                };
+                WithStmts::new(mk().lit_expr(mk().float_lit(str, float_ty)))
             }
 
             CExprKind::Literal(ty, CLiteral::String(ref val, width)) => {
@@ -765,7 +768,9 @@ impl Translation {
                 match kind {
                     CastKind::BitCast => {
                         val.map(|x| {
-                            let source_ty = self.convert_type(self.ast_context.index(expr).kind.get_type());
+                            // TODO: Detect cast from mutable to constant pointer to same type
+                            let source_ty_id = self.ast_context.index(expr).kind.get_type();
+                            let source_ty = self.convert_type(source_ty_id);
                             let target_ty = self.convert_type(ty.ctype);
                             transmute_expr(source_ty, target_ty, x)
                         })
@@ -782,7 +787,8 @@ impl Translation {
 
                     CastKind::LValueToRValue | CastKind::NoOp | CastKind::ToVoid => val,
 
-                    CastKind::FunctionToPointerDecay => val,
+                    CastKind::FunctionToPointerDecay =>
+                        val.map (|x| mk().call_expr(mk().ident_expr("Some"), vec![x])),
 
                     CastKind::ArrayToPointerDecay =>
                         val.map(|x| mk().method_call_expr(x, "as_mut_ptr", vec![] as Vec<P<Expr>>)),
@@ -965,12 +971,14 @@ impl Translation {
             }
 
             CExprKind::Call(_, func, ref args) => {
-                let mut stmts = vec![];
 
-                let func = {
-                    let WithStmts { stmts: ss, val } = self.convert_expr(ExprUse::RValue, func);
-                    stmts.extend(ss);
-                    val
+                let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
+                    CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay) =>
+                        self.convert_expr(ExprUse::RValue, fexp),
+                    _ => {
+                        self.convert_expr(ExprUse::RValue, func).map(|x|
+                        mk().method_call_expr(x, "unwrap", vec![] as Vec<P<Expr>>))
+                    }
                 };
 
                 let mut args_new: Vec<P<Expr>> = vec![];
@@ -1102,6 +1110,12 @@ impl Translation {
             mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
         } else if resolved_ty.is_floating_type() {
             mk().lit_expr(mk().float_unsuffixed_lit("0."))
+        } else if self.is_function_pointer(ty_id) {
+            let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
+            let target_ty = self.convert_type(ty_id);
+            transmute_expr(source_ty, target_ty, null_expr())
+        } else if let &CTypeKind::Pointer(p) = resolved_ty {
+            if p.qualifiers.is_const { null_expr() } else { null_mut_expr() }
         } else {
             mk().call_expr(mk().path_expr(vec!["Default", "default"]), vec![] as Vec<P<Expr>>)
         }
@@ -1303,10 +1317,15 @@ impl Translation {
                 let arg = self.convert_expr(ExprUse::LValue, arg);
 
                 if self.is_function_pointer(ctype) {
-                    arg
+                    arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))
                 } else {
+                    let mutbl = match resolved_ctype.kind {
+                        CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => Mutability::Immutable,
+                        _ => Mutability::Mutable,
+                    };
+
                     arg.map(|a| {
-                        let addr_of_arg = mk().mutbl().addr_of_expr(a);
+                        let addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
                         mk().cast_expr(addr_of_arg, ty)
                     })
                 }
@@ -1521,20 +1540,21 @@ impl Translation {
     /// Convert a boolean expression to a boolean for use in && or || or if
     fn match_bool(&self, target: bool, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
-        let is_fp = self.is_function_pointer(ty_id);
 
-        if ty.is_pointer() && !is_fp {
+        if self.is_function_pointer(ty_id) {
+            if target {
+                mk().method_call_expr(val, "is_some", vec![] as Vec<P<Expr>>)
+            } else {
+                mk().method_call_expr(val, "is_none", vec![] as Vec<P<Expr>>)
+            }
+        } else if ty.is_pointer() {
             let mut res = mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>);
             if target {
                 res = mk().unary_expr(ast::UnOp::Not, res)
             }
             res
         } else {
-            let zero = if is_fp {
-                let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
-                let target_ty = self.convert_type(ty_id);
-                transmute_expr(source_ty, target_ty, null_expr())
-            } else if ty.is_floating_type() {
+            let zero = if ty.is_floating_type() {
                 mk().lit_expr(mk().float_unsuffixed_lit("0."))
             } else {
                 mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))

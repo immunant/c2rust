@@ -3,6 +3,7 @@
 extern crate cbor;
 extern crate syntax;
 extern crate idiomize;
+extern crate dtoa;
 
 pub mod renamer;
 pub mod name_manager;
