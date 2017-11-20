@@ -2,7 +2,7 @@
 use syntax::ast;
 use syntax::ast::*;
 use syntax::tokenstream::{TokenStream};
-use syntax::parse::token::{DelimToken,Token};
+use syntax::parse::token::{DelimToken,Token,Nonterminal};
 use syntax::abi::Abi;
 use renamer::Renamer;
 use convert_type::TypeConverter;
@@ -150,7 +150,7 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
 
     to_string(|s| {
 
-        // Add `#[feature(libc)]` to the top of the file
+        // Add `#![feature(libc)]` to the top of the file
         s.print_attribute(&mk().attribute::<_,TokenStream>(
             AttrStyle::Inner,
             vec!["feature"],
@@ -276,7 +276,10 @@ impl Translation {
 
                 let name = name.clone().expect("Anonymous enum declarations not implemented");
 
-                mk().pub_().enum_item(name, variants)
+                mk().pub_()
+                    .call_attr("derive", vec!["Copy","Clone"])
+                    .call_attr("repr", vec!["C"])
+                    .enum_item(name, variants)
             },
 
             CDeclKind::EnumConstant { .. } => panic!("Enum variants should be handled inside enums"),

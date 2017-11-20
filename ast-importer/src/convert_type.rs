@@ -86,6 +86,14 @@ impl TypeConverter {
                 }
             }
 
+            CTypeKind::Enum(ref decl) => {
+                if let CDeclKind::Enum { ref name, .. } = ctxt.index(*decl).kind {
+                    mk().path_ty(mk().path(vec![name.clone().unwrap()]))
+                } else {
+                    panic!("{:?} in enum type does not point to an enum decl", decl)
+                }
+            }
+
             CTypeKind::Typedef(ref decl) => {
                 if let CDeclKind::Typedef { ref name, .. }  = ctxt.index(*decl).kind {
                     mk().path_ty(mk().path(vec![name]))
