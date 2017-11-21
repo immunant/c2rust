@@ -2,7 +2,7 @@
 use syntax::ast;
 use syntax::ast::*;
 use syntax::tokenstream::{TokenStream};
-use syntax::parse::token::{DelimToken,Token};
+use syntax::parse::token::{DelimToken,Token,Nonterminal};
 use syntax::abi::Abi;
 use renamer::Renamer;
 use convert_type::TypeConverter;
@@ -14,6 +14,7 @@ use syntax::print::pprust::*;
 use std::collections::HashSet;
 use std::ops::Index;
 use std::cell::RefCell;
+use dtoa;
 
 pub struct Translation {
     pub items: Vec<P<Item>>,
@@ -149,7 +150,7 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
 
     to_string(|s| {
 
-        // Add `#[feature(libc)]` to the top of the file
+        // Add `#![feature(libc)]` to the top of the file
         s.print_attribute(&mk().attribute::<_,TokenStream>(
             AttrStyle::Inner,
             vec!["feature"],
@@ -255,6 +256,34 @@ impl Translation {
                     panic!("Anonymous struct declarations not implemented")
                 }
             }
+
+            CDeclKind::Field { .. } => panic!("Field declarations should be handled inside structs/unions"),
+
+            CDeclKind::Enum { ref name, ref variants } => {
+                let variants: Vec<Variant> = variants
+                    .into_iter()
+                    .map(|v| {
+                        let enum_constant_decl = self.ast_context.index(*v);
+                        match &enum_constant_decl.kind {
+                            &CDeclKind::EnumConstant { ref name, value } => {
+                                let disc = mk().lit_expr(mk().int_lit(value as u128, ""));
+                                mk().unit_variant(name, Some(disc))
+                            }
+                            _ => panic!("Found non-variant in enum variant list"),
+                        }
+                    })
+                    .collect();
+
+                let name = name.clone().expect("Anonymous enum declarations not implemented");
+
+                mk().pub_()
+                    .call_attr("derive", vec!["Copy","Clone"])
+                    .call_attr("repr", vec!["C"])
+                    .enum_item(name, variants)
+            },
+
+            CDeclKind::EnumConstant { .. } => panic!("Enum variants should be handled inside enums"),
+
 
             CDeclKind::Function { .. } if !toplevel => panic!("Function declarations must be top-level"),
             CDeclKind::Function { is_extern, typ, ref name, ref parameters, body } => {
@@ -698,20 +727,25 @@ impl Translation {
                 WithStmts::new(val)
             }
 
-            CExprKind::Literal(_, CLiteral::Integer(ref val)) => {
-                let val: u64 = *val;
+            CExprKind::Literal(_, CLiteral::Integer(val)) => {
                 WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
             }
 
-            CExprKind::Literal(_, CLiteral::Character(ref val)) => {
-                let val: u64 = *val;
+            CExprKind::Literal(_, CLiteral::Character(val)) => {
                 WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
             }
 
-            CExprKind::Literal(_, CLiteral::Floating(ref val)) => {
-                let mut str = format!("{}", val);
-                if str.find('.').is_none() { str.push('.') }
-                WithStmts::new(mk().lit_expr(mk().float_unsuffixed_lit(str)))
+            CExprKind::Literal(ty, CLiteral::Floating(val)) => {
+
+                let mut bytes: Vec<u8> = vec![];
+                dtoa::write(&mut bytes, val);
+                let str = String::from_utf8(bytes).unwrap();
+                let float_ty = match &self.ast_context.resolve_type(ty.ctype).kind {
+                    &CTypeKind::Double => FloatTy::F64,
+                    &CTypeKind::Float => FloatTy::F32,
+                    k => panic!("Unsupported floating point literal type {:?}", k),
+                };
+                WithStmts::new(mk().lit_expr(mk().float_lit(str, float_ty)))
             }
 
             CExprKind::Literal(ty, CLiteral::String(ref val, width)) => {
