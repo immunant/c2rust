@@ -3,9 +3,9 @@ use rustc::hir;
 use syntax::abi::Abi;
 use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Spanned};
-use syntax::parse::token::{self, Token};
+use syntax::parse::token::{self, Token, DelimToken};
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenTree, TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder, ThinTokenStream};
 use syntax::symbol::keywords;
 use std::rc::Rc;
 
@@ -297,7 +297,7 @@ impl Builder {
 
     pub fn single_attr<K>(self, key: K) -> Self
         where K: Make<PathSegment> {
-        let key = vec![key].make(&self);
+        let key: Path = vec![key].make(&self);
 
         let mut attrs = self.attrs;
         attrs.push(Attribute {
@@ -305,6 +305,46 @@ impl Builder {
             style: AttrStyle::Outer,
             path: key,
             tokens: TokenStream::empty(),
+            is_sugared_doc: false,
+            span: DUMMY_SP,
+        });
+        Builder {
+            attrs: attrs,
+            ..self
+        }
+    }
+
+    pub fn call_attr<K,V>(self, func: K, arguments: Vec<V>) -> Self
+        where K: Make<PathSegment>, V: Make<Ident> {
+
+        let func: Path = vec![func].make(&self);
+
+        let tokens: TokenStream = {
+            let mut builder = TokenStreamBuilder::new();
+            builder.push(Token::OpenDelim(DelimToken::Paren));
+
+            let mut is_first = true;
+            for argument in arguments {
+                if is_first {
+                    is_first = false;
+                } else {
+                    builder.push(Token::Comma);
+                }
+
+                let argument: Ident = argument.make(&self);
+                builder.push(Token::Ident(argument));
+            }
+
+            builder.push(Token::CloseDelim(DelimToken::Paren));
+            builder.build()
+        };
+
+        let mut attrs = self.attrs;
+        attrs.push(Attribute {
+            id: AttrId(0),
+            style: AttrStyle::Outer,
+            path: func,
+            tokens: tokens,
             is_sugared_doc: false,
             span: DUMMY_SP,
         });

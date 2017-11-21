@@ -20,7 +20,7 @@ pub type CParamId = CDeclId;  // Parameters always contain 'DeclKind::Variable's
 pub type CFuncTypeId = CTypeId;  // Function declarations always have types which are 'TypeKind::Function'
 pub type CRecordId = CDeclId;  // Record types need to point to 'DeclKind::Record'
 pub type CTypedefId = CDeclId;  // Typedef types need to point to 'DeclKind::Typedef'
-pub type CEnumdefId = CDeclId;  // Enum types need to point to 'DeclKind::Enum'
+pub type CEnumId = CDeclId;  // Enum types need to point to 'DeclKind::Enum'
 pub type CEnumConstantId = CDeclId;  // Enum's need to point to child 'DeclKind::EnumConstant's
 
 pub use self::conversion::*;
@@ -235,8 +235,11 @@ impl CDeclKind {
         match self {
             &CDeclKind::Function { name: ref i, .. } => Some(i),
             &CDeclKind::Variable { ident: ref i, .. } => Some(i),
+            &CDeclKind::Typedef { name: ref i, .. } => Some(i),
             &CDeclKind::EnumConstant { name: ref i, .. } => Some(i),
-//            &CDeclKind::Record { ref name, fields } => ???,
+            &CDeclKind::Enum { name: Some(ref i), .. } => Some(i),
+            &CDeclKind::Struct { name: Some(ref i), .. } => Some(i),
+            &CDeclKind::Union { name: Some(ref i), .. } => Some(i),
             &CDeclKind::Field { name: ref i, .. } => Some(i),
             _ => None,
         }
@@ -636,7 +639,7 @@ pub enum CTypeKind {
     Union(CRecordId),
 
     // Enum definition type
-    Enum(CEnumdefId),
+    Enum(CEnumId),
 }
 
 impl CTypeKind {

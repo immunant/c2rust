@@ -11,7 +11,6 @@ use c_ast;
 use c_ast::*;
 use syntax::ptr::*;
 use syntax::print::pprust::*;
-use std::collections::HashSet;
 use std::ops::Index;
 use std::cell::RefCell;
 use dtoa;
@@ -150,7 +149,7 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
 
     to_string(|s| {
 
-        // Add `#[feature(libc)]` to the top of the file
+        // Add `#![feature(libc)]` to the top of the file
         s.print_attribute(&mk().attribute::<_,TokenStream>(
             AttrStyle::Inner,
             vec!["feature"],
@@ -251,7 +250,10 @@ impl Translation {
                         }
                     }).collect();
 
-                    mk().pub_().struct_item(name, fields)
+                    mk().pub_()
+                        .call_attr("derive", vec!["Copy","Clone"])
+                        .call_attr("repr", vec!["C"])
+                        .struct_item(name, fields)
                 } else {
                     panic!("Anonymous struct declarations not implemented")
                 }
@@ -259,7 +261,11 @@ impl Translation {
 
             CDeclKind::Field { .. } => panic!("Field declarations should be handled inside structs/unions"),
 
-            CDeclKind::Enum { ref name, ref variants } => {
+            CDeclKind::Enum { name: None, .. } => panic!("Anonymous enums are not implemented"),
+            CDeclKind::Enum { name: Some(ref name), ref variants } => {
+
+                let enum_name = &self.renamer.borrow().get(name).expect("Enums should already be renamed");
+
                 let variants: Vec<Variant> = variants
                     .into_iter()
                     .map(|v| {
@@ -267,16 +273,21 @@ impl Translation {
                         match &enum_constant_decl.kind {
                             &CDeclKind::EnumConstant { ref name, value } => {
                                 let disc = mk().lit_expr(mk().int_lit(value as u128, ""));
-                                mk().unit_variant(name, Some(disc))
+                                let variant = &self.renamer.borrow_mut()
+                                    .insert(name.to_owned(), &format!("{}::{}", enum_name, name))
+                                    .expect(&format!("Failed to insert enum variant '{}'", name));
+                                let variant = variant.trim_left_matches(&format!("{}::", enum_name));
+                                mk().unit_variant(variant, Some(disc))
                             }
                             _ => panic!("Found non-variant in enum variant list"),
                         }
                     })
                     .collect();
 
-                let name = name.clone().expect("Anonymous enum declarations not implemented");
-
-                mk().pub_().enum_item(name, variants)
+                mk().pub_()
+                    .call_attr("derive", vec!["Copy","Clone"])
+                    .call_attr("repr", vec!["C"])
+                    .enum_item(enum_name, variants)
             },
 
             CDeclKind::EnumConstant { .. } => panic!("Enum variants should be handled inside enums"),
@@ -307,8 +318,11 @@ impl Translation {
             },
 
             CDeclKind::Typedef { ref name, ref typ } => {
+
+                let new_name = &self.renamer.borrow().get(name).expect("Typedefs should already be renamed");
+
                 let ty = self.convert_type(typ.ctype);
-                mk().type_item(name, ty)
+                mk().type_item(new_name, ty)
             },
 
             // Extern variable without intializer (definition elsewhere)
@@ -602,13 +616,19 @@ impl Translation {
 
             ref decl => {
 
+                let inserted = if let Some(ident) = decl.get_name() {
+                    self.renamer.borrow_mut()
+                        .insert(ident.clone(), &ident)
+                        .is_some()
+                } else {
+                    false
+                };
+
                 // TODO: We need this because we can have multiple 'extern' decls of the same variable.
                 //       When we do, we must make sure to insert into the renamer the first time, and
                 //       then skip subsequent times.
                 let skip = match decl {
-                    &CDeclKind::Variable { ref ident, .. } => self.renamer.borrow_mut()
-                        .insert(ident.clone(), &ident)
-                        .is_none(),
+                    &CDeclKind::Variable { .. } => !inserted,
                     _ => false,
                 };
 
@@ -638,7 +658,7 @@ impl Translation {
     }
 
     fn convert_type(&self, type_id: CTypeId) -> P<Ty> {
-        self.type_converter.convert(&self.ast_context, type_id)
+        self.type_converter.convert(&self.ast_context, &self.renamer.borrow(), type_id)
     }
 
     /// Write to a `lhs` that is volatile
@@ -708,17 +728,26 @@ impl Translation {
             }
 
             CExprKind::DeclRef(qual_ty, decl_id) => {
-                let varname = self.ast_context.index(decl_id).kind.get_name().expect("expected variable name").to_owned();
+                let decl = &self.ast_context.index(decl_id).kind;
+                let varname = decl.get_name().expect("expected variable name").to_owned();
                 let rustname = self.renamer.borrow_mut()
                     .get(&varname)
                     .expect(&format!("name not declared: '{}'", varname));
 
-                let mut val =mk().path_expr(vec![rustname]);
+                let mut val = mk().path_expr(vec![rustname]);
 
                 // If the variable is volatile and used as something that isn't an LValue, this
                 // constitutes a volatile read.
                 if use_ != ExprUse::LValue && qual_ty.qualifiers.is_volatile {
                     val = self.volatile_read(&val, qual_ty.ctype);
+                }
+
+                // If the variable is actually an `EnumConstant`, we need to add a cast to the
+                // expected integral type. When modifying this, look at `Translation::enum_cast` -
+                // this function assumes `DeclRef`'s to `EnumConstants`'s will translate to casts.
+                if let &CDeclKind::EnumConstant { .. } = decl {
+                    let ty = self.convert_type(qual_ty.ctype);
+                    val = mk().cast_expr(val, ty);
                 }
 
                 WithStmts::new(val)
@@ -778,11 +807,24 @@ impl Translation {
 
                     CastKind::IntegralToPointer | CastKind::PointerToIntegral |
                     CastKind::IntegralCast | CastKind::FloatingCast | CastKind::FloatingToIntegral | CastKind::IntegralToFloating => {
-                        let ty = self.convert_type(ty.ctype);
-                        // this explicit use of paren_expr is to work around a bug in libsyntax
-                        // Normally parentheses are added automatically as needed
-                        // The library is rendering ''(x as uint) as < y'' as ''x as uint < y''
-                        val.map(|x| mk().paren_expr(mk().cast_expr(x, ty)))
+
+                        let target_ty = self.convert_type(ty.ctype);
+                        let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
+
+                        let source_ty_ctype_id = self.ast_context.index(expr).kind.get_type();
+
+                        if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
+                            // Casts targeting `enum` types...
+                            let source_ty = self.convert_type(source_ty_ctype_id);
+                            self.enum_cast(enum_decl_id, expr, val, source_ty, target_ty)
+                        } else {
+                            // Other numeric casts translate to Rust `as` casts
+
+                            // this explicit use of paren_expr is to work around a bug in libsyntax
+                            // Normally parentheses are added automatically as needed
+                            // The library is rendering ''(x as uint) as < y'' as ''x as uint < y''
+                            val.map(|x| mk().paren_expr(mk().cast_expr(x, target_ty)))
+                        }
                     }
 
                     CastKind::LValueToRValue | CastKind::NoOp | CastKind::ToVoid => val,
@@ -1057,6 +1099,44 @@ impl Translation {
             CExprKind::ImplicitValueInit(ty) =>
                 WithStmts::new(self.implicit_default_expr(ty.ctype)),
         }
+    }
+
+    /// This handles translating casts when the target type in an `enum` type.
+    ///
+    /// When translating variable references to `EnumConstant`'s, we always insert casts to the
+    /// expected type. In C, `EnumConstants` have some integral type, _not_ the enum type. However,
+    /// if we then immediately have a cast to convert this variable back into an enum type, we would
+    /// like to produce Rust with _no_ casts. This function handles this simplification.
+    fn enum_cast(
+        &self,
+        enum_decl: CEnumId,      // ID of the enum declaration corresponding to the target type
+        expr: CExprId,           // ID of initial C argument to cast
+        val: WithStmts<P<Expr>>, // translated Rust argument to cast
+        source_ty: P<Ty>,        // source type of cast
+        target_ty: P<Ty>,        // target type of cast
+    ) -> WithStmts<P<Expr>> {
+
+        // Extract the IDs of the `EnumConstant` decls underlying the enum.
+        let variants = match &self.ast_context.index(enum_decl).kind {
+            &CDeclKind::Enum { ref variants, .. } => variants,
+            _ => panic!("{:?} does not point to an `enum` declaration")
+        };
+
+        match &self.ast_context.index(expr).kind {
+            // This is the case of finding a variable which is an `EnumConstant` of the same enum
+            // we are casting to. Here, we can just remove the extraneous cast instead of generating
+            // a new one.
+            &CExprKind::DeclRef(_, decl_id) if variants.contains(&decl_id) =>
+                val.map(|x| match x.node {
+                    ast::ExprKind::Cast(ref e, _) => e.clone(),
+                    _ => panic!(format!("DeclRef {:?} of enum {:?} is not cast", expr, enum_decl)),
+                }),
+
+            // In all other cases, a cast to an enum requires a `transmute` - Rust enums cannot be
+            // converted into integral types as easily as C ones.
+            _ => val.map(|x| transmute_expr(source_ty, target_ty, x)),
+        }
+
     }
 
     fn convert_struct_literal(&self, struct_id: CRecordId, ids: &[CExprId], ty: CQualTypeId) -> WithStmts<P<Expr>> {
