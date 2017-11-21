@@ -235,8 +235,11 @@ impl CDeclKind {
         match self {
             &CDeclKind::Function { name: ref i, .. } => Some(i),
             &CDeclKind::Variable { ident: ref i, .. } => Some(i),
+            &CDeclKind::Typedef { name: ref i, .. } => Some(i),
             &CDeclKind::EnumConstant { name: ref i, .. } => Some(i),
-//            &CDeclKind::Record { ref name, fields } => ???,
+            &CDeclKind::Enum { name: Some(ref i), .. } => Some(i),
+            &CDeclKind::Struct { name: Some(ref i), .. } => Some(i),
+            &CDeclKind::Union { name: Some(ref i), .. } => Some(i),
             &CDeclKind::Field { name: ref i, .. } => Some(i),
             _ => None,
         }
