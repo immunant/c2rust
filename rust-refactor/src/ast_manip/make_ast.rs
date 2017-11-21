@@ -161,25 +161,25 @@ impl Make<ThinTokenStream> for TokenStream {
 }
 
 impl Make<ThinTokenStream> for Vec<TokenTree> {
-    fn make(self, mk: &Builder) -> ThinTokenStream {
+    fn make(self, _mk: &Builder) -> ThinTokenStream {
         self.into_iter().collect::<TokenStream>().into()
     }
 }
 
 impl Make<TokenTree> for Token {
-    fn make(self, mk: &Builder) -> TokenTree {
+    fn make(self, _mk: &Builder) -> TokenTree {
         TokenTree::Token(DUMMY_SP, self)
     }
 }
 
 impl Make<PathParameters> for AngleBracketedParameterData {
-    fn make(self, mk: &Builder) -> PathParameters {
+    fn make(self, _mk: &Builder) -> PathParameters {
         AngleBracketed(self)
     }
 }
 
 impl Make<PathParameters> for ParenthesizedParameterData {
-    fn make(self, mk: &Builder) -> PathParameters {
+    fn make(self, _mk: &Builder) -> PathParameters {
         Parenthesized(self)
     }
 }

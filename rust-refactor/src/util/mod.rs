@@ -50,6 +50,7 @@ impl HirDefExt for Def {
             Def::Variant(did) |
             Def::Trait(did) |
             Def::TyAlias(did) |
+            Def::TyForeign(did) |
             Def::AssociatedTy(did) |
             Def::TyParam(did) |
             Def::Fn(did) |

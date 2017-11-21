@@ -184,7 +184,6 @@ impl Transform for ToMethod {
                         constness: f.constness,
                         abi: f.abi,
                         decl: f.decl,
-                        generics: f.generics,
                     };
                     ImplItem {
                         id: DUMMY_NODE_ID,
@@ -192,6 +191,7 @@ impl Transform for ToMethod {
                         vis: f.item.vis.clone(),
                         defaultness: Defaultness::Final,
                         attrs: f.item.attrs.clone(),
+                        generics: f.generics,
                         node: ImplItemKind::Method(sig, f.block),
                         span: f.item.span,
                         tokens: None,

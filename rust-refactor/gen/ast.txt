@@ -40,15 +40,15 @@ enum ItemKind {
     Enum(def, generics),
     Struct(vd, generics),
     Union(vd, generics),
-    Trait(unsafety, generics, bounds, items),
-    DefaultImpl(unsafety, trait_ref),
+    Trait(is_auto, unsafety, generics, bounds, items),
+    AutoImpl(unsafety, trait_ref),
     Impl(unsafety, polarity, generics, defaultness, trait_ref, ty, items),
     Mac(mac),
     MacroDef(tts),
 }
 
 #[extend_span]
-struct TraitItem { id, ident, #[match=ignore] attrs, node, span,
+struct TraitItem { id, ident, #[match=ignore] attrs, generics, node, span,
                    #[match=ignore] #[rewrite=ignore] tokens }
 enum TraitItemKind {
     Const(ty, init),
@@ -58,7 +58,7 @@ enum TraitItemKind {
 }
 
 #[extend_span]
-struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, node, span,
+struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, generics, node, span,
                   #[match=ignore] #[rewrite=ignore] tokens }
 enum ImplItemKind {
     Const(ty, init),
@@ -79,13 +79,14 @@ enum VariantData {
 
 struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs }
 
-struct MethodSig { unsafety, constness, abi, decl, generics }
+struct MethodSig { unsafety, constness, abi, decl }
 
 struct ForeignMod { abi, items }
 struct ForeignItem { ident, #[match=ignore] attrs, node, id, span, vis }
 enum ForeignItemKind {
     Fn(decl, generics),
     Static(ty, mutbl),
+    Ty,
 }
 
 
@@ -115,11 +116,12 @@ struct PathListItem_ { name, rename, id }
 #[match=ignore]
 enum Visibility {
     Public,
-    Crate(span),
+    Crate(span, crate_sugar),
     Restricted { path, id },
     Inherited,
 }
 
+flag CrateSugar;
 
 #[match=custom] #[rewrite_splice]
 struct Ty { id, node, span }
@@ -133,7 +135,7 @@ enum TyKind {
     Never,
     Tup(tys),
     Path(qself, path),
-    TraitObject(bounds),
+    TraitObject(bounds, trait_object_syntax),
     ImplTrait(bounds),
     Paren(ty),
     Typeof(expr),
@@ -142,6 +144,8 @@ enum TyKind {
     Mac(mac),
     Err,
 }
+
+flag TraitObjectSyntax;
 
 
 flag LitIntType;
@@ -277,6 +281,7 @@ enum LitKind {
 flag Defaultness;
 flag Constness;
 flag ImplPolarity;
+flag IsAuto;
 flag Unsafety;
 flag Abi;
 flag Mutability;

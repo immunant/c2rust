@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-nightly=nightly-2017-09-18
+nightly=nightly-2017-11-20
 triple=x86_64-unknown-linux-gnu
 rust_dir=$HOME/.rustup/toolchains/$nightly-$triple
 rustfmt=$HOME/.cargo/bin/rustfmt

@@ -4,7 +4,6 @@ use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::map::Node::*;
 use rustc::hir::map::definitions::DefPathData;
 use rustc::ty::{self, TyCtxt};
-use rustc::ty::item_path::{ItemPathBuffer};
 use rustc::ty::subst::Subst;
 use syntax::ast::*;
 use syntax::codemap::DUMMY_SP;
@@ -51,6 +50,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         TyRef(_, mty) => mk().set_mutbl(mty.mutbl).ref_ty(reflect_tcx_ty(tcx, mty.ty)),
         TyFnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
         TyFnPtr(_) => mk().infer_ty(), // TODO
+        TyForeign(_) => mk().infer_ty(), // TODO ???
         TyDynamic(_, _) => mk().infer_ty(), // TODO
         TyClosure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
         TyGenerator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
@@ -254,6 +254,7 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         NodeField(_) |
         NodeStructCtor(_) => true,
 
+        NodeMacroDef(_) | // TODO: Is this right?
         NodeExpr(_) |
         NodeStmt(_) |
         NodeTy(_) |
@@ -270,7 +271,7 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
 
 
 pub fn register_commands(reg: &mut Registry) {
-    reg.register("test_reflect", |args| {
+    reg.register("test_reflect", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             st.map_krate(|krate| {
                 use api::*;

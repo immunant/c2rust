@@ -3,7 +3,7 @@
 # but it doesn't check signatures of downloaded packages :/
 # https://github.com/rust-lang-nursery/rustup.rs#security
 # NOTE: must run as regular user, not root.
-curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2017-09-18
+curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2017-11-20
 echo "source ~/.cargo/env" >> ~/.bashrc
 # this takes some time... :(
-rustup run nightly-2017-09-18 cargo install rustfmt
+rustup run nightly-2017-11-20 cargo install rustfmt

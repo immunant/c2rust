@@ -317,7 +317,7 @@ fn do_split_variants(st: &CommandState,
                 return SmallVector::one(fl);
             }
 
-            let path_str = cx.ty_ctxt().def_path(def_id).to_string(cx.ty_ctxt());
+            let path_str = cx.ty_ctxt().def_path(def_id).to_string_no_crate();
 
 
             // For consistency, we run the split logic even for funcs with only one mono.  This way
