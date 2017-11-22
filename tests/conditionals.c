@@ -19,4 +19,8 @@ void entry(const unsigned buffer_size, int buffer[const]) {
 
         if (p0) { buffer[6] = 1; }
         if (p1) { buffer[7] = 1; }
+
+        // Test simplifiable conditions
+        if (0 == 0) { buffer[8] = 1; }
+        if (p1 && 0 > -3) { buffer[9] = 1; }
 }

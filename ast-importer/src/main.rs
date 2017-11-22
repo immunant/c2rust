@@ -1,5 +1,6 @@
-extern crate cbor;
+#[macro_use]
 extern crate clap;
+extern crate cbor;
 extern crate ast_importer;
 
 use std::io::{Error, stdout, Cursor};
@@ -16,7 +17,7 @@ fn main() {
 
     let matches = App::new("AST Importer")
         .version("0.1.0")
-        .author("Eric Mertens <emertens@galois.com>")
+        .author(crate_authors!())
         .arg(Arg::with_name("dump-untyped-clang-ast")
             .long("ddump-untyped-clang-ast")
             .help("Prints out CBOR based Clang AST")
