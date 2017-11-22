@@ -1196,6 +1196,9 @@ impl Translation {
             transmute_expr(source_ty, target_ty, null_expr())
         } else if let &CTypeKind::Pointer(p) = resolved_ty {
             if p.qualifiers.is_const { null_expr() } else { null_mut_expr() }
+        } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
+            let sz = mk().lit_expr(mk().int_lit(sz as u128, LitIntType::Unsuffixed));
+            mk().repeat_expr(self.implicit_default_expr(elt), sz)
         } else {
             mk().call_expr(mk().path_expr(vec!["Default", "default"]), vec![] as Vec<P<Expr>>)
         }
