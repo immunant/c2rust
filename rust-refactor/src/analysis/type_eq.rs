@@ -751,7 +751,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
                 // function's return type)
             },
 
-            ExprYield(ref result) => {
+            ExprYield(ref _result) => {
                 // TODO: handle result == Some(x) case
             },
 
@@ -942,6 +942,8 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
             ForeignItemStatic(ref ty, _) => {
                 self.ltt.unify(self.ty_lty(ty), self.def_lty(def_id));
             },
+
+            ForeignItemType => { },
         }
 
         intravisit::walk_foreign_item(self, i);

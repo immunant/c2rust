@@ -90,10 +90,10 @@ CC_DB_JSON = "compile_commands.json"
 # CUSTOM_RUST_URL = "git@github.com:rust-lang/rust"
 # CUSTOM_RUST_PREFIX = os.path.join(DEPS_DIR, "rust")
 # CUSTOM_RUST_REV = "cfcac37204c8dbdde192c1c9387cdbe663fe5ed5"
-# NOTE: `rustup run nightly-2017-09-18 -- rustc --version` should output
-# rustc 1.22.0-nightly (cfcac3720 2017-09-17)
-CUSTOM_RUST_NAME = 'nightly-2017-09-18'
-CUSTOM_RUST_RUSTC_VERSION = "rustc 1.22.0-nightly (cfcac3720 2017-09-17)"
+# NOTE: `rustup run nightly-2017-11-20 -- rustc --version` should output
+# rustc 1.23.0-nightly (5041b3bb3 2017-11-19)
+CUSTOM_RUST_NAME = 'nightly-2017-11-20'
+CUSTOM_RUST_RUSTC_VERSION = "rustc 1.23.0-nightly (5041b3bb3 2017-11-19)"
 
 
 def have_rust_toolchain(name: str) -> bool:

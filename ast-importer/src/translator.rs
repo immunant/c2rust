@@ -820,10 +820,7 @@ impl Translation {
                         } else {
                             // Other numeric casts translate to Rust `as` casts
 
-                            // this explicit use of paren_expr is to work around a bug in libsyntax
-                            // Normally parentheses are added automatically as needed
-                            // The library is rendering ''(x as uint) as < y'' as ''x as uint < y''
-                            val.map(|x| mk().paren_expr(mk().cast_expr(x, target_ty)))
+                            val.map(|x| mk().cast_expr(x, target_ty))
                         }
                     }
 

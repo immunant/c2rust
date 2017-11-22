@@ -521,6 +521,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
         match bb.terminator().kind {
             TerminatorKind::Goto { .. } |
+            TerminatorKind::FalseEdges { .. } |
             TerminatorKind::SwitchInt { .. } |
             TerminatorKind::Resume |
             TerminatorKind::Return |

@@ -138,7 +138,8 @@ impl<F> Folder for FnFolder<F>
         unpack!([i.node] ImplItemKind::Method(sig, block));
         let vis = i.vis;
         let defaultness = i.defaultness;
-        let MethodSig { unsafety, constness, abi, decl, generics } = sig;
+        let generics = i.generics;
+        let MethodSig { unsafety, constness, abi, decl } = sig;
 
         let fl = FnLike {
             kind: FnKind::ImplMethod,
@@ -157,7 +158,6 @@ impl<F> Folder for FnFolder<F>
                 constness: constness,
                 abi: abi,
                 decl: fl.decl,
-                generics: generics.clone(),
             };
             let block = fl.block.expect("can't remove Block from ImplItemKind::Method");
             ImplItem {
@@ -166,6 +166,7 @@ impl<F> Folder for FnFolder<F>
                 span: fl.span,
                 node: ImplItemKind::Method(sig, block),
                 attrs: fl.attrs,
+                generics: generics.clone(),
                 vis: vis.clone(),
                 defaultness: defaultness,
                 tokens: None,
@@ -180,7 +181,8 @@ impl<F> Folder for FnFolder<F>
         }
 
         unpack!([i.node] TraitItemKind::Method(sig, block));
-        let MethodSig { unsafety, constness, abi, decl, generics } = sig;
+        let MethodSig { unsafety, constness, abi, decl } = sig;
+        let generics = i.generics;
 
         let fl = FnLike {
             kind: FnKind::TraitMethod,
@@ -199,7 +201,6 @@ impl<F> Folder for FnFolder<F>
                 constness: constness,
                 abi: abi,
                 decl: fl.decl,
-                generics: generics.clone(),
             };
             TraitItem {
                 id: fl.id,
@@ -207,6 +208,7 @@ impl<F> Folder for FnFolder<F>
                 span: fl.span,
                 node: TraitItemKind::Method(sig, fl.block),
                 attrs: fl.attrs,
+                generics: generics.clone(),
                 tokens: None,
             }
         }).flat_map(|i| fold::noop_fold_trait_item(i, self)).collect()

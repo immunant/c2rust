@@ -10,7 +10,6 @@ use std::fmt::Display;
 use syntax::ast::*;
 use syntax::fold::Folder;
 use syntax::ptr::P;
-use syntax::symbol::keywords;
 use syntax::util::small_vector::SmallVector;
 use transform::Transform;
 
@@ -66,7 +65,7 @@ impl Transform for Ionize {
     fn min_phase(&self) -> Phase { Phase::Phase3 }
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
 
-        let as_variant_methods = generate_enum_accessors(cx);
+        let _as_variant_methods = generate_enum_accessors(cx);
         let outer_assignment_pat = parse_stmts(cx.session(), "__val.__field = __expr;");
         let outer_assignment_repl = parse_stmts(cx.session(), "__val = __con(__expr);");
 
@@ -76,7 +75,7 @@ impl Transform for Ionize {
         // Find marked unions
         visit_nodes(&krate, |i: &Item| {
             if st.marked(i.id, "target") {
-                if let ItemKind::Union(VariantData::Struct(ref fields, _), _) = i.node {
+                if let ItemKind::Union(VariantData::Struct(ref _fields, _), _) = i.node {
                     if let Some(def_id) = cx.hir_map().opt_local_def_id(i.id) {
                         targets.insert(def_id);
                     } else {
@@ -96,7 +95,7 @@ impl Transform for Ionize {
         // Replace union assignment with enum assignment
         let krate = fold_match_with(mcx, outer_assignment_pat, krate, |e, bnd| {
             let field = bnd.ident("__field");
-            let expr = bnd.expr("__expr");
+            let _expr = bnd.expr("__expr");
             let val = bnd.expr("__val");
 
 
@@ -166,7 +165,7 @@ impl Transform for Ionize {
                                  VariantData::Tuple(vec![enum_field], DUMMY_NODE_ID))
                 }).collect();
 
-                let ty = mk().ident_ty(i.ident);
+                let _ty = mk().ident_ty(i.ident);
                 let impl_ = mk().impl_item(mk().ident_ty(i.ident), impl_items);
                 let enum_ = mk().enum_item(i.ident, enum_variants);
 
@@ -184,5 +183,5 @@ impl Transform for Ionize {
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
-    reg.register("ionize", |args| mk(Ionize{}))
+    reg.register("ionize", |_args| mk(Ionize{}))
 }
