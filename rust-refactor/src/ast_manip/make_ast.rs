@@ -161,25 +161,25 @@ impl Make<ThinTokenStream> for TokenStream {
 }
 
 impl Make<ThinTokenStream> for Vec<TokenTree> {
-    fn make(self, mk: &Builder) -> ThinTokenStream {
+    fn make(self, _mk: &Builder) -> ThinTokenStream {
         self.into_iter().collect::<TokenStream>().into()
     }
 }
 
 impl Make<TokenTree> for Token {
-    fn make(self, mk: &Builder) -> TokenTree {
+    fn make(self, _mk: &Builder) -> TokenTree {
         TokenTree::Token(DUMMY_SP, self)
     }
 }
 
 impl Make<PathParameters> for AngleBracketedParameterData {
-    fn make(self, mk: &Builder) -> PathParameters {
+    fn make(self, _mk: &Builder) -> PathParameters {
         AngleBracketed(self)
     }
 }
 
 impl Make<PathParameters> for ParenthesizedParameterData {
-    fn make(self, mk: &Builder) -> PathParameters {
+    fn make(self, _mk: &Builder) -> PathParameters {
         Parenthesized(self)
     }
 }
@@ -431,6 +431,7 @@ impl Builder {
             attrs: self.attrs.into(),
         })
     }
+
     pub fn call_expr<F, A>(self, func: F, args: Vec<A>) -> P<Expr>
         where F: Make<P<Expr>>, A: Make<P<Expr>> {
         let func = func.make(&self);
@@ -594,6 +595,20 @@ impl Builder {
         P(Expr {
             id: DUMMY_NODE_ID,
             node: ExprKind::Path(qself, path),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
+    /// An array literal constructed from one repeated element.
+    /// `[expr; n]`
+    pub fn repeat_expr<E, N>(self, expr: E, n: N) -> P<Expr>
+        where E: Make<P<Expr>>, N: Make<P<Expr>> {
+        let expr = expr.make(&self);
+        let n = n.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Repeat(expr, n),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })

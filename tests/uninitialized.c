@@ -16,4 +16,5 @@ void entry(const unsigned sz, int buf[const]) {
        void (*fs[2])(void);
        int xs[10];
        int ys[4][5];
+       int *zs[4];
 }

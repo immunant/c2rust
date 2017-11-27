@@ -1,7 +1,7 @@
 [package]
 name = "ast_importer"
 version = "0.1.0"
-authors = ["Eric Mertens <emertens@galois.com>"]
+authors = ["Eric Mertens <emertens@galois.com>", "Alec Theriault <atheriault@galois.com>"]
 build = "build.rs"
 
 [dependencies]

@@ -4,13 +4,12 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use arena::DroplessArena;
-use rustc::dep_graph::DepGraph;
 use rustc::hir::map as hir_map;
 use rustc::ty::{TyCtxt, GlobalArenas};
 use rustc::session::{self, Session};
 use rustc::session::config::{Input, Options};
 use rustc_driver;
-use rustc_driver::driver::{self, CompileController};
+use rustc_driver::driver::{self, build_output_filenames, CompileController};
 use rustc_errors::DiagnosticBuilder;
 use rustc_metadata::cstore::CStore;
 use rustc_resolve::MakeGlobMap;
@@ -133,6 +132,8 @@ pub fn run_compiler<F, R>(args: &[String],
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
     let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
+    let outdir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
+    let output = matches.opt_str("o").map(|o| PathBuf::from(&o));
 
     assert!(matches.free.len() == 1,
            "expected exactly one input file");
@@ -150,8 +151,10 @@ pub fn run_compiler<F, R>(args: &[String],
     // unrelated lifetimes, so we can't (safely) collect up the relevant pieces ourselves from
     // multiple callback invocations.
 
+    let control = CompileController::basic();
+
     // Start of `compile_input` code
-    let krate = driver::phase_1_parse_input(&CompileController::basic(), &sess, &input).unwrap();
+    let krate = driver::phase_1_parse_input(&control, &sess, &input).unwrap();
     // Leave parens in place until after expansion, unless we're stopping at phase 1.  But
     // immediately fix up the attr spans, since during expansion, any `derive` attrs will be
     // removed.
@@ -163,6 +166,7 @@ pub fn run_compiler<F, R>(args: &[String],
         return func(krate, cx);
     }
 
+    let outputs = build_output_filenames(&input, &outdir, &output, &krate.attrs, &sess);
     let crate_name = link::find_crate_name(Some(&sess), &krate.attrs, &input);
     let mut expand_result = driver::phase_2_configure_and_expand(
         &sess, &cstore, krate, /*registry*/ None, &crate_name,
@@ -173,7 +177,7 @@ pub fn run_compiler<F, R>(args: &[String],
     let arena = DroplessArena::new();
     let arenas = GlobalArenas::new();
 
-    let hir_map = hir_map::map_crate(&mut expand_result.hir_forest, expand_result.defs);
+    let hir_map = hir_map::map_crate(&sess, cstore.as_ref(), &mut expand_result.hir_forest, &expand_result.defs);
 
     if phase == Phase::Phase2 {
         let cx = Ctxt::new_phase_2(&sess, &cstore,&hir_map);
@@ -181,11 +185,12 @@ pub fn run_compiler<F, R>(args: &[String],
     }
 
     driver::phase_3_run_analysis_passes(
+        &control,
         // Cloning hir_map seems kind of ugly, but the alternative is to deref the `TyCtxt` to get
         // a `GlobalCtxt` and read its `hir` field.  Since `GlobalCtxt` is actually private, this
         // seems like it would probably stop working at some point.
         &sess, cstore.as_ref(), hir_map.clone(), expand_result.analysis, expand_result.resolutions,
-        &arena, &arenas, &crate_name,
+        &arena, &arenas, &crate_name, &outputs,
         |tcx, _analysis, _incremental_hashes_map, _result| {
             if phase == Phase::Phase3 {
                 let cx = Ctxt::new_phase_3(&sess, &cstore, &hir_map, tcx, &arena);
