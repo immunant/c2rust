@@ -409,6 +409,16 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagInt128 if expected_ty & OTHER_TYPE != 0 => {
+                    self.add_type(new_id, not_located(CTypeKind::Int128));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
+                TypeTag::TagUInt128 if expected_ty & OTHER_TYPE != 0 => {
+                    self.add_type(new_id, not_located(CTypeKind::UInt128));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
                 TypeTag::TagPointer if expected_ty & OTHER_TYPE != 0 => {
                     let pointed = expect_u64(&ty_node.extras[0])
                         .expect("Pointer child not found");

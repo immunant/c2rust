@@ -102,6 +102,12 @@ enum TypeTag {
     TagBool,
     TagDecayedType,
     TagParenType,
+    TagSWChar,
+    
+    TagUWChar,
+    TagInt128,
+    TagUInt128,
+    TagBuiltinFn,
 };
 
 enum StringTypeTag {

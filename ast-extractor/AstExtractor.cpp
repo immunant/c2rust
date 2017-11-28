@@ -156,9 +156,12 @@ public:
     
     void VisitBuiltinType(const BuiltinType *T) {
         TypeTag tag;
-        using clang::BuiltinType;
-        switch (T->getKind()) {
+        auto kind = T->getKind();
+        switch (kind) {
             default:                      tag = TagTypeUnknown; break;
+            case BuiltinType::BuiltinFn:  tag = TagBuiltinFn;   break;
+            case BuiltinType::UInt128:    tag = TagUInt128;     break;
+            case BuiltinType::Int128:     tag = TagInt128;      break;
             case BuiltinType::Short:      tag = TagShort;       break;
             case BuiltinType::Int:        tag = TagInt;         break;
             case BuiltinType::Long:       tag = TagLong;        break;
@@ -176,6 +179,8 @@ public:
             case BuiltinType::Char_S:     tag = TagChar;        break;
             case BuiltinType::Void:       tag = TagVoid;        break;
             case BuiltinType::Bool:       tag = TagBool;        break;
+            case BuiltinType::WChar_S:    tag = TagSWChar;      break;
+            case BuiltinType::WChar_U:    tag = TagUWChar;      break;
         }
         
         encodeType(T, tag);
@@ -233,12 +238,7 @@ public:
         VisitQualType(pointee);
     }
     
-    void VisitTypedefType(const TypedefType *T) {
-        auto D = T->getDecl()->getCanonicalDecl();
-        encodeType(T, TagTypedefType, [D](CborEncoder *local) {
-            cbor_encode_uint(local, uintptr_t(D));
-        });
-    }
+    void VisitTypedefType(const TypedefType *T);
     
     void VisitTypeOfType(const TypeOfType *T) {
         auto t = T->desugar();
@@ -332,11 +332,12 @@ class TranslateASTVisitor final
           }
           cbor_encoder_close_container(&local , &childEnc);
           
-          // 4 - Line number
-          // 5 - Column number
+          // 4 - File number
+          // 5 - Line number
+          // 6 - Column number
           encodeSourcePos(&local, loc);
 
-          // 6 - Type ID (only for expressions)
+          // 7 - Type ID (only for expressions)
           if (nullptr == ty.getTypePtrOrNull()) {
               cbor_encode_null(&local);
           } else {
@@ -384,6 +385,11 @@ class TranslateASTVisitor final
   public:
       explicit TranslateASTVisitor(ASTContext *Context, CborEncoder *encoder)
       : Context(Context), typeEncoder(Context, encoder, this), encoder(encoder) {
+      }
+      
+      // Override the default behavior of the RecursiveASTVisitor
+      bool shouldVisitImplicitCode() const {
+          return true;
       }
       
       const std::unordered_map<string,uint64_t> &getFilenames() const {
@@ -835,7 +841,7 @@ class TranslateASTVisitor final
           return true;
       }
       
-      bool VisitTypedefDecl(TypedefDecl *D)
+      bool VisitTypedefNameDecl(TypedefNameDecl *D)
       {
           // Skip non-canonical decls
           if(!D->isCanonicalDecl())
@@ -939,6 +945,14 @@ void TypeEncoder::VisitRecordType(const RecordType *T) {
         astEncoder->TraverseDecl(D);
         recordDeclsUnderVisit.erase(D);
     }
+}
+
+void TypeEncoder::VisitTypedefType(const TypedefType *T) {
+    auto D = T->getDecl()->getCanonicalDecl();
+    encodeType(T, TagTypedefType, [D](CborEncoder *local) {
+        cbor_encode_uint(local, uintptr_t(D));
+    });
+    astEncoder->TraverseDecl(D);
 }
 
 class TranslateConsumer : public clang::ASTConsumer {
