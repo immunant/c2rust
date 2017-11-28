@@ -143,6 +143,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
             TyAnon(..) |
             TyParam(..) |
             TyInfer(..) |
+            TyForeign(..) |
             TyError => self.mk(ty, &[], label),
         }
     }

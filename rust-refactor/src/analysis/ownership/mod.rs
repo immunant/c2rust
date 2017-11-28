@@ -474,7 +474,7 @@ pub fn dump_results(dcx: &driver::Ctxt,
         format!("{:?} -> {:?}", pretty_slice(inputs), Pretty(output))
     };
 
-    let path_str = |def_id| dcx.ty_ctxt().def_path(def_id).to_string(dcx.ty_ctxt());
+    let path_str = |def_id| dcx.ty_ctxt().def_path(def_id).to_string_no_crate();
 
     let mut ids = results.statics.keys().cloned().collect::<Vec<_>>();
     ids.sort();

@@ -122,7 +122,7 @@ pub enum ItemLikeKind {
     Struct,
     Union,
     Trait,
-    DefaultImpl,
+    AutoImpl,
     Impl,
     Mac,
     MacroDef,
@@ -146,7 +146,7 @@ impl FromStr for ItemLikeKind {
             "struct" => Ok(ItemLikeKind::Struct),
             "union" => Ok(ItemLikeKind::Union),
             "trait" => Ok(ItemLikeKind::Trait),
-            "default_impl" => Ok(ItemLikeKind::DefaultImpl),
+            "default_impl" => Ok(ItemLikeKind::AutoImpl),
             "impl" => Ok(ItemLikeKind::Impl),
             "mac" => Ok(ItemLikeKind::Mac),
             "macro_def" => Ok(ItemLikeKind::MacroDef),
@@ -172,7 +172,7 @@ impl ItemLikeKind {
             ItemKind::Struct(..) => ItemLikeKind::Struct,
             ItemKind::Union(..) => ItemLikeKind::Union,
             ItemKind::Trait(..) => ItemLikeKind::Trait,
-            ItemKind::DefaultImpl(..) => ItemLikeKind::DefaultImpl,
+            ItemKind::AutoImpl(..) => ItemLikeKind::AutoImpl,
             ItemKind::Impl(..) => ItemLikeKind::Impl,
             ItemKind::Mac(..) => ItemLikeKind::Mac,
             ItemKind::MacroDef(..) => ItemLikeKind::MacroDef,
@@ -201,6 +201,7 @@ impl ItemLikeKind {
         match i.node {
             ForeignItemKind::Fn(..) => ItemLikeKind::Fn,
             ForeignItemKind::Static(..) => ItemLikeKind::Static,
+            ForeignItemKind::Ty => ItemLikeKind::Ty,
         }
     }
 }

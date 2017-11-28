@@ -820,10 +820,7 @@ impl Translation {
                         } else {
                             // Other numeric casts translate to Rust `as` casts
 
-                            // this explicit use of paren_expr is to work around a bug in libsyntax
-                            // Normally parentheses are added automatically as needed
-                            // The library is rendering ''(x as uint) as < y'' as ''x as uint < y''
-                            val.map(|x| mk().paren_expr(mk().cast_expr(x, target_ty)))
+                            val.map(|x| mk().cast_expr(x, target_ty))
                         }
                     }
 
@@ -1643,6 +1640,22 @@ impl Translation {
                 mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
             };
 
+            // One simplification we can make at the cost of inspecting `val` more closely: if `val`
+            // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
+            // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
+            if let ExprKind::Cast(ref arg, _) = val.node {
+                if let ExprKind::Binary(op, _, _) = arg.node {
+                    match op.node {
+                        BinOpKind::Or | BinOpKind::And |
+                        BinOpKind::Eq | BinOpKind::Ne |
+                        BinOpKind::Lt | BinOpKind::Le |
+                        BinOpKind::Gt | BinOpKind::Ge => return arg.clone(),
+                        _ => { }
+                    }
+                }
+            }
+
+            // The backup is to just compare against zero
             if target {
                 mk().binary_expr(BinOpKind::Ne, zero, val)
             } else {

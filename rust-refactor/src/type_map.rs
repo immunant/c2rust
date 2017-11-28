@@ -308,6 +308,7 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                     self.record_ty(ty, ast_ty);
                 }
             },
+            ForeignItemKind::Ty => { },
         }
 
         visit::walk_foreign_item(self, i);
