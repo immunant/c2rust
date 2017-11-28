@@ -9,6 +9,7 @@ pub mod renamer;
 pub mod name_manager;
 pub mod clang_ast;
 pub mod convert_type;
+pub mod loops;
 pub mod translator;
 pub mod c_ast;
 

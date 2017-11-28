@@ -6,6 +6,7 @@ use syntax::parse::token::{DelimToken,Token};
 use syntax::abi::Abi;
 use renamer::Renamer;
 use convert_type::TypeConverter;
+use loops::*;
 use idiomize::ast_manip::make_ast::*;
 use c_ast;
 use c_ast::*;
@@ -20,6 +21,7 @@ pub struct Translation {
     type_converter: TypeConverter,
     pub ast_context: TypedAstContext,
     renamer: RefCell<Renamer<String>>,
+    loops: RefCell<LoopContext>,
 }
 
 pub struct WithStmts<T> {
@@ -225,6 +227,7 @@ impl Translation {
                 "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual",
                 "yield",
             ].iter().map(|s| s.to_string()).collect())),
+            loops: RefCell::new(LoopContext::new()),
         }
     }
 
@@ -495,7 +498,14 @@ impl Translation {
 
             CStmtKind::Expr(expr) => self.convert_expr(ExprUse::Unused, expr).stmts,
 
-            CStmtKind::Break => vec![mk().expr_stmt(mk().break_expr())],
+            CStmtKind::Break => {
+                let mut loops = self.loops.borrow_mut();
+                let mut current_loop = loops.current_loop_mut();
+                let ref mut renamer = *self.renamer.borrow_mut();
+                current_loop.has_break = true;
+                let _label = current_loop.get_label(renamer);
+                vec![mk().expr_stmt(mk().break_expr())]
+            },
 
             ref stmt => unimplemented!("convert_stmt {:?}", stmt),
         }
@@ -510,6 +520,8 @@ impl Translation {
     }
 
     fn convert_while_stmt(&self, cond_id: CExprId, body_id: CStmtId) -> Vec<Stmt> {
+        self.loops.borrow_mut().push_loop(LoopType::While);
+        // TODO: create loop label
 
         let cond = self.convert_condition(true, cond_id);
         let body = self.convert_stmt(body_id);
@@ -517,10 +529,15 @@ impl Translation {
         let rust_cond = cond.to_expr();
         let rust_body = stmts_block(body);
 
+        self.loops.borrow_mut().pop_loop();
+
         vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body))]
     }
 
     fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Vec<Stmt> {
+        self.loops.borrow_mut().push_loop(LoopType::DoWhile);
+        // TODO: create loop label
+
         let cond = self.convert_condition(false, cond_id);
         let mut body = self.convert_stmt(body_id);
 
@@ -530,6 +547,8 @@ impl Translation {
         body.push(mk().expr_stmt(mk().ifte_expr(rust_cond, mk().block(vec![break_stmt]), None as Option<P<Expr>>)));
 
         let rust_body = stmts_block(body);
+
+        self.loops.borrow_mut().pop_loop();
 
         vec![mk().semi_stmt(mk().loop_expr(rust_body))]
     }
@@ -543,6 +562,8 @@ impl Translation {
     ) -> Vec<Stmt> {
 
         self.renamer.borrow_mut().add_scope();
+        self.loops.borrow_mut().push_loop(LoopType::For);
+        // TODO: create loop label
 
         let mut init = match init_id {
           Some(i) => self.convert_stmt(i),
@@ -566,6 +587,7 @@ impl Translation {
 
         init.push(mk().expr_stmt(looper));
 
+        self.loops.borrow_mut().pop_loop();
         self.renamer.borrow_mut().drop_scope();
 
         vec![mk().expr_stmt(mk().block_expr(mk().block(init)))]
