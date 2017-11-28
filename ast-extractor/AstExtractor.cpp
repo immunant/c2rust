@@ -103,6 +103,16 @@ public:
         }
     }
     
+    void VisitAttributedType(const AttributedType *T) {
+        auto t = T->getModifiedType();
+        
+        encodeType(T, TagAttributedType, [T,&t](CborEncoder *local) {
+            cbor_encode_uint(local, encodeQualType(t));
+        });
+        
+        VisitQualType(t);
+    }
+    
     void VisitParenType(const ParenType *T) {
         auto t = T->getInnerType();
         
