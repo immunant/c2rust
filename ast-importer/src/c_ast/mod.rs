@@ -594,6 +594,8 @@ pub enum CTypeKind {
     // Real floating types (6.2.5.10). Ex: `double`
     Float, Double, LongDouble,
 
+    // Clang specific types
+    Int128, UInt128,
   
     /* Compound types <https://github.com/llvm-mirror/clang/include/clang/AST/TypeNodes.def> */
   
