@@ -550,8 +550,7 @@ impl Translation {
         let break_stmt = mk().semi_stmt(mk().break_expr());
 
         // if (!cond) { break; }
-        let not_cond = mk().unary_expr(ast::UnOp::Not, rust_cond);
-        body.push(mk().expr_stmt(mk().ifte_expr(not_cond, mk().block(vec![break_stmt]), None as Option<P<Expr>>)));
+        body.push(mk().expr_stmt(mk().ifte_expr(rust_cond, mk().block(vec![break_stmt]), None as Option<P<Expr>>)));
 
         let rust_body = stmts_block(body);
 
@@ -1676,7 +1675,13 @@ impl Translation {
                         BinOpKind::Or | BinOpKind::And |
                         BinOpKind::Eq | BinOpKind::Ne |
                         BinOpKind::Lt | BinOpKind::Le |
-                        BinOpKind::Gt | BinOpKind::Ge => return arg.clone(),
+                        BinOpKind::Gt | BinOpKind::Ge => if target {
+                            // If target == true, just return the argument
+                            return arg.clone();
+                        } else {
+                            // If target == false, return !arg
+                            return mk().unary_expr(ast::UnOp::Not, arg.clone());
+                        },
                         _ => { }
                     }
                 }
