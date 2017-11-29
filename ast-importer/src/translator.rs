@@ -259,6 +259,28 @@ impl Translation {
                 }
             }
 
+            CDeclKind::Union{ref name, ref fields} => {
+                if let &Some(ref name) = name {
+                    let fields: Vec<StructField> = fields.into_iter().map(|x| {
+                        let field_decl = self.ast_context.index(*x);
+                        match &field_decl.kind {
+                            &CDeclKind::Field {ref name, typ} => {
+                                let typ = self.convert_type(typ.ctype);
+                                mk().struct_field(name, typ)
+                            }
+                            _ => panic!("Found non-field in record field list"),
+                        }
+                    }).collect();
+
+                    mk().pub_()
+                        .call_attr("derive", vec!["Copy","Clone"])
+                        .call_attr("repr", vec!["C"])
+                        .union_item(name, fields)
+                } else {
+                    panic!("Anonymous union declarations not implemented")
+                }
+            }
+
             CDeclKind::Field { .. } => panic!("Field declarations should be handled inside structs/unions"),
 
             CDeclKind::Enum { name: None, .. } => panic!("Anonymous enums are not implemented"),

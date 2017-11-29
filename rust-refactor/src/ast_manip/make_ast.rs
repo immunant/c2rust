@@ -1070,6 +1070,14 @@ impl Builder {
         }
     }
 
+    pub fn union_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
+        where I: Make<Ident> {
+        let name = name.make(&self);
+        Self::item(name, self.attrs, self.vis,
+                   ItemKind::Union(VariantData::Struct(fields, DUMMY_NODE_ID),
+                                    self.generics))
+    }
+
     pub fn enum_item<I>(self, name: I, fields: Vec<Variant>) -> P<Item>
         where I: Make<Ident> {
         let name = name.make(&self);
