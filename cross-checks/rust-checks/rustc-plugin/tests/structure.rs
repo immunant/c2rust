@@ -130,7 +130,7 @@ fn test_skip_multi_fields() {
                      { []     x: u64 = 0x12345678,
                        [none] y: u64 = 0x34567812,
                        [none] z: u64 = 0x87654321 }
-                 [(SimpleHasher, SimpleHasher, 0x12345678_u64)]);
+                     [(SimpleHasher, SimpleHasher, 0x12345678_u64)]);
     }
     {
         test_struct!([]
@@ -144,7 +144,7 @@ fn test_skip_multi_fields() {
                      { [none] x: u64 = 0x12345678,
                        [none] y: u64 = 0x34567812,
                        []     z: u64 = 0x87654321 }
-                 [(SimpleHasher, SimpleHasher, 0x87654321u64)]);
+                     [(SimpleHasher, SimpleHasher, 0x87654321u64)]);
     }
 }
 
