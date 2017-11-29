@@ -533,6 +533,12 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagBuiltinFn => {
+                    let ty = CTypeKind::BuiltinFn;
+                    self.add_type(new_id, not_located(ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
                 t => panic!("Type conversion not implemented for {:?}", t),
             }
 
