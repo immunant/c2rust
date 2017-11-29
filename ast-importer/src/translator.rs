@@ -503,8 +503,8 @@ impl Translation {
                 let mut current_loop = loops.current_loop_mut();
                 let ref mut renamer = *self.renamer.borrow_mut();
                 current_loop.has_break = true;
-                let _label = current_loop.get_label(renamer);
-                vec![mk().expr_stmt(mk().break_expr(None as Option<Ident>))]
+                let loop_label = current_loop.get_label(renamer);
+                vec![mk().expr_stmt(mk().break_expr(Some(loop_label)))]
             },
 
             ref stmt => unimplemented!("convert_stmt {:?}", stmt),
@@ -525,13 +525,12 @@ impl Translation {
 
         let cond = self.convert_condition(true, cond_id);
         let body = self.convert_stmt(body_id);
+        let loop_ = self.loops.borrow_mut().pop_loop();
 
         let rust_cond = cond.to_expr();
         let rust_body = stmts_block(body);
 
-        self.loops.borrow_mut().pop_loop();
-
-        vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body, None as Option<Ident>))]
+        vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body, loop_.label))]
     }
 
     fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Vec<Stmt> {
@@ -540,17 +539,17 @@ impl Translation {
 
         let cond = self.convert_condition(false, cond_id);
         let mut body = self.convert_stmt(body_id);
+        let mut loop_ = self.loops.borrow_mut().pop_loop();
 
         let rust_cond = cond.to_expr();
-        let break_stmt = mk().semi_stmt(mk().break_expr(None as Option<Ident>));
+        let ref mut renamer = *self.renamer.borrow_mut();
+        let break_stmt = mk().semi_stmt(mk().break_expr(Some(loop_.get_label(renamer))));
 
         body.push(mk().expr_stmt(mk().ifte_expr(rust_cond, mk().block(vec![break_stmt]), None as Option<P<Expr>>)));
 
         let rust_body = stmts_block(body);
 
-        self.loops.borrow_mut().pop_loop();
-
-        vec![mk().semi_stmt(mk().loop_expr(rust_body, None as Option<Ident>))]
+        vec![mk().semi_stmt(mk().loop_expr(rust_body, loop_.label))]
     }
 
     fn convert_for_stmt(
@@ -562,8 +561,6 @@ impl Translation {
     ) -> Vec<Stmt> {
 
         self.renamer.borrow_mut().add_scope();
-        self.loops.borrow_mut().push_loop(LoopType::For);
-        // TODO: create loop label
 
         let mut init = match init_id {
           Some(i) => self.convert_stmt(i),
@@ -575,19 +572,21 @@ impl Translation {
             None => vec![],
         };
 
+        self.loops.borrow_mut().push_loop(LoopType::For);
+        // TODO: create loop label
         let mut body = self.convert_stmt(body_id);
+        let loop_ = self.loops.borrow_mut().pop_loop();
         body.append(&mut inc);
 
         let body_block = stmts_block(body);
 
         let looper = match cond_id {
-            None => mk().loop_expr(body_block, None as Option<Ident>), // loop
-            Some(i) => mk().while_expr(self.convert_condition(true, i).to_expr(), body_block, None as Option<Ident>), // while
+            None => mk().loop_expr(body_block, loop_.label), // loop
+            Some(i) => mk().while_expr(self.convert_condition(true, i).to_expr(), body_block, loop_.label), // while
         };
 
         init.push(mk().expr_stmt(looper));
 
-        self.loops.borrow_mut().pop_loop();
         self.renamer.borrow_mut().drop_scope();
 
         vec![mk().expr_stmt(mk().block_expr(mk().block(init)))]
