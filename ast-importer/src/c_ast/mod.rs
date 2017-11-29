@@ -290,7 +290,7 @@ pub enum CExprKind {
     Conditional(CQualTypeId, CExprId, CExprId, CExprId),
 
     // Initializer list
-    InitList(CQualTypeId, Vec<CExprId>),
+    InitList(CQualTypeId, Vec<CExprId>, Option<CFieldId>),
 
     // Designated initializer
     ImplicitValueInit(CQualTypeId),
@@ -319,7 +319,7 @@ impl CExprKind {
             CExprKind::Member(ty, _, _, _) => ty,
             CExprKind::ArraySubscript(ty, _, _) => ty,
             CExprKind::Conditional(ty, _, _, _) => ty,
-            CExprKind::InitList(ty, _) => ty,
+            CExprKind::InitList(ty, _, _) => ty,
             CExprKind::ImplicitValueInit(ty) => ty,
             CExprKind::CompoundLiteral(ty, _) => ty,
         }
@@ -678,6 +678,7 @@ impl CTypeKind {
 
     pub fn is_signed_integral_type(&self) -> bool {
         match *self {
+            CTypeKind::Char => true, // true on the platforms we handle
             CTypeKind::SChar => true,
             CTypeKind::Int => true,
             CTypeKind::Short => true,

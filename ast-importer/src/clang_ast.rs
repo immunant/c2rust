@@ -95,7 +95,7 @@ pub fn expect_bool(val: &Cbor) -> Result<bool, DecodeError> {
     }
 }
 
-fn expect_opt_u64(val: &Cbor) -> Result<Option<u64>, DecodeError> {
+pub fn expect_opt_u64(val: &Cbor) -> Result<Option<u64>, DecodeError> {
     match val {
         &Cbor::Null => Ok(None),
         &Cbor::Unsigned(x) => Ok(Some(x.into_u64())),

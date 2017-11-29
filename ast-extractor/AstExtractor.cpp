@@ -608,7 +608,14 @@ class TranslateASTVisitor final
       bool VisitInitListExpr(InitListExpr *ILE) {
           auto inits = ILE->inits();
           std::vector<void*> childIds(inits.begin(), inits.end());
-          encode_entry(ILE, TagInitListExpr, childIds);
+          encode_entry(ILE, TagInitListExpr, childIds, [ILE](CborEncoder *extras) {
+              auto union_field = ILE->getInitializedFieldInUnion();
+              if (union_field) {
+                  cbor_encode_uint(extras, uintptr_t(union_field));
+              } else {
+                  cbor_encode_null(extras);
+              }
+          });
           
           return true;
       }
@@ -792,7 +799,11 @@ class TranslateASTVisitor final
           
           encode_entry(D, tag, childIds, QualType(),
           [D](CborEncoder *local){
-              cbor_encode_string(local, D->getNameAsString());
+              if (D->isAnonymousStructOrUnion()) {
+                  cbor_encode_null(local);
+              } else {
+                  cbor_encode_string(local, D->getNameAsString());
+              }
           });
           
           return true;

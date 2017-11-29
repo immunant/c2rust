@@ -992,7 +992,9 @@ impl ConversionContext {
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty_old);
 
-                    self.expr_possibly_as_stmt(expected_ty, new_id, node, CExprKind::InitList(ty, exprs))
+                    let union_field_id = expect_opt_u64(&node.extras[0]).expect("Bad union field ID entry").map(|x| self.visit_decl(x));
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, CExprKind::InitList(ty, exprs, union_field_id))
                 }
 
                 // Declarations

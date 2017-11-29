@@ -144,7 +144,7 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b" : ")?;
                 self.print_expr(rhs, context)
             }
-            Some(&CExprKind::InitList(_, ref xs)) => {
+            Some(&CExprKind::InitList(_, ref xs, _)) => {
                 self.writer.write_all(b"{")?;
                 let mut started = false;
                 for x in xs {

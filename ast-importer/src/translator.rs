@@ -788,7 +788,7 @@ impl Translation {
             CExprKind::Literal(ty, CLiteral::Floating(val)) => {
 
                 let mut bytes: Vec<u8> = vec![];
-                dtoa::write(&mut bytes, val);
+                dtoa::write(&mut bytes, val).expect("");
                 let str = String::from_utf8(bytes).unwrap();
                 let float_ty = match &self.ast_context.resolve_type(ty.ctype).kind {
                     &CTypeKind::Double => FloatTy::F64,
@@ -1087,7 +1087,7 @@ impl Translation {
             CExprKind::CompoundLiteral(_, val) =>
                 self.convert_expr(use_, val),
 
-            CExprKind::InitList(ty, ref ids) => {
+            CExprKind::InitList(ty, ref ids, opt_union_field_id) => {
                 let resolved = &self.ast_context.resolve_type(ty.ctype).kind;
 
                 match resolved {
@@ -1114,6 +1114,9 @@ impl Translation {
                     }
                     &CTypeKind::Struct(struct_id) => {
                         self.convert_struct_literal(struct_id,  ids.as_ref(), ty)
+                    }
+                    &CTypeKind::Union(union_id) => {
+                        self.convert_union_literal(union_id, ids.as_ref(), ty, opt_union_field_id)
                     }
                     t => {
                         panic!("Init list not implemented for {:?}", t);
@@ -1163,6 +1166,43 @@ impl Translation {
 
     }
 
+    fn convert_union_literal(
+        &self,
+        union_id: CRecordId,
+        ids: &[CExprId],
+        ty: CQualTypeId,
+        opt_union_field_id: Option<CFieldId>
+    ) -> WithStmts<P<Expr>> {
+
+        let union_field_id = opt_union_field_id.expect("union field ID");
+
+        match &self.ast_context.index(union_id).kind {
+            &CDeclKind::Union { name: ref opt_union_name, .. } => {
+                let union_name = opt_union_name.as_ref().expect("Anonymous unions not implemented");
+                match &self.ast_context.index(union_field_id).kind {
+                    &CDeclKind::Field { name: ref field_name, typ: field_ty } => {
+                        let val = if ids.is_empty() {
+                            WithStmts {
+                                stmts: vec![],
+                                val: self.implicit_default_expr(field_ty.ctype),
+                            }
+                        } else {
+                            self.convert_expr(ExprUse::RValue, ids[0])
+                        };
+
+                        val.map(|v| {
+                            let name = vec![mk().path_segment(union_name)];
+                            let fields = vec![mk().field(field_name, v)];
+                            mk().struct_expr(name, fields)
+                        })
+                    }
+                    _ => panic!("Union field decl mismatch"),
+                }
+            }
+            _ => panic!("Expected union decl"),
+        }
+    }
+
     fn convert_struct_literal(&self, struct_id: CRecordId, ids: &[CExprId], ty: CQualTypeId) -> WithStmts<P<Expr>> {
 
         let struct_decl = &self.ast_context.index(struct_id).kind;
@@ -1209,6 +1249,8 @@ impl Translation {
 
     pub fn implicit_default_expr(&self, ty_id: CTypeId) -> P<Expr> {
         let resolved_ty = &self.ast_context.resolve_type(ty_id).kind;
+
+        println!("Default expr: {:?}", resolved_ty);
 
         if resolved_ty.is_integral_type() {
             mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
