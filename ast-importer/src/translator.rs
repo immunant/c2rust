@@ -370,7 +370,7 @@ impl Translation {
 
             CDeclKind::Variable { .. } => panic!("This should be handled in 'convert_decl_stmt'"),
 
-            _ => unimplemented!()
+            ref k => panic!("Translation not implemented for {:?}", k),
         }
     }
 
@@ -828,6 +828,9 @@ impl Translation {
 
                     CastKind::FunctionToPointerDecay =>
                         val.map (|x| mk().call_expr(mk().ident_expr("Some"), vec![x])),
+
+                    CastKind::BuiltinFnToFnPtr =>
+                        val.map (|x| mk().call_expr(mk().ident_expr("unimplemented"), vec![] as Vec<P<Expr>>)),
 
                     CastKind::ArrayToPointerDecay =>
                         val.map(|x| mk().method_call_expr(x, "as_mut_ptr", vec![] as Vec<P<Expr>>)),

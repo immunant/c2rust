@@ -161,6 +161,16 @@ public:
         VisitQualType(t);
     }
     
+    void VisitBlockPointerType(const BlockPointerType *T) {
+        auto t = T->getPointeeType();
+        
+        encodeType(T, TagBlockPointer, [&t](CborEncoder *local) {
+            cbor_encode_uint(local, encodeQualType(t));
+        });
+        
+        VisitQualType(t);
+    }
+    
     // definition below due to recursive call into AST translator
     void VisitRecordType(const RecordType *T);
     

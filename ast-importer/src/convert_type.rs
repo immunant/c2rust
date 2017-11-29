@@ -75,7 +75,8 @@ impl TypeConverter {
 
             CTypeKind::Struct(ref decl) => {
                 if let CDeclKind::Struct { name: Some(ref name), .. } = ctxt.index(*decl).kind {
-                    let new_name = renamer.get(name).expect("Struct is not already renamed");
+                    let new_name = renamer.get(name).unwrap_or(name.to_owned());
+                        //.expect("Struct is not already renamed");
                     mk().path_ty(mk().path(vec![new_name]))
                 } else {
                     panic!("{:?} in struct type does not point to a record decl", decl)

@@ -140,6 +140,7 @@ fn parse_cast_kind(kind: &str) -> CastKind {
         "IntegralComplexToBoolean" => CastKind::IntegralComplexToBoolean,
         "IntegralComplexCast" => CastKind::IntegralComplexCast,
         "IntegralComplexToFloatingComplex" => CastKind::IntegralComplexToFloatingComplex,
+        "BuiltinFnToFnPtr" => CastKind::BuiltinFnToFnPtr,
         k => panic!("Unsupported implicit cast: {}", k),
     }
 }
@@ -429,6 +430,16 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagBlockPointer if expected_ty & OTHER_TYPE != 0 => {
+                    let pointed = expect_u64(&ty_node.extras[0])
+                        .expect("Block pointer child not found");
+                    let pointed_new = self.visit_qualified_type( pointed);
+
+                    let pointer_ty = CTypeKind::BlockPointer(pointed_new);
+                    self.add_type(new_id, not_located(pointer_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
                 TypeTag::TagStructType if expected_ty & OTHER_TYPE != 0 => {
                     let decl = expect_u64(&ty_node.extras[0])
                         .expect("Struct decl not found");
@@ -519,6 +530,14 @@ impl ConversionContext {
 
                     let paren_ty = CTypeKind::Paren(paren);
                     self.add_type(new_id, not_located(paren_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
+                TypeTag::TagAttributedType => {
+                    let ty_id = expect_u64(&ty_node.extras[0]).expect("Attributed type child not found");
+                    let ty = self.visit_qualified_type(ty_id);
+                    let ty = CTypeKind::Attributed(ty);
+                    self.add_type(new_id, not_located(ty));
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 

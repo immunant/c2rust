@@ -109,6 +109,8 @@ enum TypeTag {
     TagUInt128,
     TagBuiltinFn,
     TagAttributedType,
+    
+    TagBlockPointer,
 };
 
 enum StringTypeTag {
