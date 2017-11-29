@@ -358,6 +358,7 @@ pub enum CastKind {
     IntegralComplexToBoolean,
     IntegralComplexCast,
     IntegralComplexToFloatingComplex,
+    BuiltinFnToFnPtr,
 }
 
 /// Represents a unary operator in C (6.5.3 Unary operators)
@@ -644,6 +645,10 @@ pub enum CTypeKind {
     Enum(CEnumId),
 
     BuiltinFn,
+
+    Attributed(CQualTypeId),
+
+    BlockPointer(CQualTypeId),
 }
 
 impl CTypeKind {

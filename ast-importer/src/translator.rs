@@ -262,6 +262,28 @@ impl Translation {
                 }
             }
 
+            CDeclKind::Union{ref name, ref fields} => {
+                if let &Some(ref name) = name {
+                    let fields: Vec<StructField> = fields.into_iter().map(|x| {
+                        let field_decl = self.ast_context.index(*x);
+                        match &field_decl.kind {
+                            &CDeclKind::Field {ref name, typ} => {
+                                let typ = self.convert_type(typ.ctype);
+                                mk().struct_field(name, typ)
+                            }
+                            _ => panic!("Found non-field in record field list"),
+                        }
+                    }).collect();
+
+                    mk().pub_()
+                        .call_attr("derive", vec!["Copy","Clone"])
+                        .call_attr("repr", vec!["C"])
+                        .union_item(name, fields)
+                } else {
+                    panic!("Anonymous union declarations not implemented")
+                }
+            }
+
             CDeclKind::Field { .. } => panic!("Field declarations should be handled inside structs/unions"),
 
             CDeclKind::Enum { name: None, .. } => panic!("Anonymous enums are not implemented"),
@@ -373,7 +395,7 @@ impl Translation {
 
             CDeclKind::Variable { .. } => panic!("This should be handled in 'convert_decl_stmt'"),
 
-            _ => unimplemented!()
+            ref k => panic!("Translation not implemented for {:?}", k),
         }
     }
 
@@ -569,8 +591,7 @@ impl Translation {
         let break_stmt = mk().semi_stmt(mk().break_expr(Some(loop_label)));
 
         // if (!cond) { break 'loopN; }
-        let not_cond = mk().unary_expr(ast::UnOp::Not, rust_cond);
-        body.push(mk().expr_stmt(mk().ifte_expr(not_cond, mk().block(vec![break_stmt]), None as Option<P<Expr>>)));
+        body.push(mk().expr_stmt(mk().ifte_expr(rust_cond, mk().block(vec![break_stmt]), None as Option<P<Expr>>)));
 
         let rust_body = stmts_block(body);
 
@@ -883,6 +904,9 @@ impl Translation {
 
                     CastKind::FunctionToPointerDecay =>
                         val.map (|x| mk().call_expr(mk().ident_expr("Some"), vec![x])),
+
+                    CastKind::BuiltinFnToFnPtr =>
+                        val.map (|x| mk().call_expr(mk().ident_expr("unimplemented"), vec![] as Vec<P<Expr>>)),
 
                     CastKind::ArrayToPointerDecay =>
                         val.map(|x| mk().method_call_expr(x, "as_mut_ptr", vec![] as Vec<P<Expr>>)),
@@ -1704,7 +1728,13 @@ impl Translation {
                         BinOpKind::Or | BinOpKind::And |
                         BinOpKind::Eq | BinOpKind::Ne |
                         BinOpKind::Lt | BinOpKind::Le |
-                        BinOpKind::Gt | BinOpKind::Ge => return arg.clone(),
+                        BinOpKind::Gt | BinOpKind::Ge => if target {
+                            // If target == true, just return the argument
+                            return arg.clone();
+                        } else {
+                            // If target == false, return !arg
+                            return mk().unary_expr(ast::UnOp::Not, arg.clone());
+                        },
                         _ => { }
                     }
                 }
