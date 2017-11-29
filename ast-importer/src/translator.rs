@@ -504,7 +504,7 @@ impl Translation {
                 let ref mut renamer = *self.renamer.borrow_mut();
                 current_loop.has_break = true;
                 let _label = current_loop.get_label(renamer);
-                vec![mk().expr_stmt(mk().break_expr())]
+                vec![mk().expr_stmt(mk().break_expr(None as Option<Ident>))]
             },
 
             ref stmt => unimplemented!("convert_stmt {:?}", stmt),
@@ -531,7 +531,7 @@ impl Translation {
 
         self.loops.borrow_mut().pop_loop();
 
-        vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body))]
+        vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body, None as Option<Ident>))]
     }
 
     fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Vec<Stmt> {
@@ -542,7 +542,7 @@ impl Translation {
         let mut body = self.convert_stmt(body_id);
 
         let rust_cond = cond.to_expr();
-        let break_stmt = mk().semi_stmt(mk().break_expr());
+        let break_stmt = mk().semi_stmt(mk().break_expr(None as Option<Ident>));
 
         body.push(mk().expr_stmt(mk().ifte_expr(rust_cond, mk().block(vec![break_stmt]), None as Option<P<Expr>>)));
 
@@ -550,7 +550,7 @@ impl Translation {
 
         self.loops.borrow_mut().pop_loop();
 
-        vec![mk().semi_stmt(mk().loop_expr(rust_body))]
+        vec![mk().semi_stmt(mk().loop_expr(rust_body, None as Option<Ident>))]
     }
 
     fn convert_for_stmt(
@@ -581,8 +581,8 @@ impl Translation {
         let body_block = stmts_block(body);
 
         let looper = match cond_id {
-            None => mk().loop_expr(body_block), // loop
-            Some(i) => mk().while_expr(self.convert_condition(true, i).to_expr(), body_block), // while
+            None => mk().loop_expr(body_block, None as Option<Ident>), // loop
+            Some(i) => mk().while_expr(self.convert_condition(true, i).to_expr(), body_block, None as Option<Ident>), // while
         };
 
         init.push(mk().expr_stmt(looper));

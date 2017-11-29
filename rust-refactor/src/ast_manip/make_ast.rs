@@ -788,26 +788,30 @@ impl Builder {
         })
     }
 
-    pub fn while_expr<C, B>(self, cond: C, body: B) -> P<Expr>
-        where C: Make<P<Expr>>, B: Make<P<Block>> {
+    pub fn while_expr<C, B, I>(self, cond: C, body: B, label: Option<I>) -> P<Expr>
+        where C: Make<P<Expr>>, B: Make<P<Block>>, I: Make<Ident> {
         let cond = cond.make(&self);
         let body = body.make(&self);
+        let label = label.map(|l| l.make(&self))
+            .map(|l| Spanned { node: l, span: DUMMY_SP });
 
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::While(cond, body, None),
+            node: ExprKind::While(cond, body, label),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })
     }
 
-    pub fn loop_expr<B>(self, body: B) -> P<Expr>
-        where B: Make<P<Block>> {
+    pub fn loop_expr<B, I>(self, body: B, label: Option<I>) -> P<Expr>
+        where B: Make<P<Block>>, I: Make<Ident> {
         let body = body.make(&self);
+        let label = label.map(|l| l.make(&self))
+            .map(|l| Spanned { node: l, span: DUMMY_SP });
 
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Loop(body, None),
+            node: ExprKind::Loop(body, label),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })
@@ -1295,19 +1299,27 @@ impl Builder {
         })
     }
 
-    pub fn continue_expr(self) -> P<Expr> {
+    pub fn continue_expr<I>(self, label: Option<I>) -> P<Expr>
+        where I: Make<Ident> {
+        let label = label.map(|l| l.make(&self))
+            .map(|l| Spanned { node: l, span: DUMMY_SP });
+
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Continue(None),
+            node: ExprKind::Continue(label),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })
     }
 
-    pub fn break_expr(self) -> P<Expr> {
+    pub fn break_expr<I>(self, label: Option<I>) -> P<Expr>
+        where I: Make<Ident> {
+        let label = label.map(|l| l.make(&self))
+            .map(|l| Spanned { node: l, span: DUMMY_SP });
+
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Break(None, None),
+            node: ExprKind::Break(label, None),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })
