@@ -1,4 +1,6 @@
 
+use std::cell::{Cell, RefCell, Ref, RefMut};
+
 pub enum LoopType {
     For,
     While,
@@ -23,66 +25,68 @@ impl Loop {
             has_continue: false,
         }
     }
+
+    pub fn get_or_create_label(&mut self, ctx: &LoopContext) -> String {
+        self.label.get_or_insert_with(|| {
+            format!("'loop{}", ctx.loop_index.get())
+        }).clone()
+    }
+
+    pub fn get_or_create_body_label(&mut self, ctx: &LoopContext) -> String {
+        self.body_label.get_or_insert_with(|| {
+            format!("'body{}", ctx.body_index.get())
+        }).clone()
+    }
+}
+
+struct Counter(Cell<u64>);
+
+impl Counter {
+    fn new() -> Counter {
+        Counter(Cell::new(0))
+    }
+
+    fn get(&self) -> u64 {
+        let next = self.0.get();
+        self.0.set(next + 1);
+        next
+    }
 }
 
 pub struct LoopContext {
-    pub loops: Vec<Loop>,
+    loops: RefCell<Vec<Loop>>,
 
-    /// Loop index returned by get_index()
-    next_index: u64,
+    /// Loop index used for loop labels
+    loop_index: Counter,
 
     /// Loop body index
-    next_body_index: u64,
+    body_index: Counter,
 }
 
 impl LoopContext {
     pub fn new() -> LoopContext {
         LoopContext {
-            loops: vec![],
-            next_index: 0,
-            next_body_index: 0,
+            loops: RefCell::new(vec![]),
+            loop_index: Counter::new(),
+            body_index: Counter::new(),
         }
     }
 
     /// Push a new loop
-    pub fn push_loop(&mut self, lt: LoopType) {
-        self.loops.push(Loop::new(lt));
+    pub fn push_loop(&self, lt: LoopType) {
+        self.loops.borrow_mut().push(Loop::new(lt));
     }
 
     /// Pop the current loop off the stack and return it
-    pub fn pop_loop(&mut self) -> Loop {
-        self.loops.pop().expect("Expected valid loop to pop()")
+    pub fn pop_loop(&self) -> Loop {
+        self.loops.borrow_mut().pop().expect("Expected valid loop to pop()")
     }
 
-    pub fn current_loop(&self) -> &Loop {
-        self.loops.last().expect("Expected valid loop")
+    pub fn current_loop(&self) -> Ref<Loop> {
+        Ref::map(self.loops.borrow(), |l| l.last().expect("Expected valid loop"))
     }
 
-    pub fn current_loop_mut(&mut self) -> &mut Loop {
-        self.loops.last_mut().expect("Expected valid loop")
-    }
-
-    pub fn current_loop_label(&mut self) -> String {
-        if let Some(ref s) = self.current_loop().label {
-            return s.clone();
-        }
-        {
-            let loop_label = format!("'loop{}", self.next_index);
-            self.next_index += 1;
-            self.current_loop_mut().label = Some(loop_label);
-        }
-        self.current_loop().label.as_ref().unwrap().clone()
-    }
-
-    pub fn current_loop_body_label(&mut self) -> String {
-        if let Some(ref s) = self.current_loop().body_label {
-            return s.clone();
-        }
-        {
-            let body_label = format!("'body{}", self.next_body_index);
-            self.next_body_index += 1;
-            self.current_loop_mut().body_label = Some(body_label);
-        }
-        self.current_loop().body_label.as_ref().unwrap().clone()
+    pub fn current_loop_mut(&self) -> RefMut<Loop> {
+        RefMut::map(self.loops.borrow_mut(), |l| l.last_mut().expect("Expected valid loop"))
     }
 }

@@ -21,7 +21,7 @@ pub struct Translation {
     type_converter: TypeConverter,
     pub ast_context: TypedAstContext,
     renamer: RefCell<Renamer<String>>,
-    loops: RefCell<LoopContext>,
+    loops: LoopContext,
 }
 
 pub struct WithStmts<T> {
@@ -227,7 +227,7 @@ impl Translation {
                 "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual",
                 "yield",
             ].iter().map(|s| s.to_string()).collect())),
-            loops: RefCell::new(LoopContext::new()),
+            loops: LoopContext::new(),
         }
     }
 
@@ -499,26 +499,26 @@ impl Translation {
             CStmtKind::Expr(expr) => self.convert_expr(ExprUse::Unused, expr).stmts,
 
             CStmtKind::Break => {
-                let mut loops = self.loops.borrow_mut();
-                loops.current_loop_mut().has_break = true;
-                let loop_label = loops.current_loop_label();
+                let mut loop_ = self.loops.current_loop_mut();
+                loop_.has_break = true;
+                let loop_label = loop_.get_or_create_label(&self.loops);
                 vec![mk().expr_stmt(mk().break_expr(Some(loop_label)))]
             },
 
             CStmtKind::Continue => {
-                let mut loops = self.loops.borrow_mut();
-                loops.current_loop_mut().has_continue = true;
-                match loops.current_loop().loop_type {
+                let mut loop_ = self.loops.current_loop_mut();
+                loop_.has_continue = true;
+                match loop_.loop_type {
                     LoopType::While => {
                         // We can translate C continue in a while loop
                         // directly to Rust's continue
-                        let loop_label = loops.current_loop_label();
+                        let loop_label = loop_.get_or_create_label(&self.loops);
                         vec![mk().expr_stmt(mk().continue_expr(Some(loop_label)))]
                     },
                     _ => {
                         // We translate all other C continue statements
                         // to a break from the inner body loop
-                        let body_label = loops.current_loop_body_label();
+                        let body_label = loop_.get_or_create_body_label(&self.loops);
                         vec![mk().expr_stmt(mk().break_expr(Some(body_label)))]
                     },
                 }
@@ -538,9 +538,9 @@ impl Translation {
 
     fn convert_while_stmt(&self, cond_id: CExprId, body_id: CStmtId) -> Vec<Stmt> {
         let cond = self.convert_condition(true, cond_id);
-        self.loops.borrow_mut().push_loop(LoopType::While);
+        self.loops.push_loop(LoopType::While);
         let body = self.convert_stmt(body_id);
-        let loop_ = self.loops.borrow_mut().pop_loop();
+        let loop_ = self.loops.pop_loop();
 
         let rust_cond = cond.to_expr();
         let rust_body = stmts_block(body);
@@ -550,10 +550,9 @@ impl Translation {
 
     fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Vec<Stmt> {
         let cond = self.convert_condition(false, cond_id);
-        self.loops.borrow_mut().push_loop(LoopType::DoWhile);
+        self.loops.push_loop(LoopType::DoWhile);
         let mut body = self.convert_stmt(body_id);
-        let mut loop_label = self.loops.borrow_mut().current_loop_label();
-        let mut loop_ = self.loops.borrow_mut().pop_loop();
+        let mut loop_ = self.loops.pop_loop();
 
         // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
         let mut body = match loop_.body_label {
@@ -566,9 +565,10 @@ impl Translation {
         };
 
         let rust_cond = cond.to_expr();
+        let loop_label = loop_.get_or_create_label(&self.loops);
         let break_stmt = mk().semi_stmt(mk().break_expr(Some(loop_label)));
 
-        // if (!cond) { break; }
+        // if (!cond) { break 'loopN; }
         let not_cond = mk().unary_expr(ast::UnOp::Not, rust_cond);
         body.push(mk().expr_stmt(mk().ifte_expr(not_cond, mk().block(vec![break_stmt]), None as Option<P<Expr>>)));
 
@@ -597,9 +597,9 @@ impl Translation {
             None => vec![],
         };
 
-        self.loops.borrow_mut().push_loop(LoopType::For);
+        self.loops.push_loop(LoopType::For);
         let mut body = self.convert_stmt(body_id);
-        let loop_ = self.loops.borrow_mut().pop_loop();
+        let loop_ = self.loops.pop_loop();
 
         // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
         let mut body = match loop_.body_label {
