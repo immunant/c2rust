@@ -515,7 +515,12 @@ impl Translation {
                         let loop_label = loops.current_loop_label();
                         vec![mk().expr_stmt(mk().continue_expr(Some(loop_label)))]
                     },
-                    _ => unimplemented!("continue"),
+                    _ => {
+                        // We translate all other C continue statements
+                        // to a break from the inner body loop
+                        let body_label = loops.current_loop_body_label();
+                        vec![mk().expr_stmt(mk().break_expr(Some(body_label)))]
+                    },
                 }
             },
 
@@ -549,6 +554,16 @@ impl Translation {
         let mut body = self.convert_stmt(body_id);
         let mut loop_label = self.loops.borrow_mut().current_loop_label();
         let mut loop_ = self.loops.borrow_mut().pop_loop();
+
+        // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
+        let mut body = match loop_.body_label {
+            Some(ref l) => {
+                assert!(loop_.has_continue, "Expected do/while loop with body label to contain continue statement");
+                body.push(mk().semi_stmt(mk().break_expr(Some(l))));
+                vec![mk().expr_stmt(mk().loop_expr(stmts_block(body), Some(l)))]
+            },
+            None => body,
+        };
 
         let rust_cond = cond.to_expr();
         let break_stmt = mk().semi_stmt(mk().break_expr(Some(loop_label)));
@@ -585,6 +600,16 @@ impl Translation {
         self.loops.borrow_mut().push_loop(LoopType::For);
         let mut body = self.convert_stmt(body_id);
         let loop_ = self.loops.borrow_mut().pop_loop();
+
+        // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
+        let mut body = match loop_.body_label {
+            Some(ref l) => {
+                assert!(loop_.has_continue, "Expected for loop with body label to contain continue statement");
+                body.push(mk().semi_stmt(mk().break_expr(Some(l))));
+                vec![mk().expr_stmt(mk().loop_expr(stmts_block(body), Some(l)))]
+            },
+            None => body,
+        };
         body.append(&mut inc);
 
         let body_block = stmts_block(body);

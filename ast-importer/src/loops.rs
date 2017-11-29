@@ -8,6 +8,7 @@ pub enum LoopType {
 pub struct Loop {
     pub loop_type: LoopType,
     pub label: Option<String>,
+    pub body_label: Option<String>,
     pub has_break: bool,
     pub has_continue: bool,
 }
@@ -17,6 +18,7 @@ impl Loop {
         Loop {
             loop_type: lt,
             label: None,
+            body_label: None,
             has_break: false,
             has_continue: false,
         }
@@ -28,6 +30,9 @@ pub struct LoopContext {
 
     /// Loop index returned by get_index()
     next_index: u64,
+
+    /// Loop body index
+    next_body_index: u64,
 }
 
 impl LoopContext {
@@ -35,6 +40,7 @@ impl LoopContext {
         LoopContext {
             loops: vec![],
             next_index: 0,
+            next_body_index: 0,
         }
     }
 
@@ -66,5 +72,17 @@ impl LoopContext {
             self.current_loop_mut().label = Some(loop_label);
         }
         self.current_loop().label.as_ref().unwrap().clone()
+    }
+
+    pub fn current_loop_body_label(&mut self) -> String {
+        if let Some(ref s) = self.current_loop().body_label {
+            return s.clone();
+        }
+        {
+            let body_label = format!("'body{}", self.next_body_index);
+            self.next_body_index += 1;
+            self.current_loop_mut().body_label = Some(body_label);
+        }
+        self.current_loop().body_label.as_ref().unwrap().clone()
     }
 }
