@@ -520,10 +520,8 @@ impl Translation {
     }
 
     fn convert_while_stmt(&self, cond_id: CExprId, body_id: CStmtId) -> Vec<Stmt> {
-        self.loops.borrow_mut().push_loop(LoopType::While);
-        // TODO: create loop label
-
         let cond = self.convert_condition(true, cond_id);
+        self.loops.borrow_mut().push_loop(LoopType::While);
         let body = self.convert_stmt(body_id);
         let loop_ = self.loops.borrow_mut().pop_loop();
 
@@ -534,10 +532,8 @@ impl Translation {
     }
 
     fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Vec<Stmt> {
-        self.loops.borrow_mut().push_loop(LoopType::DoWhile);
-        // TODO: create loop label
-
         let cond = self.convert_condition(false, cond_id);
+        self.loops.borrow_mut().push_loop(LoopType::DoWhile);
         let mut body = self.convert_stmt(body_id);
         let mut loop_ = self.loops.borrow_mut().pop_loop();
 
@@ -573,7 +569,6 @@ impl Translation {
         };
 
         self.loops.borrow_mut().push_loop(LoopType::For);
-        // TODO: create loop label
         let mut body = self.convert_stmt(body_id);
         let loop_ = self.loops.borrow_mut().pop_loop();
         body.append(&mut inc);
