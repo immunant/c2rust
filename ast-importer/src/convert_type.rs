@@ -36,6 +36,8 @@ impl TypeConverter {
             CTypeKind::Char => mk().path_ty(mk().path(vec!["libc","c_char"])),
             CTypeKind::Double => mk().path_ty(mk().path(vec!["libc","c_double"])),
             CTypeKind::Float => mk().path_ty(mk().path(vec!["libc","c_float"])),
+            CTypeKind::Int128 => mk().path_ty(mk().path(vec!["i128"])),
+            CTypeKind::UInt128 => mk().path_ty(mk().path(vec!["u128"])),
 
             CTypeKind::Pointer(CQualTypeId { ref qualifiers, ref ctype }) => {
                 match ctxt.resolve_type(*ctype).kind {

@@ -642,6 +642,8 @@ pub enum CTypeKind {
 
     // Enum definition type
     Enum(CEnumId),
+
+    BuiltinFn,
 }
 
 impl CTypeKind {
