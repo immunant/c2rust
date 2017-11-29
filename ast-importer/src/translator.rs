@@ -510,6 +510,8 @@ impl Translation {
                 loops.current_loop_mut().has_continue = true;
                 match loops.current_loop().loop_type {
                     LoopType::While => {
+                        // We can translate C continue in a while loop
+                        // directly to Rust's continue
                         let loop_label = loops.current_loop_label();
                         vec![mk().expr_stmt(mk().continue_expr(Some(loop_label)))]
                     },
