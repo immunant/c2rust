@@ -505,6 +505,18 @@ impl Translation {
                 vec![mk().expr_stmt(mk().break_expr(Some(loop_label)))]
             },
 
+            CStmtKind::Continue => {
+                let mut loops = self.loops.borrow_mut();
+                match loops.current_loop().loop_type {
+                    LoopType::While => {
+                        loops.current_loop_mut().has_continue = true;
+                        let loop_label = loops.current_loop_label();
+                        vec![mk().expr_stmt(mk().continue_expr(Some(loop_label)))]
+                    },
+                    _ => unimplemented!("continue"),
+                }
+            },
+
             ref stmt => unimplemented!("convert_stmt {:?}", stmt),
         }
     }
