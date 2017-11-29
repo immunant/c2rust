@@ -500,10 +500,8 @@ impl Translation {
 
             CStmtKind::Break => {
                 let mut loops = self.loops.borrow_mut();
-                let mut current_loop = loops.current_loop_mut();
-                let ref mut renamer = *self.renamer.borrow_mut();
-                current_loop.has_break = true;
-                let loop_label = current_loop.get_label(renamer);
+                loops.current_loop_mut().has_break = true;
+                let loop_label = loops.current_loop_label();
                 vec![mk().expr_stmt(mk().break_expr(Some(loop_label)))]
             },
 
@@ -535,11 +533,11 @@ impl Translation {
         let cond = self.convert_condition(false, cond_id);
         self.loops.borrow_mut().push_loop(LoopType::DoWhile);
         let mut body = self.convert_stmt(body_id);
+        let mut loop_label = self.loops.borrow_mut().current_loop_label();
         let mut loop_ = self.loops.borrow_mut().pop_loop();
 
         let rust_cond = cond.to_expr();
-        let ref mut renamer = *self.renamer.borrow_mut();
-        let break_stmt = mk().semi_stmt(mk().break_expr(Some(loop_.get_label(renamer))));
+        let break_stmt = mk().semi_stmt(mk().break_expr(Some(loop_label)));
 
         body.push(mk().expr_stmt(mk().ifte_expr(rust_cond, mk().block(vec![break_stmt]), None as Option<P<Expr>>)));
 

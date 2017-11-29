@@ -1,6 +1,4 @@
 
-use renamer::Renamer;
-
 pub enum LoopType {
     For,
     While,
@@ -23,22 +21,20 @@ impl Loop {
             has_continue: false,
         }
     }
-
-    /// Lazily get a label for this loop
-    pub fn get_label(&mut self, renamer: &mut Renamer<String>) -> &str {
-        // FIXME: get the name from somewhere other than fresh()???
-        self.label.get_or_insert_with(|| renamer.fresh())
-    }
 }
 
 pub struct LoopContext {
     pub loops: Vec<Loop>,
+
+    /// Loop index returned by get_index()
+    next_index: u64,
 }
 
 impl LoopContext {
     pub fn new() -> LoopContext {
         LoopContext {
             loops: vec![],
+            next_index: 0,
         }
     }
 
@@ -58,5 +54,17 @@ impl LoopContext {
 
     pub fn current_loop_mut(&mut self) -> &mut Loop {
         self.loops.last_mut().expect("Expected valid loop")
+    }
+
+    pub fn current_loop_label(&mut self) -> String {
+        if let Some(ref s) = self.current_loop().label {
+            return s.clone();
+        }
+        {
+            let loop_label = format!("'loop{}", self.next_index);
+            self.next_index += 1;
+            self.current_loop_mut().label = Some(loop_label);
+        }
+        self.current_loop().label.as_ref().unwrap().clone()
     }
 }
