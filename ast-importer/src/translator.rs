@@ -422,13 +422,21 @@ impl Translation {
         let args: Vec<Arg> = arguments
             .iter()
             .map(|&(ref var, typ)| {
-                let rust_var = self.renamer.borrow_mut()
-                .insert(var.to_string(), var.as_str())
-                .expect(&format!("Failed to insert argument '{}'", var));
 
                 let (ty, mutbl, _) = self.convert_variable(None, typ);
 
-                let pat = mk().set_mutbl(mutbl).ident_pat(rust_var);
+                let pat = if var.is_empty() {
+                    mk().wild_pat()
+                } else {
+                    // extern function declarations don't support/require mut patterns
+                    let mutbl = if body.is_none() { Mutability::Immutable } else { mutbl };
+
+                    let new_var = self.renamer.borrow_mut()
+                        .insert(var.to_string(), var.as_str())
+                        .expect(&format!("Failed to insert argument '{}' while converting '{}'", var, name));
+
+                    mk().set_mutbl(mutbl).ident_pat(new_var)
+                };
 
                 mk().arg(ty, pat)
             })
