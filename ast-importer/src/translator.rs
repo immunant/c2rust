@@ -752,7 +752,7 @@ impl Translation {
     }
 
     fn convert_type(&self, type_id: CTypeId) -> P<Ty> {
-        self.type_converter.convert(&self.ast_context, &self.renamer.borrow(), type_id)
+        self.type_converter.convert(&self.ast_context, &self.renamer.borrow(), type_id).unwrap()
     }
 
     /// Write to a `lhs` that is volatile
@@ -858,7 +858,7 @@ impl Translation {
             CExprKind::Literal(ty, CLiteral::Floating(val)) => {
 
                 let mut bytes: Vec<u8> = vec![];
-                dtoa::write(&mut bytes, val).expect("");
+                dtoa::write(&mut bytes, val).unwrap();
                 let str = String::from_utf8(bytes).unwrap();
                 let float_ty = match &self.ast_context.resolve_type(ty.ctype).kind {
                     &CTypeKind::Double => FloatTy::F64,
