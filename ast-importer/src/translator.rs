@@ -272,10 +272,20 @@ impl Translation {
                         }
                     }).collect();
 
-                    mk().pub_()
-                        .call_attr("derive", vec!["Copy","Clone"])
-                        .call_attr("repr", vec!["C"])
-                        .union_item(name, fields)
+                    if fields.is_empty() {
+                        // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
+                        mk().pub_()
+                            .call_attr("derive", vec!["Copy","Clone"])
+                            .call_attr("repr", vec!["C"])
+                            .struct_item(name, vec![])
+                    } else {
+                        mk().pub_()
+                            .call_attr("derive", vec!["Copy","Clone"])
+                            .call_attr("repr", vec!["C"])
+                            .union_item(name, fields)
+                    }
+
+
                 } else {
                     panic!("Anonymous union declarations not implemented")
                 }
