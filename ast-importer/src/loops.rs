@@ -26,16 +26,16 @@ impl Loop {
         }
     }
 
-    pub fn get_or_create_label(&mut self, ctx: &LoopContext) -> String {
+    pub fn get_or_create_label(&mut self, ctx: &LoopContext) -> &str {
         self.label.get_or_insert_with(|| {
             format!("'loop{}", ctx.loop_index.get())
-        }).clone()
+        })
     }
 
-    pub fn get_or_create_body_label(&mut self, ctx: &LoopContext) -> String {
+    pub fn get_or_create_body_label(&mut self, ctx: &LoopContext) -> &str {
         self.body_label.get_or_insert_with(|| {
             format!("'body{}", ctx.body_index.get())
-        }).clone()
+        })
     }
 }
 

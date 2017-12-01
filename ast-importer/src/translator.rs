@@ -541,7 +541,7 @@ impl Translation {
             CStmtKind::Break => {
                 let mut loop_ = self.loops.current_loop_mut();
                 loop_.has_break = true;
-                let loop_label = loop_.get_or_create_label(&self.loops);
+                let loop_label = loop_.get_or_create_label(&self.loops).to_owned();
                 vec![mk().expr_stmt(mk().break_expr(Some(loop_label)))]
             },
 
@@ -552,13 +552,13 @@ impl Translation {
                     LoopType::While => {
                         // We can translate C continue in a while loop
                         // directly to Rust's continue
-                        let loop_label = loop_.get_or_create_label(&self.loops);
+                        let loop_label = loop_.get_or_create_label(&self.loops).to_owned();
                         vec![mk().expr_stmt(mk().continue_expr(Some(loop_label)))]
                     },
                     _ => {
                         // We translate all other C continue statements
                         // to a break from the inner body loop
-                        let body_label = loop_.get_or_create_body_label(&self.loops);
+                        let body_label = loop_.get_or_create_body_label(&self.loops).to_owned();
                         vec![mk().expr_stmt(mk().break_expr(Some(body_label)))]
                     },
                 }
@@ -605,7 +605,7 @@ impl Translation {
         };
 
         let rust_cond = cond.to_expr();
-        let loop_label = loop_.get_or_create_label(&self.loops);
+        let loop_label = loop_.get_or_create_label(&self.loops).to_owned();
         let break_stmt = mk().semi_stmt(mk().break_expr(Some(loop_label)));
 
         // if (!cond) { break 'loopN; }
