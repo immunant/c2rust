@@ -145,8 +145,10 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
     }
 
     for top_id in &ast_context.c_decls_top {
-        let item = t.convert_decl(true, *top_id);
-        t.items.push(item);
+        match t.convert_decl(true, *top_id) {
+            Ok(item) => t.items.push(item),
+            Err(e) => eprintln!("Skipping declaration due to error: {}", e),
+        }
     }
 
     to_string(|s| {
@@ -237,117 +239,117 @@ impl Translation {
         mk().mac_expr(mk().mac(vec!["panic"], vec![]))
     }
 
-    fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> P<Item> {
+    fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> Result<P<Item>, String> {
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Struct{ref name, ref fields} => {
                 // TODO: Add mapping from declaration ID to struct name to support unnamed structs
                 if let &Some(ref name) = name {
-                    let fields: Vec<StructField> = fields.into_iter().map(|x| {
+
+                    let mut field_syns = vec![];
+                    for x in fields {
                         let field_decl = self.ast_context.index(*x);
                         match &field_decl.kind {
                             &CDeclKind::Field {ref name, typ} => {
-                                let typ = self.convert_type(typ.ctype);
-                                mk().struct_field(name, typ)
+                                let typ = self.convert_type(typ.ctype)?;
+                                field_syns.push(mk().struct_field(name, typ))
                             }
-                            _ => panic!("Found non-field in record field list"),
+                            _ => return Err(format!("Found non-field in record field list")),
                         }
-                    }).collect();
+                    }
 
-                    mk().pub_()
+                    Ok(mk().pub_()
                         .call_attr("derive", vec!["Copy","Clone"])
                         .call_attr("repr", vec!["C"])
-                        .struct_item(name, fields)
+                        .struct_item(name, field_syns))
                 } else {
-                    panic!("Anonymous struct declarations not implemented")
+                    Err(format!("Anonymous struct declarations not implemented"))
                 }
             }
 
             CDeclKind::Union{ref name, ref fields} => {
                 if let &Some(ref name) = name {
-                    let fields: Vec<StructField> = fields.into_iter().map(|x| {
+
+                    let mut field_syns = vec![];
+                    for x in fields {
                         let field_decl = self.ast_context.index(*x);
                         match &field_decl.kind {
                             &CDeclKind::Field {ref name, typ} => {
-                                let typ = self.convert_type(typ.ctype);
-                                mk().struct_field(name, typ)
+                                let typ = self.convert_type(typ.ctype)?;
+                                field_syns.push(mk().struct_field(name, typ))
                             }
-                            _ => panic!("Found non-field in record field list"),
+                            _ => return Err(format!("Found non-field in record field list")),
                         }
-                    }).collect();
+                    }
 
-                    if fields.is_empty() {
+                    if field_syns.is_empty() {
                         // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
-                        mk().pub_()
+                        Ok(mk().pub_()
                             .call_attr("derive", vec!["Copy","Clone"])
                             .call_attr("repr", vec!["C"])
-                            .struct_item(name, vec![])
+                            .struct_item(name, vec![]))
                     } else {
-                        mk().pub_()
+                        Ok(mk().pub_()
                             .call_attr("derive", vec!["Copy","Clone"])
                             .call_attr("repr", vec!["C"])
-                            .union_item(name, fields)
+                            .union_item(name, field_syns))
                     }
 
 
                 } else {
-                    panic!("Anonymous union declarations not implemented")
+                    Err(format!("Anonymous union declarations not implemented"))
                 }
             }
 
-            CDeclKind::Field { .. } => panic!("Field declarations should be handled inside structs/unions"),
+            CDeclKind::Field { .. } => Err(format!("Field declarations should be handled inside structs/unions")),
 
-            CDeclKind::Enum { name: None, .. } => panic!("Anonymous enums are not implemented"),
+            CDeclKind::Enum { name: None, .. } => Err(format!("Anonymous enums are not implemented")),
             CDeclKind::Enum { name: Some(ref name), ref variants } => {
 
                 let enum_name = &self.renamer.borrow().get(name).expect("Enums should already be renamed");
 
-                let variants: Vec<Variant> = variants
-                    .into_iter()
-                    .map(|v| {
-                        let enum_constant_decl = self.ast_context.index(*v);
-                        match &enum_constant_decl.kind {
-                            &CDeclKind::EnumConstant { ref name, value } => {
-                                let disc = mk().lit_expr(mk().int_lit(value as u128, ""));
-                                let variant = &self.renamer.borrow_mut()
-                                    .insert(name.to_owned(), &format!("{}::{}", enum_name, name))
-                                    .expect(&format!("Failed to insert enum variant '{}'", name));
-                                let variant = variant.trim_left_matches(&format!("{}::", enum_name));
-                                mk().unit_variant(variant, Some(disc))
-                            }
-                            _ => panic!("Found non-variant in enum variant list"),
+                let mut variant_syns = vec![];
+                for v in variants {
+                    let enum_constant_decl = self.ast_context.index(*v);
+                    match &enum_constant_decl.kind {
+                        &CDeclKind::EnumConstant { ref name, value } => {
+                            let disc = mk().lit_expr(mk().int_lit(value as u128, ""));
+                            let variant = &self.renamer.borrow_mut()
+                                .insert(name.to_owned(), &format!("{}::{}", enum_name, name))
+                                .expect(&format!("Failed to insert enum variant '{}'", name));
+                            let variant = variant.trim_left_matches(&format!("{}::", enum_name));
+                            variant_syns.push(mk().unit_variant(variant, Some(disc)))
                         }
-                    })
-                    .collect();
+                        _ => return Err(format!("Found non-variant in enum variant list")),
+                    }
+                }
 
-                mk().pub_()
+                Ok(mk().pub_()
                     .call_attr("derive", vec!["Copy","Clone"])
                     .call_attr("repr", vec!["C"])
-                    .enum_item(enum_name, variants)
+                    .enum_item(enum_name, variant_syns))
             },
 
-            CDeclKind::EnumConstant { .. } => panic!("Enum variants should be handled inside enums"),
+            CDeclKind::EnumConstant { .. } => Err(format!("Enum variants should be handled inside enums")),
 
 
-            CDeclKind::Function { .. } if !toplevel => panic!("Function declarations must be top-level"),
+            CDeclKind::Function { .. } if !toplevel => Err(format!("Function declarations must be top-level")),
             CDeclKind::Function { is_extern, typ, ref name, ref parameters, body } => {
 
                 let new_name = &self.renamer.borrow().get(name).expect("Functions should already be renamed");
 
                 let ret: CQualTypeId = match self.ast_context.index(typ).kind {
                     CTypeKind::Function(ret, _) => ret,
-                    _ => panic!("Type of function {:?} was not a function type", decl_id)
+                    _ => return Err(format!("Type of function {:?} was not a function type", decl_id))
                 };
 
-                let args: Vec<(String, CQualTypeId)> = parameters
-                    .iter()
-                    .map(|param_id  | {
-                        if let CDeclKind::Variable { ref ident, typ, .. } = self.ast_context.index(*param_id).kind {
-                            (ident.clone(), typ)
-                        } else {
-                            panic!("Parameter is not variable declaration")
-                        }
-                    })
-                    .collect();
+                let mut args: Vec<(String, CQualTypeId)> = vec![];
+                for param_id in parameters {
+                    if let CDeclKind::Variable { ref ident, typ, .. } = self.ast_context.index(*param_id).kind {
+                        args.push((ident.clone(), typ))
+                    } else {
+                        return Err(format!("Parameter is not variable declaration"))
+                    }
+                }
 
                 self.convert_function(is_extern, new_name, name, &args, ret, body)
             },
@@ -356,8 +358,8 @@ impl Translation {
 
                 let new_name = &self.renamer.borrow().get(name).expect("Typedefs should already be renamed");
 
-                let ty = self.convert_type(typ.ctype);
-                mk().type_item(new_name, ty)
+                let ty = self.convert_type(typ.ctype)?;
+                Ok(mk().type_item(new_name, ty))
             },
 
             // Extern variable without intializer (definition elsewhere)
@@ -365,14 +367,14 @@ impl Translation {
                 assert!(is_static, "An extern variable must be static");
 
                 let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
-                let (ty, mutbl, _) = self.convert_variable(None, typ);
+                let (ty, mutbl, _) = self.convert_variable(None, typ)?;
 
                 let extern_item = mk_linkage(true, new_name, ident)
                     .set_mutbl(mutbl)
                     .foreign_static(new_name, ty);
 
-                mk().abi(Abi::C)
-                    .foreign_items(vec![extern_item])
+                Ok(mk().abi(Abi::C)
+                    .foreign_items(vec![extern_item]))
             }
 
             // Extern variable with intializer (definition here)
@@ -380,32 +382,32 @@ impl Translation {
                 assert!(is_static, "An extern variable must be static");
 
                 let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
-                let (ty, mutbl, init) = self.convert_variable(initializer, typ);
+                let (ty, mutbl, init) = self.convert_variable(initializer, typ)?;
 
                 let init = init.to_expr();
 
-                mk_linkage(false, new_name, ident)
+                Ok(mk_linkage(false, new_name, ident)
                     .vis(Visibility::Public)
                     .abi(Abi::C)
                     .set_mutbl(mutbl)
-                    .static_item(new_name, ty, init)
+                    .static_item(new_name, ty, init))
             }
 
             // Static variable (definition here)
             CDeclKind::Variable { is_static: true, ref ident, initializer, typ, .. } => {
 
                 let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
-                let (ty, mutbl, init) = self.convert_variable(initializer, typ);
+                let (ty, mutbl, init) = self.convert_variable(initializer, typ)?;
 
                 let init = init.to_expr();
 
-                mk().set_mutbl(mutbl)
-                    .static_item(new_name, ty, init)
+                Ok(mk().set_mutbl(mutbl)
+                    .static_item(new_name, ty, init))
             }
 
-            CDeclKind::Variable { .. } => panic!("This should be handled in 'convert_decl_stmt'"),
+            CDeclKind::Variable { .. } => Err(format!("This should be handled in 'convert_decl_stmt'")),
 
-            ref k => panic!("Translation not implemented for {:?}", k),
+            ref k => Err(format!("Translation not implemented for {:?}", k)),
         }
     }
 
@@ -417,35 +419,33 @@ impl Translation {
         arguments: &[(String, CQualTypeId)],
         return_type: CQualTypeId,
         body: Option<CStmtId>,
-    ) -> P<Item> {
+    ) -> Result<P<Item>, String> {
 
         // Start scope for function parameters
         self.renamer.borrow_mut().add_scope();
 
-        let args: Vec<Arg> = arguments
-            .iter()
-            .map(|&(ref var, typ)| {
+        let mut args: Vec<Arg> = vec![];
 
-                let (ty, mutbl, _) = self.convert_variable(None, typ);
+        for &(ref var, typ) in arguments {
+            let (ty, mutbl, _) = self.convert_variable(None, typ)?;
 
-                let pat = if var.is_empty() {
-                    mk().wild_pat()
-                } else {
-                    // extern function declarations don't support/require mut patterns
-                    let mutbl = if body.is_none() { Mutability::Immutable } else { mutbl };
+            let pat = if var.is_empty() {
+                mk().wild_pat()
+            } else {
+                // extern function declarations don't support/require mut patterns
+                let mutbl = if body.is_none() { Mutability::Immutable } else { mutbl };
 
-                    let new_var = self.renamer.borrow_mut()
-                        .insert(var.to_string(), var.as_str())
-                        .expect(&format!("Failed to insert argument '{}' while converting '{}'", var, name));
+                let new_var = self.renamer.borrow_mut()
+                    .insert(var.to_string(), var.as_str())
+                    .expect(&format!("Failed to insert argument '{}' while converting '{}'", var, name));
 
-                    mk().set_mutbl(mutbl).ident_pat(new_var)
-                };
+                mk().set_mutbl(mutbl).ident_pat(new_var)
+            };
 
-                mk().arg(ty, pat)
-            })
-            .collect();
+            args.push(mk().arg(ty, pat))
+        }
 
-        let ret = FunctionRetTy::Ty(self.convert_type(return_type.ctype));
+        let ret = FunctionRetTy::Ty(self.convert_type(return_type.ctype)?);
 
         let decl = mk().fn_decl(args, ret);
 
@@ -463,7 +463,7 @@ impl Translation {
                 mk().abi(Abi::C)
             };
 
-            mk_.unsafe_().fn_item(new_name, decl, block)
+            Ok(mk_.unsafe_().fn_item(new_name, decl, block))
 
         } else {
             // Translating an extern function declaration
@@ -471,8 +471,8 @@ impl Translation {
             let function_decl = mk_linkage(true, new_name, name)
                 .foreign_fn(new_name, decl);
 
-            mk().abi(Abi::C)
-                .foreign_items(vec![function_decl])
+            Ok(mk().abi(Abi::C)
+                .foreign_items(vec![function_decl]))
         };
 
         // End scope for function parameters
@@ -698,7 +698,7 @@ impl Translation {
                 let rust_name = self.renamer.borrow_mut()
                     .insert(ident.clone(), &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
-                let (ty, mutbl, init) = self.convert_variable(initializer, typ);
+                let (ty, mutbl, init) = self.convert_variable(initializer, typ).unwrap();
 
                 let pat = mk().set_mutbl(mutbl).ident_pat(rust_name);
                 let local = mk().local(pat, Some(ty), Some(init.val));
@@ -729,7 +729,7 @@ impl Translation {
                 if skip {
                     vec![]
                 } else {
-                    let item = self.convert_decl(false, decl_id);
+                    let item = self.convert_decl(false, decl_id).unwrap();
                     vec![mk().item_stmt(item)]
                 }
             },
@@ -740,19 +740,20 @@ impl Translation {
         &self,
         initializer: Option<CExprId>,
         typ: CQualTypeId
-    ) -> (P<Ty>, Mutability, WithStmts<P<Expr>>) {
+    ) -> Result<(P<Ty>, Mutability, WithStmts<P<Expr>>), String> {
+
         let init = match initializer {
             Some(x) => self.convert_expr(ExprUse::RValue, x),
             None => WithStmts::new(self.implicit_default_expr(typ.ctype)),
         };
-        let ty = self.convert_type(typ.ctype);
+        let ty = self.convert_type(typ.ctype)?;
         let mutbl = if typ.qualifiers.is_const { Mutability::Immutable } else { Mutability:: Mutable };
 
-        (ty, mutbl, init)
+        Ok((ty, mutbl, init))
     }
 
-    fn convert_type(&self, type_id: CTypeId) -> P<Ty> {
-        self.type_converter.convert(&self.ast_context, &self.renamer.borrow(), type_id).unwrap()
+    fn convert_type(&self, type_id: CTypeId) -> Result<P<Ty>, String> {
+        self.type_converter.convert(&self.ast_context, &self.renamer.borrow(), type_id)
     }
 
     /// Write to a `lhs` that is volatile
@@ -763,7 +764,7 @@ impl Translation {
             _ => {
                 let addr_lhs = mk().mutbl().addr_of_expr(lhs);
 
-                let lhs_type = self.convert_type(lhs_type);
+                let lhs_type = self.convert_type(lhs_type).unwrap();
                 let ty = mk().mutbl().ptr_ty(lhs_type);
 
                 mk().cast_expr(addr_lhs, ty)
@@ -781,7 +782,7 @@ impl Translation {
             _ => {
                 let addr_lhs = mk().addr_of_expr(lhs);
 
-                let lhs_type = self.convert_type(lhs_type);
+                let lhs_type = self.convert_type(lhs_type).unwrap();
                 let ty = mk().ptr_ty(lhs_type);
 
                 mk().cast_expr(addr_lhs, ty)
@@ -805,7 +806,7 @@ impl Translation {
         match self.ast_context.index(expr_id).kind {
 
             CExprKind::UnaryType(_ty, kind, arg_ty) => {
-                let ty = self.convert_type(arg_ty.ctype);
+                let ty = self.convert_type(arg_ty.ctype).unwrap();
                 let name = match kind {
                     UnTypeOp::SizeOf => "size_of",
                     UnTypeOp::AlignOf => "align_of",
@@ -840,7 +841,7 @@ impl Translation {
                 // expected integral type. When modifying this, look at `Translation::enum_cast` -
                 // this function assumes `DeclRef`'s to `EnumConstants`'s will translate to casts.
                 if let &CDeclKind::EnumConstant { .. } = decl {
-                    let ty = self.convert_type(qual_ty.ctype);
+                    let ty = self.convert_type(qual_ty.ctype).unwrap();
                     val = mk().cast_expr(val, ty);
                 }
 
@@ -878,7 +879,7 @@ impl Translation {
                 let width_lit = mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
                 let array_ty = mk().array_ty(u8_ty, width_lit);
                 let source_ty = mk().ref_ty(array_ty);
-                let target_ty = mk().ref_ty(self.convert_type(ty.ctype));
+                let target_ty = mk().ref_ty(self.convert_type(ty.ctype).unwrap());
 
                 let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
                 let pointer = transmute_expr(source_ty, target_ty, byte_literal);
@@ -893,8 +894,8 @@ impl Translation {
                         val.map(|x| {
                             // TODO: Detect cast from mutable to constant pointer to same type
                             let source_ty_id = self.ast_context.index(expr).kind.get_type();
-                            let source_ty = self.convert_type(source_ty_id);
-                            let target_ty = self.convert_type(ty.ctype);
+                            let source_ty = self.convert_type(source_ty_id).unwrap();
+                            let target_ty = self.convert_type(ty.ctype).unwrap();
                             transmute_expr(source_ty, target_ty, x)
                         })
                     }
@@ -902,14 +903,14 @@ impl Translation {
                     CastKind::IntegralToPointer | CastKind::PointerToIntegral |
                     CastKind::IntegralCast | CastKind::FloatingCast | CastKind::FloatingToIntegral | CastKind::IntegralToFloating => {
 
-                        let target_ty = self.convert_type(ty.ctype);
+                        let target_ty = self.convert_type(ty.ctype).unwrap();
                         let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
 
                         let source_ty_ctype_id = self.ast_context.index(expr).kind.get_type();
 
                         if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
                             // Casts targeting `enum` types...
-                            let source_ty = self.convert_type(source_ty_ctype_id);
+                            let source_ty = self.convert_type(source_ty_ctype_id).unwrap();
                             self.enum_cast(enum_decl_id, expr, val, source_ty, target_ty)
                         } else {
                             // Other numeric casts translate to Rust `as` casts
@@ -934,7 +935,7 @@ impl Translation {
 
                         let res = if self.is_function_pointer(ty.ctype) {
                             let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
-                            let target_ty = self.convert_type(ty.ctype);
+                            let target_ty = self.convert_type(ty.ctype).unwrap();
                             transmute_expr(source_ty, target_ty, null_expr())
                         } else {
                             match &self.ast_context.resolve_type(ty.ctype).kind {
@@ -1049,13 +1050,13 @@ impl Translation {
                     c_ast::BinOp::AssignBitOr |
                     c_ast::BinOp::AssignBitAnd |
                     c_ast::BinOp::Assign => {
-                        let ty = self.convert_type(type_id.ctype);
+                        let ty = self.convert_type(type_id.ctype).unwrap();
 
                         self.convert_assignment_operator(use_, *op, ty, type_id.ctype, lhs, rhs)
                     },
 
                     _ => {
-                        let ty = self.convert_type(type_id.ctype);
+                        let ty = self.convert_type(type_id.ctype).unwrap();
 
                         let lhs_type = self.ast_context.index(lhs).kind.get_qual_type();
                         let rhs_type = self.ast_context.index(rhs).kind.get_qual_type();
@@ -1326,7 +1327,7 @@ impl Translation {
             mk().lit_expr(mk().float_unsuffixed_lit("0."))
         } else if self.is_function_pointer(ty_id) {
             let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
-            let target_ty = self.convert_type(ty_id);
+            let target_ty = self.convert_type(ty_id).unwrap();
             transmute_expr(source_ty, target_ty, null_expr())
         } else if let &CTypeKind::Pointer(p) = resolved_ty {
             if p.qualifiers.is_const { null_expr() } else { null_mut_expr() }
@@ -1522,7 +1523,7 @@ impl Translation {
     ) -> WithStmts<P<Expr>> {
 
         let CQualTypeId { ctype, .. } = cqual_type;
-        let ty = self.convert_type(ctype);
+        let ty = self.convert_type(ctype).unwrap();
         let resolved_ctype = self.ast_context.resolve_type(ctype);
 
         match name {
