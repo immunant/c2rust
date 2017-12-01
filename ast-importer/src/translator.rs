@@ -421,83 +421,72 @@ impl Translation {
         body: Option<CStmtId>,
     ) -> Result<P<Item>, String> {
 
-        // Start scope for function parameters
-        self.renamer.borrow_mut().add_scope();
+        self.with_scope(|| {
+            let mut args: Vec<Arg> = vec![];
 
-        let mut args: Vec<Arg> = vec![];
+            for &(ref var, typ) in arguments {
+                let (ty, mutbl, _) = self.convert_variable(None, typ)?;
 
-        for &(ref var, typ) in arguments {
-            let (ty, mutbl, _) = self.convert_variable(None, typ)?;
+                let pat = if var.is_empty() {
+                    mk().wild_pat()
+                } else {
+                    // extern function declarations don't support/require mut patterns
+                    let mutbl = if body.is_none() { Mutability::Immutable } else { mutbl };
 
-            let pat = if var.is_empty() {
-                mk().wild_pat()
+                    let new_var = self.renamer.borrow_mut()
+                        .insert(var.to_string(), var.as_str())
+                        .expect(&format!("Failed to insert argument '{}' while converting '{}'", var, name));
+
+                    mk().set_mutbl(mutbl).ident_pat(new_var)
+                };
+
+                args.push(mk().arg(ty, pat))
+            }
+
+            let ret = FunctionRetTy::Ty(self.convert_type(return_type.ctype)?);
+
+            let decl = mk().fn_decl(args, ret);
+
+            if let Some(body) = body {
+                // Translating an actual function
+
+                let block = self.convert_function_body(body);
+
+                // Only add linkage attributes if the function is `extern`
+                let mk_ = if is_extern {
+                    mk_linkage(false, new_name, name)
+                        .abi(Abi::C)
+                        .vis(Visibility::Public)
+                } else {
+                    mk().abi(Abi::C)
+                };
+
+                Ok(mk_.unsafe_().fn_item(new_name, decl, block))
             } else {
-                // extern function declarations don't support/require mut patterns
-                let mutbl = if body.is_none() { Mutability::Immutable } else { mutbl };
+                // Translating an extern function declaration
 
-                let new_var = self.renamer.borrow_mut()
-                    .insert(var.to_string(), var.as_str())
-                    .expect(&format!("Failed to insert argument '{}' while converting '{}'", var, name));
+                let function_decl = mk_linkage(true, new_name, name)
+                    .foreign_fn(new_name, decl);
 
-                mk().set_mutbl(mutbl).ident_pat(new_var)
-            };
-
-            args.push(mk().arg(ty, pat))
-        }
-
-        let ret = FunctionRetTy::Ty(self.convert_type(return_type.ctype)?);
-
-        let decl = mk().fn_decl(args, ret);
-
-        let item = if let Some(body) = body {
-            // Translating an actual function
-
-            let block = self.convert_function_body(body);
-
-            // Only add linkage attributes if the function is `extern`
-            let mk_ = if is_extern {
-                mk_linkage(false, new_name, name)
-                    .abi(Abi::C)
-                    .vis(Visibility::Public)
-            } else {
-                mk().abi(Abi::C)
-            };
-
-            Ok(mk_.unsafe_().fn_item(new_name, decl, block))
-
-        } else {
-            // Translating an extern function declaration
-
-            let function_decl = mk_linkage(true, new_name, name)
-                .foreign_fn(new_name, decl);
-
-            Ok(mk().abi(Abi::C)
-                .foreign_items(vec![function_decl]))
-        };
-
-        // End scope for function parameters
-        self.renamer.borrow_mut().drop_scope();
-
-        item
+                Ok(mk().abi(Abi::C)
+                    .foreign_items(vec![function_decl]))
+            }
+        })
     }
 
     fn convert_function_body(&self, body_id: CStmtId) -> P<Block> {
 
-        // Open function body scope
-        self.renamer.borrow_mut().add_scope();
-
-        let stmts = match self.ast_context.index(body_id).kind {
-            CStmtKind::Compound(ref stmts) => stmts
-                .iter()
-                .flat_map(|stmt| self.convert_stmt(*stmt))
-                .collect(),
-            _ => panic!("function body expects to be a compound statement"),
-        };
-
-        // Close function body scope
-        self.renamer.borrow_mut().drop_scope();
-
-        stmts_block(stmts)
+        // Function body scope
+        self.with_scope(|| {
+            let stmts = match self.ast_context.index(body_id).kind {
+                CStmtKind::Compound(ref stmts) => stmts
+                    .iter()
+                    .flat_map(|stmt| self.convert_stmt(*stmt))
+                    .collect(),
+                _ => panic!("function body expects to be a compound statement"),
+            };
+            stmts_block(stmts)
+        })
     }
 
     fn convert_stmt(&self, stmt_id: CStmtId) -> Vec<Stmt> {
@@ -524,16 +513,14 @@ impl Translation {
                 self.convert_for_stmt(init, condition, increment, body),
 
             CStmtKind::Compound(ref stmts) => {
-                self.renamer.borrow_mut().add_scope();
+                self.with_scope(|| {
+                    let stmts = stmts
+                        .iter()
+                        .flat_map(|stmt| self.convert_stmt(*stmt))
+                        .collect();
 
-                let stmts = stmts
-                    .iter()
-                    .flat_map(|stmt| self.convert_stmt(*stmt))
-                    .collect();
-
-                self.renamer.borrow_mut().drop_scope();
-
-                vec![mk().expr_stmt(mk().block_expr(stmts_block(stmts)))]
+                    vec![mk().expr_stmt(mk().block_expr(stmts_block(stmts)))]
+                })
             },
 
             CStmtKind::Expr(expr) => self.convert_expr(ExprUse::Unused, expr).stmts,
@@ -624,46 +611,44 @@ impl Translation {
         body_id: CStmtId,
     ) -> Vec<Stmt> {
 
-        self.renamer.borrow_mut().add_scope();
+        // Open new scope for the for loop initializer
+        self.with_scope(|| {
+            let mut init = match init_id {
+                Some(i) => self.convert_stmt(i),
+                None => vec![],
+            };
 
-        let mut init = match init_id {
-          Some(i) => self.convert_stmt(i),
-          None => vec![],
-        };
+            let mut inc = match inc_id {
+                Some(i) => self.convert_expr(ExprUse::Unused, i).stmts,
+                None => vec![],
+            };
 
-        let mut inc = match inc_id {
-            Some(i) => self.convert_expr(ExprUse::Unused, i).stmts,
-            None => vec![],
-        };
+            self.loops.push_loop(LoopType::For);
+            let mut body = self.convert_stmt(body_id);
+            let loop_ = self.loops.pop_loop();
 
-        self.loops.push_loop(LoopType::For);
-        let mut body = self.convert_stmt(body_id);
-        let loop_ = self.loops.pop_loop();
+            // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
+            let mut body = match loop_.body_label {
+                Some(ref l) => {
+                    assert!(loop_.has_continue, "Expected for loop with body label to contain continue statement");
+                    body.push(mk().semi_stmt(mk().break_expr(Some(l))));
+                    vec![mk().expr_stmt(mk().loop_expr(stmts_block(body), Some(l)))]
+                },
+                None => body,
+            };
+            body.append(&mut inc);
 
-        // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
-        let mut body = match loop_.body_label {
-            Some(ref l) => {
-                assert!(loop_.has_continue, "Expected for loop with body label to contain continue statement");
-                body.push(mk().semi_stmt(mk().break_expr(Some(l))));
-                vec![mk().expr_stmt(mk().loop_expr(stmts_block(body), Some(l)))]
-            },
-            None => body,
-        };
-        body.append(&mut inc);
+            let body_block = stmts_block(body);
 
-        let body_block = stmts_block(body);
+            let looper = match cond_id {
+                None => mk().loop_expr(body_block, loop_.label), // loop
+                Some(i) => mk().while_expr(self.convert_condition(true, i).to_expr(), body_block, loop_.label), // while
+            };
 
-        let looper = match cond_id {
-            None => mk().loop_expr(body_block, loop_.label), // loop
-            Some(i) => mk().while_expr(self.convert_condition(true, i).to_expr(), body_block, loop_.label), // while
-        };
+            init.push(mk().expr_stmt(looper));
 
-        init.push(mk().expr_stmt(looper));
-
-        self.renamer.borrow_mut().drop_scope();
-
-        vec![mk().expr_stmt(mk().block_expr(mk().block(init)))]
-
+            vec![mk().expr_stmt(mk().block_expr(mk().block(init)))]
+        })
     }
 
     fn convert_if_stmt(
@@ -1829,5 +1814,13 @@ impl Translation {
                 true
             } else { false }
         } else { false }
+    }
+
+    pub fn with_scope<F,A>(&self, f: F) -> A
+        where F: FnOnce() -> A {
+        self.renamer.borrow_mut().add_scope();
+        let result = f();
+        self.renamer.borrow_mut().drop_scope();
+        result
     }
 }
