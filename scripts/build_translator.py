@@ -231,7 +231,7 @@ def integrate_ast_extractor():
     link ast-extractor into $LLVM_SRC/tools/clang/tools/extra
     """
     abs_src = os.path.join(ROOT_DIR, "ast-extractor")
-    src = "../../../../../ast-extractor"
+    src = "../../../../../../../ast-extractor"
     extractor_dest = os.path.join(
         LLVM_SRC, "tools/clang/tools/extra/ast-extractor")
     clang_tools_extra = os.path.abspath(
@@ -246,6 +246,8 @@ def integrate_ast_extractor():
         "missing link: %s->%s" % (src, extractor_dest)
     # check that link points to its intended target
     link_target = os.path.realpath(extractor_dest)
+    print(extractor_dest)
+    print(abs_src)
     assert link_target == abs_src, \
         "invalid link target: %s!=%s" % (link_target, abs_src)
 

@@ -47,16 +47,16 @@ BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
 BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear")
 BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
-LLVM_SRC = os.path.join(ROOT_DIR, 'llvm.src')
-LLVM_BLD = os.path.join(ROOT_DIR, 'llvm.build.')
+# LLVM_PUBKEY = "8F0871F202119294"  # signed v4.0.1
+LLVM_PUBKEY = "345AD05D"  # signed v5.0.0
+LLVM_VER = "5.0.0"
+LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
+LLVM_BLD = os.path.join(DEPS_DIR, 'llvm-{ver}/build.'.format(ver=LLVM_VER))
 # make the build directory unique to the hostname such that
 # building inside a vagrant/docker environment uses a different
 # folder than building directly on the host.
 LLVM_BLD += platform.node()  # returns hostname
 LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
-# LLVM_PUBKEY = "8F0871F202119294"  # signed v4.0.1
-LLVM_PUBKEY = "345AD05D"  # signed v5.0.0
-LLVM_VER = "5.0.0"
 LLVM_ARCHIVE_URLS = """
 http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz
 http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz
@@ -301,7 +301,8 @@ def json_pp_obj(json_obj) -> str:
 
 def ensure_rustc_version(expected_version_str: str):
     rustc = get_cmd_or_die("rustc")
-    actual_version = rustc("--version")
+    rustup = get_cmd_or_die("rustup")
+    actual_version = rustup("run", CUSTOM_RUST_NAME, rustc["--version"])
     if expected_version_str not in actual_version:
         emsg = "expected version: {}\n"
         emsg = emsg + 9 * "." + "actual version: {}"
