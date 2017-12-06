@@ -620,6 +620,12 @@ class TranslateASTVisitor final
           return true;
       }
       
+      bool VisitPredefinedExpr(PredefinedExpr *E) {
+          std::vector<void*> childIds { E->getFunctionName() };
+          encode_entry(E, TagPredefinedExpr, childIds);
+          return true;
+      }
+      
       bool VisitImplicitValueInitExpr(ImplicitValueInitExpr *E) {
           std::vector<void*> childIds;
           encode_entry(E, TagImplicitValueInitExpr, childIds);
