@@ -1202,6 +1202,9 @@ impl Translation {
             }
             CExprKind::ImplicitValueInit(ty) =>
                 WithStmts::new(self.implicit_default_expr(ty.ctype)),
+
+            CExprKind::Predefined(ty, val_id) =>
+                self.convert_expr(use_, val_id),
         }
     }
 

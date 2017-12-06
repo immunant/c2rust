@@ -987,6 +987,16 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, CExprKind::CompoundLiteral(ty, val))
                 }
 
+                ASTEntryTag::TagPredefinedExpr => {
+                    let ty_old = node.type_id.expect("Expected predefined expr to have type");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    let val_old = node.children[0].expect("Expected child on predefined expr");
+                    let val = self.visit_expr(val_old);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, CExprKind::Predefined(ty, val))
+                }
+
                 ASTEntryTag::TagImplicitValueInitExpr => {
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty_old);
