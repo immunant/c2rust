@@ -101,6 +101,7 @@ impl TypedAstContext {
 
             CExprKind::ArraySubscript(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
             CExprKind::Conditional(_, c, lhs, rhs) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+            CExprKind::BinaryConditional(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
 
             CExprKind::InitList{..} => false,
             CExprKind::ImplicitValueInit{..} => false,
@@ -289,6 +290,9 @@ pub enum CExprKind {
     // Ternary conditional operator
     Conditional(CQualTypeId, CExprId, CExprId, CExprId),
 
+    // Binary conditional operator ?: GNU extension
+    BinaryConditional(CQualTypeId, CExprId, CExprId),
+
     // Initializer list
     InitList(CQualTypeId, Vec<CExprId>, Option<CFieldId>),
 
@@ -319,6 +323,7 @@ impl CExprKind {
             CExprKind::Member(ty, _, _, _) => ty,
             CExprKind::ArraySubscript(ty, _, _) => ty,
             CExprKind::Conditional(ty, _, _, _) => ty,
+            CExprKind::BinaryConditional(ty, _, _) => ty,
             CExprKind::InitList(ty, _, _) => ty,
             CExprKind::ImplicitValueInit(ty) => ty,
             CExprKind::CompoundLiteral(ty, _) => ty,

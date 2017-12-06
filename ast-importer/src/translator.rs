@@ -977,6 +977,27 @@ impl Translation {
                 }
             },
 
+            CExprKind::BinaryConditional(ty, lhs, rhs) => {
+
+                if use_ == ExprUse::Unused {
+                    let mut lhs = self.convert_expr(ExprUse::RValue, lhs);
+                    let cond = self.match_bool(false, ty.ctype, lhs.val);
+
+                    lhs.stmts.push(
+                        mk().semi_stmt(
+                            mk().ifte_expr(cond, mk().block(self.convert_expr(ExprUse::Unused,
+                                                                              rhs).stmts), None as Option<P<Expr>>)));
+                    WithStmts { stmts: lhs.stmts, val: Translation::panic(), }
+                } else {
+                    self.name_reference_write_read(lhs).map(|(_, lhs_val)| {
+                        let cond = self.match_bool(true, ty.ctype, lhs_val.clone());
+                        mk().ifte_expr(cond,
+                                       mk().block(vec![mk().expr_stmt(lhs_val)]),
+                                       Some(self.convert_expr(use_, rhs).to_expr()))
+                    })
+                }
+            },
+
             CExprKind::Binary(ref type_id, ref op, lhs, rhs) => {
 
                 match *op {

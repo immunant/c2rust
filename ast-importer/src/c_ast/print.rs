@@ -144,6 +144,11 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b" : ")?;
                 self.print_expr(rhs, context)
             }
+            Some(&CExprKind::BinaryConditional(_, lhs, rhs)) => {
+                self.print_expr(lhs, context)?;
+                self.writer.write_all(b" ?: ")?;
+                self.print_expr(rhs, context)
+            }
             Some(&CExprKind::InitList(_, ref xs, _)) => {
                 self.writer.write_all(b"{")?;
                 let mut started = false;

@@ -943,6 +943,21 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, conditional);
                 }
 
+                ASTEntryTag::TagBinaryConditionalOperator if expected_ty & (EXPR | STMT) != 0 => {
+                    let lhs_old = node.children[0].expect("Expected condition on if expression");
+                    let lhs = self.visit_expr(lhs_old);
+
+                    let rhs_old = node.children[1].expect("Expected 'else' on if expression");
+                    let rhs = self.visit_expr(rhs_old);
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    let conditional = CExprKind::BinaryConditional(ty, lhs, rhs);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, conditional);
+                }
+
                 ASTEntryTag::TagUnaryExprOrTypeTraitExpr if expected_ty & (EXPR | STMT) != 0 => {
                     let ty = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty);
