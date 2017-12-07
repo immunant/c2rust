@@ -337,9 +337,10 @@ impl Translation {
 
                 let new_name = &self.renamer.borrow().get(name).expect("Functions should already be renamed");
 
-                let ret: CQualTypeId = match self.ast_context.index(typ).kind {
-                    CTypeKind::Function(ret, _) => ret,
-                    _ => return Err(format!("Type of function {:?} was not a function type", decl_id))
+
+                let ret: CQualTypeId = match &self.ast_context.resolve_type(typ).kind {
+                    &CTypeKind::Function(ret, _) => ret,
+                    k => return Err(format!("Type of function {:?} was not a function type, got {:?}", decl_id, k))
                 };
 
                 let mut args: Vec<(String, CQualTypeId)> = vec![];

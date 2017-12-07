@@ -486,14 +486,14 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                TypeTag::TagTypedefType if expected_ty & OTHER_TYPE != 0 => {
+                TypeTag::TagTypedefType => {
                     let decl = expect_u64(&ty_node.extras[0])
                         .expect("Typedef decl not found");
                     let decl_new = CDeclId(self.visit_node_type(decl, TYPDEF_DECL));
 
                     let typedef_ty = CTypeKind::Typedef(decl_new);
                     self.add_type(new_id, not_located(typedef_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                    self.processed_nodes.insert(new_id, expected_ty);
                 }
 
                 TypeTag::TagEnumType if expected_ty & OTHER_TYPE != 0 => {
@@ -558,7 +558,7 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                t => panic!("Type conversion not implemented for {:?}", t),
+                t => panic!("Type conversion not implemented for {:?} expecting {:?}", t, expected_ty),
             }
 
         } else {
