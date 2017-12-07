@@ -445,7 +445,7 @@ class TranslateASTVisitor final
       }
       
       bool VisitGotoStmt(GotoStmt *GS) {
-          std::vector<void*> childIds = { GS->getLabel() };
+          std::vector<void*> childIds = { GS->getLabel()->getStmt() };
           encode_entry(GS, TagGotoStmt, childIds);
           return true;
       }
@@ -717,7 +717,9 @@ class TranslateASTVisitor final
 
           std::vector<void*> childIds;
           for (auto x : FD->parameters()) {
-              childIds.push_back(x->getCanonicalDecl());
+              auto cd = x->getCanonicalDecl();
+              childIds.push_back(cd);
+              TraverseDecl(cd);
           }
 
           if(FD->hasBody()) {

@@ -552,6 +552,15 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagIncompleteArrayType => {
+                    let element_id = expect_u64(&ty_node.extras[0]).expect("element id");
+                    let element = self.visit_type(element_id);
+
+                    let element_ty = CTypeKind::IncompleteArray(element);
+                    self.add_type(new_id, not_located(element_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
                 TypeTag::TagBuiltinFn => {
                     let ty = CTypeKind::BuiltinFn;
                     self.add_type(new_id, not_located(ty));
