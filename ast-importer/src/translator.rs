@@ -147,22 +147,29 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
     for top_id in &ast_context.c_decls_top {
         match t.convert_decl(true, *top_id) {
             Ok(item) => t.items.push(item),
-            Err(e) => eprintln!("Skipping declaration due to error: {}", e),
+            Err(e) => {
+                let ref k = t.ast_context.index(*top_id).kind;
+                eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
+            },
         }
     }
 
     to_string(|s| {
 
-        // Add `#![feature(libc)]` to the top of the file
-        s.print_attribute(&mk().attribute::<_,TokenStream>(
-            AttrStyle::Inner,
-            vec!["feature"],
-            vec![
-                Token::OpenDelim(DelimToken::Paren),
-                Token::Ident(mk().ident("libc")),
-                Token::CloseDelim(DelimToken::Paren),
-            ].into_iter().collect(),
-        ))?;
+        let features = vec!["libc", "i128_type", "const_ptr_null"];
+
+        for feature in features {
+            // Add `#![feature(libc)]` to the top of the file
+            s.print_attribute(&mk().attribute::<_, TokenStream>(
+                AttrStyle::Inner,
+                vec!["feature"],
+                vec![
+                    Token::OpenDelim(DelimToken::Paren),
+                    Token::Ident(mk().ident(feature)),
+                    Token::CloseDelim(DelimToken::Paren),
+                ].into_iter().collect(),
+            ))?
+        }
 
         // Add `extern crate libc` to the top of the file
         s.print_item(&mk().extern_crate_item("libc", None))?;
