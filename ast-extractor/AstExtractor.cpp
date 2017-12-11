@@ -795,11 +795,14 @@ class TranslateASTVisitor final
       bool VisitRecordDecl(RecordDecl *D)
       {
           // Skip non-canonical decls
-          if(!D->isCanonicalDecl())
+          if (!D->isCanonicalDecl()) {
               return true;
-
+          }
+          
+          auto def = D->getDefinition();
+          
           std::vector<void*> childIds;
-          for (auto x : D->fields()) {
+          for (auto x : def->fields()) {
               childIds.push_back(x->getCanonicalDecl());
           }
           
