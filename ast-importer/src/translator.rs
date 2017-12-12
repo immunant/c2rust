@@ -252,17 +252,34 @@ impl Translation {
                 // TODO: Add mapping from declaration ID to struct name to support unnamed structs
                 if let &Some(ref name) = name {
 
-                    let mut field_syns = vec![];
+                    // Gather up all the field names and field types
+                    let mut field_entries = vec![];
                     for x in fields {
                         let field_decl = self.ast_context.index(*x);
                         match &field_decl.kind {
                             &CDeclKind::Field {ref name, typ} => {
                                 let typ = self.convert_type(typ.ctype)?;
-                                field_syns.push(mk().struct_field(name, typ))
+                                field_entries.push((name.to_owned(), typ))
                             }
                             _ => return Err(format!("Found non-field in record field list")),
                         }
                     }
+
+                    let mut used_names: Vec<String> = field_entries.iter().map(|x| x.0.to_owned()).collect();
+                    let mut fresh_counter: u64 = 0;
+                    for i in 0..field_entries.len() {
+                        while field_entries[i].0.is_empty() {
+                            let candidate = format!("unused_{}", fresh_counter);
+                            fresh_counter += 1;
+                            if !used_names.contains(&candidate) {
+                                used_names.push(candidate.clone());
+                                field_entries[i].0 = candidate;
+                            }
+                        }
+                    }
+
+                    let field_syns =
+                        field_entries.into_iter().map(|(x,y)| mk().struct_field(x,y)).collect();
 
                     Ok(mk().pub_()
                         .call_attr("derive", vec!["Copy","Clone"])
