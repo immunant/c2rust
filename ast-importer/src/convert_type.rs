@@ -4,21 +4,33 @@ use syntax::abi::Abi;
 use idiomize::ast_manip::make_ast::*;
 use syntax::ptr::P;
 use std::ops::Index;
-use renamer::Renamer;
+use renamer::*;
+use std::collections::HashSet;
+use c_ast::CDeclId;
 
 pub struct TypeConverter {
+    renamer: Renamer<CDeclId>,
 }
 
 impl TypeConverter {
 
     pub fn new() -> TypeConverter {
         TypeConverter {
+            renamer: Renamer::new(HashSet::new()),
         }
+    }
+
+    pub fn declare_decl_name(&mut self, decl_id: CDeclId, name: &str) -> String {
+        self.renamer.insert(decl_id, name).expect("Name already assigned")
+    }
+
+    pub fn resolve_decl_name(&self, decl_id: CDeclId) -> Option<String> {
+        self.renamer.get(&decl_id)
     }
 
     /// Convert a `C` type to a `Rust` one. For the moment, these are expected to have compatible
     /// memory layouts.
-    pub fn convert(&self, ctxt: &TypedAstContext, renamer: &Renamer<String>, ctype: CTypeId) -> Result<P<Ty>, String> {
+    pub fn convert(&mut self, ctxt: &TypedAstContext, ctype: CTypeId) -> Result<P<Ty>, String> {
 
         match ctxt.index(ctype).kind {
             CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
@@ -53,70 +65,54 @@ impl TypeConverter {
                     // in order to support NULL function pointers natively
                     CTypeKind::Function(ref ret, ref params) => {
                         let inputs = params.iter().map(|x|
-                            mk().arg(self.convert(ctxt, renamer, x.ctype).unwrap(),
+                            mk().arg(self.convert(ctxt, x.ctype).unwrap(),
                                      mk().wild_pat())
                         ).collect();
-                        let output = self.convert(ctxt, renamer, ret.ctype)?;
+                        let output = self.convert(ctxt, ret.ctype)?;
                         let fn_ptr = mk().unsafe_().abi(Abi::C).barefn_ty(mk().fn_decl(inputs, FunctionRetTy::Ty(output)));
                         let param = mk().angle_bracketed_param_types(vec![fn_ptr]);
                         Ok(mk().path_ty(vec![mk().path_segment_with_params("Option", param)]))
                     }
 
                     _ => {
-                        let child_ty = self.convert(ctxt, renamer, *ctype)?;
+                        let child_ty = self.convert(ctxt, *ctype)?;
                         let mutbl = if qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
                         Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
                     }
                 }
             }
 
-            CTypeKind::Elaborated(ref ctype) => self.convert(ctxt, renamer, *ctype),
-            CTypeKind::Decayed(ref ctype) => self.convert(ctxt, renamer, *ctype),
-            CTypeKind::Paren(ref ctype) => self.convert(ctxt, renamer, *ctype),
+            CTypeKind::Elaborated(ref ctype) => self.convert(ctxt, *ctype),
+            CTypeKind::Decayed(ref ctype) => self.convert(ctxt, *ctype),
+            CTypeKind::Paren(ref ctype) => self.convert(ctxt, *ctype),
 
-            CTypeKind::Struct(ref decl) => {
-                if let CDeclKind::Struct { name: Some(ref name), .. } = ctxt.index(*decl).kind {
-                    let new_name = renamer.get(name).unwrap_or(name.to_owned());
-                        //.expect("Struct is not already renamed");
-                    Ok(mk().path_ty(mk().path(vec![new_name])))
-                } else {
-                    Err(format!("{:?} in struct type does not point to a record decl", decl))
-                }
+            CTypeKind::Struct(decl_id) => {
+                println!("Converting struct {:?}", decl_id);
+                let new_name = self.resolve_decl_name(decl_id).unwrap();
+                Ok(mk().path_ty(mk().path(vec![new_name])))
             }
 
-            CTypeKind::Union(ref decl) => {
-                if let CDeclKind::Union { name: Some(ref name), .. } = ctxt.index(*decl).kind {
-                    let new_name = renamer.get(name).expect("Union is not already renamed");
-                    Ok(mk().path_ty(mk().path(vec![new_name])))
-                } else {
-                    Err(format!("{:?} in union type does not point to a record decl", decl))
-                }
+            CTypeKind::Union(decl_id) => {
+                let new_name = self.resolve_decl_name(decl_id).unwrap();
+                Ok(mk().path_ty(mk().path(vec![new_name])))
             }
 
-            CTypeKind::Enum(ref decl) => {
-                if let CDeclKind::Enum { name: Some(ref name), .. } = ctxt.index(*decl).kind {
-                    let new_name = renamer.get(name).expect("Enum is not already renamed");
-                    Ok(mk().path_ty(mk().path(vec![new_name])))
-                } else {
-                    Err(format!("{:?} in enum type does not point to an enum decl", decl))
-                }
+            CTypeKind::Enum(decl_id) => {
+                let new_name = self.resolve_decl_name(decl_id).unwrap();
+                Ok(mk().path_ty(mk().path(vec![new_name])))
             }
 
-            CTypeKind::Typedef(ref decl) => {
-                if let CDeclKind::Typedef { ref name, .. }  = ctxt.index(*decl).kind {
-                    let new_name = renamer.get(name).expect("Typedef is not already renamed");
-                    Ok(mk().path_ty(mk().path(vec![new_name])))
-                } else {
-                    Err(format!("{:?} in typedef type does not point to a typedef decl", decl))
-                }
+            CTypeKind::Typedef(decl_id) => {
+                let new_name = self.resolve_decl_name(decl_id).unwrap();
+                Ok(mk().path_ty(mk().path(vec![new_name])))
             }
 
             CTypeKind::ConstantArray(element, count) => {
-                let ty = self.convert(ctxt, renamer, element)?;
+                let ty = self.convert(ctxt, element)?;
                 Ok(mk().array_ty(ty, mk().lit_expr(mk().int_lit(count as u128, LitIntType::Unsuffixed))))
             }
 
-            CTypeKind::Attributed(ty) => self.convert(ctxt, renamer, ty.ctype),
+            CTypeKind::Attributed(ty) => self.convert(ctxt, ty.ctype),
 
             ref t => Err(format!("Unsupported type {:?}", t)),
         }

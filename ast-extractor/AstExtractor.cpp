@@ -810,10 +810,11 @@ class TranslateASTVisitor final
           
           encode_entry(D, tag, childIds, QualType(),
           [D](CborEncoder *local){
-              if (D->isAnonymousStructOrUnion()) {
+              auto name = D->getNameAsString();
+              if (name.empty()) {
                   cbor_encode_null(local);
               } else {
-                  cbor_encode_string(local, D->getNameAsString());
+                  cbor_encode_string(local, name);
               }
           });
           
@@ -834,7 +835,11 @@ class TranslateASTVisitor final
           encode_entry(D, TagEnumDecl, childIds, QualType(),
           [D](CborEncoder *local){
               auto name = D->getNameAsString();
-              cbor_encode_string(local, name);
+              if (name.empty()) {
+                  cbor_encode_null(local);
+              } else {
+                  cbor_encode_string(local, name);
+              }
           });
           return true;
       }

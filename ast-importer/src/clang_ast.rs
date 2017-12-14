@@ -88,6 +88,14 @@ pub fn expect_str(val: &Cbor) -> Result<&str, DecodeError> {
     }
 }
 
+pub fn expect_opt_str(val: &Cbor) -> Result<Option<&str>, DecodeError> {
+    match val {
+        &Cbor::Null => Ok(None),
+        &Cbor::Unicode(ref s) => Ok(Some(s)),
+        _ => { println!("Got, {:?}; Expected string", val); Err(DecodeError::TypeMismatch) }
+    }
+}
+
 pub fn expect_bool(val: &Cbor) -> Result<bool, DecodeError> {
     match val {
         &Cbor::Bool(b) => Ok(b),

@@ -1074,7 +1074,7 @@ impl ConversionContext {
                 }
 
                 ASTEntryTag::TagEnumDecl if expected_ty & ENUM_DECL != 0 => {
-                    let name = expect_str(&node.extras[0]).ok().map(str::to_string);
+                    let name = expect_opt_str(&node.extras[0]).unwrap().map(str::to_string);
 
                     let variants = node.children
                         .iter()
@@ -1121,7 +1121,7 @@ impl ConversionContext {
                 }
 
                 ASTEntryTag::TagStructDecl if expected_ty & RECORD_DECL != 0 => {
-                    let name = expect_str(&node.extras[0]).ok().map(str::to_string);
+                    let name = expect_opt_str(&node.extras[0]).unwrap().map(str::to_string);
                     let fields: Vec<CDeclId> = node.children
                         .iter()
                         .map(|id| {
@@ -1137,7 +1137,7 @@ impl ConversionContext {
                 },
 
                 ASTEntryTag::TagUnionDecl if expected_ty & RECORD_DECL != 0 => {
-                    let name = expect_str(&node.extras[0]).ok().map(str::to_string);
+                    let name = expect_opt_str(&node.extras[0]).unwrap().map(str::to_string);
                     let fields: Vec<CDeclId> = node.children
                         .iter()
                         .map(|id| {

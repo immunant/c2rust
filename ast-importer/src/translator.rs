@@ -18,7 +18,7 @@ use dtoa;
 
 pub struct Translation {
     pub items: Vec<P<Item>>,
-    type_converter: TypeConverter,
+    type_converter: RefCell<TypeConverter>,
     pub ast_context: TypedAstContext,
     renamer: RefCell<Renamer<String>>,
     loops: LoopContext,
@@ -137,10 +137,37 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
 
     let mut t = Translation::new(ast_context.clone());
 
+    enum Name<'a> {
+        VarName(&'a str),
+        TypeName(&'a str),
+        AnonymousType,
+        NoName,
+    }
+
+    fn some_type_name(s: Option<&str>) -> Name {
+        match s {
+            None => Name::AnonymousType,
+            Some(r) => Name::TypeName(r),
+        }
+    }
+
     // Populate renamer with top-level names
-    for top_id in &ast_context.c_decls_top {
-        if let Some(y) = ast_context.index(*top_id).kind.get_name() {
-            t.renamer.borrow_mut().insert(y.to_owned(), &y);
+    for (&decl_id, decl) in &ast_context.c_decls {
+        let decl_name = match &decl.kind {
+            &CDeclKind::Struct { ref name, .. } => some_type_name(name.as_ref().map(|x| x.as_str())),
+            &CDeclKind::Enum { ref name, .. } => some_type_name(name.as_ref().map(|x| x.as_str())),
+            &CDeclKind::Union { ref name, .. } => some_type_name(name.as_ref().map(|x| x.as_str())),
+            &CDeclKind::Typedef { ref name, .. } => Name::TypeName(name),
+            &CDeclKind::Function { ref name, .. } => Name::VarName(name),
+            // &CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
+            &CDeclKind::Variable { ref ident, .. } => Name::VarName(ident),
+            _ => Name::NoName,
+        };
+        match decl_name {
+            Name::NoName => (),
+            Name::AnonymousType => { t.type_converter.borrow_mut().declare_decl_name(decl_id, "unnamed"); }
+            Name::TypeName(name)=> { t.type_converter.borrow_mut().declare_decl_name(decl_id, name); }
+            Name::VarName(name) => { t.renamer.borrow_mut().insert(name.to_owned(), name); }
         }
     }
 
@@ -222,7 +249,7 @@ impl Translation {
     pub fn new(ast_context: TypedAstContext) -> Translation {
         Translation {
             items: vec![],
-            type_converter: TypeConverter::new(),
+            type_converter: RefCell::new(TypeConverter::new()),
             ast_context,
             renamer: RefCell::new(Renamer::new(vec![
                 // Keywords currently in use
@@ -248,88 +275,78 @@ impl Translation {
 
     fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> Result<P<Item>, String> {
         match self.ast_context.index(decl_id).kind {
-            CDeclKind::Struct{ref name, ref fields} => {
-                // TODO: Add mapping from declaration ID to struct name to support unnamed structs
-                if let &Some(ref name) = name {
+            CDeclKind::Struct { ref fields, .. } => {
+                let name = self.type_converter.borrow_mut().resolve_decl_name(decl_id).unwrap();
 
-                    // Gather up all the field names and field types
-                    let mut field_entries = vec![];
-                    for x in fields {
-                        let field_decl = self.ast_context.index(*x);
-                        match &field_decl.kind {
-                            &CDeclKind::Field {ref name, typ} => {
-                                let typ = self.convert_type(typ.ctype)?;
-                                field_entries.push((name.to_owned(), typ))
-                            }
-                            _ => return Err(format!("Found non-field in record field list")),
+                // Gather up all the field names and field types
+                let mut field_entries = vec![];
+                for x in fields {
+                    let field_decl = self.ast_context.index(*x);
+                    match &field_decl.kind {
+                        &CDeclKind::Field { ref name, typ } => {
+                            let typ = self.convert_type(typ.ctype)?;
+                            field_entries.push((name.to_owned(), typ))
                         }
+                        _ => return Err(format!("Found non-field in record field list")),
                     }
-
-                    let mut used_names: Vec<String> = field_entries.iter().map(|x| x.0.to_owned()).collect();
-                    let mut fresh_counter: u64 = 0;
-                    for i in 0..field_entries.len() {
-                        while field_entries[i].0.is_empty() {
-                            let candidate = format!("unused_{}", fresh_counter);
-                            fresh_counter += 1;
-                            if !used_names.contains(&candidate) {
-                                used_names.push(candidate.clone());
-                                field_entries[i].0 = candidate;
-                            }
-                        }
-                    }
-
-                    let field_syns =
-                        field_entries.into_iter().map(|(x,y)| mk().struct_field(x,y)).collect();
-
-                    Ok(mk().pub_()
-                        .call_attr("derive", vec!["Copy","Clone"])
-                        .call_attr("repr", vec!["C"])
-                        .struct_item(name, field_syns))
-                } else {
-                    Err(format!("Anonymous struct declarations not implemented"))
                 }
+
+                let mut used_names: Vec<String> = field_entries.iter().map(|x| x.0.to_owned()).collect();
+                let mut fresh_counter: u64 = 0;
+                for i in 0..field_entries.len() {
+                    while field_entries[i].0.is_empty() {
+                        let candidate = format!("unused_{}", fresh_counter);
+                        fresh_counter += 1;
+                        if !used_names.contains(&candidate) {
+                            used_names.push(candidate.clone());
+                            field_entries[i].0 = candidate;
+                        }
+                    }
+                }
+
+                let field_syns =
+                    field_entries.into_iter().map(|(x, y)| mk().struct_field(x, y)).collect();
+
+                Ok(mk().pub_()
+                    .call_attr("derive", vec!["Copy", "Clone"])
+                    .call_attr("repr", vec!["C"])
+                    .struct_item(name, field_syns))
             }
 
-            CDeclKind::Union{ref name, ref fields} => {
-                if let &Some(ref name) = name {
+            CDeclKind::Union { ref fields, .. } => {
+                let name = self.type_converter.borrow_mut().resolve_decl_name(decl_id).unwrap();
 
-                    let mut field_syns = vec![];
-                    for x in fields {
-                        let field_decl = self.ast_context.index(*x);
-                        match &field_decl.kind {
-                            &CDeclKind::Field {ref name, typ} => {
-                                let typ = self.convert_type(typ.ctype)?;
-                                field_syns.push(mk().struct_field(name, typ))
-                            }
-                            _ => return Err(format!("Found non-field in record field list")),
+                let mut field_syns = vec![];
+                for x in fields {
+                    let field_decl = self.ast_context.index(*x);
+                    match &field_decl.kind {
+                        &CDeclKind::Field { ref name, typ } => {
+                            let typ = self.convert_type(typ.ctype)?;
+                            field_syns.push(mk().struct_field(name, typ))
                         }
+                        _ => return Err(format!("Found non-field in record field list")),
                     }
+                }
 
-                    if field_syns.is_empty() {
-                        // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
-                        Ok(mk().pub_()
-                            .call_attr("derive", vec!["Copy","Clone"])
-                            .call_attr("repr", vec!["C"])
-                            .struct_item(name, vec![]))
-                    } else {
-                        Ok(mk().pub_()
-                            .call_attr("derive", vec!["Copy","Clone"])
-                            .call_attr("repr", vec!["C"])
-                            .union_item(name, field_syns))
-                    }
-
-
+                if field_syns.is_empty() {
+                    // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
+                    Ok(mk().pub_()
+                        .call_attr("derive", vec!["Copy", "Clone"])
+                        .call_attr("repr", vec!["C"])
+                        .struct_item(name, vec![]))
                 } else {
-                    Err(format!("Anonymous union declarations not implemented"))
+                    Ok(mk().pub_()
+                        .call_attr("derive", vec!["Copy", "Clone"])
+                        .call_attr("repr", vec!["C"])
+                        .union_item(name, field_syns))
                 }
             }
 
             CDeclKind::Field { .. } => Err(format!("Field declarations should be handled inside structs/unions")),
 
-            CDeclKind::Enum { name: None, .. } => Err(format!("Anonymous enums are not implemented")),
-            CDeclKind::Enum { name: Some(ref name), ref variants } => {
+            CDeclKind::Enum { ref variants, .. } => {
 
-                let enum_name = &self.renamer.borrow().get(name).expect("Enums should already be renamed");
+                let enum_name = &self.type_converter.borrow().resolve_decl_name(decl_id).expect("Enums should already be renamed");
 
                 let mut variant_syns = vec![];
                 for v in variants {
@@ -381,7 +398,7 @@ impl Translation {
 
             CDeclKind::Typedef { ref name, ref typ } => {
 
-                let new_name = &self.renamer.borrow().get(name).expect("Typedefs should already be renamed");
+                let new_name = &self.type_converter.borrow_mut().resolve_decl_name(decl_id).unwrap();
 
                 let ty = self.convert_type(typ.ctype)?;
                 Ok(mk().type_item(new_name, ty))
@@ -763,7 +780,7 @@ impl Translation {
     }
 
     fn convert_type(&self, type_id: CTypeId) -> Result<P<Ty>, String> {
-        self.type_converter.convert(&self.ast_context, &self.renamer.borrow(), type_id)
+        self.type_converter.borrow_mut().convert(&self.ast_context, type_id)
     }
 
     /// Write to a `lhs` that is volatile
