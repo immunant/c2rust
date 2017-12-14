@@ -87,7 +87,6 @@ impl TypeConverter {
             CTypeKind::Paren(ref ctype) => self.convert(ctxt, *ctype),
 
             CTypeKind::Struct(decl_id) => {
-                println!("Converting struct {:?}", decl_id);
                 let new_name = self.resolve_decl_name(decl_id).unwrap();
                 Ok(mk().path_ty(mk().path(vec![new_name])))
             }

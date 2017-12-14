@@ -154,9 +154,9 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
     // Populate renamer with top-level names
     for (&decl_id, decl) in &ast_context.c_decls {
         let decl_name = match &decl.kind {
-            &CDeclKind::Struct { ref name, .. } => some_type_name(name.as_ref().map(|x| x.as_str())),
-            &CDeclKind::Enum { ref name, .. } => some_type_name(name.as_ref().map(|x| x.as_str())),
-            &CDeclKind::Union { ref name, .. } => some_type_name(name.as_ref().map(|x| x.as_str())),
+            &CDeclKind::Struct { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
+            &CDeclKind::Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
+            &CDeclKind::Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
             &CDeclKind::Typedef { ref name, .. } => Name::TypeName(name),
             &CDeclKind::Function { ref name, .. } => Name::VarName(name),
             // &CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
