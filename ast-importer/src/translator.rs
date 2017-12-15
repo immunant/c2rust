@@ -523,7 +523,7 @@ impl Translation {
             let stmts = match self.ast_context.index(body_id).kind {
                 CStmtKind::Compound(ref stmts) => stmts
                     .iter()
-                    .flat_map(|stmt| self.convert_stmt(*stmt))
+                    .flat_map(|stmt| self.convert_stmt(*stmt).unwrap())
                     .collect(),
                 _ => panic!("function body expects to be a compound statement"),
             };
@@ -531,25 +531,25 @@ impl Translation {
         })
     }
 
-    fn convert_stmt(&self, stmt_id: CStmtId) -> Vec<Stmt> {
+    fn convert_stmt(&self, stmt_id: CStmtId) -> Result<Vec<Stmt>, String> {
         match self.ast_context.index(stmt_id).kind {
-            CStmtKind::Empty => vec![],
+            CStmtKind::Empty => Ok(vec![]),
 
             CStmtKind::Decls(ref decls) => {
-                decls
+                Ok(decls
                     .iter()
                     .flat_map(|decl| self.convert_decl_stmt(*decl))
-                    .collect()
+                    .collect())
             },
 
-            CStmtKind::Return(expr) => self.convert_return_stmt(expr),
+            CStmtKind::Return(expr) => Ok(self.convert_return_stmt(expr)),
 
             CStmtKind::If { scrutinee, true_variant, false_variant } =>
                 self.convert_if_stmt(scrutinee, true_variant, false_variant),
 
-            CStmtKind::While { condition, body } => self.convert_while_stmt(condition, body),
+            CStmtKind::While { condition, body } => Ok(self.convert_while_stmt(condition, body)),
 
-            CStmtKind::DoWhile { body, condition } => self.convert_do_stmt(body, condition),
+            CStmtKind::DoWhile { body, condition } => Ok(self.convert_do_stmt(body, condition)),
 
             CStmtKind::ForLoop { init, condition, increment, body } =>
                 self.convert_for_stmt(init, condition, increment, body),
@@ -558,20 +558,20 @@ impl Translation {
                 self.with_scope(|| {
                     let stmts = stmts
                         .iter()
-                        .flat_map(|stmt| self.convert_stmt(*stmt))
+                        .flat_map(|stmt| self.convert_stmt(*stmt).unwrap())
                         .collect();
 
-                    vec![mk().expr_stmt(mk().block_expr(stmts_block(stmts)))]
+                    Ok(vec![mk().expr_stmt(mk().block_expr(stmts_block(stmts)))])
                 })
             },
 
-            CStmtKind::Expr(expr) => self.convert_expr(ExprUse::Unused, expr).stmts,
+            CStmtKind::Expr(expr) => Ok(self.convert_expr(ExprUse::Unused, expr)?.stmts),
 
             CStmtKind::Break => {
                 let mut loop_ = self.loops.current_loop_mut();
                 loop_.has_break = true;
                 let loop_label = loop_.get_or_create_label(&self.loops).to_owned();
-                vec![mk().expr_stmt(mk().break_expr(Some(loop_label)))]
+                Ok(vec![mk().expr_stmt(mk().break_expr(Some(loop_label)))])
             },
 
             CStmtKind::Continue => {
@@ -582,18 +582,18 @@ impl Translation {
                         // We can translate C continue in a while loop
                         // directly to Rust's continue
                         let loop_label = loop_.get_or_create_label(&self.loops).to_owned();
-                        vec![mk().expr_stmt(mk().continue_expr(Some(loop_label)))]
+                        Ok(vec![mk().expr_stmt(mk().continue_expr(Some(loop_label)))])
                     },
                     _ => {
                         // We translate all other C continue statements
                         // to a break from the inner body loop
                         let body_label = loop_.get_or_create_body_label(&self.loops).to_owned();
-                        vec![mk().expr_stmt(mk().break_expr(Some(body_label)))]
+                        Ok(vec![mk().expr_stmt(mk().break_expr(Some(body_label)))])
                     },
                 }
             },
 
-            ref stmt => unimplemented!("convert_stmt {:?}", stmt),
+            ref stmt => Err(format!("convert_stmt {:?}", stmt)),
         }
     }
 
@@ -601,14 +601,14 @@ impl Translation {
     fn convert_condition(&self, target: bool, cond_id: CExprId) -> WithStmts<P<Expr>> {
         let ty_id = self.ast_context.index(cond_id).kind.get_type();
 
-        self.convert_expr(ExprUse::RValue, cond_id)
+        self.convert_expr(ExprUse::RValue, cond_id).unwrap()
             .map(|e| self.match_bool(target, ty_id, e))
     }
 
     fn convert_while_stmt(&self, cond_id: CExprId, body_id: CStmtId) -> Vec<Stmt> {
         let cond = self.convert_condition(true, cond_id);
         self.loops.push_loop(LoopType::While);
-        let body = self.convert_stmt(body_id);
+        let body = self.convert_stmt(body_id).unwrap();
         let loop_ = self.loops.pop_loop();
 
         let rust_cond = cond.to_expr();
@@ -620,7 +620,7 @@ impl Translation {
     fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Vec<Stmt> {
         let cond = self.convert_condition(false, cond_id);
         self.loops.push_loop(LoopType::DoWhile);
-        let mut body = self.convert_stmt(body_id);
+        let mut body = self.convert_stmt(body_id).unwrap();
         let mut loop_ = self.loops.pop_loop();
 
         // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
@@ -651,22 +651,22 @@ impl Translation {
         cond_id: Option<CExprId>,
         inc_id: Option<CExprId>,
         body_id: CStmtId,
-    ) -> Vec<Stmt> {
+    ) -> Result<Vec<Stmt>, String> {
 
         // Open new scope for the for loop initializer
         self.with_scope(|| {
             let mut init = match init_id {
-                Some(i) => self.convert_stmt(i),
+                Some(i) => self.convert_stmt(i)?,
                 None => vec![],
             };
 
             let mut inc = match inc_id {
-                Some(i) => self.convert_expr(ExprUse::Unused, i).stmts,
+                Some(i) => self.convert_expr(ExprUse::Unused, i)?.stmts,
                 None => vec![],
             };
 
             self.loops.push_loop(LoopType::For);
-            let mut body = self.convert_stmt(body_id);
+            let mut body = self.convert_stmt(body_id)?;
             let loop_ = self.loops.pop_loop();
 
             // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
@@ -689,7 +689,7 @@ impl Translation {
 
             init.push(mk().expr_stmt(looper));
 
-            vec![mk().expr_stmt(mk().block_expr(mk().block(init)))]
+            Ok(vec![mk().expr_stmt(mk().block_expr(mk().block(init)))])
         })
     }
 
@@ -698,17 +698,18 @@ impl Translation {
         cond_id: CExprId,
         then_id: CStmtId,
         else_id: Option<CStmtId>
-    ) -> Vec<Stmt> {
+    ) -> Result<Vec<Stmt>, String> {
         let mut cond = self.convert_condition(true, cond_id);
-        let then_stmts = stmts_block(self.convert_stmt(then_id));
-        let else_stmts = else_id.map(|x| { mk().block_expr(stmts_block(self.convert_stmt(x)))});
+        let then_stmts = stmts_block(self.convert_stmt(then_id)?);
+        let else_stmts =
+            else_id.map(|x| { mk().block_expr(stmts_block(self.convert_stmt(x).unwrap()))});
 
         cond.stmts.push(mk().semi_stmt(mk().ifte_expr(cond.val, then_stmts, else_stmts)));
-        cond.stmts
+        Ok(cond.stmts)
     }
 
     fn convert_return_stmt(&self, result_id: Option<CExprId>) -> Vec<Stmt> {
-        let val = result_id.map(|i| self.convert_expr(ExprUse::RValue, i));
+        let val = result_id.map(|i| self.convert_expr(ExprUse::RValue, i).unwrap());
         let mut ws = with_stmts_opt(val);
         let ret = mk().expr_stmt(mk().return_expr(ws.val));
 
@@ -770,7 +771,7 @@ impl Translation {
     ) -> Result<(P<Ty>, Mutability, WithStmts<P<Expr>>), String> {
 
         let init = match initializer {
-            Some(x) => self.convert_expr(ExprUse::RValue, x),
+            Some(x) => self.convert_expr(ExprUse::RValue, x)?,
             None => WithStmts::new(self.implicit_default_expr(typ.ctype)),
         };
         let ty = self.convert_type(typ.ctype)?;
@@ -828,7 +829,7 @@ impl Translation {
     /// In the case that `use_` is `ExprUse::Unused`, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
-    fn convert_expr(&self, use_: ExprUse, expr_id: CExprId) -> WithStmts<P<Expr>> {
+    fn convert_expr(&self, use_: ExprUse, expr_id: CExprId) -> Result<WithStmts<P<Expr>>, String> {
 
         match self.ast_context.index(expr_id).kind {
 
@@ -846,7 +847,7 @@ impl Translation {
                 ];
                 let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
                 let casted = mk().cast_expr(call, mk().path_ty(vec!["libc","size_t"]));
-                WithStmts::new(casted)
+                Ok(WithStmts::new(casted))
             }
 
             CExprKind::DeclRef(qual_ty, decl_id) => {
@@ -872,15 +873,15 @@ impl Translation {
                     val = mk().cast_expr(val, ty);
                 }
 
-                WithStmts::new(val)
+                Ok(WithStmts::new(val))
             }
 
             CExprKind::Literal(_, CLiteral::Integer(val)) => {
-                WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
+                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed))))
             }
 
             CExprKind::Literal(_, CLiteral::Character(val)) => {
-                WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed)))
+                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed))))
             }
 
             CExprKind::Literal(ty, CLiteral::Floating(val)) => {
@@ -893,7 +894,7 @@ impl Translation {
                     &CTypeKind::Float => FloatTy::F32,
                     k => panic!("Unsupported floating point literal type {:?}", k),
                 };
-                WithStmts::new(mk().lit_expr(mk().float_lit(str, float_ty)))
+                Ok(WithStmts::new(mk().lit_expr(mk().float_lit(str, float_ty))))
             }
 
             CExprKind::Literal(ty, CLiteral::String(ref val, width)) => {
@@ -910,21 +911,21 @@ impl Translation {
 
                 let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
                 let pointer = transmute_expr(source_ty, target_ty, byte_literal);
-                WithStmts::new(pointer)
+                Ok(WithStmts::new(pointer))
             }
 
             CExprKind::ImplicitCast(ty, expr, kind) | CExprKind::ExplicitCast(ty, expr, kind) => {
-                let val = self.convert_expr(use_, expr);
+                let val = self.convert_expr(use_, expr)?;
 
                 match kind {
                     CastKind::BitCast => {
-                        val.map(|x| {
+                        Ok(val.map(|x| {
                             // TODO: Detect cast from mutable to constant pointer to same type
                             let source_ty_id = self.ast_context.index(expr).kind.get_type();
                             let source_ty = self.convert_type(source_ty_id).unwrap();
                             let target_ty = self.convert_type(ty.ctype).unwrap();
                             transmute_expr(source_ty, target_ty, x)
-                        })
+                        }))
                     }
 
                     CastKind::IntegralToPointer | CastKind::PointerToIntegral |
@@ -938,24 +939,24 @@ impl Translation {
                         if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
                             // Casts targeting `enum` types...
                             let source_ty = self.convert_type(source_ty_ctype_id).unwrap();
-                            self.enum_cast(enum_decl_id, expr, val, source_ty, target_ty)
+                            Ok(self.enum_cast(enum_decl_id, expr, val, source_ty, target_ty))
                         } else {
                             // Other numeric casts translate to Rust `as` casts
 
-                            val.map(|x| mk().cast_expr(x, target_ty))
+                            Ok(val.map(|x| mk().cast_expr(x, target_ty)))
                         }
                     }
 
-                    CastKind::LValueToRValue | CastKind::NoOp | CastKind::ToVoid => val,
+                    CastKind::LValueToRValue | CastKind::NoOp | CastKind::ToVoid => Ok(val),
 
                     CastKind::FunctionToPointerDecay =>
-                        val.map (|x| mk().call_expr(mk().ident_expr("Some"), vec![x])),
+                        Ok(val.map (|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
 
                     CastKind::BuiltinFnToFnPtr =>
-                        val.map (|x| mk().call_expr(mk().ident_expr("unimplemented"), vec![] as Vec<P<Expr>>)),
+                        Err(format!("Builtin fn to fn ptr not implemented")),
 
                     CastKind::ArrayToPointerDecay =>
-                        val.map(|x| mk().method_call_expr(x, "as_mut_ptr", vec![] as Vec<P<Expr>>)),
+                        Ok(val.map(|x| mk().method_call_expr(x, "as_mut_ptr", vec![] as Vec<P<Expr>>))),
 
                     CastKind::NullToPointer => {
                         assert!(val.stmts.is_empty());
@@ -971,26 +972,26 @@ impl Translation {
                             }
                         };
 
-                        WithStmts::new(res)
+                        Ok(WithStmts::new(res))
                     }
 
-                    CastKind::ToUnion => panic!("TODO cast to union not supported"),
+                    CastKind::ToUnion => Err(format!("TODO cast to union not supported")),
 
                     CastKind::IntegralToBoolean | CastKind::FloatingToBoolean => {
                         let val_ty = self.ast_context.index(expr).kind.get_type();
-                        val.map(|x| self.match_bool(true, val_ty, x))
+                        Ok(val.map(|x| self.match_bool(true, val_ty, x)))
                     }
 
                     // I don't know how to actually cause clang to generate this
                     CastKind::BooleanToSignedIntegral =>
-                        panic!("TODO boolean to signed integral not supported"),
+                        Err(format!("TODO boolean to signed integral not supported")),
 
                     CastKind::FloatingRealToComplex | CastKind::FloatingComplexToIntegralComplex |
                     CastKind::FloatingComplexCast | CastKind::FloatingComplexToReal |
                     CastKind::IntegralComplexToReal | CastKind::IntegralRealToComplex |
                     CastKind::IntegralComplexCast | CastKind:: IntegralComplexToFloatingComplex |
                     CastKind::IntegralComplexToBoolean =>
-                        panic!("TODO casts with complex numbers not supported"),
+                        Err(format!("TODO casts with complex numbers not supported")),
                 }
             }
 
@@ -1000,43 +1001,43 @@ impl Translation {
             CExprKind::Conditional(_, cond, lhs, rhs) => {
                 let cond = self.convert_condition(true, cond);
 
-                let lhs = self.convert_expr(use_, lhs);
-                let rhs = self.convert_expr(use_, rhs);
+                let lhs = self.convert_expr(use_, lhs)?;
+                let rhs = self.convert_expr(use_, rhs)?;
 
                 if use_ == ExprUse::Unused {
                     let then: P<Block> = mk().block(lhs.stmts);
                     let els: P<Expr> = mk().block_expr(mk().block(rhs.stmts));
 
-                    cond.and_then(|c| WithStmts {
+                    Ok(cond.and_then(|c| WithStmts {
                         stmts: vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(els)))],
                         val: Translation::panic(),
-                    })
+                    }))
                 } else {
                     let then: P<Block> = lhs.to_block();
                     let els: P<Expr> = rhs.to_expr();
 
-                    cond.map(|c| mk().ifte_expr(c, then, Some(els)))
+                    Ok(cond.map(|c| mk().ifte_expr(c, then, Some(els))))
                 }
             },
 
             CExprKind::BinaryConditional(ty, lhs, rhs) => {
 
                 if use_ == ExprUse::Unused {
-                    let mut lhs = self.convert_expr(ExprUse::RValue, lhs);
+                    let mut lhs = self.convert_expr(ExprUse::RValue, lhs)?;
                     let cond = self.match_bool(false, ty.ctype, lhs.val);
 
                     lhs.stmts.push(
                         mk().semi_stmt(
                             mk().ifte_expr(cond, mk().block(self.convert_expr(ExprUse::Unused,
-                                                                              rhs).stmts), None as Option<P<Expr>>)));
-                    WithStmts { stmts: lhs.stmts, val: Translation::panic(), }
+                                                                              rhs)?.stmts), None as Option<P<Expr>>)));
+                    Ok(WithStmts { stmts: lhs.stmts, val: Translation::panic(), })
                 } else {
-                    self.name_reference_write_read(lhs).map(|(_, lhs_val)| {
+                    Ok(self.name_reference_write_read(lhs).map(|(_, lhs_val)| {
                         let cond = self.match_bool(true, ty.ctype, lhs_val.clone());
                         mk().ifte_expr(cond,
                                        mk().block(vec![mk().expr_stmt(lhs_val)]),
-                                       Some(self.convert_expr(use_, rhs).to_expr()))
-                    })
+                                       Some(self.convert_expr(use_, rhs).unwrap().to_expr()))
+                    }))
                 }
             },
 
@@ -1046,13 +1047,13 @@ impl Translation {
                     c_ast::BinOp::Comma => {
 
                         // The value of the LHS of a comma expression is always discarded
-                        let lhs = self.convert_expr(ExprUse::Unused, lhs);
-                        let rhs = self.convert_expr(use_, rhs);
+                        let lhs = self.convert_expr(ExprUse::Unused, lhs)?;
+                        let rhs = self.convert_expr(use_, rhs)?;
 
-                        WithStmts {
+                        Ok(WithStmts {
                             stmts: lhs.stmts.into_iter().chain(rhs.stmts).collect(),
                             val: rhs.val,
-                        }
+                        })
                     }
 
                     c_ast::BinOp::And => {
@@ -1061,13 +1062,13 @@ impl Translation {
                         let rhs_ty = self.ast_context.index(rhs).kind.get_type();
 
                         let lhs =
-                            self.convert_expr(ExprUse::RValue, lhs)
+                            self.convert_expr(ExprUse::RValue, lhs)?
                                 .map(|x| self.match_bool(true, lhs_ty, x));
                         let rhs =
-                            self.convert_expr(ExprUse::RValue, rhs)
+                            self.convert_expr(ExprUse::RValue, rhs)?
                                 .map(|x| self.match_bool(true, rhs_ty, x));
 
-                        lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::And, x, rhs.to_expr())))
+                        Ok(lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::And, x, rhs.to_expr()))))
                     }
 
                     c_ast::BinOp::Or => {
@@ -1076,13 +1077,13 @@ impl Translation {
                         let rhs_ty = self.ast_context.index(rhs).kind.get_type();
 
                         let lhs =
-                            self.convert_expr(ExprUse::RValue, lhs)
+                            self.convert_expr(ExprUse::RValue, lhs)?
                                 .map(|x| self.match_bool(true, lhs_ty, x));
                         let rhs =
-                            self.convert_expr(ExprUse::RValue, rhs)
+                            self.convert_expr(ExprUse::RValue, rhs)?
                                 .map(|x| self.match_bool(true, rhs_ty, x));
 
-                        lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::Or, x, rhs.to_expr())))
+                        Ok(lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::Or, x, rhs.to_expr()))))
                     }
 
                     // No sequence-point cases
@@ -1098,19 +1099,19 @@ impl Translation {
                     c_ast::BinOp::AssignBitOr |
                     c_ast::BinOp::AssignBitAnd |
                     c_ast::BinOp::Assign => {
-                        let ty = self.convert_type(type_id.ctype).unwrap();
+                        let ty = self.convert_type(type_id.ctype)?;
 
                         self.convert_assignment_operator(use_, *op, ty, type_id.ctype, lhs, rhs)
                     },
 
                     _ => {
-                        let ty = self.convert_type(type_id.ctype).unwrap();
+                        let ty = self.convert_type(type_id.ctype)?;
 
                         let lhs_type = self.ast_context.index(lhs).kind.get_qual_type();
                         let rhs_type = self.ast_context.index(rhs).kind.get_qual_type();
 
-                        let WithStmts { val: lhs, stmts: lhs_stmts } = self.convert_expr(ExprUse::RValue, lhs);
-                        let WithStmts { val: rhs, stmts: rhs_stmts } = self.convert_expr(ExprUse::RValue, rhs);
+                        let WithStmts { val: lhs, stmts: lhs_stmts } = self.convert_expr(ExprUse::RValue, lhs)?;
+                        let WithStmts { val: rhs, stmts: rhs_stmts } = self.convert_expr(ExprUse::RValue, rhs)?;
 
                         let mut stmts = vec![];
                         stmts.extend(lhs_stmts);
@@ -1118,7 +1119,7 @@ impl Translation {
 
                         let val = self.convert_binary_operator(*op, ty, type_id.ctype, lhs_type, rhs_type, lhs, rhs);
 
-                        WithStmts { stmts, val }
+                        Ok(WithStmts { stmts, val })
                     }
                 }
             }
@@ -1132,43 +1133,43 @@ impl Translation {
 
                 let mut stmts = vec![];
 
-                let rhs = self.convert_expr(ExprUse::RValue, *rhs);
+                let rhs = self.convert_expr(ExprUse::RValue, *rhs)?;
                 stmts.extend(rhs.stmts);
 
                 let val = if let &CExprKind::ImplicitCast(_, ref arr, CastKind::ArrayToPointerDecay) = lhs_node {
                     // If the LHS just underwent an implicit cast from array to pointer, bypass that
                     // to make an actual Rust indexing operation
 
-                    let lhs = self.convert_expr(use_, *arr);
+                    let lhs = self.convert_expr(use_, *arr)?;
                     stmts.extend(lhs.stmts);
 
                     mk().index_expr(lhs.val, rhs.val)
                 } else {
                     // Otherwise, use the pointer and make a deref of a pointer offset expression
 
-                    let lhs = self.convert_expr(ExprUse::RValue, *lhs);
+                    let lhs = self.convert_expr(ExprUse::RValue, *lhs)?;
                     stmts.extend(lhs.stmts);
 
                     mk().unary_expr(ast::UnOp::Deref, pointer_offset(lhs.val, rhs.val))
                 };
 
-                WithStmts { stmts, val }
+                Ok(WithStmts { stmts, val })
             }
 
             CExprKind::Call(_, func, ref args) => {
 
                 let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay) =>
-                        self.convert_expr(ExprUse::RValue, fexp),
+                        self.convert_expr(ExprUse::RValue, fexp)?,
                     _ => {
-                        self.convert_expr(ExprUse::RValue, func).map(|x|
+                        self.convert_expr(ExprUse::RValue, func)?.map(|x|
                         mk().method_call_expr(x, "unwrap", vec![] as Vec<P<Expr>>))
                     }
                 };
 
                 let mut args_new: Vec<P<Expr>> = vec![];
                 for arg in args {
-                    let WithStmts { stmts: ss, val } = self.convert_expr(ExprUse::RValue, *arg);
+                    let WithStmts { stmts: ss, val } = self.convert_expr(ExprUse::RValue, *arg)?;
                     stmts.extend(ss);
                     args_new.push(val);
                 }
@@ -1180,26 +1181,26 @@ impl Translation {
                     // all side-effects (and a function call can always have side-effects)
                     stmts.push(mk().semi_stmt(call_expr));
 
-                    WithStmts { stmts, val: Translation::panic() }
+                    Ok(WithStmts { stmts, val: Translation::panic() })
                 } else {
-                    WithStmts { stmts, val: call_expr }
+                    Ok(WithStmts { stmts, val: call_expr })
                 }
             }
 
             CExprKind::Member(_, expr, decl, kind) => {
-                let struct_val = self.convert_expr(use_, expr);
+                let struct_val = self.convert_expr(use_, expr)?;
                 let field_name = self.ast_context.index(decl).kind.get_name().expect("expected field name");
 
                 if use_ == ExprUse::Unused {
-                    struct_val
+                    Ok(struct_val)
                 } else {
-                    struct_val.map(|v| {
+                    Ok(struct_val.map(|v| {
                         let v = match kind {
                             MemberKind::Arrow => mk().unary_expr(ast::UnOp::Deref, v),
                             MemberKind::Dot => v,
                         };
                         mk().field_expr(v, field_name)
-                    })
+                    }))
                 }
             }
 
@@ -1215,7 +1216,7 @@ impl Translation {
                         let mut stmts: Vec<Stmt> = vec![];
                         let mut vals: Vec<P<Expr>> = vec![];
                         for v in ids {
-                            let mut x = self.convert_expr(ExprUse::RValue, *v);
+                            let mut x = self.convert_expr(ExprUse::RValue, *v)?;
                             stmts.append(&mut x.stmts);
                             vals.push(x.val);
                         }
@@ -1226,10 +1227,10 @@ impl Translation {
                             vals.push(self.implicit_default_expr(ty))
                         }
 
-                        WithStmts {
+                        Ok(WithStmts {
                             stmts,
                             val: mk().array_expr(vals),
-                        }
+                        })
                     }
                     &CTypeKind::Struct(struct_id) => {
                         self.convert_struct_literal(struct_id,  ids.as_ref(), ty)
@@ -1243,7 +1244,7 @@ impl Translation {
                 }
             }
             CExprKind::ImplicitValueInit(ty) =>
-                WithStmts::new(self.implicit_default_expr(ty.ctype)),
+                Ok(WithStmts::new(self.implicit_default_expr(ty.ctype))),
 
             CExprKind::Predefined(ty, val_id) =>
                 self.convert_expr(use_, val_id),
@@ -1294,7 +1295,7 @@ impl Translation {
         ids: &[CExprId],
         ty: CQualTypeId,
         opt_union_field_id: Option<CFieldId>
-    ) -> WithStmts<P<Expr>> {
+    ) -> Result<WithStmts<P<Expr>>, String> {
 
         let union_field_id = opt_union_field_id.expect("union field ID");
 
@@ -1309,14 +1310,14 @@ impl Translation {
                                 val: self.implicit_default_expr(field_ty.ctype),
                             }
                         } else {
-                            self.convert_expr(ExprUse::RValue, ids[0])
+                            self.convert_expr(ExprUse::RValue, ids[0])?
                         };
 
-                        val.map(|v| {
+                        Ok(val.map(|v| {
                             let name = vec![mk().path_segment(union_name)];
                             let fields = vec![mk().field(field_name, v)];
                             mk().struct_expr(name, fields)
-                        })
+                        }))
                     }
                     _ => panic!("Union field decl mismatch"),
                 }
@@ -1325,7 +1326,8 @@ impl Translation {
         }
     }
 
-    fn convert_struct_literal(&self, struct_id: CRecordId, ids: &[CExprId], ty: CQualTypeId) -> WithStmts<P<Expr>> {
+    fn convert_struct_literal(&self, struct_id: CRecordId, ids: &[CExprId], ty: CQualTypeId)
+        -> Result<WithStmts<P<Expr>>, String> {
 
         let struct_decl = &self.ast_context.index(struct_id).kind;
 
@@ -1352,7 +1354,7 @@ impl Translation {
             let v = ids[i];
             let &(ref field_name, _) = &field_decls[i];
 
-            let mut x = self.convert_expr(ExprUse::RValue, v);
+            let mut x = self.convert_expr(ExprUse::RValue, v)?;
             stmts.append(&mut x.stmts);
             fields.push(mk().field(field_name, x.val));
         }
@@ -1363,10 +1365,10 @@ impl Translation {
             fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype)));
         }
 
-        WithStmts {
+        Ok(WithStmts {
             stmts,
             val: mk().struct_expr(vec![mk().path_segment(struct_name)], fields)
-        }
+        })
     }
 
     pub fn implicit_default_expr(&self, ty_id: CTypeId) -> P<Expr> {
@@ -1433,7 +1435,7 @@ impl Translation {
         let WithStmts {
             val: reference,
             mut stmts,
-        } = self.convert_expr(ExprUse::LValue, reference);
+        } = self.convert_expr(ExprUse::LValue, reference).unwrap();
 
         /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
         fn is_lvalue(e: &Expr) -> bool {
@@ -1571,10 +1573,10 @@ impl Translation {
         name: c_ast::UnOp,
         cqual_type: CQualTypeId,
         arg: CExprId,
-    ) -> WithStmts<P<Expr>> {
+    ) -> Result<WithStmts<P<Expr>>,String> {
 
         let CQualTypeId { ctype, .. } = cqual_type;
-        let ty = self.convert_type(ctype).unwrap();
+        let ty = self.convert_type(ctype)?;
         let resolved_ctype = self.ast_context.resolve_type(ctype);
 
         match name {
@@ -1583,28 +1585,28 @@ impl Translation {
                 // In this translation, there are only pointers to functions and
                 // & becomes a no-op when applied to a function.
 
-                let arg = self.convert_expr(ExprUse::LValue, arg);
+                let arg = self.convert_expr(ExprUse::LValue, arg)?;
 
                 if self.is_function_pointer(ctype) {
-                    arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))
+                    Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
                 } else {
                     let mutbl = match resolved_ctype.kind {
                         CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => Mutability::Immutable,
                         _ => Mutability::Mutable,
                     };
 
-                    arg.map(|a| {
+                    Ok(arg.map(|a| {
                         let addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
                         mk().cast_expr(addr_of_arg, ty)
-                    })
+                    }))
                 }
             },
-            c_ast::UnOp::PreIncrement => self.convert_pre_increment(cqual_type,true, arg),
-            c_ast::UnOp::PreDecrement => self.convert_pre_increment(cqual_type,false, arg),
-            c_ast::UnOp::PostIncrement => self.convert_post_increment(use_, cqual_type,true, arg),
-            c_ast::UnOp::PostDecrement => self.convert_post_increment(use_, cqual_type,false, arg),
+            c_ast::UnOp::PreIncrement => Ok(self.convert_pre_increment(cqual_type,true, arg)),
+            c_ast::UnOp::PreDecrement => Ok(self.convert_pre_increment(cqual_type,false, arg)),
+            c_ast::UnOp::PostIncrement => Ok(self.convert_post_increment(use_, cqual_type,true, arg)),
+            c_ast::UnOp::PostDecrement => Ok(self.convert_post_increment(use_, cqual_type,false, arg)),
             c_ast::UnOp::Deref => {
-                self.convert_expr(ExprUse::RValue, arg).map(|val: P<Expr>| {
+                Ok(self.convert_expr(ExprUse::RValue, arg)?.map(|val: P<Expr>| {
 
                     let mut val = mk().unary_expr(ast::UnOp::Deref, val);
 
@@ -1615,12 +1617,12 @@ impl Translation {
                     }
 
                     val
-                })
+                }))
             },
             c_ast::UnOp::Plus => self.convert_expr(ExprUse::RValue, arg), // promotion is explicit in the clang AST
 
             c_ast::UnOp::Negate => {
-                let WithStmts { val: arg, stmts } = self.convert_expr(ExprUse::RValue, arg);
+                let WithStmts { val: arg, stmts } = self.convert_expr(ExprUse::RValue, arg)?;
 
                 let val = if resolved_ctype.kind.is_unsigned_integral_type() {
                     mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<P<Expr>>)
@@ -1628,14 +1630,15 @@ impl Translation {
                     mk().unary_expr(ast::UnOp::Neg, arg)
                 };
 
-                WithStmts { val, stmts }
+                Ok(WithStmts { val, stmts })
             }
             c_ast::UnOp::Complement =>
-                self.convert_expr(ExprUse::RValue, arg).map(|a| mk().unary_expr(ast::UnOp::Not, a)),
+                Ok(self.convert_expr(ExprUse::RValue, arg)?
+                    .map(|a| mk().unary_expr(ast::UnOp::Not, a))),
 
             c_ast::UnOp::Not => {
-                let WithStmts { val: arg, stmts } = self.convert_expr(ExprUse::RValue, arg);
-                WithStmts { val:self.convert_not(ctype, arg), stmts }
+                let WithStmts { val: arg, stmts } = self.convert_expr(ExprUse::RValue, arg)?;
+                Ok(WithStmts { val:self.convert_not(ctype, arg), stmts })
             },
         }
     }
@@ -1649,7 +1652,7 @@ impl Translation {
         ctype: CTypeId,
         lhs: CExprId,
         rhs: CExprId,
-    ) -> WithStmts<P<Expr>> {
+    ) -> Result<WithStmts<P<Expr>>, String> {
         let lhs_type = self.ast_context.index(lhs).kind.get_qual_type();
         let rhs_type = self.ast_context.index(rhs).kind.get_qual_type();
 
@@ -1664,7 +1667,7 @@ impl Translation {
             (write, Translation::panic(), lhs_stmts)
         };
 
-        let WithStmts { val: rhs, stmts: rhs_stmts } = self.convert_expr(ExprUse::RValue, rhs);
+        let WithStmts { val: rhs, stmts: rhs_stmts } = self.convert_expr(ExprUse::RValue, rhs)?;
 
         // Side effects to accumulate
         let mut stmts = vec![];
@@ -1703,7 +1706,7 @@ impl Translation {
 
         stmts.push(mk().expr_stmt(assign_stmt));
 
-        WithStmts { stmts, val: read }
+        Ok(WithStmts { stmts, val: read })
     }
 
     /// Translate a non-assignment binary operator. It is expected that the `lhs` and `rhs`
