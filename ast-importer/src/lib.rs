@@ -12,6 +12,7 @@ pub mod convert_type;
 pub mod loops;
 pub mod translator;
 pub mod c_ast;
+pub mod cfg;
 
 #[cfg(test)]
 mod tests {

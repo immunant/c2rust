@@ -15,6 +15,7 @@ use syntax::print::pprust::*;
 use std::ops::Index;
 use std::cell::RefCell;
 use dtoa;
+use cfg::*;
 
 pub struct Translation {
     pub items: Vec<P<Item>>,
@@ -530,6 +531,162 @@ impl Translation {
             };
             stmts_block(stmts)
         })
+    }
+
+    /// Build up the CFG by adding the statement at the current label into the CFG.
+    fn convert_stmt_cfg(&self, cfg: &mut Cfg, entry: Label, exit: Label, stmt_id: CStmtId) -> () {
+        match self.ast_context.index(stmt_id).kind {
+            CStmtKind::Empty => {
+                let bb = BasicBlock {
+                    body: vec![],
+                    terminator: Terminator::Jump(exit),
+                };
+                cfg.add_block(entry, bb);
+            },
+
+            CStmtKind::Decls(ref decls) => {
+                let bb = BasicBlock {
+                    body: decls
+                        .iter()
+                        .flat_map(|decl| self.convert_decl_stmt(*decl))
+                        .collect(),
+                    terminator: Terminator::Jump(exit),
+                };
+                cfg.add_block(entry, bb);
+            },
+
+            CStmtKind::Return(expr) => {
+                let bb = BasicBlock {
+                    body: self.convert_return_stmt(expr),
+                    terminator: Terminator::End,
+                };
+                cfg.add_block(entry, bb);
+            },
+
+            CStmtKind::If { scrutinee, true_variant, false_variant } => {
+                let WithStmts { stmts, val: cond } = self.convert_condition(true, scrutinee);
+
+                let then_entry = cfg.fresh_label();
+                self.convert_stmt_cfg(cfg, then_entry, exit, true_variant);
+
+                let else_entry = if false_variant.is_none() { exit } else { cfg.fresh_label() };
+                if let Some(false_variant) = false_variant {
+                    self.convert_stmt_cfg(cfg, else_entry, exit, false_variant);
+                }
+
+                let cond_bb = BasicBlock {
+                    body: stmts,
+                    terminator: Terminator::Branch(cond, then_entry, else_entry),
+                };
+                cfg.add_block(entry, cond_bb);
+            }
+
+            CStmtKind::While { condition, body } => {
+                let WithStmts { stmts, val: cond } = self.convert_condition(true, condition);
+
+                let body_entry = cfg.fresh_label();
+
+                let prev_break = cfg.break_label;
+                let prev_continue = cfg.continue_label;
+
+                cfg.break_label = Some(exit);
+                cfg.continue_label = Some(entry);
+
+                self.convert_stmt_cfg(cfg, body_entry, entry, body);
+
+                cfg.break_label = prev_break;
+                cfg.continue_label = prev_continue;
+
+
+                let cond_bb = BasicBlock {
+                    body: stmts,
+                    terminator: Terminator::Branch(cond, body_entry, exit),
+                };
+                cfg.add_block(entry, cond_bb);
+            },
+
+
+            CStmtKind::DoWhile { body, condition } => {
+                let cond_entry = cfg.fresh_label();
+                let WithStmts { stmts, val: cond } = self.convert_condition(true, condition);
+
+                let prev_break = cfg.break_label;
+                let prev_continue = cfg.continue_label;
+
+                cfg.break_label = Some(exit);
+                cfg.continue_label = Some(cond_entry);
+
+                self.convert_stmt_cfg(cfg, entry, cond_entry, body);
+
+                cfg.break_label = prev_break;
+                cfg.continue_label = prev_continue;
+
+                let cond_bb = BasicBlock {
+                    body: stmts,
+                    terminator: Terminator::Branch(cond, entry, exit),
+                };
+                cfg.add_block(entry, cond_bb);
+            },
+
+            CStmtKind::Goto(label_id) => {
+
+                // FIXME: work around borrow checker to not create a fresh label if we don't need to
+                let some_fresh_label = cfg.fresh_label();
+                let jump_label: Label = *cfg.labels.entry(label_id).or_insert(some_fresh_label);
+
+                let bb = BasicBlock {
+                    body: vec![],
+                    terminator: Terminator::Jump(jump_label),
+                };
+                cfg.add_block(entry, bb);
+            }
+
+            CStmtKind::Compound(ref stmts) => {
+
+                // Create enough labels to glue together all of the statements
+                let mut builder = vec![];
+                builder.push(entry);
+                for _ in 1..stmts.len() {
+                    builder.push(cfg.fresh_label());
+                }
+                builder.push(exit);
+
+                let labels = builder;
+
+                self.with_scope(|| {
+
+                    for (entry, (stmt_id, exit)) in labels.iter().zip(stmts.iter().zip(labels.iter().skip(1))) {
+                        self.convert_stmt_cfg(cfg, *entry, *exit, *stmt_id)
+                    }
+                });
+            },
+
+            CStmtKind::Expr(expr) => {
+                let bb = BasicBlock {
+                    body: self.convert_expr(ExprUse::Unused, expr).stmts,
+                    terminator: Terminator::Jump(exit),
+                };
+                cfg.add_block(entry, bb);
+            },
+
+            CStmtKind::Break => {
+                let bb = BasicBlock {
+                    body: vec![],
+                    terminator: Terminator::Jump(cfg.break_label.expect("Nothing to break to")),
+                };
+                cfg.add_block(entry, bb);
+            },
+
+            CStmtKind::Continue => {
+                let bb = BasicBlock {
+                    body: vec![],
+                    terminator: Terminator::Jump(cfg.continue_label.expect("Nothing to continue to")),
+                };
+                cfg.add_block(entry, bb);
+            },
+
+            _ => unimplemented!(),
+        }
     }
 
     fn convert_stmt(&self, stmt_id: CStmtId) -> Vec<Stmt> {
