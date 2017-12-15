@@ -191,6 +191,7 @@ pub enum CDeclKind {
     Variable {
         is_static: bool,
         is_extern: bool,
+        is_defn: bool,
         ident: String,
         initializer: Option<CExprId>,
         typ: CQualTypeId,

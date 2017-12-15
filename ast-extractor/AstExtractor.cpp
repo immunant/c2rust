@@ -778,6 +778,9 @@ class TranslateASTVisitor final
 
                                  auto is_extern = VD->isExternC();
                                  cbor_encode_boolean(array, is_extern);
+
+                                 auto is_defn = VD->isThisDeclarationADefinition() != clang::VarDecl::DefinitionKind::DeclarationOnly;
+                                 cbor_encode_boolean(array, is_defn);
                              });
           
           typeEncoder.VisitQualType(T);
