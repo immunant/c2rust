@@ -440,7 +440,7 @@ impl<W: Write> Printer<W> {
                 }
             },
 
-            Some(&CDeclKind::Variable { is_static, is_extern, ref ident, ref initializer, ref typ }) => {
+            Some(&CDeclKind::Variable { is_static, is_extern, ref ident, ref initializer, ref typ, .. }) => {
                 if is_extern {
                     self.writer.write_all(b"extern ")?;
                 } else if is_static {

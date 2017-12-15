@@ -1106,6 +1106,7 @@ impl ConversionContext {
 
                     let is_static = expect_bool(&node.extras[1]).expect("Expected to find duration");
                     let is_extern = expect_bool(&node.extras[2]).expect("Expected to find visibility");
+                    let is_defn = expect_bool(&node.extras[3]).expect("Expected to find whether decl is definition");
                     assert!(if is_extern { is_static } else { true }, "Something cannot be extern without also being static");
 
                     let initializer = node.children[0]
@@ -1114,7 +1115,7 @@ impl ConversionContext {
                     let typ_id = node.type_id.expect("Expected to find type on variable declaration");
                     let typ = self.visit_qualified_type(typ_id);
 
-                    let variable_decl = CDeclKind::Variable { is_static, is_extern, ident, initializer, typ };
+                    let variable_decl = CDeclKind::Variable { is_static, is_extern, is_defn, ident, initializer, typ };
 
                     self.add_decl(new_id, located(node, variable_decl));
                     self.processed_nodes.insert(new_id, VAR_DECL);
