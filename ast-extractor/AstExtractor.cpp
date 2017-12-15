@@ -765,7 +765,7 @@ class TranslateASTVisitor final
               return true;
 
           std::vector<void*> childIds =
-          { VD->getInit() } ;
+          { (void*) VD->getAnyInitializer() } ;
           auto T = VD->getType();
           
           encode_entry(VD, TagVarDecl, childIds, T,
