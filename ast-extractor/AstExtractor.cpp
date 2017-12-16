@@ -527,7 +527,7 @@ class TranslateASTVisitor final
       
       bool VisitCaseStmt(CaseStmt *CS) {
           std::vector<void*> childIds =
-          { CS->getLHS(), CS->getSubStmt() };
+          { CS->getLHS() };
           encode_entry(CS, TagCaseStmt, childIds);
           return true;
       }
@@ -540,7 +540,7 @@ class TranslateASTVisitor final
       }
       
       bool VisitDefaultStmt(DefaultStmt *DS) {
-          std::vector<void*> childIds = { DS->getSubStmt() };
+          std::vector<void*> childIds;
           encode_entry(DS, TagDefaultStmt, childIds);
           return true;
       }

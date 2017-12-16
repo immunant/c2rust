@@ -659,6 +659,7 @@ impl ConversionContext {
                     let null_stmt = CStmtKind::Empty;
 
                     self.add_stmt(new_id, located(node, null_stmt));
+                    self.processed_nodes.insert(new_id, OTHER_STMT);
                 }
 
                 ASTEntryTag::TagForStmt if expected_ty & OTHER_STMT != 0 => {
@@ -674,6 +675,7 @@ impl ConversionContext {
                     let for_stmt = CStmtKind::ForLoop { init, condition, increment, body };
 
                     self.add_stmt(new_id, located(node, for_stmt));
+                    self.processed_nodes.insert(new_id, OTHER_STMT);
                 }
 
                 ASTEntryTag::TagWhileStmt if expected_ty & OTHER_STMT != 0 => {
@@ -686,6 +688,7 @@ impl ConversionContext {
                     let while_stmt = CStmtKind::While { condition, body };
 
                     self.add_stmt(new_id, located(node, while_stmt));
+                    self.processed_nodes.insert(new_id, OTHER_STMT);
                 }
 
                 ASTEntryTag::TagDoStmt if expected_ty & OTHER_STMT != 0 => {
@@ -699,6 +702,7 @@ impl ConversionContext {
                     let do_stmt = CStmtKind::DoWhile { body, condition };
 
                     self.add_stmt(new_id, located(node, do_stmt));
+                    self.processed_nodes.insert(new_id, OTHER_STMT);
                 }
 
                 ASTEntryTag::TagLabelStmt if expected_ty & LABEL_STMT != 0 => {
@@ -706,6 +710,36 @@ impl ConversionContext {
 
                     self.add_stmt(new_id, located(node, label_stmt));
                     self.processed_nodes.insert(new_id, LABEL_STMT);
+                }
+
+                ASTEntryTag::TagSwitchStmt if expected_ty & OTHER_STMT != 0 => {
+                    let scrutinee_old = node.children[0].expect("Switch expression not found");
+                    let scrutinee = self.visit_expr(scrutinee_old);
+
+                    let body_old = node.children[1].expect("Switch body not found");
+                    let body = self.visit_stmt(body_old);
+
+                    let switch_stmt = CStmtKind::Switch { scrutinee, body };
+
+                    self.add_stmt(new_id, located(node, switch_stmt));
+                    self.processed_nodes.insert(new_id, OTHER_STMT);
+                }
+
+                ASTEntryTag::TagCaseStmt if expected_ty & OTHER_STMT != 0 => {
+                    let expr_old = node.children[0].expect("Case expression not found");
+                    let expr = self.visit_expr(expr_old);
+
+                    let case_stmt = CStmtKind::Case(expr);
+
+                    self.add_stmt(new_id, located(node, case_stmt));
+                    self.processed_nodes.insert(new_id, OTHER_STMT);
+                }
+
+                ASTEntryTag::TagDefaultStmt if expected_ty & OTHER_STMT != 0 => {
+                    let default_stmt = CStmtKind::Default;
+
+                    self.add_stmt(new_id, located(node, default_stmt));
+                    self.processed_nodes.insert(new_id, OTHER_STMT);
                 }
 
                 // Expressions
