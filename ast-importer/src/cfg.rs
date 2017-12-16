@@ -31,7 +31,7 @@ impl Label {
     fn pretty_print(&self) -> String {
         match self {
             &Label::FromC(CStmtId(label_id)) => format!("c_{}", label_id),
-            &Label::Synthetic(syn_id) => format!("c_{}", syn_id),
+            &Label::Synthetic(syn_id) => format!("s_{}", syn_id),
         }
     }
 }
@@ -426,45 +426,59 @@ impl Cfg {
     }
 }
 
-/// This impl block deals with pretty-printing impl blocks
+
+/// This impl block deals with pretty-printing control flow graphs into a format that `dot` can
+/// consume. Compiling these files into images means running something like:
+///
+/// ```
+/// dot -Tpng cfg_func.dot > cfg_func.png
+/// ```
 impl Cfg {
 
     pub fn dump_dot_graph(&self, file_path: String) -> io::Result<()> {
 
+        // Utility function for sanitizing strings
         fn sanitize_label(lbl: String) -> String {
-            lbl.replace("\n", "&#92;n").replace("\t", "  ")
+            format!("{}\\l", lbl.replace("\n", "\\l").replace("\t", "  "))
         }
 
         let mut file = File::create(file_path)?;
-        file.write_all(b"digraph cfg {")?;
-        file.write_all(b"  node [shape=record];")?;
+        file.write_all(b"digraph cfg {\n")?;
+        file.write_all(b"  node [shape=box,fontname=Courier];\n")?;
+        file.write_all(b"  edge [fontname=Courier,fontsize=10.0];\n")?;
 
         // Entry
-        file.write_all(b"  entry [shape=plaintext];")?;
-        file.write_fmt(format_args!("  entry -> {};", self.entry.pretty_print()))?;
+        file.write_all(b"  entry [shape=plaintext];\n")?;
+        file.write_fmt(format_args!("  entry -> {};\n", self.entry.pretty_print()))?;
 
         // Rest of graph
         for (lbl, &BasicBlock { ref body, ref terminator }) in self.graph.iter() {
 
             let pretty_terminator = match terminator {
                 &Terminator::End | &Terminator::Jump(_) => String::from(""),
-                &Terminator::Branch(ref cond, _, _) => pprust::expr_to_string(cond.deref()),
-                &Terminator::Switch { ref expr, .. } => pprust::expr_to_string(expr.deref()),
+                &Terminator::Branch(ref cond, _, _) => format!("\n{}",pprust::expr_to_string(cond.deref())),
+                &Terminator::Switch { ref expr, .. } => format!("\n{}",pprust::expr_to_string(expr.deref())),
             };
 
+            // A node
             file.write_fmt(format_args!(
-                "  {} [label={{ {}:&#92;n{} | {} }}]",
+                "  {} [label=\"{}:\\l{}-----{}\"];\n",
                 lbl.pretty_print(),
                 lbl.pretty_print(),
-                sanitize_label(body
-                    .iter()
-                    .map(|stmt| pprust::stmt_to_string(stmt))
-                    .collect::<Vec<String>>()
-                    .join("\n")
-                ),
-                pretty_terminator,
+                format!("-----\\l{}", if body.is_empty() {
+                    String::from("")
+                } else {
+                    sanitize_label(body
+                        .iter()
+                        .map(|stmt| pprust::stmt_to_string(stmt))
+                        .collect::<Vec<String>>()
+                        .join("\n")
+                    )
+                }),
+                sanitize_label(pretty_terminator),
             ))?;
 
+            // All the edges starting from this node
             let edges: Vec<(String, Label)> = match terminator {
                 &Terminator::End => vec![],
                 &Terminator::Jump(tgt) => vec![(String::from(""),tgt)],
@@ -484,7 +498,7 @@ impl Cfg {
 
             for (desc,tgt) in edges {
                 file.write_fmt(format_args!(
-                    "  {} -> {} [label={}];",
+                    "  {} -> {} [label=\"{}\"];\n",
                     lbl.pretty_print(),
                     tgt.pretty_print(),
                     sanitize_label(desc),
@@ -492,7 +506,7 @@ impl Cfg {
             }
         }
 
-        file.write_all(b"}")?;
+        file.write_all(b"}\n")?;
 
         Ok(())
     }

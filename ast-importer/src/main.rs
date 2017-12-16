@@ -30,6 +30,10 @@ fn main() {
             .long("dpretty-typed-clang-ast")
             .help("Pretty-prints out the parsed typed Clang AST")
             .takes_value(false))
+        .arg(Arg::with_name("dump-function-cfgs")
+            .long("ddump-function-cfgs")
+            .help("Dumps into files DOT visualizations of the CFGs of every function")
+            .takes_value(false))
         .arg(Arg::with_name("INPUT")
             .help("Sets the input CBOR file to use")
             .required(true)
@@ -40,6 +44,7 @@ fn main() {
     let dump_untyped_context = matches.is_present("dump-untyped-clang-ast");
     let dump_typed_context = matches.is_present("dump-typed-clang-ast");
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
+    let dump_function_cfgs = matches.is_present("dump-function-cfgs");
 
     // Extract from the CBOR file the untyped AST
     let untyped_context = match parse_untyped_ast(file) {
@@ -86,7 +91,7 @@ fn main() {
     let mut conv = ConversionContext::new(&untyped_context);
     conv.convert(&untyped_context);
 
-    println!("{}", translate(&conv.typed_context));
+    println!("{}", translate(&conv.typed_context, dump_function_cfgs));
 }
 
 fn parse_untyped_ast(filename: &str) -> Result<AstContext, Error> {

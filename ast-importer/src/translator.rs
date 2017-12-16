@@ -16,12 +16,15 @@ use std::ops::Index;
 use std::cell::RefCell;
 use dtoa;
 
+use cfg::*;
+
 pub struct Translation {
     pub items: Vec<P<Item>>,
     type_converter: RefCell<TypeConverter>,
     pub ast_context: TypedAstContext,
     renamer: RefCell<Renamer<String>>,
     loops: LoopContext,
+    dump_function_cfgs: bool,
 }
 
 pub struct WithStmts<T> {
@@ -133,9 +136,9 @@ fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder 
 }
 
 
-pub fn translate(ast_context: &TypedAstContext) -> String {
+pub fn translate(ast_context: &TypedAstContext, dump_function_cfgs: bool) -> String {
 
-    let mut t = Translation::new(ast_context.clone());
+    let mut t = Translation::new(ast_context.clone(), dump_function_cfgs);
 
     enum Name<'a> {
         VarName(&'a str),
@@ -246,7 +249,7 @@ pub enum ExprUse {
 }
 
 impl Translation {
-    pub fn new(ast_context: TypedAstContext) -> Translation {
+    pub fn new(ast_context: TypedAstContext, dump_function_cfgs: bool) -> Translation {
         Translation {
             items: vec![],
             type_converter: RefCell::new(TypeConverter::new()),
@@ -264,6 +267,7 @@ impl Translation {
                 "yield",
             ].iter().map(|s| s.to_string()).collect())),
             loops: LoopContext::new(),
+            dump_function_cfgs: dump_function_cfgs,
         }
     }
 
@@ -390,6 +394,14 @@ impl Translation {
                         args.push((ident.clone(), typ))
                     } else {
                         return Err(format!("Parameter is not variable declaration"))
+                    }
+                }
+
+                if self.dump_function_cfgs {
+                    if let Some(b) = body {
+                        Cfg::from_stmt(self, b)
+                            .dump_dot_graph(format!("{}_{}.dot", "cfg", name))
+                            .expect("Failed to write CFG .dot file");
                     }
                 }
 
