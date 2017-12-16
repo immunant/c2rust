@@ -452,7 +452,7 @@ class TranslateASTVisitor final
       
       bool VisitLabelStmt(LabelStmt *LS) {
           
-          std::vector<void*> childIds = { LS->getSubStmt() };
+          std::vector<void*> childIds;
           encode_entry(LS, TagLabelStmt, childIds,
                              [LS](CborEncoder *array){
                                  cbor_encode_text_stringz(array, LS->getName());

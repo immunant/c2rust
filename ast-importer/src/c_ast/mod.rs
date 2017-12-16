@@ -480,9 +480,9 @@ pub enum CLiteral {
 #[derive(Debug, Clone)]
 pub enum CStmtKind {
     // Labeled statements (6.8.1)
-    Label(CStmtId),
-    Case(CExpr, CStmtId), // The second argument is only the immediately following statement
-    Default(CStmtId),
+    Label,
+    Case(CExprId),
+    Default,
 
     // Compound statements (6.8.2)
     Compound(Vec<CStmtId>),

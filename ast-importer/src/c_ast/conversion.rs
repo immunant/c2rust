@@ -702,10 +702,7 @@ impl ConversionContext {
                 }
 
                 ASTEntryTag::TagLabelStmt if expected_ty & LABEL_STMT != 0 => {
-                    let pointed_stmt_old = node.children[0].expect("Label statement not found");
-                    let pointed_stmt = self.visit_stmt(pointed_stmt_old);
-
-                    let label_stmt = CStmtKind::Label(pointed_stmt);
+                    let label_stmt = CStmtKind::Label;
 
                     self.add_stmt(new_id, located(node, label_stmt));
                     self.processed_nodes.insert(new_id, LABEL_STMT);
