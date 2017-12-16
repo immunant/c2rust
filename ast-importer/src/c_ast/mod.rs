@@ -2,16 +2,16 @@ use std::collections::HashMap;
 use std::ops::Index;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
-pub struct CTypeId(u64);
+pub struct CTypeId(pub u64);
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
-pub struct CExprId(u64);
+pub struct CExprId(pub u64);
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
-pub struct CDeclId(u64);
+pub struct CDeclId(pub u64);
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
-pub struct CStmtId(u64);
+pub struct CStmtId(pub u64);
 
 // These are references into particular variants of AST nodes
 pub type CLabelId = CStmtId;  // Labels point into the 'StmtKind::Label' that declared the label

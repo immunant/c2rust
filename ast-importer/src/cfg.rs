@@ -5,6 +5,12 @@ use idiomize::ast_manip::make_ast::*;
 use std::collections::HashMap;
 use c_ast::CLabelId;
 use std::ops::Index;
+use syntax::print::pprust;
+use std::io;
+use std::fs::File;
+use std::io::Write;
+use std::ops::Deref;
+
 
 use translator::*;
 use c_ast::*;
@@ -19,6 +25,15 @@ enum Label {
     /// Most labels are synthetically created while unwrapping control-flow constructs (like loops)
     /// into basic blocks.
     Synthetic(u64),
+}
+
+impl Label {
+    fn pretty_print(&self) -> String {
+        match self {
+            &Label::FromC(CStmtId(label_id)) => format!("c_{}", label_id),
+            &Label::Synthetic(syn_id) => format!("c_{}", syn_id),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -104,6 +119,7 @@ pub struct Cfg {
     switch_expr_cases: Vec<SwitchCases>,
 }
 
+/// This impl block deals with creating control flow graphs
 impl Cfg {
     /// Add a basic block to the control flow graph, specifying under which label to insert it.
     fn add_block(&mut self, lbl: Label, bb: BasicBlock) -> () {
@@ -408,5 +424,76 @@ impl Cfg {
             }
         }
     }
+}
 
+/// This impl block deals with pretty-printing impl blocks
+impl Cfg {
+
+    pub fn dump_dot_graph(&self, file_path: String) -> io::Result<()> {
+
+        fn sanitize_label(lbl: String) -> String {
+            lbl.replace("\n", "&#92;n").replace("\t", "  ")
+        }
+
+        let mut file = File::create(file_path)?;
+        file.write_all(b"digraph cfg {")?;
+        file.write_all(b"  node [shape=record];")?;
+
+        // Entry
+        file.write_all(b"  entry [shape=plaintext];")?;
+        file.write_fmt(format_args!("  entry -> {};", self.entry.pretty_print()))?;
+
+        // Rest of graph
+        for (lbl, &BasicBlock { ref body, ref terminator }) in self.graph.iter() {
+
+            let pretty_terminator = match terminator {
+                &Terminator::End | &Terminator::Jump(_) => String::from(""),
+                &Terminator::Branch(ref cond, _, _) => pprust::expr_to_string(cond.deref()),
+                &Terminator::Switch { ref expr, .. } => pprust::expr_to_string(expr.deref()),
+            };
+
+            file.write_fmt(format_args!(
+                "  {} [label={{ {}:&#92;n{} | {} }}]",
+                lbl.pretty_print(),
+                lbl.pretty_print(),
+                sanitize_label(body
+                    .iter()
+                    .map(|stmt| pprust::stmt_to_string(stmt))
+                    .collect::<Vec<String>>()
+                    .join("\n")
+                ),
+                pretty_terminator,
+            ))?;
+
+            let edges: Vec<(String, Label)> = match terminator {
+                &Terminator::End => vec![],
+                &Terminator::Jump(tgt) => vec![(String::from(""),tgt)],
+                &Terminator::Branch(_, tru, fal) => vec![
+                    (String::from("true"),tru),
+                    (String::from("false"),fal)
+                ],
+                &Terminator::Switch { ref cases, default, .. } => {
+                    let mut cases: Vec<(String, Label)> = cases
+                        .iter()
+                        .map(|&(ref expr, tgt)| (pprust::expr_to_string(expr.deref()), tgt))
+                        .collect();
+                    cases.push((String::from("_"), default));
+                    cases
+                },
+            };
+
+            for (desc,tgt) in edges {
+                file.write_fmt(format_args!(
+                    "  {} -> {} [label={}];",
+                    lbl.pretty_print(),
+                    tgt.pretty_print(),
+                    sanitize_label(desc),
+                ))?;
+            }
+        }
+
+        file.write_all(b"}")?;
+
+        Ok(())
+    }
 }
