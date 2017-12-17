@@ -706,7 +706,10 @@ impl ConversionContext {
                 }
 
                 ASTEntryTag::TagLabelStmt if expected_ty & LABEL_STMT != 0 => {
-                    let label_stmt = CStmtKind::Label;
+                    let substmt_old = node.children[0].expect("Label sub-statement not found");
+                    let substmt = self.visit_stmt(substmt_old);
+
+                    let label_stmt = CStmtKind::Label(substmt);
 
                     self.add_stmt(new_id, located(node, label_stmt));
                     self.processed_nodes.insert(new_id, LABEL_STMT);
@@ -729,14 +732,20 @@ impl ConversionContext {
                     let expr_old = node.children[0].expect("Case expression not found");
                     let expr = self.visit_expr(expr_old);
 
-                    let case_stmt = CStmtKind::Case(expr);
+                    let substmt_old = node.children[1].expect("Case sub-statement not found");
+                    let substmt = self.visit_stmt(substmt_old);
+
+                    let case_stmt = CStmtKind::Case(expr, substmt);
 
                     self.add_stmt(new_id, located(node, case_stmt));
                     self.processed_nodes.insert(new_id, OTHER_STMT);
                 }
 
                 ASTEntryTag::TagDefaultStmt if expected_ty & OTHER_STMT != 0 => {
-                    let default_stmt = CStmtKind::Default;
+                    let substmt_old = node.children[0].expect("Default sub-statement not found");
+                    let substmt = self.visit_stmt(substmt_old);
+
+                    let default_stmt = CStmtKind::Default(substmt);
 
                     self.add_stmt(new_id, located(node, default_stmt));
                     self.processed_nodes.insert(new_id, OTHER_STMT);

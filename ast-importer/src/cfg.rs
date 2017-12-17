@@ -162,7 +162,7 @@ impl Cfg {
             terminator: Terminator::End,
         };
 
-        let bb = cfg.convert_stmt_cfg(translator, stmt_id, end);
+        let bb = translator.with_scope(|| cfg.convert_stmt_cfg(translator, stmt_id, end));
         cfg.add_block(entry, bb);
 
         cfg
@@ -295,7 +295,7 @@ impl Cfg {
                 BasicBlock::new_jump(body_entry)
             }
 
-            CStmtKind::ForLoop { init, condition, increment, body } => {
+            CStmtKind::ForLoop { init, condition, increment, body } => translator.with_scope(|| {
 
                 let cond_entry = self.fresh_label();
                 let body_entry = self.fresh_label();
@@ -340,11 +340,13 @@ impl Cfg {
                         BasicBlock::new_jump(cond_entry),
                     ),
                 }
-            }
+            }),
 
-            CStmtKind::Label => {
+            CStmtKind::Label(sub_stmt) => {
                 let this_label = Label::FromC(stmt_id);
-                self.add_block(this_label, continuation);
+                let this_block = self.convert_stmt_cfg(translator, sub_stmt, continuation);
+
+                self.add_block(this_label, this_block);
 
                 BasicBlock::new_jump(this_label)
             }
@@ -370,9 +372,11 @@ impl Cfg {
                 *self.continue_labels.last().expect("Nothing to 'continue' to")
             ),
 
-            CStmtKind::Case(case_expr) => {
+            CStmtKind::Case(case_expr, sub_stmt) => {
                 let this_label = Label::FromC(stmt_id);
-                self.add_block(this_label, continuation);
+                let this_block = self.convert_stmt_cfg(translator, sub_stmt, continuation);
+
+                self.add_block(this_label, this_block);
 
                 let branch = translator.convert_expr(ExprUse::RValue, case_expr).to_expr();
                 self.switch_expr_cases
@@ -384,9 +388,11 @@ impl Cfg {
                 BasicBlock::new_jump(this_label)
             }
 
-            CStmtKind::Default => {
+            CStmtKind::Default(sub_stmt) => {
                 let this_label = Label::FromC(stmt_id);
-                self.add_block(this_label, continuation);
+                let this_block = self.convert_stmt_cfg(translator, sub_stmt, continuation);
+
+                self.add_block(this_label, this_block);
 
                 self.switch_expr_cases
                     .last_mut()
