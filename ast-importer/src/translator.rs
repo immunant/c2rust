@@ -399,7 +399,7 @@ impl Translation {
 
                 if self.dump_function_cfgs {
                     if let Some(b) = body {
-                        Cfg::from_stmt(self, b)
+                        Cfg::from_stmt_forward(self, b)
                             .dump_dot_graph(format!("{}_{}.dot", "cfg", name))
                             .expect("Failed to write CFG .dot file");
                     }
