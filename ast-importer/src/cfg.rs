@@ -89,6 +89,21 @@ enum Terminator {
     }
 }
 
+impl Terminator {
+    fn map_labels<F: Fn(Label) -> Label>(&self, func: F) -> Self {
+        match self {
+            &Terminator::End => Terminator::End,
+            &Terminator::Jump(l) => Terminator::Jump(func(l)),
+            &Terminator::Branch(ref e, ref l1, ref l2) => Terminator::Branch(e.clone(), func(*l1), func(*l2)),
+            &Terminator::Switch { ref expr, ref cases, ref default } => Terminator::Switch {
+                expr: expr.clone(),
+                cases: cases.iter().map(|&(ref e, ref l)| (e.clone(), func(*l))).collect(),
+                default: func(*default),
+            }
+        }
+    }
+}
+
 /// The sole purpose of this structure is to accumulate information about what cases/default have
 /// been seen which translating the body of the switch.
 #[derive(Clone, Debug, Default)]
@@ -97,14 +112,114 @@ pub struct SwitchCases {
     default: Option<Label>,
 }
 
-/// This stores all of the state required to construct a control-flow graph from C statements. Once
-/// the graoh is constructed, we only really care about the 'entry' and 'graph' fields.
+/// A CFG graph.
 #[derive(Clone, Debug)]
 pub struct Cfg {
+    /// Entry point in the graph
+    entry: Label,
+
+    /// Nodes in the graph
+    nodes: HashMap<Label, BasicBlock>,
+}
+
+/// A complete control-flow graph
+impl Cfg {
+
+    /// Completely process a statement into a control flow graph.
+    pub fn from_stmt(translator: &Translation, stmt_id: CStmtId) -> Cfg {
+        let mut cfg_builder = CfgBuilder::new(translator);
+        let entry = cfg_builder.graph.entry;
+
+        let end = BasicBlock {
+            body: vec![],
+            terminator: Terminator::End,
+        };
+
+        let bb = translator.with_scope(|| cfg_builder.convert_stmt_cfg(translator, stmt_id, end));
+        cfg_builder.add_block(entry, bb);
+
+        let graph = cfg_builder.graph;
+
+        graph.prune_empty_blocks()
+    }
+
+    /// Removes empty blocks whose terminator is just a `Jump` by merging them with the block they
+    /// are jumping to.
+    pub fn prune_empty_blocks(&self) -> Self {
+
+        /// Given an empty `BasicBlock` that ends in a `Jump`, return the target label. In all other
+        /// cases, return `None`.
+        fn empty_bb(bb: &BasicBlock) -> Option<Label> {
+            match bb.terminator {
+                Terminator::Jump(lbl) if bb.body.is_empty() => Some(lbl),
+                _ => None,
+            }
+        }
+
+        // Keys are labels corresponding to empty basic blocks with a jump terminator, values are
+        // the labels they jump to (and can hopefully be replaced by).
+        let mut proposed_rewrites: HashMap<Label, Label> = self.nodes
+            .iter()
+            .filter_map(|(lbl, bb)| empty_bb(bb).map(|tgt| (*lbl, tgt)))
+            .collect();
+
+        // Rewrites to actually apply. Keys are labels to basic blocks that were remapped into the
+        // basic block corresponding to the value.
+        let mut actual_rewrites: HashMap<Label, Label> = HashMap::new();
+
+        while let Some((from, to)) = proposed_rewrites.iter().map(|(f,t)| (*f,*t)).next() {
+            proposed_rewrites.remove(&from);
+
+            // Try to apply more rewrites from `proposed_rewrites`
+            let mut to_intermediate: Label = to;
+            while let Some(to_new) = proposed_rewrites.remove(&to_intermediate) {
+                to_intermediate = to_new;
+            }
+
+            // Check if there were already some rewrites applied
+            let to_final = *actual_rewrites.get(&to_intermediate).unwrap_or(&to_intermediate);
+
+            actual_rewrites.insert(from, to_final);
+        }
+
+        // Apply the remaps
+        let entry = *actual_rewrites.get(&self.entry).unwrap_or(&self.entry);
+        let nodes = self
+            .nodes
+            .iter()
+            .filter_map(|(label, bb)| -> Option<(Label, BasicBlock)> {
+                match actual_rewrites.get(label) {
+                    // We keep only the basic blocks that weren't remapped to anything. Before
+                    // returning them though, we have to remap any labels in their terminator.
+                    None => {
+                        let new_terminator = bb.terminator.map_labels(|label: Label| -> Label {
+                            match actual_rewrites.get(&label) {
+                                None => label,
+                                Some(new_label) => *new_label,
+                            }
+                        });
+                        let new_bb = BasicBlock {
+                            body: bb.body.clone(),
+                            terminator: new_terminator,
+                        };
+                        Some((*label, new_bb))
+                    }
+                    Some(_) => None
+                }
+            })
+            .collect();
+
+        Cfg { entry, nodes }
+    }
+}
+
+/// This stores all of the state required to construct a control-flow graph from C statements. Once
+/// the graph is constructed, we only really care about the 'graph' field.
+#[derive(Clone, Debug)]
+struct CfgBuilder {
 
     /// Identifies the 'BasicBlock' to start with in 'graph'
-    entry: Label,
-    graph: HashMap<Label, BasicBlock>,
+    graph: Cfg,
 
     /// Source for generating fresh synthetic labels
     prev_label: u64,
@@ -120,10 +235,10 @@ pub struct Cfg {
 }
 
 /// This impl block deals with creating control flow graphs
-impl Cfg {
+impl CfgBuilder {
     /// Add a basic block to the control flow graph, specifying under which label to insert it.
     fn add_block(&mut self, lbl: Label, bb: BasicBlock) -> () {
-        match self.graph.insert(lbl, bb) {
+        match self.graph.nodes.insert(lbl, bb) {
             None => { },
             Some(_) => panic!("Label {:?} cannot identify two basic blocks", lbl),
         }
@@ -143,29 +258,22 @@ impl Cfg {
         Label::Synthetic(self.prev_label)
     }
 
-    /// Completely process a statement into a control flow graph.
-    pub fn from_stmt(translator: &Translation, stmt_id: CStmtId) -> Cfg {
+    /// Create a new, empty `CfgBuilder`.
+    fn new(translator: &Translation) -> CfgBuilder {
         let entry = Label::Synthetic(0);
-        let mut cfg = Cfg {
-            entry,
-            graph: HashMap::new(),
+
+        CfgBuilder {
+            graph: Cfg {
+                entry,
+                nodes: HashMap::new(),
+            },
 
             prev_label: 0,
 
             break_labels: vec![],
             continue_labels: vec![],
             switch_expr_cases: vec![],
-        };
-
-        let end = BasicBlock {
-            body: vec![],
-            terminator: Terminator::End,
-        };
-
-        let bb = translator.with_scope(|| cfg.convert_stmt_cfg(translator, stmt_id, end));
-        cfg.add_block(entry, bb);
-
-        cfg
+        }
     }
 
     /// Translate and tack a C statement onto a continuation basic block, producing a new basic
@@ -458,7 +566,7 @@ impl Cfg {
         file.write_fmt(format_args!("  entry -> {};\n", self.entry.pretty_print()))?;
 
         // Rest of graph
-        for (lbl, &BasicBlock { ref body, ref terminator }) in self.graph.iter() {
+        for (lbl, &BasicBlock { ref body, ref terminator }) in self.nodes.iter() {
 
             let pretty_terminator = match terminator {
                 &Terminator::End | &Terminator::Jump(_) => String::from(""),
