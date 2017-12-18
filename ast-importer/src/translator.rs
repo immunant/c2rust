@@ -226,21 +226,15 @@ fn bool_to_int(val: P<Expr>) -> P<Expr> {
 /// This represents all of the ways a C expression can be used in a C program. Making this
 /// distinction is important for:
 ///
-///   * not generating a bunch of unnecessary code
+///   * not generating a bunch of unnecessary code, e.g., the expression `p = 1` evaluates `1`,
+///     but when used in a statement like `p = 1;`, we don't care about this, so we can translate
+///     to the Rust `p = 1` (even if it evaluates to the unit type). We get this behaviour by
+///     translating expression statements using `ExprUse::Unused`.
 ///
-///         Ex: The expression `p = 1` evaluates `1`, but when used in a statement like `p = 1;`, we
-///             don't care about this, so we can translate to the Rust `p = 1` (even if it evaluates
-///             to the unit type).
-///
-///             We get this behaviour by translating expression statements using `ExprUse::Unused`.
-///
-///   * handling `volatile` properly
-///
-///         Ex: Suppose `volatile int n, *p;` and `int x;`. Then, `x = n` is a volatile read of `n`
-///             but `p = &n` is not.
-///
-///             We get this behaviour by translating the argument of `&` using `ExprUse::LValue` and
-///             the right hand side of `=` using `ExprUse::RValue`.
+///   * handling `volatile` properly, e.g., suppose `volatile int n, *p;` and `int x;`.
+///     Then, `x = n` is a volatile read of `n` but `p = &n` is not. We get this behaviour
+///     by translating the argument of `&` using `ExprUse::LValue` and the right hand side of `=`
+///     using `ExprUse::RValue`.
 ///
 /// See `Translation::convert_expr` for more details.
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Ord, Eq)]
