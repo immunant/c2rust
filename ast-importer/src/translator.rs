@@ -69,6 +69,14 @@ impl WithStmts<P<Expr>> {
     }
 }
 
+fn sequence_option<A,E>(x: Option<Result<A,E>>) -> Result<Option<A>, E> {
+    match x {
+        None => Ok(None),
+        Some(Ok(o)) => Ok(Some(o)),
+        Some(Err(e)) => Err(e),
+    }
+}
+
 fn pointer_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
     let offset = mk().cast_expr(offset, mk().path_ty(vec!["isize"]));
     mk().method_call_expr(ptr, "offset", vec![offset])
@@ -493,7 +501,7 @@ impl Translation {
             if let Some(body) = body {
                 // Translating an actual function
 
-                let block = self.convert_function_body(body);
+                let block = self.convert_function_body(body)?;
 
                 // Only add linkage attributes if the function is `extern`
                 let mk_ = if is_extern {
@@ -517,18 +525,19 @@ impl Translation {
         })
     }
 
-    fn convert_function_body(&self, body_id: CStmtId) -> P<Block> {
+    fn convert_function_body(&self, body_id: CStmtId) -> Result<P<Block>, String> {
 
         // Function body scope
         self.with_scope(|| {
             let stmts = match self.ast_context.index(body_id).kind {
                 CStmtKind::Compound(ref stmts) => stmts
                     .iter()
-                    .flat_map(|stmt| self.convert_stmt(*stmt).unwrap())
-                    .collect(),
+                    .map(|stmt| self.convert_stmt(*stmt))
+                    .collect::<Result<Vec<Vec<Stmt>>,String>>()?,
                 _ => panic!("function body expects to be a compound statement"),
             };
-            stmts_block(stmts)
+
+            Ok(stmts_block(stmts.into_iter().flat_map(|x|x).collect()))
         })
     }
 
@@ -543,7 +552,7 @@ impl Translation {
                     .collect())
             },
 
-            CStmtKind::Return(expr) => Ok(self.convert_return_stmt(expr)),
+            CStmtKind::Return(expr) => self.convert_return_stmt(expr),
 
             CStmtKind::If { scrutinee, true_variant, false_variant } =>
                 self.convert_if_stmt(scrutinee, true_variant, false_variant),
@@ -709,13 +718,16 @@ impl Translation {
         Ok(cond.stmts)
     }
 
-    fn convert_return_stmt(&self, result_id: Option<CExprId>) -> Vec<Stmt> {
-        let val = result_id.map(|i| self.convert_expr(ExprUse::RValue, i).unwrap());
+    fn convert_return_stmt(&self, result_id: Option<CExprId>) -> Result<Vec<Stmt>,String> {
+        let val: Option<WithStmts<P<Expr>>> =
+            sequence_option(result_id
+                .map(|i| self.convert_expr(ExprUse::RValue, i))
+            )?;
         let mut ws = with_stmts_opt(val);
         let ret = mk().expr_stmt(mk().return_expr(ws.val));
 
         ws.stmts.push(ret);
-        ws.stmts
+        Ok(ws.stmts)
     }
 
     fn convert_decl_stmt(&self, decl_id: CDeclId) -> Vec<Stmt> {
