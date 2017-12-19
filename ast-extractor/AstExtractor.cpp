@@ -45,6 +45,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder>
 {
     ASTContext *Context;
     CborEncoder *encoder;
+    std::unordered_map<void*, QualType> *sugared;
     TranslateASTVisitor *astEncoder;
     
     // Bounds recursion when visiting self-referential record declarations
@@ -76,8 +77,13 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder>
     }
 
 public:
-    static uintptr_t encodeQualType(QualType t) {
+    uintptr_t encodeQualType(QualType t) {
         auto s = t.split();
+
+        auto desugared = sugared->find((void*) s.Ty);
+        if (desugared != sugared->end())
+          return encodeQualType(desugared->second);
+
         auto i = uintptr_t(s.Ty);
 
         if (t.isConstQualified()) {
@@ -93,21 +99,31 @@ public:
         return i;
     }
     
-    explicit TypeEncoder(ASTContext *Context, CborEncoder *encoder, TranslateASTVisitor *ast)
-      : Context(Context), encoder(encoder), astEncoder(ast) {}
+    explicit TypeEncoder
+      (ASTContext *Context,
+       CborEncoder *encoder,
+       std::unordered_map<void*, QualType> *sugared,
+       TranslateASTVisitor *ast)
+      : Context(Context), encoder(encoder), sugared(sugared), astEncoder(ast) {}
     
     void VisitQualType(const QualType &QT) {
         if (!QT.isNull()) {
             auto s = QT.split();
-            Visit(s.Ty);
+            
+            auto desugared = sugared->find((void*) s.Ty);
+            if (desugared != sugared->end())
+              VisitQualType(desugared->second);
+            else
+              Visit(s.Ty);
         }
     }
     
     void VisitAttributedType(const AttributedType *T) {
         auto t = T->getModifiedType();
+        auto qt = encodeQualType(t);
         
-        encodeType(T, TagAttributedType, [T,&t](CborEncoder *local) {
-            cbor_encode_uint(local, encodeQualType(t));
+        encodeType(T, TagAttributedType, [T,qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
         });
         
         VisitQualType(t);
@@ -115,9 +131,10 @@ public:
     
     void VisitParenType(const ParenType *T) {
         auto t = T->getInnerType();
+        auto qt = encodeQualType(t);
         
-        encodeType(T, TagParenType, [T,&t](CborEncoder *local) {
-            cbor_encode_uint(local, encodeQualType(t));
+        encodeType(T, TagParenType, [T,qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
         });
         
         VisitQualType(t);
@@ -131,9 +148,10 @@ public:
     
     void VisitConstantArrayType(const ConstantArrayType *T) {
         auto t = T->getElementType();
+        auto qt = encodeQualType(t);
         
-        encodeType(T, TagConstantArrayType, [T,&t](CborEncoder *local) {
-            cbor_encode_uint(local, encodeQualType(t));
+        encodeType(T, TagConstantArrayType, [T,qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
             cbor_encode_uint(local, T->getSize().getLimitedValue());
         });
         
@@ -142,9 +160,10 @@ public:
     
     void VisitVariableArrayType(const VariableArrayType *T) {
         auto t = T->getElementType();
+        auto qt = encodeQualType(t);
 
-        encodeType(T, TagVariableArrayType, [&t](CborEncoder *local) {
-            cbor_encode_uint(local, encodeQualType(t));
+        encodeType(T, TagVariableArrayType, [qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
             cbor_encode_undefined(local); // Variable size not exported currently
         });
         
@@ -153,9 +172,10 @@ public:
     
     void VisitIncompleteArrayType(const IncompleteArrayType *T) {
         auto t = T->getElementType();
+        auto qt = encodeQualType(t);
 
-        encodeType(T, TagIncompleteArrayType, [&t](CborEncoder *local) {
-            cbor_encode_uint(local, encodeQualType(t));
+        encodeType(T, TagIncompleteArrayType, [qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
         });
         
         VisitQualType(t);
@@ -163,9 +183,10 @@ public:
     
     void VisitBlockPointerType(const BlockPointerType *T) {
         auto t = T->getPointeeType();
+        auto qt = encodeQualType(t);
         
-        encodeType(T, TagBlockPointer, [&t](CborEncoder *local) {
-            cbor_encode_uint(local, encodeQualType(t));
+        encodeType(T, TagBlockPointer, [qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
         });
         
         VisitQualType(t);
@@ -211,7 +232,7 @@ public:
     // instances. Note: we could handle both cases by overriding `VisitFunctionType`
     // instead of the current two-function solution.
     void VisitFunctionProtoType(const FunctionProtoType *T) {
-        encodeType(T, TagFunctionType, [T](CborEncoder *local) {
+        encodeType(T, TagFunctionType, [T, this](CborEncoder *local) {
             CborEncoder arrayEncoder;
 
             // Function types are encoded with an extra list of types. The return type
@@ -250,9 +271,10 @@ public:
     
     void VisitPointerType(const PointerType *T) {
         auto pointee = T->getPointeeType();
+        auto qt = encodeQualType(pointee);
         
-        encodeType(T, TagPointer, [&pointee](CborEncoder *local) {
-            cbor_encode_uint(local, encodeQualType(pointee));
+        encodeType(T, TagPointer, [qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
         });
         
         VisitQualType(pointee);
@@ -262,16 +284,18 @@ public:
     
     void VisitTypeOfType(const TypeOfType *T) {
         auto t = T->desugar();
-        encodeType(T, TagTypeOfType, [&t](CborEncoder *local) {
-            cbor_encode_uint(local, encodeQualType(t));
+        auto qt = encodeQualType(t);
+        encodeType(T, TagTypeOfType, [qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
         });
         VisitQualType(t);
     }
     
     void VisitElaboratedType(const ElaboratedType *T) {
         auto t = T->desugar();
-        encodeType(T, TagElaboratedType, [&t](CborEncoder *local) {
-            cbor_encode_uint(local, encodeQualType(t));
+        auto qt = encodeQualType(t);
+        encodeType(T, TagElaboratedType, [qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
         });
 
         VisitQualType(t);
@@ -279,8 +303,9 @@ public:
     
     void VisitDecayedType(const DecayedType *T) {
         auto t = T->desugar();
-        encodeType(T, TagDecayedType, [&t](CborEncoder *local) {
-            cbor_encode_uint(local, encodeQualType(t));
+        auto qt = encodeQualType(t);
+        encodeType(T, TagDecayedType, [qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
         });
         
         VisitQualType(t);
@@ -361,7 +386,7 @@ class TranslateASTVisitor final
           if (nullptr == ty.getTypePtrOrNull()) {
               cbor_encode_null(&local);
           } else {
-              cbor_encode_uint(&local, TypeEncoder::encodeQualType(ty));
+              cbor_encode_uint(&local, typeEncoder.encodeQualType(ty));
           }
           
           // 7 - Extra entries
@@ -403,8 +428,8 @@ class TranslateASTVisitor final
       
       
   public:
-      explicit TranslateASTVisitor(ASTContext *Context, CborEncoder *encoder)
-      : Context(Context), typeEncoder(Context, encoder, this), encoder(encoder) {
+      explicit TranslateASTVisitor(ASTContext *Context, CborEncoder *encoder, std::unordered_map<void*, QualType> *sugared)
+      : Context(Context), typeEncoder(Context, encoder, sugared, this), encoder(encoder) {
       }
       
       // Override the default behavior of the RecursiveASTVisitor
@@ -552,14 +577,16 @@ class TranslateASTVisitor final
       bool VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *E) {
           std::vector<void*> childIds { E->isArgumentType() ? nullptr : E->getArgumentExpr() };
           auto t = E->getTypeOfArgument();
-          encode_entry(E, TagUnaryExprOrTypeTraitExpr, childIds, [E,t](CborEncoder *extras){
+          auto qt = typeEncoder.encodeQualType(t);
+
+          encode_entry(E, TagUnaryExprOrTypeTraitExpr, childIds, [E,qt](CborEncoder *extras){
               switch(E->getKind()) {
                   case UETT_SizeOf: cbor_encode_text_stringz(extras, "sizeof"); break;
                   case UETT_AlignOf: cbor_encode_text_stringz(extras, "alignof"); break;
                   case UETT_VecStep: cbor_encode_text_stringz(extras, "vecstep"); break;
                   case UETT_OpenMPRequiredSimdAlign: cbor_encode_text_stringz(extras, "openmprequiredsimdalign"); break;
               }
-              cbor_encode_uint(extras, TypeEncoder::encodeQualType(t));
+              cbor_encode_uint(extras, qt);
           });
           typeEncoder.VisitQualType(t);
           return true;
@@ -980,7 +1007,14 @@ class TranslateASTVisitor final
 };
 
 void TypeEncoder::VisitRecordType(const RecordType *T) {
-    
+  
+    // Should only ever be reached during the first pass
+    if (T->isSugared()) {
+      auto qt = T->desugar();
+      sugared->emplace((void*) T, qt);
+      VisitQualType(qt);
+    }
+
     auto tag = T->isStructureType() ? TagStructType : TagUnionType;
     
     encodeType(T, tag, [T](CborEncoder *local) {
@@ -998,8 +1032,17 @@ void TypeEncoder::VisitRecordType(const RecordType *T) {
 }
 
 void TypeEncoder::VisitTypedefType(const TypedefType *T) {
+    
+    // Should only ever be reached during the first pass
+    if (T->isSugared()) {
+      auto qt = T->desugar();
+      sugared->emplace((void*) T, qt);
+      VisitQualType(qt);
+    }
+  
     auto D = T->getDecl()->getCanonicalDecl();
-    encodeType(T, TagTypedefType, [D](CborEncoder *local) {
+
+    encodeType(T, TagTypedefType, [D, T](CborEncoder *local) {
         cbor_encode_uint(local, uintptr_t(D));
     });
     astEncoder->TraverseDecl(D);
@@ -1014,8 +1057,14 @@ public:
     virtual void HandleTranslationUnit(clang::ASTContext &Context) {
         
         CborEncoder encoder;
+
+        // There are some type nodes (see `TypedefType` and `RecordType`) which
+        // can be "sugared". That means we should not follow the declarations we
+        // normally would follow for those types, but we should use the `desugared`
+        // type instead.
+        std::unordered_map<void*, QualType> sugared;
         
-        auto process = [&encoder, &Context](uint8_t *buffer, size_t len)
+        auto process = [&encoder, &Context, &sugared](uint8_t *buffer, size_t len)
         {
             cbor_encoder_init(&encoder, buffer, len, 0);
             
@@ -1023,7 +1072,7 @@ public:
             
             // Encode all of the reachable AST nodes and types
             cbor_encoder_create_array(&encoder, &array, CborIndefiniteLength);
-            TranslateASTVisitor visitor(&Context, &array);
+            TranslateASTVisitor visitor(&Context, &array, &sugared);
             auto translation_unit = Context.getTranslationUnitDecl();
             visitor.TraverseDecl(translation_unit);
             cbor_encoder_close_container(&encoder, &array);
