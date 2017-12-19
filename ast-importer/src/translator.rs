@@ -168,7 +168,8 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
             &CDeclKind::Typedef { ref name, .. } => Name::TypeName(name),
             &CDeclKind::Function { ref name, .. } => Name::VarName(name),
             // &CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
-            &CDeclKind::Variable { ref ident, .. } => Name::VarName(ident),
+            &CDeclKind::Variable { ref ident, .. }
+              if ast_context.c_decls_top.contains(&decl_id) => Name::VarName(ident),
             _ => Name::NoName,
         };
         match decl_name {
