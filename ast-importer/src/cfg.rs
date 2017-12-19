@@ -226,6 +226,27 @@ fn mk_match(cases: Vec<(Label, Vec<Stmt>)>, then: Vec<Stmt>) -> Vec<Stmt> {
 }
 
 fn mk_loop(lbl: Option<Label>, body: Vec<Stmt>) -> Vec<Stmt> {
+
+    // TODO: this is ugly but it needn't be. We are just pattern matching on particular ASTs.
+    if let Some(&Stmt{ node: syntax::ast::StmtKind::Expr(ref expr), .. }) = body.iter().nth(0) {
+        if let syntax::ast::ExprKind::If(ref cond, ref thn, None) = expr.node {
+            if let &syntax::ast::Block { ref stmts, rules: syntax::ast::BlockCheckMode::Default, .. } = thn.deref() {
+                if stmts.len() == 1 {
+                    if let Some(&Stmt{ node: syntax::ast::StmtKind::Semi(ref expr), .. }) = stmts.iter().nth(0) {
+                        if let syntax::ast::ExprKind::Break(None, None) = expr.node {
+                            let e = mk().while_expr(
+                                mk().unary_expr(syntax::ast::UnOp::Not, cond),
+                                mk().block(body.iter().skip(1).cloned().collect()),
+                                lbl.map(|l| l.pretty_print()),
+                            );
+                            return vec![mk().expr_stmt(e)];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let e = mk().loop_expr(mk().block(body), lbl.map(|l| l.pretty_print()));
     vec![mk().expr_stmt(e)]
 }

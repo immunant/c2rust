@@ -535,9 +535,7 @@ impl Translation {
                     .expect("Failed to write CFG .dot file");
 
                 let relooped = graph.reloop();
-
-                println!("Relooped:\n{:?}", relooped);
-
+//                println!("Relooped:\n{:?}", relooped);
                 Cfg::structured_cfg(&relooped)
             } else {
                 match self.ast_context.index(body_id).kind {
