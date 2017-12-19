@@ -397,14 +397,6 @@ impl Translation {
                     }
                 }
 
-                if self.dump_function_cfgs {
-                    if let Some(b) = body {
-                        Cfg::from_stmt_forward(self, b)
-                            .dump_dot_graph(format!("{}_{}.dot", "cfg", name))
-                            .expect("Failed to write CFG .dot file");
-                    }
-                }
-
                 self.convert_function(is_extern, new_name, name, &args, ret, body)
             },
 
@@ -502,10 +494,11 @@ impl Translation {
 
             let decl = mk().fn_decl(args, ret);
 
+
             if let Some(body) = body {
                 // Translating an actual function
 
-                let block = self.convert_function_body(body);
+                let block = self.convert_function_body(name, body);
 
                 // Only add linkage attributes if the function is `extern`
                 let mk_ = if is_extern {
@@ -529,16 +522,31 @@ impl Translation {
         })
     }
 
-    fn convert_function_body(&self, body_id: CStmtId) -> P<Block> {
+    fn convert_function_body(&self, name: &str, body_id: CStmtId) -> P<Block> {
 
         // Function body scope
         self.with_scope(|| {
-            let stmts = match self.ast_context.index(body_id).kind {
-                CStmtKind::Compound(ref stmts) => stmts
-                    .iter()
-                    .flat_map(|stmt| self.convert_stmt(*stmt))
-                    .collect(),
-                _ => panic!("function body expects to be a compound statement"),
+
+            let stmts = if self.dump_function_cfgs {
+                let graph = Cfg::from_stmt_forward(self, body_id);
+
+                graph
+                    .dump_dot_graph(format!("{}_{}.dot", "cfg", name))
+                    .expect("Failed to write CFG .dot file");
+
+                let relooped = graph.reloop();
+
+                println!("Relooped:\n{:?}", relooped);
+
+                Cfg::structured_cfg(&relooped)
+            } else {
+                match self.ast_context.index(body_id).kind {
+                    CStmtKind::Compound(ref stmts) => stmts
+                        .iter()
+                        .flat_map(|stmt| self.convert_stmt(*stmt))
+                        .collect(),
+                    _ => panic!("function body expects to be a compound statement"),
+                }
             };
             stmts_block(stmts)
         })

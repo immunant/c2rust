@@ -1,8 +1,9 @@
 
+use syntax;
 use syntax::ast::*;
 use syntax::ptr::P;
 use idiomize::ast_manip::make_ast::*;
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use c_ast::CLabelId;
 use std::ops::Index;
 use syntax::print::pprust;
@@ -17,7 +18,7 @@ use c_ast::*;
 
 /// These labels identify basic blocks in the CFG.
 #[derive(Copy,Clone,PartialEq,Eq,PartialOrd,Ord,Debug,Hash)]
-enum Label {
+pub enum Label {
     /// Some labels come directly from the C side (namely those created from labels, cases, and
     /// defaults). For those, we just re-use the `CLabelId` of the C AST node.
     FromC(CLabelId),
@@ -36,25 +37,64 @@ impl Label {
     }
 }
 
+#[derive(Clone,Debug)]
+pub enum StructureLabel {
+    GoTo(Label),
+    ExitTo(Label),
+    Nested(Vec<Structure>),
+}
+
+/// These are the things that the relooper algorithm produces.
+#[derive(Clone,Debug)]
+pub enum Structure {
+    /// Series of statements and what to do after
+    Simple {
+        entries: HashSet<Label>,
+        body: Vec<Stmt>,
+        terminator: GenTerminator<StructureLabel>,
+    },
+    /// Looping constructs
+    Loop {
+        entries: HashSet<Label>,
+        body: Vec<Structure>,
+    },
+    /// Branching constructs??
+    Multiple {
+        entries: HashSet<Label>,
+        branches: HashMap<Label, Vec<Structure>>,
+        then: Vec<Structure>,
+    }
+}
+
+impl Structure {
+    fn get_entries(&self) -> &HashSet<Label> {
+        match self {
+            &Structure::Simple { ref entries, .. } => entries,
+            &Structure::Loop { ref entries, .. } => entries,
+            &Structure::Multiple { ref entries, .. } => entries,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
-struct BasicBlock {
+struct BasicBlock<L> {
     /// Jump-free code
     body: Vec<Stmt>,
 
     /// How to find the next (if any) basic block to go to
-    terminator: Terminator,
+    terminator: GenTerminator<L>,
 }
 
-impl BasicBlock {
-    fn new(terminator: Terminator) -> Self {
+impl<L> BasicBlock<L> {
+    fn new(terminator: GenTerminator<L>) -> Self {
         BasicBlock {
             body: vec![],
             terminator,
         }
     }
 
-    fn new_jump(target: Label) -> Self {
-        BasicBlock::new(Terminator::Jump(target))
+    fn new_jump(target: L) -> Self {
+        BasicBlock::new(Jump(target))
     }
 
     // FIXME: change the type of the 'body' field of 'BasicBlock' to something that makes this efficient
@@ -67,39 +107,81 @@ impl BasicBlock {
     }
 }
 
+impl BasicBlock<StructureLabel> {
+
+    /// Get all of the `GoTo` targets of a structure basic block
+    fn successors(&self) -> HashSet<Label> {
+        self.terminator
+            .get_labels()
+            .iter()
+            .filter_map(|&slbl|
+                match slbl {
+                    &StructureLabel::GoTo(tgt) => Some(tgt),
+                    _ => None,
+                }
+            )
+            .collect()
+    }
+}
+
+type Terminator = GenTerminator<Label>;
+type StructuredTerminator = GenTerminator<StructureLabel>;
+
 #[derive(Clone, Debug)]
-enum Terminator {
+pub enum GenTerminator<L> {
     /// End of control-flow. For example: the last statement in a function, or a return
     End,
 
     /// Unconditional branch to another block
-    Jump(Label),
+    Jump(L),
 
     /// Conditional branch to another block. The expression is expected to be a boolean Rust
     /// expression
-    Branch(P<Expr>, Label, Label),
+    Branch(P<Expr>, L, L),
 
     /// Multi-way branch.
     ///
     /// FIXME: specify more invariants on `expr`/`cases`
     Switch {
         expr: P<Expr>,
-        cases: Vec<(P<Expr>, Label)>,
-        default: Label
+        cases: Vec<(P<Expr>, L)>,
+        default: L
     }
 }
 
-impl Terminator {
-    fn map_labels<F: Fn(Label) -> Label>(&self, func: F) -> Self {
+use self::GenTerminator::*;
+
+impl<L> GenTerminator<L> {
+    fn map_labels<F: Fn(&L) -> N, N>(&self, func: F) -> GenTerminator<N> {
         match self {
-            &Terminator::End => Terminator::End,
-            &Terminator::Jump(l) => Terminator::Jump(func(l)),
-            &Terminator::Branch(ref e, ref l1, ref l2) => Terminator::Branch(e.clone(), func(*l1), func(*l2)),
-            &Terminator::Switch { ref expr, ref cases, ref default } => Terminator::Switch {
+            &End => End,
+            &Jump(ref l) => Jump(func(l)),
+            &Branch(ref e, ref l1, ref l2) => Branch(e.clone(), func(l1), func(l2)),
+            &Switch { ref expr, ref cases, ref default } => Switch {
                 expr: expr.clone(),
-                cases: cases.iter().map(|&(ref e, ref l)| (e.clone(), func(*l))).collect(),
-                default: func(*default),
+                cases: cases.iter().map(|&(ref e, ref l)| (e.clone(), func(l))).collect(),
+                default: func(default),
             }
+        }
+    }
+
+    fn get_labels(&self) -> Vec<&L> {
+        match self {
+            &End => vec![],
+            &Jump(ref l) => vec![l],
+            &Branch(_, ref l1, ref l2) => vec![l1,l2],
+            &Switch { ref cases, ref default, .. } =>
+                cases.iter().map(|&(_, ref l)| l).chain(vec![default]).collect(),
+        }
+    }
+
+    fn get_labels_mut(&mut self) -> Vec<&mut L> {
+        match self {
+            &mut End => vec![],
+            &mut Jump(ref mut l) => vec![l],
+            &mut Branch(_, ref mut l1, ref mut l2) => vec![l1,l2],
+            &mut Switch { ref mut cases, ref mut default, .. } =>
+                cases.iter_mut().map(|&mut (_, ref mut l)| l).chain(vec![default]).collect(),
         }
     }
 }
@@ -119,7 +201,48 @@ pub struct Cfg {
     entry: Label,
 
     /// Nodes in the graph
-    nodes: HashMap<Label, BasicBlock>,
+    nodes: HashMap<Label, BasicBlock<Label>>,
+}
+
+
+fn mk_goto(to: Label) -> Vec<Stmt> {
+    unimplemented!()
+}
+
+fn mk_if(cond: P<Expr>, then: Vec<Stmt>, els: Vec<Stmt>) -> Vec<Stmt> {
+    let e = if els.is_empty() {
+        mk().ifte_expr(cond, mk().block(then), None as Option<P<Expr>>)
+    } else if then.is_empty() {
+        mk().ifte_expr(mk().unary_expr(syntax::ast::UnOp::Not, cond), mk().block(els), None as Option<P<Expr>>)
+    } else {
+        mk().ifte_expr(cond, mk().block(then), Some(mk().block_expr(mk().block(els))))
+    };
+
+    vec![mk().expr_stmt(e)]
+}
+
+fn mk_match(cases: Vec<(Label, Vec<Stmt>)>, then: Vec<Stmt>) -> Vec<Stmt> {
+    unimplemented!()
+}
+
+fn mk_loop(lbl: Option<Label>, body: Vec<Stmt>) -> Vec<Stmt> {
+    let e = mk().loop_expr(mk().block(body), lbl.map(|l| l.pretty_print()));
+    vec![mk().expr_stmt(e)]
+}
+
+fn mk_exit(immediate: bool, exit_style: ExitStyle, label: Label) -> Vec<Stmt> {
+    let lbl = if immediate { None } else { Some(label.pretty_print()) };
+    let e = match exit_style {
+        ExitStyle::Break => mk().break_expr(lbl),
+        ExitStyle::Continue => mk().continue_expr(lbl),
+    };
+    vec![mk().semi_stmt(e)]
+}
+
+#[derive(Copy, Clone, Debug)]
+enum ExitStyle {
+    Continue,
+    Break,
 }
 
 /// A complete control-flow graph
@@ -132,7 +255,7 @@ impl Cfg {
 
         let end = BasicBlock {
             body: vec![],
-            terminator: Terminator::End,
+            terminator: End,
         };
 
         let bb = translator.with_scope(|| cfg_builder.convert_stmt_cfg(translator, stmt_id, end));
@@ -152,7 +275,7 @@ impl Cfg {
         if let Some((body_lbl, body_stmts)) = body_stuff {
             let body_bb = BasicBlock {
                 body: body_stmts,
-                terminator: Terminator::End,
+                terminator: End,
             };
             cfg_builder.add_block(body_lbl, body_bb);
         }
@@ -168,9 +291,9 @@ impl Cfg {
 
         /// Given an empty `BasicBlock` that ends in a `Jump`, return the target label. In all other
         /// cases, return `None`.
-        fn empty_bb(bb: &BasicBlock) -> Option<Label> {
+        fn empty_bb(bb: &BasicBlock<Label>) -> Option<Label> {
             match bb.terminator {
-                Terminator::Jump(lbl) if bb.body.is_empty() => Some(lbl),
+                Jump(lbl) if bb.body.is_empty() => Some(lbl),
                 _ => None,
             }
         }
@@ -206,14 +329,14 @@ impl Cfg {
         let nodes = self
             .nodes
             .iter()
-            .filter_map(|(label, bb)| -> Option<(Label, BasicBlock)> {
+            .filter_map(|(label, bb)| -> Option<(Label, BasicBlock<Label>)> {
                 match actual_rewrites.get(label) {
                     // We keep only the basic blocks that weren't remapped to anything. Before
                     // returning them though, we have to remap any labels in their terminator.
                     None => {
-                        let new_terminator = bb.terminator.map_labels(|label: Label| -> Label {
-                            match actual_rewrites.get(&label) {
-                                None => label,
+                        let new_terminator = bb.terminator.map_labels(|label: &Label| -> Label {
+                            match actual_rewrites.get(label) {
+                                None => *label,
                                 Some(new_label) => *new_label,
                             }
                         });
@@ -229,6 +352,356 @@ impl Cfg {
             .collect();
 
         Cfg { entry, nodes }
+    }
+
+    pub fn into_stmts(self) -> Vec<Stmt> {
+        let structures = self.reloop();
+        Self::structured_cfg(&structures)
+    }
+
+    pub fn reloop(self) -> Vec<Structure> {
+
+        let entries = vec![self.entry].into_iter().collect();
+        let blocks = self.nodes
+            .into_iter()
+            .map(|(lbl, bb)| {
+                let terminator = bb.terminator.map_labels(|l| StructureLabel::GoTo(*l));
+                (lbl, BasicBlock { body: bb.body, terminator })
+            })
+            .collect();
+
+        Self::relooper(entries, blocks)
+    }
+
+    fn relooper(entries: HashSet<Label>, mut blocks: HashMap<Label, BasicBlock<StructureLabel>>) -> Vec<Structure> {
+
+        // Edges in the graph pointing out of the graph
+        fn out_edges(blocks: &HashMap<Label, BasicBlock<StructureLabel>>) -> HashSet<Label> {
+            blocks
+                .iter()
+                .flat_map(|(_, bb)| bb.successors())
+                .filter(|lbl| !blocks.contains_key(lbl))
+                .collect()
+        }
+
+        fn flip_edges(map: HashMap<Label, HashSet<Label>>) -> HashMap<Label, HashSet<Label>> {
+            let mut flipped_map: HashMap<Label, HashSet<Label>> = HashMap::new();
+            for (lbl, vals) in map {
+                for val in vals {
+                    flipped_map.entry(val).or_insert(HashSet::new()).insert(lbl);
+                }
+            }
+            flipped_map
+        }
+
+        let reachable_labels: HashSet<Label> = blocks
+            .iter()
+            .flat_map(|(_, bb)| bb.successors())
+            .collect();
+
+        // Split the entry labels into those that some basic block may branch to versus those that
+        // none can branch to.
+        let (some_branch_to, none_branch_to): (HashSet<Label>, HashSet<Label>) = entries
+            .iter()
+            .cloned()
+            .partition(|entry| reachable_labels.contains(&entry));
+
+        // Split the entry labels into those that are in the current blocks, and those that aren't
+        let (present, absent): (HashSet<Label>, HashSet<Label>) = entries
+            .iter()
+            .cloned()
+            .partition(|entry| blocks.contains_key(&entry));
+
+        let strict_reachable_from = {
+            let mut successor_map: HashMap<Label, HashSet<Label>> = blocks
+                .iter()
+                .map(|(lbl, bb)| (*lbl, bb.successors()))
+                .collect();
+
+            // Iteratively make this bigger
+            loop {
+                let new_successor_map: HashMap<Label, HashSet<Label>> = successor_map
+                    .iter()
+                    .map(|(lbl, seen)| {
+                        let succs = successor_map
+                            .iter()
+                            .filter_map(|(lbl1, seen1)| {
+                                if seen.contains(lbl1) { Some(seen1) } else { None }
+                            })
+                            .fold(seen.clone(), |l,r| &l | &r);
+                        (*lbl, succs)
+                    })
+                    .collect();
+                if successor_map == new_successor_map {
+                    break;
+                } else {
+                    successor_map = new_successor_map;
+                }
+            }
+
+            // Flip edges
+            flip_edges(successor_map)
+        };
+
+        match (none_branch_to.len(), some_branch_to.len()) {
+            // Base case
+            (0,0) => vec![],
+
+            // Simple blocks
+            (1,0) => {
+                let entry = *none_branch_to.iter().next().expect("Should find exactly one entry");
+
+                if let Some(bb) = blocks.remove(&entry) {
+                    let new_entries = bb.successors();
+                    let BasicBlock { body, terminator } = bb;
+
+                    let mut result = vec![Structure::Simple { entries, body, terminator }];
+                    result.extend(Self::relooper(new_entries, blocks));
+                    result
+                } else {
+                    println!("Nope");
+                    let body = vec![];
+                    let terminator = Jump(StructureLabel::GoTo(entry));
+
+                    vec![Structure::Simple { entries, body, terminator }]
+                }
+            }
+
+            // Skipping to blocks placed later
+            _ if !absent.is_empty() => {
+                if present.is_empty() {
+                    vec![]
+                } else {
+                    let branches = absent.into_iter().map(|lbl| (lbl,vec![])).collect();
+                    let then = Self::relooper(present, blocks);
+                    vec![Structure::Multiple { entries, branches, then }]
+                }
+            }
+
+            // Loops
+            (0, _) => {
+
+                let new_returns: HashSet<Label> = strict_reachable_from
+                    .iter()
+                    .filter(|&(lbl, reachable)| blocks.contains_key(lbl) && entries.contains(lbl))
+                    .flat_map(|(_, ref reachable)| reachable.iter())
+                    .cloned()
+                    .collect();
+
+                // Partition blocks into those belonging in or after the loop
+                let (mut body_blocks, follow_blocks): (HashMap<Label, BasicBlock<StructureLabel>>, HashMap<Label, BasicBlock<StructureLabel>>) = blocks
+                    .into_iter()
+                    .partition(|&(ref lbl, _)| new_returns.contains(lbl));
+
+                let follow_entries = out_edges(&body_blocks);
+
+                // Rename some `GoTo`s in the loop body to `ExitTo`s
+                for (_, bb) in body_blocks.iter_mut() {
+                    for lbl in bb.terminator.get_labels_mut() {
+                        if let &mut StructureLabel::GoTo(label) = lbl {
+                            if entries.contains(&label) || follow_entries.contains(&label) {
+                                *lbl = StructureLabel::ExitTo(label)
+                            }
+                        }
+                    }
+                }
+
+                let children = Self::relooper(entries.clone(), body_blocks);
+
+                let mut result = vec![Structure::Loop { entries, body: children }];
+                result.extend(Self::relooper(follow_entries, follow_blocks));
+                result
+            }
+
+            _ => {
+
+                // Like `strict_reachable_from`, but a entries also reach themselves
+                let mut reachable_from: HashMap<Label, HashSet<Label>> = strict_reachable_from;
+                for entry in &entries {
+                    reachable_from.entry(*entry).or_insert(HashSet::new()).insert(*entry);
+                }
+
+                // Blocks that are reached by only one label
+                let singly_reached: HashMap<Label, HashSet<Label>> = flip_edges(reachable_from
+                    .into_iter()
+                    .map(|(lbl, reachable)| (lbl, &reachable & &entries))
+                    .filter(|&(lbl, ref reachable)| reachable.len() == 1)
+                    .collect()
+                );
+
+                let handled_entries: HashMap<Label, HashMap<Label, BasicBlock<StructureLabel>>> = singly_reached
+                    .into_iter()
+                    .map(|(lbl, within)| {
+                        let val = blocks
+                            .iter()
+                            .filter(|&(k, _)| within.contains(k))
+                            .map(|(&k, v)| (k, v.clone()))
+                            .collect();
+                        (lbl, val)
+                    })
+                    .collect();
+
+                let unhandled_entries: HashSet<Label> = entries
+                    .iter()
+                    .filter(|e| !handled_entries.contains_key(e))
+                    .cloned()
+                    .collect();
+
+                let mut handled_blocks: HashMap<Label, BasicBlock<StructureLabel>> = HashMap::new();
+                for (_, map) in &handled_entries {
+                    for (k, v) in map {
+                        handled_blocks.entry(*k).or_insert(v.clone());
+                    }
+                }
+                let handled_blocks = handled_blocks;
+
+                let follow_blocks: HashMap<Label, BasicBlock<StructureLabel>> = blocks
+                    .into_iter()
+                    .filter(|&(lbl, _)| handled_blocks.contains_key(&lbl))
+                    .collect();
+
+                let follow_entries: HashSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
+
+                let mut all_handlers: HashMap<Label, Vec<Structure>> = handled_entries
+                    .into_iter()
+                    .map(|(lbl, blocks)| {
+                        let entries: HashSet<Label> = vec![lbl].into_iter().collect();
+                        (lbl, Self::relooper(entries, blocks))
+                    })
+                    .collect();
+
+                let handler_keys: HashSet<Label> = all_handlers.keys().cloned().collect();
+                let (then, branches) = if handler_keys == entries {
+                    let a_key = *all_handlers.keys().next().expect("no handlers found");
+                    let last_handler = all_handlers.remove(&a_key).expect("just got this key");
+                    (last_handler, all_handlers)
+                } else {
+                    (vec![], all_handlers)
+                };
+
+                let mut result = vec![Structure::Multiple { entries, branches, then }];
+                result.extend(Self::relooper(follow_entries, follow_blocks));
+                result
+            }
+        }
+    }
+
+    pub fn structured_cfg(root: &Vec<Structure>) -> Vec<Stmt> {
+        Self::structured_cfg_help(vec![], &HashSet::new(), root, &mut HashSet::new())
+    }
+
+    fn structured_cfg_help(
+        exits: Vec<(Label, HashMap<Label, (HashSet<Label>, ExitStyle)>)>,
+        next: &HashSet<Label>,
+        root: &Vec<Structure>,
+        used_loop_labels: &mut HashSet<Label>,
+    ) -> Vec<Stmt> {
+
+        let mut next: &HashSet<Label> = next;
+        let mut rest: Vec<Stmt> = vec![];
+
+        for structure in root.iter().rev() {
+            let mut new_rest: Vec<Stmt> = vec![];
+
+            match structure {
+                &Structure::Simple { ref body, ref terminator, .. } => {
+                    new_rest.extend(body.clone());
+
+                    let insert_goto = |to: Label, target: &HashSet<Label>, stmts: Vec<Stmt>| -> Vec<Stmt> {
+                        if target.len() == 1 {
+                            stmts
+                        } else {
+                            let mut result = mk_goto(to);
+                            result.extend(stmts);
+                            result
+                        }
+                    };
+
+                    let mut branch = |slbl: &StructureLabel| -> Vec<Stmt> {
+                        match slbl {
+                            &StructureLabel::Nested(ref nested) => Cfg::structured_cfg_help(exits.clone(), next, nested, used_loop_labels),
+                            &StructureLabel::GoTo(to) | &StructureLabel::ExitTo(to) if next.contains(&to) => insert_goto(to, &next, vec![]),
+                            &StructureLabel::ExitTo(to) => {
+
+                                let mut immediate = true;
+                                for &(label, ref local) in &exits {
+                                    if let Some(&(ref follow, exit_style)) = local.get(&to) {
+                                        return insert_goto(to, follow, mk_exit(immediate, exit_style, label))
+                                    }
+                                    immediate = false;
+                                }
+
+                                panic!("Not a valid exit - nothing to exit to")
+                            }
+                            _ => panic!("Not a valid exit"),
+                        }
+                    };
+
+                    new_rest.extend(match terminator {
+                        &End => vec![],
+                        &Jump(ref to) => branch(to),
+                        &Branch(ref c, ref t, ref f) => mk_if(c.clone(), branch(t), branch(f)),
+                        &Switch { ref expr, ref cases, ref default } => unimplemented!(),
+                    });
+                }
+
+                &Structure::Multiple { ref branches, ref then, .. } => {
+                    let cases: Vec<(Label, Vec<Stmt>)> = branches
+                        .iter()
+                        .map(|(lbl, body)| (*lbl, Self::structured_cfg_help(exits.clone(), next, body, used_loop_labels)))
+                        .collect();
+                    let then: Vec<Stmt> = Self::structured_cfg_help(exits.clone(), next, then, used_loop_labels);
+
+                    new_rest.extend(mk_match(cases, then));
+                }
+
+                &Structure::Loop { ref body, ref entries } => {
+                    let label = entries.iter().next().expect("there were no labels");
+
+                    let mut these_exits = HashMap::new();
+                    these_exits.extend(entries
+                        .iter()
+                        .map(|e| (*e, (entries.clone(), ExitStyle::Continue)))
+                    );
+                    these_exits.extend(next
+                        .iter()
+                        .map(|e| (*e, (entries.clone(), ExitStyle::Break)))
+                    );
+
+                    let mut exits_new = vec![(*label, these_exits)];
+                    exits_new.extend(exits.clone());
+
+                    let body = Self::structured_cfg_help(exits_new, entries, body, used_loop_labels);
+                    let loop_lbl = if used_loop_labels.contains(label) { Some(*label) } else { None };
+                    new_rest.extend(mk_loop(loop_lbl, body));
+                }
+            }
+
+            new_rest.extend(rest);
+
+            rest = new_rest;
+            next = structure.get_entries();
+        }
+
+        rest
+    }
+
+    fn has_multiple(root: &Vec<Structure>) -> bool {
+        root.iter().any(|structure| {
+            match structure {
+                &Structure::Simple { ref terminator, .. } => terminator
+                    .get_labels()
+                    .into_iter()
+                    .any(|structure_label|
+                        match structure_label {
+                            &StructureLabel::Nested(ref nested) => Self::has_multiple(nested),
+                            _ => false,
+                        }
+                    ),
+                &Structure::Multiple { .. } => return true,
+                &Structure::Loop { ref body, .. } => Self::has_multiple(body),
+            }
+        })
     }
 }
 
@@ -256,7 +729,7 @@ struct CfgBuilder {
 /// This impl block deals with creating control flow graphs
 impl CfgBuilder {
     /// Add a basic block to the control flow graph, specifying under which label to insert it.
-    fn add_block(&mut self, lbl: Label, bb: BasicBlock) -> () {
+    fn add_block(&mut self, lbl: Label, bb: BasicBlock<Label>) -> () {
         match self.graph.nodes.insert(lbl, bb) {
             None => { },
             Some(_) => panic!("Label {:?} cannot identify two basic blocks", lbl),
@@ -265,7 +738,7 @@ impl CfgBuilder {
 
     /// Add a basic block to the control flow graph, creating and returning a fresh label under
     /// which to insert it.
-    fn add_fresh_block(&mut self, bb: BasicBlock) -> Label {
+    fn add_fresh_block(&mut self, bb: BasicBlock<Label>) -> Label {
         let lbl = self.fresh_label();
         self.add_block(lbl, bb);
         lbl
@@ -304,8 +777,8 @@ impl CfgBuilder {
         &mut self,
         translator: &Translation,
         stmt_id: CStmtId,
-        continuation: BasicBlock
-    ) -> BasicBlock {
+        continuation: BasicBlock<Label>
+    ) -> BasicBlock<Label> {
         match translator.ast_context.index(stmt_id).kind {
             CStmtKind::Empty => continuation,
 
@@ -325,7 +798,7 @@ impl CfgBuilder {
 
                 BasicBlock {
                     body: stmts,
-                    terminator: Terminator::End,
+                    terminator: End,
                 }
             }
 
@@ -357,7 +830,7 @@ impl CfgBuilder {
                 let WithStmts { stmts, val: cond } = translator.convert_condition(true, scrutinee);
                 BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Branch(cond, then_entry, else_entry),
+                    terminator: Branch(cond, then_entry, else_entry),
                 }
             }
 
@@ -371,7 +844,7 @@ impl CfgBuilder {
                 let WithStmts { stmts, val: cond } = translator.convert_condition(true, condition);
                 self.add_block(cond_entry, BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Branch(cond, body_entry, cont_label),
+                    terminator: Branch(cond, body_entry, cont_label),
                 });
 
                 // Generate the 'body' block
@@ -416,7 +889,7 @@ impl CfgBuilder {
                 let WithStmts { stmts, val: cond } = translator.convert_condition(true, condition);
                 self.add_block(cond_entry, BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Branch(cond, body_entry, cont_label),
+                    terminator: Branch(cond, body_entry, cont_label),
                 });
 
                 BasicBlock::new_jump(body_entry)
@@ -434,7 +907,7 @@ impl CfgBuilder {
                         let WithStmts { stmts, val } = translator.convert_condition(true, cond);
                         self.add_block(cond_entry, BasicBlock {
                             body: stmts,
-                            terminator: Terminator::Branch(val, body_entry, cont_label),
+                            terminator: Branch(val, body_entry, cont_label),
                         });
                     }
                     None => self.add_block(cond_entry, BasicBlock::new_jump(body_entry)),
@@ -442,7 +915,7 @@ impl CfgBuilder {
 
                 // Generate the 'body'/'increment' block
                 let increment_bb = BasicBlock {
-                    terminator: Terminator::Jump(cond_entry),
+                    terminator: Jump(cond_entry),
                     body: match increment {
                         None => vec![],
                         Some(inc) => translator.convert_expr(ExprUse::Unused, inc).stmts,
@@ -548,7 +1021,7 @@ impl CfgBuilder {
                 let WithStmts { stmts, val } = translator.convert_expr(ExprUse::RValue, scrutinee);
                 BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Switch {
+                    terminator: Switch {
                         expr: val,
                         cases: switch_case.cases,
                         default: switch_case.default.unwrap_or(cont_label),
@@ -587,7 +1060,7 @@ impl CfgBuilder {
 
                 let bb = BasicBlock {
                     body: stmts,
-                    terminator: Terminator::End,
+                    terminator: End,
                 };
 
                 self.add_block(lbl, bb);
@@ -607,7 +1080,7 @@ impl CfgBuilder {
 
                 let cond_bb = BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Branch(cond_val, then_entry, else_entry),
+                    terminator: Branch(cond_val, then_entry, else_entry),
                 };
                 self.add_block(lbl, cond_bb);
 
@@ -620,7 +1093,7 @@ impl CfgBuilder {
                 if let Some((new_then_entry, then_stmts)) = then_stuff {
                     let then_bb = BasicBlock {
                         body: then_stmts,
-                        terminator: Terminator::Jump(next_entry),
+                        terminator: Jump(next_entry),
                     };
                     self.add_block(new_then_entry, then_bb);
                 }
@@ -635,7 +1108,7 @@ impl CfgBuilder {
                     if let Some((new_else_entry, else_stmts)) = else_stuff {
                         let else_bb = BasicBlock {
                             body: else_stmts,
-                            terminator: Terminator::Jump(next_entry),
+                            terminator: Jump(next_entry),
                         };
                         self.add_block(new_else_entry, else_bb);
                     }
@@ -653,7 +1126,7 @@ impl CfgBuilder {
 
                 let prev_bb = BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Jump(cond_entry),
+                    terminator: Jump(cond_entry),
                 };
                 self.add_block(lbl, prev_bb);
 
@@ -661,7 +1134,7 @@ impl CfgBuilder {
                 let WithStmts { stmts: cond_stmts, val: cond_val } = translator.convert_condition(true, condition);
                 let cond_bb = BasicBlock {
                     body: cond_stmts,
-                    terminator: Terminator::Branch(cond_val, body_entry, next_entry),
+                    terminator: Branch(cond_val, body_entry, next_entry),
                 };
                 self.add_block(cond_entry, cond_bb);
 
@@ -677,7 +1150,7 @@ impl CfgBuilder {
                 if let Some((body_new_entry, body_stmts)) = body_stuff {
                     let body_bb = BasicBlock {
                         body: body_stmts,
-                        terminator: Terminator::Jump(cond_entry),
+                        terminator: Jump(cond_entry),
                     };
                     self.add_block(body_new_entry, body_bb);
                 }
@@ -697,7 +1170,7 @@ impl CfgBuilder {
 
                 let prev_bb = BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Jump(body_entry),
+                    terminator: Jump(body_entry),
                 };
                 self.add_block(lbl, prev_bb);
 
@@ -713,7 +1186,7 @@ impl CfgBuilder {
                 if let Some((body_new_entry, body_stmts)) = body_stuff {
                     let body_bb = BasicBlock {
                         body: body_stmts,
-                        terminator: Terminator::Jump(cond_entry),
+                        terminator: Jump(cond_entry),
                     };
                     self.add_block(body_new_entry, body_bb);
                 }
@@ -725,7 +1198,7 @@ impl CfgBuilder {
                 let WithStmts { stmts: cond_stmts, val: cond_val } = translator.convert_condition(true, condition);
                 let cond_bb = BasicBlock {
                     body: cond_stmts,
-                    terminator: Terminator::Branch(cond_val, body_entry, next_entry),
+                    terminator: Branch(cond_val, body_entry, next_entry),
                 };
                 self.add_block(cond_entry, cond_bb);
 
@@ -751,7 +1224,7 @@ impl CfgBuilder {
                 if let Some((init_lbl, init_stmts)) = init_stuff {
                     let init_bb = BasicBlock {
                         body: init_stmts,
-                        terminator: Terminator::Jump(cond_entry),
+                        terminator: Jump(cond_entry),
                     };
                     self.add_block(init_lbl, init_bb);
                 }
@@ -762,7 +1235,7 @@ impl CfgBuilder {
                         let WithStmts { stmts, val } = translator.convert_condition(true, cond);
                         self.add_block(cond_entry, BasicBlock {
                             body: stmts,
-                            terminator: Terminator::Branch(val, body_entry, next_label),
+                            terminator: Branch(val, body_entry, next_label),
                         });
                     }
                     None => self.add_block(cond_entry, BasicBlock::new_jump(body_entry)),
@@ -786,7 +1259,7 @@ impl CfgBuilder {
                     body_stmts.extend(inc_stmts);
 
                     let body_inc_bb = BasicBlock {
-                        terminator: Terminator::Jump(cond_entry),
+                        terminator: Jump(cond_entry),
                         body: body_stmts
                     };
                     self.add_block(body_new_lbl, body_inc_bb);
@@ -802,7 +1275,7 @@ impl CfgBuilder {
 
                 let prev_bb = BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Jump(this_label),
+                    terminator: Jump(this_label),
                 };
                 self.add_block(lbl, prev_bb);
 
@@ -815,7 +1288,7 @@ impl CfgBuilder {
                 let tgt_label = Label::FromC(label_id);
                 let prev_bb = BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Jump(tgt_label),
+                    terminator: Jump(tgt_label),
                 };
                 self.add_block(lbl, prev_bb);
 
@@ -844,7 +1317,7 @@ impl CfgBuilder {
                 let tgt_label = *self.break_labels.last().expect("Nothing to 'break' to");
                 let prev_bb = BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Jump(tgt_label),
+                    terminator: Jump(tgt_label),
                 };
                 self.add_block(lbl, prev_bb);
 
@@ -855,7 +1328,7 @@ impl CfgBuilder {
                 let tgt_label = *self.continue_labels.last().expect("Nothing to 'continue' to");
                 let prev_bb = BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Jump(tgt_label),
+                    terminator: Jump(tgt_label),
                 };
                 self.add_block(lbl, prev_bb);
 
@@ -867,7 +1340,7 @@ impl CfgBuilder {
 
                 let prev_bb = BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Jump(this_label),
+                    terminator: Jump(this_label),
                 };
                 self.add_block(lbl, prev_bb);
 
@@ -888,7 +1361,7 @@ impl CfgBuilder {
 
                 let prev_bb = BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Jump(this_label),
+                    terminator: Jump(this_label),
                 };
                 self.add_block(lbl, prev_bb);
 
@@ -928,7 +1401,7 @@ impl CfgBuilder {
                 // conversion of the body to make the right terminator)
                 let cond_bb = BasicBlock {
                     body: stmts,
-                    terminator: Terminator::Switch {
+                    terminator: Switch {
                         expr: cond_val,
                         cases: switch_case.cases,
                         default: switch_case.default.unwrap_or(next_label),
@@ -972,9 +1445,9 @@ impl Cfg {
         for (lbl, &BasicBlock { ref body, ref terminator }) in self.nodes.iter() {
 
             let pretty_terminator = match terminator {
-                &Terminator::End | &Terminator::Jump(_) => String::from(""),
-                &Terminator::Branch(ref cond, _, _) => format!("\n{}",pprust::expr_to_string(cond.deref())),
-                &Terminator::Switch { ref expr, .. } => format!("\n{}",pprust::expr_to_string(expr.deref())),
+                &End | &Jump(_) => String::from(""),
+                &Branch(ref cond, _, _) => format!("\n{}",pprust::expr_to_string(cond.deref())),
+                &Switch { ref expr, .. } => format!("\n{}",pprust::expr_to_string(expr.deref())),
             };
 
             // A node
@@ -997,13 +1470,13 @@ impl Cfg {
 
             // All the edges starting from this node
             let edges: Vec<(String, Label)> = match terminator {
-                &Terminator::End => vec![],
-                &Terminator::Jump(tgt) => vec![(String::from(""),tgt)],
-                &Terminator::Branch(_, tru, fal) => vec![
+                &End => vec![],
+                &Jump(tgt) => vec![(String::from(""),tgt)],
+                &Branch(_, tru, fal) => vec![
                     (String::from("true"),tru),
                     (String::from("false"),fal)
                 ],
-                &Terminator::Switch { ref cases, default, .. } => {
+                &Switch { ref cases, default, .. } => {
                     let mut cases: Vec<(String, Label)> = cases
                         .iter()
                         .map(|&(ref expr, tgt)| (pprust::expr_to_string(expr.deref()), tgt))
