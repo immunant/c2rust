@@ -1,4 +1,19 @@
 
+//! # Control Flow Graph analysis
+//!
+//! Through `switch`/`case`/`default` and labels/`goto`, the C language supports jumping directly
+//! from one position in the code to another. Rust supports on structured control flow constructs.
+//! This means that during translation, we need to somehow eliminate the unstructured control-flow
+//! constructs C has. This module is where that happens.
+//!
+//! In a nutshell, here are the steps:
+//!
+//!   - given an entry point C statement, translate it into a CFG consisting of `BasicBlock<Label>`
+//!   - simplify this CFG (by eliminating empty blocks that jump unconditionally to the next block)
+//!   - use the _Relooper algorithm_ to convert this CFG into a sequence of `Structure`s
+//!   - convert the `Vec<Structure>` back into a `Vec<Stmt>`
+//!
+
 use syntax;
 use syntax::ast::*;
 use syntax::ptr::P;
@@ -16,7 +31,7 @@ use std::ops::Deref;
 use translator::*;
 use c_ast::*;
 
-/// These labels identify basic blocks in the CFG.
+/// These labels identify basic blocks in a regular CFG.
 #[derive(Copy,Clone,PartialEq,Eq,PartialOrd,Ord,Debug,Hash)]
 pub enum Label {
     /// Some labels come directly from the C side (namely those created from labels, cases, and
@@ -37,6 +52,7 @@ impl Label {
     }
 }
 
+/// These labels identify _structure_ basic blocks in a structure CFG.
 #[derive(Clone,Debug)]
 pub enum StructureLabel {
     GoTo(Label),
@@ -76,6 +92,7 @@ impl Structure {
     }
 }
 
+/// Generalized basic block.
 #[derive(Clone, Debug)]
 struct BasicBlock<L> {
     /// Jump-free code
@@ -87,10 +104,7 @@ struct BasicBlock<L> {
 
 impl<L> BasicBlock<L> {
     fn new(terminator: GenTerminator<L>) -> Self {
-        BasicBlock {
-            body: vec![],
-            terminator,
-        }
+        BasicBlock { body: vec![], terminator }
     }
 
     fn new_jump(target: L) -> Self {
@@ -124,34 +138,35 @@ impl BasicBlock<StructureLabel> {
     }
 }
 
-type Terminator = GenTerminator<Label>;
-type StructuredTerminator = GenTerminator<StructureLabel>;
-
+/// Represents the control flow choices one can make when at the end of a `BasicBlock`.
 #[derive(Clone, Debug)]
-pub enum GenTerminator<L> {
+pub enum GenTerminator<Lbl> {
     /// End of control-flow. For example: the last statement in a function, or a return
     End,
 
     /// Unconditional branch to another block
-    Jump(L),
+    Jump(Lbl),
 
     /// Conditional branch to another block. The expression is expected to be a boolean Rust
     /// expression
-    Branch(P<Expr>, L, L),
+    Branch(P<Expr>, Lbl, Lbl),
 
     /// Multi-way branch.
     ///
     /// FIXME: specify more invariants on `expr`/`cases`
     Switch {
         expr: P<Expr>,
-        cases: Vec<(P<Expr>, L)>,
-        default: L
+        cases: Vec<(P<Expr>, Lbl)>,
+        default: Lbl
     }
 }
 
+// We use this a lot, so import its constructors
 use self::GenTerminator::*;
 
 impl<L> GenTerminator<L> {
+
+    /// Produce a new terminator by transforming all of the labels in that terminator.
     fn map_labels<F: Fn(&L) -> N, N>(&self, func: F) -> GenTerminator<N> {
         match self {
             &End => End,
@@ -165,6 +180,7 @@ impl<L> GenTerminator<L> {
         }
     }
 
+    /// Extract references to all of the labels in the terminator
     fn get_labels(&self) -> Vec<&L> {
         match self {
             &End => vec![],
@@ -175,6 +191,7 @@ impl<L> GenTerminator<L> {
         }
     }
 
+    /// Extract mutable references to all of the labels in the terminator
     fn get_labels_mut(&mut self) -> Vec<&mut L> {
         match self {
             &mut End => vec![],
@@ -194,7 +211,10 @@ pub struct SwitchCases {
     default: Option<Label>,
 }
 
-/// A CFG graph.
+/// A CFG graph of regular basic blocks.
+///
+/// TODO: consider parametrizing this:
+/// `struct Cfg<Lbl> { entry: HashSet<Label>, nodes: HashMap<Label, BasicBlock<Lbl>> }`
 #[derive(Clone, Debug)]
 pub struct Cfg {
     /// Entry point in the graph
@@ -279,7 +299,7 @@ impl Cfg {
             terminator: End,
         };
 
-        let bb = translator.with_scope(|| cfg_builder.convert_stmt_cfg(translator, stmt_id, end));
+        let bb = translator.with_scope(|| cfg_builder.convert_stmt_cfg_backward(translator, stmt_id, end));
         cfg_builder.add_block(entry, bb);
 
         let graph = cfg_builder.graph;
@@ -292,7 +312,7 @@ impl Cfg {
         let mut cfg_builder = CfgBuilder::new();
         let entry = cfg_builder.graph.entry;
 
-        let body_stuff = translator.with_scope(|| cfg_builder.convert_stmt_cfg_new(translator, stmt_id, (entry, vec![])));
+        let body_stuff = translator.with_scope(|| cfg_builder.convert_stmt_cfg_forward(translator, stmt_id, (entry, vec![])));
         if let Some((body_lbl, body_stmts)) = body_stuff {
             let body_bb = BasicBlock {
                 body: body_stmts,
@@ -375,11 +395,13 @@ impl Cfg {
         Cfg { entry, nodes }
     }
 
+    /// Apply the relooper algorithm, then convert the resulting structures back into Rust statements
     pub fn into_stmts(self) -> Vec<Stmt> {
         let structures = self.reloop();
         Self::structured_cfg(&structures)
     }
 
+    /// Convert the CFG into a sequence of structures
     pub fn reloop(self) -> Vec<Structure> {
 
         let entries = vec![self.entry].into_iter().collect();
@@ -394,6 +416,9 @@ impl Cfg {
         Self::relooper(entries, blocks)
     }
 
+    /// Recursive helper for `reloop`
+    ///
+    /// TODO: move this into `reloop`?
     fn relooper(entries: HashSet<Label>, mut blocks: HashMap<Label, BasicBlock<StructureLabel>>) -> Vec<Structure> {
 
         // Edges in the graph pointing out of the graph
@@ -607,10 +632,14 @@ impl Cfg {
         }
     }
 
+    /// Convert a sequence of structures produced by Relooper back into Rust statements
     pub fn structured_cfg(root: &Vec<Structure>) -> Vec<Stmt> {
         Self::structured_cfg_help(vec![], &HashSet::new(), root, &mut HashSet::new())
     }
 
+    /// Recursive helper for `structured_cfg`
+    ///
+    /// TODO: move this into `structured_cfg`?
     fn structured_cfg_help(
         exits: Vec<(Label, HashMap<Label, (HashSet<Label>, ExitStyle)>)>,
         next: &HashSet<Label>,
@@ -794,7 +823,10 @@ impl CfgBuilder {
     ///
     /// This is the workhorse for generating control flow graphs. By passing in a continuation
     /// basic block, we can avoid making a lot of small blocks.
-    fn convert_stmt_cfg(
+    /// 
+    /// TODO: when convinced `convert_stmt_cfg_forward` isn't worse than `convert_stmt_cfg_backward`,
+    /// delete this.
+    fn convert_stmt_cfg_backward(
         &mut self,
         translator: &Translation,
         stmt_id: CStmtId,
@@ -828,7 +860,7 @@ impl CfgBuilder {
                 let cont_label = self.add_fresh_block(continuation);
 
                 let then_entry = {
-                    let then_bb = self.convert_stmt_cfg(
+                    let then_bb = self.convert_stmt_cfg_backward(
                         translator,
                         true_variant,
                         BasicBlock::new_jump(cont_label),
@@ -839,7 +871,7 @@ impl CfgBuilder {
                 let else_entry = match false_variant {
                     None => cont_label,
                     Some(false_var) => {
-                        let else_bb = self.convert_stmt_cfg(
+                        let else_bb = self.convert_stmt_cfg_backward(
                             translator,
                             false_var,
                             BasicBlock::new_jump(cont_label),
@@ -872,7 +904,7 @@ impl CfgBuilder {
                 self.break_labels.push(cont_label);
                 self.continue_labels.push(cond_entry);
 
-                let body_bb = self.convert_stmt_cfg(
+                let body_bb = self.convert_stmt_cfg_backward(
                     translator,
                     body,
                     BasicBlock::new_jump(cond_entry),
@@ -896,7 +928,7 @@ impl CfgBuilder {
                 self.break_labels.push(cont_label);
                 self.continue_labels.push(cond_entry);
 
-                let body_bb = self.convert_stmt_cfg(
+                let body_bb = self.convert_stmt_cfg_backward(
                     translator,
                     body,
                     BasicBlock::new_jump(cond_entry),
@@ -946,7 +978,7 @@ impl CfgBuilder {
                 self.break_labels.push(cont_label);
                 self.continue_labels.push(cond_entry);
 
-                let body_bb = self.convert_stmt_cfg(translator, body, increment_bb);
+                let body_bb = self.convert_stmt_cfg_backward(translator, body, increment_bb);
                 self.add_block(body_entry, body_bb);
 
                 self.break_labels.pop();
@@ -955,7 +987,7 @@ impl CfgBuilder {
                 // Return a next block containing the 'init'
                 match init {
                     None => BasicBlock::new_jump(cond_entry),
-                    Some(init) => self.convert_stmt_cfg(
+                    Some(init) => self.convert_stmt_cfg_backward(
                         translator,
                         init,
                         BasicBlock::new_jump(cond_entry),
@@ -965,7 +997,7 @@ impl CfgBuilder {
 
             CStmtKind::Label(sub_stmt) => {
                 let this_label = Label::FromC(stmt_id);
-                let this_block = self.convert_stmt_cfg(translator, sub_stmt, continuation);
+                let this_block = self.convert_stmt_cfg_backward(translator, sub_stmt, continuation);
 
                 self.add_block(this_label, this_block);
 
@@ -978,7 +1010,7 @@ impl CfgBuilder {
                 stmts
                     .iter()
                     .rev()
-                    .fold(continuation, |bb, &stmt| self.convert_stmt_cfg(translator, stmt, bb))
+                    .fold(continuation, |bb, &stmt| self.convert_stmt_cfg_backward(translator, stmt, bb))
             }),
 
             CStmtKind::Expr(expr) => continuation.prepend_stmts(
@@ -995,7 +1027,7 @@ impl CfgBuilder {
 
             CStmtKind::Case(case_expr, sub_stmt) => {
                 let this_label = Label::FromC(stmt_id);
-                let this_block = self.convert_stmt_cfg(translator, sub_stmt, continuation);
+                let this_block = self.convert_stmt_cfg_backward(translator, sub_stmt, continuation);
 
                 self.add_block(this_label, this_block);
 
@@ -1011,7 +1043,7 @@ impl CfgBuilder {
 
             CStmtKind::Default(sub_stmt) => {
                 let this_label = Label::FromC(stmt_id);
-                let this_block = self.convert_stmt_cfg(translator, sub_stmt, continuation);
+                let this_block = self.convert_stmt_cfg_backward(translator, sub_stmt, continuation);
 
                 self.add_block(this_label, this_block);
 
@@ -1034,7 +1066,7 @@ impl CfgBuilder {
                 // We don't care about the BasicBlock this returns because it is impossible to just
                 // enter the switch body statement - you have to jump into it via a 'case' or a
                 // 'default'.
-                self.convert_stmt_cfg(translator, body, BasicBlock::new_jump(cont_label));
+                self.convert_stmt_cfg_backward(translator, body, BasicBlock::new_jump(cont_label));
 
                 self.break_labels.pop();
                 let switch_case = self.switch_expr_cases.pop().expect("No 'SwitchCases' to pop");
@@ -1052,8 +1084,11 @@ impl CfgBuilder {
         }
     }
 
-    /// TODO doc
-    fn convert_stmt_cfg_new(
+    /// Same as `convert_stmt_cfg_backward`, but the recursion is cut differently. Instead of
+    /// visiting statements in reverse order, visit them in order.
+    ///
+    /// TODO: better doc here
+    fn convert_stmt_cfg_forward(
         &mut self,
         translator: &Translation,
         stmt_id: CStmtId,
@@ -1106,7 +1141,7 @@ impl CfgBuilder {
                 self.add_block(lbl, cond_bb);
 
                 // Then case
-                let then_stuff = self.convert_stmt_cfg_new(
+                let then_stuff = self.convert_stmt_cfg_forward(
                     translator,
                     true_variant,
                     (then_entry, vec![]),
@@ -1121,7 +1156,7 @@ impl CfgBuilder {
 
                 // Else case
                 if let Some(false_var) = false_variant {
-                    let else_stuff = self.convert_stmt_cfg_new(
+                    let else_stuff = self.convert_stmt_cfg_forward(
                         translator,
                         false_var,
                         (else_entry, vec![]),
@@ -1163,7 +1198,7 @@ impl CfgBuilder {
                 self.break_labels.push(next_entry);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_cfg_new(
+                let body_stuff = self.convert_stmt_cfg_forward(
                     translator,
                     body,
                     (body_entry, vec![]),
@@ -1199,7 +1234,7 @@ impl CfgBuilder {
                 self.break_labels.push(next_entry);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_cfg_new(
+                let body_stuff = self.convert_stmt_cfg_forward(
                     translator,
                     body,
                     (body_entry, vec![]),
@@ -1236,7 +1271,7 @@ impl CfgBuilder {
                 // Init
                 let init_stuff = match init {
                     None => Some((lbl, stmts)),
-                    Some(init) => self.convert_stmt_cfg_new(
+                    Some(init) => self.convert_stmt_cfg_forward(
                         translator,
                         init,
                         (lbl, stmts),
@@ -1266,7 +1301,7 @@ impl CfgBuilder {
                 self.break_labels.push(next_label);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_cfg_new(translator, body, (body_entry, vec![]));
+                let body_stuff = self.convert_stmt_cfg_forward(translator, body, (body_entry, vec![]));
 
                 self.break_labels.pop();
                 self.continue_labels.pop();
@@ -1301,7 +1336,7 @@ impl CfgBuilder {
                 self.add_block(lbl, prev_bb);
 
                 // Sub stmt
-                self.convert_stmt_cfg_new(translator, sub_stmt, (this_label, vec![]))
+                self.convert_stmt_cfg_forward(translator, sub_stmt, (this_label, vec![]))
             }
 
             CStmtKind::Goto(label_id) => {
@@ -1322,7 +1357,7 @@ impl CfgBuilder {
 
                 for stmt in comp_stmts {
                     let (lbl,stmts) = lbl_stmts.unwrap_or((self.fresh_label(), vec![]));
-                    lbl_stmts = self.convert_stmt_cfg_new(translator, *stmt, (lbl, stmts));
+                    lbl_stmts = self.convert_stmt_cfg_forward(translator, *stmt, (lbl, stmts));
                 }
 
                 lbl_stmts
@@ -1374,7 +1409,7 @@ impl CfgBuilder {
                     .push((branch, this_label));
 
                 // Sub stmt
-                self.convert_stmt_cfg_new(translator, sub_stmt, (this_label, vec![]))
+                self.convert_stmt_cfg_forward(translator, sub_stmt, (this_label, vec![]))
             }
 
             CStmtKind::Default(sub_stmt) => {
@@ -1394,7 +1429,7 @@ impl CfgBuilder {
                     .get_or_insert(this_label);
 
                 // Sub stmt
-                self.convert_stmt_cfg_new(translator, sub_stmt, (this_label, vec![]))
+                self.convert_stmt_cfg_forward(translator, sub_stmt, (this_label, vec![]))
             }
 
             CStmtKind::Switch { scrutinee, body } => {
@@ -1413,7 +1448,7 @@ impl CfgBuilder {
                 // We don't care about the label or statements this returns because it is impossible
                 // to just enter the switch body statement - you have to jump into it via a 'case'
                 // or a 'default'.
-                self.convert_stmt_cfg_new(translator, body, (body_label, vec![]));
+                self.convert_stmt_cfg_forward(translator, body, (body_label, vec![]));
 
                 self.break_labels.pop();
                 let switch_case = self.switch_expr_cases.pop().expect("No 'SwitchCases' to pop");
