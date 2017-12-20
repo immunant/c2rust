@@ -168,7 +168,8 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
             &CDeclKind::Typedef { ref name, .. } => Name::TypeName(name),
             &CDeclKind::Function { ref name, .. } => Name::VarName(name),
             // &CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
-            &CDeclKind::Variable { ref ident, .. } => Name::VarName(ident),
+            &CDeclKind::Variable { ref ident, .. }
+              if ast_context.c_decls_top.contains(&decl_id) => Name::VarName(ident),
             _ => Name::NoName,
         };
         match decl_name {
@@ -183,7 +184,7 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
         match t.convert_decl(true, *top_id) {
             Ok(item) => t.items.push(item),
             Err(e) => {
-                let ref k = t.ast_context.index(*top_id).kind;
+                let ref k = t.ast_context.c_decls.get(top_id).map(|x|&x.kind);
                 eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
             },
         }
@@ -276,7 +277,10 @@ impl Translation {
     }
 
     fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> Result<P<Item>, String> {
-        match self.ast_context.index(decl_id).kind {
+
+        match self.ast_context.c_decls.get(&decl_id)
+            .ok_or_else(|| format!("Missing decl {:?}", decl_id))?
+            .kind {
             CDeclKind::Struct { ref fields, .. } => {
                 let name = self.type_converter.borrow_mut().resolve_decl_name(decl_id).unwrap();
 
@@ -551,9 +555,9 @@ impl Translation {
             CStmtKind::If { scrutinee, true_variant, false_variant } =>
                 self.convert_if_stmt(scrutinee, true_variant, false_variant),
 
-            CStmtKind::While { condition, body } => Ok(self.convert_while_stmt(condition, body)),
+            CStmtKind::While { condition, body } => self.convert_while_stmt(condition, body),
 
-            CStmtKind::DoWhile { body, condition } => Ok(self.convert_do_stmt(body, condition)),
+            CStmtKind::DoWhile { body, condition } => self.convert_do_stmt(body, condition),
 
             CStmtKind::ForLoop { init, condition, increment, body } =>
                 self.convert_for_stmt(init, condition, increment, body),
@@ -602,29 +606,29 @@ impl Translation {
     }
 
     /// Convert a C expression to a rust boolean expression
-    fn convert_condition(&self, target: bool, cond_id: CExprId) -> WithStmts<P<Expr>> {
+    fn convert_condition(&self, target: bool, cond_id: CExprId) -> Result<WithStmts<P<Expr>>, String> {
         let ty_id = self.ast_context.index(cond_id).kind.get_type();
 
-        self.convert_expr(ExprUse::RValue, cond_id).unwrap()
-            .map(|e| self.match_bool(target, ty_id, e))
+        Ok(self.convert_expr(ExprUse::RValue, cond_id)?
+            .map(|e| self.match_bool(target, ty_id, e)))
     }
 
-    fn convert_while_stmt(&self, cond_id: CExprId, body_id: CStmtId) -> Vec<Stmt> {
-        let cond = self.convert_condition(true, cond_id);
+    fn convert_while_stmt(&self, cond_id: CExprId, body_id: CStmtId) -> Result<Vec<Stmt>,String> {
+        let cond = self.convert_condition(true, cond_id)?;
         self.loops.push_loop(LoopType::While);
-        let body = self.convert_stmt(body_id).unwrap();
+        let body = self.convert_stmt(body_id)?;
         let loop_ = self.loops.pop_loop();
 
         let rust_cond = cond.to_expr();
         let rust_body = stmts_block(body);
 
-        vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body, loop_.label))]
+        Ok(vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body, loop_.label))])
     }
 
-    fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Vec<Stmt> {
-        let cond = self.convert_condition(false, cond_id);
+    fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Result<Vec<Stmt>,String> {
+        let cond = self.convert_condition(false, cond_id)?;
         self.loops.push_loop(LoopType::DoWhile);
-        let mut body = self.convert_stmt(body_id).unwrap();
+        let mut body = self.convert_stmt(body_id)?;
         let mut loop_ = self.loops.pop_loop();
 
         // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
@@ -646,7 +650,7 @@ impl Translation {
 
         let rust_body = stmts_block(body);
 
-        vec![mk().semi_stmt(mk().loop_expr(rust_body, loop_.label))]
+        Ok(vec![mk().semi_stmt(mk().loop_expr(rust_body, loop_.label))])
     }
 
     fn convert_for_stmt(
@@ -688,7 +692,7 @@ impl Translation {
 
             let looper = match cond_id {
                 None => mk().loop_expr(body_block, loop_.label), // loop
-                Some(i) => mk().while_expr(self.convert_condition(true, i).to_expr(), body_block, loop_.label), // while
+                Some(i) => mk().while_expr(self.convert_condition(true, i)?.to_expr(), body_block, loop_.label), // while
             };
 
             init.push(mk().expr_stmt(looper));
@@ -703,7 +707,7 @@ impl Translation {
         then_id: CStmtId,
         else_id: Option<CStmtId>
     ) -> Result<Vec<Stmt>, String> {
-        let mut cond = self.convert_condition(true, cond_id);
+        let mut cond = self.convert_condition(true, cond_id)?;
         let then_stmts = stmts_block(self.convert_stmt(then_id)?);
         let else_stmts =
             else_id.map(|x| { mk().block_expr(stmts_block(self.convert_stmt(x).unwrap()))});
@@ -859,7 +863,11 @@ impl Translation {
             }
 
             CExprKind::DeclRef(qual_ty, decl_id) => {
-                let decl = &self.ast_context.index(decl_id).kind;
+                let decl =
+                    &self.ast_context.c_decls
+                        .get(&decl_id)
+                        .ok_or_else(||format!("Missing declref {:?}", decl_id))?
+                        .kind;
                 let varname = decl.get_name().expect("expected variable name").to_owned();
                 let rustname = self.renamer.borrow_mut()
                     .get(&varname)
@@ -1007,7 +1015,7 @@ impl Translation {
                 self.convert_unary_operator(use_,op, type_id, arg),
 
             CExprKind::Conditional(_, cond, lhs, rhs) => {
-                let cond = self.convert_condition(true, cond);
+                let cond = self.convert_condition(true, cond)?;
 
                 let lhs = self.convert_expr(use_, lhs)?;
                 let rhs = self.convert_expr(use_, rhs)?;

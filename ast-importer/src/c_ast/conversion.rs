@@ -325,9 +325,10 @@ impl ConversionContext {
         if expected_ty & TYPE != 0 {
 
             // Convert the node
-            let ty_node: &TypeNode = untyped_context.type_nodes
-                .get(&node_id)
-                .expect(format!("Could not find type node {}", node_id).as_ref());
+            let ty_node: &TypeNode = match untyped_context.type_nodes.get(&node_id) {
+                Some(x) => x,
+                None => return,
+            };
 
             match ty_node.tag {
                 TypeTag::TagBool if expected_ty & OTHER_TYPE != 0 => {
@@ -572,9 +573,11 @@ impl ConversionContext {
 
         } else {
             // Convert the node
-            let node: &AstNode = untyped_context.ast_nodes
-                .get(&node_id)
-                .expect(format!("Could not find ast node {}", node_id).as_ref());
+            let node: &AstNode = match untyped_context.ast_nodes.get(&node_id) {
+                Some(x) => x,
+                None => return,
+            };
+
 
             match node.tag {
                 // Statements
