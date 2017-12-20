@@ -24,6 +24,7 @@ pub struct Translation {
     pub ast_context: TypedAstContext,
     renamer: RefCell<Renamer<String>>,
     loops: LoopContext,
+    reloop_cfgs: bool,
     dump_function_cfgs: bool,
 }
 
@@ -136,9 +137,9 @@ fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder 
 }
 
 
-pub fn translate(ast_context: &TypedAstContext, dump_function_cfgs: bool) -> String {
+pub fn translate(ast_context: &TypedAstContext, reloop_cfgs: bool, dump_function_cfgs: bool) -> String {
 
-    let mut t = Translation::new(ast_context.clone(), dump_function_cfgs);
+    let mut t = Translation::new(ast_context.clone(), reloop_cfgs, dump_function_cfgs);
 
     enum Name<'a> {
         VarName(&'a str),
@@ -249,7 +250,7 @@ pub enum ExprUse {
 }
 
 impl Translation {
-    pub fn new(ast_context: TypedAstContext, dump_function_cfgs: bool) -> Translation {
+    pub fn new(ast_context: TypedAstContext, reloop_cfgs: bool, dump_function_cfgs: bool) -> Translation {
         Translation {
             items: vec![],
             type_converter: RefCell::new(TypeConverter::new()),
@@ -267,7 +268,9 @@ impl Translation {
                 "yield",
             ].iter().map(|s| s.to_string()).collect())),
             loops: LoopContext::new(),
-            dump_function_cfgs: dump_function_cfgs,
+
+            reloop_cfgs,
+            dump_function_cfgs,
         }
     }
 
@@ -527,15 +530,22 @@ impl Translation {
         // Function body scope
         self.with_scope(|| {
 
-            let stmts = if self.dump_function_cfgs {
+            let stmts = if self.reloop_cfgs {
                 let graph = Cfg::from_stmt_forward(self, body_id);
 
-                graph
-                    .dump_dot_graph(format!("{}_{}.dot", "cfg", name))
-                    .expect("Failed to write CFG .dot file");
+                if self.dump_function_cfgs {
+                    graph
+                        .dump_dot_graph(format!("{}_{}.dot", "cfg", name))
+                        .expect("Failed to write CFG .dot file");
+                }
 
                 let relooped = graph.reloop();
-//                println!("Relooped:\n{:?}", relooped);
+                /*
+                println!("Relooped:");
+                for s in &relooped {
+                    println!("  {:?}", s);
+                }
+                */
                 Cfg::structured_cfg(&relooped)
             } else {
                 match self.ast_context.index(body_id).kind {

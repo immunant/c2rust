@@ -156,7 +156,7 @@ pub enum GenTerminator<Lbl> {
     /// FIXME: specify more invariants on `expr`/`cases`
     Switch {
         expr: P<Expr>,
-        cases: Vec<(P<Expr>, Lbl)>,
+        cases: Vec<(P<Expr>, Lbl)>, // TODO: support ranges of expressions
         default: Lbl
     }
 }
@@ -229,19 +229,55 @@ fn mk_goto(to: Label) -> Vec<Stmt> {
     unimplemented!()
 }
 
+/// Construct a Rust `if` statement from a condition and then/else branches
 fn mk_if(cond: P<Expr>, then: Vec<Stmt>, els: Vec<Stmt>) -> Vec<Stmt> {
-    let e = if els.is_empty() {
-        mk().ifte_expr(cond, mk().block(then), None as Option<P<Expr>>)
-    } else if then.is_empty() {
-        mk().ifte_expr(mk().unary_expr(syntax::ast::UnOp::Not, cond), mk().block(els), None as Option<P<Expr>>)
-    } else {
-        mk().ifte_expr(cond, mk().block(then), Some(mk().block_expr(mk().block(els))))
+    let s = match (then.is_empty(), els.is_empty()) {
+        (true, true) => mk().semi_stmt(cond),
+        (false, true) => {
+            let if_expr = mk().ifte_expr(cond, mk().block(then), None as Option<P<Expr>>);
+            mk().expr_stmt(if_expr)
+        },
+        (true, false) => {
+            let negated_cond = mk().unary_expr(syntax::ast::UnOp::Not, cond);
+            let if_expr = mk().ifte_expr(negated_cond, mk().block(els), None as Option<P<Expr>>);
+            mk().expr_stmt(if_expr)
+        },
+        (false, false) => {
+            let els_branch = Some(mk().block_expr(mk().block(els)));
+            let if_expr = mk().ifte_expr(cond, mk().block(then), els_branch);
+            mk().expr_stmt(if_expr)
+        }
     };
+
+    vec![s]
+}
+
+fn mk_match(cond: P<Expr>, cases: Vec<(P<Expr>, Vec<Stmt>)>, default: Vec<Stmt>) -> Vec<Stmt> {
+
+    let mut arms: Vec<Arm> = cases
+        .into_iter()
+        .filter(|&(_, ref stmts)| !stmts.is_empty())
+        .map(|(e, stmts)| -> Arm {
+            let pat = mk().lit_pat(e);
+            let body = mk().block_expr(mk().block(stmts));
+            mk().arm(pat, None as Option<P<Expr>>, body)
+        })
+        .collect();
+
+    if !default.is_empty() {
+        arms.push(mk().arm(
+            mk().wild_pat(),
+            None as Option<P<Expr>>,
+            mk().block_expr(mk().block(default))
+        ));
+    }
+
+    let e = mk().match_expr(cond, arms);
 
     vec![mk().expr_stmt(e)]
 }
 
-fn mk_match(cases: Vec<(Label, Vec<Stmt>)>, then: Vec<Stmt>) -> Vec<Stmt> {
+fn mk_goto_table(cases: Vec<(Label, Vec<Stmt>)>, then: Vec<Stmt>) -> Vec<Stmt> {
     unimplemented!()
 }
 
@@ -413,7 +449,9 @@ impl Cfg {
             })
             .collect();
 
-        Self::relooper(entries, blocks)
+        let relooped = Self::relooper(entries, blocks);
+        Self::simplify_structure(relooped)
+       // relooped
     }
 
     /// Recursive helper for `reloop`
@@ -505,7 +543,6 @@ impl Cfg {
                     result.extend(Self::relooper(new_entries, blocks));
                     result
                 } else {
-                    println!("Nope");
                     let body = vec![];
                     let terminator = Jump(StructureLabel::GoTo(entry));
 
@@ -603,7 +640,7 @@ impl Cfg {
 
                 let follow_blocks: HashMap<Label, BasicBlock<StructureLabel>> = blocks
                     .into_iter()
-                    .filter(|&(lbl, _)| handled_blocks.contains_key(&lbl))
+                    .filter(|&(lbl, _)| !handled_blocks.contains_key(&lbl))
                     .collect();
 
                 let follow_entries: HashSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
@@ -630,6 +667,80 @@ impl Cfg {
                 result
             }
         }
+    }
+
+    fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
+
+        // Recursive calls come first
+        let structures: Vec<Structure> = structures
+            .into_iter()
+            .map(|structure: Structure| -> Structure {
+                match structure {
+                    Structure::Loop { entries, body } => {
+                        let body = Self::simplify_structure(body);
+                        Structure::Loop { entries, body }
+                    },
+                    Structure::Multiple { entries, branches, then } => {
+                        let branches = branches
+                            .into_iter()
+                            .map(|(lbl, ss)| (lbl, Self::simplify_structure(ss)))
+                            .collect();
+                        let then = Self::simplify_structure(then);
+                        Structure::Multiple { entries, branches, then }
+                    }
+                    simple => simple,
+
+                }
+            })
+            .collect();
+
+        let mut acc_structures: Vec<Structure> = vec![];
+        for structure in structures.iter().rev() {
+            match structure {
+                &Structure::Simple { ref entries, ref body, ref terminator } => {
+                    match acc_structures.pop() {
+                        Some(Structure::Multiple { entries: _, branches, then }) => {
+                            let rewrite = |t: &StructureLabel| {
+                                if let &StructureLabel::GoTo(ref to) = t {
+                                    let entries: HashSet<_> = vec![*to].into_iter().collect();
+                                    let body: Vec<Stmt> = vec![];
+                                    let terminator = Jump(StructureLabel::GoTo(*to));
+                                    let first_structure = Structure::Simple { entries, body, terminator };
+
+                                    let mut nested: Vec<Structure> = vec![first_structure];
+                                    nested.extend(branches.get(to).cloned().unwrap_or(then.clone()));
+
+                                    StructureLabel::Nested(nested)
+                                } else {
+                                    panic!("simplifyStructure: Simple/Multiple invariants violated")
+                                }
+                            };
+
+                            let terminator = terminator.map_labels(rewrite);
+                            let body = body.clone();
+                            let entries = entries.clone();
+                            acc_structures.push(Structure::Simple { entries, body, terminator });
+                        },
+                        possibly_popped => {
+                            if let Some(popped) = possibly_popped {
+                                acc_structures.push(popped);
+                            }
+
+                            let entries = entries.clone();
+                            let body = body.clone();
+                            let terminator = terminator.clone();
+                            acc_structures.push(Structure::Simple { entries, body, terminator });
+                        }
+                    }
+                }
+
+                other_structure => acc_structures.push(other_structure.clone()),
+            }
+
+        }
+
+        acc_structures.reverse();
+        acc_structures
     }
 
     /// Convert a sequence of structures produced by Relooper back into Rust statements
@@ -691,7 +802,13 @@ impl Cfg {
                         &End => vec![],
                         &Jump(ref to) => branch(to),
                         &Branch(ref c, ref t, ref f) => mk_if(c.clone(), branch(t), branch(f)),
-                        &Switch { ref expr, ref cases, ref default } => unimplemented!(),
+                        &Switch { ref expr, ref cases, ref default } => {
+                            let branched_cases = cases
+                                .iter()
+                                .map(|&(ref c, ref slbl)| (c.clone(), branch(slbl)))
+                                .collect();
+                            mk_match(expr.clone(), branched_cases, branch(default))
+                        },
                     });
                 }
 
@@ -702,7 +819,7 @@ impl Cfg {
                         .collect();
                     let then: Vec<Stmt> = Self::structured_cfg_help(exits.clone(), next, then, used_loop_labels);
 
-                    new_rest.extend(mk_match(cases, then));
+                    new_rest.extend(mk_goto_table(cases, then));
                 }
 
                 &Structure::Loop { ref body, ref entries } => {
@@ -1445,10 +1562,13 @@ impl CfgBuilder {
                 self.break_labels.push(next_label);
                 self.switch_expr_cases.push(SwitchCases::default());
 
-                // We don't care about the label or statements this returns because it is impossible
-                // to just enter the switch body statement - you have to jump into it via a 'case'
-                // or a 'default'.
-                self.convert_stmt_cfg_forward(translator, body, (body_label, vec![]));
+                let body_stuff = self.convert_stmt_cfg_forward(translator, body, (body_label, vec![]));
+                if let Some((body_new_lbl, body_stmts)) = body_stuff {
+                    self.add_block(body_new_lbl, BasicBlock {
+                        body: body_stmts,
+                        terminator: Jump(next_label),
+                    });
+                }
 
                 self.break_labels.pop();
                 let switch_case = self.switch_expr_cases.pop().expect("No 'SwitchCases' to pop");

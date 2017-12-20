@@ -706,6 +706,33 @@ impl Builder {
         }
     }
 
+    pub fn match_expr<E>(self, cond: E, arms: Vec<Arm>) -> P<Expr>
+        where E: Make<P<Expr>> {
+        let cond = cond.make(&self);
+        let arms = arms.into_iter().map(|arm| arm.make(&self)).collect();
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Match(cond, arms),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
+    pub fn arm<Pa, E>(self, pat: Pa, guard: Option<E>, body: E) -> Arm
+        where E: Make<P<Expr>>, Pa: Make<P<Pat>> {
+        let pat = pat.make(&self);
+        let guard = guard.map(|g| g.make(&self));
+        let body = body.make(&self);
+        Arm {
+            attrs: self.attrs.into(),
+            pats: vec![pat],
+            guard,
+            body,
+            beginning_vert: None,
+        }
+
+    }
+
 
     // Literals
 
@@ -843,10 +870,30 @@ impl Builder {
         })
     }
 
+    pub fn qpath_pat<Pa>(self, qself: Option<QSelf>, path: Pa) -> P<Pat>
+        where Pa: Make<Path> {
+        let path = path.make(&self);
+        P(Pat {
+            id: DUMMY_NODE_ID,
+            node: PatKind::Path(qself, path),
+            span: DUMMY_SP,
+        })
+    }
+
     pub fn wild_pat(self) -> P<Pat> {
         P(Pat {
             id: DUMMY_NODE_ID,
             node: PatKind::Wild,
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn lit_pat<L>(self, lit: L) -> P<Pat>
+        where L: Make<P<Expr>> {
+        let lit = lit.make(&self);
+        P(Pat {
+            id: DUMMY_NODE_ID,
+            node: PatKind::Lit(lit),
             span: DUMMY_SP,
         })
     }
