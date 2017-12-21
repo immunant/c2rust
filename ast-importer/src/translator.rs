@@ -16,7 +16,7 @@ use std::ops::Index;
 use std::cell::RefCell;
 use dtoa;
 
-use cfg::*;
+use cfg;
 
 pub struct Translation {
     pub items: Vec<P<Item>>,
@@ -531,7 +531,7 @@ impl Translation {
         self.with_scope(|| {
 
             let stmts = if self.reloop_cfgs {
-                let graph = Cfg::from_stmt_forward(self, body_id);
+                let graph = cfg::Cfg::from_stmt(self, body_id);
 
                 if self.dump_function_cfgs {
                     graph
@@ -539,14 +539,24 @@ impl Translation {
                         .expect("Failed to write CFG .dot file");
                 }
 
-                let relooped = graph.reloop();
-                /*
-                println!("Relooped:");
-                for s in &relooped {
-                    println!("  {:?}", s);
+                let simplify_structures = true;
+                let relooped = cfg::relooper::reloop(graph, simplify_structures);
+
+             //   println!("Relooped:");
+             //   for s in &relooped {
+             //       println!("  {:?}", s);
+             //   }
+
+
+                // TODO: renamer this
+                let current_block = mk().ident_expr("current_block");
+                let mut stmts: Vec<Stmt> = vec![];
+                if cfg::structures::has_multiple(&relooped) {
+                    let local = mk().local(mk().ident_pat("current_block"), Some(mk().path_ty(vec!["u64"])), None as Option<P<Expr>>);
+                    stmts.push(mk().local_stmt(P(local)))
                 }
-                */
-                Cfg::structured_cfg(&relooped)
+                stmts.extend(cfg::structures::structured_cfg(&relooped, current_block));
+                stmts
             } else {
                 match self.ast_context.index(body_id).kind {
                     CStmtKind::Compound(ref stmts) => stmts
