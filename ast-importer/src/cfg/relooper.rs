@@ -271,6 +271,27 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
         match structure {
             &Structure::Simple { ref entries, ref body, ref terminator } => {
 
+                let terminator = if let &Switch { ref expr, ref cases } = terminator {
+
+                    // TODO:
+                    //
+                    //   1. check if anything but the 'GoTo' case can happen here
+                    //   2. find some way of ordering patterns so '_' does end up on top by accident (or add back the "default" pattern)
+                    //   3. see if there is anything to do about being clever about possible values of 'currentBlock'
+                    let mut cases_new: HashMap<Label, Vec<P<Pat>>> = HashMap::new();
+                    for &(ref pats, ref lbl) in cases {
+                        match lbl {
+                            &StructureLabel::GoTo(lbl) => cases_new.entry(lbl).or_insert(vec![]).extend(pats.clone()),
+                            _ => unimplemented!()
+                        }
+                    }
+
+                    let cases = cases_new.into_iter().map(|(k,v)| (v,StructureLabel::GoTo(k))).collect();
+                    Switch { expr: expr.clone(), cases }
+                } else {
+                    terminator.clone()
+                };
+
                 match acc_structures.pop() {
                     Some(Structure::Multiple { entries: _, branches, then }) => {
                         let rewrite = |t: &StructureLabel| {

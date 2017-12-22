@@ -542,10 +542,10 @@ impl Translation {
                 let simplify_structures = true;
                 let relooped = cfg::relooper::reloop(graph, simplify_structures);
 
-             //   println!("Relooped:");
-             //   for s in &relooped {
-             //       println!("  {:?}", s);
-             //   }
+                println!("Relooped:");
+                for s in &relooped {
+                    println!("  {:?}", s);
+                }
 
 
                 // TODO: renamer this

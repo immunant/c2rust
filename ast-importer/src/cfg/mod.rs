@@ -164,8 +164,7 @@ pub enum GenTerminator<Lbl> {
     /// FIXME: specify more invariants on `expr`/`cases`
     Switch {
         expr: P<Expr>,
-        cases: Vec<(P<Expr>, Lbl)>, // TODO: support ranges of expressions
-        default: Lbl
+        cases: Vec<(Vec<P<Pat>>, Lbl)>, // TODO: support ranges of expressions
     }
 }
 
@@ -180,10 +179,9 @@ impl<L> GenTerminator<L> {
             &End => End,
             &Jump(ref l) => Jump(func(l)),
             &Branch(ref e, ref l1, ref l2) => Branch(e.clone(), func(l1), func(l2)),
-            &Switch { ref expr, ref cases, ref default } => Switch {
+            &Switch { ref expr, ref cases } => Switch {
                 expr: expr.clone(),
                 cases: cases.iter().map(|&(ref e, ref l)| (e.clone(), func(l))).collect(),
-                default: func(default),
             }
         }
     }
@@ -194,8 +192,8 @@ impl<L> GenTerminator<L> {
             &End => vec![],
             &Jump(ref l) => vec![l],
             &Branch(_, ref l1, ref l2) => vec![l1,l2],
-            &Switch { ref cases, ref default, .. } =>
-                cases.iter().map(|&(_, ref l)| l).chain(vec![default]).collect(),
+            &Switch { ref cases, .. } =>
+                cases.iter().map(|&(_, ref l)| l).collect(),
         }
     }
 
@@ -205,8 +203,8 @@ impl<L> GenTerminator<L> {
             &mut End => vec![],
             &mut Jump(ref mut l) => vec![l],
             &mut Branch(_, ref mut l1, ref mut l2) => vec![l1,l2],
-            &mut Switch { ref mut cases, ref mut default, .. } =>
-                cases.iter_mut().map(|&mut (_, ref mut l)| l).chain(vec![default]).collect(),
+            &mut Switch { ref mut cases, .. } =>
+                cases.iter_mut().map(|&mut (_, ref mut l)| l).collect(),
         }
     }
 }
@@ -215,7 +213,7 @@ impl<L> GenTerminator<L> {
 /// been seen which translating the body of the switch.
 #[derive(Clone, Debug, Default)]
 pub struct SwitchCases {
-    cases: Vec<(P<Expr>,Label)>,
+    cases: Vec<(P<Pat>,Label)>,
     default: Option<Label>,
 }
 
@@ -726,7 +724,7 @@ impl CfgBuilder {
                     .last_mut()
                     .expect("'case' outside of 'switch'")
                     .cases
-                    .push((branch, this_label));
+                    .push((mk().lit_pat(branch), this_label));
 
                 // Sub stmt
                 self.convert_stmt_help(translator, sub_stmt, (this_label, vec![]))
@@ -776,15 +774,18 @@ impl CfgBuilder {
                 self.break_labels.pop();
                 let switch_case = self.switch_expr_cases.pop().expect("No 'SwitchCases' to pop");
 
+                let mut cases: Vec<_> = switch_case.cases
+                    .into_iter()
+                    .map(|(p,lbl)| (vec![p],lbl))
+                    .collect();
+                cases.push((vec![mk().wild_pat()], switch_case.default.unwrap_or(next_label)));
+
+
                 // Add the condition basic block (we need the information built up during the
                 // conversion of the body to make the right terminator)
                 let cond_bb = BasicBlock {
                     body: stmts,
-                    terminator: Switch {
-                        expr: cond_val,
-                        cases: switch_case.cases,
-                        default: switch_case.default.unwrap_or(next_label),
-                    }
+                    terminator: Switch { expr: cond_val, cases },
                 };
                 self.add_block(lbl, cond_bb);
 
@@ -857,12 +858,18 @@ impl Cfg<Label> {
                     (String::from("true"),tru),
                     (String::from("false"),fal)
                 ],
-                &Switch { ref cases, default, .. } => {
+                &Switch { ref cases, .. } => {
                     let mut cases: Vec<(String, Label)> = cases
                         .iter()
-                        .map(|&(ref expr, tgt)| (pprust::expr_to_string(expr.deref()), tgt))
+                        .map(|&(ref pats, tgt)| -> (String, Label) {
+                            let pats: Vec<String> = pats
+                                .iter()
+                                .map(|p| pprust::pat_to_string(p.deref()))
+                                .collect();
+
+                            (pats.join(" | "), tgt)
+                        })
                         .collect();
-                    cases.push((String::from("_"), default));
                     cases
                 },
             };

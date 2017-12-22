@@ -718,14 +718,14 @@ impl Builder {
         })
     }
 
-    pub fn arm<Pa, E>(self, pat: Pa, guard: Option<E>, body: E) -> Arm
+    pub fn arm<Pa, E>(self, pats: Vec<Pa>, guard: Option<E>, body: E) -> Arm
         where E: Make<P<Expr>>, Pa: Make<P<Pat>> {
-        let pat = pat.make(&self);
+        let pats = pats.into_iter().map(|pat| pat.make(&self)).collect();
         let guard = guard.map(|g| g.make(&self));
         let body = body.make(&self);
         Arm {
             attrs: self.attrs.into(),
-            pats: vec![pat],
+            pats: pats,
             guard,
             body,
             beginning_vert: None,

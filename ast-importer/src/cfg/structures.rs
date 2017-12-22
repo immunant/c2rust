@@ -63,12 +63,13 @@ fn structured_cfg_help(
                     &End => vec![],
                     &Jump(ref to) => branch(to),
                     &Branch(ref c, ref t, ref f) => mk_if(c.clone(), branch(t), branch(f)),
-                    &Switch { ref expr, ref cases, ref default } => {
+                    &Switch { ref expr, ref cases } => {
                         let branched_cases = cases
                             .iter()
-                            .map(|&(ref c, ref slbl)| (c.clone(), branch(slbl)))
+                            .map(|&(ref pats, ref slbl)| (pats.clone(), branch(slbl)))
                             .collect();
-                        mk_match(expr.clone(), branched_cases, branch(default))
+
+                        mk_match(expr.clone(), branched_cases)
                     },
                 });
             }
@@ -162,23 +163,15 @@ fn mk_if(cond: P<Expr>, then: Vec<Stmt>, els: Vec<Stmt>) -> Vec<Stmt> {
 }
 
 /// Make a `match`.
-fn mk_match(cond: P<Expr>, cases: Vec<(P<Expr>, Vec<Stmt>)>, default: Vec<Stmt>) -> Vec<Stmt> {
+fn mk_match(cond: P<Expr>, cases: Vec<(Vec<P<Pat>>, Vec<Stmt>)>) -> Vec<Stmt> {
 
-    let mut arms: Vec<Arm> = cases
+    let arms: Vec<Arm> = cases
         .into_iter()
-        .map(|(e, stmts)| -> Arm {
-            let pat = mk().lit_pat(e);
+        .map(|(pats, stmts)| -> Arm {
             let body = mk().block_expr(mk().block(stmts));
-            mk().arm(pat, None as Option<P<Expr>>, body)
+            mk().arm(pats, None as Option<P<Expr>>, body)
         })
         .collect();
-
-    arms.push(mk().arm(
-        mk().wild_pat(),
-        None as Option<P<Expr>>,
-        mk().block_expr(mk().block(default))
-    ));
-
 
     let e = mk().match_expr(cond, arms);
 
@@ -197,12 +190,12 @@ fn mk_goto_table(cases: Vec<(Label, Vec<Stmt>)>, then: Vec<Stmt>, current_block:
         .map(|(lbl, stmts)| -> Arm {
             let pat = mk().lit_pat(lbl.to_num_expr());
             let body = mk().block_expr(mk().block(stmts));
-            mk().arm(pat, None as Option<P<Expr>>, body)
+            mk().arm(vec![pat], None as Option<P<Expr>>, body)
         })
         .collect();
 
     arms.push(mk().arm(
-        mk().wild_pat(),
+        vec![mk().wild_pat()],
         None as Option<P<Expr>>,
         mk().block_expr(mk().block(then))
     ));
