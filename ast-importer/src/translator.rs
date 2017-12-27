@@ -4,6 +4,7 @@ use syntax::ast::*;
 use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{DelimToken,Token};
 use syntax::abi::Abi;
+use std::collections::HashMap;
 use renamer::Renamer;
 use convert_type::TypeConverter;
 use loops::*;
@@ -22,6 +23,7 @@ pub struct Translation {
     pub ast_context: TypedAstContext,
     renamer: RefCell<Renamer<String>>,
     loops: LoopContext,
+    zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
 }
 
 pub struct WithStmts<T> {
@@ -267,6 +269,7 @@ impl Translation {
                 "yield",
             ].iter().map(|s| s.to_string()).collect())),
             loops: LoopContext::new(),
+            zero_inits: RefCell::new(HashMap::new()),
         }
     }
 
@@ -784,7 +787,7 @@ impl Translation {
 
         let init = match initializer {
             Some(x) => self.convert_expr(ExprUse::RValue, x)?,
-            None => WithStmts::new(self.implicit_default_expr(typ.ctype)),
+            None => WithStmts::new(self.implicit_default_expr(typ.ctype)?),
         };
         let ty = self.convert_type(typ.ctype)?;
         let mutbl = if typ.qualifiers.is_const { Mutability::Immutable } else { Mutability:: Mutable };
@@ -1240,7 +1243,7 @@ impl Translation {
 
                         // Pad out the array literal with default values to the desired size
                         for _i in ids.len()..n {
-                            vals.push(self.implicit_default_expr(ty))
+                            vals.push(self.implicit_default_expr(ty)?)
                         }
 
                         Ok(WithStmts {
@@ -1260,7 +1263,7 @@ impl Translation {
                 }
             }
             CExprKind::ImplicitValueInit(ty) =>
-                Ok(WithStmts::new(self.implicit_default_expr(ty.ctype))),
+                Ok(WithStmts::new(self.implicit_default_expr(ty.ctype)?)),
 
             CExprKind::Predefined(ty, val_id) =>
                 self.convert_expr(use_, val_id),
@@ -1323,7 +1326,7 @@ impl Translation {
                         let val = if ids.is_empty() {
                             WithStmts {
                                 stmts: vec![],
-                                val: self.implicit_default_expr(field_ty.ctype),
+                                val: self.implicit_default_expr(field_ty.ctype)?,
                             }
                         } else {
                             self.convert_expr(ExprUse::RValue, ids[0])?
@@ -1378,7 +1381,7 @@ impl Translation {
         // Pad out remaining omitted record fields
         for i in ids.len()..fields.len() {
             let &(ref field_name, ty) = &field_decls[i];
-            fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype)));
+            fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype)?));
         }
 
         Ok(WithStmts {
@@ -1387,26 +1390,91 @@ impl Translation {
         })
     }
 
-    pub fn implicit_default_expr(&self, ty_id: CTypeId) -> P<Expr> {
+    pub fn implicit_default_expr(&self, ty_id: CTypeId) -> Result<P<Expr>,String> {
         let resolved_ty = &self.ast_context.resolve_type(ty_id).kind;
 
         if resolved_ty.is_integral_type() {
-            mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
+            Ok(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)))
         } else if resolved_ty.is_floating_type() {
-            mk().lit_expr(mk().float_unsuffixed_lit("0."))
+            Ok(mk().lit_expr(mk().float_unsuffixed_lit("0.")))
         } else if self.is_function_pointer(ty_id) {
-            let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
+            let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc", "c_void"]));
             let target_ty = self.convert_type(ty_id).unwrap();
-            transmute_expr(source_ty, target_ty, null_expr())
+            Ok(transmute_expr(source_ty, target_ty, null_expr()))
         } else if let &CTypeKind::Pointer(p) = resolved_ty {
-            if p.qualifiers.is_const { null_expr() } else { null_mut_expr() }
+            Ok(if p.qualifiers.is_const { null_expr() } else { null_mut_expr() })
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
             let sz = mk().lit_expr(mk().int_lit(sz as u128, LitIntType::Unsuffixed));
-            mk().repeat_expr(self.implicit_default_expr(elt), sz)
+            Ok(mk().repeat_expr(self.implicit_default_expr(elt)?, sz))
+        } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
+            self.zero_initializer(decl_id, ty_id)
         } else {
-            mk().call_expr(mk().path_expr(vec!["Default", "default"]), vec![] as Vec<P<Expr>>)
+            unimplemented!()
         }
     }
+
+    /// Produce zero-initializers for structs/unions/enums, looking them up when possible.
+    fn zero_initializer(&self, decl_id: CDeclId, type_id: CTypeId) -> Result<P<Expr>, String> {
+
+        // Look up the decl in the cache and return what we find (if we find anything)
+        if let Some(init) = self.zero_inits.borrow().get(&decl_id) {
+            return init.clone()
+        }
+
+        // Otherwise, construct the initializer
+        let init = match &self.ast_context.index(decl_id).kind {
+
+            // Zero initialize all of the fields
+            &CDeclKind::Struct { ref fields, .. } => {
+                let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+                let fields: Result<Vec<Field>, String> = fields
+                    .into_iter()
+                    .map(|field_id: &CFieldId| -> Result<Field, String> {
+                        match &self.ast_context.index(*field_id).kind {
+                            &CDeclKind::Field { ref name, ref typ } => {
+                                let field_init = self.implicit_default_expr(typ.ctype)?;
+                                Ok(mk().field(name, field_init))
+                            }
+                            _ => Err(format!("Found non-field in record field list"))
+                        }
+                    })
+                    .collect();
+
+                Ok(mk().struct_expr(vec![name], fields?))
+            },
+
+            // Zero initialize the first field
+            &CDeclKind::Union { ref fields, .. } => {
+                let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+                let field_id = fields.first().ok_or(format!("A union should have a field"))?;
+
+                let field = match &self.ast_context.index(*field_id).kind {
+                    &CDeclKind::Field { ref name, ref typ } => {
+                        let field_init = self.implicit_default_expr(typ.ctype)?;
+                        Ok(mk().field(name, field_init))
+                    }
+                    _ => Err(format!("Found non-field in record field list"))
+                }?;
+
+                Ok(mk().struct_expr(vec![name], vec![field]))
+            },
+
+            // Transmute the number `0` into the enum type
+            &CDeclKind::Enum { .. } => {
+                let enum_ty = self.convert_type(type_id)?;
+                let number_ty = mk().path_ty(mk().path(vec!["libc","c_int"]));
+
+                Ok(transmute_expr(number_ty, enum_ty, mk().lit_expr(mk().int_lit(0, ""))))
+            }
+
+            _ => Err(format!("Declaration is not associated with a type"))
+        };
+
+        // Insert the initializer into the cache, then return it
+        self.zero_inits.borrow_mut().insert(decl_id, init.clone());
+        init
+    }
+
 
     /// Get back a Rust lvalue corresponding to the expression passed in.
     ///

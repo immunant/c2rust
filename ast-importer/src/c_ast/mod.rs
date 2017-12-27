@@ -592,8 +592,6 @@ pub enum CTypeKind {
     // Boolean type (6.2.5.2)
     Bool,
   
-    Size,
-  
     // Character type (6.2.5.3)
     Char,
   
@@ -683,6 +681,7 @@ impl CTypeKind {
             CTypeKind::UShort => true,
             CTypeKind::ULong => true,
             CTypeKind::ULongLong => true,
+            CTypeKind::UInt128 => true,
             _ => false,
         }
     }
@@ -695,6 +694,7 @@ impl CTypeKind {
             CTypeKind::Short => true,
             CTypeKind::Long => true,
             CTypeKind::LongLong => true,
+            CTypeKind::Int128 => true,
             _ => false,
         }
     }
@@ -705,6 +705,15 @@ impl CTypeKind {
             CTypeKind::Double => true,
             CTypeKind::LongDouble => true,
             _ => false,
+        }
+    }
+
+    pub fn as_underlying_decl(&self) -> Option<CDeclId> {
+        match *self {
+            CTypeKind::Struct(decl_id) |
+            CTypeKind::Union(decl_id) |
+            CTypeKind::Enum(decl_id) => Some(decl_id),
+            _ => None
         }
     }
 }

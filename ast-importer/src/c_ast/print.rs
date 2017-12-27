@@ -614,7 +614,6 @@ impl<W: Write> Printer<W> {
                 match ty {
                     &CTypeKind::Void => self.writer.write_all(b"void"),
                     &CTypeKind::Bool => self.writer.write_all(b"_Bool"),
-                    &CTypeKind::Size => self.writer.write_all(b"size_t"),
                     &CTypeKind::Char => self.writer.write_all(b"char"),
                     &CTypeKind::SChar => self.writer.write_all(b"signed char"),
                     &CTypeKind::Short => self.writer.write_all(b"signed short"),
