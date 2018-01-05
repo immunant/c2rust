@@ -194,19 +194,22 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
 
     to_string(|s| {
 
-        let features = vec!["libc", "i128_type", "const_ptr_null"];
+        let features =
+            vec![("feature",vec!["libc","i128_type","const_ptr_null"]),
+                 ("allow"  ,vec!["non_camel_case_types","non_snake_case","dead_code"])];
 
-        for feature in features {
-            // Add `#![feature(libc)]` to the top of the file
-            s.print_attribute(&mk().attribute::<_, TokenStream>(
-                AttrStyle::Inner,
-                vec!["feature"],
-                vec![
-                    Token::OpenDelim(DelimToken::Paren),
-                    Token::Ident(mk().ident(feature)),
-                    Token::CloseDelim(DelimToken::Paren),
-                ].into_iter().collect(),
-            ))?
+        for (key,values) in features {
+            for value in values {
+                s.print_attribute(&mk().attribute::<_, TokenStream>(
+                    AttrStyle::Inner,
+                    vec![key],
+                    vec![
+                        Token::OpenDelim(DelimToken::Paren),
+                        Token::Ident(mk().ident(value)),
+                        Token::CloseDelim(DelimToken::Paren),
+                    ].into_iter().collect(),
+                ))?
+            }
         }
 
         // Add `extern crate libc` to the top of the file
@@ -1409,7 +1412,7 @@ impl Translation {
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id)
         } else {
-            unimplemented!()
+            Err(format!("Unsupported default initializer"))
         }
     }
 
