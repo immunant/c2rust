@@ -742,18 +742,19 @@ class TranslateASTVisitor final
           if(!FD->isCanonicalDecl())
               return true;
 
+          // Use the parameters from the function declaration
+          // the defines the body, if one exists.
+          const FunctionDecl *paramsFD = FD;
+          auto body = FD->getBody(paramsFD); // replaces its argument if body exists
+          
           std::vector<void*> childIds;
-          for (auto x : FD->parameters()) {
+          for (auto x : paramsFD->parameters()) {
               auto cd = x->getCanonicalDecl();
               childIds.push_back(cd);
               TraverseDecl(cd);
           }
 
-          if(FD->hasBody()) {
-              childIds.push_back(FD->getBody());
-          } else {
-            childIds.push_back(0);
-          }
+          childIds.push_back(body);
 
           auto functionType = FD->getType();
           encode_entry(FD, TagFunctionDecl, childIds, functionType,

@@ -877,7 +877,7 @@ impl Translation {
                 let varname = decl.get_name().expect("expected variable name").to_owned();
                 let rustname = self.renamer.borrow_mut()
                     .get(&varname)
-                    .expect(&format!("name not declared: '{}'", varname));
+                    .ok_or_else(||format!("name not declared: '{}'", varname))?;
 
                 let mut val = mk().path_expr(vec![rustname]);
 
