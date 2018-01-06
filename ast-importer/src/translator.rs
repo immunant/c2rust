@@ -864,7 +864,7 @@ impl Translation {
                                 mk().angle_bracketed_param_types(tys)),
                 ];
                 let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
-                let casted = mk().cast_expr(call, mk().path_ty(vec!["libc","size_t"]));
+                let casted = mk().cast_expr(call, mk().path_ty(vec!["libc","c_ulong"]));
                 Ok(WithStmts::new(casted))
             }
 
