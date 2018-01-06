@@ -21,7 +21,7 @@ pub struct Translation {
     pub items: Vec<P<Item>>,
     type_converter: RefCell<TypeConverter>,
     pub ast_context: TypedAstContext,
-    renamer: RefCell<Renamer<String>>,
+    renamer: RefCell<Renamer<CDeclId>>,
     loops: LoopContext,
     zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
 }
@@ -178,7 +178,7 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
             Name::NoName => (),
             Name::AnonymousType => { t.type_converter.borrow_mut().declare_decl_name(decl_id, "unnamed"); }
             Name::TypeName(name)=> { t.type_converter.borrow_mut().declare_decl_name(decl_id, name); }
-            Name::VarName(name) => { t.renamer.borrow_mut().insert(name.to_owned(), name); }
+            Name::VarName(name) => { t.renamer.borrow_mut().insert(decl_id, name); }
         }
     }
 
@@ -367,7 +367,7 @@ impl Translation {
                         &CDeclKind::EnumConstant { ref name, value } => {
                             let disc = mk().lit_expr(mk().int_lit(value as u128, ""));
                             let variant = &self.renamer.borrow_mut()
-                                .insert(name.to_owned(), &format!("{}::{}", enum_name, name))
+                                .insert(*v, &format!("{}::{}", enum_name, name))
                                 .expect(&format!("Failed to insert enum variant '{}'", name));
                             let variant = variant.trim_left_matches(&format!("{}::", enum_name));
                             variant_syns.push(mk().unit_variant(variant, Some(disc)))
@@ -388,7 +388,7 @@ impl Translation {
             CDeclKind::Function { .. } if !toplevel => Err(format!("Function declarations must be top-level")),
             CDeclKind::Function { is_extern, typ, ref name, ref parameters, body } => {
 
-                let new_name = &self.renamer.borrow().get(name).expect("Functions should already be renamed");
+                let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
 
                 let ret: CQualTypeId = match &self.ast_context.resolve_type(typ).kind {
@@ -396,10 +396,10 @@ impl Translation {
                     k => return Err(format!("Type of function {:?} was not a function type, got {:?}", decl_id, k))
                 };
 
-                let mut args: Vec<(String, CQualTypeId)> = vec![];
+                let mut args: Vec<(CDeclId, String, CQualTypeId)> = vec![];
                 for param_id in parameters {
                     if let CDeclKind::Variable { ref ident, typ, .. } = self.ast_context.index(*param_id).kind {
-                        args.push((ident.clone(), typ))
+                        args.push((*param_id, ident.clone(), typ))
                     } else {
                         return Err(format!("Parameter is not variable declaration"))
                     }
@@ -421,7 +421,7 @@ impl Translation {
                 assert!(is_static, "An extern variable must be static");
                 assert!(initializer.is_none(), "An extern variable that isn't a definition can't have an initializer");
 
-                let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
+                let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, _) = self.convert_variable(None, typ)?;
 
                 let extern_item = mk_linkage(true, new_name, ident)
@@ -436,7 +436,7 @@ impl Translation {
             CDeclKind::Variable { is_extern: true, is_static, ref ident, initializer, typ, .. } => {
                 assert!(is_static, "An extern variable must be static");
 
-                let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
+                let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ)?;
 
                 let init = init.to_expr();
@@ -451,7 +451,7 @@ impl Translation {
             // Static variable (definition here)
             CDeclKind::Variable { is_static: true, ref ident, initializer, typ, .. } => {
 
-                let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
+                let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ)?;
 
                 let init = init.to_expr();
@@ -471,7 +471,7 @@ impl Translation {
         is_extern: bool,
         new_name: &str,
         name: &str,
-        arguments: &[(String, CQualTypeId)],
+        arguments: &[(CDeclId, String, CQualTypeId)],
         return_type: CQualTypeId,
         body: Option<CStmtId>,
     ) -> Result<P<Item>, String> {
@@ -479,7 +479,7 @@ impl Translation {
         self.with_scope(|| {
             let mut args: Vec<Arg> = vec![];
 
-            for &(ref var, typ) in arguments {
+            for &(decl_id, ref var, typ) in arguments {
                 let (ty, mutbl, _) = self.convert_variable(None, typ)?;
 
                 let pat = if var.is_empty() {
@@ -489,7 +489,7 @@ impl Translation {
                     let mutbl = if body.is_none() { Mutability::Immutable } else { mutbl };
 
                     let new_var = self.renamer.borrow_mut()
-                        .insert(var.to_string(), var.as_str())
+                        .insert(decl_id, var.as_str())
                         .expect(&format!("Failed to insert argument '{}' while converting '{}'", var, name));
 
                     mk().set_mutbl(mutbl).ident_pat(new_var)
@@ -742,7 +742,7 @@ impl Translation {
                 assert!(is_defn, "Only local variable definitions should be extracted");
 
                 let rust_name = self.renamer.borrow_mut()
-                    .insert(ident.clone(), &ident)
+                    .insert(decl_id, &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ).unwrap();
 
@@ -758,7 +758,7 @@ impl Translation {
 
                 let inserted = if let Some(ident) = decl.get_name() {
                     self.renamer.borrow_mut()
-                        .insert(ident.clone(), &ident)
+                        .insert(decl_id, &ident)
                         .is_some()
                 } else {
                     false
@@ -876,7 +876,7 @@ impl Translation {
                         .kind;
                 let varname = decl.get_name().expect("expected variable name").to_owned();
                 let rustname = self.renamer.borrow_mut()
-                    .get(&varname)
+                    .get(&decl_id)
                     .ok_or_else(||format!("name not declared: '{}'", varname))?;
 
                 let mut val = mk().path_expr(vec![rustname]);
