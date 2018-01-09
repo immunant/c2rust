@@ -1724,8 +1724,9 @@ impl Translation {
                     .map(|a| mk().unary_expr(ast::UnOp::Not, a))),
 
             c_ast::UnOp::Not => {
+                let t = self.ast_context.index(arg).kind.get_type();
                 let WithStmts { val: arg, stmts } = self.convert_expr(ExprUse::RValue, arg)?;
-                Ok(WithStmts { val:self.convert_not(ctype, arg), stmts })
+                Ok(WithStmts { val:self.convert_not(t, arg), stmts })
             },
         }
     }
@@ -1951,15 +1952,7 @@ impl Translation {
 
     /// Convert expression to c_int using '!' behavior
     fn convert_not(&self, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
-        let ty = &self.ast_context.resolve_type(ty_id).kind;
-
-        let b = if ty.is_pointer() {
-            mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>)
-        } else {
-            let zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
-            mk().binary_expr(BinOpKind::Eq, zero, val)
-        };
-
+        let b = self.match_bool(false, ty_id, val);
         mk().cast_expr(b, mk().path_ty(vec!["libc","c_int"]))
     }
 
