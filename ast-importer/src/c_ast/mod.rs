@@ -56,6 +56,7 @@ impl TypedAstContext {
 
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
         match self.index(typ).kind {
+            CTypeKind::Attributed(ty) => self.resolve_type_id(ty.ctype),
             CTypeKind::Elaborated(ty) => self.resolve_type_id(ty),
             CTypeKind::Decayed(ty) => self.resolve_type_id(ty),
             CTypeKind::TypeOf(ty) => self.resolve_type_id(ty),
