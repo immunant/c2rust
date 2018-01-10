@@ -975,7 +975,7 @@ impl Translation {
                         Ok(val.map (|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
 
                     CastKind::BuiltinFnToFnPtr =>
-                        Err(format!("Builtin fn to fn ptr not implemented")),
+                        Ok(val.map (|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
 
                     CastKind::ArrayToPointerDecay =>
                         Ok(val.map(|x| mk().method_call_expr(x, "as_mut_ptr", vec![] as Vec<P<Expr>>))),
