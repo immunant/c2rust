@@ -1164,7 +1164,7 @@ impl Translation {
 
                 let mut stmts = vec![];
 
-                let rhs = self.convert_expr(ExprUse::RValue, *rhs)?;
+                let mut rhs = self.convert_expr(ExprUse::RValue, *rhs)?;
                 stmts.extend(rhs.stmts);
 
                 let val = if let &CExprKind::ImplicitCast(_, ref arr, CastKind::ArrayToPointerDecay) = lhs_node {
@@ -1174,7 +1174,9 @@ impl Translation {
                     let lhs = self.convert_expr(use_, *arr)?;
                     stmts.extend(lhs.stmts);
 
-                    mk().index_expr(lhs.val, rhs.val)
+                    let val = mk().cast_expr(rhs.val, mk().path_ty(vec!["usize"]));
+
+                    mk().index_expr(lhs.val, val)
                 } else {
                     // Otherwise, use the pointer and make a deref of a pointer offset expression
 
