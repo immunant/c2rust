@@ -898,8 +898,17 @@ impl Translation {
                 Ok(WithStmts::new(val))
             }
 
-            CExprKind::Literal(_, CLiteral::Integer(val)) => {
-                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed))))
+            CExprKind::Literal(ty, CLiteral::Integer(val)) => {
+                let intty = match &self.ast_context.resolve_type(ty.ctype).kind {
+                    &CTypeKind::Int => LitIntType::Signed(IntTy::I32),
+                    &CTypeKind::Long => LitIntType::Signed(IntTy::I64),
+                    &CTypeKind::LongLong => LitIntType::Signed(IntTy::I64),
+                    &CTypeKind::UInt => LitIntType::Unsigned(UintTy::U32),
+                    &CTypeKind::ULong => LitIntType::Unsigned(UintTy::U64),
+                    &CTypeKind::ULongLong => LitIntType::Unsigned(UintTy::U64),
+                    _ => LitIntType::Unsuffixed,
+                };
+                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), intty))))
             }
 
             CExprKind::Literal(_, CLiteral::Character(val)) => {
@@ -975,7 +984,7 @@ impl Translation {
                         Ok(val.map (|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
 
                     CastKind::BuiltinFnToFnPtr =>
-                        Err(format!("Builtin fn to fn ptr not implemented")),
+                        Ok(val.map (|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
 
                     CastKind::ArrayToPointerDecay =>
                         Ok(val.map(|x| mk().method_call_expr(x, "as_mut_ptr", vec![] as Vec<P<Expr>>))),
@@ -1155,7 +1164,7 @@ impl Translation {
 
                 let mut stmts = vec![];
 
-                let rhs = self.convert_expr(ExprUse::RValue, *rhs)?;
+                let mut rhs = self.convert_expr(ExprUse::RValue, *rhs)?;
                 stmts.extend(rhs.stmts);
 
                 let val = if let &CExprKind::ImplicitCast(_, ref arr, CastKind::ArrayToPointerDecay) = lhs_node {
@@ -1165,7 +1174,9 @@ impl Translation {
                     let lhs = self.convert_expr(use_, *arr)?;
                     stmts.extend(lhs.stmts);
 
-                    mk().index_expr(lhs.val, rhs.val)
+                    let val = mk().cast_expr(rhs.val, mk().path_ty(vec!["usize"]));
+
+                    mk().index_expr(lhs.val, val)
                 } else {
                     // Otherwise, use the pointer and make a deref of a pointer offset expression
 

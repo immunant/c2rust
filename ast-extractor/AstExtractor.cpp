@@ -434,7 +434,7 @@ class TranslateASTVisitor final
       
       // Override the default behavior of the RecursiveASTVisitor
       bool shouldVisitImplicitCode() const {
-          return true;
+          return false;
       }
       
       const std::unordered_map<string,uint64_t> &getFilenames() const {
@@ -833,8 +833,10 @@ class TranslateASTVisitor final
           auto def = D->getDefinition();
           
           std::vector<void*> childIds;
-          for (auto x : def->fields()) {
-              childIds.push_back(x->getCanonicalDecl());
+          if (def) {
+              for (auto x : def->fields()) {
+                  childIds.push_back(x->getCanonicalDecl());
+              }
           }
           
           auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;
