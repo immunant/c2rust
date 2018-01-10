@@ -833,8 +833,10 @@ class TranslateASTVisitor final
           auto def = D->getDefinition();
           
           std::vector<void*> childIds;
-          for (auto x : def->fields()) {
-              childIds.push_back(x->getCanonicalDecl());
+          if (def) {
+              for (auto x : def->fields()) {
+                  childIds.push_back(x->getCanonicalDecl());
+              }
           }
           
           auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;

@@ -898,8 +898,17 @@ impl Translation {
                 Ok(WithStmts::new(val))
             }
 
-            CExprKind::Literal(_, CLiteral::Integer(val)) => {
-                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed))))
+            CExprKind::Literal(ty, CLiteral::Integer(val)) => {
+                let intty = match &self.ast_context.resolve_type(ty.ctype).kind {
+                    &CTypeKind::Int => LitIntType::Signed(IntTy::I32),
+                    &CTypeKind::Long => LitIntType::Signed(IntTy::I64),
+                    &CTypeKind::LongLong => LitIntType::Signed(IntTy::I64),
+                    &CTypeKind::UInt => LitIntType::Unsigned(UintTy::U32),
+                    &CTypeKind::ULong => LitIntType::Unsigned(UintTy::U64),
+                    &CTypeKind::ULongLong => LitIntType::Unsigned(UintTy::U64),
+                    _ => LitIntType::Unsuffixed,
+                };
+                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), intty))))
             }
 
             CExprKind::Literal(_, CLiteral::Character(val)) => {
