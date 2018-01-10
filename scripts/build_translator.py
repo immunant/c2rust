@@ -164,11 +164,15 @@ def build_a_bear():
         curl = get_cmd_or_die("curl")
         curl['-s', BEAR_URL, '-o', BEAR_ARCHIVE] & pb.TEE
 
+    # remove any existing build dir since we don't know if
+    # bear was built for the current host environment.
+    if os.path.isdir(BEAR_SRC):
+        shutil.rmtree(BEAR_SRC, ignore_errors=True)
+
     # unpack
-    if not os.path.isdir(BEAR_SRC):
-        tar = get_cmd_or_die("tar")
-        with pb.local.cwd(DEPS_DIR):
-            tar['xf', BEAR_ARCHIVE] & pb.TEE
+    tar = get_cmd_or_die("tar")
+    with pb.local.cwd(DEPS_DIR):
+        tar['xf', BEAR_ARCHIVE] & pb.TEE
 
     # cmake
     bear_build_dir = os.path.join(BEAR_SRC, "build")
@@ -200,11 +204,15 @@ def install_tinycbor() -> Optional[str]:
         curl = get_cmd_or_die("curl")
         curl['-s', CBOR_URL, '-o', CBOR_ARCHIVE] & pb.TEE
 
+    # remove any existing build dir since we don't know if
+    # tinycbor was built for the current host environment.
+    if os.path.isdir(CBOR_SRC):
+        shutil.rmtree(CBOR_SRC, ignore_errors=True)
+
     # unpack
-    if not os.path.isdir(CBOR_SRC):
-        tar = get_cmd_or_die("tar")
-        with pb.local.cwd(DEPS_DIR):
-            tar['xf', CBOR_ARCHIVE] & pb.TEE
+    tar = get_cmd_or_die("tar")
+    with pb.local.cwd(DEPS_DIR):
+        tar['xf', CBOR_ARCHIVE] & pb.TEE
 
     # update install prefix
     update_cbor_prefix(os.path.join(CBOR_SRC, "Makefile"))
