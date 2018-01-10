@@ -47,8 +47,6 @@ BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
 BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear")
 BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
-# LLVM_PUBKEY = "8F0871F202119294"  # signed v4.0.1
-LLVM_PUBKEY = "345AD05D"  # signed v5.0.0
 LLVM_VER = "5.0.0"
 LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
 LLVM_BLD = os.path.join(DEPS_DIR, 'llvm-{ver}/build.'.format(ver=LLVM_VER))
