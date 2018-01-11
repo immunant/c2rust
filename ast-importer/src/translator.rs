@@ -4,6 +4,7 @@ use syntax::ast::*;
 use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{DelimToken,Token};
 use syntax::abi::Abi;
+use std::collections::HashMap;
 use renamer::Renamer;
 use convert_type::TypeConverter;
 use loops::*;
@@ -20,8 +21,9 @@ pub struct Translation {
     pub items: Vec<P<Item>>,
     type_converter: RefCell<TypeConverter>,
     pub ast_context: TypedAstContext,
-    renamer: RefCell<Renamer<String>>,
+    renamer: RefCell<Renamer<CDeclId>>,
     loops: LoopContext,
+    zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
 }
 
 pub struct WithStmts<T> {
@@ -168,42 +170,75 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
             &CDeclKind::Typedef { ref name, .. } => Name::TypeName(name),
             &CDeclKind::Function { ref name, .. } => Name::VarName(name),
             // &CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
-            &CDeclKind::Variable { ref ident, .. } => Name::VarName(ident),
+            &CDeclKind::Variable { ref ident, .. }
+              if ast_context.c_decls_top.contains(&decl_id) => Name::VarName(ident),
             _ => Name::NoName,
         };
         match decl_name {
             Name::NoName => (),
             Name::AnonymousType => { t.type_converter.borrow_mut().declare_decl_name(decl_id, "unnamed"); }
             Name::TypeName(name)=> { t.type_converter.borrow_mut().declare_decl_name(decl_id, name); }
-            Name::VarName(name) => { t.renamer.borrow_mut().insert(name.to_owned(), name); }
+            Name::VarName(name) => { t.renamer.borrow_mut().insert(decl_id, name); }
         }
     }
 
-    for top_id in &ast_context.c_decls_top {
-        match t.convert_decl(true, *top_id) {
-            Ok(item) => t.items.push(item),
-            Err(e) => {
-                let ref k = t.ast_context.index(*top_id).kind;
-                eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
-            },
+    // Export all types
+    for (&decl_id, decl) in &ast_context.c_decls {
+        let needs_export = match &decl.kind {
+            &CDeclKind::Struct { .. } => true,
+            &CDeclKind::Enum { .. } => true,
+            &CDeclKind::Union { .. } => true,
+            &CDeclKind::Typedef { .. } => true,
+            _ => false,
+        };
+        if needs_export {
+            match t.convert_decl(true, decl_id) {
+                Ok(item) => t.items.push(item),
+                Err(e) => {
+                    let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
+                    eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
+                },
+            }
         }
     }
+
+    // Export top-level value declarations
+    for top_id in &ast_context.c_decls_top {
+        let needs_export = match &ast_context.c_decls[top_id].kind {
+            &CDeclKind::Function { .. } => true,
+            &CDeclKind::Variable { .. } => true,
+            _ => false,
+        };
+        if needs_export {
+            match t.convert_decl(true, *top_id) {
+                Ok(item) => t.items.push(item),
+                Err(e) => {
+                    let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
+                    eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
+                },
+            }
+        }
+    }
+
 
     to_string(|s| {
 
-        let features = vec!["libc", "i128_type", "const_ptr_null"];
+        let features =
+            vec![("feature",vec!["libc","i128_type","const_ptr_null"]),
+                 ("allow"  ,vec!["non_camel_case_types","non_snake_case","dead_code"])];
 
-        for feature in features {
-            // Add `#![feature(libc)]` to the top of the file
-            s.print_attribute(&mk().attribute::<_, TokenStream>(
-                AttrStyle::Inner,
-                vec!["feature"],
-                vec![
-                    Token::OpenDelim(DelimToken::Paren),
-                    Token::Ident(mk().ident(feature)),
-                    Token::CloseDelim(DelimToken::Paren),
-                ].into_iter().collect(),
-            ))?
+        for (key,values) in features {
+            for value in values {
+                s.print_attribute(&mk().attribute::<_, TokenStream>(
+                    AttrStyle::Inner,
+                    vec![key],
+                    vec![
+                        Token::OpenDelim(DelimToken::Paren),
+                        Token::Ident(mk().ident(value)),
+                        Token::CloseDelim(DelimToken::Paren),
+                    ].into_iter().collect(),
+                ))?
+            }
         }
 
         // Add `extern crate libc` to the top of the file
@@ -266,6 +301,7 @@ impl Translation {
                 "yield",
             ].iter().map(|s| s.to_string()).collect())),
             loops: LoopContext::new(),
+            zero_inits: RefCell::new(HashMap::new()),
         }
     }
 
@@ -276,7 +312,10 @@ impl Translation {
     }
 
     fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> Result<P<Item>, String> {
-        match self.ast_context.index(decl_id).kind {
+
+        match self.ast_context.c_decls.get(&decl_id)
+            .ok_or_else(|| format!("Missing decl {:?}", decl_id))?
+            .kind {
             CDeclKind::Struct { ref fields, .. } => {
                 let name = self.type_converter.borrow_mut().resolve_decl_name(decl_id).unwrap();
 
@@ -357,7 +396,7 @@ impl Translation {
                         &CDeclKind::EnumConstant { ref name, value } => {
                             let disc = mk().lit_expr(mk().int_lit(value as u128, ""));
                             let variant = &self.renamer.borrow_mut()
-                                .insert(name.to_owned(), &format!("{}::{}", enum_name, name))
+                                .insert(*v, &format!("{}::{}", enum_name, name))
                                 .expect(&format!("Failed to insert enum variant '{}'", name));
                             let variant = variant.trim_left_matches(&format!("{}::", enum_name));
                             variant_syns.push(mk().unit_variant(variant, Some(disc)))
@@ -378,7 +417,7 @@ impl Translation {
             CDeclKind::Function { .. } if !toplevel => Err(format!("Function declarations must be top-level")),
             CDeclKind::Function { is_extern, typ, ref name, ref parameters, body } => {
 
-                let new_name = &self.renamer.borrow().get(name).expect("Functions should already be renamed");
+                let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
 
                 let ret: CQualTypeId = match &self.ast_context.resolve_type(typ).kind {
@@ -386,10 +425,10 @@ impl Translation {
                     k => return Err(format!("Type of function {:?} was not a function type, got {:?}", decl_id, k))
                 };
 
-                let mut args: Vec<(String, CQualTypeId)> = vec![];
+                let mut args: Vec<(CDeclId, String, CQualTypeId)> = vec![];
                 for param_id in parameters {
                     if let CDeclKind::Variable { ref ident, typ, .. } = self.ast_context.index(*param_id).kind {
-                        args.push((ident.clone(), typ))
+                        args.push((*param_id, ident.clone(), typ))
                     } else {
                         return Err(format!("Parameter is not variable declaration"))
                     }
@@ -411,7 +450,7 @@ impl Translation {
                 assert!(is_static, "An extern variable must be static");
                 assert!(initializer.is_none(), "An extern variable that isn't a definition can't have an initializer");
 
-                let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
+                let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, _) = self.convert_variable(None, typ)?;
 
                 let extern_item = mk_linkage(true, new_name, ident)
@@ -426,7 +465,7 @@ impl Translation {
             CDeclKind::Variable { is_extern: true, is_static, ref ident, initializer, typ, .. } => {
                 assert!(is_static, "An extern variable must be static");
 
-                let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
+                let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ)?;
 
                 let init = init.to_expr();
@@ -441,7 +480,7 @@ impl Translation {
             // Static variable (definition here)
             CDeclKind::Variable { is_static: true, ref ident, initializer, typ, .. } => {
 
-                let new_name = &self.renamer.borrow().get(ident).expect("Variables should already be renamed");
+                let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ)?;
 
                 let init = init.to_expr();
@@ -461,7 +500,7 @@ impl Translation {
         is_extern: bool,
         new_name: &str,
         name: &str,
-        arguments: &[(String, CQualTypeId)],
+        arguments: &[(CDeclId, String, CQualTypeId)],
         return_type: CQualTypeId,
         body: Option<CStmtId>,
     ) -> Result<P<Item>, String> {
@@ -469,7 +508,7 @@ impl Translation {
         self.with_scope(|| {
             let mut args: Vec<Arg> = vec![];
 
-            for &(ref var, typ) in arguments {
+            for &(decl_id, ref var, typ) in arguments {
                 let (ty, mutbl, _) = self.convert_variable(None, typ)?;
 
                 let pat = if var.is_empty() {
@@ -479,7 +518,7 @@ impl Translation {
                     let mutbl = if body.is_none() { Mutability::Immutable } else { mutbl };
 
                     let new_var = self.renamer.borrow_mut()
-                        .insert(var.to_string(), var.as_str())
+                        .insert(decl_id, var.as_str())
                         .expect(&format!("Failed to insert argument '{}' while converting '{}'", var, name));
 
                     mk().set_mutbl(mutbl).ident_pat(new_var)
@@ -551,9 +590,9 @@ impl Translation {
             CStmtKind::If { scrutinee, true_variant, false_variant } =>
                 self.convert_if_stmt(scrutinee, true_variant, false_variant),
 
-            CStmtKind::While { condition, body } => Ok(self.convert_while_stmt(condition, body)),
+            CStmtKind::While { condition, body } => self.convert_while_stmt(condition, body),
 
-            CStmtKind::DoWhile { body, condition } => Ok(self.convert_do_stmt(body, condition)),
+            CStmtKind::DoWhile { body, condition } => self.convert_do_stmt(body, condition),
 
             CStmtKind::ForLoop { init, condition, increment, body } =>
                 self.convert_for_stmt(init, condition, increment, body),
@@ -602,29 +641,29 @@ impl Translation {
     }
 
     /// Convert a C expression to a rust boolean expression
-    fn convert_condition(&self, target: bool, cond_id: CExprId) -> WithStmts<P<Expr>> {
+    fn convert_condition(&self, target: bool, cond_id: CExprId) -> Result<WithStmts<P<Expr>>, String> {
         let ty_id = self.ast_context.index(cond_id).kind.get_type();
 
-        self.convert_expr(ExprUse::RValue, cond_id).unwrap()
-            .map(|e| self.match_bool(target, ty_id, e))
+        Ok(self.convert_expr(ExprUse::RValue, cond_id)?
+            .map(|e| self.match_bool(target, ty_id, e)))
     }
 
-    fn convert_while_stmt(&self, cond_id: CExprId, body_id: CStmtId) -> Vec<Stmt> {
-        let cond = self.convert_condition(true, cond_id);
+    fn convert_while_stmt(&self, cond_id: CExprId, body_id: CStmtId) -> Result<Vec<Stmt>,String> {
+        let cond = self.convert_condition(true, cond_id)?;
         self.loops.push_loop(LoopType::While);
-        let body = self.convert_stmt(body_id).unwrap();
+        let body = self.convert_stmt(body_id)?;
         let loop_ = self.loops.pop_loop();
 
         let rust_cond = cond.to_expr();
         let rust_body = stmts_block(body);
 
-        vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body, loop_.label))]
+        Ok(vec![mk().expr_stmt(mk().while_expr(rust_cond, rust_body, loop_.label))])
     }
 
-    fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Vec<Stmt> {
-        let cond = self.convert_condition(false, cond_id);
+    fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Result<Vec<Stmt>,String> {
+        let cond = self.convert_condition(false, cond_id)?;
         self.loops.push_loop(LoopType::DoWhile);
-        let mut body = self.convert_stmt(body_id).unwrap();
+        let mut body = self.convert_stmt(body_id)?;
         let mut loop_ = self.loops.pop_loop();
 
         // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
@@ -646,7 +685,7 @@ impl Translation {
 
         let rust_body = stmts_block(body);
 
-        vec![mk().semi_stmt(mk().loop_expr(rust_body, loop_.label))]
+        Ok(vec![mk().semi_stmt(mk().loop_expr(rust_body, loop_.label))])
     }
 
     fn convert_for_stmt(
@@ -688,7 +727,7 @@ impl Translation {
 
             let looper = match cond_id {
                 None => mk().loop_expr(body_block, loop_.label), // loop
-                Some(i) => mk().while_expr(self.convert_condition(true, i).to_expr(), body_block, loop_.label), // while
+                Some(i) => mk().while_expr(self.convert_condition(true, i)?.to_expr(), body_block, loop_.label), // while
             };
 
             init.push(mk().expr_stmt(looper));
@@ -703,7 +742,7 @@ impl Translation {
         then_id: CStmtId,
         else_id: Option<CStmtId>
     ) -> Result<Vec<Stmt>, String> {
-        let mut cond = self.convert_condition(true, cond_id);
+        let mut cond = self.convert_condition(true, cond_id)?;
         let then_stmts = stmts_block(self.convert_stmt(then_id)?);
         let else_stmts =
             else_id.map(|x| { mk().block_expr(stmts_block(self.convert_stmt(x).unwrap()))});
@@ -732,7 +771,7 @@ impl Translation {
                 assert!(is_defn, "Only local variable definitions should be extracted");
 
                 let rust_name = self.renamer.borrow_mut()
-                    .insert(ident.clone(), &ident)
+                    .insert(decl_id, &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ).unwrap();
 
@@ -748,7 +787,7 @@ impl Translation {
 
                 let inserted = if let Some(ident) = decl.get_name() {
                     self.renamer.borrow_mut()
-                        .insert(ident.clone(), &ident)
+                        .insert(decl_id, &ident)
                         .is_some()
                 } else {
                     false
@@ -780,7 +819,7 @@ impl Translation {
 
         let init = match initializer {
             Some(x) => self.convert_expr(ExprUse::RValue, x)?,
-            None => WithStmts::new(self.implicit_default_expr(typ.ctype)),
+            None => WithStmts::new(self.implicit_default_expr(typ.ctype)?),
         };
         let ty = self.convert_type(typ.ctype)?;
         let mutbl = if typ.qualifiers.is_const { Mutability::Immutable } else { Mutability:: Mutable };
@@ -854,16 +893,20 @@ impl Translation {
                                 mk().angle_bracketed_param_types(tys)),
                 ];
                 let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
-                let casted = mk().cast_expr(call, mk().path_ty(vec!["libc","size_t"]));
+                let casted = mk().cast_expr(call, mk().path_ty(vec!["libc","c_ulong"]));
                 Ok(WithStmts::new(casted))
             }
 
             CExprKind::DeclRef(qual_ty, decl_id) => {
-                let decl = &self.ast_context.index(decl_id).kind;
+                let decl =
+                    &self.ast_context.c_decls
+                        .get(&decl_id)
+                        .ok_or_else(||format!("Missing declref {:?}", decl_id))?
+                        .kind;
                 let varname = decl.get_name().expect("expected variable name").to_owned();
                 let rustname = self.renamer.borrow_mut()
-                    .get(&varname)
-                    .expect(&format!("name not declared: '{}'", varname));
+                    .get(&decl_id)
+                    .ok_or_else(||format!("name not declared: '{}'", varname))?;
 
                 let mut val = mk().path_expr(vec![rustname]);
 
@@ -884,8 +927,17 @@ impl Translation {
                 Ok(WithStmts::new(val))
             }
 
-            CExprKind::Literal(_, CLiteral::Integer(val)) => {
-                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed))))
+            CExprKind::Literal(ty, CLiteral::Integer(val)) => {
+                let intty = match &self.ast_context.resolve_type(ty.ctype).kind {
+                    &CTypeKind::Int => LitIntType::Signed(IntTy::I32),
+                    &CTypeKind::Long => LitIntType::Signed(IntTy::I64),
+                    &CTypeKind::LongLong => LitIntType::Signed(IntTy::I64),
+                    &CTypeKind::UInt => LitIntType::Unsigned(UintTy::U32),
+                    &CTypeKind::ULong => LitIntType::Unsigned(UintTy::U64),
+                    &CTypeKind::ULongLong => LitIntType::Unsigned(UintTy::U64),
+                    _ => LitIntType::Unsuffixed,
+                };
+                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), intty))))
             }
 
             CExprKind::Literal(_, CLiteral::Character(val)) => {
@@ -961,7 +1013,7 @@ impl Translation {
                         Ok(val.map (|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
 
                     CastKind::BuiltinFnToFnPtr =>
-                        Err(format!("Builtin fn to fn ptr not implemented")),
+                        Ok(val.map (|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
 
                     CastKind::ArrayToPointerDecay =>
                         Ok(val.map(|x| mk().method_call_expr(x, "as_mut_ptr", vec![] as Vec<P<Expr>>))),
@@ -1007,7 +1059,7 @@ impl Translation {
                 self.convert_unary_operator(use_,op, type_id, arg),
 
             CExprKind::Conditional(_, cond, lhs, rhs) => {
-                let cond = self.convert_condition(true, cond);
+                let cond = self.convert_condition(true, cond)?;
 
                 let lhs = self.convert_expr(use_, lhs)?;
                 let rhs = self.convert_expr(use_, rhs)?;
@@ -1141,7 +1193,7 @@ impl Translation {
 
                 let mut stmts = vec![];
 
-                let rhs = self.convert_expr(ExprUse::RValue, *rhs)?;
+                let mut rhs = self.convert_expr(ExprUse::RValue, *rhs)?;
                 stmts.extend(rhs.stmts);
 
                 let val = if let &CExprKind::ImplicitCast(_, ref arr, CastKind::ArrayToPointerDecay) = lhs_node {
@@ -1151,7 +1203,9 @@ impl Translation {
                     let lhs = self.convert_expr(use_, *arr)?;
                     stmts.extend(lhs.stmts);
 
-                    mk().index_expr(lhs.val, rhs.val)
+                    let val = mk().cast_expr(rhs.val, mk().path_ty(vec!["usize"]));
+
+                    mk().index_expr(lhs.val, val)
                 } else {
                     // Otherwise, use the pointer and make a deref of a pointer offset expression
 
@@ -1232,7 +1286,7 @@ impl Translation {
 
                         // Pad out the array literal with default values to the desired size
                         for _i in ids.len()..n {
-                            vals.push(self.implicit_default_expr(ty))
+                            vals.push(self.implicit_default_expr(ty)?)
                         }
 
                         Ok(WithStmts {
@@ -1252,7 +1306,7 @@ impl Translation {
                 }
             }
             CExprKind::ImplicitValueInit(ty) =>
-                Ok(WithStmts::new(self.implicit_default_expr(ty.ctype))),
+                Ok(WithStmts::new(self.implicit_default_expr(ty.ctype)?)),
 
             CExprKind::Predefined(ty, val_id) =>
                 self.convert_expr(use_, val_id),
@@ -1315,7 +1369,7 @@ impl Translation {
                         let val = if ids.is_empty() {
                             WithStmts {
                                 stmts: vec![],
-                                val: self.implicit_default_expr(field_ty.ctype),
+                                val: self.implicit_default_expr(field_ty.ctype)?,
                             }
                         } else {
                             self.convert_expr(ExprUse::RValue, ids[0])?
@@ -1370,7 +1424,7 @@ impl Translation {
         // Pad out remaining omitted record fields
         for i in ids.len()..fields.len() {
             let &(ref field_name, ty) = &field_decls[i];
-            fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype)));
+            fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype)?));
         }
 
         Ok(WithStmts {
@@ -1379,26 +1433,91 @@ impl Translation {
         })
     }
 
-    pub fn implicit_default_expr(&self, ty_id: CTypeId) -> P<Expr> {
+    pub fn implicit_default_expr(&self, ty_id: CTypeId) -> Result<P<Expr>,String> {
         let resolved_ty = &self.ast_context.resolve_type(ty_id).kind;
 
         if resolved_ty.is_integral_type() {
-            mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
+            Ok(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)))
         } else if resolved_ty.is_floating_type() {
-            mk().lit_expr(mk().float_unsuffixed_lit("0."))
+            Ok(mk().lit_expr(mk().float_unsuffixed_lit("0.")))
         } else if self.is_function_pointer(ty_id) {
-            let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc","c_void"]));
+            let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc", "c_void"]));
             let target_ty = self.convert_type(ty_id).unwrap();
-            transmute_expr(source_ty, target_ty, null_expr())
+            Ok(transmute_expr(source_ty, target_ty, null_expr()))
         } else if let &CTypeKind::Pointer(p) = resolved_ty {
-            if p.qualifiers.is_const { null_expr() } else { null_mut_expr() }
+            Ok(if p.qualifiers.is_const { null_expr() } else { null_mut_expr() })
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
             let sz = mk().lit_expr(mk().int_lit(sz as u128, LitIntType::Unsuffixed));
-            mk().repeat_expr(self.implicit_default_expr(elt), sz)
+            Ok(mk().repeat_expr(self.implicit_default_expr(elt)?, sz))
+        } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
+            self.zero_initializer(decl_id, ty_id)
         } else {
-            mk().call_expr(mk().path_expr(vec!["Default", "default"]), vec![] as Vec<P<Expr>>)
+            Err(format!("Unsupported default initializer"))
         }
     }
+
+    /// Produce zero-initializers for structs/unions/enums, looking them up when possible.
+    fn zero_initializer(&self, decl_id: CDeclId, type_id: CTypeId) -> Result<P<Expr>, String> {
+
+        // Look up the decl in the cache and return what we find (if we find anything)
+        if let Some(init) = self.zero_inits.borrow().get(&decl_id) {
+            return init.clone()
+        }
+
+        // Otherwise, construct the initializer
+        let init = match &self.ast_context.index(decl_id).kind {
+
+            // Zero initialize all of the fields
+            &CDeclKind::Struct { ref fields, .. } => {
+                let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+                let fields: Result<Vec<Field>, String> = fields
+                    .into_iter()
+                    .map(|field_id: &CFieldId| -> Result<Field, String> {
+                        match &self.ast_context.index(*field_id).kind {
+                            &CDeclKind::Field { ref name, ref typ } => {
+                                let field_init = self.implicit_default_expr(typ.ctype)?;
+                                Ok(mk().field(name, field_init))
+                            }
+                            _ => Err(format!("Found non-field in record field list"))
+                        }
+                    })
+                    .collect();
+
+                Ok(mk().struct_expr(vec![name], fields?))
+            },
+
+            // Zero initialize the first field
+            &CDeclKind::Union { ref fields, .. } => {
+                let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+                let field_id = fields.first().ok_or(format!("A union should have a field"))?;
+
+                let field = match &self.ast_context.index(*field_id).kind {
+                    &CDeclKind::Field { ref name, ref typ } => {
+                        let field_init = self.implicit_default_expr(typ.ctype)?;
+                        Ok(mk().field(name, field_init))
+                    }
+                    _ => Err(format!("Found non-field in record field list"))
+                }?;
+
+                Ok(mk().struct_expr(vec![name], vec![field]))
+            },
+
+            // Transmute the number `0` into the enum type
+            &CDeclKind::Enum { .. } => {
+                let enum_ty = self.convert_type(type_id)?;
+                let number_ty = mk().path_ty(mk().path(vec!["libc","c_int"]));
+
+                Ok(transmute_expr(number_ty, enum_ty, mk().lit_expr(mk().int_lit(0, ""))))
+            }
+
+            _ => Err(format!("Declaration is not associated with a type"))
+        };
+
+        // Insert the initializer into the cache, then return it
+        self.zero_inits.borrow_mut().insert(decl_id, init.clone());
+        init
+    }
+
 
     /// Get back a Rust lvalue corresponding to the expression passed in.
     ///
@@ -1645,8 +1764,9 @@ impl Translation {
                     .map(|a| mk().unary_expr(ast::UnOp::Not, a))),
 
             c_ast::UnOp::Not => {
+                let t = self.ast_context.index(arg).kind.get_type();
                 let WithStmts { val: arg, stmts } = self.convert_expr(ExprUse::RValue, arg)?;
-                Ok(WithStmts { val:self.convert_not(ctype, arg), stmts })
+                Ok(WithStmts { val:self.convert_not(t, arg), stmts })
             },
         }
     }
@@ -1872,15 +1992,7 @@ impl Translation {
 
     /// Convert expression to c_int using '!' behavior
     fn convert_not(&self, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
-        let ty = &self.ast_context.resolve_type(ty_id).kind;
-
-        let b = if ty.is_pointer() {
-            mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>)
-        } else {
-            let zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
-            mk().binary_expr(BinOpKind::Eq, zero, val)
-        };
-
+        let b = self.match_bool(false, ty_id, val);
         mk().cast_expr(b, mk().path_ty(vec!["libc","c_int"]))
     }
 

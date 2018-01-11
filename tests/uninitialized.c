@@ -1,5 +1,8 @@
 typedef int myint;
 typedef myint *myintp;
+union u { int x; char y; };
+enum e { foo = 1, bar, baz };
+struct s { union u a_u; char a_c; enum e a_e; };
 
 void entry(const unsigned sz, int buf[const]) {
        myint x;
@@ -17,4 +20,6 @@ void entry(const unsigned sz, int buf[const]) {
        int xs[10];
        int ys[4][5];
        int *zs[4];
+       struct s my_s;
+       union u my_u;
 }
