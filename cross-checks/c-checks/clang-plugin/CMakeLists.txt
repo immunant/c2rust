@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.4)
 
-execute_process(COMMAND uname -n OUTPUT_VARIABLE MACHINE_NAME)
-string(STRIP ${MACHINE_NAME} MACHINE_NAME)
+execute_process(COMMAND uname -n
+    OUTPUT_VARIABLE MACHINE_NAME
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
 set(LLVM_DIR ${CMAKE_SOURCE_DIR}/../../../llvm.build.${MACHINE_NAME})
 set(CLANG_DIR ${LLVM_DIR}/tools/clang)
 
