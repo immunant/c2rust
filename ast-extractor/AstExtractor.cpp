@@ -434,7 +434,7 @@ class TranslateASTVisitor final
       
       // Override the default behavior of the RecursiveASTVisitor
       bool shouldVisitImplicitCode() const {
-          return false;
+          return true;
       }
       
       const std::unordered_map<string,uint64_t> &getFilenames() const {

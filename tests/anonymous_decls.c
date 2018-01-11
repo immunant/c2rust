@@ -1,6 +1,3 @@
-// Will fail for now, since we the intermediate struct decls are not being
-// produced in the final Rust code.
-
 struct {
   struct {
     int l;

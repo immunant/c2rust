@@ -182,15 +182,44 @@ pub fn translate(ast_context: &TypedAstContext) -> String {
         }
     }
 
-    for top_id in &ast_context.c_decls_top {
-        match t.convert_decl(true, *top_id) {
-            Ok(item) => t.items.push(item),
-            Err(e) => {
-                let ref k = t.ast_context.c_decls.get(top_id).map(|x|&x.kind);
-                eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
-            },
+    // Export all types
+    for (&decl_id, decl) in &ast_context.c_decls {
+        let needs_export = match &decl.kind {
+            &CDeclKind::Struct { .. } => true,
+            &CDeclKind::Enum { .. } => true,
+            &CDeclKind::Union { .. } => true,
+            &CDeclKind::Typedef { .. } => true,
+            _ => false,
+        };
+        if needs_export {
+            match t.convert_decl(true, decl_id) {
+                Ok(item) => t.items.push(item),
+                Err(e) => {
+                    let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
+                    eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
+                },
+            }
         }
     }
+
+    // Export top-level value declarations
+    for top_id in &ast_context.c_decls_top {
+        let needs_export = match &ast_context.c_decls[top_id].kind {
+            &CDeclKind::Function { .. } => true,
+            &CDeclKind::Variable { .. } => true,
+            _ => false,
+        };
+        if needs_export {
+            match t.convert_decl(true, *top_id) {
+                Ok(item) => t.items.push(item),
+                Err(e) => {
+                    let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
+                    eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
+                },
+            }
+        }
+    }
+
 
     to_string(|s| {
 
