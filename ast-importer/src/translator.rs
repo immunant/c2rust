@@ -1393,8 +1393,9 @@ impl Translation {
 
         let struct_decl = &self.ast_context.index(struct_id).kind;
 
-        let (struct_name, field_decls) = match struct_decl {
-            &CDeclKind::Struct { ref name, ref fields } => {
+        let field_decls = match struct_decl {
+            &CDeclKind::Struct { ref fields, .. } => {
+
                 let fieldnames: Vec<(String, CQualTypeId)> = fields.iter().map(|x| {
                     if let &CDeclKind::Field { ref name, typ } = &self.ast_context.index(*x).kind {
                         (name.to_owned(), typ)
@@ -1403,10 +1404,12 @@ impl Translation {
                     }
                 }).collect();
 
-                (name.to_owned().unwrap(), fieldnames)
+                fieldnames
             }
             _ => panic!("Struct literal declaration mismatch"),
         };
+
+        let struct_name = self.type_converter.borrow().resolve_decl_name(struct_id).unwrap();
 
         let mut stmts: Vec<Stmt> = vec![];
         let mut fields: Vec<Field> = vec![];
