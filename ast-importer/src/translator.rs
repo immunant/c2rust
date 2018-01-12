@@ -288,7 +288,7 @@ impl Translation {
             items: vec![],
             type_converter: RefCell::new(TypeConverter::new()),
             ast_context,
-            renamer: RefCell::new(Renamer::new(vec![
+            renamer: RefCell::new(Renamer::new(&[
                 // Keywords currently in use
                 "as", "break", "const", "continue", "crate","else", "enum", "extern", "false", "fn",
                 "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
@@ -299,7 +299,7 @@ impl Translation {
                 "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof",
                 "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual",
                 "yield",
-            ].iter().map(|s| s.to_string()).collect())),
+            ])),
             loops: LoopContext::new(),
             zero_inits: RefCell::new(HashMap::new()),
         }
@@ -321,12 +321,13 @@ impl Translation {
 
                 // Gather up all the field names and field types
                 let mut field_entries = vec![];
-                for x in fields {
-                    let field_decl = self.ast_context.index(*x);
+                for &x in fields {
+                    let field_decl = self.ast_context.index(x);
                     match &field_decl.kind {
                         &CDeclKind::Field { ref name, typ } => {
                             let typ = self.convert_type(typ.ctype)?;
-                            field_entries.push((name.to_owned(), typ))
+                            let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
+                            field_entries.push((name, typ))
                         }
                         _ => return Err(format!("Found non-field in record field list")),
                     }
@@ -358,10 +359,11 @@ impl Translation {
                 let name = self.type_converter.borrow_mut().resolve_decl_name(decl_id).unwrap();
 
                 let mut field_syns = vec![];
-                for x in fields {
-                    let field_decl = self.ast_context.index(*x);
+                for &x in fields {
+                    let field_decl = self.ast_context.index(x);
                     match &field_decl.kind {
                         &CDeclKind::Field { ref name, typ } => {
+                            let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
                             let typ = self.convert_type(typ.ctype)?;
                             field_syns.push(mk().struct_field(name, typ))
                         }
@@ -437,7 +439,7 @@ impl Translation {
                 self.convert_function(is_extern, new_name, name, &args, ret, body)
             },
 
-            CDeclKind::Typedef { ref name, ref typ } => {
+            CDeclKind::Typedef { ref typ, .. } => {
 
                 let new_name = &self.type_converter.borrow_mut().resolve_decl_name(decl_id).unwrap();
 
@@ -478,7 +480,7 @@ impl Translation {
             }
 
             // Static variable (definition here)
-            CDeclKind::Variable { is_static: true, ref ident, initializer, typ, .. } => {
+            CDeclKind::Variable { is_static: true, initializer, typ, .. } => {
 
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ)?;
@@ -491,7 +493,7 @@ impl Translation {
 
             CDeclKind::Variable { .. } => Err(format!("This should be handled in 'convert_decl_stmt'")),
 
-            ref k => Err(format!("Translation not implemented for {:?}", k)),
+            //ref k => Err(format!("Translation not implemented for {:?}", k)),
         }
     }
 
@@ -798,6 +800,10 @@ impl Translation {
                 //       then skip subsequent times.
                 let skip = match decl {
                     &CDeclKind::Variable { .. } => !inserted,
+                    &CDeclKind::Struct {..} => true,
+                    &CDeclKind::Union {..} => true,
+                    &CDeclKind::Enum {..} => true,
+                    &CDeclKind::Typedef {..} => true,
                     _ => false,
                 };
 
@@ -1251,7 +1257,7 @@ impl Translation {
 
             CExprKind::Member(_, expr, decl, kind) => {
                 let struct_val = self.convert_expr(use_, expr)?;
-                let field_name = self.ast_context.index(decl).kind.get_name().expect("expected field name");
+                let field_name = self.type_converter.borrow().resolve_field_name(None, decl).unwrap();
 
                 if use_ == ExprUse::Unused {
                     Ok(struct_val)
@@ -1295,7 +1301,7 @@ impl Translation {
                         })
                     }
                     &CTypeKind::Struct(struct_id) => {
-                        self.convert_struct_literal(struct_id,  ids.as_ref(), ty)
+                        self.convert_struct_literal(struct_id,  ids.as_ref())
                     }
                     &CTypeKind::Union(union_id) => {
                         self.convert_union_literal(union_id, ids.as_ref(), ty, opt_union_field_id)
@@ -1308,7 +1314,7 @@ impl Translation {
             CExprKind::ImplicitValueInit(ty) =>
                 Ok(WithStmts::new(self.implicit_default_expr(ty.ctype)?)),
 
-            CExprKind::Predefined(ty, val_id) =>
+            CExprKind::Predefined(_, val_id) =>
                 self.convert_expr(use_, val_id),
         }
     }
@@ -1355,7 +1361,7 @@ impl Translation {
         &self,
         union_id: CRecordId,
         ids: &[CExprId],
-        ty: CQualTypeId,
+        _ty: CQualTypeId,
         opt_union_field_id: Option<CFieldId>
     ) -> Result<WithStmts<P<Expr>>, String> {
 
@@ -1388,7 +1394,7 @@ impl Translation {
         }
     }
 
-    fn convert_struct_literal(&self, struct_id: CRecordId, ids: &[CExprId], ty: CQualTypeId)
+    fn convert_struct_literal(&self, struct_id: CRecordId, ids: &[CExprId])
         -> Result<WithStmts<P<Expr>>, String> {
 
         let struct_decl = &self.ast_context.index(struct_id).kind;
@@ -1396,13 +1402,16 @@ impl Translation {
         let field_decls = match struct_decl {
             &CDeclKind::Struct { ref fields, .. } => {
 
-                let fieldnames: Vec<(String, CQualTypeId)> = fields.iter().map(|x| {
-                    if let &CDeclKind::Field { ref name, typ } = &self.ast_context.index(*x).kind {
-                        (name.to_owned(), typ)
+                let mut fieldnames = vec![];
+
+                for &x in fields {
+                    let name = self.type_converter.borrow_mut().resolve_field_name(Some(struct_id), x).unwrap();
+                    if let &CDeclKind::Field { typ, .. } = &self.ast_context.index(x).kind {
+                        fieldnames.push((name, typ));
                     } else {
                         panic!("Struct field decl type mismatch")
                     }
-                }).collect();
+                }
 
                 fieldnames
             }
@@ -1476,8 +1485,11 @@ impl Translation {
                 let fields: Result<Vec<Field>, String> = fields
                     .into_iter()
                     .map(|field_id: &CFieldId| -> Result<Field, String> {
+                        let name = self.type_converter.borrow_mut().resolve_field_name(Some(decl_id), *field_id).unwrap();
+
                         match &self.ast_context.index(*field_id).kind {
-                            &CDeclKind::Field { ref name, ref typ } => {
+                            &CDeclKind::Field { ref typ, .. } => {
+
                                 let field_init = self.implicit_default_expr(typ.ctype)?;
                                 Ok(mk().field(name, field_init))
                             }

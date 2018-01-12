@@ -10,7 +10,7 @@ struct has_padding {
     int y;
 };
 
-typedef struct { int a, b; };
+typedef struct { int a, b; } anon;
 
 
 void entry (const unsigned sz, int buf[const]) {
@@ -41,4 +41,7 @@ void entry (const unsigned sz, int buf[const]) {
 
         buf[i++] = uninit.x;
         buf[i++] = uninit.y;
+
+        struct { struct { int x; }; } y = {0};
+        buf[i++] = y.x;
 }
