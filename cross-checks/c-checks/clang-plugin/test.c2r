@@ -1,0 +1,13 @@
+---
+test.c:
+    - item: function
+      name: main
+      #disable_xchecks: true
+      #entry: disabled
+      #entry: { djb2: "" }
+
+    - item: function
+      name: fibo
+      #disable_xchecks: true
+      entry: { fixed: 0x12345678 }
+...

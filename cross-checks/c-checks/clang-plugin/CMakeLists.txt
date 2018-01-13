@@ -12,8 +12,17 @@ find_package(Clang REQUIRED CONFIG
 add_definitions(${CLANG_DEFINITIONS})
 include_directories(${CLANG_INCLUDE_DIRS})
 
+find_program(LLVM_TABLEGEN_EXE "llvm-tblgen" ${LLVM_TOOLS_BINARY_DIR}
+    NO_DEFAULT_PATH)
+
+# TableGen needs this
+set(LLVM_MAIN_INCLUDE_DIR ${LLVM_BUILD_MAIN_INCLUDE_DIR})
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
 # Needed for add_llvm_loadable_module
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 include(AddLLVM)
+include(TableGen)
+include(HandleLLVMOptions)
 
 add_subdirectory(plugin)
