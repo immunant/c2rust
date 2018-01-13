@@ -225,12 +225,16 @@ public:
 
                         case XCheckType::FIXED: {
                             auto &xcheck_data = func_cfg->get().entry.data;
+                            assert(std::holds_alternative<uint64_t>(xcheck_data) &&
+                                   "Invalid type for XCheckType::data, expected uint64_t");
                             rb_xcheck_hash = std::get<uint64_t>(xcheck_data);
                             break;
                         }
 
                         case XCheckType::DJB2: {
                             auto &xcheck_data = func_cfg->get().entry.data;
+                            assert(std::holds_alternative<std::string>(xcheck_data) &&
+                                   "Invalid type for XCheckType::data, expected string");
                             auto &xcheck_str = std::get<std::string>(xcheck_data);
                             rb_xcheck_hash = djb2_hash(xcheck_str);
                             break;
