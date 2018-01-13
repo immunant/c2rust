@@ -5,18 +5,34 @@ use idiomize::ast_manip::make_ast::*;
 use syntax::ptr::P;
 use std::ops::Index;
 use renamer::*;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use c_ast::CDeclId;
 
 pub struct TypeConverter {
     renamer: Renamer<CDeclId>,
+    fields: HashMap<CDeclId, Renamer<CFieldId>>,
 }
+
+static RESERVED_NAMES: [&str; 52] = [
+    // Keywords currently in use
+    "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn",
+    "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+    "ref", "return", "Self", "self", "static", "struct", "super", "trait", "true",
+    "type", "unsafe", "use", "where", "while",
+
+    // Keywords reserved for future use
+    "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof",
+    "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual",
+    "yield",
+];
 
 impl TypeConverter {
 
     pub fn new() -> TypeConverter {
+
         TypeConverter {
-            renamer: Renamer::new(HashSet::new()),
+            renamer: Renamer::new(&RESERVED_NAMES),
+            fields: HashMap::new(),
         }
     }
 
@@ -26,6 +42,29 @@ impl TypeConverter {
 
     pub fn resolve_decl_name(&self, decl_id: CDeclId) -> Option<String> {
         self.renamer.get(&decl_id)
+    }
+
+    pub fn declare_field_name(&mut self, record_id: CRecordId, field_id: CFieldId, name: &str) -> String {
+
+        let name = if name.is_empty() { "unnamed" } else { name };
+
+        if !self.fields.contains_key(&record_id) {
+            self.fields.insert(record_id, Renamer::new(&RESERVED_NAMES));
+        }
+
+        self.fields.get_mut(&record_id).unwrap()
+            .insert(field_id, name).expect("Field already declared")
+    }
+
+    /** Resolve the Rust name associated with a field declaration. The optional record_id
+    is used as a hint to speed up the process of finding the field's name.
+    */
+    pub fn resolve_field_name(&self, record_id: Option<CRecordId>, field_id: CFieldId) -> Option<String> {
+        match record_id {
+            Some(record_id) => self.fields.get(&record_id).and_then(|x| x.get(&field_id)),
+            None => self.fields.values().flat_map(|x| x.get(&field_id)).next(),
+        }
+
     }
 
     /// Convert a `C` type to a `Rust` one. For the moment, these are expected to have compatible

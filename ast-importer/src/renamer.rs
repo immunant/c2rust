@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::iter::FromIterator;
 
 struct Scope<T> {
     name_map: HashMap<T, String>,
@@ -42,9 +43,10 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     /// Creates a new renaming environment with a single, empty scope. The given set of
     /// reserved names will exclude those names from being chosen as the mangled names from
     /// the insert method.
-    pub fn new(reserved_names: HashSet<String>) -> Self {
+    pub fn new(reserved_names: &[&str]) -> Self {
+        let set: HashSet<String> = HashSet::from_iter(reserved_names.iter().map(|&x| x.to_owned()));
         Renamer {
-            scopes: vec![Scope::new_with_reserved(reserved_names)],
+            scopes: vec![Scope::new_with_reserved(set)],
             next_fresh: 0,
         }
     }
