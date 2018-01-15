@@ -2,10 +2,22 @@
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTMutationListener.h"
+#include "clang/Frontend/CompilerInstance.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaConsumer.h"
+#include "llvm/Option/ArgList.h"
+#include "llvm/Option/OptTable.h"
+#include "llvm/Option/Option.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/YAMLTraits.h"
+
+#include <functional>
+#include <optional>
+
+#include "config.h"
 
 using namespace clang;
+using namespace llvm::opt;
 
 namespace {
 
@@ -52,8 +64,32 @@ uint32_t djb2_hash(llvm::StringRef str) {
 
 #endif
 
+typedef std::reference_wrapper<const std::string> StringRef;
+typedef std::pair<StringRef, StringRef> StringRefPair;
+typedef std::reference_wrapper<FunctionConfig> FunctionConfigRef;
+
+struct StringRefPairCompare {
+    bool operator()(const StringRefPair &lhs, const StringRefPair &rhs) const {
+        if (lhs.first.get() == rhs.first.get()) {
+            return lhs.second.get() < rhs.second.get();
+        } else {
+            return lhs.first.get()  < rhs.first.get();
+        }
+    }
+};
+
 class CrossCheckInserter : public SemaConsumer {
 private:
+    Config config;
+
+    // Cache the (file, function) => config mapping
+    // for fast lookup
+    // FIXME: uses std::map which is O(logN), would be nice
+    // to use std::unordered_map, but that one doesn't compile
+    // with StringRefPair keys
+    std::map<StringRefPair, FunctionConfigRef,
+        StringRefPairCompare> function_configs;
+
     ASTConsumer *toplevel_consumer = nullptr;
 
     FunctionDecl *rb_xcheck_decl = nullptr;
@@ -117,7 +153,29 @@ private:
         parent_decl->addDecl(rb_xcheck_decl);
     }
 
+    std::optional<FunctionConfigRef>
+    get_function_config(const std::string &file_name,
+                        const std::string &func_name) {
+        StringRefPair key(std::cref(file_name), std::cref(func_name));
+        auto file_it = function_configs.find(key);
+        if (file_it != function_configs.end())
+            return std::make_optional(file_it->second);
+        return {};
+    }
+
 public:
+    CrossCheckInserter() = delete;
+    CrossCheckInserter(Config &&cfg) : config(std::move(cfg)) {
+        for (auto &file_config : config) {
+            auto &file_name = file_config.first;
+            for (auto &item : file_config.second)
+                if (auto func = std::get_if<FunctionConfig>(&item)) {
+                    StringRefPair key(std::cref(file_name), std::cref(func->name));
+                    function_configs.emplace(key, *func);
+                }
+        }
+    }
+
     void InitializeSema(Sema &S) override {
         // Grab the top-level consumer from the Sema
         toplevel_consumer = &S.getASTConsumer();
@@ -140,37 +198,85 @@ public:
 #endif
 
                 auto &ctx = fd->getASTContext();
-                SynthRbXcheckDecl(ctx);
-                auto rb_xcheck_tag =
-                    IntegerLiteral::Create(ctx,
-                                           llvm::APInt(8, FUNCTION_ENTRY_TAG),
-                                           ctx.UnsignedCharTy,
-                                           SourceLocation());
-                auto rb_xcheck_val =
-                    IntegerLiteral::Create(ctx,
-                                           llvm::APInt(64, djb2_hash(fd->getName())),
-                                           ctx.UnsignedLongTy,
-                                           SourceLocation());
-                auto rb_xcheck_type = rb_xcheck_decl->getType();
-                auto rb_xcheck_ptr_type = ctx.getPointerType(rb_xcheck_type);
-                auto rb_xcheck_fn = new (ctx)
-                    DeclRefExpr(rb_xcheck_decl, false, rb_xcheck_type,
-                                VK_LValue, SourceLocation());
-                auto rb_xcheck_ice =
-                    ImplicitCastExpr::Create(ctx, rb_xcheck_ptr_type,
-                                             CK_FunctionToPointerDecay,
-                                             rb_xcheck_fn, nullptr, VK_RValue);
-                auto rb_xcheck_call = new (ctx)
-                    CallExpr(ctx, rb_xcheck_ice, { rb_xcheck_tag, rb_xcheck_val },
-                             ctx.VoidTy, VK_RValue, SourceLocation());
+                std::optional<FunctionConfigRef> func_cfg;
+                auto ploc = ctx.getSourceManager().getPresumedLoc(fd->getLocStart());
+                if (ploc.isValid()) {
+                    std::string file_name(ploc.getFilename());
+                    std::string func_name = fd->getName().str();
+                    func_cfg = get_function_config(file_name, func_name);
+                }
+                if (func_cfg && func_cfg->get().disable_xchecks)
+                    continue;
+
+                SmallVector<Stmt*, 8> new_body_stmts;
+                auto entry_xcheck_type =
+                    func_cfg ? func_cfg->get().entry.type : XCheckType::DEFAULT;
+                if (entry_xcheck_type != XCheckType::DISABLED) {
+                    Expr *rb_xcheck_val = nullptr;
+                    if (entry_xcheck_type == XCheckType::CUSTOM) {
+                        // TODO: implement
+                        llvm_unreachable("Unimplemented");
+                    } else {
+                        uint64_t rb_xcheck_hash = 0;
+                        switch (entry_xcheck_type) {
+                        case XCheckType::DEFAULT:
+                            rb_xcheck_hash = djb2_hash(fd->getName());
+                            break;
+
+                        case XCheckType::FIXED: {
+                            auto &xcheck_data = func_cfg->get().entry.data;
+                            assert(std::holds_alternative<uint64_t>(xcheck_data) &&
+                                   "Invalid type for XCheckType::data, expected uint64_t");
+                            rb_xcheck_hash = std::get<uint64_t>(xcheck_data);
+                            break;
+                        }
+
+                        case XCheckType::DJB2: {
+                            auto &xcheck_data = func_cfg->get().entry.data;
+                            assert(std::holds_alternative<std::string>(xcheck_data) &&
+                                   "Invalid type for XCheckType::data, expected string");
+                            auto &xcheck_str = std::get<std::string>(xcheck_data);
+                            rb_xcheck_hash = djb2_hash(xcheck_str);
+                            break;
+                        }
+
+                        default:
+                            llvm_unreachable("Invalid XCheckType reached");
+                        }
+                        rb_xcheck_val =
+                            IntegerLiteral::Create(ctx,
+                                                   llvm::APInt(64, rb_xcheck_hash),
+                                                   ctx.UnsignedLongTy,
+                                                   SourceLocation());
+                    }
+
+                    SynthRbXcheckDecl(ctx);
+                    auto rb_xcheck_tag =
+                        IntegerLiteral::Create(ctx,
+                                               llvm::APInt(8, FUNCTION_ENTRY_TAG),
+                                               ctx.UnsignedCharTy,
+                                               SourceLocation());
+                    auto rb_xcheck_type = rb_xcheck_decl->getType();
+                    auto rb_xcheck_ptr_type = ctx.getPointerType(rb_xcheck_type);
+                    auto rb_xcheck_fn = new (ctx)
+                        DeclRefExpr(rb_xcheck_decl, false, rb_xcheck_type,
+                                    VK_LValue, SourceLocation());
+                    auto rb_xcheck_ice =
+                        ImplicitCastExpr::Create(ctx, rb_xcheck_ptr_type,
+                                                 CK_FunctionToPointerDecay,
+                                                 rb_xcheck_fn, nullptr, VK_RValue);
+                    auto rb_xcheck_call = new (ctx)
+                        CallExpr(ctx, rb_xcheck_ice, { rb_xcheck_tag, rb_xcheck_val },
+                                 ctx.VoidTy, VK_RValue, SourceLocation());
+                    new_body_stmts.push_back(rb_xcheck_call);
+                }
 
                 // Replace the function body
                 auto old_body = fd->getBody();
-                auto new_body = new (ctx)
-                    CompoundStmt(ctx,
-                                 { rb_xcheck_call, old_body },
-                                 old_body->getLocStart(),
-                                 old_body->getLocEnd());
+                new_body_stmts.push_back(old_body);
+                auto new_body = new (ctx) CompoundStmt(ctx, new_body_stmts,
+                                                       old_body->getLocStart(),
+                                                       old_body->getLocEnd());
                 fd->setBody(new_body);
             }
         }
@@ -187,15 +293,98 @@ public:
     }
 };
 
+enum ID {
+  OPT_INVALID = 0, // This is not an option ID.
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
+               HELPTEXT, METAVAR, VALUES)                                      \
+  OPT_##ID,
+#include "Options.inc"
+#undef OPTION
+};
+
+#define PREFIX(NAME, VALUE) const char *const NAME[] = VALUE;
+#include "Options.inc"
+#undef PREFIX
+
+static const OptTable::Info InfoTable[] = {
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
+               HELPTEXT, METAVAR, VALUES)                                      \
+{                                                                              \
+      PREFIX,      NAME,      HELPTEXT,                                        \
+      METAVAR,     OPT_##ID,  Option::KIND##Class,                             \
+      PARAM,       FLAGS,     OPT_##GROUP,                                     \
+      OPT_##ALIAS, ALIASARGS, VALUES},
+#include "Options.inc"
+#undef OPTION
+};
+
+class CrossCheckOptTable : public OptTable {
+public:
+    CrossCheckOptTable() : OptTable(InfoTable) {}
+};
+
 class CrossCheckInsertionAction : public PluginASTAction {
+private:
+    Config config;
+
 protected:
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &ci,
                                                    llvm::StringRef) override {
-        return llvm::make_unique<CrossCheckInserter>();
+        return llvm::make_unique<CrossCheckInserter>(std::move(config));
     }
 
     bool ParseArgs(const CompilerInstance &ci,
                    const std::vector<std::string> &args) override {
+        auto &diags = ci.getDiagnostics();
+
+        SmallVector<const char*, 8> arg_ptrs;
+        for (auto &arg : args)
+            arg_ptrs.push_back(arg.c_str());
+
+        CrossCheckOptTable opt_table;
+        unsigned missing_arg_index, missing_arg_count;
+        auto parsed_args =
+            opt_table.ParseArgs(arg_ptrs, missing_arg_index, missing_arg_count);
+        if (missing_arg_count > 0) {
+            unsigned diag_id =
+                diags.getCustomDiagID(DiagnosticsEngine::Error,
+                                      "missing %0 option(s), starting at index %1");
+            diags.Report(diag_id) << missing_arg_count << missing_arg_index;
+            return false;
+        }
+
+        auto config_files = parsed_args.getAllArgValues(OPT_config_files);
+        for (auto &config_file : config_files) {
+            auto config_data = llvm::MemoryBuffer::getFile(config_file);
+            if (!config_data) {
+                unsigned diag_id =
+                    diags.getCustomDiagID(DiagnosticsEngine::Error,
+                                          "error reading configuration file '%0': %1");
+                diags.Report(diag_id) << config_file << config_data.getError().message();
+                return false;
+            }
+
+            Config new_config;
+            llvm::yaml::Input yin((*config_data)->getBuffer());
+            yin >> new_config;
+            if (auto yerr = yin.error()) {
+                unsigned diag_id =
+                    diags.getCustomDiagID(DiagnosticsEngine::Error,
+                                          "error parsing YAML configuration: %0");
+                diags.Report(diag_id) << yerr.message();
+                return false;
+            }
+            for (auto &src_file : new_config) {
+                // For every source file in new_config, append its items
+                // to the corresponding file items vector in the global
+                // directory
+                auto &file_items = config[src_file.first];
+                auto &new_file_items = src_file.second;
+                file_items.insert(file_items.end(),
+                                  new_file_items.begin(),
+                                  new_file_items.end());
+            }
+        }
         return true;
     }
 
