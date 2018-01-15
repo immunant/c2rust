@@ -42,6 +42,7 @@ void entry (const unsigned sz, int buf[const]) {
         buf[i++] = uninit.x;
         buf[i++] = uninit.y;
 
-        struct { struct { int x; }; } y = {0};
-        buf[i++] = y.x;
+        struct { struct { int x; }; struct { int y; }; } z = {0};
+        buf[i++] = z.x;
+        buf[i++] = z.y;
 }

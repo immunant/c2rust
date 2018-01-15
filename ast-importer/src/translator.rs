@@ -322,37 +322,20 @@ impl Translation {
                 // Gather up all the field names and field types
                 let mut field_entries = vec![];
                 for &x in fields {
-                    let field_decl = self.ast_context.index(x);
-                    match &field_decl.kind {
+                    match &self.ast_context.index(x).kind {
                         &CDeclKind::Field { ref name, typ } => {
-                            let typ = self.convert_type(typ.ctype)?;
                             let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
-                            field_entries.push((name, typ))
+                            let typ = self.convert_type(typ.ctype)?;
+                            field_entries.push(mk().struct_field(name, typ))
                         }
                         _ => return Err(format!("Found non-field in record field list")),
                     }
                 }
 
-                let mut used_names: Vec<String> = field_entries.iter().map(|x| x.0.to_owned()).collect();
-                let mut fresh_counter: u64 = 0;
-                for i in 0..field_entries.len() {
-                    while field_entries[i].0.is_empty() {
-                        let candidate = format!("unused_{}", fresh_counter);
-                        fresh_counter += 1;
-                        if !used_names.contains(&candidate) {
-                            used_names.push(candidate.clone());
-                            field_entries[i].0 = candidate;
-                        }
-                    }
-                }
-
-                let field_syns =
-                    field_entries.into_iter().map(|(x, y)| mk().struct_field(x, y)).collect();
-
                 Ok(mk().pub_()
                     .call_attr("derive", vec!["Copy", "Clone"])
                     .call_attr("repr", vec!["C"])
-                    .struct_item(name, field_syns))
+                    .struct_item(name, field_entries))
             }
 
             CDeclKind::Union { ref fields, .. } => {

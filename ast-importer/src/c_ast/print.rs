@@ -67,7 +67,7 @@ impl<W: Write> Printer<W> {
         self.print_expr_prec(15, expr_id, context)
     }
 
-    pub fn print_expr_prec(&mut self, precedence: i32, expr_id: CExprId, context: &TypedAstContext) -> Result<()> {
+    pub fn print_expr_prec(&mut self, _precedence: i32, expr_id: CExprId, context: &TypedAstContext) -> Result<()> {
 
         match context.c_exprs.get(&expr_id).map(|l| &l.kind) {
             Some(&CExprKind::UnaryType(_, kind, arg_ty)) => {

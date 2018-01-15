@@ -27,14 +27,12 @@ mod node_types {
     pub const LABEL_STMT : super::NodeType = 0b010000000000;
     pub const OTHER_STMT : super::NodeType = 0b100000000000;
     pub const STMT       : super::NodeType = LABEL_STMT | OTHER_STMT;
-
-    pub const ANYTHING   : super::NodeType = TYPE | EXPR | DECL | STMT;
 }
 
 type ClangId = u64;
 type NewId = u64;
 
-/// Correspondance between old/new IDs.
+/// Correspondence between old/new IDs.
 ///
 /// We need to re-ID nodes since the mapping from Clang's AST to ours is not one-to-one. Sometimes
 /// we need to add nodes (such as 'Semi' nodes to make the lifting of expressions into statements
