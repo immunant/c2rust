@@ -426,7 +426,11 @@ impl CfgBuilder {
 
             CStmtKind::Return(expr) => {
 
-                let val = expr.map(|i| translator.convert_expr(ExprUse::RValue, i));
+                let val =
+                    match expr.map(|i| translator.convert_expr(ExprUse::RValue, i)) {
+                        Some(r) => Some(r.unwrap()),
+                        None => None,
+                    };
 
                 let WithStmts { stmts: ret_stmts, val: ret_val } = with_stmts_opt(val);
                 stmts.extend(ret_stmts);
@@ -449,7 +453,8 @@ impl CfgBuilder {
                 let else_entry = if false_variant.is_none() { next_entry } else { self.fresh_label() };
 
                 // Condition
-                let WithStmts { stmts: cond_stmts, val: cond_val } = translator.convert_condition(true, scrutinee);
+                let WithStmts { stmts: cond_stmts, val: cond_val } =
+                    translator.convert_condition(true, scrutinee).unwrap();
                 stmts.extend(cond_stmts);
 
                 let cond_bb = BasicBlock {
@@ -505,7 +510,8 @@ impl CfgBuilder {
                 self.add_block(lbl, prev_bb);
 
                 // Condition
-                let WithStmts { stmts: cond_stmts, val: cond_val } = translator.convert_condition(true, condition);
+                let WithStmts { stmts: cond_stmts, val: cond_val } =
+                    translator.convert_condition(true, condition).unwrap();
                 let cond_bb = BasicBlock {
                     body: cond_stmts,
                     terminator: Branch(cond_val, body_entry, next_entry),
@@ -569,7 +575,8 @@ impl CfgBuilder {
                 self.continue_labels.pop();
 
                 // Condition
-                let WithStmts { stmts: cond_stmts, val: cond_val } = translator.convert_condition(true, condition);
+                let WithStmts { stmts: cond_stmts, val: cond_val } =
+                    translator.convert_condition(true, condition).unwrap();
                 let cond_bb = BasicBlock {
                     body: cond_stmts,
                     terminator: Branch(cond_val, body_entry, next_entry),
@@ -606,7 +613,8 @@ impl CfgBuilder {
                 // Condition
                 match condition {
                     Some(cond) => {
-                        let WithStmts { stmts, val } = translator.convert_condition(true, cond);
+                        let WithStmts { stmts, val } =
+                            translator.convert_condition(true, cond).unwrap();
                         self.add_block(cond_entry, BasicBlock {
                             body: stmts,
                             terminator: Branch(val, body_entry, next_label),
@@ -627,7 +635,10 @@ impl CfgBuilder {
                 if let Some((body_new_lbl, mut body_stmts)) = body_stuff {
                     let inc_stmts = match increment {
                         None => vec![],
-                        Some(inc) => translator.convert_expr(ExprUse::Unused, inc).stmts,
+                        Some(inc) =>
+                            translator
+                                .convert_expr(ExprUse::Unused, inc)
+                                .unwrap().stmts,
                     };
 
                     body_stmts.extend(inc_stmts);
@@ -682,7 +693,7 @@ impl CfgBuilder {
             }),
 
             CStmtKind::Expr(expr) => {
-                stmts.extend(translator.convert_expr(ExprUse::Unused, expr).stmts);
+                stmts.extend(translator.convert_expr(ExprUse::Unused, expr).unwrap().stmts);
 
                 Some((lbl, stmts))
             }
@@ -719,7 +730,7 @@ impl CfgBuilder {
                 self.add_block(lbl, prev_bb);
 
                 // Case
-                let branch = translator.convert_expr(ExprUse::RValue, case_expr).to_expr();
+                let branch = translator.convert_expr(ExprUse::RValue, case_expr).unwrap().to_expr();
                 self.switch_expr_cases
                     .last_mut()
                     .expect("'case' outside of 'switch'")
@@ -756,7 +767,8 @@ impl CfgBuilder {
                 let body_label = self.fresh_label();
 
                 // Convert the condition
-                let WithStmts { stmts: cond_stmts, val: cond_val } = translator.convert_expr(ExprUse::RValue, scrutinee);
+                let WithStmts { stmts: cond_stmts, val: cond_val } =
+                    translator.convert_expr(ExprUse::RValue, scrutinee).unwrap();
                 stmts.extend(cond_stmts);
 
                 // Body

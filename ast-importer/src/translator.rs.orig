@@ -25,9 +25,12 @@ pub struct Translation {
     pub ast_context: TypedAstContext,
     renamer: RefCell<Renamer<CDeclId>>,
     loops: LoopContext,
+<<<<<<< HEAD
     reloop_cfgs: bool,
-    zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
     dump_function_cfgs: bool,
+=======
+    zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
+>>>>>>> master
 }
 
 pub struct WithStmts<T> {
@@ -224,6 +227,7 @@ pub fn translate(ast_context: &TypedAstContext, reloop_cfgs: bool, dump_function
         }
     }
 
+
     to_string(|s| {
 
         let features =
@@ -272,10 +276,7 @@ fn bool_to_int(val: P<Expr>) -> P<Expr> {
 ///   * handling `volatile` properly, e.g., suppose `volatile int n, *p;` and `int x;`.
 ///     Then, `x = n` is a volatile read of `n` but `p = &n` is not. We get this behaviour
 ///     by translating the argument of `&` using `ExprUse::LValue` and the right hand side of `=`
-///
 ///     using `ExprUse::RValue`.
-///
-///   * handling `volatile` properly
 ///
 /// See `Translation::convert_expr` for more details.
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Ord, Eq)]
@@ -307,9 +308,13 @@ impl Translation {
                 "yield",
             ])),
             loops: LoopContext::new(),
-            zero_inits: RefCell::new(HashMap::new()),
+<<<<<<< HEAD
+
             reloop_cfgs,
             dump_function_cfgs,
+=======
+            zero_inits: RefCell::new(HashMap::new()),
+>>>>>>> master
         }
     }
 
@@ -528,7 +533,11 @@ impl Translation {
             if let Some(body) = body {
                 // Translating an actual function
 
-                let block = self.convert_function_body(name, body)?;
+<<<<<<< HEAD
+                let block = self.convert_function_body(name, body);
+=======
+                let block = self.convert_function_body(body)?;
+>>>>>>> master
 
                 // Only add linkage attributes if the function is `extern`
                 let mk_ = if is_extern {
@@ -552,10 +561,12 @@ impl Translation {
         })
     }
 
-    fn convert_function_body(&self, name: &str, body_id: CStmtId) -> Result<P<Block>,String> {
+<<<<<<< HEAD
+    fn convert_function_body(&self, name: &str, body_id: CStmtId) -> P<Block> {
 
         // Function body scope
         self.with_scope(|| {
+
             let stmts = if self.reloop_cfgs {
                 let graph = cfg::Cfg::from_stmt(self, body_id);
 
@@ -585,17 +596,27 @@ impl Translation {
                 stmts
             } else {
                 match self.ast_context.index(body_id).kind {
-                    CStmtKind::Compound(ref stmts) => {
-                        let mut res = vec![];
-                        for &stmt in stmts {
-                            res.append(&mut self.convert_stmt(stmt)?)
-                        }
-                        res
-                    }
+                    CStmtKind::Compound(ref stmts) => stmts
+                        .iter()
+                        .flat_map(|stmt| self.convert_stmt(*stmt))
+                        .collect(),
                     _ => panic!("function body expects to be a compound statement"),
                 }
+=======
+    fn convert_function_body(&self, body_id: CStmtId) -> Result<P<Block>, String> {
+
+        // Function body scope
+        self.with_scope(|| {
+            let stmts = match self.ast_context.index(body_id).kind {
+                CStmtKind::Compound(ref stmts) => stmts
+                    .iter()
+                    .map(|stmt| self.convert_stmt(*stmt))
+                    .collect::<Result<Vec<Vec<Stmt>>,String>>()?,
+                _ => panic!("function body expects to be a compound statement"),
+>>>>>>> master
             };
-            Ok(stmts_block(stmts))
+
+            Ok(stmts_block(stmts.into_iter().flat_map(|x|x).collect()))
         })
     }
 
@@ -666,7 +687,11 @@ impl Translation {
     }
 
     /// Convert a C expression to a rust boolean expression
-    pub fn convert_condition(&self, target: bool, cond_id: CExprId) -> Result<WithStmts<P<Expr>>,String> {
+<<<<<<< HEAD
+    pub fn convert_condition(&self, target: bool, cond_id: CExprId) -> WithStmts<P<Expr>> {
+=======
+    fn convert_condition(&self, target: bool, cond_id: CExprId) -> Result<WithStmts<P<Expr>>, String> {
+>>>>>>> master
         let ty_id = self.ast_context.index(cond_id).kind.get_type();
 
         Ok(self.convert_expr(ExprUse::RValue, cond_id)?
@@ -905,7 +930,11 @@ impl Translation {
     /// In the case that `use_` is `ExprUse::Unused`, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
-    pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId) -> Result<WithStmts<P<Expr>>,String> {
+<<<<<<< HEAD
+    pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId) -> WithStmts<P<Expr>> {
+=======
+    fn convert_expr(&self, use_: ExprUse, expr_id: CExprId) -> Result<WithStmts<P<Expr>>, String> {
+>>>>>>> master
 
         match self.ast_context.index(expr_id).kind {
 

@@ -134,7 +134,7 @@ pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError>
     }
 
     let filenames = top_cbors.remove(2);
-    let filenames = expect_array(&filenames).expect("Bad filename array");
+    let _filenames = expect_array(&filenames).expect("Bad filename array");
 
     let top_nodes = top_cbors.remove(1);
     let top_nodes = expect_array(&top_nodes).expect("Bad all nodes array");
@@ -152,16 +152,18 @@ pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError>
         let tag = expect_u64(&entry[1])?;
 
         if tag < 400 {
-            let mut kids = vec![];
-            for x in expect_array(&entry[2])? {
-                kids.push(expect_opt_u64(&x)?)
-            }
+
+            let children =
+                expect_array(&entry[2])?
+                    .iter()
+                    .map(expect_opt_u64)
+                    .collect::<Result<Vec<Option<u64>>,DecodeError>>()?;
 
             let type_id: Option<u64> = expect_opt_u64(&entry[6])?;
 
             let node = AstNode {
                 tag: import_ast_tag(tag),
-                children: kids,
+                children,
                 fileid: expect_u64(&entry[3])?,
                 line: expect_u64(&entry[4])?,
                 column: expect_u64(&entry[5])?,

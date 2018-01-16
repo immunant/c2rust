@@ -27,14 +27,12 @@ mod node_types {
     pub const LABEL_STMT : super::NodeType = 0b010000000000;
     pub const OTHER_STMT : super::NodeType = 0b100000000000;
     pub const STMT       : super::NodeType = LABEL_STMT | OTHER_STMT;
-
-    pub const ANYTHING   : super::NodeType = TYPE | EXPR | DECL | STMT;
 }
 
 type ClangId = u64;
 type NewId = u64;
 
-/// Correspondance between old/new IDs.
+/// Correspondence between old/new IDs.
 ///
 /// We need to re-ID nodes since the mapping from Clang's AST to ours is not one-to-one. Sometimes
 /// we need to add nodes (such as 'Semi' nodes to make the lifting of expressions into statements
@@ -325,9 +323,10 @@ impl ConversionContext {
         if expected_ty & TYPE != 0 {
 
             // Convert the node
-            let ty_node: &TypeNode = untyped_context.type_nodes
-                .get(&node_id)
-                .expect(format!("Could not find type node {}", node_id).as_ref());
+            let ty_node: &TypeNode = match untyped_context.type_nodes.get(&node_id) {
+                Some(x) => x,
+                None => return,
+            };
 
             match ty_node.tag {
                 TypeTag::TagBool if expected_ty & OTHER_TYPE != 0 => {
@@ -572,9 +571,11 @@ impl ConversionContext {
 
         } else {
             // Convert the node
-            let node: &AstNode = untyped_context.ast_nodes
-                .get(&node_id)
-                .expect(format!("Could not find ast node {}", node_id).as_ref());
+            let node: &AstNode = match untyped_context.ast_nodes.get(&node_id) {
+                Some(x) => x,
+                None => return,
+            };
+
 
             match node.tag {
                 // Statements

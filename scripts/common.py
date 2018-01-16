@@ -47,8 +47,6 @@ BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
 BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear")
 BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
-# LLVM_PUBKEY = "8F0871F202119294"  # signed v4.0.1
-LLVM_PUBKEY = "345AD05D"  # signed v5.0.0
 LLVM_VER = "5.0.0"
 LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
 LLVM_BLD = os.path.join(DEPS_DIR, 'llvm-{ver}/build.'.format(ver=LLVM_VER))
@@ -69,16 +67,6 @@ LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "") for s in LLVM_ARCHIVE_FILES]
 LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
 
 AST_EXTR = os.path.join(LLVM_BLD, "bin/ast-extractor")
-
-# from `gpg-connect-agent --dirmngr 'keyserver --hosttable'`
-# PL: seems we need multiple keyservers since some only work
-# for IPv4 and others only work for IPv6.
-KEYSERVERS = [
-    "hkp://keys.gnupg.net",
-    "hkp://ipv4.pool.sks-keyservers.net",
-    "hkp://cryptonomicon.mit.edu",
-    "hkp://proxy-nue.opensuse.org",
-]
 
 MIN_PLUMBUM_VERSION = (1, 6, 3)
 CMAKELISTS_COMMANDS = \
@@ -400,35 +388,15 @@ def check_sig(afile: str, asigfile: str) -> None:
     # on macOS, run `brew install gpg`
     gpg = get_cmd_or_die("gpg")
 
-    def init_gpg_keys():
-        """
-        make sure we have the LLVM public key installed
-        """
-        keys = gpg('--list-keys')
-        for line in keys.split("\n"):
-            if line.endswith(LLVM_PUBKEY):
-                logging.debug('LLVM pubkey already downloaded')
-                return
-
-        for keyserver in KEYSERVERS:
-            try:
-                invoke_quietly(gpg,
-                               "--keyserver", keyserver,
-                               "--recv-key", LLVM_PUBKEY)
-                break
-            except:
-                emsg = "failed go get keys from %s; trying next keyserver"
-                logging.debug(emsg, keyserver)
-        else:
-            die("couldn't receive gpg keys from any keyserver :/")
-
-    init_gpg_keys()
-
     # check that archive matches signature
     try:
         expected = "Good signature from "
         logging.debug("checking signature of %s", os.path.basename(afile))
-        retcode, _, stderr = gpg['--verify', asigfile, afile].run(retcode=None)
+        # --auto-key-retrieve means that gpg will try to download
+        # the pubkey from a keyserver if it isn't on the local keyring.
+        retcode, _, stderr = gpg['--auto-key-retrieve',
+                                 '--verify',
+                                 asigfile, afile].run(retcode=None)
         if retcode:
             die("gpg signature check failed: gpg exit code " + str(retcode))
         if expected not in stderr:

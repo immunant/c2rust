@@ -15,14 +15,16 @@ use transform::Transform;
 
 /// Find this pattern:
 ///
-///     mod a {
-///         #[no_mangle] fn f() { ... }
-///     }
-///     
-///     mod b {
-///         extern "C" { fn f(); }
-///         fn g() { ... f() ... }
-///     }
+/// ```text
+/// mod a {
+///     #[no_mangle] fn f() { ... }
+/// }
+///
+/// mod b {
+///     extern "C" { fn f(); }
+///     fn g() { ... f() ... }
+/// }
+/// ```
 ///
 /// And remove the indirection, replacing the call `f()` with `::a::f()`.
 pub struct LinkFuncs;
@@ -83,13 +85,15 @@ impl Transform for LinkFuncs {
 
 /// Find this pattern:
 ///
-///     mod a {
-///         struct Foo { ... }
-///     }
-///     
-///     mod b {
-///         enum Foo {}     // incomplete type
-///     }
+/// ```text
+/// mod a {
+///     struct Foo { ... }
+/// }
+///
+/// mod b {
+///     enum Foo {}     // incomplete type
+/// }
+/// ```
 ///
 /// And replace all uses of `b::Foo` with `a::Foo`.
 pub struct LinkIncompleteTypes;

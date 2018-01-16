@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::iter::FromIterator;
 
 struct Scope<T> {
     name_map: HashMap<T, String>,
@@ -42,9 +43,10 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     /// Creates a new renaming environment with a single, empty scope. The given set of
     /// reserved names will exclude those names from being chosen as the mangled names from
     /// the insert method.
-    pub fn new(reserved_names: HashSet<String>) -> Self {
+    pub fn new(reserved_names: &[&str]) -> Self {
+        let set: HashSet<String> = HashSet::from_iter(reserved_names.iter().map(|&x| x.to_owned()));
         Renamer {
-            scopes: vec![Scope::new_with_reserved(reserved_names)],
+            scopes: vec![Scope::new_with_reserved(set)],
             next_fresh: 0,
         }
     }
@@ -138,11 +140,11 @@ mod tests {
         let mut renamer = Renamer::new(keywords);
 
         let one1 = renamer.insert(1,"one").unwrap();
-        let one2 = renamer.get(1).unwrap();
+        let one2 = renamer.get(&1).unwrap();
         assert_eq!(one1, one2);
 
         let reserved1 = renamer.insert(2, "reserved").unwrap();
-        let reserved2 = renamer.get(2).unwrap();
+        let reserved2 = renamer.get(&2).unwrap();
         assert_eq!(reserved1, "reserved_0");
         assert_eq!(reserved2, "reserved_0");
     }
@@ -154,27 +156,27 @@ mod tests {
         let one1 = renamer.insert(10, "one").unwrap();
         renamer.add_scope();
 
-        let one2 = renamer.get(10).unwrap();
+        let one2 = renamer.get(&10).unwrap();
         assert_eq!(one1, one2);
 
         let one3 = renamer.insert(20,"one").unwrap();
-        let one4 = renamer.get(20).unwrap();
+        let one4 = renamer.get(&20).unwrap();
         assert_eq!(one3, one4);
         assert_ne!(one3, one2);
 
         renamer.drop_scope();
 
-        let one5 = renamer.get(10).unwrap();
+        let one5 = renamer.get(&10).unwrap();
         assert_eq!(one5, one2);
     }
 
     #[test]
     fn forgets() {
         let mut renamer = Renamer::new(HashSet::new());
-        assert_eq!(renamer.get(1), None);
+        assert_eq!(renamer.get(&1), None);
         renamer.add_scope();
         renamer.insert(1,"example");
         renamer.drop_scope();
-        assert_eq!(renamer.get(1), None);
+        assert_eq!(renamer.get(&1), None);
     }
 }

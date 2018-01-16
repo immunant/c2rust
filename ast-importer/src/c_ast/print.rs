@@ -67,7 +67,7 @@ impl<W: Write> Printer<W> {
         self.print_expr_prec(15, expr_id, context)
     }
 
-    pub fn print_expr_prec(&mut self, precedence: i32, expr_id: CExprId, context: &TypedAstContext) -> Result<()> {
+    pub fn print_expr_prec(&mut self, _precedence: i32, expr_id: CExprId, context: &TypedAstContext) -> Result<()> {
 
         match context.c_exprs.get(&expr_id).map(|l| &l.kind) {
             Some(&CExprKind::UnaryType(_, kind, arg_ty)) => {
@@ -614,7 +614,6 @@ impl<W: Write> Printer<W> {
                 match ty {
                     &CTypeKind::Void => self.writer.write_all(b"void"),
                     &CTypeKind::Bool => self.writer.write_all(b"_Bool"),
-                    &CTypeKind::Size => self.writer.write_all(b"size_t"),
                     &CTypeKind::Char => self.writer.write_all(b"char"),
                     &CTypeKind::SChar => self.writer.write_all(b"signed char"),
                     &CTypeKind::Short => self.writer.write_all(b"signed short"),
