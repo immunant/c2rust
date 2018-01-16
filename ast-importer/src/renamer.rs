@@ -80,7 +80,7 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
         self.scopes.iter().any(|x| x.contains_value(&key))
     }
 
-    fn pick_name (&mut self, basename: &str) -> String {
+    pub fn pick_name (&mut self, basename: &str) -> String {
 
         let mut target = basename.to_string();
         for i in 0.. {

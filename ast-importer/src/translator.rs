@@ -573,12 +573,11 @@ impl Translation {
                     eprintln!("  {:?}", s);
                 }
 
-
-                // TODO: renamer this
-                let current_block = mk().ident_expr("current_block");
+                let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");
+                let current_block = mk().ident_expr(&current_block_ident);
                 let mut stmts: Vec<Stmt> = vec![];
                 if cfg::structures::has_multiple(&relooped) {
-                    let local = mk().local(mk().ident_pat("current_block"), Some(mk().path_ty(vec!["u64"])), None as Option<P<Expr>>);
+                    let local = mk().local(mk().mutbl().ident_pat(current_block_ident), Some(mk().path_ty(vec!["u64"])), None as Option<P<Expr>>);
                     stmts.push(mk().local_stmt(P(local)))
                 }
                 stmts.extend(cfg::structures::structured_cfg(&relooped, current_block));
