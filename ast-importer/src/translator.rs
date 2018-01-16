@@ -568,9 +568,9 @@ impl Translation {
                 let simplify_structures = true;
                 let relooped = cfg::relooper::reloop(graph, simplify_structures);
 
-                println!("Relooped:");
+                eprintln!("Relooped:");
                 for s in &relooped {
-                    println!("  {:?}", s);
+                    eprintln!("  {:?}", s);
                 }
 
 
