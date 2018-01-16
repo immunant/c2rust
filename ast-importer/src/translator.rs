@@ -577,7 +577,8 @@ impl Translation {
                 let current_block = mk().ident_expr(&current_block_ident);
                 let mut stmts: Vec<Stmt> = vec![];
                 if cfg::structures::has_multiple(&relooped) {
-                    let local = mk().local(mk().mutbl().ident_pat(current_block_ident), Some(mk().path_ty(vec!["u64"])), None as Option<P<Expr>>);
+                    let local = mk().local(mk().mutbl().ident_pat(current_block_ident),
+                                           Some(mk().path_ty(vec!["u64"])), None as Option<P<Expr>>);
                     stmts.push(mk().local_stmt(P(local)))
                 }
                 stmts.extend(cfg::structures::structured_cfg(&relooped, current_block));
@@ -674,9 +675,11 @@ impl Translation {
 
     fn convert_while_stmt(&self, cond_id: CExprId, body_id: CStmtId) -> Result<Vec<Stmt>,String> {
         let cond = self.convert_condition(true, cond_id)?;
+
         self.loops.push_loop(LoopType::While);
-        let body = self.convert_stmt(body_id)?;
+        let body_res = self.convert_stmt(body_id);
         let loop_ = self.loops.pop_loop();
+        let body = body_res?;
 
         let rust_cond = cond.to_expr();
         let rust_body = stmts_block(body);
@@ -687,8 +690,9 @@ impl Translation {
     fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Result<Vec<Stmt>,String> {
         let cond = self.convert_condition(false, cond_id)?;
         self.loops.push_loop(LoopType::DoWhile);
-        let mut body = self.convert_stmt(body_id)?;
+        let body_res = self.convert_stmt(body_id);
         let mut loop_ = self.loops.pop_loop();
+        let mut body = body_res?;
 
         // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
         let mut body = match loop_.body_label {
@@ -733,8 +737,9 @@ impl Translation {
             };
 
             self.loops.push_loop(LoopType::For);
-            let mut body = self.convert_stmt(body_id)?;
+            let body_res = self.convert_stmt(body_id);
             let loop_ = self.loops.pop_loop();
+            let mut body = body_res?;
 
             // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
             let mut body = match loop_.body_label {
