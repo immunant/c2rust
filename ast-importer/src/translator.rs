@@ -227,8 +227,9 @@ pub fn translate(ast_context: &TypedAstContext, reloop_cfgs: bool, dump_function
     to_string(|s| {
 
         let features =
-            vec![("feature",vec!["libc","i128_type","const_ptr_null"]),
-                 ("allow"  ,vec!["non_camel_case_types","non_snake_case","dead_code"])];
+            vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to"]),
+                 ("allow"  ,vec!["non_camel_case_types","non_snake_case","dead_code", "mutable_transmutes"]),
+            ];
 
         for (key,values) in features {
             for value in values {
@@ -1000,7 +1001,10 @@ impl Translation {
                 let width_lit = mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
                 let array_ty = mk().array_ty(u8_ty, width_lit);
                 let source_ty = mk().ref_ty(array_ty);
-                let target_ty = mk().ref_ty(self.convert_type(ty.ctype).unwrap());
+                let mutbl = if ty.qualifiers.is_const {
+                    Mutability::Immutable
+                } else { Mutability::Mutable };
+                let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype).unwrap());
 
                 let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
                 let pointer = transmute_expr(source_ty, target_ty, byte_literal);

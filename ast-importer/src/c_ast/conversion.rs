@@ -520,7 +520,7 @@ impl ConversionContext {
 
                     let elaborated_ty = CTypeKind::Elaborated(elaborated);
                     self.add_type(new_id, not_located(elaborated_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                    self.processed_nodes.insert(new_id, TYPE);
                 }
 
                 TypeTag::TagParenType => {
@@ -529,7 +529,7 @@ impl ConversionContext {
 
                     let paren_ty = CTypeKind::Paren(paren);
                     self.add_type(new_id, not_located(paren_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                    self.processed_nodes.insert(new_id, TYPE);
                 }
 
                 TypeTag::TagAttributedType => {
@@ -537,7 +537,7 @@ impl ConversionContext {
                     let ty = self.visit_qualified_type(ty_id);
                     let ty = CTypeKind::Attributed(ty);
                     self.add_type(new_id, not_located(ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                    self.processed_nodes.insert(new_id, TYPE);
                 }
 
                 TypeTag::TagConstantArrayType => {
