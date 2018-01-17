@@ -1196,9 +1196,7 @@ impl Translation {
                     c_ast::BinOp::AssignBitOr |
                     c_ast::BinOp::AssignBitAnd |
                     c_ast::BinOp::Assign => {
-                        let ty = self.convert_type(type_id.ctype)?;
-
-                        self.convert_assignment_operator(use_, *op, ty, type_id.ctype, lhs, rhs)
+                        self.convert_assignment_operator(use_, *op, type_id.ctype, lhs, rhs)
                     },
 
                     _ => {
@@ -1822,18 +1820,20 @@ impl Translation {
         &self,
         use_: ExprUse,
         op: c_ast::BinOp,
-        ty: P<Ty>,
         ctype: CTypeId,
         lhs: CExprId,
         rhs: CExprId,
     ) -> Result<WithStmts<P<Expr>>, String> {
+        let ty = self.convert_type(ctype)?;
+
         let lhs_type = self.ast_context.index(lhs).kind.get_qual_type();
         let rhs_type = self.ast_context.index(rhs).kind.get_qual_type();
 
         let is_volatile = lhs_type.qualifiers.is_volatile;
         let is_volatile_compound_assign = op.underlying_assignment().is_some() && is_volatile;
+        let pointer_lhs = self.ast_context.resolve_type(ctype).kind.is_pointer();
 
-        let (write, read, lhs_stmts) = if use_ == ExprUse::RValue || is_volatile_compound_assign {
+        let (write, read, lhs_stmts) = if use_ == ExprUse::RValue || pointer_lhs || is_volatile_compound_assign {
             let WithStmts { val: (write, read), stmts: lhs_stmts } = self.name_reference_write_read(lhs);
             (write, read, lhs_stmts)
         } else {
@@ -1864,6 +1864,13 @@ impl Translation {
             },
 
             // Everything else
+            c_ast::BinOp::AssignAdd
+              if pointer_lhs =>
+                mk().assign_expr(&write, pointer_offset(write.clone(), rhs)),
+            c_ast::BinOp::AssignSubtract
+            if pointer_lhs => mk().assign_expr(&write, pointer_offset(write.clone(),
+                                                                      mk().unary_expr(ast::UnOp::Neg, rhs))),
+
             c_ast::BinOp::AssignAdd => mk().assign_op_expr(BinOpKind::Add, &write, rhs),
             c_ast::BinOp::AssignSubtract => mk().assign_op_expr(BinOpKind::Sub, &write, rhs),
             c_ast::BinOp::AssignMultiply => mk().assign_op_expr(BinOpKind::Mul, &write, rhs),
