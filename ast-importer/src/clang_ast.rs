@@ -74,6 +74,13 @@ pub fn expect_u64(val: &Cbor) -> Result<u64, DecodeError> {
     }
 }
 
+pub fn expect_i64(val: &Cbor) -> Result<i64, DecodeError> {
+    match val {
+        &Cbor::Signed(x) => Ok(x.into_i64()),
+        _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
+    }
+}
+
 pub fn expect_f64(val: &Cbor) -> Result<f64, DecodeError> {
     match val {
         &Cbor::Float(x) => Ok(x.into_f64()),

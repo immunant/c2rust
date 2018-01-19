@@ -477,8 +477,7 @@ class TranslateASTVisitor final
       
       bool VisitLabelStmt(LabelStmt *LS) {
           
-          std::vector<void*> childIds =
-          { LS->getSubStmt() };
+          std::vector<void*> childIds = { LS->getSubStmt() };
           encode_entry(LS, TagLabelStmt, childIds,
                              [LS](CborEncoder *array){
                                  cbor_encode_text_stringz(array, LS->getName());
@@ -552,9 +551,21 @@ class TranslateASTVisitor final
       }
       
       bool VisitCaseStmt(CaseStmt *CS) {
-          std::vector<void*> childIds =
-          { CS->getLHS(), CS->getSubStmt() };
-          encode_entry(CS, TagCaseStmt, childIds);
+          auto expr = CS->getLHS();
+
+          APSInt value;
+          if (!expr->isIntegerConstantExpr(value, *Context)) {
+              abort();
+          }
+
+          std::vector<void*> childIds { expr, CS->getSubStmt() };
+          encode_entry(CS, TagCaseStmt, childIds, [value](CborEncoder *extra) {
+              if (value.isSigned()) {
+                  cbor_encode_int(extra, value.getSExtValue());
+              } else {
+                  cbor_encode_uint(extra, value.getZExtValue());
+              }
+          });
           return true;
       }
       
@@ -566,8 +577,7 @@ class TranslateASTVisitor final
       }
       
       bool VisitDefaultStmt(DefaultStmt *DS) {
-          std::vector<void*> childIds =
-          { DS->getSubStmt() };
+          std::vector<void*> childIds = { DS->getSubStmt() };
           encode_entry(DS, TagDefaultStmt, childIds);
           return true;
       }

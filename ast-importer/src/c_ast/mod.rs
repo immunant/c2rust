@@ -475,6 +475,13 @@ pub enum CLiteral {
     String(Vec<u8>, u8), // Literal bytes and unit byte width
 }
 
+/// Represents a constant integer expression as used in a case expression
+#[derive(Debug, Clone, Copy)]
+pub enum ConstIntExpr {
+    U(u64),
+    I(i64),
+}
+
 /// Represents a statement in C (6.8 Statements)
 ///
 /// Reflects the types in <http://clang.llvm.org/doxygen/classclang_1_1Stmt.html>
@@ -484,7 +491,7 @@ pub enum CStmtKind {
     //
     // All of these have a `CStmtId` to represent the substatement that comes after them
     Label(CStmtId),
-    Case(CExprId,CStmtId),
+    Case(CExprId,CStmtId,ConstIntExpr),
     Default(CStmtId),
 
     // Compound statements (6.8.2)

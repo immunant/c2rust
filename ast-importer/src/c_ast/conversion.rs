@@ -736,7 +736,16 @@ impl ConversionContext {
                     let substmt_old = node.children[1].expect("Case sub-statement not found");
                     let substmt = self.visit_stmt(substmt_old);
 
-                    let case_stmt = CStmtKind::Case(expr, substmt);
+                    let cie =
+                        expect_u64(&node.extras[0])
+                            .map(ConstIntExpr::U)
+                            .unwrap_or_else(|_|
+                                expect_i64(&node.extras[0])
+                                    .map(ConstIntExpr::I).expect("Expected constant int expr")
+                        );
+
+
+                    let case_stmt = CStmtKind::Case(expr, substmt, cie);
 
                     self.add_stmt(new_id, located(node, case_stmt));
                     self.processed_nodes.insert(new_id, OTHER_STMT);

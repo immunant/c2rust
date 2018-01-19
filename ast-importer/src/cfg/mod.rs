@@ -720,7 +720,7 @@ impl CfgBuilder {
                 None
             }
 
-            CStmtKind::Case(case_expr, sub_stmt) => {
+            CStmtKind::Case(case_expr, sub_stmt, _) => {
                 let this_label = Label::FromC(stmt_id);
 
                 let prev_bb = BasicBlock {
