@@ -720,7 +720,7 @@ impl CfgBuilder {
                 None
             }
 
-            CStmtKind::Case(case_expr, sub_stmt, _) => {
+            CStmtKind::Case(_case_expr, sub_stmt, cie) => {
                 let this_label = Label::FromC(stmt_id);
 
                 let prev_bb = BasicBlock {
@@ -730,7 +730,11 @@ impl CfgBuilder {
                 self.add_block(lbl, prev_bb);
 
                 // Case
-                let branch = translator.convert_expr(ExprUse::RValue, case_expr).unwrap().to_expr();
+                let branch = match cie {
+                    ConstIntExpr::U(n) => mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed)),
+                    ConstIntExpr::I(n) if n < 0 => mk().unary_expr(syntax::ast::UnOp::Neg, mk().lit_expr(mk().int_lit((-n) as u128, LitIntType::Unsuffixed))),
+                    ConstIntExpr::I(n) => mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed)),
+                };
                 self.switch_expr_cases
                     .last_mut()
                     .expect("'case' outside of 'switch'")
