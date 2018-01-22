@@ -13,7 +13,7 @@ union empty_union {
 
 void entry(const unsigned int sz, int buf[const])
 {
-        if (sz < 20) return;
+        if (sz < 30) return;
         int i = 0;
 
         union my_union u1 = { .as_int = 1 };
@@ -56,4 +56,8 @@ void entry(const unsigned int sz, int buf[const])
 
         u4.as_chars[1] = 12;
         buf[i++] = u4.as_chars[1];
+
+        union my_union u7;
+        u7 = (union my_union)i;
+        buf[i++] = u7.as_int;
 }
