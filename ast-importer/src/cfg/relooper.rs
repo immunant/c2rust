@@ -276,18 +276,36 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
                     // TODO:
                     //
                     //   1. check if anything but the 'GoTo' case can happen here
-                    //   2. find some way of ordering patterns so '_' does end up on top by accident (or add back the "default" pattern)
-                    //   3. see if there is anything to do about being clever about possible values of 'currentBlock'
-                    let mut cases_new: HashMap<Label, Vec<P<Pat>>> = HashMap::new();
+                    //   2. see if there is anything to do about being clever about possible values of 'currentBlock'
+
+
+                    // Here, we group patterns by the label they go to.
+                    let mut merged_cases: HashMap<Label, Vec<P<Pat>>> = HashMap::new();
                     for &(ref pats, ref lbl) in cases {
                         match lbl {
-                            &StructureLabel::GoTo(lbl) => cases_new.entry(lbl).or_insert(vec![]).extend(pats.clone()),
+                            &StructureLabel::GoTo(lbl) => merged_cases.entry(lbl).or_insert(vec![]).extend(pats.clone()),
                             _ => unimplemented!()
                         }
                     }
 
-                    let cases = cases_new.into_iter().map(|(k,v)| (v,StructureLabel::GoTo(k))).collect();
-                    Switch { expr: expr.clone(), cases }
+                    // When converting these patterns back into a vector, we have to be careful to
+                    // preserve their initial order (so that the default pattern doesn't end up on
+                    // top).
+                    let mut cases_new: Vec<_> = vec![];
+                    for &(_, ref lbl) in cases.iter().rev() {
+                        let lbl = match lbl {
+                            &StructureLabel::GoTo(lbl) => lbl,
+                            _ => unimplemented!()
+                        };
+
+                        match merged_cases.remove(&lbl) {
+                            None => { },
+                            Some(pats) => cases_new.push((pats, StructureLabel::GoTo(lbl))),
+                        }
+                    }
+                    cases_new.reverse();
+
+                    Switch { expr: expr.clone(), cases: cases_new }
                 } else {
                     terminator.clone()
                 };
