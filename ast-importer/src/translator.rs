@@ -995,7 +995,8 @@ impl Translation {
                 Ok(WithStmts::new(pointer))
             }
 
-            CExprKind::ImplicitCast(ty, expr, kind) | CExprKind::ExplicitCast(ty, expr, kind) => {
+            CExprKind::ImplicitCast(ty, expr, kind, opt_field_id) |
+            CExprKind::ExplicitCast(ty, expr, kind, opt_field_id) => {
                 let val = self.convert_expr(use_, expr)?;
 
                 match kind {
@@ -1056,7 +1057,17 @@ impl Translation {
                         Ok(WithStmts::new(res))
                     }
 
-                    CastKind::ToUnion => Err(format!("TODO cast to union not supported")),
+                    CastKind::ToUnion => {
+                        let field_id = opt_field_id.expect("Missing field ID in union cast");
+                        let union_id = self.ast_context.field_parents[&field_id];
+
+                        let union_name = self.type_converter.borrow().resolve_decl_name(union_id).expect("required union name");
+                        let field_name = self.type_converter.borrow().resolve_field_name(Some(union_id), field_id).expect("field name required");
+
+                        Ok(val.map(|x|
+                            mk().struct_expr(mk().path(vec![union_name]), vec![mk().field(field_name, x)])
+                        ))
+                    },
 
                     CastKind::IntegralToBoolean | CastKind::FloatingToBoolean => {
                         let val_ty = self.ast_context.index(expr).kind.get_type();
@@ -1213,7 +1224,7 @@ impl Translation {
                 let mut rhs = self.convert_expr(ExprUse::RValue, *rhs)?;
                 stmts.extend(rhs.stmts);
 
-                let val = if let &CExprKind::ImplicitCast(_, ref arr, CastKind::ArrayToPointerDecay) = lhs_node {
+                let val = if let &CExprKind::ImplicitCast(_, ref arr, CastKind::ArrayToPointerDecay, _) = lhs_node {
                     // If the LHS just underwent an implicit cast from array to pointer, bypass that
                     // to make an actual Rust indexing operation
 
@@ -1237,7 +1248,7 @@ impl Translation {
 
             CExprKind::Call(_, func, ref args) => {
                 let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
-                    CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay) =>
+                    CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _) =>
                         self.convert_expr(ExprUse::RValue, fexp)?,
                     _ => {
                         self.convert_expr(ExprUse::RValue, func)?.map(|x|

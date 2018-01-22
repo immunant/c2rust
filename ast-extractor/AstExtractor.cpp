@@ -682,6 +682,25 @@ class TranslateASTVisitor final
       
       bool VisitCStyleCastExpr(CStyleCastExpr *E) {
           std::vector<void*> childIds = { E->getSubExpr() };
+          
+          
+          if (E->getCastKind() == CastKind::CK_ToUnion) {
+              
+              FieldDecl *target_field = nullptr;
+              auto src_type = E->getSubExpr()->getType()->getUnqualifiedDesugaredType();
+              
+              for (auto&& field : E->getType()->getAsUnionType()->getDecl()->fields()) {
+                  auto field_type = field->getType()->getUnqualifiedDesugaredType();
+               
+                  if (field_type == src_type) {
+                      target_field = field;
+                      break;
+                  }
+              }
+              
+              childIds.push_back(target_field);
+          }
+          
           encode_entry(E, TagCStyleCastExpr, childIds,
                        [E](CborEncoder *array){
                            cbor_encode_text_stringz(array, E->getCastKindName());

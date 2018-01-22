@@ -849,7 +849,7 @@ impl ConversionContext {
 
 
                     let kind = parse_cast_kind(expect_str(&node.extras[0]).expect("Expected cast kind"));
-                    let implicit = CExprKind::ImplicitCast(typ, expression, kind);
+                    let implicit = CExprKind::ImplicitCast(typ, expression, kind, None);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, implicit);
                 }
@@ -863,7 +863,16 @@ impl ConversionContext {
 
 
                     let kind = parse_cast_kind(expect_str(&node.extras[0]).expect("Expected cast kind"));
-                    let implicit = CExprKind::ExplicitCast(typ, expression, kind);
+
+                    let opt_field_id = match kind {
+                        CastKind::ToUnion => {
+                            let id = node.children[1].expect("Expected field for union cast");
+                            Some(self.visit_decl(id))
+                        }
+                        _ => None,
+                    };
+
+                    let implicit = CExprKind::ExplicitCast(typ, expression, kind, opt_field_id);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, implicit);
                 }
@@ -1181,6 +1190,10 @@ impl ConversionContext {
                         })
                         .collect();
 
+                    for &field in &fields {
+                        self.typed_context.field_parents.insert(field, CDeclId(new_id));
+                    }
+
                     let record = CDeclKind::Struct { name, fields };
 
                     self.add_decl(new_id, located(node, record));
@@ -1196,6 +1209,10 @@ impl ConversionContext {
                             CDeclId(self.visit_node_type(field, FIELD_DECL))
                         })
                         .collect();
+
+                    for &field in &fields {
+                        self.typed_context.field_parents.insert(field, CDeclId(new_id));
+                    }
 
                     let record = CDeclKind::Union { name, fields };
 

@@ -39,6 +39,7 @@ pub struct TypedAstContext {
 
     pub c_decls_top: Vec<CDeclId>,
     pub c_files: HashMap<u64, String>,
+    pub field_parents: HashMap<CFieldId, CDeclId>,
 }
 
 impl TypedAstContext {
@@ -51,6 +52,7 @@ impl TypedAstContext {
 
             c_decls_top: Vec::new(),
             c_files: HashMap::new(),
+            field_parents: HashMap::new(),
         }
     }
 
@@ -85,8 +87,8 @@ impl TypedAstContext {
             CExprKind::Literal(_, _) => true,
             CExprKind::DeclRef(_, _) => true,
 
-            CExprKind::ImplicitCast(_, e, _) => self.is_expr_pure(e),
-            CExprKind::ExplicitCast(_, e, _) => self.is_expr_pure(e),
+            CExprKind::ImplicitCast(_, e, _, _) => self.is_expr_pure(e),
+            CExprKind::ExplicitCast(_, e, _, _) => self.is_expr_pure(e),
             CExprKind::Member(_, e, _, _) => self.is_expr_pure(e),
 
             CExprKind::Unary(_, UnOp::PreIncrement, _) => false,
@@ -272,10 +274,10 @@ pub enum CExprKind {
     Binary(CQualTypeId, BinOp, CExprId, CExprId),
 
     // Implicit cast
-    ImplicitCast(CQualTypeId, CExprId, CastKind),
+    ImplicitCast(CQualTypeId, CExprId, CastKind, Option<CFieldId>),
 
     // Explicit cast
-    ExplicitCast(CQualTypeId, CExprId, CastKind),
+    ExplicitCast(CQualTypeId, CExprId, CastKind, Option<CFieldId>),
 
     // Reference to a decl (a variable, for instance)
     // TODO: consider enforcing what types of declarations are allowed here
@@ -322,8 +324,8 @@ impl CExprKind {
             CExprKind::Unary(ty, _, _) => ty,
             CExprKind::UnaryType(ty, _, _) => ty,
             CExprKind::Binary(ty, _, _, _) => ty,
-            CExprKind::ImplicitCast(ty, _, _) => ty,
-            CExprKind::ExplicitCast(ty, _, _) => ty,
+            CExprKind::ImplicitCast(ty, _, _, _) => ty,
+            CExprKind::ExplicitCast(ty, _, _, _) => ty,
             CExprKind::DeclRef(ty, _) => ty,
             CExprKind::Call(ty, _, _) => ty,
             CExprKind::Member(ty, _, _, _) => ty,
