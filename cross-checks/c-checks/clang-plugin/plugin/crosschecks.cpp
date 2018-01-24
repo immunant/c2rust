@@ -65,9 +65,9 @@ uint32_t djb2_hash(llvm::StringRef str) {
 
 #endif
 
-typedef std::reference_wrapper<const std::string> StringRef;
-typedef std::pair<StringRef, StringRef> StringRefPair;
-typedef std::reference_wrapper<FunctionConfig> FunctionConfigRef;
+using StringRef = std::reference_wrapper<const std::string>;
+using StringRefPair = std::pair<StringRef, StringRef>;
+using FunctionConfigRef = std::reference_wrapper<FunctionConfig>;
 
 struct StringRefPairCompare {
     bool operator()(const StringRefPair &lhs, const StringRefPair &rhs) const {
