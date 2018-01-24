@@ -11,4 +11,8 @@ test.c:
       #disable_xchecks: true
       entry: { fixed: 0x12345678 }
       #entry: disabled
+      #all_args: { fixed: 0xabcdef00 }
+      args:
+        n: disabled
+        #n: { fixed: 0xabcd1234 }
 ...

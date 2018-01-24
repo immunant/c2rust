@@ -286,6 +286,7 @@ public:
                 if (func_cfg && func_cfg->get().disable_xchecks)
                     continue;
 
+                // Add the function entry-point cross-check
                 SmallVector<Stmt*, 8> new_body_stmts;
                 auto entry_xcheck = func_cfg ? func_cfg->get().entry : XCheck();
                 auto entry_xcheck_default_fn = [&ctx, fd] (void) {
@@ -302,6 +303,32 @@ public:
                 std::move(entry_xcheck_stmts.begin(),
                           entry_xcheck_stmts.end(),
                           std::back_inserter(new_body_stmts));
+
+                // Add cross-checks for the function parameters
+                for (auto &param : fd->parameters()) {
+                    auto param_name = param->getName();
+                    auto param_xcheck = XCheck(XCheck::DISABLED);
+                    if (func_cfg) {
+                        auto &func_cfg_ref = func_cfg->get();
+                        param_xcheck = func_cfg_ref.all_args;
+
+                        auto it = func_cfg_ref.args.find(param_name);
+                        if (it != func_cfg_ref.args.end()) {
+                            param_xcheck = it->second;
+                        }
+                    }
+                    auto param_xcheck_default_fn = [&ctx] (void) {
+                        // TODO: implement as a call to a type-specific
+                        // __c2rust_hash_TTT() function
+                        return nullptr;
+                    };
+                    auto param_xcheck_stmts =
+                        build_xcheck(param_xcheck, FUNCTION_ARG_TAG, ctx,
+                                     param_xcheck_default_fn);
+                    std::move(param_xcheck_stmts.begin(),
+                              param_xcheck_stmts.end(),
+                              std::back_inserter(new_body_stmts));
+                }
 
                 // Replace the function body
                 auto old_body = fd->getBody();
