@@ -214,6 +214,8 @@ private:
         default:
             llvm_unreachable("Invalid XCheck reached");
         }
+        if (rb_xcheck_val == nullptr)
+            return {};
 
         SynthRbXcheckDecl(ctx);
         auto rb_xcheck_tag =
