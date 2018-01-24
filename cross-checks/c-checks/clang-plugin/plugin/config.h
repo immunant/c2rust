@@ -15,9 +15,14 @@ struct XCheck {
         DJB2,
         CUSTOM,
     } type;
-    std::variant<uint64_t, std::string> data;
+    std::variant<std::monostate, uint64_t, std::string> data;
 
     XCheck(Type ty = DEFAULT) : type(ty), data() {}
+
+    // Required by IO::mapOptional
+    bool operator==(const XCheck &other) const {
+        return type == other.type && data == other.data;
+    }
 };
 
 struct FunctionConfig {
@@ -36,11 +41,11 @@ struct FunctionConfig {
     FunctionConfig(llvm::yaml::IO &io) {
         io.mapRequired("name",      name);
         io.mapOptional("disable_xchecks", disable_xchecks, false);
-        io.mapOptional("entry",     entry);
-        io.mapOptional("exit",      exit);
-        io.mapOptional("all_args",  all_args);
+        io.mapOptional("entry",     entry,    XCheck(XCheck::DEFAULT));
+        io.mapOptional("exit",      exit,     XCheck(XCheck::DEFAULT));
+        io.mapOptional("all_args",  all_args, XCheck(XCheck::DISABLED));
         io.mapOptional("args",      args);
-        io.mapOptional("return",    ret);
+        io.mapOptional("return",    ret,      XCheck(XCheck::DISABLED));
         io.mapOptional("ahasher",   ahasher);
         io.mapOptional("shasher",   shasher);
     }
