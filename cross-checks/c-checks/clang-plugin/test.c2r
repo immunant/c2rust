@@ -10,4 +10,5 @@ test.c:
       name: fibo
       #disable_xchecks: true
       entry: { fixed: 0x12345678 }
+      #entry: disabled
 ...

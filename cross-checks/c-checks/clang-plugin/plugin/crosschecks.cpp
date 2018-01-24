@@ -5,6 +5,7 @@
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaConsumer.h"
+#include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/OptTable.h"
 #include "llvm/Option/Option.h"
@@ -163,6 +164,81 @@ private:
         return {};
     }
 
+    using XCheckDefaultFn = std::function<Expr*(void)>;
+
+    llvm::TinyPtrVector<Stmt*>
+    insert_xcheck(const XCheckType &xcheck,
+                  CrossCheckTag tag,
+                  ASTContext &ctx,
+                  XCheckDefaultFn default_fn) {
+        if (xcheck.type == XCheckType::DISABLED)
+            return {};
+
+        if (xcheck.type == XCheckType::CUSTOM) {
+            // TODO: implement
+            llvm_unreachable("Unimplemented");
+            return {};
+        }
+
+        Expr *rb_xcheck_val = nullptr;
+        switch (xcheck.type) {
+        case XCheckType::DEFAULT:
+            rb_xcheck_val = default_fn();
+            break;
+
+        case XCheckType::FIXED: {
+            assert(std::holds_alternative<uint64_t>(xcheck.data) &&
+                   "Invalid type for XCheckType::data, expected uint64_t");
+            auto rb_xcheck_hash = std::get<uint64_t>(xcheck.data);
+            rb_xcheck_val =
+                IntegerLiteral::Create(ctx,
+                                       llvm::APInt(64, rb_xcheck_hash),
+                                       ctx.UnsignedLongTy,
+                                       SourceLocation());
+            break;
+        }
+
+        case XCheckType::DJB2: {
+            assert(std::holds_alternative<std::string>(xcheck.data) &&
+                   "Invalid type for XCheckType::data, expected string");
+            auto &xcheck_str = std::get<std::string>(xcheck.data);
+            auto rb_xcheck_hash = djb2_hash(xcheck_str);
+            rb_xcheck_val =
+                IntegerLiteral::Create(ctx,
+                                       llvm::APInt(64, rb_xcheck_hash),
+                                       ctx.UnsignedLongTy,
+                                       SourceLocation());
+            break;
+        }
+
+        default:
+            llvm_unreachable("Invalid XCheckType reached");
+        }
+
+        SynthRbXcheckDecl(ctx);
+        auto rb_xcheck_tag =
+            IntegerLiteral::Create(ctx,
+                                   llvm::APInt(8, tag),
+                                   ctx.UnsignedCharTy,
+                                   SourceLocation());
+        auto rb_xcheck_type = rb_xcheck_decl->getType();
+        auto rb_xcheck_ptr_type = ctx.getPointerType(rb_xcheck_type);
+        auto rb_xcheck_fn = new (ctx)
+            DeclRefExpr(rb_xcheck_decl, false, rb_xcheck_type,
+                        VK_LValue, SourceLocation());
+        auto rb_xcheck_ice =
+            ImplicitCastExpr::Create(ctx, rb_xcheck_ptr_type,
+                                     CK_FunctionToPointerDecay,
+                                     rb_xcheck_fn, nullptr, VK_RValue);
+        auto rb_xcheck_call = new (ctx)
+            CallExpr(ctx, rb_xcheck_ice, { rb_xcheck_tag, rb_xcheck_val },
+                     ctx.VoidTy, VK_RValue, SourceLocation());
+
+        llvm::TinyPtrVector<Stmt*> res;
+        res.push_back(rb_xcheck_call);
+        return res;
+    }
+
 public:
     CrossCheckInserter() = delete;
     CrossCheckInserter(Config &&cfg) : config(std::move(cfg)) {
@@ -209,67 +285,21 @@ public:
                     continue;
 
                 SmallVector<Stmt*, 8> new_body_stmts;
-                auto entry_xcheck_type =
-                    func_cfg ? func_cfg->get().entry.type : XCheckType::DEFAULT;
-                if (entry_xcheck_type != XCheckType::DISABLED) {
-                    Expr *rb_xcheck_val = nullptr;
-                    if (entry_xcheck_type == XCheckType::CUSTOM) {
-                        // TODO: implement
-                        llvm_unreachable("Unimplemented");
-                    } else {
-                        uint64_t rb_xcheck_hash = 0;
-                        switch (entry_xcheck_type) {
-                        case XCheckType::DEFAULT:
-                            rb_xcheck_hash = djb2_hash(fd->getName());
-                            break;
-
-                        case XCheckType::FIXED: {
-                            auto &xcheck_data = func_cfg->get().entry.data;
-                            assert(std::holds_alternative<uint64_t>(xcheck_data) &&
-                                   "Invalid type for XCheckType::data, expected uint64_t");
-                            rb_xcheck_hash = std::get<uint64_t>(xcheck_data);
-                            break;
-                        }
-
-                        case XCheckType::DJB2: {
-                            auto &xcheck_data = func_cfg->get().entry.data;
-                            assert(std::holds_alternative<std::string>(xcheck_data) &&
-                                   "Invalid type for XCheckType::data, expected string");
-                            auto &xcheck_str = std::get<std::string>(xcheck_data);
-                            rb_xcheck_hash = djb2_hash(xcheck_str);
-                            break;
-                        }
-
-                        default:
-                            llvm_unreachable("Invalid XCheckType reached");
-                        }
-                        rb_xcheck_val =
-                            IntegerLiteral::Create(ctx,
-                                                   llvm::APInt(64, rb_xcheck_hash),
-                                                   ctx.UnsignedLongTy,
-                                                   SourceLocation());
-                    }
-
-                    SynthRbXcheckDecl(ctx);
-                    auto rb_xcheck_tag =
-                        IntegerLiteral::Create(ctx,
-                                               llvm::APInt(8, FUNCTION_ENTRY_TAG),
-                                               ctx.UnsignedCharTy,
-                                               SourceLocation());
-                    auto rb_xcheck_type = rb_xcheck_decl->getType();
-                    auto rb_xcheck_ptr_type = ctx.getPointerType(rb_xcheck_type);
-                    auto rb_xcheck_fn = new (ctx)
-                        DeclRefExpr(rb_xcheck_decl, false, rb_xcheck_type,
-                                    VK_LValue, SourceLocation());
-                    auto rb_xcheck_ice =
-                        ImplicitCastExpr::Create(ctx, rb_xcheck_ptr_type,
-                                                 CK_FunctionToPointerDecay,
-                                                 rb_xcheck_fn, nullptr, VK_RValue);
-                    auto rb_xcheck_call = new (ctx)
-                        CallExpr(ctx, rb_xcheck_ice, { rb_xcheck_tag, rb_xcheck_val },
-                                 ctx.VoidTy, VK_RValue, SourceLocation());
-                    new_body_stmts.push_back(rb_xcheck_call);
-                }
+                auto entry_xcheck = func_cfg ? func_cfg->get().entry : XCheckType();
+                auto entry_xcheck_default_fn = [&ctx, fd] (void) {
+                    auto rb_xcheck_hash = djb2_hash(fd->getName());
+                    return IntegerLiteral::Create(ctx,
+                                                  llvm::APInt(64, rb_xcheck_hash),
+                                                  ctx.UnsignedLongTy,
+                                                  SourceLocation());
+                };
+                auto entry_xcheck_stmts = insert_xcheck(entry_xcheck,
+                                                        FUNCTION_ENTRY_TAG,
+                                                        ctx,
+                                                        entry_xcheck_default_fn);
+                std::move(entry_xcheck_stmts.begin(),
+                          entry_xcheck_stmts.end(),
+                          std::back_inserter(new_body_stmts));
 
                 // Replace the function body
                 auto old_body = fd->getBody();
