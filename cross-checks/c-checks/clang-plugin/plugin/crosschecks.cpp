@@ -167,10 +167,10 @@ private:
     using XCheckDefaultFn = std::function<Expr*(void)>;
 
     llvm::TinyPtrVector<Stmt*>
-    insert_xcheck(const XCheckType &xcheck,
-                  CrossCheckTag tag,
-                  ASTContext &ctx,
-                  XCheckDefaultFn default_fn) {
+    build_xcheck(const XCheckType &xcheck,
+                 CrossCheckTag tag,
+                 ASTContext &ctx,
+                 XCheckDefaultFn default_fn) {
         if (xcheck.type == XCheckType::DISABLED)
             return {};
 
@@ -293,10 +293,10 @@ public:
                                                   ctx.UnsignedLongTy,
                                                   SourceLocation());
                 };
-                auto entry_xcheck_stmts = insert_xcheck(entry_xcheck,
-                                                        FUNCTION_ENTRY_TAG,
-                                                        ctx,
-                                                        entry_xcheck_default_fn);
+                auto entry_xcheck_stmts = build_xcheck(entry_xcheck,
+                                                       FUNCTION_ENTRY_TAG,
+                                                       ctx,
+                                                       entry_xcheck_default_fn);
                 std::move(entry_xcheck_stmts.begin(),
                           entry_xcheck_stmts.end(),
                           std::back_inserter(new_body_stmts));
