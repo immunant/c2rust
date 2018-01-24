@@ -167,14 +167,14 @@ private:
     using XCheckDefaultFn = std::function<Expr*(void)>;
 
     llvm::TinyPtrVector<Stmt*>
-    build_xcheck(const XCheckType &xcheck,
+    build_xcheck(const XCheck &xcheck,
                  CrossCheckTag tag,
                  ASTContext &ctx,
                  XCheckDefaultFn default_fn) {
-        if (xcheck.type == XCheckType::DISABLED)
+        if (xcheck.type == XCheck::DISABLED)
             return {};
 
-        if (xcheck.type == XCheckType::CUSTOM) {
+        if (xcheck.type == XCheck::CUSTOM) {
             // TODO: implement
             llvm_unreachable("Unimplemented");
             return {};
@@ -182,13 +182,13 @@ private:
 
         Expr *rb_xcheck_val = nullptr;
         switch (xcheck.type) {
-        case XCheckType::DEFAULT:
+        case XCheck::DEFAULT:
             rb_xcheck_val = default_fn();
             break;
 
-        case XCheckType::FIXED: {
+        case XCheck::FIXED: {
             assert(std::holds_alternative<uint64_t>(xcheck.data) &&
-                   "Invalid type for XCheckType::data, expected uint64_t");
+                   "Invalid type for XCheck::data, expected uint64_t");
             auto rb_xcheck_hash = std::get<uint64_t>(xcheck.data);
             rb_xcheck_val =
                 IntegerLiteral::Create(ctx,
@@ -198,9 +198,9 @@ private:
             break;
         }
 
-        case XCheckType::DJB2: {
+        case XCheck::DJB2: {
             assert(std::holds_alternative<std::string>(xcheck.data) &&
-                   "Invalid type for XCheckType::data, expected string");
+                   "Invalid type for XCheck::data, expected string");
             auto &xcheck_str = std::get<std::string>(xcheck.data);
             auto rb_xcheck_hash = djb2_hash(xcheck_str);
             rb_xcheck_val =
@@ -212,7 +212,7 @@ private:
         }
 
         default:
-            llvm_unreachable("Invalid XCheckType reached");
+            llvm_unreachable("Invalid XCheck reached");
         }
 
         SynthRbXcheckDecl(ctx);
@@ -285,7 +285,7 @@ public:
                     continue;
 
                 SmallVector<Stmt*, 8> new_body_stmts;
-                auto entry_xcheck = func_cfg ? func_cfg->get().entry : XCheckType();
+                auto entry_xcheck = func_cfg ? func_cfg->get().entry : XCheck();
                 auto entry_xcheck_default_fn = [&ctx, fd] (void) {
                     auto rb_xcheck_hash = djb2_hash(fd->getName());
                     return IntegerLiteral::Create(ctx,

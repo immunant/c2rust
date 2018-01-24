@@ -7,8 +7,8 @@
 #include <variant>
 #include <vector>
 
-struct XCheckType {
-    enum {
+struct XCheck {
+    enum Type {
         DEFAULT,
         DISABLED,
         FIXED,
@@ -17,17 +17,17 @@ struct XCheckType {
     } type;
     std::variant<uint64_t, std::string> data;
 
-    XCheckType() : type(DEFAULT), data() {}
+    XCheck(Type ty = DEFAULT) : type(ty), data() {}
 };
 
 struct FunctionConfig {
     std::string name;
     bool disable_xchecks;
-    XCheckType entry;
-    XCheckType exit;
-    XCheckType all_args;
-    std::map<std::string, XCheckType> args;
-    XCheckType ret;
+    XCheck entry;
+    XCheck exit;
+    XCheck all_args;
+    std::map<std::string, XCheck> args;
+    XCheck ret;
     std::string ahasher;
     std::string shasher;
     // TODO: nested
@@ -55,8 +55,8 @@ typedef std::variant<std::monostate, FunctionConfig, StructConfig> ItemConfig;
 typedef std::vector<ItemConfig> FileConfig;
 typedef std::map<std::string, FileConfig> Config;
 
-LLVM_YAML_DECLARE_MAPPING_TRAITS(XCheckType)
-LLVM_YAML_IS_STRING_MAP(XCheckType)
+LLVM_YAML_DECLARE_MAPPING_TRAITS(XCheck)
+LLVM_YAML_IS_STRING_MAP(XCheck)
 LLVM_YAML_DECLARE_MAPPING_TRAITS(ItemConfig)
 LLVM_YAML_IS_SEQUENCE_VECTOR(ItemConfig)
 LLVM_YAML_IS_STRING_MAP(FileConfig)

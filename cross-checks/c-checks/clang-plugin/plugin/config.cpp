@@ -5,14 +5,14 @@
 namespace llvm {
 namespace yaml {
 
-void MappingTraits<XCheckType>::mapping(IO &io, XCheckType &xc) {
+void MappingTraits<XCheck>::mapping(IO &io, XCheck &xc) {
     if (io.outputting()) {
         // TODO: implement
         llvm_unreachable("Unimplemented");
     } else {
 #define CHECK_ENUM(_s, _e)               \
     if (io.matchEnumScalar(_s, false)) { \
-        xc.type = XCheckType::_e;        \
+        xc.type = XCheck::_e;            \
         return;                          \
     }
         CHECK_ENUM("default",  DEFAULT);
@@ -25,7 +25,7 @@ void MappingTraits<XCheckType>::mapping(IO &io, XCheckType &xc) {
         Optional<_dt> data;                       \
         io.mapOptionalWithContext(_s, data, ctx); \
         if (data) {                               \
-            xc.type = XCheckType::_e;             \
+            xc.type = XCheck::_e;                 \
             xc.data = *data;                      \
             return;                               \
         }                                         \
