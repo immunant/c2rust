@@ -93,8 +93,12 @@ private:
 
     ASTConsumer *toplevel_consumer = nullptr;
 
-    FunctionDecl *rb_xcheck_decl = nullptr;
     std::vector<FunctionDecl*> new_funcs;
+
+    // Store a cache of name=>FunctionDecl mappings,
+    // to use when building calls to our runtime functions.
+    using DeclCache = llvm::StringMap<FunctionDecl*>;
+    DeclCache decl_cache;
 
 private:
     enum CrossCheckTag {
@@ -106,9 +110,19 @@ private:
     };
 
 private:
-    void SynthRbXcheckDecl(ASTContext &ctx) {
-        if (rb_xcheck_decl != nullptr)
-            return;
+    FunctionDecl *get_function_decl(llvm::StringRef name,
+                                    QualType result_ty,
+                                    ArrayRef<Expr*> args,
+                                    ASTContext &ctx) {
+        // Retrieve the FunctionDecl from the cache by name,
+        // if it exists.
+        // FIXME: this assumes that the function always gets called
+        // with the same argument types, so the types for the ParmVarDecls
+        // always match the types of the actual arguments.
+        auto it = decl_cache.find(name);
+        if (it != decl_cache.end()) {
+            return it->second;
+        }
 
         auto tu_decl = ctx.getTranslationUnitDecl();
         DeclContext *parent_decl = tu_decl;
@@ -125,33 +139,39 @@ private:
             parent_decl = extern_c_decl;
         }
 
-        auto rb_xcheck_id = &ctx.Idents.get("rb_xcheck");
-        DeclarationName rb_xcheck_decl_name{rb_xcheck_id};
-        FunctionProtoType::ExtProtoInfo rb_xcheck_epi{};
-        auto rb_xcheck_type =
-            ctx.getFunctionType(ctx.VoidTy,
-                                { ctx.UnsignedCharTy, ctx.UnsignedLongTy },
-                                rb_xcheck_epi);
-        rb_xcheck_decl = FunctionDecl::Create(ctx, parent_decl,
-                                              SourceLocation(),
-                                              SourceLocation(),
-                                              rb_xcheck_decl_name,
-                                              rb_xcheck_type,
-                                              nullptr, SC_Extern);
-        // Add the parameters to the signature:
-        // void rb_xcheck(unsigned char, unsigned long);
-        auto rb_xcheck_tag_param =
-            ParmVarDecl::Create(ctx, rb_xcheck_decl,
-                                SourceLocation(), SourceLocation(),
-                                nullptr, ctx.UnsignedCharTy,
-                                nullptr, SC_None, nullptr);
-        auto rb_xcheck_val_param =
-            ParmVarDecl::Create(ctx, rb_xcheck_decl,
-                                SourceLocation(), SourceLocation(),
-                                nullptr, ctx.UnsignedLongTy,
-                                nullptr, SC_None, nullptr);
-        rb_xcheck_decl->setParams({ rb_xcheck_tag_param, rb_xcheck_val_param });
-        parent_decl->addDecl(rb_xcheck_decl);
+        // Build the type of the function
+        FunctionProtoType::ExtProtoInfo fn_epi{};
+        SmallVector<QualType, 16> arg_tys;
+        for (auto &arg : args) {
+            auto arg_ty = arg->getType();
+            arg_tys.push_back(arg_ty);
+        }
+        auto fn_type = ctx.getFunctionType(result_ty, arg_tys, fn_epi);
+
+        auto fn_id = &ctx.Idents.get(name);
+        DeclarationName fn_decl_name{fn_id};
+        auto fn_decl = FunctionDecl::Create(ctx, parent_decl,
+                                            SourceLocation(),
+                                            SourceLocation(),
+                                            fn_decl_name,
+                                            fn_type,
+                                            nullptr, SC_Extern);
+
+        // Build the ParmVarDecl's of the arguments
+        SmallVector<ParmVarDecl*, 16> arg_decls;
+        for (auto &arg_ty : arg_tys) {
+            auto arg_decl =
+                ParmVarDecl::Create(ctx, fn_decl,
+                                    SourceLocation(), SourceLocation(),
+                                    nullptr, arg_ty,
+                                    nullptr, SC_None, nullptr);
+            arg_decls.push_back(arg_decl);
+        }
+        fn_decl->setParams(arg_decls);
+
+        parent_decl->addDecl(fn_decl);
+        decl_cache.try_emplace(name, fn_decl);
+        return fn_decl;
     }
 
     std::optional<FunctionConfigRef>
@@ -164,13 +184,27 @@ private:
         return {};
     }
 
+    CallExpr *build_call(llvm::StringRef fn_name, QualType result_ty,
+                         ArrayRef<Expr*> args, ASTContext &ctx) {
+        auto fn_decl = get_function_decl(fn_name, result_ty, args, ctx);
+        auto fn_type = fn_decl->getType();
+        auto fn_ptr_type = ctx.getPointerType(fn_type);
+        auto fn_ref = new (ctx)
+            DeclRefExpr(fn_decl, false, fn_type,
+                        VK_LValue, SourceLocation());
+        auto fn_ice =
+            ImplicitCastExpr::Create(ctx, fn_ptr_type,
+                                     CK_FunctionToPointerDecay,
+                                     fn_ref, nullptr, VK_RValue);
+        return new (ctx) CallExpr(ctx, fn_ice, args, ctx.VoidTy,
+                                  VK_RValue, SourceLocation());
+    }
+
     using XCheckDefaultFn = std::function<Expr*(void)>;
 
     llvm::TinyPtrVector<Stmt*>
-    build_xcheck(const XCheck &xcheck,
-                 CrossCheckTag tag,
-                 ASTContext &ctx,
-                 XCheckDefaultFn default_fn) {
+    build_xcheck(const XCheck &xcheck, CrossCheckTag tag,
+                 ASTContext &ctx, XCheckDefaultFn default_fn) {
         if (xcheck.type == XCheck::DISABLED)
             return {};
 
@@ -217,26 +251,15 @@ private:
         if (rb_xcheck_val == nullptr)
             return {};
 
-        SynthRbXcheckDecl(ctx);
+        llvm::TinyPtrVector<Stmt*> res;
         auto rb_xcheck_tag =
             IntegerLiteral::Create(ctx,
                                    llvm::APInt(8, tag),
                                    ctx.UnsignedCharTy,
                                    SourceLocation());
-        auto rb_xcheck_type = rb_xcheck_decl->getType();
-        auto rb_xcheck_ptr_type = ctx.getPointerType(rb_xcheck_type);
-        auto rb_xcheck_fn = new (ctx)
-            DeclRefExpr(rb_xcheck_decl, false, rb_xcheck_type,
-                        VK_LValue, SourceLocation());
-        auto rb_xcheck_ice =
-            ImplicitCastExpr::Create(ctx, rb_xcheck_ptr_type,
-                                     CK_FunctionToPointerDecay,
-                                     rb_xcheck_fn, nullptr, VK_RValue);
-        auto rb_xcheck_call = new (ctx)
-            CallExpr(ctx, rb_xcheck_ice, { rb_xcheck_tag, rb_xcheck_val },
-                     ctx.VoidTy, VK_RValue, SourceLocation());
-
-        llvm::TinyPtrVector<Stmt*> res;
+        auto rb_xcheck_call = build_call("rb_xcheck", ctx.VoidTy,
+                                         { rb_xcheck_tag, rb_xcheck_val },
+                                         ctx);
         res.push_back(rb_xcheck_call);
         return res;
     }
@@ -348,7 +371,7 @@ public:
         for (auto func : new_funcs)
             toplevel_consumer->HandleTopLevelDecl(DeclGroupRef(func));
         new_funcs.clear();
-        rb_xcheck_decl = nullptr;
+        decl_cache.clear();
     }
 };
 
