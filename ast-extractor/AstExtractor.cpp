@@ -675,7 +675,24 @@ class TranslateASTVisitor final
           std::vector<void*> childIds = { ICE->getSubExpr() };
           encode_entry(ICE, TagImplicitCastExpr, childIds,
                              [ICE](CborEncoder *array){
-                                 cbor_encode_text_stringz(array, ICE->getCastKindName());
+                                 auto cast_name = ICE->getCastKindName();
+                                 
+                                 if (ICE->getCastKind() == CastKind::CK_BitCast) {
+                                     auto source_type = ICE->getSubExpr()->getType();
+                                     auto target_type = ICE->getType();
+                                                                         
+                                     if (target_type.getTypePtr()->isPointerType() && source_type.getTypePtr()->isPointerType()) {
+                                         auto target_pointee = static_cast<const PointerType*>(target_type.getTypePtr())->getPointeeType();
+                                         auto source_pointee = static_cast<const PointerType*>(source_type.getTypePtr())->getPointeeType();
+
+                                         if (target_pointee.isConstQualified() &&
+                                             source_pointee->getUnqualifiedDesugaredType() == target_pointee->getUnqualifiedDesugaredType()) {
+                                                cast_name = "ConstCast";
+                                        }
+                                     }
+                                 }
+                                 
+                                 cbor_encode_text_stringz(array, cast_name);
                              });
           return true;
       }

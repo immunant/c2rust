@@ -1029,7 +1029,7 @@ impl Translation {
                         }
                     }
 
-                    CastKind::LValueToRValue | CastKind::NoOp | CastKind::ToVoid => Ok(val),
+                    CastKind::LValueToRValue | CastKind::NoOp | CastKind::ToVoid | CastKind::ConstCast => Ok(val),
 
                     CastKind::FunctionToPointerDecay =>
                         Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),

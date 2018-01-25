@@ -373,6 +373,7 @@ pub enum CastKind {
     IntegralComplexCast,
     IntegralComplexToFloatingComplex,
     BuiltinFnToFnPtr,
+    ConstCast,
 }
 
 /// Represents a unary operator in C (6.5.3 Unary operators)
