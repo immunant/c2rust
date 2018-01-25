@@ -174,16 +174,6 @@ private:
         return fn_decl;
     }
 
-    std::optional<FunctionConfigRef>
-    get_function_config(const std::string &file_name,
-                        const std::string &func_name) {
-        StringRefPair key(std::cref(file_name), std::cref(func_name));
-        auto file_it = function_configs.find(key);
-        if (file_it != function_configs.end())
-            return std::make_optional(file_it->second);
-        return {};
-    }
-
     CallExpr *build_call(llvm::StringRef fn_name, QualType result_ty,
                          ArrayRef<Expr*> args, ASTContext &ctx) {
         auto fn_decl = get_function_decl(fn_name, result_ty, args, ctx);
@@ -262,6 +252,16 @@ private:
                                          ctx);
         res.push_back(rb_xcheck_call);
         return res;
+    }
+
+    std::optional<FunctionConfigRef>
+    get_function_config(const std::string &file_name,
+                        const std::string &func_name) {
+        StringRefPair key(std::cref(file_name), std::cref(func_name));
+        auto file_it = function_configs.find(key);
+        if (file_it != function_configs.end())
+            return std::make_optional(file_it->second);
+        return {};
     }
 
 public:
