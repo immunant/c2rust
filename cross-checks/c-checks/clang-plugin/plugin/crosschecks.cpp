@@ -337,13 +337,12 @@ public:
 
                 // Add cross-checks for the function parameters
                 for (auto &param : fd->parameters()) {
-                    auto param_name = param->getName();
-                    auto param_xcheck = XCheck(XCheck::DISABLED);
+                    XCheck param_xcheck{XCheck::DISABLED};
                     if (func_cfg) {
                         auto &func_cfg_ref = func_cfg->get();
                         param_xcheck = func_cfg_ref.all_args;
 
-                        auto it = func_cfg_ref.args.find(param_name);
+                        auto it = func_cfg_ref.args.find(param->getName());
                         if (it != func_cfg_ref.args.end()) {
                             param_xcheck = it->second;
                         }
