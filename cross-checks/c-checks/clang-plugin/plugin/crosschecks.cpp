@@ -190,7 +190,7 @@ private:
                                   VK_RValue, SourceLocation());
     }
 
-    using ExprVec = std::vector<Expr*>;
+    using ExprVec = SmallVector<Expr*, 4>;
     using XCheckDefaultFn = std::function<Expr*(void)>;
     using XCheckCustomArgsFn = std::function<ExprVec(void)>;
 
