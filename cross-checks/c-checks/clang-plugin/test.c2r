@@ -7,12 +7,22 @@ test.c:
       #entry: { djb2: "" }
 
     - item: function
+      name: foo
+      disable_xchecks: true
+
+    - item: function
+      name: id
+      disable_xchecks: true
+
+    - item: function
       name: fibo
       #disable_xchecks: true
       entry: { fixed: 0x12345678 }
       #entry: disabled
+      #entry: { custom: "foo" }
       #all_args: { fixed: 0xabcdef00 }
       args:
-        n: disabled
+        #n: disabled
+        n: { custom: "id" }
         #n: { fixed: 0xabcd1234 }
 ...
