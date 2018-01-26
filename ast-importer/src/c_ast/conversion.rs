@@ -139,6 +139,7 @@ fn parse_cast_kind(kind: &str) -> CastKind {
         "IntegralComplexCast" => CastKind::IntegralComplexCast,
         "IntegralComplexToFloatingComplex" => CastKind::IntegralComplexToFloatingComplex,
         "BuiltinFnToFnPtr" => CastKind::BuiltinFnToFnPtr,
+        "ConstCast" => CastKind::ConstCast,
         k => panic!("Unsupported implicit cast: {}", k),
     }
 }
