@@ -107,6 +107,50 @@ impl Structure {
             &Structure::Multiple { ref entries, .. } => entries,
         }
     }
+
+    pub fn deep_iter(&self) -> StructIter {
+        StructIter { stack: vec![self] }
+    }
+}
+
+/// Depth-first, recursive iterator visiting all of the structures.
+///
+/// The last element on the stack is the next element to be processed.
+pub struct StructIter<'a> {
+    stack: Vec<&'a Structure>
+}
+
+impl<'a> Iterator for StructIter<'a> {
+    type Item = &'a Structure;
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = self.stack.pop();
+
+        if let Some(cur) = result {
+            match cur {
+                &Structure::Loop { ref body, .. } =>
+                    self.stack.extend(body.iter().rev()),
+
+                &Structure::Multiple { ref branches, ref then, .. } => {
+                    self.stack.extend(then.iter().rev());
+
+                    let branch_vec: Vec<Self::Item> = branches.values().flat_map(|x| x).collect();
+                    self.stack.extend(branch_vec.iter().rev());
+                }
+
+                &Structure::Simple { ref terminator, .. } => {
+                    let mut tmp = vec![];
+                    for &x in terminator.get_labels().iter() {
+                        if let &StructureLabel::Nested(ref nested) = x {
+                            tmp.extend(nested.iter())
+                        }
+                    }
+                    self.stack.extend(tmp.iter().rev())
+                }
+            }
+        }
+
+        result
+    }
 }
 
 /// Generalized basic block.
