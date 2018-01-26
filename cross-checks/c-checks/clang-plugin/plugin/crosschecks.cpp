@@ -174,16 +174,6 @@ private:
         return fn_decl;
     }
 
-    std::optional<FunctionConfigRef>
-    get_function_config(const std::string &file_name,
-                        const std::string &func_name) {
-        StringRefPair key(std::cref(file_name), std::cref(func_name));
-        auto file_it = function_configs.find(key);
-        if (file_it != function_configs.end())
-            return std::make_optional(file_it->second);
-        return {};
-    }
-
     CallExpr *build_call(llvm::StringRef fn_name, QualType result_ty,
                          ArrayRef<Expr*> args, ASTContext &ctx) {
         auto fn_decl = get_function_decl(fn_name, result_ty, args, ctx);
@@ -196,23 +186,20 @@ private:
             ImplicitCastExpr::Create(ctx, fn_ptr_type,
                                      CK_FunctionToPointerDecay,
                                      fn_ref, nullptr, VK_RValue);
-        return new (ctx) CallExpr(ctx, fn_ice, args, ctx.VoidTy,
+        return new (ctx) CallExpr(ctx, fn_ice, args, result_ty,
                                   VK_RValue, SourceLocation());
     }
 
+    using ExprVec = std::vector<Expr*>;
     using XCheckDefaultFn = std::function<Expr*(void)>;
+    using XCheckCustomArgsFn = std::function<ExprVec(void)>;
 
     llvm::TinyPtrVector<Stmt*>
     build_xcheck(const XCheck &xcheck, CrossCheckTag tag,
-                 ASTContext &ctx, XCheckDefaultFn default_fn) {
+                 ASTContext &ctx, XCheckDefaultFn default_fn,
+                 XCheckCustomArgsFn custom_args_fn) {
         if (xcheck.type == XCheck::DISABLED)
             return {};
-
-        if (xcheck.type == XCheck::CUSTOM) {
-            // TODO: implement
-            llvm_unreachable("Unimplemented");
-            return {};
-        }
 
         Expr *rb_xcheck_val = nullptr;
         switch (xcheck.type) {
@@ -245,6 +232,16 @@ private:
             break;
         }
 
+        case XCheck::CUSTOM: {
+            assert(std::holds_alternative<std::string>(xcheck.data) &&
+                   "Invalid type for XCheck::data, expected string");
+            auto &xcheck_fn_name = std::get<std::string>(xcheck.data);
+            ExprVec xcheck_fn_args = custom_args_fn ? custom_args_fn() : ExprVec{};
+            rb_xcheck_val = build_call(xcheck_fn_name, ctx.UnsignedLongTy,
+                                       xcheck_fn_args, ctx);
+            break;
+        }
+
         default:
             llvm_unreachable("Invalid XCheck reached");
         }
@@ -262,6 +259,16 @@ private:
                                          ctx);
         res.push_back(rb_xcheck_call);
         return res;
+    }
+
+    std::optional<FunctionConfigRef>
+    get_function_config(const std::string &file_name,
+                        const std::string &func_name) {
+        StringRefPair key(std::cref(file_name), std::cref(func_name));
+        auto file_it = function_configs.find(key);
+        if (file_it != function_configs.end())
+            return std::make_optional(file_it->second);
+        return {};
     }
 
 public:
@@ -322,7 +329,8 @@ public:
                 auto entry_xcheck_stmts = build_xcheck(entry_xcheck,
                                                        FUNCTION_ENTRY_TAG,
                                                        ctx,
-                                                       entry_xcheck_default_fn);
+                                                       entry_xcheck_default_fn,
+                                                       nullptr);
                 std::move(entry_xcheck_stmts.begin(),
                           entry_xcheck_stmts.end(),
                           std::back_inserter(new_body_stmts));
@@ -345,9 +353,18 @@ public:
                         // __c2rust_hash_TTT() function
                         return nullptr;
                     };
+                    auto param_xcheck_custom_args_fn = [&ctx, &param] (void) {
+                        // Forward the value of the parameter to the custom function
+                        auto param_ref =
+                            new (ctx) DeclRefExpr(param, false, param->getType(),
+                                                  VK_RValue, SourceLocation());
+                        // TODO: pass PODs by value, non-PODs by pointer???
+                        return ExprVec{param_ref};
+                    };
                     auto param_xcheck_stmts =
                         build_xcheck(param_xcheck, FUNCTION_ARG_TAG, ctx,
-                                     param_xcheck_default_fn);
+                                     param_xcheck_default_fn,
+                                     param_xcheck_custom_args_fn);
                     std::move(param_xcheck_stmts.begin(),
                               param_xcheck_stmts.end(),
                               std::back_inserter(new_body_stmts));

@@ -1,6 +1,14 @@
 #include <stdio.h>
 #include <stdint.h>
 
+uint64_t foo(void) {
+    return 0x123457890ABCDEFULL;
+}
+
+uint64_t id(uint64_t x) {
+    return x;
+}
+
 uint64_t fibo(uint64_t n) {
     if (n <= 1) {
         return 1;
