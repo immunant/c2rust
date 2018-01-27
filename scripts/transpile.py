@@ -73,14 +73,12 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
         msg += "\n".join([f for (f, c) in comment_sections])
         die(msg)
 
-# this global is used as a flag shared between threads in transpile_files
-exception_raised = False
-
 
 def transpile_files(cc_db: TextIO,
                     jobs: int,
                     filter: str = None,
-                    import_only: bool = False) -> None:
+                    import_only: bool = False,
+                    verbose: bool = False) -> None:
     """
     run the ast-extractor and ast-importer on all C files
     in a compile commands database.
@@ -96,10 +94,7 @@ def transpile_files(cc_db: TextIO,
     ensure_code_compiled_with_clang(cc_db)
     include_dirs = get_system_include_dirs()
 
-    def transpile_single(cmd) -> None:
-        global exception_raised
-        if exception_raised:
-            return
+    def transpile_single(cmd) -> (str, int, str, str):
 
         if import_only:
             cbor_file = os.path.join(cmd['directory'], cmd['file'] + ".cbor")
@@ -117,30 +112,31 @@ def transpile_files(cc_db: TextIO,
         # import extracted ast
         with pb.local.env(RUST_BACKTRACE='1',
                           LD_LIBRARY_PATH=ld_lib_path):
-            logging.info(" importing ast from %s", os.path.basename(cbor_file))
+            file_basename = os.path.basename(cmd['file'])
+            cbor_basename = os.path.basename(cbor_file)
+            logging.info(" importing ast from %s", cbor_basename)
             try:
-                retcode, stdout, stderr = invoke_quietly(ast_impo, cbor_file)
-            except:
-                exception_raised = True
-                quit(1)
+                retcode, stdout, stderr = ast_impo[cbor_file].run()
+                return (file_basename, retcode, stdout, stderr)
+            except pb.ProcessExecutionError as pee:
+                return (file_basename, pee.retcode, pee.stdout, pee.stderr)
 
-    if jobs == 1:
-        for cmd in cc_db:
-            transpile_single(cmd)
-        if exception_raised:
-            quit(1)
-    else:
-        # We use the ThreadPoolExecutor (not ProcessPoolExecutor) because
-        # 1. we spend most of the time outside the python interpreter, and
-        # 2. it does not require that shared objects be pickled
-        # 3. we can use a shared flag variable to acquiesce on error
-        with ThreadPoolExecutor(jobs) as executor:
-            futures = [executor.submit(transpile_single, cmd)
-                       for cmd in cc_db]
-        try:
-            results = [f.result() for f in futures]
-        except Exception as exc:
-            die(str(exc))
+    results = (transpile_single(cmd) for cmd in cc_db)
+
+    success = True
+    for (fname, retcode, stdout, stderr) in results:
+        file_basename = os.path.basename(fname)
+        if not retcode:
+            logging.info(" import successful")
+        else:  # non-zero retcode
+            success = False
+            if verbose:
+                logging.warning(" import failed")
+                logging.warning(stderr)
+            else:
+                logging.warning(" import failed (error in log)")
+                logging.debug(stderr)
+    return success
 
 
 def parse_args() -> argparse.Namespace:
@@ -155,6 +151,8 @@ def parse_args() -> argparse.Namespace:
                         help='skip ast extraction step')
     parser.add_argument('-f', '--filter', default="",
                         help='only process files matching filter')
+    parser.add_argument('-v', '--verbose', default=False, dest="verbose",
+                        help='enable verbose output')
     parser.add_argument('-j', '--jobs', type=int, dest="jobs",
                         default=multiprocessing.cpu_count(),
                         help='max number of concurrent jobs')
@@ -169,7 +167,8 @@ def main():
     transpile_files(args.commands_json,
                     args.jobs,
                     args.filter,
-                    args.import_only)
+                    args.import_only,
+                    args.verbose)
 
     logging.info(u"success 👍")
 
