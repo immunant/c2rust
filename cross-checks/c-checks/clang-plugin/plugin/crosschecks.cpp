@@ -341,12 +341,10 @@ public:
             if (FunctionDecl *fd = dyn_cast<FunctionDecl>(d)) {
                 if (!fd->hasBody())
                     continue;
-#if 0
-                if (fd->getName() == "rb_xcheck") {
-                    rb_xcheck_decl = fd;
+                if (fd->getName().startswith("__c2rust")) {
+                    // Ignore our own functions
                     continue;
                 }
-#endif
 
                 auto &ctx = fd->getASTContext();
                 std::optional<FunctionConfigRef> func_cfg;
