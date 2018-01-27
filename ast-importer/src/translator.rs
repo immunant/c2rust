@@ -575,6 +575,9 @@ impl Translation {
                                            Some(mk().path_ty(vec!["u64"])), None as Option<P<Expr>>);
                     stmts.push(mk().local_stmt(P(local)))
                 }
+
+
+
                 stmts.extend(cfg::structures::structured_cfg(&relooped, current_block));
                 stmts
             } else {
@@ -841,7 +844,22 @@ impl Translation {
         typ: CQualTypeId
     ) -> Result<(P<Ty>, Mutability, WithStmts<P<Expr>>), String> {
         let init = match initializer {
-            Some(x) => self.convert_expr(ExprUse::RValue, x)?,
+            Some(x) => {
+                let v = self.convert_expr(ExprUse::RValue, x)?;
+
+                // When translating char buffer[] = "string literal";
+                // it is necessary to add an extra dereference to properly
+                // initialize the array.
+                if let &CTypeKind::ConstantArray{..} = &self.ast_context.resolve_type(typ.ctype).kind {
+                    if let CExprKind::Literal(_, CLiteral::String{..}) = self.ast_context[x].kind {
+                        v.map(|x| mk().unary_expr(ast::UnOp::Deref, x))
+                    } else {
+                        v
+                    }
+                } else {
+                    v
+                }
+            }
             None => WithStmts::new(self.implicit_default_expr(typ.ctype)?),
         };
         let ty = self.convert_type(typ.ctype)?;
@@ -1037,8 +1055,13 @@ impl Translation {
                     CastKind::BuiltinFnToFnPtr =>
                         Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
 
-                    CastKind::ArrayToPointerDecay =>
-                        Ok(val.map(|x| mk().method_call_expr(x, "as_mut_ptr", vec![] as Vec<P<Expr>>))),
+                    CastKind::ArrayToPointerDecay => {
+                        let method = match &self.ast_context.resolve_type(ty.ctype).kind {
+                            &CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => "as_ptr",
+                            _ => "as_mut_ptr",
+                        };
+                        Ok(val.map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>)))
+                    }
 
                     CastKind::NullToPointer => {
                         assert!(val.stmts.is_empty());

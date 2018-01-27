@@ -5,7 +5,19 @@ use super::*;
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(root: &Vec<Structure>, current_block: P<Expr>) -> Vec<Stmt> {
-    structured_cfg_help(vec![], &HashSet::new(), root, &mut HashSet::new(), current_block)
+    let empty = HashSet::new();
+    let multi_labels: HashSet<Label> =
+        root.iter()
+            .flat_map(|x| x.deep_iter())
+            .flat_map(|x|
+                match x { &Structure::Multiple{ref entries, ..} =>
+                    entries
+                , _ => &empty,
+                })
+            .cloned()
+            .collect();
+
+    structured_cfg_help(vec![], &HashSet::new(), root, &mut HashSet::new(), current_block, &multi_labels)
 }
 
 /// Recursive helper for `structured_cfg`
@@ -17,6 +29,7 @@ fn structured_cfg_help(
     root: &Vec<Structure>,
     used_loop_labels: &mut HashSet<Label>,
     current_block: P<Expr>,
+    multi_labels: &HashSet<Label>,
 ) -> Vec<Stmt> {
 
     let mut next: &HashSet<Label> = next;
@@ -29,19 +42,20 @@ fn structured_cfg_help(
             &Structure::Simple { ref body, ref terminator, .. } => {
                 new_rest.extend(body.clone());
 
-                let insert_goto = |to: Label, target: &HashSet<Label>, stmts: Vec<Stmt>| -> Vec<Stmt> {
-                    if target.len() == 1 {
-                        stmts
-                    } else {
-                        let mut result = mk_goto(to, current_block.clone());
-                        result.extend(stmts);
-                        result
-                    }
-                };
+                let insert_goto =
+                    |to: Label, target: &HashSet<Label>, stmts: Vec<Stmt>| -> Vec<Stmt> {
+                        if multi_labels.contains(&to) {
+                            let mut result = mk_goto(to, current_block.clone());
+                            result.extend(stmts);
+                            result
+                        } else {
+                            stmts
+                        }
+                    };
 
                 let mut branch = |slbl: &StructureLabel| -> Vec<Stmt> {
                     match slbl {
-                        &StructureLabel::Nested(ref nested) => structured_cfg_help(exits.clone(), next, nested, used_loop_labels, current_block.clone()),
+                        &StructureLabel::Nested(ref nested) => structured_cfg_help(exits.clone(), next, nested, used_loop_labels, current_block.clone(), multi_labels),
                         &StructureLabel::GoTo(to) | &StructureLabel::ExitTo(to) if next.contains(&to) => insert_goto(to, &next, vec![]),
                         &StructureLabel::ExitTo(to) => {
 
@@ -77,9 +91,9 @@ fn structured_cfg_help(
             &Structure::Multiple { ref branches, ref then, .. } => {
                 let cases: Vec<(Label, Vec<Stmt>)> = branches
                     .iter()
-                    .map(|(lbl, body)| (*lbl, structured_cfg_help(exits.clone(), next, body, used_loop_labels, current_block.clone())))
+                    .map(|(lbl, body)| (*lbl, structured_cfg_help(exits.clone(), next, body, used_loop_labels, current_block.clone(), multi_labels)))
                     .collect();
-                let then: Vec<Stmt> = structured_cfg_help(exits.clone(), next, then, used_loop_labels, current_block.clone());
+                let then: Vec<Stmt> = structured_cfg_help(exits.clone(), next, then, used_loop_labels, current_block.clone(), multi_labels);
 
                 new_rest.extend(mk_goto_table(cases, then, current_block.clone()));
             }
@@ -100,7 +114,7 @@ fn structured_cfg_help(
                 let mut exits_new = vec![(*label, these_exits)];
                 exits_new.extend(exits.clone());
 
-                let body = structured_cfg_help(exits_new, entries, body, used_loop_labels, current_block.clone());
+                let body = structured_cfg_help(exits_new, entries, body, used_loop_labels, current_block.clone(), multi_labels);
                 let loop_lbl = if used_loop_labels.contains(label) { Some(*label) } else { None };
                 new_rest.extend(mk_loop(loop_lbl, body));
             }
