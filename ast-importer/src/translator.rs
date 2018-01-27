@@ -844,7 +844,22 @@ impl Translation {
         typ: CQualTypeId
     ) -> Result<(P<Ty>, Mutability, WithStmts<P<Expr>>), String> {
         let init = match initializer {
-            Some(x) => self.convert_expr(ExprUse::RValue, x)?,
+            Some(x) => {
+                let v = self.convert_expr(ExprUse::RValue, x)?;
+
+                // When translating char buffer[] = "string literal";
+                // it is necessary to add an extra dereference to properly
+                // initialize the array.
+                if let &CTypeKind::ConstantArray{..} = &self.ast_context.resolve_type(typ.ctype).kind {
+                    if let CExprKind::Literal(_, CLiteral::String{..}) = self.ast_context[x].kind {
+                        v.map(|x| mk().unary_expr(ast::UnOp::Deref, x))
+                    } else {
+                        v
+                    }
+                } else {
+                    v
+                }
+            }
             None => WithStmts::new(self.implicit_default_expr(typ.ctype)?),
         };
         let ty = self.convert_type(typ.ctype)?;
