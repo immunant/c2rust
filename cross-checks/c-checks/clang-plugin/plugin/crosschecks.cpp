@@ -79,6 +79,49 @@ struct StringRefPairCompare {
     }
 };
 
+static llvm::StringRef get_type_hash_name(QualType ty) {
+    if (const BuiltinType *bt = ty->getAs<BuiltinType>()) {
+        switch (bt->getKind()) {
+        case BuiltinType::Void:
+            // TODO: we should never actually be able to hash a void
+            return "void";
+        case BuiltinType::Bool:
+            return "bool";
+        case BuiltinType::Char_S:
+        case BuiltinType::Char_U:
+            return "char";
+        case BuiltinType::UChar:
+            return "uchar";
+        case BuiltinType::UShort:
+            return "ushort";
+        case BuiltinType::UInt:
+            return "uint";
+        case BuiltinType::ULong:
+            return "ulong";
+        case BuiltinType::ULongLong:
+            return "ullong";
+        case BuiltinType::SChar:
+            return "schar";
+        case BuiltinType::Short:
+            return "short";
+        case BuiltinType::Int:
+            return "int";
+        case BuiltinType::Long:
+            return "long";
+        case BuiltinType::LongLong:
+            return "llong";
+        case BuiltinType::Float:
+            return "float";
+        case BuiltinType::Double:
+            return "double";
+        default:
+            llvm_unreachable("Unknown/unhandled builtin type");
+        }
+    } else {
+        llvm_unreachable("unimplemented");
+    }
+}
+
 class CrossCheckInserter : public SemaConsumer {
 private:
     Config config;
@@ -347,10 +390,21 @@ public:
                             param_xcheck = it->second;
                         }
                     }
-                    auto param_xcheck_default_fn = [&ctx] (void) {
-                        // TODO: implement as a call to a type-specific
-                        // __c2rust_hash_TTT() function
-                        return nullptr;
+                    auto param_xcheck_default_fn = [this, &ctx, &param] (void) {
+                        // By default, we just call __c2rust_hash_T(x)
+                        // where T is the type of the parameter
+                        // FIXME: include shasher/ahasher
+                        auto param_canonical_type = ctx.getCanonicalType(param->getType());
+                        std::string hash_fn_name{"__c2rust_hash_"};
+                        hash_fn_name += get_type_hash_name(param_canonical_type);
+
+                        // Forward the value of the parameter to the hash function
+                        auto param_ref =
+                            new (ctx) DeclRefExpr(param, false, param->getType(),
+                                                  VK_RValue, SourceLocation());
+                        // TODO: pass PODs by value, non-PODs by pointer???
+                        return build_call(hash_fn_name, ctx.UnsignedLongTy,
+                                          { param_ref }, ctx);
                     };
                     auto param_xcheck_custom_args_fn = [&ctx, &param] (void) {
                         // Forward the value of the parameter to the custom function

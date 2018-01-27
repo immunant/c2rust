@@ -26,3 +26,4 @@ include(TableGen)
 include(HandleLLVMOptions)
 
 add_subdirectory(plugin)
+add_subdirectory(runtime)

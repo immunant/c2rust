@@ -22,7 +22,8 @@ test.c:
       #entry: { custom: "foo" }
       #all_args: { fixed: 0xabcdef00 }
       args:
+        n: default
         #n: disabled
-        n: { custom: "id" }
+        #n: { custom: "id" }
         #n: { fixed: 0xabcd1234 }
 ...
