@@ -293,9 +293,7 @@ def main() -> None:
 
     args = parser.parse_args()
     testcases = get_testcases(args.directory, args.keep)
-    # convert from log level name to enumeration value
-    log_level = logging._nameToLevel[args.logLevel]
-    setup_logging(log_level)
+    setup_logging(args.logLevel)
 
     logging.debug("args: %s", " ".join(sys.argv))
 
