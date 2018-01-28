@@ -104,6 +104,10 @@ class TestCase:
         # run the importer
         args = [self.cbor]
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
+            # make it a little easier to run this command in a debugger
+            translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
+            translation_cmd += str(ast_importer[args] > self.rust_src)
+            logging.debug("translation command:\n %s", translation_cmd)
             return (ast_importer[args] > self.rust_src).run(retcode=None)
 
     def compile_translated_rustc(self) -> (int, str, str):
@@ -289,7 +293,9 @@ def main() -> None:
 
     args = parser.parse_args()
     testcases = get_testcases(args.directory, args.keep)
-    setup_logging(args.logLevel)
+    # convert from log level name to enumeration value
+    log_level = logging._nameToLevel[args.logLevel]
+    setup_logging(log_level)
 
     logging.debug("args: %s", " ".join(sys.argv))
 
