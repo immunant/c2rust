@@ -410,6 +410,12 @@ public:
                             new (ctx) DeclRefExpr(param, false, param->getType(),
                                                   VK_RValue, SourceLocation());
                         // TODO: pass PODs by value, non-PODs by pointer???
+                        //
+                        // TODO: we might need a way to pass additional
+                        // arguments to the custom function, e.g., if it hashes
+                        // an array and requires the array's length, we should
+                        // call it as `custom(a, len)`. For this to work, we'll
+                        // need a way to customize which arguments get passed.
                         return ExprVec{param_ref};
                     };
                     auto param_xcheck_stmts =
