@@ -263,11 +263,11 @@ def setup_logging(logLevel = logging.DEBUG):
     logging.basicConfig(
         filename=sys.argv[0].replace(".py", ".log"),
         filemode='w',
-        level=logLevel
+        level=logging.DEBUG
     )
 
     console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
+    console.setLevel(logLevel)
     logging.root.addHandler(console)
 
 

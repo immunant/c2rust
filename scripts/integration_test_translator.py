@@ -56,7 +56,7 @@ minimal_cc_db = """ \
 """.format(os.path.join(ROOT_DIR, "scripts"))
 
 
-def _test_minimal(code_snippet: str) -> None:
+def _test_minimal(code_snippet: str) -> bool:
     ast_extr = get_cmd_or_die(AST_EXTR)
     ast_impo = get_cmd_or_die(AST_IMPO)
     cfile = os.path.join(ROOT_DIR, "scripts/test.c")
@@ -64,7 +64,8 @@ def _test_minimal(code_snippet: str) -> None:
         fh.write(code_snippet)
 
     # avoid warnings about missing compiler flags, not strictly required
-    minimal_cc_db_path = os.path.join(ROOT_DIR, "scripts/compile_commands.json")
+    cc_json = "scripts/compile_commands.json"
+    minimal_cc_db_path = os.path.join(ROOT_DIR, cc_json)
     with open(minimal_cc_db_path, 'w') as fh:
         fh.write(minimal_cc_db)
 
@@ -87,6 +88,8 @@ def _test_minimal(code_snippet: str) -> None:
                       LD_LIBRARY_PATH=ld_lib_path):
         invoke(ast_impo, args)
 
+    return True  # if we get this far, test passed
+
 
 def test_minimal(_: argparse.Namespace) -> None:
     _test_minimal(minimal_snippet)
@@ -96,7 +99,7 @@ def test_hello_world(_: argparse.Namespace) -> None:
     _test_minimal(hello_world_snippet)
 
 
-def test_json_c(args: argparse.Namespace) -> None:
+def test_json_c(args: argparse.Namespace) -> bool:
     with pb.local.cwd(DEPS_DIR):
         download_archive(JSON_C_URL, JSON_C_ARCHIVE)
         invoke_quietly(TAR, "xf", JSON_C_ARCHIVE)
@@ -114,10 +117,10 @@ def test_json_c(args: argparse.Namespace) -> None:
         die("missing " + cc_db_file, errno.ENOENT)
 
     with open(cc_db_file) as cc_db:
-        transpile_files(cc_db, args.jobs)
+        transpile_files(cc_db, args.jobs, None, False, args.verbose)
 
 
-def test_lua(args: argparse.Namespace) -> None:
+def test_lua(args: argparse.Namespace) -> bool:
     """
     download lua, compile lua with bear to create
     a compiler command database, and use it to
@@ -142,10 +145,10 @@ def test_lua(args: argparse.Namespace) -> None:
         die("missing " + cc_db_file, errno.ENOENT)
 
     with open(cc_db_file) as cc_db:
-        transpile_files(cc_db, args.jobs)
+        return transpile_files(cc_db, args.jobs, None, False, args.verbose)
 
 
-def test_ruby(args: argparse.Namespace) -> None:
+def test_ruby(args: argparse.Namespace) -> bool:
     with pb.local.cwd(DEPS_DIR):
         download_archive(RUBY_URL, RUBY_ARCHIVE)
         invoke_quietly(TAR, "xf", RUBY_ARCHIVE)
@@ -162,7 +165,7 @@ def test_ruby(args: argparse.Namespace) -> None:
         die("missing " + cc_db_file, errno.ENOENT)
 
     with open(cc_db_file) as cc_db:
-        transpile_files(cc_db, args.jobs)
+        return transpile_files(cc_db, args.jobs, None, False, args.verbose)
 
 
 def parse_args() -> argparse.Namespace:
@@ -178,6 +181,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-j', '--jobs', type=int, dest="jobs",
                         default=multiprocessing.cpu_count(),
                         help='max number of concurrent jobs')
+    parser.add_argument('-v', '--verbose', default=False, dest="verbose",
+                        help='enable verbose output')
     return parser.parse_args()
 
 
@@ -212,14 +217,20 @@ def main() -> None:
     if not tests:
         die("nothing to test")
 
+    success = True
     for t in tests:
         logging.debug("running test: %s", t.__name__)
-        t(args)
+        success = success and t(args)
 
     # FIXME: test lighttpd, varnish, Python, etc.
     # FIXME: add rebuild option?.
 
-    logging.info("PASS")
+    if success:
+        logging.info("PASS")
+    else:
+        logging.info("FAIL")
+        quit(1)
+
 
 if __name__ == "__main__":
     main()

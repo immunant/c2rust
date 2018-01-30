@@ -104,6 +104,10 @@ class TestCase:
         # run the importer
         args = [self.cbor]
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
+            # make it a little easier to run this command in a debugger
+            translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
+            translation_cmd += str(ast_importer[args] > self.rust_src)
+            logging.debug("translation command:\n %s", translation_cmd)
             return (ast_importer[args] > self.rust_src).run(retcode=None)
 
     def compile_translated_rustc(self) -> (int, str, str):
