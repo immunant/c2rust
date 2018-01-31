@@ -345,6 +345,55 @@ private:
         return res;
     }
 
+    llvm::TinyPtrVector<Stmt*>
+    build_parameter_xcheck(ParmVarDecl *param,
+                           const std::optional<FunctionConfigRef> &func_cfg,
+                           ASTContext &ctx) {
+        XCheck param_xcheck{XCheck::DISABLED};
+        if (func_cfg) {
+            auto &func_cfg_ref = func_cfg->get();
+            param_xcheck = func_cfg_ref.all_args;
+
+            auto it = func_cfg_ref.args.find(param->getName());
+            if (it != func_cfg_ref.args.end()) {
+                param_xcheck = it->second;
+            }
+        }
+        auto param_xcheck_default_fn = [this, &ctx, &param] (void) {
+            // By default, we just call __c2rust_hash_T(x)
+            // where T is the type of the parameter
+            // FIXME: include shasher/ahasher
+            auto param_canonical_type = ctx.getCanonicalType(param->getType());
+            auto hash_fn_name = "__c2rust_hash_"s;
+            hash_fn_name += get_type_hash_name(param_canonical_type, ctx);
+
+            // Forward the value of the parameter to the hash function
+            auto param_ref =
+                new (ctx) DeclRefExpr(param, false, param->getType(),
+                                      VK_RValue, SourceLocation());
+            // TODO: pass PODs by value, non-PODs by pointer???
+            return build_call(hash_fn_name, ctx.UnsignedLongTy,
+                              { param_ref }, ctx);
+        };
+        auto param_xcheck_custom_args_fn = [&ctx, &param] (void) {
+            // Forward the value of the parameter to the custom function
+            auto param_ref =
+                new (ctx) DeclRefExpr(param, false, param->getType(),
+                                      VK_RValue, SourceLocation());
+            // TODO: pass PODs by value, non-PODs by pointer???
+            //
+            // TODO: we might need a way to pass additional
+            // arguments to the custom function, e.g., if it hashes
+            // an array and requires the array's length, we should
+            // call it as `custom(a, len)`. For this to work, we'll
+            // need a way to customize which arguments get passed.
+            return ExprVec{param_ref};
+        };
+        return build_xcheck(param_xcheck, FUNCTION_ARG_TAG, ctx,
+                            param_xcheck_default_fn,
+                            param_xcheck_custom_args_fn);
+    }
+
     std::optional<FunctionConfigRef>
     get_function_config(const std::string &file_name,
                         const std::string &func_name) {
@@ -419,50 +468,8 @@ public:
 
                 // Add cross-checks for the function parameters
                 for (auto &param : fd->parameters()) {
-                    XCheck param_xcheck{XCheck::DISABLED};
-                    if (func_cfg) {
-                        auto &func_cfg_ref = func_cfg->get();
-                        param_xcheck = func_cfg_ref.all_args;
-
-                        auto it = func_cfg_ref.args.find(param->getName());
-                        if (it != func_cfg_ref.args.end()) {
-                            param_xcheck = it->second;
-                        }
-                    }
-                    auto param_xcheck_default_fn = [this, &ctx, &param] (void) {
-                        // By default, we just call __c2rust_hash_T(x)
-                        // where T is the type of the parameter
-                        // FIXME: include shasher/ahasher
-                        auto param_canonical_type = ctx.getCanonicalType(param->getType());
-                        auto hash_fn_name = "__c2rust_hash_"s;
-                        hash_fn_name += get_type_hash_name(param_canonical_type, ctx);
-
-                        // Forward the value of the parameter to the hash function
-                        auto param_ref =
-                            new (ctx) DeclRefExpr(param, false, param->getType(),
-                                                  VK_RValue, SourceLocation());
-                        // TODO: pass PODs by value, non-PODs by pointer???
-                        return build_call(hash_fn_name, ctx.UnsignedLongTy,
-                                          { param_ref }, ctx);
-                    };
-                    auto param_xcheck_custom_args_fn = [&ctx, &param] (void) {
-                        // Forward the value of the parameter to the custom function
-                        auto param_ref =
-                            new (ctx) DeclRefExpr(param, false, param->getType(),
-                                                  VK_RValue, SourceLocation());
-                        // TODO: pass PODs by value, non-PODs by pointer???
-                        //
-                        // TODO: we might need a way to pass additional
-                        // arguments to the custom function, e.g., if it hashes
-                        // an array and requires the array's length, we should
-                        // call it as `custom(a, len)`. For this to work, we'll
-                        // need a way to customize which arguments get passed.
-                        return ExprVec{param_ref};
-                    };
                     auto param_xcheck_stmts =
-                        build_xcheck(param_xcheck, FUNCTION_ARG_TAG, ctx,
-                                     param_xcheck_default_fn,
-                                     param_xcheck_custom_args_fn);
+                        build_parameter_xcheck(param, func_cfg, ctx);
                     std::move(param_xcheck_stmts.begin(),
                               param_xcheck_stmts.end(),
                               std::back_inserter(new_body_stmts));
