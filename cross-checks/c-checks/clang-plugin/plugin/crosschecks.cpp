@@ -6,6 +6,7 @@
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaConsumer.h"
 #include "llvm/ADT/TinyPtrVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/OptTable.h"
 #include "llvm/Option/Option.h"
@@ -19,6 +20,8 @@
 
 using namespace clang;
 using namespace llvm::opt;
+
+using namespace std::string_literals;
 
 namespace {
 
@@ -79,7 +82,7 @@ struct StringRefPairCompare {
     }
 };
 
-static llvm::Twine get_type_hash_name(QualType ty, ASTContext &ctx) {
+static std::string get_type_hash_name(QualType ty, ASTContext &ctx) {
     switch (ty->getTypeClass()) {
     case Type::Builtin: {
         switch (cast<BuiltinType>(ty)->getKind()) {
@@ -125,7 +128,8 @@ static llvm::Twine get_type_hash_name(QualType ty, ASTContext &ctx) {
         auto pointee_ty = cast<PointerType>(ty)->getPointeeType();
         auto canonical_pointee_ty = ctx.getCanonicalType(pointee_ty);
         auto pointee_name = get_type_hash_name(canonical_pointee_ty, ctx);
-        return pointee_name + llvm::Twine("_ptr");
+        pointee_name += "_ptr";
+        return pointee_name;
     }
 
     case Type::ConstantArray: {
@@ -133,8 +137,22 @@ static llvm::Twine get_type_hash_name(QualType ty, ASTContext &ctx) {
         auto element_ty = array_ty->getElementType();
         auto canonical_element_ty = ctx.getCanonicalType(element_ty);
         auto element_name = get_type_hash_name(canonical_element_ty, ctx);
-        return element_name + llvm::Twine("_array") +
-            llvm::Twine(array_ty->getSize().getZExtValue());
+        element_name += "_array";
+        element_name += llvm::utostr(array_ty->getSize().getZExtValue());
+        return element_name;
+    }
+
+    case Type::Record: {
+        // Build the type name as "kind_name", where "kind" can be
+        // "struct", "class" (for C++), "union" or "enum"
+        // FIXME: this leaves room for collisions, e.g., between
+        // a structure "struct foo_ptr" and a pointer of type "struct foo*"
+        auto record_ty = cast<RecordType>(ty);
+        auto record_decl = record_ty->getDecl();
+        auto record_name = record_decl->getKindName().str();
+        record_name += '_';
+        record_name += record_decl->getDeclName().getAsString();
+        return record_name;
     }
 
     default:
@@ -413,16 +431,15 @@ public:
                         // where T is the type of the parameter
                         // FIXME: include shasher/ahasher
                         auto param_canonical_type = ctx.getCanonicalType(param->getType());
-                        auto hash_fn_name = llvm::Twine("__c2rust_hash_") +
-                            get_type_hash_name(param_canonical_type, ctx);
-                        auto hash_fn_name_str = hash_fn_name.str();
+                        auto hash_fn_name = "__c2rust_hash_"s;
+                        hash_fn_name += get_type_hash_name(param_canonical_type, ctx);
 
                         // Forward the value of the parameter to the hash function
                         auto param_ref =
                             new (ctx) DeclRefExpr(param, false, param->getType(),
                                                   VK_RValue, SourceLocation());
                         // TODO: pass PODs by value, non-PODs by pointer???
-                        return build_call(hash_fn_name_str, ctx.UnsignedLongTy,
+                        return build_call(hash_fn_name, ctx.UnsignedLongTy,
                                           { param_ref }, ctx);
                     };
                     auto param_xcheck_custom_args_fn = [&ctx, &param] (void) {
