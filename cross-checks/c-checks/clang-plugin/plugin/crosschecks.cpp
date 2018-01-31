@@ -79,9 +79,10 @@ struct StringRefPairCompare {
     }
 };
 
-static llvm::StringRef get_type_hash_name(QualType ty) {
-    if (const BuiltinType *bt = ty->getAs<BuiltinType>()) {
-        switch (bt->getKind()) {
+static llvm::Twine get_type_hash_name(QualType ty, ASTContext &ctx) {
+    switch (ty->getTypeClass()) {
+    case Type::Builtin: {
+        switch (cast<BuiltinType>(ty)->getKind()) {
         case BuiltinType::Void:
             // TODO: we should never actually be able to hash a void
             return "void";
@@ -117,7 +118,17 @@ static llvm::StringRef get_type_hash_name(QualType ty) {
         default:
             llvm_unreachable("Unknown/unhandled builtin type");
         }
-    } else {
+        break;
+    }
+
+    case Type::Pointer: {
+        auto pointee_ty = cast<PointerType>(ty)->getPointeeType();
+        auto canonical_pointee_ty = ctx.getCanonicalType(pointee_ty);
+        auto pointee_name = get_type_hash_name(canonical_pointee_ty, ctx);
+        return pointee_name + llvm::Twine("_ptr");
+    }
+
+    default:
         llvm_unreachable("unimplemented");
     }
 }
@@ -393,15 +404,16 @@ public:
                         // where T is the type of the parameter
                         // FIXME: include shasher/ahasher
                         auto param_canonical_type = ctx.getCanonicalType(param->getType());
-                        std::string hash_fn_name{"__c2rust_hash_"};
-                        hash_fn_name += get_type_hash_name(param_canonical_type);
+                        auto hash_fn_name = llvm::Twine("__c2rust_hash_") +
+                            get_type_hash_name(param_canonical_type, ctx);
+                        auto hash_fn_name_str = hash_fn_name.str();
 
                         // Forward the value of the parameter to the hash function
                         auto param_ref =
                             new (ctx) DeclRefExpr(param, false, param->getType(),
                                                   VK_RValue, SourceLocation());
                         // TODO: pass PODs by value, non-PODs by pointer???
-                        return build_call(hash_fn_name, ctx.UnsignedLongTy,
+                        return build_call(hash_fn_name_str, ctx.UnsignedLongTy,
                                           { param_ref }, ctx);
                     };
                     auto param_xcheck_custom_args_fn = [&ctx, &param] (void) {

@@ -23,6 +23,7 @@ test.c:
       #all_args: { fixed: 0xabcdef00 }
       args:
         n: default
+        p: default
         #n: disabled
         #n: { custom: "id" }
         #n: { fixed: 0xabcd1234 }
