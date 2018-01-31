@@ -128,6 +128,15 @@ static llvm::Twine get_type_hash_name(QualType ty, ASTContext &ctx) {
         return pointee_name + llvm::Twine("_ptr");
     }
 
+    case Type::ConstantArray: {
+        auto array_ty = cast<ConstantArrayType>(ty);
+        auto element_ty = array_ty->getElementType();
+        auto canonical_element_ty = ctx.getCanonicalType(element_ty);
+        auto element_name = get_type_hash_name(canonical_element_ty, ctx);
+        return element_name + llvm::Twine("_array") +
+            llvm::Twine(array_ty->getSize().getZExtValue());
+    }
+
     default:
         llvm_unreachable("unimplemented");
     }
