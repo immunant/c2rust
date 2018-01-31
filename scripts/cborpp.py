@@ -40,13 +40,53 @@ TAGS = {
     3: "TagRecordDecl",
     4: "TagFieldDecl",
 
+    5: "TagEnumDecl",
+    6: "TagEnumConstantDecl",
+    7: "TagTypedefDecl",
+    8: "TagUnionDecl",
+
     100: "TagCompoundStmt",
+    101: "TagReturnStmt",
+    102: "TagIfStmt",
+    103: "TagGotoStmt",
+    104: "TagLabelStmt",
+
+    105: "TagNullStmt",
+    106: "TagForStmt",
+    107: "TagWhileStmt",
+    108: "TagSwitchStmt",
+    109: "TagDeclStmt",
+
+    110: "TagBreakStmt",
+    111: "TagEnuTagCaseStmtmDecl",
+    112: "TagContinueStmt",
+    113: "TagDefaultStmt",
+    114: "TagDoStmt",
 
     200: "TagBinaryOperator",
     201: "TagUnaryOperator",
     202: "TagDeclRefExpr",
     203: "TagImplicitCastExpr",
     204: "TagCallExpr",
+
+    205: "TagInitListExpr",
+    206: "TagImplicitValueInitExpr",
+    207: "TagArraySubscriptExpr",
+    208: "TagCStyleCastExpr",
+    209: "TagConditionalOperator",
+
+    210: "TagBinaryConditionalOperator",
+    211: "TagMemberExpr",
+    212: "TagParenExpr",
+    213: "TagUnaryExprOrTypeTraitExpr",
+    214: "TagCompoundLiteralExpr",
+
+    215: "TagPredefinedExpr",
+
+    300: "TagIntegerLiteral",
+    301: "TagStringLiteral",
+    302: "TagCharacterLiteral",
+    303: "TagFloatingLiteral",
 
     400: "TagTypeUnknown",
 
@@ -60,29 +100,45 @@ TAGS = {
     506: "TagULong",
     507: "TagULongLong",
     508: "TagPointer",
-    509: "TagRecordType",
+    509: "TagStructType",
 
-    510: "TagDouble",
-    511: "TagLongDouble",
-    512: "TagFloat",
-    513: "TagConstantArrayType",
-    514: "TagVariableArrayType",
+    510: "TagUnionType",
+    511: "TagDouble",
+    512: "TagLongDouble",
+    513: "TagFloat",
+    514: "TagConstantArrayType",
+    
+    515: "TagVariableArrayType",
+    516: "TagIncompleteArrayType",
+    517: "TagEnumType",
+    518: "TagFunctionType",
+    519: "TagTypeOfType",
 
-    515: "TagIncompleteArrayType",
-    516: "TagEnumType",
-    517: "TagFunctionType",
-    518: "TagTypeOfType",
-    519: "TagTypedefType",
+    520: "TagTypedefType",
+    521: "TagElaboratedType",
+    522: "TagUChar",
+    523: "TagSChar",
+    524: "TagChar",
 
-    520: "TagElaboratedType",
-    521: "TagUChar",
-    522: "TagSChar",
-    523: "TagChar",
-    524: "TagVoid",
+    525: "TagVoid",
+    526: "TagBool",
+    527: "TagDecayedType",
+    528: "TagParenType",
+    529: "TagSWChar",
 
-    525: "TagBool",
-    526: "TagDecayedType",
-    527: "TagParenType",
+    530: "TagUWChar",
+    531: "TagInt128",
+    532: "TagUInt128",
+    533: "TagBuiltinFn",
+    534: "TagAttributedType",
+
+    535: "TagBlockPointer",
+
+    600: "TagUWChar",
+    601: "TagInt128",
+    602: "TagUInt128",
+    603: "TagBuiltinFn",
+    604: "TagAttributedType",
 }
 
 
