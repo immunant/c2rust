@@ -259,7 +259,7 @@ def ensure_dir(path):
         die("%s is not a directory", path)
 
 
-def setup_logging(logLevel = logging.DEBUG):
+def setup_logging(logLevel=logging.INFO):
     logging.basicConfig(
         filename=sys.argv[0].replace(".py", ".log"),
         filemode='w',
