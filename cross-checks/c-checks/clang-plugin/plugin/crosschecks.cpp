@@ -143,15 +143,18 @@ static std::string get_type_hash_name(QualType ty, ASTContext &ctx) {
     }
 
     case Type::Record: {
-        // Build the type name as "kind_name", where "kind" can be
+        // Build the type name as "name_kind", where "kind" can be
         // "struct", "class" (for C++), "union" or "enum"
-        // FIXME: this leaves room for collisions, e.g., between
-        // a structure "struct foo_ptr" and a pointer of type "struct foo*"
+        //
+        // We append "kind" after "name" to avoid collisions, e.g., between
+        // a structure "struct foo_ptr" and a pointer of type "struct foo*":
+        // struct foo_ptr => "foo_ptr_struct"
+        // struct foo*    => "foo_struct_ptr"
         auto record_ty = cast<RecordType>(ty);
         auto record_decl = record_ty->getDecl();
-        auto record_name = record_decl->getKindName().str();
+        auto record_name = record_decl->getDeclName().getAsString();
         record_name += '_';
-        record_name += record_decl->getDeclName().getAsString();
+        record_name += record_decl->getKindName().str();
         return record_name;
     }
 
