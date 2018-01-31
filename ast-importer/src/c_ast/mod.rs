@@ -597,7 +597,8 @@ pub struct CQualTypeId {
 /// Reflects the types in <http://clang.llvm.org/doxygen/classclang_1_1Type.html>
 #[derive(Debug, Clone)]
 pub enum CTypeKind {
-    /* Builtin types: <https://github.com/llvm-mirror/clang/include/clang/AST/BuiltinTypes.def> */
+    /* Builtin types:
+     * <https://github.com/llvm-mirror/clang/blob/master/include/clang/AST/BuiltinTypes.def> */
 
     // Void type (6.2.5.19)
     Void,
