@@ -5,11 +5,13 @@
 namespace llvm {
 namespace yaml {
 
-void MappingTraits<XCheck>::mapping(IO &io, XCheck &xc) {
+template<>
+void yamlize(IO &io, XCheck &xc, bool, EmptyContext &ctx) {
     if (io.outputting()) {
         // TODO: implement
         llvm_unreachable("Unimplemented");
     } else {
+        io.beginEnumScalar();
 #define CHECK_ENUM(_s, _e)               \
     if (io.matchEnumScalar(_s, false)) { \
         xc.type = XCheck::_e;            \
@@ -19,7 +21,11 @@ void MappingTraits<XCheck>::mapping(IO &io, XCheck &xc) {
         CHECK_ENUM("none",     DISABLED);
         CHECK_ENUM("disabled", DISABLED);
 #undef CHECK_ENUM
+        // Skip calling io.endEnumScalar(),
+        // since that just exits with an error
+        // for all values not covered above
 
+        io.beginMapping();
 #define CHECK_DATA(_s, _dt, _e) do {              \
         EmptyContext ctx;                         \
         Optional<_dt> data;                       \
@@ -30,11 +36,13 @@ void MappingTraits<XCheck>::mapping(IO &io, XCheck &xc) {
             return;                               \
         }                                         \
     } while (0)
-
         CHECK_DATA("fixed",  uint64_t,    FIXED);
         CHECK_DATA("djb2",   std::string, DJB2);
         CHECK_DATA("custom", std::string, CUSTOM);
 #undef CHECK_DATA
+        io.endMapping();
+
+        // We couldn't handle this input, so throw an error
         io.setError("Unknown cross-check type");
     }
 }
