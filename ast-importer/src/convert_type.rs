@@ -73,7 +73,6 @@ impl TypeConverter {
             mk().arg(self.convert(ctxt, x.ctype).unwrap(),
                                  mk().wild_pat())
         ).collect();
-        println!("inputs {:?}", inputs);
         let output = self.convert(ctxt, ret.ctype)?;
         let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output));
         return Ok(mk().unsafe_().abi(Abi::C).barefn_ty(fn_ty));
