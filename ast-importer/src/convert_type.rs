@@ -67,6 +67,17 @@ impl TypeConverter {
 
     }
 
+    /// Helper function handling conversion of function types in `convert`.
+    fn convert_function(&mut self, ctxt: &TypedAstContext,  ret: &CQualTypeId, params: &Vec<CQualTypeId>) -> Result<P<Ty>, String> {
+        let inputs = params.iter().map(|x|
+            mk().arg(self.convert(ctxt, x.ctype).unwrap(),
+                                 mk().wild_pat())
+        ).collect();
+        let output = self.convert(ctxt, ret.ctype)?;
+        let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output));
+        return Ok(mk().unsafe_().abi(Abi::C).barefn_ty(fn_ty));
+    }
+
     /// Convert a `C` type to a `Rust` one. For the moment, these are expected to have compatible
     /// memory layouts.
     pub fn convert(&mut self, ctxt: &TypedAstContext, ctype: CTypeId) -> Result<P<Ty>, String> {
@@ -104,14 +115,10 @@ impl TypeConverter {
                     // Function pointers are translated to Option applied to the function type
                     // in order to support NULL function pointers natively
                     CTypeKind::Function(ref ret, ref params) => {
-                        let inputs = params.iter().map(|x|
-                            mk().arg(self.convert(ctxt, x.ctype).unwrap(),
-                                     mk().wild_pat())
-                        ).collect();
-                        let output = self.convert(ctxt, ret.ctype)?;
-                        let fn_ptr = mk().unsafe_().abi(Abi::C).barefn_ty(mk().fn_decl(inputs, FunctionRetTy::Ty(output)));
-                        let param = mk().angle_bracketed_param_types(vec![fn_ptr]);
-                        Ok(mk().path_ty(vec![mk().path_segment_with_params("Option", param)]))
+                        let fn_ty = self.convert_function(ctxt, ret, params)?;
+                        let param = mk().angle_bracketed_param_types(vec![fn_ty]);
+                        let optn_ty = mk().path_ty(vec![mk().path_segment_with_params("Option", param)]);
+                        Ok(optn_ty)
                     }
 
                     _ => {
@@ -152,6 +159,11 @@ impl TypeConverter {
             }
 
             CTypeKind::Attributed(ty) => self.convert(ctxt, ty.ctype),
+
+            CTypeKind::Function(ref ret, ref params) => {
+                let fn_ty = self.convert_function(ctxt, ret, params)?;
+                Ok(fn_ty)
+            }
 
             ref t => Err(format!("Unsupported type {:?}", t)),
         }

@@ -20,7 +20,7 @@ update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-3.9 100
 # Install python3.6 and packages
 apt-get install -y python3-pip
 pip3 install --upgrade pip
-pip3 install plumbum colorlog typing cbor pylint
+pip3 install plumbum colorlog typing cbor cbor2 pylint
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 
 # Dependencies for test programs #
