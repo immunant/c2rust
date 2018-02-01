@@ -503,7 +503,7 @@ private:
                 param_xcheck = it->second;
             }
         }
-        auto param_xcheck_default_fn = [this, &ctx, &param] (void) {
+        auto param_xcheck_default_fn = [this, &ctx, param] (void) {
             // By default, we just call __c2rust_hash_T(x)
             // where T is the type of the parameter
             // FIXME: include shasher/ahasher
@@ -518,7 +518,7 @@ private:
             return build_call(hash_fn_name.full_name(), ctx.UnsignedLongTy,
                               { param_ref }, ctx);
         };
-        auto param_xcheck_custom_args_fn = [&ctx, &param] (void) {
+        auto param_xcheck_custom_args_fn = [&ctx, param] (void) {
             // Forward the value of the parameter to the custom function
             auto param_ref =
                 new (ctx) DeclRefExpr(param, false, param->getType(),
