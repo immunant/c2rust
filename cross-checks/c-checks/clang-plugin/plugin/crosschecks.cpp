@@ -15,13 +15,14 @@
 
 #include <functional>
 #include <optional>
+#include <string_view>
 
 #include "config.h"
 
 using namespace clang;
 using namespace llvm::opt;
 
-using namespace std::string_literals;
+using namespace std::literals;
 
 namespace {
 
@@ -82,86 +83,45 @@ struct StringRefPairCompare {
     }
 };
 
-static std::string get_type_hash_name(QualType ty, ASTContext &ctx) {
-    switch (ty->getTypeClass()) {
-    case Type::Builtin: {
-        switch (cast<BuiltinType>(ty)->getKind()) {
-        case BuiltinType::Void:
-            // TODO: we should never actually be able to hash a void
-            return "void";
-        case BuiltinType::Bool:
-            return "bool";
-        case BuiltinType::Char_S:
-        case BuiltinType::Char_U:
-            return "char";
-        case BuiltinType::UChar:
-            return "uchar";
-        case BuiltinType::UShort:
-            return "ushort";
-        case BuiltinType::UInt:
-            return "uint";
-        case BuiltinType::ULong:
-            return "ulong";
-        case BuiltinType::ULongLong:
-            return "ullong";
-        case BuiltinType::SChar:
-            return "schar";
-        case BuiltinType::Short:
-            return "short";
-        case BuiltinType::Int:
-            return "int";
-        case BuiltinType::Long:
-            return "long";
-        case BuiltinType::LongLong:
-            return "llong";
-        case BuiltinType::Float:
-            return "float";
-        case BuiltinType::Double:
-            return "double";
-        default:
-            llvm_unreachable("Unknown/unhandled builtin type");
+class HashFunctionName {
+public:
+    using Element = std::variant<std::string, std::string_view>;
+
+    HashFunctionName() {}
+    HashFunctionName(std::string_view sv) : elements{1, sv} {}
+    HashFunctionName(std::string str) : elements{1, str} {}
+
+    void append(std::string str) {
+        elements.emplace_back(str);
+    }
+
+    void append(std::string_view sv) {
+        elements.emplace_back(sv);
+    }
+
+    std::string full_name() const {
+        std::string res{"__c2rust_hash"};
+        for (auto &elem : elements) {
+            res += '_';
+            switch(elem.index()) {
+            case 0:
+                // std::string
+                res += std::get<0>(elem);
+                break;
+            case 1:
+                // std::string_view
+                res += std::get<1>(elem);
+                break;
+            default:
+                assert(false && "Invalid HashFunctionName::Element variant type");
+            }
         }
-        break;
+        return res;
     }
 
-    case Type::Pointer: {
-        auto pointee_ty = cast<PointerType>(ty)->getPointeeType();
-        auto canonical_pointee_ty = ctx.getCanonicalType(pointee_ty);
-        auto pointee_name = get_type_hash_name(canonical_pointee_ty, ctx);
-        pointee_name += "_ptr";
-        return pointee_name;
-    }
-
-    case Type::ConstantArray: {
-        auto array_ty = cast<ConstantArrayType>(ty);
-        auto element_ty = array_ty->getElementType();
-        auto canonical_element_ty = ctx.getCanonicalType(element_ty);
-        auto element_name = get_type_hash_name(canonical_element_ty, ctx);
-        element_name += "_array";
-        element_name += llvm::utostr(array_ty->getSize().getZExtValue());
-        return element_name;
-    }
-
-    case Type::Record: {
-        // Build the type name as "name_kind", where "kind" can be
-        // "struct", "class" (for C++), "union" or "enum"
-        //
-        // We append "kind" after "name" to avoid collisions, e.g., between
-        // a structure "struct foo_ptr" and a pointer of type "struct foo*":
-        // struct foo_ptr => "foo_ptr_struct"
-        // struct foo*    => "foo_struct_ptr"
-        auto record_ty = cast<RecordType>(ty);
-        auto record_decl = record_ty->getDecl();
-        auto record_name = record_decl->getDeclName().getAsString();
-        record_name += '_';
-        record_name += record_decl->getKindName().str();
-        return record_name;
-    }
-
-    default:
-        llvm_unreachable("unimplemented");
-    }
-}
+private:
+    std::vector<Element> elements;
+};
 
 class CrossCheckInserter : public SemaConsumer {
 private:
@@ -196,7 +156,8 @@ private:
 private:
     FunctionDecl *get_function_decl(llvm::StringRef name,
                                     QualType result_ty,
-                                    ArrayRef<Expr*> args,
+                                    ArrayRef<QualType> arg_tys,
+                                    StorageClass sc,
                                     ASTContext &ctx) {
         // Retrieve the FunctionDecl from the cache by name,
         // if it exists.
@@ -225,13 +186,7 @@ private:
 
         // Build the type of the function
         FunctionProtoType::ExtProtoInfo fn_epi{};
-        SmallVector<QualType, 16> arg_tys;
-        for (auto &arg : args) {
-            auto arg_ty = arg->getType();
-            arg_tys.push_back(arg_ty);
-        }
         auto fn_type = ctx.getFunctionType(result_ty, arg_tys, fn_epi);
-
         auto fn_id = &ctx.Idents.get(name);
         DeclarationName fn_decl_name{fn_id};
         auto fn_decl = FunctionDecl::Create(ctx, parent_decl,
@@ -239,7 +194,7 @@ private:
                                             SourceLocation(),
                                             fn_decl_name,
                                             fn_type,
-                                            nullptr, SC_Extern);
+                                            nullptr, sc);
 
         // Build the ParmVarDecl's of the arguments
         SmallVector<ParmVarDecl*, 16> arg_decls;
@@ -260,7 +215,13 @@ private:
 
     CallExpr *build_call(llvm::StringRef fn_name, QualType result_ty,
                          ArrayRef<Expr*> args, ASTContext &ctx) {
-        auto fn_decl = get_function_decl(fn_name, result_ty, args, ctx);
+        SmallVector<QualType, 16> arg_tys;
+        for (auto &arg : args) {
+            auto arg_ty = arg->getType();
+            arg_tys.push_back(arg_ty);
+        }
+        auto fn_decl = get_function_decl(fn_name, result_ty, arg_tys,
+                                         SC_Extern, ctx);
         auto fn_type = fn_decl->getType();
         auto fn_ptr_type = ctx.getPointerType(fn_type);
         auto fn_ref = new (ctx)
@@ -345,6 +306,189 @@ private:
         return res;
     }
 
+    HashFunctionName get_type_hash_function(QualType ty, ASTContext &ctx,
+                                            bool build_it) {
+        switch (ty->getTypeClass()) {
+        case Type::Builtin: {
+            switch (cast<BuiltinType>(ty)->getKind()) {
+            case BuiltinType::Void:
+                // TODO: we should never actually be able to hash a void
+                return "void"sv;
+            case BuiltinType::Bool:
+                return "bool"sv;
+            case BuiltinType::Char_S:
+            case BuiltinType::Char_U:
+                return "char"sv;
+            case BuiltinType::UChar:
+                return "uchar"sv;
+            case BuiltinType::UShort:
+                return "ushort"sv;
+            case BuiltinType::UInt:
+                return "uint"sv;
+            case BuiltinType::ULong:
+                return "ulong"sv;
+            case BuiltinType::ULongLong:
+                return "ullong"sv;
+            case BuiltinType::SChar:
+                return "schar"sv;
+            case BuiltinType::Short:
+                return "short"sv;
+            case BuiltinType::Int:
+                return "int"sv;
+            case BuiltinType::Long:
+                return "long"sv;
+            case BuiltinType::LongLong:
+                return "llong"sv;
+            case BuiltinType::Float:
+                return "float"sv;
+            case BuiltinType::Double:
+                return "double"sv;
+            default:
+                llvm_unreachable("Unknown/unhandled builtin type");
+            }
+            break;
+        }
+
+        case Type::Pointer: {
+            auto pointee_ty = cast<PointerType>(ty)->getPointeeType();
+            auto canonical_pointee_ty = ctx.getCanonicalType(pointee_ty);
+            auto pointee_name = get_type_hash_function(canonical_pointee_ty, ctx, build_it);
+            auto func_name = pointee_name;
+            func_name.append("ptr"sv);
+            if (build_it) {
+                build_pointer_hash_function(func_name, ty, pointee_name,
+                                            canonical_pointee_ty, ctx);
+            }
+            return func_name;
+        }
+
+        case Type::ConstantArray: {
+            auto array_ty = cast<ConstantArrayType>(ty);
+            auto element_ty = array_ty->getElementType();
+            auto canonical_element_ty = ctx.getCanonicalType(element_ty);
+            auto element_name = get_type_hash_function(canonical_element_ty, ctx, build_it);
+            auto func_name = std::move(element_name);
+            func_name.append("array"sv);
+            func_name.append(llvm::utostr(array_ty->getSize().getZExtValue()));
+            // TODO: build it
+            return func_name;
+        }
+
+        case Type::Record: {
+            // Build the type name as "name_kind", where "kind" can be
+            // "struct", "class" (for C++), "union" or "enum"
+            //
+            // We append "kind" after "name" to avoid collisions, e.g., between
+            // a structure "struct foo_ptr" and a pointer of type "struct foo*":
+            // struct foo_ptr => "foo_ptr_struct"
+            // struct foo*    => "foo_struct_ptr"
+            auto record_ty = cast<RecordType>(ty);
+            auto record_decl = record_ty->getDecl();
+            auto record_name = record_decl->getDeclName().getAsString();
+            HashFunctionName func_name{record_name};
+            func_name.append(record_decl->getKindName().str());
+            // TODO: build it
+            return func_name;
+        }
+
+        default:
+            llvm_unreachable("unimplemented");
+        }
+    }
+
+    using StmtVec = SmallVector<Stmt*, 16>;
+    using HashFunctionBodyFn = std::function<StmtVec(FunctionDecl*)>;
+
+    void build_generic_hash_function(const HashFunctionName &func_name,
+                                     QualType ty,
+                                     ASTContext &ctx,
+                                     HashFunctionBodyFn body_fn) {
+        auto fn_decl = get_function_decl(func_name.full_name(),
+                                         ctx.UnsignedLongTy,
+                                         { ty },
+                                         SC_Static,
+                                         ctx);
+        if (fn_decl->hasBody())
+            return; // We've already built it
+
+        auto fn_body_stmts = body_fn(fn_decl);
+        auto fn_body = new (ctx)
+            CompoundStmt(ctx, fn_body_stmts,
+                         SourceLocation(),
+                         SourceLocation());
+
+        fn_decl->setInlineSpecified(true);
+        fn_decl->setBody(fn_body);
+        new_funcs.push_back(fn_decl);
+        // TODO: add it to the parent DeclContext???
+    }
+
+    void build_pointer_hash_function(const HashFunctionName &func_name,
+                                     QualType ty,
+                                     const HashFunctionName &pointee_name,
+                                     QualType pointee_ty,
+                                     ASTContext &ctx) {
+        // Build the pointer hash function using this template:
+        // uint64_t __c2rust_hash_T_ptr(T *x) {
+        //   return __c2rust_pointer_is_valid(x)
+        //          ? __c2rust_hash_T(*x)
+        //          : __c2rust_hash_invalid_pointer(x);
+        // }
+        //
+        // TODO: add a depth parameter and decrement it on recursion
+        auto body_fn = [this, &pointee_name, &ctx] (FunctionDecl *fn_decl) -> StmtVec {
+            assert(fn_decl->getNumParams() == 1 &&
+                   "Invalid hash function signature");
+            auto param = fn_decl->getParamDecl(0);
+            auto param_ref =
+                new (ctx) DeclRefExpr(param, false, param->getType(),
+                                      VK_RValue, SourceLocation());
+            auto is_valid_call =
+                build_call("__c2rust_pointer_is_valid", ctx.BoolTy,
+                           { param_ref }, ctx);
+
+            // Build the call to the pointee function
+            param_ref =
+                new (ctx) DeclRefExpr(param, false, param->getType(),
+                                      VK_LValue, SourceLocation());
+            auto param_deref =
+                new (ctx) UnaryOperator(param_ref, UO_Deref,
+                                        param_ref->getType(),
+                                        VK_RValue, OK_Ordinary,
+                                        SourceLocation());
+            // TODO: write a function that prepends __c2rust_hash_
+            auto param_hash_call =
+                build_call(pointee_name.full_name(), ctx.UnsignedLongTy,
+                           { param_deref }, ctx);
+
+            // Build the call to __c2rust_hash_invalid_pointer
+            param_ref =
+                new (ctx) DeclRefExpr(param, false, param->getType(),
+                                      VK_RValue, SourceLocation());
+            auto hash_invalid_call =
+                build_call("__c2rust_hash_invalid_pointer", ctx.UnsignedLongTy,
+                           { param_ref }, ctx);
+
+            // Build the conditional expression and return statement
+            auto cond_expr =
+                new (ctx) ConditionalOperator(is_valid_call,
+                                              SourceLocation(),
+                                              param_hash_call,
+                                              SourceLocation(),
+                                              hash_invalid_call,
+                                              ctx.UnsignedLongTy,
+                                              VK_RValue,
+                                              OK_Ordinary);
+            auto return_stmt =
+                new (ctx) ReturnStmt(SourceLocation(), cond_expr, nullptr);
+            return { return_stmt };
+        };
+        build_generic_hash_function(func_name, ty, ctx, body_fn);
+    }
+
+    // TODO: build_array_hash_function
+    // TODO: build_record_hash_function
+
     llvm::TinyPtrVector<Stmt*>
     build_parameter_xcheck(ParmVarDecl *param,
                            const std::optional<FunctionConfigRef> &func_cfg,
@@ -364,15 +508,14 @@ private:
             // where T is the type of the parameter
             // FIXME: include shasher/ahasher
             auto param_canonical_type = ctx.getCanonicalType(param->getType());
-            auto hash_fn_name = "__c2rust_hash_"s;
-            hash_fn_name += get_type_hash_name(param_canonical_type, ctx);
+            auto hash_fn_name = get_type_hash_function(param_canonical_type, ctx, true);
 
             // Forward the value of the parameter to the hash function
             auto param_ref =
                 new (ctx) DeclRefExpr(param, false, param->getType(),
                                       VK_RValue, SourceLocation());
             // TODO: pass PODs by value, non-PODs by pointer???
-            return build_call(hash_fn_name, ctx.UnsignedLongTy,
+            return build_call(hash_fn_name.full_name(), ctx.UnsignedLongTy,
                               { param_ref }, ctx);
         };
         auto param_xcheck_custom_args_fn = [&ctx, &param] (void) {
