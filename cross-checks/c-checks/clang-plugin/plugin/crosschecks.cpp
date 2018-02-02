@@ -442,19 +442,22 @@ private:
             assert(fn_decl->getNumParams() == 1 &&
                    "Invalid hash function signature");
             auto param = fn_decl->getParamDecl(0);
-            auto build_param_ref = [&ctx, param] (ExprValueKind vk) {
-                return new (ctx) DeclRefExpr(param, false, param->getType(),
-                                             vk, SourceLocation());
-            };
+            auto param_ty = param->getType();
+            auto param_ref_lv =
+                new (ctx) DeclRefExpr(param, false, param_ty,
+                                      VK_LValue, SourceLocation());
+            auto param_ref_rv =
+                ImplicitCastExpr::Create(ctx, param_ty,
+                                         CK_LValueToRValue,
+                                         param_ref_lv, nullptr, VK_RValue);
             auto is_valid_call =
                 build_call("__c2rust_pointer_is_valid", ctx.BoolTy,
-                           { build_param_ref(VK_RValue) }, ctx);
+                           { param_ref_rv }, ctx);
 
             // Build the call to the pointee function
-            auto param_ref = build_param_ref(VK_LValue);
             auto param_deref =
-                new (ctx) UnaryOperator(param_ref, UO_Deref,
-                                        param_ref->getType(),
+                new (ctx) UnaryOperator(param_ref_lv, UO_Deref,
+                                        param_ref_lv->getType(),
                                         VK_RValue, OK_Ordinary,
                                         SourceLocation());
             // TODO: write a function that prepends __c2rust_hash_
@@ -465,7 +468,7 @@ private:
             // Build the call to __c2rust_hash_invalid_pointer
             auto hash_invalid_call =
                 build_call("__c2rust_hash_invalid_pointer", ctx.UnsignedLongTy,
-                           { build_param_ref(VK_RValue) }, ctx);
+                           { param_ref_rv }, ctx);
 
             // Build the conditional expression and return statement
             auto cond_expr =
@@ -542,21 +545,16 @@ private:
             stmts.push_back(hasher_var_decl_stmt);
 
             // Call the initializer
-            auto build_hasher_var_ptr = [this, &ctx, hasher_var,
-                                         hasher_ty, hasher_ptr_ty] () {
-                // FIXME: instead of rebuilding it each time, cache it???
-                auto hasher_var_ref =
-                    new (ctx) DeclRefExpr(hasher_var, false, hasher_ty,
-                                          VK_LValue, SourceLocation());
-                auto hasher_var_ptr =
-                    ImplicitCastExpr::Create(ctx, hasher_ptr_ty,
-                                             CK_ArrayToPointerDecay,
-                                             hasher_var_ref, nullptr, VK_RValue);
-                return hasher_var_ptr;
-            };
+            auto hasher_var_ref =
+                new (ctx) DeclRefExpr(hasher_var, false, hasher_ty,
+                                      VK_LValue, SourceLocation());
+            auto hasher_var_ptr =
+                ImplicitCastExpr::Create(ctx, hasher_ptr_ty,
+                                         CK_ArrayToPointerDecay,
+                                         hasher_var_ref, nullptr, VK_RValue);
             auto init_call = build_call("__c2rust_hasher_jodyhash_init",
                                         ctx.VoidTy,
-                                        { build_hasher_var_ptr() }, ctx);
+                                        { hasher_var_ptr }, ctx);
             stmts.push_back(init_call);
 
             // Add the field calls
@@ -571,25 +569,25 @@ private:
                     diags.Report(diag_id);
                     return {};
                 }
-                auto param_ref =
+                auto param_ref_lv =
                     new (ctx) DeclRefExpr(param, false, param->getType(),
                                           VK_LValue, SourceLocation());
-                auto field_ref =
-                    new (ctx) MemberExpr(param_ref, false, SourceLocation(),
+                auto field_ref_lv =
+                    new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
                                          field, SourceLocation(),
                                          field->getType(), VK_LValue, OK_Ordinary);
                 auto canonical_field_ty = ctx.getCanonicalType(field->getType());
                 auto field_hash_fn = get_type_hash_function(canonical_field_ty, ctx, true);
-                auto field_ice =
+                auto field_ref_rv =
                     ImplicitCastExpr::Create(ctx, canonical_field_ty,
                                              CK_LValueToRValue,
-                                             field_ref, nullptr, VK_RValue);
+                                             field_ref_lv, nullptr, VK_RValue);
                 auto field_hash_call = build_call(field_hash_fn.full_name(),
                                                   ctx.UnsignedLongTy,
-                                                  { field_ice }, ctx);
+                                                  { field_ref_rv }, ctx);
                 auto field_update_call = build_call("__c2rust_hasher_jodyhash_update",
                                                     ctx.VoidTy,
-                                                    { build_hasher_var_ptr(), field_hash_call },
+                                                    { hasher_var_ptr, field_hash_call },
                                                     ctx);
                 stmts.push_back(field_update_call);
             }
@@ -597,7 +595,7 @@ private:
             // Return the result of the finish function
             auto finish_call = build_call("__c2rust_hasher_jodyhash_finish",
                                           ctx.UnsignedLongTy,
-                                          { build_hasher_var_ptr() }, ctx);
+                                          { hasher_var_ptr }, ctx);
             auto return_stmt =
                 new (ctx) ReturnStmt(SourceLocation(), finish_call, nullptr);
             stmts.push_back(return_stmt);
@@ -628,16 +626,16 @@ private:
             auto hash_fn_name = get_type_hash_function(param_canonical_type, ctx, true);
 
             // Forward the value of the parameter to the hash function
-            auto param_ref =
+            auto param_ref_rv =
                 new (ctx) DeclRefExpr(param, false, param->getType(),
                                       VK_RValue, SourceLocation());
             // TODO: pass PODs by value, non-PODs by pointer???
             return build_call(hash_fn_name.full_name(), ctx.UnsignedLongTy,
-                              { param_ref }, ctx);
+                              { param_ref_rv }, ctx);
         };
         auto param_xcheck_custom_args_fn = [&ctx, param] (void) {
             // Forward the value of the parameter to the custom function
-            auto param_ref =
+            auto param_ref_rv =
                 new (ctx) DeclRefExpr(param, false, param->getType(),
                                       VK_RValue, SourceLocation());
             // TODO: pass PODs by value, non-PODs by pointer???
@@ -647,7 +645,7 @@ private:
             // an array and requires the array's length, we should
             // call it as `custom(a, len)`. For this to work, we'll
             // need a way to customize which arguments get passed.
-            return ExprVec{param_ref};
+            return ExprVec{param_ref_rv};
         };
         return build_xcheck(param_xcheck, FUNCTION_ARG_TAG, ctx,
                             param_xcheck_default_fn,
