@@ -71,8 +71,7 @@ void MappingTraits<ItemConfig>::mapping(IO &io, ItemConfig &cfg) {
         if (item_type == "function") {
             cfg = FunctionConfig(io);
         } else if (item_type == "struct") {
-            // TODO: implement
-            llvm_unreachable("Unimplemented");
+            cfg = StructConfig(io);
         } else {
             io.setError(Twine("Unknown item type: ") + item_type);
         }
