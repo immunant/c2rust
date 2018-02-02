@@ -24,5 +24,5 @@ clean:
 	rm -f test
 
 test: test.c
-	$(PLUGIN_CC) -L$(FAKECHECKS_PATH) -lfakechecks -std=c11 -g -o test $< $(RUNTIME_PATH)
+	$(PLUGIN_CC) -L$(FAKECHECKS_PATH) -lfakechecks -std=c11 -g $(TEST_CFLAGS) -o test $< $(RUNTIME_PATH)
 	env LD_LIBRARY_PATH="$(FAKECHECKS_PATH)" ./test
