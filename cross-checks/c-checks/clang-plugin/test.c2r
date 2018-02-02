@@ -36,5 +36,6 @@ test.c:
 
     - item: struct
       name: Foo
-      custom_hash: "my_Foo_hash"
+      #custom_hash: "my_Foo_hash"
+      #field_hasher: "foo_hasher"
 ...

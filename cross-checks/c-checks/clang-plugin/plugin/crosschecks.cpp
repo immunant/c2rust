@@ -554,13 +554,20 @@ private:
                 return { return_stmt };
             };
         } else {
-            // TODO: use record_cfg.field_hasher
-            body_fn = [this, &ctx, &record_def] (FunctionDecl *fn_decl) -> StmtVec {
+            std::string hasher_name{"jodyhash"};
+            if (record_cfg && !record_cfg->get().field_hasher.empty()) {
+                hasher_name = record_cfg->get().field_hasher;
+            }
+            std::string hasher_prefix{"__c2rust_hasher_"};
+            hasher_prefix += hasher_name;
+            body_fn = [this, &ctx, &record_def,
+                       record_cfg = std::move(record_cfg),
+                       hasher_prefix = std::move(hasher_prefix)] (FunctionDecl *fn_decl) -> StmtVec {
                 StmtVec stmts;
                 // TODO: read and apply the configuration settings for each field:
                 // "disabled", "fixed" and "custom"
                 auto hasher_size_call =
-                    build_call("__c2rust_hasher_jodyhash_size", ctx.UnsignedIntTy,
+                    build_call(hasher_prefix + "_size", ctx.UnsignedIntTy,
                                {}, ctx);
                 auto hasher_ty = ctx.getVariableArrayType(ctx.CharTy,
                                                           hasher_size_call,
@@ -585,7 +592,7 @@ private:
                     ImplicitCastExpr::Create(ctx, hasher_ptr_ty,
                                              CK_ArrayToPointerDecay,
                                              hasher_var_ref, nullptr, VK_RValue);
-                auto init_call = build_call("__c2rust_hasher_jodyhash_init",
+                auto init_call = build_call(hasher_prefix + "_init",
                                             ctx.VoidTy,
                                             { hasher_var_ptr }, ctx);
                 stmts.push_back(init_call);
@@ -618,7 +625,7 @@ private:
                     auto field_hash_call = build_call(field_hash_fn.full_name(),
                                                       ctx.UnsignedLongTy,
                                                       { field_ref_rv }, ctx);
-                    auto field_update_call = build_call("__c2rust_hasher_jodyhash_update",
+                    auto field_update_call = build_call(hasher_prefix + "_update",
                                                         ctx.VoidTy,
                                                         { hasher_var_ptr, field_hash_call },
                                                         ctx);
@@ -626,7 +633,7 @@ private:
                 }
 
                 // Return the result of the finish function
-                auto finish_call = build_call("__c2rust_hasher_jodyhash_finish",
+                auto finish_call = build_call(hasher_prefix + "_finish",
                                               ctx.UnsignedLongTy,
                                               { hasher_var_ptr }, ctx);
                 auto return_stmt =
