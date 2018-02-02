@@ -15,6 +15,10 @@ test.c:
       disable_xchecks: true
 
     - item: function
+      name: my_Foo_hash
+      disable_xchecks: true
+
+    - item: function
       name: fibo
       #disable_xchecks: true
       entry: { fixed: 0x12345678 }
@@ -23,10 +27,14 @@ test.c:
       #all_args: { fixed: 0xabcdef00 }
       args:
         n: default
-        p: default
-        q: default
+        #p: default
+        #q: default
         foo: default
         #n: disabled
         #n: { custom: "id" }
         #n: { fixed: 0xabcd1234 }
+
+    - item: struct
+      name: Foo
+      custom_hash: "my_Foo_hash"
 ...

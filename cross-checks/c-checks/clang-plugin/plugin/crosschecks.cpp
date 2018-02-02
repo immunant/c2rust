@@ -72,6 +72,7 @@ uint32_t djb2_hash(llvm::StringRef str) {
 using StringRef = std::reference_wrapper<const std::string>;
 using StringRefPair = std::pair<StringRef, StringRef>;
 using FunctionConfigRef = std::reference_wrapper<FunctionConfig>;
+using StructConfigRef = std::reference_wrapper<StructConfig>;
 
 struct StringRefPairCompare {
     bool operator()(const StringRefPair &lhs, const StringRefPair &rhs) const {
@@ -134,6 +135,8 @@ private:
     // with StringRefPair keys
     std::map<StringRefPair, FunctionConfigRef,
         StringRefPairCompare> function_configs;
+    std::map<StringRefPair, StructConfigRef,
+        StringRefPairCompare> struct_configs;
 
     ASTConsumer *toplevel_consumer = nullptr;
 
@@ -522,85 +525,116 @@ private:
         // using "custom_hash"
         // TODO: allow per-field cross-check configuration
         auto record_def = record_decl->getDefinition();
-        auto body_fn = [this, &ctx, &record_def] (FunctionDecl *fn_decl) -> StmtVec {
-            StmtVec stmts;
-            // TODO: read and apply the configuration settings for each field:
-            // "disabled", "fixed" and "custom"
-            auto hasher_size_call =
-                build_call("__c2rust_hasher_jodyhash_size", ctx.UnsignedIntTy,
-                           {}, ctx);
-            auto hasher_ty = ctx.getVariableArrayType(ctx.CharTy,
-                                                      hasher_size_call,
-                                                      ArrayType::Normal,
-                                                      0, SourceRange());
-            auto hasher_ptr_ty = ctx.getArrayDecayedType(hasher_ty);
-            auto hasher_id = &ctx.Idents.get("hasher");
-            auto hasher_var =
-                VarDecl::Create(ctx, fn_decl, SourceLocation(), SourceLocation(),
-                                hasher_id, hasher_ty, nullptr, SC_None);
-            auto hasher_var_decl_stmt =
-                new (ctx) DeclStmt(DeclGroupRef(hasher_var),
-                                   SourceLocation(),
-                                   SourceLocation());
-            stmts.push_back(hasher_var_decl_stmt);
+        std::optional<StructConfigRef> record_cfg;
+        auto ploc = ctx.getSourceManager().getPresumedLoc(record_def->getLocStart());
+        if (ploc.isValid()) {
+            std::string file_name(ploc.getFilename());
+            std::string record_name = record_def->getName().str();
+            record_cfg = get_struct_config(file_name, record_name);
+        }
+        HashFunctionBodyFn body_fn;
+        if (record_cfg && !record_cfg->get().custom_hash.empty()) {
+            // The user specified a "custom_hash" function, so just forward
+            // the structure to it
+            // FIXME: would be nice to not have to emit a function body,
+            // and instead declare our function using "alias", e.g.:
+            // uint64_t __c2rust_hash_T_struct(struct T x) __attribute__((alias("...")));
+            auto &hash_fn_name = record_cfg->get().custom_hash;
+            body_fn = [this, &ctx, &hash_fn_name] (FunctionDecl *fn_decl) -> StmtVec {
+                auto param = fn_decl->getParamDecl(0);
+                auto param_ty = param->getType();
+                auto param_ref_rv =
+                    new (ctx) DeclRefExpr(param, false, param_ty,
+                                          VK_RValue, SourceLocation());
+                auto hash_fn_call = build_call(hash_fn_name,
+                                               ctx.UnsignedLongTy,
+                                               { param_ref_rv }, ctx);
+                auto return_stmt =
+                    new (ctx) ReturnStmt(SourceLocation(), hash_fn_call, nullptr);
+                return { return_stmt };
+            };
+        } else {
+            // TODO: use record_cfg.field_hasher
+            body_fn = [this, &ctx, &record_def] (FunctionDecl *fn_decl) -> StmtVec {
+                StmtVec stmts;
+                // TODO: read and apply the configuration settings for each field:
+                // "disabled", "fixed" and "custom"
+                auto hasher_size_call =
+                    build_call("__c2rust_hasher_jodyhash_size", ctx.UnsignedIntTy,
+                               {}, ctx);
+                auto hasher_ty = ctx.getVariableArrayType(ctx.CharTy,
+                                                          hasher_size_call,
+                                                          ArrayType::Normal,
+                                                          0, SourceRange());
+                auto hasher_ptr_ty = ctx.getArrayDecayedType(hasher_ty);
+                auto hasher_id = &ctx.Idents.get("hasher");
+                auto hasher_var =
+                    VarDecl::Create(ctx, fn_decl, SourceLocation(), SourceLocation(),
+                                    hasher_id, hasher_ty, nullptr, SC_None);
+                auto hasher_var_decl_stmt =
+                    new (ctx) DeclStmt(DeclGroupRef(hasher_var),
+                                       SourceLocation(),
+                                       SourceLocation());
+                stmts.push_back(hasher_var_decl_stmt);
 
-            // Call the initializer
-            auto hasher_var_ref =
-                new (ctx) DeclRefExpr(hasher_var, false, hasher_ty,
-                                      VK_LValue, SourceLocation());
-            auto hasher_var_ptr =
-                ImplicitCastExpr::Create(ctx, hasher_ptr_ty,
-                                         CK_ArrayToPointerDecay,
-                                         hasher_var_ref, nullptr, VK_RValue);
-            auto init_call = build_call("__c2rust_hasher_jodyhash_init",
-                                        ctx.VoidTy,
-                                        { hasher_var_ptr }, ctx);
-            stmts.push_back(init_call);
-
-            // Add the field calls
-            auto param = fn_decl->getParamDecl(0);
-            for (auto *field : record_def->fields()) {
-                if (field->isBitField()) {
-                    auto &diags = ctx.getDiagnostics();
-                    unsigned diag_id =
-                        diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                              "default cross-checking is not supported for bitfields, "
-                                              "please use a custom cross-check");
-                    diags.Report(diag_id);
-                    return {};
-                }
-                auto param_ref_lv =
-                    new (ctx) DeclRefExpr(param, false, param->getType(),
+                // Call the initializer
+                auto hasher_var_ref =
+                    new (ctx) DeclRefExpr(hasher_var, false, hasher_ty,
                                           VK_LValue, SourceLocation());
-                auto field_ref_lv =
-                    new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
-                                         field, SourceLocation(),
-                                         field->getType(), VK_LValue, OK_Ordinary);
-                auto canonical_field_ty = ctx.getCanonicalType(field->getType());
-                auto field_hash_fn = get_type_hash_function(canonical_field_ty, ctx, true);
-                auto field_ref_rv =
-                    ImplicitCastExpr::Create(ctx, canonical_field_ty,
-                                             CK_LValueToRValue,
-                                             field_ref_lv, nullptr, VK_RValue);
-                auto field_hash_call = build_call(field_hash_fn.full_name(),
-                                                  ctx.UnsignedLongTy,
-                                                  { field_ref_rv }, ctx);
-                auto field_update_call = build_call("__c2rust_hasher_jodyhash_update",
-                                                    ctx.VoidTy,
-                                                    { hasher_var_ptr, field_hash_call },
-                                                    ctx);
-                stmts.push_back(field_update_call);
-            }
+                auto hasher_var_ptr =
+                    ImplicitCastExpr::Create(ctx, hasher_ptr_ty,
+                                             CK_ArrayToPointerDecay,
+                                             hasher_var_ref, nullptr, VK_RValue);
+                auto init_call = build_call("__c2rust_hasher_jodyhash_init",
+                                            ctx.VoidTy,
+                                            { hasher_var_ptr }, ctx);
+                stmts.push_back(init_call);
 
-            // Return the result of the finish function
-            auto finish_call = build_call("__c2rust_hasher_jodyhash_finish",
-                                          ctx.UnsignedLongTy,
-                                          { hasher_var_ptr }, ctx);
-            auto return_stmt =
-                new (ctx) ReturnStmt(SourceLocation(), finish_call, nullptr);
-            stmts.push_back(return_stmt);
-            return stmts;
-        };
+                // Add the field calls
+                auto param = fn_decl->getParamDecl(0);
+                for (auto *field : record_def->fields()) {
+                    if (field->isBitField()) {
+                        auto &diags = ctx.getDiagnostics();
+                        unsigned diag_id =
+                            diags.getCustomDiagID(DiagnosticsEngine::Error,
+                                                  "default cross-checking is not supported for bitfields, "
+                                                  "please use a custom cross-check");
+                        diags.Report(diag_id);
+                        return {};
+                    }
+                    auto param_ref_lv =
+                        new (ctx) DeclRefExpr(param, false, param->getType(),
+                                              VK_LValue, SourceLocation());
+                    auto field_ref_lv =
+                        new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
+                                             field, SourceLocation(),
+                                             field->getType(), VK_LValue, OK_Ordinary);
+                    auto canonical_field_ty = ctx.getCanonicalType(field->getType());
+                    auto field_hash_fn = get_type_hash_function(canonical_field_ty, ctx, true);
+                    auto field_ref_rv =
+                        ImplicitCastExpr::Create(ctx, canonical_field_ty,
+                                                 CK_LValueToRValue,
+                                                 field_ref_lv, nullptr, VK_RValue);
+                    auto field_hash_call = build_call(field_hash_fn.full_name(),
+                                                      ctx.UnsignedLongTy,
+                                                      { field_ref_rv }, ctx);
+                    auto field_update_call = build_call("__c2rust_hasher_jodyhash_update",
+                                                        ctx.VoidTy,
+                                                        { hasher_var_ptr, field_hash_call },
+                                                        ctx);
+                    stmts.push_back(field_update_call);
+                }
+
+                // Return the result of the finish function
+                auto finish_call = build_call("__c2rust_hasher_jodyhash_finish",
+                                              ctx.UnsignedLongTy,
+                                              { hasher_var_ptr }, ctx);
+                auto return_stmt =
+                    new (ctx) ReturnStmt(SourceLocation(), finish_call, nullptr);
+                stmts.push_back(return_stmt);
+                return stmts;
+            };
+        }
         build_generic_hash_function(func_name, ty, ctx, body_fn);
     }
 
@@ -662,6 +696,16 @@ private:
         return {};
     }
 
+    std::optional<StructConfigRef>
+    get_struct_config(const std::string &file_name,
+                      const std::string &struct_name) {
+        StringRefPair key(std::cref(file_name), std::cref(struct_name));
+        auto file_it = struct_configs.find(key);
+        if (file_it != struct_configs.end())
+            return std::make_optional(file_it->second);
+        return {};
+    }
+
 public:
     CrossCheckInserter() = delete;
     CrossCheckInserter(Config &&cfg) : config(std::move(cfg)) {
@@ -671,6 +715,9 @@ public:
                 if (auto func = std::get_if<FunctionConfig>(&item)) {
                     StringRefPair key(std::cref(file_name), std::cref(func->name));
                     function_configs.emplace(key, *func);
+                } else if (auto struc = std::get_if<StructConfig>(&item)) {
+                    StringRefPair key(std::cref(file_name), std::cref(struc->name));
+                    struct_configs.emplace(key, *struc);
                 }
         }
     }
