@@ -10,7 +10,10 @@ PLUGIN_CC += -Xclang -add-plugin
 PLUGIN_CC += -Xclang crosschecks
 PLUGIN_CC += -Xclang -plugin-arg-crosschecks
 PLUGIN_CC += -Xclang -Ctest.c2r
-#PLUGIN_CC += -Xclang -ast-dump
+
+ifneq ($(filter yes true,$(DUMP_AST)),)
+PLUGIN_CC += -Xclang -ast-dump
+endif
 
 FAKECHECKS_PATH=`pwd`/../../libfakechecks
 
