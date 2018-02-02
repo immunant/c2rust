@@ -48,3 +48,35 @@ _Bool __c2rust_pointer_is_valid(void *p) {
 uint64_t __c2rust_hash_invalid_pointer(void *p) {
     return NULL_POINTER_HASH;
 }
+
+// JodyHasher implementation
+struct hasher_jodyhash_t {
+    uint64_t state;
+};
+
+#define JODY_HASH_CONSTANT  0x1f3d5b79UL
+
+unsigned int __c2rust_hasher_jodyhash_size() {
+    return sizeof(struct hasher_jodyhash_t) / sizeof(char);
+}
+
+void __c2rust_hasher_jodyhash_init(char *p) {
+    struct hasher_jodyhash_t *jh = (struct hasher_jodyhash_t*) p;
+    jh->state = 0;
+}
+
+void __c2rust_hasher_jodyhash_update(char *p, uint64_t x) {
+    struct hasher_jodyhash_t *jh = (struct hasher_jodyhash_t*) p;
+    jh->state += x;
+    jh->state += JODY_HASH_CONSTANT;
+    jh->state = (jh->state << 14) | (jh->state >> 50);
+    jh->state ^= x;
+    jh->state = (jh->state << 14) | (jh->state >> 50);
+    jh->state ^= JODY_HASH_CONSTANT;
+    jh->state += x;
+}
+
+uint64_t __c2rust_hasher_jodyhash_finish(char *p) {
+    struct hasher_jodyhash_t *jh = (struct hasher_jodyhash_t*) p;
+    return jh->state;
+}

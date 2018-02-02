@@ -25,7 +25,7 @@ test.c:
         n: default
         p: default
         q: default
-        #foo: default
+        foo: default
         #n: disabled
         #n: { custom: "id" }
         #n: { fixed: 0xabcd1234 }

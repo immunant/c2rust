@@ -387,7 +387,9 @@ private:
             auto record_name = record_decl->getDeclName().getAsString();
             HashFunctionName func_name{record_name};
             func_name.append(record_decl->getKindName().str());
-            // TODO: build it
+            if (build_it) {
+                build_record_hash_function(func_name, ty, ctx);
+            }
             return func_name;
         }
 
@@ -436,21 +438,20 @@ private:
         // }
         //
         // TODO: add a depth parameter and decrement it on recursion
-        auto body_fn = [this, &pointee_name, &ctx] (FunctionDecl *fn_decl) -> StmtVec {
+        auto body_fn = [this, &ctx, &pointee_name] (FunctionDecl *fn_decl) -> StmtVec {
             assert(fn_decl->getNumParams() == 1 &&
                    "Invalid hash function signature");
             auto param = fn_decl->getParamDecl(0);
-            auto param_ref =
-                new (ctx) DeclRefExpr(param, false, param->getType(),
-                                      VK_RValue, SourceLocation());
+            auto build_param_ref = [&ctx, param] (ExprValueKind vk) {
+                return new (ctx) DeclRefExpr(param, false, param->getType(),
+                                             vk, SourceLocation());
+            };
             auto is_valid_call =
                 build_call("__c2rust_pointer_is_valid", ctx.BoolTy,
-                           { param_ref }, ctx);
+                           { build_param_ref(VK_RValue) }, ctx);
 
             // Build the call to the pointee function
-            param_ref =
-                new (ctx) DeclRefExpr(param, false, param->getType(),
-                                      VK_LValue, SourceLocation());
+            auto param_ref = build_param_ref(VK_LValue);
             auto param_deref =
                 new (ctx) UnaryOperator(param_ref, UO_Deref,
                                         param_ref->getType(),
@@ -462,12 +463,9 @@ private:
                            { param_deref }, ctx);
 
             // Build the call to __c2rust_hash_invalid_pointer
-            param_ref =
-                new (ctx) DeclRefExpr(param, false, param->getType(),
-                                      VK_RValue, SourceLocation());
             auto hash_invalid_call =
                 build_call("__c2rust_hash_invalid_pointer", ctx.UnsignedLongTy,
-                           { param_ref }, ctx);
+                           { build_param_ref(VK_RValue) }, ctx);
 
             // Build the conditional expression and return statement
             auto cond_expr =
@@ -487,7 +485,120 @@ private:
     }
 
     // TODO: build_array_hash_function
-    // TODO: build_record_hash_function
+
+    void build_record_hash_function(const HashFunctionName &func_name,
+                                    QualType ty,
+                                    ASTContext &ctx) {
+        auto record_ty = cast<RecordType>(ty);
+        auto record_decl = record_ty->getDecl();
+        if (record_decl->isUnion()) {
+            auto &diags = ctx.getDiagnostics();
+            unsigned diag_id =
+                diags.getCustomDiagID(DiagnosticsEngine::Error,
+                                      "default cross-checking is not supported for unions, "
+                                      "please use a custom cross-check");
+            diags.Report(diag_id);
+            return;
+        }
+        assert((record_decl->isStruct() || record_decl->isClass()) &&
+               "Called build_record_hash_function on neither a struct nor a class");
+
+        // Build the following code:
+        // uint64_t __c2rust_hash_T_struct(struct T x) {
+        //   char hasher[__c2rust_hasher_H_size()];
+        //   __c2rust_hasher_H_init(hasher);
+        //   __c2rust_hasher_H_update(hasher, __c2rust_hash_F1(x.field1));
+        //   __c2rust_hasher_H_update(hasher, __c2rust_hash_F2(x.field2));
+        //   ...
+        //   return __c2rust_hasher_H_finish(hasher);
+        // }
+        //
+        // TODO: allow custom hashers instead of the default "jodyhash"
+        auto record_def = record_decl->getDefinition();
+        auto body_fn = [this, &ctx, &record_def] (FunctionDecl *fn_decl) -> StmtVec {
+            StmtVec stmts;
+            auto hasher_size_call =
+                build_call("__c2rust_hasher_jodyhash_size", ctx.UnsignedIntTy,
+                           {}, ctx);
+            auto hasher_ty = ctx.getVariableArrayType(ctx.CharTy,
+                                                      hasher_size_call,
+                                                      ArrayType::Normal,
+                                                      0, SourceRange());
+            auto hasher_ptr_ty = ctx.getArrayDecayedType(hasher_ty);
+            auto hasher_id = &ctx.Idents.get("hasher");
+            auto hasher_var =
+                VarDecl::Create(ctx, fn_decl, SourceLocation(), SourceLocation(),
+                                hasher_id, hasher_ty, nullptr, SC_None);
+            auto hasher_var_decl_stmt =
+                new (ctx) DeclStmt(DeclGroupRef(hasher_var),
+                                   SourceLocation(),
+                                   SourceLocation());
+            stmts.push_back(hasher_var_decl_stmt);
+
+            // Call the initializer
+            auto build_hasher_var_ptr = [this, &ctx, hasher_var,
+                                         hasher_ty, hasher_ptr_ty] () {
+                // FIXME: instead of rebuilding it each time, cache it???
+                auto hasher_var_ref =
+                    new (ctx) DeclRefExpr(hasher_var, false, hasher_ty,
+                                          VK_LValue, SourceLocation());
+                auto hasher_var_ptr =
+                    ImplicitCastExpr::Create(ctx, hasher_ptr_ty,
+                                             CK_ArrayToPointerDecay,
+                                             hasher_var_ref, nullptr, VK_RValue);
+                return hasher_var_ptr;
+            };
+            auto init_call = build_call("__c2rust_hasher_jodyhash_init",
+                                        ctx.VoidTy,
+                                        { build_hasher_var_ptr() }, ctx);
+            stmts.push_back(init_call);
+
+            // Add the field calls
+            auto param = fn_decl->getParamDecl(0);
+            for (auto *field : record_def->fields()) {
+                if (field->isBitField()) {
+                    auto &diags = ctx.getDiagnostics();
+                    unsigned diag_id =
+                        diags.getCustomDiagID(DiagnosticsEngine::Error,
+                                              "default cross-checking is not supported for bitfields, "
+                                              "please use a custom cross-check");
+                    diags.Report(diag_id);
+                    return {};
+                }
+                auto param_ref =
+                    new (ctx) DeclRefExpr(param, false, param->getType(),
+                                          VK_LValue, SourceLocation());
+                auto field_ref =
+                    new (ctx) MemberExpr(param_ref, false, SourceLocation(),
+                                         field, SourceLocation(),
+                                         field->getType(), VK_LValue, OK_Ordinary);
+                auto canonical_field_ty = ctx.getCanonicalType(field->getType());
+                auto field_hash_fn = get_type_hash_function(canonical_field_ty, ctx, true);
+                auto field_ice =
+                    ImplicitCastExpr::Create(ctx, canonical_field_ty,
+                                             CK_LValueToRValue,
+                                             field_ref, nullptr, VK_RValue);
+                auto field_hash_call = build_call(field_hash_fn.full_name(),
+                                                  ctx.UnsignedLongTy,
+                                                  { field_ice }, ctx);
+                auto field_update_call = build_call("__c2rust_hasher_jodyhash_update",
+                                                    ctx.VoidTy,
+                                                    { build_hasher_var_ptr(), field_hash_call },
+                                                    ctx);
+                stmts.push_back(field_update_call);
+            }
+
+            // Return the result of the finish function
+            auto finish_call = build_call("__c2rust_hasher_jodyhash_finish",
+                                          ctx.UnsignedLongTy,
+                                          { build_hasher_var_ptr() }, ctx);
+            auto return_stmt =
+                new (ctx) ReturnStmt(SourceLocation(), finish_call, nullptr);
+            stmts.push_back(return_stmt);
+            return stmts;
+        };
+        build_generic_hash_function(func_name, ty, ctx, body_fn);
+    }
 
     llvm::TinyPtrVector<Stmt*>
     build_parameter_xcheck(ParmVarDecl *param,
