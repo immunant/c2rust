@@ -38,4 +38,11 @@ test.c:
       name: Foo
       #custom_hash: "my_Foo_hash"
       #field_hasher: "foo_hasher"
+      fields:
+        #n1: disabled
+        n1: { fixed: 0x1234 }
+        #n2: disabled
+        #n2: { fixed: 0x1234 }
+        #n2: { custom: "id" }
+        n2: { custom: "foo" }
 ...

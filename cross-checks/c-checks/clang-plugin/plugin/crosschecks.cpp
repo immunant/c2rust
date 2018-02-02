@@ -609,25 +609,49 @@ private:
                         diags.Report(diag_id);
                         return {};
                     }
-                    auto param_ref_lv =
-                        new (ctx) DeclRefExpr(param, false, param->getType(),
-                                              VK_LValue, SourceLocation());
-                    auto field_ref_lv =
-                        new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
-                                             field, SourceLocation(),
-                                             field->getType(), VK_LValue, OK_Ordinary);
-                    auto canonical_field_ty = ctx.getCanonicalType(field->getType());
-                    auto field_hash_fn = get_type_hash_function(canonical_field_ty, ctx, true);
-                    auto field_ref_rv =
-                        ImplicitCastExpr::Create(ctx, canonical_field_ty,
-                                                 CK_LValueToRValue,
-                                                 field_ref_lv, nullptr, VK_RValue);
-                    auto field_hash_call = build_call(field_hash_fn.full_name(),
-                                                      ctx.UnsignedLongTy,
-                                                      { field_ref_rv }, ctx);
+
+                    XCheck field_xcheck;
+                    if (record_cfg) {
+                        auto &fields = record_cfg->get().fields;
+                        auto it = fields.find(field->getName());
+                        if (it != fields.end()) {
+                            field_xcheck = it->second;
+                        }
+                    }
+                    if (field_xcheck.type == XCheck::DISABLED)
+                        continue;
+
+                    Expr *field_hash = nullptr;
+                    if (field_xcheck.type == XCheck::FIXED) {
+                        auto field_hash_val = std::get<uint64_t>(field_xcheck.data);
+                        field_hash = IntegerLiteral::Create(ctx,
+                                                            llvm::APInt(64, field_hash_val),
+                                                            ctx.UnsignedLongTy,
+                                                            SourceLocation());
+                    } else {
+                        auto param_ref_lv =
+                            new (ctx) DeclRefExpr(param, false, param->getType(),
+                                                  VK_LValue, SourceLocation());
+                        auto field_ref_lv =
+                            new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
+                                                 field, SourceLocation(),
+                                                 field->getType(), VK_LValue, OK_Ordinary);
+                        auto canonical_field_ty = ctx.getCanonicalType(field->getType());
+                        auto field_hash_fn =
+                            field_xcheck.type == XCheck::CUSTOM
+                            ? std::get<std::string>(field_xcheck.data)
+                            : get_type_hash_function(canonical_field_ty, ctx, true).full_name();
+                        auto field_ref_rv =
+                            ImplicitCastExpr::Create(ctx, canonical_field_ty,
+                                                     CK_LValueToRValue,
+                                                     field_ref_lv, nullptr, VK_RValue);
+                        field_hash = build_call(field_hash_fn,
+                                                ctx.UnsignedLongTy,
+                                                { field_ref_rv }, ctx);
+                    }
                     auto field_update_call = build_call(hasher_prefix + "_update",
                                                         ctx.VoidTy,
-                                                        { hasher_var_ptr, field_hash_call },
+                                                        { hasher_var_ptr, field_hash },
                                                         ctx);
                     stmts.push_back(field_update_call);
                 }
