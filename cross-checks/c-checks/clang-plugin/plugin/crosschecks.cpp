@@ -514,9 +514,15 @@ private:
         // }
         //
         // TODO: allow custom hashers instead of the default "jodyhash"
+        // TODO: add support for the "field_hasher" configuration override
+        // TODO: add support for the complete override of this function
+        // using "custom_hash"
+        // TODO: allow per-field cross-check configuration
         auto record_def = record_decl->getDefinition();
         auto body_fn = [this, &ctx, &record_def] (FunctionDecl *fn_decl) -> StmtVec {
             StmtVec stmts;
+            // TODO: read and apply the configuration settings for each field:
+            // "disabled", "fixed" and "custom"
             auto hasher_size_call =
                 build_call("__c2rust_hasher_jodyhash_size", ctx.UnsignedIntTy,
                            {}, ctx);
