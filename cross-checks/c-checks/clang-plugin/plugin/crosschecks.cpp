@@ -490,10 +490,10 @@ private:
     void build_record_hash_function(const HashFunctionName &func_name,
                                     QualType ty,
                                     ASTContext &ctx) {
+        auto &diags = ctx.getDiagnostics();
         auto record_ty = cast<RecordType>(ty);
         auto record_decl = record_ty->getDecl();
         if (record_decl->isUnion()) {
-            auto &diags = ctx.getDiagnostics();
             unsigned diag_id =
                 diags.getCustomDiagID(DiagnosticsEngine::Error,
                                       "default cross-checking is not supported for unions, "
@@ -520,6 +520,15 @@ private:
         // using "custom_hash"
         // TODO: allow per-field cross-check configuration
         auto record_def = record_decl->getDefinition();
+        if (record_def == nullptr) {
+            unsigned diag_id =
+                diags.getCustomDiagID(DiagnosticsEngine::Error,
+                                      "default cross-checking is not supported for undefined structures, "
+                                      "please use a custom cross-check");
+            diags.Report(diag_id);
+            return;
+        }
+
         std::optional<StructConfigRef> record_cfg;
         auto ploc = ctx.getSourceManager().getPresumedLoc(record_def->getLocStart());
         if (ploc.isValid()) {
