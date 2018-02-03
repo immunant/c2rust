@@ -104,16 +104,11 @@ public:
         std::string res{"__c2rust_hash"};
         for (auto &elem : elements) {
             res += '_';
-            switch(elem.index()) {
-            case 0:
-                // std::string
-                res += std::get<0>(elem);
-                break;
-            case 1:
-                // std::string_view
-                res += std::get<1>(elem);
-                break;
-            default:
+            if (auto *s = std::get_if<std::string>(&elem)) {
+                res += *s;
+            } else if (auto *sv = std::get_if<std::string_view>(&elem)) {
+                res += *sv;
+            } else {
                 assert(false && "Invalid HashFunctionName::Element variant type");
             }
         }
