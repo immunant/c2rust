@@ -306,6 +306,7 @@ private:
 
     HashFunctionName get_type_hash_function(QualType ty, ASTContext &ctx,
                                             bool build_it) {
+        ty = ctx.getCanonicalType(ty);
         switch (ty->getTypeClass()) {
         case Type::Builtin: {
             switch (cast<BuiltinType>(ty)->getKind()) {
@@ -349,13 +350,12 @@ private:
 
         case Type::Pointer: {
             auto pointee_ty = cast<PointerType>(ty)->getPointeeType();
-            auto canonical_pointee_ty = ctx.getCanonicalType(pointee_ty);
-            auto pointee_name = get_type_hash_function(canonical_pointee_ty, ctx, build_it);
+            auto pointee_name = get_type_hash_function(pointee_ty, ctx, build_it);
             auto func_name = pointee_name;
             func_name.append("ptr"sv);
             if (build_it) {
                 build_pointer_hash_function(func_name, ty, pointee_name,
-                                            canonical_pointee_ty, ctx);
+                                            pointee_ty, ctx);
             }
             return func_name;
         }
@@ -363,8 +363,7 @@ private:
         case Type::ConstantArray: {
             auto array_ty = cast<ConstantArrayType>(ty);
             auto element_ty = array_ty->getElementType();
-            auto canonical_element_ty = ctx.getCanonicalType(element_ty);
-            auto element_name = get_type_hash_function(canonical_element_ty, ctx, build_it);
+            auto element_name = get_type_hash_function(element_ty, ctx, build_it);
             auto func_name = std::move(element_name);
             func_name.append("array"sv);
             func_name.append(llvm::utostr(array_ty->getSize().getZExtValue()));
@@ -644,13 +643,12 @@ private:
                         new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
                                              field, SourceLocation(),
                                              field->getType(), VK_LValue, OK_Ordinary);
-                    auto canonical_field_ty = ctx.getCanonicalType(field->getType());
                     auto field_hash_fn =
                         field_xcheck.type == XCheck::CUSTOM
                         ? std::get<std::string>(field_xcheck.data)
-                        : get_type_hash_function(canonical_field_ty, ctx, true).full_name();
+                        : get_type_hash_function(field->getType(), ctx, true).full_name();
                     auto field_ref_rv =
-                        ImplicitCastExpr::Create(ctx, canonical_field_ty,
+                        ImplicitCastExpr::Create(ctx, field->getType(),
                                                  CK_LValueToRValue,
                                                  field_ref_lv, nullptr, VK_RValue);
                     field_hash = build_call(field_hash_fn,
@@ -694,8 +692,7 @@ private:
             // By default, we just call __c2rust_hash_T(x)
             // where T is the type of the parameter
             // FIXME: include shasher/ahasher
-            auto param_canonical_type = ctx.getCanonicalType(param->getType());
-            auto hash_fn_name = get_type_hash_function(param_canonical_type, ctx, true);
+            auto hash_fn_name = get_type_hash_function(param->getType(), ctx, true);
 
             // Forward the value of the parameter to the hash function
             auto param_ref_rv =
