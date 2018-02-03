@@ -94,7 +94,7 @@ fn structured_cfg_help(
                 );
                 these_exits.extend(next
                     .iter()
-                    .map(|e| (*e, (entries.clone(), ExitStyle::Break)))
+                    .map(|e| (*e, (next.clone(), ExitStyle::Break)))
                 );
 
                 let mut exits_new = vec![(*label, these_exits)];
