@@ -241,6 +241,7 @@ fn relooper(
     }
 }
 
+/// Nested precondition: `structures` will contain no `StructureLabel::Nested` terminators.
 fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
 
     // Recursive calls come first
@@ -267,6 +268,7 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
         .collect();
 
     let mut acc_structures: Vec<Structure> = vec![];
+
     for structure in structures.iter().rev() {
         match structure {
             &Structure::Simple { ref entries, ref body, ref terminator } => {
@@ -280,11 +282,14 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
 
 
                     // Here, we group patterns by the label they go to.
-                    let mut merged_cases: HashMap<Label, Vec<P<Pat>>> = HashMap::new();
+                    let mut merged_goto: HashMap<Label, Vec<P<Pat>>> = HashMap::new();
+                    let mut merged_exit: HashMap<Label, Vec<P<Pat>>> = HashMap::new();
+
                     for &(ref pats, ref lbl) in cases {
                         match lbl {
-                            &StructureLabel::GoTo(lbl) => merged_cases.entry(lbl).or_insert(vec![]).extend(pats.clone()),
-                            _ => unimplemented!()
+                            &StructureLabel::GoTo(lbl) => merged_goto.entry(lbl).or_insert(vec![]).extend(pats.clone()),
+                            &StructureLabel::ExitTo(lbl) => merged_exit.entry(lbl).or_insert(vec![]).extend(pats.clone()),
+                            _ => panic!("simplify_structure: Nested precondition violated")
                         }
                     }
 
@@ -294,14 +299,20 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
                     let mut cases_new: Vec<_> = vec![];
                     for &(_, ref lbl) in cases.iter().rev() {
                         let lbl = match lbl {
-                            &StructureLabel::GoTo(lbl) => lbl,
-                            _ => unimplemented!()
+                            &StructureLabel::GoTo(lbl) =>
+                                match merged_goto.remove(&lbl) {
+                                    None => { },
+                                    Some(pats) => cases_new.push((pats, StructureLabel::GoTo(lbl))),
+                                }
+                            &StructureLabel::ExitTo(lbl) =>
+                                match merged_exit.remove(&lbl) {
+                                    None => { },
+                                    Some(pats) => cases_new.push((pats, StructureLabel::ExitTo(lbl))),
+                                }
+                            _ => panic!("simplify_structure: Nested precondition violated")
                         };
 
-                        match merged_cases.remove(&lbl) {
-                            None => { },
-                            Some(pats) => cases_new.push((pats, StructureLabel::GoTo(lbl))),
-                        }
+
                     }
                     cases_new.reverse();
 
