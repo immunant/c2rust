@@ -13,6 +13,10 @@ struct Foo {
     uint64_t n1, n2;
 };
 
+uint64_t my_Foo_hash(struct Foo x) {
+    return (128 + x.n1) * 256 + (x.n2 + 128);
+}
+
 uint64_t fibo(uint64_t n, const uint64_t *p, const uint64_t *q, struct Foo foo) {
 #if 0
     printf("fibo call:%ld %p %p\n", n, p, q);
