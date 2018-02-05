@@ -986,6 +986,7 @@ impl Translation {
                 dtoa::write(&mut bytes, val).unwrap();
                 let str = String::from_utf8(bytes).unwrap();
                 let float_ty = match &self.ast_context.resolve_type(ty.ctype).kind {
+                    &CTypeKind::LongDouble => FloatTy::F64,
                     &CTypeKind::Double => FloatTy::F64,
                     &CTypeKind::Float => FloatTy::F32,
                     k => panic!("Unsupported floating point literal type {:?}", k),
