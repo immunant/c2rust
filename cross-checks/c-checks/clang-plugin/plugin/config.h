@@ -53,7 +53,21 @@ struct FunctionConfig {
 
 struct StructConfig {
     std::string name;
-    // TODO
+    std::string field_hasher;
+    std::string custom_hash;
+    std::map<std::string, XCheck> fields;
+    std::string ahasher;
+    std::string shasher;
+
+    StructConfig(llvm::yaml::IO &io) {
+        io.mapRequired("name",          name);
+        io.mapOptional("field_hasher",  field_hasher);
+        io.mapOptional("custom_hash",   custom_hash);
+        io.mapOptional("fields",        fields);
+        io.mapOptional("ahasher",       ahasher);
+        io.mapOptional("shasher",       shasher);
+
+    }
 };
 
 typedef std::variant<std::monostate, FunctionConfig, StructConfig> ItemConfig;

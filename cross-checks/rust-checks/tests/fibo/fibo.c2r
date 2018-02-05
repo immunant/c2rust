@@ -1,0 +1,24 @@
+---
+src/main.rs: []
+src/fibo.rs:
+    - item: function
+      name: fibo
+      disable_xchecks: false
+      //entry: { fixed: 0x123456 }
+      args:
+        //n: default
+      //entry: none
+      all_args: { fixed: 0x3456 }
+      //all_args: { custom: "foo(&n)" }
+      //ahasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
+      //shasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
+
+    - item: struct
+      name: FiboArg
+      //ahasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
+      //shasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
+      //fields:
+        //0: { fixed: 0x123456 }
+        //1: none
+        //2: { custom: "tch" }
+...

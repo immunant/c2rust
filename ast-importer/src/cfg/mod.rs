@@ -107,50 +107,6 @@ impl Structure {
             &Structure::Multiple { ref entries, .. } => entries,
         }
     }
-
-    pub fn deep_iter(&self) -> StructIter {
-        StructIter { stack: vec![self] }
-    }
-}
-
-/// Depth-first, recursive iterator visiting all of the structures.
-///
-/// The last element on the stack is the next element to be processed.
-pub struct StructIter<'a> {
-    stack: Vec<&'a Structure>
-}
-
-impl<'a> Iterator for StructIter<'a> {
-    type Item = &'a Structure;
-    fn next(&mut self) -> Option<Self::Item> {
-        let result = self.stack.pop();
-
-        if let Some(cur) = result {
-            match cur {
-                &Structure::Loop { ref body, .. } =>
-                    self.stack.extend(body.iter().rev()),
-
-                &Structure::Multiple { ref branches, ref then, .. } => {
-                    self.stack.extend(then.iter().rev());
-
-                    let branch_vec: Vec<Self::Item> = branches.values().flat_map(|x| x).collect();
-                    self.stack.extend(branch_vec.iter().rev());
-                }
-
-                &Structure::Simple { ref terminator, .. } => {
-                    let mut tmp = vec![];
-                    for &x in terminator.get_labels().iter() {
-                        if let &StructureLabel::Nested(ref nested) = x {
-                            tmp.extend(nested.iter())
-                        }
-                    }
-                    self.stack.extend(tmp.iter().rev())
-                }
-            }
-        }
-
-        result
-    }
 }
 
 /// Generalized basic block.
@@ -299,8 +255,30 @@ impl Cfg<Label> {
 
         let graph = cfg_builder.graph;
 
-        graph.prune_empty_blocks()
+        graph.prune_empty_blocks().prune_unreachable_blocks()
        // graph
+    }
+
+    /// Removes blocks that cannot be reached
+    pub fn prune_unreachable_blocks(&self) -> Self {
+        let mut new_nodes: HashMap<Label, BasicBlock<Label>> = HashMap::new();
+        let mut to_visit: Vec<&Label> = self.entries.iter().collect();
+
+        while let Some(lbl) = to_visit.pop() {
+            let blk = self.nodes.get(lbl).expect("prune_unreachable_blocks: could not find block");
+            new_nodes.insert(*lbl,blk.clone());
+
+            for lbl in &blk.terminator.get_labels() {
+                if !new_nodes.contains_key(lbl) {
+                    to_visit.push(lbl);
+                }
+            }
+        }
+
+        Cfg {
+           entries: self.entries.clone(),
+           nodes: new_nodes,
+        }
     }
 
     /// Removes empty blocks whose terminator is just a `Jump` by merging them with the block they

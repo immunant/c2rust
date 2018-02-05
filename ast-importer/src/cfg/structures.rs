@@ -5,19 +5,7 @@ use super::*;
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(root: &Vec<Structure>, current_block: P<Expr>) -> Vec<Stmt> {
-    let empty = HashSet::new();
-    let multi_labels: HashSet<Label> =
-        root.iter()
-            .flat_map(|x| x.deep_iter())
-            .flat_map(|x|
-                match x { &Structure::Multiple{ref entries, ..} =>
-                    entries
-                , _ => &empty,
-                })
-            .cloned()
-            .collect();
-
-    structured_cfg_help(vec![], &HashSet::new(), root, &mut HashSet::new(), current_block, &multi_labels)
+    structured_cfg_help(vec![], &HashSet::new(), root, &mut HashSet::new(), current_block)
 }
 
 /// Recursive helper for `structured_cfg`
@@ -29,7 +17,6 @@ fn structured_cfg_help(
     root: &Vec<Structure>,
     used_loop_labels: &mut HashSet<Label>,
     current_block: P<Expr>,
-    multi_labels: &HashSet<Label>,
 ) -> Vec<Stmt> {
 
     let mut next: &HashSet<Label> = next;
@@ -42,20 +29,19 @@ fn structured_cfg_help(
             &Structure::Simple { ref body, ref terminator, .. } => {
                 new_rest.extend(body.clone());
 
-                let insert_goto =
-                    |to: Label, target: &HashSet<Label>, stmts: Vec<Stmt>| -> Vec<Stmt> {
-                        if multi_labels.contains(&to) {
-                            let mut result = mk_goto(to, current_block.clone());
-                            result.extend(stmts);
-                            result
-                        } else {
-                            stmts
-                        }
-                    };
+                let insert_goto = |to: Label, target: &HashSet<Label>, stmts: Vec<Stmt>| -> Vec<Stmt> {
+                    if target.len() == 1 {
+                        stmts
+                    } else {
+                        let mut result = mk_goto(to, current_block.clone());
+                        result.extend(stmts);
+                        result
+                    }
+                };
 
                 let mut branch = |slbl: &StructureLabel| -> Vec<Stmt> {
                     match slbl {
-                        &StructureLabel::Nested(ref nested) => structured_cfg_help(exits.clone(), next, nested, used_loop_labels, current_block.clone(), multi_labels),
+                        &StructureLabel::Nested(ref nested) => structured_cfg_help(exits.clone(), next, nested, used_loop_labels, current_block.clone()),
                         &StructureLabel::GoTo(to) | &StructureLabel::ExitTo(to) if next.contains(&to) => insert_goto(to, &next, vec![]),
                         &StructureLabel::ExitTo(to) => {
 
@@ -91,9 +77,9 @@ fn structured_cfg_help(
             &Structure::Multiple { ref branches, ref then, .. } => {
                 let cases: Vec<(Label, Vec<Stmt>)> = branches
                     .iter()
-                    .map(|(lbl, body)| (*lbl, structured_cfg_help(exits.clone(), next, body, used_loop_labels, current_block.clone(), multi_labels)))
+                    .map(|(lbl, body)| (*lbl, structured_cfg_help(exits.clone(), next, body, used_loop_labels, current_block.clone())))
                     .collect();
-                let then: Vec<Stmt> = structured_cfg_help(exits.clone(), next, then, used_loop_labels, current_block.clone(), multi_labels);
+                let then: Vec<Stmt> = structured_cfg_help(exits.clone(), next, then, used_loop_labels, current_block.clone());
 
                 new_rest.extend(mk_goto_table(cases, then, current_block.clone()));
             }
@@ -108,13 +94,13 @@ fn structured_cfg_help(
                 );
                 these_exits.extend(next
                     .iter()
-                    .map(|e| (*e, (entries.clone(), ExitStyle::Break)))
+                    .map(|e| (*e, (next.clone(), ExitStyle::Break)))
                 );
 
                 let mut exits_new = vec![(*label, these_exits)];
                 exits_new.extend(exits.clone());
 
-                let body = structured_cfg_help(exits_new, entries, body, used_loop_labels, current_block.clone(), multi_labels);
+                let body = structured_cfg_help(exits_new, entries, body, used_loop_labels, current_block.clone());
                 let loop_lbl = if used_loop_labels.contains(label) { Some(*label) } else { None };
                 new_rest.extend(mk_loop(loop_lbl, body));
             }
