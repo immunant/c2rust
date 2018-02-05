@@ -5,6 +5,7 @@
 #include <set>
 #include <fstream>
 
+#include "llvm/Support/Debug.h"
 // Declares clang::SyntaxOnlyAction.
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/CommonOptionsParser.h"
@@ -23,6 +24,7 @@ using namespace llvm;
 using namespace clang;
 using namespace clang::tooling;
 
+#define DEBUG_TYPE "ast-extractor"
 
 using std::string;
 using clang::QualType;
@@ -228,6 +230,14 @@ public:
     // instances. Note: we could handle both cases by overriding `VisitFunctionType`
     // instead of the current two-function solution.
     void VisitFunctionProtoType(const FunctionProtoType *T) {
+        auto EPI = T->getExtProtoInfo();
+        if(EPI.Variadic) {
+            std::cerr << "Error: variadic functions are not supported.";
+            exit(1);
+        }
+        DEBUG(dbgs() << "Visit ");
+        DEBUG(T->dump());
+
         encodeType(T, TagFunctionType, [T, this](CborEncoder *local) {
             CborEncoder arrayEncoder;
 
@@ -243,11 +253,12 @@ public:
             
             cbor_encoder_close_container(local, &arrayEncoder);
         });
-        
+
         VisitQualType(T->getReturnType());
         for (auto x : T->param_types()) {
             VisitQualType(x);
         }
+
     }
 
     // See `VisitFunctionProtoType`.
@@ -401,7 +412,7 @@ class TranslateASTVisitor final
           encode_entry_raw(ast, tag, ast->getLocStart(), ty, childIds, extra);
           typeEncoder.VisitQualType(ty);
       }
-      
+
       void encode_entry
       (Stmt *ast,
        ASTEntryTag tag,
@@ -510,6 +521,9 @@ class TranslateASTVisitor final
       
 
       bool VisitDeclStmt(DeclStmt *DS) {
+
+          DEBUG(dbgs() << "Visit ");
+          DEBUG(DS->dumpColor());
 
           // We copy only canonical decls and VarDecl's that are extern/local. For more on the
           // latter, see the comment at the top of `VisitVarDecl`
@@ -681,6 +695,7 @@ class TranslateASTVisitor final
                                          auto target_pointee = static_cast<const PointerType*>(target_type.getTypePtr())->getPointeeType();
                                          auto source_pointee = static_cast<const PointerType*>(source_type.getTypePtr())->getPointeeType();
 
+
                                          if (target_pointee.isConstQualified() &&
                                              source_pointee->getUnqualifiedDesugaredType() == target_pointee->getUnqualifiedDesugaredType()) {
                                                 cast_name = "ConstCast";
@@ -753,6 +768,10 @@ class TranslateASTVisitor final
       }
       
       bool VisitDeclRefExpr(DeclRefExpr *DRE) {
+          DEBUG(dbgs() << "Visiting ");
+          DEBUG(DRE->dumpColor());
+          DEBUG(DRE->getDecl()->getType()->dump());
+          DEBUG(DRE->getType()->dump());
           std::vector<void*> childIds = { DRE->getDecl()->getCanonicalDecl() };
           encode_entry(DRE, TagDeclRefExpr, childIds);
           return true;
