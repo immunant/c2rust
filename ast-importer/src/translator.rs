@@ -30,6 +30,7 @@ pub struct Translation {
     dump_function_cfgs: bool,
 }
 
+#[derive(Debug)]
 pub struct WithStmts<T> {
     pub stmts: Vec<Stmt>,
     pub val: T,
@@ -906,6 +907,36 @@ impl Translation {
         mk().call_expr(mk().path_expr(vec!["std", "ptr", "read_volatile"]), vec![addr_lhs])
     }
 
+    /// If the referenced expression is a DeclRef inside an Unary or ImplicitCast node, return
+    /// the type of the referenced declaration. Returns `Err` in all other cases. See
+    /// See https://github.com/GaloisInc/C2Rust/issues/32 for more details on this quirk.
+    fn get_declref_type(&self, expr_id: CExprId) -> Result<CTypeId, &str> {
+        // Using nested function to avoid exposing the level parameter
+        fn _get_declref_type(ast_context: &TypedAstContext, expr_id: CExprId, level: u32) -> Result<CTypeId, &str> {
+            let expr : &CExpr = ast_context.index(expr_id);
+            return match expr.kind {
+                // level 0 arms
+                CExprKind::Unary(_type_id, c_ast::UnOp::AddressOf, inner_expr_id) if level == 0  => {
+                    _get_declref_type(ast_context, inner_expr_id, level + 1)
+                }
+                CExprKind::ImplicitCast(_type_id, inner_expr_id, CastKind::FunctionToPointerDecay, _field_id) if level == 0 => {
+                    _get_declref_type(ast_context, inner_expr_id, level + 1)
+                }
+                // level 1 arms
+                CExprKind::DeclRef(_type_id, decl_id) if level == 1 => {
+                    let cdecl : &CDecl = ast_context.index(decl_id);
+                    match cdecl.kind {
+                        CDeclKind::Function { is_extern, ref name, typ, ref parameters, body } => Ok(typ),
+                        _ => Err("couldn't get leaf node type")
+                    }
+                }
+                _ => Err("couldn't get leaf node type")
+            }
+        }
+
+        _get_declref_type(&self.ast_context, expr_id, 0)
+    }
+
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
     /// to run before the expression.
     ///
@@ -1020,10 +1051,32 @@ impl Translation {
 
                 match kind {
                     CastKind::BitCast => {
+                        eprintln!("val: {:?}", val);
                         Ok(val.map(|x| {
                             // TODO: Detect cast from mutable to constant pointer to same type
-                            let source_ty_id = self.ast_context.index(expr).kind.get_type();
+                            // Sometimes we hit a quirk where we the bitcast is superfluous, we
+                            // detect such instances by examining the expr part of the AST. See
+                            // this issue: https://github.com/GaloisInc/C2Rust/issues/32
+                            let source_ty_id = match self.get_declref_type(expr) {
+                                // special case where the bitcast is superfluous
+                                Ok(type_id) => type_id,
+                                // normal case
+                                _ => self.ast_context.index(expr).kind.get_type()
+                            };
+
                             let source_ty = self.convert_type(source_ty_id).unwrap();
+                            let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
+                            match target_ty_ctype {
+                                &CTypeKind::Pointer(qual_type_id) => {
+                                    let inner_ty_ctype = &self.ast_context.resolve_type(qual_type_id.ctype).kind;
+                                    let target_ty = self.convert_type(qual_type_id.ctype).unwrap();
+                                    // See comment above re. cases where bitcast is superfluous.
+                                    if target_ty == source_ty {
+                                        return x
+                                    }
+                                },
+                                _ => {}
+                            }
                             let target_ty = self.convert_type(ty.ctype).unwrap();
                             transmute_expr(source_ty, target_ty, x)
                         }))

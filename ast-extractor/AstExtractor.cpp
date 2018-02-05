@@ -8,16 +8,12 @@
 // Declares clang::SyntaxOnlyAction.
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/CommonOptionsParser.h"
-// Declares llvm::cl::extrahelp.
-#include "llvm/Support/CommandLine.h"
 
-#include "clang/AST/ASTConsumer.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/TypeVisitor.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/DeclVisitor.h"
 #include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/FrontendAction.h"
 #include "clang/Tooling/Tooling.h"
 
 #include <tinycbor/cbor.h>

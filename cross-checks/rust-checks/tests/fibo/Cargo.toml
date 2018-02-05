@@ -1,0 +1,15 @@
+[package]
+name = "fibo"
+version = "0.1.0"
+authors = ["Andrei Homescu <ah@immunant.com>"]
+
+[dependencies.cross-check-plugin]
+path = "../../rustc-plugin"
+features = []
+
+[dependencies.cross-check-derive]
+path = "../../derive-macros"
+
+[dependencies.cross-check-runtime]
+path = "../../runtime"
+features = ["xcheck-with-dlsym"]
