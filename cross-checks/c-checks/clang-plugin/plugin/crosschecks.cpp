@@ -71,8 +71,16 @@ uint32_t djb2_hash(llvm::StringRef str) {
 
 using StringRef = std::reference_wrapper<const std::string>;
 using StringRefPair = std::pair<StringRef, StringRef>;
+using DefaultsConfigRef = std::reference_wrapper<DefaultsConfig>;
+using DefaultsConfigOptRef = std::optional<DefaultsConfigRef>;
 using FunctionConfigRef = std::reference_wrapper<FunctionConfig>;
 using StructConfigRef = std::reference_wrapper<StructConfig>;
+
+struct StringRefCompare {
+    bool operator()(const StringRef &lhs, const StringRef &rhs) const {
+        return lhs.get() < rhs.get();
+    }
+};
 
 struct StringRefPairCompare {
     bool operator()(const StringRefPair &lhs, const StringRefPair &rhs) const {
@@ -128,7 +136,8 @@ private:
     // FIXME: uses std::map which is O(logN), would be nice
     // to use std::unordered_map, but that one doesn't compile
     // with StringRefPair keys
-    DefaultsConfig defaults_config;
+    std::map<StringRef, DefaultsConfig,
+        StringRefCompare> defaults_configs;
     std::map<StringRefPair, FunctionConfigRef,
         StringRefPairCompare> function_configs;
     std::map<StringRefPair, StructConfigRef,
@@ -679,11 +688,12 @@ private:
 
     llvm::TinyPtrVector<Stmt*>
     build_parameter_xcheck(ParmVarDecl *param,
+                           const DefaultsConfigOptRef file_defaults,
                            const std::optional<FunctionConfigRef> &func_cfg,
                            ASTContext &ctx) {
         XCheck param_xcheck{XCheck::DISABLED};
-        if (defaults_config.all_args)
-            param_xcheck = *defaults_config.all_args;
+        if (file_defaults && file_defaults->get().all_args)
+            param_xcheck = *file_defaults->get().all_args;
         if (func_cfg) {
             auto &func_cfg_ref = func_cfg->get();
             if (func_cfg_ref.all_args) {
@@ -755,7 +765,7 @@ public:
             auto &file_name = file_config.first;
             for (auto &item : file_config.second)
                 if (auto defs = std::get_if<DefaultsConfig>(&item)) {
-                    defaults_config.update(*defs);
+                    defaults_configs[file_name].update(*defs);
                 } else if (auto func = std::get_if<FunctionConfig>(&item)) {
                     StringRefPair key(std::cref(file_name), std::cref(func->name));
                     function_configs.emplace(key, *func);
@@ -786,17 +796,24 @@ public:
                 }
 
                 auto &ctx = fd->getASTContext();
+                DefaultsConfigOptRef file_defaults;
                 std::optional<FunctionConfigRef> func_cfg;
                 auto ploc = ctx.getSourceManager().getPresumedLoc(fd->getLocStart());
                 if (ploc.isValid()) {
                     std::string file_name(ploc.getFilename());
+                    auto it = defaults_configs.find(file_name);
+                    if (it != defaults_configs.end()) {
+                        file_defaults = it->second;
+                    }
+
                     std::string func_name = fd->getName().str();
                     func_cfg = get_function_config(file_name, func_name);
+
                 }
 
                 bool disable_xchecks = false;
-                if (defaults_config.disable_xchecks)
-                    disable_xchecks = *defaults_config.disable_xchecks;
+                if (file_defaults && file_defaults->get().disable_xchecks)
+                    disable_xchecks = *file_defaults->get().disable_xchecks;
                 if (func_cfg && func_cfg->get().disable_xchecks)
                     disable_xchecks = *func_cfg->get().disable_xchecks;
                 if (disable_xchecks)
@@ -805,8 +822,8 @@ public:
                 // Add the function entry-point cross-check
                 SmallVector<Stmt*, 8> new_body_stmts;
                 XCheck entry_xcheck{XCheck::DEFAULT};
-                if (defaults_config.entry)
-                    entry_xcheck = *defaults_config.entry;
+                if (file_defaults && file_defaults->get().entry)
+                    entry_xcheck = *file_defaults->get().entry;
                 if (func_cfg && func_cfg->get().entry)
                     entry_xcheck = *func_cfg->get().entry;
                 auto entry_xcheck_default_fn = [&ctx, fd] (void) {
@@ -828,7 +845,7 @@ public:
                 // Add cross-checks for the function parameters
                 for (auto &param : fd->parameters()) {
                     auto param_xcheck_stmts =
-                        build_parameter_xcheck(param, func_cfg, ctx);
+                        build_parameter_xcheck(param, file_defaults, func_cfg, ctx);
                     std::move(param_xcheck_stmts.begin(),
                               param_xcheck_stmts.end(),
                               std::back_inserter(new_body_stmts));
