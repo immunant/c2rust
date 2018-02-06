@@ -273,9 +273,6 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
         match structure {
             &Structure::Simple { ref entries, ref body, ref terminator } => {
 
-                // Is the terminator ending in just distinct 'GoTo'?
-                let mut distinct_goto: bool;
-
                 let terminator = if let &Switch { ref expr, ref cases } = terminator {
 
                     // TODO:
@@ -295,8 +292,6 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
                             _ => panic!("simplify_structure: Nested precondition violated")
                         }
                     }
-
-                    distinct_goto = merged_exit.is_empty();
 
                     // When converting these patterns back into a vector, we have to be careful to
                     // preserve their initial order (so that the default pattern doesn't end up on
@@ -323,25 +318,26 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
 
                     Switch { expr: expr.clone(), cases: cases_new }
                 } else {
-                    distinct_goto = true;
                     terminator.clone()
                 };
 
                 match acc_structures.pop() {
-                    Some(Structure::Multiple { entries: _, ref branches, ref then }) if distinct_goto => {
+                    Some(Structure::Multiple { entries: _, ref branches, ref then }) => {
                         let rewrite = |t: &StructureLabel| {
-                            if let &StructureLabel::GoTo(ref to) = t {
-                                let entries: HashSet<_> = vec![*to].into_iter().collect();
-                                let body: Vec<Stmt> = vec![];
-                                let terminator = Jump(StructureLabel::GoTo(*to));
-                                let first_structure = Structure::Simple { entries, body, terminator };
+                            match t {
+                                &StructureLabel::GoTo(ref to) => {
+                                    let entries: HashSet<_> = vec![*to].into_iter().collect();
+                                    let body: Vec<Stmt> = vec![];
+                                    let terminator = Jump(StructureLabel::GoTo(*to));
+                                    let first_structure = Structure::Simple { entries, body, terminator };
 
-                                let mut nested: Vec<Structure> = vec![first_structure];
-                                nested.extend(branches.get(to).cloned().unwrap_or(then.clone()));
+                                    let mut nested: Vec<Structure> = vec![first_structure];
+                                    nested.extend(branches.get(to).cloned().unwrap_or(then.clone()));
 
-                                StructureLabel::Nested(nested)
-                            } else {
-                                panic!("simplifyStructure: Simple/Multiple invariants violated")
+                                    StructureLabel::Nested(nested)
+                                }
+                                &StructureLabel::ExitTo(ref to) => StructureLabel::ExitTo(*to),
+                                _ => panic!("simplify_structure: Nested precondition violated")
                             }
                         };
 
