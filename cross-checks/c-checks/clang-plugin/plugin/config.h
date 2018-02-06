@@ -27,25 +27,25 @@ struct XCheck {
 
 struct FunctionConfig {
     std::string name;
-    bool disable_xchecks;
-    XCheck entry;
-    XCheck exit;
-    XCheck all_args;
+    llvm::Optional<bool> disable_xchecks;
+    llvm::Optional<XCheck> entry;
+    llvm::Optional<XCheck> exit;
+    llvm::Optional<XCheck> all_args;
     std::map<std::string, XCheck> args;
-    XCheck ret;
-    std::string ahasher;
-    std::string shasher;
+    llvm::Optional<XCheck> ret;
+    llvm::Optional<std::string> ahasher;
+    llvm::Optional<std::string> shasher;
     // TODO: nested
 
     // Construct a FunctionConfig from a given IO
     FunctionConfig(llvm::yaml::IO &io) {
         io.mapRequired("name",      name);
-        io.mapOptional("disable_xchecks", disable_xchecks, false);
-        io.mapOptional("entry",     entry,    XCheck(XCheck::DEFAULT));
-        io.mapOptional("exit",      exit,     XCheck(XCheck::DEFAULT));
-        io.mapOptional("all_args",  all_args, XCheck(XCheck::DISABLED));
+        io.mapOptional("disable_xchecks", disable_xchecks);
+        io.mapOptional("entry",     entry);
+        io.mapOptional("exit",      exit);
+        io.mapOptional("all_args",  all_args);
         io.mapOptional("args",      args);
-        io.mapOptional("return",    ret,      XCheck(XCheck::DISABLED));
+        io.mapOptional("return",    ret);
         io.mapOptional("ahasher",   ahasher);
         io.mapOptional("shasher",   shasher);
     }
@@ -53,11 +53,11 @@ struct FunctionConfig {
 
 struct StructConfig {
     std::string name;
-    std::string field_hasher;
-    std::string custom_hash;
+    llvm::Optional<std::string> field_hasher;
+    llvm::Optional<std::string> custom_hash;
     std::map<std::string, XCheck> fields;
-    std::string ahasher;
-    std::string shasher;
+    llvm::Optional<std::string> ahasher;
+    llvm::Optional<std::string> shasher;
 
     StructConfig(llvm::yaml::IO &io) {
         io.mapRequired("name",          name);

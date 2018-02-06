@@ -535,13 +535,13 @@ private:
             std::string record_name = record_def->getName().str();
             record_cfg = get_struct_config(file_name, record_name);
         }
-        if (record_cfg && !record_cfg->get().custom_hash.empty()) {
+        if (record_cfg && record_cfg->get().custom_hash) {
             // The user specified a "custom_hash" function, so just forward
             // the structure to it
             // FIXME: would be nice to not have to emit a function body,
             // and instead declare our function using "alias", e.g.:
             // uint64_t __c2rust_hash_T_struct(struct T x) __attribute__((alias("...")));
-            auto &hash_fn_name = record_cfg->get().custom_hash;
+            auto &hash_fn_name = *record_cfg->get().custom_hash;
             auto body_fn = [this, &ctx, &hash_fn_name] (FunctionDecl *fn_decl) -> StmtVec {
                 auto param = fn_decl->getParamDecl(0);
                 auto param_ty = param->getType();
@@ -560,8 +560,8 @@ private:
         }
 
         std::string hasher_name{"jodyhash"};
-        if (record_cfg && !record_cfg->get().field_hasher.empty()) {
-            hasher_name = record_cfg->get().field_hasher;
+        if (record_cfg && record_cfg->get().field_hasher) {
+            hasher_name = *record_cfg->get().field_hasher;
         }
         std::string hasher_prefix{"__c2rust_hasher_"};
         hasher_prefix += hasher_name;
@@ -681,7 +681,9 @@ private:
         XCheck param_xcheck{XCheck::DISABLED};
         if (func_cfg) {
             auto &func_cfg_ref = func_cfg->get();
-            param_xcheck = func_cfg_ref.all_args;
+            if (func_cfg_ref.all_args) {
+                param_xcheck = *func_cfg_ref.all_args;
+            }
 
             auto it = func_cfg_ref.args.find(param->getName());
             if (it != func_cfg_ref.args.end()) {
@@ -784,12 +786,15 @@ public:
                     std::string func_name = fd->getName().str();
                     func_cfg = get_function_config(file_name, func_name);
                 }
-                if (func_cfg && func_cfg->get().disable_xchecks)
+                if (func_cfg && func_cfg->get().disable_xchecks &&
+                    *func_cfg->get().disable_xchecks)
                     continue;
 
                 // Add the function entry-point cross-check
                 SmallVector<Stmt*, 8> new_body_stmts;
-                auto entry_xcheck = func_cfg ? func_cfg->get().entry : XCheck();
+                auto entry_xcheck = (func_cfg && func_cfg->get().entry)
+                    ? *func_cfg->get().entry
+                    : XCheck(XCheck::DEFAULT);
                 auto entry_xcheck_default_fn = [&ctx, fd] (void) {
                     auto rb_xcheck_hash = djb2_hash(fd->getName());
                     return IntegerLiteral::Create(ctx,
