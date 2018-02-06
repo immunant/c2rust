@@ -89,6 +89,11 @@ fn pointer_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
     mk().method_call_expr(ptr, "offset", vec![offset])
 }
 
+fn pointer_neg_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
+    let offset = mk().cast_expr(offset, mk().path_ty(vec!["isize"]));
+    mk().method_call_expr(ptr, "offset", vec![mk().unary_expr(ast::UnOp::Neg, offset)])
+}
+
 /// Construct a new constant null pointer expression
 fn null_expr() -> P<Expr>  {
     mk().call_expr(mk().path_expr(vec!["std", "ptr", "null"]), vec![] as Vec<P<Expr>>)
@@ -97,6 +102,10 @@ fn null_expr() -> P<Expr>  {
 /// Construct a new mutable null pointer expression
 fn null_mut_expr() -> P<Expr> {
     mk().call_expr(mk().path_expr(vec!["std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>)
+}
+
+fn neg_expr(arg: P<Expr>) -> P<Expr> {
+    mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<P<Expr>>)
 }
 
 fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> {
@@ -1017,6 +1026,7 @@ impl Translation {
                 dtoa::write(&mut bytes, val).unwrap();
                 let str = String::from_utf8(bytes).unwrap();
                 let float_ty = match &self.ast_context.resolve_type(ty.ctype).kind {
+                    &CTypeKind::LongDouble => FloatTy::F64,
                     &CTypeKind::Double => FloatTy::F64,
                     &CTypeKind::Float => FloatTy::F32,
                     k => panic!("Unsupported floating point literal type {:?}", k),
@@ -1852,15 +1862,8 @@ impl Translation {
             c_ast::UnOp::Plus => self.convert_expr(ExprUse::RValue, arg), // promotion is explicit in the clang AST
 
             c_ast::UnOp::Negate => {
-                let WithStmts { val: arg, stmts } = self.convert_expr(ExprUse::RValue, arg)?;
-
-                let val = if resolved_ctype.kind.is_unsigned_integral_type() {
-                    mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<P<Expr>>)
-                } else {
-                    mk().unary_expr(ast::UnOp::Neg, arg)
-                };
-
-                Ok(WithStmts { val, stmts })
+                let val = self.convert_expr(ExprUse::RValue, arg)?;
+                Ok(val.map(neg_expr))
             }
             c_ast::UnOp::Complement =>
                 Ok(self.convert_expr(ExprUse::RValue, arg)?
@@ -1927,8 +1930,9 @@ impl Translation {
             if pointer_lhs =>
                 mk().assign_expr(&write, pointer_offset(write.clone(), rhs)),
             c_ast::BinOp::AssignSubtract
-            if pointer_lhs => mk().assign_expr(&write, pointer_offset(write.clone(),
-                                                                      mk().unary_expr(ast::UnOp::Neg, rhs))),
+            if pointer_lhs => {
+                mk().assign_expr(&write, pointer_neg_offset(write.clone(), rhs))
+            },
 
             c_ast::BinOp::AssignAdd => mk().assign_op_expr(BinOpKind::Add, &write, rhs),
             c_ast::BinOp::AssignSubtract => mk().assign_op_expr(BinOpKind::Sub, &write, rhs),
@@ -2040,8 +2044,7 @@ impl Translation {
             let offset = mk().method_call_expr(offset_opt, "expect", vec![msg]);
             mk().cast_expr(offset, ty)
         } else if lhs_type.is_pointer() {
-            let neg_rhs = mk().unary_expr(ast::UnOp::Neg, rhs);
-            pointer_offset(lhs, neg_rhs)
+            pointer_neg_offset(lhs, rhs)
         } else if lhs_type.is_unsigned_integral_type() {
             mk().method_call_expr(lhs, mk().path_segment("wrapping_sub"), vec![rhs])
         } else {
