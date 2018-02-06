@@ -68,11 +68,12 @@ fn relooper(
         .cloned()
         .partition(|entry| blocks.contains_key(&entry));
 
-    let strict_reachable_from = {
+    let (predecessor_map, strict_reachable_from) = {
         let mut successor_map: HashMap<Label, HashSet<Label>> = blocks
             .iter()
             .map(|(lbl, bb)| (*lbl, bb.successors()))
             .collect();
+        let predecessor_map = flip_edges(successor_map.clone());
 
         // Iteratively make this bigger
         loop {
@@ -96,7 +97,9 @@ fn relooper(
         }
 
         // Flip edges
-        flip_edges(successor_map)
+        let strict_reachable_from = flip_edges(successor_map);
+
+        (predecessor_map, strict_reachable_from)
     };
 
     match (none_branch_to.len(), some_branch_to.len()) {
@@ -138,17 +141,33 @@ fn relooper(
 
             let new_returns: HashSet<Label> = strict_reachable_from
                 .iter()
-                .filter(|&(lbl, reachable)| blocks.contains_key(lbl) && entries.contains(lbl))
+                .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl))
                 .flat_map(|(_, ref reachable)| reachable.iter())
                 .cloned()
                 .collect();
 
             // Partition blocks into those belonging in or after the loop
-            let (mut body_blocks, follow_blocks): (HashMap<Label, BasicBlock<StructureLabel>>, HashMap<Label, BasicBlock<StructureLabel>>) = blocks
+            let (mut body_blocks, mut follow_blocks): (HashMap<Label, BasicBlock<StructureLabel>>, HashMap<Label, BasicBlock<StructureLabel>>) = blocks
                 .into_iter()
                 .partition(|&(ref lbl, _)| new_returns.contains(lbl));
 
-            let follow_entries = out_edges(&body_blocks);
+            let mut follow_entries = out_edges(&body_blocks);
+
+            // Move into `body_blocks` some `follow_blocks`
+            // TODO: for now, we only move blocks which themselves are reached immediately. Why not
+            // chains of blocks? Etc.
+            let mut move_into_loop: Vec<Label> = vec![];
+            for follow_entry in follow_entries.iter() {
+                if let Some(bb) = follow_blocks.get(follow_entry) {
+                    if bb.successors().is_empty() && predecessor_map[&follow_entry].len() == 1 {
+                        move_into_loop.push(*follow_entry);
+                    }
+                }
+            }
+            for m in move_into_loop {
+                body_blocks.insert(m, follow_blocks.remove(&m).unwrap());
+                follow_entries.remove(&m);
+            }
 
             // Rename some `GoTo`s in the loop body to `ExitTo`s
             for (_, bb) in body_blocks.iter_mut() {
