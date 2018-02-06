@@ -325,8 +325,11 @@ impl Cfg<Label> {
                 }
             };
 
+            // It makes no sense to remap something to itself
             for from in from_any {
-                actual_rewrites.insert(from, to_final);
+                if from != to_final {
+                    actual_rewrites.insert(from, to_final);
+                }
             }
         }
 
