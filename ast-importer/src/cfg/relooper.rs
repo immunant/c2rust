@@ -273,6 +273,9 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
         match structure {
             &Structure::Simple { ref entries, ref body, ref terminator } => {
 
+                // Is the terminator ending in just distinct 'GoTo'?
+                let mut distinct_goto: bool;
+
                 let terminator = if let &Switch { ref expr, ref cases } = terminator {
 
                     // TODO:
@@ -292,6 +295,8 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
                             _ => panic!("simplify_structure: Nested precondition violated")
                         }
                     }
+
+                    distinct_goto = merged_exit.is_empty();
 
                     // When converting these patterns back into a vector, we have to be careful to
                     // preserve their initial order (so that the default pattern doesn't end up on
@@ -318,11 +323,12 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
 
                     Switch { expr: expr.clone(), cases: cases_new }
                 } else {
+                    distinct_goto = true;
                     terminator.clone()
                 };
 
                 match acc_structures.pop() {
-                    Some(Structure::Multiple { entries: _, branches, then }) => {
+                    Some(Structure::Multiple { entries: _, ref branches, ref then }) if distinct_goto => {
                         let rewrite = |t: &StructureLabel| {
                             if let &StructureLabel::GoTo(ref to) = t {
                                 let entries: HashSet<_> = vec![*to].into_iter().collect();
