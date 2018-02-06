@@ -68,8 +68,8 @@ void MappingTraits<ItemConfig>::mapping(IO &io, ItemConfig &cfg) {
     } else {
         std::string item_type;
         io.mapRequired("item", item_type);
-        if (item_type == "default") {
-            cfg = DefaultConfig(io);
+        if (item_type == "defaults") {
+            cfg = DefaultsConfig(io);
         } else if (item_type == "function") {
             cfg = FunctionConfig(io);
         } else if (item_type == "struct") {

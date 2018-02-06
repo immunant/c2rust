@@ -1,6 +1,6 @@
 ---
 test.c:
-    - item: default
+    - item: defaults
       disable_xchecks: true
 
     - item: function

@@ -48,7 +48,7 @@ impl Default for XCheckType {
 
 #[derive(Deserialize, Debug, Default)]
 #[serde(default)]
-pub struct DefaultConfig {
+pub struct DefaultsConfig {
     pub disable_xchecks: Option<bool>,
 
     pub entry: Option<XCheckType>,
@@ -60,8 +60,8 @@ pub struct DefaultConfig {
     pub ret: Option<XCheckType>,
 }
 
-impl DefaultConfig {
-    pub fn merge(&mut self, other: &DefaultConfig) {
+impl DefaultsConfig {
+    pub fn merge(&mut self, other: &DefaultsConfig) {
         macro_rules! update_field {
             ($field:ident) => {
                 if other.$field.is_some() {
@@ -166,7 +166,7 @@ pub struct StructConfig {
 #[derive(Deserialize, Debug)]
 #[serde(tag = "item", rename_all = "lowercase")]
 pub enum ItemConfig {
-    Default(DefaultConfig),
+    Defaults(DefaultsConfig),
     Function(FunctionConfig),
     Struct(StructConfig),
     Value,   // TODO

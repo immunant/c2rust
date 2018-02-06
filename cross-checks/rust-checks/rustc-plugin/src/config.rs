@@ -216,7 +216,7 @@ impl ScopeCheckConfig {
             )
         }
         match (&mut self.item, xcfg) {
-            (&mut ItemCheckConfig::FileDefaults, &xcfg::ItemConfig::Default(ref xcfg_defs)) => {
+            (&mut ItemCheckConfig::FileDefaults, &xcfg::ItemConfig::Defaults(ref xcfg_defs)) => {
                 // Inherited fields
                 parse_optional_field!(^enabled,  xcfg_defs, disable_xchecks, !disable_xchecks);
                 parse_optional_field!(^entry,    xcfg_defs, entry,    entry.clone());

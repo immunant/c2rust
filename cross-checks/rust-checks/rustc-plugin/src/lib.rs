@@ -49,14 +49,14 @@ impl<'xcfg> ScopeConfig<'xcfg> {
         let mut new_ccc = ccc.new_file();
         let file_items = cfg.get_file_items(&file_name);
         if let Some(file_items) = file_items {
-            let mut file_cfg = xcfg::DefaultConfig::default();
+            let mut file_cfg = xcfg::DefaultsConfig::default();
             for item in file_items.items().iter() {
                 match item {
-                    &xcfg::ItemConfig::Default(ref def) => file_cfg.merge(def),
+                    &xcfg::ItemConfig::Defaults(ref def) => file_cfg.merge(def),
                     _ => (),
                 }
             }
-            let file_item_cfg = xcfg::ItemConfig::Default(file_cfg);
+            let file_item_cfg = xcfg::ItemConfig::Defaults(file_cfg);
             new_ccc.parse_xcfg_config(cx, &file_item_cfg);
         }
         let items = file_items
