@@ -244,13 +244,16 @@ private:
     }
 
     using ExprVec = SmallVector<Expr*, 4>;
-    using XCheckDefaultFn = std::function<Expr*(void)>;
-    using XCheckCustomArgsFn = std::function<ExprVec(void)>;
 
+    static inline ExprVec no_custom_args() {
+        return {};
+    }
+
+    template<typename DefaultFn, typename CustomArgsFn>
     llvm::TinyPtrVector<Stmt*>
     build_xcheck(const XCheck &xcheck, CrossCheckTag tag,
-                 ASTContext &ctx, XCheckDefaultFn default_fn,
-                 XCheckCustomArgsFn custom_args_fn) {
+                 ASTContext &ctx, DefaultFn default_fn,
+                 CustomArgsFn custom_args_fn) {
         if (xcheck.type == XCheck::DISABLED)
             return {};
 
@@ -289,7 +292,7 @@ private:
             assert(std::holds_alternative<std::string>(xcheck.data) &&
                    "Invalid type for XCheck::data, expected string");
             auto &xcheck_fn_name = std::get<std::string>(xcheck.data);
-            ExprVec xcheck_fn_args = custom_args_fn ? custom_args_fn() : ExprVec{};
+            ExprVec xcheck_fn_args = custom_args_fn();
             rb_xcheck_val = build_call(xcheck_fn_name, ctx.UnsignedLongTy,
                                        xcheck_fn_args, ctx);
             break;
@@ -837,7 +840,7 @@ public:
                                                        FUNCTION_ENTRY_TAG,
                                                        ctx,
                                                        entry_xcheck_default_fn,
-                                                       nullptr);
+                                                       no_custom_args);
                 std::move(entry_xcheck_stmts.begin(),
                           entry_xcheck_stmts.end(),
                           std::back_inserter(new_body_stmts));
