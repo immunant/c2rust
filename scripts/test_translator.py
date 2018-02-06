@@ -222,6 +222,8 @@ class TestCase:
         sys.stdout.write("\n")
 
     def cleanup(self):
+        if "all" in self.keep:
+            return
 
         files = [getattr(self, f) for f in intermediate_files if f not in self.keep]
 
@@ -289,7 +291,7 @@ def main() -> None:
     )
     parser.add_argument(
         '--keep', dest='keep', action='append',
-        choices=intermediate_files, default=[],
+        choices=intermediate_files + ['all'], default=[],
         help="Which intermediate files to not clear"
     )
 
