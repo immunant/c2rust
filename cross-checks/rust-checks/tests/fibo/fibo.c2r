@@ -1,6 +1,9 @@
 ---
 src/main.rs: []
 src/fibo.rs:
+    - item: default
+      disable_xchecks: true
+
     - item: function
       name: fibo
       disable_xchecks: false
@@ -15,6 +18,7 @@ src/fibo.rs:
 
     - item: struct
       name: FiboArg
+      disable_xchecks: false
       //ahasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
       //shasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
       //fields:

@@ -44,15 +44,28 @@ struct ScopeConfig<'xcfg> {
 }
 
 impl<'xcfg> ScopeConfig<'xcfg> {
-    fn new(cfg: &'xcfg xcfg::Config, file_name: String,
+    fn new(cx: &ExtCtxt, cfg: &'xcfg xcfg::Config, file_name: String,
            ccc: config::ScopeCheckConfig) -> ScopeConfig<'xcfg> {
-        let items = cfg.get_file_items(&file_name)
+        let mut new_ccc = ccc.new_file();
+        let file_items = cfg.get_file_items(&file_name);
+        if let Some(file_items) = file_items {
+            let mut file_cfg = xcfg::DefaultConfig::default();
+            for item in file_items.items().iter() {
+                match item {
+                    &xcfg::ItemConfig::Default(ref def) => file_cfg.merge(def),
+                    _ => (),
+                }
+            }
+            let file_item_cfg = xcfg::ItemConfig::Default(file_cfg);
+            new_ccc.parse_xcfg_config(cx, &file_item_cfg);
+        }
+        let items = file_items
                        .map(xcfg::NamedItemList::new)
                        .map(Rc::new);
         ScopeConfig {
             file_name: Rc::new(file_name),
             items: items,
-            check_config: ccc,
+            check_config: new_ccc,
             field_idx: Cell::new(0),
         }
     }
@@ -167,7 +180,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             // We should only ever get a file name mismatch
             // at the top of a module
             assert_matches!(item.node, ast::ItemKind::Mod(_));
-            ScopeConfig::new(&self.expander.external_config, mod_file_name, new_config)
+            ScopeConfig::new(self.cx, &self.expander.external_config, mod_file_name, new_config)
         } else {
             last_scope.from_item(item_xcfg_config, new_config)
         }
@@ -188,7 +201,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 let arg_idx = xcfg::FieldIndex::from_str(&*ident.node.name.as_str());
                 let arg_xcheck_cfg = self.config().function_config()
                     .args.get(&arg_idx)
-                    .unwrap_or(&self.config().function_config().all_args);
+                    .unwrap_or(&self.config().inherited.all_args);
                 arg_xcheck_cfg.get_hash(self.cx, || {
                     // By default, we use cross_check_hash
                     // to hash the value of the identifier
@@ -242,7 +255,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 let checked_block = if self.config().inherited.enabled {
                     // Add the cross-check to the beginning of the function
                     // TODO: only add the checks to C abi functions???
-                    let entry_xcheck = self.config().function_config().entry
+                    let entry_xcheck = self.config().inherited.entry
                         .get_ident_hash(self.cx, &fn_ident)
                         .map(|hash| quote_stmt!(self.cx, cross_check_raw!(FUNCTION_ENTRY_TAG, $hash);))
                         .unwrap_or_default();
@@ -536,7 +549,8 @@ impl MultiItemModifier for CrossCheckExpander {
                         top_config.parse_attr_config(cx, mi);
                         let top_file_name = cx.codemap().span_to_filename(sp);
                         let top_file_name = format!("{}", top_file_name);
-                        let top_scope = ScopeConfig::new(&self.external_config,
+                        let top_scope = ScopeConfig::new(cx,
+                                                         &self.external_config,
                                                          top_file_name,
                                                          top_config);
                         CrossChecker::new(self, cx, top_scope, false)
@@ -550,7 +564,8 @@ impl MultiItemModifier for CrossCheckExpander {
                         config.parse_attr_config(cx, mi);
                         let file_name = cx.codemap().span_to_filename(sp);
                         let file_name = format!("{}", file_name);
-                        let scope = ScopeConfig::new(&self.external_config,
+                        let scope = ScopeConfig::new(cx,
+                                                     &self.external_config,
                                                      file_name,
                                                      config);
                         CrossChecker::new(self, cx, scope, true)

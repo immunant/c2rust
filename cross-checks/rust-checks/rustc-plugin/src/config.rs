@@ -17,6 +17,10 @@ pub struct InheritedCheckConfig {
     // Whether cross-checks are enabled overall
     pub enabled: bool,
 
+    // Function-specific overrides
+    pub entry: xcfg::XCheckType,
+    pub all_args: xcfg::XCheckType,
+
     // Overrides for ahasher/shasher
     pub ahasher: Option<Vec<TokenTree>>,
     pub shasher: Option<Vec<TokenTree>>,
@@ -26,6 +30,8 @@ impl Default for InheritedCheckConfig {
     fn default() -> InheritedCheckConfig {
         InheritedCheckConfig {
             enabled: true,
+            entry: xcfg::XCheckType::Default,
+            all_args: xcfg::XCheckType::None,
             ahasher: None,
             shasher: None,
         }
@@ -34,8 +40,6 @@ impl Default for InheritedCheckConfig {
 
 #[derive(Debug)]
 pub struct FunctionCheckConfig {
-    pub entry: xcfg::XCheckType,
-    pub all_args: xcfg::XCheckType,
     pub args: HashMap<xcfg::FieldIndex, xcfg::XCheckType>,
 }
 
@@ -43,8 +47,6 @@ pub struct FunctionCheckConfig {
 impl Default for FunctionCheckConfig {
     fn default() -> FunctionCheckConfig {
         FunctionCheckConfig {
-            entry: xcfg::XCheckType::Default,
-            all_args: xcfg::XCheckType::None,
             args: Default::default(),
         }
     }
@@ -61,6 +63,9 @@ pub struct StructCheckConfig {
 pub enum ItemCheckConfig {
     // Top-level configuration
     Top,
+
+    // Per-file defaults
+    FileDefaults,
 
     // Function item configuration
     Function(FunctionCheckConfig),
@@ -107,6 +112,13 @@ impl ScopeCheckConfig {
         Self::from_item(item, Rc::clone(&self.inherited))
     }
 
+    pub fn new_file(&self) -> Self {
+        ScopeCheckConfig {
+            inherited: Rc::clone(&self.inherited),
+            item: ItemCheckConfig::FileDefaults,
+        }
+    }
+
     // Getters for various options
     pub fn function_config(&self) -> &FunctionCheckConfig {
         if let ItemCheckConfig::Function(ref func) = self.item {
@@ -147,14 +159,18 @@ impl ScopeCheckConfig {
                 }
 
                 // Function-specific attributes
-                ("entry", &mut ItemCheckConfig::Function(ref mut func)) => {
-                    func.entry = xcheck_util::parse_xcheck_arg(&arg)
+                // TODO: handle file-level defaults
+                ("entry", &mut ItemCheckConfig::Function(_)) => {
+                    Rc::make_mut(&mut self.inherited).entry =
+                        xcheck_util::parse_xcheck_arg(&arg)
                         .unwrap_or(xcfg::XCheckType::Default);
                 }
 
-                ("all_args", &mut ItemCheckConfig::Function(ref mut func)) => {
+                // TODO: handle file-level defaults
+                ("all_args", &mut ItemCheckConfig::Function(_)) => {
                     // Enable cross-checking for arguments
-                    func.all_args = xcheck_util::parse_xcheck_arg(&arg)
+                    Rc::make_mut(&mut self.inherited).all_args =
+                        xcheck_util::parse_xcheck_arg(&arg)
                         .unwrap_or(xcfg::XCheckType::Default);
                 }
 
@@ -200,15 +216,22 @@ impl ScopeCheckConfig {
             )
         }
         match (&mut self.item, xcfg) {
+            (&mut ItemCheckConfig::FileDefaults, &xcfg::ItemConfig::Default(ref xcfg_defs)) => {
+                // Inherited fields
+                parse_optional_field!(^enabled,  xcfg_defs, disable_xchecks, !disable_xchecks);
+                parse_optional_field!(^entry,    xcfg_defs, entry,    entry.clone());
+                parse_optional_field!(^all_args, xcfg_defs, all_args, all_args.clone());
+            },
+
             (&mut ItemCheckConfig::Function(ref mut self_func), &xcfg::ItemConfig::Function(ref xcfg_func)) => {
                 // Inherited fields
-                parse_optional_field!(^enabled, xcfg_func, disable_xchecks, !disable_xchecks);
+                parse_optional_field!(^enabled,  xcfg_func, disable_xchecks, !disable_xchecks);
+                parse_optional_field!(^entry,    xcfg_func, entry,    entry.clone());
+                parse_optional_field!(^all_args, xcfg_func, all_args, all_args.clone());
                 // TODO: add a way for the external config to reset these to default
                 parse_optional_field!(^ahasher, xcfg_func, ahasher, Some(cx.parse_tts(ahasher.clone())));
                 parse_optional_field!(^shasher, xcfg_func, shasher, Some(cx.parse_tts(shasher.clone())));
                 // Function-specific fields
-                parse_optional_field!(>entry,    self_func, xcfg_func, entry,    entry.clone());
-                parse_optional_field!(>all_args, self_func, xcfg_func, all_args, all_args.clone());
                 self_func.args.extend(xcfg_func.args.iter().map(|(k, v)| {
                     (xcfg::FieldIndex::from_str(k), v.clone())
                 }));
@@ -218,6 +241,7 @@ impl ScopeCheckConfig {
             (&mut ItemCheckConfig::Struct(ref mut self_struc), &xcfg::ItemConfig::Struct(ref xcfg_struc)) => {
                 // Inherited fields
                 // TODO: add a way for the external config to reset these to default
+                parse_optional_field!(^enabled, xcfg_struc, disable_xchecks, !disable_xchecks);
                 parse_optional_field!(^ahasher, xcfg_struc, ahasher, Some(cx.parse_tts(ahasher.clone())));
                 parse_optional_field!(^shasher, xcfg_struc, shasher, Some(cx.parse_tts(shasher.clone())));
                 // Structure-specific fields

@@ -8,17 +8,14 @@
 
 struct FiboArg(u64, u64, #[cross_check(none)] String);
 
-#[cross_check(none)]
 fn hash_arg<XCHA, XCHS>(arg: &FiboArg, _: usize) -> u64 {
     arg.0.wrapping_mul(0x10000).wrapping_add(arg.1)
 }
 
-#[cross_check(none)]
 fn foo(v: &u64) -> u64 {
     v.wrapping_add(4096)
 }
 
-#[cross_check(none)]
 fn tch<XCHA, XCHS, S, F>(h: &mut XCHA, _: &S, field: F, _: usize)
         where XCHA: ::cross_check_runtime::hash::CrossCheckHasher,
               F: ::std::borrow::Borrow<String> {

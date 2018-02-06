@@ -48,6 +48,37 @@ impl Default for XCheckType {
 
 #[derive(Deserialize, Debug, Default)]
 #[serde(default)]
+pub struct DefaultConfig {
+    pub disable_xchecks: Option<bool>,
+
+    pub entry: Option<XCheckType>,
+    pub exit: Option<XCheckType>,
+
+    pub all_args: Option<XCheckType>,
+
+    #[serde(rename = "return")]
+    pub ret: Option<XCheckType>,
+}
+
+impl DefaultConfig {
+    pub fn merge(&mut self, other: &DefaultConfig) {
+        macro_rules! update_field {
+            ($field:ident) => {
+                if other.$field.is_some() {
+                    self.$field = other.$field.clone();
+                }
+            }
+        };
+        update_field!(disable_xchecks);
+        update_field!(entry);
+        update_field!(exit);
+        update_field!(all_args);
+        update_field!(ret);
+    }
+}
+
+#[derive(Deserialize, Debug, Default)]
+#[serde(default)]
 pub struct FunctionConfig {
     // Name of the function
     // FIXME: where do we get this???
@@ -116,6 +147,9 @@ impl FieldIndex {
 pub struct StructConfig {
     pub name: String,
 
+    // Overrides for the attribute config items
+    pub disable_xchecks: Option<bool>,
+
     // Overrides for ahasher/shasher
     pub ahasher: Option<String>,
     pub shasher: Option<String>,
@@ -132,6 +166,7 @@ pub struct StructConfig {
 #[derive(Deserialize, Debug)]
 #[serde(tag = "item", rename_all = "lowercase")]
 pub enum ItemConfig {
+    Default(DefaultConfig),
     Function(FunctionConfig),
     Struct(StructConfig),
     Value,   // TODO
@@ -158,6 +193,12 @@ impl ItemConfig {
 
 #[derive(Deserialize, Debug, Default)]
 pub struct ItemList(Vec<ItemConfig>);
+
+impl ItemList {
+    pub fn items(&self) -> &Vec<ItemConfig> {
+        &self.0
+    }
+}
 
 pub struct NamedItemList<'a> {
     // FIXME: _items is unused; do we really need it???
