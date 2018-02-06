@@ -25,6 +25,35 @@ struct XCheck {
     }
 };
 
+struct DefaultConfig {
+    llvm::Optional<bool> disable_xchecks;
+    llvm::Optional<XCheck> entry;
+    llvm::Optional<XCheck> exit;
+    llvm::Optional<XCheck> all_args;
+    llvm::Optional<XCheck> ret;
+
+    DefaultConfig() = default;
+    DefaultConfig(llvm::yaml::IO &io) {
+        io.mapOptional("disable_xchecks", disable_xchecks);
+        io.mapOptional("entry",     entry);
+        io.mapOptional("exit",      exit);
+        io.mapOptional("all_args",  all_args);
+        io.mapOptional("return",    ret);
+    }
+
+    // Update the optionals in this config with the contents
+    // of another DefaultConfig
+    void update(const DefaultConfig &other) {
+#define UPDATE_FIELD(field) if (other.field) { this->field = *other.field; }
+        UPDATE_FIELD(disable_xchecks);
+        UPDATE_FIELD(entry);
+        UPDATE_FIELD(exit);
+        UPDATE_FIELD(all_args);
+        UPDATE_FIELD(ret);
+#undef UPDATE_FIELD
+    }
+};
+
 struct FunctionConfig {
     std::string name;
     llvm::Optional<bool> disable_xchecks;
@@ -70,7 +99,8 @@ struct StructConfig {
     }
 };
 
-typedef std::variant<std::monostate, FunctionConfig, StructConfig> ItemConfig;
+typedef std::variant<std::monostate, DefaultConfig,
+        FunctionConfig, StructConfig> ItemConfig;
 typedef std::vector<ItemConfig> FileConfig;
 typedef std::map<std::string, FileConfig> Config;
 

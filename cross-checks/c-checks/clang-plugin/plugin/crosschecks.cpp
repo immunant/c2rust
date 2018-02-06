@@ -128,6 +128,7 @@ private:
     // FIXME: uses std::map which is O(logN), would be nice
     // to use std::unordered_map, but that one doesn't compile
     // with StringRefPair keys
+    DefaultConfig default_config;
     std::map<StringRefPair, FunctionConfigRef,
         StringRefPairCompare> function_configs;
     std::map<StringRefPair, StructConfigRef,
@@ -679,6 +680,8 @@ private:
                            const std::optional<FunctionConfigRef> &func_cfg,
                            ASTContext &ctx) {
         XCheck param_xcheck{XCheck::DISABLED};
+        if (default_config.all_args)
+            param_xcheck = *default_config.all_args;
         if (func_cfg) {
             auto &func_cfg_ref = func_cfg->get();
             if (func_cfg_ref.all_args) {
@@ -749,7 +752,9 @@ public:
         for (auto &file_config : config) {
             auto &file_name = file_config.first;
             for (auto &item : file_config.second)
-                if (auto func = std::get_if<FunctionConfig>(&item)) {
+                if (auto defs = std::get_if<DefaultConfig>(&item)) {
+                    default_config.update(*defs);
+                } else if (auto func = std::get_if<FunctionConfig>(&item)) {
                     StringRefPair key(std::cref(file_name), std::cref(func->name));
                     function_configs.emplace(key, *func);
                 } else if (auto struc = std::get_if<StructConfig>(&item)) {
@@ -786,15 +791,22 @@ public:
                     std::string func_name = fd->getName().str();
                     func_cfg = get_function_config(file_name, func_name);
                 }
-                if (func_cfg && func_cfg->get().disable_xchecks &&
-                    *func_cfg->get().disable_xchecks)
+
+                bool disable_xchecks = false;
+                if (default_config.disable_xchecks)
+                    disable_xchecks = *default_config.disable_xchecks;
+                if (func_cfg && func_cfg->get().disable_xchecks)
+                    disable_xchecks = *func_cfg->get().disable_xchecks;
+                if (disable_xchecks)
                     continue;
 
                 // Add the function entry-point cross-check
                 SmallVector<Stmt*, 8> new_body_stmts;
-                auto entry_xcheck = (func_cfg && func_cfg->get().entry)
-                    ? *func_cfg->get().entry
-                    : XCheck(XCheck::DEFAULT);
+                XCheck entry_xcheck{XCheck::DEFAULT};
+                if (default_config.entry)
+                    entry_xcheck = *default_config.entry;
+                if (func_cfg && func_cfg->get().entry)
+                    entry_xcheck = *func_cfg->get().entry;
                 auto entry_xcheck_default_fn = [&ctx, fd] (void) {
                     auto rb_xcheck_hash = djb2_hash(fd->getName());
                     return IntegerLiteral::Create(ctx,
