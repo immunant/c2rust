@@ -504,6 +504,8 @@ private:
         assert((record_decl->isStruct() || record_decl->isClass()) &&
                "Called build_record_hash_function on neither a struct nor a class");
 
+        // TODO: handle disable_xchecks == true here
+
         // Build the following code:
         // uint64_t __c2rust_hash_T_struct(struct T x) {
         //   char hasher[__c2rust_hasher_H_size()];

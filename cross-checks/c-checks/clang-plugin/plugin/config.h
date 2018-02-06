@@ -82,6 +82,7 @@ struct FunctionConfig {
 
 struct StructConfig {
     std::string name;
+    llvm::Optional<bool> disable_xchecks;
     llvm::Optional<std::string> field_hasher;
     llvm::Optional<std::string> custom_hash;
     std::map<std::string, XCheck> fields;
@@ -90,6 +91,7 @@ struct StructConfig {
 
     StructConfig(llvm::yaml::IO &io) {
         io.mapRequired("name",          name);
+        io.mapOptional("disable_xchecks", disable_xchecks);
         io.mapOptional("field_hasher",  field_hasher);
         io.mapOptional("custom_hash",   custom_hash);
         io.mapOptional("fields",        fields);
