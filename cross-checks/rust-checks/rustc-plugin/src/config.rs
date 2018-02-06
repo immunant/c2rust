@@ -159,7 +159,7 @@ impl ScopeCheckConfig {
                 }
 
                 // Function-specific attributes
-                // TODO: handle file-level defaults
+                ("entry", &mut ItemCheckConfig::FileDefaults) |
                 ("entry", &mut ItemCheckConfig::Function(_)) => {
                     Rc::make_mut(&mut self.inherited).entry =
                         xcheck_util::parse_xcheck_arg(&arg)
@@ -167,6 +167,7 @@ impl ScopeCheckConfig {
                 }
 
                 // TODO: handle file-level defaults
+                ("all_args", &mut ItemCheckConfig::FileDefaults) |
                 ("all_args", &mut ItemCheckConfig::Function(_)) => {
                     // Enable cross-checking for arguments
                     Rc::make_mut(&mut self.inherited).all_args =
