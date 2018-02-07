@@ -1152,8 +1152,7 @@ impl ConversionContext {
 
                 ASTEntryTag::TagEnumConstantDecl if expected_ty & ENUM_CON != 0 => {
                     let name = expect_str(&node.extras[0]).expect("Expected to find enum constant name").to_string();
-
-                    let value = expect_u64(&node.extras[1]).expect("Expected to find enum constant's value");
+                    let value = expect_i64(&node.extras[1]).expect("Expected to find enum constant's value");
 
                     let enum_constant_decl = CDeclKind::EnumConstant { name, value };
 

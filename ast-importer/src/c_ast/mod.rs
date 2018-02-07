@@ -208,7 +208,7 @@ pub enum CDeclKind {
 
     EnumConstant {
         name: String,
-        value: u64,
+        value: i64,
     },
 
     // Typedef
