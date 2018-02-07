@@ -62,32 +62,81 @@ fn relooper(
         .cloned()
         .partition(|entry| reachable_labels.contains(&entry));
 
+
+
+    // --------------------------------------
+    // Base case
+    if none_branch_to.is_empty() && some_branch_to.is_empty() {
+        return vec![]
+    }
+
+    // --------------------------------------
+    // Simple blocks
+    if none_branch_to.len() == 1 && some_branch_to.is_empty() {
+        let entry = *none_branch_to.iter().next().expect("Should find exactly one entry");
+
+        let ret = if let Some(bb) = blocks.remove(&entry) {
+            let new_entries = bb.successors();
+            let BasicBlock { body, terminator } = bb;
+
+            let mut result = vec![Structure::Simple { entries, body, terminator }];
+            result.extend(relooper(new_entries, blocks));
+            result
+        } else {
+            let body = vec![];
+            let terminator = Jump(StructureLabel::GoTo(entry));
+
+            vec![Structure::Simple { entries, body, terminator }]
+        };
+
+        return ret;
+    }
+
+    // --------------------------------------
+    // Skipping to blocks placed later
+
     // Split the entry labels into those that are in the current blocks, and those that aren't
     let (present, absent): (HashSet<Label>, HashSet<Label>) = entries
         .iter()
         .cloned()
         .partition(|entry| blocks.contains_key(&entry));
 
-    let strict_reachable_from = {
+    if !absent.is_empty() {
+        let ret = if present.is_empty() {
+            vec![]
+        } else {
+            let branches = absent.into_iter().map(|lbl| (lbl,vec![])).collect();
+            let then = relooper(present, blocks);
+            vec![Structure::Multiple { entries, branches, then }]
+        };
+
+        return ret;
+    }
+
+
+    // --------------------------------------
+    // Loops
+
+    // This information is necessary for both the `Loop` and `Multiple` cases
+    let (predecessor_map, strict_reachable_from) = {
         let mut successor_map: HashMap<Label, HashSet<Label>> = blocks
             .iter()
             .map(|(lbl, bb)| (*lbl, bb.successors()))
             .collect();
+        let predecessor_map = flip_edges(successor_map.clone());
 
         // Iteratively make this bigger
         loop {
-            let new_successor_map: HashMap<Label, HashSet<Label>> = successor_map
-                .iter()
-                .map(|(lbl, seen)| {
-                    let succs = successor_map
-                        .iter()
-                        .filter_map(|(lbl1, seen1)| {
-                            if seen.contains(lbl1) { Some(seen1) } else { None }
-                        })
-                        .fold(seen.clone(), |l,r| &l | &r);
-                    (*lbl, succs)
-                })
-                .collect();
+            let mut new_successor_map: HashMap<Label, HashSet<Label>> = HashMap::new();
+            for (lbl, seens) in successor_map.iter() {
+                let mut new_seen = HashSet::new();
+                new_seen.extend(seens);
+                for seen in seens {
+                    new_seen.extend(successor_map.get(seen).unwrap_or(&HashSet::new()));
+                }
+                new_successor_map.insert(*lbl, new_seen);
+            }
+
             if successor_map == new_successor_map {
                 break;
             } else {
@@ -96,149 +145,132 @@ fn relooper(
         }
 
         // Flip edges
-        flip_edges(successor_map)
+        let strict_reachable_from = flip_edges(successor_map);
+
+        (predecessor_map, strict_reachable_from)
     };
 
-    match (none_branch_to.len(), some_branch_to.len()) {
-        // Base case
-        (0,0) => vec![],
+    if none_branch_to.is_empty() {
+        let new_returns: HashSet<Label> = strict_reachable_from
+            .iter()
+            .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl))
+            .flat_map(|(_, ref reachable)| reachable.iter())
+            .cloned()
+            .collect();
 
-        // Simple blocks
-        (1,0) => {
-            let entry = *none_branch_to.iter().next().expect("Should find exactly one entry");
+        // Partition blocks into those belonging in or after the loop
+        let (mut body_blocks, mut follow_blocks): (HashMap<Label, BasicBlock<StructureLabel>>, HashMap<Label, BasicBlock<StructureLabel>>) = blocks
+            .into_iter()
+            .partition(|&(ref lbl, _)| new_returns.contains(lbl));
 
-            if let Some(bb) = blocks.remove(&entry) {
-                let new_entries = bb.successors();
-                let BasicBlock { body, terminator } = bb;
+        let mut follow_entries = out_edges(&body_blocks);
 
-                let mut result = vec![Structure::Simple { entries, body, terminator }];
-                result.extend(relooper(new_entries, blocks));
-                result
-            } else {
-                let body = vec![];
-                let terminator = Jump(StructureLabel::GoTo(entry));
-
-                vec![Structure::Simple { entries, body, terminator }]
+        // Move into `body_blocks` some `follow_blocks`
+        // TODO: for now, we only move blocks which themselves are reached immediately. Why not
+        // chains of blocks? Etc.
+        let mut move_into_loop: Vec<Label> = vec![];
+        for follow_entry in follow_entries.iter() {
+            if let Some(bb) = follow_blocks.get(follow_entry) {
+                if bb.successors().is_empty() && predecessor_map[&follow_entry].len() == 1 {
+                    move_into_loop.push(*follow_entry);
+                }
             }
         }
-
-        // Skipping to blocks placed later
-        _ if !absent.is_empty() => {
-            if present.is_empty() {
-                vec![]
-            } else {
-                let branches = absent.into_iter().map(|lbl| (lbl,vec![])).collect();
-                let then = relooper(present, blocks);
-                vec![Structure::Multiple { entries, branches, then }]
-            }
+        for m in move_into_loop {
+            body_blocks.insert(m, follow_blocks.remove(&m).unwrap());
+            follow_entries.remove(&m);
         }
 
-        // Loops
-        (0, _) => {
-
-            let new_returns: HashSet<Label> = strict_reachable_from
-                .iter()
-                .filter(|&(lbl, reachable)| blocks.contains_key(lbl) && entries.contains(lbl))
-                .flat_map(|(_, ref reachable)| reachable.iter())
-                .cloned()
-                .collect();
-
-            // Partition blocks into those belonging in or after the loop
-            let (mut body_blocks, follow_blocks): (HashMap<Label, BasicBlock<StructureLabel>>, HashMap<Label, BasicBlock<StructureLabel>>) = blocks
-                .into_iter()
-                .partition(|&(ref lbl, _)| new_returns.contains(lbl));
-
-            let follow_entries = out_edges(&body_blocks);
-
-            // Rename some `GoTo`s in the loop body to `ExitTo`s
-            for (_, bb) in body_blocks.iter_mut() {
-                for lbl in bb.terminator.get_labels_mut() {
-                    if let &mut StructureLabel::GoTo(label) = lbl {
-                        if entries.contains(&label) || follow_entries.contains(&label) {
-                            *lbl = StructureLabel::ExitTo(label)
-                        }
+        // Rename some `GoTo`s in the loop body to `ExitTo`s
+        for (_, bb) in body_blocks.iter_mut() {
+            for lbl in bb.terminator.get_labels_mut() {
+                if let &mut StructureLabel::GoTo(label) = lbl {
+                    if entries.contains(&label) || follow_entries.contains(&label) {
+                        *lbl = StructureLabel::ExitTo(label)
                     }
                 }
             }
-
-            let children = relooper(entries.clone(), body_blocks);
-
-            let mut result = vec![Structure::Loop { entries, body: children }];
-            result.extend(relooper(follow_entries, follow_blocks));
-            result
         }
 
-        _ => {
+        let children = relooper(entries.clone(), body_blocks);
 
-            // Like `strict_reachable_from`, but a entries also reach themselves
-            let mut reachable_from: HashMap<Label, HashSet<Label>> = strict_reachable_from;
-            for entry in &entries {
-                reachable_from.entry(*entry).or_insert(HashSet::new()).insert(*entry);
-            }
+        let mut ret = vec![Structure::Loop { entries, body: children }];
+        ret.extend(relooper(follow_entries, follow_blocks));
 
-            // Blocks that are reached by only one label
-            let singly_reached: HashMap<Label, HashSet<Label>> = flip_edges(reachable_from
-                .into_iter()
-                .map(|(lbl, reachable)| (lbl, &reachable & &entries))
-                .filter(|&(lbl, ref reachable)| reachable.len() == 1)
-                .collect()
-            );
+        return ret;
+    }
 
-            let handled_entries: HashMap<Label, HashMap<Label, BasicBlock<StructureLabel>>> = singly_reached
-                .into_iter()
-                .map(|(lbl, within)| {
-                    let val = blocks
-                        .iter()
-                        .filter(|&(k, _)| within.contains(k))
-                        .map(|(&k, v)| (k, v.clone()))
-                        .collect();
-                    (lbl, val)
-                })
-                .collect();
 
-            let unhandled_entries: HashSet<Label> = entries
+    // --------------------------------------
+    // Multiple
+
+    // Like `strict_reachable_from`, but a entries also reach themselves
+    let mut reachable_from: HashMap<Label, HashSet<Label>> = strict_reachable_from;
+    for entry in &entries {
+        reachable_from.entry(*entry).or_insert(HashSet::new()).insert(*entry);
+    }
+
+    // Blocks that are reached by only one label
+    let singly_reached: HashMap<Label, HashSet<Label>> = flip_edges(reachable_from
+        .into_iter()
+        .map(|(lbl, reachable)| (lbl, &reachable & &entries))
+        .filter(|&(lbl, ref reachable)| reachable.len() == 1)
+        .collect()
+    );
+
+    let handled_entries: HashMap<Label, HashMap<Label, BasicBlock<StructureLabel>>> = singly_reached
+        .into_iter()
+        .map(|(lbl, within)| {
+            let val = blocks
                 .iter()
-                .filter(|e| !handled_entries.contains_key(e))
-                .cloned()
+                .filter(|&(k, _)| within.contains(k))
+                .map(|(&k, v)| (k, v.clone()))
                 .collect();
+            (lbl, val)
+        })
+        .collect();
 
-            let mut handled_blocks: HashMap<Label, BasicBlock<StructureLabel>> = HashMap::new();
-            for (_, map) in &handled_entries {
-                for (k, v) in map {
-                    handled_blocks.entry(*k).or_insert(v.clone());
-                }
-            }
-            let handled_blocks = handled_blocks;
+    let unhandled_entries: HashSet<Label> = entries
+        .iter()
+        .filter(|e| !handled_entries.contains_key(e))
+        .cloned()
+        .collect();
 
-            let follow_blocks: HashMap<Label, BasicBlock<StructureLabel>> = blocks
-                .into_iter()
-                .filter(|&(lbl, _)| !handled_blocks.contains_key(&lbl))
-                .collect();
-
-            let follow_entries: HashSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
-
-            let mut all_handlers: HashMap<Label, Vec<Structure>> = handled_entries
-                .into_iter()
-                .map(|(lbl, blocks)| {
-                    let entries: HashSet<Label> = vec![lbl].into_iter().collect();
-                    (lbl, relooper(entries, blocks))
-                })
-                .collect();
-
-            let handler_keys: HashSet<Label> = all_handlers.keys().cloned().collect();
-            let (then, branches) = if handler_keys == entries {
-                let a_key = *all_handlers.keys().next().expect("no handlers found");
-                let last_handler = all_handlers.remove(&a_key).expect("just got this key");
-                (last_handler, all_handlers)
-            } else {
-                (vec![], all_handlers)
-            };
-
-            let mut result = vec![Structure::Multiple { entries, branches, then }];
-            result.extend(relooper(follow_entries, follow_blocks));
-            result
+    let mut handled_blocks: HashMap<Label, BasicBlock<StructureLabel>> = HashMap::new();
+    for (_, map) in &handled_entries {
+        for (k, v) in map {
+            handled_blocks.entry(*k).or_insert(v.clone());
         }
     }
+    let handled_blocks = handled_blocks;
+
+    let follow_blocks: HashMap<Label, BasicBlock<StructureLabel>> = blocks
+        .into_iter()
+        .filter(|&(lbl, _)| !handled_blocks.contains_key(&lbl))
+        .collect();
+
+    let follow_entries: HashSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
+
+    let mut all_handlers: HashMap<Label, Vec<Structure>> = handled_entries
+        .into_iter()
+        .map(|(lbl, blocks)| {
+            let entries: HashSet<Label> = vec![lbl].into_iter().collect();
+            (lbl, relooper(entries, blocks))
+        })
+        .collect();
+
+    let handler_keys: HashSet<Label> = all_handlers.keys().cloned().collect();
+    let (then, branches) = if handler_keys == entries {
+        let a_key = *all_handlers.keys().next().expect("no handlers found");
+        let last_handler = all_handlers.remove(&a_key).expect("just got this key");
+        (last_handler, all_handlers)
+    } else {
+        (vec![], all_handlers)
+    };
+
+    let mut ret = vec![Structure::Multiple { entries, branches, then }];
+    ret.extend(relooper(follow_entries, follow_blocks));
+    ret
 }
 
 /// Nested precondition: `structures` will contain no `StructureLabel::Nested` terminators.
@@ -273,9 +305,6 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
         match structure {
             &Structure::Simple { ref entries, ref body, ref terminator } => {
 
-                // Is the terminator ending in just distinct 'GoTo'?
-                let mut distinct_goto: bool;
-
                 let terminator = if let &Switch { ref expr, ref cases } = terminator {
 
                     // TODO:
@@ -295,8 +324,6 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
                             _ => panic!("simplify_structure: Nested precondition violated")
                         }
                     }
-
-                    distinct_goto = merged_exit.is_empty();
 
                     // When converting these patterns back into a vector, we have to be careful to
                     // preserve their initial order (so that the default pattern doesn't end up on
@@ -323,25 +350,26 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
 
                     Switch { expr: expr.clone(), cases: cases_new }
                 } else {
-                    distinct_goto = true;
                     terminator.clone()
                 };
 
                 match acc_structures.pop() {
-                    Some(Structure::Multiple { entries: _, ref branches, ref then }) if distinct_goto => {
+                    Some(Structure::Multiple { entries: _, ref branches, ref then }) => {
                         let rewrite = |t: &StructureLabel| {
-                            if let &StructureLabel::GoTo(ref to) = t {
-                                let entries: HashSet<_> = vec![*to].into_iter().collect();
-                                let body: Vec<Stmt> = vec![];
-                                let terminator = Jump(StructureLabel::GoTo(*to));
-                                let first_structure = Structure::Simple { entries, body, terminator };
+                            match t {
+                                &StructureLabel::GoTo(ref to) => {
+                                    let entries: HashSet<_> = vec![*to].into_iter().collect();
+                                    let body: Vec<Stmt> = vec![];
+                                    let terminator = Jump(StructureLabel::GoTo(*to));
+                                    let first_structure = Structure::Simple { entries, body, terminator };
 
-                                let mut nested: Vec<Structure> = vec![first_structure];
-                                nested.extend(branches.get(to).cloned().unwrap_or(then.clone()));
+                                    let mut nested: Vec<Structure> = vec![first_structure];
+                                    nested.extend(branches.get(to).cloned().unwrap_or(then.clone()));
 
-                                StructureLabel::Nested(nested)
-                            } else {
-                                panic!("simplifyStructure: Simple/Multiple invariants violated")
+                                    StructureLabel::Nested(nested)
+                                }
+                                &StructureLabel::ExitTo(ref to) => StructureLabel::ExitTo(*to),
+                                _ => panic!("simplify_structure: Nested precondition violated")
                             }
                         };
 
