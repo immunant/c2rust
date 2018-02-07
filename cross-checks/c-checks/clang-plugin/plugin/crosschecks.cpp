@@ -69,6 +69,30 @@ uint32_t djb2_hash(llvm::StringRef str) {
 
 #endif
 
+// Helper function for report_clang_error
+// that inserts each argument into the given stream
+template<typename Stream>
+static inline void
+args_to_stream(Stream &s) {}
+
+template<typename Stream, typename Arg, typename... Args>
+static inline void
+args_to_stream(Stream &s, Arg &&arg, Args&&... args) {
+    s << std::forward<Arg>(arg);
+    args_to_stream(s, args...);
+}
+
+template<unsigned N, typename... Args>
+static inline void
+report_clang_error(DiagnosticsEngine &diags,
+                   const char (&fmt)[N],
+                   Args&&... args) {
+    unsigned diag_id =
+        diags.getCustomDiagID(DiagnosticsEngine::Error, fmt);
+    auto db = diags.Report(diag_id);
+    args_to_stream(db, std::forward<Args>(args)...);
+}
+
 using StringRef = std::reference_wrapper<const std::string>;
 using StringRefPair = std::pair<StringRef, StringRef>;
 using DefaultsConfigRef = std::reference_wrapper<DefaultsConfig>;
@@ -91,6 +115,16 @@ struct StringRefPairCompare {
         }
     }
 };
+
+static inline
+llvm::StringRef llvm_string_ref_from_sv(std::string_view sv) {
+    return { sv.data(), sv.length() };
+}
+
+static inline
+std::string_view llvm_string_ref_to_sv(llvm::StringRef sr) {
+    return { sr.data(), sr.size() };
+}
 
 class HashFunctionName {
 public:
@@ -167,6 +201,10 @@ private:
 
     std::vector<FunctionDecl*> new_funcs;
 
+    using VarDeclMap = std::map<std::string_view, VarDecl*>;
+
+    VarDeclMap global_vars;
+
 private:
     // Store a cache of name=>FunctionDecl mappings,
     // to use when building calls to our runtime functions.
@@ -192,7 +230,39 @@ private:
 
     using ExprVec = SmallVector<Expr*, 4>;
 
-    static inline ExprVec no_custom_args() {
+    // Argument passed to custom cross-check
+    struct CustomArg {
+        enum Modifier {
+            NONE,
+            ADDR,
+            DEREF,
+        };
+
+        std::string_view ident;
+        Modifier mod;
+
+        CustomArg() = delete;
+        CustomArg(std::string_view sv) : ident(sv), mod(NONE) {
+            if (ident.empty())
+                return;
+            if (ident.front() == '&') {
+                mod = ADDR;
+                ident.remove_prefix(1);
+            } else if (ident.front() == '*') {
+                mod = DEREF;
+                ident.remove_prefix(1);
+            }
+            // TODO: support a more complex argument format
+        }
+    };
+
+    using CustomArgVec = std::vector<CustomArg>;
+    using CustomFnSig = std::tuple<std::string_view, CustomArgVec>;
+
+    CustomFnSig parse_custom_xcheck(std::string_view sv,
+                                    ASTContext &ctx);
+
+    static inline ExprVec no_custom_args(CustomArgVec args) {
         return {};
     }
 
@@ -229,6 +299,7 @@ private:
     build_parameter_xcheck(ParmVarDecl *param,
                            const DefaultsConfigOptRef file_defaults,
                            const std::optional<FunctionConfigRef> &func_cfg,
+                           const VarDeclMap &param_decls,
                            ASTContext &ctx);
 
 public:
@@ -351,6 +422,96 @@ CallExpr *CrossCheckInserter::build_call(llvm::StringRef fn_name, QualType resul
                               VK_RValue, SourceLocation());
 }
 
+static inline void skip_sv_whitespace(std::string_view *sv) {
+    assert(sv != nullptr && "Bad pointer");
+    auto spaces = sv->find_first_not_of(" \t\n\v\f\r", 0);
+    if (spaces == std::string_view::npos)
+        spaces = sv->length();
+    sv->remove_prefix(spaces);
+}
+
+CrossCheckInserter::CustomFnSig
+CrossCheckInserter::parse_custom_xcheck(std::string_view sv,
+                                        ASTContext &ctx) {
+    auto &diags = ctx.getDiagnostics();
+    skip_sv_whitespace(&sv);
+    if (sv.empty() || (sv.front() != '_' && !isalpha(sv.front()))) {
+        std::string found;
+        if (sv.empty()) {
+            found += "NUL";
+        } else {
+            found += sv.front();
+        }
+        report_clang_error(diags, "expected identifier for "
+                                  "custom cross-check name, found '%0'",
+                                  found);
+        return {};
+    }
+    auto name_len = sv.find_first_not_of("_abcdefghijklmnopqrstuvwxyz"
+                                         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                         "0123456789");
+    if (name_len == std::string_view::npos)
+        return { std::string{sv}, {} };
+
+    CustomFnSig res{sv.substr(0, name_len), {}};
+    sv.remove_prefix(name_len);
+    skip_sv_whitespace(&sv);
+    if (sv.empty())
+        return res;
+
+    // Read and ignore the opening parenthesis
+    if (sv.front() != '(') {
+        report_clang_error(diags, "expected '(' character, found '%0'", sv.front());
+        return res;
+    }
+    sv.remove_prefix(1);
+    skip_sv_whitespace(&sv);
+
+    bool first = true;
+    for (;;) {
+        skip_sv_whitespace(&sv);
+        if (sv.empty())
+            break;
+        if (sv.front() == ')') {
+            sv.remove_prefix(1);
+            break;
+        }
+
+        if (!first) {
+            if (sv.front() != ',') {
+                report_clang_error(diags, "expected ',' character, found '%0'", sv.front());
+                return res;
+            }
+            sv.remove_prefix(1);
+            skip_sv_whitespace(&sv);
+        } else {
+            first = false;
+        }
+        if (sv.empty())
+            break;
+
+        auto mods_len = sv.find_first_not_of("*&", 0);
+        if (mods_len == std::string_view::npos) {
+            report_clang_error(diags, "unexpected EOF in custom cross-check arguments");
+            return res;
+        }
+        auto ident_len = sv.find_first_not_of("_abcdefghijklmnopqrstuvwxyz"
+                                              "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                              "0123456789", mods_len);
+        if (ident_len == std::string_view::npos)
+            ident_len = sv.length();
+        std::get<1>(res).emplace_back(sv.substr(0, ident_len));
+        sv.remove_prefix(ident_len);
+    }
+    skip_sv_whitespace(&sv);
+    if (!sv.empty()) {
+        report_clang_error(diags, "unexpected characters in "
+                                  "custom cross-check: '%0'",
+                           std::string{sv});
+    }
+    return res;
+}
+
 template<typename DefaultFn, typename CustomArgsFn>
 llvm::TinyPtrVector<Stmt*>
 CrossCheckInserter::build_xcheck(const XCheck &xcheck, CrossCheckTag tag,
@@ -393,9 +554,12 @@ CrossCheckInserter::build_xcheck(const XCheck &xcheck, CrossCheckTag tag,
     case XCheck::CUSTOM: {
         assert(std::holds_alternative<std::string>(xcheck.data) &&
                "Invalid type for XCheck::data, expected string");
-        auto &xcheck_fn_name = std::get<std::string>(xcheck.data);
-        ExprVec xcheck_fn_args = custom_args_fn();
-        rb_xcheck_val = build_call(xcheck_fn_name, ctx.UnsignedLongTy,
+        auto &xcheck_fn = std::get<std::string>(xcheck.data);
+        auto xcheck_fn_sig = parse_custom_xcheck(xcheck_fn, ctx);
+        auto xcheck_fn_name = std::get<0>(xcheck_fn_sig);
+        ExprVec xcheck_fn_args = custom_args_fn(std::get<1>(xcheck_fn_sig));
+        rb_xcheck_val = build_call(llvm_string_ref_from_sv(xcheck_fn_name),
+                                   ctx.UnsignedLongTy,
                                    xcheck_fn_args, ctx);
         break;
     }
@@ -605,11 +769,8 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     auto record_ty = cast<RecordType>(ty);
     auto record_decl = record_ty->getDecl();
     if (record_decl->isUnion()) {
-        unsigned diag_id =
-            diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                  "default cross-checking is not supported for unions, "
+        report_clang_error(diags, "default cross-checking is not supported for unions, "
                                   "please use a custom cross-check");
-        diags.Report(diag_id);
         return;
     }
     assert((record_decl->isStruct() || record_decl->isClass()) &&
@@ -634,11 +795,8 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     // TODO: allow per-field cross-check configuration
     auto record_def = record_decl->getDefinition();
     if (record_def == nullptr) {
-        unsigned diag_id =
-            diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                  "default cross-checking is not supported for undefined structures, "
+        report_clang_error(diags, "default cross-checking is not supported for undefined structures, "
                                   "please use a custom cross-check");
-        diags.Report(diag_id);
         return;
     }
 
@@ -723,11 +881,8 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
         for (auto *field : record_def->fields()) {
             if (field->isBitField()) {
                 auto &diags = ctx.getDiagnostics();
-                unsigned diag_id =
-                    diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                          "default cross-checking is not supported for bitfields, "
+                report_clang_error(diags, "default cross-checking is not supported for bitfields, "
                                           "please use a custom cross-check");
-                diags.Report(diag_id);
                 return {};
             }
 
@@ -757,10 +912,16 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                     new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
                                          field, SourceLocation(),
                                          field->getType(), VK_LValue, OK_Ordinary);
-                auto field_hash_fn =
-                    field_xcheck.type == XCheck::CUSTOM
-                    ? std::get<std::string>(field_xcheck.data)
-                    : get_type_hash_function(field->getType(), ctx, true).full_name();
+                std::string field_hash_fn;
+                if (field_xcheck.type == XCheck::CUSTOM) {
+                    auto xcheck_data = std::get<std::string>(field_xcheck.data);
+                    auto field_hash_fn_sig = parse_custom_xcheck(xcheck_data, ctx);
+                    field_hash_fn = std::string{std::get<0>(field_hash_fn_sig)};
+                    // TODO: pass in each CustomArg to field_hash_fn
+                } else {
+                    field_hash_fn =
+                        get_type_hash_function(field->getType(), ctx, true).full_name();
+                }
                 auto field_ref_rv =
                     ImplicitCastExpr::Create(ctx, field->getType(),
                                              CK_LValueToRValue,
@@ -792,6 +953,7 @@ llvm::TinyPtrVector<Stmt*>
 CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
                                            const DefaultsConfigOptRef file_defaults,
                                            const std::optional<FunctionConfigRef> &func_cfg,
+                                           const VarDeclMap &param_decls,
                                            ASTContext &ctx) {
     XCheck param_xcheck{XCheck::DISABLED};
     if (file_defaults && file_defaults->get().all_args)
@@ -821,19 +983,52 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
         return build_call(hash_fn_name.full_name(), ctx.UnsignedLongTy,
                           { param_ref_rv }, ctx);
     };
-    auto param_xcheck_custom_args_fn = [&ctx, param] (void) {
-        // Forward the value of the parameter to the custom function
-        auto param_ref_rv =
-            new (ctx) DeclRefExpr(param, false, param->getType(),
-                                  VK_RValue, SourceLocation());
-        // TODO: pass PODs by value, non-PODs by pointer???
-        //
-        // TODO: we might need a way to pass additional
-        // arguments to the custom function, e.g., if it hashes
-        // an array and requires the array's length, we should
-        // call it as `custom(a, len)`. For this to work, we'll
-        // need a way to customize which arguments get passed.
-        return ExprVec{param_ref_rv};
+    auto param_xcheck_custom_args_fn =
+            [&ctx, param, &param_decls]
+            (CustomArgVec args) {
+        ExprVec res;
+        for (auto &arg : args) {
+            auto it = param_decls.find(arg.ident);
+            if (it == param_decls.end()) {
+                auto &diags = ctx.getDiagnostics();
+                report_clang_error(diags, "unknown parameter: '%0'",
+                                   std::string{arg.ident});
+                return res;
+            }
+            auto arg_ref_lv =
+                new (ctx) DeclRefExpr(it->second, false, it->second->getType(),
+                                      VK_LValue, SourceLocation());
+            Expr *arg_ref_rv;
+            switch (arg.mod) {
+            // arg
+            case CustomArg::NONE:
+                arg_ref_rv = ImplicitCastExpr::Create(ctx, arg_ref_lv->getType(),
+                                                      CK_LValueToRValue,
+                                                      arg_ref_lv, nullptr, VK_RValue);
+                break;
+
+            // &arg
+            case CustomArg::ADDR:
+                arg_ref_rv = new (ctx) UnaryOperator(arg_ref_lv, UO_AddrOf,
+                                                     ctx.getPointerType(arg_ref_lv->getType()),
+                                                     VK_RValue, OK_Ordinary,
+                                                     SourceLocation());
+                break;
+
+            // *arg
+            case CustomArg::DEREF:
+                arg_ref_rv = new (ctx) UnaryOperator(arg_ref_lv, UO_Deref,
+                                                     arg_ref_lv->getType(),
+                                                     VK_RValue, OK_Ordinary,
+                                                     SourceLocation());
+                break;
+
+            default:
+                llvm_unreachable("Unknown CustomArg::Modifier case");
+            }
+            res.push_back(arg_ref_rv);
+        }
+        return res;
     };
     return build_xcheck(param_xcheck, FUNCTION_ARG_TAG, ctx,
                         param_xcheck_default_fn,
@@ -897,10 +1092,15 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                       entry_xcheck_stmts.end(),
                       std::back_inserter(new_body_stmts));
 
+            VarDeclMap param_decls = global_vars;
+            for (auto &param : fd->parameters()) {
+                param_decls.emplace(llvm_string_ref_to_sv(param->getName()), param);
+            }
             // Add cross-checks for the function parameters
             for (auto &param : fd->parameters()) {
                 auto param_xcheck_stmts =
-                    build_parameter_xcheck(param, file_defaults, func_cfg, ctx);
+                    build_parameter_xcheck(param, file_defaults, func_cfg,
+                                           param_decls, ctx);
                 std::move(param_xcheck_stmts.begin(),
                           param_xcheck_stmts.end(),
                           std::back_inserter(new_body_stmts));
@@ -913,6 +1113,8 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                                    old_body->getLocStart(),
                                                    old_body->getLocEnd());
             fd->setBody(new_body);
+        } else if (VarDecl *vd = dyn_cast<VarDecl>(d)) {
+            global_vars.emplace(llvm_string_ref_to_sv(vd->getName()), vd);
         }
     }
     return true;
@@ -981,10 +1183,8 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
     auto parsed_args =
         opt_table.ParseArgs(arg_ptrs, missing_arg_index, missing_arg_count);
     if (missing_arg_count > 0) {
-        unsigned diag_id =
-            diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                  "missing %0 option(s), starting at index %1");
-        diags.Report(diag_id) << missing_arg_count << missing_arg_index;
+        report_clang_error(diags, "missing %0 option(s), starting at index %1",
+                           missing_arg_count, missing_arg_index);
         return false;
     }
 
@@ -992,10 +1192,8 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
     for (auto &config_file : config_files) {
         auto config_data = llvm::MemoryBuffer::getFile(config_file);
         if (!config_data) {
-            unsigned diag_id =
-                diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                      "error reading configuration file '%0': %1");
-            diags.Report(diag_id) << config_file << config_data.getError().message();
+            report_clang_error(diags, "error reading configuration file '%0': %1",
+                               config_file, config_data.getError().message());
             return false;
         }
 
@@ -1003,10 +1201,8 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
         llvm::yaml::Input yin((*config_data)->getBuffer());
         yin >> new_config;
         if (auto yerr = yin.error()) {
-            unsigned diag_id =
-                diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                      "error parsing YAML configuration: %0");
-            diags.Report(diag_id) << yerr.message();
+            report_clang_error(diags, "error parsing YAML configuration: %0",
+                               yerr.message());
             return false;
         }
         for (auto &src_file : new_config) {

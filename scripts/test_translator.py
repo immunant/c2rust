@@ -73,7 +73,7 @@ class TestCase:
         compile_commands = """ \
         [
           {{
-            "arguments": [ "cc", "-Wwritable-strings -D_FORTIFY_SOURCE=0", "-c", "{0}" ],
+            "arguments": [ "cc", "-Wwritable-strings", "-D_FORTIFY_SOURCE=0", "-c", "{0}" ],
             "directory": "{1}",
             "file": "{0}"
           }}
