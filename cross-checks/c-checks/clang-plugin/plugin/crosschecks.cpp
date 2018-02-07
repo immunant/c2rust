@@ -1092,6 +1092,9 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                       entry_xcheck_stmts.end(),
                       std::back_inserter(new_body_stmts));
 
+            // Custom cross-check functions accept either function parameters
+            // or global variables as their own arguments
+            // TODO: also handle static locals
             VarDeclMap param_decls = global_vars;
             for (auto &param : fd->parameters()) {
                 param_decls.emplace(llvm_string_ref_to_sv(param->getName()), param);
