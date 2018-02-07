@@ -1,5 +1,4 @@
 // Should fail
-// https://github.com/GaloisInc/C2Rust/issues/37
 
 enum e {
         A = 0,
@@ -8,4 +7,6 @@ enum e {
 
 void entry (const unsigned int sz, int buffer[const])
 {
+        int x = A;
+        x = B;
 }
