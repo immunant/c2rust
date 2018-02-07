@@ -28,6 +28,7 @@ pub struct Translation {
     reloop_cfgs: bool,
     zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
     dump_function_cfgs: bool,
+    dump_structures: bool,
 }
 
 #[derive(Debug)]
@@ -157,9 +158,9 @@ fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder 
 }
 
 
-pub fn translate(ast_context: &TypedAstContext, reloop_cfgs: bool, dump_function_cfgs: bool) -> String {
+pub fn translate(ast_context: &TypedAstContext, reloop_cfgs: bool, dump_function_cfgs: bool, dump_structures: bool) -> String {
 
-    let mut t = Translation::new(ast_context.clone(), reloop_cfgs, dump_function_cfgs);
+    let mut t = Translation::new(ast_context.clone(), reloop_cfgs, dump_function_cfgs, dump_structures);
 
     enum Name<'a> {
         VarName(&'a str),
@@ -300,7 +301,7 @@ pub enum ExprUse {
 }
 
 impl Translation {
-    pub fn new(ast_context: TypedAstContext, reloop_cfgs: bool, dump_function_cfgs: bool) -> Translation {
+    pub fn new(ast_context: TypedAstContext, reloop_cfgs: bool, dump_function_cfgs: bool, dump_structures: bool) -> Translation {
         Translation {
             items: vec![],
             type_converter: RefCell::new(TypeConverter::new()),
@@ -321,6 +322,7 @@ impl Translation {
             zero_inits: RefCell::new(HashMap::new()),
             reloop_cfgs,
             dump_function_cfgs,
+            dump_structures,
         }
     }
 
@@ -572,9 +574,11 @@ impl Translation {
                 let simplify_structures = true;
                 let relooped = cfg::relooper::reloop(graph, simplify_structures);
 
-                eprintln!("Relooped:");
-                for s in &relooped {
-                    eprintln!("  {:?}", s);
+                if self.dump_structures {
+                    eprintln!("Relooped structures:");
+                    for s in &relooped {
+                        eprintln!("  {:?}", s);
+                    }
                 }
 
                 let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");
