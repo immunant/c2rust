@@ -124,7 +124,8 @@ impl ScopeCheckConfig {
         if let ItemCheckConfig::Function(ref func) = self.item {
             func
         } else {
-            panic!("expected function item configuration");
+            panic!("expected function item configuration, \
+                    found: {:?}", self.item);
         }
     }
 
@@ -132,7 +133,8 @@ impl ScopeCheckConfig {
         if let ItemCheckConfig::Struct(ref struc) = self.item {
             struc
         } else {
-            panic!("expected structure item configuration");
+            panic!("expected structure item configuration, \
+                    found: {:?}", self.item);
         }
     }
 
