@@ -69,29 +69,28 @@ uint32_t djb2_hash(llvm::StringRef str) {
 
 #endif
 
-template<unsigned N>
-static inline DiagnosticBuilder
-report_clang_error(DiagnosticsEngine &diags, const char (&fmt)[N]) {
+// Helper function for report_clang_error
+// that inserts each argument into the given stream
+template<typename Stream>
+static inline void
+args_to_stream(Stream &s) {}
+
+template<typename Stream, typename Arg, typename... Args>
+static inline void
+args_to_stream(Stream &s, Arg &&arg, Args&&... args) {
+    s << std::forward<Arg>(arg);
+    args_to_stream(s, args...);
+}
+
+template<unsigned N, typename... Args>
+static inline void
+report_clang_error(DiagnosticsEngine &diags,
+                   const char (&fmt)[N],
+                   Args&&... args) {
     unsigned diag_id =
         diags.getCustomDiagID(DiagnosticsEngine::Error, fmt);
-    return diags.Report(diag_id);
-}
-
-template<unsigned N, typename Arg>
-static inline DiagnosticBuilder
-report_clang_error(DiagnosticsEngine &diags, const char (&fmt)[N], Arg &&arg) {
-    auto db = report_clang_error(diags, fmt);
-    db << std::forward<Arg>(arg);
-    return db;
-}
-
-template<unsigned N, typename Arg, typename... Args>
-static inline DiagnosticBuilder
-report_clang_error(DiagnosticsEngine &diags, const char (&fmt)[N],
-                   Args&&... args, Arg &&arg) {
-    auto db = report_clang_error(diags, fmt, std::forward<Args>(args)...);
-    db << std::forward<Arg>(arg);
-    return db;
+    auto db = diags.Report(diag_id);
+    args_to_stream(db, std::forward<Args>(args)...);
 }
 
 using StringRef = std::reference_wrapper<const std::string>;
@@ -766,11 +765,8 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     auto record_ty = cast<RecordType>(ty);
     auto record_decl = record_ty->getDecl();
     if (record_decl->isUnion()) {
-        unsigned diag_id =
-            diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                  "default cross-checking is not supported for unions, "
+        report_clang_error(diags, "default cross-checking is not supported for unions, "
                                   "please use a custom cross-check");
-        diags.Report(diag_id);
         return;
     }
     assert((record_decl->isStruct() || record_decl->isClass()) &&
@@ -795,11 +791,8 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     // TODO: allow per-field cross-check configuration
     auto record_def = record_decl->getDefinition();
     if (record_def == nullptr) {
-        unsigned diag_id =
-            diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                  "default cross-checking is not supported for undefined structures, "
+        report_clang_error(diags, "default cross-checking is not supported for undefined structures, "
                                   "please use a custom cross-check");
-        diags.Report(diag_id);
         return;
     }
 
@@ -884,11 +877,8 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
         for (auto *field : record_def->fields()) {
             if (field->isBitField()) {
                 auto &diags = ctx.getDiagnostics();
-                unsigned diag_id =
-                    diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                          "default cross-checking is not supported for bitfields, "
+                report_clang_error(diags, "default cross-checking is not supported for bitfields, "
                                           "please use a custom cross-check");
-                diags.Report(diag_id);
                 return {};
             }
 
@@ -1187,10 +1177,8 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
     auto parsed_args =
         opt_table.ParseArgs(arg_ptrs, missing_arg_index, missing_arg_count);
     if (missing_arg_count > 0) {
-        unsigned diag_id =
-            diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                  "missing %0 option(s), starting at index %1");
-        diags.Report(diag_id) << missing_arg_count << missing_arg_index;
+        report_clang_error(diags, "missing %0 option(s), starting at index %1",
+                           missing_arg_count, missing_arg_index);
         return false;
     }
 
@@ -1198,10 +1186,8 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
     for (auto &config_file : config_files) {
         auto config_data = llvm::MemoryBuffer::getFile(config_file);
         if (!config_data) {
-            unsigned diag_id =
-                diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                      "error reading configuration file '%0': %1");
-            diags.Report(diag_id) << config_file << config_data.getError().message();
+            report_clang_error(diags, "error reading configuration file '%0': %1",
+                               config_file, config_data.getError().message());
             return false;
         }
 
@@ -1209,10 +1195,8 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
         llvm::yaml::Input yin((*config_data)->getBuffer());
         yin >> new_config;
         if (auto yerr = yin.error()) {
-            unsigned diag_id =
-                diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                      "error parsing YAML configuration: %0");
-            diags.Report(diag_id) << yerr.message();
+            report_clang_error(diags, "error parsing YAML configuration: %0",
+                               yerr.message());
             return false;
         }
         for (auto &src_file : new_config) {
