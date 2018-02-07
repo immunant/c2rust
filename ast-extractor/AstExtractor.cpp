@@ -953,8 +953,8 @@ class TranslateASTVisitor final
               auto name = D->getNameAsString();
               cbor_encode_string(local, name);
 
-              auto val = D->getInitVal().getExtValue();
-              cbor_encode_uint(local, val);
+              auto val = D->getInitVal().getSExtValue();
+              cbor_encode_int(local, val);
           });
           return true;
       }

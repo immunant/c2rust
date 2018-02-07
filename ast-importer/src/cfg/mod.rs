@@ -850,7 +850,10 @@ impl Cfg<Label> {
 
         // Utility function for sanitizing strings
         fn sanitize_label(lbl: String) -> String {
-            format!("{}\\l", lbl.replace("\n", "\\l").replace("\t", "  "))
+            format!("{}\\l", lbl.replace("\t", "  ")
+                                .replace("\\", "\\\\")
+                                .replace("\"", "\\\"")
+                                .replace("\n", "\\l"))
         }
 
         let mut file = File::create(file_path)?;

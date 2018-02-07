@@ -76,6 +76,7 @@ pub fn expect_u64(val: &Cbor) -> Result<u64, DecodeError> {
 
 pub fn expect_i64(val: &Cbor) -> Result<i64, DecodeError> {
     match val {
+        &Cbor::Unsigned(x) => Ok(x.into_u64() as i64),
         &Cbor::Signed(x) => Ok(x.into_i64()),
         _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
     }

@@ -20,6 +20,8 @@ impl<T: Clone + Eq + Hash> Scope<T> {
         }
     }
 
+    pub fn insert(&mut self, key: T, val: String) { self.name_map.insert(key, val); }
+
     pub fn contains_key(&self, key: &T) -> bool {
         self.name_map.contains_key(key)
     }
@@ -107,9 +109,19 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
 
         let target = self.pick_name(basename);
 
-        self.current_scope_mut().name_map.insert(key, target.clone());
+        self.current_scope_mut().insert(key, target.clone());
 
         Some(target)
+    }
+
+    /// Assign a name in the current scope without reservation or checking for overlap.
+    /// This is intended to be used when one key is going to be merged
+    pub fn alias(&mut self, new_key: T, old_key: &T) {
+        match self.get(old_key) {
+            Some(name) => self.current_scope_mut().insert(new_key, name),
+            None => panic!("Failed to overlap name"),
+        }
+
     }
 
     /// Lookup the given key in all of the scopes returning Some of the matched mangled name
