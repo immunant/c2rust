@@ -175,7 +175,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         // we need to convert it to String ourselves, using format!
         // FIXME: ideally, we find a better way to handle all the
         // different types of virtual files from FileName
-        let mod_file_name = format!("{}", mod_file_name);
+        //DISABLED: let mod_file_name = format!("{}", mod_file_name);
         if !last_scope.same_file(&mod_file_name) {
             // We should only ever get a file name mismatch
             // at the top of a module
@@ -548,7 +548,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         let mut top_config = config::ScopeCheckConfig::new();
                         top_config.parse_attr_config(cx, mi);
                         let top_file_name = cx.codemap().span_to_filename(sp);
-                        let top_file_name = format!("{}", top_file_name);
+                        //DISABLED: let top_file_name = format!("{}", top_file_name);
                         let top_scope = ScopeConfig::new(cx,
                                                          &self.external_config,
                                                          top_file_name,
@@ -563,7 +563,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         let mut config = config::ScopeCheckConfig::from_item(&i, scope_config);
                         config.parse_attr_config(cx, mi);
                         let file_name = cx.codemap().span_to_filename(sp);
-                        let file_name = format!("{}", file_name);
+                        //DISABLED: let file_name = format!("{}", file_name);
                         let scope = ScopeConfig::new(cx,
                                                      &self.external_config,
                                                      file_name,

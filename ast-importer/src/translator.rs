@@ -28,6 +28,7 @@ pub struct Translation {
     reloop_cfgs: bool,
     zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
     dump_function_cfgs: bool,
+    dump_structures: bool,
 }
 
 #[derive(Debug)]
@@ -157,9 +158,9 @@ fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder 
 }
 
 
-pub fn translate(ast_context: &TypedAstContext, reloop_cfgs: bool, dump_function_cfgs: bool) -> String {
+pub fn translate(ast_context: &TypedAstContext, reloop_cfgs: bool, dump_function_cfgs: bool, dump_structures: bool) -> String {
 
-    let mut t = Translation::new(ast_context.clone(), reloop_cfgs, dump_function_cfgs);
+    let mut t = Translation::new(ast_context.clone(), reloop_cfgs, dump_function_cfgs, dump_structures);
 
     enum Name<'a> {
         VarName(&'a str),
@@ -300,7 +301,7 @@ pub enum ExprUse {
 }
 
 impl Translation {
-    pub fn new(ast_context: TypedAstContext, reloop_cfgs: bool, dump_function_cfgs: bool) -> Translation {
+    pub fn new(ast_context: TypedAstContext, reloop_cfgs: bool, dump_function_cfgs: bool, dump_structures: bool) -> Translation {
         Translation {
             items: vec![],
             type_converter: RefCell::new(TypeConverter::new()),
@@ -321,6 +322,7 @@ impl Translation {
             zero_inits: RefCell::new(HashMap::new()),
             reloop_cfgs,
             dump_function_cfgs,
+            dump_structures,
         }
     }
 
@@ -587,9 +589,11 @@ impl Translation {
                 let simplify_structures = true;
                 let relooped = cfg::relooper::reloop(graph, simplify_structures);
 
-                eprintln!("Relooped:");
-                for s in &relooped {
-                    eprintln!("  {:?}", s);
+                if self.dump_structures {
+                    eprintln!("Relooped structures:");
+                    for s in &relooped {
+                        eprintln!("  {:?}", s);
+                    }
                 }
 
                 let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");
@@ -1081,11 +1085,11 @@ impl Translation {
                             // Sometimes we hit a quirk where we the bitcast is superfluous, we
                             // detect such instances by examining the expr part of the AST. See
                             // this issue: https://github.com/GaloisInc/C2Rust/issues/32
-                            let source_ty_id = match self.get_declref_type(expr) {
+                            let (source_ty_id, src_is_declref_type) = match self.get_declref_type(expr) {
                                 // special case where the bitcast is superfluous
-                                Ok(type_id) => type_id,
+                                Ok(type_id) => (type_id, true),
                                 // normal case
-                                _ => self.ast_context.index(expr).kind.get_type()
+                                _ => (self.ast_context.index(expr).kind.get_type(), false)
                             };
 
                             let source_ty = self.convert_type(source_ty_id).unwrap();
@@ -1095,7 +1099,7 @@ impl Translation {
                                     let inner_ty_ctype = &self.ast_context.resolve_type(qual_type_id.ctype).kind;
                                     let target_ty = self.convert_type(qual_type_id.ctype).unwrap();
                                     // See comment above re. cases where bitcast is superfluous.
-                                    if target_ty == source_ty {
+                                    if src_is_declref_type && target_ty == source_ty {
                                         return x
                                     }
                                 },
