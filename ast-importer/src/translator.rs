@@ -1139,7 +1139,6 @@ impl Translation {
                                 let val = mk().method_call_expr(byte_literal, "as_ptr", vec![] as Vec<P<Expr>>);
                                 let val = mk().cast_expr(val, target_ty);
                                 Ok(WithStmts { stmts: vec![], val: val, })
-
                             }
                             _ => {
                                 let method = if is_const { "as_ptr" } else { "as_mut_ptr" };
