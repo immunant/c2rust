@@ -397,15 +397,15 @@ impl Translation {
 
                 // C allows multiple variants to share the same representation while Rust does not.
                 // We track which values have been used in order to avoid generating invalid Rust.
-                let mut value_map = HashMap::<i64, String>::new();
+                let mut value_map = HashMap::<i64, CDeclId>::new();
 
-                for v in variants {
-                    let enum_constant_decl = self.ast_context.index(*v);
+                for &v in variants {
+                    let enum_constant_decl = self.ast_context.index(v);
                     match &enum_constant_decl.kind {
                         &CDeclKind::EnumConstant { ref name, value } => {
 
                             if value_map.contains_key(&value) {
-                                return Err(format!("Duplicate value in enum declaration"))
+                                self.renamer.borrow_mut().alias(v, &value_map[&value]);
                             } else {
                                 let disc = if value < 0 {
                                     mk().unary_expr(ast::UnOp::Neg, mk().lit_expr(mk().int_lit((-value) as u128, "")))
@@ -413,11 +413,11 @@ impl Translation {
                                     mk().lit_expr(mk().int_lit(value as u128, ""))
                                 };
                                 let variant = &self.renamer.borrow_mut()
-                                    .insert(*v, &format!("{}::{}", enum_name, name))
+                                    .insert(v, &format!("{}::{}", enum_name, name))
                                     .expect(&format!("Failed to insert enum variant '{}'", name));
                                 let variant = variant.trim_left_matches(&format!("{}::", enum_name));
-                                value_map.insert(value, variant.to_owned());
-                                variant_syns.push(mk().unit_variant(variant, Some(disc)))
+                                value_map.insert(value, v);
+                                variant_syns.push(mk().unit_variant(variant, Some(disc)));
                             }
                         }
                         _ => return Err(format!("Found non-variant in enum variant list")),

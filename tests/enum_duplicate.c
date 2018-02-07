@@ -1,12 +1,14 @@
-// Should fail
-
 enum e {
         A = 0,
         B = 0,
+        C = -10,
+        D,
 };
 
 void entry (const unsigned int sz, int buffer[const])
 {
-        int x = A;
-        x = B;
+        buffer[0] = A;
+        buffer[1] = B;
+        buffer[2] = C;
+        buffer[3] = D;
 }
