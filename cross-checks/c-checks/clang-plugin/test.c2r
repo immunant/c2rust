@@ -21,6 +21,7 @@ test.c:
         #p: default
         #p: { custom: "id(*p)" }
         #p: { custom: "deref(p)" }
+        #p: { custom: "id(ctr)" }
         #q: default
         foo: default
         #foo: { custom: "my_Foo_hash(foo)" }

@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
+uint64_t ctr = 0;
+
 uint64_t foo(void) {
     return 0x123457890ABCDEFULL;
 }
@@ -23,8 +25,9 @@ uint64_t my_Foo_hash(struct Foo x) {
 
 uint64_t fibo(uint64_t n, const uint64_t *p, const uint64_t *q, struct Foo foo) {
 #if 0
-    printf("fibo call:%ld %p %p\n", n, p, q);
+    printf("fibo call %llu:%llu %p %p\n", ctr, n, p, q);
 #endif
+    ctr++;
     if (n <= 1) {
         return 1;
     } else {

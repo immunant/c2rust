@@ -201,6 +201,10 @@ private:
 
     std::vector<FunctionDecl*> new_funcs;
 
+    using VarDeclMap = std::map<std::string_view, VarDecl*>;
+
+    VarDeclMap global_vars;
+
 private:
     // Store a cache of name=>FunctionDecl mappings,
     // to use when building calls to our runtime functions.
@@ -295,7 +299,7 @@ private:
     build_parameter_xcheck(ParmVarDecl *param,
                            const DefaultsConfigOptRef file_defaults,
                            const std::optional<FunctionConfigRef> &func_cfg,
-                           const std::map<std::string_view, ParmVarDecl*> &param_decls,
+                           const VarDeclMap &param_decls,
                            ASTContext &ctx);
 
 public:
@@ -949,7 +953,7 @@ llvm::TinyPtrVector<Stmt*>
 CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
                                            const DefaultsConfigOptRef file_defaults,
                                            const std::optional<FunctionConfigRef> &func_cfg,
-                                           const std::map<std::string_view, ParmVarDecl*> &param_decls,
+                                           const VarDeclMap &param_decls,
                                            ASTContext &ctx) {
     XCheck param_xcheck{XCheck::DISABLED};
     if (file_defaults && file_defaults->get().all_args)
@@ -1088,7 +1092,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                       entry_xcheck_stmts.end(),
                       std::back_inserter(new_body_stmts));
 
-            std::map<std::string_view, ParmVarDecl*> param_decls;
+            VarDeclMap param_decls = global_vars;
             for (auto &param : fd->parameters()) {
                 param_decls.emplace(llvm_string_ref_to_sv(param->getName()), param);
             }
@@ -1109,6 +1113,8 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                                    old_body->getLocStart(),
                                                    old_body->getLocEnd());
             fd->setBody(new_body);
+        } else if (VarDecl *vd = dyn_cast<VarDecl>(d)) {
+            global_vars.emplace(llvm_string_ref_to_sv(vd->getName()), vd);
         }
     }
     return true;
