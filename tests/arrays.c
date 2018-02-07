@@ -20,4 +20,10 @@ void entry(const unsigned buffer_size, int buffer[const])
     char part[2] = {1};
     buffer[i++] = part[0];
     buffer[i++] = part[1];
+
+    char *abcptr = "abc";
+    buffer[i++] = abcptr[0];
+    buffer[i++] = abcptr[1];
+    buffer[i++] = abcptr[2];
+    buffer[i++] = abcptr[3];
 }

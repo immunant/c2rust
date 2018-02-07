@@ -873,22 +873,7 @@ impl Translation {
         typ: CQualTypeId
     ) -> Result<(P<Ty>, Mutability, WithStmts<P<Expr>>), String> {
         let init = match initializer {
-            Some(x) => {
-                let v = self.convert_expr(ExprUse::RValue, x)?;
-
-                // When translating char buffer[] = "string literal";
-                // it is necessary to add an extra dereference to properly
-                // initialize the array.
-                if let &CTypeKind::ConstantArray{..} = &self.ast_context.resolve_type(typ.ctype).kind {
-                    if let CExprKind::Literal(_, CLiteral::String{..}) = self.ast_context[x].kind {
-                        v.map(|x| mk().unary_expr(ast::UnOp::Deref, x))
-                    } else {
-                        v
-                    }
-                } else {
-                    v
-                }
-            }
+            Some(x) => self.convert_expr(ExprUse::RValue, x)?,
             None => WithStmts::new(self.implicit_default_expr(typ.ctype)?),
         };
         let ty = self.convert_type(typ.ctype)?;
@@ -1070,7 +1055,8 @@ impl Translation {
 
                 let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
                 let pointer = transmute_expr(source_ty, target_ty, byte_literal);
-                Ok(WithStmts::new(pointer))
+                let array = mk().unary_expr(ast::UnOp::Deref, pointer);
+                Ok(WithStmts::new(array))
             }
 
             CExprKind::ImplicitCast(ty, expr, kind, opt_field_id) |
@@ -1138,11 +1124,29 @@ impl Translation {
                         Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
 
                     CastKind::ArrayToPointerDecay => {
-                        let method = match &self.ast_context.resolve_type(ty.ctype).kind {
-                            &CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => "as_ptr",
-                            _ => "as_mut_ptr",
+                        let is_const = match &self.ast_context.resolve_type(ty.ctype).kind {
+                            &CTypeKind::Pointer(pointee) => pointee.qualifiers.is_const,
+                            _ => false,
                         };
-                        Ok(val.map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>)))
+
+                        match &self.ast_context.index(expr).kind {
+                            &CExprKind::Literal(_,CLiteral::String(ref bytes,1)) if is_const => {
+                                let target_ty = self.convert_type(ty.ctype).unwrap();
+
+                                let mut bytes = bytes.to_owned();
+                                bytes.push(0);
+                                let byte_literal = mk().lit_expr(mk().bytestr_lit(bytes));
+                                let val = mk().method_call_expr(byte_literal, "as_ptr", vec![] as Vec<P<Expr>>);
+                                let val = mk().cast_expr(val, target_ty);
+                                Ok(WithStmts { stmts: vec![], val: val, })
+
+                            }
+                            _ => {
+                                let method = if is_const { "as_ptr" } else { "as_mut_ptr" };
+                                Ok(val.map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>)))
+                            },
+                        }
+
                     }
 
                     CastKind::NullToPointer => {
