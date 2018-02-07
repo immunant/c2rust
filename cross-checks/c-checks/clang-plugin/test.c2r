@@ -19,10 +19,15 @@ test.c:
       args:
         n: default
         #p: default
+        #p: { custom: "id(*p)" }
+        #p: { custom: "deref(p)" }
         #q: default
         foo: default
+        #foo: { custom: "my_Foo_hash(foo)" }
         #n: disabled
-        #n: { custom: "id" }
+        #n: { custom: "id(n)" }
+        #n: { custom: "deref(&n)" }
+        #n: { custom: "id(n, x)" }
         #n: { fixed: 0xabcd1234 }
 
     - item: struct
@@ -35,5 +40,5 @@ test.c:
         #n2: disabled
         #n2: { fixed: 0x1234 }
         #n2: { custom: "id" }
-        n2: { custom: "foo" }
+        n2: { custom: "foo(n1, n2)" }
 ...

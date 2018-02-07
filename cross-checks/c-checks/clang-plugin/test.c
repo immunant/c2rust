@@ -9,6 +9,10 @@ uint64_t id(uint64_t x) {
     return x;
 }
 
+uint64_t deref(uint64_t *x) {
+    return x ? *x : 0xDEADBEEF;
+}
+
 struct Foo {
     uint64_t n1, n2;
 };
