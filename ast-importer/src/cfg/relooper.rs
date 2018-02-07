@@ -165,21 +165,42 @@ fn relooper(
 
         let mut follow_entries = out_edges(&body_blocks);
 
-        // Move into `body_blocks` some `follow_blocks`
-        // TODO: for now, we only move blocks which themselves are reached immediately. Why not
-        // chains of blocks? Etc.
-        let mut move_into_loop: Vec<Label> = vec![];
-        for follow_entry in follow_entries.iter() {
-            if let Some(bb) = follow_blocks.get(follow_entry) {
-                if bb.successors().is_empty() && predecessor_map[&follow_entry].len() == 1 {
-                    move_into_loop.push(*follow_entry);
+
+        // Move into `body_blocks` some `follow_blocks`.
+        //
+        // The goal of this step is to reduce the size of `follow_entries`. Consequently, it makes
+        // no sense to try any of this unless `follow_entries` > 1.
+        //
+        // This is a difficult problem in general since there can be a "swell" of block, which then
+        // gets neatly knotted off. How far should we go look for such a neat knot is the question.
+        if follow_entries.len() > 1 {
+            for follow_entry in follow_entries.clone().iter() {
+                let mut following: Label = *follow_entry;
+
+                loop {
+                    // If this block might have come from 2 places, give up
+                    if predecessor_map[&following].len() != 1 {
+                        break;
+                    }
+
+                    // Otherwise, move it into the loop
+                    let bb = if let Some(bb) = follow_blocks.remove(&following) { bb } else { break; };
+                    let succs = bb.successors();
+
+                    body_blocks.insert(following, bb);
+                    follow_entries.remove(&following);
+                    follow_entries.extend(&succs);
+
+                    // If it has more than one successor, don't try following the successor
+                    if succs.len() != 1 {
+                        break;
+                    }
+
+                    following = *succs.iter().next().unwrap();
                 }
             }
         }
-        for m in move_into_loop {
-            body_blocks.insert(m, follow_blocks.remove(&m).unwrap());
-            follow_entries.remove(&m);
-        }
+
 
         // Rename some `GoTo`s in the loop body to `ExitTo`s
         for (_, bb) in body_blocks.iter_mut() {
@@ -306,12 +327,6 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
             &Structure::Simple { ref entries, ref body, ref terminator } => {
 
                 let terminator = if let &Switch { ref expr, ref cases } = terminator {
-
-                    // TODO:
-                    //
-                    //   1. check if anything but the 'GoTo' case can happen here
-                    //   2. see if there is anything to do about being clever about possible values of 'currentBlock'
-
 
                     // Here, we group patterns by the label they go to.
                     let mut merged_goto: HashMap<Label, Vec<P<Pat>>> = HashMap::new();
