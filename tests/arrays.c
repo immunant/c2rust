@@ -26,4 +26,7 @@ void entry(const unsigned buffer_size, int buffer[const])
     buffer[i++] = abcptr[1];
     buffer[i++] = abcptr[2];
     buffer[i++] = abcptr[3];
+
+    char init[] = {"test"};
+    buffer[i++] = init[0];
 }

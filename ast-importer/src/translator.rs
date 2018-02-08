@@ -1421,24 +1421,58 @@ impl Translation {
                 match resolved {
                     &CTypeKind::ConstantArray(ty, n) => {
                         // Convert all of the provided initializer values
-                        let mut stmts: Vec<Stmt> = vec![];
-                        let mut vals: Vec<P<Expr>> = vec![];
+
+                        // Need to check to see if the next item is a string literal,
+                        // if it is need to treat it as a declaration, rather than
+                        // an init list. 
+                        let mut is_string = false;
                         for v in ids {
+                            match self.ast_context.index(*v).kind {
+                                CExprKind::UnaryType(_, _, _) => {},
+                                CExprKind::DeclRef(_, _) => {},
+                                CExprKind::Literal(_, CLiteral::Integer(_))  => {},
+                                CExprKind::Literal(_, CLiteral::Character(_)) => {},
+                                CExprKind::Literal(_, CLiteral::Floating(_)) => {},
+                                CExprKind::Literal(_, CLiteral::String(_, _)) => {
+                                    is_string = true;
+                                },
+                                CExprKind::ImplicitCast(_, _, _, _) => {},
+                                CExprKind::ExplicitCast(_, _, _, _) => {},
+                                CExprKind::Unary(_, _, _) => {},
+                                CExprKind::Conditional(_, _, _, _) => {},
+                                CExprKind::BinaryConditional(_, _, _) => {},
+                                CExprKind::Binary(_, _, _, _) => {},
+                                CExprKind::ArraySubscript(_, _, _) => {},
+                                CExprKind::Call(_, _, _) => {},
+                                CExprKind::Member(_, _, _, _) => {},
+                                CExprKind::CompoundLiteral(_, _) => {},
+                                CExprKind::InitList(_, _, _) => {},
+                                CExprKind::ImplicitValueInit(_) => {},
+                                CExprKind::Predefined(_, _) => {},
+                            };
+                        }
+
+                        let mut stmts: Vec<Stmt> = vec![];
+                        let val: P<Expr> = if is_string {
+                            let v = ids.first().unwrap();
                             let mut x = self.convert_expr(ExprUse::RValue, *v)?;
                             stmts.append(&mut x.stmts);
-                            vals.push(x.val);
-                        }
+                            x.val
+                        } else  {
+                            let mut vals: Vec<P<Expr>> = vec![];
+                            for v in ids {
+                                let mut x = self.convert_expr(ExprUse::RValue, *v)?;
+                                stmts.append(&mut x.stmts);
+                                vals.push(x.val);
+                            }
+                            // Pad out the array literal with default values to the desired size
+                            for _i in ids.len()..n {
+                                vals.push(self.implicit_default_expr(ty)?)
+                            }
+                            mk().array_expr(vals)
+                        };
 
-
-                        // Pad out the array literal with default values to the desired size
-                        for _i in ids.len()..n {
-                            vals.push(self.implicit_default_expr(ty)?)
-                        }
-
-                        Ok(WithStmts {
-                            stmts,
-                            val: mk().array_expr(vals),
-                        })
+                        Ok(WithStmts {stmts, val })
                     }
                     &CTypeKind::Struct(struct_id) => {
                         self.convert_struct_literal(struct_id, ids.as_ref())
