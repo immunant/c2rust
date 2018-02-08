@@ -41,6 +41,8 @@ impl Default for InheritedCheckConfig {
 #[derive(Debug)]
 pub struct FunctionCheckConfig {
     pub args: HashMap<xcfg::FieldIndex, xcfg::XCheckType>,
+    pub entry_extra: Vec<xcfg::ExtraXCheck>,
+    pub exit_extra: Vec<xcfg::ExtraXCheck>,
 }
 
 // We want all_args set to None, so we need a custom Default implementation
@@ -48,6 +50,8 @@ impl Default for FunctionCheckConfig {
     fn default() -> FunctionCheckConfig {
         FunctionCheckConfig {
             args: Default::default(),
+            entry_extra: Default::default(),
+            exit_extra: Default::default(),
         }
     }
 }
@@ -189,6 +193,8 @@ impl ScopeCheckConfig {
                     }));
                 }
 
+                // TODO: handle entry_extra for Function
+
                 // Structure-specific attributes
                 ("custom_hash", &mut ItemCheckConfig::Struct(ref mut struc)) => {
                     struc.custom_hash = Some(String::from(arg.as_str()));
@@ -238,6 +244,8 @@ impl ScopeCheckConfig {
                 self_func.args.extend(xcfg_func.args.iter().map(|(k, v)| {
                     (xcfg::FieldIndex::from_str(k), v.clone())
                 }));
+                self_func.entry_extra.extend(xcfg_func.entry_extra.iter().cloned());
+                self_func.exit_extra.extend(xcfg_func.exit_extra.iter().cloned());
                 // TODO: parse more fields: exit, ret
             },
 

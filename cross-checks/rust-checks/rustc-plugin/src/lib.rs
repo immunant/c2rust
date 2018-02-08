@@ -261,9 +261,25 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     let arg_xchecks = fn_decl.inputs.iter()
                         .flat_map(|ref arg| self.build_arg_xcheck(arg))
                         .collect::<Vec<P<ast::Block>>>();
+                    let extra_xchecks = self.config().function_config()
+                        .entry_extra.iter().map(|ex| {
+                            let expr = self.cx.parse_expr(ex.custom.clone());
+                            let tag_str = match ex.tag {
+                                xcfg::XCheckTag::Unknown        => "UNKNOWN_TAG",
+                                xcfg::XCheckTag::FunctionEntry  => "FUNCTION_ENTRY_TAG",
+                                xcfg::XCheckTag::FunctionExit   => "FUNCTION_EXIT_TAG",
+                                xcfg::XCheckTag::FunctionArg    => "FUNCTION_ARG_TAG",
+                                xcfg::XCheckTag::FunctionReturn => "FUNCTION_RETURN_TAG",
+                            };
+                            let tag = ast::Ident::from_str(tag_str);
+                            quote_block!(self.cx, {
+                                cross_check_raw!($tag, $expr)
+                            })
+                        }).collect::<Vec<P<ast::Block>>>();
                     quote_block!(self.cx, {
                         $entry_xcheck
                         $arg_xchecks
+                        $extra_xchecks
                         $block
                     })
                 } else {

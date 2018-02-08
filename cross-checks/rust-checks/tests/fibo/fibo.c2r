@@ -16,6 +16,10 @@ src/fibo.rs:
       //ahasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
       //shasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
 
+      entry_extra:
+        - { custom: "foo(&n)", tag: FUNCTION_ARG }
+        - { custom: "0xdeadbeef", tag: FUNCTION_ARG }
+
     - item: struct
       name: FiboArg
       disable_xchecks: false
