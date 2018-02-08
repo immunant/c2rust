@@ -15,7 +15,8 @@ pub fn reloop(cfg: Cfg<Label>, simplify_structures: bool) -> Vec<Structure> {
         })
         .collect();
 
-    let mut relooped = relooper(entries, blocks);
+    let mut relooped = vec![];
+    relooper(entries, blocks, &mut relooped);
 
     if simplify_structures {
         relooped = simplify_structure(relooped)
@@ -25,12 +26,16 @@ pub fn reloop(cfg: Cfg<Label>, simplify_structures: bool) -> Vec<Structure> {
 }
 
 /// Recursive helper for `reloop`.
+///
+/// TODO: perhaps manually perform TCO?
 fn relooper(
-    entries: HashSet<Label>,
-    mut blocks: HashMap<Label, BasicBlock<StructureLabel>>
-) -> Vec<Structure> {
+    entries: HashSet<Label>,                                 // current entry points into the CFG
+    mut blocks: HashMap<Label, BasicBlock<StructureLabel>>,  // the blocks in the sub-CFG considered
+    result: &mut Vec<Structure>,                             // the generated structures are appended to this
+) {
 
-    // Find nodes outside the graph pointed to from nodes inside the graph
+    // Find nodes outside the graph pointed to from nodes inside the graph. Note that `ExitTo` is
+    // not considered here - only `GoTo`.
     fn out_edges(blocks: &HashMap<Label, BasicBlock<StructureLabel>>) -> HashSet<Label> {
         blocks
             .iter()
@@ -50,24 +55,24 @@ fn relooper(
         flipped_map
     }
 
+    // Find all labels reachable via a `GoTo` from the current set of blocks
     let reachable_labels: HashSet<Label> = blocks
         .iter()
         .flat_map(|(_, bb)| bb.successors())
         .collect();
 
-    // Split the entry labels into those that some basic block may branch to versus those that
-    // none can branch to.
+    // Split the entry labels into those that some basic block may goto versus those that none can
+    // goto.
     let (some_branch_to, none_branch_to): (HashSet<Label>, HashSet<Label>) = entries
         .iter()
         .cloned()
         .partition(|entry| reachable_labels.contains(&entry));
 
 
-
     // --------------------------------------
     // Base case
     if none_branch_to.is_empty() && some_branch_to.is_empty() {
-        return vec![]
+        return;
     }
 
     // --------------------------------------
@@ -75,21 +80,20 @@ fn relooper(
     if none_branch_to.len() == 1 && some_branch_to.is_empty() {
         let entry = *none_branch_to.iter().next().expect("Should find exactly one entry");
 
-        let ret = if let Some(bb) = blocks.remove(&entry) {
+        if let Some(bb) = blocks.remove(&entry) {
             let new_entries = bb.successors();
             let BasicBlock { body, terminator, .. } = bb;
 
-            let mut result = vec![Structure::Simple { entries, body, terminator }];
-            result.extend(relooper(new_entries, blocks));
-            result
+            result.push(Structure::Simple { entries, body, terminator });
+            relooper(new_entries, blocks, result);
         } else {
             let body = vec![];
             let terminator = Jump(StructureLabel::GoTo(entry));
 
-            vec![Structure::Simple { entries, body, terminator }]
+            result.push(Structure::Simple { entries, body, terminator });
         };
 
-        return ret;
+        return;
     }
 
     // --------------------------------------
@@ -102,15 +106,16 @@ fn relooper(
         .partition(|entry| blocks.contains_key(&entry));
 
     if !absent.is_empty() {
-        let ret = if present.is_empty() {
-            vec![]
-        } else {
+        if !present.is_empty() {
             let branches = absent.into_iter().map(|lbl| (lbl,vec![])).collect();
-            let then = relooper(present, blocks);
-            vec![Structure::Multiple { entries, branches, then }]
+
+            let mut then = vec![];
+            relooper(present, blocks, &mut then);
+
+            result.push(Structure::Multiple { entries, branches, then })
         };
 
-        return ret;
+        return;
     }
 
 
@@ -169,11 +174,20 @@ fn relooper(
 
         // Move into `body_blocks` some `follow_blocks`.
         //
-        // The goal of this step is to reduce the size of `follow_entries`. Consequently, it makes
-        // no sense to try any of this unless `follow_entries` > 1.
+        // The goal of this step is to decide which (if any) extra blocks we should toss into the
+        // loop. There are two competing forces:
         //
-        // This is a difficult problem in general since there can be a "swell" of block, which then
-        // gets neatly knotted off. How far should we go look for such a neat knot is the question.
+        //    * we want to reduce the size of `follow_entries` (0 or 1 is optimal)
+        //    * pushing entries into the loop risks forcing making a `Multiple` in it
+        //
+        // I've taken the following heuristic:
+        //
+        //   1. Don't do anything if `follow_entries` is zero or one (since that means whatever
+        //      follows the loop will be nice looking).
+        //   2. Otherwise, recursively push into the loop `follow_entries` as long as they have no
+        //      more than 1 successor (the hope is that some of the chains will join).
+        //
+        // TODO: there has got to be a more disiplined approach for this.
         if follow_entries.len() > 1 {
             for follow_entry in follow_entries.clone().iter() {
                 let mut following: Label = *follow_entry;
@@ -214,19 +228,20 @@ fn relooper(
             }
         }
 
-        let children = relooper(entries.clone(), body_blocks);
+        let mut body = vec![];
+        relooper(entries.clone(), body_blocks, &mut body);
 
-        let mut ret = vec![Structure::Loop { entries, body: children }];
-        ret.extend(relooper(follow_entries, follow_blocks));
+        result.push(Structure::Loop { entries, body });
+        relooper(follow_entries, follow_blocks, result);
 
-        return ret;
+        return;
     }
 
 
     // --------------------------------------
     // Multiple
 
-    // Like `strict_reachable_from`, but a entries also reach themselves
+    // Like `strict_reachable_from`, but entries also reach themselves
     let mut reachable_from: HashMap<Label, HashSet<Label>> = strict_reachable_from;
     for entry in &entries {
         reachable_from.entry(*entry).or_insert(HashSet::new()).insert(*entry);
@@ -277,7 +292,11 @@ fn relooper(
         .into_iter()
         .map(|(lbl, blocks)| {
             let entries: HashSet<Label> = vec![lbl].into_iter().collect();
-            (lbl, relooper(entries, blocks))
+
+            let mut structs: Vec<Structure> = vec![];
+            relooper(entries, blocks, &mut structs);
+
+            (lbl, structs)
         })
         .collect();
 
@@ -290,9 +309,10 @@ fn relooper(
         (vec![], all_handlers)
     };
 
-    let mut ret = vec![Structure::Multiple { entries, branches, then }];
-    ret.extend(relooper(follow_entries, follow_blocks));
-    ret
+    result.push(Structure::Multiple { entries, branches, then });
+    relooper(follow_entries, follow_blocks, result);
+
+    return;
 }
 
 /// Nested precondition: `structures` will contain no `StructureLabel::Nested` terminators.
@@ -327,6 +347,8 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
         match structure {
             &Structure::Simple { ref entries, ref body, ref terminator } => {
 
+                // Here, we ensure that all labels in a terminator are mentioned only once in the
+                // terminator.
                 let terminator = if let &Switch { ref expr, ref cases } = terminator {
 
                     // Here, we group patterns by the label they go to.
