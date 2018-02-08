@@ -46,6 +46,30 @@ impl Default for XCheckType {
     }
 }
 
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum XCheckTag {
+    Unknown,
+    FunctionEntry,
+    FunctionExit,
+    FunctionArg,
+    FunctionReturn,
+}
+
+impl Default for XCheckTag {
+    fn default() -> XCheckTag {
+        XCheckTag::Unknown
+    }
+}
+
+#[derive(Deserialize, Debug, Default, Clone)]
+pub struct ExtraXCheck {
+    #[serde(default)]
+    pub tag: XCheckTag,
+
+    pub custom: String,
+}
+
 #[derive(Deserialize, Debug, Default)]
 #[serde(default)]
 pub struct DefaultsConfig {
@@ -106,6 +130,10 @@ pub struct FunctionConfig {
 
     // Nested items
     nested: Option<ItemList>,
+
+    // Extra cross-checks
+    pub entry_extra: Vec<ExtraXCheck>,
+    pub exit_extra: Vec<ExtraXCheck>,
 }
 
 impl FunctionConfig {
@@ -123,6 +151,8 @@ impl FunctionConfig {
             ahasher: self.ahasher.clone(),
             shasher: self.shasher.clone(),
             nested: Default::default(),
+            entry_extra: self.entry_extra.clone(),
+            exit_extra: self.exit_extra.clone(),
         }
     }
 }

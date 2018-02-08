@@ -5,6 +5,19 @@
 namespace llvm {
 namespace yaml {
 
+void ScalarEnumerationTraits<XCheck::Tag>::enumeration(IO &io, XCheck::Tag &tag) {
+    io.enumCase(tag, "UNKNOWN",         XCheck::Tag::UNKNOWN);
+    io.enumCase(tag, "FUNCTION_ENTRY",  XCheck::Tag::FUNCTION_ENTRY);
+    io.enumCase(tag, "FUNCTION_EXIT",   XCheck::Tag::FUNCTION_EXIT);
+    io.enumCase(tag, "FUNCTION_ARG",    XCheck::Tag::FUNCTION_ARG);
+    io.enumCase(tag, "FUNCTION_RETURN", XCheck::Tag::FUNCTION_RETURN);
+}
+
+void MappingTraits<ExtraXCheck>::mapping(IO &io, ExtraXCheck &ex) {
+    io.mapOptional("tag", ex.tag, XCheck::Tag::UNKNOWN);
+    io.mapRequired("custom", ex.custom);
+}
+
 template<>
 void yamlize(IO &io, XCheck &xc, bool, EmptyContext &ctx) {
     if (io.outputting()) {

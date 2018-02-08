@@ -44,28 +44,15 @@ struct ScopeConfig<'xcfg> {
 }
 
 impl<'xcfg> ScopeConfig<'xcfg> {
-    fn new(cx: &ExtCtxt, cfg: &'xcfg xcfg::Config, file_name: String,
+    fn new(cfg: &'xcfg xcfg::Config, file_name: String,
            ccc: config::ScopeCheckConfig) -> ScopeConfig<'xcfg> {
-        let mut new_ccc = ccc.new_file();
-        let file_items = cfg.get_file_items(&file_name);
-        if let Some(file_items) = file_items {
-            let mut file_cfg = xcfg::DefaultsConfig::default();
-            for item in file_items.items().iter() {
-                match item {
-                    &xcfg::ItemConfig::Defaults(ref def) => file_cfg.merge(def),
-                    _ => (),
-                }
-            }
-            let file_item_cfg = xcfg::ItemConfig::Defaults(file_cfg);
-            new_ccc.parse_xcfg_config(cx, &file_item_cfg);
-        }
-        let items = file_items
+        let items = cfg.get_file_items(&file_name)
                        .map(xcfg::NamedItemList::new)
                        .map(Rc::new);
         ScopeConfig {
             file_name: Rc::new(file_name),
             items: items,
-            check_config: new_ccc,
+            check_config: ccc,
             field_idx: Cell::new(0),
         }
     }
@@ -147,9 +134,26 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     }
 
     fn build_new_scope(&self, item: &ast::Item) -> ScopeConfig<'exp> {
+        let span = match item.node {
+            ast::ItemKind::Mod(ref m) => m.inner,
+            _ => item.span
+        };
+        let last_scope = self.last_scope();
+        let mod_file_name = self.cx.codemap().span_to_filename(span);
+        let same_file = last_scope.same_file(&mod_file_name);
+
+        // Check if there are any file-level defaults, and if so, apply them
+        let file_defaults_config = if !same_file {
+            self.expander.build_file_defaults_config(self.cx,
+                                                     self.config(),
+                                                     &mod_file_name)
+        } else { None };
+        let mut new_config = file_defaults_config
+            .map(|cfg| cfg.inherit(item))
+            .unwrap_or_else(|| self.config().inherit(item));
+
         // We have either a #[cross_check] attribute
         // or external config, so create a new ScopeCheckConfig
-        let mut new_config = self.config().inherit(item);
         // TODO: order???
         let xcheck_attr = find_cross_check_attr(&item.attrs);
         if let Some(ref attr) = xcheck_attr {
@@ -157,7 +161,6 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             new_config.parse_attr_config(self.cx, &mi);
         };
 
-        let last_scope = self.last_scope();
         let item_xcfg_config = {
             let item_name = item.ident.name.as_str();
             last_scope.get_item_config(&*item_name)
@@ -166,21 +169,16 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             new_config.parse_xcfg_config(self.cx, xcfg);
         };
 
-        let span = match item.node {
-            ast::ItemKind::Mod(ref m) => m.inner,
-            _ => item.span
-        };
-        let mod_file_name = self.cx.codemap().span_to_filename(span);
         // Since rustc switched FileName from String to an enum,
         // we need to convert it to String ourselves, using format!
         // FIXME: ideally, we find a better way to handle all the
         // different types of virtual files from FileName
         //DISABLED: let mod_file_name = format!("{}", mod_file_name);
-        if !last_scope.same_file(&mod_file_name) {
+        if !same_file {
             // We should only ever get a file name mismatch
             // at the top of a module
             assert_matches!(item.node, ast::ItemKind::Mod(_));
-            ScopeConfig::new(self.cx, &self.expander.external_config, mod_file_name, new_config)
+            ScopeConfig::new(&self.expander.external_config, mod_file_name, new_config)
         } else {
             last_scope.from_item(item_xcfg_config, new_config)
         }
@@ -263,9 +261,25 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     let arg_xchecks = fn_decl.inputs.iter()
                         .flat_map(|ref arg| self.build_arg_xcheck(arg))
                         .collect::<Vec<P<ast::Block>>>();
+                    let extra_xchecks = self.config().function_config()
+                        .entry_extra.iter().map(|ex| {
+                            let expr = self.cx.parse_expr(ex.custom.clone());
+                            let tag_str = match ex.tag {
+                                xcfg::XCheckTag::Unknown        => "UNKNOWN_TAG",
+                                xcfg::XCheckTag::FunctionEntry  => "FUNCTION_ENTRY_TAG",
+                                xcfg::XCheckTag::FunctionExit   => "FUNCTION_EXIT_TAG",
+                                xcfg::XCheckTag::FunctionArg    => "FUNCTION_ARG_TAG",
+                                xcfg::XCheckTag::FunctionReturn => "FUNCTION_RETURN_TAG",
+                            };
+                            let tag = ast::Ident::from_str(tag_str);
+                            quote_block!(self.cx, {
+                                cross_check_raw!($tag, $expr)
+                            })
+                        }).collect::<Vec<P<ast::Block>>>();
                     quote_block!(self.cx, {
                         $entry_xcheck
                         $arg_xchecks
+                        $extra_xchecks
                         $block
                     })
                 } else {
@@ -529,6 +543,26 @@ impl CrossCheckExpander {
             })
         })
     }
+
+    /// Build a FileDefaults ScopeCheckConfig for the given file,
+    /// if we have any FileDefaults in the external configuration
+    fn build_file_defaults_config(&self, cx: &ExtCtxt, parent: &config::ScopeCheckConfig,
+                                  file_name: &str) -> Option<config::ScopeCheckConfig> {
+        let file_items = self.external_config.get_file_items(file_name);
+        file_items.map(|file_items| {
+            let mut new_config = parent.new_file();
+            let mut file_cfg = xcfg::DefaultsConfig::default();
+            for item in file_items.items().iter() {
+                match item {
+                    &xcfg::ItemConfig::Defaults(ref def) => file_cfg.merge(def),
+                    _ => (),
+                }
+            }
+            let file_item_cfg = xcfg::ItemConfig::Defaults(file_cfg);
+            new_config.parse_xcfg_config(cx, &file_item_cfg);
+            new_config
+        })
+    }
 }
 
 impl MultiItemModifier for CrossCheckExpander {
@@ -549,8 +583,11 @@ impl MultiItemModifier for CrossCheckExpander {
                         top_config.parse_attr_config(cx, mi);
                         let top_file_name = cx.codemap().span_to_filename(sp);
                         //DISABLED: let top_file_name = format!("{}", top_file_name);
-                        let top_scope = ScopeConfig::new(cx,
-                                                         &self.external_config,
+                        // FIXME: do we need to build a FileDefaults???
+                        let top_config = self.build_file_defaults_config(cx, &top_config,
+                                                                         &top_file_name)
+                            .unwrap_or(top_config);
+                        let top_scope = ScopeConfig::new(&self.external_config,
                                                          top_file_name,
                                                          top_config);
                         CrossChecker::new(self, cx, top_scope, false)
@@ -564,8 +601,8 @@ impl MultiItemModifier for CrossCheckExpander {
                         config.parse_attr_config(cx, mi);
                         let file_name = cx.codemap().span_to_filename(sp);
                         //DISABLED: let file_name = format!("{}", file_name);
-                        let scope = ScopeConfig::new(cx,
-                                                     &self.external_config,
+                        // TODO: build a FileDefaults???
+                        let scope = ScopeConfig::new(&self.external_config,
                                                      file_name,
                                                      config);
                         CrossChecker::new(self, cx, scope, true)

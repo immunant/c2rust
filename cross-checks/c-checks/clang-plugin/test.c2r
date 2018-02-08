@@ -31,6 +31,12 @@ test.c:
         #n: { custom: "id(n, x)" }
         #n: { fixed: 0xabcd1234 }
 
+      entry_extra:
+        - { custom: "my_Foo_hash(foo)" }
+        - { custom: "deref(p)", tag: UNKNOWN }
+        - { custom: "id(ctr)", tag: FUNCTION_ENTRY }
+        - { custom: "deref(&n)", tag: FUNCTION_ARG }
+
     - item: struct
       name: Foo
       #custom_hash: "my_Foo_hash"
@@ -41,5 +47,6 @@ test.c:
         #n2: disabled
         #n2: { fixed: 0x1234 }
         #n2: { custom: "id" }
-        n2: { custom: "foo(n1, n2)" }
+        #n2: { custom: "foo(n1, n2)" }
+        n2: { custom: "double_hash(n1, n2)" }
 ...
