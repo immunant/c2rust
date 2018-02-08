@@ -1133,7 +1133,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             }
 
             // Add any extra cross-checks
-            if (func_cfg) {
+            if (func_cfg && !func_cfg->get().entry_extra.empty()) {
                 auto extra_xcheck_default_fn = [] (void) -> Expr* {
                     llvm_unreachable("XCheck::DEFAULT encountered for entry_extra");
                     return nullptr;
