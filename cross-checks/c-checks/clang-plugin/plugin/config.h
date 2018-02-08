@@ -8,6 +8,14 @@
 #include <vector>
 
 struct XCheck {
+    enum Tag {
+        UNKNOWN = 0,
+        FUNCTION_ENTRY = 1,
+        FUNCTION_EXIT = 2,
+        FUNCTION_ARG = 3,
+        FUNCTION_RETURN = 4,
+    };
+
     enum Type {
         DEFAULT,
         DISABLED,
@@ -18,11 +26,17 @@ struct XCheck {
     std::variant<std::monostate, uint64_t, std::string> data;
 
     XCheck(Type ty = DEFAULT) : type(ty), data() {}
+    XCheck(Type ty, const std::string &s) : type(ty), data(s) {}
 
     // Required by IO::mapOptional
     bool operator==(const XCheck &other) const {
         return type == other.type && data == other.data;
     }
+};
+
+struct ExtraXCheck {
+    XCheck::Tag tag;
+    std::string custom;
 };
 
 struct DefaultsConfig {
@@ -31,6 +45,7 @@ struct DefaultsConfig {
     llvm::Optional<XCheck> exit;
     llvm::Optional<XCheck> all_args;
     llvm::Optional<XCheck> ret;
+    // TODO: do we want entry/exit_extra here???
 
     DefaultsConfig() = default;
     DefaultsConfig(llvm::yaml::IO &io) {
@@ -65,6 +80,8 @@ struct FunctionConfig {
     llvm::Optional<std::string> ahasher;
     llvm::Optional<std::string> shasher;
     // TODO: nested
+    std::vector<ExtraXCheck> entry_extra;
+    std::vector<ExtraXCheck> exit_extra;
 
     // Construct a FunctionConfig from a given IO
     FunctionConfig(llvm::yaml::IO &io) {
@@ -77,6 +94,8 @@ struct FunctionConfig {
         io.mapOptional("return",    ret);
         io.mapOptional("ahasher",   ahasher);
         io.mapOptional("shasher",   shasher);
+        io.mapOptional("entry_extra", entry_extra);
+        io.mapOptional("exit_extra",  exit_extra);
     }
 };
 
@@ -107,6 +126,9 @@ typedef std::vector<ItemConfig> FileConfig;
 typedef std::map<std::string, FileConfig> Config;
 
 LLVM_YAML_DECLARE_MAPPING_TRAITS(XCheck)
+LLVM_YAML_DECLARE_ENUM_TRAITS(XCheck::Tag)
+LLVM_YAML_DECLARE_MAPPING_TRAITS(ExtraXCheck)
+LLVM_YAML_IS_SEQUENCE_VECTOR(ExtraXCheck)
 LLVM_YAML_IS_STRING_MAP(XCheck)
 LLVM_YAML_DECLARE_MAPPING_TRAITS(ItemConfig)
 LLVM_YAML_IS_SEQUENCE_VECTOR(ItemConfig)

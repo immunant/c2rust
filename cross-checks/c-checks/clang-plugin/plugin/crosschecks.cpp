@@ -220,14 +220,6 @@ private:
     CallExpr *build_call(llvm::StringRef fn_name, QualType result_ty,
                          ArrayRef<Expr*> args, ASTContext &ctx);
 
-    enum CrossCheckTag {
-        UNKNOWN_TAG = 0,
-        FUNCTION_ENTRY_TAG = 1,
-        FUNCTION_EXIT_TAG = 2,
-        FUNCTION_ARG_TAG = 3,
-        FUNCTION_RETURN_TAG = 4,
-    };
-
     using ExprVec = SmallVector<Expr*, 4>;
 
     // Argument passed to custom cross-check
@@ -274,7 +266,7 @@ private:
 
     template<typename DefaultFn, typename CustomArgsFn>
     llvm::TinyPtrVector<Stmt*>
-    build_xcheck(const XCheck &xcheck, CrossCheckTag tag,
+    build_xcheck(const XCheck &xcheck, XCheck::Tag tag,
                  ASTContext &ctx, DefaultFn default_fn,
                  CustomArgsFn custom_args_fn);
 
@@ -520,7 +512,7 @@ CrossCheckInserter::parse_custom_xcheck(std::string_view sv,
 
 template<typename DefaultFn, typename CustomArgsFn>
 llvm::TinyPtrVector<Stmt*>
-CrossCheckInserter::build_xcheck(const XCheck &xcheck, CrossCheckTag tag,
+CrossCheckInserter::build_xcheck(const XCheck &xcheck, XCheck::Tag tag,
                                  ASTContext &ctx, DefaultFn default_fn,
                                  CustomArgsFn custom_args_fn) {
     if (xcheck.type == XCheck::DISABLED)
@@ -1061,7 +1053,7 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
         };
         return generic_custom_args(ctx, param_decls, args, arg_build_fn);
     };
-    return build_xcheck(param_xcheck, FUNCTION_ARG_TAG, ctx,
+    return build_xcheck(param_xcheck, XCheck::Tag::FUNCTION_ARG, ctx,
                         param_xcheck_default_fn,
                         param_xcheck_custom_args_fn);
 }
@@ -1115,7 +1107,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                               SourceLocation());
             };
             auto entry_xcheck_stmts = build_xcheck(entry_xcheck,
-                                                   FUNCTION_ENTRY_TAG,
+                                                   XCheck::Tag::FUNCTION_ENTRY,
                                                    ctx,
                                                    entry_xcheck_default_fn,
                                                    no_custom_args);
@@ -1138,6 +1130,31 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 std::move(param_xcheck_stmts.begin(),
                           param_xcheck_stmts.end(),
                           std::back_inserter(new_body_stmts));
+            }
+
+            // Add any extra cross-checks
+            if (func_cfg) {
+                auto extra_xcheck_default_fn = [] (void) -> Expr* {
+                    llvm_unreachable("XCheck::DEFAULT encountered for entry_extra");
+                    return nullptr;
+                };
+                auto extra_xcheck_custom_args_fn = [&ctx, &param_decls] (CustomArgVec args) {
+                    auto arg_build_fn = [&ctx] (DeclaratorDecl *decl) {
+                        return new (ctx) DeclRefExpr(decl, false, decl->getType(),
+                                                     VK_LValue, SourceLocation());
+                    };
+                    return generic_custom_args(ctx, param_decls, args, arg_build_fn);
+                };
+                for (auto &ex : func_cfg->get().entry_extra) {
+                    XCheck extra_xcheck{XCheck::CUSTOM, ex.custom};
+                    auto extra_xcheck_stmts = build_xcheck(extra_xcheck,
+                                                           ex.tag, ctx,
+                                                           extra_xcheck_default_fn,
+                                                           extra_xcheck_custom_args_fn);
+                    std::move(extra_xcheck_stmts.begin(),
+                              extra_xcheck_stmts.end(),
+                              std::back_inserter(new_body_stmts));
+                }
             }
 
             // Replace the function body
