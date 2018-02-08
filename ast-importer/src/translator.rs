@@ -1077,7 +1077,6 @@ impl Translation {
 
                 match kind {
                     CastKind::BitCast => {
-                        eprintln!("val: {:?}", val);
                         val.result_map(|x| {
                             // TODO: Detect cast from mutable to constant pointer to same type
                             // Sometimes we hit a quirk where we the bitcast is superfluous, we
@@ -1163,10 +1162,9 @@ impl Translation {
                     CastKind::NullToPointer => {
                         assert!(val.stmts.is_empty());
 
+                        
                         let res = if self.is_function_pointer(ty.ctype) {
-                            let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc", "c_void"]));
-                            let target_ty = self.convert_type(ty.ctype)?;
-                            transmute_expr(source_ty, target_ty, null_expr())
+                            mk().path_expr(vec!["None"])
                         } else {
                             match &self.ast_context.resolve_type(ty.ctype).kind {
                                 &CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => null_expr(),
