@@ -683,6 +683,13 @@ impl CTypeKind {
         }
     }
 
+    pub fn is_enum(&self) -> bool {
+        match *self {
+            CTypeKind::Enum{..} => true,
+            _ => false,
+        }
+    }
+
     pub fn is_integral_type(&self) -> bool {
         self.is_unsigned_integral_type() || self.is_signed_integral_type()
     }

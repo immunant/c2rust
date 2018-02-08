@@ -2118,6 +2118,8 @@ impl Translation {
                 }
             }
 
+            let val = if ty.is_enum() { mk().cast_expr(val, mk().path_ty(vec!["u64"])) } else { val };
+
             // The backup is to just compare against zero
             if target {
                 mk().binary_expr(BinOpKind::Ne, zero, val)
