@@ -444,7 +444,7 @@ impl CfgBuilder {
             CStmtKind::Decls(ref decls) => {
                 stmts.extend(decls
                     .iter()
-                    .flat_map(|decl| translator.convert_decl_stmt(*decl)));
+                    .flat_map(|decl| translator.convert_decl_stmt(*decl).unwrap()));
 
                 Some((lbl, stmts))
             }
