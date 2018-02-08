@@ -201,9 +201,9 @@ private:
 
     std::vector<FunctionDecl*> new_funcs;
 
-    using VarDeclMap = std::map<std::string_view, VarDecl*>;
+    using DeclMap = std::map<std::string_view, DeclaratorDecl*>;
 
-    VarDeclMap global_vars;
+    DeclMap global_vars;
 
 private:
     // Store a cache of name=>FunctionDecl mappings,
@@ -266,9 +266,11 @@ private:
         return {};
     }
 
+    template<typename BuildFn>
     static ExprVec generic_custom_args(ASTContext &ctx,
-                                       const VarDeclMap &var_decls,
-                                       CustomArgVec args);
+                                       const DeclMap &decls,
+                                       CustomArgVec args,
+                                       BuildFn build_fn);
 
     template<typename DefaultFn, typename CustomArgsFn>
     llvm::TinyPtrVector<Stmt*>
@@ -303,7 +305,7 @@ private:
     build_parameter_xcheck(ParmVarDecl *param,
                            const DefaultsConfigOptRef file_defaults,
                            const std::optional<FunctionConfigRef> &func_cfg,
-                           const VarDeclMap &param_decls,
+                           const DeclMap &param_decls,
                            ASTContext &ctx);
 
 public:
@@ -882,6 +884,10 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
 
         // Add the field calls
         auto param = fn_decl->getParamDecl(0);
+        DeclMap field_decls;
+        for (auto *field : record_def->fields()) {
+            field_decls.emplace(llvm_string_ref_to_sv(field->getName()), field);
+        }
         for (auto *field : record_def->fields()) {
             if (field->isBitField()) {
                 auto &diags = ctx.getDiagnostics();
@@ -912,27 +918,39 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                 auto param_ref_lv =
                     new (ctx) DeclRefExpr(param, false, param->getType(),
                                           VK_LValue, SourceLocation());
-                auto field_ref_lv =
-                    new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
-                                         field, SourceLocation(),
-                                         field->getType(), VK_LValue, OK_Ordinary);
                 std::string field_hash_fn;
+                ExprVec field_hash_args;
                 if (field_xcheck.type == XCheck::CUSTOM) {
                     auto xcheck_data = std::get<std::string>(field_xcheck.data);
                     auto field_hash_fn_sig = parse_custom_xcheck(xcheck_data, ctx);
                     field_hash_fn = std::string{std::get<0>(field_hash_fn_sig)};
-                    // TODO: pass in each CustomArg to field_hash_fn
+
+                    // Build the argument vector
+                    auto &args = std::get<1>(field_hash_fn_sig);
+                    auto arg_build_fn = [&ctx, param_ref_lv] (DeclaratorDecl *decl) {
+                        return new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
+                                                    decl, SourceLocation(),
+                                                    decl->getType(), VK_LValue,
+                                                    OK_Ordinary);
+                    };
+                    field_hash_args = generic_custom_args(ctx, field_decls,
+                                                          args, arg_build_fn);
                 } else {
                     field_hash_fn =
                         get_type_hash_function(field->getType(), ctx, true).full_name();
+                    auto field_ref_lv =
+                        new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
+                                             field, SourceLocation(),
+                                             field->getType(), VK_LValue, OK_Ordinary);
+                    auto field_ref_rv =
+                        ImplicitCastExpr::Create(ctx, field->getType(),
+                                                 CK_LValueToRValue,
+                                                 field_ref_lv, nullptr, VK_RValue);
+                    field_hash_args.push_back(field_ref_rv);
                 }
-                auto field_ref_rv =
-                    ImplicitCastExpr::Create(ctx, field->getType(),
-                                             CK_LValueToRValue,
-                                             field_ref_lv, nullptr, VK_RValue);
                 field_hash = build_call(field_hash_fn,
                                         ctx.UnsignedLongTy,
-                                        { field_ref_rv }, ctx);
+                                        field_hash_args, ctx);
             }
             auto field_update_call = build_call(hasher_prefix + "_update",
                                                 ctx.VoidTy,
@@ -953,22 +971,22 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     build_generic_hash_function(func_name, ty, ctx, body_fn);
 }
 
+template<typename BuildFn>
 CrossCheckInserter::ExprVec
 CrossCheckInserter::generic_custom_args(ASTContext &ctx,
-                                        const VarDeclMap &var_decls,
-                                        CustomArgVec args) {
+                                        const DeclMap &decls,
+                                        CustomArgVec args,
+                                        BuildFn build_fn) {
     ExprVec res;
     for (auto &arg : args) {
-        auto it = var_decls.find(arg.ident);
-        if (it == var_decls.end()) {
+        auto it = decls.find(arg.ident);
+        if (it == decls.end()) {
             auto &diags = ctx.getDiagnostics();
             report_clang_error(diags, "unknown parameter: '%0'",
                                std::string{arg.ident});
             return res;
         }
-        auto arg_ref_lv =
-            new (ctx) DeclRefExpr(it->second, false, it->second->getType(),
-                                  VK_LValue, SourceLocation());
+        auto arg_ref_lv = build_fn(it->second);
         Expr *arg_ref_rv;
         switch (arg.mod) {
         // arg
@@ -1006,7 +1024,7 @@ llvm::TinyPtrVector<Stmt*>
 CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
                                            const DefaultsConfigOptRef file_defaults,
                                            const std::optional<FunctionConfigRef> &func_cfg,
-                                           const VarDeclMap &param_decls,
+                                           const DeclMap &param_decls,
                                            ASTContext &ctx) {
     XCheck param_xcheck{XCheck::DISABLED};
     if (file_defaults && file_defaults->get().all_args)
@@ -1036,9 +1054,13 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
         return build_call(hash_fn_name.full_name(), ctx.UnsignedLongTy,
                           { param_ref_rv }, ctx);
     };
-    auto param_xcheck_custom_args_fn =
-        std::bind(generic_custom_args, std::ref(ctx),
-                  std::cref(param_decls), std::placeholders::_1);
+    auto param_xcheck_custom_args_fn = [&ctx, &param_decls] (CustomArgVec args) {
+        auto arg_build_fn = [&ctx] (DeclaratorDecl *decl) {
+            return new (ctx) DeclRefExpr(decl, false, decl->getType(),
+                                         VK_LValue, SourceLocation());
+        };
+        return generic_custom_args(ctx, param_decls, args, arg_build_fn);
+    };
     return build_xcheck(param_xcheck, FUNCTION_ARG_TAG, ctx,
                         param_xcheck_default_fn,
                         param_xcheck_custom_args_fn);
@@ -1104,7 +1126,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             // Custom cross-check functions accept either function parameters
             // or global variables as their own arguments
             // TODO: also handle static locals
-            VarDeclMap param_decls = global_vars;
+            DeclMap param_decls = global_vars;
             for (auto &param : fd->parameters()) {
                 param_decls.emplace(llvm_string_ref_to_sv(param->getName()), param);
             }
