@@ -266,6 +266,10 @@ private:
         return {};
     }
 
+    static ExprVec generic_custom_args(ASTContext &ctx,
+                                       const VarDeclMap &var_decls,
+                                       CustomArgVec args);
+
     template<typename DefaultFn, typename CustomArgsFn>
     llvm::TinyPtrVector<Stmt*>
     build_xcheck(const XCheck &xcheck, CrossCheckTag tag,
@@ -949,6 +953,55 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     build_generic_hash_function(func_name, ty, ctx, body_fn);
 }
 
+CrossCheckInserter::ExprVec
+CrossCheckInserter::generic_custom_args(ASTContext &ctx,
+                                        const VarDeclMap &var_decls,
+                                        CustomArgVec args) {
+    ExprVec res;
+    for (auto &arg : args) {
+        auto it = var_decls.find(arg.ident);
+        if (it == var_decls.end()) {
+            auto &diags = ctx.getDiagnostics();
+            report_clang_error(diags, "unknown parameter: '%0'",
+                               std::string{arg.ident});
+            return res;
+        }
+        auto arg_ref_lv =
+            new (ctx) DeclRefExpr(it->second, false, it->second->getType(),
+                                  VK_LValue, SourceLocation());
+        Expr *arg_ref_rv;
+        switch (arg.mod) {
+        // arg
+        case CustomArg::NONE:
+            arg_ref_rv = ImplicitCastExpr::Create(ctx, arg_ref_lv->getType(),
+                                                  CK_LValueToRValue,
+                                                  arg_ref_lv, nullptr, VK_RValue);
+            break;
+
+        // &arg
+        case CustomArg::ADDR:
+            arg_ref_rv = new (ctx) UnaryOperator(arg_ref_lv, UO_AddrOf,
+                                                 ctx.getPointerType(arg_ref_lv->getType()),
+                                                 VK_RValue, OK_Ordinary,
+                                                 SourceLocation());
+            break;
+
+        // *arg
+        case CustomArg::DEREF:
+            arg_ref_rv = new (ctx) UnaryOperator(arg_ref_lv, UO_Deref,
+                                                 arg_ref_lv->getType(),
+                                                 VK_RValue, OK_Ordinary,
+                                                 SourceLocation());
+            break;
+
+        default:
+            llvm_unreachable("Unknown CustomArg::Modifier case");
+        }
+        res.push_back(arg_ref_rv);
+    }
+    return res;
+}
+
 llvm::TinyPtrVector<Stmt*>
 CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
                                            const DefaultsConfigOptRef file_defaults,
@@ -984,52 +1037,8 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
                           { param_ref_rv }, ctx);
     };
     auto param_xcheck_custom_args_fn =
-            [&ctx, param, &param_decls]
-            (CustomArgVec args) {
-        ExprVec res;
-        for (auto &arg : args) {
-            auto it = param_decls.find(arg.ident);
-            if (it == param_decls.end()) {
-                auto &diags = ctx.getDiagnostics();
-                report_clang_error(diags, "unknown parameter: '%0'",
-                                   std::string{arg.ident});
-                return res;
-            }
-            auto arg_ref_lv =
-                new (ctx) DeclRefExpr(it->second, false, it->second->getType(),
-                                      VK_LValue, SourceLocation());
-            Expr *arg_ref_rv;
-            switch (arg.mod) {
-            // arg
-            case CustomArg::NONE:
-                arg_ref_rv = ImplicitCastExpr::Create(ctx, arg_ref_lv->getType(),
-                                                      CK_LValueToRValue,
-                                                      arg_ref_lv, nullptr, VK_RValue);
-                break;
-
-            // &arg
-            case CustomArg::ADDR:
-                arg_ref_rv = new (ctx) UnaryOperator(arg_ref_lv, UO_AddrOf,
-                                                     ctx.getPointerType(arg_ref_lv->getType()),
-                                                     VK_RValue, OK_Ordinary,
-                                                     SourceLocation());
-                break;
-
-            // *arg
-            case CustomArg::DEREF:
-                arg_ref_rv = new (ctx) UnaryOperator(arg_ref_lv, UO_Deref,
-                                                     arg_ref_lv->getType(),
-                                                     VK_RValue, OK_Ordinary,
-                                                     SourceLocation());
-                break;
-
-            default:
-                llvm_unreachable("Unknown CustomArg::Modifier case");
-            }
-            res.push_back(arg_ref_rv);
-        }
-        return res;
-    };
+        std::bind(generic_custom_args, std::ref(ctx),
+                  std::cref(param_decls), std::placeholders::_1);
     return build_xcheck(param_xcheck, FUNCTION_ARG_TAG, ctx,
                         param_xcheck_default_fn,
                         param_xcheck_custom_args_fn);
