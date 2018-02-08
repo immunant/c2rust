@@ -4,9 +4,9 @@ set -e
 export nightly=nightly-2017-11-20
 triple=unknown
 unamestr=`uname`
-if [[ "$unamestr" == 'Linux' ]]; then
+if [ "$unamestr" == 'Linux' ]; then
    triple='x86_64-unknown-linux-gnu'
-elif [[ "$unamestr" == 'Darwin' ]]; then
+elif [ "$unamestr" == 'Darwin' ]; then
    triple='x86_64-apple-darwin'
 fi
 rust_dir=$(rustc --print sysroot)
