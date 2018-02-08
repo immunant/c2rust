@@ -592,7 +592,7 @@ impl Translation {
                         .expect("Failed to write CFG .dot file");
                 }
 
-                let simplify_structures = false; // true;
+                let simplify_structures = true;
                 let relooped = cfg::relooper::reloop(graph, simplify_structures);
 
                 if self.dump_structures {
