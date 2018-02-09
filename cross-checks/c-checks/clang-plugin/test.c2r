@@ -16,6 +16,8 @@ test.c:
       #entry: disabled
       #entry: { custom: "foo" }
       #all_args: { fixed: 0xabcdef00 }
+      return: default
+      #return: { custom: "id(__c2rust_fn_result)" }
       args:
         n: default
         #p: default
@@ -36,6 +38,9 @@ test.c:
         - { custom: "deref(p)", tag: UNKNOWN }
         - { custom: "id(ctr)", tag: FUNCTION_ENTRY }
         - { custom: "deref(&n)", tag: FUNCTION_ARG }
+
+      exit_extra:
+        - { custom: "id(__c2rust_fn_result)" }
 
     - item: struct
       name: Foo
