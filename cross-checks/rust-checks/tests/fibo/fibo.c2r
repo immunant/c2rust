@@ -20,6 +20,9 @@ src/fibo.rs:
         - { custom: "foo(&n)", tag: FUNCTION_ARG }
         - { custom: "0xdeadbeef", tag: FUNCTION_ARG }
 
+      exit_extra:
+        - { custom: "n", tag: FUNCTION_ARG }
+
     - item: struct
       name: FiboArg
       disable_xchecks: false

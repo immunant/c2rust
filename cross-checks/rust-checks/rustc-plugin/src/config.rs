@@ -19,6 +19,7 @@ pub struct InheritedCheckConfig {
 
     // Function-specific overrides
     pub entry: xcfg::XCheckType,
+    pub exit: xcfg::XCheckType,
     pub all_args: xcfg::XCheckType,
 
     // Overrides for ahasher/shasher
@@ -31,6 +32,7 @@ impl Default for InheritedCheckConfig {
         InheritedCheckConfig {
             enabled: true,
             entry: xcfg::XCheckType::Default,
+            exit: xcfg::XCheckType::Default,
             all_args: xcfg::XCheckType::None,
             ahasher: None,
             shasher: None,
@@ -172,6 +174,13 @@ impl ScopeCheckConfig {
                         .unwrap_or(xcfg::XCheckType::Default);
                 }
 
+                ("exit", &mut ItemCheckConfig::FileDefaults) |
+                ("exit", &mut ItemCheckConfig::Function(_)) => {
+                    Rc::make_mut(&mut self.inherited).exit =
+                        xcheck_util::parse_xcheck_arg(&arg)
+                        .unwrap_or(xcfg::XCheckType::Default);
+                }
+
                 // TODO: handle file-level defaults
                 ("all_args", &mut ItemCheckConfig::FileDefaults) |
                 ("all_args", &mut ItemCheckConfig::Function(_)) => {
@@ -193,7 +202,7 @@ impl ScopeCheckConfig {
                     }));
                 }
 
-                // TODO: handle entry_extra for Function
+                // TODO: handle entry_extra and exit_extra for Function
 
                 // Structure-specific attributes
                 ("custom_hash", &mut ItemCheckConfig::Struct(ref mut struc)) => {
@@ -229,6 +238,7 @@ impl ScopeCheckConfig {
                 // Inherited fields
                 parse_optional_field!(^enabled,  xcfg_defs, disable_xchecks, !disable_xchecks);
                 parse_optional_field!(^entry,    xcfg_defs, entry,    entry.clone());
+                parse_optional_field!(^exit,     xcfg_defs, exit,     exit.clone());
                 parse_optional_field!(^all_args, xcfg_defs, all_args, all_args.clone());
             },
 
@@ -236,6 +246,7 @@ impl ScopeCheckConfig {
                 // Inherited fields
                 parse_optional_field!(^enabled,  xcfg_func, disable_xchecks, !disable_xchecks);
                 parse_optional_field!(^entry,    xcfg_func, entry,    entry.clone());
+                parse_optional_field!(^exit,     xcfg_func, exit,     exit.clone());
                 parse_optional_field!(^all_args, xcfg_func, all_args, all_args.clone());
                 // TODO: add a way for the external config to reset these to default
                 parse_optional_field!(^ahasher, xcfg_func, ahasher, Some(cx.parse_tts(ahasher.clone())));
