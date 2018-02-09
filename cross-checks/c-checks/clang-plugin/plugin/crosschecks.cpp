@@ -1097,8 +1097,9 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             // Add the function entry-point cross-check
             StmtVec new_body_stmts;
             auto add_body_stmts = [&new_body_stmts] (const TinyStmtVec &stmts) {
-                std::move(stmts.begin(), stmts.end(),
-                          std::back_inserter(new_body_stmts));
+                new_body_stmts.insert(new_body_stmts.end(),
+                                      std::make_move_iterator(stmts.begin()),
+                                      std::make_move_iterator(stmts.end()));
             };
 
             XCheck entry_xcheck{XCheck::DEFAULT};
