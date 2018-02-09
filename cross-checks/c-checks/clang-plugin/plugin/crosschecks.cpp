@@ -1159,7 +1159,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
 
             // Build the body function and call it
             auto dni = fd->getNameInfo();
-            std::string body_fn_name{"__c2rust_wrapper_"};
+            std::string body_fn_name{"__c2rust_fn_body_"};
             body_fn_name += dni.getName().getAsString();
             auto body_fn_id = &ctx.Idents.get(body_fn_name);
             dni.setName(DeclarationName{body_fn_id});
