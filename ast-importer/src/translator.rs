@@ -1424,9 +1424,11 @@ impl Translation {
 
                         // Need to check to see if the next item is a string literal,
                         // if it is need to treat it as a declaration, rather than
-                        // an init list. 
+                        // an init list. https://github.com/GaloisInc/C2Rust/issues/40 
                         let mut is_string = false;
-                        for v in ids {
+
+                        if ids.len() == 1 {
+                            let v = ids.first().unwrap();
                             match self.ast_context.index(*v).kind {
                                 CExprKind::Literal(_, CLiteral::String(_, _)) => {
                                     is_string = true;

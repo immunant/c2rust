@@ -29,4 +29,7 @@ void entry(const unsigned buffer_size, int buffer[const])
 
     char init[] = {"test"};
     buffer[i++] = init[0];
+    buffer[i++] = init[1];
+    buffer[i++] = init[2];
+    buffer[i++] = init[3];
 }
