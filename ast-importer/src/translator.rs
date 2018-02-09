@@ -1428,27 +1428,10 @@ impl Translation {
                         let mut is_string = false;
                         for v in ids {
                             match self.ast_context.index(*v).kind {
-                                CExprKind::UnaryType(_, _, _) => {},
-                                CExprKind::DeclRef(_, _) => {},
-                                CExprKind::Literal(_, CLiteral::Integer(_))  => {},
-                                CExprKind::Literal(_, CLiteral::Character(_)) => {},
-                                CExprKind::Literal(_, CLiteral::Floating(_)) => {},
                                 CExprKind::Literal(_, CLiteral::String(_, _)) => {
                                     is_string = true;
                                 },
-                                CExprKind::ImplicitCast(_, _, _, _) => {},
-                                CExprKind::ExplicitCast(_, _, _, _) => {},
-                                CExprKind::Unary(_, _, _) => {},
-                                CExprKind::Conditional(_, _, _, _) => {},
-                                CExprKind::BinaryConditional(_, _, _) => {},
-                                CExprKind::Binary(_, _, _, _) => {},
-                                CExprKind::ArraySubscript(_, _, _) => {},
-                                CExprKind::Call(_, _, _) => {},
-                                CExprKind::Member(_, _, _, _) => {},
-                                CExprKind::CompoundLiteral(_, _) => {},
-                                CExprKind::InitList(_, _, _) => {},
-                                CExprKind::ImplicitValueInit(_) => {},
-                                CExprKind::Predefined(_, _) => {},
+                                _ => {}
                             };
                         }
 
