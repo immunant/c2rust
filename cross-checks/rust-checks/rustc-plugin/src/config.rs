@@ -32,7 +32,7 @@ impl Default for InheritedCheckConfig {
         InheritedCheckConfig {
             enabled: true,
             entry: xcfg::XCheckType::Default,
-            exit: xcfg::XCheckType::Default,
+            exit: xcfg::XCheckType::Disabled, // FIXME: should be xcfg::XCheckType::Default,
             all_args: xcfg::XCheckType::None,
             ahasher: None,
             shasher: None,
