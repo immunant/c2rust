@@ -1223,6 +1223,21 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
 
             }
 
+            // Add the function exit-point cross-check
+            XCheck exit_xcheck{XCheck::DEFAULT};
+            if (file_defaults && file_defaults->get().exit)
+                exit_xcheck = *file_defaults->get().exit;
+            if (func_cfg && func_cfg->get().exit)
+                exit_xcheck = *func_cfg->get().exit;
+            auto exit_xcheck_stmts = build_xcheck(exit_xcheck,
+                                                  XCheck::Tag::FUNCTION_EXIT,
+                                                  ctx,
+                                                  entry_xcheck_default_fn,
+                                                  no_custom_args);
+            std::move(exit_xcheck_stmts.begin(),
+                      exit_xcheck_stmts.end(),
+                      std::back_inserter(new_body_stmts));
+
             // TODO: add post-exit cross-checks here
 
             // Add the final return
