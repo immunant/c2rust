@@ -439,7 +439,7 @@ impl Translation {
             CDeclKind::EnumConstant { .. } => Err(format!("Enum variants should be handled inside enums")),
 
             CDeclKind::Function { .. } if !toplevel => Err(format!("Function declarations must be top-level")),
-            CDeclKind::Function { is_extern, typ, ref name, ref parameters, body } => {
+            CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
 
@@ -457,7 +457,7 @@ impl Translation {
                     }
                 }
 
-                self.convert_function(is_extern, new_name, name, &args, ret, body)
+                self.convert_function(is_extern, is_inline, new_name, name, &args, ret, body)
             },
 
             CDeclKind::Typedef { ref typ, .. } => {
@@ -519,6 +519,7 @@ impl Translation {
     fn convert_function(
         &self,
         is_extern: bool,
+        is_inline: bool,
         new_name: &str,
         name: &str,
         arguments: &[(CDeclId, String, CQualTypeId)],
@@ -558,7 +559,7 @@ impl Translation {
                 let block = self.convert_function_body(name, body)?;
 
                 // Only add linkage attributes if the function is `extern`
-                let mk_ = if is_extern {
+                let mk_ = if is_extern && !is_inline {
                     mk_linkage(false, new_name, name)
                         .abi(Abi::C)
                         .vis(Visibility::Public)
@@ -951,7 +952,7 @@ impl Translation {
                 CExprKind::DeclRef(_type_id, decl_id) if level == 1 => {
                     let cdecl : &CDecl = ast_context.index(decl_id);
                     match cdecl.kind {
-                        CDeclKind::Function { is_extern, ref name, typ, ref parameters, body } => Ok(typ),
+                        CDeclKind::Function { typ, .. } => Ok(typ),
                         _ => Err("couldn't get leaf node type")
                     }
                 }
@@ -1162,7 +1163,7 @@ impl Translation {
                     CastKind::NullToPointer => {
                         assert!(val.stmts.is_empty());
 
-                        
+
                         let res = if self.is_function_pointer(ty.ctype) {
                             mk().path_expr(vec!["None"])
                         } else {
@@ -1421,30 +1422,54 @@ impl Translation {
                 match resolved {
                     &CTypeKind::ConstantArray(ty, n) => {
                         // Convert all of the provided initializer values
+
+                        // Need to check to see if the next item is a string literal,
+                        // if it is need to treat it as a declaration, rather than
+                        // an init list. https://github.com/GaloisInc/C2Rust/issues/40 
+                        let mut is_string = false;
+
+                        if ids.len() == 1 {
+                            let v = ids.first().unwrap();
+                            match self.ast_context.index(*v).kind {
+                                CExprKind::Literal(_, CLiteral::String(_, _)) => {
+                                    is_string = true;
+                                },
+                                _ => {}
+                            };
+                        }
+
                         let mut stmts: Vec<Stmt> = vec![];
-                        let mut vals: Vec<P<Expr>> = vec![];
-                        for v in ids {
+                        let val: P<Expr> = if is_string {
+                            let v = ids.first().unwrap();
                             let mut x = self.convert_expr(ExprUse::RValue, *v)?;
                             stmts.append(&mut x.stmts);
-                            vals.push(x.val);
-                        }
+                            x.val
+                        } else  {
+                            let mut vals: Vec<P<Expr>> = vec![];
+                            for v in ids {
+                                let mut x = self.convert_expr(ExprUse::RValue, *v)?;
+                                stmts.append(&mut x.stmts);
+                                vals.push(x.val);
+                            }
+                            // Pad out the array literal with default values to the desired size
+                            for _i in ids.len()..n {
+                                vals.push(self.implicit_default_expr(ty)?)
+                            }
+                            mk().array_expr(vals)
+                        };
 
-
-                        // Pad out the array literal with default values to the desired size
-                        for _i in ids.len()..n {
-                            vals.push(self.implicit_default_expr(ty)?)
-                        }
-
-                        Ok(WithStmts {
-                            stmts,
-                            val: mk().array_expr(vals),
-                        })
+                        Ok(WithStmts {stmts, val })
                     }
                     &CTypeKind::Struct(struct_id) => {
                         self.convert_struct_literal(struct_id, ids.as_ref())
                     }
                     &CTypeKind::Union(union_id) => {
                         self.convert_union_literal(union_id, ids.as_ref(), ty, opt_union_field_id)
+                    }
+                    &CTypeKind::Pointer(_) => {
+                        let id = ids.first().unwrap();
+                        let mut x = self.convert_expr(ExprUse::RValue, *id);
+                        Ok(x.unwrap())
                     }
                     t => {
                         panic!("Init list not implemented for {:?}", t);

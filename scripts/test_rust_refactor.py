@@ -6,8 +6,8 @@ import plumbum as pb
 from common import *
 
 # Tools we will need
-clang = get_cmd_or_die("rustfmt")
-rustc = get_cmd_or_die("diff")
+rustfmt = get_cmd_or_die("rustfmt")
+diff = get_cmd_or_die("diff")
 
 
 def get_testcases(directory: str) -> List[str]:
@@ -25,7 +25,7 @@ def get_testcases(directory: str) -> List[str]:
     return testcases
 
 
-def run_tests(testcases: List[str]):
+def run_tests(testcases: List[str]) -> None:
     ipath = os.path.join(RREF_DIR, "target/debug/idiomize")
     # refactor = '{ip} -P ../.. -p plugin_stub -r alongside'.format(ip=ipath)
     # NOTE:PL: I removed the plugin options (-P, -p) to get the tests to run.
@@ -41,7 +41,7 @@ def run_tests(testcases: List[str]):
                                  triplet=get_host_triplet())
 
     with pb.local.env(RUST_BACKTRACE='1',
-                      RUST_LOG="idiomize=info",                      
+                      RUST_LOG="idiomize=info",
                       LD_LIBRARY_PATH=ld_lib_path,
                       not_LD_LIBRARY_PATH=ld_lib_path,
                       refactor=refactor,
@@ -52,21 +52,44 @@ def run_tests(testcases: List[str]):
             testname = os.path.basename(testdir)         
             try:
                 with pb.local.cwd(testdir):
+                    logging.debug("testing: %s", testdir)
                     script.run()
-                    print("[ OK ] " + testname)
+
+                    old_new_rust = os.path.join(testdir, "old.rs.new")
+                    assert os.path.isfile(old_new_rust), "missing rewritten rust"
+                    mode = "overwrite"  # set to 'replace' to generate backups
+                    rustfmt["--force", "--write-mode", mode, old_new_rust].run()
+
+                    new_rust = os.path.join(testdir, "new.rs")
+                    diff["-wB", new_rust, old_new_rust].run()
+
+                    print(" {}[ OK ]{} ".format(OKGREEN, NO_COLOUR) + testname)
+                    logging.debug(" [ OK ] " + testname)
             except pb.ProcessExecutionError as pee:
-                print("[FAIL] " + testname)
-                # print(pee.stderr)
-                # quit(1)
+                print(" {}[FAIL]{} ".format(FAIL, NO_COLOUR) + testname)
+                logging.debug(" [FAIL] " + testname)
+                logfile = os.path.join(testdir, "log")
+                if os.path.exists(logfile):
+                    with open(logfile, "r") as fh:
+                        lines = fh.readlines()
+                        logging.debug("".join(lines))
+
 
 def main():
     # TODO: implement rustfmt and diff actions from `run-test.sh`
-    # TODO: check rustfmt version    
+    # TODO: check rustfmt version   
 
+    setup_logging()
     ensure_rustc_version(CUSTOM_RUST_RUSTC_VERSION)
+    ensure_rustfmt_version()
     test_dir = os.path.join(RREF_DIR, "tests")
+    assert os.path.isdir(test_dir), "test dir missing: " + test_dir
+    idiomize_binary = os.path.join(RREF_DIR, "target/debug/idiomize")
+    if not os.path.isfile(idiomize_binary):
+        die("build idiomize binary first. expected: " + idiomize_binary)
+    
     testcases = get_testcases(test_dir)
-    run_tests(testcases)
+    run_tests(sorted(testcases))
 
 
 if __name__ == "__main__":

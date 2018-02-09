@@ -309,6 +309,18 @@ def ensure_rustc_version(expected_version_str: str):
         die(emsg)
 
 
+def ensure_rustfmt_version():
+    expected_version_str = "0.10.0 ( ) DEPRECATED: use rustfmt-nightly\n"
+    rustfmt = get_cmd_or_die("rustfmt")
+    rustup = get_cmd_or_die("rustup")
+    actual_version = rustup("run", CUSTOM_RUST_NAME, rustfmt["--force","--version"])
+    if expected_version_str not in actual_version:
+        emsg = "expected version: {}\n"
+        emsg = emsg + 9 * "." + "actual version: {}"
+        emsg = emsg.format(expected_version_str, actual_version)
+        die(emsg)        
+
+
 def ensure_clang_version(min_ver: List[int]):
     clang = get_cmd_or_die("clang")
     version = clang("--version")

@@ -1098,6 +1098,7 @@ impl ConversionContext {
                         .expect("Expected to find function name").to_string();
 
                     let is_extern = expect_bool(&node.extras[1]).expect("Expected to find visibility");
+                    let is_inline = expect_bool(&node.extras[2]).expect("Expected to find inline");
 
                     let typ_old = node.type_id.expect("Expected to find a type on a function decl");
                     let typ = CTypeId(self.visit_node_type(typ_old, FUNC_TYPE));
@@ -1115,7 +1116,7 @@ impl ConversionContext {
                         })
                         .collect();
 
-                    let function_decl = CDeclKind::Function { is_extern, typ, name, parameters, body };
+                    let function_decl = CDeclKind::Function { is_extern, is_inline, typ, name, parameters, body };
 
                     self.add_decl(new_id, located(node, function_decl));
                     self.processed_nodes.insert(new_id, OTHER_DECL);
