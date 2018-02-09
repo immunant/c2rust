@@ -261,7 +261,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     let arg_xchecks = fn_decl.inputs.iter()
                         .flat_map(|ref arg| self.build_arg_xcheck(arg))
                         .collect::<Vec<P<ast::Block>>>();
-                    let extra_xchecks = self.config().function_config()
+                    let entry_extra_xchecks = self.config().function_config()
                         .entry_extra.iter().map(|ex| {
                             let expr = self.cx.parse_expr(ex.custom.clone());
                             let tag_str = match ex.tag {
@@ -279,8 +279,13 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     quote_block!(self.cx, {
                         $entry_xcheck
                         $arg_xchecks
-                        $extra_xchecks
-                        $block
+                        $entry_extra_xchecks
+                        let __c2rust_fn_body = || $block;
+                        let __c2rust_fn_result = __c2rust_fn_body();
+                        // TODO: exit_xcheck
+                        // TODO: result_xcheck
+                        // TODO: exit_extra_xchecks
+                        __c2rust_fn_result
                     })
                 } else {
                     block
