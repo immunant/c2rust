@@ -1447,6 +1447,11 @@ impl Translation {
                     &CTypeKind::Union(union_id) => {
                         self.convert_union_literal(union_id, ids.as_ref(), ty, opt_union_field_id)
                     }
+                    &CTypeKind::Pointer(_) => {
+                        let id = ids.first().unwrap();
+                        let mut x = self.convert_expr(ExprUse::RValue, *id);
+                        Ok(x.unwrap())
+                    }
                     t => {
                         panic!("Init list not implemented for {:?}", t);
                     }
