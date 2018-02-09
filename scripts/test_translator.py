@@ -19,12 +19,6 @@ diff = get_cmd_or_die("diff")
 
 driver = os.path.join(ROOT_DIR, "scripts/driver.c")
 
-# Terminal escape codes
-OKBLUE = '\033[94m'
-OKGREEN = '\033[92m'
-WARNING = '\033[93m'
-FAIL = '\033[91m'
-NO_COLOUR = '\033[0m'
 
 # Intermediate files
 intermediate_files = [
