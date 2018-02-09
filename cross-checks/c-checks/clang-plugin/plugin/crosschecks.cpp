@@ -1093,7 +1093,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 continue;
 
             // Add the function entry-point cross-check
-            SmallVector<Stmt*, 8> new_body_stmts;
+            StmtVec new_body_stmts;
             XCheck entry_xcheck{XCheck::DEFAULT};
             if (file_defaults && file_defaults->get().entry)
                 entry_xcheck = *file_defaults->get().entry;
@@ -1157,12 +1157,97 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 }
             }
 
-            // Replace the function body
+            // Build the body function and call it
+            auto dni = fd->getNameInfo();
+            std::string body_fn_name{"__c2rust_wrapper_"};
+            body_fn_name += dni.getName().getAsString();
+            auto body_fn_id = &ctx.Idents.get(body_fn_name);
+            dni.setName(DeclarationName{body_fn_id});
+
             auto old_body = fd->getBody();
-            new_body_stmts.push_back(old_body);
+            auto parent_dc = fd->getDeclContext();
+            auto body_fn_decl =
+                FunctionDecl::Create(ctx, parent_dc,
+                                     fd->getLocStart(), dni,
+                                     fd->getType(), fd->getTypeSourceInfo(),
+                                     SC_Static, true, true,
+                                     fd->isConstexpr());
+            body_fn_decl->setParams(fd->parameters());
+            body_fn_decl->setBody(old_body);
+            parent_dc->addDecl(body_fn_decl);
+            decl_cache.try_emplace(body_fn_name, body_fn_decl);
+            new_funcs.push_back(body_fn_decl);
+
+            // Build the new body from all the cross-checks, plus a call
+            // to the wrapper, e.g.:
+            // int foo(int x) {
+            //   rb_xcheck(...);
+            //   ...
+            //   int __c2rust_fn_result = __c2rust_wrapper_foo(x);
+            //   ...
+            //   return __c2rust_fn_result;
+            // }
+            auto result_ty = fd->getReturnType();
+            ExprVec args;
+            for (auto &param : body_fn_decl->parameters()) {
+                auto param_ty = param->getType();
+                auto param_ref_rv =
+                    new (ctx) DeclRefExpr(param, false, param_ty,
+                                          VK_RValue, SourceLocation());
+                args.push_back(param_ref_rv);
+            }
+            Expr *body_call = build_call(body_fn_name, result_ty, args, ctx);
+            Expr *result = nullptr;
+            if (result_ty->isIncompleteType()) {
+                // Incomplete type (probably void), which we can't store
+                // in a variable, so just ignore it
+                // FIXME: do we need to handle incomplete arrays here???
+                new_body_stmts.push_back(body_call);
+            } else {
+                // Build the variable that holds the result:
+                // T __c2rust_fn_result = __c2rust_wrapper_X(...);
+                auto result_id = &ctx.Idents.get("__c2rust_fn_result");
+                auto result_var =
+                    VarDecl::Create(ctx, fd, SourceLocation(), SourceLocation(),
+                                    result_id, result_ty, nullptr, SC_None);
+                result_var->setInit(body_call);
+                // Wrap the Decl in a DeclStmt and add it to our function
+                auto result_decl_stmt =
+                    new (ctx) DeclStmt(DeclGroupRef(result_var),
+                                       SourceLocation(),
+                                       SourceLocation());
+                new_body_stmts.push_back(result_decl_stmt);
+                // Build the DeclRefExpr for the ReturnStmt
+                result = new (ctx) DeclRefExpr(result_var, false, result_ty,
+                                               VK_RValue, SourceLocation());
+
+            }
+
+            // Add the function exit-point cross-check
+            XCheck exit_xcheck{XCheck::DEFAULT};
+            if (file_defaults && file_defaults->get().exit)
+                exit_xcheck = *file_defaults->get().exit;
+            if (func_cfg && func_cfg->get().exit)
+                exit_xcheck = *func_cfg->get().exit;
+            auto exit_xcheck_stmts = build_xcheck(exit_xcheck,
+                                                  XCheck::Tag::FUNCTION_EXIT,
+                                                  ctx,
+                                                  entry_xcheck_default_fn,
+                                                  no_custom_args);
+            std::move(exit_xcheck_stmts.begin(),
+                      exit_xcheck_stmts.end(),
+                      std::back_inserter(new_body_stmts));
+
+            // TODO: add post-exit cross-checks here
+
+            // Add the final return
+            auto return_stmt = new (ctx) ReturnStmt(SourceLocation(),
+                                                    result, nullptr);
+            new_body_stmts.push_back(return_stmt);
+
             auto new_body = new (ctx) CompoundStmt(ctx, new_body_stmts,
-                                                   old_body->getLocStart(),
-                                                   old_body->getLocEnd());
+                                                   SourceLocation(),
+                                                   SourceLocation());
             fd->setBody(new_body);
         } else if (VarDecl *vd = dyn_cast<VarDecl>(d)) {
             global_vars.emplace(llvm_string_ref_to_sv(vd->getName()), vd);

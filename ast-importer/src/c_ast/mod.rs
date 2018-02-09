@@ -184,6 +184,7 @@ pub enum CDeclKind {
     // http://clang.llvm.org/doxygen/classclang_1_1FunctionDecl.html
     Function {
         is_extern: bool,
+        is_inline: bool,
         typ: CFuncTypeId,
         name: String,
         parameters: Vec<CParamId>,

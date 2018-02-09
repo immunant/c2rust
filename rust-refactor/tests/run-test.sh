@@ -17,9 +17,12 @@ export LD_LIBRARY_PATH=$rust_dir/lib
 export not_LD_LIBRARY_PATH=$rust_dir/lib
 export RUST_LOG=idiomize=info
 export RUST_BACKTRACE=1
-export refactor='../../target/debug/idiomize -P ../.. -p plugin_stub -r alongside'
+# PL: I  removed the plugin-related arguments since its not clear that
+# they are necessary to correctly run the regression test suite.
+# export refactor='../../target/debug/idiomize -P ../.. -p plugin_stub -r alongside'
+export refactor='../../target/debug/idiomize  -r alongside'
 export rustflags="-L $rust_dir/lib/rustlib/$triple/lib"
 
 ( cd $1; ./run.sh; )
-$rustfmt $1/old.rs.new
+$rustfmt --force $1/old.rs.new
 diff -wB $1/new.rs $1/old.rs.new

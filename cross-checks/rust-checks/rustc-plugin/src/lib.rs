@@ -245,6 +245,31 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         res
     }
 
+    fn build_callee_xcheck(&self, fn_ident: &ast::Ident, xcheck: &xcfg::XCheckType,
+                           tag_str: &str) -> Option<ast::Stmt> {
+        let tag = ast::Ident::from_str(tag_str);
+        xcheck.get_ident_hash(self.cx, fn_ident)
+            .map(|hash| quote_stmt!(self.cx, cross_check_raw!($tag, $hash);))
+            .unwrap_or_default()
+    }
+
+    fn build_extra_xchecks(&self, extra_xchecks: &[xcfg::ExtraXCheck]) -> Vec<P<ast::Block>> {
+        extra_xchecks.iter().map(|ex| {
+            let expr = self.cx.parse_expr(ex.custom.clone());
+            let tag_str = match ex.tag {
+                xcfg::XCheckTag::Unknown        => "UNKNOWN_TAG",
+                xcfg::XCheckTag::FunctionEntry  => "FUNCTION_ENTRY_TAG",
+                xcfg::XCheckTag::FunctionExit   => "FUNCTION_EXIT_TAG",
+                xcfg::XCheckTag::FunctionArg    => "FUNCTION_ARG_TAG",
+                xcfg::XCheckTag::FunctionReturn => "FUNCTION_RETURN_TAG",
+            };
+            let tag = ast::Ident::from_str(tag_str);
+            quote_block!(self.cx, {
+                cross_check_raw!($tag, $expr)
+            })
+        }).collect::<Vec<P<ast::Block>>>()
+    }
+
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let folded_item = fold::noop_fold_item_simple(item, self);
         match folded_item.node {
@@ -253,34 +278,31 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 let checked_block = if self.config().inherited.enabled {
                     // Add the cross-check to the beginning of the function
                     // TODO: only add the checks to C abi functions???
-                    let entry_xcheck = self.config().inherited.entry
-                        .get_ident_hash(self.cx, &fn_ident)
-                        .map(|hash| quote_stmt!(self.cx, cross_check_raw!(FUNCTION_ENTRY_TAG, $hash);))
-                        .unwrap_or_default();
+                    let ref cfg = self.config();
+                    let entry_xcheck = self.build_callee_xcheck(&fn_ident,
+                                                                &cfg.inherited.entry,
+                                                                "FUNCTION_ENTRY_TAG");
+                    let exit_xcheck = self.build_callee_xcheck(&fn_ident,
+                                                               &cfg.inherited.exit,
+                                                               "FUNCTION_EXIT_TAG");
                     // Insert cross-checks for function arguments
                     let arg_xchecks = fn_decl.inputs.iter()
                         .flat_map(|ref arg| self.build_arg_xcheck(arg))
                         .collect::<Vec<P<ast::Block>>>();
-                    let extra_xchecks = self.config().function_config()
-                        .entry_extra.iter().map(|ex| {
-                            let expr = self.cx.parse_expr(ex.custom.clone());
-                            let tag_str = match ex.tag {
-                                xcfg::XCheckTag::Unknown        => "UNKNOWN_TAG",
-                                xcfg::XCheckTag::FunctionEntry  => "FUNCTION_ENTRY_TAG",
-                                xcfg::XCheckTag::FunctionExit   => "FUNCTION_EXIT_TAG",
-                                xcfg::XCheckTag::FunctionArg    => "FUNCTION_ARG_TAG",
-                                xcfg::XCheckTag::FunctionReturn => "FUNCTION_RETURN_TAG",
-                            };
-                            let tag = ast::Ident::from_str(tag_str);
-                            quote_block!(self.cx, {
-                                cross_check_raw!($tag, $expr)
-                            })
-                        }).collect::<Vec<P<ast::Block>>>();
+
+                    let ref fcfg = cfg.function_config();
+                    let entry_extra_xchecks = self.build_extra_xchecks(&fcfg.entry_extra);
+                    let exit_extra_xchecks = self.build_extra_xchecks(&fcfg.exit_extra);
                     quote_block!(self.cx, {
                         $entry_xcheck
                         $arg_xchecks
-                        $extra_xchecks
-                        $block
+                        $entry_extra_xchecks
+                        let __c2rust_fn_body = || $block;
+                        let __c2rust_fn_result = __c2rust_fn_body();
+                        $exit_xcheck
+                        // TODO: result_xcheck
+                        $exit_extra_xchecks
+                        __c2rust_fn_result
                     })
                 } else {
                     block
