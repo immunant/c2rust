@@ -439,7 +439,7 @@ impl Translation {
             CDeclKind::EnumConstant { .. } => Err(format!("Enum variants should be handled inside enums")),
 
             CDeclKind::Function { .. } if !toplevel => Err(format!("Function declarations must be top-level")),
-            CDeclKind::Function { is_extern, typ, ref name, ref parameters, body } => {
+            CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
 
@@ -457,7 +457,7 @@ impl Translation {
                     }
                 }
 
-                self.convert_function(is_extern, new_name, name, &args, ret, body)
+                self.convert_function(is_extern, is_inline, new_name, name, &args, ret, body)
             },
 
             CDeclKind::Typedef { ref typ, .. } => {
@@ -519,6 +519,7 @@ impl Translation {
     fn convert_function(
         &self,
         is_extern: bool,
+        is_inline: bool,
         new_name: &str,
         name: &str,
         arguments: &[(CDeclId, String, CQualTypeId)],
@@ -558,7 +559,7 @@ impl Translation {
                 let block = self.convert_function_body(name, body)?;
 
                 // Only add linkage attributes if the function is `extern`
-                let mk_ = if is_extern {
+                let mk_ = if is_extern && !is_inline {
                     mk_linkage(false, new_name, name)
                         .abi(Abi::C)
                         .vis(Visibility::Public)
@@ -951,7 +952,7 @@ impl Translation {
                 CExprKind::DeclRef(_type_id, decl_id) if level == 1 => {
                     let cdecl : &CDecl = ast_context.index(decl_id);
                     match cdecl.kind {
-                        CDeclKind::Function { is_extern, ref name, typ, ref parameters, body } => Ok(typ),
+                        CDeclKind::Function { typ, .. } => Ok(typ),
                         _ => Err("couldn't get leaf node type")
                     }
                 }
@@ -1162,7 +1163,7 @@ impl Translation {
                     CastKind::NullToPointer => {
                         assert!(val.stmts.is_empty());
 
-                        
+
                         let res = if self.is_function_pointer(ty.ctype) {
                             mk().path_expr(vec!["None"])
                         } else {
