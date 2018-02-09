@@ -21,6 +21,13 @@ except ImportError:
 
 NCPUS = str(multiprocessing.cpu_count())
 
+# Terminal escape codes
+OKBLUE = '\033[94m'
+OKGREEN = '\033[92m'
+WARNING = '\033[93m'
+FAIL = '\033[91m'
+NO_COLOUR = '\033[0m'
+
 ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
 DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
@@ -93,6 +100,15 @@ def have_rust_toolchain(name: str) -> bool:
     return any([True for l in lines if l.startswith(name)])
 
 
+def get_host_triplet() -> str:
+    if on_linux():
+        return "x86_64-unknown-linux-gnu"
+    elif on_mac():
+        return "x86_64-apple-darwin"
+    else:
+        assert False, "not implemented"
+
+
 def get_rust_toolchain_libpath(name: str) -> str:
     """
     returns library path to custom rust libdir
@@ -101,12 +117,7 @@ def get_rust_toolchain_libpath(name: str) -> str:
     if platform.architecture()[0] != '64bit':
         die("must be on 64-bit host")
 
-    if on_linux():
-        host_triplet = "x86_64-unknown-linux-gnu"
-    elif on_mac():
-        host_triplet = "x86_64-apple-darwin"
-    else:
-        assert False, "not implemented"
+    host_triplet = get_host_triplet()
 
     libpath = ".rustup/toolchains/{}-{}/lib/"
     libpath = libpath.format(CUSTOM_RUST_NAME, host_triplet)
