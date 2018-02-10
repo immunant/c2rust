@@ -9,7 +9,7 @@ mod xcheck;
 pub use xcheck::rb_xcheck; // Export rb_xcheck for the runtime
 
 use xcheck::{expect_xcheck, expect_no_xchecks};
-use cross_check_runtime::xcheck::{FUNCTION_ENTRY_TAG, FUNCTION_ARG_TAG};
+use cross_check_runtime::xcheck::{FUNCTION_ENTRY_TAG, FUNCTION_ARG_TAG, FUNCTION_EXIT_TAG};
 
 #[test]
 fn test_entry() {
@@ -18,6 +18,7 @@ fn test_entry() {
 
     abcd();
     expect_xcheck(FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
+    expect_xcheck(FUNCTION_EXIT_TAG,  0x7c93ee4f_u64);
     expect_no_xchecks();
 }
 
@@ -29,6 +30,7 @@ fn test_no_xcheck() {
 
     abcd();
     expect_xcheck(FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
+    expect_xcheck(FUNCTION_EXIT_TAG,  0x7c93ee4f_u64);
     expect_no_xchecks();
 }
 
@@ -39,6 +41,7 @@ fn test_custom_fn_name() {
 
     abcd();
     expect_xcheck(FUNCTION_ENTRY_TAG, 0x7c95b527_u64);
+    expect_xcheck(FUNCTION_EXIT_TAG,  0x7c93ee4f_u64);
     expect_no_xchecks();
 }
 
@@ -49,6 +52,7 @@ fn test_custom_fn_id() {
 
     abcd();
     expect_xcheck(FUNCTION_ENTRY_TAG, 0x12345678_u64);
+    expect_xcheck(FUNCTION_EXIT_TAG,  0x7c93ee4f_u64);
     expect_no_xchecks();
 }
 
@@ -58,6 +62,17 @@ fn test_entry_disabled() {
     fn abcd() { }
 
     abcd();
+    expect_xcheck(FUNCTION_EXIT_TAG,  0x7c93ee4f_u64);
+    expect_no_xchecks();
+}
+
+#[test]
+fn test_exit_disabled() {
+    #[cross_check(yes, exit(disabled))]
+    fn abcd() { }
+
+    abcd();
+    expect_xcheck(FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
     expect_no_xchecks();
 }
 
@@ -70,6 +85,7 @@ fn test_all_args_default() {
     expect_xcheck(FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
     expect_xcheck(FUNCTION_ARG_TAG, 0x7f_u64);
     expect_xcheck(FUNCTION_ARG_TAG, 0x0f0f0f0f_0f0f0f0f_u64);
+    expect_xcheck(FUNCTION_EXIT_TAG,  0x7c93ee4f_u64);
     expect_no_xchecks();
 }
 
@@ -82,6 +98,7 @@ fn test_all_args_fixed() {
     expect_xcheck(FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
     expect_xcheck(FUNCTION_ARG_TAG, 0x1234_u64);
     expect_xcheck(FUNCTION_ARG_TAG, 0x1234_u64);
+    expect_xcheck(FUNCTION_EXIT_TAG,  0x7c93ee4f_u64);
     expect_no_xchecks();
 }
 
@@ -92,6 +109,7 @@ fn test_all_args_disabled() {
 
     abcd(0x7fu8, 1u64);
     expect_xcheck(FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
+    expect_xcheck(FUNCTION_EXIT_TAG,  0x7c93ee4f_u64);
     expect_no_xchecks();
 }
 
@@ -103,5 +121,6 @@ fn test_args_override() {
     abcd(0x7fu8, 1u64);
     expect_xcheck(FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
     expect_xcheck(FUNCTION_ARG_TAG, 0x1234_u64);
+    expect_xcheck(FUNCTION_EXIT_TAG,  0x7c93ee4f_u64);
     expect_no_xchecks();
 }
