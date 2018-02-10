@@ -231,8 +231,10 @@ public:
     // instead of the current two-function solution.
     void VisitFunctionProtoType(const FunctionProtoType *T) {
         auto EPI = T->getExtProtoInfo();
-        if(EPI.Variadic) {
+        static bool firstWarning = true;
+        if(firstWarning && EPI.Variadic) {
             std::cerr << "Warning: variadic functions are not supported.\n";
+            firstWarning = false;
         }
         DEBUG(dbgs() << "Visit ");
         DEBUG(T->dump());
