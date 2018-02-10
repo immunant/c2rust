@@ -3,9 +3,11 @@
 To add a new test case, simply add a new `.c` file to this directory. The entry point should _not_
 be main. It should be a function `entry` which expects to receive a zero-initialized buffer array.
 
+```c
     void entry(unsigned buffer_size, int buffer[]) {
         /* your code here */
     }
+```
 
 Your C code should modify this buffer. We simply test that the translated Rust `entry` function
 modifies the buffer in the _same_ way as the initial C `entry` function. Bugs in translation should
@@ -21,9 +23,11 @@ in the console output.
 _From the project root_, run `./scripts/test_translator.py tests` to run all of the tests in the
 `tests` folder. Here are a couple other handy options:
 
+```
     $ ./scripts/test_translator.py --only "q?sort"    tests    # run a subset of the tests
     $ ./scripts/test_translator.py --log ERROR        tests    # show output of failed tests
     $ ./scripts/test_translator.py --keep rust_src    tests    # keep some of the generated files
+```
 
 Run `./scripts/test_translator.py --help` for more information.
 
