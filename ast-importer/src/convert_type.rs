@@ -158,6 +158,11 @@ impl TypeConverter {
                 Ok(mk().array_ty(ty, mk().lit_expr(mk().int_lit(count as u128, LitIntType::Unsuffixed))))
             }
 
+            CTypeKind::IncompleteArray(ref ctype) => {
+                // FIXME: handle translation of incomplete arrays
+                Err(format!("Incomplete array support missing"))
+            }
+
             CTypeKind::Attributed(ty) => self.convert(ctxt, ty.ctype),
 
             CTypeKind::Function(ref ret, ref params) => {

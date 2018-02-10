@@ -1625,7 +1625,7 @@ impl Translation {
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id)
         } else {
-            Err(format!("Unsupported default initializer"))
+            Err(format!("Unsupported default initializer: {:?}", resolved_ty))
         }
     }
 
