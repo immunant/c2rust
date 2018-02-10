@@ -68,14 +68,14 @@ Function entries support the following fields:
 ------- | ------
 `disable_xchecks` | Disables all cross-checks for this function and everything in it if set to `true`.
 `entry` | Configures the function entry cross-check (see [below](#xcheck_types) for information on accepted values).
+`exit` | Configures the function exit cross-check.
 `all_args` | Specifies a cross-check override for all of this function's arguments. For example, setting `all_args: none` disables cross-checks for all arguments.
 `args` | An associative array that maps argument names to their corresponding cross-checks. This can be used to customize the cross-checks for some of the function arguments individually. This setting overrides both the global default and the one specified in `all_args` for the current function.
-`exit` | Configures the function exit cross-check (**UNIMPLEMENTED!!**, to be implemented later).
-`return` | Configures the function return value cross-check (**UNIMPLEMENTED!!**, to be implemented later).
+`return` | Configures the function return value cross-check.
 `ahasher` and `shasher` | Override the default values for the aggregate and simple hasher for this function (see **TODO** for the meaning of these fields).
 `nested` | Recursively configures the items nested inside the current items. Since Rust allows arbitrarily deep function and structure nesting, we use this to recursively configure nested functions.
 `entry_extra` | Specifies a list of additional custom cross-checks to perform after the argument. Each cross-check accepts an optional `tag` parameter that overrides the default `UNKNOWN` tag.
-`exit_extra` | Specifies a list of additional custom cross-checks to perform on function return (**UNIMPLEMENTED!!**, to be implemented later).
+`exit_extra` | Specifies a list of additional custom cross-checks to perform on function return.
 
 ## Structure cross-check configuration
 Structure entries configure cross-checks for Rust structure, tuple and enumeration types, and are tagged with `item: struct`.
@@ -137,9 +137,9 @@ Field  |  Role
 ------- | ------
 `disable_xchecks` | Disables all cross-checks for this file. Can be individually overridden per function or structure.
 `entry` | Configures the default entry cross-check for all functions in this file.
+`exit` | Similarly configures the function exit cross-check.
 `all_args` | Specifies a cross-check override for all arguments to all functions in this file. For example, setting `all_args: default` enables cross-checks for all arguments.
-`exit` | Configures the function exit cross-check (**UNIMPLEMENTED!!**, to be implemented later).
-`return` | Configures the function return value cross-check (**UNIMPLEMENTED!!**, to be implemented later).
+`return` | Configures the function return value cross-check.
 
 ## More examples
 ### Function example
@@ -181,8 +181,10 @@ The `#[cross_check]` function attribute currently supports the following argumen
  `none` or `disabled` | | Disable cross-checks for this function and all its sub-items (this attribute is inherited). Each sub-item can individually override this with `yes` or `enabled`.
  `yes` or `enabled` | | Enable cross-checks for this function and its sub-items. Each nested item can also override this setting with `none` or `disabled`.
  `entry` | `XCheckType` | Cross-check to use on function entry, same as for external configuration.
+ `exit` | `XCheckType` | Cross-check to use on function entry, same as for external configuration.
  `all_args` | `XCheckType` | Enable cross-checks for this function's arguments (disabled by default). Takes the cross-check type as its argument.
  `args(...)` | | Per-argument cross-check overrides (same as for external configuration).
+ `return` | `XCheckType` | Cross-check to perform on the function return value, same as for external configuration.
  `ahasher` and `shasher` | `String` | Same as for external configuration.
  `entry_extra` and `exit_extra` | Same as for external configuration.
  
