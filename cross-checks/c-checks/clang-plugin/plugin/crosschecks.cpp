@@ -735,7 +735,6 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
                                     param_ref_lv->getType(),
                                     VK_RValue, OK_Ordinary,
                                     SourceLocation());
-        // TODO: write a function that prepends __c2rust_hash_
         auto param_hash_call =
             build_call(pointee_name.full_name(), ctx.UnsignedLongTy,
                        { param_deref }, ctx);
@@ -789,10 +788,6 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     // }
     //
     // TODO: allow custom hashers instead of the default "jodyhash"
-    // TODO: add support for the "field_hasher" configuration override
-    // TODO: add support for the complete override of this function
-    // using "custom_hash"
-    // TODO: allow per-field cross-check configuration
     auto record_def = record_decl->getDefinition();
     if (record_def == nullptr) {
         report_clang_error(diags, "default cross-checking is not supported for undefined structures, "
@@ -843,8 +838,6 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
              hasher_prefix = std::move(hasher_prefix)]
             (FunctionDecl *fn_decl) -> StmtVec {
         StmtVec stmts;
-        // TODO: read and apply the configuration settings for each field:
-        // "disabled", "fixed" and "custom"
         auto hasher_size_call =
             build_call(hasher_prefix + "_size", ctx.UnsignedIntTy,
                        {}, ctx);
