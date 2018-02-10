@@ -1,12 +1,19 @@
 
+// FIXME: do we even need this one???
+#[macro_export]
+macro_rules! cross_check_iter {
+    ($iter:expr) => { $crate::xcheck::xcheck($iter) };
+}
+
 #[macro_export]
 macro_rules! cross_check_raw {
     ($item:expr) => {
         cross_check_raw!(UNKNOWN_TAG, $item)
     };
-    ($tag:ident, $item:expr) => {
-        $crate::xcheck::xcheck($crate::xcheck::$tag, $item as u64)
-    };
+    ($tag:ident, $item:expr) => {{
+        use std::iter::once;
+        cross_check_iter!(once(($crate::xcheck::$tag, $item as u64)))
+    }};
 }
 
 #[macro_export]
@@ -24,8 +31,6 @@ macro_rules! cross_check_value {
     //   $shasher == the hasher to use for simple values
     ($tag:ident, $value:expr, $ahasher:ty, $shasher:ty) => {{
         use $crate::hash::CrossCheckHash as XCH;
-        $crate::xcheck::xcheck(
-            $crate::xcheck::$tag,
-            XCH::cross_check_hash::<$ahasher, $shasher>(&$value))
+        cross_check_raw!($tag, XCH::cross_check_hash::<$ahasher, $shasher>(&$value))
     }}
 }

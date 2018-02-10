@@ -14,36 +14,45 @@ fn djb2_hash(s: &str) -> u32 {
     s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
 }
 
-pub trait CrossCheckHash {
-    fn get_ident_hash(&self, cx: &ExtCtxt, ident: &ast::Ident) -> Option<P<ast::Expr>>;
-    fn get_hash<F>(&self, cx: &ExtCtxt, f: F) -> Option<P<ast::Expr>>
-        where F: FnOnce() -> Option<P<ast::Expr>>;
+pub trait CrossCheckBuilder {
+    fn build_ident_xcheck(&self, cx: &ExtCtxt, tag_str: &str, ident: &ast::Ident) -> Option<ast::Stmt>;
+    fn build_xcheck<F>(&self, cx: &ExtCtxt, tag_str: &str, f: F) -> Option<ast::Stmt>
+        where F: FnOnce(ast::Ident) -> P<ast::Expr>;
 }
 
-impl CrossCheckHash for xcfg::XCheckType {
-    fn get_ident_hash(&self, cx: &ExtCtxt, ident: &ast::Ident) -> Option<P<ast::Expr>> {
-        self.get_hash(cx, || {
+impl CrossCheckBuilder for xcfg::XCheckType {
+    fn build_ident_xcheck(&self, cx: &ExtCtxt, tag_str: &str, ident: &ast::Ident) -> Option<ast::Stmt> {
+        self.build_xcheck(cx, tag_str, |tag| {
             let id = djb2_hash(&*ident.name.as_str()) as u64;
-            Some(quote_expr!(cx, $id))
+            quote_expr!(cx, Some(($tag, $id)))
         })
     }
 
     // Allow clients to specify the id or name manually, like this:
     // #[cross_check(name = "foo")]
     // #[cross_check(id = 0x12345678)]
-    fn get_hash<F>(&self, cx: &ExtCtxt, f: F) -> Option<P<ast::Expr>>
-            where F: FnOnce() -> Option<P<ast::Expr>> {
-        match *self {
-            xcfg::XCheckType::Default => f(),
+    fn build_xcheck<F>(&self, cx: &ExtCtxt, tag_str: &str, f: F) -> Option<ast::Stmt>
+            where F: FnOnce(ast::Ident) -> P<ast::Expr> {
+        let tag = ast::Ident::from_str(tag_str);
+        let check = match *self {
+            xcfg::XCheckType::Default => f(tag),
             xcfg::XCheckType::None |
-            xcfg::XCheckType::Disabled => None,
-            xcfg::XCheckType::Fixed(id) => Some(quote_expr!(cx, $id)),
+            xcfg::XCheckType::Disabled => quote_expr!(cx, None),
+            xcfg::XCheckType::Fixed(id) => quote_expr!(cx, Some(($tag, $id))),
             xcfg::XCheckType::Djb2(ref s) => {
                 let id = djb2_hash(s) as u64;
-                Some(quote_expr!(cx, $id))
+                quote_expr!(cx, Some(($tag, $id)))
             },
-            xcfg::XCheckType::Custom(ref s) => Some(cx.parse_expr(s.clone())),
-        }
+            xcfg::XCheckType::Custom(ref s) => {
+                // TODO: allow the custom expr to return an Option???
+                let custom_expr = cx.parse_expr(s.clone());
+                quote_expr!(cx, Some(($tag, $custom_expr)))
+            },
+        };
+        quote_stmt!(cx, {
+            use cross_check_runtime::xcheck::$tag;
+            cross_check_iter!($check.into_iter())
+        })
     }
 }
 

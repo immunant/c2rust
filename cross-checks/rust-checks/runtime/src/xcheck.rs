@@ -53,6 +53,8 @@ extern {
 }
 
 #[inline]
-pub fn xcheck(tag: u8, val: u64) {
-    unsafe { rb_xcheck(tag, val) }
+pub fn xcheck<I: Iterator<Item=(u8, u64)>>(checks: I) {
+    for (tag, val) in checks {
+        unsafe { rb_xcheck(tag, val) }
+    }
 }
