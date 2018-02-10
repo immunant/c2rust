@@ -74,6 +74,7 @@ class TestCase:
         ]
         """.format(cfile, directory)
 
+        print(compile_commands)
         with open(self.cc_db, 'w') as fh:
             fh.write(compile_commands)
 
@@ -88,6 +89,7 @@ class TestCase:
         args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
         # make it a little easier to run this command in a debugger
         logging.debug("extraction command:\n %s", str(ast_extractor[args]))
+        print(ast_extractor)
         return ast_extractor[args].run(retcode=None)
 
     def translate(self) -> (int, str, str):
@@ -104,6 +106,7 @@ class TestCase:
             translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
             translation_cmd += str(ast_importer[args] > self.rust_src)
             logging.debug("translation command:\n %s", translation_cmd)
+            print(translation_cmd)
             return (ast_importer[args] > self.rust_src).run(retcode=None)
 
     def compile_translated_rustc(self) -> (int, str, str):
@@ -114,6 +117,7 @@ class TestCase:
             '-o', self.rust_obj,
             self.rust_src
         ]
+        print(rustc[args])
         return rustc[args].run(retcode=None)
 
     def compile_translated_clang(self) -> (int, str, str):
@@ -128,6 +132,7 @@ class TestCase:
             args = ['-lSystem', '-lresolv'] + args
         else:
             args = ['-pthread', '-ldl'] + args
+        print(clang[args])
         return clang[args].run(retcode=None)
 
     def compile_original_clang(self) -> (int, str, str):
@@ -137,6 +142,7 @@ class TestCase:
             '-o', self.c_exec,
             driver, self.src_c
         ]
+        print(clang[args])
         return clang[args].run(retcode=None)
 
     def compare_run_outputs(self) -> (int, str, str):

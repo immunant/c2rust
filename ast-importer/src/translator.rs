@@ -889,6 +889,7 @@ impl Translation {
             Some(x) => self.convert_expr(ExprUse::RValue, x)?,
             None => WithStmts::new(self.implicit_default_expr(typ.ctype)?),
         };
+
         let ty = self.convert_type(typ.ctype)?;
         let mutbl = if typ.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
 
@@ -1054,18 +1055,30 @@ impl Translation {
             CExprKind::Literal(ty, CLiteral::String(ref val, width)) => {
                 let mut val = val.to_owned();
 
+                let mut size = match &self.ast_context.resolve_type(ty.ctype).kind {
+                    &CTypeKind::ConstantArray(_, size) => size,
+                    _ => val.len()
+                };
+
+                if size <= val.len() {
+                    val.truncate(size);
+                } else {
+                    size -= 1;
+                }
+
+
                 // Add zero terminator
                 for _ in 0..width { val.push(0); }
 
                 let u8_ty = mk().path_ty(vec!["u8"]);
-                let width_lit = mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
+                // val.len() should be changed to be the number of bytes passed in, or val.len() if not specified
+                let width_lit = mk().lit_expr(mk().int_lit((size+1) as u128, LitIntType::Unsuffixed));
                 let array_ty = mk().array_ty(u8_ty, width_lit);
                 let source_ty = mk().ref_ty(array_ty);
                 let mutbl = if ty.qualifiers.is_const {
                     Mutability::Immutable
                 } else { Mutability::Mutable };
                 let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
-
                 let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
                 let pointer = transmute_expr(source_ty, target_ty, byte_literal);
                 let array = mk().unary_expr(ast::UnOp::Deref, pointer);
