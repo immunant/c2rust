@@ -1060,18 +1060,23 @@ impl Translation {
                     _ => val.len()
                 };
 
+                // a check to see if value the array is allocated with,
+                // is larger than that of the string given. <= solely because of the ending
+                // null character
                 if size <= val.len() {
                     val.truncate(size);
-                } else {
-                    size -= 1;
+                } 
+                
+                // if the string is shorter than the size allocated,
+                // pad with zeros
+                if val.len() != size {
+                    for _ in 0..(size - val.len()) { val.push(0); }
                 }
-
 
                 // Add zero terminator
                 for _ in 0..width { val.push(0); }
 
                 let u8_ty = mk().path_ty(vec!["u8"]);
-                // val.len() should be changed to be the number of bytes passed in, or val.len() if not specified
                 let width_lit = mk().lit_expr(mk().int_lit((size+1) as u128, LitIntType::Unsuffixed));
                 let array_ty = mk().array_ty(u8_ty, width_lit);
                 let source_ty = mk().ref_ty(array_ty);
