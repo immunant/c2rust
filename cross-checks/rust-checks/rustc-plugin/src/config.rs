@@ -21,6 +21,7 @@ pub struct InheritedCheckConfig {
     pub entry: xcfg::XCheckType,
     pub exit: xcfg::XCheckType,
     pub all_args: xcfg::XCheckType,
+    pub ret: xcfg::XCheckType,
 
     // Overrides for ahasher/shasher
     pub ahasher: Option<Vec<TokenTree>>,
@@ -34,6 +35,7 @@ impl Default for InheritedCheckConfig {
             entry: xcfg::XCheckType::Default,
             exit: xcfg::XCheckType::Disabled, // FIXME: should be xcfg::XCheckType::Default,
             all_args: xcfg::XCheckType::None,
+            ret: xcfg::XCheckType::Disabled,  // FIXME: Default
             ahasher: None,
             shasher: None,
         }
@@ -202,6 +204,14 @@ impl ScopeCheckConfig {
                     }));
                 }
 
+                ("ret", &mut ItemCheckConfig::FileDefaults) |
+                ("ret", &mut ItemCheckConfig::Function(_)) => {
+                    // Enable cross-checking for arguments
+                    Rc::make_mut(&mut self.inherited).ret =
+                        xcheck_util::parse_xcheck_arg(&arg)
+                        .unwrap_or(xcfg::XCheckType::Default);
+                }
+
                 // TODO: handle entry_extra and exit_extra for Function
 
                 // Structure-specific attributes
@@ -240,6 +250,7 @@ impl ScopeCheckConfig {
                 parse_optional_field!(^entry,    xcfg_defs, entry,    entry.clone());
                 parse_optional_field!(^exit,     xcfg_defs, exit,     exit.clone());
                 parse_optional_field!(^all_args, xcfg_defs, all_args, all_args.clone());
+                parse_optional_field!(^ret,      xcfg_defs, ret,      ret.clone());
             },
 
             (&mut ItemCheckConfig::Function(ref mut self_func), &xcfg::ItemConfig::Function(ref xcfg_func)) => {
@@ -248,6 +259,7 @@ impl ScopeCheckConfig {
                 parse_optional_field!(^entry,    xcfg_func, entry,    entry.clone());
                 parse_optional_field!(^exit,     xcfg_func, exit,     exit.clone());
                 parse_optional_field!(^all_args, xcfg_func, all_args, all_args.clone());
+                parse_optional_field!(^ret,      xcfg_func, ret,      ret.clone());
                 // TODO: add a way for the external config to reset these to default
                 parse_optional_field!(^ahasher, xcfg_func, ahasher, Some(cx.parse_tts(ahasher.clone())));
                 parse_optional_field!(^shasher, xcfg_func, shasher, Some(cx.parse_tts(shasher.clone())));

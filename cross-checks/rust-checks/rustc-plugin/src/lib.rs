@@ -289,6 +289,17 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     let arg_xchecks = fn_decl.inputs.iter()
                         .flat_map(|ref arg| self.build_arg_xcheck(arg))
                         .collect::<Vec<P<ast::Block>>>();
+                    let result_xcheck = cfg.inherited.ret.get_hash(self.cx, || {
+                        // By default, we use cross_check_hash
+                        // to hash the value of the identifier
+                        let (ahasher, shasher) = self.get_hasher_pair();
+                        Some(quote_expr!(self.cx, {
+                            use cross_check_runtime::hash::CrossCheckHash as XCH;
+                            XCH::cross_check_hash::<$ahasher, $shasher>(&__c2rust_fn_result)
+                        }))
+                    }).map(|val| quote_block!(self.cx, {
+                        cross_check_raw!(FUNCTION_RETURN_TAG, $val)
+                    }));
 
                     let ref fcfg = cfg.function_config();
                     let entry_extra_xchecks = self.build_extra_xchecks(&fcfg.entry_extra);
@@ -300,7 +311,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                         let __c2rust_fn_body = || $block;
                         let __c2rust_fn_result = __c2rust_fn_body();
                         $exit_xcheck
-                        // TODO: result_xcheck
+                        $result_xcheck
                         $exit_extra_xchecks
                         __c2rust_fn_result
                     })
