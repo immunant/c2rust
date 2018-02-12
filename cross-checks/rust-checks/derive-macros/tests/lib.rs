@@ -38,7 +38,7 @@ fn test_custom_hash() {
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&ts),
-            0x12345678);
+            Some(0x12345678));
     });
 }
 
@@ -49,7 +49,7 @@ fn test_empty_struct_djb2() {
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&ts),
-            5381_u64);
+            Some(5381_u64));
     });
 }
 
@@ -60,7 +60,7 @@ fn test_simple_one_field() {
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
-            0x12345678_u64);
+            Some(0x12345678_u64));
     });
 }
 
@@ -71,7 +71,7 @@ fn test_field_hasher() {
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, SimpleHasher>(&ts),
-            0x12345678_u64);
+            Some(0x12345678_u64));
     });
 }
 
@@ -82,7 +82,7 @@ fn test_ahasher() {
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, SimpleHasher>(&ts),
-            0x12345678_u64);
+            Some(0x12345678_u64));
     });
 }
 
@@ -93,7 +93,7 @@ fn test_shasher() {
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<SimpleHasher, Djb2Hasher>(&ts),
-            0x12345678_u64);
+            Some(0x12345678_u64));
     });
 }
 
@@ -104,7 +104,7 @@ fn test_skip_field() {
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&ts),
-            5381_u64);
+            Some(5381_u64));
     });
 }
 
@@ -115,7 +115,7 @@ fn test_fixed_hash() {
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
-            1u64);
+            Some(1u64));
     });
 }
 
@@ -132,7 +132,7 @@ fn test_custom_field_hash() {
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
-            1u64);
+            Some(1u64));
     });
 }
 
@@ -148,7 +148,7 @@ fn test_custom_hash_skip() {
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&ts),
-            5381u64);
+            Some(5381u64));
     });
 }
 
@@ -162,7 +162,7 @@ fn test_skip_multi_fields() {
                      |ts| {
             assert_eq!(
                 XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
-                0x12345678u64);
+                Some(0x12345678u64));
         });
     }
     {
@@ -173,7 +173,7 @@ fn test_skip_multi_fields() {
                      |ts| {
             assert_eq!(
                 XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
-                0x34567812u64);
+                Some(0x34567812u64));
         });
     }
     {
@@ -184,7 +184,7 @@ fn test_skip_multi_fields() {
                      |ts| {
             assert_eq!(
                 XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
-                0x87654321u64);
+                Some(0x87654321u64));
         });
     }
 }
@@ -197,7 +197,7 @@ fn test_multi_field_hash() {
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, SimpleHasher>(&ts),
-            0x3d17c937_u64);
+            Some(0x3d17c937_u64));
     });
 
 }
