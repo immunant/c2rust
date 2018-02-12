@@ -483,7 +483,7 @@ impl Translation {
                     .foreign_items(vec![extern_item]))
             }
 
-            // Extern variable with intializer (definition here)
+            // Extern variable with initializer (definition here)
             CDeclKind::Variable { is_extern: true, is_static, ref ident, initializer, typ, .. } => {
                 assert!(is_static, "An extern variable must be static");
 
@@ -492,10 +492,12 @@ impl Translation {
 
                 let init = init.to_expr();
 
+                // Force mutability due to the potential for raw pointers occuring in the type
+
                 Ok(mk_linkage(false, new_name, ident)
                     .vis(Visibility::Public)
                     .abi(Abi::C)
-                    .set_mutbl(mutbl)
+                    .mutbl()
                     .static_item(new_name, ty, init))
             }
 
@@ -506,7 +508,8 @@ impl Translation {
 
                 let init = init.to_expr();
 
-                Ok(mk().set_mutbl(mutbl)
+                // Force mutability due to the potential for raw pointers occuring in the type
+                Ok(mk().mutbl()
                     .static_item(new_name, ty, init))
             }
 
@@ -889,6 +892,7 @@ impl Translation {
             Some(x) => self.convert_expr(ExprUse::RValue, x)?,
             None => WithStmts::new(self.implicit_default_expr(typ.ctype)?),
         };
+
         let ty = self.convert_type(typ.ctype)?;
         let mutbl = if typ.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
 
@@ -1054,8 +1058,13 @@ impl Translation {
             CExprKind::Literal(ty, CLiteral::String(ref val, width)) => {
                 let mut val = val.to_owned();
 
-                // Add zero terminator
-                for _ in 0..width { val.push(0); }
+                match &self.ast_context.resolve_type(ty.ctype).kind {
+                    // Match the literal size to the expected size padding with zeros as needed
+                    &CTypeKind::ConstantArray(_, size) => val.resize(size*(width as usize),0),
+
+                    // Add zero terminator
+                    _ => for _ in 0..width { val.push(0); },
+                };
 
                 let u8_ty = mk().path_ty(vec!["u8"]);
                 let width_lit = mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
@@ -1065,7 +1074,6 @@ impl Translation {
                     Mutability::Immutable
                 } else { Mutability::Mutable };
                 let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
-
                 let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
                 let pointer = transmute_expr(source_ty, target_ty, byte_literal);
                 let array = mk().unary_expr(ast::UnOp::Deref, pointer);
@@ -1148,7 +1156,7 @@ impl Translation {
                                 let mut bytes = bytes.to_owned();
                                 bytes.push(0);
                                 let byte_literal = mk().lit_expr(mk().bytestr_lit(bytes));
-                                let val = mk().method_call_expr(byte_literal, "as_ptr", vec![] as Vec<P<Expr>>);
+                                let val = mk().cast_expr(byte_literal, mk().ptr_ty(mk().path_ty(vec!["u8"])));
                                 let val = mk().cast_expr(val, target_ty);
                                 Ok(WithStmts { stmts: vec![], val: val, })
                             }
@@ -1430,12 +1438,10 @@ impl Translation {
 
                         if ids.len() == 1 {
                             let v = ids.first().unwrap();
-                            match self.ast_context.index(*v).kind {
-                                CExprKind::Literal(_, CLiteral::String(_, _)) => {
-                                    is_string = true;
-                                },
-                                _ => {}
-                            };
+                            if let CExprKind::Literal(_, CLiteral::String { .. }) =
+                                      self.ast_context.index(*v).kind {
+                                is_string = true;
+                            }
                         }
 
                         let mut stmts: Vec<Stmt> = vec![];
