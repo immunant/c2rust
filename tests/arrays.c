@@ -32,4 +32,8 @@ void entry(const unsigned buffer_size, int buffer[const])
     buffer[i++] = init[1];
     buffer[i++] = init[2];
     buffer[i++] = init[3];
+
+    char too_small[2] = "long";
+    buffer[i++] = too_small[0];
+    buffer[i++] = too_small[1];
 }
