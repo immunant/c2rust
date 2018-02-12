@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 void entry(const unsigned buffer_size, int buffer[const])
 {
     int arr[1][1] = { 1 };
@@ -46,5 +48,16 @@ void entry(const unsigned buffer_size, int buffer[const])
     buffer[i++] = too_short[4];
     buffer[i++] = too_short[5];
     buffer[i++] = too_short[6];
-    
+
+    wchar_t wide1[] = L"x";
+    buffer[i++] = wide1[0];
+    buffer[i++] = wide1[1];
+
+    wchar_t wide2[3] = L"x";
+    buffer[i++] = wide2[0];
+    buffer[i++] = wide2[1];
+    buffer[i++] = wide2[2];
+
+    wchar_t wide3[1] = L"xy";
+    buffer[i++] = wide3[0];
 }

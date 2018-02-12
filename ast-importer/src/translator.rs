@@ -1058,29 +1058,16 @@ impl Translation {
             CExprKind::Literal(ty, CLiteral::String(ref val, width)) => {
                 let mut val = val.to_owned();
 
-                let mut size = match &self.ast_context.resolve_type(ty.ctype).kind {
-                    &CTypeKind::ConstantArray(_, size) => size,
-                    _ => val.len()
+                match &self.ast_context.resolve_type(ty.ctype).kind {
+                    // Match the literal size to the expected size padding with zeros as needed
+                    &CTypeKind::ConstantArray(_, size) => val.resize(size*(width as usize),0),
+
+                    // Add zero terminator
+                    _ => for _ in 0..width { val.push(0); },
                 };
 
-                // a check to see if value the array is allocated with,
-                // is larger than that of the string given. <= solely because of the ending
-                // null character
-                if size <= val.len() {
-                    val.truncate(size);
-                } 
-                
-                // if the string is shorter than the size allocated,
-                // pad with zeros
-                if val.len() != size {
-                    for _ in 0..(size - val.len()) { val.push(0); }
-                }
-
-                // Add zero terminator
-                for _ in 0..width { val.push(0); }
-
                 let u8_ty = mk().path_ty(vec!["u8"]);
-                let width_lit = mk().lit_expr(mk().int_lit((size+1) as u128, LitIntType::Unsuffixed));
+                let width_lit = mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
                 let array_ty = mk().array_ty(u8_ty, width_lit);
                 let source_ty = mk().ref_ty(array_ty);
                 let mutbl = if ty.qualifiers.is_const {
