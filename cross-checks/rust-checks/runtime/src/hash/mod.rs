@@ -33,14 +33,29 @@ pub trait CrossCheckHasher: Hasher + Default {
 //   HS = the (fast) hasher to use for simple types, e.g., u32
 pub trait CrossCheckHash {
     #[inline]
-    fn cross_check_hash<HA, HS>(&self) -> u64
+    fn cross_check_hash<HA, HS>(&self) -> Option<u64>
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
-        self.cross_check_hash_depth::<HA, HS>(MAX_DEPTH)
+        Some(self.cross_check_hash_depth::<HA, HS>(MAX_DEPTH))
     }
 
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher;
 }
+
+impl CrossCheckHash for () {
+    #[inline]
+    fn cross_check_hash<HA, HS>(&self) -> Option<u64>
+            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        None
+    }
+
+    #[inline]
+    fn cross_check_hash_depth<HA, HS>(&self, _depth: usize) -> u64
+            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        panic!("Attempted to CrossCheckHash a unit value")
+    }
+}
+
 
 // Macro that emits cross_check_hash for a given primitive type, hashing
 // the value by just calling one of the write_XXX functions in Hasher
@@ -101,7 +116,7 @@ impl<'a, T: ?Sized + CrossCheckHash> CrossCheckHash for &'a T {
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
         if depth == 0 {
-            CrossCheckHash::cross_check_hash::<HA, HS>(&LEAF_REFERENCE_VALUE)
+            CrossCheckHash::cross_check_hash_depth::<HA, HS>(&LEAF_REFERENCE_VALUE, 1)
         } else {
             // FIXME: don't decrease the depth when following references?
             (**self).cross_check_hash_depth::<HA, HS>(depth - 1)
@@ -114,7 +129,7 @@ impl<'a, T: ?Sized + CrossCheckHash> CrossCheckHash for &'a mut T {
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
         if depth == 0 {
-            CrossCheckHash::cross_check_hash::<HA, HS>(&LEAF_REFERENCE_VALUE)
+            CrossCheckHash::cross_check_hash_depth::<HA, HS>(&LEAF_REFERENCE_VALUE, 1)
         } else {
             // FIXME: don't decrease the depth when following references?
             (**self).cross_check_hash_depth::<HA, HS>(depth - 1)
@@ -128,9 +143,9 @@ impl<T: CrossCheckHash> CrossCheckHash for *const T {
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
         if depth == 0 {
-            CrossCheckHash::cross_check_hash::<HA, HS>(&LEAF_POINTER_VALUE)
+            CrossCheckHash::cross_check_hash_depth::<HA, HS>(&LEAF_POINTER_VALUE, 1)
         } else if self.is_null() {
-            //CrossCheckHash::cross_check_hash::<HA, HS>(&0usize)
+            //CrossCheckHash::cross_check_hash_depth::<HA, HS>(&0usize, 1)
             NULL_POINTER_HASH
         } else {
             unsafe {
@@ -146,9 +161,9 @@ impl<T: CrossCheckHash> CrossCheckHash for *mut T {
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
         if depth == 0 {
-            CrossCheckHash::cross_check_hash::<HA, HS>(&LEAF_POINTER_VALUE)
+            CrossCheckHash::cross_check_hash_depth::<HA, HS>(&LEAF_POINTER_VALUE, 1)
         } else if self.is_null() {
-            //CrossCheckHash::cross_check_hash::<HA, HS>(&0usize)
+            //CrossCheckHash::cross_check_hash_depth::<HA, HS>(&0usize, 1)
             NULL_POINTER_HASH
         } else {
             unsafe {

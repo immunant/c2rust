@@ -206,7 +206,8 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     let (ahasher, shasher) = self.get_hasher_pair();
                     quote_expr!(self.cx, {
                         use cross_check_runtime::hash::CrossCheckHash as XCH;
-                        Some(($tag, XCH::cross_check_hash::<$ahasher, $shasher>(&$ident)))
+                        let hash = XCH::cross_check_hash::<$ahasher, $shasher>(&$ident);
+                        hash.map(|hash| ($tag, hash))
                     })
                 })
             }
@@ -283,7 +284,8 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                         let (ahasher, shasher) = self.get_hasher_pair();
                         quote_expr!(self.cx, {
                             use cross_check_runtime::hash::CrossCheckHash as XCH;
-                            Some(($tag, XCH::cross_check_hash::<$ahasher, $shasher>(&__c2rust_fn_result)))
+                            let hash = XCH::cross_check_hash::<$ahasher, $shasher>(&__c2rust_fn_result);
+                            hash.map(|hash| ($tag, hash))
                         })
                     });
 

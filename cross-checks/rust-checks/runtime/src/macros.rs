@@ -31,6 +31,8 @@ macro_rules! cross_check_value {
     //   $shasher == the hasher to use for simple values
     ($tag:ident, $value:expr, $ahasher:ty, $shasher:ty) => {{
         use $crate::hash::CrossCheckHash as XCH;
-        cross_check_raw!($tag, XCH::cross_check_hash::<$ahasher, $shasher>(&$value))
+        if let Some(hash) = XCH::cross_check_hash::<$ahasher, $shasher>(&$value) {
+            cross_check_raw!($tag, hash)
+        }
     }}
 }
