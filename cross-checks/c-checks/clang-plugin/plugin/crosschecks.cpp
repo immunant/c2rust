@@ -264,8 +264,10 @@ private:
                                        CustomArgVec args,
                                        BuildFn build_fn);
 
+    using TinyStmtVec = llvm::TinyPtrVector<Stmt*>;
+
     template<typename DefaultFn, typename CustomArgsFn>
-    llvm::TinyPtrVector<Stmt*>
+    TinyStmtVec
     build_xcheck(const XCheck &xcheck, XCheck::Tag tag,
                  ASTContext &ctx, DefaultFn default_fn,
                  CustomArgsFn custom_args_fn);
@@ -293,7 +295,7 @@ private:
                                     QualType ty,
                                     ASTContext &ctx);
 
-    llvm::TinyPtrVector<Stmt*>
+    TinyStmtVec
     build_parameter_xcheck(ParmVarDecl *param,
                            const DefaultsConfigOptRef file_defaults,
                            const std::optional<FunctionConfigRef> &func_cfg,
@@ -511,7 +513,7 @@ CrossCheckInserter::parse_custom_xcheck(std::string_view sv,
 }
 
 template<typename DefaultFn, typename CustomArgsFn>
-llvm::TinyPtrVector<Stmt*>
+CrossCheckInserter::TinyStmtVec
 CrossCheckInserter::build_xcheck(const XCheck &xcheck, XCheck::Tag tag,
                                  ASTContext &ctx, DefaultFn default_fn,
                                  CustomArgsFn custom_args_fn) {
@@ -568,7 +570,7 @@ CrossCheckInserter::build_xcheck(const XCheck &xcheck, XCheck::Tag tag,
     if (rb_xcheck_val == nullptr)
         return {};
 
-    llvm::TinyPtrVector<Stmt*> res;
+    TinyStmtVec res;
     auto rb_xcheck_tag =
         IntegerLiteral::Create(ctx,
                                llvm::APInt(8, tag),
@@ -733,7 +735,6 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
                                     param_ref_lv->getType(),
                                     VK_RValue, OK_Ordinary,
                                     SourceLocation());
-        // TODO: write a function that prepends __c2rust_hash_
         auto param_hash_call =
             build_call(pointee_name.full_name(), ctx.UnsignedLongTy,
                        { param_deref }, ctx);
@@ -787,10 +788,6 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     // }
     //
     // TODO: allow custom hashers instead of the default "jodyhash"
-    // TODO: add support for the "field_hasher" configuration override
-    // TODO: add support for the complete override of this function
-    // using "custom_hash"
-    // TODO: allow per-field cross-check configuration
     auto record_def = record_decl->getDefinition();
     if (record_def == nullptr) {
         report_clang_error(diags, "default cross-checking is not supported for undefined structures, "
@@ -841,8 +838,6 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
              hasher_prefix = std::move(hasher_prefix)]
             (FunctionDecl *fn_decl) -> StmtVec {
         StmtVec stmts;
-        // TODO: read and apply the configuration settings for each field:
-        // "disabled", "fixed" and "custom"
         auto hasher_size_call =
             build_call(hasher_prefix + "_size", ctx.UnsignedIntTy,
                        {}, ctx);
@@ -1012,7 +1007,7 @@ CrossCheckInserter::generic_custom_args(ASTContext &ctx,
     return res;
 }
 
-llvm::TinyPtrVector<Stmt*>
+CrossCheckInserter::TinyStmtVec
 CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
                                            const DefaultsConfigOptRef file_defaults,
                                            const std::optional<FunctionConfigRef> &func_cfg,
@@ -1094,6 +1089,12 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
 
             // Add the function entry-point cross-check
             StmtVec new_body_stmts;
+            auto add_body_stmts = [&new_body_stmts] (const TinyStmtVec &stmts) {
+                new_body_stmts.insert(new_body_stmts.end(),
+                                      std::make_move_iterator(stmts.begin()),
+                                      std::make_move_iterator(stmts.end()));
+            };
+
             XCheck entry_xcheck{XCheck::DEFAULT};
             if (file_defaults && file_defaults->get().entry)
                 entry_xcheck = *file_defaults->get().entry;
@@ -1111,9 +1112,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                                    ctx,
                                                    entry_xcheck_default_fn,
                                                    no_custom_args);
-            std::move(entry_xcheck_stmts.begin(),
-                      entry_xcheck_stmts.end(),
-                      std::back_inserter(new_body_stmts));
+            add_body_stmts(entry_xcheck_stmts);
 
             // Custom cross-check functions accept either function parameters
             // or global variables as their own arguments
@@ -1122,44 +1121,40 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             for (auto &param : fd->parameters()) {
                 param_decls.emplace(llvm_string_ref_to_sv(param->getName()), param);
             }
+            auto param_custom_args_fn = [&ctx, &param_decls] (CustomArgVec args) {
+                auto arg_build_fn = [&ctx] (DeclaratorDecl *decl) {
+                    return new (ctx) DeclRefExpr(decl, false, decl->getType(),
+                                                 VK_LValue, SourceLocation());
+                };
+                return generic_custom_args(ctx, param_decls, args, arg_build_fn);
+            };
             // Add cross-checks for the function parameters
             for (auto &param : fd->parameters()) {
                 auto param_xcheck_stmts =
                     build_parameter_xcheck(param, file_defaults, func_cfg,
                                            param_decls, ctx);
-                std::move(param_xcheck_stmts.begin(),
-                          param_xcheck_stmts.end(),
-                          std::back_inserter(new_body_stmts));
+                add_body_stmts(param_xcheck_stmts);
             }
 
             // Add any extra cross-checks
-            if (func_cfg && !func_cfg->get().entry_extra.empty()) {
-                auto extra_xcheck_default_fn = [] (void) -> Expr* {
-                    llvm_unreachable("XCheck::DEFAULT encountered for entry_extra");
-                    return nullptr;
-                };
-                auto extra_xcheck_custom_args_fn = [&ctx, &param_decls] (CustomArgVec args) {
-                    auto arg_build_fn = [&ctx] (DeclaratorDecl *decl) {
-                        return new (ctx) DeclRefExpr(decl, false, decl->getType(),
-                                                     VK_LValue, SourceLocation());
-                    };
-                    return generic_custom_args(ctx, param_decls, args, arg_build_fn);
-                };
+            auto extra_xcheck_default_fn = [] (void) -> Expr* {
+                llvm_unreachable("invalid XCheck::DEFAULT for extra cross-check");
+                return nullptr;
+            };
+            if (func_cfg) {
                 for (auto &ex : func_cfg->get().entry_extra) {
                     XCheck extra_xcheck{XCheck::CUSTOM, ex.custom};
                     auto extra_xcheck_stmts = build_xcheck(extra_xcheck,
                                                            ex.tag, ctx,
                                                            extra_xcheck_default_fn,
-                                                           extra_xcheck_custom_args_fn);
-                    std::move(extra_xcheck_stmts.begin(),
-                              extra_xcheck_stmts.end(),
-                              std::back_inserter(new_body_stmts));
+                                                           param_custom_args_fn);
+                    add_body_stmts(extra_xcheck_stmts);
                 }
             }
 
             // Build the body function and call it
             auto dni = fd->getNameInfo();
-            std::string body_fn_name{"__c2rust_wrapper_"};
+            std::string body_fn_name{"__c2rust_fn_body_"};
             body_fn_name += dni.getName().getAsString();
             auto body_fn_id = &ctx.Idents.get(body_fn_name);
             dni.setName(DeclarationName{body_fn_id});
@@ -1197,6 +1192,9 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 args.push_back(param_ref_rv);
             }
             Expr *body_call = build_call(body_fn_name, result_ty, args, ctx);
+
+            // Build the result variable and its value
+            VarDecl *result_var = nullptr;
             Expr *result = nullptr;
             if (result_ty->isIncompleteType()) {
                 // Incomplete type (probably void), which we can't store
@@ -1207,7 +1205,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 // Build the variable that holds the result:
                 // T __c2rust_fn_result = __c2rust_wrapper_X(...);
                 auto result_id = &ctx.Idents.get("__c2rust_fn_result");
-                auto result_var =
+                result_var =
                     VarDecl::Create(ctx, fd, SourceLocation(), SourceLocation(),
                                     result_id, result_ty, nullptr, SC_None);
                 result_var->setInit(body_call);
@@ -1229,16 +1227,46 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 exit_xcheck = *file_defaults->get().exit;
             if (func_cfg && func_cfg->get().exit)
                 exit_xcheck = *func_cfg->get().exit;
-            auto exit_xcheck_stmts = build_xcheck(exit_xcheck,
-                                                  XCheck::Tag::FUNCTION_EXIT,
-                                                  ctx,
-                                                  entry_xcheck_default_fn,
-                                                  no_custom_args);
-            std::move(exit_xcheck_stmts.begin(),
-                      exit_xcheck_stmts.end(),
-                      std::back_inserter(new_body_stmts));
+            auto exit_xcheck_stmts =
+                build_xcheck(exit_xcheck, XCheck::Tag::FUNCTION_EXIT,
+                             ctx, entry_xcheck_default_fn, no_custom_args);
+            add_body_stmts(exit_xcheck_stmts);
 
-            // TODO: add post-exit cross-checks here
+            // Post-exit return value and exit_extra checks
+            if (result_var) {
+                // FIXME: pick a nicer name
+                param_decls.emplace("__c2rust_fn_result", result_var);
+
+                // If we have a cross-check for the result, do it
+                XCheck result_xcheck{XCheck::DEFAULT};
+                if (file_defaults && file_defaults->get().ret)
+                    result_xcheck = *file_defaults->get().ret;
+                if (func_cfg && func_cfg->get().ret)
+                    result_xcheck = *func_cfg->get().ret;
+
+                auto result_xcheck_default_fn = [this, &ctx, result, result_ty] (void) {
+                    // By default, we just call __c2rust_hash_T(x)
+                    // where T is the type of the parameter
+                    // FIXME: include shasher/ahasher
+                    auto hash_fn_name = get_type_hash_function(result_ty, ctx, true);
+                    return build_call(hash_fn_name.full_name(), ctx.UnsignedLongTy,
+                                      { result }, ctx);
+                };
+                auto result_xcheck_stmts =
+                    build_xcheck(result_xcheck, XCheck::Tag::FUNCTION_RETURN,
+                                 ctx, result_xcheck_default_fn, param_custom_args_fn);
+                add_body_stmts(result_xcheck_stmts);
+            }
+            if (func_cfg) {
+                // Add exit_extra checks
+                for (auto &ex : func_cfg->get().exit_extra) {
+                    XCheck extra_xcheck{XCheck::CUSTOM, ex.custom};
+                    auto extra_xcheck_stmts =
+                        build_xcheck(extra_xcheck, ex.tag, ctx,
+                                     extra_xcheck_default_fn, param_custom_args_fn);
+                    add_body_stmts(extra_xcheck_stmts);
+                }
+            }
 
             // Add the final return
             auto return_stmt = new (ctx) ReturnStmt(SourceLocation(),

@@ -30,7 +30,7 @@ use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
 use syntax::util::small_vector::SmallVector;
 
-use xcheck_util::CrossCheckHash;
+use xcheck_util::CrossCheckBuilder;
 
 struct ScopeConfig<'xcfg> {
     file_name: Rc<String>, // FIXME: this should be a &str
@@ -191,7 +191,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     }
 
     // Get the cross-check block for this argument
-    fn build_arg_xcheck(&self, arg: &ast::Arg) -> Option<P<ast::Block>> {
+    fn build_arg_xcheck(&self, arg: &ast::Arg) -> Option<ast::Stmt> {
         match arg.pat.node {
             ast::PatKind::Ident(_, ref ident, _) => {
                 // Parameter pattern is just an identifier,
@@ -200,17 +200,15 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 let arg_xcheck_cfg = self.config().function_config()
                     .args.get(&arg_idx)
                     .unwrap_or(&self.config().inherited.all_args);
-                arg_xcheck_cfg.get_hash(self.cx, || {
+                arg_xcheck_cfg.build_xcheck(self.cx, "FUNCTION_ARG_TAG", |tag| {
                     // By default, we use cross_check_hash
                     // to hash the value of the identifier
                     let (ahasher, shasher) = self.get_hasher_pair();
-                    Some(quote_expr!(self.cx, {
+                    quote_expr!(self.cx, {
                         use cross_check_runtime::hash::CrossCheckHash as XCH;
-                        XCH::cross_check_hash::<$ahasher, $shasher>(&$ident)
-                    }))
-                }).map(|val| quote_block!(self.cx, {
-                    cross_check_raw!(FUNCTION_ARG_TAG, $val)
-                }))
+                        Some(($tag, XCH::cross_check_hash::<$ahasher, $shasher>(&$ident)))
+                    })
+                })
             }
             _ => unimplemented!()
         }
@@ -245,16 +243,9 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         res
     }
 
-    fn build_callee_xcheck(&self, fn_ident: &ast::Ident, xcheck: &xcfg::XCheckType,
-                           tag_str: &str) -> Option<ast::Stmt> {
-        let tag = ast::Ident::from_str(tag_str);
-        xcheck.get_ident_hash(self.cx, fn_ident)
-            .map(|hash| quote_stmt!(self.cx, cross_check_raw!($tag, $hash);))
-            .unwrap_or_default()
-    }
-
-    fn build_extra_xchecks(&self, extra_xchecks: &[xcfg::ExtraXCheck]) -> Vec<P<ast::Block>> {
-        extra_xchecks.iter().map(|ex| {
+    fn build_extra_xchecks(&self, extra_xchecks: &[xcfg::ExtraXCheck]) -> Vec<ast::Stmt> {
+        extra_xchecks.iter().flat_map(|ex| {
+            // TODO: allow the custom functions to return Option or an iterator???
             let expr = self.cx.parse_expr(ex.custom.clone());
             let tag_str = match ex.tag {
                 xcfg::XCheckTag::Unknown        => "UNKNOWN_TAG",
@@ -264,10 +255,8 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 xcfg::XCheckTag::FunctionReturn => "FUNCTION_RETURN_TAG",
             };
             let tag = ast::Ident::from_str(tag_str);
-            quote_block!(self.cx, {
-                cross_check_raw!($tag, $expr)
-            })
-        }).collect::<Vec<P<ast::Block>>>()
+            quote_stmt!(self.cx, cross_check_raw!($tag, $expr))
+        }).collect::<Vec<ast::Stmt>>()
     }
 
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
@@ -279,16 +268,24 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     // Add the cross-check to the beginning of the function
                     // TODO: only add the checks to C abi functions???
                     let ref cfg = self.config();
-                    let entry_xcheck = self.build_callee_xcheck(&fn_ident,
-                                                                &cfg.inherited.entry,
-                                                                "FUNCTION_ENTRY_TAG");
-                    let exit_xcheck = self.build_callee_xcheck(&fn_ident,
-                                                               &cfg.inherited.exit,
-                                                               "FUNCTION_EXIT_TAG");
+                    let entry_xcheck = cfg.inherited.entry
+                        .build_ident_xcheck(self.cx, "FUNCTION_ENTRY_TAG", &fn_ident);
+                    let exit_xcheck = cfg.inherited.exit
+                        .build_ident_xcheck(self.cx, "FUNCTION_EXIT_TAG", &fn_ident);
                     // Insert cross-checks for function arguments
                     let arg_xchecks = fn_decl.inputs.iter()
                         .flat_map(|ref arg| self.build_arg_xcheck(arg))
-                        .collect::<Vec<P<ast::Block>>>();
+                        .collect::<Vec<ast::Stmt>>();
+                    let result_xcheck = cfg.inherited.ret
+                        .build_xcheck(self.cx, "FUNCTION_RETURN_TAG", |tag| {
+                        // By default, we use cross_check_hash
+                        // to hash the value of the identifier
+                        let (ahasher, shasher) = self.get_hasher_pair();
+                        quote_expr!(self.cx, {
+                            use cross_check_runtime::hash::CrossCheckHash as XCH;
+                            Some(($tag, XCH::cross_check_hash::<$ahasher, $shasher>(&__c2rust_fn_result)))
+                        })
+                    });
 
                     let ref fcfg = cfg.function_config();
                     let entry_extra_xchecks = self.build_extra_xchecks(&fcfg.entry_extra);
@@ -300,7 +297,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                         let __c2rust_fn_body = || $block;
                         let __c2rust_fn_result = __c2rust_fn_body();
                         $exit_xcheck
-                        // TODO: result_xcheck
+                        $result_xcheck
                         $exit_extra_xchecks
                         __c2rust_fn_result
                     })

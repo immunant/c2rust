@@ -15,13 +15,15 @@ src/fibo.rs:
       //all_args: { custom: "foo(&n)" }
       //ahasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
       //shasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
+      return: default
+      exit: default
 
       entry_extra:
         - { custom: "foo(&n)", tag: FUNCTION_ARG }
         - { custom: "0xdeadbeef", tag: FUNCTION_ARG }
 
       exit_extra:
-        - { custom: "n", tag: FUNCTION_ARG }
+        - { custom: "__c2rust_fn_result", tag: UNKNOWN }
 
     - item: struct
       name: FiboArg

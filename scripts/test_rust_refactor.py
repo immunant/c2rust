@@ -41,7 +41,7 @@ def run_tests(testcases: List[str]) -> None:
                                  triplet=get_host_triplet())
 
     with pb.local.env(RUST_BACKTRACE='1',
-                      RUST_LOG="idiomize=info",                      
+                      RUST_LOG="idiomize=info",
                       LD_LIBRARY_PATH=ld_lib_path,
                       not_LD_LIBRARY_PATH=ld_lib_path,
                       refactor=refactor,
@@ -57,8 +57,9 @@ def run_tests(testcases: List[str]) -> None:
 
                     old_new_rust = os.path.join(testdir, "old.rs.new")
                     assert os.path.isfile(old_new_rust), "missing rewritten rust"
-                    rustfmt["--force", old_new_rust].run()
-                    
+                    mode = "overwrite"  # set to 'replace' to generate backups
+                    rustfmt["--force", "--write-mode", mode, old_new_rust].run()
+
                     new_rust = os.path.join(testdir, "new.rs")
                     diff["-wB", new_rust, old_new_rust].run()
 
@@ -67,14 +68,17 @@ def run_tests(testcases: List[str]) -> None:
             except pb.ProcessExecutionError as pee:
                 print(" {}[FAIL]{} ".format(FAIL, NO_COLOUR) + testname)
                 logging.debug(" [FAIL] " + testname)
-                logging.debug(pee.stderr)
-                # print(pee.stderr)
-                # quit(1)
+                logfile = os.path.join(testdir, "log")
+                if os.path.exists(logfile):
+                    with open(logfile, "r") as fh:
+                        lines = fh.readlines()
+                        logging.debug("".join(lines))
+
 
 def main():
     # TODO: implement rustfmt and diff actions from `run-test.sh`
     # TODO: check rustfmt version   
-     
+
     setup_logging()
     ensure_rustc_version(CUSTOM_RUST_RUSTC_VERSION)
     ensure_rustfmt_version()
