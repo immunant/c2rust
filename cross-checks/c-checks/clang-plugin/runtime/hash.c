@@ -35,6 +35,11 @@ DEFINE_CTYPE_HASH(short,  short,              i, __SHRT_WIDTH__);
 DEFINE_CTYPE_HASH(int,    int,                i, __INT_WIDTH__);
 DEFINE_CTYPE_HASH(long,   long,               i, __LONG_WIDTH__);
 DEFINE_CTYPE_HASH(llong,  unsigned long long, i, __LONG_LONG_WIDTH__);
+#ifdef __CHAR_UNSIGNED__
+DEFINE_CTYPE_HASH(char,   char,               u, __SCHAR_WIDTH__);
+#else
+DEFINE_CTYPE_HASH(char,   char,               i, __SCHAR_WIDTH__);
+#endif
 
 // TODO: implement more types, e.g., bool, char, double, float
 
