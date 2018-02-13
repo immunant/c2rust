@@ -953,6 +953,10 @@ impl Translation {
                     let cdecl : &CDecl = ast_context.index(decl_id);
                     match cdecl.kind {
                         CDeclKind::Function { typ, .. } => Ok(typ),
+                        CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ} => {
+                            let inner_typ = typ.ctype;
+                            Ok(inner_typ)
+                        }
                         _ => Err("couldn't get leaf node type")
                     }
                 }
@@ -1094,10 +1098,29 @@ impl Translation {
                             let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
                             match target_ty_ctype {
                                 &CTypeKind::Pointer(qual_type_id) => {
-                                    let inner_ty_ctype = &self.ast_context.resolve_type(qual_type_id.ctype).kind;
                                     let target_ty = self.convert_type(qual_type_id.ctype)?;
+
+
+                                    eprintln!("source is declref t: {:?}", src_is_declref_type);
+                                    eprintln!("source declref type: {:?}", source_ty);
+                                    eprintln!("source.node........: {:?}", source_ty.node);
+                                    eprintln!("target ....... type: {:?}", target_ty);
+                                    eprintln!("target.node........: {:?}", target_ty.node);
+                                    // FIXME: detect that source type is sized array and
+                                    // target type is slice with compatible element type
+                                    let array_to_slice_cast = match target_ty.node {
+                                        TyKind::Slice(ref tgt_elem_ty) => match source_ty.node {
+                                            TyKind::Array(ref src_elem_ty, ref len_expr) => {
+                                                tgt_elem_ty == src_elem_ty
+                                            },
+                                            _ => false
+                                        }
+                                       _ => false
+                                    };
+
                                     // See comment above re. cases where bitcast is superfluous.
-                                    if src_is_declref_type && target_ty == source_ty {
+                                    let is_superfluous = src_is_declref_type && target_ty == source_ty;
+                                    if is_superfluous || array_to_slice_cast {
                                         return Ok(x)
                                     }
                                 },
