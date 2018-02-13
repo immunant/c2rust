@@ -16,6 +16,8 @@ Building from scratch takes on the order of 30 minutes. This script works on at 
 
     $ ./scripts/build_translator.py
 
+On Ubuntu, ninja-build is required.
+
 To manually build the `ast-extractor`, check out [this Wiki page][0]. To manually build the
 `ast-importer`, check out [its README](ast-importer/README.md).
 
