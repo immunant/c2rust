@@ -1,3 +1,4 @@
+// should fail
 // TODO: test extern variables (whose definition is not here) 
 
 // forward decl
