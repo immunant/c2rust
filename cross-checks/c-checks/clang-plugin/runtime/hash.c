@@ -43,6 +43,30 @@ DEFINE_CTYPE_HASH(char,   char,               i, __SCHAR_WIDTH__);
 
 // TODO: implement more types, e.g., bool, char, double, float
 
+#if __SIZEOF_FLOAT__ == 4
+uint64_t __c2rust_hash_float(float x) {
+    union {
+        float f;
+        uint32_t u;
+    } xx = { .f = x };
+    return 0x3c3c3c3c3c3c3c38ULL ^ (uint64_t) xx.u;
+}
+#else
+#error "Unknown size for float"
+#endif
+
+#if __SIZEOF_DOUBLE__ == 8
+uint64_t __c2rust_hash_double(double x) {
+    union {
+        double d;
+        uint64_t u;
+    } xx = { .d = x };
+    return 0x9696969696969692ULL ^ (uint64_t) xx.u;
+}
+#else
+#error "Unknown size for double"
+#endif
+
 #define LEAF_POINTER_HASH 0xDEADBEEFUL
 #define NULL_POINTER_HASH 0UL
 #define VOID_POINTER_HASH 0x7261745364696f56ULL // "VoidStar" in ASCII
