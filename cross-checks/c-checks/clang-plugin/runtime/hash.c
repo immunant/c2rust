@@ -45,6 +45,7 @@ DEFINE_CTYPE_HASH(char,   char,               i, __SCHAR_WIDTH__);
 
 #define LEAF_POINTER_HASH 0xDEADBEEFUL
 #define NULL_POINTER_HASH 0UL
+#define VOID_POINTER_HASH 0x7261745364696f56ULL // "VoidStar" in ASCII
 
 _Bool __c2rust_pointer_is_valid(void *p) {
     return p != (void*) 0;
@@ -52,6 +53,10 @@ _Bool __c2rust_pointer_is_valid(void *p) {
 
 uint64_t __c2rust_hash_invalid_pointer(void *p) {
     return NULL_POINTER_HASH;
+}
+
+uint64_t __c2rust_hash_void_ptr(void *p) {
+    return p ? VOID_POINTER_HASH : NULL_POINTER_HASH;
 }
 
 // JodyHasher implementation
