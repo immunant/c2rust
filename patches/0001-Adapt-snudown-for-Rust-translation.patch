@@ -1,0 +1,179 @@
+From f8c5c93f70cc8e960ade115ab3d74c2385911e88 Mon Sep 17 00:00:00 2001
+From: Eric Mertens <emertens@galois.com>
+Date: Tue, 13 Feb 2018 10:54:14 -0800
+Subject: [PATCH] Adapt snudown for Rust translation
+
+---
+ .gitignore      |  1 +
+ setup.py        |  7 +++++--
+ src/buffer.c    | 46 ----------------------------------------------
+ src/buffer.h    |  1 -
+ src/bufprintf.c | 53 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 59 insertions(+), 49 deletions(-)
+ create mode 100644 src/bufprintf.c
+
+diff --git a/.gitignore b/.gitignore
+index 4945b7a..0716c85 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -8,3 +8,4 @@ src/html_entities.h
+ *.o
+ /fuzzing/bin
+ /fuzzing/testing
++*.c.cbor
+diff --git a/setup.py b/setup.py
+index a780cb0..baa2e22 100644
+--- a/setup.py
++++ b/setup.py
+@@ -46,8 +46,11 @@ setup(
+     ext_modules=[
+         Extension(
+             name='snudown',
+-            sources=['snudown.c'] + c_files_in('src/') + c_files_in('html/'),
+-            include_dirs=['src', 'html']
++            sources=['snudown.c', 'src/bufprintf.c'] + c_files_in('html/'),
++            include_dirs=['src', 'html'],
++            libraries=['lib'],
++            library_dirs=['src/build']
+         )
+     ],
+ )
++            # sources=['snudown.c'] + c_files_in('src/') + c_files_in('html/'),
+diff --git a/src/buffer.c b/src/buffer.c
+index ab18948..61c408e 100644
+--- a/src/buffer.c
++++ b/src/buffer.c
+@@ -24,13 +24,6 @@
+ #include <string.h>
+ #include <assert.h>
+ 
+-/* MSVC compat */
+-#if defined(_MSC_VER)
+-#	define _buf_vsnprintf _vsnprintf
+-#else
+-#	define _buf_vsnprintf vsnprintf
+-#endif
+-
+ int
+ bufprefix(const struct buf *buf, const char *prefix)
+ {
+@@ -109,45 +102,6 @@ bufcstr(struct buf *buf)
+ 	return NULL;
+ }
+ 
+-/* bufprintf: formatted printing to a buffer */
+-void
+-bufprintf(struct buf *buf, const char *fmt, ...)
+-{
+-	va_list ap;
+-	int n;
+-
+-	assert(buf && buf->unit);
+-
+-	if (buf->size >= buf->asize && bufgrow(buf, buf->size + 1) < 0)
+-		return;
+-	va_start(ap, fmt);
+-	n = _buf_vsnprintf((char *)buf->data + buf->size, buf->asize - buf->size, fmt, ap);
+-	va_end(ap);
+-
+-	if (n < 0) {
+-#ifdef _MSC_VER
+-		va_start(ap, fmt);
+-		n = _vscprintf(fmt, ap);
+-		va_end(ap);
+-#else
+-		return;
+-#endif
+-	}
+-	if ((size_t)n >= buf->asize - buf->size) {
+-		if (bufgrow(buf, buf->size + n + 1) < 0)
+-			return;
+-
+-		va_start(ap, fmt);
+-		n = _buf_vsnprintf((char *)buf->data + buf->size, buf->asize - buf->size, fmt, ap);
+-		va_end(ap);
+-	}
+-
+-	if (n < 0)
+-		return;
+-
+-	buf->size += n;
+-}
+-
+ /* bufput: appends raw data to a buffer */
+ void
+ bufput(struct buf *buf, const void *data, size_t len)
+diff --git a/src/buffer.h b/src/buffer.h
+index ab98ab6..343b0f7 100644
+--- a/src/buffer.h
++++ b/src/buffer.h
+@@ -19,7 +19,6 @@
+ #define BUFFER_H__
+ 
+ #include <stddef.h>
+-#include <stdarg.h>
+ #include <stdint.h>
+ 
+ #ifdef __cplusplus
+diff --git a/src/bufprintf.c b/src/bufprintf.c
+new file mode 100644
+index 0000000..45c07b4
+--- /dev/null
++++ b/src/bufprintf.c
+@@ -0,0 +1,53 @@
++#include <stdarg.h>
++#include <stdlib.h>
++#include <assert.h>
++#include <string.h>
++#include <stdio.h>
++#include "buffer.h"
++
++/* MSVC compat */
++#if defined(_MSC_VER)
++#	define _buf_vsnprintf _vsnprintf
++#else
++#	define _buf_vsnprintf vsnprintf
++#endif
++
++
++/* bufprintf: formatted printing to a buffer */
++void
++bufprintf(struct buf *buf, const char *fmt, ...)
++{
++	va_list ap;
++	int n;
++
++	assert(buf && buf->unit);
++
++	if (buf->size >= buf->asize && bufgrow(buf, buf->size + 1) < 0)
++		return;
++	va_start(ap, fmt);
++	n = _buf_vsnprintf((char *)buf->data + buf->size, buf->asize - buf->size, fmt, ap);
++	va_end(ap);
++
++	if (n < 0) {
++#ifdef _MSC_VER
++		va_start(ap, fmt);
++		n = _vscprintf(fmt, ap);
++		va_end(ap);
++#else
++		return;
++#endif
++	}
++	if ((size_t)n >= buf->asize - buf->size) {
++		if (bufgrow(buf, buf->size + n + 1) < 0)
++			return;
++
++		va_start(ap, fmt);
++		n = _buf_vsnprintf((char *)buf->data + buf->size, buf->asize - buf->size, fmt, ap);
++		va_end(ap);
++	}
++
++	if (n < 0)
++		return;
++
++	buf->size += n;
++}
+-- 
+2.16.1
+

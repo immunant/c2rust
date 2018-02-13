@@ -21,8 +21,13 @@ int baz(void) {
   return k + 1;
 }
 
+static const char *hello = "hello";
+
 void entry(const unsigned buffer_size, int buffer[]) {
-    if (buffer_size < 10) return;
+
+    static const char *world = "world";
+
+    if (buffer_size < 11) return;
 
     buffer[0] = baz();
     buffer[1] = baz();
@@ -35,9 +40,6 @@ void entry(const unsigned buffer_size, int buffer[]) {
     baz();
     buffer[8] = counter;
 
-
+    buffer[9] = hello[0];
+    buffer[10] = world[1];
 }
-
-
-  
-
