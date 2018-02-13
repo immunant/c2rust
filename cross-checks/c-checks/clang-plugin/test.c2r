@@ -54,4 +54,5 @@ test.c:
         #n2: { custom: "id" }
         #n2: { custom: "foo(n1, n2)" }
         n2: { custom: "double_hash(n1, n2)" }
+        p: disabled # TODO: enable when MAX_DEPTH is implemented
 ...

@@ -277,6 +277,18 @@ private:
 
     using StmtVec = SmallVector<Stmt*, 16>;
 
+    // Set of functions we're in the process of building
+    // We need to keep track of which hash functions we've started
+    // building, so we avoid an infinite recursion when we build
+    // hash functions for recursive structures, e.g.:
+    // struct Foo {
+    //   struct Foo *p;
+    // }
+    // __c2rust_hash_Foo_struct calls __c2rust_hash_Foo_struct_ptr
+    // which in turns calls __c2rust_hash_Foo_struct, so we need
+    // to be careful when building them to avoid infinite recursion
+    std::set<StringRef, StringRefCompare> pending_hash_functions;
+
     template<typename BodyFn>
     void build_generic_hash_function(const HashFunctionName &func_name,
                                      QualType ty,
@@ -680,13 +692,20 @@ void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &fun
                                                      QualType ty,
                                                      ASTContext &ctx,
                                                      BodyFn body_fn) {
-    auto fn_decl = get_function_decl(func_name.full_name(),
+    auto full_name = func_name.full_name();
+    auto fn_decl = get_function_decl(full_name,
                                      ctx.UnsignedLongTy,
                                      { ty },
                                      SC_Static,
                                      ctx);
     if (fn_decl->hasBody())
         return; // We've already built it
+
+    // If we're already in the process of building this function,
+    // just leave it as a body-less Decl
+    auto [it, inserted] = pending_hash_functions.insert(std::cref(full_name));
+    if (!inserted)
+        return; // Function is already pending
 
     auto fn_body_stmts = body_fn(fn_decl);
     auto fn_body = new (ctx)
@@ -698,6 +717,8 @@ void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &fun
     fn_decl->setBody(fn_body);
     new_funcs.push_back(fn_decl);
     // TODO: add it to the parent DeclContext???
+
+    pending_hash_functions.erase(full_name);
 }
 
 void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &func_name,
