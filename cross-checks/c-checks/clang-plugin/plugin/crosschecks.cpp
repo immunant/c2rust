@@ -294,6 +294,10 @@ private:
                       FunctionDecl *parent,
                       ASTContext &ctx);
 
+    QualType get_adjusted_hash_type(QualType ty, ASTContext &ctx);
+
+    Expr *forward_hash_argument(Expr *arg, QualType ty, ASTContext &ctx);
+
     template<typename BodyFn>
     void build_generic_hash_function(const HashFunctionName &func_name,
                                      QualType ty,
@@ -426,9 +430,7 @@ CallExpr *CrossCheckInserter::build_call(llvm::StringRef fn_name, QualType resul
                                          ArrayRef<Expr*> args, ASTContext &ctx) {
     SmallVector<QualType, 16> arg_tys;
     for (auto &arg : args) {
-        auto arg_ty = ctx.getAdjustedParameterType(arg->getType());
-        // Should decay function pointers further to void*???
-        arg_tys.push_back(arg_ty);
+        arg_tys.push_back(arg->getType());
     }
     auto fn_decl = get_function_decl(fn_name, result_ty, arg_tys,
                                      SC_Extern, ctx);
@@ -742,6 +744,37 @@ CrossCheckInserter::build_hasher_init(const std::string &hasher_prefix,
     return { hasher_var, hasher_var_ptr, { hasher_var_decl_stmt, init_call } };
 }
 
+QualType CrossCheckInserter::get_adjusted_hash_type(QualType ty, ASTContext &ctx) {
+    if (ty->isRecordType()) {
+        // We pass records by pointer, not by value
+        return ctx.getPointerType(ty);
+    }
+    return ctx.getAdjustedParameterType(ty);
+}
+
+Expr *CrossCheckInserter::forward_hash_argument(Expr *arg, QualType ty, ASTContext &ctx) {
+    assert(arg->isLValue() && "Passed non-lvalue to forward_hash_argument");
+    CastKind ck = CK_LValueToRValue;
+    if (ty->isRecordType()) {
+        // We forward structure/union arguments by pointer, not by value
+        return new (ctx) UnaryOperator(arg, UO_AddrOf,
+                                       ctx.getPointerType(ty),
+                                       VK_RValue, OK_Ordinary,
+                                       SourceLocation());
+    } else if (ty->isArrayType()) {
+        // If the field is an array type T[...], decay it to
+        // a pointer T*, and pass that pointer to the field
+        // hash function
+        ck = CK_ArrayToPointerDecay;
+        ty = ctx.getDecayedType(ty);
+    } else if (ty->isFunctionType()) {
+        ck = CK_FunctionToPointerDecay;
+        ty = ctx.getDecayedType(ty);
+        // TODO: should the signature always be a void*???
+    }
+    return ImplicitCastExpr::Create(ctx, ty, ck, arg, nullptr, VK_RValue);
+}
+
 template<typename BodyFn>
 void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &func_name,
                                                      QualType ty,
@@ -750,7 +783,7 @@ void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &fun
     auto full_name = func_name.full_name();
     auto fn_decl = get_function_decl(full_name,
                                      ctx.UnsignedLongTy,
-                                     { ctx.getAdjustedParameterType(ty) },
+                                     { get_adjusted_hash_type(ty, ctx) },
                                      SC_Static,
                                      ctx);
     if (fn_decl->hasBody())
@@ -817,13 +850,15 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
         // Build the call to the pointee function
         assert(!pointee_ty->isIncompleteType() &&
                "Attempting to dereference incomplete type");
-        auto param_deref =
+        auto param_deref_lv =
             new (ctx) UnaryOperator(param_ref_lv, UO_Deref, pointee_ty,
-                                    VK_RValue, OK_Ordinary,
+                                    VK_LValue, OK_Ordinary,
                                     SourceLocation());
+        auto param_deref_rv = forward_hash_argument(param_deref_lv,
+                                                    pointee_ty, ctx);
         auto param_hash_call =
             build_call(pointee_name.full_name(), ctx.UnsignedLongTy,
-                       { param_deref }, ctx);
+                       { param_deref_rv }, ctx);
 
         // Build the call to __c2rust_hash_invalid_pointer
         auto hash_invalid_call =
@@ -919,9 +954,10 @@ void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_
         auto param_ref_lv =
             new (ctx) DeclRefExpr(param, false, param_ty,
                                   VK_LValue, SourceLocation());
-        auto param_i_rv = new (ctx) ArraySubscriptExpr(param_ref_lv, i_var_rv,
-                                                       element_ty, VK_RValue,
+        auto param_i_lv = new (ctx) ArraySubscriptExpr(param_ref_lv, i_var_rv,
+                                                       element_ty, VK_LValue,
                                                        OK_Ordinary, SourceLocation());
+        auto param_i_rv = forward_hash_argument(param_i_lv, element_ty, ctx);
         auto param_i_hash_fn = element_name.full_name();
         auto param_i_hash = build_call(param_i_hash_fn, ctx.UnsignedLongTy,
                                        { param_i_rv }, ctx);
@@ -967,14 +1003,15 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
         // the structure to it
         // FIXME: would be nice to not have to emit a function body,
         // and instead declare our function using "alias", e.g.:
-        // uint64_t __c2rust_hash_T_struct(struct T x) __attribute__((alias("...")));
+        // uint64_t __c2rust_hash_T_struct(struct T *x) __attribute__((alias("...")));
         auto &hash_fn_name = *record_cfg->get().custom_hash;
         auto body_fn = [this, &ctx, &hash_fn_name] (FunctionDecl *fn_decl) -> StmtVec {
             auto param = fn_decl->getParamDecl(0);
             auto param_ty = param->getType();
-            auto param_ref_rv =
+            auto param_ref_lv =
                 new (ctx) DeclRefExpr(param, false, param_ty,
-                                      VK_RValue, SourceLocation());
+                                      VK_LValue, SourceLocation());
+            auto param_ref_rv = forward_hash_argument(param_ref_lv, param_ty, ctx);
             auto hash_fn_call = build_call(hash_fn_name,
                                            ctx.UnsignedLongTy,
                                            { param_ref_rv }, ctx);
@@ -1076,7 +1113,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                     // Build the argument vector
                     auto &args = std::get<1>(field_hash_fn_sig);
                     auto arg_build_fn = [&ctx, param_ref_lv] (DeclaratorDecl *decl) {
-                        return new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
+                        return new (ctx) MemberExpr(param_ref_lv, true, SourceLocation(),
                                                     decl, SourceLocation(),
                                                     decl->getType(), VK_LValue,
                                                     OK_Ordinary);
@@ -1088,24 +1125,10 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                     field_hash_fn =
                         get_type_hash_function(field_ty, ctx, true).full_name();
                     auto field_ref_lv =
-                        new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
+                        new (ctx) MemberExpr(param_ref_lv, true, SourceLocation(),
                                              field, SourceLocation(),
                                              field->getType(), VK_LValue, OK_Ordinary);
-                    CastKind ck = CK_LValueToRValue;
-                    if (field_ty->isArrayType()) {
-                        // If the field is an array type T[...], decay it to
-                        // a pointer T*, and pass that pointer to the field
-                        // hash function
-                        ck = CK_ArrayToPointerDecay;
-                        field_ty = ctx.getDecayedType(field_ty);
-                    } else if (field_ty->isFunctionType()) {
-                        ck = CK_FunctionToPointerDecay;
-                        field_ty = ctx.getDecayedType(field_ty);
-                        // TODO: should the signature always be a void*???
-                    }
-                    auto field_ref_rv =
-                        ImplicitCastExpr::Create(ctx, field_ty, ck,
-                                                 field_ref_lv, nullptr, VK_RValue);
+                    auto field_ref_rv = forward_hash_argument(field_ref_lv, field_ty, ctx);
                     field_hash_args.push_back(field_ref_rv);
                 }
                 field_hash = build_call(field_hash_fn,
@@ -1207,9 +1230,11 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
         auto hash_fn_name = get_type_hash_function(param->getType(), ctx, true);
 
         // Forward the value of the parameter to the hash function
-        auto param_ref_rv =
-            new (ctx) DeclRefExpr(param, false, param->getType(),
-                                  VK_RValue, SourceLocation());
+        auto param_ty = param->getType();
+        auto param_ref_lv =
+            new (ctx) DeclRefExpr(param, false, param_ty,
+                                  VK_LValue, SourceLocation());
+        auto param_ref_rv = forward_hash_argument(param_ref_lv, param_ty, ctx);
         // TODO: pass PODs by value, non-PODs by pointer???
         return build_call(hash_fn_name.full_name(), ctx.UnsignedLongTy,
                           { param_ref_rv }, ctx);
@@ -1391,7 +1416,6 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 // Build the DeclRefExpr for the ReturnStmt
                 result = new (ctx) DeclRefExpr(result_var, false, result_ty,
                                                VK_RValue, SourceLocation());
-
             }
 
             // Add the function exit-point cross-check
@@ -1417,13 +1441,16 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 if (func_cfg && func_cfg->get().ret)
                     result_xcheck = *func_cfg->get().ret;
 
-                auto result_xcheck_default_fn = [this, &ctx, result, result_ty] (void) {
+                auto result_xcheck_default_fn = [this, &ctx, result_var, result_ty] (void) {
                     // By default, we just call __c2rust_hash_T(x)
                     // where T is the type of the parameter
                     // FIXME: include shasher/ahasher
                     auto hash_fn_name = get_type_hash_function(result_ty, ctx, true);
+                    auto result_lv = new (ctx) DeclRefExpr(result_var, false, result_ty,
+                                                           VK_LValue, SourceLocation());
+                    auto result_rv = forward_hash_argument(result_lv, result_ty, ctx);
                     return build_call(hash_fn_name.full_name(), ctx.UnsignedLongTy,
-                                      { result }, ctx);
+                                      { result_rv }, ctx);
                 };
                 auto result_xcheck_stmts =
                     build_xcheck(result_xcheck, XCheck::Tag::FUNCTION_RETURN,

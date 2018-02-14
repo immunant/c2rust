@@ -21,8 +21,8 @@ struct Foo {
     uint64_t nn[2];
 };
 
-uint64_t my_Foo_hash(struct Foo x) {
-    return (128 + x.n1) * 256 + (x.n2 + 128);
+uint64_t my_Foo_hash(struct Foo *x) {
+    return (128 + x->n1) * 256 + (x->n2 + 128);
 }
 
 uint64_t double_hash(uint64_t a, uint64_t b) {
