@@ -183,7 +183,7 @@ def on_mac() -> bool:
 def on_linux() -> bool:
     if on_mac():
         return False
-    elif on_ubuntu() or on_arch():
+    elif on_ubuntu() or on_arch() or on_debian():
         return True
     else:
         # neither on mac nor on a known distro
@@ -203,6 +203,15 @@ def on_ubuntu() -> bool:
     """
     match = re.match(r'^.+Ubuntu-\d\d\.\d\d-\w+', platform.platform())
     return match is not None
+
+
+def on_debian() -> bool:
+    """
+    return true on debian distro (and derivatives?).
+    """
+    distro, *_ = platform.linux_distribution()
+
+    return distro == "debian"
 
 
 def regex(raw: str):
@@ -318,7 +327,7 @@ def ensure_rustfmt_version():
         emsg = "expected version: {}\n"
         emsg = emsg + 9 * "." + "actual version: {}"
         emsg = emsg.format(expected_version_str, actual_version)
-        die(emsg)        
+        die(emsg)
 
 
 def ensure_clang_version(min_ver: List[int]):
