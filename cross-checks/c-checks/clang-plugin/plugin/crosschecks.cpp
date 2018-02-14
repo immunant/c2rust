@@ -697,6 +697,7 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
     }
 
     default:
+        ty->dump(llvm::errs());
         llvm_unreachable("unimplemented");
     }
 }
