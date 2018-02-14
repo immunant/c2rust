@@ -938,40 +938,13 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     auto &diags = ctx.getDiagnostics();
     auto record_ty = cast<RecordType>(ty);
     auto record_decl = record_ty->getDecl();
-    if (record_decl->isUnion()) {
-        report_clang_error(diags, "default cross-checking is not supported for unions, "
-                                  "please use a custom cross-check");
-        return;
-    }
-    assert((record_decl->isStruct() || record_decl->isClass()) &&
-           "Called build_record_hash_function on neither a struct nor a class");
-
     // TODO: handle disable_xchecks == true here
 
-    // Build the following code:
-    // uint64_t __c2rust_hash_T_struct(struct T x) {
-    //   char hasher[__c2rust_hasher_H_size()];
-    //   __c2rust_hasher_H_init(hasher);
-    //   __c2rust_hasher_H_update(hasher, __c2rust_hash_F1(x.field1));
-    //   __c2rust_hasher_H_update(hasher, __c2rust_hash_F2(x.field2));
-    //   ...
-    //   return __c2rust_hasher_H_finish(hasher);
-    // }
-    //
-    // TODO: allow custom hashers instead of the default "jodyhash"
-    auto record_def = record_decl->getDefinition();
-    if (record_def == nullptr) {
-        report_clang_error(diags, "default cross-checking is not supported for undefined structures, "
-                                  "please use a custom cross-check for '%0'",
-                                  record_decl->getDeclName().getAsString());
-        return;
-    }
-
     std::optional<StructConfigRef> record_cfg;
-    auto ploc = ctx.getSourceManager().getPresumedLoc(record_def->getLocStart());
+    auto ploc = ctx.getSourceManager().getPresumedLoc(record_decl->getLocStart());
     if (ploc.isValid()) {
         std::string file_name(ploc.getFilename());
-        std::string record_name = record_def->getName().str();
+        std::string record_name = record_decl->getName().str();
         record_cfg = get_struct_config(file_name, record_name);
     }
     if (record_cfg && record_cfg->get().custom_hash) {
@@ -997,6 +970,32 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
         build_generic_hash_function(func_name, ty, ctx, body_fn);
         return;
     }
+
+    // Build the following code:
+    // uint64_t __c2rust_hash_T_struct(struct T x) {
+    //   char hasher[__c2rust_hasher_H_size()];
+    //   __c2rust_hasher_H_init(hasher);
+    //   __c2rust_hasher_H_update(hasher, __c2rust_hash_F1(x.field1));
+    //   __c2rust_hasher_H_update(hasher, __c2rust_hash_F2(x.field2));
+    //   ...
+    //   return __c2rust_hasher_H_finish(hasher);
+    // }
+    //
+    // TODO: allow custom hashers instead of the default "jodyhash"
+    auto record_def = record_decl->getDefinition();
+    if (record_def == nullptr) {
+        report_clang_error(diags, "default cross-checking is not supported for undefined structures, "
+                                  "please use a custom cross-check for '%0'",
+                                  record_decl->getDeclName().getAsString());
+        return;
+    }
+    if (record_def->isUnion()) {
+        report_clang_error(diags, "default cross-checking is not supported for unions, "
+                                  "please use a custom cross-check");
+        return;
+    }
+    assert((record_def->isStruct() || record_def->isClass()) &&
+           "Called build_record_hash_function on neither a struct nor a class");
 
     std::string hasher_name{"jodyhash"};
     if (record_cfg && record_cfg->get().field_hasher) {
