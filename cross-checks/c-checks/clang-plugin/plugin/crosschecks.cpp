@@ -289,6 +289,11 @@ private:
     // to be careful when building them to avoid infinite recursion
     std::set<StringRef, StringRefCompare> pending_hash_functions;
 
+    std::tuple<VarDecl*, Expr*, StmtVec>
+    build_hasher_init(const std::string &hasher_prefix,
+                      FunctionDecl *parent,
+                      ASTContext &ctx);
+
     template<typename BodyFn>
     void build_generic_hash_function(const HashFunctionName &func_name,
                                      QualType ty,
@@ -301,7 +306,12 @@ private:
                                      QualType pointee_ty,
                                      ASTContext &ctx);
 
-    // TODO: build_array_hash_function
+    void build_array_hash_function(const HashFunctionName &func_name,
+                                   QualType ty,
+                                   const HashFunctionName &element_name,
+                                   QualType element_ty,
+                                   const llvm::APInt &num_elements,
+                                   ASTContext &ctx);
 
     void build_record_hash_function(const HashFunctionName &func_name,
                                     QualType ty,
@@ -416,7 +426,7 @@ CallExpr *CrossCheckInserter::build_call(llvm::StringRef fn_name, QualType resul
                                          ArrayRef<Expr*> args, ASTContext &ctx) {
     SmallVector<QualType, 16> arg_tys;
     for (auto &arg : args) {
-        auto arg_ty = arg->getType();
+        auto arg_ty = ctx.getAdjustedParameterType(arg->getType());
         arg_tys.push_back(arg_ty);
     }
     auto fn_decl = get_function_decl(fn_name, result_ty, arg_tys,
@@ -656,10 +666,14 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
         auto array_ty = cast<ConstantArrayType>(ty);
         auto element_ty = array_ty->getElementType();
         auto element_name = get_type_hash_function(element_ty, ctx, build_it);
-        auto func_name = std::move(element_name);
+        auto num_elements = array_ty->getSize();
+        auto func_name = element_name;
         func_name.append("array"sv);
-        func_name.append(llvm::utostr(array_ty->getSize().getZExtValue()));
-        // TODO: build it
+        func_name.append(llvm::utostr(num_elements.getZExtValue()));
+        if (build_it) {
+            build_array_hash_function(func_name, ty, element_name,
+                                      element_ty, num_elements, ctx);
+        }
         return func_name;
     }
 
@@ -687,6 +701,41 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
     }
 }
 
+std::tuple<VarDecl*, Expr*, CrossCheckInserter::StmtVec>
+CrossCheckInserter::build_hasher_init(const std::string &hasher_prefix,
+                                      FunctionDecl *parent,
+                                      ASTContext &ctx) {
+    auto hasher_size_call =
+        build_call(hasher_prefix + "_size", ctx.UnsignedIntTy,
+                   {}, ctx);
+    auto hasher_ty = ctx.getVariableArrayType(ctx.CharTy,
+                                              hasher_size_call,
+                                              ArrayType::Normal,
+                                              0, SourceRange());
+    auto hasher_ptr_ty = ctx.getArrayDecayedType(hasher_ty);
+    auto hasher_id = &ctx.Idents.get("hasher");
+    auto hasher_var =
+        VarDecl::Create(ctx, parent, SourceLocation(), SourceLocation(),
+                        hasher_id, hasher_ty, nullptr, SC_None);
+    auto hasher_var_decl_stmt =
+        new (ctx) DeclStmt(DeclGroupRef(hasher_var),
+                           SourceLocation(),
+                           SourceLocation());
+
+    // Call the initializer
+    auto hasher_var_ref =
+        new (ctx) DeclRefExpr(hasher_var, false, hasher_ty,
+                              VK_LValue, SourceLocation());
+    auto hasher_var_ptr =
+        ImplicitCastExpr::Create(ctx, hasher_ptr_ty,
+                                 CK_ArrayToPointerDecay,
+                                 hasher_var_ref, nullptr, VK_RValue);
+    auto init_call = build_call(hasher_prefix + "_init",
+                                ctx.VoidTy,
+                                { hasher_var_ptr }, ctx);
+    return { hasher_var, hasher_var_ptr, { hasher_var_decl_stmt, init_call } };
+}
+
 template<typename BodyFn>
 void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &func_name,
                                                      QualType ty,
@@ -695,7 +744,7 @@ void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &fun
     auto full_name = func_name.full_name();
     auto fn_decl = get_function_decl(full_name,
                                      ctx.UnsignedLongTy,
-                                     { ty },
+                                     { ctx.getAdjustedParameterType(ty) },
                                      SC_Static,
                                      ctx);
     if (fn_decl->hasBody())
@@ -738,7 +787,7 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
     // }
     //
     // TODO: add a depth parameter and decrement it on recursion
-    auto body_fn = [this, &ctx, &pointee_name] (FunctionDecl *fn_decl) -> StmtVec {
+    auto body_fn = [this, &ctx, &pointee_name, pointee_ty] (FunctionDecl *fn_decl) -> StmtVec {
         assert(fn_decl->getNumParams() == 1 &&
                "Invalid hash function signature");
         auto param = fn_decl->getParamDecl(0);
@@ -756,8 +805,7 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
 
         // Build the call to the pointee function
         auto param_deref =
-            new (ctx) UnaryOperator(param_ref_lv, UO_Deref,
-                                    param_ref_lv->getType(),
+            new (ctx) UnaryOperator(param_ref_lv, UO_Deref, pointee_ty,
                                     VK_RValue, OK_Ordinary,
                                     SourceLocation());
         auto param_hash_call =
@@ -782,6 +830,98 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
         auto return_stmt =
             new (ctx) ReturnStmt(SourceLocation(), cond_expr, nullptr);
         return { return_stmt };
+    };
+    build_generic_hash_function(func_name, ty, ctx, body_fn);
+}
+
+void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_name,
+                                                   QualType ty,
+                                                   const HashFunctionName &element_name,
+                                                   QualType element_ty,
+                                                   const llvm::APInt &num_elements,
+                                                   ASTContext &ctx) {
+    // Build the following code:
+    // uint64_t __c2rust_hash_T_array_N(T x[N]) {
+    //   char hasher[__c2rust_hasher_H_size()];
+    //   __c2rust_hasher_H_init(hasher);
+    //   for (size_t i = 0; i < N; i++)
+    //      __c2rust_hasher_H_update(hasher, __c2rust_hash_T(x[i]));
+    //   return __c2rust_hasher_H_finish(hasher);
+    // }
+    //
+    // TODO: allow custom hashers instead of the default "jodyhash"
+    std::string hasher_name{"jodyhash"};
+    std::string hasher_prefix{"__c2rust_hasher_"};
+    hasher_prefix += hasher_name;
+    auto body_fn =
+            [this, &ctx, &element_name, element_ty, &num_elements,
+             hasher_prefix = std::move(hasher_prefix)]
+            (FunctionDecl *fn_decl) -> StmtVec {
+        StmtVec stmts;
+        auto [hasher_var, hasher_var_ptr, hasher_init_stmts] =
+            build_hasher_init(hasher_prefix, fn_decl, ctx);
+        stmts.insert(stmts.end(),
+                     std::make_move_iterator(hasher_init_stmts.begin()),
+                     std::make_move_iterator(hasher_init_stmts.end()));
+
+        // size_t i = 0;
+        auto i_id = &ctx.Idents.get("i");
+        auto i_ty = ctx.getSizeType();
+        auto i_var = VarDecl::Create(ctx, fn_decl, SourceLocation(), SourceLocation(),
+                                     i_id, i_ty, nullptr, SC_None);
+        llvm::APInt zero{ctx.getTypeSize(i_ty), 0};
+        auto i_init = IntegerLiteral::Create(ctx, zero, i_ty, SourceLocation());
+        i_var->setInit(i_init);
+        auto i_decl_stmt = new (ctx) DeclStmt(DeclGroupRef(i_var),
+                                              SourceLocation(),
+                                              SourceLocation());
+        // i < N
+        auto i_var_lv = new (ctx) DeclRefExpr(i_var, false, i_ty,
+                                              VK_LValue, SourceLocation());
+        auto i_var_rv = ImplicitCastExpr::Create(ctx, i_var_lv->getType(),
+                                                 CK_LValueToRValue,
+                                                 i_var_lv, nullptr, VK_RValue);
+        auto num_elems_lit = IntegerLiteral::Create(ctx, num_elements, i_ty,
+                                                    SourceLocation());
+        auto loop_cond = new (ctx) BinaryOperator(i_var_rv, num_elems_lit,
+                                                  BO_LT, ctx.IntTy,
+                                                  VK_RValue, OK_Ordinary,
+                                                  SourceLocation(),
+                                                  FPOptions{});
+        // i++
+        auto i_incr = new (ctx) UnaryOperator(i_var_lv, UO_PostInc,
+                                              i_ty, VK_RValue, OK_Ordinary,
+                                              SourceLocation());
+        // Loop body: __c2rust_hasher_H_update(hasher, __c2rust_hash_T(x[i]));
+        auto param = fn_decl->getParamDecl(0);
+        auto param_ty = param->getType();
+        auto param_ref_lv =
+            new (ctx) DeclRefExpr(param, false, param_ty,
+                                  VK_LValue, SourceLocation());
+        auto param_i_rv = new (ctx) ArraySubscriptExpr(param_ref_lv, i_var_rv,
+                                                       element_ty, VK_RValue,
+                                                       OK_Ordinary, SourceLocation());
+        auto param_i_hash_fn = element_name.full_name();
+        auto param_i_hash = build_call(param_i_hash_fn, ctx.UnsignedLongTy,
+                                       { param_i_rv }, ctx);
+        auto update_call = build_call(hasher_prefix + "_update", ctx.VoidTy,
+                                      { hasher_var_ptr, param_i_hash }, ctx);
+
+        // Put everything together
+        auto loop = new (ctx) ForStmt(ctx, i_decl_stmt, loop_cond,
+                                      nullptr, i_incr, update_call,
+                                      SourceLocation(), SourceLocation(),
+                                      SourceLocation());
+        stmts.push_back(loop);
+
+        // Return the result of the finish function
+        auto finish_call = build_call(hasher_prefix + "_finish",
+                                      ctx.UnsignedLongTy,
+                                      { hasher_var_ptr }, ctx);
+        auto return_stmt =
+            new (ctx) ReturnStmt(SourceLocation(), finish_call, nullptr);
+        stmts.push_back(return_stmt);
+        return stmts;
     };
     build_generic_hash_function(func_name, ty, ctx, body_fn);
 }
@@ -863,36 +1003,11 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
              hasher_prefix = std::move(hasher_prefix)]
             (FunctionDecl *fn_decl) -> StmtVec {
         StmtVec stmts;
-        auto hasher_size_call =
-            build_call(hasher_prefix + "_size", ctx.UnsignedIntTy,
-                       {}, ctx);
-        auto hasher_ty = ctx.getVariableArrayType(ctx.CharTy,
-                                                  hasher_size_call,
-                                                  ArrayType::Normal,
-                                                  0, SourceRange());
-        auto hasher_ptr_ty = ctx.getArrayDecayedType(hasher_ty);
-        auto hasher_id = &ctx.Idents.get("hasher");
-        auto hasher_var =
-            VarDecl::Create(ctx, fn_decl, SourceLocation(), SourceLocation(),
-                            hasher_id, hasher_ty, nullptr, SC_None);
-        auto hasher_var_decl_stmt =
-            new (ctx) DeclStmt(DeclGroupRef(hasher_var),
-                               SourceLocation(),
-                               SourceLocation());
-        stmts.push_back(hasher_var_decl_stmt);
-
-        // Call the initializer
-        auto hasher_var_ref =
-            new (ctx) DeclRefExpr(hasher_var, false, hasher_ty,
-                                  VK_LValue, SourceLocation());
-        auto hasher_var_ptr =
-            ImplicitCastExpr::Create(ctx, hasher_ptr_ty,
-                                     CK_ArrayToPointerDecay,
-                                     hasher_var_ref, nullptr, VK_RValue);
-        auto init_call = build_call(hasher_prefix + "_init",
-                                    ctx.VoidTy,
-                                    { hasher_var_ptr }, ctx);
-        stmts.push_back(init_call);
+        auto [hasher_var, hasher_var_ptr, hasher_init_stmts] =
+            build_hasher_init(hasher_prefix, fn_decl, ctx);
+        stmts.insert(stmts.end(),
+                     std::make_move_iterator(hasher_init_stmts.begin()),
+                     std::make_move_iterator(hasher_init_stmts.end()));
 
         // Add the field calls
         auto param = fn_decl->getParamDecl(0);
@@ -948,15 +1063,23 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                     field_hash_args = generic_custom_args(ctx, field_decls,
                                                           args, arg_build_fn);
                 } else {
+                    auto field_ty = field->getType();
                     field_hash_fn =
-                        get_type_hash_function(field->getType(), ctx, true).full_name();
+                        get_type_hash_function(field_ty, ctx, true).full_name();
                     auto field_ref_lv =
                         new (ctx) MemberExpr(param_ref_lv, false, SourceLocation(),
                                              field, SourceLocation(),
                                              field->getType(), VK_LValue, OK_Ordinary);
+                    CastKind ck = CK_LValueToRValue;
+                    if (field_ty->isArrayType()) {
+                        // If the field is an array type T[...], decay it to
+                        // a pointer T*, and pass that pointer to the field
+                        // hash function
+                        ck = CK_ArrayToPointerDecay;
+                        field_ty = ctx.getArrayDecayedType(field_ty);
+                    }
                     auto field_ref_rv =
-                        ImplicitCastExpr::Create(ctx, field->getType(),
-                                                 CK_LValueToRValue,
+                        ImplicitCastExpr::Create(ctx, field_ty, ck,
                                                  field_ref_lv, nullptr, VK_RValue);
                     field_hash_args.push_back(field_ref_rv);
                 }
