@@ -1,4 +1,6 @@
 
+TEST_CFLAGS=-g -O2
+
 PLUGIN_PATH := $(shell find . -name CrossChecks.so)
 RUNTIME_PATH := $(shell find . -name libruntime.a)
 
@@ -15,6 +17,10 @@ ifneq ($(filter yes true,$(DUMP_AST)),)
 PLUGIN_CC += -Xclang -ast-dump
 endif
 
+ifneq ($(filter yes true,$(DUMP_LLVM)),)
+PLUGIN_CC += -S -emit-llvm
+endif
+
 FAKECHECKS_PATH=`pwd`/../../libfakechecks
 
 .PHONY: clean all test
@@ -24,5 +30,5 @@ clean:
 	rm -f test
 
 test: test.c
-	$(PLUGIN_CC) -L$(FAKECHECKS_PATH) -lfakechecks -std=c11 -g $(TEST_CFLAGS) -o test $< $(RUNTIME_PATH)
-	env LD_LIBRARY_PATH="$(FAKECHECKS_PATH)" ./test
+	$(PLUGIN_CC) -Wl,-rpath,$(FAKECHECKS_PATH) -L$(FAKECHECKS_PATH) -lfakechecks -std=c11 $(TEST_CFLAGS) -o test $< $(RUNTIME_PATH)
+	./test
