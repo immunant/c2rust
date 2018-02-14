@@ -427,6 +427,7 @@ CallExpr *CrossCheckInserter::build_call(llvm::StringRef fn_name, QualType resul
     SmallVector<QualType, 16> arg_tys;
     for (auto &arg : args) {
         auto arg_ty = ctx.getAdjustedParameterType(arg->getType());
+        // Should decay function pointers further to void*???
         arg_tys.push_back(arg_ty);
     }
     auto fn_decl = get_function_decl(fn_name, result_ty, arg_tys,
@@ -649,6 +650,10 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
         }
         break;
     }
+
+    case Type::FunctionNoProto:
+    case Type::FunctionProto:
+        return "function"sv;
 
     case Type::Pointer: {
         auto pointee_ty = cast<PointerType>(ty)->getPointeeType();
@@ -1078,7 +1083,11 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                         // a pointer T*, and pass that pointer to the field
                         // hash function
                         ck = CK_ArrayToPointerDecay;
-                        field_ty = ctx.getArrayDecayedType(field_ty);
+                        field_ty = ctx.getDecayedType(field_ty);
+                    } else if (field_ty->isFunctionType()) {
+                        ck = CK_FunctionToPointerDecay;
+                        field_ty = ctx.getDecayedType(field_ty);
+                        // TODO: should the signature always be a void*???
                     }
                     auto field_ref_rv =
                         ImplicitCastExpr::Create(ctx, field_ty, ck,

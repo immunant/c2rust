@@ -70,6 +70,7 @@ uint64_t __c2rust_hash_double(double x) {
 #define LEAF_POINTER_HASH 0xDEADBEEFUL
 #define NULL_POINTER_HASH 0UL
 #define VOID_POINTER_HASH 0x7261745364696f56ULL // "VoidStar" in ASCII
+#define FUNCTION_POINTER_HASH 0x72617453636e7546ULL // "FuncStar" in ASCII
 
 _Bool __c2rust_pointer_is_valid(void *p) {
     return p != (void*) 0;
@@ -81,6 +82,11 @@ uint64_t __c2rust_hash_invalid_pointer(void *p) {
 
 uint64_t __c2rust_hash_void_ptr(void *p) {
     return p ? VOID_POINTER_HASH : NULL_POINTER_HASH;
+}
+
+uint64_t __c2rust_hash_function(void *f) {
+    // TODO
+    return FUNCTION_POINTER_HASH;
 }
 
 // JodyHasher implementation
