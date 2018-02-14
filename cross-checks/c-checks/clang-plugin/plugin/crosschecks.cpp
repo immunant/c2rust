@@ -956,7 +956,8 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     auto record_def = record_decl->getDefinition();
     if (record_def == nullptr) {
         report_clang_error(diags, "default cross-checking is not supported for undefined structures, "
-                                  "please use a custom cross-check");
+                                  "please use a custom cross-check for '%0'",
+                                  record_decl->getDeclName().getAsString());
         return;
     }
 
