@@ -32,6 +32,7 @@ test.c:
         #n: { custom: "deref(&n)" }
         #n: { custom: "id(n, x)" }
         #n: { fixed: 0xabcd1234 }
+        stop: default
 
       entry_extra:
         - { custom: "my_Foo_hash(foo)" }

@@ -29,21 +29,26 @@ uint64_t double_hash(uint64_t a, uint64_t b) {
     return a * 65536 + b;
 }
 
-uint64_t fibo(uint64_t n[3], const uint64_t *p, const uint64_t *q, struct Foo foo) {
+uint64_t fibo(uint64_t n[3], const uint64_t *p, const uint64_t *q, struct Foo foo,
+              int (*stop)(uint64_t)) {
 #if 0
     printf("fibo call %llu:%llu %p %p\n", ctr, n, p, q);
 #endif
     ctr++;
     int nn = n[0];
-    if (nn <= 1) {
+    if (stop(nn)) {
         return 1;
     } else {
         struct Foo foo1 = { foo.n2, nn - 3, &foo1, { n[1], n[2] } };
         struct Foo foo2 = { nn - 3, nn - 4, &foo2, { n[1], n[2] } };
         uint64_t arr1[] = { foo.n1, foo1.n1, foo1.n2 };
         uint64_t arr2[] = { foo.n2, foo2.n1, foo2.n2 };
-        return fibo(arr1, p, q, foo1) + fibo(arr2, q, p, foo2);
+        return fibo(arr1, p, q, foo1, stop) + fibo(arr2, q, p, foo2, stop);
     }
+}
+
+int check_stop(uint64_t n) {
+    return n <= 1;
 }
 
 int main() {
@@ -54,7 +59,7 @@ int main() {
     for (size_t i = 0; i < 5; i++) {
         struct Foo foo = { i - 1, i - 2, &foo, { i - 1, i - 2 } };
         uint64_t arr[] = { i, foo.n1, foo.n2 };
-        fibo(arr, &i, NULL, foo);
+        fibo(arr, &i, NULL, foo, check_stop);
 #if 0
         printf("fibo(%zd)=%llu\n", i, fibo(i));
 #endif
