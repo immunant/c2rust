@@ -810,6 +810,8 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
                        { param_ref_rv }, ctx);
 
         // Build the call to the pointee function
+        assert(!pointee_ty->isIncompleteType() &&
+               "Attempting to dereference incomplete type");
         auto param_deref =
             new (ctx) UnaryOperator(param_ref_lv, UO_Deref, pointee_ty,
                                     VK_RValue, OK_Ordinary,
