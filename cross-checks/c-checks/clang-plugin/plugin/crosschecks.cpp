@@ -853,6 +853,12 @@ void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_
                                                    QualType element_ty,
                                                    const llvm::APInt &num_elements,
                                                    ASTContext &ctx) {
+    if (element_ty->isIncompleteType()) {
+        // TODO: figure out what to do about this
+        // for now, we just expect the user to provide a custom function
+        return;
+    }
+
     // Build the following code:
     // uint64_t __c2rust_hash_T_array_N(T x[N]) {
     //   char hasher[__c2rust_hasher_H_size()];
@@ -906,6 +912,8 @@ void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_
                                               i_ty, VK_RValue, OK_Ordinary,
                                               SourceLocation());
         // Loop body: __c2rust_hasher_H_update(hasher, __c2rust_hash_T(x[i]));
+        assert(!element_ty->isIncompleteType() &&
+               "Attempting to dereference incomplete type");
         auto param = fn_decl->getParamDecl(0);
         auto param_ty = param->getType();
         auto param_ref_lv =
