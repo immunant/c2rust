@@ -30,5 +30,7 @@ clean:
 	rm -f test
 
 test: test.c
+	@echo Building test...
 	$(PLUGIN_CC) -Wl,-rpath,$(FAKECHECKS_PATH) -L$(FAKECHECKS_PATH) -lfakechecks -std=c11 $(TEST_CFLAGS) -o test $< $(RUNTIME_PATH)
+	@echo Running test...
 	./test
