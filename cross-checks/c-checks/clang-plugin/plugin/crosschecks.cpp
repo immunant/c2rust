@@ -784,6 +784,11 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
     // __c2rust_hash_void_ptr is implemented in the runtime
     if (pointee_ty->isVoidType())
         return;
+    if (pointee_ty->isIncompleteType()) {
+        // TODO: figure out what to do about this
+        // for now, we just expect the user to provide a custom function
+        return;
+    }
 
     // Build the pointer hash function using this template:
     // uint64_t __c2rust_hash_T_ptr(T *x) {
