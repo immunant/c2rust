@@ -8,7 +8,7 @@ SCRIPT_DIR="$(dirname "$0")"
 bash $SCRIPT_DIR/provision_cmake.sh
 
 apt-get update
-apt-get install -y htop unzip tmux gdb vim curl
+apt-get install -y htop unzip tmux gdb vim curl gnupg2
 # ubuntu installs clang/llvm 3.4 by default which is too old
 apt-get install -y git clang-3.9 lldb-3.9 gcc g++ ninja-build
 apt-get install -y software-properties-common build-essential

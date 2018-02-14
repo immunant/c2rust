@@ -418,7 +418,24 @@ def extract_ast_from(ast_extr: pb.commands.BaseCommand,
 
 def check_sig(afile: str, asigfile: str) -> None:
     # on macOS, run `brew install gpg`
-    gpg = get_cmd_or_die("gpg")
+    gpg = None
+    try:
+        # some systems install gpg v2.x as `gpg2`
+        gpg = pb.local['gpg2']
+    except pb.CommandNotFound:
+        gpg = get_cmd_or_die("gpg")
+
+    gpg_ver = gpg("--version")
+    logging.debug("gpg version output:\n%s", gpg_ver)
+    emsg = "{} in path is too old".format(gpg.executable.basename)
+    assert "gpg (GnuPG) 1.4" not in gpg_ver, emsg
+
+    def cleanup_on_failure(files: List[str]) -> None:
+        for f in files:
+            if os.path.isfile(f):
+                os.remove(f)
+            else:
+                logging.warning("could not remove %s: not found.", f)
 
     # check that archive matches signature
     try:
@@ -430,10 +447,13 @@ def check_sig(afile: str, asigfile: str) -> None:
                                  '--verify',
                                  asigfile, afile].run(retcode=None)
         if retcode:
+            cleanup_on_failure([afile, asigfile])
             die("gpg signature check failed: gpg exit code " + str(retcode))
         if expected not in stderr:
+            cleanup_on_failure([afile, asigfile])
             die("gpg signature check failed: expected signature not found")
     except pb.ProcessExecutionError as pee:
+        cleanup_on_failure([afile, asigfile])
         die("gpg signature check failed: " + pee.message)
 
 
