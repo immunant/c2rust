@@ -630,6 +630,8 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
             ty = pt->desugar();
         } else if (auto *at = ty->getAs<AttributedType>()) {
             ty = at->desugar();
+        } else if (auto *at = ty->getAs<AdjustedType>()) {
+            ty = at->getOriginalType();
         } else {
             break;
         }
