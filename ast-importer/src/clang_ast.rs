@@ -46,14 +46,14 @@ pub enum DecodeError {
     TypeMismatch,
 }
 
-pub fn expect_vec8<'a>(val: &'a Cbor) -> Result<&'a Vec<u8>, DecodeError> {
+pub fn expect_vec8(val: &Cbor) -> Result<&Vec<u8>, DecodeError> {
     match val {
         &Cbor::Bytes(CborBytes(ref bytes)) => Ok(bytes),
         _ => Err(DecodeError::TypeMismatch),
     }
 }
 
-pub fn expect_array<'a>(val: &'a Cbor) -> Result<&'a Vec<Cbor>, DecodeError> {
+pub fn expect_array(val: &Cbor) -> Result<&Vec<Cbor>, DecodeError> {
     match val {
         &Cbor::Array(ref xs) => Ok(xs),
         _ => Err(DecodeError::TypeMismatch)
