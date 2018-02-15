@@ -148,8 +148,7 @@ mod tests {
 
     #[test]
     fn simple() {
-        let keywords = vec!["reserved"].into_iter().map(str::to_string).collect();
-        let mut renamer = Renamer::new(keywords);
+        let mut renamer = Renamer::new(&["reserved"]);
 
         let one1 = renamer.insert(1,"one").unwrap();
         let one2 = renamer.get(&1).unwrap();
@@ -163,7 +162,7 @@ mod tests {
 
     #[test]
     fn scoped() {
-        let mut renamer = Renamer::new(HashSet::new());
+        let mut renamer = Renamer::new(&[]);
 
         let one1 = renamer.insert(10, "one").unwrap();
         renamer.add_scope();
@@ -184,7 +183,7 @@ mod tests {
 
     #[test]
     fn forgets() {
-        let mut renamer = Renamer::new(HashSet::new());
+        let mut renamer = Renamer::new(&[]);
         assert_eq!(renamer.get(&1), None);
         renamer.add_scope();
         renamer.insert(1,"example");
