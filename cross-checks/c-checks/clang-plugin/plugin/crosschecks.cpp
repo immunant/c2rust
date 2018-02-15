@@ -319,6 +319,7 @@ private:
 
     void build_record_hash_function(const HashFunctionName &func_name,
                                     QualType ty,
+                                    const std::string &record_name,
                                     ASTContext &ctx);
 
     TinyStmtVec
@@ -698,7 +699,7 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
         HashFunctionName func_name{record_name};
         func_name.append(record_decl->getKindName().str());
         if (build_it) {
-            build_record_hash_function(func_name, ty, ctx);
+            build_record_hash_function(func_name, ty, record_name, ctx);
         }
         return func_name;
     }
@@ -989,6 +990,7 @@ void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_
 
 void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func_name,
                                                     QualType ty,
+                                                    const std::string &record_name,
                                                     ASTContext &ctx) {
     auto &diags = ctx.getDiagnostics();
     auto record_ty = cast<RecordType>(ty);
@@ -999,7 +1001,6 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     auto ploc = ctx.getSourceManager().getPresumedLoc(record_decl->getLocStart());
     if (ploc.isValid()) {
         std::string file_name(ploc.getFilename());
-        std::string record_name = record_decl->getName().str();
         record_cfg = get_struct_config(file_name, record_name);
     }
     if (record_cfg && record_cfg->get().custom_hash) {
