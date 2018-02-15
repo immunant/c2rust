@@ -817,9 +817,9 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
     // __c2rust_hash_void_ptr is implemented in the runtime
     if (pointee_ty->isVoidType())
         return;
-    if (pointee_ty->isIncompleteType()) {
-        // TODO: figure out what to do about this
-        // for now, we just expect the user to provide a custom function
+    if (pointee_ty->isIncompleteType() &&
+        !pointee_ty->isRecordType()) {
+        // We only allow pointers to incomplete structures
         return;
     }
 
@@ -848,8 +848,6 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
                        { param_ref_rv }, ctx);
 
         // Build the call to the pointee function
-        assert(!pointee_ty->isIncompleteType() &&
-               "Attempting to dereference incomplete type");
         auto param_deref_lv =
             new (ctx) UnaryOperator(param_ref_lv, UO_Deref, pointee_ty,
                                     VK_LValue, OK_Ordinary,
