@@ -784,7 +784,7 @@ void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &fun
     auto fn_decl = get_function_decl(full_name,
                                      ctx.UnsignedLongTy,
                                      { get_adjusted_hash_type(ty, ctx) },
-                                     SC_Static,
+                                     SC_Extern,
                                      ctx);
     if (fn_decl->hasBody())
         return; // We've already built it
@@ -801,6 +801,12 @@ void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &fun
                      SourceLocation(),
                      SourceLocation());
 
+    // Put this function in a linkonce section, so the linker merges
+    // all duplicate copies of it into one during linking
+    auto fn_section = ".gnu.linkonce.t."s + full_name;
+    fn_decl->addAttr(SectionAttr::CreateImplicit(ctx, SectionAttr::GNU_section,
+                                                 fn_section));
+    fn_decl->addAttr(VisibilityAttr::CreateImplicit(ctx, VisibilityAttr::Hidden));
     fn_decl->setInlineSpecified(true);
     fn_decl->setBody(fn_body);
     new_funcs.push_back(fn_decl);
