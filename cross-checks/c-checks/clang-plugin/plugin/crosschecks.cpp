@@ -612,7 +612,29 @@ CrossCheckInserter::build_xcheck(const XCheck &xcheck, XCheck::Tag tag,
 HashFunctionName
 CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
                                            bool build_it) {
-    ty = ctx.getCanonicalType(ty);
+    // If this type is an anonymous record, e.g.
+    // `struct { ... };`, then we try to use the name
+    // of the inner-most typedef instead, since a lot of C code
+    // defines structures using the `typedef struct` pattern:
+    // `typedef struct { ... } struct_name;`
+    IdentifierInfo *inner_typedef_id = nullptr;
+    for (;;) {
+        if (auto *td = ty->getAs<TypedefType>()) {
+            auto td_id = td->getDecl()->getIdentifier();
+            if (td_id != nullptr)
+                inner_typedef_id = td_id;
+            ty = td->desugar();
+        } else if (auto *et = ty->getAs<ElaboratedType>()) {
+            ty = et->desugar();
+        } else if (auto *pt = ty->getAs<ParenType>()) {
+            ty = pt->desugar();
+        } else if (auto *at = ty->getAs<AttributedType>()) {
+            ty = at->desugar();
+        } else {
+            break;
+        }
+    }
+
     switch (ty->getTypeClass()) {
     case Type::Builtin: {
         switch (cast<BuiltinType>(ty)->getKind()) {
@@ -695,7 +717,11 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
         // struct foo*    => "foo_struct_ptr"
         auto record_ty = cast<RecordType>(ty);
         auto record_decl = record_ty->getDecl();
-        auto record_name = record_decl->getDeclName().getAsString();
+        auto record_id = record_decl->getIdentifier();
+        if (record_id == nullptr)
+            record_id = inner_typedef_id;
+        assert(record_id != nullptr && "Could not retrieve record identifier");
+        std::string record_name = record_id->getName();
         HashFunctionName func_name{record_name};
         func_name.append(record_decl->getKindName().str());
         if (build_it) {
