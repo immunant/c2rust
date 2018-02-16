@@ -1658,9 +1658,7 @@ impl Translation {
         } else if resolved_ty.is_floating_type() {
             Ok(mk().lit_expr(mk().float_unsuffixed_lit("0.")))
         } else if self.is_function_pointer(ty_id) {
-            let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc", "c_void"]));
-            let target_ty = self.convert_type(ty_id)?;
-            Ok(transmute_expr(source_ty, target_ty, null_expr()))
+            Ok(mk().path_expr(vec!["None"]))
         } else if let &CTypeKind::Pointer(p) = resolved_ty {
             Ok(if p.qualifiers.is_const { null_expr() } else { null_mut_expr() })
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
