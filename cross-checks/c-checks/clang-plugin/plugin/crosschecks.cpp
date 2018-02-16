@@ -760,7 +760,10 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
         auto record_id = record_decl->getIdentifier();
         if (record_id == nullptr)
             record_id = inner_typedef_id;
-        assert(record_id != nullptr && "Could not retrieve record identifier");
+        if (record_id == nullptr) {
+            record_ty->dump();
+            llvm_unreachable("Could not retrieve record identifier");
+        }
         std::string record_name = record_id->getName();
         HashFunctionName func_name{record_name};
         func_name.append(record_decl->getKindName().str());
