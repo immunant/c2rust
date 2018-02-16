@@ -1095,13 +1095,15 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     auto &diags = ctx.getDiagnostics();
     auto record_ty = cast<RecordType>(ty);
     auto record_decl = record_ty->getDecl();
-    // TODO: handle disable_xchecks == true here
-
     std::optional<StructConfigRef> record_cfg;
     auto ploc = ctx.getSourceManager().getPresumedLoc(record_decl->getLocStart());
     if (ploc.isValid()) {
         std::string file_name(ploc.getFilename());
         record_cfg = get_struct_config(file_name, record_name);
+    }
+    if (record_cfg && record_cfg->get().disable_xchecks) {
+        // Cross-checks are disabled for this record
+        return;
     }
     if (record_cfg && record_cfg->get().custom_hash) {
         // The user specified a "custom_hash" function, so just forward
