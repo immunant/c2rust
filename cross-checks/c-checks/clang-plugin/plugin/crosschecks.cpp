@@ -1370,6 +1370,7 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
 
 bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
     for (auto *d : dg) {
+        auto &ctx = d->getASTContext();
         if (FunctionDecl *fd = dyn_cast<FunctionDecl>(d)) {
             if (!fd->hasBody())
                 continue;
@@ -1378,7 +1379,6 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 continue;
             }
 
-            auto &ctx = fd->getASTContext();
             DefaultsConfigOptRef file_defaults;
             std::optional<FunctionConfigRef> func_cfg;
             auto ploc = ctx.getSourceManager().getPresumedLoc(fd->getLocStart());
@@ -1597,6 +1597,15 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             fd->setBody(new_body);
         } else if (VarDecl *vd = dyn_cast<VarDecl>(d)) {
             global_vars.emplace(llvm_string_ref_to_sv(vd->getName()), vd);
+        } else if (RecordDecl *rd = dyn_cast<RecordDecl>(d)) {
+            // Instantiate the hash function for this type
+            if (rd->isCompleteDefinition()) {
+                auto record_ty = ctx.getRecordType(rd);
+                get_type_hash_function(record_ty, ctx, true);
+            }
+        } else if (TypedefDecl *td = dyn_cast<TypedefDecl>(d)) {
+            auto typedef_ty = ctx.getTypedefType(td);
+            get_type_hash_function(typedef_ty, ctx, true);
         }
     }
     return true;
