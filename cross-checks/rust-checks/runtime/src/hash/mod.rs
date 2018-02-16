@@ -108,7 +108,8 @@ impl_primitive_hash!(f64,   write_f64);
 // we reach depth == 0 and cannot descend any further
 const LEAF_REFERENCE_VALUE: u32 = 0xDEADBEEFu32;
 const LEAF_POINTER_VALUE: u32 = 0xDEADBEEFu32;
-const NULL_POINTER_HASH: u64 = 0x0u64;
+const NULL_POINTER_HASH: u64 = 0x726174536c6c754e_u64; // "NullStar" in ASCII
+const LEAF_POINTER_HASH: u64 = 0x726174536661654c_u64; // "LeafStar" in ASCII
 
 // Hash implementation for references
 impl<'a, T: ?Sized + CrossCheckHash> CrossCheckHash for &'a T {
@@ -142,11 +143,11 @@ impl<T: CrossCheckHash> CrossCheckHash for *const T {
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
-        if depth == 0 {
-            CrossCheckHash::cross_check_hash_depth::<HA, HS>(&LEAF_POINTER_VALUE, 1)
-        } else if self.is_null() {
+        if self.is_null() {
             //CrossCheckHash::cross_check_hash_depth::<HA, HS>(&0usize, 1)
             NULL_POINTER_HASH
+        } else if depth == 0 {
+            LEAF_POINTER_HASH
         } else {
             unsafe {
                 // FIXME: even non-NULL pointers may be invalid
@@ -160,11 +161,11 @@ impl<T: CrossCheckHash> CrossCheckHash for *mut T {
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
-        if depth == 0 {
-            CrossCheckHash::cross_check_hash_depth::<HA, HS>(&LEAF_POINTER_VALUE, 1)
-        } else if self.is_null() {
+        if self.is_null() {
             //CrossCheckHash::cross_check_hash_depth::<HA, HS>(&0usize, 1)
             NULL_POINTER_HASH
+        } else if depth == 0 {
+            LEAF_POINTER_HASH
         } else {
             unsafe {
                 // FIXME: even non-NULL pointers may be invalid
