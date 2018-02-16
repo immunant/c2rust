@@ -963,9 +963,9 @@ impl Translation {
     /// If the referenced expression is a DeclRef inside an Unary or ImplicitCast node, return
     /// the type of the referenced declaration. Returns `Err` in all other cases. See
     /// See https://github.com/GaloisInc/C2Rust/issues/32 for more details on this quirk.
-    fn get_declref_type(&self, expr_id: CExprId) -> Result<CTypeId, &str> {
+    fn get_declref_type(&self, expr_id: CExprId) -> Result<(Option<Qualifiers>, CTypeId), &str> {
         // Using nested function to avoid exposing the level parameter
-        fn _get_declref_type(ast_context: &TypedAstContext, expr_id: CExprId, level: u32) -> Result<CTypeId, &str> {
+        fn _get_declref_type(ast_context: &TypedAstContext, expr_id: CExprId, level: u32) -> Result<(Option<Qualifiers>, CTypeId), &str> {
             let expr : &CExpr = ast_context.index(expr_id);
             return match expr.kind {
                 // level 0 arms
@@ -979,9 +979,9 @@ impl Translation {
                 CExprKind::DeclRef(_type_id, decl_id) if level == 1 => {
                     let cdecl : &CDecl = ast_context.index(decl_id);
                     match cdecl.kind {
-                        CDeclKind::Function { typ, .. } => Ok(typ),
+                        CDeclKind::Function { typ, .. } => Ok((None, typ)),
                         CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ} => {
-                            Ok(typ.ctype)
+                            Ok((Some(typ.qualifiers), typ.ctype))
                         }
                         _ => Err("couldn't get leaf node type")
                     }
@@ -1116,23 +1116,31 @@ impl Translation {
                             // TODO: Detect cast from mutable to constant pointer to same type
 
                             // Special cases
-                            if let Ok(source_ty_id) = self.get_declref_type(expr) {
-                                // FIXME: `get_declref_type` discards type qualifiers of ref'd vars.
+                            if let Ok((source_quals, source_ty_id)) = self.get_declref_type(expr) {
                                 let source_ty = self.convert_type(source_ty_id)?;
                                 let target_ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
                                 if let &CTypeKind::Pointer(qual_type_id) = target_ty_kind {
                                     let target_ty = self.convert_type(qual_type_id.ctype)?;
-                                    // Defect a quirk where we the bitcast is superfluous.
+
+                                    // Detect a quirk where the bitcast is superfluous.
                                     // See this issue: https://github.com/GaloisInc/C2Rust/issues/32
                                     if target_ty == source_ty {
                                         return Ok(x)
                                     }
 
+                                    let quals_agree = if let Some(sq) = source_quals {
+                                        sq == qual_type_id.qualifiers
+                                    } else { false };
                                     // Detect bitcasts from array-of-T to slice-of-T
                                     if let TyKind::Slice(ref tgt_elem_ty) = target_ty.node {
                                         if let TyKind::Array(ref src_elem_ty, ref len_expr) = source_ty.node {
                                             if tgt_elem_ty == src_elem_ty {
-                                                return Ok(x)
+                                                if quals_agree {
+                                                    return Ok(x)
+                                                } else {
+                                                    // FIXME: handle mismatched qualifiers
+                                                    panic!("Cannot handle mismatched qualifiers yet.")
+                                                }
                                             }
                                         }
                                     }
