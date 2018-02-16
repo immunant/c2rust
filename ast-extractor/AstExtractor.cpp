@@ -1121,11 +1121,6 @@ void TypeEncoder::VisitRecordType(const RecordType *T) {
 void TypeEncoder::VisitTypedefType(const TypedefType *T) {
     
     // Should only ever be reached during the first pass
-    if (T->isSugared()) {
-      auto qt = T->desugar();
-      sugared->emplace((void*) T, qt);
-      VisitQualType(qt);
-    }
   
     auto D = T->getDecl()->getCanonicalDecl();
 
