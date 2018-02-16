@@ -981,8 +981,7 @@ impl Translation {
                     match cdecl.kind {
                         CDeclKind::Function { typ, .. } => Ok(typ),
                         CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ} => {
-                            let inner_typ = typ.ctype;
-                            Ok(inner_typ)
+                            Ok(typ.ctype)
                         }
                         _ => Err("couldn't get leaf node type")
                     }
@@ -1115,35 +1114,33 @@ impl Translation {
                     CastKind::BitCast => {
                         val.result_map(|x| {
                             // TODO: Detect cast from mutable to constant pointer to same type
-                            // Sometimes we hit a quirk where we the bitcast is superfluous, we
-                            // detect such instances by examining the expr part of the AST. See
-                            // this issue: https://github.com/GaloisInc/C2Rust/issues/32
-                            let (source_ty_id, src_is_declref_type) = match self.get_declref_type(expr) {
-                                // special case where the bitcast is superfluous
-                                Ok(type_id) => (type_id, true),
-                                // normal case
-                                _ => (self.ast_context.index(expr).kind.get_type(), false)
-                            };
 
-                            let source_ty = self.convert_type(source_ty_id)?;
-                            let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
-                            if let &CTypeKind::Pointer(qual_type_id) = target_ty_ctype {
-                                let target_ty = self.convert_type(qual_type_id.ctype)?;
-                                
-                                // Detect bitcasts from array-of-T to slice-of-T
-                                let mut array_to_slice_cast = false; 
-                                if let TyKind::Slice(ref tgt_elem_ty) = target_ty.node {
-                                    if let TyKind::Array(ref src_elem_ty, ref len_expr) = source_ty.node {
-                                        array_to_slice_cast = tgt_elem_ty == src_elem_ty
+                            // Special cases
+                            if let Ok(source_ty_id) = self.get_declref_type(expr) {
+                                // FIXME: `get_declref_type` discards type qualifiers of ref'd vars.
+                                let source_ty = self.convert_type(source_ty_id)?;
+                                let target_ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
+                                if let &CTypeKind::Pointer(qual_type_id) = target_ty_kind {
+                                    let target_ty = self.convert_type(qual_type_id.ctype)?;
+                                    // Defect a quirk where we the bitcast is superfluous.
+                                    // See this issue: https://github.com/GaloisInc/C2Rust/issues/32
+                                    if target_ty == source_ty {
+                                        return Ok(x)
+                                    }
+
+                                    // Detect bitcasts from array-of-T to slice-of-T
+                                    if let TyKind::Slice(ref tgt_elem_ty) = target_ty.node {
+                                        if let TyKind::Array(ref src_elem_ty, ref len_expr) = source_ty.node {
+                                            if tgt_elem_ty == src_elem_ty {
+                                                return Ok(x)
+                                            }
+                                        }
                                     }
                                 }
-
-                                // See comment above re. cases where bitcast is superfluous.
-                                let is_superfluous = src_is_declref_type && target_ty == source_ty;
-                                if is_superfluous || array_to_slice_cast {
-                                    return Ok(x)
-                                }
                             }
+                            // Normal case
+                            let source_ty_id = self.ast_context.index(expr).kind.get_type();
+                            let source_ty = self.convert_type(source_ty_id)?;
                             let target_ty = self.convert_type(ty.ctype)?;
                             Ok(transmute_expr(source_ty, target_ty, x))
                         })
