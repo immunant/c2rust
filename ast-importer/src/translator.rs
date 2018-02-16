@@ -512,7 +512,7 @@ impl Translation {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ)?;
 
-                let init = init.to_expr();
+                let init = init?.to_expr();
 
                 // Force mutability due to the potential for raw pointers occuring in the type
 
@@ -528,7 +528,7 @@ impl Translation {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ)?;
 
-                let init = init.to_expr();
+                let init = init?.to_expr();
 
                 // Force mutability due to the potential for raw pointers occuring in the type
                 Ok(mk().mutbl()
@@ -865,6 +865,7 @@ impl Translation {
                     .insert(decl_id, &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ)?;
+                let init = init?;
 
                 let pat = mk().set_mutbl(mutbl).ident_pat(rust_name);
                 let local = mk().local(pat, Some(ty), Some(init.val));
@@ -909,10 +910,10 @@ impl Translation {
         &self,
         initializer: Option<CExprId>,
         typ: CQualTypeId
-    ) -> Result<(P<Ty>, Mutability, WithStmts<P<Expr>>), String> {
+    ) -> Result<(P<Ty>, Mutability, Result<WithStmts<P<Expr>>,String>), String> {
         let init = match initializer {
-            Some(x) => self.convert_expr(ExprUse::RValue, x)?,
-            None => WithStmts::new(self.implicit_default_expr(typ.ctype)?),
+            Some(x) => self.convert_expr(ExprUse::RValue, x),
+            None => self.implicit_default_expr(typ.ctype).map(WithStmts::new),
         };
 
         let ty = self.convert_type(typ.ctype)?;

@@ -391,16 +391,20 @@ class TranslateASTVisitor final
           encodeSourcePos(&local, loc);
 
           // 7 - Type ID (only for expressions)
-          if (nullptr == ty.getTypePtrOrNull()) {
-              cbor_encode_null(&local);
-          } else {
-              cbor_encode_uint(&local, typeEncoder.encodeQualType(ty));
-          }
+          encode_qualtype(&local, ty);
           
           // 7 - Extra entries
           extra(&local);
           
           cbor_encoder_close_container(encoder, &local);
+      }
+      
+      void encode_qualtype(CborEncoder *enc, QualType ty) {
+          if (ty.getTypePtrOrNull()) {
+              cbor_encode_uint(enc, typeEncoder.encodeQualType(ty));
+          } else {
+              cbor_encode_null(enc);
+          }
       }
 
       void encode_entry
@@ -749,9 +753,22 @@ class TranslateASTVisitor final
       
       bool VisitBinaryOperator(BinaryOperator *BO) {
           std::vector<void*> childIds = { BO->getLHS(), BO->getRHS() };
+          
+          QualType computationLHSType, computationResultType;
+          
+          if (auto cao = dyn_cast_or_null<CompoundAssignOperator>(BO)) {
+              computationLHSType = cao->getComputationLHSType();
+              computationResultType = cao->getComputationResultType();
+              typeEncoder.VisitQualType(computationLHSType);
+              typeEncoder.VisitQualType(computationResultType);
+          }
+          
           encode_entry(BO, TagBinaryOperator, childIds,
-                             [BO](CborEncoder *array) {
+                             [this, BO, computationLHSType, computationResultType](CborEncoder *array) {
                                  cbor_encode_string(array, BO->getOpcodeStr().str());
+                                 
+                                 encode_qualtype(array, computationLHSType);
+                                 encode_qualtype(array, computationResultType);
                              });
           return true;
       }
