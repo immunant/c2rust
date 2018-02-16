@@ -1,16 +1,4 @@
 ---
-# System headers
-# FIXME: we shouldn't need manual overrides for these
-/usr/include/bits/types/__mbstate_t.h:
-    - item: struct
-      name: __mbstate_t
-      disable_xchecks: true
-
-/usr/include/bits/thread-shared-types.h:
-    - item: struct
-      name: __pthread_cond_s
-      disable_xchecks: true
-
 test.c:
     - item: defaults
       disable_xchecks: true

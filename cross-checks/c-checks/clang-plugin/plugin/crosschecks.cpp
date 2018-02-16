@@ -277,6 +277,8 @@ private:
 
     using StmtVec = SmallVector<Stmt*, 16>;
 
+    static std::set<std::pair<std::string_view, std::string_view>> struct_xcheck_blacklist;
+
     // TODO: make it configurable via both a plugin argument
     // and an external configuration item
     static const size_t MAX_HASH_DEPTH = 8;
@@ -401,6 +403,15 @@ public:
         new_funcs.clear();
         decl_cache.clear();
     }
+};
+
+// Ugly hack: a few structures in system headers contain unions
+// or anonymous structures, which we can't handle (yet),
+// so we maintain a hard-coded blacklist
+std::set<std::pair<std::string_view, std::string_view>>
+CrossCheckInserter::struct_xcheck_blacklist = {
+    { "/usr/include/bits/types/__mbstate_t.h"sv,    "__mbstate_t"sv      },
+    { "/usr/include/bits/thread-shared-types.h"sv,  "__pthread_cond_s"sv },
 };
 
 FunctionDecl *CrossCheckInserter::get_function_decl(llvm::StringRef name,
@@ -1106,6 +1117,12 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     if (ploc.isValid()) {
         std::string file_name(ploc.getFilename());
         record_cfg = get_struct_config(file_name, record_name);
+
+        // Check the blacklist first
+        std::pair<std::string_view, std::string_view>
+            blacklist_key{file_name, record_name};
+        if (struct_xcheck_blacklist.count(blacklist_key) > 0)
+            return;
     }
     if (record_cfg && record_cfg->get().disable_xchecks) {
         // Cross-checks are disabled for this record
