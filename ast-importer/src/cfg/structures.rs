@@ -140,7 +140,7 @@ pub fn has_multiple(root: &Vec<Structure>) -> bool {
 ///   * `if <cond-expr> { .. } else { }` turns into `if <cond-expr> { .. }`
 ///   * `if <cond-expr> { } else { .. }` turns into `if !<cond-expr> { .. }`
 ///
-fn mk_if(cond: P<Expr>, then: Vec<Stmt>, els: Vec<Stmt>) -> Vec<Stmt> {
+fn mk_if(cond: P<Expr>, then: Vec<Stmt>, mut els: Vec<Stmt>) -> Vec<Stmt> {
     let s = match (then.is_empty(), els.is_empty()) {
         (true, true) => mk().semi_stmt(cond),
         (false, true) => {
@@ -153,8 +153,26 @@ fn mk_if(cond: P<Expr>, then: Vec<Stmt>, els: Vec<Stmt>) -> Vec<Stmt> {
             mk().expr_stmt(if_expr)
         },
         (false, false) => {
-            let els_branch = Some(mk().block_expr(mk().block(els)));
-            let if_expr = mk().ifte_expr(cond, mk().block(then), els_branch);
+
+            fn is_expr(kind: &StmtKind) -> bool {
+                match kind {
+                    &StmtKind::Expr(_) => true,
+                    _ => false,
+                }
+            }
+
+            let is_els_expr = els.len() == 1 && is_expr(&els[0].node);
+
+            let els_branch = if is_els_expr {
+                match els.swap_remove(0).node {
+                    StmtKind::Expr(e) => e,
+                    _ => panic!("is_els_expr out of sync"),
+                }
+            } else {
+                mk().block_expr(mk().block(els))
+            };
+
+            let if_expr = mk().ifte_expr(cond, mk().block(then), Some(els_branch));
             mk().expr_stmt(if_expr)
         }
     };

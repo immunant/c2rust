@@ -112,7 +112,29 @@ fn null_mut_expr() -> P<Expr> {
 }
 
 fn neg_expr(arg: P<Expr>) -> P<Expr> {
+    mk().unary_expr(ast::UnOp::Neg, arg)
+}
+
+fn wrapping_neg_expr(arg: P<Expr>) -> P<Expr> {
     mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<P<Expr>>)
+}
+
+fn is_int(ty: &CTypeKind) -> bool {
+    match *ty {
+        CTypeKind::SChar |
+        CTypeKind::Short |
+        CTypeKind::Int |
+        CTypeKind::Long |
+        CTypeKind::LongLong |
+        CTypeKind::UChar |
+        CTypeKind::UShort |
+        CTypeKind::UInt |
+        CTypeKind::ULong |
+        CTypeKind::ULongLong |
+        CTypeKind::Int128 |
+        CTypeKind::UInt128 => true,
+        _ => false,
+    }
 }
 
 fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> {
@@ -130,7 +152,7 @@ pub fn stmts_block(mut stmts: Vec<Stmt>) -> P<Block> {
     if stmts.len() == 1 {
         if let StmtKind::Expr(ref e) = stmts[0].node {
             if let ExprKind::Block(ref b) = e.node {
-                    return b.clone()
+                return b.clone()
             }
         }
     }
@@ -1433,7 +1455,7 @@ impl Translation {
 
                         // Need to check to see if the next item is a string literal,
                         // if it is need to treat it as a declaration, rather than
-                        // an init list. https://github.com/GaloisInc/C2Rust/issues/40 
+                        // an init list. https://github.com/GaloisInc/C2Rust/issues/40
                         let mut is_string = false;
 
                         if ids.len() == 1 {
@@ -1927,7 +1949,12 @@ impl Translation {
 
             c_ast::UnOp::Negate => {
                 let val = self.convert_expr(ExprUse::RValue, arg)?;
-                Ok(val.map(neg_expr))
+
+                if is_int(&resolved_ctype.kind) {
+                    Ok(val.map(wrapping_neg_expr))
+                } else {
+                    Ok(val.map(neg_expr))
+                }
             }
             c_ast::UnOp::Complement =>
                 Ok(self.convert_expr(ExprUse::RValue, arg)?
