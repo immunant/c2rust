@@ -31,6 +31,6 @@ clean:
 
 test: test.c
 	@echo Building test...
-	$(PLUGIN_CC) -Wl,-rpath,$(FAKECHECKS_PATH) -L$(FAKECHECKS_PATH) -lfakechecks -std=c11 $(TEST_CFLAGS) -o test $< $(RUNTIME_PATH)
+	$(PLUGIN_CC) -ffunction-sections -fuse-ld=gold -Wl,--gc-sections,--icf=safe,-rpath,$(FAKECHECKS_PATH) -L$(FAKECHECKS_PATH) -lfakechecks -std=c11 $(TEST_CFLAGS) -o test $< $(RUNTIME_PATH)
 	@echo Running test...
 	./test
