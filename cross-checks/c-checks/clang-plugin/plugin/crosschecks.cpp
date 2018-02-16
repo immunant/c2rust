@@ -277,6 +277,43 @@ private:
 
     using StmtVec = SmallVector<Stmt*, 16>;
 
+    static std::set<std::pair<std::string_view, std::string_view>> struct_xcheck_blacklist;
+
+    // TODO: make it configurable via both a plugin argument
+    // and an external configuration item
+    static const size_t MAX_HASH_DEPTH = 8;
+
+    Expr *build_max_hash_depth(ASTContext &ctx) {
+        auto hash_depth_ty = ctx.getSizeType();
+        llvm::APInt hash_depth{ctx.getTypeSize(hash_depth_ty), MAX_HASH_DEPTH};
+        return IntegerLiteral::Create(ctx, hash_depth,
+                                      hash_depth_ty,
+                                      SourceLocation());
+    }
+
+    Expr *get_depth(FunctionDecl *fn_decl, bool sub1, ASTContext &ctx) {
+        // Build `depth` or `depth - 1` as an Expr
+        auto depth = fn_decl->getParamDecl(1);
+        auto depth_ty = depth->getType();
+        auto depth_rv =
+            new (ctx) DeclRefExpr(depth, false, depth_ty,
+                                  VK_RValue, SourceLocation());
+        if (!sub1)
+            return depth_rv;
+
+        llvm::APInt one{ctx.getTypeSize(depth_ty), 1};
+        auto one_lit = IntegerLiteral::Create(ctx, one, depth_ty,
+                                              SourceLocation());
+        return new (ctx) BinaryOperator(depth_rv, one_lit,
+                                        BO_Sub, depth_ty,
+                                        VK_RValue, OK_Ordinary,
+                                        SourceLocation(),
+                                        FPOptions{});
+    }
+
+    Stmt *build_depth_check(FunctionDecl *fn_decl, std::string_view item,
+                            ASTContext &ctx);
+
     // Set of functions we're in the process of building
     // We need to keep track of which hash functions we've started
     // building, so we avoid an infinite recursion when we build
@@ -366,6 +403,15 @@ public:
         new_funcs.clear();
         decl_cache.clear();
     }
+};
+
+// Ugly hack: a few structures in system headers contain unions
+// or anonymous structures, which we can't handle (yet),
+// so we maintain a hard-coded blacklist
+std::set<std::pair<std::string_view, std::string_view>>
+CrossCheckInserter::struct_xcheck_blacklist = {
+    { "/usr/include/bits/types/__mbstate_t.h"sv,    "__mbstate_t"sv      },
+    { "/usr/include/bits/thread-shared-types.h"sv,  "__pthread_cond_s"sv },
 };
 
 FunctionDecl *CrossCheckInserter::get_function_decl(llvm::StringRef name,
@@ -630,6 +676,8 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
             ty = pt->desugar();
         } else if (auto *at = ty->getAs<AttributedType>()) {
             ty = at->desugar();
+        } else if (auto *at = ty->getAs<AdjustedType>()) {
+            ty = at->getOriginalType();
         } else {
             break;
         }
@@ -670,7 +718,10 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
             return "float"sv;
         case BuiltinType::Double:
             return "double"sv;
+        case BuiltinType::LongDouble:
+            return "ldouble"sv;
         default:
+            ty->dump();
             llvm_unreachable("Unknown/unhandled builtin type");
         }
         break;
@@ -720,7 +771,10 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
         auto record_id = record_decl->getIdentifier();
         if (record_id == nullptr)
             record_id = inner_typedef_id;
-        assert(record_id != nullptr && "Could not retrieve record identifier");
+        if (record_id == nullptr) {
+            record_ty->dump();
+            llvm_unreachable("Could not retrieve record identifier");
+        }
         std::string record_name = record_id->getName();
         HashFunctionName func_name{record_name};
         func_name.append(record_decl->getKindName().str());
@@ -734,6 +788,34 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
         ty->dump(llvm::errs());
         llvm_unreachable("unimplemented");
     }
+}
+
+Stmt *CrossCheckInserter::build_depth_check(FunctionDecl *fn_decl,
+                                            std::string_view item,
+                                            ASTContext &ctx) {
+    // Build the following code:
+    // if (depth == 0)
+    //   return __c2rust_hash_$item_leaf();
+    auto depth = get_depth(fn_decl, false, ctx);
+    auto depth_ty = depth->getType();
+    llvm::APInt zero{ctx.getTypeSize(depth_ty), 0};
+    auto zero_lit = IntegerLiteral::Create(ctx, zero, depth_ty, SourceLocation());
+    auto depth_cmp = new (ctx) BinaryOperator(depth, zero_lit,
+                                              BO_EQ, ctx.IntTy,
+                                              VK_RValue, OK_Ordinary,
+                                              SourceLocation(),
+                                              FPOptions{});
+
+    HashFunctionName hash_leaf_func{item};
+    hash_leaf_func.append("leaf"sv);
+    auto hash_leaf_call = build_call(hash_leaf_func.full_name(),
+                                     ctx.UnsignedLongTy, { }, ctx);
+    auto return_hash_leaf =
+        new (ctx) ReturnStmt(SourceLocation(), hash_leaf_call, nullptr);
+    return new (ctx) IfStmt(ctx, SourceLocation(), false,
+                            nullptr, nullptr, depth_cmp,
+                            return_hash_leaf, SourceLocation(), nullptr);
+
 }
 
 std::tuple<VarDecl*, Expr*, CrossCheckInserter::StmtVec>
@@ -810,7 +892,8 @@ void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &fun
     auto full_name = func_name.full_name();
     auto fn_decl = get_function_decl(full_name,
                                      ctx.UnsignedLongTy,
-                                     { get_adjusted_hash_type(ty, ctx) },
+                                     { get_adjusted_hash_type(ty, ctx),
+                                       ctx.getSizeType() },
                                      SC_Extern,
                                      ctx);
     if (fn_decl->hasBody())
@@ -857,15 +940,17 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
     }
 
     // Build the pointer hash function using this template:
-    // uint64_t __c2rust_hash_T_ptr(T *x) {
-    //   return __c2rust_pointer_is_valid(x)
-    //          ? __c2rust_hash_T(*x)
-    //          : __c2rust_hash_invalid_pointer(x);
+    // uint64_t __c2rust_hash_T_ptr(T *x, size_t depth) {
+    //   if (__c2rust_pointer_is_invalid(x))
+    //      return __c2rust_hash_invalid_pointer(x);
+    //   if (depth == 0)
+    //      return __c2rust_hash_pointer_leaf();
+    //   return __c2rust_hash_T(*x, depth - 1);
     // }
     //
     // TODO: add a depth parameter and decrement it on recursion
     auto body_fn = [this, &ctx, &pointee_name, pointee_ty] (FunctionDecl *fn_decl) -> StmtVec {
-        assert(fn_decl->getNumParams() == 1 &&
+        assert(fn_decl->getNumParams() == 2 &&
                "Invalid hash function signature");
         auto param = fn_decl->getParamDecl(0);
         auto param_ty = param->getType();
@@ -876,9 +961,21 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
             ImplicitCastExpr::Create(ctx, param_ty,
                                      CK_LValueToRValue,
                                      param_ref_lv, nullptr, VK_RValue);
-        auto is_valid_call =
-            build_call("__c2rust_pointer_is_valid", ctx.BoolTy,
+        auto is_invalid_call =
+            build_call("__c2rust_pointer_is_invalid", ctx.BoolTy,
                        { param_ref_rv }, ctx);
+        // Build the call to __c2rust_hash_invalid_pointer
+        auto hash_invalid_call =
+            build_call("__c2rust_hash_invalid_pointer", ctx.UnsignedLongTy,
+                       { param_ref_rv }, ctx);
+        auto return_hash_invalid =
+            new (ctx) ReturnStmt(SourceLocation(), hash_invalid_call, nullptr);
+        auto if_invalid =
+            new (ctx) IfStmt(ctx, SourceLocation(), false,
+                             nullptr, nullptr, is_invalid_call,
+                             return_hash_invalid, SourceLocation(), nullptr);
+
+        auto depth_check = build_depth_check(fn_decl, "pointer", ctx);
 
         // Build the call to the pointee function
         auto param_deref_lv =
@@ -887,28 +984,15 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
                                     SourceLocation());
         auto param_deref_rv = forward_hash_argument(param_deref_lv,
                                                     pointee_ty, ctx);
+        auto param_depth = get_depth(fn_decl, true, ctx);
         auto param_hash_call =
             build_call(pointee_name.full_name(), ctx.UnsignedLongTy,
-                       { param_deref_rv }, ctx);
-
-        // Build the call to __c2rust_hash_invalid_pointer
-        auto hash_invalid_call =
-            build_call("__c2rust_hash_invalid_pointer", ctx.UnsignedLongTy,
-                       { param_ref_rv }, ctx);
+                       { param_deref_rv, param_depth }, ctx);
 
         // Build the conditional expression and return statement
-        auto cond_expr =
-            new (ctx) ConditionalOperator(is_valid_call,
-                                          SourceLocation(),
-                                          param_hash_call,
-                                          SourceLocation(),
-                                          hash_invalid_call,
-                                          ctx.UnsignedLongTy,
-                                          VK_RValue,
-                                          OK_Ordinary);
-        auto return_stmt =
-            new (ctx) ReturnStmt(SourceLocation(), cond_expr, nullptr);
-        return { return_stmt };
+        auto return_hash_stmt =
+            new (ctx) ReturnStmt(SourceLocation(), param_hash_call, nullptr);
+        return { if_invalid, depth_check, return_hash_stmt };
     };
     build_generic_hash_function(func_name, ty, ctx, body_fn);
 }
@@ -926,7 +1010,10 @@ void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_
     }
 
     // Build the following code:
-    // uint64_t __c2rust_hash_T_array_N(T x[N]) {
+    // uint64_t __c2rust_hash_T_array_N(T x[N], size_t depth) {
+    //   if (depth == 0)
+    //      return __c2rust_hash_array_leaf();
+    //
     //   char hasher[__c2rust_hasher_H_size()];
     //   __c2rust_hasher_H_init(hasher);
     //   for (size_t i = 0; i < N; i++)
@@ -943,6 +1030,9 @@ void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_
              hasher_prefix = std::move(hasher_prefix)]
             (FunctionDecl *fn_decl) -> StmtVec {
         StmtVec stmts;
+        auto depth_check = build_depth_check(fn_decl, "array"sv, ctx);
+        stmts.push_back(depth_check);
+
         auto [hasher_var, hasher_var_ptr, hasher_init_stmts] =
             build_hasher_init(hasher_prefix, fn_decl, ctx);
         stmts.insert(stmts.end(),
@@ -990,8 +1080,9 @@ void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_
                                                        OK_Ordinary, SourceLocation());
         auto param_i_rv = forward_hash_argument(param_i_lv, element_ty, ctx);
         auto param_i_hash_fn = element_name.full_name();
+        auto param_i_depth = get_depth(fn_decl, true, ctx);
         auto param_i_hash = build_call(param_i_hash_fn, ctx.UnsignedLongTy,
-                                       { param_i_rv }, ctx);
+                                       { param_i_rv, param_i_depth }, ctx);
         auto update_call = build_call(hasher_prefix + "_update", ctx.VoidTy,
                                       { hasher_var_ptr, param_i_hash }, ctx);
 
@@ -1021,13 +1112,21 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     auto &diags = ctx.getDiagnostics();
     auto record_ty = cast<RecordType>(ty);
     auto record_decl = record_ty->getDecl();
-    // TODO: handle disable_xchecks == true here
-
     std::optional<StructConfigRef> record_cfg;
     auto ploc = ctx.getSourceManager().getPresumedLoc(record_decl->getLocStart());
     if (ploc.isValid()) {
         std::string file_name(ploc.getFilename());
         record_cfg = get_struct_config(file_name, record_name);
+
+        // Check the blacklist first
+        std::pair<std::string_view, std::string_view>
+            blacklist_key{file_name, record_name};
+        if (struct_xcheck_blacklist.count(blacklist_key) > 0)
+            return;
+    }
+    if (record_cfg && record_cfg->get().disable_xchecks) {
+        // Cross-checks are disabled for this record
+        return;
     }
     if (record_cfg && record_cfg->get().custom_hash) {
         // The user specified a "custom_hash" function, so just forward
@@ -1043,9 +1142,10 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                 new (ctx) DeclRefExpr(param, false, param_ty,
                                       VK_LValue, SourceLocation());
             auto param_ref_rv = forward_hash_argument(param_ref_lv, param_ty, ctx);
+            auto new_depth = get_depth(fn_decl, false, ctx);
             auto hash_fn_call = build_call(hash_fn_name,
                                            ctx.UnsignedLongTy,
-                                           { param_ref_rv }, ctx);
+                                           { param_ref_rv, new_depth }, ctx);
             auto return_stmt =
                 new (ctx) ReturnStmt(SourceLocation(), hash_fn_call, nullptr);
             return { return_stmt };
@@ -1055,11 +1155,14 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     }
 
     // Build the following code:
-    // uint64_t __c2rust_hash_T_struct(struct T x) {
+    // uint64_t __c2rust_hash_T_struct(struct T x, size_t depth) {
+    //   if (depth == 0)
+    //      return __c2rust_hash_record_leaf();
+    //
     //   char hasher[__c2rust_hasher_H_size()];
     //   __c2rust_hasher_H_init(hasher);
-    //   __c2rust_hasher_H_update(hasher, __c2rust_hash_F1(x.field1));
-    //   __c2rust_hasher_H_update(hasher, __c2rust_hash_F2(x.field2));
+    //   __c2rust_hasher_H_update(hasher, __c2rust_hash_F1(x.field1, depth - 1));
+    //   __c2rust_hasher_H_update(hasher, __c2rust_hash_F2(x.field2, depth - 1));
     //   ...
     //   return __c2rust_hasher_H_finish(hasher);
     // }
@@ -1067,14 +1170,17 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     // TODO: allow custom hashers instead of the default "jodyhash"
     auto record_def = record_decl->getDefinition();
     if (record_def == nullptr) {
-        report_clang_error(diags, "default cross-checking is not supported for undefined structures, "
+#if 0 // Assume some other file provides an implementation for this
+        report_clang_error(diags, "default cross-checking is not supported for incomplete structures, "
                                   "please use a custom cross-check for '%0'",
                                   record_decl->getDeclName().getAsString());
+#endif
         return;
     }
     if (record_def->isUnion()) {
         report_clang_error(diags, "default cross-checking is not supported for unions, "
-                                  "please use a custom cross-check");
+                                  "please use a custom cross-check for '%0'",
+                                  record_decl->getDeclName().getAsString());
         return;
     }
     assert((record_def->isStruct() || record_def->isClass()) &&
@@ -1092,6 +1198,9 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
              hasher_prefix = std::move(hasher_prefix)]
             (FunctionDecl *fn_decl) -> StmtVec {
         StmtVec stmts;
+        auto depth_check = build_depth_check(fn_decl, "record"sv, ctx);
+        stmts.push_back(depth_check);
+
         auto [hasher_var, hasher_var_ptr, hasher_init_stmts] =
             build_hasher_init(hasher_prefix, fn_decl, ctx);
         stmts.insert(stmts.end(),
@@ -1100,15 +1209,20 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
 
         // Add the field calls
         auto param = fn_decl->getParamDecl(0);
+        auto field_depth = get_depth(fn_decl, true, ctx);
         DeclMap field_decls;
         for (auto *field : record_def->fields()) {
             field_decls.emplace(llvm_string_ref_to_sv(field->getName()), field);
         }
         for (auto *field : record_def->fields()) {
+            if (field->isUnnamedBitfield())
+                continue; // Unnamed bitfields only affect layout, not contents
             if (field->isBitField()) {
                 auto &diags = ctx.getDiagnostics();
+                auto record_decl = field->getParent();
                 report_clang_error(diags, "default cross-checking is not supported for bitfields, "
-                                          "please use a custom cross-check");
+                                          "please use a custom cross-check for '%0'",
+                                          record_decl->getDeclName().getAsString());
                 return {};
             }
 
@@ -1162,6 +1276,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                     auto field_ref_rv = forward_hash_argument(field_ref_lv, field_ty, ctx);
                     field_hash_args.push_back(field_ref_rv);
                 }
+                field_hash_args.push_back(field_depth);
                 field_hash = build_call(field_hash_fn,
                                         ctx.UnsignedLongTy,
                                         field_hash_args, ctx);
@@ -1266,9 +1381,10 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
             new (ctx) DeclRefExpr(param, false, param_ty,
                                   VK_LValue, SourceLocation());
         auto param_ref_rv = forward_hash_argument(param_ref_lv, param_ty, ctx);
+        auto hash_depth = build_max_hash_depth(ctx);
         // TODO: pass PODs by value, non-PODs by pointer???
         return build_call(hash_fn_name.full_name(), ctx.UnsignedLongTy,
-                          { param_ref_rv }, ctx);
+                          { param_ref_rv, hash_depth }, ctx);
     };
     auto param_xcheck_custom_args_fn = [&ctx, &param_decls] (CustomArgVec args) {
         auto arg_build_fn = [&ctx] (DeclaratorDecl *decl) {
@@ -1284,6 +1400,7 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
 
 bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
     for (auto *d : dg) {
+        auto &ctx = d->getASTContext();
         if (FunctionDecl *fd = dyn_cast<FunctionDecl>(d)) {
             if (!fd->hasBody())
                 continue;
@@ -1292,7 +1409,6 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 continue;
             }
 
-            auto &ctx = fd->getASTContext();
             DefaultsConfigOptRef file_defaults;
             std::optional<FunctionConfigRef> func_cfg;
             auto ploc = ctx.getSourceManager().getPresumedLoc(fd->getLocStart());
@@ -1480,8 +1596,9 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                     auto result_lv = new (ctx) DeclRefExpr(result_var, false, result_ty,
                                                            VK_LValue, SourceLocation());
                     auto result_rv = forward_hash_argument(result_lv, result_ty, ctx);
+                    auto hash_depth = build_max_hash_depth(ctx);
                     return build_call(hash_fn_name.full_name(), ctx.UnsignedLongTy,
-                                      { result_rv }, ctx);
+                                      { result_rv, hash_depth }, ctx);
                 };
                 auto result_xcheck_stmts =
                     build_xcheck(result_xcheck, XCheck::Tag::FUNCTION_RETURN,
@@ -1510,6 +1627,22 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             fd->setBody(new_body);
         } else if (VarDecl *vd = dyn_cast<VarDecl>(d)) {
             global_vars.emplace(llvm_string_ref_to_sv(vd->getName()), vd);
+        } else if (RecordDecl *rd = dyn_cast<RecordDecl>(d)) {
+            // Instantiate the hash function for this type
+            if (rd->isCompleteDefinition() && rd->getIdentifier() != nullptr) {
+                auto record_ty = ctx.getRecordType(rd);
+                if (record_ty->isStructureType()) {
+                    // FIXME: only structures for now
+                    get_type_hash_function(record_ty, ctx, true);
+                }
+            }
+        } else if (TypedefDecl *td = dyn_cast<TypedefDecl>(d)) {
+            auto typedef_ty = ctx.getTypedefType(td);
+            auto under_ty = td->getUnderlyingType();
+            if (under_ty->isStructureType()) {
+                // FIXME: handle more types, e.g., enum
+                get_type_hash_function(typedef_ty, ctx, true);
+            }
         }
     }
     return true;

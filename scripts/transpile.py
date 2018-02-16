@@ -94,7 +94,7 @@ def transpile_files(cc_db: TextIO,
     ensure_code_compiled_with_clang(cc_db)
     include_dirs = get_system_include_dirs()
 
-    def transpile_single(cmd) -> (str, int, str, str):
+    def transpile_single(cmd) -> Tuple[str, int, str, str]:
 
         if import_only:
             cbor_file = os.path.join(cmd['directory'], cmd['file'] + ".cbor")

@@ -7,6 +7,7 @@ import argparse
 import re
 
 from common import *
+from typing import Tuple
 
 # Executables we are going to test
 ast_extractor = get_cmd_or_die(AST_EXTR)
@@ -61,7 +62,7 @@ class TestCase:
         if message:
             sys.stdout.write(": " + message)
 
-    def generate_cc_db(self) -> (int, str, str):
+    def generate_cc_db(self) -> Tuple[int, str, str]:
         directory, cfile = os.path.split(self.src_c)
 
         compile_commands = """ \
@@ -79,7 +80,7 @@ class TestCase:
 
         return 0, "", ""
 
-    def export_cbor(self) -> (int, str, str):
+    def export_cbor(self) -> Tuple[int, str, str]:
 
         # run the extractor
         args = [self.src_c]
@@ -90,7 +91,7 @@ class TestCase:
         logging.debug("extraction command:\n %s", str(ast_extractor[args]))
         return ast_extractor[args].run(retcode=None)
 
-    def translate(self) -> (int, str, str):
+    def translate(self) -> Tuple[int, str, str]:
 
         # help plumbum find rust
         ld_lib_path = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
@@ -106,7 +107,7 @@ class TestCase:
             logging.debug("translation command:\n %s", translation_cmd)
             return (ast_importer[args] > self.rust_src).run(retcode=None)
 
-    def compile_translated_rustc(self) -> (int, str, str):
+    def compile_translated_rustc(self) -> Tuple[int, str, str]:
 
         # run rustc
         args = [
@@ -116,7 +117,7 @@ class TestCase:
         ]
         return rustc[args].run(retcode=None)
 
-    def compile_translated_clang(self) -> (int, str, str):
+    def compile_translated_clang(self) -> Tuple[int, str, str]:
 
         # run clang linking in the rust object file
         args = [
@@ -130,7 +131,7 @@ class TestCase:
             args = ['-pthread', '-ldl'] + args
         return clang[args].run(retcode=None)
 
-    def compile_original_clang(self) -> (int, str, str):
+    def compile_original_clang(self) -> Tuple[int, str, str]:
 
         # run clang
         args = [
@@ -139,7 +140,7 @@ class TestCase:
         ]
         return clang[args].run(retcode=None)
 
-    def compare_run_outputs(self) -> (int, str, str):
+    def compare_run_outputs(self) -> Tuple[int, str, str]:
 
         # run the Rust executable
         run_result = (get_cmd_or_die(self.rust_exec) > self.rust_out).run(retcode=None)

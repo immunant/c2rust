@@ -1,13 +1,14 @@
 #include <stdint.h>
+#include <stddef.h>
 
 #define _WIDTH_HASH_FUNCTION(SIGN, WIDTH) __c2rust_hash_##SIGN##WIDTH
 #define WIDTH_HASH_FUNCTION(SIGN, WIDTH)  _WIDTH_HASH_FUNCTION(SIGN, WIDTH)
 #define POINTER_HASH_FUNCTION(...)        WIDTH_HASH_FUNCTION(u, __INTPTR_WIDTH__) (__VA_ARGS__)
 
 // Define __c2rust_hash_T functions for all the fixed-size types
-#define DEFINE_FIXED_HASH(short_ty, val_ty, xor_const)      \
-    static uint64_t __c2rust_hash_ ## short_ty (val_ty x) { \
-        return (xor_const) ^ (uint64_t) x;                  \
+#define DEFINE_FIXED_HASH(short_ty, val_ty, xor_const)                    \
+    static uint64_t __c2rust_hash_ ## short_ty (val_ty x, size_t depth) { \
+        return (xor_const) ^ (uint64_t) x;                                \
     }
 DEFINE_FIXED_HASH(u8,  uint8_t,  0x0000000000000000ULL)
 DEFINE_FIXED_HASH(u16, uint16_t, 0x5a5a5a5a5a5a5a5aULL)
@@ -22,8 +23,8 @@ DEFINE_FIXED_HASH(i64,  int64_t, 0xd2d2d2d2d2d2d2d0ULL)
 // as aliases to the fixed-size functions defined above
 #define _STRINGIFY(x)   #x
 #define STRINGIFY(x)    _STRINGIFY(x)
-#define DEFINE_CTYPE_HASH(c_ty_name, c_ty, sign, width) \
-    uint64_t __c2rust_hash_ ## c_ty_name (c_ty x)       \
+#define DEFINE_CTYPE_HASH(c_ty_name, c_ty, sign, width)         \
+    uint64_t __c2rust_hash_ ## c_ty_name (c_ty x, size_t depth) \
     __attribute__((alias(STRINGIFY(WIDTH_HASH_FUNCTION(sign, width)))));
 DEFINE_CTYPE_HASH(uchar,  unsigned char,      u, __SCHAR_WIDTH__);
 DEFINE_CTYPE_HASH(ushort, unsigned short,     u, __SHRT_WIDTH__);
@@ -44,7 +45,7 @@ DEFINE_CTYPE_HASH(char,   char,               i, __SCHAR_WIDTH__);
 // TODO: implement more types, e.g., bool, char, double, float
 
 #if __SIZEOF_FLOAT__ == 4
-uint64_t __c2rust_hash_float(float x) {
+uint64_t __c2rust_hash_float(float x, size_t depth) {
     union {
         float f;
         uint32_t u;
@@ -56,7 +57,7 @@ uint64_t __c2rust_hash_float(float x) {
 #endif
 
 #if __SIZEOF_DOUBLE__ == 8
-uint64_t __c2rust_hash_double(double x) {
+uint64_t __c2rust_hash_double(double x, size_t depth) {
     union {
         double d;
         uint64_t u;
@@ -67,25 +68,46 @@ uint64_t __c2rust_hash_double(double x) {
 #error "Unknown size for double"
 #endif
 
-#define LEAF_POINTER_HASH 0xDEADBEEFUL
-#define NULL_POINTER_HASH 0UL
-#define VOID_POINTER_HASH 0x7261745364696f56ULL // "VoidStar" in ASCII
+#define LEAF_POINTER_HASH     0x726174536661654cULL // "LeafStar" in ASCII
+#define LEAF_ARRAY_HASH       0x797272416661654cULL // "LeafArry" in ASCII
+#define LEAF_RECORD_HASH      0x647263526661654cULL // "LeafRcrd" in ASCII
+#define NULL_POINTER_HASH     0x726174536c6c754eULL // "NullStar" in ASCII
+#define VOID_POINTER_HASH     0x7261745364696f56ULL // "VoidStar" in ASCII
 #define FUNCTION_POINTER_HASH 0x72617453636e7546ULL // "FuncStar" in ASCII
 
-_Bool __c2rust_pointer_is_valid(void *p) {
-    return p != (void*) 0;
+_Bool __c2rust_pointer_is_invalid(void *p) {
+    return p == NULL;
 }
 
 uint64_t __c2rust_hash_invalid_pointer(void *p) {
     return NULL_POINTER_HASH;
 }
 
-uint64_t __c2rust_hash_void_ptr(void *p) {
-    return p ? VOID_POINTER_HASH : NULL_POINTER_HASH;
+uint64_t __c2rust_hash_pointer_leaf() {
+    return LEAF_POINTER_HASH;
 }
 
-uint64_t __c2rust_hash_function(void *f) {
-    // TODO
+uint64_t __c2rust_hash_array_leaf() {
+    return LEAF_ARRAY_HASH;
+}
+
+uint64_t __c2rust_hash_record_leaf() {
+    return LEAF_RECORD_HASH;
+}
+
+uint64_t __c2rust_hash_void_ptr(void *p, size_t depth) {
+    if (p == NULL)
+        return NULL_POINTER_HASH;
+    if (depth == 0)
+        return LEAF_POINTER_HASH;
+    return VOID_POINTER_HASH;
+}
+
+uint64_t __c2rust_hash_function(void *f, size_t depth) {
+    if (f == NULL)
+        return NULL_POINTER_HASH;
+    if (depth == 0)
+        return LEAF_POINTER_HASH;
     return FUNCTION_POINTER_HASH;
 }
 
