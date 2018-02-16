@@ -11,11 +11,6 @@
       name: __pthread_cond_s
       disable_xchecks: true
 
-/usr/include/bits/timex.h:
-    - item: struct
-      name: timex
-      disable_xchecks: true
-
 test.c:
     - item: defaults
       disable_xchecks: true

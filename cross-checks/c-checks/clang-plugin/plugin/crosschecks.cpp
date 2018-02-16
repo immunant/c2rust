@@ -1195,6 +1195,8 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
             field_decls.emplace(llvm_string_ref_to_sv(field->getName()), field);
         }
         for (auto *field : record_def->fields()) {
+            if (field->isUnnamedBitfield())
+                continue; // Unnamed bitfields only affect layout, not contents
             if (field->isBitField()) {
                 auto &diags = ctx.getDiagnostics();
                 auto record_decl = field->getParent();
