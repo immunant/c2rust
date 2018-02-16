@@ -1145,9 +1145,11 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
     // TODO: allow custom hashers instead of the default "jodyhash"
     auto record_def = record_decl->getDefinition();
     if (record_def == nullptr) {
-        report_clang_error(diags, "default cross-checking is not supported for undefined structures, "
+#if 0 // Assume some other file provides an implementation for this
+        report_clang_error(diags, "default cross-checking is not supported for incomplete structures, "
                                   "please use a custom cross-check for '%0'",
                                   record_decl->getDeclName().getAsString());
+#endif
         return;
     }
     if (record_def->isUnion()) {
