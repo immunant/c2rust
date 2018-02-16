@@ -87,7 +87,7 @@ class TestCase:
         # make sure we can locate system libraries
         sys_incl_dirs = get_system_include_dirs()
         args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
-        # make it a little easier to run this command in a debugger
+        # log the command in a format that's easy to re-run
         logging.debug("extraction command:\n %s", str(ast_extractor[args]))
         return ast_extractor[args].run(retcode=None)
 
@@ -101,7 +101,7 @@ class TestCase:
         # run the importer
         args = [self.cbor]
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
-            # make it a little easier to run this command in a debugger
+            # log the command in a format that's easy to re-run
             translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
             translation_cmd += str(ast_importer[args] > self.rust_src)
             logging.debug("translation command:\n %s", translation_cmd)
@@ -115,6 +115,8 @@ class TestCase:
             '-o', self.rust_obj,
             self.rust_src
         ]
+        # log the command in a format that's easy to re-run
+        logging.debug("rustc compile command: %s", str(rustc[args]))
         return rustc[args].run(retcode=None)
 
     def compile_translated_clang(self) -> Tuple[int, str, str]:
@@ -129,6 +131,8 @@ class TestCase:
             args = ['-lSystem', '-lresolv'] + args
         else:
             args = ['-pthread', '-ldl'] + args
+        # log the command in a format that's easy to re-run
+        logging.debug("clang compile command: %s", str(rustc[args]))
         return clang[args].run(retcode=None)
 
     def compile_original_clang(self) -> Tuple[int, str, str]:

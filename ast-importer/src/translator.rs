@@ -980,6 +980,10 @@ impl Translation {
                     let cdecl : &CDecl = ast_context.index(decl_id);
                     match cdecl.kind {
                         CDeclKind::Function { typ, .. } => Ok(typ),
+                        CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ} => {
+                            let inner_typ = typ.ctype;
+                            Ok(inner_typ)
+                        }
                         _ => Err("couldn't get leaf node type")
                     }
                 }
@@ -1123,16 +1127,22 @@ impl Translation {
 
                             let source_ty = self.convert_type(source_ty_id)?;
                             let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
-                            match target_ty_ctype {
-                                &CTypeKind::Pointer(qual_type_id) => {
-                                    let inner_ty_ctype = &self.ast_context.resolve_type(qual_type_id.ctype).kind;
-                                    let target_ty = self.convert_type(qual_type_id.ctype)?;
-                                    // See comment above re. cases where bitcast is superfluous.
-                                    if src_is_declref_type && target_ty == source_ty {
-                                        return Ok(x)
+                            if let &CTypeKind::Pointer(qual_type_id) = target_ty_ctype {
+                                let target_ty = self.convert_type(qual_type_id.ctype)?;
+                                
+                                // Detect bitcasts from array-of-T to slice-of-T
+                                let mut array_to_slice_cast = false; 
+                                if let TyKind::Slice(ref tgt_elem_ty) = target_ty.node {
+                                    if let TyKind::Array(ref src_elem_ty, ref len_expr) = source_ty.node {
+                                        array_to_slice_cast = tgt_elem_ty == src_elem_ty
                                     }
-                                },
-                                _ => {}
+                                }
+
+                                // See comment above re. cases where bitcast is superfluous.
+                                let is_superfluous = src_is_declref_type && target_ty == source_ty;
+                                if is_superfluous || array_to_slice_cast {
+                                    return Ok(x)
+                                }
                             }
                             let target_ty = self.convert_type(ty.ctype)?;
                             Ok(transmute_expr(source_ty, target_ty, x))
@@ -1654,7 +1664,7 @@ impl Translation {
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id)
         } else {
-            Err(format!("Unsupported default initializer"))
+            Err(format!("Unsupported default initializer: {:?}", resolved_ty))
         }
     }
 
