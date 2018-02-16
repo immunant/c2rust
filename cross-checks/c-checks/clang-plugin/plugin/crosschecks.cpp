@@ -710,6 +710,7 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
         case BuiltinType::LongDouble:
             return "ldouble"sv;
         default:
+            ty->dump();
             llvm_unreachable("Unknown/unhandled builtin type");
         }
         break;
