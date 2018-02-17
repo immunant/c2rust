@@ -16,6 +16,8 @@ llvm.build*
 # Testing directory
 !tests
 tests/*.rs
+tests/*.a
+tests/*.json
 tests/*.cbor
 tests/*_c
 tests/*_rust
