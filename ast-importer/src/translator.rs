@@ -963,9 +963,9 @@ impl Translation {
     /// If the referenced expression is a DeclRef inside an Unary or ImplicitCast node, return
     /// the type of the referenced declaration. Returns `Err` in all other cases. See
     /// See https://github.com/GaloisInc/C2Rust/issues/32 for more details on this quirk.
-    fn get_declref_type(&self, expr_id: CExprId) -> Result<CTypeId, &str> {
+    fn get_declref_type(&self, expr_id: CExprId) -> Result<(Option<Qualifiers>, CTypeId), &str> {
         // Using nested function to avoid exposing the level parameter
-        fn _get_declref_type(ast_context: &TypedAstContext, expr_id: CExprId, level: u32) -> Result<CTypeId, &str> {
+        fn _get_declref_type(ast_context: &TypedAstContext, expr_id: CExprId, level: u32) -> Result<(Option<Qualifiers>, CTypeId), &str> {
             let expr : &CExpr = ast_context.index(expr_id);
             return match expr.kind {
                 // level 0 arms
@@ -979,7 +979,10 @@ impl Translation {
                 CExprKind::DeclRef(_type_id, decl_id) if level == 1 => {
                     let cdecl : &CDecl = ast_context.index(decl_id);
                     match cdecl.kind {
-                        CDeclKind::Function { typ, .. } => Ok(typ),
+                        CDeclKind::Function { typ, .. } => Ok((None, typ)),
+                        CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ} => {
+                            Ok((Some(typ.qualifiers), typ.ctype))
+                        }
                         _ => Err("couldn't get leaf node type")
                     }
                 }
@@ -1111,29 +1114,41 @@ impl Translation {
                     CastKind::BitCast => {
                         val.result_map(|x| {
                             // TODO: Detect cast from mutable to constant pointer to same type
-                            // Sometimes we hit a quirk where we the bitcast is superfluous, we
-                            // detect such instances by examining the expr part of the AST. See
-                            // this issue: https://github.com/GaloisInc/C2Rust/issues/32
-                            let (source_ty_id, src_is_declref_type) = match self.get_declref_type(expr) {
-                                // special case where the bitcast is superfluous
-                                Ok(type_id) => (type_id, true),
-                                // normal case
-                                _ => (self.ast_context.index(expr).kind.get_type(), false)
-                            };
 
-                            let source_ty = self.convert_type(source_ty_id)?;
-                            let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
-                            match target_ty_ctype {
-                                &CTypeKind::Pointer(qual_type_id) => {
-                                    let inner_ty_ctype = &self.ast_context.resolve_type(qual_type_id.ctype).kind;
+                            // Special cases
+                            if let Ok((source_quals, source_ty_id)) = self.get_declref_type(expr) {
+                                let source_ty = self.convert_type(source_ty_id)?;
+                                let target_ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
+                                if let &CTypeKind::Pointer(qual_type_id) = target_ty_kind {
                                     let target_ty = self.convert_type(qual_type_id.ctype)?;
-                                    // See comment above re. cases where bitcast is superfluous.
-                                    if src_is_declref_type && target_ty == source_ty {
+
+                                    // Detect a quirk where the bitcast is superfluous.
+                                    // See this issue: https://github.com/GaloisInc/C2Rust/issues/32
+                                    if target_ty == source_ty {
                                         return Ok(x)
                                     }
-                                },
-                                _ => {}
+
+                                    let quals_agree = if let Some(sq) = source_quals {
+                                        sq == qual_type_id.qualifiers
+                                    } else { false };
+                                    // Detect bitcasts from array-of-T to slice-of-T
+                                    if let TyKind::Slice(ref tgt_elem_ty) = target_ty.node {
+                                        if let TyKind::Array(ref src_elem_ty, ref len_expr) = source_ty.node {
+                                            if tgt_elem_ty == src_elem_ty {
+                                                if quals_agree {
+                                                    return Ok(x)
+                                                } else {
+                                                    // FIXME: handle mismatched qualifiers
+                                                    panic!("Cannot handle mismatched qualifiers yet.")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
+                            // Normal case
+                            let source_ty_id = self.ast_context.index(expr).kind.get_type();
+                            let source_ty = self.convert_type(source_ty_id)?;
                             let target_ty = self.convert_type(ty.ctype)?;
                             Ok(transmute_expr(source_ty, target_ty, x))
                         })
@@ -1643,9 +1658,7 @@ impl Translation {
         } else if resolved_ty.is_floating_type() {
             Ok(mk().lit_expr(mk().float_unsuffixed_lit("0.")))
         } else if self.is_function_pointer(ty_id) {
-            let source_ty = mk().ptr_ty(mk().path_ty(vec!["libc", "c_void"]));
-            let target_ty = self.convert_type(ty_id)?;
-            Ok(transmute_expr(source_ty, target_ty, null_expr()))
+            Ok(mk().path_expr(vec!["None"]))
         } else if let &CTypeKind::Pointer(p) = resolved_ty {
             Ok(if p.qualifiers.is_const { null_expr() } else { null_mut_expr() })
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
@@ -1654,7 +1667,7 @@ impl Translation {
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id)
         } else {
-            Err(format!("Unsupported default initializer"))
+            Err(format!("Unsupported default initializer: {:?}", resolved_ty))
         }
     }
 

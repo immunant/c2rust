@@ -580,6 +580,14 @@ impl Qualifiers {
     }
 }
 
+impl PartialEq for Qualifiers {
+    fn eq(&self, other: &Qualifiers) -> bool {
+        self.is_const == other.is_const &&
+        self.is_restrict == other.is_restrict &&
+        self.is_volatile == other.is_volatile
+    }
+}
+
 /// Qualified type
 #[derive(Debug, Copy, Clone)]
 pub struct CQualTypeId {

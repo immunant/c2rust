@@ -39,16 +39,16 @@ LIBCLEVRBUF_DIR = os.path.join(REMON_SUBMOD_DIR, "libclevrbuf")
 
 AST_IMPO = os.path.join(ROOT_DIR, "ast-importer/target/debug/ast_importer")
 
-CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.1"
-CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.1.tar.gz")
+CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.2"
+CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.2.tar.gz")
 CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
 CBOR_SRC = os.path.join(DEPS_DIR, CBOR_SRC)
 CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
 # use an install prefix unique to the host
 CBOR_PREFIX += platform.node()  # returns hostname
 
-BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.6"
-BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.6.tar.gz")
+BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.11"
+BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.11.tar.gz")
 BEAR_SRC = os.path.basename(BEAR_ARCHIVE).replace(".tar.gz", "")
 BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
 BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear")
