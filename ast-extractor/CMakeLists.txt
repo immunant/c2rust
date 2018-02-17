@@ -9,3 +9,8 @@ target_link_libraries(ast-extractor
   clangASTMatchers
   tinycbor
   )
+
+# ast-extractor will use the same headers that
+# clang does, so they need to be in the same place
+# in the build directory
+add_dependencies(ast-extractor clang-headers)
