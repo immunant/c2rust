@@ -47,8 +47,8 @@ CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
 # use an install prefix unique to the host
 CBOR_PREFIX += platform.node()  # returns hostname
 
-BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.6"
-BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.6.tar.gz")
+BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.11"
+BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.11.tar.gz")
 BEAR_SRC = os.path.basename(BEAR_ARCHIVE).replace(".tar.gz", "")
 BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
 BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear")
