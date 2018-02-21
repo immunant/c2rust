@@ -495,12 +495,12 @@ pub enum CStmtKind {
     //
     // All of these have a `CStmtId` to represent the substatement that comes after them
     Label(CStmtId),
-    Case(CExprId,CStmtId,ConstIntExpr),
+    Case(CExprId, CStmtId, ConstIntExpr),
     Default(CStmtId),
 
     // Compound statements (6.8.2)
     Compound(Vec<CStmtId>),
-  
+
     // Expression and null statements (6.8.3)
     Expr(CExprId),
     Empty,
@@ -515,7 +515,7 @@ pub enum CStmtKind {
         scrutinee: CExprId,
         body: CStmtId,
     },
- 
+
     // Iteration statements (6.8.5)
     While {
         condition: CExprId,
@@ -611,16 +611,16 @@ pub enum CTypeKind {
 
     // Void type (6.2.5.19)
     Void,
-  
+
     // Boolean type (6.2.5.2)
     Bool,
-  
+
     // Character type (6.2.5.3)
     Char,
-  
+
     // Signed types (6.2.5.4)
     SChar, Short, Int, Long, LongLong,
-  
+
     // Unsigned types (6.2.5.6) (actually this also includes `_Bool`)
     UChar, UShort, UInt, ULong, ULongLong,
 
@@ -629,9 +629,9 @@ pub enum CTypeKind {
 
     // Clang specific types
     Int128, UInt128,
-  
+
     /* Compound types <https://github.com/llvm-mirror/clang/include/clang/AST/TypeNodes.def> */
-  
+
     // Complex types (6.2.5.11). Ex: `float _Complex`.
     Complex(CTypeId),
 
