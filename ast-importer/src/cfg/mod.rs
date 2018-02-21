@@ -841,7 +841,7 @@ impl CfgBuilder {
 /// This impl block deals with pretty-printing control flow graphs into a format that `dot` can
 /// consume. Compiling these files into images means running something like:
 ///
-/// ```
+/// ```norun
 /// dot -Tpng cfg_func.dot > cfg_func.png
 /// ```
 impl Cfg<Label> {
