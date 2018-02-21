@@ -90,7 +90,7 @@ impl<W: Write> Printer<W> {
                     self.print_unop(&op, context)
                 }
             },
-            Some(&CExprKind::Binary(_, op, lhs, rhs)) => {
+            Some(&CExprKind::Binary(_, op, lhs, rhs, _, _)) => {
                 self.print_expr(lhs, context)?;
                 self.writer.write_all(b" ")?;
                 self.print_binop(&op, context)?;

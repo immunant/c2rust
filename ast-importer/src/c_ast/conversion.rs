@@ -962,7 +962,13 @@ impl ConversionContext {
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty_old);
 
-                    let binary = CExprKind::Binary(ty, operator, left_operand, right_operand);
+                    let opt_lhs_type_id = expect_opt_u64(&node.extras[1]).expect("Expected compute lhs type");
+                    let opt_lhs_type = opt_lhs_type_id.map(|x| self.visit_qualified_type(x));
+
+                    let opt_res_type_id = expect_opt_u64(&node.extras[2]).expect("Expected compute lhs type");
+                    let opt_res_type = opt_res_type_id.map(|x| self.visit_qualified_type(x));
+
+                    let binary = CExprKind::Binary(ty, operator, left_operand, right_operand, opt_lhs_type, opt_res_type);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, binary);
                 }

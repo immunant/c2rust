@@ -98,9 +98,9 @@ impl TypedAstContext {
             CExprKind::Unary(_, _, e) => self.is_expr_pure(e),
             CExprKind::UnaryType(_, _, _) => true,
 
-            CExprKind::Binary(_, BinOp::Assign, _, _) => false,
-            CExprKind::Binary(_, op, _, _) if op.underlying_assignment().is_some() => false,
-            CExprKind::Binary(_, _, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+            CExprKind::Binary(_, BinOp::Assign, _, _, _, _) => false,
+            CExprKind::Binary(_, op, _, _, _, _) if op.underlying_assignment().is_some() => false,
+            CExprKind::Binary(_, _, lhs, rhs, _, _) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
 
             CExprKind::ArraySubscript(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
             CExprKind::Conditional(_, c, lhs, rhs) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
@@ -272,7 +272,7 @@ pub enum CExprKind {
     UnaryType(CQualTypeId, UnTypeOp, CQualTypeId),
 
     // Binary operator
-    Binary(CQualTypeId, BinOp, CExprId, CExprId),
+    Binary(CQualTypeId, BinOp, CExprId, CExprId, Option<CQualTypeId>, Option<CQualTypeId>),
 
     // Implicit cast
     ImplicitCast(CQualTypeId, CExprId, CastKind, Option<CFieldId>),
@@ -324,7 +324,7 @@ impl CExprKind {
             CExprKind::Literal(ty, _) => ty,
             CExprKind::Unary(ty, _, _) => ty,
             CExprKind::UnaryType(ty, _, _) => ty,
-            CExprKind::Binary(ty, _, _, _) => ty,
+            CExprKind::Binary(ty, _, _, _, _, _) => ty,
             CExprKind::ImplicitCast(ty, _, _, _) => ty,
             CExprKind::ExplicitCast(ty, _, _, _) => ty,
             CExprKind::DeclRef(ty, _) => ty,
