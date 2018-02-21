@@ -1120,8 +1120,6 @@ void TypeEncoder::VisitRecordType(const RecordType *T) {
 
 void TypeEncoder::VisitTypedefType(const TypedefType *T) {
     
-    // Should only ever be reached during the first pass
-  
     auto D = T->getDecl()->getCanonicalDecl();
 
     encodeType(T, TagTypedefType, [D, T](CborEncoder *local) {

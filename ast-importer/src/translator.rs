@@ -1121,14 +1121,9 @@ impl Translation {
                                 if let &CTypeKind::Pointer(qual_type_id) = target_ty_kind {
                                     let target_ty = self.convert_type(qual_type_id.ctype)?;
 
-                                    let is_typedef = match self.ast_context.index(qual_type_id.ctype).kind {
-                                        CTypeKind::Typedef(_) => true,
-                                        _ => false
-                                    };
-
                                     // Detect a quirk where the bitcast is superfluous.
                                     // See this issue: https://github.com/GaloisInc/C2Rust/issues/32
-                                    if target_ty == source_ty || is_typedef {
+                                    if target_ty == source_ty {
                                         return Ok(x)
                                     }
 
