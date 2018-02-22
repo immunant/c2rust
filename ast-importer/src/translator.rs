@@ -266,7 +266,7 @@ pub fn translate(ast_context: &TypedAstContext, reloop_cfgs: bool, dump_function
     to_string(|s| {
 
         let features =
-            vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to"]),
+            vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut"]),
                  ("allow"  ,vec!["non_camel_case_types","non_snake_case","dead_code", "mutable_transmutes"]),
             ];
 
