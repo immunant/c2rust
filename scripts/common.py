@@ -194,7 +194,11 @@ def on_arch() -> bool:
     """
     return true on arch distros.
     """
-    return platform.platform().endswith('-with-arch')
+    #Commented out the old implementation:
+    #return platform.platform().endswith('-with-arch')
+    distro, *_ = platform.linux_distribution()
+
+    return distro == "arch"
 
 
 def on_ubuntu() -> bool:

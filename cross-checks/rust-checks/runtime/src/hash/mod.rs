@@ -2,6 +2,9 @@
 use std::hash::Hasher;
 use std::mem;
 
+#[cfg(feature="libc-hash")]
+use libc;
+
 pub mod djb2;
 pub mod simple;
 pub mod jodyhash;
@@ -110,6 +113,7 @@ const LEAF_REFERENCE_VALUE: u32 = 0xDEADBEEFu32;
 const LEAF_POINTER_VALUE: u32 = 0xDEADBEEFu32;
 const NULL_POINTER_HASH: u64 = 0x726174536c6c754e_u64; // "NullStar" in ASCII
 const LEAF_POINTER_HASH: u64 = 0x726174536661654c_u64; // "LeafStar" in ASCII
+const VOID_POINTER_HASH: u64 = 0x7261745364696f56_u64; // "VoidStar" in ASCII
 
 // Hash implementation for references
 impl<'a, T: ?Sized + CrossCheckHash> CrossCheckHash for &'a T {
@@ -175,3 +179,20 @@ impl<T: CrossCheckHash> CrossCheckHash for *mut T {
     }
 }
 
+#[cfg(feature="libc-hash")]
+impl CrossCheckHash for libc::c_void {
+    #[inline]
+    fn cross_check_hash<HA, HS>(&self) -> Option<u64>
+            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        None
+    }
+
+    #[inline]
+    fn cross_check_hash_depth<HA, HS>(&self, _depth: usize) -> u64
+            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        // FIXME: this returns the correct value for a void*
+        // parent pointer, but is wrong for a void-typed
+        // structure field or array element
+        VOID_POINTER_HASH
+    }
+}

@@ -7,6 +7,9 @@
 #[cfg(feature="djb2-ssse3")]
 extern crate simd;
 
+#[cfg(feature="libc-hash")]
+extern crate libc;
+
 pub mod xcheck;
 pub mod hash;
 pub mod macros;

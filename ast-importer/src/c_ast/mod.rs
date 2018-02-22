@@ -98,9 +98,9 @@ impl TypedAstContext {
             CExprKind::Unary(_, _, e) => self.is_expr_pure(e),
             CExprKind::UnaryType(_, _, _) => true,
 
-            CExprKind::Binary(_, BinOp::Assign, _, _) => false,
-            CExprKind::Binary(_, op, _, _) if op.underlying_assignment().is_some() => false,
-            CExprKind::Binary(_, _, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+            CExprKind::Binary(_, BinOp::Assign, _, _, _, _) => false,
+            CExprKind::Binary(_, op, _, _, _, _) if op.underlying_assignment().is_some() => false,
+            CExprKind::Binary(_, _, lhs, rhs, _, _) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
 
             CExprKind::ArraySubscript(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
             CExprKind::Conditional(_, c, lhs, rhs) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
@@ -272,7 +272,7 @@ pub enum CExprKind {
     UnaryType(CQualTypeId, UnTypeOp, CQualTypeId),
 
     // Binary operator
-    Binary(CQualTypeId, BinOp, CExprId, CExprId),
+    Binary(CQualTypeId, BinOp, CExprId, CExprId, Option<CQualTypeId>, Option<CQualTypeId>),
 
     // Implicit cast
     ImplicitCast(CQualTypeId, CExprId, CastKind, Option<CFieldId>),
@@ -324,7 +324,7 @@ impl CExprKind {
             CExprKind::Literal(ty, _) => ty,
             CExprKind::Unary(ty, _, _) => ty,
             CExprKind::UnaryType(ty, _, _) => ty,
-            CExprKind::Binary(ty, _, _, _) => ty,
+            CExprKind::Binary(ty, _, _, _, _, _) => ty,
             CExprKind::ImplicitCast(ty, _, _, _) => ty,
             CExprKind::ExplicitCast(ty, _, _, _) => ty,
             CExprKind::DeclRef(ty, _) => ty,
@@ -495,12 +495,12 @@ pub enum CStmtKind {
     //
     // All of these have a `CStmtId` to represent the substatement that comes after them
     Label(CStmtId),
-    Case(CExprId,CStmtId,ConstIntExpr),
+    Case(CExprId, CStmtId, ConstIntExpr),
     Default(CStmtId),
 
     // Compound statements (6.8.2)
     Compound(Vec<CStmtId>),
-  
+
     // Expression and null statements (6.8.3)
     Expr(CExprId),
     Empty,
@@ -515,7 +515,7 @@ pub enum CStmtKind {
         scrutinee: CExprId,
         body: CStmtId,
     },
- 
+
     // Iteration statements (6.8.5)
     While {
         condition: CExprId,
@@ -611,16 +611,16 @@ pub enum CTypeKind {
 
     // Void type (6.2.5.19)
     Void,
-  
+
     // Boolean type (6.2.5.2)
     Bool,
-  
+
     // Character type (6.2.5.3)
     Char,
-  
+
     // Signed types (6.2.5.4)
     SChar, Short, Int, Long, LongLong,
-  
+
     // Unsigned types (6.2.5.6) (actually this also includes `_Bool`)
     UChar, UShort, UInt, ULong, ULongLong,
 
@@ -629,9 +629,9 @@ pub enum CTypeKind {
 
     // Clang specific types
     Int128, UInt128,
-  
+
     /* Compound types <https://github.com/llvm-mirror/clang/include/clang/AST/TypeNodes.def> */
-  
+
     // Complex types (6.2.5.11). Ex: `float _Complex`.
     Complex(CTypeId),
 
