@@ -1,3 +1,4 @@
+// Should fail
 // Due to a quirk in the C language (at least as handled by clang), 
 // we need special case handling for functions that are declared without
 // a prototype and use implicit typing of their parameters. See

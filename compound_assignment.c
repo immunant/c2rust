@@ -1,3 +1,4 @@
+typedef int myint;
 void entry(const unsigned sz, int buffer[const]) {
        int i = 0;
 
@@ -28,4 +29,12 @@ void entry(const unsigned sz, int buffer[const]) {
        vc *= 567;
        buffer[i++] = vc;
        buffer[i++] = vc *= 567;
+
+        int y = 10;
+        y *= 500;
+        y /= 500;
+
+        myint z = 10;
+        z *= 500;
+        z /= 500;
 }
