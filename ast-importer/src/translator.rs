@@ -91,13 +91,26 @@ fn sequence_option<A,E>(x: Option<Result<A,E>>) -> Result<Option<A>, E> {
     }
 }
 
+fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
+    let opt_literal_val = match &val.node {
+        &ExprKind::Lit(ref l) => match &l.node {
+            &LitKind::Int(i,_) => Some(i),
+            _ => None,
+        }
+        _ => None,
+    };
+    match opt_literal_val {
+        Some(i) => mk().lit_expr(mk().int_lit(i, name)),
+        None => mk().cast_expr(val, mk().path_ty(vec![name])),
+    }
+}
+
 fn pointer_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
-    let offset = mk().cast_expr(offset, mk().path_ty(vec!["isize"]));
-    mk().method_call_expr(ptr, "offset", vec![offset])
+    mk().method_call_expr(ptr, "offset", vec![cast_int(offset, "isize")])
 }
 
 fn pointer_neg_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
-    let offset = mk().cast_expr(offset, mk().path_ty(vec!["isize"]));
+    let offset = cast_int(offset, "isize");
     mk().method_call_expr(ptr, "offset", vec![mk().unary_expr(ast::UnOp::Neg, offset)])
 }
 
@@ -1394,7 +1407,7 @@ impl Translation {
                     let lhs = self.convert_expr(use_, *arr)?;
                     stmts.extend(lhs.stmts);
 
-                    let val = mk().cast_expr(rhs.val, mk().path_ty(vec!["usize"]));
+                    let val = cast_int(rhs.val, "usize");
 
                     mk().index_expr(lhs.val, val)
                 } else {
