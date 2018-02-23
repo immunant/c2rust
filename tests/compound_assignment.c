@@ -1,15 +1,40 @@
-void entry(unsigned buffer_size, int buffer[])
-{
-    buffer[0] += 3;
-    buffer[1] -= 5;
-    buffer[2] *= 5;
-    buffer[3] %= 5;
-    buffer[4] ^= 5;
-    buffer[5] <<= 5;
-    buffer[6] >>= 5;
-    buffer[7] |= 5;
-    buffer[8] &= 5;
-    
-    buffer[9] = (buffer[10] = 7);
-    buffer[11] = (buffer[9] *= 6);
+typedef int myint;
+void entry(const unsigned sz, int buffer[const]) {
+       int i = 0;
+
+       unsigned char c = 7;
+
+       c *= 567;
+       buffer[i++] = c;
+       c /= 567;
+       buffer[i++] = c;
+       c += 567;
+       buffer[i++] = c;
+       c -= 567;
+       buffer[i++] = c;
+       c %= 567;
+       buffer[i++] = c;
+
+       buffer[i++] = c *= 567;
+       buffer[i++] = c /= 567;
+       buffer[i++] = c += 567;
+       buffer[i++] = c -= 567;
+       buffer[i++] = c %= 567;
+
+       int x = 100;
+       x += 2000;
+       buffer[i++] = x;
+
+       volatile unsigned char vc = 7;
+       vc *= 567;
+       buffer[i++] = vc;
+       buffer[i++] = vc *= 567;
+
+        int y = 10;
+        y *= 500;
+        y /= 500;
+
+        myint z = 10;
+        z *= 500;
+        z /= 500;
 }
