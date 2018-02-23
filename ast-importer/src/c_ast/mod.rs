@@ -692,6 +692,13 @@ impl CTypeKind {
         }
     }
 
+    pub fn is_bool(&self) -> bool {
+        match *self {
+            CTypeKind::Bool => true,
+            _ => false,
+        }
+    }
+
     pub fn is_enum(&self) -> bool {
         match *self {
             CTypeKind::Enum{..} => true,

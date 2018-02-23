@@ -2213,6 +2213,12 @@ impl Translation {
                 res = mk().unary_expr(ast::UnOp::Not, res)
             }
             res
+        } else if ty.is_bool() {
+            if target {
+                val
+            } else {
+                mk().unary_expr(ast::UnOp::Not, val)
+            }
         } else {
             let zero = if ty.is_floating_type() {
                 mk().lit_expr(mk().float_unsuffixed_lit("0."))
