@@ -236,16 +236,51 @@ enum ExitStyle {
     Break,
 }
 
+/// Reaching the end of a body without encountering a `return` means different things depending on
+/// the function we are in.
+#[derive(Copy, Clone, Debug)]
+pub enum ImplicitReturnType {
+    /// The `main` function implicitly returns `0`
+    Main,
+
+    /// `void` functions implicitly `return;` at the end of their bodies
+    Void,
+
+    /// We require that a non-`main` function not returning `void` have an explicit return. C99 is
+    /// annoyingly more permissive. From 6.9.1 paragraph 12,
+    ///
+    /// > If the `}` that terminates a function is reached, and the value of the function call is
+    /// > used by the caller, the behavior is undefined."
+    NoImplicitReturnType,
+}
+
 /// A complete control-flow graph
 impl Cfg<Label> {
 
     /// Completely process a statement into a control flow graph.
-    pub fn from_stmt(translator: &Translation, stmt_id: CStmtId) -> Self {
+    pub fn from_stmt(
+        translator: &Translation,
+        stmt_id: CStmtId,
+        ret: ImplicitReturnType,
+    ) -> Result<Self, String> {
+
         let mut cfg_builder = CfgBuilder::new();
         let entry = *cfg_builder.graph.entries.iter().next().expect("from_stmt: expected an entry");
 
-        let body_stuff = translator.with_scope(|| cfg_builder.convert_stmt_help(translator, stmt_id, (entry, vec![])));
-        if let Some((body_lbl, body_stmts)) = body_stuff {
+        let body_stuff = translator.with_scope(
+            || cfg_builder.convert_stmt_help(translator, stmt_id, (entry, vec![]))
+        )?;
+        if let Some((body_lbl, mut body_stmts)) = body_stuff {
+
+            let ret_expr: Result<Option<P<Expr>>, String> = match ret {
+                ImplicitReturnType::Main => Ok(Some(mk().lit_expr(mk().int_lit(0, "")))),
+                ImplicitReturnType::Void => Ok(None as Option<P<Expr>>),
+                ImplicitReturnType::NoImplicitReturnType => Err(format!(
+                    "Found implicit return in a function that does not return void and is not main"
+                ))
+            };
+            body_stmts.push(mk().semi_stmt(mk().return_expr(ret_expr?)));
+
             let body_bb = BasicBlock {
                 body: body_stmts,
                 terminator: End,
@@ -253,10 +288,10 @@ impl Cfg<Label> {
             cfg_builder.add_block(body_lbl, body_bb);
         }
 
-        let graph = cfg_builder.graph;
-
-        graph.prune_empty_blocks().prune_unreachable_blocks()
-       // graph
+        Ok(cfg_builder.graph
+               .prune_empty_blocks()
+               .prune_unreachable_blocks()
+        )
     }
 
     /// Removes blocks that cannot be reached
@@ -436,24 +471,23 @@ impl CfgBuilder {
         translator: &Translation,
         stmt_id: CStmtId,                     // C statement to translate
         (lbl, mut stmts): (Label, Vec<Stmt>), // WIP statements and the label referring to them
-    ) -> Option<(Label, Vec<Stmt>)> {
+    ) -> Result<Option<(Label, Vec<Stmt>)>, String> {
 
         match translator.ast_context.index(stmt_id).kind {
-            CStmtKind::Empty => Some((lbl, stmts)),
+            CStmtKind::Empty => Ok(Some((lbl, stmts))),
 
             CStmtKind::Decls(ref decls) => {
-                stmts.extend(decls
-                    .iter()
-                    .flat_map(|decl| translator.convert_decl_stmt(*decl).unwrap()));
-
-                Some((lbl, stmts))
+                for decl in decls {
+                    stmts.extend(translator.convert_decl_stmt(*decl)?);
+                }
+                Ok(Some((lbl, stmts)))
             }
 
             CStmtKind::Return(expr) => {
 
                 let val =
                     match expr.map(|i| translator.convert_expr(ExprUse::RValue, i)) {
-                        Some(r) => Some(r.unwrap()),
+                        Some(r) => Some(r?),
                         None => None,
                     };
 
@@ -468,7 +502,7 @@ impl CfgBuilder {
 
                 self.add_block(lbl, bb);
 
-                None
+                Ok(None)
             }
 
             CStmtKind::If { scrutinee, true_variant, false_variant } => {
@@ -479,7 +513,7 @@ impl CfgBuilder {
 
                 // Condition
                 let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_condition(true, scrutinee).unwrap();
+                    translator.convert_condition(true, scrutinee)?;
                 stmts.extend(cond_stmts);
 
                 let cond_bb = BasicBlock {
@@ -493,7 +527,7 @@ impl CfgBuilder {
                     translator,
                     true_variant,
                     (then_entry, vec![]),
-                );
+                )?;
                 if let Some((new_then_entry, then_stmts)) = then_stuff {
                     let then_bb = BasicBlock {
                         body: then_stmts,
@@ -508,7 +542,7 @@ impl CfgBuilder {
                         translator,
                         false_var,
                         (else_entry, vec![]),
-                    );
+                    )?;
                     if let Some((new_else_entry, else_stmts)) = else_stuff {
                         let else_bb = BasicBlock {
                             body: else_stmts,
@@ -519,7 +553,7 @@ impl CfgBuilder {
                 };
 
                 // Return
-                Some((next_entry, vec![]))
+                Ok(Some((next_entry, vec![])))
             }
 
             CStmtKind::While { condition, body } => {
@@ -536,7 +570,7 @@ impl CfgBuilder {
 
                 // Condition
                 let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_condition(true, condition).unwrap();
+                    translator.convert_condition(true, condition)?;
                 let cond_bb = BasicBlock {
                     body: cond_stmts,
                     terminator: Branch(cond_val, body_entry, next_entry),
@@ -551,7 +585,7 @@ impl CfgBuilder {
                     translator,
                     body,
                     (body_entry, vec![]),
-                );
+                )?;
                 if let Some((body_new_entry, body_stmts)) = body_stuff {
                     let body_bb = BasicBlock {
                         body: body_stmts,
@@ -564,7 +598,7 @@ impl CfgBuilder {
                 self.continue_labels.pop();
 
                 //Return
-                Some((next_entry, vec![]))
+                Ok(Some((next_entry, vec![])))
             }
 
             CStmtKind::DoWhile { body, condition } => {
@@ -587,7 +621,7 @@ impl CfgBuilder {
                     translator,
                     body,
                     (body_entry, vec![]),
-                );
+                )?;
                 if let Some((body_new_entry, body_stmts)) = body_stuff {
                     let body_bb = BasicBlock {
                         body: body_stmts,
@@ -601,7 +635,7 @@ impl CfgBuilder {
 
                 // Condition
                 let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_condition(true, condition).unwrap();
+                    translator.convert_condition(true, condition)?;
                 let cond_bb = BasicBlock {
                     body: cond_stmts,
                     terminator: Branch(cond_val, body_entry, next_entry),
@@ -609,7 +643,7 @@ impl CfgBuilder {
                 self.add_block(cond_entry, cond_bb);
 
                 //Return
-                Some((next_entry, vec![]))
+                Ok(Some((next_entry, vec![])))
             }
 
             CStmtKind::ForLoop { init, condition, increment, body } => translator.with_scope(|| {
@@ -625,7 +659,7 @@ impl CfgBuilder {
                         translator,
                         init,
                         (lbl, stmts),
-                    ),
+                    )?,
                 };
                 if let Some((init_lbl, init_stmts)) = init_stuff {
                     let init_bb = BasicBlock {
@@ -639,7 +673,7 @@ impl CfgBuilder {
                 match condition {
                     Some(cond) => {
                         let WithStmts { stmts, val } =
-                            translator.convert_condition(true, cond).unwrap();
+                            translator.convert_condition(true, cond)?;
                         self.add_block(cond_entry, BasicBlock {
                             body: stmts,
                             terminator: Branch(val, body_entry, next_label),
@@ -652,7 +686,7 @@ impl CfgBuilder {
                 self.break_labels.push(next_label);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_help(translator, body, (body_entry, vec![]));
+                let body_stuff = self.convert_stmt_help(translator, body, (body_entry, vec![]))?;
 
                 self.break_labels.pop();
                 self.continue_labels.pop();
@@ -662,8 +696,8 @@ impl CfgBuilder {
                         None => vec![],
                         Some(inc) =>
                             translator
-                                .convert_expr(ExprUse::Unused, inc)
-                                .unwrap().stmts,
+                                .convert_expr(ExprUse::Unused, inc)?
+                                .stmts,
                     };
 
                     body_stmts.extend(inc_stmts);
@@ -676,7 +710,7 @@ impl CfgBuilder {
                 }
 
                 // Return
-                Some((next_label, vec![]))
+                Ok(Some((next_label, vec![])))
             }),
 
             CStmtKind::Label(sub_stmt) => {
@@ -702,7 +736,7 @@ impl CfgBuilder {
                 };
                 self.add_block(lbl, prev_bb);
 
-                None
+                Ok(None)
             }
 
             CStmtKind::Compound(ref comp_stmts) => translator.with_scope(|| {
@@ -711,16 +745,16 @@ impl CfgBuilder {
 
                 for stmt in comp_stmts {
                     let (lbl,stmts) = lbl_stmts.unwrap_or((self.fresh_label(), vec![]));
-                    lbl_stmts = self.convert_stmt_help(translator, *stmt, (lbl, stmts));
+                    lbl_stmts = self.convert_stmt_help(translator, *stmt, (lbl, stmts))?;
                 }
 
-                lbl_stmts
+                Ok(lbl_stmts)
             }),
 
             CStmtKind::Expr(expr) => {
-                stmts.extend(translator.convert_expr(ExprUse::Unused, expr).unwrap().stmts);
+                stmts.extend(translator.convert_expr(ExprUse::Unused, expr)?.stmts);
 
-                Some((lbl, stmts))
+                Ok(Some((lbl, stmts)))
             }
 
             CStmtKind::Break => {
@@ -731,7 +765,7 @@ impl CfgBuilder {
                 };
                 self.add_block(lbl, prev_bb);
 
-                None
+                Ok(None)
             }
 
             CStmtKind::Continue => {
@@ -742,7 +776,7 @@ impl CfgBuilder {
                 };
                 self.add_block(lbl, prev_bb);
 
-                None
+                Ok(None)
             }
 
             CStmtKind::Case(_case_expr, sub_stmt, cie) => {
@@ -797,14 +831,14 @@ impl CfgBuilder {
 
                 // Convert the condition
                 let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_expr(ExprUse::RValue, scrutinee).unwrap();
+                    translator.convert_expr(ExprUse::RValue, scrutinee)?;
                 stmts.extend(cond_stmts);
 
                 // Body
                 self.break_labels.push(next_label);
                 self.switch_expr_cases.push(SwitchCases::default());
 
-                let body_stuff = self.convert_stmt_help(translator, body, (body_label, vec![]));
+                let body_stuff = self.convert_stmt_help(translator, body, (body_label, vec![]))?;
                 if let Some((body_new_lbl, body_stmts)) = body_stuff {
                     self.add_block(body_new_lbl, BasicBlock {
                         body: body_stmts,
@@ -831,7 +865,7 @@ impl CfgBuilder {
                 self.add_block(lbl, cond_bb);
 
                 // Return
-                Some((next_label, vec![]))
+                Ok(Some((next_label, vec![])))
             }
         }
     }

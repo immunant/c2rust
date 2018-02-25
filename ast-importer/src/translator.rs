@@ -594,7 +594,13 @@ impl Translation {
             if let Some(body) = body {
                 // Translating an actual function
 
-                let block = self.convert_function_body(name, body)?;
+                let ret_type_id: CTypeId = self.ast_context.resolve_type_id(return_type.ctype);
+                let ret = match self.ast_context.index(ret_type_id).kind {
+                    CTypeKind::Void => cfg::ImplicitReturnType::Void,
+                    _ => cfg::ImplicitReturnType::NoImplicitReturnType,
+                };
+
+                let block = self.convert_function_body(name, body, ret)?;
 
                 // Only add linkage attributes if the function is `extern`
                 let mk_ = if is_extern && !is_inline {
@@ -618,12 +624,17 @@ impl Translation {
         })
     }
 
-    fn convert_function_body(&self, name: &str, body_id: CStmtId) -> Result<P<Block>, String> {
+    fn convert_function_body(
+        &self,
+        name: &str,
+        body_id: CStmtId,
+        ret: cfg::ImplicitReturnType,
+    ) -> Result<P<Block>, String> {
 
         // Function body scope
         self.with_scope(|| {
             let stmts = if self.reloop_cfgs {
-                let graph = cfg::Cfg::from_stmt(self, body_id);
+                let graph = cfg::Cfg::from_stmt(self, body_id, ret)?;
 
                 if self.dump_function_cfgs {
                     graph
@@ -637,7 +648,7 @@ impl Translation {
                 if self.dump_structures {
                     eprintln!("Relooped structures:");
                     for s in &relooped {
-                        eprintln!("  {:?}", s);
+                        eprintln!("  {:#?}", s);
                     }
                 }
 
@@ -649,8 +660,6 @@ impl Translation {
                                            Some(mk().path_ty(vec!["u64"])), None as Option<P<Expr>>);
                     stmts.push(mk().local_stmt(P(local)))
                 }
-
-
 
                 stmts.extend(cfg::structures::structured_cfg(&relooped, current_block));
                 stmts

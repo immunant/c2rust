@@ -161,7 +161,7 @@ fn relooper(
         // Partition blocks into those belonging in or after the loop
         let (mut body_blocks, mut follow_blocks): (HashMap<Label, BasicBlock<StructureLabel>>, HashMap<Label, BasicBlock<StructureLabel>>) = blocks
             .into_iter()
-            .partition(|&(ref lbl, _)| new_returns.contains(lbl));
+            .partition(|&(ref lbl, _)| new_returns.contains(lbl) || entries.contains(lbl));
 
         let mut follow_entries = out_edges(&body_blocks);
 
@@ -235,7 +235,7 @@ fn relooper(
     let singly_reached: HashMap<Label, HashSet<Label>> = flip_edges(reachable_from
         .into_iter()
         .map(|(lbl, reachable)| (lbl, &reachable & &entries))
-        .filter(|&(lbl, ref reachable)| reachable.len() == 1)
+        .filter(|&(_, ref reachable)| reachable.len() == 1)
         .collect()
     );
 
@@ -345,7 +345,7 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
                     // top).
                     let mut cases_new: Vec<_> = vec![];
                     for &(_, ref lbl) in cases.iter().rev() {
-                        let lbl = match lbl {
+                        match lbl {
                             &StructureLabel::GoTo(lbl) =>
                                 match merged_goto.remove(&lbl) {
                                     None => { },
@@ -358,8 +358,6 @@ fn simplify_structure(structures: Vec<Structure>) -> Vec<Structure> {
                                 }
                             _ => panic!("simplify_structure: Nested precondition violated")
                         };
-
-
                     }
                     cases_new.reverse();
 

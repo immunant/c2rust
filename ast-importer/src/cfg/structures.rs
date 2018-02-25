@@ -5,7 +5,30 @@ use super::*;
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(root: &Vec<Structure>, current_block: P<Expr>) -> Vec<Stmt> {
-    structured_cfg_help(vec![], &HashSet::new(), root, &mut HashSet::new(), current_block)
+    let mut stmts = structured_cfg_help(
+        vec![],
+        &HashSet::new(),
+        root,
+        &mut HashSet::new(),
+        current_block
+    );
+
+    // If the very last statement in the vector is a `void` style `return`, we can cut it out.
+    let trailing_ret =
+        if let Some(&Stmt { node: StmtKind::Semi(ref e), .. }) = stmts.last() {
+            if let Expr { node: ExprKind::Ret(None), .. } = **e {
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+    if trailing_ret {
+        stmts.pop();
+    }
+
+    stmts
 }
 
 /// Recursive helper for `structured_cfg`
