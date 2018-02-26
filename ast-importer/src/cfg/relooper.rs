@@ -159,7 +159,8 @@ fn relooper(
             .collect();
 
         // Partition blocks into those belonging in or after the loop
-        let (mut body_blocks, mut follow_blocks): (HashMap<Label, BasicBlock<StructureLabel>>, HashMap<Label, BasicBlock<StructureLabel>>) = blocks
+        type StructuredBlocks = HashMap<Label, BasicBlock<StructureLabel>>;
+        let (mut body_blocks, mut follow_blocks): (StructuredBlocks, StructuredBlocks) = blocks
             .into_iter()
             .partition(|&(ref lbl, _)| new_returns.contains(lbl) || entries.contains(lbl));
 

@@ -74,14 +74,29 @@ fn structured_cfg_help(
 
                 let mut branch = |slbl: &StructureLabel| -> Vec<Stmt> {
                     match slbl {
-                        &StructureLabel::Nested(ref nested) => structured_cfg_help(exits.clone(), next, nested, used_loop_labels, current_block.clone(), debug_labels),
-                        &StructureLabel::GoTo(to) | &StructureLabel::ExitTo(to) if next.contains(&to) => insert_goto(to, &next, vec![]),
+                        &StructureLabel::Nested(ref nested) =>
+                            structured_cfg_help(
+                                exits.clone(),
+                                next, nested,
+                                used_loop_labels,
+                                current_block.clone(),
+                                debug_labels,
+                            ),
+
+                        &StructureLabel::GoTo(to) |
+                        &StructureLabel::ExitTo(to) if next.contains(&to) =>
+                            insert_goto(to, &next, vec![]),
+
                         &StructureLabel::ExitTo(to) => {
 
                             let mut immediate = true;
                             for &(label, ref local) in &exits {
                                 if let Some(&(ref follow, exit_style)) = local.get(&to) {
-                                    return insert_goto(to, follow, mk_exit(immediate, exit_style, label, used_loop_labels))
+                                    return insert_goto(
+                                        to,
+                                        follow,
+                                        mk_exit(immediate, exit_style, label, used_loop_labels),
+                                    )
                                 }
                                 immediate = false;
                             }
@@ -110,9 +125,27 @@ fn structured_cfg_help(
             &Structure::Multiple { ref branches, ref then, .. } => {
                 let cases: Vec<(Label, Vec<Stmt>)> = branches
                     .iter()
-                    .map(|(lbl, body)| (*lbl, structured_cfg_help(exits.clone(), next, body, used_loop_labels, current_block.clone(), debug_labels)))
+                    .map(|(lbl, body)| {
+                        let stmts = structured_cfg_help(
+                            exits.clone(),
+                            next,
+                            body,
+                            used_loop_labels,
+                            current_block.clone(),
+                            debug_labels,
+                        );
+                        (*lbl, stmts)
+                    })
                     .collect();
-                let then: Vec<Stmt> = structured_cfg_help(exits.clone(), next, then, used_loop_labels, current_block.clone(), debug_labels);
+
+                let then: Vec<Stmt> = structured_cfg_help(
+                    exits.clone(),
+                    next,
+                    then,
+                    used_loop_labels,
+                    current_block.clone(),
+                    debug_labels,
+                );
 
                 new_rest.extend(mk_goto_table(cases, then, current_block.clone(), debug_labels));
             }
@@ -133,7 +166,14 @@ fn structured_cfg_help(
                 let mut exits_new = vec![(*label, these_exits)];
                 exits_new.extend(exits.clone());
 
-                let body = structured_cfg_help(exits_new, entries, body, used_loop_labels, current_block.clone(), debug_labels);
+                let body = structured_cfg_help(
+                    exits_new,
+                    entries,
+                    body,
+                    used_loop_labels,
+                    current_block.clone(),
+                    debug_labels,
+                );
                 let loop_lbl = if used_loop_labels.contains(label) { Some(*label) } else { None };
                 new_rest.extend(mk_loop(loop_lbl, body));
             }
@@ -148,6 +188,8 @@ fn structured_cfg_help(
     rest
 }
 
+/// Checks if there are any `Multiple` structures anywhere. Only if so will there be any need for a
+/// `current_block` variable.
 pub fn has_multiple(root: &Vec<Structure>) -> bool {
     root.iter().any(|structure| {
         match structure {
@@ -229,17 +271,18 @@ fn mk_match(cond: P<Expr>, cases: Vec<(Vec<P<Pat>>, Vec<Stmt>)>) -> Vec<Stmt> {
     vec![mk().expr_stmt(e)]
 }
 
-
+/// Assign to `current_block` the next label we want to go to.
 fn mk_goto(to: Label, current_block: P<Expr>, debug_labels: bool) -> Vec<Stmt> {
     let lbl_expr = if debug_labels { to.to_string_expr() } else { to.to_num_expr() };
     let assign = mk().semi_stmt(mk().assign_expr(current_block, lbl_expr));
     vec![assign]
 }
 
+/// Dispatch based on the next `current_block` value.
 fn mk_goto_table(
-    cases: Vec<(Label, Vec<Stmt>)>,
-    then: Vec<Stmt>,
-    current_block: P<Expr>,
+    cases: Vec<(Label, Vec<Stmt>)>,  // entries in the goto table
+    then: Vec<Stmt>,                 // default case of the goto table
+    current_block: P<Expr>,          // the `current_block` variable
     debug_labels: bool
 ) -> Vec<Stmt> {
     let mut arms: Vec<Arm> = cases
@@ -294,7 +337,13 @@ fn mk_loop(lbl: Option<Label>, body: Vec<Stmt>) -> Vec<Stmt> {
     vec![mk().expr_stmt(e)]
 }
 
-fn mk_exit(immediate: bool, exit_style: ExitStyle, label: Label, used_loop_labels: &mut HashSet<Label>) -> Vec<Stmt> {
+/// Make a (possibly labelled) `break` or `continue`.
+fn mk_exit(
+    immediate: bool,
+    exit_style: ExitStyle,
+    label: Label,                          // used solely to generate a helpful loop label
+    used_loop_labels: &mut HashSet<Label>  // records which loops need labels
+) -> Vec<Stmt> {
     let lbl = if immediate {
         None
     } else {
