@@ -1704,7 +1704,9 @@ impl Translation {
     pub fn implicit_default_expr(&self, ty_id: CTypeId) -> Result<P<Expr>, String> {
         let resolved_ty = &self.ast_context.resolve_type(ty_id).kind;
 
-        if resolved_ty.is_integral_type() {
+        if resolved_ty.is_bool() {
+            Ok(mk().lit_expr(mk().bool_lit(false)))
+        } else if resolved_ty.is_integral_type() {
             Ok(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)))
         } else if resolved_ty.is_floating_type() {
             Ok(mk().lit_expr(mk().float_unsuffixed_lit("0.")))

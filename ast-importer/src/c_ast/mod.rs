@@ -630,7 +630,7 @@ pub enum CTypeKind {
     // Clang specific types
     Int128, UInt128,
 
-    /* Compound types <https://github.com/llvm-mirror/clang/include/clang/AST/TypeNodes.def> */
+    /* Compound types <https://github.com/llvm-mirror/clang/blob/master/include/clang/AST/TypeNodes.def> */
 
     // Complex types (6.2.5.11). Ex: `float _Complex`.
     Complex(CTypeId),
