@@ -29,6 +29,7 @@ pub struct Translation {
     zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
     dump_function_cfgs: bool,
     dump_structures: bool,
+    debug_relooper_labels: bool
 }
 
 #[derive(Debug)]
@@ -199,9 +200,21 @@ fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder 
 }
 
 
-pub fn translate(ast_context: &TypedAstContext, reloop_cfgs: bool, dump_function_cfgs: bool, dump_structures: bool) -> String {
+pub fn translate(
+    ast_context: &TypedAstContext,
+    reloop_cfgs: bool,
+    dump_function_cfgs: bool,
+    dump_structures: bool,
+    debug_relooper_labels: bool,
+) -> String {
 
-    let mut t = Translation::new(ast_context.clone(), reloop_cfgs, dump_function_cfgs, dump_structures);
+    let mut t = Translation::new(
+        ast_context.clone(),
+        reloop_cfgs,
+        dump_function_cfgs,
+        dump_structures,
+        debug_relooper_labels,
+    );
 
     enum Name<'a> {
         VarName(&'a str),
@@ -342,7 +355,13 @@ pub enum ExprUse {
 }
 
 impl Translation {
-    pub fn new(ast_context: TypedAstContext, reloop_cfgs: bool, dump_function_cfgs: bool, dump_structures: bool) -> Translation {
+    pub fn new(
+        ast_context: TypedAstContext,
+        reloop_cfgs: bool,
+        dump_function_cfgs: bool,
+        dump_structures: bool,
+        debug_relooper_labels: bool,
+    ) -> Translation {
         Translation {
             items: vec![],
             type_converter: RefCell::new(TypeConverter::new()),
@@ -364,6 +383,7 @@ impl Translation {
             reloop_cfgs,
             dump_function_cfgs,
             dump_structures,
+            debug_relooper_labels,
         }
     }
 
@@ -656,12 +676,24 @@ impl Translation {
                 let current_block = mk().ident_expr(&current_block_ident);
                 let mut stmts: Vec<Stmt> = vec![];
                 if cfg::structures::has_multiple(&relooped) {
+
+                    let current_block_ty = if self.debug_relooper_labels {
+                        mk().ref_lt_ty("'static", mk().path_ty(vec!["str"]))
+                    } else {
+                        mk().path_ty(vec!["u64"])
+                    };
+
+
                     let local = mk().local(mk().mutbl().ident_pat(current_block_ident),
-                                           Some(mk().path_ty(vec!["u64"])), None as Option<P<Expr>>);
+                                           Some(current_block_ty), None as Option<P<Expr>>);
                     stmts.push(mk().local_stmt(P(local)))
                 }
 
-                stmts.extend(cfg::structures::structured_cfg(&relooped, current_block));
+                stmts.extend(cfg::structures::structured_cfg(
+                    &relooped,
+                    current_block,
+                    self.debug_relooper_labels
+                ));
                 stmts
             } else {
                 match self.ast_context.index(body_id).kind {

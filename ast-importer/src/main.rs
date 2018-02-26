@@ -46,6 +46,10 @@ fn main() {
             .long("ddump-structures")
             .help("Dumps out to STDERR the intermediate structures produced by relooper")
             .takes_value(false))
+        .arg(Arg::with_name("debug-labels")
+            .long("ddebug-labels")
+            .help("Generate readable 'current_block' values in relooper")
+            .takes_value(false))
 
         // End-user
         .arg(Arg::with_name("INPUT")
@@ -61,6 +65,7 @@ fn main() {
     let reloop_cfgs = matches.is_present("reloop-cfgs");
     let dump_function_cfgs = matches.is_present("dump-function-cfgs");
     let dump_structures = matches.is_present("dump-structures");
+    let debug_labels = matches.is_present("debug-labels");
 
     // Extract from the CBOR file the untyped AST
     let untyped_context = match parse_untyped_ast(file) {
@@ -107,7 +112,13 @@ fn main() {
     let mut conv = ConversionContext::new(&untyped_context);
     conv.convert(&untyped_context);
 
-    println!("{}", translate(&conv.typed_context, reloop_cfgs, dump_function_cfgs, dump_structures));
+    println!("{}", translate(
+        &conv.typed_context,
+        reloop_cfgs,
+        dump_function_cfgs,
+        dump_structures,
+        debug_labels,
+    ));
 }
 
 fn parse_untyped_ast(filename: &str) -> Result<AstContext, Error> {

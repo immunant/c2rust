@@ -4,13 +4,18 @@ use super::*;
 
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
-pub fn structured_cfg(root: &Vec<Structure>, current_block: P<Expr>) -> Vec<Stmt> {
+pub fn structured_cfg(
+    root: &Vec<Structure>,
+    current_block: P<Expr>,
+    debug_labels: bool
+) -> Vec<Stmt> {
     let mut stmts = structured_cfg_help(
         vec![],
         &HashSet::new(),
         root,
         &mut HashSet::new(),
-        current_block
+        current_block,
+        debug_labels,
     );
 
     // If the very last statement in the vector is a `void` style `return`, we can cut it out.
@@ -40,6 +45,7 @@ fn structured_cfg_help(
     root: &Vec<Structure>,
     used_loop_labels: &mut HashSet<Label>,
     current_block: P<Expr>,
+    debug_labels: bool,
 ) -> Vec<Stmt> {
 
     let mut next: &HashSet<Label> = next;
@@ -56,7 +62,7 @@ fn structured_cfg_help(
                     if target.len() == 1 {
                         stmts
                     } else {
-                        let mut result = mk_goto(to, current_block.clone());
+                        let mut result = mk_goto(to, current_block.clone(), debug_labels);
                         result.extend(stmts);
                         result
                     }
@@ -64,7 +70,7 @@ fn structured_cfg_help(
 
                 let mut branch = |slbl: &StructureLabel| -> Vec<Stmt> {
                     match slbl {
-                        &StructureLabel::Nested(ref nested) => structured_cfg_help(exits.clone(), next, nested, used_loop_labels, current_block.clone()),
+                        &StructureLabel::Nested(ref nested) => structured_cfg_help(exits.clone(), next, nested, used_loop_labels, current_block.clone(), debug_labels),
                         &StructureLabel::GoTo(to) | &StructureLabel::ExitTo(to) if next.contains(&to) => insert_goto(to, &next, vec![]),
                         &StructureLabel::ExitTo(to) => {
 
@@ -100,11 +106,11 @@ fn structured_cfg_help(
             &Structure::Multiple { ref branches, ref then, .. } => {
                 let cases: Vec<(Label, Vec<Stmt>)> = branches
                     .iter()
-                    .map(|(lbl, body)| (*lbl, structured_cfg_help(exits.clone(), next, body, used_loop_labels, current_block.clone())))
+                    .map(|(lbl, body)| (*lbl, structured_cfg_help(exits.clone(), next, body, used_loop_labels, current_block.clone(), debug_labels)))
                     .collect();
-                let then: Vec<Stmt> = structured_cfg_help(exits.clone(), next, then, used_loop_labels, current_block.clone());
+                let then: Vec<Stmt> = structured_cfg_help(exits.clone(), next, then, used_loop_labels, current_block.clone(), debug_labels);
 
-                new_rest.extend(mk_goto_table(cases, then, current_block.clone()));
+                new_rest.extend(mk_goto_table(cases, then, current_block.clone(), debug_labels));
             }
 
             &Structure::Loop { ref body, ref entries } => {
@@ -123,7 +129,7 @@ fn structured_cfg_help(
                 let mut exits_new = vec![(*label, these_exits)];
                 exits_new.extend(exits.clone());
 
-                let body = structured_cfg_help(exits_new, entries, body, used_loop_labels, current_block.clone());
+                let body = structured_cfg_help(exits_new, entries, body, used_loop_labels, current_block.clone(), debug_labels);
                 let loop_lbl = if used_loop_labels.contains(label) { Some(*label) } else { None };
                 new_rest.extend(mk_loop(loop_lbl, body));
             }
@@ -220,16 +226,23 @@ fn mk_match(cond: P<Expr>, cases: Vec<(Vec<P<Pat>>, Vec<Stmt>)>) -> Vec<Stmt> {
 }
 
 
-fn mk_goto(to: Label, current_block: P<Expr>) -> Vec<Stmt> {
-    let assign = mk().semi_stmt(mk().assign_expr(current_block, to.to_num_expr()));
+fn mk_goto(to: Label, current_block: P<Expr>, debug_labels: bool) -> Vec<Stmt> {
+    let lbl_expr = if debug_labels { to.to_string_expr() } else { to.to_num_expr() };
+    let assign = mk().semi_stmt(mk().assign_expr(current_block, lbl_expr));
     vec![assign]
 }
 
-fn mk_goto_table(cases: Vec<(Label, Vec<Stmt>)>, then: Vec<Stmt>, current_block: P<Expr>) -> Vec<Stmt> {
+fn mk_goto_table(
+    cases: Vec<(Label, Vec<Stmt>)>,
+    then: Vec<Stmt>,
+    current_block: P<Expr>,
+    debug_labels: bool
+) -> Vec<Stmt> {
     let mut arms: Vec<Arm> = cases
         .into_iter()
         .map(|(lbl, stmts)| -> Arm {
-            let pat = mk().lit_pat(lbl.to_num_expr());
+            let lbl_expr = if debug_labels { lbl.to_string_expr() } else { lbl.to_num_expr() };
+            let pat = mk().lit_pat(lbl_expr);
             let body = mk().block_expr(mk().block(stmts));
             mk().arm(vec![pat], None as Option<P<Expr>>, body)
         })

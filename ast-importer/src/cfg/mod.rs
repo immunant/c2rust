@@ -67,6 +67,10 @@ impl Label {
 
         mk().lit_expr(mk().int_lit(as_num as u128, ""))
     }
+
+    fn to_string_expr(&self) -> P<Expr> {
+        mk().lit_expr(mk().str_lit(self.debug_print()))
+    }
 }
 
 /// These labels identify _structure_ basic blocks in a structure CFG.

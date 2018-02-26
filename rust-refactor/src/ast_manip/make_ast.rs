@@ -120,6 +120,16 @@ impl<'a> Make<LitIntType> for &'a str {
     }
 }
 
+impl<I: Make<Ident>> Make<Lifetime> for I {
+    fn make(self, mk: &Builder) -> Lifetime {
+        Lifetime {
+            id: DUMMY_NODE_ID,
+            ident: self.make(mk),
+            span: DUMMY_SP,
+        }
+    }
+}
+
 impl<'a> Make<LitIntType> for IntTy {
     fn make(self, _mk: &Builder) -> LitIntType {
         LitIntType::Signed(self)
@@ -970,6 +980,17 @@ impl Builder {
         P(Ty {
             id: DUMMY_NODE_ID,
             node: TyKind::Rptr(None, MutTy { ty: ty, mutbl: self.mutbl }),
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn ref_lt_ty<L,T>(self, lt: L, ty: T) -> P<Ty>
+        where L: Make<Lifetime>, T: Make<P<Ty>> {
+        let lt = lt.make(&self);
+        let ty = ty.make(&self);
+        P(Ty {
+            id: DUMMY_NODE_ID,
+            node: TyKind::Rptr(Some(lt), MutTy { ty: ty, mutbl: self.mutbl }),
             span: DUMMY_SP,
         })
     }
