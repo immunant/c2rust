@@ -389,7 +389,7 @@ impl Translation {
 
     // This node should _never_ show up in the final generated code. This is an easy way to notice
     // if it does.
-    fn panic() -> P<Expr> {
+    pub fn panic() -> P<Expr> {
         mk().mac_expr(mk().mac(vec!["panic"], vec![]))
     }
 

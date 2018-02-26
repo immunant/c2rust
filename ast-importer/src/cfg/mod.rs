@@ -276,14 +276,12 @@ impl Cfg<Label> {
         )?;
         if let Some((body_lbl, mut body_stmts)) = body_stuff {
 
-            let ret_expr: Result<Option<P<Expr>>, String> = match ret {
-                ImplicitReturnType::Main => Ok(Some(mk().lit_expr(mk().int_lit(0, "")))),
-                ImplicitReturnType::Void => Ok(None as Option<P<Expr>>),
-                ImplicitReturnType::NoImplicitReturnType => Err(format!(
-                    "Found implicit return in a function that does not return void and is not main"
-                ))
+            let ret_expr: Option<P<Expr>> = match ret {
+                ImplicitReturnType::Main => Some(mk().lit_expr(mk().int_lit(0, ""))),
+                ImplicitReturnType::Void => None as Option<P<Expr>>,
+                ImplicitReturnType::NoImplicitReturnType => Some(Translation::panic()), // TODO: this could be better
             };
-            body_stmts.push(mk().semi_stmt(mk().return_expr(ret_expr?)));
+            body_stmts.push(mk().semi_stmt(mk().return_expr(ret_expr)));
 
             let body_bb = BasicBlock {
                 body: body_stmts,
