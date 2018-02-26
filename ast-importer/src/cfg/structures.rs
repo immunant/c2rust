@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
     root: &Vec<Structure>,
@@ -18,19 +17,24 @@ pub fn structured_cfg(
         debug_labels,
     );
 
-    // If the very last statement in the vector is a `void` style `return`, we can cut it out.
-    let trailing_ret =
-        if let Some(&Stmt { node: StmtKind::Semi(ref e), .. }) = stmts.last() {
-            if let Expr { node: ExprKind::Ret(None), .. } = **e {
-                true
-            } else {
-                false
+    // If the very last statement in the vector is a `return`, we can either cut it out or replace
+    // it with the returned value.
+    match stmts.last().cloned() {
+        Some(Stmt { node: StmtKind::Expr(ref ret), .. }) |
+        Some(Stmt { node: StmtKind::Semi(ref ret), .. }) => {
+            match ret.node {
+                ExprKind::Ret(None) => {
+                    stmts.pop();
+                }
+                // TODO: why does libsyntax print a ';' after this even if it is 'Expr' and not 'Semi'
+//                ExprKind::Ret(Some(ref e)) => {
+//                    stmts.pop();
+//                    stmts.push(mk().expr_stmt(e));
+//                }
+                _ => { }
             }
-        } else {
-            false
-        };
-    if trailing_ret {
-        stmts.pop();
+        }
+        _ => { }
     }
 
     stmts
