@@ -694,7 +694,7 @@ impl CfgBuilder {
                 self.break_labels.pop();
                 self.continue_labels.pop();
 
-                if let Some((body_new_lbl, mut body_stmts)) = body_stuff {
+                if let Some((body_new_lbl, body_stmts)) = body_stuff {
                     let body_inc_bb = BasicBlock {
                         terminator: Jump(incr_entry),
                         body: body_stmts

@@ -293,7 +293,8 @@ pub fn translate(
 
         let features =
             vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut"]),
-                 ("allow"  ,vec!["non_camel_case_types","non_snake_case","dead_code", "mutable_transmutes"]),
+                 ("allow"  ,vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
+                                 "dead_code", "mutable_transmutes"]),
             ];
 
         for (key,values) in features {
@@ -1034,7 +1035,7 @@ impl Translation {
                     let cdecl : &CDecl = ast_context.index(decl_id);
                     match cdecl.kind {
                         CDeclKind::Function { typ, .. } => Ok((None, typ)),
-                        CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ} => {
+                        CDeclKind::Variable { typ, ..} => {
                             Ok((Some(typ.qualifiers), typ.ctype))
                         }
                         _ => Err("couldn't get leaf node type")
@@ -1186,7 +1187,7 @@ impl Translation {
                                     } else { false };
                                     // Detect bitcasts from array-of-T to slice-of-T
                                     if let TyKind::Slice(ref tgt_elem_ty) = target_ty.node {
-                                        if let TyKind::Array(ref src_elem_ty, ref len_expr) = source_ty.node {
+                                        if let TyKind::Array(ref src_elem_ty, _) = source_ty.node {
                                             if tgt_elem_ty == src_elem_ty {
                                                 if quals_agree {
                                                     return Ok(x)
@@ -2330,7 +2331,7 @@ impl Translation {
     pub fn visit_decls(&self, stmt_ids: &Vec<CStmtId>) -> () {
         for stmt_id in stmt_ids {
             if let CStmtKind::Decls(ref decl_ids) = self.ast_context.index(*stmt_id).kind {
-                for decl_id in decl_ids {
+                for _decl_id in decl_ids {
                     unimplemented!();
                 }
             }
