@@ -2080,15 +2080,16 @@ impl Translation {
     ) -> Result<WithStmts<P<Expr>>, String> {
         let ty = self.convert_type(qtype.ctype)?;
 
-        let rhs_type = self.ast_context.index(rhs).kind.get_qual_type();
-        let lhs_type = compute_type.unwrap_or(qtype);
+        let rhs_type_id = self.ast_context.index(rhs).kind.get_qual_type();
+        let result_type_id = result_type.unwrap_or(qtype);
+        let compute_lhs_type_id = compute_type.unwrap_or(qtype);
+        let initial_lhs_type_id = self.ast_context.index(lhs).kind.get_qual_type();
 
-
-        let is_volatile = qtype.qualifiers.is_volatile;
+        let is_volatile = initial_lhs_type_id.qualifiers.is_volatile;
         let is_volatile_compound_assign = op.underlying_assignment().is_some() && is_volatile;
         let pointer_lhs = self.ast_context.resolve_type(qtype.ctype).kind.is_pointer();
 
-        let (write, read, lhs_stmts) = if qtype.ctype != lhs_type.ctype || use_ == ExprUse::RValue || pointer_lhs || is_volatile_compound_assign {
+        let (write, read, lhs_stmts) = if initial_lhs_type_id.ctype != compute_lhs_type_id.ctype || use_ == ExprUse::RValue || pointer_lhs || is_volatile_compound_assign {
             let WithStmts { val: (write, read), stmts: lhs_stmts } = self.name_reference_write_read(lhs)?;
             (write, read, lhs_stmts)
         } else {
@@ -2107,15 +2108,24 @@ impl Translation {
         let assign_stmt = match op {
             // Regular (possibly volatile) assignment
             c_ast::BinOp::Assign if !is_volatile => mk().assign_expr(&write, rhs),
-            c_ast::BinOp::Assign => self.volatile_write(&write, lhs_type.ctype, rhs)?,
+            c_ast::BinOp::Assign => self.volatile_write(&write, initial_lhs_type_id.ctype, rhs)?,
 
             // Anything volatile needs to be desugared into explicit reads and writes
             op if is_volatile => {
                 let op = op.underlying_assignment().expect("Cannot convert non-assignment operator");
 
-                let val = self.convert_binary_operator(op, ty, qtype.ctype, lhs_type, rhs_type, read.clone(), rhs);
+                let val = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
+                    self.convert_binary_operator(op, ty, qtype.ctype, initial_lhs_type_id, rhs_type_id, read.clone(), rhs)
+                } else {
+                    let lhs_type = self.convert_type(compute_type.unwrap().ctype)?;
+                    let write_type = self.convert_type(qtype.ctype)?;
+                    let lhs = mk().cast_expr(read.clone(), lhs_type);
+                    let ty = self.convert_type(result_type_id.ctype)?;
+                    let val = self.convert_binary_operator(op, ty, result_type_id.ctype, compute_lhs_type_id, rhs_type_id, lhs, rhs);
+                    mk().cast_expr(val, write_type)
+                };
 
-                self.volatile_write(&write, lhs_type.ctype, val)?
+                self.volatile_write(&write, initial_lhs_type_id.ctype, val)?
             },
 
             // Everything else
@@ -2127,16 +2137,16 @@ impl Translation {
                 mk().assign_expr(&write, pointer_neg_offset(write.clone(), rhs))
             },
 
-            c_ast::BinOp::AssignAdd => self.covert_assignment_operator_aux(BinOpKind::Add, c_ast::BinOp::Add, &read, write, rhs, compute_type, result_type,qtype, rhs_type)?,
-            c_ast::BinOp::AssignSubtract => self.covert_assignment_operator_aux(BinOpKind::Sub, c_ast::BinOp::Subtract, &read, write, rhs, compute_type, result_type, qtype, rhs_type)?,
-            c_ast::BinOp::AssignMultiply => self.covert_assignment_operator_aux(BinOpKind::Mul, c_ast::BinOp::Multiply, &read, write, rhs, compute_type, result_type, qtype, rhs_type)?,
-            c_ast::BinOp::AssignDivide => self.covert_assignment_operator_aux(BinOpKind::Div, c_ast::BinOp::Divide, &read, write, rhs, compute_type, result_type, qtype, rhs_type)?,
-            c_ast::BinOp::AssignModulus => self.covert_assignment_operator_aux(BinOpKind::Rem, c_ast::BinOp::Modulus, &read, write, rhs, compute_type, result_type, qtype, rhs_type)?,
-            c_ast::BinOp::AssignBitXor => self.covert_assignment_operator_aux(BinOpKind::BitXor, c_ast::BinOp::BitXor, &read, write, rhs, compute_type, result_type, qtype, rhs_type)?,
-            c_ast::BinOp::AssignShiftLeft => self.covert_assignment_operator_aux(BinOpKind::Shl, c_ast::BinOp::ShiftLeft, &read, write, rhs, compute_type, result_type, qtype, rhs_type)?,
-            c_ast::BinOp::AssignShiftRight => self.covert_assignment_operator_aux(BinOpKind::Shr, c_ast::BinOp::ShiftRight, &read, write, rhs, compute_type, result_type, qtype, rhs_type)?,
-            c_ast::BinOp::AssignBitOr => self.covert_assignment_operator_aux(BinOpKind::BitOr, c_ast::BinOp::BitOr, &read, write, rhs, compute_type, result_type, qtype, rhs_type)?,
-            c_ast::BinOp::AssignBitAnd => self.covert_assignment_operator_aux(BinOpKind::BitAnd, c_ast::BinOp::BitAnd, &read, write, rhs, compute_type, result_type, qtype, rhs_type)?,
+            c_ast::BinOp::AssignAdd => self.covert_assignment_operator_aux(BinOpKind::Add, c_ast::BinOp::Add, &read, write, rhs, compute_type, result_type,qtype, rhs_type_id)?,
+            c_ast::BinOp::AssignSubtract => self.covert_assignment_operator_aux(BinOpKind::Sub, c_ast::BinOp::Subtract, &read, write, rhs, compute_type, result_type, qtype, rhs_type_id)?,
+            c_ast::BinOp::AssignMultiply => self.covert_assignment_operator_aux(BinOpKind::Mul, c_ast::BinOp::Multiply, &read, write, rhs, compute_type, result_type, qtype, rhs_type_id)?,
+            c_ast::BinOp::AssignDivide => self.covert_assignment_operator_aux(BinOpKind::Div, c_ast::BinOp::Divide, &read, write, rhs, compute_type, result_type, qtype, rhs_type_id)?,
+            c_ast::BinOp::AssignModulus => self.covert_assignment_operator_aux(BinOpKind::Rem, c_ast::BinOp::Modulus, &read, write, rhs, compute_type, result_type, qtype, rhs_type_id)?,
+            c_ast::BinOp::AssignBitXor => self.covert_assignment_operator_aux(BinOpKind::BitXor, c_ast::BinOp::BitXor, &read, write, rhs, compute_type, result_type, qtype, rhs_type_id)?,
+            c_ast::BinOp::AssignShiftLeft => self.covert_assignment_operator_aux(BinOpKind::Shl, c_ast::BinOp::ShiftLeft, &read, write, rhs, compute_type, result_type, qtype, rhs_type_id)?,
+            c_ast::BinOp::AssignShiftRight => self.covert_assignment_operator_aux(BinOpKind::Shr, c_ast::BinOp::ShiftRight, &read, write, rhs, compute_type, result_type, qtype, rhs_type_id)?,
+            c_ast::BinOp::AssignBitOr => self.covert_assignment_operator_aux(BinOpKind::BitOr, c_ast::BinOp::BitOr, &read, write, rhs, compute_type, result_type, qtype, rhs_type_id)?,
+            c_ast::BinOp::AssignBitAnd => self.covert_assignment_operator_aux(BinOpKind::BitAnd, c_ast::BinOp::BitAnd, &read, write, rhs, compute_type, result_type, qtype, rhs_type_id)?,
 
             _ => panic!("Cannot convert non-assignment operator"),
         };
