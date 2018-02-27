@@ -1898,22 +1898,26 @@ impl Translation {
         let WithStmts { val: (write, read), stmts: mut lhs_stmts } = self.name_reference_write_read(arg)?;
 
         let one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
+
         // *p + 1
-        let val =
-            if self.ast_context.resolve_type(ty.ctype).kind.is_pointer() {
-                // This calls the offset with a number literal directly, and doesn't need
-                // the cast that the pointer_offset function adds
-                let n = if up { one } else { mk().unary_expr(ast::UnOp::Neg, one) };
-                mk().method_call_expr(read.clone(), "offset", vec![n])
-            } else {
-                let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
-                mk().binary_expr(k, read.clone(), one)
-            };
 
-        // *p = *p + rhs
-        let assign_stmt = mk().assign_expr(&write, val);
+        if self.ast_context.resolve_type(ty.ctype).kind.is_pointer() {
+            // This calls the offset with a number literal directly, and doesn't need
+            // the cast that the pointer_offset function adds
+            let n = if up { one } else { mk().unary_expr(ast::UnOp::Neg, one) };
+            let val = mk().method_call_expr(read.clone(), "offset", vec![n]);
 
-        lhs_stmts.push(mk().expr_stmt(assign_stmt));
+            // *p = *p + rhs
+            let assign_stmt = mk().assign_expr(&write, val);
+            lhs_stmts.push(mk().expr_stmt(assign_stmt));
+        } else {
+            let bin_op_kind = if up { BinOpKind::Add } else { BinOpKind::Sub };
+            let bin_op = if up { c_ast::BinOp::Add } else { c_ast::BinOp::Subtract };
+            let val = self.covert_assignment_operator_aux
+            (bin_op_kind, bin_op, &read, write.clone(), one, Some(ty),
+             Some(ty), ty.ctype, ty)?;
+            lhs_stmts.push(mk().expr_stmt(val));
+        }
 
         Ok(WithStmts {
             stmts: lhs_stmts,
