@@ -652,6 +652,7 @@ impl CfgBuilder {
 
                 let cond_entry = self.fresh_label();
                 let body_entry = self.fresh_label();
+                let incr_entry = self.fresh_label();
                 let next_label = self.fresh_label();
 
                 // Init
@@ -684,9 +685,9 @@ impl CfgBuilder {
                     None => self.add_block(cond_entry, BasicBlock::new_jump(body_entry)),
                 }
 
-                // Body and increment
+                // Body
                 self.break_labels.push(next_label);
-                self.continue_labels.push(cond_entry);
+                self.continue_labels.push(incr_entry);
 
                 let body_stuff = self.convert_stmt_help(translator, body, (body_entry, vec![]))?;
 
@@ -694,21 +695,25 @@ impl CfgBuilder {
                 self.continue_labels.pop();
 
                 if let Some((body_new_lbl, mut body_stmts)) = body_stuff {
-                    let inc_stmts = match increment {
-                        None => vec![],
-                        Some(inc) =>
-                            translator
-                                .convert_expr(ExprUse::Unused, inc)?
-                                .stmts,
-                    };
-
-                    body_stmts.extend(inc_stmts);
-
                     let body_inc_bb = BasicBlock {
-                        terminator: Jump(cond_entry),
+                        terminator: Jump(incr_entry),
                         body: body_stmts
                     };
                     self.add_block(body_new_lbl, body_inc_bb);
+                }
+
+                // Increment
+                match increment {
+                    Some(incr) => {
+                        let incr_stmts = translator
+                                .convert_expr(ExprUse::Unused, incr)?
+                                .stmts;
+                        self.add_block(incr_entry, BasicBlock {
+                            body: incr_stmts,
+                            terminator: Jump(cond_entry),
+                        });
+                    }
+                    None => self.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
                 }
 
                 // Return
