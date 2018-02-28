@@ -115,9 +115,9 @@ impl Structure {
 
 /// Generalized basic block.
 #[derive(Clone, Debug)]
-struct BasicBlock<L> {
+struct BasicBlock<L,S> {
     /// Jump-free code
-    body: Vec<Stmt>,
+    body: Vec<S>,
 
     /// How to find the next (if any) basic block to go to
     terminator: GenTerminator<L>,
@@ -129,7 +129,7 @@ struct BasicBlock<L> {
     defined: HashSet<CDeclId>,
 }
 
-impl<L> BasicBlock<L> {
+impl<L,S> BasicBlock<L,S> {
     fn new(terminator: GenTerminator<L>) -> Self {
         BasicBlock { body: vec![], terminator, live: HashSet::new(), defined: HashSet::new() }
     }
@@ -139,7 +139,7 @@ impl<L> BasicBlock<L> {
     }
 }
 
-impl BasicBlock<StructureLabel> {
+impl BasicBlock<StructureLabel,Stmt> {
 
     /// Get all of the `GoTo` targets of a structure basic block
     fn successors(&self) -> HashSet<Label> {
@@ -169,9 +169,7 @@ pub enum GenTerminator<Lbl> {
     /// expression
     Branch(P<Expr>, Lbl, Lbl),
 
-    /// Multi-way branch.
-    ///
-    /// FIXME: specify more invariants on `expr`/`cases`
+    /// Multi-way branch. The patterns are expected to match the type of the expression.
     Switch {
         expr: P<Expr>,
         cases: Vec<(Vec<P<Pat>>, Lbl)>, // TODO: support ranges of expressions
@@ -227,17 +225,24 @@ pub struct SwitchCases {
     default: Option<Label>,
 }
 
-/// A CFG graph of regular basic blocks.
-///
-/// TODO: consider parametrizing this:
-/// `struct Cfg<Lbl> { entry: HashSet<Label>, nodes: HashMap<Label, BasicBlock<Lbl>> }`
+/// A Rust statement, or a C declaration.
 #[derive(Clone, Debug)]
-pub struct Cfg<Lbl> {
+enum StmtOrDecl {
+    /// Rust statement that was translated from a non-compound and non-declaration C statement.
+    Stmt(Stmt),
+
+    /// C declaration
+    Decl(CDeclId),
+}
+
+/// A CFG graph of regular basic blocks.
+#[derive(Clone, Debug)]
+pub struct Cfg<Lbl: Eq + Hash, Stmt> {
     /// Entry point in the graph
-    entries: HashSet<Label>,
+    entries: HashSet<Lbl>,
 
     /// Nodes in the graph
-    nodes: HashMap<Label, BasicBlock<Lbl>>,
+    nodes: HashMap<Lbl, BasicBlock<Lbl,Stmt>>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -265,7 +270,7 @@ pub enum ImplicitReturnType {
 }
 
 /// A complete control-flow graph
-impl Cfg<Label> {
+impl Cfg<Label, Stmt> {
 
     /// Completely process a statement into a control flow graph.
     pub fn from_stmt(
@@ -294,68 +299,65 @@ impl Cfg<Label> {
             cfg_builder.add_block(body_label, body_bb);
         }
 
-        Ok(cfg_builder.graph
-               .prune_empty_blocks()
-               .prune_unreachable_blocks()
-        )
+        cfg_builder.graph.prune_empty_blocks_mut();
+        cfg_builder.graph.prune_unreachable_blocks_mut();
+
+        Ok(cfg_builder.graph)
     }
+}
 
-    /// Removes blocks that cannot be reached
-    ///
-    /// TODO: Just mutate the graph
-    pub fn prune_unreachable_blocks(&self) -> Self {
-        let mut new_nodes: HashMap<Label, BasicBlock<Label>> = HashMap::new();
-        let mut to_visit: Vec<&Label> = self.entries.iter().collect();
+/// The polymorphism here is only to make it clear exactly how little these functions need to know
+/// about the actual contents of the CFG - we only actual call these on one monomorphic CFG type.
+impl<Lbl: Copy + Eq + Hash, Stmt> Cfg<Lbl, Stmt> {
 
-        while let Some(lbl) = to_visit.pop() {
-            let blk = self.nodes.get(lbl).expect("prune_unreachable_blocks: could not find block");
-            new_nodes.insert(*lbl,blk.clone());
+    /// Removes blocks that cannot be reached from the CFG
+    pub fn prune_unreachable_blocks_mut(&mut self) -> () {
+        let visited: HashSet<Lbl> = {
+            let mut visited: HashSet<Lbl> = HashSet::new();
+            let mut to_visit: Vec<&Lbl> = self.entries.iter().collect();
 
-            for lbl in &blk.terminator.get_labels() {
-                if !new_nodes.contains_key(lbl) {
-                    to_visit.push(lbl);
+            while let Some(lbl) = to_visit.pop() {
+                if visited.contains(lbl) {
+                    continue;
+                }
+
+                let blk = self.nodes.get(lbl).expect("prune_unreachable_blocks: block not found");
+                visited.insert(*lbl);
+
+                for lbl in &blk.terminator.get_labels() {
+                    if !visited.contains(lbl) {
+                        to_visit.push(lbl);
+                    }
                 }
             }
-        }
 
-        Cfg {
-           entries: self.entries.clone(),
-           nodes: new_nodes,
-        }
+            visited
+        };
+
+        self.nodes.retain(|lbl, _| visited.contains(lbl))
     }
 
     /// Removes empty blocks whose terminator is just a `Jump` by merging them with the block they
     /// are jumping to.
-    ///
-    /// TODO: Just mutate the graph
-    pub fn prune_empty_blocks(&self) -> Self {
-
-        /// Given an empty `BasicBlock` that ends in a `Jump`, return the target label. In all other
-        /// cases, return `None`.
-        fn empty_bb(bb: &BasicBlock<Label>) -> Option<Label> {
-            match bb.terminator {
-                Jump(lbl) if bb.body.is_empty() => Some(lbl),
-                _ => None,
-            }
-        }
+    pub fn prune_empty_blocks_mut(&mut self) -> () {
 
         // Keys are labels corresponding to empty basic blocks with a jump terminator, values are
         // the labels they jump to (and can hopefully be replaced by).
-        let mut proposed_rewrites: HashMap<Label, Label> = self.nodes
+        let mut proposed_rewrites: HashMap<Lbl, Lbl> = self.nodes
             .iter()
-            .filter_map(|(lbl, bb)| empty_bb(bb).map(|tgt| (*lbl, tgt)))
+            .filter_map(|(lbl, bb)| Cfg::empty_bb(bb).map(|tgt| (*lbl, tgt)))
             .collect();
 
         // Rewrites to actually apply. Keys are labels to basic blocks that were remapped into the
         // basic block corresponding to the value.
-        let mut actual_rewrites: HashMap<Label, Label> = HashMap::new();
+        let mut actual_rewrites: HashMap<Lbl, Lbl> = HashMap::new();
 
         while let Some((from, to)) = proposed_rewrites.iter().map(|(f,t)| (*f,*t)).next() {
             proposed_rewrites.remove(&from);
-            let mut from_any: HashSet<Label> = vec![from].into_iter().collect();
+            let mut from_any: HashSet<Lbl> = vec![from].into_iter().collect();
 
             // Try to apply more rewrites from `proposed_rewrites`
-            let mut to_intermediate: Label = to;
+            let mut to_intermediate: Lbl = to;
             while let Some(to_new) = proposed_rewrites.remove(&to_intermediate) {
                 from_any.insert(to_intermediate);
                 to_intermediate = to_new;
@@ -378,38 +380,32 @@ impl Cfg<Label> {
             }
         }
 
-        // Apply the remaps
-        let entries = self.entries
+        // Apply the remaps to the entries
+        self.entries = self.entries
             .iter()
             .map(|entry| *actual_rewrites.get(entry).unwrap_or(entry))
             .collect();
-        let nodes = self.nodes
-            .iter()
-            .filter_map(|(label, bb)| -> Option<(Label, BasicBlock<Label>)> {
-                match actual_rewrites.get(label) {
-                    // We keep only the basic blocks that weren't remapped to anything. Before
-                    // returning them though, we have to remap any labels in their terminator.
-                    None => {
-                        let new_terminator = bb.terminator.map_labels(|label: &Label| -> Label {
-                            match actual_rewrites.get(label) {
-                                None => *label,
-                                Some(new_label) => *new_label,
-                            }
-                        });
-                        let new_bb = BasicBlock {
-                            body: bb.body.clone(),
-                            terminator: new_terminator,
-                            defined: bb.defined.clone(),
-                            live: bb.live.clone(),
-                        };
-                        Some((*label, new_bb))
-                    }
-                    Some(_) => None
-                }
-            })
-            .collect();
 
-        Cfg { entries, nodes }
+        // We keep only the basic blocks that weren't remapped to anything.
+        self.nodes.retain(|lbl, _| actual_rewrites.get(lbl).is_none());
+
+        // However, those block we do keep, we remap the labels in their terminators.
+        for bb in self.nodes.values_mut() {
+            for lbl in bb.terminator.get_labels_mut() {
+                if let Some(new_lbl) = actual_rewrites.get(lbl) {
+                    *lbl = *new_lbl;
+                }
+            }
+        }
+    }
+
+    /// Given an empty `BasicBlock` that ends in a `Jump`, return the target label. In all other
+    /// cases, return `None`.
+    fn empty_bb(bb: &BasicBlock<Lbl,Stmt>) -> Option<Lbl> {
+        match bb.terminator {
+            Jump(lbl) if bb.body.is_empty() => Some(lbl),
+            _ => None,
+        }
     }
 }
 
@@ -419,7 +415,7 @@ impl Cfg<Label> {
 struct CfgBuilder {
 
     /// Identifies the 'BasicBlock' to start with in 'graph'
-    graph: Cfg<Label>,
+    graph: Cfg<Label,Stmt>,
 
     /// Source for generating fresh synthetic labels
     prev_label: u64,
@@ -434,7 +430,7 @@ struct CfgBuilder {
     switch_expr_cases: Vec<SwitchCases>,
 
     /// Variables in scope right before the current statement. The wrapping `Vec` witnesses the
-    /// notion of scope: later elements in the vec are always supersets of eariler elements.
+    /// notion of scope: later elements in the vector are always supersets of earlier elements.
     currently_live: Vec<HashSet<CDeclId>>,
 }
 
@@ -452,14 +448,14 @@ struct WipBlock {
     defined: HashSet<CDeclId>,
 
     /// Variables live in this WIP.
-    live: HashSet<CDeclId >,
+    live: HashSet<CDeclId>,
 }
 
 /// This impl block deals with creating control flow graphs
 impl CfgBuilder {
 
     /// Add a basic block to the control flow graph, specifying under which label to insert it.
-    fn add_block(&mut self, lbl: Label, bb: BasicBlock<Label>) -> () {
+    fn add_block(&mut self, lbl: Label, bb: BasicBlock<Label,Stmt>) -> () {
         for decl in &bb.defined {
             self.currently_live
                 .last_mut()
@@ -890,7 +886,7 @@ impl CfgBuilder {
 /// ```norun
 /// dot -Tpng cfg_func.dot > cfg_func.png
 /// ```
-impl Cfg<Label> {
+impl Cfg<Label,Stmt> {
 
     pub fn dump_dot_graph(&self, ctx: &TypedAstContext, file_path: String) -> io::Result<()> {
 

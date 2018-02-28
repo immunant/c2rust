@@ -4,7 +4,7 @@
 use super::*;
 
 /// Convert the CFG into a sequence of structures
-pub fn reloop(cfg: Cfg<Label>, simplify_structures: bool) -> Vec<Structure> {
+pub fn reloop(cfg: Cfg<Label, Stmt>, simplify_structures: bool) -> Vec<Structure> {
 
     let entries = cfg.entries;
     let blocks = cfg.nodes
@@ -30,13 +30,13 @@ pub fn reloop(cfg: Cfg<Label>, simplify_structures: bool) -> Vec<Structure> {
 /// TODO: perhaps manually perform TCO?
 fn relooper(
     entries: HashSet<Label>,                                 // current entry points into the CFG
-    mut blocks: HashMap<Label, BasicBlock<StructureLabel>>,  // the blocks in the sub-CFG considered
+    mut blocks: HashMap<Label, BasicBlock<StructureLabel,Stmt>>,  // the blocks in the sub-CFG considered
     result: &mut Vec<Structure>,                             // the generated structures are appended to this
 ) {
 
     // Find nodes outside the graph pointed to from nodes inside the graph. Note that `ExitTo` is
     // not considered here - only `GoTo`.
-    fn out_edges(blocks: &HashMap<Label, BasicBlock<StructureLabel>>) -> HashSet<Label> {
+    fn out_edges(blocks: &HashMap<Label, BasicBlock<StructureLabel,Stmt>>) -> HashSet<Label> {
         blocks
             .iter()
             .flat_map(|(_, bb)| bb.successors())
@@ -164,7 +164,7 @@ fn relooper(
             .collect();
 
         // Partition blocks into those belonging in or after the loop
-        type StructuredBlocks = HashMap<Label, BasicBlock<StructureLabel>>;
+        type StructuredBlocks = HashMap<Label, BasicBlock<StructureLabel,Stmt>>;
         let (mut body_blocks, mut follow_blocks): (StructuredBlocks, StructuredBlocks) = blocks
             .into_iter()
             .partition(|&(ref lbl, _)| new_returns.contains(lbl) || entries.contains(lbl));
@@ -255,7 +255,7 @@ fn relooper(
         .collect()
     );
 
-    let handled_entries: HashMap<Label, HashMap<Label, BasicBlock<StructureLabel>>> = singly_reached
+    let handled_entries: HashMap<Label, HashMap<Label, BasicBlock<StructureLabel,Stmt>>> = singly_reached
         .into_iter()
         .map(|(lbl, within)| {
             let val = blocks
@@ -273,7 +273,7 @@ fn relooper(
         .cloned()
         .collect();
 
-    let mut handled_blocks: HashMap<Label, BasicBlock<StructureLabel>> = HashMap::new();
+    let mut handled_blocks: HashMap<Label, BasicBlock<StructureLabel,Stmt>> = HashMap::new();
     for (_, map) in &handled_entries {
         for (k, v) in map {
             handled_blocks.entry(*k).or_insert(v.clone());
@@ -281,7 +281,7 @@ fn relooper(
     }
     let handled_blocks = handled_blocks;
 
-    let follow_blocks: HashMap<Label, BasicBlock<StructureLabel>> = blocks
+    let follow_blocks: HashMap<Label, BasicBlock<StructureLabel,Stmt>> = blocks
         .into_iter()
         .filter(|&(lbl, _)| !handled_blocks.contains_key(&lbl))
         .collect();
