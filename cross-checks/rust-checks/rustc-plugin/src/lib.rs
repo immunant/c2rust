@@ -333,9 +333,10 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     ..folded_item
                 }
             }
+            // FIXME: disabled!!!
+            // ast::ItemKind::Union(_, _) |
             ast::ItemKind::Enum(_, _) |
-            ast::ItemKind::Struct(_, _) |
-            ast::ItemKind::Union(_, _) => {
+            ast::ItemKind::Struct(_, _) => {
                 // Prepend #[derive(CrossCheckHash)] automatically
                 // to every structure definition
                 let mut item_attrs = folded_item.attrs;
