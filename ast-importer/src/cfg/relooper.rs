@@ -11,7 +11,7 @@ pub fn reloop(cfg: Cfg<Label>, simplify_structures: bool) -> Vec<Structure> {
         .into_iter()
         .map(|(lbl, bb)| {
             let terminator = bb.terminator.map_labels(|l| StructureLabel::GoTo(*l));
-            (lbl, BasicBlock { body: bb.body, terminator })
+            (lbl, BasicBlock { body: bb.body, terminator, defined: bb.defined, live: bb.live })
         })
         .collect();
 
@@ -77,7 +77,7 @@ fn relooper(
 
         let ret = if let Some(bb) = blocks.remove(&entry) {
             let new_entries = bb.successors();
-            let BasicBlock { body, terminator } = bb;
+            let BasicBlock { body, terminator, .. } = bb;
 
             let mut result = vec![Structure::Simple { entries, body, terminator }];
             result.extend(relooper(new_entries, blocks));

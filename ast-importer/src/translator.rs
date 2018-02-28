@@ -684,7 +684,7 @@ impl Translation {
 
                 if self.dump_function_cfgs {
                     graph
-                        .dump_dot_graph(format!("{}_{}.dot", "cfg", name))
+                        .dump_dot_graph(&self.ast_context, format!("{}_{}.dot", "cfg", name))
                         .expect("Failed to write CFG .dot file");
                 }
 

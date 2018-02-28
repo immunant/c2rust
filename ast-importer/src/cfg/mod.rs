@@ -121,11 +121,17 @@ struct BasicBlock<L> {
 
     /// How to find the next (if any) basic block to go to
     terminator: GenTerminator<L>,
+
+    /// Variables live at the beginning of this block
+    live: HashSet<CDeclId>,
+
+    /// Variables defined in this block
+    defined: HashSet<CDeclId>,
 }
 
 impl<L> BasicBlock<L> {
     fn new(terminator: GenTerminator<L>) -> Self {
-        BasicBlock { body: vec![], terminator }
+        BasicBlock { body: vec![], terminator, live: HashSet::new(), defined: HashSet::new() }
     }
 
     fn new_jump(target: L) -> Self {
@@ -271,23 +277,21 @@ impl Cfg<Label> {
         let mut cfg_builder = CfgBuilder::new();
         let entry = *cfg_builder.graph.entries.iter().next().expect("from_stmt: expected an entry");
 
-        let body_stuff = translator.with_scope(
-            || cfg_builder.convert_stmt_help(translator, stmt_id, (entry, vec![]))
-        )?;
-        if let Some((body_lbl, mut body_stmts)) = body_stuff {
+        let body_stuff = translator.with_scope(|| {
+            let entry_wip = cfg_builder.new_wip_block(entry);
+            cfg_builder.convert_stmt_help(translator, stmt_id, entry_wip)
+        })?;
+        if let Some(WipBlock { label: body_label, mut body, defined, live }) = body_stuff {
 
             let ret_expr: Option<P<Expr>> = match ret {
                 ImplicitReturnType::Main => Some(mk().lit_expr(mk().int_lit(0, ""))),
                 ImplicitReturnType::Void => None as Option<P<Expr>>,
                 ImplicitReturnType::NoImplicitReturnType => Some(Translation::panic()), // TODO: this could be better
             };
-            body_stmts.push(mk().semi_stmt(mk().return_expr(ret_expr)));
+            body.push(mk().semi_stmt(mk().return_expr(ret_expr)));
 
-            let body_bb = BasicBlock {
-                body: body_stmts,
-                terminator: End,
-            };
-            cfg_builder.add_block(body_lbl, body_bb);
+            let body_bb = BasicBlock { body, terminator: End, defined, live };
+            cfg_builder.add_block(body_label, body_bb);
         }
 
         Ok(cfg_builder.graph
@@ -297,6 +301,8 @@ impl Cfg<Label> {
     }
 
     /// Removes blocks that cannot be reached
+    ///
+    /// TODO: Just mutate the graph
     pub fn prune_unreachable_blocks(&self) -> Self {
         let mut new_nodes: HashMap<Label, BasicBlock<Label>> = HashMap::new();
         let mut to_visit: Vec<&Label> = self.entries.iter().collect();
@@ -320,6 +326,8 @@ impl Cfg<Label> {
 
     /// Removes empty blocks whose terminator is just a `Jump` by merging them with the block they
     /// are jumping to.
+    ///
+    /// TODO: Just mutate the graph
     pub fn prune_empty_blocks(&self) -> Self {
 
         /// Given an empty `BasicBlock` that ends in a `Jump`, return the target label. In all other
@@ -391,6 +399,8 @@ impl Cfg<Label> {
                         let new_bb = BasicBlock {
                             body: bb.body.clone(),
                             terminator: new_terminator,
+                            defined: bb.defined.clone(),
+                            live: bb.live.clone(),
                         };
                         Some((*label, new_bb))
                     }
@@ -422,15 +432,92 @@ struct CfgBuilder {
     /// Accumulates information for the 'case'/'default' encountered so far while translating the
     /// body of a 'switch'.
     switch_expr_cases: Vec<SwitchCases>,
+
+    /// Variables in scope right before the current statement. The wrapping `Vec` witnesses the
+    /// notion of scope: later elements in the vec are always supersets of eariler elements.
+    currently_live: Vec<HashSet<CDeclId>>,
+}
+
+/// Represents a `BasicBlock` under construction where the bit under construction is the end. Extra
+/// statements may be added in the `body` and extra declarations may be added to `defined`. However,
+/// the `label` and `live` should not change.
+struct WipBlock {
+    /// Label of WIP.
+    label: Label,
+
+    /// Statements so far in the WIP.
+    body: Vec<Stmt>,
+
+    /// Variables defined so far in this WIP.
+    defined: HashSet<CDeclId>,
+
+    /// Variables live in this WIP.
+    live: HashSet<CDeclId >,
 }
 
 /// This impl block deals with creating control flow graphs
 impl CfgBuilder {
+
     /// Add a basic block to the control flow graph, specifying under which label to insert it.
     fn add_block(&mut self, lbl: Label, bb: BasicBlock<Label>) -> () {
+        for decl in &bb.defined {
+            self.currently_live
+                .last_mut()
+                .expect("Found no live currently live scope")
+                .insert(*decl);
+        }
         match self.graph.nodes.insert(lbl, bb) {
             None => { },
             Some(_) => panic!("Label {:?} cannot identify two basic blocks", lbl),
+        }
+    }
+
+    /// Create a basic block from a WIP block by tacking on the right terminator. Once this is done,
+    /// add the block into the graph.
+    fn add_wip_block(&mut self, wip: WipBlock, terminator: GenTerminator<Label>) -> () {
+        let WipBlock { label, body, defined, live } = wip;
+        self.add_block(label, BasicBlock { body, terminator, defined, live });
+    }
+
+    // Update the terminator of an existing block. This is for the special cases where you don't
+    // know the terminators of a block by visiting it.
+    fn update_terminator(&mut self, lbl: Label, new_term: GenTerminator<Label>) -> () {
+        match self.graph.nodes.get_mut(&lbl) {
+            None => panic!("Cannot find label {:?} to update", lbl),
+            Some(bb) => bb.terminator = new_term,
+        }
+    }
+
+    fn with_scope<B, F: FnOnce(&mut Self) -> B>(&mut self, translator: &Translation, cont: F) -> B {
+
+        // Open a new scope
+        let new_vars = self.current_variables();
+        self.currently_live.push(new_vars);
+
+        let b = translator.with_scope(|| cont(self));
+
+        // Close the scope
+        self.currently_live
+            .pop()
+            .expect("Found no live currently live scope to close");
+
+        b
+    }
+
+    fn current_variables(&self) -> HashSet<CDeclId> {
+        self.currently_live
+            .last()
+            .expect("Found no live currently live scope")
+            .clone()
+    }
+
+    // Start a new basic block WIP.
+    fn new_wip_block(&mut self, new_label: Label) -> WipBlock {
+        WipBlock {
+            label: new_label,
+            body: vec![],
+            defined: HashSet::new(),
+            live: self.current_variables(),
         }
     }
 
@@ -455,351 +542,278 @@ impl CfgBuilder {
             break_labels: vec![],
             continue_labels: vec![],
             switch_expr_cases: vec![],
+
+            currently_live: vec![HashSet::new()],
         }
     }
 
 
-    /// Translate a C statement and tack it onto the end of the WIP `Vec<Stmt>` passed in. If
-    /// necessary, intermediate basic blocks can be outputted to the control flow graph.
+    /// Translate a C statement and tack it onto the end of the `WipBlock` passed in. If necessary,
+    /// intermediate basic blocks can be outputted to the control flow graph.
     ///
     /// If the input C statement naturally passes control to the statement that follows it, the
-    /// return should be the new WIP `Vec<Stmt>` (and the label by which this WIP block is referred
-    /// to).
+    /// return should be the new `WipBlock` (and the label by which this WIP block is referred to).
     ///
-    /// This is the workhorse for generating control flow graphs. By passing threading through a
-    /// vector of statements, we can avoid making a lot of small blocks.
+    /// NOTE: This is the workhorse for generating control flow graphs. By passing threading through
+    ///       a WIP block, we can avoid making a lot of small blocks.
+    ///
+    /// NOTE: It is important that we finish adding a block to the graph before we start creating
+    ///       the next one. Every time a new block is started with `new_wip_block`, we take a
+    ///       snapshot of the live variables from `currently_live`.
     fn convert_stmt_help(
         &mut self,
         translator: &Translation,
-        stmt_id: CStmtId,                     // C statement to translate
-        (lbl, mut stmts): (Label, Vec<Stmt>), // WIP statements and the label referring to them
-    ) -> Result<Option<(Label, Vec<Stmt>)>, String> {
+        stmt_id: CStmtId,         // C statement to translate
+        mut wip: WipBlock,        // Current WIP block
+    ) -> Result<Option<WipBlock>, String> {
 
         match translator.ast_context.index(stmt_id).kind {
-            CStmtKind::Empty => Ok(Some((lbl, stmts))),
+            CStmtKind::Empty => Ok(Some(wip)),
 
             CStmtKind::Decls(ref decls) => {
                 for decl in decls {
-                    stmts.extend(translator.convert_decl_stmt(*decl)?);
+                    wip.body.extend(translator.convert_decl_stmt(*decl)?);
+                    wip.defined.insert(*decl);
                 }
-                Ok(Some((lbl, stmts)))
+                Ok(Some(wip))
             }
 
             CStmtKind::Return(expr) => {
-
-                let val =
-                    match expr.map(|i| translator.convert_expr(ExprUse::RValue, i, false)) {
-                        Some(r) => Some(r?),
-                        None => None,
-                    };
-
-                let WithStmts { stmts: ret_stmts, val: ret_val } = with_stmts_opt(val);
-                stmts.extend(ret_stmts);
-                stmts.push(mk().expr_stmt(mk().return_expr(ret_val)));
-
-                let bb = BasicBlock {
-                    body: stmts,
-                    terminator: End,
+                let val = match expr.map(|i| translator.convert_expr(ExprUse::RValue, i, false)) {
+                    Some(r) => Some(r?),
+                    None => None,
                 };
 
-                self.add_block(lbl, bb);
+                let WithStmts { stmts, val: ret_val } = with_stmts_opt(val);
+                wip.body.extend(stmts);
+                wip.body.push(mk().expr_stmt(mk().return_expr(ret_val)));
+
+                self.add_wip_block(wip, End);
 
                 Ok(None)
             }
 
             CStmtKind::If { scrutinee, true_variant, false_variant } => {
-
                 let next_entry = self.fresh_label();
                 let then_entry = self.fresh_label();
                 let else_entry = if false_variant.is_none() { next_entry } else { self.fresh_label() };
 
                 // Condition
-                let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_condition(true, scrutinee)?;
-                stmts.extend(cond_stmts);
-
-                let cond_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Branch(cond_val, then_entry, else_entry),
-                };
-                self.add_block(lbl, cond_bb);
+                let WithStmts { stmts, val } = translator.convert_condition(true, scrutinee)?;
+                wip.body.extend(stmts);
+                self.add_wip_block(wip, Branch(val, then_entry, else_entry));
 
                 // Then case
-                let then_stuff = self.convert_stmt_help(
-                    translator,
-                    true_variant,
-                    (then_entry, vec![]),
-                )?;
-                if let Some((new_then_entry, then_stmts)) = then_stuff {
-                    let then_bb = BasicBlock {
-                        body: then_stmts,
-                        terminator: Jump(next_entry),
-                    };
-                    self.add_block(new_then_entry, then_bb);
+                let then_wip = self.new_wip_block(then_entry);
+                let then_stuff = self.convert_stmt_help(translator, true_variant, then_wip)?;
+                if let Some(wip_then) = then_stuff {
+                    self.add_wip_block(wip_then, Jump(next_entry));
                 }
 
                 // Else case
                 if let Some(false_var) = false_variant {
-                    let else_stuff = self.convert_stmt_help(
-                        translator,
-                        false_var,
-                        (else_entry, vec![]),
-                    )?;
-                    if let Some((new_else_entry, else_stmts)) = else_stuff {
-                        let else_bb = BasicBlock {
-                            body: else_stmts,
-                            terminator: Jump(next_entry),
-                        };
-                        self.add_block(new_else_entry, else_bb);
+                    let else_wip = self.new_wip_block(else_entry);
+                    let else_stuff = self.convert_stmt_help(translator, false_var, else_wip)?;
+                    if let Some(wip_else) = else_stuff {
+                        self.add_wip_block(wip_else, Jump(next_entry));
                     }
                 };
 
                 // Return
-                Ok(Some((next_entry, vec![])))
+                Ok(Some(self.new_wip_block(next_entry)))
             }
 
-            CStmtKind::While { condition, body } => {
-
+            CStmtKind::While { condition, body: body_stmt } => {
                 let cond_entry = self.fresh_label();
                 let body_entry = self.fresh_label();
                 let next_entry = self.fresh_label();
 
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(cond_entry),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(cond_entry));
 
                 // Condition
-                let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_condition(true, condition)?;
-                let cond_bb = BasicBlock {
-                    body: cond_stmts,
-                    terminator: Branch(cond_val, body_entry, next_entry),
-                };
-                self.add_block(cond_entry, cond_bb);
+                let WithStmts { stmts, val } = translator.convert_condition(true, condition)?;
+                let cond_wip = WipBlock { body: stmts, ..self.new_wip_block(cond_entry) };
+                self.add_wip_block(cond_wip, Branch(val, body_entry, next_entry));
 
                 // Body
                 self.break_labels.push(next_entry);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_help(
-                    translator,
-                    body,
-                    (body_entry, vec![]),
-                )?;
-                if let Some((body_new_entry, body_stmts)) = body_stuff {
-                    let body_bb = BasicBlock {
-                        body: body_stmts,
-                        terminator: Jump(cond_entry),
-                    };
-                    self.add_block(body_new_entry, body_bb);
+                let body_wip = self.new_wip_block(body_entry);
+                let body_stuff = self.convert_stmt_help(translator, body_stmt, body_wip)?;
+                if let Some(wip_body) = body_stuff {
+                    self.add_wip_block(wip_body, Jump(cond_entry));
                 }
 
                 self.break_labels.pop();
                 self.continue_labels.pop();
 
                 //Return
-                Ok(Some((next_entry, vec![])))
+                Ok(Some(self.new_wip_block(next_entry)))
             }
 
-            CStmtKind::DoWhile { body, condition } => {
-
+            CStmtKind::DoWhile { body: body_stmt, condition } => {
                 let body_entry = self.fresh_label();
                 let cond_entry = self.fresh_label();
                 let next_entry = self.fresh_label();
 
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(body_entry),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(body_entry));
 
                 // Body
                 self.break_labels.push(next_entry);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_help(
-                    translator,
-                    body,
-                    (body_entry, vec![]),
-                )?;
-                if let Some((body_new_entry, body_stmts)) = body_stuff {
-                    let body_bb = BasicBlock {
-                        body: body_stmts,
-                        terminator: Jump(cond_entry),
-                    };
-                    self.add_block(body_new_entry, body_bb);
+                let body_wip = self.new_wip_block(body_entry);
+                let body_stuff = self.convert_stmt_help(translator, body_stmt, body_wip)?;
+                if let Some(wip_body) = body_stuff {
+                    self.add_wip_block(wip_body, Jump(cond_entry));
                 }
 
                 self.break_labels.pop();
                 self.continue_labels.pop();
 
                 // Condition
-                let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_condition(true, condition)?;
-                let cond_bb = BasicBlock {
-                    body: cond_stmts,
-                    terminator: Branch(cond_val, body_entry, next_entry),
-                };
-                self.add_block(cond_entry, cond_bb);
+                let WithStmts { stmts, val } = translator.convert_condition(true, condition)?;
+                let cond_wip = WipBlock { body: stmts, ..self.new_wip_block(cond_entry) };
+                self.add_wip_block(cond_wip, Branch(val, body_entry, next_entry));
 
                 //Return
-                Ok(Some((next_entry, vec![])))
+                Ok(Some(self.new_wip_block(next_entry)))
             }
 
-            CStmtKind::ForLoop { init, condition, increment, body } => translator.with_scope(|| {
-
+            CStmtKind::ForLoop { init, condition, increment, body } => {
                 let cond_entry = self.fresh_label();
                 let body_entry = self.fresh_label();
                 let incr_entry = self.fresh_label();
                 let next_label = self.fresh_label();
 
-                // Init
-                let init_stuff = match init {
-                    None => Some((lbl, stmts)),
-                    Some(init) => self.convert_stmt_help(
-                        translator,
-                        init,
-                        (lbl, stmts),
-                    )?,
-                };
-                if let Some((init_lbl, init_stmts)) = init_stuff {
-                    let init_bb = BasicBlock {
-                        body: init_stmts,
-                        terminator: Jump(cond_entry),
+                self.with_scope(translator, |slf| -> Result<(), String> {
+                    // Init
+                    let init_stuff = match init {
+                        None => Some(wip),
+                        Some(init) => slf.convert_stmt_help(translator, init, wip)?,
                     };
-                    self.add_block(init_lbl, init_bb);
-                }
-
-                // Condition
-                match condition {
-                    Some(cond) => {
-                        let WithStmts { stmts, val } =
-                            translator.convert_condition(true, cond)?;
-                        self.add_block(cond_entry, BasicBlock {
-                            body: stmts,
-                            terminator: Branch(val, body_entry, next_label),
-                        });
+                    if let Some(wip_init) = init_stuff {
+                        slf.add_wip_block(wip_init, Jump(cond_entry));
                     }
-                    None => self.add_block(cond_entry, BasicBlock::new_jump(body_entry)),
-                }
 
-                // Body
-                self.break_labels.push(next_label);
-                self.continue_labels.push(incr_entry);
-
-                let body_stuff = self.convert_stmt_help(translator, body, (body_entry, vec![]))?;
-
-                self.break_labels.pop();
-                self.continue_labels.pop();
-
-                if let Some((body_new_lbl, body_stmts)) = body_stuff {
-                    let body_inc_bb = BasicBlock {
-                        terminator: Jump(incr_entry),
-                        body: body_stmts
-                    };
-                    self.add_block(body_new_lbl, body_inc_bb);
-                }
-
-                // Increment
-                match increment {
-                    Some(incr) => {
-                        let incr_stmts = translator
-                                .convert_expr(ExprUse::Unused, incr, false)?
-                                .stmts;
-                        self.add_block(incr_entry, BasicBlock {
-                            body: incr_stmts,
-                            terminator: Jump(cond_entry),
-                        });
+                    // Condition
+                    if let Some(cond) = condition {
+                        let WithStmts { stmts, val } = translator.convert_condition(true, cond)?;
+                        let cond_wip = WipBlock { body: stmts, ..slf.new_wip_block(cond_entry) };
+                        slf.add_wip_block(cond_wip, Branch(val, body_entry, next_label));
+                    } else {
+                        slf.add_block(cond_entry, BasicBlock::new_jump(body_entry));
                     }
-                    None => self.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
-                }
 
-                // Return
-                Ok(Some((next_label, vec![])))
-            }),
+                    // Body
+                    slf.break_labels.push(next_label);
+                    slf.continue_labels.push(incr_entry);
+
+                    let body_wip = slf.new_wip_block(body_entry);
+                    let body_stuff = slf.convert_stmt_help(translator, body, body_wip)?;
+
+                    if let Some(wip_body) = body_stuff {
+                      slf.add_wip_block(wip_body, Jump(incr_entry));
+                    }
+
+                    slf.break_labels.pop();
+                    slf.continue_labels.pop();
+
+                    // Increment
+                    match increment {
+                        None => slf.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
+                        Some(incr) => {
+                          let incr_stmts = translator
+                                  .convert_expr(ExprUse::Unused, incr, false)?
+                                  .stmts;
+                          let incr_wip = WipBlock { body: incr_stmts, ..slf.new_wip_block(incr_entry) };
+                          slf.add_wip_block(incr_wip, Jump(cond_entry));
+                        }
+                    }
+
+                    Ok(())
+                })?;
+              
+                // Return (it is important this happen _outside_ the `with_scope` call)
+                Ok(Some(self.new_wip_block(next_label)))
+            },
 
             CStmtKind::Label(sub_stmt) => {
-
                 let this_label = Label::FromC(stmt_id);
-
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(this_label),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(this_label));
 
                 // Sub stmt
-                self.convert_stmt_help(translator, sub_stmt, (this_label, vec![]))
+                let sub_stmt_wip = self.new_wip_block(this_label);
+                self.convert_stmt_help(translator, sub_stmt, sub_stmt_wip)
             }
 
             CStmtKind::Goto(label_id) => {
-
                 let tgt_label = Label::FromC(label_id);
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(tgt_label),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(tgt_label));
 
                 Ok(None)
             }
 
-            CStmtKind::Compound(ref comp_stmts) => translator.with_scope(|| {
+            CStmtKind::Compound(ref comp_stmts) => {
 
-                let mut lbl_stmts = Some((lbl, stmts));
+                // We feed the optional output WIP into the WIP input of the next block
+                let wip = self.with_scope(translator, |slf| -> Result<Option<WipBlock>, String> {
+                    let mut wip = Some(wip);
+                    for stmt in comp_stmts {
+                        let new_label = slf.fresh_label();
+                        let new_wip = wip.unwrap_or(slf.new_wip_block(new_label));
+                        wip = slf.convert_stmt_help(translator, *stmt, new_wip)?;
+                    }
+                    Ok(wip)
+                })?;
 
-                for stmt in comp_stmts {
-                    let (lbl,stmts) = lbl_stmts.unwrap_or((self.fresh_label(), vec![]));
-                    lbl_stmts = self.convert_stmt_help(translator, *stmt, (lbl, stmts))?;
-                }
-
-                Ok(lbl_stmts)
-            }),
+                // We need to close off the final WIP block (if there is even one) because whatever
+                // follows will be in a different scope.
+                Ok(wip.map(|last_wip| {
+                    let new_label = self.fresh_label();
+                    self.add_wip_block(last_wip, Jump(new_label));
+                    self.new_wip_block(new_label)
+                }))
+            }
 
             CStmtKind::Expr(expr) => {
-                stmts.extend(translator.convert_expr(ExprUse::Unused, expr, false)?.stmts);
+                wip.body.extend(translator.convert_expr(ExprUse::Unused, expr, false)?.stmts);
 
-                Ok(Some((lbl, stmts)))
+                Ok(Some(wip))
             }
 
             CStmtKind::Break => {
                 let tgt_label = *self.break_labels.last().expect("Nothing to 'break' to");
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(tgt_label),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(tgt_label));
 
                 Ok(None)
             }
 
             CStmtKind::Continue => {
                 let tgt_label = *self.continue_labels.last().expect("Nothing to 'continue' to");
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(tgt_label),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(tgt_label));
 
                 Ok(None)
             }
 
             CStmtKind::Case(_case_expr, sub_stmt, cie) => {
                 let this_label = Label::FromC(stmt_id);
-
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(this_label),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(this_label));
 
                 // Case
                 let branch = match cie {
-                    ConstIntExpr::U(n) => mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed)),
-                    ConstIntExpr::I(n) if n < 0 => mk().unary_expr(syntax::ast::UnOp::Neg, mk().lit_expr(mk().int_lit((-n) as u128, LitIntType::Unsuffixed))),
-                    ConstIntExpr::I(n) => mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed)),
+                    ConstIntExpr::U(n) =>
+                        mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed)),
+
+                    ConstIntExpr::I(n) if n >= 0 =>
+                        mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed)),
+
+                    ConstIntExpr::I(n) =>
+                        mk().unary_expr(
+                            syntax::ast::UnOp::Neg,
+                            mk().lit_expr(mk().int_lit((-n) as u128, LitIntType::Unsuffixed))
+                        ),
                 };
                 self.switch_expr_cases
                     .last_mut()
@@ -808,17 +822,13 @@ impl CfgBuilder {
                     .push((mk().lit_pat(branch), this_label));
 
                 // Sub stmt
-                self.convert_stmt_help(translator, sub_stmt, (this_label, vec![]))
+                let sub_stmt_wip = self.new_wip_block(this_label);
+                self.convert_stmt_help(translator, sub_stmt, sub_stmt_wip)
             }
 
             CStmtKind::Default(sub_stmt) => {
                 let this_label = Label::FromC(stmt_id);
-
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(this_label),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(this_label));
 
                 // Default case
                 self.switch_expr_cases
@@ -828,29 +838,29 @@ impl CfgBuilder {
                     .get_or_insert(this_label);
 
                 // Sub stmt
-                self.convert_stmt_help(translator, sub_stmt, (this_label, vec![]))
+                let sub_stmt_wip = self.new_wip_block(this_label);
+                self.convert_stmt_help(translator, sub_stmt, sub_stmt_wip)
             }
 
-            CStmtKind::Switch { scrutinee, body } => {
-
+            CStmtKind::Switch { scrutinee, body: switch_body } => {
                 let next_label = self.fresh_label();
                 let body_label = self.fresh_label();
 
                 // Convert the condition
-                let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_expr(ExprUse::RValue, scrutinee, false)?;
-                stmts.extend(cond_stmts);
+                let WithStmts { stmts, val } = translator.convert_expr(ExprUse::RValue, scrutinee, false)?;
+                wip.body.extend(stmts);
+
+                let wip_label = wip.label;
+                self.add_wip_block(wip, End); // NOTE: the `End` here is temporary and gets updated
 
                 // Body
                 self.break_labels.push(next_label);
                 self.switch_expr_cases.push(SwitchCases::default());
 
-                let body_stuff = self.convert_stmt_help(translator, body, (body_label, vec![]))?;
-                if let Some((body_new_lbl, body_stmts)) = body_stuff {
-                    self.add_block(body_new_lbl, BasicBlock {
-                        body: body_stmts,
-                        terminator: Jump(next_label),
-                    });
+                let body_wip = self.new_wip_block(body_label);
+                let body_stuff = self.convert_stmt_help(translator, switch_body, body_wip)?;
+                if let Some(body_wip) = body_stuff {
+                    self.add_wip_block(body_wip, Jump(next_label));
                 }
 
                 self.break_labels.pop();
@@ -862,17 +872,12 @@ impl CfgBuilder {
                     .collect();
                 cases.push((vec![mk().wild_pat()], switch_case.default.unwrap_or(next_label)));
 
-
-                // Add the condition basic block (we need the information built up during the
-                // conversion of the body to make the right terminator)
-                let cond_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Switch { expr: cond_val, cases },
-                };
-                self.add_block(lbl, cond_bb);
+                // Add the condition basic block terminator (we need the information built up during
+                // the conversion of the body to make the right terminator)
+                self.update_terminator(wip_label, Switch { expr: val, cases });
 
                 // Return
-                Ok(Some((next_label, vec![])))
+                Ok(Some(self.new_wip_block(next_label)))
             }
         }
     }
@@ -887,7 +892,7 @@ impl CfgBuilder {
 /// ```
 impl Cfg<Label> {
 
-    pub fn dump_dot_graph(&self, file_path: String) -> io::Result<()> {
+    pub fn dump_dot_graph(&self, ctx: &TypedAstContext, file_path: String) -> io::Result<()> {
 
         // Utility function for sanitizing strings
         fn sanitize_label(lbl: String) -> String {
@@ -909,23 +914,53 @@ impl Cfg<Label> {
         }
 
         // Rest of graph
-        for (lbl, &BasicBlock { ref body, ref terminator }) in self.nodes.iter() {
+        for (lbl, bb) in self.nodes.iter() {
 
-            let pretty_terminator = match terminator {
-                &End | &Jump(_) => String::from(""),
-                &Branch(ref cond, _, _) => format!("\n{}",pprust::expr_to_string(cond.deref())),
-                &Switch { ref expr, .. } => format!("\n{}",pprust::expr_to_string(expr.deref())),
+            let pretty_terminator = match bb.terminator {
+                End | Jump(_) => String::from(""),
+                Branch(ref cond, _, _) => format!("\n{}",pprust::expr_to_string(cond.deref())),
+                Switch { ref expr, .. } => format!("\n{}",pprust::expr_to_string(expr.deref())),
+            };
+
+            let defined = if bb.defined.is_empty() {
+                format!("")
+            } else {
+                format!(
+                    "\\ldefined: {{{}}}",
+                    bb.defined
+                        .iter()
+                        .filter_map(|decl| ctx.index(*decl).kind.get_name())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
+            };
+
+            let live = if bb.live.is_empty() {
+                format!("")
+            } else {
+                format!(
+                    "\\llive in: {{{}}}",
+                    bb.live
+                        .iter()
+                        .filter_map(|decl| ctx.index(*decl).kind.get_name())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
             };
 
             // A node
             file.write_fmt(format_args!(
-                "  {} [label=\"{}:\\l{}-----{}\"];\n",
+                "  {} [label=\"{}:\\l-----{}{}\\l{}-----{}\"];\n",
                 lbl.debug_print(),
                 lbl.debug_print(),
-                format!("-----\\l{}", if body.is_empty() {
+                live,
+                defined,
+                format!("-----\\l{}", if bb.body.is_empty() {
                     String::from("")
                 } else {
-                    sanitize_label(body
+                    sanitize_label(bb.body
                         .iter()
                         .map(|stmt| pprust::stmt_to_string(stmt))
                         .collect::<Vec<String>>()
@@ -936,14 +971,14 @@ impl Cfg<Label> {
             ))?;
 
             // All the edges starting from this node
-            let edges: Vec<(String, Label)> = match terminator {
-                &End => vec![],
-                &Jump(tgt) => vec![(String::from(""),tgt)],
-                &Branch(_, tru, fal) => vec![
+            let edges: Vec<(String, Label)> = match bb.terminator {
+                End => vec![],
+                Jump(tgt) => vec![(String::from(""),tgt)],
+                Branch(_, tru, fal) => vec![
                     (String::from("true"),tru),
                     (String::from("false"),fal)
                 ],
-                &Switch { ref cases, .. } => {
+                Switch { ref cases, .. } => {
                     let mut cases: Vec<(String, Label)> = cases
                         .iter()
                         .map(|&(ref pats, tgt)| -> (String, Label) {
