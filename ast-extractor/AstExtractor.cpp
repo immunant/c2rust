@@ -299,6 +299,15 @@ public:
         VisitQualType(t);
     }
     
+    void VisitTypeOfExprType(const TypeOfExprType *T) {
+        auto t = T->desugar();
+        auto qt = encodeQualType(t);
+        encodeType(T, TagTypeOfType, [qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
+        });
+        VisitQualType(t);
+    }
+    
     void VisitElaboratedType(const ElaboratedType *T) {
         auto t = T->desugar();
         auto qt = encodeQualType(t);
