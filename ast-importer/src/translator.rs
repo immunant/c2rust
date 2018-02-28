@@ -206,6 +206,7 @@ pub fn translate(
     dump_function_cfgs: bool,
     dump_structures: bool,
     debug_relooper_labels: bool,
+    cross_checks: bool,
 ) -> String {
 
     let mut t = Translation::new(
@@ -291,11 +292,16 @@ pub fn translate(
 
     to_string(|s| {
 
-        let features =
+        let mut features =
             vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut"]),
                  ("allow"  ,vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
                                  "dead_code", "mutable_transmutes"]),
             ];
+        if cross_checks {
+            features.push(("feature", vec!["plugin", "custom_attribute"]));
+            features.push(("plugin",  vec!["cross_check_plugin"]));
+            features.push(("cross_check", vec!["yes"]));
+        }
 
         for (key,values) in features {
             for value in values {
@@ -313,6 +319,12 @@ pub fn translate(
 
         // Add `extern crate libc` to the top of the file
         s.print_item(&mk().extern_crate_item("libc", None))?;
+        if cross_checks {
+            s.print_item(&mk().single_attr("macro_use")
+                              .extern_crate_item("cross_check_derive", None))?;
+            s.print_item(&mk().single_attr("macro_use")
+                              .extern_crate_item("cross_check_runtime", None))?;
+        }
 
         // Add the items accumulated
         for x in t.items.iter() {

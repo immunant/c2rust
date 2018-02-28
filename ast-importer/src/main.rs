@@ -51,6 +51,12 @@ fn main() {
             .help("Generate readable 'current_block' values in relooper")
             .takes_value(false))
 
+        // Cross-check related
+        .arg(Arg::with_name("cross-checks")
+             .long("cross-checks")
+             .help("Enable cross-checks")
+             .takes_value(false))
+
         // End-user
         .arg(Arg::with_name("INPUT")
             .help("Sets the input CBOR file to use")
@@ -66,6 +72,7 @@ fn main() {
     let dump_function_cfgs = matches.is_present("dump-function-cfgs");
     let dump_structures = matches.is_present("dump-structures");
     let debug_labels = matches.is_present("debug-labels");
+    let cross_checks = matches.is_present("cross-checks");
 
     // Extract from the CBOR file the untyped AST
     let untyped_context = match parse_untyped_ast(file) {
@@ -118,6 +125,7 @@ fn main() {
         dump_function_cfgs,
         dump_structures,
         debug_labels,
+        cross_checks,
     ));
 }
 
