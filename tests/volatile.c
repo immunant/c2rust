@@ -18,6 +18,10 @@ void entry(const unsigned buffer_size, int buffer[])
     buffer[2] = n;
     *p += 4;
     buffer[3] = *p;
+
+    volatile signed char c = 10;
+    c *= 9.9; // computation happens at a promoted type
+    buffer[4] = c;
 }
 
 
