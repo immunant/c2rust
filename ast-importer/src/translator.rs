@@ -200,6 +200,13 @@ fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder 
     }
 }
 
+pub fn signed_int_expr(value: i64) -> P<Expr> {
+    if value < 0 {
+        mk().unary_expr(ast::UnOp::Neg, mk().lit_expr(mk().int_lit((-value) as u128, "")))
+    } else {
+        mk().lit_expr(mk().int_lit(value as u128, ""))
+    }
+}
 
 pub fn translate(
     ast_context: &TypedAstContext,
@@ -491,11 +498,7 @@ impl Translation {
                             if value_map.contains_key(&value) {
                                 self.renamer.borrow_mut().alias(v, &value_map[&value]);
                             } else {
-                                let disc = if value < 0 {
-                                    mk().unary_expr(ast::UnOp::Neg, mk().lit_expr(mk().int_lit((-value) as u128, "")))
-                                } else {
-                                    mk().lit_expr(mk().int_lit(value as u128, ""))
-                                };
+                                let disc = signed_int_expr(value);
                                 let variant = &self.renamer.borrow_mut()
                                     .insert(v, &format!("{}::{}", enum_name, name))
                                     .expect(&format!("Failed to insert enum variant '{}'", name));
@@ -1248,7 +1251,7 @@ impl Translation {
                         if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
                             // Casts targeting `enum` types...
                             let source_ty = self.convert_type(source_ty_ctype_id)?;
-                            Ok(self.enum_cast(enum_decl_id, expr, val, source_ty, target_ty))
+                            Ok(self.enum_cast(ty.ctype, enum_decl_id, expr, val, source_ty, target_ty))
                         } else {
                             // Other numeric casts translate to Rust `as` casts
 
@@ -1611,6 +1614,37 @@ impl Translation {
         }
     }
 
+    /// Given an integer value this attempts to either generate the corresponding enum
+    /// variant directly, otherwise it transmutes a number to the enum type.
+    fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> P<Expr> {
+
+        let def_id = match &self.ast_context.resolve_type(enum_type_id).kind {
+            &CTypeKind::Enum(def_id) => def_id,
+            _ => panic!("{:?} does not point to an `enum` type"),
+        };
+
+        let variants = match &self.ast_context[def_id].kind {
+            &CDeclKind::Enum { ref variants, .. } => variants,
+            _ => panic!("{:?} does not point to an `enum` declaration")
+        };
+
+        for &variant_id in variants {
+            match &self.ast_context[variant_id].kind {
+                &CDeclKind::EnumConstant { value: v, .. } =>
+                if value == v {
+                    let name = self.renamer.borrow().get(&variant_id).unwrap();
+                    return mk().path_expr(vec![name])
+                }
+                _ => panic!("{:?} does not point to an enum variant", variant_id),
+            }
+        }
+
+        let target_ty = self.convert_type(enum_type_id).unwrap();
+        let source_ty = mk().path_ty(vec!["i32"]);
+
+        transmute_expr(source_ty, target_ty, signed_int_expr(value))
+    }
+
     /// This handles translating casts when the target type in an `enum` type.
     ///
     /// When translating variable references to `EnumConstant`'s, we always insert casts to the
@@ -1619,6 +1653,7 @@ impl Translation {
     /// like to produce Rust with _no_ casts. This function handles this simplification.
     fn enum_cast(
         &self,
+        enum_type: CTypeId,
         enum_decl: CEnumId,      // ID of the enum declaration corresponding to the target type
         expr: CExprId,           // ID of initial C argument to cast
         val: WithStmts<P<Expr>>, // translated Rust argument to cast
@@ -1637,15 +1672,29 @@ impl Translation {
             // we are casting to. Here, we can just remove the extraneous cast instead of generating
             // a new one.
             &CExprKind::DeclRef(_, decl_id) if variants.contains(&decl_id) =>
-                val.map(|x| match x.node {
+                return val.map(|x| match x.node {
                     ast::ExprKind::Cast(ref e, _) => e.clone(),
                     _ => panic!(format!("DeclRef {:?} of enum {:?} is not cast", expr, enum_decl)),
                 }),
 
+            &CExprKind::Literal(_, CLiteral::Integer(i)) => {
+                let new_val = self.enum_for_i64(enum_type, i as i64);
+                return WithStmts { stmts: val.stmts, val: new_val }
+            }
+
+            &CExprKind::Unary(_, c_ast::UnOp::Negate, subexpr_id) => {
+                if let &CExprKind::Literal(_, CLiteral::Integer(i)) = &self.ast_context[subexpr_id].kind {
+                    let new_val = self.enum_for_i64(enum_type, -(i as i64));
+                    return WithStmts { stmts: val.stmts, val: new_val }
+                }
+            }
+
             // In all other cases, a cast to an enum requires a `transmute` - Rust enums cannot be
             // converted into integral types as easily as C ones.
-            _ => val.map(|x| transmute_expr(source_ty, target_ty, x)),
+            _ => {},
         }
+
+        val.map(|x| transmute_expr(source_ty, target_ty, x))
     }
 
     fn convert_union_literal(
@@ -1749,6 +1798,8 @@ impl Translation {
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
             let sz = mk().lit_expr(mk().int_lit(sz as u128, LitIntType::Unsuffixed));
             Ok(mk().repeat_expr(self.implicit_default_expr(elt)?, sz))
+        } else if let &CTypeKind::Enum(_) = resolved_ty {
+            Ok(self.enum_for_i64(ty_id, 0))
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id)
         } else {
