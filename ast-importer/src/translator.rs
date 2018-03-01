@@ -429,6 +429,7 @@ impl Translation {
                 Ok(mk().pub_()
                     .call_attr("derive", vec!["Copy", "Clone"])
                     .call_attr("repr", vec!["C"])
+                    .call_attr("cross_check", vec!["none"])
                     .struct_item(name, field_entries))
             }
 
@@ -453,11 +454,13 @@ impl Translation {
                     Ok(mk().pub_()
                         .call_attr("derive", vec!["Copy", "Clone"])
                         .call_attr("repr", vec!["C"])
+                        .call_attr("cross_check", vec!["none"])
                         .struct_item(name, vec![]))
                 } else {
                     Ok(mk().pub_()
                         .call_attr("derive", vec!["Copy", "Clone"])
                         .call_attr("repr", vec!["C"])
+                        .call_attr("cross_check", vec!["none"])
                         .union_item(name, field_syns))
                 }
             }
@@ -501,6 +504,7 @@ impl Translation {
                 Ok(mk().pub_()
                     .call_attr("derive", vec!["Copy", "Clone"])
                     .call_attr("repr", vec!["C"])
+                    .call_attr("cross_check", vec!["none"])
                     .enum_item(enum_name, variant_syns))
             },
 
