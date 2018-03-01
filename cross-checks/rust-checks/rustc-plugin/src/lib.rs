@@ -296,7 +296,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                         $entry_xcheck
                         $arg_xchecks
                         $entry_extra_xchecks
-                        let __c2rust_fn_body = || $block;
+                        let mut __c2rust_fn_body = || $block;
                         let __c2rust_fn_result = __c2rust_fn_body();
                         $exit_xcheck
                         $result_xcheck
