@@ -400,7 +400,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('directory', type=readable_directory)
     parser.add_argument(
-        '--only', dest='regex', type=regex,
+        '--only-file', dest='regex_file', type=regex,
+        default='.*', help="Regular expression to filter which tests to run"
+    )
+    parser.add_argument(
+        '--only-directory', dest='regex_directory', type=regex,
         default='.*', help="Regular expression to filter which tests to run"
     )
     parser.add_argument(
@@ -442,18 +446,19 @@ def main() -> None:
     }
 
     for test_directory in test_directories:
-        sys.stdout.write(f"{test_directory.name}:\n")
+        if args.regex_directory.fullmatch(test_directory.name):
+            sys.stdout.write(f"{test_directory.name}:\n")
 
-        # TODO: Support regex for filtering by directory or name
-        # Testdirectories are run one after another. Only tests that match the '--only'
-        # argument are run. We make a best effort to clean up files we left behind.
-        try:
-            statuses = test_directory.run()
-        finally:
-            test_directory.cleanup()
+            # TODO: Support regex for filtering by directory or name
+            # Testdirectories are run one after another. Only tests that match the '--only'
+            # argument are run. We make a best effort to clean up files we left behind.
+            try:
+                statuses = test_directory.run()
+            finally:
+                test_directory.cleanup()
 
-        for status in statuses:
-            test_results[status.value] += 1
+            for status in statuses:
+                test_results[status.value] += 1
 
         # else:
         #     logging.debug("skipping test: %s", testcase.src_c)
