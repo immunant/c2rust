@@ -9,8 +9,8 @@ extern "C" {
 }
 
 pub fn test_subtraction() {
-    let diff = unsafe { sub(1, 2) };
-    let rust_diff = unsafe { rust_sub(1, 2) };
+    let diff = unsafe { sub(5, 2) };
+    let rust_diff = unsafe { rust_sub(5, 2) };
 
     assert_eq!(diff, 3);
     assert_eq!(rust_diff, 3);

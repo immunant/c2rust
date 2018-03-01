@@ -227,7 +227,6 @@ class TestDirectory:
 
                 main = RustFile(features, mods, uses, functions)
 
-                # print(main)
                 main_src_path = os.path.join(self.full_path, test_name + "_main.rs")
                 main_bin_path = os.path.join(self.full_path, test_name + "_main")
 
@@ -252,22 +251,38 @@ class TestDirectory:
                     sys.stdout.write(stderr)
 
                     outcomes.append(TestOutcome.UnexpectedFailure)
+                    continue
 
                 # This will fail is previous section failed: (duh)
                 main = get_cmd_or_die(main_bin_path)
                 retcode, stdout, stderr = main.run(retcode=None)
 
-                if retcode == 0 and pass_expected:
-                    self.print_status(OKGREEN, "OK", "    test " + file_name + ' - ' + test_name)
-                    sys.stdout.write('\n')
+                test_str = file_name + ' - ' + test_name
 
-                    outcomes.append(TestOutcome.Success)
-                elif retcode != 0 and pass_expected:
-                    self.print_status(FAIL, "FAILED", "test " + file_name + ' - ' + test_name)
-                    sys.stdout.write('\n')
-                    sys.stdout.write(stderr)
+                if retcode == 0:
+                    if pass_expected:
+                        self.print_status(OKGREEN, "OK", "    test " + test_str)
+                        sys.stdout.write('\n')
 
-                    outcomes.append(TestOutcome.UnexpectedFailure)
+                        outcomes.append(TestOutcome.Success)
+                    else:
+                        self.print_status(FAIL, "FAILED", "test " + test_str)
+                        sys.stdout.write('\n')
+
+                        outcomes.append(TestOutcome.UnexpectedSuccess)
+
+                elif retcode != 0:
+                    if pass_expected:
+                        self.print_status(FAIL, "FAILED", "test " + test_str)
+                        sys.stdout.write('\n')
+                        sys.stdout.write(stderr)
+
+                        outcomes.append(TestOutcome.UnexpectedFailure)
+                    else:
+                        self.print_status(OKBLUE, "FAILED", "test " + test_str)
+                        sys.stdout.write('\n')
+
+                        outcomes.append(TestOutcome.Failure)
 
                 # Ret 101 is panic + stderr
                 # Ret 0 is ok
@@ -278,7 +293,6 @@ class TestDirectory:
 
         # print('\n')
         # print(self.generated_files)
-
 
         assert outcomes, "No valid test outcomes were determined"
         return outcomes
