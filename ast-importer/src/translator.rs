@@ -1212,9 +1212,18 @@ impl Translation {
                                     }
                                 }
                             }
-                            // Normal case
-                            let target_ty = self.convert_type(ty.ctype)?;
-                            Ok(mk().cast_expr(x, target_ty))
+
+                            let source_ty_id = self.ast_context.index(expr).kind.get_type();
+
+                            if self.is_function_pointer(ty.ctype) || self.is_function_pointer(source_ty_id) {
+                                let source_ty = self.convert_type(source_ty_id)?;
+                                let target_ty = self.convert_type(ty.ctype)?;
+                                Ok(transmute_expr(source_ty, target_ty, x))
+                            } else {
+                                // Normal case
+                                let target_ty = self.convert_type(ty.ctype)?;
+                                Ok(mk().cast_expr(x, target_ty))
+                            }
                         })
                     }
 
