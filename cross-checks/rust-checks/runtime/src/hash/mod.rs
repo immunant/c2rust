@@ -114,6 +114,7 @@ const LEAF_POINTER_VALUE: u32 = 0xDEADBEEFu32;
 const NULL_POINTER_HASH: u64 = 0x726174536c6c754e_u64; // "NullStar" in ASCII
 const LEAF_POINTER_HASH: u64 = 0x726174536661654c_u64; // "LeafStar" in ASCII
 const VOID_POINTER_HASH: u64 = 0x7261745364696f56_u64; // "VoidStar" in ASCII
+const FUNC_POINTER_HASH: u64 = 0x72617453636e7546_u64; // "FuncStar" in ASCII
 
 // Hash implementation for references
 impl<'a, T: ?Sized + CrossCheckHash> CrossCheckHash for &'a T {
@@ -178,6 +179,55 @@ impl<T: CrossCheckHash> CrossCheckHash for *mut T {
         }
     }
 }
+
+macro_rules! impl_fnopt_hash {
+    (<$($arg:ident),*> + $($pfx:tt)*) => {
+        impl <Ret, $($arg),*> CrossCheckHash for $($pfx)* fn($($arg),*) -> Ret {
+            #[inline]
+            fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
+                    where HA: CrossCheckHasher, HS: CrossCheckHasher {
+                if depth == 0 {
+                    LEAF_POINTER_HASH
+                } else {
+                    FUNC_POINTER_HASH
+                }
+            }
+        }
+
+        impl <Ret, $($arg),*> CrossCheckHash for Option<$($pfx)* fn($($arg),*) -> Ret> {
+            #[inline]
+            fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
+                    where HA: CrossCheckHasher, HS: CrossCheckHasher {
+                if let &Some(ref func) = self {
+                    // Due to C's decay rules, we don't decrease the depth here,
+                    // since function values can decay to function pointers,
+                    // so they're basically equivalent
+                    (*func).cross_check_hash_depth::<HA, HS>(depth)
+                } else {
+                    NULL_POINTER_HASH
+                }
+            }
+        }
+    };
+    ($($arg:ident),*) => {
+        impl_fnopt_hash!(<$($arg),*> + unsafe extern "C");
+    }
+}
+
+// Default CrossCheckHash implementation for function pointers with up to 12 arguments
+impl_fnopt_hash!();
+impl_fnopt_hash!(A);
+impl_fnopt_hash!(A, B);
+impl_fnopt_hash!(A, B, C);
+impl_fnopt_hash!(A, B, C, D);
+impl_fnopt_hash!(A, B, C, D, E);
+impl_fnopt_hash!(A, B, C, D, E, F);
+impl_fnopt_hash!(A, B, C, D, E, F, G);
+impl_fnopt_hash!(A, B, C, D, E, F, G, H);
+impl_fnopt_hash!(A, B, C, D, E, F, G, H, I);
+impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J);
+impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K);
+impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K, L);
 
 #[cfg(feature="libc-hash")]
 impl CrossCheckHash for libc::c_void {
