@@ -73,7 +73,7 @@ uint64_t __c2rust_hash_double(double x, size_t depth) {
 #define LEAF_RECORD_HASH      0x647263526661654cULL // "LeafRcrd" in ASCII
 #define NULL_POINTER_HASH     0x726174536c6c754eULL // "NullStar" in ASCII
 #define VOID_POINTER_HASH     0x7261745364696f56ULL // "VoidStar" in ASCII
-#define FUNCTION_POINTER_HASH 0x72617453636e7546ULL // "FuncStar" in ASCII
+#define FUNC_POINTER_HASH     0x72617453636e7546ULL // "FuncStar" in ASCII
 
 _Bool __c2rust_pointer_is_invalid(void *p) {
     return p == NULL;
@@ -108,7 +108,7 @@ uint64_t __c2rust_hash_function(void *f, size_t depth) {
         return NULL_POINTER_HASH;
     if (depth == 0)
         return LEAF_POINTER_HASH;
-    return FUNCTION_POINTER_HASH;
+    return FUNC_POINTER_HASH;
 }
 
 // JodyHasher implementation
