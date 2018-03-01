@@ -8,7 +8,8 @@ import re
 
 from common import *
 from enum import Enum
-from typing import Generator, List, Optional, Set, Tuple
+from rust_file import RustFile, RustFunction, RustMod, RustUse, RustVisibility
+from typing import Generator, List, Optional, Tuple
 
 # Executables we are going to test
 ast_extractor = get_cmd_or_die(AST_EXTR)
@@ -28,66 +29,6 @@ intermediate_files = [
     'rust_src', 'rust_obj', 'rust_exec', 'rust_out',
     'rust_test_obj', 'rust_test_exec',
 ]
-
-
-class RustMod:
-    def __init__(self, visibility: str, name: str) -> None:
-        self.visibility = visibility
-        self.name = name
-
-    def __str__(self) -> str:
-        buffer = self.visibility
-
-        if self.visibility:
-            buffer += ' '
-
-        buffer += f"mod {self.name};\n"
-
-        return buffer
-
-
-class RustUse:
-    def __init__(self, visibility: str, *args: List[str]) -> str:
-        self.visibility = visibility
-        self.use = "::".join(args)
-
-    def __str__(self) -> str:
-        buffer = self.visibility
-
-        if self.visibility:
-            buffer += ' '
-
-        buffer += f"use {self.use};\n"
-
-        return buffer
-
-
-class RustMainFile:
-    def __init__(self, features: Set[str]=None, mods: List[RustMod]=None, uses: List[RustUse]=None, body: str=None) -> None:
-        self.features = features or set()
-        self.mods = mods or []
-        self.uses = uses or []
-        self.body = body or ""
-
-    def __str__(self) -> str:
-        buffer = ""
-
-        for feature in self.features:
-            buffer += f"#![feature({feature})]\n"
-
-        buffer += '\n'
-
-        for mod in self.mods:
-            buffer += str(mod)
-
-        buffer += '\n'
-
-        for use in self.uses:
-            buffer += str(use)
-
-        buffer += f"\n\nfn main() {{\n    {self.body}}}\n"
-
-        return buffer
 
 
 class TestOutcome(Enum):
@@ -298,7 +239,7 @@ class TestDirectory:
             extensionless_rust_file, _ = os.path.splitext(rust_file_short)
             description = f"{rust_file_short}: compile the generated Rust"
 
-            pub_mods.append(RustMod("pub", extensionless_rust_file))
+            pub_mods.append(RustMod(extensionless_rust_file, RustVisibility.Public))
 
             self.print_status(WARNING, "RUNNING", description + "...")
 
@@ -327,12 +268,12 @@ class TestDirectory:
             extensionless_file_name, _ = os.path.splitext(file_name)
 
             for test_name in test_names:
-                features = {"libc", "i128_type"}
-                mods = pub_mods + [RustMod("pub", extensionless_file_name)]
-                uses = [RustUse("", extensionless_file_name, test_name)]
-                body = f"{test_name}();\n"
+                features = ["libc", "i128_type"]
+                mods = pub_mods + [RustMod(extensionless_file_name, RustVisibility.Public)]
+                uses = [RustUse([extensionless_file_name, test_name])]
+                functions = [RustFunction("main", RustVisibility.Public, [f"{test_name}();\n"])]
 
-                main = RustMainFile(features, mods, uses, body)
+                main = RustFile(features, mods, uses, functions)
 
                 print(main)
                 main_src_path = os.path.join(self.full_path, test_name + "_main.rs")
