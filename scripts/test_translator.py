@@ -144,9 +144,15 @@ class TestDirectory:
 
     def _compile_rustc(self, rust_src_path: str, crate_type: str) -> Tuple[int, str, str]:
         extensionless_file, _ = os.path.splitext(rust_src_path)
-        rust_obj = extensionless_file + (".a" if crate_type == "staticlib" else ".rlib") # FIXME: Cleanup
+        rust_obj = extensionless_file
 
-        self.generated_files["rust_obj"].append(rust_obj)
+        if crate_type == "staticlib":
+            rust_obj += ".a"
+            self.generated_files["rust_obj"].append(rust_obj)
+        elif crate_type == "bin":
+            self.generated_files["rust_exec"].append(rust_obj)
+        else:
+            self.generated_files["rust_obj"].append(rust_obj)
 
         # run rustc
         args = [
@@ -158,49 +164,8 @@ class TestDirectory:
         logging.debug("rustc compile command: %s", str(rustc[args]))
         return rustc[args].run(retcode=None)
 
-    def compile_translated_clang(self) -> Tuple[int, str, str]:
-
-        # run clang linking in the rust object file
-        args = [
-            '-lc', '-lm',
-            '-o', self.rust_exec,
-            driver, self.rust_obj,
-        ]
-        if on_mac():
-            args = ['-lSystem', '-lresolv'] + args
-        else:
-            args = ['-pthread', '-ldl'] + args
-        # log the command in a format that's easy to re-run
-        logging.debug("clang compile command: %s", str(clang[args]))
-        return clang[args].run(retcode=None)
-
-    def compile_original_clang(self) -> Tuple[int, str, str]:
-
-        # run clang
-        args = [
-            '-o', self.c_exec,
-            driver, self.src_c
-        ]
-        return clang[args].run(retcode=None)
-
-    def compare_run_outputs(self) -> Tuple[int, str, str]:
-
-        # run the Rust executable
-        run_result = (get_cmd_or_die(self.rust_exec) > self.rust_out).run(retcode=None)
-        if run_result[0]:
-            return run_result
-
-        # run the C executable
-        run_result = (get_cmd_or_die(self.c_exec) > self.c_out).run(retcode=None)
-        if run_result[0]:
-            return run_result
-
-        # diff the two outputs
-        args = ['--minimal', self.rust_out, self.c_out]
-        return diff[args].run(retcode=None)
-
     def run(self) -> TestOutcome:
-        outcome = None
+        outcomes = []
 
         # .c -> .c.cbor
         for c_file in self.c_files:
@@ -250,19 +215,6 @@ class TestDirectory:
             # print("Stderr:", stderr)
             # print("---------------")
 
-        # for rust_file in self.rs_test_files.keys():
-        #     _, rust_file_short = os.path.split(rust_file)
-        #     description = f"{rust_file_short}: compile the Rust tests"
-
-        #     self.print_status(WARNING, "RUNNING", description + "...")
-
-        #     retcode, stdout, stderr = self._compile_rustc(rust_file, "rlib")
-
-            # print("Ret:", retcode)
-            # print("Stdout:", stdout)
-            # print("Stderr:", stderr)
-            # print("---------------")
-
         for file_path, test_names in self.rs_test_files.items():
             path, file_name = os.path.split(file_path)
             extensionless_file_name, _ = os.path.splitext(file_name)
@@ -275,7 +227,7 @@ class TestDirectory:
 
                 main = RustFile(features, mods, uses, functions)
 
-                print(main)
+                # print(main)
                 main_src_path = os.path.join(self.full_path, test_name + "_main.rs")
                 main_bin_path = os.path.join(self.full_path, test_name + "_main")
 
@@ -285,62 +237,51 @@ class TestDirectory:
                 with open(main_src_path, 'w') as fh:
                     fh.write(str(main))
 
-                args = []
+                retcode, stdout, stderr = self._compile_rustc(main_src_path, "bin")
 
-                for rust_lib_path in self.generated_files["rust_obj"]:
-                    print(rust_lib_path)
-                    args.append("-l")
-                    args.append(f"static={rust_lib_path}")
-                # args.append("-L")
-                # args.append(".")
+                # FIXME:
+                pass_expected = True
 
-                args.append("-o")
-                args.append(main_bin_path)
-                args.append("--crate-type=bin") # could just as well be 'cdylib'
-                args.append(main_src_path)
+                # print("Ret:", retcode)
+                # print("Stdout:", stdout)
+                # print("Stderr:", stderr)
+                # print("---------------")
+                if retcode != 0 and pass_expected:
+                    self.print_status(FAIL, "FAILED", "test " + file_name + ' - ' + test_name)
+                    sys.stdout.write('\n')
+                    sys.stdout.write(stderr)
 
-                # log the command in a format that's easy to re-run
-                # logging.debug("rustc compile command: %s", str(rustc[args]))
-                print("rustc compile command: %s" % str(rustc[args]))
-                retcode, stdout, stderr = rustc[args].run(retcode=None)
-                # self._compile_rustc(rust_file, "rlib")
+                    outcomes.append(TestOutcome.UnexpectedFailure)
 
-                print("Ret:", retcode)
-                print("Stdout:", stdout)
-                print("Stderr:", stderr)
-                print("---------------")
+                # This will fail is previous section failed: (duh)
+                main = get_cmd_or_die(main_bin_path)
+                retcode, stdout, stderr = main.run(retcode=None)
 
-        #     # Document failures
-        #     if retcode:
-        #         failed_message = "failed to " + description + "."
+                if retcode == 0 and pass_expected:
+                    self.print_status(OKGREEN, "OK", "    test " + file_name + ' - ' + test_name)
+                    sys.stdout.write('\n')
 
-        #         sys.stdout.write('\033[1000D\033[K\r')
+                    outcomes.append(TestOutcome.Success)
+                elif retcode != 0 and pass_expected:
+                    self.print_status(FAIL, "FAILED", "test " + file_name + ' - ' + test_name)
+                    sys.stdout.write('\n')
+                    sys.stdout.write(stderr)
 
-        #         # if self.pass_expected:
-        #         if True: # FIXME: Pass expected
-        #             logging.error("Unexpected failure for " + c_file_short)
-        #             logging.error("Failed to " + description)
-        #             if stdout:
-        #                 logging.error("STDOUT:\n" + stdout)
-        #             if stderr:
-        #                 logging.error("STDERR:\n" + stderr)
-        #         else:
-        #             logging.warning("Expected failure for " + c_file_short)
-        #             logging.warning("Failed to " + description)
-        #             if stdout:
-        #                 logging.warning("STDOUT:\n" + stdout)
-        #             if stderr:
-        #                 logging.warning("STDERR:\n" + stderr)
+                    outcomes.append(TestOutcome.UnexpectedFailure)
 
-        #         break
-        # else:
-        #     sys.stdout.write('\033[1000D\033[K\r')
-        #     logging.info("Expected success for %s", self.full_path)
+                # Ret 101 is panic + stderr
+                # Ret 0 is ok
+                # print("Ret:", retcode)
+                # print("Stdout:", stdout)
+                # print("Stderr:", stderr)
+                # print("---------------")
 
-        print(self.generated_files)
+        # print('\n')
+        # print(self.generated_files)
 
-        assert outcome, "No valid test outcome was determined"
-        return outcome
+
+        assert outcomes, "No valid test outcomes were determined"
+        return outcomes
 
         # List of things to do and the order in which to do them
         commands = [
@@ -493,11 +434,11 @@ def main() -> None:
         # Testdirectories are run one after another. Only tests that match the '--only'
         # argument are run. We make a best effort to clean up files we left behind.
         try:
-            status = test_directory.run()
+            statuses = test_directory.run()
         finally:
             test_directory.cleanup()
 
-        if status:
+        for status in statuses:
             test_results[status.value] += 1
 
         # else:
