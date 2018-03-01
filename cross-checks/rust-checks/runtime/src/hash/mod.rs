@@ -9,7 +9,7 @@ pub mod djb2;
 pub mod simple;
 pub mod jodyhash;
 
-const MAX_DEPTH: usize = 4;
+const MAX_DEPTH: usize = 8;
 
 // Trait alias for Hasher + Default
 pub trait CrossCheckHasher: Hasher + Default {
