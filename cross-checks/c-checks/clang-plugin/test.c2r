@@ -10,6 +10,13 @@ test.c:
       #entry: { djb2: "" }
 
     - item: function
+      name: nn_n
+      disable_xchecks: false
+      entry: { fixed: 0xabcdef78 }
+      exit:  { fixed: 0xabcdef78 }
+      all_args: default
+
+    - item: function
       name: fibo
       disable_xchecks: false
       entry: { fixed: 0x12345678 }

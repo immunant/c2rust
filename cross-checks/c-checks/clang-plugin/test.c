@@ -29,13 +29,17 @@ uint64_t double_hash(uint64_t a, uint64_t b) {
     return a * 65536 + b;
 }
 
+inline int nn_n(uint64_t *nn) {
+    return nn[0];
+}
+
 uint64_t fibo(uint64_t n[3], const uint64_t *p, const uint64_t *q, struct Foo foo,
               int (*stop)(uint64_t)) {
 #if 0
     printf("fibo call %llu:%llu %p %p\n", ctr, n, p, q);
 #endif
     ctr++;
-    int nn = n[0];
+    int nn = nn_n(n);
     if (stop(nn)) {
         return 1;
     } else {
