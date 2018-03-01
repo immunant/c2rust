@@ -1623,10 +1623,12 @@ impl Translation {
             _ => panic!("{:?} does not point to an `enum` type"),
         };
 
-        let variants = match &self.ast_context[def_id].kind {
-            &CDeclKind::Enum { ref variants, .. } => variants,
+        let (variants, underlying_type_id) = match &self.ast_context[def_id].kind {
+            &CDeclKind::Enum { ref variants, integral_type, .. } => (variants, integral_type),
             _ => panic!("{:?} does not point to an `enum` declaration")
         };
+
+        let underlying_type = self.convert_type(underlying_type_id.ctype).unwrap();
 
         for &variant_id in variants {
             match &self.ast_context[variant_id].kind {
@@ -1640,9 +1642,8 @@ impl Translation {
         }
 
         let target_ty = self.convert_type(enum_type_id).unwrap();
-        let source_ty = mk().path_ty(vec!["i32"]);
 
-        transmute_expr(source_ty, target_ty, signed_int_expr(value))
+        transmute_expr(underlying_type, target_ty, signed_int_expr(value))
     }
 
     /// This handles translating casts when the target type in an `enum` type.
@@ -1798,8 +1799,6 @@ impl Translation {
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
             let sz = mk().lit_expr(mk().int_lit(sz as u128, LitIntType::Unsuffixed));
             Ok(mk().repeat_expr(self.implicit_default_expr(elt)?, sz))
-        } else if let &CTypeKind::Enum(_) = resolved_ty {
-            Ok(self.enum_for_i64(ty_id, 0))
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id)
         } else {
@@ -1856,12 +1855,7 @@ impl Translation {
             },
 
             // Transmute the number `0` into the enum type
-            &CDeclKind::Enum { .. } => {
-                let enum_ty = self.convert_type(type_id)?;
-                let number_ty = mk().path_ty(mk().path(vec!["libc", "c_int"]));
-
-                Ok(transmute_expr(number_ty, enum_ty, mk().lit_expr(mk().int_lit(0, ""))))
-            }
+            &CDeclKind::Enum { .. } => Ok(self.enum_for_i64(type_id, 0)),
 
             _ => Err(format!("Declaration is not associated with a type"))
         };

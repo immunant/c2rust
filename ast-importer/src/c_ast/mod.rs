@@ -205,6 +205,7 @@ pub enum CDeclKind {
     Enum {
         name: Option<String>,
         variants: Vec<CEnumConstantId>,
+        integral_type: CQualTypeId,
     },
 
     EnumConstant {

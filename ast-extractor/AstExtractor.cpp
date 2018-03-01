@@ -959,7 +959,10 @@ class TranslateASTVisitor final
               childIds.push_back(x->getCanonicalDecl());
           }
           
-          encode_entry(D, TagEnumDecl, childIds, QualType(),
+          auto underlying_type = D->getIntegerType();
+          typeEncoder.VisitQualType(underlying_type);
+          
+          encode_entry(D, TagEnumDecl, childIds, underlying_type,
           [D](CborEncoder *local){
               auto name = D->getNameAsString();
               if (name.empty()) {
@@ -968,6 +971,7 @@ class TranslateASTVisitor final
                   cbor_encode_string(local, name);
               }
           });
+          
           return true;
       }
       
