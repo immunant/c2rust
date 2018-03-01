@@ -29,7 +29,8 @@ pub struct Translation {
     zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
     dump_function_cfgs: bool,
     dump_structures: bool,
-    debug_relooper_labels: bool
+    debug_relooper_labels: bool,
+    cross_checks: bool,
 }
 
 #[derive(Debug)]
@@ -215,6 +216,7 @@ pub fn translate(
         dump_function_cfgs,
         dump_structures,
         debug_relooper_labels,
+        cross_checks,
     );
 
     enum Name<'a> {
@@ -374,6 +376,7 @@ impl Translation {
         dump_function_cfgs: bool,
         dump_structures: bool,
         debug_relooper_labels: bool,
+        cross_checks: bool,
     ) -> Translation {
         Translation {
             items: vec![],
@@ -397,6 +400,7 @@ impl Translation {
             dump_function_cfgs,
             dump_structures,
             debug_relooper_labels,
+            cross_checks,
         }
     }
 
@@ -404,6 +408,12 @@ impl Translation {
     // if it does.
     pub fn panic() -> P<Expr> {
         mk().mac_expr(mk().mac(vec!["panic"], vec![]))
+    }
+
+    fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
+        if self.cross_checks {
+            mk.call_attr("cross_check", args)
+        } else { mk }
     }
 
     fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> Result<P<Item>, String> {
@@ -426,10 +436,9 @@ impl Translation {
                     }
                 }
 
-                Ok(mk().pub_()
+                Ok(self.mk_cross_check(mk().pub_(), vec!["none"])
                     .call_attr("derive", vec!["Copy", "Clone"])
                     .call_attr("repr", vec!["C"])
-                    .call_attr("cross_check", vec!["none"])
                     .struct_item(name, field_entries))
             }
 
@@ -451,16 +460,14 @@ impl Translation {
 
                 if field_syns.is_empty() {
                     // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
-                    Ok(mk().pub_()
+                    Ok(self.mk_cross_check(mk().pub_(), vec!["none"])
                         .call_attr("derive", vec!["Copy", "Clone"])
                         .call_attr("repr", vec!["C"])
-                        .call_attr("cross_check", vec!["none"])
                         .struct_item(name, vec![]))
                 } else {
-                    Ok(mk().pub_()
+                    Ok(self.mk_cross_check(mk().pub_(), vec!["none"])
                         .call_attr("derive", vec!["Copy", "Clone"])
                         .call_attr("repr", vec!["C"])
-                        .call_attr("cross_check", vec!["none"])
                         .union_item(name, field_syns))
                 }
             }
@@ -501,10 +508,9 @@ impl Translation {
                     }
                 }
 
-                Ok(mk().pub_()
+                Ok(self.mk_cross_check(mk().pub_(), vec!["none"])
                     .call_attr("derive", vec!["Copy", "Clone"])
                     .call_attr("repr", vec!["C"])
-                    .call_attr("cross_check", vec!["none"])
                     .enum_item(enum_name, variant_syns))
             },
 
