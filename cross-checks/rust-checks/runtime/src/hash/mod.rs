@@ -215,6 +215,8 @@ macro_rules! impl_fnopt_hash {
 }
 
 // Default CrossCheckHash implementation for function pointers with up to 12 arguments
+// FIXME: this is incredibly ugly, but there is no cleaner way
+// until Rust gets variadic generics
 impl_fnopt_hash!();
 impl_fnopt_hash!(A);
 impl_fnopt_hash!(A, B);
