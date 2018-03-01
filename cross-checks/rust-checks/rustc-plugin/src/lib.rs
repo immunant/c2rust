@@ -612,7 +612,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         let top_scope = ScopeConfig::new(&self.external_config,
                                                          top_file_name,
                                                          top_config);
-                        CrossChecker::new(self, cx, top_scope, false)
+                        CrossChecker::new(self, cx, top_scope, true)
                             .fold_item(i)
                             .expect_one("too many items returned")
                     }
