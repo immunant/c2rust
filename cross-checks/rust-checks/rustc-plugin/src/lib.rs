@@ -292,11 +292,17 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     let ref fcfg = cfg.function_config();
                     let entry_extra_xchecks = self.build_extra_xchecks(&fcfg.entry_extra);
                     let exit_extra_xchecks = self.build_extra_xchecks(&fcfg.exit_extra);
+                    // Extract the result type from the function signature,
+                    // so we can attach it to the __c2rust_fn_body closure
+                    let result_ty = match fn_decl.output {
+                        ast::FunctionRetTy::Default(_) => quote_ty!(self.cx, ()),
+                        ast::FunctionRetTy::Ty(ref ty) => ty.clone(),
+                    };
                     quote_block!(self.cx, {
                         $entry_xcheck
                         $arg_xchecks
                         $entry_extra_xchecks
-                        let __c2rust_fn_body = || $block;
+                        let mut __c2rust_fn_body = || -> $result_ty { $block };
                         let __c2rust_fn_result = __c2rust_fn_body();
                         $exit_xcheck
                         $result_xcheck
@@ -612,7 +618,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         let top_scope = ScopeConfig::new(&self.external_config,
                                                          top_file_name,
                                                          top_config);
-                        CrossChecker::new(self, cx, top_scope, false)
+                        CrossChecker::new(self, cx, top_scope, true)
                             .fold_item(i)
                             .expect_one("too many items returned")
                     }
