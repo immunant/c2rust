@@ -2009,7 +2009,12 @@ impl Translation {
             };
 
         // *p = *p + rhs
-        let assign_stmt = mk().assign_expr(&write, val);
+        let assign_stmt = if ty.qualifiers.is_volatile {
+            self.volatile_write(&write, ty.ctype, val)?
+
+        } else {
+            mk().assign_expr(&write, val)
+        };
 
         lhs_stmts.push(save_old_val);
         lhs_stmts.push(mk().expr_stmt(assign_stmt));
