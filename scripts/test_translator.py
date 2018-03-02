@@ -43,6 +43,7 @@ class TestDirectory:
         self.c_files = []
         self.rs_test_files = {}
         self.full_path = full_path
+        self.files = files
         self.name = full_path.split('/')[-1]
         self.keep = keep
         self.generated_files = {
@@ -294,8 +295,9 @@ class TestDirectory:
 
         # print('\n')
         # print(self.generated_files)
-
-        assert outcomes, "No valid test outcomes were determined"
+        
+        if not outcomes:
+            self.print_status(OKBLUE, "NOT_TESTED", "No file(s) with " + self.files.pattern +" within this folder\n" )
         return outcomes
 
         # List of things to do and the order in which to do them
