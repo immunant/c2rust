@@ -1971,34 +1971,11 @@ impl Translation {
     }
 
     pub fn convert_pre_increment(&self, ty: CQualTypeId, up: bool, arg: CExprId) -> Result<WithStmts<P<Expr>>, String> {
-        let WithStmts { val: (write, read), stmts: mut lhs_stmts } = self.name_reference_write_read(arg)?;
 
-        let one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
-
-        // *p + 1
-
-        if self.ast_context.resolve_type(ty.ctype).kind.is_pointer() {
-            // This calls the offset with a number literal directly, and doesn't need
-            // the cast that the pointer_offset function adds
-            let n = if up { one } else { mk().unary_expr(ast::UnOp::Neg, one) };
-            let val = mk().method_call_expr(read.clone(), "offset", vec![n]);
-
-            // *p = *p + rhs
-            let assign_stmt = mk().assign_expr(&write, val);
-            lhs_stmts.push(mk().expr_stmt(assign_stmt));
-        } else {
-            let bin_op_kind = if up { BinOpKind::Add } else { BinOpKind::Sub };
-            let bin_op = if up { c_ast::BinOp::Add } else { c_ast::BinOp::Subtract };
-            let val = self.covert_assignment_operator_aux
-            (bin_op_kind, bin_op, &read, write.clone(), one, Some(ty),
-             Some(ty), ty, ty)?;
-            lhs_stmts.push(mk().expr_stmt(val));
-        }
-
-        Ok(WithStmts {
-            stmts: lhs_stmts,
-            val: read,
-        })
+        let op = if up { c_ast::BinOp::AssignAdd } else { c_ast::BinOp::AssignSubtract };
+        let one = WithStmts::new(mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed)));
+        let arg_type = self.ast_context[arg].kind.get_qual_type();
+        self.convert_assignment_operator_with_rhs(ExprUse::RValue, op, arg_type, arg, ty, one, Some(arg_type), Some(arg_type))
     }
 
     fn convert_post_increment(&self, use_: ExprUse, ty: CQualTypeId, up: bool, arg: CExprId) -> Result<WithStmts<P<Expr>>, String> {
@@ -2143,7 +2120,6 @@ impl Translation {
         }
     }
 
-    /// Translate an assignment binary operator
     fn convert_assignment_operator(
         &self,
         use_: ExprUse,
@@ -2154,9 +2130,26 @@ impl Translation {
         compute_type: Option<CQualTypeId>,
         result_type: Option<CQualTypeId>
     ) -> Result<WithStmts<P<Expr>>, String> {
-        let ty = self.convert_type(qtype.ctype)?;
 
         let rhs_type_id = self.ast_context.index(rhs).kind.get_qual_type();
+        let rhs_translation = self.convert_expr(ExprUse::RValue, rhs)?;
+        self.convert_assignment_operator_with_rhs(use_, op, qtype, lhs, rhs_type_id, rhs_translation, compute_type, result_type)
+    }
+
+    /// Translate an assignment binary operator
+    fn convert_assignment_operator_with_rhs(
+        &self,
+        use_: ExprUse,
+        op: c_ast::BinOp,
+        qtype: CQualTypeId,
+        lhs: CExprId,
+        rhs_type_id: CQualTypeId,
+        rhs_translation: WithStmts<P<Expr>>,
+        compute_type: Option<CQualTypeId>,
+        result_type: Option<CQualTypeId>
+    ) -> Result<WithStmts<P<Expr>>, String> {
+        let ty = self.convert_type(qtype.ctype)?;
+
         let result_type_id = result_type.unwrap_or(qtype);
         let compute_lhs_type_id = compute_type.unwrap_or(qtype);
         let initial_lhs_type_id = self.ast_context.index(lhs).kind.get_qual_type();
@@ -2173,7 +2166,7 @@ impl Translation {
             (write, Translation::panic(), lhs_stmts)
         };
 
-        let WithStmts { val: rhs, stmts: rhs_stmts } = self.convert_expr(ExprUse::RValue, rhs)?;
+        let WithStmts { val: rhs, stmts: rhs_stmts } = rhs_translation;
 
         // Side effects to accumulate
         let mut stmts = vec![];
