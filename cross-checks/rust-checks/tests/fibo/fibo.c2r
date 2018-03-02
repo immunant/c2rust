@@ -1,5 +1,10 @@
 ---
-src/main.rs: []
+src/main.rs:
+    - item: defaults
+      disable_xchecks: false
+      return: disabled
+      exit: disabled
+
 src/fibo.rs:
     - item: defaults
       disable_xchecks: true
