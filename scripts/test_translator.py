@@ -39,7 +39,7 @@ class TestOutcome(Enum):
 
 
 class TestDirectory:
-    def __init__(self, full_path: str, keep: List[str]) -> None:
+    def __init__(self, full_path: str, files: str, keep: List[str]) -> None:
         self.c_files = []
         self.rs_test_files = {}
         self.full_path = full_path
@@ -63,10 +63,11 @@ class TestDirectory:
 
             if os.path.isfile(path):
                 extensionless_path, ext = os.path.splitext(path)
+                filename = os.path.splitext(os.path.basename(path))[0]
 
                 if ext == ".c":
                     self.c_files.append(path)
-                elif ext == ".rs":
+                elif ext == ".rs" and files.search(filename):
                     with open(path, 'r') as file:
                         self.rs_test_files[path] = re.findall(r"fn (test_\w+)\(\)", file.read())
 
@@ -376,7 +377,7 @@ def readable_directory(directory: str) -> str:
     """
     Check that a directory is exists and is readable
     """
-
+    
     if not os.path.isdir(directory):
         msg = "directory:{0} is not a valid path".format(directory)
         raise argparse.ArgumentTypeError(msg)
@@ -387,12 +388,12 @@ def readable_directory(directory: str) -> str:
         return directory
 
 
-def get_testdirectories(directory: str, keep: List[str]) -> Generator[TestDirectory, None, None]:
+def get_testdirectories(directory: str, files: str, keep: List[str]) -> Generator[TestDirectory, None, None]:
     for entry in os.listdir(directory):
         path = os.path.abspath(os.path.join(directory, entry))
 
         if os.path.isdir(path):
-            yield TestDirectory(path, keep)
+            yield TestDirectory(path, files, keep)
 
 
 def main() -> None:
@@ -400,11 +401,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('directory', type=readable_directory)
     parser.add_argument(
-        '--only-file', dest='regex_file', type=regex,
+        '--only-files', dest='regex_files', type=regex,
         default='.*', help="Regular expression to filter which tests to run"
     )
     parser.add_argument(
-        '--only-directory', dest='regex_directory', type=regex,
+        '--only-directories', dest='regex_directories', type=regex,
         default='.*', help="Regular expression to filter which tests to run"
     )
     parser.add_argument(
@@ -419,7 +420,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    test_directories = get_testdirectories(args.directory, args.keep)
+    test_directories = get_testdirectories(args.directory, args.regex_files, args.keep)
     setup_logging(args.logLevel)
 
     logging.debug("args: %s", " ".join(sys.argv))
@@ -446,7 +447,8 @@ def main() -> None:
     }
 
     for test_directory in test_directories:
-        if args.regex_directory.fullmatch(test_directory.name):
+        print(test_directory.c_files)
+        if args.regex_directories.fullmatch(test_directory.name):
             sys.stdout.write(f"{test_directory.name}:\n")
 
             # TODO: Support regex for filtering by directory or name
