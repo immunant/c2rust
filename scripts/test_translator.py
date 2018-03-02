@@ -72,8 +72,6 @@ class TestDirectory:
                     with open(path, 'r') as file:
                         self.rs_test_files[path] = re.findall(r"fn (test_\w+)\(\)", file.read())
 
-        print(self.rs_test_files) # TODO: Remove me
-
     def print_status(self, color: str, status: str, message: Optional[str]) -> None:
         """
         Print coloured status information. Overwrites current line.
@@ -169,13 +167,20 @@ class TestDirectory:
     def run(self) -> TestOutcome:
         outcomes = []
 
+        any_tests = any(test for tests in self.rs_test_files.keys() for test in tests)
+
+        if not self.files.pattern and not any_tests:
+            description = "No tests were found...\n"
+            self.print_status(OKBLUE, "SKIPPED", description)
+            return []
+
         # .c -> .c.cbor
         for c_file in self.c_files:
             _, c_file_short = os.path.split(c_file)
-            description = f"{c_file_short}: extracting the C file into CBOR"
+            description = f"{c_file_short}: extracting the C file into CBOR..."
 
             # Run the step
-            self.print_status(WARNING, "RUNNING", description + "...")
+            self.print_status(WARNING, "RUNNING", description)
 
             retcode, stdout, stderr = self._export_cbor(c_file)
 
@@ -187,9 +192,9 @@ class TestDirectory:
         # .cbor -> .rs
         for cbor_file in self.generated_files["cbor"]:
             _, cbor_file_short = os.path.split(cbor_file)
-            description = f"{cbor_file_short}: import and translate the CBOR"
+            description = f"{cbor_file_short}: import and translate the CBOR..."
 
-            self.print_status(WARNING, "RUNNING", description + "...")
+            self.print_status(WARNING, "RUNNING", description)
 
             retcode, stdout, stderr = self._translate(cbor_file)
 
@@ -200,17 +205,15 @@ class TestDirectory:
 
         pub_mods = []
 
-        # .rs -> .a
+        # Collect src file dependencies
         for rust_file in self.generated_files["rust_src"]:
             _, rust_file_short = os.path.split(rust_file)
             extensionless_rust_file, _ = os.path.splitext(rust_file_short)
-            description = f"{rust_file_short}: compile the generated Rust"
+            description = f"{rust_file_short}: compile the generated Rust..."
 
             pub_mods.append(RustMod(extensionless_rust_file, RustVisibility.Public))
 
-            self.print_status(WARNING, "RUNNING", description + "...")
-
-            retcode, stdout, stderr = self._compile_rustc(rust_file, "staticlib")
+            self.print_status(WARNING, "RUNNING", description)
 
             # print("Ret:", retcode)
             # print("Stdout:", stdout)
@@ -243,23 +246,22 @@ class TestDirectory:
                 # FIXME:
                 pass_expected = True
 
+                test_str = file_name + ' - ' + test_name
+
                 # print("Ret:", retcode)
                 # print("Stdout:", stdout)
                 # print("Stderr:", stderr)
                 # print("---------------")
                 if retcode != 0 and pass_expected:
-                    self.print_status(FAIL, "FAILED", "test " + file_name + ' - ' + test_name)
+                    self.print_status(FAIL, "FAILED", "test " + test_str)
                     sys.stdout.write('\n')
                     sys.stdout.write(stderr)
 
                     outcomes.append(TestOutcome.UnexpectedFailure)
                     continue
 
-                # This will fail is previous section failed: (duh)
                 main = get_cmd_or_die(main_bin_path)
                 retcode, stdout, stderr = main.run(retcode=None)
-
-                test_str = file_name + ' - ' + test_name
 
                 if retcode == 0:
                     if pass_expected:
@@ -295,9 +297,9 @@ class TestDirectory:
 
         # print('\n')
         # print(self.generated_files)
-        
+
         if not outcomes:
-            self.print_status(OKBLUE, "NOT_TESTED", "No file(s) with " + self.files.pattern +" within this folder\n" )
+            self.print_status(OKBLUE, "N/A", "No file(s) with " + self.files.pattern + " within this folder\n")
         return outcomes
 
         # List of things to do and the order in which to do them
@@ -379,7 +381,7 @@ def readable_directory(directory: str) -> str:
     """
     Check that a directory is exists and is readable
     """
-    
+
     if not os.path.isdir(directory):
         msg = "directory:{0} is not a valid path".format(directory)
         raise argparse.ArgumentTypeError(msg)
@@ -449,7 +451,6 @@ def main() -> None:
     }
 
     for test_directory in test_directories:
-        print(test_directory.c_files)
         if args.regex_directories.fullmatch(test_directory.name):
             sys.stdout.write(f"{test_directory.name}:\n")
 
