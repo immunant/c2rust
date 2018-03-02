@@ -8,9 +8,11 @@ extern "C" {
     fn entry(_: c_uint, _: *mut c_int);
 }
 
+const BUFFER_SIZE: usize = 100;
+
 pub fn test_buffer() {
-    let mut buffer = [0; 100];
-    let mut rust_buffer = [0; 100];
+    let mut buffer = [0; BUFFER_SIZE];
+    let mut rust_buffer = [0; BUFFER_SIZE];
     let expected_buffer = [
         1, 2, 0, 1, 1, 32, -2, 255, 8, 14,
         19660800, 18, 151, 2, 1, 0, 0, 0, 1, 1,
@@ -25,11 +27,11 @@ pub fn test_buffer() {
     ];
 
     unsafe {
-        entry(100, buffer.as_mut_ptr());
-        rust_entry(100, rust_buffer.as_mut_ptr());
+        entry(BUFFER_SIZE as u32, buffer.as_mut_ptr());
+        rust_entry(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr());
     }
 
-    for index in 0..100 {
+    for index in 0..BUFFER_SIZE {
         assert_eq!(buffer[index], rust_buffer[index]);
         assert_eq!(buffer[index], expected_buffer[index]);
     }
