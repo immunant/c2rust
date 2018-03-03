@@ -118,12 +118,12 @@ fn pointer_neg_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
 
 /// Construct a new constant null pointer expression
 fn null_expr() -> P<Expr>  {
-    mk().call_expr(mk().path_expr(vec!["std", "ptr", "null"]), vec![] as Vec<P<Expr>>)
+    mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "null"]), vec![] as Vec<P<Expr>>)
 }
 
 /// Construct a new mutable null pointer expression
 fn null_mut_expr() -> P<Expr> {
-    mk().call_expr(mk().path_expr(vec!["std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>)
+    mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>)
 }
 
 fn neg_expr(arg: P<Expr>) -> P<Expr> {
@@ -155,6 +155,7 @@ fn is_int(ty: &CTypeKind) -> bool {
 fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> {
     let type_args = vec![source_ty, target_ty];
     let path = vec![
+        mk().path_segment(""),
         mk().path_segment("std"),
         mk().path_segment("mem"),
         mk().path_segment_with_params("transmute",
@@ -1075,7 +1076,7 @@ impl Translation {
             },
         };
 
-        Ok(mk().call_expr(mk().path_expr(vec!["std", "ptr", "write_volatile"]), vec![addr_lhs, rhs]))
+        Ok(mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "write_volatile"]), vec![addr_lhs, rhs]))
     }
 
     /// Read from a `lhs` that is volatile
@@ -1092,7 +1093,7 @@ impl Translation {
             }
         };
 
-        Ok(mk().call_expr(mk().path_expr(vec!["std", "ptr", "read_volatile"]), vec![addr_lhs]))
+        Ok(mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "read_volatile"]), vec![addr_lhs]))
     }
 
     /// If the referenced expression is a DeclRef inside an Unary or ImplicitCast node, return
