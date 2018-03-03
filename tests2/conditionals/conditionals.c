@@ -1,11 +1,11 @@
-void entry(const unsigned buffer_size, int buffer[const]) {
+void entry2(const unsigned buffer_size, int buffer[const]) {
 
         if (buffer_size < 30) return;
         int i = 0;
 
         // Test function pointer comparisons
         void(* const f0)(unsigned, int*) = 0;
-        void(* const f1)(unsigned, int*) = entry;
+        void(* const f1)(unsigned, int*) = entry2;
         if (f0) { buffer[i++] = 1; }
         if (f1) { buffer[i++] = 1; }
 
