@@ -18,7 +18,7 @@ const BUFFER_SIZE2: usize = 30;
 pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
-    let expected_buffer = [1, 1, 1, 1]; // FIXME
+    let expected_buffer = [0, 0, 2, 3];
 
     unsafe {
         entry(BUFFER_SIZE as u32, buffer.as_mut_ptr());
@@ -32,13 +32,17 @@ pub fn test_buffer() {
 pub fn test_buffer2() {
     let mut buffer = [0; BUFFER_SIZE2];
     let mut rust_buffer = [0; BUFFER_SIZE2];
-    let expected_buffer = [0; BUFFER_SIZE2]; // FIXME
+    let expected_buffer = [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
 
     unsafe {
         entry2(BUFFER_SIZE2 as u32, buffer.as_mut_ptr());
         rust_entry2(BUFFER_SIZE2 as u32, rust_buffer.as_mut_ptr());
     }
 
-    assert_eq!(buffer, rust_buffer); // FIXME?
-    assert_eq!(buffer, expected_buffer); // FIXME?
+    assert_eq!(buffer, rust_buffer);
+    assert_eq!(buffer, expected_buffer);
 }
