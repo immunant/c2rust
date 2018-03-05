@@ -8,7 +8,7 @@ extern "C" {
     fn sieve_of_eratosthenes(_: *mut c_int);
 }
 
-const BUFFER_SIZE: usize = 102; // [0, 101]
+const BUFFER_SIZE: usize = 102;
 
 pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];

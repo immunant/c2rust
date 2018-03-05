@@ -36,20 +36,20 @@ pub fn test_buffer() {
     }
 }
 
-pub fn test_buffer2() {
-    let mut buffer = [0; BUFFER_SIZE2];
-    let mut rust_buffer = [0; BUFFER_SIZE2];
-    let expected_buffer = [1, 1, 1, 1, 1]; // FIXME
+// pub fn test_buffer2() {
+//     let mut buffer = [0; BUFFER_SIZE2];
+//     let mut rust_buffer = [0; BUFFER_SIZE2];
+//     let expected_buffer = [1, 1, 1, 1, 1]; // FIXME
 
-    unsafe {
-        entry2(BUFFER_SIZE2 as u32, buffer.as_mut_ptr());
-        rust_entry2(BUFFER_SIZE2 as u32, rust_buffer.as_mut_ptr());
-    }
+//     unsafe {
+//         entry2(BUFFER_SIZE2 as u32, buffer.as_mut_ptr());
+//         rust_entry2(BUFFER_SIZE2 as u32, rust_buffer.as_mut_ptr());
+//     }
 
-    for index in 0..BUFFER_SIZE2 {
-        assert_eq!(buffer[index], rust_buffer[index]);
-        assert_eq!(buffer[index], expected_buffer[index]);
-    }
+//     for index in 0..BUFFER_SIZE2 {
+//         assert_eq!(buffer[index], rust_buffer[index]);
+//         assert_eq!(buffer[index], expected_buffer[index]);
+//     }
 
-    panic!("TESTME");
-}
+//     panic!("TESTME");
+// }

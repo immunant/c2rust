@@ -9,7 +9,7 @@ import re
 from common import *
 from enum import Enum
 from rust_file import RustFile, RustFunction, RustMod, RustUse, RustVisibility
-from typing import Generator, List, Optional, Tuple
+from typing import Generator, List, Optional, Set, Tuple
 
 # Executables we are going to test
 ast_extractor = get_cmd_or_die(AST_EXTR)
@@ -38,10 +38,23 @@ class TestOutcome(Enum):
     UnexpectedSuccess = "unexpected successes"
 
 
+class TestFunction:
+    def __init__(self, name: str, flags: Set[str]=set()) -> None:
+        self.name = name
+        self.pass_expected = "xfail" not in flags
+
+
+class TestFile:
+    def __init__(self, path: str, test_functions: List[TestFunction]=None, flags: Set[str]=None) -> None:
+        self.path = path
+        self.test_functions = test_functions or []
+        self.pass_expected = "xfail" not in flags
+
+
 class TestDirectory:
     def __init__(self, full_path: str, files: str, keep: List[str]) -> None:
         self.c_files = []
-        self.rs_test_files = {}
+        self.rs_test_files = []
         self.full_path = full_path
         self.files = files
         self.name = full_path.split('/')[-1]
@@ -67,10 +80,34 @@ class TestDirectory:
                 filename = os.path.splitext(os.path.basename(path))[0]
 
                 if ext == ".c":
+                    file_config = None
+
+                    with open(path, 'r') as file:
+                        file_config = re.match(r"//! (.*)\n", file.read())
+
+                    if file_config and "skip_translation" in file_config.group(0):
+                        continue
+
                     self.c_files.append(path)
                 elif ext == ".rs" and files.search(filename):
                     with open(path, 'r') as file:
-                        self.rs_test_files[path] = re.findall(r"fn (test_\w+)\(\)", file.read())
+                        file_buffer = file.read()
+                        file_config = re.match(r"//! (.*)\n", file_buffer)
+                        file_flags = set()
+
+                        if file_config:
+                            flags_str = file_config.group(0)[3:]
+                            file_flags = {flag.strip() for flag in flags_str.split(',')}
+
+                        found_tests = re.findall(r"(//(.*))?\npub fn (test_\w+)\(\)", file_buffer)
+                        test_fns = []
+
+                        for _, config, test_name in found_tests:
+                            test_flags = {flag.strip() for flag in config.split(',')}
+
+                            test_fns.append(TestFunction(test_name, test_flags))
+
+                        self.rs_test_files.append(TestFile(path, test_fns, file_flags))
 
     def print_status(self, color: str, status: str, message: Optional[str]) -> None:
         """
@@ -167,7 +204,7 @@ class TestDirectory:
     def run(self) -> TestOutcome:
         outcomes = []
 
-        any_tests = any(test for tests in self.rs_test_files.keys() for test in tests)
+        any_tests = any(test_fn for test_file in self.rs_test_files for test_fn in test_file.test_functions)
 
         if not self.files.pattern and not any_tests:
             description = "No tests were found...\n"
@@ -188,6 +225,17 @@ class TestDirectory:
             # print("Stdout:", stdout)
             # print("Stderr:", stderr)
             # print("---------------")
+
+            pass_expected = True # FIXME
+
+            if retcode != 0 and pass_expected:
+                self.print_status(FAIL, "FAILED", "extract " + c_file_short)
+                sys.stdout.write('\n')
+                sys.stdout.write(stderr)
+
+                outcomes.append(TestOutcome.UnexpectedFailure)
+                continue
+
 
         # .cbor -> .rs
         for cbor_file in self.generated_files["cbor"]:
@@ -220,20 +268,21 @@ class TestDirectory:
             # print("Stderr:", stderr)
             # print("---------------")
 
-        for file_path, test_names in self.rs_test_files.items():
-            path, file_name = os.path.split(file_path)
+        for test_file in self.rs_test_files:
+            path, file_name = os.path.split(test_file.path)
             extensionless_file_name, _ = os.path.splitext(file_name)
 
-            for test_name in test_names:
+            for test_function in test_file.test_functions:
+                # Here we create a thin main wrapper to call the test function
                 features = ["libc", "i128_type"]
                 mods = pub_mods + [RustMod(extensionless_file_name, RustVisibility.Public)]
-                uses = [RustUse([extensionless_file_name, test_name])]
-                functions = [RustFunction("main", RustVisibility.Public, [f"{test_name}();\n"])]
+                uses = [RustUse([extensionless_file_name, test_function.name])]
+                functions = [RustFunction("main", RustVisibility.Public, [f"{test_function.name}();\n"])]
 
                 main = RustFile(features, mods, uses, functions)
 
-                main_src_path = os.path.join(self.full_path, test_name + "_main.rs")
-                main_bin_path = os.path.join(self.full_path, test_name + "_main")
+                main_src_path = os.path.join(self.full_path, test_function.name + "_main.rs")
+                main_bin_path = os.path.join(self.full_path, test_function.name + "_main")
 
                 self.generated_files["rust_src"].append(main_src_path)
                 self.generated_files["rust_test_exec"].append(main_bin_path)
@@ -243,28 +292,38 @@ class TestDirectory:
 
                 retcode, stdout, stderr = self._compile_rustc(main_src_path, "bin")
 
-                # FIXME:
-                pass_expected = True
+                test_str = file_name + ' - ' + test_function.name
 
-                test_str = file_name + ' - ' + test_name
-
-                # print("Ret:", retcode)
+                # print("\nRet:", retcode)
                 # print("Stdout:", stdout)
                 # print("Stderr:", stderr)
                 # print("---------------")
-                if retcode != 0 and pass_expected:
+                if retcode != 0:
+                    if test_file.pass_expected:
+                        self.print_status(FAIL, "FAILED", "test " + test_str)
+                        sys.stdout.write('\n')
+                        sys.stdout.write(stderr)
+
+                        outcomes.append(TestOutcome.UnexpectedFailure)
+                        continue
+                    else:
+                        self.print_status(OKBLUE, "FAILED", "test " + test_str)
+                        sys.stdout.write('\n')
+
+                        outcomes.append(TestOutcome.Failure)
+                        continue
+                elif not test_file.pass_expected:
                     self.print_status(FAIL, "FAILED", "test " + test_str)
                     sys.stdout.write('\n')
-                    sys.stdout.write(stderr)
 
-                    outcomes.append(TestOutcome.UnexpectedFailure)
+                    outcomes.append(TestOutcome.UnexpectedSuccess)
                     continue
 
                 main = get_cmd_or_die(main_bin_path)
                 retcode, stdout, stderr = main.run(retcode=None)
 
                 if retcode == 0:
-                    if pass_expected:
+                    if test_function.pass_expected:
                         self.print_status(OKGREEN, "OK", "    test " + test_str)
                         sys.stdout.write('\n')
 
@@ -276,7 +335,7 @@ class TestDirectory:
                         outcomes.append(TestOutcome.UnexpectedSuccess)
 
                 elif retcode != 0:
-                    if pass_expected:
+                    if test_function.pass_expected:
                         self.print_status(FAIL, "FAILED", "test " + test_str)
                         sys.stdout.write('\n')
                         sys.stdout.write(stderr)
