@@ -29,21 +29,3 @@ void quickSort(int arr[], int low, int high)
         quickSort(arr, i + 1, high);
     }
 }
-
-void entry(unsigned buffer_size, int buffer[])
-{
-    if (buffer_size >= 10) {
-        buffer[0] = 6;
-        buffer[1] = 1;
-        buffer[2] = 5;
-        buffer[3] = 6;
-        buffer[4] = 2;
-        buffer[5] = 0;
-        buffer[6] = 9;
-        buffer[7] = 2;
-        buffer[9] = 5;
-        
-        quickSort(buffer, 0, 10);
-    }
-}
-
