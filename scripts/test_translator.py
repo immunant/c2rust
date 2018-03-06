@@ -257,7 +257,7 @@ class TestDirectory:
         for rust_file in self.generated_files["rust_src"]:
             _, rust_file_short = os.path.split(rust_file)
             extensionless_rust_file, _ = os.path.splitext(rust_file_short)
-            description = f"{rust_file_short}: compile the generated Rust..."
+            description = f"{rust_file_short}: collecting generated Rust source..."
 
             pub_mods.append(RustMod(extensionless_rust_file, RustVisibility.Public))
 
@@ -269,10 +269,14 @@ class TestDirectory:
             # print("---------------")
 
         for test_file in self.rs_test_files:
-            path, file_name = os.path.split(test_file.path)
+            _, file_name = os.path.split(test_file.path)
             extensionless_file_name, _ = os.path.splitext(file_name)
 
             for test_function in test_file.test_functions:
+                description = f"{file_name}: building test {test_function.name}..."
+
+                self.print_status(WARNING, "RUNNING", description)
+
                 # Here we create a thin main wrapper to call the test function
                 features = ["libc", "i128_type"]
                 mods = pub_mods + [RustMod(extensionless_file_name, RustVisibility.Public)]
@@ -319,6 +323,10 @@ class TestDirectory:
                     outcomes.append(TestOutcome.UnexpectedSuccess)
                     continue
 
+                description = f"{file_name}: running test {test_function.name}..."
+
+                self.print_status(WARNING, "RUNNING", description)
+
                 main = get_cmd_or_die(main_bin_path)
                 retcode, stdout, stderr = main.run(retcode=None)
 
@@ -358,7 +366,7 @@ class TestDirectory:
         # print(self.generated_files)
 
         if not outcomes:
-            self.print_status(OKBLUE, "N/A", "No file(s) with " + self.files.pattern + " within this folder\n")
+            self.print_status(OKBLUE, "N/A", "No file(s) matching " + self.files.pattern + " within this folder\n")
         return outcomes
 
         # List of things to do and the order in which to do them
