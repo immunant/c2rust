@@ -5,7 +5,7 @@ enum e {
         D,
 };
 
-void entry (const unsigned int sz, int buffer[const])
+void entry3(const unsigned int sz, int buffer[const])
 {
         buffer[0] = A;
         buffer[1] = B;
