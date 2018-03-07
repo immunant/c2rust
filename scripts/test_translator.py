@@ -36,13 +36,76 @@ class TestOutcome(Enum):
     UnexpectedSuccess = "unexpected successes"
 
 
+class NonZeroReturn(Exception): # IOException?
+    pass
+
+
+class TranslatedRustFile:
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+
+class CborFile:
+    def __init__(self, path: str, enable_relooper: bool=False) -> None:
+        self.path = path
+        self.enable_relooper = enable_relooper
+
+    def translate(self) -> TranslatedRustFile:
+        c_file_path, _ = os.path.splitext(self.path)
+        extensionless_file, _ = os.path.splitext(c_file_path)
+        rust_src = extensionless_file + ".rs"
+
+        # help plumbum find rust
+        ld_lib_path = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
+        if 'LD_LIBRARY_PATH' in pb.local.env:
+            ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
+
+        # run the importer
+        args = [self.path]
+
+        if self.enable_relooper:
+            args.append("--reloop-cfgs")
+
+        with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
+            # log the command in a format that's easy to re-run
+            translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
+            translation_cmd += str(ast_importer[args] > rust_src)
+            logging.debug("translation command:\n %s", translation_cmd)
+            retcode, stdout, stderr = (ast_importer[args] > rust_src).run(retcode=None)
+
+        logging.debug("stdout:\n%s", stdout)
+
+        if retcode != 0:
+            raise NonZeroReturn(stderr)
+
+        return TranslatedRustFile(extensionless_file + ".rs")
+
 class CFile:
     def __init__(self, path: str, flags: Set[str]=None) -> None:
         if not flags:
             flags = set()
 
         self.path = path
-        self.relooper_enabled = "enable_relooper" in flags
+        self.enable_relooper = "enable_relooper" in flags
+
+    def extract(self) -> CborFile:
+        # run the extractor
+        args = [self.path]
+
+        # make sure we can locate system libraries
+        sys_incl_dirs = get_system_include_dirs()
+        args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
+
+        # log the command in a format that's easy to re-run
+        logging.debug("extraction command:\n %s", str(ast_extractor[args]))
+        retcode, stdout, stderr = ast_extractor[args].run(retcode=None)
+
+        logging.debug("stdout:\n%s", stdout)
+
+        if retcode != 0:
+            raise NonZeroReturn(stderr)
+
+        return CborFile(self.path + ".cbor", self.enable_relooper)
 
 
 class TestFunction:
@@ -164,42 +227,6 @@ class TestDirectory:
         with open(cc_db, 'w') as fh:
             fh.write(compile_commands)
 
-    def _export_cbor(self, c_file: CFile) -> Tuple[int, str, str]:
-        self._generate_cc_db(c_file.path)
-        self.generated_files["cbor"].append(c_file.path + ".cbor")
-
-        # run the extractor
-        args = [c_file.path]
-        # NOTE: it doesn't seem necessary to specify system include
-        # directories and in fact it may cause problems on macOS.
-        ## make sure we can locate system include files
-        ## sys_incl_dirs = get_system_include_dirs()
-        ## args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
-        # log the command in a format that's easy to re-run
-        logging.debug("extraction command:\n %s", str(ast_extractor[args]))
-        return ast_extractor[args].run(retcode=None)
-
-    def _translate(self, cbor_file_path: str) -> Tuple[int, str, str]:
-        c_file_path, _ = os.path.splitext(cbor_file_path)
-        extensionless_file, _ = os.path.splitext(c_file_path)
-        rust_src = extensionless_file + ".rs"
-
-        self.generated_files["rust_src"].append(rust_src)
-
-        # help plumbum find rust
-        ld_lib_path = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
-        if 'LD_LIBRARY_PATH' in pb.local.env:
-            ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
-
-        # run the importer
-        args = [cbor_file_path]
-        with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
-            # log the command in a format that's easy to re-run
-            translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
-            translation_cmd += str(ast_importer[args] > rust_src)
-            logging.debug("translation command:\n %s", translation_cmd)
-            return (ast_importer[args] > rust_src).run(retcode=None)
-
     def _compile_rustc(self, rust_src_path: str) -> Tuple[int, str, str]:
         extensionless_file, _ = os.path.splitext(rust_src_path)
 
@@ -231,51 +258,47 @@ class TestDirectory:
             # Run the step
             self.print_status(WARNING, "RUNNING", description)
 
-            retcode, stdout, stderr = self._export_cbor(c_file)
+            self._generate_cc_db(c_file.path)
 
-            # print("Ret:", retcode)
-            # print("Stdout:", stdout)
-            # print("Stderr:", stderr)
-            # print("---------------")
-
-            if retcode != 0:
+            try:
+                cbor_file = c_file.extract()
+            except NonZeroReturn as exception:
                 self.print_status(FAIL, "FAILED", "extract " + c_file_short)
                 sys.stdout.write('\n')
-                sys.stdout.write(stderr)
+                sys.stdout.write(exception)
 
                 outcomes.append(TestOutcome.UnexpectedFailure)
                 continue
 
+            self.generated_files["cbor"].append(cbor_file)
+
         # .cbor -> .rs
         for cbor_file in self.generated_files["cbor"]:
-            _, cbor_file_short = os.path.split(cbor_file)
+            _, cbor_file_short = os.path.split(cbor_file.path)
             description = f"{cbor_file_short}: translate the CBOR..."
 
             self.print_status(WARNING, "RUNNING", description)
 
-            retcode, stdout, stderr = self._translate(cbor_file)
+            try:
+                translated_rust_file = cbor_file.translate()
+            except NonZeroReturn as exception:
+                self.print_status(FAIL, "FAILED", "translate " + c_file_short)
+                sys.stdout.write('\n')
+                sys.stdout.write(exception)
 
-            # print("Ret:", retcode)
-            # print("Stdout:", stdout)
-            # print("Stderr:", stderr)
-            # print("---------------")
+                outcomes.append(TestOutcome.UnexpectedFailure)
+                continue
+
+            self.generated_files["rust_src"].append(translated_rust_file)
 
         pub_mods = []
 
         # Collect src file dependencies
         for rust_file in self.generated_files["rust_src"]:
-            _, rust_file_short = os.path.split(rust_file)
+            _, rust_file_short = os.path.split(rust_file.path)
             extensionless_rust_file, _ = os.path.splitext(rust_file_short)
-            description = f"{rust_file_short}: collecting generated Rust source..."
 
             pub_mods.append(RustMod(extensionless_rust_file, RustVisibility.Public))
-
-            self.print_status(WARNING, "RUNNING", description)
-
-            # print("Ret:", retcode)
-            # print("Stdout:", stdout)
-            # print("Stderr:", stderr)
-            # print("---------------")
 
         for test_file in self.rs_test_files:
             _, file_name = os.path.split(test_file.path)
@@ -389,7 +412,7 @@ class TestDirectory:
             # Try remove files and don't barf if they don't exist
             for file_path in file_paths:
                 try:
-                    os.remove(file_path)
+                    os.remove(getattr(file_path, "path", file_path)) # FIXME: Hacky
                 except OSError:
                     pass
 
