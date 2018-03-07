@@ -2113,7 +2113,7 @@ impl Translation {
         let compute_lhs_ty = compute_lhs_ty.unwrap();
         let compute_res_ty = compute_res_ty.unwrap();
 
-        if compute_lhs_ty.ctype == lhs_ty.ctype {
+        if self.ast_context.resolve_type_id(compute_lhs_ty.ctype) == self.ast_context.resolve_type_id(lhs_ty.ctype) {
             Ok(mk().assign_op_expr(bin_op_kind, write, rhs))
         } else {
             let lhs_type = self.convert_type(compute_lhs_ty.ctype)?;
