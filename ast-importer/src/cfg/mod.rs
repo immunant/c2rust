@@ -488,7 +488,7 @@ impl CfgBuilder {
             CStmtKind::Return(expr) => {
 
                 let val =
-                    match expr.map(|i| translator.convert_expr(ExprUse::RValue, i, None)) {
+                    match expr.map(|i| translator.convert_expr(ExprUse::RValue, i, false)) {
                         Some(r) => Some(r?),
                         None => None,
                     };
@@ -706,7 +706,7 @@ impl CfgBuilder {
                 match increment {
                     Some(incr) => {
                         let incr_stmts = translator
-                                .convert_expr(ExprUse::Unused, incr, None)?
+                                .convert_expr(ExprUse::Unused, incr, false)?
                                 .stmts;
                         self.add_block(incr_entry, BasicBlock {
                             body: incr_stmts,
@@ -759,7 +759,7 @@ impl CfgBuilder {
             }),
 
             CStmtKind::Expr(expr) => {
-                stmts.extend(translator.convert_expr(ExprUse::Unused, expr, None)?.stmts);
+                stmts.extend(translator.convert_expr(ExprUse::Unused, expr, false)?.stmts);
 
                 Ok(Some((lbl, stmts)))
             }
@@ -838,7 +838,7 @@ impl CfgBuilder {
 
                 // Convert the condition
                 let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_expr(ExprUse::RValue, scrutinee, None)?;
+                    translator.convert_expr(ExprUse::RValue, scrutinee, false)?;
                 stmts.extend(cond_stmts);
 
                 // Body
