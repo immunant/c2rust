@@ -414,7 +414,7 @@ impl Translation {
     // This node should _never_ show up in the final generated code. This is an easy way to notice
     // if it does.
     pub fn panic() -> P<Expr> {
-        mk().mac_expr(mk().mac(vec!["panic"], vec![]))
+        mk().mac_expr(mk().mac(vec!["compile_error"], vec![]))
     }
 
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
@@ -680,16 +680,16 @@ impl Translation {
         // Function body scope
         self.with_scope(|| {
             let stmts = if self.reloop_cfgs {
-                let graph = cfg::Cfg::from_stmt(self, body_id, ret)?;
+                let (graph, mut store) = cfg::Cfg::from_stmt(self, body_id, ret)?;
 
                 if self.dump_function_cfgs {
                     graph
-                        .dump_dot_graph(&self.ast_context, format!("{}_{}.dot", "cfg", name))
+                        .dump_dot_graph(&self.ast_context, &store, format!("{}_{}.dot", "cfg", name))
                         .expect("Failed to write CFG .dot file");
                 }
 
                 let simplify_structures = true;
-                let relooped = cfg::relooper::reloop(graph, simplify_structures);
+                let (lifted_stmts, relooped) = cfg::relooper::reloop(graph, store, simplify_structures);
 
                 if self.dump_structures {
                     eprintln!("Relooped structures:");
@@ -700,7 +700,7 @@ impl Translation {
 
                 let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");
                 let current_block = mk().ident_expr(&current_block_ident);
-                let mut stmts: Vec<Stmt> = vec![];
+                let mut stmts: Vec<Stmt> = lifted_stmts;
                 if cfg::structures::has_multiple(&relooped) {
 
                     let current_block_ty = if self.debug_relooper_labels {
@@ -937,6 +937,19 @@ impl Translation {
     }
 
     pub fn convert_decl_stmt(&self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
+
+        match self.convert_decl_stmt_info(decl_id)? {
+            cfg::DeclStmtInfo { pre_init: Some(i), decl_and_assign: Some(d), .. } => {
+                let mut ret: Vec<Stmt> = vec![];
+                ret.extend(i);
+                ret.extend(d);
+                Ok(ret)
+            }
+            _ => Err(format!("convert_decl_stmt: couldn't get declaration and initialization info"))
+        }
+    }
+
+    pub fn convert_decl_stmt_info(&self, decl_id: CDeclId) -> Result<cfg::DeclStmtInfo, String> {
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ } if !is_static && !is_extern => {
                 assert!(is_defn, "Only local variable definitions should be extracted");
@@ -947,12 +960,21 @@ impl Translation {
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ, is_static)?;
                 let init = init?;
 
-                let pat = mk().set_mutbl(mutbl).ident_pat(rust_name);
-                let local = mk().local(pat, Some(ty), Some(init.val));
+                let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
+                let zeroed = self.implicit_default_expr(typ.ctype)?;
+                let local_mut = mk().local(pat_mut, Some(ty.clone()), Some(zeroed));
 
-                let mut stmts = init.stmts;
-                stmts.push(mk().local_stmt(P(local)));
-                Ok(stmts)
+                let pat = mk().set_mutbl(mutbl).ident_pat(rust_name.clone());
+
+                let local = mk().local(pat, Some(ty), Some(init.val.clone()));
+                let assign = mk().assign_expr(mk().ident_expr(rust_name), init.val);
+
+                Ok(cfg::DeclStmtInfo::new(
+                    vec![mk().local_stmt(P(local_mut))],
+                    vec![mk().semi_stmt(assign)],
+                    vec![mk().local_stmt(P(local))],
+                    init.stmts,
+                ))
             }
 
             ref decl => {
@@ -977,10 +999,20 @@ impl Translation {
                 };
 
                 if skip {
-                    Ok(vec![])
+                    Ok(cfg::DeclStmtInfo::new(
+                        vec![],
+                        vec![],
+                        vec![],
+                        vec![],
+                    ))
                 } else {
                     let item = self.convert_decl(false, decl_id)?;
-                    Ok(vec![mk().item_stmt(item)])
+                    Ok(cfg::DeclStmtInfo::new(
+                        vec![mk().item_stmt(item.clone())],
+                        vec![],
+                        vec![mk().item_stmt(item)],
+                        vec![],
+                    ))
                 }
             },
         }
