@@ -31,20 +31,11 @@ const BUFFER_SIZE3: usize = 4;
 const BUFFER_SIZE4: usize = 1;
 const BUFFER_SIZE5: usize = 6;
 
+
 pub fn test_variants() {
     assert_eq!(E::A as u32, 0);
     assert_eq!(E::B as u32, 1);
 
-    assert_eq!(Color::Red as u32, 1);
-    assert_eq!(Color::Green as u32, 2);
-    assert_eq!(Color::Blue as u32, 3);
-
-    assert_eq!(e::A as i32, 0);
-    assert_eq!(e::C as i32, -10);
-    assert_eq!(e::D as i32, -9);
-
-    assert_eq!(otherE::A as u32, 0);
-    assert_eq!(otherE::B as u32, 1);
 }
 
 pub fn test_buffer() {
