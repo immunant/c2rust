@@ -1,0 +1,372 @@
+diff --git a/.gitignore b/.gitignore
+index 4945b7a..0716c85 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -8,3 +8,4 @@ src/html_entities.h
+ *.o
+ /fuzzing/bin
+ /fuzzing/testing
++*.c.cbor
+diff --git a/config.c2r b/config.c2r
+new file mode 100644
+index 0000000..da3a123
+--- /dev/null
++++ b/config.c2r
+@@ -0,0 +1,114 @@
++---
++translator-build/autolink.rs:
++    - item: defaults
++      all_args: default
++
++    - item: struct
++      name: buf
++      disable_xchecks: false
++      fields:
++        data: disabled # FIXME: hash up to buf.size bytes
++
++    - item: function
++      name: sd_autolink__www
++      args:
++        rewind_p: disabled
++        no_slash: disabled
++
++    - item: function
++      name: sd_autolink__email
++      args:
++        rewind_p: disabled
++        no_slash: disabled
++
++    - item: function
++      name: sd_autolink__url
++      args:
++        rewind_p: disabled
++        no_slash: disabled
++
++    - item: function
++      name: sd_autolink__subreddit
++      args:
++        rewind_p: disabled
++        no_slash: disabled
++
++    - item: function
++      name: sd_autolink__username
++      args:
++        rewind_p: disabled
++        no_slash: disabled
++
++translator-build/buffer.rs:
++    - item: defaults
++      all_args: default
++
++    - item: struct
++      name: buf
++      disable_xchecks: false
++      fields:
++        data: disabled # FIXME: hash up to buf.size bytes
++
++translator-build/markdown.rs:
++    - item: defaults
++      all_args: default
++
++    - item: struct
++      name: sd_markdown
++      disable_xchecks: false
++      fields:
++        # FIXME: hash these fields
++        cb: disabled
++        refs: disabled
++        active_char: disabled
++        work_bufs: disabled
++
++    - item: struct
++      name: buf
++      disable_xchecks: false
++      fields:
++        data: disabled # FIXME: hash up to buf.size bytes
++
++    - item: struct
++      name: link_ref
++      disable_xchecks: false
++
++    - item: struct
++      name: sd_callbacks
++      disable_xchecks: false
++
++    - item: struct
++      name: mkd_autolink
++      disable_xchecks: false
++
++    - item: function
++      name: tag_length
++      args:
++        autolink: disabled
++
++    - item: function
++      name: is_ref
++      args:
++        last: disabled # TODO: cross-check this on exit
++
++    - item: function
++      name: parse_table_header
++      args:
++        columns: disabled
++        column_data: disabled
++
++translator-build/stack.rs:
++    - item: defaults
++      all_args: default
++
++    - item: struct
++      name: stack
++      disable_xchecks: false
++
++    - item: function
++      name: stack_init
++      args:
++        # Segfault on xcheck(st), for some reason
++        st: disabled
++
++...
+diff --git a/process.sh b/process.sh
+new file mode 100644
+index 0000000..d91974c
+--- /dev/null
++++ b/process.sh
+@@ -0,0 +1,59 @@
++C2RUST_PATH=../galois/C2Rust
++AST_EXTRACTOR=$C2RUST_PATH/dependencies/llvm-5.0.0/build.soufflegirl/bin/ast-extractor
++AST_IMPORTER=$C2RUST_PATH/ast-importer/target/debug/ast_importer
++LIB_PATH=$HOME/.rustup/toolchains/nightly-2017-11-20-x86_64-unknown-linux-gnu/lib
++RUSTFMT=rustfmt
++
++XCHECK_TOPDIR=$C2RUST_PATH/cross-checks/rust-checks
++XCHECK_PLUGIN=$XCHECK_TOPDIR/rustc-plugin/target/debug/libcross_check_plugin.so
++XCHECK_DERIVE=$XCHECK_TOPDIR/derive-macros/target/debug/libcross_check_derive.so
++XCHECK_RUNTIME=$XCHECK_TOPDIR/runtime/target/debug/libcross_check_runtime.rlib
++
++OUTPUT_DIR=translator-build
++
++set -e
++#set -x
++
++translate() {
++  $AST_EXTRACTOR src/$1.c
++  env RUST_BACKTRACE=1 LD_LIBRARY_PATH=$LIB_PATH \
++      $AST_IMPORTER --reloop-cfgs --cross-checks src/$1.c.cbor > $OUTPUT_DIR/$1.rs
++  $RUSTFMT $OUTPUT_DIR/$1.rs
++  rustc -g --crate-type=rlib --crate-name=$1 \
++      --extern cross_check_plugin=$XCHECK_PLUGIN \
++      --extern cross_check_derive=$XCHECK_DERIVE \
++      --extern cross_check_runtime=$XCHECK_RUNTIME \
++      $OUTPUT_DIR/$1.rs -o $OUTPUT_DIR/lib$1.rlib \
++      #--Z unstable-options --pretty=expanded \
++
++}
++
++compile_commands_entry() {
++
++        cat >> compile_commands.json <<END
++{
++  "directory": "${PWD}",
++  "command": "cc -o ${OUTPUT_DIR}/${1}.c.o -c ${PWD}/src/${1}.c -Wwrite-strings -D_FORTIFY_SOURCE=0 -DNDEBUG=1",
++  "file": "${PWD}/src/${1}.c"
++},
++END
++
++}
++
++echo "[" > compile_commands.json
++compile_commands_entry "autolink"
++compile_commands_entry "buffer"
++compile_commands_entry "stack"
++compile_commands_entry "markdown"
++echo "]" >> compile_commands.json
++
++mkdir -p $OUTPUT_DIR
++
++translate "autolink"
++translate "buffer"
++translate "stack"
++translate "markdown"
++
++rustc --crate-name=snudownrust --crate-type=staticlib -L $OUTPUT_DIR \
++    --extern cross_check_runtime=$XCHECK_RUNTIME \
++    snudownrust.rs -o $OUTPUT_DIR/libsnudownrust.a
+diff --git a/setup.py b/setup.py
+index a780cb0..8134b39 100644
+--- a/setup.py
++++ b/setup.py
+@@ -35,6 +35,10 @@ class GPerfingBuildExt(build_ext):
+         process_gperf_file("src/html_entities.gperf", "src/html_entities.h")
+         build_ext.run(self)
+ 
++# Change these to the correct paths
++fakechecks_path = "../galois/C2Rust/cross-checks/libfakechecks"
++clevrbuf_path   = "../galois/C2Rust/cross-checks/ReMon/libclevrbuf"
++
+ setup(
+     name='snudown',
+     version=version,
+@@ -46,8 +50,13 @@ setup(
+     ext_modules=[
+         Extension(
+             name='snudown',
+-            sources=['snudown.c'] + c_files_in('src/') + c_files_in('html/'),
+-            include_dirs=['src', 'html']
+-        )
++            sources=['snudown.c', 'src/bufprintf.c'] + c_files_in('html/'),
++            include_dirs=['src', 'html'],
++            #libraries=['snudownrust', 'fakechecks'],
++            libraries=['snudownrust', 'clevrbuf'],
++            library_dirs=['translator-build', fakechecks_path, clevrbuf_path],
++            extra_link_args=['-Wl,-rpath,{},-rpath,{}'.format(fakechecks_path, clevrbuf_path)],
++)
+     ],
+ )
++            # sources=['snudown.c'] + c_files_in('src/') + c_files_in('html/'),
+diff --git a/snudownrust.rs b/snudownrust.rs
+new file mode 100644
+index 0000000..93c054c
+--- /dev/null
++++ b/snudownrust.rs
+@@ -0,0 +1,5 @@
++extern crate cross_check_runtime;
++extern crate autolink;
++extern crate buffer;
++extern crate markdown;
++extern crate stack;
+diff --git a/src/buffer.c b/src/buffer.c
+index ab18948..61c408e 100644
+--- a/src/buffer.c
++++ b/src/buffer.c
+@@ -24,13 +24,6 @@
+ #include <string.h>
+ #include <assert.h>
+ 
+-/* MSVC compat */
+-#if defined(_MSC_VER)
+-#	define _buf_vsnprintf _vsnprintf
+-#else
+-#	define _buf_vsnprintf vsnprintf
+-#endif
+-
+ int
+ bufprefix(const struct buf *buf, const char *prefix)
+ {
+@@ -109,45 +102,6 @@ bufcstr(struct buf *buf)
+ 	return NULL;
+ }
+ 
+-/* bufprintf: formatted printing to a buffer */
+-void
+-bufprintf(struct buf *buf, const char *fmt, ...)
+-{
+-	va_list ap;
+-	int n;
+-
+-	assert(buf && buf->unit);
+-
+-	if (buf->size >= buf->asize && bufgrow(buf, buf->size + 1) < 0)
+-		return;
+-	va_start(ap, fmt);
+-	n = _buf_vsnprintf((char *)buf->data + buf->size, buf->asize - buf->size, fmt, ap);
+-	va_end(ap);
+-
+-	if (n < 0) {
+-#ifdef _MSC_VER
+-		va_start(ap, fmt);
+-		n = _vscprintf(fmt, ap);
+-		va_end(ap);
+-#else
+-		return;
+-#endif
+-	}
+-	if ((size_t)n >= buf->asize - buf->size) {
+-		if (bufgrow(buf, buf->size + n + 1) < 0)
+-			return;
+-
+-		va_start(ap, fmt);
+-		n = _buf_vsnprintf((char *)buf->data + buf->size, buf->asize - buf->size, fmt, ap);
+-		va_end(ap);
+-	}
+-
+-	if (n < 0)
+-		return;
+-
+-	buf->size += n;
+-}
+-
+ /* bufput: appends raw data to a buffer */
+ void
+ bufput(struct buf *buf, const void *data, size_t len)
+diff --git a/src/buffer.h b/src/buffer.h
+index ab98ab6..343b0f7 100644
+--- a/src/buffer.h
++++ b/src/buffer.h
+@@ -19,7 +19,6 @@
+ #define BUFFER_H__
+ 
+ #include <stddef.h>
+-#include <stdarg.h>
+ #include <stdint.h>
+ 
+ #ifdef __cplusplus
+diff --git a/src/bufprintf.c b/src/bufprintf.c
+new file mode 100644
+index 0000000..45c07b4
+--- /dev/null
++++ b/src/bufprintf.c
+@@ -0,0 +1,53 @@
++#include <stdarg.h>
++#include <stdlib.h>
++#include <assert.h>
++#include <string.h>
++#include <stdio.h>
++#include "buffer.h"
++
++/* MSVC compat */
++#if defined(_MSC_VER)
++#	define _buf_vsnprintf _vsnprintf
++#else
++#	define _buf_vsnprintf vsnprintf
++#endif
++
++
++/* bufprintf: formatted printing to a buffer */
++void
++bufprintf(struct buf *buf, const char *fmt, ...)
++{
++	va_list ap;
++	int n;
++
++	assert(buf && buf->unit);
++
++	if (buf->size >= buf->asize && bufgrow(buf, buf->size + 1) < 0)
++		return;
++	va_start(ap, fmt);
++	n = _buf_vsnprintf((char *)buf->data + buf->size, buf->asize - buf->size, fmt, ap);
++	va_end(ap);
++
++	if (n < 0) {
++#ifdef _MSC_VER
++		va_start(ap, fmt);
++		n = _vscprintf(fmt, ap);
++		va_end(ap);
++#else
++		return;
++#endif
++	}
++	if ((size_t)n >= buf->asize - buf->size) {
++		if (bufgrow(buf, buf->size + n + 1) < 0)
++			return;
++
++		va_start(ap, fmt);
++		n = _buf_vsnprintf((char *)buf->data + buf->size, buf->asize - buf->size, fmt, ap);
++		va_end(ap);
++	}
++
++	if (n < 0)
++		return;
++
++	buf->size += n;
++}
