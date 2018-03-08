@@ -362,10 +362,6 @@ class TestDirectory:
 
         self.generated_files["rust_test_exec"].append(main_bin_path)
 
-        description = f"{file_name}: running test {test_function.name}..."
-
-        self.print_status(WARNING, "RUNNING", description)
-
         main = get_cmd_or_die(main_bin_path)
 
         for test_file in self.rs_test_files:
