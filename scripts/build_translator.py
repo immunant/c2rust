@@ -195,7 +195,7 @@ def install_tinycbor() -> Optional[str]:
             die("not found: " + cc_cmd_db)
         return cc_cmd_db
 
-    if os.path.isdir(CBOR_PREFIX):
+    if os.path.isdir(CBOR_PREFIX) and os.path.isfile(CBOR_ARCHIVE):
         logging.debug("skipping tinycbor installation")
         return path_to_cc_db()
 
