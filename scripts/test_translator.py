@@ -8,7 +8,15 @@ import re
 
 from common import *
 from enum import Enum
-from rust_file import RustFile, RustFunction, RustMod, RustUse, RustVisibility
+from rust_file import (
+    RustFile,
+    RustFileBuilder,
+    RustFunction,
+    RustMatch,
+    RustMod,
+    RustUse,
+    RustVisibility,
+)
 from typing import Generator, List, Optional, Set, Tuple
 
 # Executables we are going to test
@@ -40,17 +48,12 @@ class NonZeroReturn(Exception): # IOException?
     pass
 
 
-class TranslatedRustFile:
-    def __init__(self, path: str) -> None:
-        self.path = path
-
-
 class CborFile:
     def __init__(self, path: str, enable_relooper: bool=False) -> None:
         self.path = path
         self.enable_relooper = enable_relooper
 
-    def translate(self) -> TranslatedRustFile:
+    def translate(self) -> RustFile:
         c_file_path, _ = os.path.splitext(self.path)
         extensionless_file, _ = os.path.splitext(c_file_path)
         rust_src = extensionless_file + ".rs"
@@ -78,7 +81,7 @@ class CborFile:
         if retcode != 0:
             raise NonZeroReturn(stderr)
 
-        return TranslatedRustFile(extensionless_file + ".rs")
+        return RustFile(extensionless_file + ".rs")
 
 class CFile:
     def __init__(self, path: str, flags: Set[str]=None) -> None:
@@ -272,6 +275,9 @@ class TestDirectory:
 
             self.generated_files["cbor"].append(cbor_file)
 
+        rust_file_builder = RustFileBuilder()
+        rust_file_builder.add_features(["libc", "i128_type"])
+
         # .cbor -> .rs
         for cbor_file in self.generated_files["cbor"]:
             _, cbor_file_short = os.path.split(cbor_file.path)
@@ -291,76 +297,87 @@ class TestDirectory:
 
             self.generated_files["rust_src"].append(translated_rust_file)
 
-        pub_mods = []
-
-        # Collect src file dependencies
-        for rust_file in self.generated_files["rust_src"]:
-            _, rust_file_short = os.path.split(rust_file.path)
+            _, rust_file_short = os.path.split(translated_rust_file.path)
             extensionless_rust_file, _ = os.path.splitext(rust_file_short)
 
-            pub_mods.append(RustMod(extensionless_rust_file, RustVisibility.Public))
+            rust_file_builder.add_mod(RustMod(extensionless_rust_file, RustVisibility.Public))
+
+        match_arms = []
+
+        # Build one binary that can call all the tests
+        for test_file in self.rs_test_files:
+            _, file_name = os.path.split(test_file.path)
+            extensionless_file_name, _ = os.path.splitext(file_name)
+
+            if not test_file.pass_expected:
+                continue # FIXME: file level xfail
+
+            for test_function in test_file.test_functions:
+                rust_file_builder.add_mod(RustMod(extensionless_file_name, RustVisibility.Public))
+                left = f"Some(\"{extensionless_file_name}::{test_function.name}\")"
+                right = f"{extensionless_file_name}::{test_function.name}()"
+                match_arms.append((left, right))
+
+        match_arms.append(("e", "panic!(\"Tried to run unknown test: {:?}\", e)"))
+
+        test_main_body = [
+            RustMatch("std::env::args().nth(1).as_ref().map(String::as_ref)", match_arms),
+        ]
+        test_main = RustFunction("main",
+                                 visibility=RustVisibility.Public,
+                                 body=test_main_body)
+
+        rust_file_builder.add_function(test_main)
+
+        main_file = rust_file_builder.build(self.full_path + "/tests_main.rs")
+
+        self.generated_files["rust_src"].append(main_file)
+
+        # Try and compile test binary
+        retcode, stdout, stderr = self._compile_rustc(main_file.path)
+
+        # FIXME: Failing to compile file?
+        # if retcode != 0:
+        #     if test_file.pass_expected:
+        #         self.print_status(FAIL, "FAILED", "test " + test_str)
+        #         sys.stdout.write('\n')
+        #         sys.stdout.write(stderr)
+
+        #         outcomes.append(TestOutcome.UnexpectedFailure)
+        #         continue
+        #     else:
+        #         self.print_status(OKBLUE, "FAILED", "test " + test_str)
+        #         sys.stdout.write('\n')
+
+        #         outcomes.append(TestOutcome.Failure)
+        #         continue
+        # elif not test_file.pass_expected:
+        #     self.print_status(FAIL, "FAILED", "test " + test_str)
+        #     sys.stdout.write('\n')
+
+        #     outcomes.append(TestOutcome.UnexpectedSuccess)
+        #     continue
+
+        main_bin_path = self.full_path + "/tests_main"
+
+        self.generated_files["rust_test_exec"].append(main_bin_path)
+
+        description = f"{file_name}: running test {test_function.name}..."
+
+        self.print_status(WARNING, "RUNNING", description)
+
+        main = get_cmd_or_die(main_bin_path)
 
         for test_file in self.rs_test_files:
             _, file_name = os.path.split(test_file.path)
             extensionless_file_name, _ = os.path.splitext(file_name)
 
             for test_function in test_file.test_functions:
-                description = f"{file_name}: building test {test_function.name}..."
+                args = [f"{extensionless_file_name}::{test_function.name}"]
 
-                self.print_status(WARNING, "RUNNING", description)
-
-                # Here we create a thin main wrapper to call the test function
-                features = ["libc", "i128_type"]
-                mods = pub_mods + [RustMod(extensionless_file_name, RustVisibility.Public)]
-                uses = [RustUse([extensionless_file_name, test_function.name])]
-                functions = [RustFunction("main", RustVisibility.Public, [f"{test_function.name}();\n"])]
-
-                main = RustFile(features, mods, uses, functions)
-
-                main_src_path = os.path.join(self.full_path, test_function.name + "_main.rs")
-                main_bin_path = os.path.join(self.full_path, test_function.name + "_main")
-
-                self.generated_files["rust_src"].append(main_src_path)
-                self.generated_files["rust_test_exec"].append(main_bin_path)
-
-                with open(main_src_path, 'w') as fh:
-                    fh.write(str(main))
-
-                retcode, stdout, stderr = self._compile_rustc(main_src_path)
+                retcode, stdout, stderr = main[args].run(retcode=None)
 
                 test_str = file_name + ' - ' + test_function.name
-
-                # print("\nRet:", retcode)
-                # print("Stdout:", stdout)
-                # print("Stderr:", stderr)
-                # print("---------------")
-                if retcode != 0:
-                    if test_file.pass_expected:
-                        self.print_status(FAIL, "FAILED", "test " + test_str)
-                        sys.stdout.write('\n')
-                        sys.stdout.write(stderr)
-
-                        outcomes.append(TestOutcome.UnexpectedFailure)
-                        continue
-                    else:
-                        self.print_status(OKBLUE, "FAILED", "test " + test_str)
-                        sys.stdout.write('\n')
-
-                        outcomes.append(TestOutcome.Failure)
-                        continue
-                elif not test_file.pass_expected:
-                    self.print_status(FAIL, "FAILED", "test " + test_str)
-                    sys.stdout.write('\n')
-
-                    outcomes.append(TestOutcome.UnexpectedSuccess)
-                    continue
-
-                description = f"{file_name}: running test {test_function.name}..."
-
-                self.print_status(WARNING, "RUNNING", description)
-
-                main = get_cmd_or_die(main_bin_path)
-                retcode, stdout, stderr = main.run(retcode=None)
 
                 if retcode == 0:
                     if test_function.pass_expected:
@@ -386,16 +403,6 @@ class TestDirectory:
                         sys.stdout.write('\n')
 
                         outcomes.append(TestOutcome.Failure)
-
-                # Ret 101 is panic + stderr
-                # Ret 0 is ok
-                # print("Ret:", retcode)
-                # print("Stdout:", stdout)
-                # print("Stderr:", stderr)
-                # print("---------------")
-
-        # print('\n')
-        # print(self.generated_files)
 
         if not outcomes:
             self.print_status(OKBLUE, "N/A", "No rust file(s) matching " + self.files.pattern + " within this folder\n")
