@@ -9,7 +9,7 @@ if [[ "$EUID" -eq 0 ]]
   exit
 fi
 
-RUST_VER=nightly-2017-11-20
+RUST_VER=nightly-2018-01-06
 curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain $RUST_VER
 
 # make rust environment available on next login 
