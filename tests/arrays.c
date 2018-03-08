@@ -1,5 +1,8 @@
 #include <stdlib.h>
 
+static char simple[] = "mystring";
+static char *foo = "mystring";
+
 void entry(const unsigned buffer_size, int buffer[const])
 {
     int arr[1][1] = { 1 };
@@ -60,4 +63,22 @@ void entry(const unsigned buffer_size, int buffer[const])
 
     wchar_t wide3[1] = L"xy";
     buffer[i++] = wide3[0];
+
+    buffer[i++] = simple[0];
+    buffer[i++] = simple[1];
+    buffer[i++] = simple[2];
+    buffer[i++] = simple[3];
+    buffer[i++] = simple[4];
+    buffer[i++] = simple[5];
+    buffer[i++] = simple[6];
+    buffer[i++] = simple[7];
+
+    buffer[i++] = foo[0];
+    buffer[i++] = foo[1];
+    buffer[i++] = foo[2];
+    buffer[i++] = foo[3];
+    buffer[i++] = foo[4];
+    buffer[i++] = foo[5];
+    buffer[i++] = foo[6];
+    buffer[i++] = foo[7];
 }

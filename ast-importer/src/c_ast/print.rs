@@ -472,7 +472,7 @@ impl<W: Write> Printer<W> {
                 Ok(())
             },
 
-            Some(&CDeclKind::Enum { ref name, ref variants }) => {
+            Some(&CDeclKind::Enum { ref name, ref variants, .. }) => {
                 self.writer.write_all(b"enum ")?;
                 match name {
                     &Some(ref n) => self.writer.write_fmt(format_args!("{} {{\n", n))?,

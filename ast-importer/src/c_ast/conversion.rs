@@ -1151,7 +1151,10 @@ impl ConversionContext {
                         })
                         .collect();
 
-                    let enum_decl = CDeclKind::Enum { name, variants };
+                    let integral_type_id = node.type_id.expect("Enum declaration should have underlying type id");
+                    let integral_type = self.visit_qualified_type(integral_type_id);
+
+                    let enum_decl = CDeclKind::Enum { name, variants, integral_type };
 
                     self.add_decl(new_id, located(node, enum_decl));
                     self.processed_nodes.insert(new_id, ENUM_DECL);
