@@ -56,6 +56,11 @@ fn main() {
              .long("cross-checks")
              .help("Enable cross-checks")
              .takes_value(false))
+        .arg(Arg::with_name("cross-check-config")
+             .long("cross-check-config")
+             .help("Add the given configuration files to the top-level #[cross_check(...)] attribute")
+             .multiple(true)
+             .takes_value(true))
 
         // End-user
         .arg(Arg::with_name("INPUT")
@@ -73,6 +78,9 @@ fn main() {
     let dump_structures = matches.is_present("dump-structures");
     let debug_labels = matches.is_present("debug-labels");
     let cross_checks = matches.is_present("cross-checks");
+    let cross_check_configs = matches.values_of("cross-check-config")
+        .map(|vals| vals.collect::<Vec<_>>())
+        .unwrap_or_default();
 
     // Extract from the CBOR file the untyped AST
     let untyped_context = match parse_untyped_ast(file) {
@@ -126,6 +134,7 @@ fn main() {
         dump_structures,
         debug_labels,
         cross_checks,
+        cross_check_configs,
     ));
 }
 
