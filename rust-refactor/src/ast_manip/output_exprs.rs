@@ -134,7 +134,7 @@ impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for OutputFolder<F> {
                     let e = Expr { node: node, .. e };
                     let e = self.with_trailing(false, |f| fold::noop_fold_expr(e, f));
                     if self.trailing {
-                        return (self.callback)(P(e)).unwrap();
+                        return (self.callback)(P(e)).into_inner();
                     } else {
                         return e
                     }

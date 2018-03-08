@@ -1,11 +1,13 @@
 //! Helper functions for picking a node by source location.
 //!
 //! This is used in various parts of the frontend to set marks at specific locations.
+use std::path::PathBuf;
 use std::str::FromStr;
 use syntax::ast::*;
 use syntax::codemap::{Span, BytePos};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::visit::{self, Visitor, FnKind};
+use syntax_pos::FileName;
 
 use ast_manip::Visit;
 use command::{Registry, DriverCommand};
@@ -255,7 +257,7 @@ pub fn pick_node_at_loc(krate: &Crate,
                         file: &str,
                         line: u32,
                         col: u32) -> Option<NodeInfo> {
-    let fm = match cx.session().codemap().get_filemap(file) {
+    let fm = match cx.session().codemap().get_filemap(&FileName::Real(PathBuf::from(file))) {
         Some(x) => x,
         None => {
             panic!("target position lies in nonexistent file {:?}", file);

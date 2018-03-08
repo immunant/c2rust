@@ -163,15 +163,15 @@ pub fn fold_expr_with_context<F>(e: P<Expr>, start: Context, callback: F) -> P<E
     impl<F> LRRewrites for Rewrites<F>
             where F: FnMut(P<Expr>, Context) -> P<Expr> {
         fn fold_rvalue(&mut self, e: Expr) -> Expr {
-            (self.callback)(P(e), Context::Rvalue).unwrap()
+            (self.callback)(P(e), Context::Rvalue).into_inner()
         }
 
         fn fold_lvalue(&mut self, e: Expr) -> Expr {
-            (self.callback)(P(e), Context::Lvalue).unwrap()
+            (self.callback)(P(e), Context::Lvalue).into_inner()
         }
 
         fn fold_lvalue_mut(&mut self, e: Expr) -> Expr {
-            (self.callback)(P(e), Context::LvalueMut).unwrap()
+            (self.callback)(P(e), Context::LvalueMut).into_inner()
         }
     }
 

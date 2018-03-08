@@ -99,7 +99,6 @@ gen_visit_impls! {
         //    item_id: NodeId
         //) { ... }
         fn visit_lifetime(&mut self, lifetime: &'ast Lifetime) { ... }
-        fn visit_lifetime_def(&mut self, lifetime: &'ast LifetimeDef) { ... }
         fn visit_mac(&mut self, _mac: &'ast Mac) { ... }
         //fn visit_path(&mut self, path: &'ast Path, _id: NodeId) { ... }
         //fn visit_path_list_item(

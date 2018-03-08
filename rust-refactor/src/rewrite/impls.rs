@@ -13,6 +13,7 @@ use syntax::print::pprust;
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::parser::{self, AssocOp, Fixity};
+use syntax_pos::FileName;
 
 use driver;
 use ast_manip::{GetNodeId, GetSpan};
@@ -123,7 +124,7 @@ trait Splice: Rewrite+'static {
         }
 
         let fm = rcx.session().codemap().lookup_byte_offset(old.span().lo()).fm;
-        if fm.name.starts_with("<") {
+        if let FileName::Macros(..) = fm.name {
             return false;
         }
 

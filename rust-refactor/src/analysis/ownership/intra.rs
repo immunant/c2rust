@@ -221,21 +221,21 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
 
     /// Compute the type of an `Lvalue` and the maximum permissions for accessing it.
-    fn lvalue_lty(&mut self, lv: &Lvalue<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
-        let (ty, perm, variant) = self.lvalue_lty_downcast(lv);
+    fn place_lty(&mut self, lv: &Place<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
+        let (ty, perm, variant) = self.place_lty_downcast(lv);
         assert!(variant.is_none(), "expected non-Downcast result");
         (ty, perm)
     }
 
-    fn lvalue_lty_downcast(&mut self,
-                           lv: &Lvalue<'tcx>) -> (ITy<'tcx>, Perm<'tcx>, Option<usize>) {
+    fn place_lty_downcast(&mut self,
+                           lv: &Place<'tcx>) -> (ITy<'tcx>, Perm<'tcx>, Option<usize>) {
         match *lv {
-            Lvalue::Local(l) => (self.local_var_ty(l), Perm::move_(), None),
+            Place::Local(l) => (self.local_var_ty(l), Perm::move_(), None),
 
-            Lvalue::Static(ref s) => (self.static_ty(s.def_id), Perm::move_(), None),
+            Place::Static(ref s) => (self.static_ty(s.def_id), Perm::move_(), None),
 
-            Lvalue::Projection(ref p) => {
-                let (base_ty, base_perm, base_variant) = self.lvalue_lty_downcast(&p.base);
+            Place::Projection(ref p) => {
+                let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&p.base);
 
                 // Sanity check
                 match p.elem {
@@ -290,7 +290,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 (arr_ty, Perm::move_())
             },
             Rvalue::Ref(_, _, ref lv) => {
-                let (ty, perm) = self.lvalue_lty(lv);
+                let (ty, perm) = self.place_lty(lv);
                 let args = self.ilcx.mk_slice(&[ty]);
                 let ref_ty = self.ilcx.mk(rv.ty(self.mir, self.cx.tcx), args, Label::Ptr(perm));
                 (ref_ty, Perm::move_())
@@ -365,7 +365,8 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
     fn operand_lty(&mut self, op: &Operand<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
         match *op {
-            Operand::Consume(ref lv) => self.lvalue_lty(lv),
+            Operand::Copy(ref lv) => self.place_lty(lv),
+            Operand::Move(ref lv) => self.place_lty(lv),
             Operand::Constant(ref c) => {
                 eprintln!("CONSTANT {:?}: type = {:?}", c, c.ty);
                 let lty = self.local_ty(c.ty);
@@ -500,7 +501,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
             self.enter_stmt(idx);
             match s.kind {
                 StatementKind::Assign(ref lv, ref rv) => {
-                    let (lv_ty, lv_perm) = self.lvalue_lty(lv);
+                    let (lv_ty, lv_perm) = self.place_lty(lv);
                     let (rv_ty, rv_perm) = self.rvalue_lty(rv);
                     self.propagate(lv_ty, rv_ty, rv_perm);
                     self.propagate_perm(Perm::write(), lv_perm);
@@ -529,10 +530,11 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
             TerminatorKind::Drop { .. } |
             TerminatorKind::Assert { .. } |
             TerminatorKind::Yield { .. } |
-            TerminatorKind::GeneratorDrop => {},
+            TerminatorKind::GeneratorDrop |
+            TerminatorKind::Abort => {},
 
             TerminatorKind::DropAndReplace { ref location, ref value, .. } => {
-                let (loc_ty, loc_perm) = self.lvalue_lty(location);
+                let (loc_ty, loc_perm) = self.place_lty(location);
                 let (val_ty, val_perm) = self.operand_lty(value);
                 self.propagate(loc_ty, val_ty, val_perm);
                 self.propagate_perm(Perm::write(), loc_perm);
@@ -555,7 +557,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 }
                 if let Some((ref dest, _)) = *destination {
                     let sig_ty = sig.output;
-                    let (dest_ty, dest_perm) = self.lvalue_lty(dest);
+                    let (dest_ty, dest_perm) = self.place_lty(dest);
                     self.propagate(dest_ty, sig_ty, Perm::move_());
                     self.propagate_perm(Perm::write(), dest_perm);
                     eprintln!("    {:?}: {:?}", dest, dest_ty);

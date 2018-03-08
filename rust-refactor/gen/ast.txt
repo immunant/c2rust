@@ -45,7 +45,16 @@ enum ItemKind {
     Impl(unsafety, polarity, generics, defaultness, trait_ref, ty, items),
     Mac(mac),
     MacroDef(tts),
+    TraitAlias(generics,bounds),
 }
+
+enum UseTreeKind {
+    Simple(ident),
+    Glob,
+    Nested(nested),
+}
+
+struct UseTree { kind, prefix, span }
 
 #[extend_span]
 struct TraitItem { id, ident, #[match=ignore] attrs, generics, node, span,
@@ -90,7 +99,7 @@ enum ForeignItemKind {
 }
 
 
-struct Generics { lifetimes, ty_params, where_clause, span }
+struct Generics { params, where_clause, span }
 struct TyParam { attrs, ident, id, bounds, default, span }
 struct LifetimeDef { attrs, lifetime, bounds }
 struct WhereClause { id, predicates, span }
@@ -99,19 +108,15 @@ enum WherePredicate {
     RegionPredicate(pred),
     EqPredicate(pred),
 }
+enum GenericParam {
+    Lifetime(lifetime),
+    Type(typaram),
+}
 
-struct WhereBoundPredicate { span, bound_lifetimes, bounded_ty, bounds }
+struct WhereBoundPredicate { span, bounded_ty, bounds, bound_generic_params }
 struct WhereRegionPredicate { span, lifetime, bounds }
 struct WhereEqPredicate { id, span, lhs_ty, rhs_ty }
 flag TraitBoundModifier;
-
-enum ViewPath_ {
-    ViewPathSimple(name, path),
-    ViewPathGlob(path),
-    ViewPathList(path, list),
-}
-
-struct PathListItem_ { name, rename, id }
 
 #[match=ignore]
 enum Visibility {
@@ -151,14 +156,14 @@ flag TraitObjectSyntax;
 flag LitIntType;
 flag FloatTy;
 
-struct BareFnTy { unsafety, abi, lifetimes, decl }
+struct BareFnTy { unsafety, abi, decl, generic_params }
 struct Lifetime { id, span, ident }
 enum TyParamBound {
     TraitTyParamBound(poly, module),
     RegionTyParamBound(lt),
 }
 
-struct PolyTraitRef { bound_lifetimes, trait_ref, span }
+struct PolyTraitRef { trait_ref, span, bound_generic_params }
 
 struct FnDecl { inputs, output, variadic }
 struct Arg { ty, pat, id }
@@ -242,7 +247,7 @@ flag BinOpKind;
 struct Field { ident, expr, span, is_shorthand, attrs }
 struct Arm { attrs, pats, guard, body, beginning_vert }
 #[match=custom]
-struct Block { stmts, id, rules, span }
+struct Block { stmts, id, rules, span, recovered }
 
 
 #[match=custom]

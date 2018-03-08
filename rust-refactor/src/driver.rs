@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use arena::DroplessArena;
 use rustc::hir::map as hir_map;
-use rustc::ty::{TyCtxt, GlobalArenas};
+use rustc::ty::{TyCtxt, AllArenas};
 use rustc::session::{self, Session};
 use rustc::session::config::{Input, Options};
 use rustc_driver;
@@ -22,6 +22,7 @@ use syntax::parse;
 use syntax::parse::token;
 use syntax::parse::parser::Parser;
 use syntax::ptr::P;
+use syntax_pos::FileName;
 
 use remove_paren::remove_paren;
 use span_fix;
@@ -174,8 +175,7 @@ pub fn run_compiler<F, R>(args: &[String],
     let krate = expand_result.expanded_crate;
     let krate = remove_paren(krate);
 
-    let arena = DroplessArena::new();
-    let arenas = GlobalArenas::new();
+    let arenas = AllArenas::new();
 
     let hir_map = hir_map::map_crate(&sess, cstore.as_ref(), &mut expand_result.hir_forest, &expand_result.defs);
 
@@ -190,10 +190,10 @@ pub fn run_compiler<F, R>(args: &[String],
         // a `GlobalCtxt` and read its `hir` field.  Since `GlobalCtxt` is actually private, this
         // seems like it would probably stop working at some point.
         &sess, cstore.as_ref(), hir_map.clone(), expand_result.analysis, expand_result.resolutions,
-        &arena, &arenas, &crate_name, &outputs,
+        &arenas, &crate_name, &outputs,
         |tcx, _analysis, _incremental_hashes_map, _result| {
             if phase == Phase::Phase3 {
-                let cx = Ctxt::new_phase_3(&sess, &cstore, &hir_map, tcx, &arena);
+                let cx = Ctxt::new_phase_3(&sess, &cstore, &hir_map, tcx, &arenas.interner);
                 return func(krate, cx);
             }
             unreachable!();
@@ -210,7 +210,7 @@ fn build_session(sopts: Options,
     let codemap = Rc::new(CodeMap::with_file_loader(file_loader, sopts.file_path_mapping()));
     // Put a dummy file at the beginning of the codemap, so that no real `Span` will accidentally
     // collide with `DUMMY_SP` (which is `0 .. 0`).
-    codemap.new_filemap_and_lines("<dummy>", " ");
+    codemap.new_filemap_and_lines(Path::new("<dummy>"), " ");
     let emitter_dest = None;
 
     let sess = session::build_session_with_codemap(
@@ -223,7 +223,7 @@ fn build_session(sopts: Options,
 
 fn make_parser<'a>(sess: &'a Session, name: &str, src: &str) -> Parser<'a> {
     parse::new_parser_from_source_str(&sess.parse_sess,
-                                      name.to_owned(),
+                                      FileName::Real(PathBuf::from(name)),
                                       src.to_owned())
 }
 

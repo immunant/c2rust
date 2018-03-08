@@ -98,7 +98,7 @@ impl<F> Folder for FnFolder<F>
             _ => return fold::noop_fold_item(i, self),
         }
 
-        let i = i.unwrap();
+        let i = i.into_inner();
         unpack!([i.node] ItemKind::Fn(decl, unsafety, constness, abi, generics, block));
         let vis = i.vis;
 

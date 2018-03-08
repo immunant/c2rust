@@ -43,7 +43,7 @@ impl Transform for FuncToMacro {
                 return e;
             }
 
-            let args = match e.unwrap().node {
+            let args = match e.into_inner().node {
                 ExprKind::Call(_, args) => args,
                 ExprKind::MethodCall(_, args) => args,
                 _ => panic!("expected Call or MethodCall"),

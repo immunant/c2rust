@@ -15,7 +15,7 @@ impl Folder for RemoveParen {
     fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
         let mut e = e;
         while let ExprKind::Paren(_) = e.node {
-            match e.unwrap().node {
+            match e.into_inner().node {
                 ExprKind::Paren(inner) => { e = inner; },
                 _ => unreachable!(),
             }
@@ -26,7 +26,7 @@ impl Folder for RemoveParen {
     fn fold_ty(&mut self, t: P<Ty>) -> P<Ty> {
         let mut t = t;
         while let TyKind::Paren(_) = t.node {
-            match t.unwrap().node {
+            match t.into_inner().node {
                 TyKind::Paren(inner) => { t = inner; },
                 _ => unreachable!(),
             }

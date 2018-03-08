@@ -68,7 +68,7 @@ impl Transform for GeneralizeItems {
                         ItemKind::Impl(_, _, _, ref mut gen, _, _, _) => gen,
                         _ => panic!("item has no room for generics"),
                     };
-                    gen.ty_params.push(mk().ty_param(self.ty_var_name));
+                    gen.params.push(GenericParam::Type(mk().ty_param(self.ty_var_name)));
                 }
                 i
             }))

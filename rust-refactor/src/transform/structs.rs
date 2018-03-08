@@ -80,8 +80,8 @@ fn is_struct_update_for(s: &Stmt, base1: &Expr) -> bool {
 
 fn unpack_struct_update(s: Stmt) -> (Path, Vec<Field>, P<Expr>) {
     let e = expect!([s.node] StmtKind::Semi(e) => e);
-    let rhs = expect!([e.unwrap().node] ExprKind::Assign(_, rhs) => rhs);
-    expect!([rhs.unwrap().node]
+    let rhs = expect!([e.into_inner().node] ExprKind::Assign(_, rhs) => rhs);
+    expect!([rhs.into_inner().node]
             ExprKind::Struct(path, fields, Some(base)) => (path, fields, base))
 }
 

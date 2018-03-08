@@ -14,6 +14,7 @@ use syntax::codemap::{FileLoader, RealFileLoader};
 use syntax::codemap::Span;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
+use syntax_pos::FileName;
 
 use ast_manip::{GetNodeId, GetSpan, Visit};
 use command::{self, RefactorState};
@@ -46,12 +47,13 @@ impl InteractState {
         let to_client2 = to_client.clone();
         state.rewrite_handler(move |fm, s| {
             info!("got new text for {:?}", fm.name);
-            if fm.name.starts_with("<") {
-                return;
-            }
+            let filename = match &fm.name {
+                &FileName::Real(ref pathbuf) => pathbuf.to_str().unwrap().to_owned(),
+                _ => return,
+            };
 
             to_client2.send(ToClient::NewBufferText {
-                file: fm.name.clone(),
+                file: filename,
                 content: s.to_owned(),
             }).unwrap();
         });
@@ -116,10 +118,11 @@ impl InteractState {
 
                     let lo = cx.session().codemap().lookup_char_pos(info.span.lo());
                     let hi = cx.session().codemap().lookup_char_pos(info.span.hi());
+                    let file = filename_to_str(&lo.file.name);
                     (info.id,
                      MarkInfo {
                          id: info.id.as_usize(),
-                         file: lo.file.name.clone(),
+                         file,
                          start_line: lo.line as u32,
                          start_col: lo.col.0 as u32,
                          end_line: hi.line as u32,
@@ -151,9 +154,10 @@ impl InteractState {
                     let span = cx.hir_map().span(id);
                     let lo = cx.session().codemap().lookup_char_pos(span.lo());
                     let hi = cx.session().codemap().lookup_char_pos(span.hi());
+                    let file = filename_to_str(&lo.file.name);
                     let info = MarkInfo {
                         id: id.as_usize(),
-                        file: lo.file.name.clone(),
+                        file,
                         start_line: lo.line as u32,
                         start_col: lo.col.0 as u32,
                         end_line: hi.line as u32,
@@ -192,6 +196,15 @@ impl InteractState {
     }
 }
 
+fn filename_to_str(filename: &FileName) -> String {
+    match filename {
+        &FileName::Real(ref pathbuf) => pathbuf.to_str().expect("Invalid path name").to_owned(),
+        &FileName::Macros(ref macros) => format!("<{}>", macros),
+        other => panic!("Need to implement name conversion for {:?}", other),
+    }
+}
+
+
 fn collect_mark_infos(marks: &HashSet<(NodeId, Symbol)>,
                       krate: &Crate,
                       cx: &driver::Ctxt) -> Vec<MarkInfo> {
@@ -204,9 +217,11 @@ fn collect_mark_infos(marks: &HashSet<(NodeId, Symbol)>,
             let span = span_map[&id];
             let lo = cx.session().codemap().lookup_char_pos(span.lo());
             let hi = cx.session().codemap().lookup_char_pos(span.hi());
+            let file = filename_to_str(&lo.file.name);
+
             MarkInfo {
                 id: id.as_usize(),
-                file: lo.file.name.clone(),
+                file,
                 start_line: lo.line as u32,
                 start_col: lo.col.0 as u32,
                 end_line: hi.line as u32,

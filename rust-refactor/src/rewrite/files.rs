@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::Write;
 use std::rc::Rc;
 use syntax::codemap::{CodeMap, FileMap};
-use syntax_pos::BytePos;
+use syntax_pos::{BytePos, FileName};
 
 use rewrite::{TextRewrite, TextAdjust};
 
@@ -31,24 +31,26 @@ pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite], mode: RewriteMode) 
 pub fn rewrite_mode_callback(mode: RewriteMode,
                              fm: Rc<FileMap>,
                              s: &str) {
-    if fm.name.starts_with("<") {
-        return;
-    }
+    let filename = match fm.name {
+        FileName::Macros(_) => return,
+        FileName::Real(ref path) => path.as_path().clone(),
+        _ => panic!("Attempted to rewrite a virtual file"),
+    };
 
     match mode {
         RewriteMode::InPlace => {
-            info!("writing to {}", fm.name);
-            let mut f = File::create(&fm.name).unwrap();
+            info!("writing to {:?}", filename);
+            let mut f = File::create(&filename).unwrap();
             f.write_all(s.as_bytes()).unwrap();
         },
         RewriteMode::Alongside => {
-            let new_path = format!("{}.new", fm.name);
-            info!("writing to {}", new_path);
+            let new_path = filename.with_extension("new");
+            info!("writing to {:?}", new_path);
             let mut f = File::create(&new_path).unwrap();
             f.write_all(s.as_bytes()).unwrap();
         },
         RewriteMode::Print => {
-            println!(" ==== {} ====\n{}\n =========", fm.name, s);
+            println!(" ==== {:?} ====\n{}\n =========", filename, s);
         },
     }
 }

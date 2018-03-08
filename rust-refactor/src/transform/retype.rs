@@ -142,7 +142,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
                 i.map(|mut i| {
                     let mut fd = expect!([i.node]
                                          ItemKind::Fn(ref fd, _, _ ,_ ,_ ,_) =>
-                                         fd.clone().unwrap());
+                                         fd.clone().into_inner());
 
                     for (j, arg) in fd.inputs.iter_mut().enumerate() {
                         if let Some(new_ty) = (self.retype)(&arg.ty) {

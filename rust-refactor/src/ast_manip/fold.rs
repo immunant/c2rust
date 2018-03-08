@@ -68,7 +68,6 @@ gen_folder_impls! {
             list_item: NestedMetaItem
         ) -> NestedMetaItem { ... }
         fn fold_meta_item(&mut self, meta_item: MetaItem) -> MetaItem { ... }
-        fn fold_view_path(&mut self, view_path: P<ViewPath>) -> P<ViewPath> { ... }
         fn fold_foreign_item(&mut self, ni: ForeignItem) -> ForeignItem { ... }
         fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> { ... }
         fn fold_item_simple(&mut self, i: Item) -> Item { ... }

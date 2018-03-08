@@ -931,7 +931,7 @@ impl Builder {
         let barefn = BareFnTy {
             unsafety: self.unsafety,
             abi: self.abi,
-            lifetimes: vec![],
+            generic_params: vec![],
             decl,
         };
 
@@ -1289,6 +1289,7 @@ impl Builder {
                 Unsafety::Normal => BlockCheckMode::Default,
             },
             span: DUMMY_SP,
+            recovered: false,
         })
     }
 

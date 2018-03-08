@@ -126,6 +126,7 @@ pub enum ItemLikeKind {
     Impl,
     Mac,
     MacroDef,
+    TraitAlias,
 }
 
 impl FromStr for ItemLikeKind {
@@ -176,6 +177,7 @@ impl ItemLikeKind {
             ItemKind::Impl(..) => ItemLikeKind::Impl,
             ItemKind::Mac(..) => ItemLikeKind::Mac,
             ItemKind::MacroDef(..) => ItemLikeKind::MacroDef,
+            ItemKind::TraitAlias(..) => ItemLikeKind::TraitAlias,
         }
     }
 

@@ -14,6 +14,7 @@ use syntax::codemap::{Span, DUMMY_SP, CodeMap};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
+use syntax_pos::FileName;
 use syntax_pos::hygiene::SyntaxContext;
 
 use ast_manip::{AstEquiv, Fold};
@@ -37,15 +38,8 @@ impl<'a> Folder for FixFormat<'a> {
         if self.current_expansion.is_none() {
             // Check if this is the top of a `format!` expansion.
             let lo = self.codemap.lookup_byte_offset(e.span.lo());
-            match &lo.fm.name as &str {
-                "<format macros>" |
-                "<print macros>" |
-                "<println macros>" |
-                "<write macros>" |
-                "<writeln macros>" => {
-                    self.current_expansion = Some(e.span);
-                },
-                _ => {},
+            if let &FileName::Macros(_) = &lo.fm.name {
+                self.current_expansion = Some(e.span)
             }
         } else {
             // Check if we are exiting the current expansion, traversing into a copy of a macro

@@ -47,11 +47,11 @@ impl TryMatch for Expr {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(&mac.node.tts,
-                                          |p| p.parse_expr().map(|p| p.unwrap()),
+                                          |p| p.parse_expr().map(|p| p.into_inner()),
                                           target),
                 "def" => mcx.do_def_expr(&mac.node.tts, target),
                 "typed" => mcx.do_typed(&mac.node.tts,
-                                        |p| p.parse_expr().map(|p| p.unwrap()),
+                                        |p| p.parse_expr().map(|p| p.into_inner()),
                                         target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
@@ -71,10 +71,10 @@ impl TryMatch for Pat {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(&mac.node.tts,
-                                          |p| p.parse_pat().map(|p| p.unwrap()),
+                                          |p| p.parse_pat().map(|p| p.into_inner()),
                                           target),
                 "typed" => mcx.do_typed(&mac.node.tts,
-                                        |p| p.parse_pat().map(|p| p.unwrap()),
+                                        |p| p.parse_pat().map(|p| p.into_inner()),
                                         target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
@@ -94,7 +94,7 @@ impl TryMatch for Ty {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(&mac.node.tts,
-                                          |p| p.parse_ty().map(|p| p.unwrap()),
+                                          |p| p.parse_ty().map(|p| p.into_inner()),
                                           target),
                 "def" => mcx.do_def_ty(&mac.node.tts, target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),

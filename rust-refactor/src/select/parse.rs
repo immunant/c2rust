@@ -10,6 +10,7 @@ use syntax::parse::parser::{Parser, PathStyle};
 use syntax::parse::token::{Token, DelimToken, Lit};
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream};
+use syntax_pos::FileName;
 
 use pick_node::NodeKind;
 use remove_paren::remove_paren;
@@ -427,7 +428,7 @@ impl<'a> Stream<'a> {
 
 
 pub fn parse(sess: &Session, src: &str) -> Vec<SelectOp> {
-    let fm = sess.codemap().new_filemap("<select>".to_owned(),
+    let fm = sess.codemap().new_filemap(FileName::Macros("select".to_owned()),
                                         src.to_owned());
     eprintln!("src = {:?}", src);
     eprintln!("fm = {:?}", fm);
