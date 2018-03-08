@@ -7,11 +7,110 @@ index 4945b7a..0716c85 100644
  /fuzzing/bin
  /fuzzing/testing
 +*.c.cbor
-diff --git a/config.c2r b/config.c2r
+diff --git a/process.sh b/process.sh
+new file mode 100644
+index 0000000..ad7209d
+--- /dev/null
++++ b/process.sh
+@@ -0,0 +1,61 @@
++C2RUST_PATH=../galois/C2Rust
++AST_EXTRACTOR=$C2RUST_PATH/dependencies/llvm-5.0.0/build.soufflegirl/bin/ast-extractor
++AST_IMPORTER=$C2RUST_PATH/ast-importer/target/debug/ast_importer
++LIB_PATH=$HOME/.rustup/toolchains/nightly-2017-11-20-x86_64-unknown-linux-gnu/lib
++RUSTFMT=rustfmt
++
++XCHECK_TOPDIR=$C2RUST_PATH/cross-checks/rust-checks
++XCHECK_PLUGIN=$XCHECK_TOPDIR/rustc-plugin/target/debug/libcross_check_plugin.so
++XCHECK_DERIVE=$XCHECK_TOPDIR/derive-macros/target/debug/libcross_check_derive.so
++XCHECK_RUNTIME=$XCHECK_TOPDIR/runtime/target/debug/libcross_check_runtime.rlib
++
++OUTPUT_DIR=translator-build
++
++set -e
++#set -x
++
++translate() {
++  $AST_EXTRACTOR src/$1.c
++  env RUST_BACKTRACE=1 LD_LIBRARY_PATH=$LIB_PATH \
++      $AST_IMPORTER --reloop-cfgs --cross-checks \
++      --cross-check-config snudown.c2r \
++      -- src/$1.c.cbor > $OUTPUT_DIR/$1.rs
++  $RUSTFMT $OUTPUT_DIR/$1.rs
++  rustc -g --crate-type=rlib --crate-name=$1 \
++      --extern cross_check_plugin=$XCHECK_PLUGIN \
++      --extern cross_check_derive=$XCHECK_DERIVE \
++      --extern cross_check_runtime=$XCHECK_RUNTIME \
++      $OUTPUT_DIR/$1.rs -o $OUTPUT_DIR/lib$1.rlib \
++      #--Z unstable-options --pretty=expanded \
++
++}
++
++compile_commands_entry() {
++
++        cat >> compile_commands.json <<END
++{
++  "directory": "${PWD}",
++  "command": "cc -o ${OUTPUT_DIR}/${1}.c.o -c ${PWD}/src/${1}.c -Wwrite-strings -D_FORTIFY_SOURCE=0 -DNDEBUG=1",
++  "file": "${PWD}/src/${1}.c"
++},
++END
++
++}
++
++echo "[" > compile_commands.json
++compile_commands_entry "autolink"
++compile_commands_entry "buffer"
++compile_commands_entry "stack"
++compile_commands_entry "markdown"
++echo "]" >> compile_commands.json
++
++mkdir -p $OUTPUT_DIR
++
++translate "autolink"
++translate "buffer"
++translate "stack"
++translate "markdown"
++
++rustc --crate-name=snudownrust --crate-type=staticlib -L $OUTPUT_DIR \
++    --extern cross_check_runtime=$XCHECK_RUNTIME \
++    snudownrust.rs -o $OUTPUT_DIR/libsnudownrust.a
+diff --git a/setup.py b/setup.py
+index a780cb0..8134b39 100644
+--- a/setup.py
++++ b/setup.py
+@@ -35,6 +35,10 @@ class GPerfingBuildExt(build_ext):
+         process_gperf_file("src/html_entities.gperf", "src/html_entities.h")
+         build_ext.run(self)
+ 
++# Change these to the correct paths
++fakechecks_path = "../galois/C2Rust/cross-checks/libfakechecks"
++clevrbuf_path   = "../galois/C2Rust/cross-checks/ReMon/libclevrbuf"
++
+ setup(
+     name='snudown',
+     version=version,
+@@ -46,8 +50,13 @@ setup(
+     ext_modules=[
+         Extension(
+             name='snudown',
+-            sources=['snudown.c'] + c_files_in('src/') + c_files_in('html/'),
+-            include_dirs=['src', 'html']
+-        )
++            sources=['snudown.c', 'src/bufprintf.c'] + c_files_in('html/'),
++            include_dirs=['src', 'html'],
++            #libraries=['snudownrust', 'fakechecks'],
++            libraries=['snudownrust', 'clevrbuf'],
++            library_dirs=['translator-build', fakechecks_path, clevrbuf_path],
++            extra_link_args=['-Wl,-rpath,{},-rpath,{}'.format(fakechecks_path, clevrbuf_path)],
++)
+     ],
+ )
++            # sources=['snudown.c'] + c_files_in('src/') + c_files_in('html/'),
+diff --git a/snudown.c2r b/snudown.c2r
 new file mode 100644
 index 0000000..da3a123
 --- /dev/null
-+++ b/config.c2r
++++ b/snudown.c2r
 @@ -0,0 +1,114 @@
 +---
 +translator-build/autolink.rs:
@@ -127,105 +226,6 @@ index 0000000..da3a123
 +        st: disabled
 +
 +...
-diff --git a/process.sh b/process.sh
-new file mode 100644
-index 0000000..437809e
---- /dev/null
-+++ b/process.sh
-@@ -0,0 +1,61 @@
-+C2RUST_PATH=../galois/C2Rust
-+AST_EXTRACTOR=$C2RUST_PATH/dependencies/llvm-5.0.0/build.soufflegirl/bin/ast-extractor
-+AST_IMPORTER=$C2RUST_PATH/ast-importer/target/debug/ast_importer
-+LIB_PATH=$HOME/.rustup/toolchains/nightly-2017-11-20-x86_64-unknown-linux-gnu/lib
-+RUSTFMT=rustfmt
-+
-+XCHECK_TOPDIR=$C2RUST_PATH/cross-checks/rust-checks
-+XCHECK_PLUGIN=$XCHECK_TOPDIR/rustc-plugin/target/debug/libcross_check_plugin.so
-+XCHECK_DERIVE=$XCHECK_TOPDIR/derive-macros/target/debug/libcross_check_derive.so
-+XCHECK_RUNTIME=$XCHECK_TOPDIR/runtime/target/debug/libcross_check_runtime.rlib
-+
-+OUTPUT_DIR=translator-build
-+
-+set -e
-+#set -x
-+
-+translate() {
-+  $AST_EXTRACTOR src/$1.c
-+  env RUST_BACKTRACE=1 LD_LIBRARY_PATH=$LIB_PATH \
-+      $AST_IMPORTER --reloop-cfgs --cross-checks \
-+      --cross-check-config config.c2r \
-+      -- src/$1.c.cbor > $OUTPUT_DIR/$1.rs
-+  $RUSTFMT $OUTPUT_DIR/$1.rs
-+  rustc -g --crate-type=rlib --crate-name=$1 \
-+      --extern cross_check_plugin=$XCHECK_PLUGIN \
-+      --extern cross_check_derive=$XCHECK_DERIVE \
-+      --extern cross_check_runtime=$XCHECK_RUNTIME \
-+      $OUTPUT_DIR/$1.rs -o $OUTPUT_DIR/lib$1.rlib \
-+      #--Z unstable-options --pretty=expanded \
-+
-+}
-+
-+compile_commands_entry() {
-+
-+        cat >> compile_commands.json <<END
-+{
-+  "directory": "${PWD}",
-+  "command": "cc -o ${OUTPUT_DIR}/${1}.c.o -c ${PWD}/src/${1}.c -Wwrite-strings -D_FORTIFY_SOURCE=0 -DNDEBUG=1",
-+  "file": "${PWD}/src/${1}.c"
-+},
-+END
-+
-+}
-+
-+echo "[" > compile_commands.json
-+compile_commands_entry "autolink"
-+compile_commands_entry "buffer"
-+compile_commands_entry "stack"
-+compile_commands_entry "markdown"
-+echo "]" >> compile_commands.json
-+
-+mkdir -p $OUTPUT_DIR
-+
-+translate "autolink"
-+translate "buffer"
-+translate "stack"
-+translate "markdown"
-+
-+rustc --crate-name=snudownrust --crate-type=staticlib -L $OUTPUT_DIR \
-+    --extern cross_check_runtime=$XCHECK_RUNTIME \
-+    snudownrust.rs -o $OUTPUT_DIR/libsnudownrust.a
-diff --git a/setup.py b/setup.py
-index a780cb0..8134b39 100644
---- a/setup.py
-+++ b/setup.py
-@@ -35,6 +35,10 @@ class GPerfingBuildExt(build_ext):
-         process_gperf_file("src/html_entities.gperf", "src/html_entities.h")
-         build_ext.run(self)
- 
-+# Change these to the correct paths
-+fakechecks_path = "../galois/C2Rust/cross-checks/libfakechecks"
-+clevrbuf_path   = "../galois/C2Rust/cross-checks/ReMon/libclevrbuf"
-+
- setup(
-     name='snudown',
-     version=version,
-@@ -46,8 +50,13 @@ setup(
-     ext_modules=[
-         Extension(
-             name='snudown',
--            sources=['snudown.c'] + c_files_in('src/') + c_files_in('html/'),
--            include_dirs=['src', 'html']
--        )
-+            sources=['snudown.c', 'src/bufprintf.c'] + c_files_in('html/'),
-+            include_dirs=['src', 'html'],
-+            #libraries=['snudownrust', 'fakechecks'],
-+            libraries=['snudownrust', 'clevrbuf'],
-+            library_dirs=['translator-build', fakechecks_path, clevrbuf_path],
-+            extra_link_args=['-Wl,-rpath,{},-rpath,{}'.format(fakechecks_path, clevrbuf_path)],
-+)
-     ],
- )
-+            # sources=['snudown.c'] + c_files_in('src/') + c_files_in('html/'),
 diff --git a/snudownrust.rs b/snudownrust.rs
 new file mode 100644
 index 0000000..93c054c
