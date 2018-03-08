@@ -336,27 +336,14 @@ class TestDirectory:
         # Try and compile test binary
         retcode, stdout, stderr = self._compile_rustc(main_file.path)
 
-        # FIXME: Failing to compile file?
-        # if retcode != 0:
-        #     if test_file.pass_expected:
-        #         self.print_status(FAIL, "FAILED", "test " + test_str)
-        #         sys.stdout.write('\n')
-        #         sys.stdout.write(stderr)
+        if retcode != 0:
+            _, main_file_path_short = os.path.split(main_file.path)
 
-        #         outcomes.append(TestOutcome.UnexpectedFailure)
-        #         continue
-        #     else:
-        #         self.print_status(OKBLUE, "FAILED", "test " + test_str)
-        #         sys.stdout.write('\n')
+            self.print_status(FAIL, "FAILED", f"compile {main_file_path_short}")
+            sys.stdout.write('\n')
+            sys.stdout.write(stderr)
 
-        #         outcomes.append(TestOutcome.Failure)
-        #         continue
-        # elif not test_file.pass_expected:
-        #     self.print_status(FAIL, "FAILED", "test " + test_str)
-        #     sys.stdout.write('\n')
-
-        #     outcomes.append(TestOutcome.UnexpectedSuccess)
-        #     continue
+            return outcomes
 
         main_bin_path = self.full_path + "/tests_main"
 
@@ -401,7 +388,7 @@ class TestDirectory:
                         outcomes.append(TestOutcome.Failure)
 
         if not outcomes:
-            self.print_status(OKBLUE, "N/A", "No rust file(s) matching " + self.files.pattern + " within this folder\n")
+            self.print_status(OKBLUE, "N/A", "   No rust file(s) matching " + self.files.pattern + " within this folder\n")
         return outcomes
 
     def cleanup(self) -> None:

@@ -4,7 +4,7 @@ typedef int (*char_to_int_fp)(char);
 int intval(const char c) { return c; }
 int negintval(const char c) { return -c; }
 
-void entry(const unsigned sz, int buffer[const])
+void entry3(const unsigned sz, int buffer[const])
 {
         int i = 0;
 
