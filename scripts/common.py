@@ -283,6 +283,16 @@ def ensure_dir(path):
         die("%s is not a directory", path)
 
 
+def git_ignore_dir(path):
+    """
+    make sure directory has a `.gitignore` file with a wildcard pattern in it.
+    """
+    ignore_file = os.path.join(path, ".gitignore")
+    if not os.path.isfile(ignore_file):
+        with open(ignore_file, "w") as handle:
+            handle.write("*\n")
+
+
 def setup_logging(logLevel=logging.INFO):
     logging.basicConfig(
         filename=sys.argv[0].replace(".py", ".log"),
@@ -441,17 +451,24 @@ def check_sig(afile: str, asigfile: str) -> None:
             else:
                 logging.warning("could not remove %s: not found.", f)
 
+    if not os.path.isfile(afile):
+        die("archive file not found: %s", afile)
+    if not os.path.isfile(asigfile):
+        die("signature file not found: %s", asigfile)
+
     # check that archive matches signature
     try:
         expected = "Good signature from "
         logging.debug("checking signature of %s", os.path.basename(afile))
         # --auto-key-retrieve means that gpg will try to download
         # the pubkey from a keyserver if it isn't on the local keyring.
-        retcode, _, stderr = gpg['--auto-key-retrieve',
+        retcode, _, stderr = gpg['--keyserver-options',
+                                 'auto-key-retrieve',
                                  '--verify',
                                  asigfile, afile].run(retcode=None)
         if retcode:
             cleanup_on_failure([afile, asigfile])
+            logging.fatal(stderr)
             die("gpg signature check failed: gpg exit code " + str(retcode))
         if expected not in stderr:
             cleanup_on_failure([afile, asigfile])

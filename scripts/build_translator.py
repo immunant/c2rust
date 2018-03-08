@@ -348,6 +348,7 @@ def _main():
 
     ensure_dir(LLVM_BLD)
     ensure_dir(DEPS_DIR)
+    git_ignore_dir(DEPS_DIR)
 
     if on_linux():
         build_a_bear()
