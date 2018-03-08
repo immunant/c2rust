@@ -6,7 +6,6 @@ int identity(int i) { return i; }
 void *get_identity(void) { return identity; }
 
 void entry(const unsigned sz, int buffer[const]) {
-
         typeof(identity) * f = get_identity();
         buffer[0] = f(10);
 }

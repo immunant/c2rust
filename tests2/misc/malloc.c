@@ -1,6 +1,6 @@
 #include <stdlib.h>
 
-void entry(const unsigned buffer_size, int buffer[const])
+void malloc_test(const unsigned int buffer_size, int buffer[const])
 {
         int i = 0;
 
