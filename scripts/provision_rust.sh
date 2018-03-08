@@ -10,11 +10,19 @@ if [[ "$EUID" -eq 0 ]]
 fi
 
 RUST_VER=nightly-2018-01-06
-curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain $RUST_VER
+if hash rustup 2>/dev/null; then # rustup is installed
+  rustup toolchain install $RUST_VER
+  rustup default $RUST_VER
+else # rustup is not installed  
+  curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain $RUST_VER
+fi 
 
 # make rust environment available on next login 
-echo "source ~/.cargo/env" >> ~/.bashrc
+if ! grep "source ~/.cargo/env" ~/.bashrc >/dev/null; then 
+  echo "source ~/.cargo/env" >> ~/.bashrc
+fi
 # make rust environment available for commands below 
 source ~/.cargo/env
 
+# the idiomize testsuite depends on rustfmt
 rustup run $RUST_VER cargo install --force rustfmt
