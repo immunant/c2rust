@@ -140,6 +140,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         };
         let last_scope = self.last_scope();
         let mod_file_name = self.cx.codemap().span_to_filename(span);
+        let mod_file_name = mod_file_name.to_string();
         let same_file = last_scope.same_file(&mod_file_name);
 
         // Check if there are any file-level defaults, and if so, apply them
@@ -173,7 +174,6 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         // we need to convert it to String ourselves, using format!
         // FIXME: ideally, we find a better way to handle all the
         // different types of virtual files from FileName
-        //DISABLED: let mod_file_name = format!("{}", mod_file_name);
         if !same_file {
             // We should only ever get a file name mismatch
             // at the top of a module
@@ -610,7 +610,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         let mut top_config = config::ScopeCheckConfig::new();
                         top_config.parse_attr_config(cx, mi);
                         let top_file_name = cx.codemap().span_to_filename(sp);
-                        //DISABLED: let top_file_name = format!("{}", top_file_name);
+                        let top_file_name = top_file_name.to_string();
                         // FIXME: do we need to build a FileDefaults???
                         let top_config = self.build_file_defaults_config(cx, &top_config,
                                                                          &top_file_name)
@@ -628,7 +628,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         let mut config = config::ScopeCheckConfig::from_item(&i, scope_config);
                         config.parse_attr_config(cx, mi);
                         let file_name = cx.codemap().span_to_filename(sp);
-                        //DISABLED: let file_name = format!("{}", file_name);
+                        let file_name = file_name.to_string();
                         // TODO: build a FileDefaults???
                         let scope = ScopeConfig::new(&self.external_config,
                                                      file_name,
