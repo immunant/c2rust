@@ -129,10 +129,10 @@ index 0000000..da3a123
 +...
 diff --git a/process.sh b/process.sh
 new file mode 100644
-index 0000000..d91974c
+index 0000000..437809e
 --- /dev/null
 +++ b/process.sh
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,61 @@
 +C2RUST_PATH=../galois/C2Rust
 +AST_EXTRACTOR=$C2RUST_PATH/dependencies/llvm-5.0.0/build.soufflegirl/bin/ast-extractor
 +AST_IMPORTER=$C2RUST_PATH/ast-importer/target/debug/ast_importer
@@ -152,7 +152,9 @@ index 0000000..d91974c
 +translate() {
 +  $AST_EXTRACTOR src/$1.c
 +  env RUST_BACKTRACE=1 LD_LIBRARY_PATH=$LIB_PATH \
-+      $AST_IMPORTER --reloop-cfgs --cross-checks src/$1.c.cbor > $OUTPUT_DIR/$1.rs
++      $AST_IMPORTER --reloop-cfgs --cross-checks \
++      --cross-check-config config.c2r \
++      -- src/$1.c.cbor > $OUTPUT_DIR/$1.rs
 +  $RUSTFMT $OUTPUT_DIR/$1.rs
 +  rustc -g --crate-type=rlib --crate-name=$1 \
 +      --extern cross_check_plugin=$XCHECK_PLUGIN \
