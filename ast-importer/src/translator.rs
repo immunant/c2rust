@@ -215,6 +215,7 @@ pub fn translate(
     dump_structures: bool,
     debug_relooper_labels: bool,
     cross_checks: bool,
+    cross_check_configs: Vec<&str>,
 ) -> String {
 
     let mut t = Translation::new(
@@ -308,7 +309,6 @@ pub fn translate(
             ];
         if cross_checks {
             features.push(("feature", vec!["plugin", "custom_attribute"]));
-            features.push(("plugin",  vec!["cross_check_plugin"]));
             features.push(("cross_check", vec!["yes"]));
         }
 
@@ -324,6 +324,28 @@ pub fn translate(
                     ].into_iter().collect(),
                 ))?
             }
+        }
+
+        if cross_checks {
+            let mut xcheck_attr_args = String::new();
+            for ref config_file in &cross_check_configs {
+                if !xcheck_attr_args.is_empty() {
+                    xcheck_attr_args.push(',');
+                }
+                xcheck_attr_args.push_str("config_file=\"");
+                xcheck_attr_args.push_str(config_file);
+                xcheck_attr_args.push('"');
+            }
+            let xcheck_attr = format!("cross_check_plugin({})", xcheck_attr_args);
+            s.print_attribute(&mk().attribute::<_, TokenStream>(
+                AttrStyle::Inner,
+                vec!["plugin"],
+                vec![
+                    Token::OpenDelim(DelimToken::Paren),
+                    Token::Ident(mk().ident(xcheck_attr)),
+                    Token::CloseDelim(DelimToken::Paren),
+                ].into_iter().collect(),
+            ))?
         }
 
         // Add `extern crate libc` to the top of the file
