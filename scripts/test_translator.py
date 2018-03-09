@@ -83,6 +83,7 @@ class CborFile:
 
         return RustFile(extensionless_file + ".rs")
 
+
 class CFile:
     def __init__(self, path: str, flags: Set[str]=None) -> None:
         if not flags:
@@ -268,7 +269,7 @@ class TestDirectory:
             except NonZeroReturn as exception:
                 self.print_status(FAIL, "FAILED", "extract " + c_file_short)
                 sys.stdout.write('\n')
-                sys.stdout.write(exception)
+                sys.stdout.write(str(exception))
 
                 outcomes.append(TestOutcome.UnexpectedFailure)
                 continue
@@ -290,7 +291,7 @@ class TestDirectory:
             except NonZeroReturn as exception:
                 self.print_status(FAIL, "FAILED", "translate " + c_file_short)
                 sys.stdout.write('\n')
-                sys.stdout.write(exception)
+                sys.stdout.write(str(exception))
 
                 outcomes.append(TestOutcome.UnexpectedFailure)
                 continue
@@ -309,7 +310,7 @@ class TestDirectory:
         for i in matches:
             failed_files.append(self.rs_test_files[i])
             self.rs_test_files.pop(i)
-        
+
         for failed_file in failed_files:
             _, file_name = os.path.split(failed_file.path)
             self.print_status(OKBLUE, "FAILED", f"Expected failure {file_name}")
@@ -323,7 +324,6 @@ class TestDirectory:
         for test_file in self.rs_test_files:
             _, file_name = os.path.split(test_file.path)
             extensionless_file_name, _ = os.path.splitext(file_name)
-
 
             for test_function in test_file.test_functions:
                 rust_file_builder.add_mod(RustMod(extensionless_file_name, RustVisibility.Public))

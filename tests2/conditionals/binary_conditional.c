@@ -1,7 +1,7 @@
 static int id(int i) { return i;}
 static int add(int *p, int i, int r) { *p += i; return r;}
 
-void entry(const unsigned sz, int buf[const])
+void entry3(const unsigned sz, int buf[const])
 {
         buf[0] = id(0) ?: id(1);
         buf[1] = id(2) ?: id(3);

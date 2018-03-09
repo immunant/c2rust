@@ -22,4 +22,5 @@ pub fn test_buffer() {
     }
 
     assert_eq!(buffer, rust_buffer);
+    assert_eq!(buffer,expected_buffer);
 }
