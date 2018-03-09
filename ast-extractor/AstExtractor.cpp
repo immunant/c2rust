@@ -49,13 +49,13 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder>
     // Bounds recursion when visiting self-referential record declarations
     std::unordered_set<const clang::RecordDecl*> recordDeclsUnderVisit;
    
-    std::unordered_set<const Type*> exports;
+    std::unordered_set<const clang::Type*> exports;
     
-    bool isUnexported(const Type *ptr) {
+    bool isUnexported(const clang::Type *ptr) {
         return exports.emplace(ptr).second;
     }
     
-    void encodeType(const Type *T, TypeTag tag,
+    void encodeType(const clang::Type *T, TypeTag tag,
                     std::function<void(CborEncoder*)> extra = [](CborEncoder*){}) {
         if (!isUnexported(T)) return;
         
@@ -277,7 +277,7 @@ public:
         VisitQualType(T->getReturnType());
     }
     
-    void VisitPointerType(const PointerType *T) {
+    void VisitPointerType(const clang::PointerType *T) {
         auto pointee = T->getPointeeType();
         auto qt = encodeQualType(pointee);
         
@@ -433,7 +433,7 @@ class TranslateASTVisitor final
        const std::vector<void *> &childIds,
        std::function<void(CborEncoder*)> extra = [](CborEncoder*){}
        ) {
-          QualType s = QualType(static_cast<Type*>(nullptr), 0);
+          QualType s = QualType(static_cast<clang::Type*>(nullptr), 0);
           encode_entry_raw(ast, tag, ast->getLocStart(), s, childIds, extra);
       }
       
@@ -706,8 +706,8 @@ class TranslateASTVisitor final
                                      auto target_type = ICE->getType();
                                                                          
                                      if (target_type.getTypePtr()->isPointerType() && source_type.getTypePtr()->isPointerType()) {
-                                         auto target_pointee = static_cast<const PointerType*>(target_type.getTypePtr())->getPointeeType();
-                                         auto source_pointee = static_cast<const PointerType*>(source_type.getTypePtr())->getPointeeType();
+                                         auto target_pointee = static_cast<const clang::PointerType*>(target_type.getTypePtr())->getPointeeType();
+                                         auto source_pointee = static_cast<const clang::PointerType*>(source_type.getTypePtr())->getPointeeType();
 
 
                                          if (target_pointee.isConstQualified() &&
