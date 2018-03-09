@@ -459,7 +459,7 @@ impl Translation {
                         &CDeclKind::Field { ref name, typ } => {
                             let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
                             let typ = self.convert_type(typ.ctype)?;
-                            field_entries.push(mk().struct_field(name, typ))
+                            field_entries.push(mk().pub_().struct_field(name, typ))
                         }
                         _ => return Err(format!("Found non-field in record field list")),
                     }
