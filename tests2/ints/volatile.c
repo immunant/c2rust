@@ -2,7 +2,7 @@
 // Remark: This test case isn't super useful as we do not really check anything about the order of
 //         the reads and writes in the generated assembly.
 
-void entry(const unsigned buffer_size, int buffer[])
+void entry3(const unsigned buffer_size, int buffer[])
 {
     if (buffer_size < 5) { return; }
 
