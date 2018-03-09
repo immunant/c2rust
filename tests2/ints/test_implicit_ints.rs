@@ -19,6 +19,7 @@ pub fn test_identity() {
     }
 }
 
+
 pub fn test_implicit_int() {
     unsafe {
         implicit_int();

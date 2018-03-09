@@ -304,13 +304,26 @@ class TestDirectory:
 
         match_arms = []
 
+        matches = [i for i, test_file in enumerate(self.rs_test_files) if not test_file.pass_expected]
+        failed_files = []
+        for i in matches:
+            failed_files.append(self.rs_test_files[i])
+            self.rs_test_files.pop(i)
+        
+        for failed_file in failed_files:
+            _, file_name = os.path.split(failed_file.path)
+            self.print_status(OKBLUE, "FAILED", f"Expected failure {file_name}")
+            sys.stdout.write('\n')
+            outcomes.append(TestOutcome.Failure)
+            if len(self.rs_test_files) == 0:
+                return outcomes
+            continue
+
         # Build one binary that can call all the tests
         for test_file in self.rs_test_files:
             _, file_name = os.path.split(test_file.path)
             extensionless_file_name, _ = os.path.splitext(file_name)
 
-            if not test_file.pass_expected:
-                continue # FIXME: file level xfail
 
             for test_function in test_file.test_functions:
                 rust_file_builder.add_mod(RustMod(extensionless_file_name, RustVisibility.Public))
@@ -504,10 +517,10 @@ def main() -> None:
         sys.stdout.write("  {}: {}\n".format(variant, count))
 
     # If anything unexpected happened, exit with error code 1
-    unepected = \
+    unexpected = \
         test_results["unexpected failures"] + \
         test_results["unexpected successes"]
-    if 0 < unepected:
+    if 0 < unexpected:
         quit(1)
 
 

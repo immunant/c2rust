@@ -1,3 +1,4 @@
+//! xfail
 extern crate libc;
 
 use storage::{entry as rust_entry};
