@@ -82,16 +82,17 @@ def configure_and_build_llvm(args):
 
         if run_cmake:
             cmake = get_cmd_or_die("cmake")
-            invoke(cmake["-G", "Ninja", LLVM_SRC,
-                         "-Wno-dev",
-                         "-DCMAKE_C_COMPILER=clang",
-                         "-DCMAKE_CXX_COMPILER=clang++",
-                         "-DCMAKE_C_FLAGS=-I{}/include".format(CBOR_PREFIX),
-                         "-DCMAKE_CXX_FLAGS=-I{}/include".format(CBOR_PREFIX),
-                         "-DCMAKE_EXE_LINKER_FLAGS=-L{}/lib".format(CBOR_PREFIX),
-                         "-DCMAKE_BUILD_TYPE=" + build_type,
-                         "-DLLVM_ENABLE_ASSERTIONS=1",
-                         "-DLLVM_TARGETS_TO_BUILD=X86"])
+            cargs = ["-G", "Ninja", LLVM_SRC,
+                     "-Wno-dev",
+                     "-DCMAKE_C_COMPILER=clang",
+                     "-DCMAKE_CXX_COMPILER=clang++",
+                     "-DCMAKE_C_FLAGS=-I{}/include".format(CBOR_PREFIX),
+                     "-DCMAKE_CXX_FLAGS=-I{}/include".format(CBOR_PREFIX),
+                     "-DCMAKE_EXE_LINKER_FLAGS=-L{}/lib".format(CBOR_PREFIX),
+                     "-DCMAKE_BUILD_TYPE=" + build_type,
+                     "-DLLVM_ENABLE_ASSERTIONS=1",
+                     "-DLLVM_TARGETS_TO_BUILD=X86"]
+            invoke(cmake[cargs])
         else:
             logging.debug("found existing ninja.build, not running cmake")
         invoke(ninja['ast-extractor'])
@@ -244,7 +245,8 @@ def integrate_ast_extractor():
         LLVM_SRC, "tools/clang/tools/extra/ast-extractor")
     clang_tools_extra = os.path.abspath(
         os.path.join(extractor_dest, os.pardir))
-    # NOTE: `os.path.exists` returns False on broken symlinks, `lexists` returns True.
+    # NOTE: `os.path.exists` returns False on broken symlinks, 
+    # `lexists` returns True.
     if not os.path.lexists(extractor_dest):
         # NOTE: using os.symlink to emulate `ln -s` would be unwieldy
         ln = get_cmd_or_die("ln")
