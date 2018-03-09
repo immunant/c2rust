@@ -190,13 +190,16 @@ def install_tinycbor() -> Optional[str]:
     """
     download, unpack, build, and install tinycbor.
     """
+    cc_cmd_db = os.path.join(CBOR_SRC, "compile_commands.json")
+
     def path_to_cc_db():
-        cc_cmd_db = os.path.join(CBOR_SRC, "compile_commands.json")
         if not os.path.isfile(cc_cmd_db) and not on_mac():
             die("not found: " + cc_cmd_db)
         return cc_cmd_db
 
-    if os.path.isdir(CBOR_PREFIX) and os.path.isfile(CBOR_ARCHIVE):
+    if os.path.isdir(CBOR_PREFIX) and \
+       os.path.isfile(CBOR_ARCHIVE) and \
+       os.path.isfile(cc_cmd_db):
         logging.debug("skipping tinycbor installation")
         return path_to_cc_db()
 
