@@ -168,7 +168,10 @@ def download_and_build_custom_rustc(args):
 
         x_py['build', '-j' + NCPUS] & pb.FG
 
-    build_output = os.path.join(COMPILER_SUBMOD_DIR, "build", target_triple, "stage2")
+    build_output = os.path.join(COMPILER_SUBMOD_DIR,
+                                "build",
+                                target_triple,
+                                "stage2")
     assert os.path.isdir(build_output)
     rustup['toolchain', 'link', CUSTOM_RUST_NAME, build_output] & pb.FG
 
@@ -194,8 +197,6 @@ def on_arch() -> bool:
     """
     return true on arch distros.
     """
-    #Commented out the old implementation:
-    #return platform.platform().endswith('-with-arch')
     distro, *_ = platform.linux_distribution()
 
     return distro == "arch"
@@ -336,7 +337,8 @@ def ensure_rustfmt_version():
     expected_version_str = "0.10.0 ( ) DEPRECATED: use rustfmt-nightly\n"
     rustfmt = get_cmd_or_die("rustfmt")
     rustup = get_cmd_or_die("rustup")
-    actual_version = rustup("run", CUSTOM_RUST_NAME, rustfmt["--force","--version"])
+    rustfmt_cmd = rustfmt["--force", "--version"]
+    actual_version = rustup("run", CUSTOM_RUST_NAME, rustfmt_cmd)
     if expected_version_str not in actual_version:
         emsg = "expected version: {}\n"
         emsg = emsg + 9 * "." + "actual version: {}"
