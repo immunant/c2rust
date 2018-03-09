@@ -1,5 +1,5 @@
 typedef int myint;
-void entry(const unsigned sz, int buffer[const]) {
+void compound_assignment(const unsigned sz, int buffer[const]) {
        int i = 0;
 
        unsigned char c = 7;

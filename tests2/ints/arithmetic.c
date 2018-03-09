@@ -1,6 +1,6 @@
 #ifdef STANDALONE
 #include <stdio.h>
-void entry(unsigned, int[]);
+void entry2(unsigned, int[]);
 int main(int argc, char *argv[])
 {
         int buffer[1000] = {0};
@@ -14,7 +14,7 @@ int main(int argc, char *argv[])
 }
 #endif
 
-void entry(unsigned buffer_size, int buffer[])
+void entry2(unsigned buffer_size, int buffer[])
 {
         if (buffer_size < 100) { return; }
 

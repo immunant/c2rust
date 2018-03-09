@@ -1,11 +1,11 @@
 extern crate libc;
 
-use arithmetic::entry as rust_entry;
+use arithmetic::entry2 as rust_entry2;
 use self::libc::{c_uint, c_int};
 
 extern "C" {
     #[no_mangle]
-    fn entry(_: c_uint, _: *mut c_int);
+    fn entry2(_: c_uint, _: *mut c_int);
 }
 
 const BUFFER_SIZE: usize = 100;
@@ -27,8 +27,8 @@ pub fn test_buffer() {
     ];
 
     unsafe {
-        entry(BUFFER_SIZE as u32, buffer.as_mut_ptr());
-        rust_entry(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr());
+        entry2(BUFFER_SIZE as u32, buffer.as_mut_ptr());
+        rust_entry2(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr());
     }
 
     for index in 0..BUFFER_SIZE {
