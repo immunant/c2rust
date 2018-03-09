@@ -12,7 +12,7 @@ extern "C" {
     fn entry2(_: c_uint, _: *mut c_int);
 }
 
-const BUFFER_SIZE: usize = 34;
+const BUFFER_SIZE: usize = 49;
 const BUFFER_SIZE2: usize = 2;
 
 pub fn test_buffer() {
@@ -22,7 +22,10 @@ pub fn test_buffer() {
         97, 98, 99, 0, 100, 101, 102, 1, 
         0, 97, 98, 99, 0, 97, 98, 99, 100, 
         97, 98, 99, 97, 98, 99, 0, 0, 0, 
-        0, 120, 0, 120, 0, 0, 120, 0
+        0, 120, 0, 120, 0, 0, 120, 109, 
+        121, 115, 116, 114, 105, 110, 103, 
+        109, 121, 115, 116, 114, 105, 110, 
+        103,
     ];
 
     unsafe {
@@ -32,7 +35,7 @@ pub fn test_buffer() {
 
     for index in 0..BUFFER_SIZE {
         assert_eq!(buffer[index], rust_buffer[index]);
-        assert_eq!(buffer[index], expected_buffer[index], "idx: {}", index);
+        assert_eq!(buffer[index], expected_buffer[index], "index: {}", index);
     }
 }
 

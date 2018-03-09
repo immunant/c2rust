@@ -25,9 +25,8 @@ static const char *hello = "hello";
 
 void entry(const unsigned buffer_size, int buffer[]) {
 
-    static const char *world = "world";
-
     if (buffer_size < 11) return;
+    static const char *world = "world";
 
     buffer[0] = baz();
     buffer[1] = baz();
