@@ -3,7 +3,7 @@ int* foo(int *j) { return ++j; }
 int bar(int k) { return ++k; }
 
 // This tests more complex lvalues when the result is not used
-void lvalue_only(int buffer[])
+void lvalue(int buffer[])
 {
     // Direct (Path)
     int n = 5;
@@ -21,14 +21,4 @@ void lvalue_only(int buffer[])
     arr[0][0] = ++n;
     buffer[4] = arr[0][0]; // buffer[4]
     buffer[bar(4)] = -8;   // buffer[5]
-
-    // TODO: field
 }
-
-void entry(const unsigned buffer_size, int buffer[])
-{
-    if (buffer_size < 100) return;
-
-    lvalue_only(buffer);
-}
-
