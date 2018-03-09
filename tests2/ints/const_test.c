@@ -16,13 +16,11 @@ int pointer_to_constant(int const *x /* should be 'mut x: *const libc::c_int' */
     return x[1] + 1;
 }
 
-void entry(unsigned buffer_size, int buffer[])
+void entry4(const unsigned int buffer_size, int buffer[])
 {
-    if (buffer_size >= 5) {
-        buffer[0] = constant_arguments(1);
-        constant_pointer(&buffer[1]);
-        buffer[1] = pointer_to_constant(buffer);
-    }
+    buffer[0] = constant_arguments(1);
+    constant_pointer(&buffer[1]);
+    buffer[1] = pointer_to_constant(buffer);
 }
 
 // Check that taking the address of a pointer works correctly with

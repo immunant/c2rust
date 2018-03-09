@@ -8,6 +8,7 @@ extern "C" {
     #[no_mangle]
     fn entry() -> c_int;
 }
+
 pub fn test_typedef() {
     let ret = unsafe {
         entry()
