@@ -4,7 +4,7 @@ union u { int x; char y; };
 enum e { foo = 1, bar, baz };
 struct s { union u a_u; char a_c; enum e a_e; };
 
-void entry(const unsigned sz, int buf[const]) {
+void entry2(const unsigned sz, int buf[const]) {
        myint x;
        myintp p;
        p = &x;
