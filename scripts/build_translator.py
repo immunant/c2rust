@@ -197,9 +197,14 @@ def install_tinycbor() -> Optional[str]:
             die("not found: " + cc_cmd_db)
         return cc_cmd_db
 
+    # skip recompilation iff:
+    # 1. cbor appears to have been installed,
+    # 2. we have the right archive downloaded (catches version changes), and
+    # 3. we have a compile commands database for sanity testing or
+    #    we're on mac where we can't use bear to generate the database.
     if os.path.isdir(CBOR_PREFIX) and \
        os.path.isfile(CBOR_ARCHIVE) and \
-       os.path.isfile(cc_cmd_db):
+       (os.path.isfile(cc_cmd_db) or on_mac()):
         logging.debug("skipping tinycbor installation")
         return path_to_cc_db()
 
