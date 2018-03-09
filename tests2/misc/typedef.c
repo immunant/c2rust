@@ -10,7 +10,7 @@ int identity(int x) { return x; }
 
 // The qualifiers should still be extracted from typedefs when needed (for example at binding
 // sites)
-void entry(unsigned buffer_size, int buffer[])
+int entry()
 {
     my_int x = 1;                            // 'mut x: my_int'
     my_int const y = 1;                      // 'y: my_int'
@@ -26,5 +26,6 @@ void entry(unsigned buffer_size, int buffer[])
         typedef long shadowed;
         shadowed n = 2;
     }
+    return 0;
 }
 
