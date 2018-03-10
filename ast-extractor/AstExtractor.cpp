@@ -156,17 +156,7 @@ public:
         VisitQualType(t);
     }
     
-    void VisitVariableArrayType(const VariableArrayType *T) {
-        auto t = T->getElementType();
-        auto qt = encodeQualType(t);
-
-        encodeType(T, TagVariableArrayType, [qt](CborEncoder *local) {
-            cbor_encode_uint(local, qt);
-            cbor_encode_undefined(local); // Variable size not exported currently
-        });
-        
-        VisitQualType(t);
-    }
+    void VisitVariableArrayType(const VariableArrayType *T);
     
     void VisitIncompleteArrayType(const IncompleteArrayType *T) {
         auto t = T->getElementType();
@@ -1140,6 +1130,21 @@ void TypeEncoder::VisitTypedefType(const TypedefType *T) {
         cbor_encode_uint(local, uintptr_t(D));
     });
     astEncoder->TraverseDecl(D);
+}
+
+void TypeEncoder::VisitVariableArrayType(const VariableArrayType *T) {
+    auto t = T->getElementType();
+    auto qt = encodeQualType(t);
+    
+    auto c = T->getSizeExpr();
+    astEncoder->VisitExpr(c);
+    
+    encodeType(T, TagVariableArrayType, [qt, c](CborEncoder *local) {
+        cbor_encode_uint(local, qt);
+        cbor_encode_uint(local, uintptr_t(c));
+    });
+    
+    VisitQualType(t);
 }
 
 class TranslateConsumer : public clang::ASTConsumer {
