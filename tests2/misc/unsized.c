@@ -1,4 +1,4 @@
-// Should fail
+//! skip_translation
 
 struct Foo {
   int i;
