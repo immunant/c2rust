@@ -17,3 +17,6 @@ easier.
 However, Rust does not currently implement weak symbols the same way C does, so
 this feature does not work.
 
+  * `libc-hash` enables the specialization of `CrossCheckHash` for types in the
+    `libc` crate, currently only `libc::c_void`. This feature is recommended
+    when cross-checking translated Rust programs against their C equivalents.
