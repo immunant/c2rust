@@ -1,5 +1,12 @@
+import logging
+import os
+
 from enum import Enum
-from typing import Iterable, List, Tuple
+from common import get_cmd_or_die, NonZeroReturn
+from plumbum.machines.local import LocalCommand
+from typing import Iterable, List, Optional, Tuple
+
+rustc = get_cmd_or_die("rustc")
 
 
 # TODO: Support for custom visibility paths, if needed
@@ -9,9 +16,48 @@ class RustVisibility(Enum):
     Crate = "pub(crate) "
 
 
+class CrateType(Enum):
+    Binary = "bin"
+    Library = "lib"
+
+
 class RustFile:
     def __init__(self, path: str) -> None:
         self.path = path
+
+    def compile(self, crate_type: CrateType, save_output: bool) -> Optional[LocalCommand]:
+        extensionless_file, _ = os.path.splitext(self.path)
+
+        # run rustc
+        args = [f'--crate-type={crate_type.value}']
+
+        if save_output:
+            args.append('-o')
+
+            if crate_type == CrateType.Binary:
+                args.append(extensionless_file)
+            else:
+                # REVIEW: Not sure if ext is correct
+                args.append(extensionless_file + ".lib")
+
+        args.append(self.path)
+
+        # log the command in a format that's easy to re-run
+        logging.debug("rustc compile command: %s", str(rustc[args]))
+
+        retcode, stdout, stderr = rustc[args].run(retcode=None)
+
+        logging.debug("stdout:\n%s", stdout)
+
+        if retcode != 0:
+            raise NonZeroReturn(stderr)
+
+        if save_output:
+            if crate_type == CrateType.Binary:
+                return get_cmd_or_die(extensionless_file)
+            # TODO: Support saving lib file
+
+        return
 
 
 class RustMod:

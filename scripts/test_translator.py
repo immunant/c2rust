@@ -9,6 +9,7 @@ import re
 from common import *
 from enum import Enum
 from rust_file import (
+    CrateType,
     RustFile,
     RustFileBuilder,
     RustFunction,
@@ -42,10 +43,6 @@ class TestOutcome(Enum):
     Failure = "expected failures"
     UnexpectedFailure = "unexpected failures"
     UnexpectedSuccess = "unexpected successes"
-
-
-class NonZeroReturn(Exception): # IOException?
-    pass
 
 
 class CborFile:
@@ -118,12 +115,13 @@ class TestFunction:
         self.pass_expected = "xfail" not in flags
 
 
-class TestFile:
+class TestFile(RustFile):
     def __init__(self, path: str, test_functions: List[TestFunction]=None, flags: Set[str]=None) -> None:
         if not flags:
             flags = set()
 
-        self.path = path
+        super().__init__(path)
+
         self.test_functions = test_functions or []
         self.pass_expected = "xfail" not in flags
 
@@ -231,19 +229,6 @@ class TestDirectory:
         with open(cc_db, 'w') as fh:
             fh.write(compile_commands)
 
-    def _compile_rustc(self, rust_src_path: str) -> Tuple[int, str, str]:
-        extensionless_file, _ = os.path.splitext(rust_src_path)
-
-        # run rustc
-        args = [
-            '--crate-type=bin',
-            '-o', extensionless_file,
-            rust_src_path,
-        ]
-        # log the command in a format that's easy to re-run
-        logging.debug("rustc compile command: %s", str(rustc[args]))
-        return rustc[args].run(retcode=None)
-
     def run(self) -> TestOutcome:
         outcomes = []
 
@@ -305,25 +290,25 @@ class TestDirectory:
 
         match_arms = []
 
-        matches = [i for i, test_file in enumerate(self.rs_test_files) if not test_file.pass_expected]
-        failed_files = []
-        for i in matches:
-            failed_files.append(self.rs_test_files[i])
-            self.rs_test_files.pop(i)
-
-        for failed_file in failed_files:
-            _, file_name = os.path.split(failed_file.path)
-            self.print_status(OKBLUE, "FAILED", f"Expected failure {file_name}")
-            sys.stdout.write('\n')
-            outcomes.append(TestOutcome.Failure)
-            if len(self.rs_test_files) == 0:
-                return outcomes
-            continue
-
         # Build one binary that can call all the tests
         for test_file in self.rs_test_files:
             _, file_name = os.path.split(test_file.path)
             extensionless_file_name, _ = os.path.splitext(file_name)
+
+            if not test_file.pass_expected:
+                try:
+                    test_file.compile(CrateType.Library, save_output=False)
+
+                    self.print_status(FAIL, "OK", f"Unexpected success {file_name}")
+
+                    outcomes.append(TestOutcome.UnexpectedSuccess)
+                except NonZeroReturn:
+                    self.print_status(OKBLUE, "FAILED", f"Expected failure {file_name}")
+
+                    outcomes.append(TestOutcome.Failure)
+
+                sys.stdout.write('\n')
+                continue
 
             for test_function in test_file.test_functions:
                 rust_file_builder.add_mod(RustMod(extensionless_file_name, RustVisibility.Public))
@@ -346,25 +331,24 @@ class TestDirectory:
 
         self.generated_files["rust_src"].append(main_file)
 
-        # Try and compile test binary
-        retcode, stdout, stderr = self._compile_rustc(main_file.path)
-
-        if retcode != 0:
+        # Try and build test binary
+        try:
+            main = main_file.compile(CrateType.Binary, save_output=True)
+        except NonZeroReturn as exception:
             _, main_file_path_short = os.path.split(main_file.path)
 
             self.print_status(FAIL, "FAILED", f"compile {main_file_path_short}")
             sys.stdout.write('\n')
-            sys.stdout.write(stderr)
+            sys.stdout.write(str(exception))
 
             return outcomes
 
-        main_bin_path = self.full_path + "/tests_main"
-
-        self.generated_files["rust_test_exec"].append(main_bin_path)
-
-        main = get_cmd_or_die(main_bin_path)
+        self.generated_files["rust_test_exec"].append(str(main.executable))
 
         for test_file in self.rs_test_files:
+            if not test_file.pass_expected:
+                continue
+
             _, file_name = os.path.split(test_file.path)
             extensionless_file_name, _ = os.path.splitext(file_name)
 

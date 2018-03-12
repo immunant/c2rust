@@ -515,3 +515,7 @@ def download_archive(aurl: str, afile: str, asig: str = None):
         curl(asig, "-o", asigfile)
 
     check_sig(afile, asigfile)
+
+
+class NonZeroReturn(Exception):
+    pass
