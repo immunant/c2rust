@@ -274,7 +274,7 @@ class TestDirectory:
             try:
                 translated_rust_file = cbor_file.translate()
             except NonZeroReturn as exception:
-                self.print_status(FAIL, "FAILED", "translate " + c_file_short)
+                self.print_status(FAIL, "FAILED", "translate " + cbor_file_short)
                 sys.stdout.write('\n')
                 sys.stdout.write(str(exception))
 
@@ -357,6 +357,8 @@ class TestDirectory:
 
                 retcode, stdout, stderr = main[args].run(retcode=None)
 
+                logging.debug("stdout:%s\n", stdout)
+
                 test_str = file_name + ' - ' + test_function.name
 
                 if retcode == 0:
@@ -399,7 +401,9 @@ class TestDirectory:
             # Try remove files and don't barf if they don't exist
             for file_path in file_paths:
                 try:
-                    os.remove(getattr(file_path, "path", file_path)) # FIXME: Hacky
+                    # FIXME: Hacky. Some items are string paths,
+                    # others are classes with a path attribute
+                    os.remove(getattr(file_path, "path", file_path))
                 except OSError:
                     pass
 
