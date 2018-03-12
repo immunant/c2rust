@@ -383,7 +383,10 @@ def get_system_include_dirs() -> List[str]:
     cmd = cc["-E", "-Wp,-v", "-"]
     _, _, stderr = cmd.run()
     dirs = stderr.split(os.linesep)
-    return [l.strip() for l in dirs if len(l) and l[0] == ' ']
+    # skip non-directory lines
+    dirs = [l.strip() for l in dirs if len(l) and l[0] == ' ']
+    # remove framework directory markers
+    return [d.replace(" (framework directory)", "") for d in dirs]
 
 
 def extract_ast_from(ast_extr: pb.commands.BaseCommand,
