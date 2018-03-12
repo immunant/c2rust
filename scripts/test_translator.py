@@ -229,7 +229,7 @@ class TestDirectory:
         with open(cc_db, 'w') as fh:
             fh.write(compile_commands)
 
-    def run(self) -> TestOutcome:
+    def run(self) -> List[TestOutcome]:
         outcomes = []
 
         any_tests = any(test_fn for test_file in self.rs_test_files for test_fn in test_file.test_functions)
