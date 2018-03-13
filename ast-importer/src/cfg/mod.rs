@@ -9,9 +9,10 @@
 //!
 //!   - given an entry point C statement, translate it into a CFG consisting of `BasicBlock<Label>`
 //!   - simplify this CFG (by eliminating empty blocks that jump unconditionally to the next block)
-//!   - use the _Relooper algorithm_ to convert this CFG into a sequence of `Structure`s
-//!   - simplify that sequence of `Structure`s into another such sequence
-//!   - convert the `Vec<Structure>` back into a `Vec<Stmt>`
+//!   - use the _Relooper algorithm_ to convert this CFG into a sequence of `Structure<StmtOrDecl>`s
+//!   - place the declarations in the right place and produce a sequence of `Structure<Stmt>`s
+//!   - simplify that sequence of `Structure<Stmt>`s into another such sequence
+//!   - convert the `Vec<Structure<Stmt>>` back into a `Vec<Stmt>`
 //!
 
 use syntax;
@@ -75,35 +76,55 @@ impl Label {
 
 /// These labels identify _structure_ basic blocks in a structure CFG.
 #[derive(Clone,Debug)]
-pub enum StructureLabel {
+pub enum StructureLabel<S> {
     GoTo(Label),
     ExitTo(Label),
-    Nested(Vec<Structure>),
+    Nested(Vec<Structure<S>>),
+}
+
+impl StructureLabel<StmtOrDecl> {
+
+    /// Produce a new `StructureLabel` from the existing one by replacing all `StmtOrDecl::Decl`
+    /// variants with either a declaration with initializer or only an initializer.
+    fn place_decls(
+        self,
+        lift_me: &HashSet<CDeclId>,
+        store: &mut DeclStmtStore,
+    ) -> StructureLabel<Stmt> {
+        match self {
+            StructureLabel::GoTo(l) => StructureLabel::GoTo(l),
+            StructureLabel::ExitTo(l) => StructureLabel::ExitTo(l),
+            StructureLabel::Nested(vs) => {
+                let vs = vs.into_iter().map(|s| s.place_decls(lift_me, store)).collect();
+                StructureLabel::Nested(vs)
+            }
+        }
+    }
 }
 
 /// These are the things that the relooper algorithm produces.
 #[derive(Clone,Debug)]
-pub enum Structure {
+pub enum Structure<Stmt> {
     /// Series of statements and what to do after
     Simple {
         entries: HashSet<Label>,
         body: Vec<Stmt>,
-        terminator: GenTerminator<StructureLabel>,
+        terminator: GenTerminator<StructureLabel<Stmt>>,
     },
     /// Looping constructs
     Loop {
         entries: HashSet<Label>,
-        body: Vec<Structure>,
+        body: Vec<Structure<Stmt>>,
     },
     /// Branching constructs??
     Multiple {
         entries: HashSet<Label>,
-        branches: HashMap<Label, Vec<Structure>>,
-        then: Vec<Structure>,
+        branches: HashMap<Label, Vec<Structure<Stmt>>>,
+        then: Vec<Structure<Stmt>>,
     }
 }
 
-impl Structure {
+impl<S> Structure<S> {
     fn get_entries(&self) -> &HashSet<Label> {
         match self {
             &Structure::Simple { ref entries, .. } => entries,
@@ -113,19 +134,57 @@ impl Structure {
     }
 }
 
+impl Structure<StmtOrDecl> {
+
+    /// Produce a new `Structure` from the existing one by replacing all `StmtOrDecl::Decl`
+    /// variants with either a declaration with initializer or only an initializer.
+    fn place_decls(self, lift_me: &HashSet<CDeclId>, store: &mut DeclStmtStore) -> Structure<Stmt> {
+        match self {
+            Structure::Simple { entries, body, terminator } => {
+                let mut body = body
+                    .into_iter()
+                    .flat_map(|s: StmtOrDecl| -> Vec<Stmt> { s.place_decls(lift_me, store) })
+                    .collect();
+                let terminator = terminator.place_decls(lift_me, store);
+                Structure::Simple { entries, body, terminator }
+            }
+            Structure::Loop { entries, body } => {
+                let body = body.into_iter().map(|s| s.place_decls(lift_me, store)).collect();
+                Structure::Loop { entries, body }
+            }
+            Structure::Multiple { entries, branches, then } => {
+                let branches = branches
+                    .into_iter()
+                    .map(|(lbl, vs)|
+                        (lbl, vs.into_iter().map(|s| s.place_decls(lift_me, store)).collect())
+                    )
+                    .collect();
+                let then = then.into_iter().map(|s| s.place_decls(lift_me, store)).collect();
+                Structure::Multiple { entries, branches, then }
+            }
+        }
+    }
+}
+
 /// Generalized basic block.
 #[derive(Clone, Debug)]
-struct BasicBlock<L> {
+struct BasicBlock<L,S> {
     /// Jump-free code
-    body: Vec<Stmt>,
+    body: Vec<S>,
 
     /// How to find the next (if any) basic block to go to
     terminator: GenTerminator<L>,
+
+    /// Variables live at the beginning of this block
+    live: HashSet<CDeclId>,
+
+    /// Variables defined in this block
+    defined: HashSet<CDeclId>,
 }
 
-impl<L> BasicBlock<L> {
+impl<L,S> BasicBlock<L,S> {
     fn new(terminator: GenTerminator<L>) -> Self {
-        BasicBlock { body: vec![], terminator }
+        BasicBlock { body: vec![], terminator, live: HashSet::new(), defined: HashSet::new() }
     }
 
     fn new_jump(target: L) -> Self {
@@ -133,7 +192,7 @@ impl<L> BasicBlock<L> {
     }
 }
 
-impl BasicBlock<StructureLabel> {
+impl<S1,S2> BasicBlock<StructureLabel<S1>,S2> {
 
     /// Get all of the `GoTo` targets of a structure basic block
     fn successors(&self) -> HashSet<Label> {
@@ -163,9 +222,7 @@ pub enum GenTerminator<Lbl> {
     /// expression
     Branch(P<Expr>, Lbl, Lbl),
 
-    /// Multi-way branch.
-    ///
-    /// FIXME: specify more invariants on `expr`/`cases`
+    /// Multi-way branch. The patterns are expected to match the type of the expression.
     Switch {
         expr: P<Expr>,
         cases: Vec<(Vec<P<Pat>>, Lbl)>, // TODO: support ranges of expressions
@@ -213,6 +270,37 @@ impl<L> GenTerminator<L> {
     }
 }
 
+impl GenTerminator<StructureLabel<StmtOrDecl>> {
+
+    /// Produce a new `GenTerminator` from the existing one by replacing all `StmtOrDecl::Decl`
+    /// variants with either a declaration with initializer or only an initializer.
+    fn place_decls(
+        self,
+        lift_me: &HashSet<CDeclId>,
+        store: &mut DeclStmtStore
+    ) -> GenTerminator<StructureLabel<Stmt>> {
+        match self {
+            End => End,
+            Jump(l) => {
+                let l = l.place_decls(lift_me, store);
+                Jump(l)
+            },
+            Branch(e, l1, l2) => {
+                let l1 = l1.place_decls(lift_me, store);
+                let l2 = l2.place_decls(lift_me, store);
+                Branch(e, l1, l2)
+            },
+            Switch { expr, cases } => {
+                let cases = cases
+                    .into_iter()
+                    .map(|(e, l)| (e, l.place_decls(lift_me, store)))
+                    .collect();
+                Switch { expr, cases }
+            }
+        }
+    }
+}
+
 /// The sole purpose of this structure is to accumulate information about what cases/default have
 /// been seen which translating the body of the switch.
 #[derive(Clone, Debug, Default)]
@@ -221,17 +309,37 @@ pub struct SwitchCases {
     default: Option<Label>,
 }
 
-/// A CFG graph of regular basic blocks.
-///
-/// TODO: consider parametrizing this:
-/// `struct Cfg<Lbl> { entry: HashSet<Label>, nodes: HashMap<Label, BasicBlock<Lbl>> }`
+/// A Rust statement, or a C declaration.
 #[derive(Clone, Debug)]
-pub struct Cfg<Lbl> {
+pub enum StmtOrDecl {
+    /// Rust statement that was translated from a non-compound and non-declaration C statement.
+    Stmt(Stmt),
+
+    /// C declaration
+    Decl(CDeclId),
+}
+
+impl StmtOrDecl {
+
+    /// Produce a `Stmt` by replacing `StmtOrDecl::Decl`  variants with either a declaration with
+    /// initializer or only an initializer.
+    fn place_decls(self, lift_me: &HashSet<CDeclId>, store: &mut DeclStmtStore) -> Vec<Stmt> {
+        match self {
+            StmtOrDecl::Stmt(s) => vec![s],
+            StmtOrDecl::Decl(d) if lift_me.contains(&d) => store.extract_assign(d).unwrap(),
+            StmtOrDecl::Decl(d) => store.extract_decl_and_assign(d).unwrap(),
+        }
+    }
+}
+
+/// A CFG graph of regular basic blocks.
+#[derive(Clone, Debug)]
+pub struct Cfg<Lbl: Eq + Hash, Stmt> {
     /// Entry point in the graph
-    entries: HashSet<Label>,
+    entries: HashSet<Lbl>,
 
     /// Nodes in the graph
-    nodes: HashMap<Label, BasicBlock<Lbl>>,
+    nodes: HashMap<Lbl, BasicBlock<Lbl,Stmt>>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -259,95 +367,94 @@ pub enum ImplicitReturnType {
 }
 
 /// A complete control-flow graph
-impl Cfg<Label> {
+impl Cfg<Label, StmtOrDecl> {
 
     /// Completely process a statement into a control flow graph.
     pub fn from_stmt(
         translator: &Translation,
         stmt_id: CStmtId,
         ret: ImplicitReturnType,
-    ) -> Result<Self, String> {
+    ) -> Result<(Self, DeclStmtStore), String> {
 
         let mut cfg_builder = CfgBuilder::new();
         let entry = *cfg_builder.graph.entries.iter().next().expect("from_stmt: expected an entry");
 
-        let body_stuff = translator.with_scope(
-            || cfg_builder.convert_stmt_help(translator, stmt_id, (entry, vec![]))
-        )?;
-        if let Some((body_lbl, mut body_stmts)) = body_stuff {
+        let body_stuff = translator.with_scope(|| {
+            let entry_wip = cfg_builder.new_wip_block(entry);
+            cfg_builder.convert_stmt_help(translator, stmt_id, entry_wip)
+        })?;
+        if let Some(WipBlock { label: body_label, mut body, defined, live }) = body_stuff {
 
             let ret_expr: Option<P<Expr>> = match ret {
                 ImplicitReturnType::Main => Some(mk().lit_expr(mk().int_lit(0, ""))),
                 ImplicitReturnType::Void => None as Option<P<Expr>>,
                 ImplicitReturnType::NoImplicitReturnType => Some(Translation::panic()), // TODO: this could be better
             };
-            body_stmts.push(mk().semi_stmt(mk().return_expr(ret_expr)));
+            body.push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(ret_expr))));
 
-            let body_bb = BasicBlock {
-                body: body_stmts,
-                terminator: End,
-            };
-            cfg_builder.add_block(body_lbl, body_bb);
+            let body_bb = BasicBlock { body, terminator: End, defined, live };
+            cfg_builder.add_block(body_label, body_bb);
         }
 
-        Ok(cfg_builder.graph
-               .prune_empty_blocks()
-               .prune_unreachable_blocks()
-        )
+        cfg_builder.graph.prune_empty_blocks_mut();
+        cfg_builder.graph.prune_unreachable_blocks_mut();
+
+        Ok((cfg_builder.graph, cfg_builder.decls_seen))
     }
+}
 
-    /// Removes blocks that cannot be reached
-    pub fn prune_unreachable_blocks(&self) -> Self {
-        let mut new_nodes: HashMap<Label, BasicBlock<Label>> = HashMap::new();
-        let mut to_visit: Vec<&Label> = self.entries.iter().collect();
+/// The polymorphism here is only to make it clear exactly how little these functions need to know
+/// about the actual contents of the CFG - we only actual call these on one monomorphic CFG type.
+impl<Lbl: Copy + Eq + Hash, Stmt> Cfg<Lbl, Stmt> {
 
-        while let Some(lbl) = to_visit.pop() {
-            let blk = self.nodes.get(lbl).expect("prune_unreachable_blocks: could not find block");
-            new_nodes.insert(*lbl,blk.clone());
+    /// Removes blocks that cannot be reached from the CFG
+    pub fn prune_unreachable_blocks_mut(&mut self) -> () {
+        let visited: HashSet<Lbl> = {
+            let mut visited: HashSet<Lbl> = HashSet::new();
+            let mut to_visit: Vec<&Lbl> = self.entries.iter().collect();
 
-            for lbl in &blk.terminator.get_labels() {
-                if !new_nodes.contains_key(lbl) {
-                    to_visit.push(lbl);
+            while let Some(lbl) = to_visit.pop() {
+                if visited.contains(lbl) {
+                    continue;
+                }
+
+                let blk = self.nodes.get(lbl).expect("prune_unreachable_blocks: block not found");
+                visited.insert(*lbl);
+
+                for lbl in &blk.terminator.get_labels() {
+                    if !visited.contains(lbl) {
+                        to_visit.push(lbl);
+                    }
                 }
             }
-        }
 
-        Cfg {
-           entries: self.entries.clone(),
-           nodes: new_nodes,
-        }
+            visited
+        };
+
+        self.nodes.retain(|lbl, _| visited.contains(lbl))
     }
 
     /// Removes empty blocks whose terminator is just a `Jump` by merging them with the block they
     /// are jumping to.
-    pub fn prune_empty_blocks(&self) -> Self {
-
-        /// Given an empty `BasicBlock` that ends in a `Jump`, return the target label. In all other
-        /// cases, return `None`.
-        fn empty_bb(bb: &BasicBlock<Label>) -> Option<Label> {
-            match bb.terminator {
-                Jump(lbl) if bb.body.is_empty() => Some(lbl),
-                _ => None,
-            }
-        }
+    pub fn prune_empty_blocks_mut(&mut self) -> () {
 
         // Keys are labels corresponding to empty basic blocks with a jump terminator, values are
         // the labels they jump to (and can hopefully be replaced by).
-        let mut proposed_rewrites: HashMap<Label, Label> = self.nodes
+        let mut proposed_rewrites: HashMap<Lbl, Lbl> = self.nodes
             .iter()
-            .filter_map(|(lbl, bb)| empty_bb(bb).map(|tgt| (*lbl, tgt)))
+            .filter_map(|(lbl, bb)| Cfg::empty_bb(bb).map(|tgt| (*lbl, tgt)))
             .collect();
 
         // Rewrites to actually apply. Keys are labels to basic blocks that were remapped into the
         // basic block corresponding to the value.
-        let mut actual_rewrites: HashMap<Label, Label> = HashMap::new();
+        let mut actual_rewrites: HashMap<Lbl, Lbl> = HashMap::new();
 
         while let Some((from, to)) = proposed_rewrites.iter().map(|(f,t)| (*f,*t)).next() {
             proposed_rewrites.remove(&from);
-            let mut from_any: HashSet<Label> = vec![from].into_iter().collect();
+            let mut from_any: HashSet<Lbl> = vec![from].into_iter().collect();
 
             // Try to apply more rewrites from `proposed_rewrites`
-            let mut to_intermediate: Label = to;
+            let mut to_intermediate: Lbl = to;
             while let Some(to_new) = proposed_rewrites.remove(&to_intermediate) {
                 from_any.insert(to_intermediate);
                 to_intermediate = to_new;
@@ -370,36 +477,32 @@ impl Cfg<Label> {
             }
         }
 
-        // Apply the remaps
-        let entries = self.entries
+        // Apply the remaps to the entries
+        self.entries = self.entries
             .iter()
             .map(|entry| *actual_rewrites.get(entry).unwrap_or(entry))
             .collect();
-        let nodes = self.nodes
-            .iter()
-            .filter_map(|(label, bb)| -> Option<(Label, BasicBlock<Label>)> {
-                match actual_rewrites.get(label) {
-                    // We keep only the basic blocks that weren't remapped to anything. Before
-                    // returning them though, we have to remap any labels in their terminator.
-                    None => {
-                        let new_terminator = bb.terminator.map_labels(|label: &Label| -> Label {
-                            match actual_rewrites.get(label) {
-                                None => *label,
-                                Some(new_label) => *new_label,
-                            }
-                        });
-                        let new_bb = BasicBlock {
-                            body: bb.body.clone(),
-                            terminator: new_terminator,
-                        };
-                        Some((*label, new_bb))
-                    }
-                    Some(_) => None
-                }
-            })
-            .collect();
 
-        Cfg { entries, nodes }
+        // We keep only the basic blocks that weren't remapped to anything.
+        self.nodes.retain(|lbl, _| actual_rewrites.get(lbl).is_none());
+
+        // However, those block we do keep, we remap the labels in their terminators.
+        for bb in self.nodes.values_mut() {
+            for lbl in bb.terminator.get_labels_mut() {
+                if let Some(new_lbl) = actual_rewrites.get(lbl) {
+                    *lbl = *new_lbl;
+                }
+            }
+        }
+    }
+
+    /// Given an empty `BasicBlock` that ends in a `Jump`, return the target label. In all other
+    /// cases, return `None`.
+    fn empty_bb(bb: &BasicBlock<Lbl,Stmt>) -> Option<Lbl> {
+        match bb.terminator {
+            Jump(lbl) if bb.body.is_empty() => Some(lbl),
+            _ => None,
+        }
     }
 }
 
@@ -409,7 +512,7 @@ impl Cfg<Label> {
 struct CfgBuilder {
 
     /// Identifies the 'BasicBlock' to start with in 'graph'
-    graph: Cfg<Label>,
+    graph: Cfg<Label,StmtOrDecl>,
 
     /// Source for generating fresh synthetic labels
     prev_label: u64,
@@ -422,15 +525,238 @@ struct CfgBuilder {
     /// Accumulates information for the 'case'/'default' encountered so far while translating the
     /// body of a 'switch'.
     switch_expr_cases: Vec<SwitchCases>,
+
+    /// Variables in scope right before the current statement. The wrapping `Vec` witnesses the
+    /// notion of scope: later elements in the vector are always supersets of earlier elements.
+    currently_live: Vec<HashSet<CDeclId>>,
+
+    /// Information about all of the C declarations we have seen so far.
+    decls_seen: DeclStmtStore,
+}
+
+/// Stores information about translating C declarations to Rust statements. When seeing a C
+/// declaration, we often don't know if it is already in the right place. The fix is to punt: we
+/// put into a `DeclStmtStore` information about what to do in all possible cases and we delay
+/// choosing what to do until later.
+#[derive(Clone, Debug)]
+pub struct DeclStmtStore {
+    store: HashMap<CDeclId, DeclStmtInfo>
+}
+
+/// This contains the information one needs to convert a C declaration in all the possible ways:
+///
+///  1. declare and initialize
+///  2. declare only (and incidentally zero-initialize)
+///  3. intialize only (if the declaration has already been emitted)
+///
+#[derive(Clone, Debug)]
+pub struct DeclStmtInfo {
+    /// Just the declaration
+    pub decl: Option<Vec<Stmt>>,
+
+    /// Just the assignment
+    pub assign: Option<Vec<Stmt>>,
+
+    /// Both the declaration and the assignment
+    pub decl_and_assign: Option<Vec<Stmt>>,
+
+    /// Statements that need to run to make `assign` and `decl_and_assign` work
+    pub pre_init: Option<Vec<Stmt>>,
+}
+
+impl DeclStmtInfo {
+    pub fn new(
+        decl: Vec<Stmt>,
+        assign: Vec<Stmt>,
+        decl_and_assign: Vec<Stmt>,
+        pre_init: Vec<Stmt>
+    ) -> Self {
+        DeclStmtInfo {
+            decl: Some(decl),
+            assign: Some(assign),
+            decl_and_assign: Some(decl_and_assign),
+            pre_init: Some(pre_init),
+        }
+    }
+}
+
+impl DeclStmtStore {
+
+    pub fn new() -> Self {
+        DeclStmtStore { store: HashMap::new() }
+    }
+
+    /// Extract _just_ the Rust statements for a declaration (without initialization). Used when you
+    /// want to move just a declaration to a larger scope.
+    pub fn extract_decl(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
+        let DeclStmtInfo { decl, assign, pre_init, .. } = self.store
+            .remove(&decl_id)
+            .ok_or(format!("Cannot find information on declaration {:?}", decl_id))?;
+
+        let decl: Vec<Stmt> = decl.ok_or(format!("Declaration for {:?} has already been extracted", decl_id))?;
+
+        let pruned = DeclStmtInfo { decl: None, assign, decl_and_assign: None, pre_init };
+        self.store.insert(decl_id, pruned);
+
+        Ok(decl)
+    }
+
+   /// Extract _just_ the Rust statements for an initializer (without the declaration it was
+   /// initially attached to). Used when you've moved a declaration but now you need to also run the
+   /// initializer.
+    pub fn extract_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
+        let DeclStmtInfo { decl, assign, pre_init, .. } = self.store
+            .remove(&decl_id)
+            .ok_or(format!("Cannot find information on declaration {:?}", decl_id))?;
+
+        let pre_init: Vec<Stmt> = pre_init.ok_or(format!("Pre-initializer for {:?} has already been extracted", decl_id))?;
+        let assign: Vec<Stmt> = assign.ok_or(format!("Assignment for {:?} has already been extracted", decl_id))?;
+
+        let pruned = DeclStmtInfo { decl, assign: None, decl_and_assign: None, pre_init: None };
+        self.store.insert(decl_id, pruned);
+
+        let mut ret: Vec<Stmt> = vec![];
+        ret.extend(&mut pre_init.into_iter());
+        ret.extend(&mut assign.into_iter());
+
+        Ok(ret)
+    }
+
+    /// Extract the Rust statements for the full declaration and initializers. Used for when you
+    /// didn't need to move a declaration at all.
+    pub fn extract_decl_and_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
+        let DeclStmtInfo { decl_and_assign, pre_init, .. } = self.store
+            .remove(&decl_id)
+            .ok_or(format!("Cannot find information on declaration {:?}", decl_id))?;
+
+        let pre_init: Vec<Stmt> = pre_init.ok_or(format!("Pre-initializer for {:?} has already been extracted", decl_id))?;
+        let decl_and_assign: Vec<Stmt> = decl_and_assign.ok_or(format!("Declaration with assignment for {:?} has already been extracted", decl_id))?;
+
+        let pruned = DeclStmtInfo { decl: None, assign: None, decl_and_assign: None, pre_init: None };
+        self.store.insert(decl_id, pruned);
+
+        let mut ret: Vec<Stmt> = vec![];
+        ret.extend(&mut pre_init.into_iter());
+        ret.extend(&mut decl_and_assign.into_iter());
+
+        Ok(ret)
+    }
+
+    /// Extract the Rust statements for the full declaration and initializers. DEBUGGING ONLY.
+    pub fn peek_decl_and_assign(&self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
+        let &DeclStmtInfo { ref decl_and_assign, ref pre_init, .. } = self.store
+            .get(&decl_id)
+            .ok_or(format!("Cannot find information on declaration {:?}", decl_id))?;
+
+        let pre_init: Vec<Stmt> = pre_init.clone().ok_or(format!("Pre-initializer for {:?} has already been extracted", decl_id))?;
+        let decl_and_assign: Vec<Stmt> = decl_and_assign.clone().ok_or(format!("Declaration with assignment for {:?} has already been extracted", decl_id))?;
+
+        let mut ret: Vec<Stmt> = vec![];
+        ret.extend(&mut pre_init.into_iter());
+        ret.extend(&mut decl_and_assign.into_iter());
+
+        Ok(ret)
+    }
+}
+
+/// Represents a `BasicBlock` under construction where the bit under construction is the end. Extra
+/// statements may be added in the `body` and extra declarations may be added to `defined`. However,
+/// the `label` and `live` should not change.
+struct WipBlock {
+    /// Label of WIP.
+    label: Label,
+
+    /// Statements so far in the WIP.
+    body: Vec<StmtOrDecl>,
+
+    /// Variables defined so far in this WIP.
+    defined: HashSet<CDeclId>,
+
+    /// Variables live in this WIP.
+    live: HashSet<CDeclId>,
+}
+
+impl Extend<Stmt> for WipBlock {
+    fn extend<T: IntoIterator<Item = Stmt>>(&mut self, iter: T) {
+        for stmt in iter.into_iter() {
+            self.body.push(StmtOrDecl::Stmt(stmt))
+        }
+    }
+}
+
+impl WipBlock {
+    pub fn push_stmt(&mut self, stmt: Stmt) {
+        self.body.push(StmtOrDecl::Stmt(stmt))
+    }
+
+    pub fn push_decl(&mut self, decl: CDeclId) {
+        self.body.push(StmtOrDecl::Decl(decl))
+    }
 }
 
 /// This impl block deals with creating control flow graphs
 impl CfgBuilder {
+
     /// Add a basic block to the control flow graph, specifying under which label to insert it.
-    fn add_block(&mut self, lbl: Label, bb: BasicBlock<Label>) -> () {
+    fn add_block(&mut self, lbl: Label, bb: BasicBlock<Label,StmtOrDecl>) -> () {
+        for decl in &bb.defined {
+            self.currently_live
+                .last_mut()
+                .expect("Found no live currently live scope")
+                .insert(*decl);
+        }
         match self.graph.nodes.insert(lbl, bb) {
             None => { },
             Some(_) => panic!("Label {:?} cannot identify two basic blocks", lbl),
+        }
+    }
+
+    /// Create a basic block from a WIP block by tacking on the right terminator. Once this is done,
+    /// add the block into the graph.
+    fn add_wip_block(&mut self, wip: WipBlock, terminator: GenTerminator<Label>) -> () {
+        let WipBlock { label, body, defined, live } = wip;
+        self.add_block(label, BasicBlock { body, terminator, defined, live });
+    }
+
+    // Update the terminator of an existing block. This is for the special cases where you don't
+    // know the terminators of a block by visiting it.
+    fn update_terminator(&mut self, lbl: Label, new_term: GenTerminator<Label>) -> () {
+        match self.graph.nodes.get_mut(&lbl) {
+            None => panic!("Cannot find label {:?} to update", lbl),
+            Some(bb) => bb.terminator = new_term,
+        }
+    }
+
+    fn with_scope<B, F: FnOnce(&mut Self) -> B>(&mut self, translator: &Translation, cont: F) -> B {
+
+        // Open a new scope
+        let new_vars = self.current_variables();
+        self.currently_live.push(new_vars);
+
+        let b = translator.with_scope(|| cont(self));
+
+        // Close the scope
+        self.currently_live
+            .pop()
+            .expect("Found no live currently live scope to close");
+
+        b
+    }
+
+    fn current_variables(&self) -> HashSet<CDeclId> {
+        self.currently_live
+            .last()
+            .expect("Found no live currently live scope")
+            .clone()
+    }
+
+    // Start a new basic block WIP.
+    fn new_wip_block(&mut self, new_label: Label) -> WipBlock {
+        WipBlock {
+            label: new_label,
+            body: vec![],
+            defined: HashSet::new(),
+            live: self.current_variables(),
         }
     }
 
@@ -455,351 +781,286 @@ impl CfgBuilder {
             break_labels: vec![],
             continue_labels: vec![],
             switch_expr_cases: vec![],
+
+            currently_live: vec![HashSet::new()],
+            decls_seen: DeclStmtStore::new(),
         }
     }
 
 
-    /// Translate a C statement and tack it onto the end of the WIP `Vec<Stmt>` passed in. If
-    /// necessary, intermediate basic blocks can be outputted to the control flow graph.
+    /// Translate a C statement and tack it onto the end of the `WipBlock` passed in. If necessary,
+    /// intermediate basic blocks can be outputted to the control flow graph.
     ///
     /// If the input C statement naturally passes control to the statement that follows it, the
-    /// return should be the new WIP `Vec<Stmt>` (and the label by which this WIP block is referred
-    /// to).
+    /// return should be the new `WipBlock` (and the label by which this WIP block is referred to).
     ///
-    /// This is the workhorse for generating control flow graphs. By passing threading through a
-    /// vector of statements, we can avoid making a lot of small blocks.
+    /// NOTE: This is the workhorse for generating control flow graphs. By passing threading through
+    ///       a WIP block, we can avoid making a lot of small blocks.
+    ///
+    /// NOTE: It is important that we finish adding a block to the graph before we start creating
+    ///       the next one. Every time a new block is started with `new_wip_block`, we take a
+    ///       snapshot of the live variables from `currently_live`.
     fn convert_stmt_help(
         &mut self,
         translator: &Translation,
-        stmt_id: CStmtId,                     // C statement to translate
-        (lbl, mut stmts): (Label, Vec<Stmt>), // WIP statements and the label referring to them
-    ) -> Result<Option<(Label, Vec<Stmt>)>, String> {
+        stmt_id: CStmtId,         // C statement to translate
+        mut wip: WipBlock,        // Current WIP block
+    ) -> Result<Option<WipBlock>, String> {
 
         match translator.ast_context.index(stmt_id).kind {
-            CStmtKind::Empty => Ok(Some((lbl, stmts))),
+            CStmtKind::Empty => Ok(Some(wip)),
 
             CStmtKind::Decls(ref decls) => {
                 for decl in decls {
-                    stmts.extend(translator.convert_decl_stmt(*decl)?);
+                    let info = translator.convert_decl_stmt_info(*decl)?;
+                    self.decls_seen.store.insert(*decl, info);
+
+                    wip.push_decl(*decl);
+                    wip.defined.insert(*decl);
                 }
-                Ok(Some((lbl, stmts)))
+                Ok(Some(wip))
             }
 
             CStmtKind::Return(expr) => {
-
-                let val =
-                    match expr.map(|i| translator.convert_expr(ExprUse::RValue, i, false)) {
-                        Some(r) => Some(r?),
-                        None => None,
-                    };
-
-                let WithStmts { stmts: ret_stmts, val: ret_val } = with_stmts_opt(val);
-                stmts.extend(ret_stmts);
-                stmts.push(mk().expr_stmt(mk().return_expr(ret_val)));
-
-                let bb = BasicBlock {
-                    body: stmts,
-                    terminator: End,
+                let val = match expr.map(|i| translator.convert_expr(ExprUse::RValue, i, false)) {
+                    Some(r) => Some(r?),
+                    None => None,
                 };
 
-                self.add_block(lbl, bb);
+                let WithStmts { stmts, val: ret_val } = with_stmts_opt(val);
+                wip.extend(stmts);
+                wip.push_stmt(mk().expr_stmt(mk().return_expr(ret_val)));
+
+                self.add_wip_block(wip, End);
 
                 Ok(None)
             }
 
             CStmtKind::If { scrutinee, true_variant, false_variant } => {
-
                 let next_entry = self.fresh_label();
                 let then_entry = self.fresh_label();
                 let else_entry = if false_variant.is_none() { next_entry } else { self.fresh_label() };
 
                 // Condition
-                let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_condition(true, scrutinee)?;
-                stmts.extend(cond_stmts);
-
-                let cond_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Branch(cond_val, then_entry, else_entry),
-                };
-                self.add_block(lbl, cond_bb);
+                let WithStmts { stmts, val } = translator.convert_condition(true, scrutinee)?;
+                wip.extend(stmts);
+                self.add_wip_block(wip, Branch(val, then_entry, else_entry));
 
                 // Then case
-                let then_stuff = self.convert_stmt_help(
-                    translator,
-                    true_variant,
-                    (then_entry, vec![]),
-                )?;
-                if let Some((new_then_entry, then_stmts)) = then_stuff {
-                    let then_bb = BasicBlock {
-                        body: then_stmts,
-                        terminator: Jump(next_entry),
-                    };
-                    self.add_block(new_then_entry, then_bb);
+                let then_wip = self.new_wip_block(then_entry);
+                let then_stuff = self.convert_stmt_help(translator, true_variant, then_wip)?;
+                if let Some(wip_then) = then_stuff {
+                    self.add_wip_block(wip_then, Jump(next_entry));
                 }
 
                 // Else case
                 if let Some(false_var) = false_variant {
-                    let else_stuff = self.convert_stmt_help(
-                        translator,
-                        false_var,
-                        (else_entry, vec![]),
-                    )?;
-                    if let Some((new_else_entry, else_stmts)) = else_stuff {
-                        let else_bb = BasicBlock {
-                            body: else_stmts,
-                            terminator: Jump(next_entry),
-                        };
-                        self.add_block(new_else_entry, else_bb);
+                    let else_wip = self.new_wip_block(else_entry);
+                    let else_stuff = self.convert_stmt_help(translator, false_var, else_wip)?;
+                    if let Some(wip_else) = else_stuff {
+                        self.add_wip_block(wip_else, Jump(next_entry));
                     }
                 };
 
                 // Return
-                Ok(Some((next_entry, vec![])))
+                Ok(Some(self.new_wip_block(next_entry)))
             }
 
-            CStmtKind::While { condition, body } => {
-
+            CStmtKind::While { condition, body: body_stmt } => {
                 let cond_entry = self.fresh_label();
                 let body_entry = self.fresh_label();
                 let next_entry = self.fresh_label();
 
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(cond_entry),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(cond_entry));
 
                 // Condition
-                let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_condition(true, condition)?;
-                let cond_bb = BasicBlock {
-                    body: cond_stmts,
-                    terminator: Branch(cond_val, body_entry, next_entry),
-                };
-                self.add_block(cond_entry, cond_bb);
+                let WithStmts { stmts, val } = translator.convert_condition(true, condition)?;
+                let mut cond_wip = self.new_wip_block(cond_entry);
+                cond_wip.extend(stmts);
+                self.add_wip_block(cond_wip, Branch(val, body_entry, next_entry));
 
                 // Body
                 self.break_labels.push(next_entry);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_help(
-                    translator,
-                    body,
-                    (body_entry, vec![]),
-                )?;
-                if let Some((body_new_entry, body_stmts)) = body_stuff {
-                    let body_bb = BasicBlock {
-                        body: body_stmts,
-                        terminator: Jump(cond_entry),
-                    };
-                    self.add_block(body_new_entry, body_bb);
+                let body_wip = self.new_wip_block(body_entry);
+                let body_stuff = self.convert_stmt_help(translator, body_stmt, body_wip)?;
+                if let Some(wip_body) = body_stuff {
+                    self.add_wip_block(wip_body, Jump(cond_entry));
                 }
 
                 self.break_labels.pop();
                 self.continue_labels.pop();
 
                 //Return
-                Ok(Some((next_entry, vec![])))
+                Ok(Some(self.new_wip_block(next_entry)))
             }
 
-            CStmtKind::DoWhile { body, condition } => {
-
+            CStmtKind::DoWhile { body: body_stmt, condition } => {
                 let body_entry = self.fresh_label();
                 let cond_entry = self.fresh_label();
                 let next_entry = self.fresh_label();
 
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(body_entry),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(body_entry));
 
                 // Body
                 self.break_labels.push(next_entry);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_help(
-                    translator,
-                    body,
-                    (body_entry, vec![]),
-                )?;
-                if let Some((body_new_entry, body_stmts)) = body_stuff {
-                    let body_bb = BasicBlock {
-                        body: body_stmts,
-                        terminator: Jump(cond_entry),
-                    };
-                    self.add_block(body_new_entry, body_bb);
+                let body_wip = self.new_wip_block(body_entry);
+                let body_stuff = self.convert_stmt_help(translator, body_stmt, body_wip)?;
+                if let Some(wip_body) = body_stuff {
+                    self.add_wip_block(wip_body, Jump(cond_entry));
                 }
 
                 self.break_labels.pop();
                 self.continue_labels.pop();
 
                 // Condition
-                let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_condition(true, condition)?;
-                let cond_bb = BasicBlock {
-                    body: cond_stmts,
-                    terminator: Branch(cond_val, body_entry, next_entry),
-                };
-                self.add_block(cond_entry, cond_bb);
+                let WithStmts { stmts, val } = translator.convert_condition(true, condition)?;
+                let mut cond_wip = self.new_wip_block(cond_entry);
+                cond_wip.extend(stmts);
+                self.add_wip_block(cond_wip, Branch(val, body_entry, next_entry));
 
                 //Return
-                Ok(Some((next_entry, vec![])))
+                Ok(Some(self.new_wip_block(next_entry)))
             }
 
-            CStmtKind::ForLoop { init, condition, increment, body } => translator.with_scope(|| {
-
+            CStmtKind::ForLoop { init, condition, increment, body } => {
                 let cond_entry = self.fresh_label();
                 let body_entry = self.fresh_label();
                 let incr_entry = self.fresh_label();
                 let next_label = self.fresh_label();
 
-                // Init
-                let init_stuff = match init {
-                    None => Some((lbl, stmts)),
-                    Some(init) => self.convert_stmt_help(
-                        translator,
-                        init,
-                        (lbl, stmts),
-                    )?,
-                };
-                if let Some((init_lbl, init_stmts)) = init_stuff {
-                    let init_bb = BasicBlock {
-                        body: init_stmts,
-                        terminator: Jump(cond_entry),
+                self.with_scope(translator, |slf| -> Result<(), String> {
+                    // Init
+                    let init_stuff = match init {
+                        None => Some(wip),
+                        Some(init) => slf.convert_stmt_help(translator, init, wip)?,
                     };
-                    self.add_block(init_lbl, init_bb);
-                }
-
-                // Condition
-                match condition {
-                    Some(cond) => {
-                        let WithStmts { stmts, val } =
-                            translator.convert_condition(true, cond)?;
-                        self.add_block(cond_entry, BasicBlock {
-                            body: stmts,
-                            terminator: Branch(val, body_entry, next_label),
-                        });
+                    if let Some(wip_init) = init_stuff {
+                        slf.add_wip_block(wip_init, Jump(cond_entry));
                     }
-                    None => self.add_block(cond_entry, BasicBlock::new_jump(body_entry)),
-                }
 
-                // Body
-                self.break_labels.push(next_label);
-                self.continue_labels.push(incr_entry);
-
-                let body_stuff = self.convert_stmt_help(translator, body, (body_entry, vec![]))?;
-
-                self.break_labels.pop();
-                self.continue_labels.pop();
-
-                if let Some((body_new_lbl, body_stmts)) = body_stuff {
-                    let body_inc_bb = BasicBlock {
-                        terminator: Jump(incr_entry),
-                        body: body_stmts
-                    };
-                    self.add_block(body_new_lbl, body_inc_bb);
-                }
-
-                // Increment
-                match increment {
-                    Some(incr) => {
-                        let incr_stmts = translator
-                                .convert_expr(ExprUse::Unused, incr, false)?
-                                .stmts;
-                        self.add_block(incr_entry, BasicBlock {
-                            body: incr_stmts,
-                            terminator: Jump(cond_entry),
-                        });
+                    // Condition
+                    if let Some(cond) = condition {
+                        let WithStmts { stmts, val } = translator.convert_condition(true, cond)?;
+                        let mut cond_wip = slf.new_wip_block(cond_entry);
+                        cond_wip.extend(stmts);
+                        slf.add_wip_block(cond_wip, Branch(val, body_entry, next_label));
+                    } else {
+                        slf.add_block(cond_entry, BasicBlock::new_jump(body_entry));
                     }
-                    None => self.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
-                }
 
-                // Return
-                Ok(Some((next_label, vec![])))
-            }),
+                    // Body
+                    slf.break_labels.push(next_label);
+                    slf.continue_labels.push(incr_entry);
+
+                    let body_wip = slf.new_wip_block(body_entry);
+                    let body_stuff = slf.convert_stmt_help(translator, body, body_wip)?;
+
+                    if let Some(wip_body) = body_stuff {
+                      slf.add_wip_block(wip_body, Jump(incr_entry));
+                    }
+
+                    slf.break_labels.pop();
+                    slf.continue_labels.pop();
+
+                    // Increment
+                    match increment {
+                        None => slf.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
+                        Some(incr) => {
+                          let incr_stmts = translator
+                                  .convert_expr(ExprUse::Unused, incr, false)?
+                                  .stmts;
+                          let mut incr_wip = slf.new_wip_block(incr_entry);
+                          incr_wip.extend(incr_stmts);
+                          slf.add_wip_block(incr_wip, Jump(cond_entry));
+                        }
+                    }
+
+                    Ok(())
+                })?;
+              
+                // Return (it is important this happen _outside_ the `with_scope` call)
+                Ok(Some(self.new_wip_block(next_label)))
+            },
 
             CStmtKind::Label(sub_stmt) => {
-
                 let this_label = Label::FromC(stmt_id);
-
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(this_label),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(this_label));
 
                 // Sub stmt
-                self.convert_stmt_help(translator, sub_stmt, (this_label, vec![]))
+                let sub_stmt_wip = self.new_wip_block(this_label);
+                self.convert_stmt_help(translator, sub_stmt, sub_stmt_wip)
             }
 
             CStmtKind::Goto(label_id) => {
-
                 let tgt_label = Label::FromC(label_id);
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(tgt_label),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(tgt_label));
 
                 Ok(None)
             }
 
-            CStmtKind::Compound(ref comp_stmts) => translator.with_scope(|| {
+            CStmtKind::Compound(ref comp_stmts) => {
 
-                let mut lbl_stmts = Some((lbl, stmts));
+                // We feed the optional output WIP into the WIP input of the next block
+                let wip = self.with_scope(translator, |slf| -> Result<Option<WipBlock>, String> {
+                    let mut wip = Some(wip);
+                    for stmt in comp_stmts {
+                        let new_label = slf.fresh_label();
+                        let new_wip = wip.unwrap_or(slf.new_wip_block(new_label));
+                        wip = slf.convert_stmt_help(translator, *stmt, new_wip)?;
+                    }
+                    Ok(wip)
+                })?;
 
-                for stmt in comp_stmts {
-                    let (lbl,stmts) = lbl_stmts.unwrap_or((self.fresh_label(), vec![]));
-                    lbl_stmts = self.convert_stmt_help(translator, *stmt, (lbl, stmts))?;
-                }
-
-                Ok(lbl_stmts)
-            }),
+                // We need to close off the final WIP block (if there is even one) because whatever
+                // follows will be in a different scope.
+                Ok(wip.map(|last_wip| {
+                    let new_label = self.fresh_label();
+                    self.add_wip_block(last_wip, Jump(new_label));
+                    self.new_wip_block(new_label)
+                }))
+            }
 
             CStmtKind::Expr(expr) => {
-                stmts.extend(translator.convert_expr(ExprUse::Unused, expr, false)?.stmts);
+                wip.extend(translator.convert_expr(ExprUse::Unused, expr, false)?.stmts);
 
-                Ok(Some((lbl, stmts)))
+                Ok(Some(wip))
             }
 
             CStmtKind::Break => {
                 let tgt_label = *self.break_labels.last().expect("Nothing to 'break' to");
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(tgt_label),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(tgt_label));
 
                 Ok(None)
             }
 
             CStmtKind::Continue => {
                 let tgt_label = *self.continue_labels.last().expect("Nothing to 'continue' to");
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(tgt_label),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(tgt_label));
 
                 Ok(None)
             }
 
             CStmtKind::Case(_case_expr, sub_stmt, cie) => {
                 let this_label = Label::FromC(stmt_id);
-
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(this_label),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(this_label));
 
                 // Case
                 let branch = match cie {
-                    ConstIntExpr::U(n) => mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed)),
-                    ConstIntExpr::I(n) if n < 0 => mk().unary_expr(syntax::ast::UnOp::Neg, mk().lit_expr(mk().int_lit((-n) as u128, LitIntType::Unsuffixed))),
-                    ConstIntExpr::I(n) => mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed)),
+                    ConstIntExpr::U(n) =>
+                        mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed)),
+
+                    ConstIntExpr::I(n) if n >= 0 =>
+                        mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed)),
+
+                    ConstIntExpr::I(n) =>
+                        mk().unary_expr(
+                            syntax::ast::UnOp::Neg,
+                            mk().lit_expr(mk().int_lit((-n) as u128, LitIntType::Unsuffixed))
+                        ),
                 };
                 self.switch_expr_cases
                     .last_mut()
@@ -808,17 +1069,13 @@ impl CfgBuilder {
                     .push((mk().lit_pat(branch), this_label));
 
                 // Sub stmt
-                self.convert_stmt_help(translator, sub_stmt, (this_label, vec![]))
+                let sub_stmt_wip = self.new_wip_block(this_label);
+                self.convert_stmt_help(translator, sub_stmt, sub_stmt_wip)
             }
 
             CStmtKind::Default(sub_stmt) => {
                 let this_label = Label::FromC(stmt_id);
-
-                let prev_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Jump(this_label),
-                };
-                self.add_block(lbl, prev_bb);
+                self.add_wip_block(wip, Jump(this_label));
 
                 // Default case
                 self.switch_expr_cases
@@ -828,29 +1085,29 @@ impl CfgBuilder {
                     .get_or_insert(this_label);
 
                 // Sub stmt
-                self.convert_stmt_help(translator, sub_stmt, (this_label, vec![]))
+                let sub_stmt_wip = self.new_wip_block(this_label);
+                self.convert_stmt_help(translator, sub_stmt, sub_stmt_wip)
             }
 
-            CStmtKind::Switch { scrutinee, body } => {
-
+            CStmtKind::Switch { scrutinee, body: switch_body } => {
                 let next_label = self.fresh_label();
                 let body_label = self.fresh_label();
 
                 // Convert the condition
-                let WithStmts { stmts: cond_stmts, val: cond_val } =
-                    translator.convert_expr(ExprUse::RValue, scrutinee, false)?;
-                stmts.extend(cond_stmts);
+                let WithStmts { stmts, val } = translator.convert_expr(ExprUse::RValue, scrutinee, false)?;
+                wip.extend(stmts);
+
+                let wip_label = wip.label;
+                self.add_wip_block(wip, End); // NOTE: the `End` here is temporary and gets updated
 
                 // Body
                 self.break_labels.push(next_label);
                 self.switch_expr_cases.push(SwitchCases::default());
 
-                let body_stuff = self.convert_stmt_help(translator, body, (body_label, vec![]))?;
-                if let Some((body_new_lbl, body_stmts)) = body_stuff {
-                    self.add_block(body_new_lbl, BasicBlock {
-                        body: body_stmts,
-                        terminator: Jump(next_label),
-                    });
+                let body_wip = self.new_wip_block(body_label);
+                let body_stuff = self.convert_stmt_help(translator, switch_body, body_wip)?;
+                if let Some(body_wip) = body_stuff {
+                    self.add_wip_block(body_wip, Jump(next_label));
                 }
 
                 self.break_labels.pop();
@@ -862,17 +1119,12 @@ impl CfgBuilder {
                     .collect();
                 cases.push((vec![mk().wild_pat()], switch_case.default.unwrap_or(next_label)));
 
-
-                // Add the condition basic block (we need the information built up during the
-                // conversion of the body to make the right terminator)
-                let cond_bb = BasicBlock {
-                    body: stmts,
-                    terminator: Switch { expr: cond_val, cases },
-                };
-                self.add_block(lbl, cond_bb);
+                // Add the condition basic block terminator (we need the information built up during
+                // the conversion of the body to make the right terminator)
+                self.update_terminator(wip_label, Switch { expr: val, cases });
 
                 // Return
-                Ok(Some((next_label, vec![])))
+                Ok(Some(self.new_wip_block(next_label)))
             }
         }
     }
@@ -885,9 +1137,14 @@ impl CfgBuilder {
 /// ```norun
 /// dot -Tpng cfg_func.dot > cfg_func.png
 /// ```
-impl Cfg<Label> {
+impl Cfg<Label,StmtOrDecl> {
 
-    pub fn dump_dot_graph(&self, file_path: String) -> io::Result<()> {
+    pub fn dump_dot_graph(
+        &self,
+        ctx: &TypedAstContext,
+        store: &DeclStmtStore,
+        file_path: String
+    ) -> io::Result<()> {
 
         // Utility function for sanitizing strings
         fn sanitize_label(lbl: String) -> String {
@@ -909,25 +1166,61 @@ impl Cfg<Label> {
         }
 
         // Rest of graph
-        for (lbl, &BasicBlock { ref body, ref terminator }) in self.nodes.iter() {
+        for (lbl, bb) in self.nodes.iter() {
 
-            let pretty_terminator = match terminator {
-                &End | &Jump(_) => String::from(""),
-                &Branch(ref cond, _, _) => format!("\n{}",pprust::expr_to_string(cond.deref())),
-                &Switch { ref expr, .. } => format!("\n{}",pprust::expr_to_string(expr.deref())),
+            let pretty_terminator = match bb.terminator {
+                End | Jump(_) => String::from(""),
+                Branch(ref cond, _, _) => format!("\n{}",pprust::expr_to_string(cond.deref())),
+                Switch { ref expr, .. } => format!("\n{}",pprust::expr_to_string(expr.deref())),
+            };
+
+            let defined = if bb.defined.is_empty() {
+                format!("")
+            } else {
+                format!(
+                    "\\ldefined: {{{}}}",
+                    bb.defined
+                        .iter()
+                        .filter_map(|decl| ctx.index(*decl).kind.get_name())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
+            };
+
+            let live = if bb.live.is_empty() {
+                format!("")
+            } else {
+                format!(
+                    "\\llive in: {{{}}}",
+                    bb.live
+                        .iter()
+                        .filter_map(|decl| ctx.index(*decl).kind.get_name())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
             };
 
             // A node
             file.write_fmt(format_args!(
-                "  {} [label=\"{}:\\l{}-----{}\"];\n",
+                "  {} [label=\"{}:\\l-----{}{}\\l{}-----{}\"];\n",
                 lbl.debug_print(),
                 lbl.debug_print(),
-                format!("-----\\l{}", if body.is_empty() {
+                live,
+                defined,
+                format!("-----\\l{}", if bb.body.is_empty() {
                     String::from("")
                 } else {
-                    sanitize_label(body
+                    sanitize_label(bb.body
                         .iter()
-                        .map(|stmt| pprust::stmt_to_string(stmt))
+                        .flat_map(|stmt_or_decl: &StmtOrDecl| -> Vec<Stmt> {
+                            match stmt_or_decl {
+                                &StmtOrDecl::Stmt(ref s) => vec![s.clone()],
+                                &StmtOrDecl::Decl(ref d) => store.peek_decl_and_assign(*d).unwrap(),
+                            }
+                        })
+                        .map(|stmt: Stmt| pprust::stmt_to_string(&stmt))
                         .collect::<Vec<String>>()
                         .join("\n")
                     )
@@ -936,14 +1229,14 @@ impl Cfg<Label> {
             ))?;
 
             // All the edges starting from this node
-            let edges: Vec<(String, Label)> = match terminator {
-                &End => vec![],
-                &Jump(tgt) => vec![(String::from(""),tgt)],
-                &Branch(_, tru, fal) => vec![
+            let edges: Vec<(String, Label)> = match bb.terminator {
+                End => vec![],
+                Jump(tgt) => vec![(String::from(""),tgt)],
+                Branch(_, tru, fal) => vec![
                     (String::from("true"),tru),
                     (String::from("false"),fal)
                 ],
-                &Switch { ref cases, .. } => {
+                Switch { ref cases, .. } => {
                     let mut cases: Vec<(String, Label)> = cases
                         .iter()
                         .map(|&(ref pats, tgt)| -> (String, Label) {
