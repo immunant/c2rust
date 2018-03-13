@@ -36,7 +36,7 @@ test.c:
         #foo: { custom: "my_Foo_hash(foo)" }
         #n: disabled
         #n: { custom: "id(n)" }
-        #n: { custom: "deref(&n)" }
+        #n: { custom: "deref(n)" }
         #n: { custom: "id(n, x)" }
         #n: { fixed: 0xabcd1234 }
         stop: default
@@ -45,7 +45,7 @@ test.c:
         - { custom: "my_Foo_hash(foo)" }
         - { custom: "deref(p)", tag: UNKNOWN }
         - { custom: "id(ctr)", tag: FUNCTION_ENTRY }
-        - { custom: "deref(&n)", tag: FUNCTION_ARG }
+        #- { custom: "deref(n)", tag: FUNCTION_ARG }
 
       exit_extra:
         - { custom: "id(__c2rust_fn_result)" }
