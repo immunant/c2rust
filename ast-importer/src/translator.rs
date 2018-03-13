@@ -261,9 +261,9 @@ pub fn translate(
             &CDeclKind::Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
             &CDeclKind::Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
             &CDeclKind::Typedef { ref name, .. } => Name::TypeName(name),
-            &CDeclKind::Function { ref name, .. } => match prefix_function_names {
-                Some(ref prefix) => Name::VarName(Cow::Owned([*prefix, name.as_str()].join(""))),
-                None => Name::VarName(Cow::Borrowed(name)),
+            &CDeclKind::Function { ref name, ref body, .. } => match prefix_function_names {
+                Some(ref prefix) if body.is_some() => Name::VarName(Cow::Owned([*prefix, name.as_str()].join(""))),
+                _ => Name::VarName(Cow::Borrowed(name)),
             },
             // &CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
             &CDeclKind::Variable { ref ident, .. }
