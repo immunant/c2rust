@@ -7,6 +7,8 @@ add_clang_executable(ast-extractor
 # PRIVATE was added to make ast-extractor build with LLVM 6.0. Keyword
 # description: https://cmake.org/pipermail/cmake/2016-May/063400.html
 target_link_libraries(ast-extractor PRIVATE
+  clangAST
+  clangFrontend
   clangTooling
   clangBasic
   clangASTMatchers
