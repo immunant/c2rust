@@ -95,7 +95,10 @@ def configure_and_build_llvm(args):
             invoke(cmake[cargs])
         else:
             logging.debug("found existing ninja.build, not running cmake")
-        invoke(ninja['ast-extractor'])
+        if args.with_clang:
+            invoke(ninja['ast-extractor', 'clang'])
+        else:
+            invoke(ninja['ast-extractor'])
 
 
 def update_cmakelists(filepath):
@@ -290,6 +293,9 @@ def _parse_args():
     parser.add_argument('-t', '--test', default=False,
                         action='store_true', dest='sanity_test',
                         help=thelp)
+    parser.add_argument('--with-clang', default=False,
+                        action='store_true', dest='with_clang',
+                        help='build clang with this tool')
     return parser.parse_args()
 
 
