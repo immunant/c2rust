@@ -961,13 +961,18 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
             ImplicitCastExpr::Create(ctx, param_ty,
                                      CK_LValueToRValue,
                                      param_ref_lv, nullptr, VK_RValue);
+        // Convert from T* to a void*
+        auto param_void_ref_rv =
+            ImplicitCastExpr::Create(ctx, ctx.getPointerType(ctx.VoidTy),
+                                     CK_BitCast, param_ref_rv,
+                                     nullptr, VK_RValue);
         auto is_invalid_call =
             build_call("__c2rust_pointer_is_invalid", ctx.BoolTy,
-                       { param_ref_rv }, ctx);
+                       { param_void_ref_rv }, ctx);
         // Build the call to __c2rust_hash_invalid_pointer
         auto hash_invalid_call =
             build_call("__c2rust_hash_invalid_pointer", ctx.UnsignedLongTy,
-                       { param_ref_rv }, ctx);
+                       { param_void_ref_rv }, ctx);
         auto return_hash_invalid =
             new (ctx) ReturnStmt(SourceLocation(), hash_invalid_call, nullptr);
         auto if_invalid =
