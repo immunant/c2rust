@@ -1245,9 +1245,9 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                                                     ctx.UnsignedLongTy,
                                                     SourceLocation());
             } else {
-                auto param_ref_lv =
+                auto param_ref_rv =
                     new (ctx) DeclRefExpr(param, false, param->getType(),
-                                          VK_LValue, SourceLocation());
+                                          VK_RValue, SourceLocation());
                 std::string field_hash_fn;
                 ExprVec field_hash_args;
                 if (field_xcheck.type == XCheck::CUSTOM) {
@@ -1257,8 +1257,8 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
 
                     // Build the argument vector
                     auto &args = std::get<1>(field_hash_fn_sig);
-                    auto arg_build_fn = [&ctx, param_ref_lv] (DeclaratorDecl *decl) {
-                        return new (ctx) MemberExpr(param_ref_lv, true, SourceLocation(),
+                    auto arg_build_fn = [&ctx, param_ref_rv] (DeclaratorDecl *decl) {
+                        return new (ctx) MemberExpr(param_ref_rv, true, SourceLocation(),
                                                     decl, SourceLocation(),
                                                     decl->getType(), VK_LValue,
                                                     OK_Ordinary);
@@ -1270,7 +1270,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                     field_hash_fn =
                         get_type_hash_function(field_ty, ctx, true).full_name();
                     auto field_ref_lv =
-                        new (ctx) MemberExpr(param_ref_lv, true, SourceLocation(),
+                        new (ctx) MemberExpr(param_ref_rv, true, SourceLocation(),
                                              field, SourceLocation(),
                                              field->getType(), VK_LValue, OK_Ordinary);
                     auto field_ref_rv = forward_hash_argument(field_ref_lv, field_ty, ctx);
