@@ -302,14 +302,17 @@ class TestDirectory:
                     test_file.compile(CrateType.Library, save_output=False)
 
                     self.print_status(FAIL, "OK", f"Unexpected success {file_name}")
+                    sys.stdout.write('\n')
 
                     outcomes.append(TestOutcome.UnexpectedSuccess)
-                except NonZeroReturn:
+                except NonZeroReturn as exception:
                     self.print_status(OKBLUE, "FAILED", f"Expected failure {file_name}")
+                    sys.stdout.write('\n')
+
+                    logging.error("stderr:%s\n", str(exception))
 
                     outcomes.append(TestOutcome.Failure)
 
-                sys.stdout.write('\n')
                 continue
 
             for test_function in test_file.test_functions:
