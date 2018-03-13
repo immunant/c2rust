@@ -54,7 +54,7 @@ BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
 BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear")
 BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
-LLVM_VER = "5.0.0"
+LLVM_VER = "6.0.0"
 LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
 LLVM_BLD = os.path.join(DEPS_DIR, 'llvm-{ver}/build.'.format(ver=LLVM_VER))
 # make the build directory unique to the hostname such that
