@@ -18,7 +18,7 @@ from rust_file import (
     RustUse,
     RustVisibility,
 )
-from typing import Generator, List, Optional, Set, Tuple
+from typing import Generator, List, Optional, Set, Iterable, Tuple
 
 # Executables we are going to test
 ast_extractor = get_cmd_or_die(AST_EXTR)
@@ -28,13 +28,12 @@ ast_importer = get_cmd_or_die(AST_IMPO)
 clang = get_cmd_or_die("clang")
 rustc = get_cmd_or_die("rustc")
 diff = get_cmd_or_die("diff")
-
-driver = os.path.join(ROOT_DIR, "scripts/driver.c")
+ar = get_cmd_or_die("ar")
 
 
 # Intermediate files
 intermediate_files = [
-    'cc_db', 'cbor', 'rust_src', 'rust_test_exec',
+    'cc_db', 'cbor', 'c_obj', 'c_lib', 'rust_src', 'rust_test_exec',
 ]
 
 
@@ -61,7 +60,11 @@ class CborFile:
             ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
         # run the importer
-        args = [self.path]
+        args = [
+            self.path,
+            "--prefix-function-names",
+            "rust_",
+        ]
 
         if self.enable_relooper:
             args.append("--reloop-cfgs")
@@ -79,6 +82,13 @@ class CborFile:
             raise NonZeroReturn(stderr)
 
         return RustFile(extensionless_file + ".rs")
+
+
+class CStaticLibrary:
+    def __init__(self, path: str, link_name: str, obj_files: List[str]) -> None:
+        self.path = path
+        self.link_name = link_name
+        self.obj_files = obj_files
 
 
 class CFile:
@@ -111,6 +121,46 @@ class CFile:
         return CborFile(self.path + ".cbor", self.enable_relooper)
 
 
+def build_static_library(c_files: Iterable[CFile]) -> CStaticLibrary:
+    current_path = os.getcwd()
+    output_path, _ = os.path.split(c_files[0].path)
+
+    os.chdir(output_path)
+
+    # create .o files
+    args = ["-c", "-fPIC"]
+
+    args.extend(c_file.path for c_file in c_files)
+
+    logging.debug("complication command:\n %s", str(clang[args]))
+    retcode, stdout, stderr = clang[args].run(retcode=None)
+
+    logging.debug("stdout:\n%s", stdout)
+
+    if retcode != 0:
+        raise NonZeroReturn(stderr)
+
+    args = ["-rv", "libtest.a"]
+    obj_files = []
+
+    for c_file in c_files:
+        extensionless_file_name, _ = os.path.splitext(c_file.path)
+        args.append(extensionless_file_name + ".o")
+        obj_files.append(extensionless_file_name + ".o")
+
+    logging.debug("combination command:\n %s", str(ar[args]))
+    retcode, stdout, stderr = ar[args].run(retcode=None)
+
+    logging.debug("stdout:\n%s", stdout)
+
+    if retcode != 0:
+        raise NonZeroReturn(stderr)
+
+    os.chdir(current_path)
+
+    return CStaticLibrary(output_path + "/libtest.a", "test", obj_files)
+
+
 class TestFunction:
     def __init__(self, name: str, flags: Set[str]=set()) -> None:
         self.name = name
@@ -139,6 +189,8 @@ class TestDirectory:
         self.generated_files = {
             "rust_src": [],
             "cbor": [],
+            "c_obj": [],
+            "c_lib": [],
             "rust_test_exec": [],
             "cc_db": [],
         }
@@ -240,6 +292,23 @@ class TestDirectory:
             description = "No tests were found...\n"
             self.print_status(OKBLUE, "SKIPPED", description)
             return []
+
+        # .c -> .a
+        description = "libtest.a: creating a static C library..."
+
+        self.print_status(WARNING, "RUNNING", description)
+
+        try:
+            static_library = build_static_library(self.c_files)
+        except NonZeroReturn as exception:
+            self.print_status(FAIL, "FAILED", "create libtest.a")
+            sys.stdout.write('\n')
+            sys.stdout.write(str(exception))
+
+            return outcomes
+
+        self.generated_files["c_lib"].append(static_library)
+        self.generated_files["c_obj"].extend(static_library.obj_files)
 
         # .c -> .c.cbor
         for c_file in self.c_files:

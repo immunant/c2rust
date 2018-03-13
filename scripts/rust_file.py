@@ -25,11 +25,16 @@ class RustFile:
     def __init__(self, path: str) -> None:
         self.path = path
 
-    def compile(self, crate_type: CrateType, save_output: bool) -> Optional[LocalCommand]:
+    def compile(self, crate_type: CrateType, save_output: bool=False) -> Optional[LocalCommand]:
+        current_dir, _ = os.path.split(self.path)
         extensionless_file, _ = os.path.splitext(self.path)
 
         # run rustc
-        args = [f'--crate-type={crate_type.value}']
+        args = [
+            f"--crate-type={crate_type.value}",
+            "-L",
+            current_dir,
+        ]
 
         if save_output:
             args.append('-o')

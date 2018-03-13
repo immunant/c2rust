@@ -1,13 +1,14 @@
 extern crate libc;
 
-use enum_as_int::{E, entry as rust_entry};
-use enum_ret::{Color, entry2 as rust_entry2};
-use enum_duplicate::{e, entry3 as rust_entry3};
-use top_enum::{E as otherE, entry4 as rust_entry4};
-use big_enum::{E1, E2, E3, entry5 as rust_entry5};
+use enum_as_int::{E, rust_entry};
+use enum_ret::{Color, rust_entry2};
+use enum_duplicate::{e, rust_entry3};
+use top_enum::{E as otherE, rust_entry4};
+use big_enum::{E1, E2, E3, rust_entry5};
 
 use self::libc::{c_int, c_uint};
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn entry(_: c_uint, _: *mut c_int);

@@ -1,10 +1,11 @@
 extern crate libc;
 
-use noop::noop as rust_noop;
-use nofnargs::nofnargs as rust_nofnargs;
+use noop::rust_noop;
+use nofnargs::rust_nofnargs;
 
 use self::libc::c_int;
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn noop();

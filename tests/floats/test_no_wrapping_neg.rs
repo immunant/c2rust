@@ -1,8 +1,9 @@
 extern crate libc;
 
-use no_float_wrapping_neg::no_wrapping_neg as rust_no_wrapping_neg;
+use no_float_wrapping_neg::rust_no_wrapping_neg;
 use self::libc::c_double;
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn no_wrapping_neg() -> c_double;

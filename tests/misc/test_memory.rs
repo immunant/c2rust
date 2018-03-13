@@ -1,9 +1,10 @@
 extern crate libc;
 
-use strings_h::setmem as rust_setmem;
-use malloc::{malloc_test as rust_malloc_test};
+use strings_h::rust_setmem;
+use malloc::rust_malloc_test;
 use self::libc::{c_int, c_uint};
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn malloc_test(_: c_uint, _: *mut c_int);

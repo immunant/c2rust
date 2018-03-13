@@ -1,10 +1,11 @@
 extern crate libc;
 
-use conditional::entry as rust_entry;
-use conditionals::entry2 as rust_entry2;
-use binary_conditional::entry3 as rust_entry3;
+use conditional::rust_entry;
+use conditionals::rust_entry2;
+use binary_conditional::rust_entry3;
 use self::libc::{c_int, c_uint};
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn entry(_: c_uint, _: *mut c_int);

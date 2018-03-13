@@ -1,9 +1,10 @@
 extern crate libc;
 
-use typedef::entry as rust_entry;
+use typedef::rust_entry;
 
 use self::libc::c_int;
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn entry() -> c_int;

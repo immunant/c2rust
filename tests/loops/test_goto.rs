@@ -1,11 +1,12 @@
 extern crate libc;
 
-use goto_linear_cf::{goto_linear as rust_goto_linear};
-use goto_loop_cf::{goto_loop as rust_goto_loop};
-use goto_switch_cf::{goto_switch as rust_goto_switch};
+use goto_linear_cf::rust_goto_linear;
+use goto_loop_cf::rust_goto_loop;
+use goto_switch_cf::rust_goto_switch;
 
 use self::libc::{c_int, c_uint};
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn goto_linear(_: c_uint, _: *mut c_int);

@@ -1,8 +1,9 @@
 extern crate libc;
 
-use shadowing::{shadow as rust_shadow, twice as rust_twice};
+use shadowing::{rust_shadow, rust_twice};
 use self::libc::{c_int, c_uint};
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn twice(_: c_int) -> c_int;

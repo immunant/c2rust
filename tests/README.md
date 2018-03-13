@@ -13,10 +13,11 @@ Then create a new `.rs` file with the following skeleton(_does not need to be a 
 ```rust
 extern crate libc;
 
-use c_file::example as rust_example;
+use c_file::rust_example;
 
 use self::libc::c_int;
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn example(_: c_uint, _: *mut c_int);

@@ -1,6 +1,6 @@
 extern crate libc;
 
-use uninitialized::{entry2 as rust_entry2, /*myint, myintp,*/ u, e, s};
+use uninitialized::{rust_entry2, /*myint, myintp,*/ u, e, s};
 use self::libc::{c_int, c_uint};
 
 extern "C" {

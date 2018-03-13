@@ -1,12 +1,13 @@
 extern crate libc;
 
-use casts::cast_stuff as rust_cast_stuff;
-use cast_funptr::{identity as rust_identity, get_identity as rust_get_identity, entry as rust_entry};
+use casts::rust_cast_stuff;
+use cast_funptr::{rust_identity, rust_get_identity, rust_entry};
 
 use self::libc::{c_int, c_uint, c_void};
 
 use std::mem::transmute;
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn cast_stuff();

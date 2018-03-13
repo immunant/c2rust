@@ -1,8 +1,9 @@
 extern crate libc;
 
-use forward::forward as rust_forward;
+use forward::rust_forward;
 use self::libc::{c_int, c_uint};
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn forward(_: c_uint, _: *mut c_int);

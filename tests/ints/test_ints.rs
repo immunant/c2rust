@@ -1,8 +1,9 @@
 extern crate libc;
 
-use size_t::entry as rust_entry;
+use size_t::rust_entry;
 use self::libc::{c_int, c_uint};
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn entry(_: c_uint, _: *mut c_int);

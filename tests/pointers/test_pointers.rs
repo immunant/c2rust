@@ -1,9 +1,10 @@
 extern crate libc;
 
-use pointer_init::{entry as rust_entry};
-use pointer_arith::{entry2 as rust_entry2};
+use pointer_init::rust_entry;
+use pointer_arith::rust_entry2;
 use self::libc::{c_int, c_uint};
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn entry(_: c_uint, _: *mut c_int);

@@ -1,8 +1,9 @@
 extern crate libc;
 
-use switch::{switch_val as rust_switch_val};
+use switch::rust_switch_val;
 use self::libc::c_int;
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn switch_val(_: c_int) -> c_int;

@@ -1,8 +1,9 @@
 extern crate libc;
 
-use qsort::{partition as rust_partition, quickSort as rust_quicksort, swap as rust_swap};
+use qsort::{rust_partition, rust_quickSort, rust_swap};
 use self::libc::c_int;
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn swap(_: *mut c_int, _: *mut c_int);
@@ -53,7 +54,7 @@ pub fn test_quicksort() {
 
     let (i1, i2) = unsafe {
         let i1 = quickSort(buffer.as_mut_ptr(), 0, 9);
-        let i2 = rust_quicksort(rust_buffer.as_mut_ptr(), 0, 9);
+        let i2 = rust_quickSort(rust_buffer.as_mut_ptr(), 0, 9);
 
         (i1, i2)
     };

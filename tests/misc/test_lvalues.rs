@@ -1,8 +1,9 @@
 extern crate libc;
 
-use lvalues::lvalue as rust_lvalue;
-use self::libc::{c_int};
+use lvalues::rust_lvalue;
+use self::libc::c_int;
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn lvalue(_: *mut c_int);

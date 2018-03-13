@@ -1,8 +1,9 @@
 extern crate libc;
 
-use linking::{l as rust_l, w as rust_w};
+use linking::{rust_l, rust_w};
 use self::libc::c_int;
 
+#[link(name = "test")]
 extern "C" {
     #[no_mangle]
     fn l() -> c_int;
