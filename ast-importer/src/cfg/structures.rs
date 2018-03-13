@@ -4,7 +4,7 @@ use super::*;
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
-    root: &Vec<Structure>,
+    root: &Vec<Structure<Stmt>>,
     current_block: P<Expr>,
     debug_labels: bool
 ) -> Vec<Stmt> {
@@ -46,7 +46,7 @@ pub fn structured_cfg(
 fn structured_cfg_help(
     exits: Vec<(Label, HashMap<Label, (HashSet<Label>, ExitStyle)>)>,
     next: &HashSet<Label>,
-    root: &Vec<Structure>,
+    root: &Vec<Structure<Stmt>>,
     used_loop_labels: &mut HashSet<Label>,
     current_block: P<Expr>,
     debug_labels: bool,
@@ -72,7 +72,7 @@ fn structured_cfg_help(
                     }
                 };
 
-                let mut branch = |slbl: &StructureLabel| -> Vec<Stmt> {
+                let mut branch = |slbl: &StructureLabel<Stmt>| -> Vec<Stmt> {
                     match slbl {
                         &StructureLabel::Nested(ref nested) =>
                             structured_cfg_help(
@@ -190,7 +190,7 @@ fn structured_cfg_help(
 
 /// Checks if there are any `Multiple` structures anywhere. Only if so will there be any need for a
 /// `current_block` variable.
-pub fn has_multiple(root: &Vec<Structure>) -> bool {
+pub fn has_multiple<Stmt>(root: &Vec<Structure<Stmt>>) -> bool {
     root.iter().any(|structure| {
         match structure {
             &Structure::Simple { ref terminator, .. } => terminator
