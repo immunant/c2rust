@@ -65,7 +65,7 @@ def get_ninja_build_type(ninja_build_file):
         die("missing content in ninja.build: " + ninja_build_file)
 
 
-def configure_and_build_llvm(args):
+def configure_and_build_llvm(args: str) -> None:
     """
     run cmake as needed to generate ninja buildfiles. then run ninja.
     """
@@ -82,6 +82,7 @@ def configure_and_build_llvm(args):
 
         if run_cmake:
             cmake = get_cmd_or_die("cmake")
+            max_link_jobs = est_parallel_link_jobs()
             cargs = ["-G", "Ninja", LLVM_SRC,
                      "-Wno-dev",
                      "-DCMAKE_C_COMPILER=clang",
@@ -91,7 +92,9 @@ def configure_and_build_llvm(args):
                      "-DCMAKE_EXE_LINKER_FLAGS=-L{}/lib".format(CBOR_PREFIX),
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_ENABLE_ASSERTIONS=1",
-                     "-DLLVM_TARGETS_TO_BUILD=X86"]
+                     "-DLLVM_TARGETS_TO_BUILD=X86",
+                     "-DBUILD_SHARED_LIBS=1",
+                     "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
             invoke(cmake[cargs])
         else:
             logging.debug("found existing ninja.build, not running cmake")

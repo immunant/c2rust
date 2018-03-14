@@ -906,10 +906,14 @@ void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &fun
         return; // Function is already pending
 
     auto fn_body_stmts = body_fn(fn_decl);
-    auto fn_body = new (ctx)
-        CompoundStmt(ctx, fn_body_stmts,
-                     SourceLocation(),
-                     SourceLocation());
+    auto fn_body =
+#if CLANG_VERSION_MAJOR >= 6
+        CompoundStmt::Create(ctx, fn_body_stmts,
+#else
+        new (ctx) CompoundStmt(ctx, fn_body_stmts,
+#endif
+                               SourceLocation(),
+                               SourceLocation());
 
     // Put this function in a linkonce section, so the linker merges
     // all duplicate copies of it into one during linking
@@ -961,13 +965,18 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
             ImplicitCastExpr::Create(ctx, param_ty,
                                      CK_LValueToRValue,
                                      param_ref_lv, nullptr, VK_RValue);
+        // Convert from T* to a void*
+        auto param_void_ref_rv =
+            ImplicitCastExpr::Create(ctx, ctx.getPointerType(ctx.VoidTy),
+                                     CK_BitCast, param_ref_rv,
+                                     nullptr, VK_RValue);
         auto is_invalid_call =
             build_call("__c2rust_pointer_is_invalid", ctx.BoolTy,
-                       { param_ref_rv }, ctx);
+                       { param_void_ref_rv }, ctx);
         // Build the call to __c2rust_hash_invalid_pointer
         auto hash_invalid_call =
             build_call("__c2rust_hash_invalid_pointer", ctx.UnsignedLongTy,
-                       { param_ref_rv }, ctx);
+                       { param_void_ref_rv }, ctx);
         auto return_hash_invalid =
             new (ctx) ReturnStmt(SourceLocation(), hash_invalid_call, nullptr);
         auto if_invalid =
@@ -1245,9 +1254,9 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                                                     ctx.UnsignedLongTy,
                                                     SourceLocation());
             } else {
-                auto param_ref_lv =
+                auto param_ref_rv =
                     new (ctx) DeclRefExpr(param, false, param->getType(),
-                                          VK_LValue, SourceLocation());
+                                          VK_RValue, SourceLocation());
                 std::string field_hash_fn;
                 ExprVec field_hash_args;
                 if (field_xcheck.type == XCheck::CUSTOM) {
@@ -1257,8 +1266,8 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
 
                     // Build the argument vector
                     auto &args = std::get<1>(field_hash_fn_sig);
-                    auto arg_build_fn = [&ctx, param_ref_lv] (DeclaratorDecl *decl) {
-                        return new (ctx) MemberExpr(param_ref_lv, true, SourceLocation(),
+                    auto arg_build_fn = [&ctx, param_ref_rv] (DeclaratorDecl *decl) {
+                        return new (ctx) MemberExpr(param_ref_rv, true, SourceLocation(),
                                                     decl, SourceLocation(),
                                                     decl->getType(), VK_LValue,
                                                     OK_Ordinary);
@@ -1270,7 +1279,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                     field_hash_fn =
                         get_type_hash_function(field_ty, ctx, true).full_name();
                     auto field_ref_lv =
-                        new (ctx) MemberExpr(param_ref_lv, true, SourceLocation(),
+                        new (ctx) MemberExpr(param_ref_rv, true, SourceLocation(),
                                              field, SourceLocation(),
                                              field->getType(), VK_LValue, OK_Ordinary);
                     auto field_ref_rv = forward_hash_argument(field_ref_lv, field_ty, ctx);
@@ -1621,9 +1630,14 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                                     result, nullptr);
             new_body_stmts.push_back(return_stmt);
 
-            auto new_body = new (ctx) CompoundStmt(ctx, new_body_stmts,
-                                                   SourceLocation(),
-                                                   SourceLocation());
+            auto new_body =
+#if CLANG_VERSION_MAJOR >= 6
+                CompoundStmt::Create(ctx, new_body_stmts,
+#else
+                new (ctx) CompoundStmt(ctx, new_body_stmts,
+#endif
+                                       SourceLocation(),
+                                       SourceLocation());
             fd->setBody(new_body);
         } else if (VarDecl *vd = dyn_cast<VarDecl>(d)) {
             global_vars.emplace(llvm_string_ref_to_sv(vd->getName()), vd);

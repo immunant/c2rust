@@ -4,6 +4,7 @@ import re
 import sys
 import json
 import errno
+import psutil
 import signal
 import logging
 import argparse
@@ -54,7 +55,7 @@ BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
 BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear")
 BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
-LLVM_VER = "5.0.0"
+LLVM_VER = "6.0.0"
 LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
 LLVM_BLD = os.path.join(DEPS_DIR, 'llvm-{ver}/build.'.format(ver=LLVM_VER))
 # make the build directory unique to the hostname such that
@@ -239,6 +240,19 @@ def die(emsg, ecode=1):
     quit(ecode)
 
 
+def est_parallel_link_jobs():
+    """
+    estimate the highest number of parallel link jobs we can
+    run without causing the machine to swap. we conservatively
+    estimate that a debug or release-with-debug-info link job
+    requires approx 4GB of RAM and that all memory can be used.
+    """
+    mem_per_job = 4 * 1024**3
+    mem_total = psutil.virtual_memory().total
+
+    return int(mem_total / mem_per_job)
+
+
 def invoke(cmd, *arguments):
     return _invoke(True, cmd, *arguments)
 
@@ -383,7 +397,10 @@ def get_system_include_dirs() -> List[str]:
     cmd = cc["-E", "-Wp,-v", "-"]
     _, _, stderr = cmd.run()
     dirs = stderr.split(os.linesep)
-    return [l.strip() for l in dirs if len(l) and l[0] == ' ']
+    # skip non-directory lines
+    dirs = [l.strip() for l in dirs if len(l) and l[0] == ' ']
+    # remove framework directory markers
+    return [d.replace(" (framework directory)", "") for d in dirs]
 
 
 def extract_ast_from(ast_extr: pb.commands.BaseCommand,

@@ -59,6 +59,7 @@ fn main() {
         .arg(Arg::with_name("cross-check-config")
              .long("cross-check-config")
              .help("Add the given configuration files to the top-level #[cross_check(...)] attribute")
+             .requires("cross-checks")
              .multiple(true)
              .takes_value(true))
 

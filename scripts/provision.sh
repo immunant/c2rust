@@ -5,42 +5,43 @@ export DEBIAN_FRONTEND=noninteractive
 SCRIPT_DIR="$(dirname "$0")"
 
 # Latest cmake directly from cmake.org -> /opt
-bash $SCRIPT_DIR/provision_cmake.sh
+# Note: not required on 17.10 and later.
+# bash $SCRIPT_DIR/provision_cmake.sh
 
-apt-get update
-apt-get install -y htop unzip tmux gdb vim curl gnupg2
-# ubuntu installs clang/llvm 3.4 by default which is too old
-apt-get install -y git clang-3.9 lldb-3.9 gcc g++ ninja-build
-apt-get install -y software-properties-common build-essential
+apt-get update -qq
+# Haven't found a way to upgrade open-vm-tools non-interactively
+# apt-get install -y --only-upgrade open-vm-tools
+apt-get install -qq htop unzip tmux lldb-5.0 vim curl gnupg2 cmake 
+apt-get install -qq software-properties-common build-essential llvm-5.0 clang-5.0 ninja-build
 
-update-alternatives --install /usr/bin/clang clang /usr/bin/clang-3.9 100
-update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-3.9 100
-update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-3.9 100
+update-alternatives --install /usr/bin/clang clang /usr/bin/clang-5.0 100
+update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-5.0 100
+update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-5.0 100
 
 # Install python3.6 and packages
-apt-get install -y python3-pip
+apt-get install -qq python3-pip
 pip3 install --upgrade pip
-pip3 install plumbum colorlog typing cbor cbor2 pylint
+pip3 install plumbum colorlog typing cbor cbor2 pylint psutil
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 
 # Dependencies for test programs #
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 
 
 # json-c dependencies
-apt-get install -y automake autoconf
+apt-get install -qq automake autoconf
 
 # lua dependencies
-apt-get install -y libreadline-dev
+apt-get install -qq libreadline-dev
 
 # lighttpd dependencies
-apt-get install -y libbz2-dev
+apt-get install -qq libbz2-dev
 
 # python dependencies
-apt-get install -y python-setuptools tcl-dev liblzma-dev libgdbm-dev
-apt-get -y --no-install-recommends install tk-dev
+apt-get install -qq python-setuptools tcl-dev liblzma-dev libgdbm-dev
+apt-get -qq --no-install-recommends install tk-dev
 
 # redis and sqlite dependencies
-apt-get install -y tcl tcl-dev
+apt-get install -qq tcl tcl-dev
 
 # varnish dependencies
-apt-get install -y python-docutils graphviz
+apt-get install -qq python-docutils graphviz
