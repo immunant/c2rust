@@ -1573,10 +1573,13 @@ impl Translation {
 
             CExprKind::ArraySubscript(_, ref lhs, ref rhs) => {
                 let lhs_node = &self.ast_context.index(*lhs).kind;
+                let rhs_node = &self.ast_context.index(*rhs).kind;
+
                 let lhs_is_pointer = self.ast_context.resolve_type(lhs_node.get_type()).kind.is_pointer();
 
                 // From here on in, the LHS is the pointer/array and the RHS the index
-                let (lhs, rhs) = if lhs_is_pointer { (lhs, rhs) } else { (rhs, lhs) };
+                let (lhs, rhs, lhs_node, rhs_node) =
+                    if lhs_is_pointer { (lhs, rhs, lhs_node, rhs_node) } else { (rhs, lhs, rhs_node, lhs_node) };
 
                 let mut stmts = vec![];
 
