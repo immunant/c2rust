@@ -85,8 +85,8 @@ class TestCase:
         # run the extractor
         args = [self.src_c]
         # NOTE: it doesn't seem necessary to specify system include
-	# directories and in fact it may cause problems on macOS.
-	## make sure we can locate system include files
+        # directories and in fact it may cause problems on macOS.
+        ## make sure we can locate system include files
         ## sys_incl_dirs = get_system_include_dirs()
         ## args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
         # log the command in a format that's easy to re-run

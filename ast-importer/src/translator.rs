@@ -1160,6 +1160,28 @@ impl Translation {
         }
     }
 
+    pub fn compute_align_of_type(&self, mut type_id: CTypeId)
+        -> Result<WithStmts<P<Expr>>, String> {
+
+        while let CTypeKind::VariableArray(elts, len) =
+            self.ast_context.resolve_type(type_id).kind {
+            type_id = elts;
+        }
+
+        let ty = self.convert_type(type_id)?;
+
+        let name = "align_of";
+        let tys = vec![ty];
+        let path = vec![mk().path_segment("std"),
+                        mk().path_segment("mem"),
+                        mk().path_segment_with_params(name,
+                                                      mk().angle_bracketed_param_types(tys)),
+        ];
+        let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
+        let casted = mk().cast_expr(call, mk().path_ty(vec!["libc", "c_ulong"]));
+        Ok(WithStmts::new(casted))
+    }
+
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
     /// to run before the expression.
     ///
@@ -1172,21 +1194,9 @@ impl Translation {
     pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
         match self.ast_context.index(expr_id).kind {
             CExprKind::UnaryType(_ty, kind, arg_ty) => {
-                let ty = self.convert_type(arg_ty.ctype)?;
                 match kind {
                     UnTypeOp::SizeOf => self.compute_size_of_type(arg_ty.ctype),
-                    UnTypeOp::AlignOf => {
-                        let name = "align_of";
-                        let tys = vec![ty];
-                        let path = vec![mk().path_segment("std"),
-                                        mk().path_segment("mem"),
-                                        mk().path_segment_with_params(name,
-                                                                      mk().angle_bracketed_param_types(tys)),
-                        ];
-                        let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
-                        let casted = mk().cast_expr(call, mk().path_ty(vec!["libc", "c_ulong"]));
-                        Ok(WithStmts::new(casted))
-                    },
+                    UnTypeOp::AlignOf => self.compute_align_of_type(arg_ty.ctype),
                 }
             }
 
