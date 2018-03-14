@@ -8,7 +8,7 @@ union a_union {
         int b;
 };
 
-void entry(const unsigned n, int * const buffer) {
+void sizeofs(const unsigned n, int * const buffer) {
 
         unsigned long i = 0;
 
