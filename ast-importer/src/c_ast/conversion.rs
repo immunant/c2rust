@@ -565,8 +565,8 @@ impl ConversionContext {
                     let element_id = expect_u64(&ty_node.extras[0]).expect("element id");
                     let element = self.visit_type(element_id);
 
-                    let count_id = expect_u64(&ty_node.extras[1]).expect("count id");
-                    let count = self.visit_expr(count_id);
+                    let count_id = expect_opt_u64(&ty_node.extras[1]).expect("count id");
+                    let count = count_id.map(|x| self.visit_expr(x));
 
                     let element_ty = CTypeKind::VariableArray(element, count);
                     self.add_type(new_id, not_located(element_ty));

@@ -644,9 +644,11 @@ pub enum CTypeKind {
     // A qualifier on an array type means the same thing as a qualifier on its element type. Since
     // Clang tracks the qualifiers in both places, we choose to discard qualifiers on the element
     // type.
+    //
+    // The size expression on a variable-length array is optional, it might be replaced with `*`
     ConstantArray(CTypeId, usize),
     IncompleteArray(CTypeId),
-    VariableArray(CTypeId, CExprId),
+    VariableArray(CTypeId, Option<CExprId>),
 
     // Type of type or expression (GCC extension)
     TypeOf(CTypeId),

@@ -604,7 +604,6 @@ class TranslateASTVisitor final
           std::vector<void*> childIds { E->isArgumentType() ? nullptr : E->getArgumentExpr() };
           auto t = E->getTypeOfArgument();
           auto qt = typeEncoder.encodeQualType(t);
-
           encode_entry(E, TagUnaryExprOrTypeTraitExpr, childIds, [E,qt](CborEncoder *extras){
               switch(E->getKind()) {
                   case UETT_SizeOf: cbor_encode_text_stringz(extras, "sizeof"); break;
@@ -1141,7 +1140,13 @@ void TypeEncoder::VisitVariableArrayType(const VariableArrayType *T) {
     
     encodeType(T, TagVariableArrayType, [qt, c](CborEncoder *local) {
         cbor_encode_uint(local, qt);
-        cbor_encode_uint(local, uintptr_t(c));
+        if (c) {
+            cbor_encode_uint(local, uintptr_t(c));
+        } else {
+            // This case occurs when the expression omitted and * is used:
+            // void a_function(int example[][*]);
+            cbor_encode_null(local);
+        }
     });
     
     VisitQualType(t);
