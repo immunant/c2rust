@@ -1185,7 +1185,7 @@ impl Translation {
     pub fn compute_align_of_type(&self, mut type_id: CTypeId)
         -> Result<WithStmts<P<Expr>>, String> {
 
-        while let CTypeKind::VariableArray(elts, len) =
+        while let CTypeKind::VariableArray(elts, _) =
             self.ast_context.resolve_type(type_id).kind {
             type_id = elts;
         }
@@ -1601,8 +1601,8 @@ impl Translation {
                 let lhs_is_pointer = self.ast_context.resolve_type(lhs_node.get_type()).kind.is_pointer();
 
                 // From here on in, the LHS is the pointer/array and the RHS the index
-                let (lhs, rhs, lhs_node, rhs_node) =
-                    if lhs_is_pointer { (lhs, rhs, lhs_node, rhs_node) } else { (rhs, lhs, rhs_node, lhs_node) };
+                let (lhs, rhs, lhs_node) =
+                    if lhs_is_pointer { (lhs, rhs, lhs_node) } else { (rhs, lhs, rhs_node) };
 
                 let mut stmts = vec![];
 
