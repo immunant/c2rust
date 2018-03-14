@@ -4,6 +4,7 @@ import re
 import sys
 import json
 import errno
+import psutil
 import signal
 import logging
 import argparse
@@ -237,6 +238,19 @@ def die(emsg, ecode=1):
     """
     logging.fatal("error: %s", emsg)
     quit(ecode)
+
+
+def est_parallel_link_jobs():
+    """
+    estimate the highest number of parallel link jobs we can
+    run without causing the machine to swap. we conservatively
+    estimate that a debug or release-with-debug-info link job
+    requires approx 4GB of RAM and that all memory can be used.
+    """
+    mem_per_job = 4 * 1024**3
+    mem_total = psutil.virtual_memory().total
+
+    return int(mem_total / mem_per_job)
 
 
 def invoke(cmd, *arguments):

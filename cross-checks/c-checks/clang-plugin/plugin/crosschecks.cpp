@@ -906,10 +906,14 @@ void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &fun
         return; // Function is already pending
 
     auto fn_body_stmts = body_fn(fn_decl);
-    auto fn_body = new (ctx)
-        CompoundStmt(ctx, fn_body_stmts,
-                     SourceLocation(),
-                     SourceLocation());
+    auto fn_body =
+#if CLANG_VERSION_MAJOR >= 6
+        CompoundStmt::Create(ctx, fn_body_stmts,
+#else
+        new (ctx) CompoundStmt(ctx, fn_body_stmts,
+#endif
+                               SourceLocation(),
+                               SourceLocation());
 
     // Put this function in a linkonce section, so the linker merges
     // all duplicate copies of it into one during linking
@@ -1626,9 +1630,14 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                                     result, nullptr);
             new_body_stmts.push_back(return_stmt);
 
-            auto new_body = new (ctx) CompoundStmt(ctx, new_body_stmts,
-                                                   SourceLocation(),
-                                                   SourceLocation());
+            auto new_body =
+#if CLANG_VERSION_MAJOR >= 6
+                CompoundStmt::Create(ctx, new_body_stmts,
+#else
+                new (ctx) CompoundStmt(ctx, new_body_stmts,
+#endif
+                                       SourceLocation(),
+                                       SourceLocation());
             fd->setBody(new_body);
         } else if (VarDecl *vd = dyn_cast<VarDecl>(d)) {
             global_vars.emplace(llvm_string_ref_to_sv(vd->getName()), vd);
