@@ -1172,7 +1172,8 @@ impl Translation {
             let ty = self.convert_type(type_id)?;
             let name = "size_of";
             let params = mk().angle_bracketed_param_types(vec![ty]);
-            let path = vec![mk().path_segment("std"),
+            let path = vec![mk().path_segment(""),
+                            mk().path_segment("std"),
                             mk().path_segment("mem"),
                             mk().path_segment_with_params(name, params)];
             let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
@@ -1193,7 +1194,8 @@ impl Translation {
 
         let name = "align_of";
         let tys = vec![ty];
-        let path = vec![mk().path_segment("std"),
+        let path = vec![mk().path_segment(""),
+                        mk().path_segment("std"),
                         mk().path_segment("mem"),
                         mk().path_segment_with_params(name,
                                                       mk().angle_bracketed_param_types(tys)),
