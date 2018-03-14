@@ -313,7 +313,7 @@ class TestDirectory:
         # .c -> .c.cbor
         for c_file in self.c_files:
             _, c_file_short = os.path.split(c_file.path)
-            description = f"{c_file_short}: extracting the C file into CBOR..."
+            description = "{}: extracting the C file into CBOR...".format(c_file_short)
 
             # Run the step
             self.print_status(WARNING, "RUNNING", description)
@@ -338,7 +338,7 @@ class TestDirectory:
         # .cbor -> .rs
         for cbor_file in self.generated_files["cbor"]:
             _, cbor_file_short = os.path.split(cbor_file.path)
-            description = f"{cbor_file_short}: translate the CBOR..."
+            description = "{}: translate the CBOR...".format(cbor_file_short)
 
             self.print_status(WARNING, "RUNNING", description)
 
@@ -370,12 +370,12 @@ class TestDirectory:
                 try:
                     test_file.compile(CrateType.Library, save_output=False)
 
-                    self.print_status(FAIL, "OK", f"Unexpected success {file_name}")
+                    self.print_status(FAIL, "OK", "Unexpected success {}".format(file_name))
                     sys.stdout.write('\n')
 
                     outcomes.append(TestOutcome.UnexpectedSuccess)
                 except NonZeroReturn as exception:
-                    self.print_status(OKBLUE, "FAILED", f"Expected failure {file_name}")
+                    self.print_status(OKBLUE, "FAILED", "Expected failure {}".format(file_name))
                     sys.stdout.write('\n')
 
                     logging.error("stderr:%s\n", str(exception))
@@ -386,8 +386,8 @@ class TestDirectory:
 
             for test_function in test_file.test_functions:
                 rust_file_builder.add_mod(RustMod(extensionless_file_name, RustVisibility.Public))
-                left = f"Some(\"{extensionless_file_name}::{test_function.name}\")"
-                right = f"{extensionless_file_name}::{test_function.name}()"
+                left = "Some(\"{}::{}\")".format(extensionless_file_name, test_function.name)
+                right = "{}::{}()".format(extensionless_file_name, test_function.name)
                 match_arms.append((left, right))
 
         match_arms.append(("e", "panic!(\"Tried to run unknown test: {:?}\", e)"))
@@ -411,7 +411,7 @@ class TestDirectory:
         except NonZeroReturn as exception:
             _, main_file_path_short = os.path.split(main_file.path)
 
-            self.print_status(FAIL, "FAILED", f"compile {main_file_path_short}")
+            self.print_status(FAIL, "FAILED", "compile {}".format(main_file_path_short))
             sys.stdout.write('\n')
             sys.stdout.write(str(exception))
 
@@ -427,7 +427,7 @@ class TestDirectory:
             extensionless_file_name, _ = os.path.splitext(file_name)
 
             for test_function in test_file.test_functions:
-                args = [f"{extensionless_file_name}::{test_function.name}"]
+                args = ["{}::{}".format(extensionless_file_name, test_function.name)]
 
                 retcode, stdout, stderr = main[args].run(retcode=None)
 
@@ -557,7 +557,7 @@ def main() -> None:
 
     for test_directory in test_directories:
         if args.regex_directories.fullmatch(test_directory.name):
-            sys.stdout.write(f"{test_directory.name}:\n")
+            sys.stdout.write("{}:\n".format(test_directory.name))
 
             # TODO: Support regex for filtering by directory or name
             # Testdirectories are run one after another. Only tests that match the '--only'
