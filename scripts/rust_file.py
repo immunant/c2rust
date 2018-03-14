@@ -31,7 +31,7 @@ class RustFile:
 
         # run rustc
         args = [
-            f"--crate-type={crate_type.value}",
+            "--crate-type={}".format(crate_type.value),
             "-L",
             current_dir,
         ]
@@ -71,7 +71,7 @@ class RustMod:
         self.visibility = visibility or RustVisibility.Private
 
     def __str__(self) -> str:
-        return f"{self.visibility.value}mod {self.name};\n"
+        return "{}mod {};\n".format(self.visibility.value, self.name)
 
     def __hash__(self) -> int:
         return hash((self.visibility, self.name))
@@ -86,7 +86,7 @@ class RustUse:
         self.visibility = visibility or RustVisibility.Private
 
     def __str__(self) -> str:
-        return f"{self.visibility.value}use {self.use};\n"
+        return "{}use {};\n".format(self.visibility.value, self.use)
 
     def __hash__(self) -> int:
         return hash((self.use, self.visibility))
@@ -103,7 +103,7 @@ class RustFunction:
         self.body = body or []
 
     def __str__(self) -> str:
-        buffer = f"{self.visibility.value}fn {self.name}() {{\n"
+        buffer = "{}fn {}() {{\n".format(self.visibility.value, self.name)
 
         for line in self.body:
             buffer += "    " + str(line)
@@ -119,10 +119,10 @@ class RustMatch:
         self.arms = arms
 
     def __str__(self) -> str:
-        buffer = f"match {self.value} {{\n"
+        buffer = "match {} {{\n".format(self.value)
 
         for left, right in self.arms:
-            buffer += f"        {left} => {right},\n"
+            buffer += "        {} => {},\n".format(left, right)
 
         buffer += "    }\n"
 
@@ -140,7 +140,7 @@ class RustFileBuilder:
         buffer = ""
 
         for feature in self.features:
-            buffer += f"#![feature({feature})]\n"
+            buffer += "#![feature({})]\n".format(feature)
 
         buffer += '\n'
 
