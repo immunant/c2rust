@@ -3,7 +3,6 @@ use syntax::ast::*;
 use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{DelimToken,Token};
 use syntax::abi::Abi;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use renamer::Renamer;
 use convert_type::TypeConverter;
@@ -211,9 +210,13 @@ pub fn signed_int_expr(value: i64) -> P<Expr> {
 
 // This should only be used for tests
 fn prefix_names(translation: &mut Translation, prefix: &str) {
-    for (_, ref mut decl) in &mut translation.ast_context.c_decls {
+    for (&decl_id, ref mut decl) in &mut translation.ast_context.c_decls {
         match decl.kind {
-            CDeclKind::Function { ref mut name, ref body, .. } if body.is_some() => name.insert_str(0, prefix),
+            CDeclKind::Function { ref mut name, ref body, .. } if body.is_some() => {
+                name.insert_str(0, prefix);
+
+                translation.renamer.borrow_mut().insert(decl_id, &name);
+            },
             CDeclKind::Variable { ref mut ident, is_static, .. } if is_static => ident.insert_str(0, prefix),
             _ => (),
         }
@@ -241,7 +244,7 @@ pub fn translate(
     );
 
     enum Name<'a> {
-        VarName(Cow<'a, str>),
+        VarName(&'a str),
         TypeName(&'a str),
         AnonymousType,
         NoName,
@@ -254,6 +257,11 @@ pub fn translate(
         }
     }
 
+    // Used for testing; so that we don't overlap with C function names
+    if let Some(prefix) = prefix_function_names {
+        prefix_names(&mut t, prefix);
+    }
+
     // Populate renamer with top-level names
     for (&decl_id, decl) in &ast_context.c_decls {
         let decl_name = match &decl.kind {
@@ -261,13 +269,10 @@ pub fn translate(
             &CDeclKind::Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
             &CDeclKind::Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
             &CDeclKind::Typedef { ref name, .. } => Name::TypeName(name),
-            &CDeclKind::Function { ref name, ref body, .. } => match prefix_function_names {
-                Some(ref prefix) if body.is_some() => Name::VarName(Cow::Owned([*prefix, name.as_str()].join(""))),
-                _ => Name::VarName(Cow::Borrowed(name)),
-            },
+            &CDeclKind::Function { ref name, .. } => Name::VarName(name),
             // &CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
             &CDeclKind::Variable { ref ident, .. }
-              if ast_context.c_decls_top.contains(&decl_id) => Name::VarName(Cow::Borrowed(ident)),
+              if ast_context.c_decls_top.contains(&decl_id) => Name::VarName(ident),
             _ => Name::NoName,
         };
         match decl_name {
@@ -276,11 +281,6 @@ pub fn translate(
             Name::TypeName(name)=> { t.type_converter.borrow_mut().declare_decl_name(decl_id, name); }
             Name::VarName(name) => { t.renamer.borrow_mut().insert(decl_id, &name); }
         }
-    }
-
-    // Used for testing; so that we don't overlap with C function names
-    if let Some(prefix) = prefix_function_names {
-        prefix_names(&mut t, prefix);
     }
 
     // Export all types
