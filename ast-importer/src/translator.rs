@@ -1096,6 +1096,38 @@ impl Translation {
         _get_declref_type(&self.ast_context, expr_id, 0)
     }
 
+    pub fn compute_size_of_type(&self, type_id: CTypeId) -> Result<WithStmts<P<Expr>>, String> {
+        if let &CTypeKind::VariableArray(elts, len) =
+            &self.ast_context.resolve_type(type_id).kind {
+
+            let len = len.expect("Sizeof a VLA type with count expression omitted");
+
+            let mut elts = self.compute_size_of_type(elts)?;
+            let mut len = self.convert_expr(ExprUse::RValue, len, false)?;
+
+            let mut stmts = elts.stmts;
+            stmts.append(&mut len.stmts);
+
+            let lhs = cast_int(elts.val, "u64");
+            let rhs = cast_int(len.val, "u64");
+
+            let val = mk().binary_expr(BinOpKind::Mul, lhs, rhs);
+
+            Ok(WithStmts { stmts, val })
+
+        } else {
+            let ty = self.convert_type(type_id)?;
+            let name = "size_of";
+            let params = mk().angle_bracketed_param_types(vec![ty]);
+            let path = vec![mk().path_segment("std"),
+                            mk().path_segment("mem"),
+                            mk().path_segment_with_params(name, params)];
+            let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
+            let casted = mk().cast_expr(call, mk().path_ty(vec!["libc", "c_ulong"]));
+            Ok(WithStmts::new(casted))
+        }
+    }
+
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
     /// to run before the expression.
     ///
@@ -1109,19 +1141,21 @@ impl Translation {
         match self.ast_context.index(expr_id).kind {
             CExprKind::UnaryType(_ty, kind, arg_ty) => {
                 let ty = self.convert_type(arg_ty.ctype)?;
-                let name = match kind {
-                    UnTypeOp::SizeOf => "size_of",
-                    UnTypeOp::AlignOf => "align_of",
-                };
-                let tys = vec![ty];
-                let path = vec![mk().path_segment("std"),
-                                mk().path_segment("mem"),
-                                mk().path_segment_with_params(name,
-                                                              mk().angle_bracketed_param_types(tys)),
-                ];
-                let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
-                let casted = mk().cast_expr(call, mk().path_ty(vec!["libc", "c_ulong"]));
-                Ok(WithStmts::new(casted))
+                match kind {
+                    UnTypeOp::SizeOf => self.compute_size_of_type(arg_ty.ctype),
+                    UnTypeOp::AlignOf => {
+                        let name = "align_of";
+                        let tys = vec![ty];
+                        let path = vec![mk().path_segment("std"),
+                                        mk().path_segment("mem"),
+                                        mk().path_segment_with_params(name,
+                                                                      mk().angle_bracketed_param_types(tys)),
+                        ];
+                        let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
+                        let casted = mk().cast_expr(call, mk().path_ty(vec!["libc", "c_ulong"]));
+                        Ok(WithStmts::new(casted))
+                    },
+                }
             }
 
             CExprKind::DeclRef(qual_ty, decl_id) => {

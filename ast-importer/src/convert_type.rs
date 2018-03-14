@@ -112,6 +112,15 @@ impl TypeConverter {
                             Ok(mk().set_mutbl(mutbl).ptr_ty(mk().path_ty(vec!["libc","c_void"])))
                     }
 
+                    CTypeKind::VariableArray(mut elt,_len) => {
+                        while let CTypeKind::VariableArray(elt_, _) = ctxt.resolve_type(elt).kind {
+                            elt = elt_
+                        }
+                        let child_ty = self.convert(ctxt, elt)?;
+                        let mutbl = if qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
+                        Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
+                    }
+
                     // Function pointers are translated to Option applied to the function type
                     // in order to support NULL function pointers natively
                     CTypeKind::Function(ref ret, ref params) => {
@@ -162,6 +171,11 @@ impl TypeConverter {
                 // FIXME: handle translation of incomplete arrays
                 let ty = self.convert(ctxt, element)?;
                 Ok(mk().slice_ty(ty))
+            }
+
+            CTypeKind::VariableArray(element, _) => {
+                let child_ty = self.convert(ctxt, element)?;
+                Ok(mk().mutbl().ptr_ty(child_ty))
             }
 
             CTypeKind::Attributed(ty) => self.convert(ctxt, ty.ctype),
