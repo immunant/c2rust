@@ -19,6 +19,12 @@ fn main() {
         .version("0.1.0")
         .author(crate_authors!())
 
+        // Testing related
+        .arg(Arg::with_name("prefix-function-names")
+            .long("prefix-function-names")
+            .help("Adds a prefix to all function names. Generally only useful for testing")
+            .takes_value(true))
+
         // `AstContext` and `TypedAstContext` related
         .arg(Arg::with_name("dump-untyped-clang-ast")
             .long("ddump-untyped-clang-ast")
@@ -71,6 +77,7 @@ fn main() {
         .get_matches();
 
     let file = matches.value_of("INPUT").unwrap();
+    let prefix_function_names = matches.value_of("prefix-function-names");
     let dump_untyped_context = matches.is_present("dump-untyped-clang-ast");
     let dump_typed_context = matches.is_present("dump-typed-clang-ast");
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
@@ -122,7 +129,6 @@ fn main() {
 //    }
 
     // Perform the translation
-    //use ast_importer::translator::translate;
     use ast_importer::translator::translate;
 
     let mut conv = ConversionContext::new(&untyped_context);
@@ -136,6 +142,7 @@ fn main() {
         debug_labels,
         cross_checks,
         cross_check_configs,
+        prefix_function_names,
     ));
 }
 

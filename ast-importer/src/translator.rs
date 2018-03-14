@@ -1,4 +1,3 @@
-
 use syntax::ast;
 use syntax::ast::*;
 use syntax::tokenstream::{TokenStream};
@@ -118,12 +117,12 @@ fn pointer_neg_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
 
 /// Construct a new constant null pointer expression
 fn null_expr() -> P<Expr>  {
-    mk().call_expr(mk().path_expr(vec!["std", "ptr", "null"]), vec![] as Vec<P<Expr>>)
+    mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "null"]), vec![] as Vec<P<Expr>>)
 }
 
 /// Construct a new mutable null pointer expression
 fn null_mut_expr() -> P<Expr> {
-    mk().call_expr(mk().path_expr(vec!["std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>)
+    mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>)
 }
 
 fn neg_expr(arg: P<Expr>) -> P<Expr> {
@@ -155,6 +154,7 @@ fn is_int(ty: &CTypeKind) -> bool {
 fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> {
     let type_args = vec![source_ty, target_ty];
     let path = vec![
+        mk().path_segment(""),
         mk().path_segment("std"),
         mk().path_segment("mem"),
         mk().path_segment_with_params("transmute",
@@ -208,6 +208,21 @@ pub fn signed_int_expr(value: i64) -> P<Expr> {
     }
 }
 
+// This should only be used for tests
+fn prefix_names(translation: &mut Translation, prefix: &str) {
+    for (&decl_id, ref mut decl) in &mut translation.ast_context.c_decls {
+        match decl.kind {
+            CDeclKind::Function { ref mut name, ref body, .. } if body.is_some() => {
+                name.insert_str(0, prefix);
+
+                translation.renamer.borrow_mut().insert(decl_id, &name);
+            },
+            CDeclKind::Variable { ref mut ident, is_static, .. } if is_static => ident.insert_str(0, prefix),
+            _ => (),
+        }
+    }
+}
+
 pub fn translate(
     ast_context: &TypedAstContext,
     reloop_cfgs: bool,
@@ -216,6 +231,7 @@ pub fn translate(
     debug_relooper_labels: bool,
     cross_checks: bool,
     cross_check_configs: Vec<&str>,
+    prefix_function_names: Option<&str>,
 ) -> String {
 
     let mut t = Translation::new(
@@ -241,6 +257,11 @@ pub fn translate(
         }
     }
 
+    // Used for testing; so that we don't overlap with C function names
+    if let Some(prefix) = prefix_function_names {
+        prefix_names(&mut t, prefix);
+    }
+
     // Populate renamer with top-level names
     for (&decl_id, decl) in &ast_context.c_decls {
         let decl_name = match &decl.kind {
@@ -258,7 +279,7 @@ pub fn translate(
             Name::NoName => (),
             Name::AnonymousType => { t.type_converter.borrow_mut().declare_decl_name(decl_id, "unnamed"); }
             Name::TypeName(name)=> { t.type_converter.borrow_mut().declare_decl_name(decl_id, name); }
-            Name::VarName(name) => { t.renamer.borrow_mut().insert(decl_id, name); }
+            Name::VarName(name) => { t.renamer.borrow_mut().insert(decl_id, &name); }
         }
     }
 
@@ -1075,7 +1096,7 @@ impl Translation {
             },
         };
 
-        Ok(mk().call_expr(mk().path_expr(vec!["std", "ptr", "write_volatile"]), vec![addr_lhs, rhs]))
+        Ok(mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "write_volatile"]), vec![addr_lhs, rhs]))
     }
 
     /// Read from a `lhs` that is volatile
@@ -1092,7 +1113,7 @@ impl Translation {
             }
         };
 
-        Ok(mk().call_expr(mk().path_expr(vec!["std", "ptr", "read_volatile"]), vec![addr_lhs]))
+        Ok(mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "read_volatile"]), vec![addr_lhs]))
     }
 
     /// If the referenced expression is a DeclRef inside an Unary or ImplicitCast node, return
@@ -1151,7 +1172,8 @@ impl Translation {
             let ty = self.convert_type(type_id)?;
             let name = "size_of";
             let params = mk().angle_bracketed_param_types(vec![ty]);
-            let path = vec![mk().path_segment("std"),
+            let path = vec![mk().path_segment(""),
+                            mk().path_segment("std"),
                             mk().path_segment("mem"),
                             mk().path_segment_with_params(name, params)];
             let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
@@ -1172,7 +1194,8 @@ impl Translation {
 
         let name = "align_of";
         let tys = vec![ty];
-        let path = vec![mk().path_segment("std"),
+        let path = vec![mk().path_segment(""),
+                        mk().path_segment("std"),
                         mk().path_segment("mem"),
                         mk().path_segment_with_params(name,
                                                       mk().angle_bracketed_param_types(tys)),

@@ -7,7 +7,18 @@ import argparse
 import re
 
 from common import *
-from typing import Tuple
+from enum import Enum
+from rust_file import (
+    CrateType,
+    RustFile,
+    RustFileBuilder,
+    RustFunction,
+    RustMatch,
+    RustMod,
+    RustUse,
+    RustVisibility,
+)
+from typing import Generator, List, Optional, Set, Iterable, Tuple
 
 # Executables we are going to test
 ast_extractor = get_cmd_or_die(AST_EXTR)
@@ -17,40 +28,228 @@ ast_importer = get_cmd_or_die(AST_IMPO)
 clang = get_cmd_or_die("clang")
 rustc = get_cmd_or_die("rustc")
 diff = get_cmd_or_die("diff")
-
-driver = os.path.join(ROOT_DIR, "scripts/driver.c")
+ar = get_cmd_or_die("ar")
 
 
 # Intermediate files
 intermediate_files = [
-    'cc_db', 'cbor', 'c_exec', 'c_out',
-    'rust_src', 'rust_obj', 'rust_exec', 'rust_out'
+    'cc_db', 'cbor', 'c_obj', 'c_lib', 'rust_src', 'rust_test_exec',
 ]
 
 
-class TestCase:
-    def __init__(self, path: str, pass_expected: bool, keep: List[str]) -> None:
-        directory, cfile = os.path.split(path)
-        filebase, ext = os.path.splitext(cfile)
+class TestOutcome(Enum):
+    Success = "successes"
+    Failure = "expected failures"
+    UnexpectedFailure = "unexpected failures"
+    UnexpectedSuccess = "unexpected successes"
 
-        self.shortname = filebase
-        self.directory = directory
-        self.pass_expected = pass_expected
+
+class CborFile:
+    def __init__(self, path: str, enable_relooper: bool=False) -> None:
+        self.path = path
+        self.enable_relooper = enable_relooper
+
+    def translate(self) -> RustFile:
+        c_file_path, _ = os.path.splitext(self.path)
+        extensionless_file, _ = os.path.splitext(c_file_path)
+        rust_src = extensionless_file + ".rs"
+
+        # help plumbum find rust
+        ld_lib_path = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
+        if 'LD_LIBRARY_PATH' in pb.local.env:
+            ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
+
+        # run the importer
+        args = [
+            self.path,
+            "--prefix-function-names",
+            "rust_",
+        ]
+
+        if self.enable_relooper:
+            args.append("--reloop-cfgs")
+
+        with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
+            # log the command in a format that's easy to re-run
+            translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
+            translation_cmd += str(ast_importer[args] > rust_src)
+            logging.debug("translation command:\n %s", translation_cmd)
+            retcode, stdout, stderr = (ast_importer[args] > rust_src).run(retcode=None)
+
+        logging.debug("stdout:\n%s", stdout)
+
+        if retcode != 0:
+            raise NonZeroReturn(stderr)
+
+        return RustFile(extensionless_file + ".rs")
+
+
+class CStaticLibrary:
+    def __init__(self, path: str, link_name: str, obj_files: List[str]) -> None:
+        self.path = path
+        self.link_name = link_name
+        self.obj_files = obj_files
+
+
+class CFile:
+    def __init__(self, path: str, flags: Set[str]=None) -> None:
+        if not flags:
+            flags = set()
+
+        self.path = path
+        self.enable_relooper = "enable_relooper" in flags
+
+    def extract(self) -> CborFile:
+        # run the extractor
+        args = [self.path]
+
+        # NOTE: it doesn't seem necessary to specify system include
+	# directories and in fact it may cause problems on macOS.
+	## make sure we can locate system include files
+        ## sys_incl_dirs = get_system_include_dirs()
+        ## args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
+
+        # log the command in a format that's easy to re-run
+        logging.debug("extraction command:\n %s", str(ast_extractor[args]))
+        retcode, stdout, stderr = ast_extractor[args].run(retcode=None)
+
+        logging.debug("stdout:\n%s", stdout)
+
+        if retcode != 0:
+            raise NonZeroReturn(stderr)
+
+        return CborFile(self.path + ".cbor", self.enable_relooper)
+
+
+def build_static_library(c_files: Iterable[CFile]) -> CStaticLibrary:
+    current_path = os.getcwd()
+    output_path, _ = os.path.split(c_files[0].path)
+
+    os.chdir(output_path)
+
+    # create .o files
+    args = ["-c", "-fPIC"]
+
+    args.extend(c_file.path for c_file in c_files)
+
+    logging.debug("complication command:\n %s", str(clang[args]))
+    retcode, stdout, stderr = clang[args].run(retcode=None)
+
+    logging.debug("stdout:\n%s", stdout)
+
+    if retcode != 0:
+        raise NonZeroReturn(stderr)
+
+    args = ["-rv", "libtest.a"]
+    obj_files = []
+
+    for c_file in c_files:
+        extensionless_file_name, _ = os.path.splitext(c_file.path)
+        args.append(extensionless_file_name + ".o")
+        obj_files.append(extensionless_file_name + ".o")
+
+    logging.debug("combination command:\n %s", str(ar[args]))
+    retcode, stdout, stderr = ar[args].run(retcode=None)
+
+    logging.debug("stdout:\n%s", stdout)
+
+    if retcode != 0:
+        raise NonZeroReturn(stderr)
+
+    os.chdir(current_path)
+
+    return CStaticLibrary(output_path + "/libtest.a", "test", obj_files)
+
+
+class TestFunction:
+    def __init__(self, name: str, flags: Set[str]=set()) -> None:
+        self.name = name
+        self.pass_expected = "xfail" not in flags
+
+
+class TestFile(RustFile):
+    def __init__(self, path: str, test_functions: List[TestFunction]=None, flags: Set[str]=None) -> None:
+        if not flags:
+            flags = set()
+
+        super().__init__(path)
+
+        self.test_functions = test_functions or []
+        self.pass_expected = "xfail" not in flags
+
+
+class TestDirectory:
+    def __init__(self, full_path: str, files: str, keep: List[str]) -> None:
+        self.c_files = []
+        self.rs_test_files = []
+        self.full_path = full_path
+        self.files = files
+        self.name = full_path.split('/')[-1]
         self.keep = keep
-        self.status = "unknown"
+        self.generated_files = {
+            "rust_src": [],
+            "cbor": [],
+            "c_obj": [],
+            "c_lib": [],
+            "rust_test_exec": [],
+            "cc_db": [],
+        }
 
-        # Absolute paths to all of the files we will attempt to generate
-        self.src_c = path
-        self.rust_src = os.path.join(directory, filebase + '.rs')
-        self.cc_db = os.path.join(directory, 'compile_commands.json')
-        self.cbor = path + '.cbor'
-        self.rust_obj = os.path.join(directory, 'lib' + filebase + '.a')
-        self.rust_exec = os.path.join(directory, filebase + '_rust')
-        self.c_exec = os.path.join(directory, filebase + '_c')
-        self.rust_out = os.path.join(directory, filebase + '_rust.txt')
-        self.c_out = os.path.join(directory, filebase + '_c.txt')
+        for entry in os.listdir(full_path):
+            path = os.path.abspath(os.path.join(full_path, entry))
 
-    def print_status(self, color: str, status: str, message) -> None:
+            if os.path.isfile(path):
+                _, ext = os.path.splitext(path)
+                filename = os.path.splitext(os.path.basename(path))[0]
+
+                if ext == ".c":
+                    c_file = self._read_c_file(path)
+
+                    if c_file:
+                        self.c_files.append(c_file)
+                elif filename.startswith("test_") and ext == ".rs" and files.search(filename):
+                    rs_test_file = self._read_rust_test_file(path)
+
+                    self.rs_test_files.append(rs_test_file)
+
+    def _read_c_file(self, path: str) -> Optional[CFile]:
+        file_config = None
+        file_flags = set()
+
+        with open(path, 'r') as file:
+            file_config = re.match(r"//! (.*)\n", file.read())
+
+        if file_config:
+            flag_str = file_config.group(0)[3:]
+            file_flags = {flag.strip() for flag in flag_str.split(',')}
+
+        if "skip_translation" in file_flags:
+            return
+
+        return CFile(path, file_flags)
+
+    def _read_rust_test_file(self, path: str) -> TestFile:
+        with open(path, 'r') as file:
+            file_buffer = file.read()
+
+        file_config = re.match(r"//! (.*)\n", file_buffer)
+        file_flags = set()
+
+        if file_config:
+            flags_str = file_config.group(0)[3:]
+            file_flags = {flag.strip() for flag in flags_str.split(',')}
+
+        found_tests = re.findall(r"(//(.*))?\npub fn (test_\w+)\(\)", file_buffer)
+        test_fns = []
+
+        for _, config, test_name in found_tests:
+            test_flags = {flag.strip() for flag in config.split(',')}
+
+            test_fns.append(TestFunction(test_name, test_flags))
+
+        return TestFile(path, test_fns, file_flags)
+
+    def print_status(self, color: str, status: str, message: Optional[str]) -> None:
         """
         Print coloured status information. Overwrites current line.
         """
@@ -58,12 +257,11 @@ class TestCase:
         sys.stdout.write('\033[K')
 
         sys.stdout.write(color + ' [ ' + status + ' ] ' + NO_COLOUR)
-        sys.stdout.write(self.shortname)
         if message:
-            sys.stdout.write(": " + message)
+            sys.stdout.write(message)
 
-    def generate_cc_db(self) -> Tuple[int, str, str]:
-        directory, cfile = os.path.split(self.src_c)
+    def _generate_cc_db(self, c_file_path: str) -> None:
+        directory, cfile = os.path.split(c_file_path)
 
         compile_commands = """ \
         [
@@ -75,165 +273,213 @@ class TestCase:
         ]
         """.format(cfile, directory)
 
-        with open(self.cc_db, 'w') as fh:
+        cc_db = os.path.join(directory, "compile_commands.json")
+
+        self.generated_files["cc_db"] = [cc_db]
+
+        # REVIEW: This will override the previous compile_commands.json
+        # Is there a way to specify different compile_commands_X.json files
+        # to the extractor?
+        with open(cc_db, 'w') as fh:
             fh.write(compile_commands)
 
-        return 0, "", ""
+    def run(self) -> List[TestOutcome]:
+        outcomes = []
 
-    def export_cbor(self) -> Tuple[int, str, str]:
+        any_tests = any(test_fn for test_file in self.rs_test_files for test_fn in test_file.test_functions)
 
-        # run the extractor
-        args = [self.src_c]
-        # NOTE: it doesn't seem necessary to specify system include
-        # directories and in fact it may cause problems on macOS.
-        ## make sure we can locate system include files
-        ## sys_incl_dirs = get_system_include_dirs()
-        ## args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
-        # log the command in a format that's easy to re-run
-        logging.debug("extraction command:\n %s", str(ast_extractor[args]))
-        return ast_extractor[args].run(retcode=None)
+        if not self.files.pattern and not any_tests:
+            description = "No tests were found...\n"
+            self.print_status(OKBLUE, "SKIPPED", description)
+            return []
 
-    def translate(self) -> Tuple[int, str, str]:
+        # .c -> .a
+        description = "libtest.a: creating a static C library..."
 
-        # help plumbum find rust
-        ld_lib_path = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
-        if 'LD_LIBRARY_PATH' in pb.local.env:
-            ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
+        self.print_status(WARNING, "RUNNING", description)
 
-        # run the importer
-        args = [self.cbor]
-        with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
-            # log the command in a format that's easy to re-run
-            translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
-            translation_cmd += str(ast_importer[args] > self.rust_src)
-            logging.debug("translation command:\n %s", translation_cmd)
-            return (ast_importer[args] > self.rust_src).run(retcode=None)
+        try:
+            static_library = build_static_library(self.c_files)
+        except NonZeroReturn as exception:
+            self.print_status(FAIL, "FAILED", "create libtest.a")
+            sys.stdout.write('\n')
+            sys.stdout.write(str(exception))
 
-    def compile_translated_rustc(self) -> Tuple[int, str, str]:
+            return outcomes
 
-        # run rustc
-        args = [
-            '--crate-type=staticlib',  # could just as well be 'cdylib'
-            '-o', self.rust_obj,
-            self.rust_src
-        ]
-        # log the command in a format that's easy to re-run
-        logging.debug("rustc compile command: %s", str(rustc[args]))
-        return rustc[args].run(retcode=None)
+        self.generated_files["c_lib"].append(static_library)
+        self.generated_files["c_obj"].extend(static_library.obj_files)
 
-    def compile_translated_clang(self) -> Tuple[int, str, str]:
-
-        # run clang linking in the rust object file
-        args = [
-            '-lc', '-lm',
-            '-o', self.rust_exec,
-            driver, self.rust_obj,
-        ]
-        if on_mac():
-            args = ['-lSystem', '-lresolv'] + args
-        else:
-            args = ['-pthread', '-ldl'] + args
-        # log the command in a format that's easy to re-run
-        logging.debug("clang compile command: %s", str(rustc[args]))
-        return clang[args].run(retcode=None)
-
-    def compile_original_clang(self) -> Tuple[int, str, str]:
-
-        # run clang
-        args = [
-            '-o', self.c_exec,
-            driver, self.src_c
-        ]
-        return clang[args].run(retcode=None)
-
-    def compare_run_outputs(self) -> Tuple[int, str, str]:
-
-        # run the Rust executable
-        run_result = (get_cmd_or_die(self.rust_exec) > self.rust_out).run(retcode=None)
-        if run_result[0]:
-            return run_result
-
-        # run the C executable
-        run_result = (get_cmd_or_die(self.c_exec) > self.c_out).run(retcode=None)
-        if run_result[0]:
-            return run_result
-
-        # diff the two outputs
-        args = ['--minimal', self.rust_out, self.c_out]
-        return diff[args].run(retcode=None)
-
-    def run(self):
-
-        # List of things to do and the order in which to do them
-        commands = [
-            ("generate 'compile_commands.json'", self.generate_cc_db),
-            ("extract the C file into CBOR",     self.export_cbor),
-            ("import and translate the CBOR",    self.translate),
-            ("compile the generated Rust",       self.compile_translated_rustc),
-            ("link against the driver program",  self.compile_translated_clang),
-            ("compile the original C program",   self.compile_original_clang),
-            ("compare their outputs",            self.compare_run_outputs)
-        ]
-
-        failed_message = None
-
-        for description, command in commands:
+        # .c -> .c.cbor
+        for c_file in self.c_files:
+            _, c_file_short = os.path.split(c_file.path)
+            description = f"{c_file_short}: extracting the C file into CBOR..."
 
             # Run the step
-            self.print_status(WARNING, "RUNNING", description + "...")
-            retcode, stdout, stderr = command()
+            self.print_status(WARNING, "RUNNING", description)
 
-            # Document failures
-            if retcode:
-                failed_message = "failed to " + description + "."
+            self._generate_cc_db(c_file.path)
 
-                sys.stdout.write('\033[1000D\033[K\r')
-                if self.pass_expected:
-                    logging.error("Unexpected failure for " + self.shortname)
-                    logging.error("Failed to " + description)
-                    if stdout:
-                        logging.error("STDOUT:\n" + stdout)
-                    if stderr:
-                        logging.error("STDERR:\n" + stderr)
-                else:
-                    logging.warning("Expected failure for " + self.shortname)
-                    logging.warning("Failed to " + description)
-                    if stdout:
-                        logging.warning("STDOUT:\n" + stdout)
-                    if stderr:
-                        logging.warning("STDERR:\n" + stderr)
+            try:
+                cbor_file = c_file.extract()
+            except NonZeroReturn as exception:
+                self.print_status(FAIL, "FAILED", "extract " + c_file_short)
+                sys.stdout.write('\n')
+                sys.stdout.write(str(exception))
 
-                break
-        else:
-            sys.stdout.write('\033[1000D\033[K\r')
-            logging.info("Expected success for " + self.shortname)
+                outcomes.append(TestOutcome.UnexpectedFailure)
+                continue
 
-        if bool(failed_message) == self.pass_expected:
-            self.print_status(FAIL, "FAILED",
-                              failed_message or "(unexpected success)")
-            self.status = "unexpected failures" if failed_message else \
-                          "unexpected successes"
-        elif failed_message:
-            self.print_status(OKBLUE, "FAILED", failed_message + " (expected)")
-            self.status = "expected failures"
-        else:
-            self.print_status(OKGREEN, "OK", None)
-            self.status = "successes"
+            self.generated_files["cbor"].append(cbor_file)
 
-        sys.stdout.write("\n")
+        rust_file_builder = RustFileBuilder()
+        rust_file_builder.add_features(["libc", "i128_type"])
 
-    def cleanup(self):
+        # .cbor -> .rs
+        for cbor_file in self.generated_files["cbor"]:
+            _, cbor_file_short = os.path.split(cbor_file.path)
+            description = f"{cbor_file_short}: translate the CBOR..."
+
+            self.print_status(WARNING, "RUNNING", description)
+
+            try:
+                translated_rust_file = cbor_file.translate()
+            except NonZeroReturn as exception:
+                self.print_status(FAIL, "FAILED", "translate " + cbor_file_short)
+                sys.stdout.write('\n')
+                sys.stdout.write(str(exception))
+
+                outcomes.append(TestOutcome.UnexpectedFailure)
+                continue
+
+            self.generated_files["rust_src"].append(translated_rust_file)
+
+            _, rust_file_short = os.path.split(translated_rust_file.path)
+            extensionless_rust_file, _ = os.path.splitext(rust_file_short)
+
+            rust_file_builder.add_mod(RustMod(extensionless_rust_file, RustVisibility.Public))
+
+        match_arms = []
+
+        # Build one binary that can call all the tests
+        for test_file in self.rs_test_files:
+            _, file_name = os.path.split(test_file.path)
+            extensionless_file_name, _ = os.path.splitext(file_name)
+
+            if not test_file.pass_expected:
+                try:
+                    test_file.compile(CrateType.Library, save_output=False)
+
+                    self.print_status(FAIL, "OK", f"Unexpected success {file_name}")
+                    sys.stdout.write('\n')
+
+                    outcomes.append(TestOutcome.UnexpectedSuccess)
+                except NonZeroReturn as exception:
+                    self.print_status(OKBLUE, "FAILED", f"Expected failure {file_name}")
+                    sys.stdout.write('\n')
+
+                    logging.error("stderr:%s\n", str(exception))
+
+                    outcomes.append(TestOutcome.Failure)
+
+                continue
+
+            for test_function in test_file.test_functions:
+                rust_file_builder.add_mod(RustMod(extensionless_file_name, RustVisibility.Public))
+                left = f"Some(\"{extensionless_file_name}::{test_function.name}\")"
+                right = f"{extensionless_file_name}::{test_function.name}()"
+                match_arms.append((left, right))
+
+        match_arms.append(("e", "panic!(\"Tried to run unknown test: {:?}\", e)"))
+
+        test_main_body = [
+            RustMatch("std::env::args().nth(1).as_ref().map(String::as_ref)", match_arms),
+        ]
+        test_main = RustFunction("main",
+                                 visibility=RustVisibility.Public,
+                                 body=test_main_body)
+
+        rust_file_builder.add_function(test_main)
+
+        main_file = rust_file_builder.build(self.full_path + "/tests_main.rs")
+
+        self.generated_files["rust_src"].append(main_file)
+
+        # Try and build test binary
+        try:
+            main = main_file.compile(CrateType.Binary, save_output=True)
+        except NonZeroReturn as exception:
+            _, main_file_path_short = os.path.split(main_file.path)
+
+            self.print_status(FAIL, "FAILED", f"compile {main_file_path_short}")
+            sys.stdout.write('\n')
+            sys.stdout.write(str(exception))
+
+            return outcomes
+
+        self.generated_files["rust_test_exec"].append(str(main.executable))
+
+        for test_file in self.rs_test_files:
+            if not test_file.pass_expected:
+                continue
+
+            _, file_name = os.path.split(test_file.path)
+            extensionless_file_name, _ = os.path.splitext(file_name)
+
+            for test_function in test_file.test_functions:
+                args = [f"{extensionless_file_name}::{test_function.name}"]
+
+                retcode, stdout, stderr = main[args].run(retcode=None)
+
+                logging.debug("stdout:%s\n", stdout)
+
+                test_str = file_name + ' - ' + test_function.name
+
+                if retcode == 0:
+                    if test_function.pass_expected:
+                        self.print_status(OKGREEN, "OK", "    test " + test_str)
+                        sys.stdout.write('\n')
+
+                        outcomes.append(TestOutcome.Success)
+                    else:
+                        self.print_status(FAIL, "FAILED", "test " + test_str)
+                        sys.stdout.write('\n')
+
+                        outcomes.append(TestOutcome.UnexpectedSuccess)
+
+                elif retcode != 0:
+                    if test_function.pass_expected:
+                        self.print_status(FAIL, "FAILED", "test " + test_str)
+                        sys.stdout.write('\n')
+                        sys.stdout.write(stderr)
+
+                        outcomes.append(TestOutcome.UnexpectedFailure)
+                    else:
+                        self.print_status(OKBLUE, "FAILED", "test " + test_str)
+                        sys.stdout.write('\n')
+
+                        outcomes.append(TestOutcome.Failure)
+
+        if not outcomes:
+            self.print_status(OKBLUE, "N/A", "   No rust file(s) matching " + self.files.pattern + " within this folder\n")
+        return outcomes
+
+    def cleanup(self) -> None:
         if "all" in self.keep:
             return
 
-        files = [getattr(self, f) for f in intermediate_files if f not in self.keep]
+        for file_type, file_paths in self.generated_files.items():
+            if file_type in self.keep:
+                continue
 
-        # Try remove files and don't barf if they don't exist
-        for filename in files:
-            try:
-                os.remove(filename)
-            except OSError:
-                pass
+            # Try remove files and don't barf if they don't exist
+            for file_path in file_paths:
+                try:
+                    # FIXME: Hacky. Some items are string paths,
+                    # others are classes with a path attribute
+                    os.remove(getattr(file_path, "path", file_path))
+                except OSError:
+                    pass
 
 
 def readable_directory(directory: str) -> str:
@@ -251,30 +497,12 @@ def readable_directory(directory: str) -> str:
         return directory
 
 
-def get_testcases(directory: str, keep: List[str]) -> List[TestCase]:
-    """
-    Find the test cases in a directory
-    """
-
-    testcases = []
-
+def get_testdirectories(directory: str, files: str, keep: List[str]) -> Generator[TestDirectory, None, None]:
     for entry in os.listdir(directory):
         path = os.path.abspath(os.path.join(directory, entry))
 
-        # Expect all C files to be test cases that should pass
-        if os.path.isfile(path) and os.path.splitext(path)[1] == ".c":
-
-            # Files that mention the word "fail" in their first line are marked
-            # as being expected to fail.
-            try:
-                with open(path, 'r') as f:
-                    pass_expected = "fail" not in f.readline()
-            except IOError:
-                pass_expected = False
-
-            testcases.append(TestCase(path, pass_expected, keep))
-
-    return testcases
+        if os.path.isdir(path):
+            yield TestDirectory(path, files, keep)
 
 
 def main() -> None:
@@ -282,7 +510,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('directory', type=readable_directory)
     parser.add_argument(
-        '--only', dest='regex', type=regex,
+        '--only-files', dest='regex_files', type=regex,
+        default='.*', help="Regular expression to filter which tests to run"
+    )
+    parser.add_argument(
+        '--only-directories', dest='regex_directories', type=regex,
         default='.*', help="Regular expression to filter which tests to run"
     )
     parser.add_argument(
@@ -297,7 +529,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    testcases = get_testcases(args.directory, args.keep)
+    test_directories = get_testdirectories(args.directory, args.regex_files, args.keep)
     setup_logging(args.logLevel)
 
     logging.debug("args: %s", " ".join(sys.argv))
@@ -312,7 +544,7 @@ def main() -> None:
     ensure_dir(DEPS_DIR)
     ensure_rustc_version(CUSTOM_RUST_RUSTC_VERSION)
 
-    if not testcases:
+    if not test_directories:
         die("nothing to test")
 
     # Accumulate test case stats
@@ -323,21 +555,23 @@ def main() -> None:
         "successes": 0
     }
 
-    # Testcases are run one after another. Only tests that match the '--only'
-    # argument are run. We make a best effort to clean up files we left behind.
-    for testcase in testcases:
-        if args.regex.fullmatch(testcase.shortname):
-            logging.debug("running test: %s", testcase.src_c)
+    for test_directory in test_directories:
+        if args.regex_directories.fullmatch(test_directory.name):
+            sys.stdout.write(f"{test_directory.name}:\n")
+
+            # TODO: Support regex for filtering by directory or name
+            # Testdirectories are run one after another. Only tests that match the '--only'
+            # argument are run. We make a best effort to clean up files we left behind.
             try:
-                testcase.run()
+                statuses = test_directory.run()
             finally:
-                testcase.cleanup()
+                test_directory.cleanup()
 
-            if testcase.status:
-                test_results[testcase.status] += 1
+            for status in statuses:
+                test_results[status.value] += 1
 
-        else:
-            logging.debug("skipping test: %s", testcase.src_c)
+        # else:
+        #     logging.debug("skipping test: %s", testcase.src_c)
 
     # Print out test case stats
     sys.stdout.write("\nTest summary:\n")
@@ -345,10 +579,10 @@ def main() -> None:
         sys.stdout.write("  {}: {}\n".format(variant, count))
 
     # If anything unexpected happened, exit with error code 1
-    unepected = \
+    unexpected = \
         test_results["unexpected failures"] + \
         test_results["unexpected successes"]
-    if 0 < unepected:
+    if 0 < unexpected:
         quit(1)
 
 
