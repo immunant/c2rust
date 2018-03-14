@@ -413,6 +413,8 @@ std::set<std::pair<std::string_view, std::string_view>>
 CrossCheckInserter::struct_xcheck_blacklist = {
     { "/usr/include/bits/types/__mbstate_t.h"sv,    "__mbstate_t"sv      },
     { "/usr/include/bits/thread-shared-types.h"sv,  "__pthread_cond_s"sv },
+    { "/usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h"sv, "__mbstate_t"sv},
+
 };
 
 FunctionDecl *CrossCheckInserter::get_function_decl(llvm::StringRef name,
