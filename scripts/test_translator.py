@@ -121,9 +121,8 @@ class CFile:
         return CborFile(self.path + ".cbor", self.enable_relooper)
 
 
-def build_static_library(c_files: Iterable[CFile]) -> CStaticLibrary:
+def build_static_library(c_files: Iterable[CFile], output_path: str) -> Optional[CStaticLibrary]:
     current_path = os.getcwd()
-    output_path, _ = os.path.split(c_files[0].path)
 
     os.chdir(output_path)
 
@@ -131,6 +130,9 @@ def build_static_library(c_files: Iterable[CFile]) -> CStaticLibrary:
     args = ["-c", "-fPIC"]
 
     args.extend(c_file.path for c_file in c_files)
+
+    if len(args) == 2:
+        return
 
     logging.debug("complication command:\n %s", str(clang[args]))
     retcode, stdout, stderr = clang[args].run(retcode=None)
@@ -299,13 +301,18 @@ class TestDirectory:
         self.print_status(WARNING, "RUNNING", description)
 
         try:
-            static_library = build_static_library(self.c_files)
+            static_library = build_static_library(self.c_files, self.full_path)
         except NonZeroReturn as exception:
             self.print_status(FAIL, "FAILED", "create libtest.a")
             sys.stdout.write('\n')
             sys.stdout.write(str(exception))
 
-            return outcomes
+            return []
+
+        if not static_library:
+            description = "No c files were found...\n"
+            self.print_status(OKBLUE, "SKIPPED", description)
+            return []
 
         self.generated_files["c_lib"].append(static_library)
         self.generated_files["c_obj"].extend(static_library.obj_files)
