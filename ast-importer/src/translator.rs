@@ -1774,9 +1774,15 @@ impl Translation {
             }
         }
 
+        let value = match self.ast_context.resolve_type(underlying_type_id.ctype).kind {
+            CTypeKind::UInt => mk().lit_expr(mk().int_lit((value as u32) as u128, LitIntType::Unsuffixed)),
+            CTypeKind::ULong => mk().lit_expr(mk().int_lit((value as u64) as u128, LitIntType::Unsuffixed)),
+            _ => signed_int_expr(value),
+        };
+
         let target_ty = self.convert_type(enum_type_id).unwrap();
 
-        transmute_expr(underlying_type, target_ty, signed_int_expr(value))
+        transmute_expr(underlying_type, target_ty, value)
     }
 
     /// This handles translating casts when the target type in an `enum` type.
