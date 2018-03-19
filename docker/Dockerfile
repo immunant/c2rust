@@ -10,28 +10,28 @@ USER root
 RUN useradd --user-group --create-home --shell /bin/bash $USER 
 WORKDIR $HOME
 
-# Provision debian packages
+# Provision debian packages (dirmngr is required for gnupg2 key retrieval)
 RUN apt-get update -qq && \
+    apt-get install -y --install-recommends dirmngr  && \
     apt-get install -y autoconf \
-                        automake \
-                        clang-5.0 \
-                        cmake \
-                        curl \
-                        gnupg2 \
-                        htop \
-                        htop \
-                        ipython3 \
-                        libreadline-dev \
-                        lldb-5.0 \
-                        llvm-5.0 \    
-                        make \
-                        ninja-build \
-                        python3 \
-                        python3-pip \
-                        tmux \
-                        unzip \
-                        vim \
-                        wget
+                       automake \
+                       clang-5.0 \
+                       cmake \
+                       curl \
+                       gnupg2 \
+                       htop \
+                       ipython3 \
+                       libreadline-dev \
+                       lldb-5.0 \
+                       llvm-5.0 \    
+                       make \
+                       ninja-build \
+                       python3 \
+                       python3-pip \
+                       tmux \
+                       unzip \
+                       vim \
+                       wget
 
 RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-5.0 100 && \
     update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-5.0 100 && \
@@ -42,6 +42,7 @@ RUN pip3 install --no-cache-dir --upgrade cbor \
                                           colorlog \
                                           pip \
                                           plumbum \
+                                          psutil \
                                           typing 
 
 USER $USER
