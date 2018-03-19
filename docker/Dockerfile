@@ -18,6 +18,7 @@ RUN apt-get update -qq && \
                        clang-5.0 \
                        cmake \
                        curl \
+                       git \
                        gnupg2 \
                        htop \
                        ipython3 \
