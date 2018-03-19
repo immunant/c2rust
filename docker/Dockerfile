@@ -1,13 +1,16 @@
 FROM ubuntu:artful
 MAINTAINER perl@immunant.com
 
-ENV USER=docker
+ARG USER=docker
+ARG UID=1000
+ARG GID=1000
 ENV HOME=/home/$USER
 ENV DEBIAN_FRONTEND=noninteractive
 ENV RUST_VER=nightly-2018-01-06
 
 USER root
-RUN useradd --user-group --create-home --shell /bin/bash $USER 
+RUN groupadd -f -g $GID $USER
+RUN useradd --create-home -u $UID -g $GID --create-home --shell /bin/bash $USER 
 WORKDIR $HOME
 
 # Provision debian packages (dirmngr is required for gnupg2 key retrieval)
