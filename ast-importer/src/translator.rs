@@ -657,6 +657,8 @@ impl Translation {
             let mut args: Vec<Arg> = vec![];
 
             for &(decl_id, ref var, typ) in arguments {
+
+
                 let (ty, mutbl, _) = self.convert_variable(None, typ, false)?;
 
                 let pat = if var.is_empty() {
@@ -689,7 +691,12 @@ impl Translation {
                     _ => cfg::ImplicitReturnType::NoImplicitReturnType,
                 };
 
-                let block = self.convert_function_body(name, body, ret)?;
+                let mut body_stmts = vec![];
+                for &(_, _, typ) in arguments {
+                    body_stmts.append(&mut self.compute_variable_array_sizes(typ.ctype)?);
+                }
+                body_stmts.append(&mut self.convert_function_body(name, body, ret)?);
+                let block = stmts_block(body_stmts);
 
                 // Only add linkage attributes if the function is `extern`
                 let mk_ = if is_extern && !is_inline {
@@ -718,12 +725,12 @@ impl Translation {
         name: &str,
         body_id: CStmtId,
         ret: cfg::ImplicitReturnType,
-    ) -> Result<P<Block>, String> {
+    ) -> Result<Vec<Stmt>, String> {
 
         // Function body scope
         self.with_scope(|| {
-            let stmts = if self.reloop_cfgs {
-                let (graph, mut store) = cfg::Cfg::from_stmt(self, body_id, ret)?;
+            if self.reloop_cfgs {
+                let (graph, store) = cfg::Cfg::from_stmt(self, body_id, ret)?;
 
                 if self.dump_function_cfgs {
                     graph
@@ -763,7 +770,7 @@ impl Translation {
                     current_block,
                     self.debug_relooper_labels
                 ));
-                stmts
+                Ok(stmts)
             } else {
                 match self.ast_context.index(body_id).kind {
                     CStmtKind::Compound(ref stmts) => {
@@ -771,12 +778,11 @@ impl Translation {
                         for &stmt in stmts {
                             res.append(&mut self.convert_stmt(stmt)?)
                         }
-                        res
+                        Ok(res)
                     }
                     _ => panic!("function body expects to be a compound statement"),
                 }
-            };
-            Ok(stmts_block(stmts))
+            }
         })
     }
 
@@ -1149,6 +1155,55 @@ impl Translation {
         _get_declref_type(&self.ast_context, expr_id, 0)
     }
 
+    // Compute the offset multiplier for variable length array indexing
+    // Rust type: usize
+    pub fn compute_size_of_expr(&self, type_id: CTypeId) -> Option<P<Expr>> {
+        match &self.ast_context.resolve_type(type_id).kind {
+            &CTypeKind::VariableArray(elts, Some(counts)) => {
+                let opt_esize = self.compute_size_of_expr(elts);
+                let csize_name = self.renamer.borrow().get(&CDeclId(counts.0)).unwrap();
+                let csize = mk().path_expr(vec![csize_name]);
+
+                let val = match opt_esize {
+                    None => csize,
+                    Some(esize) => mk().binary_expr(BinOpKind::Mul, csize, esize),
+                };
+                Some(val)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn compute_variable_array_sizes(&self, mut type_id: CTypeId) -> Result<Vec<Stmt>, String> {
+
+        let mut stmts = vec![];
+
+        loop {
+            match &self.ast_context.resolve_type(type_id).kind {
+                &CTypeKind::Pointer(elt) => type_id = elt.ctype,
+                &CTypeKind::ConstantArray(elt, _) => type_id = elt,
+                &CTypeKind::VariableArray(elt, Some(expr_id)) => {
+                    type_id = elt;
+
+                    // Convert this expression
+                    let mut expr = self.convert_expr(ExprUse::RValue, expr_id, false)?;
+                    stmts.append(&mut expr.stmts);
+                    let name = self.renamer.borrow_mut().insert(CDeclId(expr_id.0), "vla").unwrap(); // try using declref name?
+                    // TODO: store the name corresponding to expr_id
+
+                    let local = mk().local(mk().ident_pat(name), None as Option<P<Ty>>, Some(mk().cast_expr(expr.val, mk().path_ty(vec!["usize"]))));
+
+                    stmts.push(mk().local_stmt(P(local)));
+                }
+                _ => break,
+            }
+        }
+
+        Ok(stmts)
+    }
+
+    // Compute the size of a type
+    // Rust type: usize
     pub fn compute_size_of_type(&self, type_id: CTypeId) -> Result<WithStmts<P<Expr>>, String> {
         if let &CTypeKind::VariableArray(elts, len) =
             &self.ast_context.resolve_type(type_id).kind {
@@ -1161,8 +1216,8 @@ impl Translation {
             let mut stmts = elts.stmts;
             stmts.append(&mut len.stmts);
 
-            let lhs = cast_int(elts.val, "u64");
-            let rhs = cast_int(len.val, "u64");
+            let lhs = elts.val;
+            let rhs = cast_int(len.val, "usize");
 
             let val = mk().binary_expr(BinOpKind::Mul, lhs, rhs);
 
@@ -1177,8 +1232,7 @@ impl Translation {
                             mk().path_segment("mem"),
                             mk().path_segment_with_params(name, params)];
             let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
-            let casted = mk().cast_expr(call, mk().path_ty(vec!["libc", "c_ulong"]));
-            Ok(WithStmts::new(casted))
+            Ok(WithStmts::new(call))
         }
     }
 
@@ -1201,8 +1255,7 @@ impl Translation {
                                                       mk().angle_bracketed_param_types(tys)),
         ];
         let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
-        let casted = mk().cast_expr(call, mk().path_ty(vec!["libc", "c_ulong"]));
-        Ok(WithStmts::new(casted))
+        Ok(WithStmts::new(call))
     }
 
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
@@ -1217,10 +1270,12 @@ impl Translation {
     pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
         match self.ast_context.index(expr_id).kind {
             CExprKind::UnaryType(_ty, kind, arg_ty) => {
-                match kind {
-                    UnTypeOp::SizeOf => self.compute_size_of_type(arg_ty.ctype),
-                    UnTypeOp::AlignOf => self.compute_align_of_type(arg_ty.ctype),
-                }
+                let result = match kind {
+                    UnTypeOp::SizeOf => self.compute_size_of_type(arg_ty.ctype)?,
+                    UnTypeOp::AlignOf => self.compute_align_of_type(arg_ty.ctype)?,
+                };
+
+                Ok(result.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc","c_ulong"]))))
             }
 
             CExprKind::DeclRef(qual_ty, decl_id) => {
@@ -1609,23 +1664,56 @@ impl Translation {
                 let mut rhs = self.convert_expr(ExprUse::RValue, *rhs, false)?;
                 stmts.extend(rhs.stmts);
 
-                let val = if let &CExprKind::ImplicitCast(_, ref arr, CastKind::ArrayToPointerDecay, _) = lhs_node {
+                let simple_index_array =
+                match lhs_node {
+                    &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _) => Some(arr),
+                    _ => None,
+                };
+
+                let val = if let Some(arr) = simple_index_array {
                     // If the LHS just underwent an implicit cast from array to pointer, bypass that
                     // to make an actual Rust indexing operation
 
-                    let lhs = self.convert_expr(use_, *arr, false)?;
+                    let t = self.ast_context[arr].kind.get_type();
+                    let var_elt_type_id = match self.ast_context.resolve_type(t).kind {
+                        CTypeKind::ConstantArray(..) => None,
+                        CTypeKind::IncompleteArray(..) => None,
+                        CTypeKind::VariableArray(elt, _) => Some(elt),
+                        ref other => panic!("Unexpected array type {:?}", other),
+                    };
+
+                    let lhs = self.convert_expr(use_, arr, false)?;
                     stmts.extend(lhs.stmts);
 
-                    let val = cast_int(rhs.val, "usize");
-
-                    mk().index_expr(lhs.val, val)
+                    // Don't dereference the offset if we're still within the variable portion
+                    if let Some(elt_type_id) = var_elt_type_id {
+                        match self.compute_size_of_expr(elt_type_id) {
+                            None => mk().unary_expr(ast::UnOp::Deref, pointer_offset(lhs.val, rhs.val)),
+                            Some(sz) => pointer_offset(lhs.val, mk().binary_expr(BinOpKind::Mul, sz, cast_int(rhs.val, "usize"))),
+                        }
+                    } else {
+                        mk().index_expr(lhs.val, cast_int(rhs.val, "usize"))
+                    }
                 } else {
-                    // Otherwise, use the pointer and make a deref of a pointer offset expression
 
                     let lhs = self.convert_expr(ExprUse::RValue, *lhs, false)?;
                     stmts.extend(lhs.stmts);
 
-                    mk().unary_expr(ast::UnOp::Deref, pointer_offset(lhs.val, rhs.val))
+                    let lhs_type_id = lhs_node.get_type();
+
+                    // Determine the type of element being indexed
+                    let pointee_type_id = match &self.ast_context.resolve_type(lhs_type_id).kind {
+                        &CTypeKind::Pointer(pointee_id) => pointee_id,
+                        _ => panic!("Subscript applied to non-pointer"),
+                    };
+
+                    if let Some(sz) = self.compute_size_of_expr(pointee_type_id.ctype) {
+                        let offset = mk().binary_expr(BinOpKind::Mul, sz, cast_int(rhs.val, "usize"));
+                        pointer_offset(lhs.val, offset)
+                    } else {
+                        // Otherwise, use the pointer and make a deref of a pointer offset expression
+                        mk().unary_expr(ast::UnOp::Deref, pointer_offset(lhs.val, rhs.val))
+                    }
                 };
 
                 Ok(WithStmts { stmts, val })

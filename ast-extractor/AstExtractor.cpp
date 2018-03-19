@@ -1136,7 +1136,7 @@ void TypeEncoder::VisitVariableArrayType(const VariableArrayType *T) {
     auto qt = encodeQualType(t);
     
     auto c = T->getSizeExpr();
-    astEncoder->VisitExpr(c);
+    astEncoder->TraverseStmt(c);
     
     encodeType(T, TagVariableArrayType, [qt, c](CborEncoder *local) {
         cbor_encode_uint(local, qt);
