@@ -104,8 +104,8 @@ class CFile:
         args = [self.path]
 
         # NOTE: it doesn't seem necessary to specify system include
-	# directories and in fact it may cause problems on macOS.
-	## make sure we can locate system include files
+        # directories and in fact it may cause problems on macOS.
+        ## make sure we can locate system include files
         ## sys_incl_dirs = get_system_include_dirs()
         ## args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
 
@@ -291,7 +291,7 @@ class TestDirectory:
         any_tests = any(test_fn for test_file in self.rs_test_files
                                 for test_fn in test_file.test_functions)
 
-        if not self.files.pattern and not any_tests:
+        if not any_tests:
             description = "No tests were found...\n"
             self.print_status(OKBLUE, "SKIPPED", description)
             return []
