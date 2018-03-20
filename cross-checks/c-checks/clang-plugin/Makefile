@@ -5,7 +5,8 @@ PLUGIN_PATH := $(shell find . -name CrossChecks.so)
 RUNTIME_PATH := $(shell find . -name libruntime.a)
 
 # Override this to change the path to the clang binary
-PLUGIN_CC := ~/workspace/C2Rust/dependencies/llvm-6.0.0/build.donna/bin/clang
+#PLUGIN_CC := clang
+PLUGIN_CC := $(realpath ../../../dependencies/llvm-6.0.0/build.$(shell uname -n)/bin/clang)
 
 PLUGIN_CC_ARGS := -Wno-unknown-attributes
 PLUGIN_CC_ARGS += -Xclang -load
