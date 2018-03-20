@@ -1050,6 +1050,8 @@ impl ConversionContext {
                     let ty = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty);
 
+                    let expr = node.children[0].map(|x| self.visit_expr(x));
+
                     let kind_name = expect_str(&node.extras[0]).expect("expected kind");
                     let kind = match kind_name {
                         "sizeof" => UnTypeOp::SizeOf,
@@ -1060,7 +1062,7 @@ impl ConversionContext {
                     let arg_ty = expect_u64(&node.extras[1]).expect("expected type id");
                     let arg_ty = self.visit_qualified_type(arg_ty);
 
-                    let operator = CExprKind::UnaryType(ty, kind, arg_ty);
+                    let operator = CExprKind::UnaryType(ty, kind, expr, arg_ty);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, operator);
                 }

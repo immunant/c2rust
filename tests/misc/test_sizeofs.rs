@@ -10,7 +10,7 @@ extern "C" {
     fn sizeofs(_: c_uint, _: *mut c_int);
 }
 
-const BUFFER_SIZE: usize = 40;
+const BUFFER_SIZE: usize = 48;
 
 pub fn test_sizeofs() {
     let mut buffer = [0; BUFFER_SIZE];
@@ -22,6 +22,6 @@ pub fn test_sizeofs() {
     }
 
     for x in 0..BUFFER_SIZE {
-        assert_eq!((x,buffer[x]), (x,rust_buffer[x]));
+        assert_eq!(buffer[x], rust_buffer[x], "index {}", x);
     }
 }

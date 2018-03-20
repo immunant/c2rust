@@ -632,7 +632,7 @@ impl Translation {
 
                 let init = init?.to_expr();
 
-                // Force mutability due to the potential for raw pointers occuring in the type
+                // Force mutability due to the potential for raw pointers occurring in the type
                 Ok(mk().mutbl()
                     .static_item(new_name, ty, init))
             }
@@ -1166,7 +1166,8 @@ impl Translation {
         match &self.ast_context.resolve_type(type_id).kind {
             &CTypeKind::VariableArray(elts, Some(counts)) => {
                 let opt_esize = self.compute_size_of_expr(elts);
-                let csize_name = self.renamer.borrow().get(&CDeclId(counts.0)).unwrap();
+                let csize_name = self.renamer.borrow().get(&CDeclId(counts.0))
+                                .expect("Failed to lookup VLA expression");
                 let csize = mk().path_expr(vec![csize_name]);
 
                 let val = match opt_esize {
@@ -1179,6 +1180,8 @@ impl Translation {
         }
     }
 
+    /// This generates variables that store the computed sizes of the variable-length arrays in
+    /// the given type.
     pub fn compute_variable_array_sizes(&self, mut type_id: CTypeId) -> Result<Vec<Stmt>, String> {
 
         let mut stmts = vec![];
@@ -1274,9 +1277,29 @@ impl Translation {
     /// ignored.
     pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
         match self.ast_context.index(expr_id).kind {
-            CExprKind::UnaryType(_ty, kind, arg_ty) => {
+            CExprKind::UnaryType(_ty, kind, opt_expr, arg_ty) => {
                 let result = match kind {
-                    UnTypeOp::SizeOf => self.compute_size_of_type(arg_ty.ctype)?,
+                    UnTypeOp::SizeOf =>
+                        match opt_expr {
+                            None => self.compute_size_of_type(arg_ty.ctype)?,
+                            Some(_) =>
+                                {
+                                    let mut inner = arg_ty.ctype;
+                                    while let &CTypeKind::VariableArray(elt_, _)
+                                    = &self.ast_context.resolve_type(inner).kind {
+                                        inner = elt_;
+                                    }
+
+                                    let inner_size = self.compute_size_of_type(inner)?;
+
+                                    if let Some(sz) = self.compute_size_of_expr(arg_ty.ctype) {
+                                        inner_size.map(|x| mk().binary_expr(BinOpKind::Mul, sz, x))
+                                    } else {
+                                        // Otherwise, use the pointer and make a deref of a pointer offset expression
+                                        inner_size
+                                    }
+                                },
+                        }
                     UnTypeOp::AlignOf => self.compute_align_of_type(arg_ty.ctype)?,
                 };
 

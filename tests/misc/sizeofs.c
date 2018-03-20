@@ -42,4 +42,23 @@ void sizeofs(const unsigned n, int * const buffer) {
         CHECK(int[a][b]);
         CHECK(int(*)[a][b]);
         CHECK(int(*[3])[b]);
+
+        int x1[4];
+        int x2[4][5];
+        int x3[3][a];
+        int x4[b][4];
+        int x5[a][b];
+        int(*x6[3])[b];
+        int(*x7)[a][b];
+
+        a = 0;
+        b = 0;
+
+        CHECK(x1);
+        CHECK(x2);
+        CHECK(x3);
+        CHECK(x4);
+        CHECK(x5);
+        CHECK(x6);
+        CHECK(x7);
 }
