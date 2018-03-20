@@ -29,4 +29,12 @@ void variable_arrays(int buf[const]) {
                         }
                 }
         }
+
+        int n = 8;
+        int var1[n];
+
+        for (int i = 0; i < n; i++) {
+                var1[i] = 3*i;
+                buf[counter++] = var1[i];
+        }
 }

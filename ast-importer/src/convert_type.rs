@@ -173,8 +173,11 @@ impl TypeConverter {
                 Ok(mk().slice_ty(ty))
             }
 
-            CTypeKind::VariableArray(element, _) => {
-                let child_ty = self.convert(ctxt, element)?;
+            CTypeKind::VariableArray(mut elt, _) => {
+                while let CTypeKind::VariableArray(elt_, _) = ctxt.resolve_type(elt).kind {
+                    elt = elt_
+                }
+                let child_ty = self.convert(ctxt, elt)?;
                 Ok(mk().mutbl().ptr_ty(child_ty))
             }
 

@@ -1003,11 +1003,15 @@ impl Translation {
             CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ } if !is_static && !is_extern => {
                 assert!(is_defn, "Only local variable definitions should be extracted");
 
+                let mut stmts = self.compute_variable_array_sizes(typ.ctype)?;
+
                 let rust_name = self.renamer.borrow_mut()
                     .insert(decl_id, &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ, is_static)?;
-                let init = init?;
+                let mut init = init?;
+
+                stmts.append(&mut init.stmts);
 
                 let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
                 let zeroed = self.implicit_default_expr(typ.ctype)?;
@@ -1022,7 +1026,7 @@ impl Translation {
                     vec![mk().local_stmt(P(local_mut))],
                     vec![mk().semi_stmt(assign)],
                     vec![mk().local_stmt(P(local))],
-                    init.stmts,
+                    stmts,
                 ))
             }
 
@@ -2028,6 +2032,18 @@ impl Translation {
             Ok(mk().repeat_expr(self.implicit_default_expr(elt)?, sz))
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id)
+        } else if let &CTypeKind::VariableArray(elt, _) = resolved_ty {
+
+            let mut inner = elt;
+            while let &CTypeKind::VariableArray(elt_, _) = &self.ast_context.resolve_type(inner).kind {
+                inner = elt_;
+            }
+
+            let count = self.compute_size_of_expr(ty_id).unwrap();
+            let val = self.implicit_default_expr(inner)?;
+            let alloc = mk().call_expr(mk().path_expr(vec!["", "std","vec","from_elem"]), vec![val, count]);
+            let ptr = mk().method_call_expr(alloc, "as_mut_ptr", vec![] as Vec<P<Expr>>);
+            Ok(ptr)
         } else {
             Err(format!("Unsupported default initializer: {:?}", resolved_ty))
         }
