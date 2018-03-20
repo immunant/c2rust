@@ -400,7 +400,7 @@ class TestDirectory:
         match_arms.append(("e", "panic!(\"Tried to run unknown test: {:?}\", e)"))
 
         test_main_body = [
-            RustMatch("std::env::args().nth(1).as_ref().map(String::as_ref)", match_arms),
+            RustMatch("std::env::args().nth(1).as_ref().map(AsRef::<str>::as_ref)", match_arms),
         ]
         test_main = RustFunction("main",
                                  visibility=RustVisibility.Public,
