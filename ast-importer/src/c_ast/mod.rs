@@ -658,7 +658,7 @@ pub enum CTypeKind {
     //
     // Note a function taking no arguments should have one `void` argument. Functions without any
     // arguments and in K&R format.
-    Function(CQualTypeId, Vec<CQualTypeId>),
+    Function(CQualTypeId, Vec<CQualTypeId>, bool),
 
     // Type definition type (6.7.7)
     Typedef(CTypedefId),

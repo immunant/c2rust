@@ -223,7 +223,7 @@ public:
         auto EPI = T->getExtProtoInfo();
         static bool firstWarning = true;
         if(firstWarning && EPI.Variadic) {
-            std::cerr << "Warning: variadic functions are not supported.\n";
+            std::cerr << "Warning: variadic functions are not fully supported.\n";
             firstWarning = false;
         }
         DEBUG(dbgs() << "Visit ");
@@ -236,13 +236,15 @@ public:
             // is always the first element of the list followed by the parameters.
             size_t elts = T->getNumParams()+1;
             cbor_encoder_create_array(local, &arrayEncoder, elts);
-            
+
             cbor_encode_uint(&arrayEncoder, encodeQualType(T->getReturnType()));
             for (auto t : T->param_types()) {
                 cbor_encode_uint(&arrayEncoder, encodeQualType(t));
             }
             
             cbor_encoder_close_container(local, &arrayEncoder);
+
+            cbor_encode_boolean(local, T->getExtProtoInfo().Variadic);
         });
 
         VisitQualType(T->getReturnType());
@@ -262,6 +264,8 @@ public:
             cbor_encode_uint(&arrayEncoder, uintptr_t(T->getReturnType().getTypePtrOrNull()));
 
             cbor_encoder_close_container(local, &arrayEncoder);
+
+            cbor_encode_boolean(local, false);
         });
 
         VisitQualType(T->getReturnType());

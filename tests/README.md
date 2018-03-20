@@ -1,6 +1,6 @@
 ## Adding a test case
 
-To add a new test case, simply create a new `.c` function with any return type, name, and parameters.
+To add a new test case, simply create a new `.c` file. For example:
 
 ```c
 void example(unsigned buffer_size, int buffer[]) {
@@ -8,7 +8,7 @@ void example(unsigned buffer_size, int buffer[]) {
 }
 ```
 
-Then create a new `.rs` file with the following skeleton(_does not need to be a buffer, can check return values as well_):
+Then create a new `.rs` file with the following skeleton (_does not need to be a buffer, can check return values as well_):
 
 ```rust
 extern crate libc;
@@ -41,11 +41,11 @@ pub fn test_example() {
 }
 ```
 
-So, your C code can do two things: either modify some sort of buffer or have a return a value.
+The C code can do one of two things: modify some sort of buffer or return a value.
 
 To completely skip the translation of a C file, you must add the comment `//! skip_translation` at the top of the file. That will prevent the case from showing up as red in the console output.
 
-You can also mark a rust file as unexpected to compile, by adding `//! xfail` to the top of the file, or just expect an individual test function to fail to run by adding `// xfail` prior to the function definition.
+You can also mark a Rust file as unexpected to compile, by adding `//! xfail` to the top of the file, or just expect an individual test function to fail to run by adding `// xfail` prior to the function definition.
 
 ## Running the tests
 
@@ -53,26 +53,26 @@ _From the project root_, run `./scripts/test_translator.py tests` to run all of 
 `tests` folder. Here are a couple other handy options:
 
 ```bash
-$ ./scripts/test_translator.py --only-directories="loops" tests    # run a subset of the tests
-$ ./scripts/test_translator.py --log ERROR                tests    # show output of failed tests
-$ ./scripts/test_translator.py --keep=all                 tests    # keep some of the generated files
-$ ./scripts/test_translator.py --help                              # displays the help messages
+# run a subset of the tests
+$ ./scripts/test_translator.py --only-directories="loops" tests
+# show output of failed tests
+$ ./scripts/test_translator.py --log ERROR                tests
+# keep all of the files generated during testing
+$ ./scripts/test_translator.py --keep=all                 tests
+# get help with the command line options
+$ ./scripts/test_translator.py --help
 ```
-
 
 ## What happens under the hood
 
-This `test` directory contains regression / feature / unit tests. A test directory goes through the following set of steps:
+This `test` directory contains regression, feature, and unit tests. A test directory goes through the following set of steps:
 
-  1. A `compile_commands.json` file is created for the Clang plugin in `ast-extractor` to recognize
-     its C source input
+  1. A `compile_commands.json` file is created for the Clang plugin in `ast-extractor` to recognize its C source input
 
-  2. This JSON and the C source file are fed to the `ast-extractor` to produce a CBOR file of the
-     Clang type-annotated abstract syntax tree
+  2. This JSON and the C source file are fed to the `ast-extractor` to produce a CBOR file of the Clang type-annotated abstract syntax tree.
 
-  3. This CBOR file is fed to the `ast-importer` to produce a Rust source file supposedly preserving
-     the semantics of the initial C source file
+  3. This CBOR file is fed to the `ast-importer` to produce a Rust source file supposedly preserving the semantics of the initial C source file.
 
-  4. Rust test files (test_xyz.rs) are compiled into a single main wrapper and main test binary and are automatically linked against other rust and c files thanks to rustc
+  4. Rust test files (test_xyz.rs) are compiled into a single main wrapper and main test binary and are automatically linked against other Rust and C files thanks to `rustc`.
 
-  5. The executable from the previous step is run one or more times parameterized to a specific test function
+  5. The executable from the previous step is run one or more times parameterized to a specific test function.

@@ -104,8 +104,8 @@ class CFile:
         args = [self.path]
 
         # NOTE: it doesn't seem necessary to specify system include
-	# directories and in fact it may cause problems on macOS.
-	## make sure we can locate system include files
+        # directories and in fact it may cause problems on macOS.
+        ## make sure we can locate system include files
         ## sys_incl_dirs = get_system_include_dirs()
         ## args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
 
@@ -288,9 +288,10 @@ class TestDirectory:
     def run(self) -> List[TestOutcome]:
         outcomes = []
 
-        any_tests = any(test_fn for test_file in self.rs_test_files for test_fn in test_file.test_functions)
+        any_tests = any(test_fn for test_file in self.rs_test_files
+                                for test_fn in test_file.test_functions)
 
-        if not self.files.pattern and not any_tests:
+        if not any_tests:
             description = "No tests were found...\n"
             self.print_status(OKBLUE, "SKIPPED", description)
             return []
@@ -400,7 +401,7 @@ class TestDirectory:
         match_arms.append(("e", "panic!(\"Tried to run unknown test: {:?}\", e)"))
 
         test_main_body = [
-            RustMatch("std::env::args().nth(1).as_ref().map(String::as_ref)", match_arms),
+            RustMatch("std::env::args().nth(1).as_ref().map(AsRef::<str>::as_ref)", match_arms),
         ]
         test_main = RustFunction("main",
                                  visibility=RustVisibility.Public,
@@ -468,7 +469,9 @@ class TestDirectory:
                         outcomes.append(TestOutcome.Failure)
 
         if not outcomes:
-            self.print_status(OKBLUE, "N/A", "   No rust file(s) matching " + self.files.pattern + " within this folder\n")
+            display_text = "   No rust file(s) matching " + self.files.pattern
+            display_text += " within this folder\n"
+            self.print_status(OKBLUE, "N/A", display_text)
         return outcomes
 
     def cleanup(self) -> None:
@@ -566,19 +569,19 @@ def main() -> None:
         if args.regex_directories.fullmatch(test_directory.name):
             sys.stdout.write("{}:\n".format(test_directory.name))
 
-            # TODO: Support regex for filtering by directory or name
-            # Testdirectories are run one after another. Only tests that match the '--only'
-            # argument are run. We make a best effort to clean up files we left behind.
+            # Testdirectories are run one after another. Only test directories that match the '--only-directories'
+            # or tests that match the '--only-files' arguments are run.
+            # We make a best effort to clean up files we left behind.
             try:
                 statuses = test_directory.run()
+            except (KeyboardInterrupt, SystemExit):
+                test_directory.cleanup()
+                raise
             finally:
                 test_directory.cleanup()
 
             for status in statuses:
                 test_results[status.value] += 1
-
-        # else:
-        #     logging.debug("skipping test: %s", testcase.src_c)
 
     # Print out test case stats
     sys.stdout.write("\nTest summary:\n")

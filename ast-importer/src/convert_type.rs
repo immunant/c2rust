@@ -68,13 +68,19 @@ impl TypeConverter {
     }
 
     /// Helper function handling conversion of function types in `convert`.
-    fn convert_function(&mut self, ctxt: &TypedAstContext,  ret: &CQualTypeId, params: &Vec<CQualTypeId>) -> Result<P<Ty>, String> {
+    fn convert_function(
+      &mut self,
+      ctxt: &TypedAstContext,
+      ret: &CQualTypeId,
+      params: &Vec<CQualTypeId>,
+      is_variadic: bool
+    ) -> Result<P<Ty>, String> {
         let inputs = params.iter().map(|x|
             mk().arg(self.convert(ctxt, x.ctype).unwrap(),
                                  mk().wild_pat())
         ).collect();
         let output = self.convert(ctxt, ret.ctype)?;
-        let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output));
+        let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output), is_variadic);
         return Ok(mk().unsafe_().abi(Abi::C).barefn_ty(fn_ty));
     }
 
@@ -123,8 +129,8 @@ impl TypeConverter {
 
                     // Function pointers are translated to Option applied to the function type
                     // in order to support NULL function pointers natively
-                    CTypeKind::Function(ref ret, ref params) => {
-                        let fn_ty = self.convert_function(ctxt, ret, params)?;
+                    CTypeKind::Function(ref ret, ref params, is_var) => {
+                        let fn_ty = self.convert_function(ctxt, ret, params, is_var)?;
                         let param = mk().angle_bracketed_param_types(vec![fn_ty]);
                         let optn_ty = mk().path_ty(vec![mk().path_segment_with_params("Option", param)]);
                         Ok(optn_ty)
@@ -173,15 +179,18 @@ impl TypeConverter {
                 Ok(mk().slice_ty(ty))
             }
 
-            CTypeKind::VariableArray(element, _) => {
-                let child_ty = self.convert(ctxt, element)?;
+            CTypeKind::VariableArray(mut elt, _) => {
+                while let CTypeKind::VariableArray(elt_, _) = ctxt.resolve_type(elt).kind {
+                    elt = elt_
+                }
+                let child_ty = self.convert(ctxt, elt)?;
                 Ok(mk().mutbl().ptr_ty(child_ty))
             }
 
             CTypeKind::Attributed(ty) => self.convert(ctxt, ty.ctype),
 
-            CTypeKind::Function(ref ret, ref params) => {
-                let fn_ty = self.convert_function(ctxt, ret, params)?;
+            CTypeKind::Function(ref ret, ref params, is_var) => {
+                let fn_ty = self.convert_function(ctxt, ret, params, is_var)?;
                 Ok(fn_ty)
             }
 

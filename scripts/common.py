@@ -52,7 +52,9 @@ BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.11"
 BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.11.tar.gz")
 BEAR_SRC = os.path.basename(BEAR_ARCHIVE).replace(".tar.gz", "")
 BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
-BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear")
+BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear.")
+# use an install prefix unique to the host
+BEAR_PREFIX += platform.node()  # returns hostname
 BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
 LLVM_VER = "6.0.0"
