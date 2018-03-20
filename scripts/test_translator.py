@@ -288,7 +288,8 @@ class TestDirectory:
     def run(self) -> List[TestOutcome]:
         outcomes = []
 
-        any_tests = any(test_fn for test_file in self.rs_test_files for test_fn in test_file.test_functions)
+        any_tests = any(test_fn for test_file in self.rs_test_files
+                                for test_fn in test_file.test_functions)
 
         if not self.files.pattern and not any_tests:
             description = "No tests were found...\n"
@@ -400,7 +401,7 @@ class TestDirectory:
         match_arms.append(("e", "panic!(\"Tried to run unknown test: {:?}\", e)"))
 
         test_main_body = [
-            RustMatch("std::env::args().nth(1).as_ref().map(String::as_ref)", match_arms),
+            RustMatch("std::env::args().nth(1).as_ref().map(AsRef::<str>::as_ref)", match_arms),
         ]
         test_main = RustFunction("main",
                                  visibility=RustVisibility.Public,
@@ -468,7 +469,9 @@ class TestDirectory:
                         outcomes.append(TestOutcome.Failure)
 
         if not outcomes:
-            self.print_status(OKBLUE, "N/A", "   No rust file(s) matching " + self.files.pattern + " within this folder\n")
+            display_text = "   No rust file(s) matching " + self.files.pattern
+            display_text += " within this folder\n"
+            self.print_status(OKBLUE, "N/A", display_text)
         return outcomes
 
     def cleanup(self) -> None:

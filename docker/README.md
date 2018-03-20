@@ -4,19 +4,30 @@
 ```
 cd $C2Rust/docker
 # create image
-docker build -t c2rust-img .
+docker build -t c2rust .
 # create container
-docker run --name c2rust-cont -it -v $PWD/..:/home/docker/C2Rust c2rust-img
+docker run --name c2rust --hostname docker -it -v $PWD/..:/home/docker/C2Rust c2rust
 # start start container
-docker start c2rust-cont
-docker stop c2rust-cont
+docker start c2rust
+docker stop c2rust
 # connect to running container
-docker exec -it c2rust-cont /bin/bash
+docker exec -it c2rust /bin/bash
 # delete container (force stop if running)
-docker rm -f c2rust-cont
+docker rm -f c2rust
 
 ```
-- **careful**: remove all containers 
+
+
+## Careful: the following commands delete data
+
+removing all containers:
 ```
 docker rm `docker ps -aq`
+```
+
+pruning all images:
+```
+docker prune system
+# remove all images, not just unused ones
+docker prune system -a
 ```
