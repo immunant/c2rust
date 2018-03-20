@@ -861,6 +861,12 @@ QualType CrossCheckInserter::get_adjusted_hash_type(QualType ty, ASTContext &ctx
     if (ty->isRecordType()) {
         // We pass records by pointer, not by value
         return ctx.getPointerType(ty);
+    } else if (ty->isPointerType()) {
+        auto pointee_ty = ty->getAs<PointerType>()->getPointeeType();
+        if (pointee_ty->isFunctionType()) {
+            // Force-convert function pointers to void*
+            return ctx.getPointerType(ctx.VoidTy);
+        }
     }
     return ctx.getAdjustedParameterType(ty);
 }
@@ -882,8 +888,17 @@ Expr *CrossCheckInserter::forward_hash_argument(Expr *arg, QualType ty, ASTConte
         ty = ctx.getDecayedType(ty);
     } else if (ty->isFunctionType()) {
         ck = CK_FunctionToPointerDecay;
-        ty = ctx.getDecayedType(ty);
-        // TODO: should the signature always be a void*???
+        // We decay function pointers to void* types, since
+        // that's what the runtime helper functions take
+        //ty = ctx.getDecayedType(ty);
+        ty = ctx.getPointerType(ctx.VoidTy);
+    } else if (ty->isPointerType()) {
+        auto pointee_ty = ty->getAs<PointerType>()->getPointeeType();
+        if (pointee_ty->isFunctionType()) {
+            // Force-convert function pointers to void*
+            ck = CK_BitCast;
+            ty = ctx.getPointerType(ctx.VoidTy);
+        }
     }
     return ImplicitCastExpr::Create(ctx, ty, ck, arg, nullptr, VK_RValue);
 }
