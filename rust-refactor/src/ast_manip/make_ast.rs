@@ -1122,12 +1122,12 @@ impl Builder {
                                 block))
     }
 
-    pub fn fn_decl(self, inputs: Vec<Arg>, output: FunctionRetTy) -> P<FnDecl>
+    pub fn fn_decl(self, inputs: Vec<Arg>, output: FunctionRetTy, variadic: bool) -> P<FnDecl>
     {
         P(FnDecl {
             inputs,
             output,
-            variadic: false,
+            variadic,
         })
     }
 

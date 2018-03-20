@@ -472,7 +472,8 @@ impl ConversionContext {
                         })
                         .collect();
                     let ret = arguments.remove(0);
-                    let function_ty = CTypeKind::Function(ret, arguments);
+                    let is_variadic = expect_bool(&ty_node.extras[1]).expect("Variadicity of function type not found");
+                    let function_ty = CTypeKind::Function(ret, arguments, is_variadic);
                     self.add_type(new_id, not_located(function_ty));
                     self.processed_nodes.insert(new_id, FUNC_TYPE);
                 }

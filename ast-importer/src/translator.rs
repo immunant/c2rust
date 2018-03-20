@@ -567,8 +567,8 @@ impl Translation {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
 
-                let ret: CQualTypeId = match &self.ast_context.resolve_type(typ).kind {
-                    &CTypeKind::Function(ret, _) => ret,
+                let (ret, is_var): (CQualTypeId, bool) = match &self.ast_context.resolve_type(typ).kind {
+                    &CTypeKind::Function(ret, _, is_var) => (ret, is_var),
                     k => return Err(format!("Type of function {:?} was not a function type, got {:?}", decl_id, k))
                 };
 
@@ -581,7 +581,7 @@ impl Translation {
                     }
                 }
 
-                self.convert_function(is_extern, is_inline, new_name, name, &args, ret, body)
+                self.convert_function(is_extern, is_inline, is_var, new_name, name, &args, ret, body)
             },
 
             CDeclKind::Typedef { ref typ, .. } => {
@@ -647,6 +647,7 @@ impl Translation {
         &self,
         is_extern: bool,
         is_inline: bool,
+        is_variadic: bool,
         new_name: &str,
         name: &str,
         arguments: &[(CDeclId, String, CQualTypeId)],
@@ -679,7 +680,7 @@ impl Translation {
 
             let ret = FunctionRetTy::Ty(self.convert_type(return_type.ctype)?);
 
-            let decl = mk().fn_decl(args, ret);
+            let decl = mk().fn_decl(args, ret, is_variadic);
 
 
             if let Some(body) = body {
