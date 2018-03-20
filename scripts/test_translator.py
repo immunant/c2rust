@@ -569,19 +569,19 @@ def main() -> None:
         if args.regex_directories.fullmatch(test_directory.name):
             sys.stdout.write("{}:\n".format(test_directory.name))
 
-            # TODO: Support regex for filtering by directory or name
-            # Testdirectories are run one after another. Only tests that match the '--only'
-            # argument are run. We make a best effort to clean up files we left behind.
+            # Testdirectories are run one after another. Only test directories that match the '--only-directories'
+            # or tests that match the '--only-files' arguments are run.
+            # We make a best effort to clean up files we left behind.
             try:
                 statuses = test_directory.run()
+            except (KeyboardInterrupt, SystemExit):
+                test_directory.cleanup()
+                raise
             finally:
                 test_directory.cleanup()
 
             for status in statuses:
                 test_results[status.value] += 1
-
-        # else:
-        #     logging.debug("skipping test: %s", testcase.src_c)
 
     # Print out test case stats
     sys.stdout.write("\nTest summary:\n")
