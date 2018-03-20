@@ -1004,11 +1004,15 @@ impl Translation {
             CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ } if !is_static && !is_extern => {
                 assert!(is_defn, "Only local variable definitions should be extracted");
 
+                let mut stmts = self.compute_variable_array_sizes(typ.ctype)?;
+
                 let rust_name = self.renamer.borrow_mut()
                     .insert(decl_id, &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
                 let (ty, mutbl, init) = self.convert_variable(initializer, typ, is_static)?;
-                let init = init?;
+                let mut init = init?;
+
+                stmts.append(&mut init.stmts);
 
                 let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
                 let zeroed = self.implicit_default_expr(typ.ctype)?;
@@ -1023,7 +1027,7 @@ impl Translation {
                     vec![mk().local_stmt(P(local_mut))],
                     vec![mk().semi_stmt(assign)],
                     vec![mk().local_stmt(P(local))],
-                    init.stmts,
+                    stmts,
                 ))
             }
 
@@ -1372,157 +1376,11 @@ impl Translation {
                 }
             }
 
-            CExprKind::ImplicitCast(ty, expr, kind, opt_field_id) |
-            CExprKind::ExplicitCast(ty, expr, kind, opt_field_id) => {
-                let val = self.convert_expr(use_, expr, false)?;
-                match kind {
-                    CastKind::BitCast => {
-                        val.result_map(|x| {
-                            // TODO: Detect cast from mutable to constant pointer to same type
+            CExprKind::ImplicitCast(ty, expr, kind, opt_field_id) =>
+                self.convert_cast(use_, ty, expr, kind, opt_field_id, false),
 
-                            // Special cases
-                            if let Ok((source_quals, source_ty_id)) = self.get_declref_type(expr) {
-                                let source_ty = self.convert_type(source_ty_id)?;
-                                let target_ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
-                                if let &CTypeKind::Pointer(qual_type_id) = target_ty_kind {
-                                    let target_ty = self.convert_type(qual_type_id.ctype)?;
-
-                                    // Detect a quirk where the bitcast is superfluous.
-                                    // See this issue: https://github.com/GaloisInc/C2Rust/issues/32
-                                    if target_ty == source_ty {
-                                        return Ok(x)
-                                    }
-
-                                    let quals_agree = if let Some(sq) = source_quals {
-                                        sq == qual_type_id.qualifiers
-                                    } else { false };
-                                    // Detect bitcasts from array-of-T to slice-of-T
-                                    if let TyKind::Slice(ref tgt_elem_ty) = target_ty.node {
-                                        if let TyKind::Array(ref src_elem_ty, _) = source_ty.node {
-                                            if tgt_elem_ty == src_elem_ty {
-                                                if quals_agree {
-                                                    return Ok(x)
-                                                } else {
-                                                    // FIXME: handle mismatched qualifiers
-                                                    panic!("Cannot handle mismatched qualifiers yet.")
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            let source_ty_id = self.ast_context.index(expr).kind.get_type();
-
-                            if self.is_function_pointer(ty.ctype) || self.is_function_pointer(source_ty_id) {
-                                let source_ty = self.convert_type(source_ty_id)?;
-                                let target_ty = self.convert_type(ty.ctype)?;
-                                Ok(transmute_expr(source_ty, target_ty, x))
-                            } else {
-                                // Normal case
-                                let target_ty = self.convert_type(ty.ctype)?;
-                                Ok(mk().cast_expr(x, target_ty))
-                            }
-                        })
-                    }
-
-                    CastKind::IntegralToPointer | CastKind::PointerToIntegral |
-                    CastKind::IntegralCast | CastKind::FloatingCast | CastKind::FloatingToIntegral |
-                    CastKind::IntegralToFloating => {
-                        let target_ty = self.convert_type(ty.ctype)?;
-                        let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
-
-                        let source_ty_ctype_id = self.ast_context.index(expr).kind.get_type();
-
-                        if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
-                            // Casts targeting `enum` types...
-                            let source_ty = self.convert_type(source_ty_ctype_id)?;
-                            Ok(self.enum_cast(ty.ctype, enum_decl_id, expr, val, source_ty, target_ty))
-                        } else {
-                            // Other numeric casts translate to Rust `as` casts
-
-                            Ok(val.map(|x| mk().cast_expr(x, target_ty)))
-                        }
-                    }
-
-                    CastKind::LValueToRValue | CastKind::NoOp | CastKind::ToVoid | CastKind::ConstCast => Ok(val),
-
-                    CastKind::FunctionToPointerDecay =>
-                        Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
-
-                    CastKind::BuiltinFnToFnPtr =>
-                        Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
-
-                    CastKind::ArrayToPointerDecay => {
-                        let is_const = match &self.ast_context.resolve_type(ty.ctype).kind {
-                            &CTypeKind::Pointer(pointee) => pointee.qualifiers.is_const,
-                            _ => false,
-                        };
-
-                        match &self.ast_context.index(expr).kind {
-                            &CExprKind::Literal(_,CLiteral::String(ref bytes,1)) if is_const => {
-                                let target_ty = self.convert_type(ty.ctype)?;
-
-                                let mut bytes = bytes.to_owned();
-                                bytes.push(0);
-                                let byte_literal = mk().lit_expr(mk().bytestr_lit(bytes));
-                                let val = mk().cast_expr(byte_literal, mk().ptr_ty(mk().path_ty(vec!["u8"])));
-                                let val = mk().cast_expr(val, target_ty);
-                                Ok(WithStmts { stmts: vec![], val: val, })
-                            }
-                            _ => {
-                                let method = if is_const { "as_ptr" } else { "as_mut_ptr" };
-                                Ok(val.map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>)))
-                            },
-                        }
-
-                    }
-
-                    CastKind::NullToPointer => {
-                        assert!(val.stmts.is_empty());
-
-
-                        let res = if self.is_function_pointer(ty.ctype) {
-                            mk().path_expr(vec!["None"])
-                        } else {
-                            match &self.ast_context.resolve_type(ty.ctype).kind {
-                                &CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => null_expr(),
-                                _ => null_mut_expr(),
-                            }
-                        };
-
-                        Ok(WithStmts::new(res))
-                    }
-
-                    CastKind::ToUnion => {
-                        let field_id = opt_field_id.expect("Missing field ID in union cast");
-                        let union_id = self.ast_context.field_parents[&field_id];
-
-                        let union_name = self.type_converter.borrow().resolve_decl_name(union_id).expect("required union name");
-                        let field_name = self.type_converter.borrow().resolve_field_name(Some(union_id), field_id).expect("field name required");
-
-                        Ok(val.map(|x|
-                            mk().struct_expr(mk().path(vec![union_name]), vec![mk().field(field_name, x)])
-                        ))
-                    },
-
-                    CastKind::IntegralToBoolean | CastKind::FloatingToBoolean => {
-                        let val_ty = self.ast_context.index(expr).kind.get_type();
-                        Ok(val.map(|x| self.match_bool(true, val_ty, x)))
-                    }
-
-                    // I don't know how to actually cause clang to generate this
-                    CastKind::BooleanToSignedIntegral =>
-                        Err(format!("TODO boolean to signed integral not supported")),
-
-                    CastKind::FloatingRealToComplex | CastKind::FloatingComplexToIntegralComplex |
-                    CastKind::FloatingComplexCast | CastKind::FloatingComplexToReal |
-                    CastKind::IntegralComplexToReal | CastKind::IntegralRealToComplex |
-                    CastKind::IntegralComplexCast | CastKind::IntegralComplexToFloatingComplex |
-                    CastKind::IntegralComplexToBoolean =>
-                        Err(format!("TODO casts with complex numbers not supported")),
-                }
-            }
+            CExprKind::ExplicitCast(ty, expr, kind, opt_field_id) =>
+                self.convert_cast(use_, ty, expr, kind, opt_field_id, true),
 
             CExprKind::Unary(type_id, op, arg) =>
                 self.convert_unary_operator(use_, op, type_id, arg),
@@ -1836,6 +1694,175 @@ impl Translation {
         }
     }
 
+    fn convert_cast(
+        &self,
+        use_: ExprUse,
+        ty: CQualTypeId,
+        expr: CExprId,
+        kind: CastKind,
+        opt_field_id: Option<CFieldId>,
+        is_explicit: bool)
+        -> Result<WithStmts<P<Expr>>, String> {
+
+        let val = if is_explicit {
+            let mut stmts = self.compute_variable_array_sizes(ty.ctype)?;
+            let mut val = self.convert_expr(use_, expr, false)?;
+            stmts.append(&mut val.stmts);
+            val.stmts = stmts;
+            val
+        } else {
+            self.convert_expr(use_, expr, false)?
+        };
+
+        match kind {
+            CastKind::BitCast => {
+                val.result_map(|x| {
+                    // TODO: Detect cast from mutable to constant pointer to same type
+
+                    // Special cases
+                    if let Ok((source_quals, source_ty_id)) = self.get_declref_type(expr) {
+                        let source_ty = self.convert_type(source_ty_id)?;
+                        let target_ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
+                        if let &CTypeKind::Pointer(qual_type_id) = target_ty_kind {
+                            let target_ty = self.convert_type(qual_type_id.ctype)?;
+
+                            // Detect a quirk where the bitcast is superfluous.
+                            // See this issue: https://github.com/GaloisInc/C2Rust/issues/32
+                            if target_ty == source_ty {
+                                return Ok(x)
+                            }
+
+                            let quals_agree = if let Some(sq) = source_quals {
+                                sq == qual_type_id.qualifiers
+                            } else { false };
+                            // Detect bitcasts from array-of-T to slice-of-T
+                            if let TyKind::Slice(ref tgt_elem_ty) = target_ty.node {
+                                if let TyKind::Array(ref src_elem_ty, _) = source_ty.node {
+                                    if tgt_elem_ty == src_elem_ty {
+                                        if quals_agree {
+                                            return Ok(x)
+                                        } else {
+                                            // FIXME: handle mismatched qualifiers
+                                            panic!("Cannot handle mismatched qualifiers yet.")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let source_ty_id = self.ast_context.index(expr).kind.get_type();
+
+                    if self.is_function_pointer(ty.ctype) || self.is_function_pointer(source_ty_id) {
+                        let source_ty = self.convert_type(source_ty_id)?;
+                        let target_ty = self.convert_type(ty.ctype)?;
+                        Ok(transmute_expr(source_ty, target_ty, x))
+                    } else {
+                        // Normal case
+                        let target_ty = self.convert_type(ty.ctype)?;
+                        Ok(mk().cast_expr(x, target_ty))
+                    }
+                })
+            }
+
+            CastKind::IntegralToPointer | CastKind::PointerToIntegral |
+            CastKind::IntegralCast | CastKind::FloatingCast | CastKind::FloatingToIntegral |
+            CastKind::IntegralToFloating => {
+                let target_ty = self.convert_type(ty.ctype)?;
+                let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
+
+                let source_ty_ctype_id = self.ast_context.index(expr).kind.get_type();
+
+                if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
+                    // Casts targeting `enum` types...
+                    let source_ty = self.convert_type(source_ty_ctype_id)?;
+                    Ok(self.enum_cast(ty.ctype, enum_decl_id, expr, val, source_ty, target_ty))
+                } else {
+                    // Other numeric casts translate to Rust `as` casts
+
+                    Ok(val.map(|x| mk().cast_expr(x, target_ty)))
+                }
+            }
+
+            CastKind::LValueToRValue | CastKind::NoOp | CastKind::ToVoid | CastKind::ConstCast => Ok(val),
+
+            CastKind::FunctionToPointerDecay =>
+                Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
+
+            CastKind::BuiltinFnToFnPtr =>
+                Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
+
+            CastKind::ArrayToPointerDecay => {
+                let is_const = match &self.ast_context.resolve_type(ty.ctype).kind {
+                    &CTypeKind::Pointer(pointee) => pointee.qualifiers.is_const,
+                    _ => false,
+                };
+
+                match &self.ast_context.index(expr).kind {
+                    &CExprKind::Literal(_,CLiteral::String(ref bytes,1)) if is_const => {
+                        let target_ty = self.convert_type(ty.ctype)?;
+
+                        let mut bytes = bytes.to_owned();
+                        bytes.push(0);
+                        let byte_literal = mk().lit_expr(mk().bytestr_lit(bytes));
+                        let val = mk().cast_expr(byte_literal, mk().ptr_ty(mk().path_ty(vec!["u8"])));
+                        let val = mk().cast_expr(val, target_ty);
+                        Ok(WithStmts { stmts: vec![], val: val, })
+                    }
+                    _ => {
+                        let method = if is_const { "as_ptr" } else { "as_mut_ptr" };
+                        Ok(val.map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>)))
+                    },
+                }
+
+            }
+
+            CastKind::NullToPointer => {
+                assert!(val.stmts.is_empty());
+
+
+                let res = if self.is_function_pointer(ty.ctype) {
+                    mk().path_expr(vec!["None"])
+                } else {
+                    match &self.ast_context.resolve_type(ty.ctype).kind {
+                        &CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => null_expr(),
+                        _ => null_mut_expr(),
+                    }
+                };
+
+                Ok(WithStmts::new(res))
+            }
+
+            CastKind::ToUnion => {
+                let field_id = opt_field_id.expect("Missing field ID in union cast");
+                let union_id = self.ast_context.field_parents[&field_id];
+
+                let union_name = self.type_converter.borrow().resolve_decl_name(union_id).expect("required union name");
+                let field_name = self.type_converter.borrow().resolve_field_name(Some(union_id), field_id).expect("field name required");
+
+                Ok(val.map(|x|
+                    mk().struct_expr(mk().path(vec![union_name]), vec![mk().field(field_name, x)])
+                ))
+            },
+
+            CastKind::IntegralToBoolean | CastKind::FloatingToBoolean => {
+                let val_ty = self.ast_context.index(expr).kind.get_type();
+                Ok(val.map(|x| self.match_bool(true, val_ty, x)))
+            }
+
+            // I don't know how to actually cause clang to generate this
+            CastKind::BooleanToSignedIntegral =>
+                Err(format!("TODO boolean to signed integral not supported")),
+
+            CastKind::FloatingRealToComplex | CastKind::FloatingComplexToIntegralComplex |
+            CastKind::FloatingComplexCast | CastKind::FloatingComplexToReal |
+            CastKind::IntegralComplexToReal | CastKind::IntegralRealToComplex |
+            CastKind::IntegralComplexCast | CastKind::IntegralComplexToFloatingComplex |
+            CastKind::IntegralComplexToBoolean =>
+                Err(format!("TODO casts with complex numbers not supported")),
+        }
+    }
+
     /// Given an integer value this attempts to either generate the corresponding enum
     /// variant directly, otherwise it transmutes a number to the enum type.
     fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> P<Expr> {
@@ -2029,6 +2056,24 @@ impl Translation {
             Ok(mk().repeat_expr(self.implicit_default_expr(elt)?, sz))
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id)
+        } else if let &CTypeKind::VariableArray(elt, _) = resolved_ty {
+
+            // Variable length arrays unnested and implemented as a flat array of the underlying
+            // element type.
+
+            // Find base element type of potentially nested arrays
+            let mut inner = elt;
+            while let &CTypeKind::VariableArray(elt_, _)
+                      = &self.ast_context.resolve_type(inner).kind {
+                inner = elt_;
+            }
+
+            let count = self.compute_size_of_expr(ty_id).unwrap();
+            let val = self.implicit_default_expr(inner)?;
+            let from_elem = mk().path_expr(vec!["", "std","vec","from_elem"]);
+            let alloc = mk().call_expr(from_elem, vec![val, count]);
+            let ptr = mk().method_call_expr(alloc, "as_mut_ptr", vec![] as Vec<P<Expr>>);
+            Ok(ptr)
         } else {
             Err(format!("Unsupported default initializer: {:?}", resolved_ty))
         }
