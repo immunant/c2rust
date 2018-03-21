@@ -96,7 +96,7 @@ impl TypedAstContext {
             CExprKind::Unary(_, UnOp::PreDecrement, _) => false,
             CExprKind::Unary(_, UnOp::PostDecrement, _) => false,
             CExprKind::Unary(_, _, e) => self.is_expr_pure(e),
-            CExprKind::UnaryType(_, _, _) => true,
+            CExprKind::UnaryType(_, _, _, _) => true,
 
             CExprKind::Binary(_, BinOp::Assign, _, _, _, _) => false,
             CExprKind::Binary(_, op, _, _, _, _) if op.underlying_assignment().is_some() => false,
@@ -270,7 +270,7 @@ pub enum CExprKind {
     Unary(CQualTypeId, UnOp, CExprId),
 
     // Unary type operator.
-    UnaryType(CQualTypeId, UnTypeOp, CQualTypeId),
+    UnaryType(CQualTypeId, UnTypeOp, Option<CExprId>, CQualTypeId),
 
     // Binary operator
     Binary(CQualTypeId, BinOp, CExprId, CExprId, Option<CQualTypeId>, Option<CQualTypeId>),
@@ -324,7 +324,7 @@ impl CExprKind {
         match *self {
             CExprKind::Literal(ty, _) => ty,
             CExprKind::Unary(ty, _, _) => ty,
-            CExprKind::UnaryType(ty, _, _) => ty,
+            CExprKind::UnaryType(ty, _, _, _) => ty,
             CExprKind::Binary(ty, _, _, _, _, _) => ty,
             CExprKind::ImplicitCast(ty, _, _, _) => ty,
             CExprKind::ExplicitCast(ty, _, _, _) => ty,
