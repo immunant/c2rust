@@ -14,7 +14,7 @@ index 0000000..4c45190
 +++ b/process.sh
 @@ -0,0 +1,64 @@
 +C2RUST_PATH=../galois/C2Rust
-+AST_EXTRACTOR=$C2RUST_PATH/dependencies/llvm-6.0.0/`uname -n`/bin/ast-extractor
++AST_EXTRACTOR=$C2RUST_PATH/dependencies/llvm-6.0.0/build.`uname -n`/bin/ast-extractor
 +AST_IMPORTER=$C2RUST_PATH/ast-importer/target/debug/ast_importer
 +LIB_PATH=$HOME/.rustup/toolchains/nightly-2018-01-06-x86_64-unknown-linux-gnu/lib
 +RUSTFMT=rustfmt
