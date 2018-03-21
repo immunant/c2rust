@@ -1,7 +1,7 @@
 use syntax::ast;
 use syntax::ast::*;
 use syntax::tokenstream::{TokenStream};
-use syntax::parse::token::{DelimToken,Token};
+use syntax::parse::token::{DelimToken,Token,Nonterminal};
 use syntax::abi::Abi;
 use std::collections::HashMap;
 use renamer::Renamer;
@@ -496,24 +496,17 @@ impl Translation {
 
             let exit_fn = mk().path_expr(vec!["", "std", "process", "exit"]);
             let args_fn = mk().path_expr(vec!["", "std", "env", "args"]);
+            let vars_fn = mk().path_expr(vec!["", "std", "env", "vars"]);
 
             let no_args: Vec<P<Expr>> = vec![];
 
             let mut stmts: Vec<Stmt> = vec![];
+            let mut main_args: Vec<P<Expr>> = vec![];
 
-            if parameters.len() == 0 {
-                // Zero-argument variant of main
+            let n = parameters.len();
 
-                let call_main = mk().cast_expr(
-                    mk().call_expr(main_fn, vec![] as Vec<P<Expr>>),
-                    mk().path_ty(vec!["i32"]),
-                );
-                let call_exit = mk().call_expr(exit_fn, vec![call_main]);
-                let unsafe_block = mk().unsafe_().block(vec![mk().expr_stmt(call_exit)]);
-
-                stmts.push(mk().expr_stmt(mk().block_expr(unsafe_block)));
-            } else if parameters.len() == 2 {
-                // Two argument variant of main
+            if n >= 2 {
+                // `argv` and `argc`
 
                 stmts.push(mk().local_stmt(P(mk().local(
                     mk().mutbl().ident_pat("args"),
@@ -530,7 +523,7 @@ impl Translation {
                         vec![] as Vec<P<Expr>>)
                     ),
                 ))));
-                stmts.push(mk().expr_stmt(mk().for_expr(
+                stmts.push(mk().semi_stmt(mk().for_expr(
                     mk().ident_pat("arg"),
                     mk().call_expr(args_fn, vec![] as Vec<P<Expr>>),
                     mk().block(vec![
@@ -557,6 +550,17 @@ impl Translation {
                     ]),
                     None as Option<Ident>,
                 )));
+                stmts.push(mk().semi_stmt(mk().method_call_expr(
+                    mk().path_expr(vec!["args"]),
+                    "push",
+                    vec![
+                        mk().call_expr(
+                            mk().path_expr(vec!["","std","ptr","null_mut"]),
+                            vec![] as Vec<P<Expr>>,
+                        )
+                    ],
+                )));
+
 
                 let argc_ty: P<Ty> = match self.ast_context.index(parameters[0]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
@@ -568,23 +572,110 @@ impl Translation {
                 }?;
 
                 let args = mk().ident_expr("args");
-                let argc = mk().method_call_expr(args.clone(), "len", no_args.clone());
-                let argv = mk().method_call_expr(args, "as_mut_ptr", no_args);
-
-                let call_main = mk().cast_expr(
-                    mk().call_expr(main_fn, vec![
-                        mk().cast_expr(argc, argc_ty),
-                        mk().cast_expr(argv, argv_ty),
-                    ]),
-                    mk().path_ty(vec!["i32"]),
+                let argc = mk().binary_expr(
+                    BinOpKind::Sub,
+                    mk().method_call_expr(args.clone(), "len", no_args.clone()),
+                    mk().lit_expr(mk().int_lit(1,""))
                 );
-                let call_exit = mk().call_expr(exit_fn, vec![call_main]);
-                let unsafe_block = mk().unsafe_().block(vec![mk().expr_stmt(call_exit)]);
+                let argv = mk().method_call_expr(args, "as_mut_ptr", no_args.clone());
 
-                stmts.push(mk().expr_stmt(mk().block_expr(unsafe_block)));
-            } else {
-                Err("Main function should have zero or two parameters")?
+                main_args.push(mk().cast_expr(argc, argc_ty));
+                main_args.push(mk().cast_expr(argv, argv_ty));
+            }
+
+            if n >= 3 {
+                // non-standard `envp`
+
+                stmts.push(mk().local_stmt(P(mk().local(
+                    mk().mutbl().ident_pat("vars"),
+                    Some(mk().path_ty(vec![mk().path_segment_with_params(
+                        "Vec",
+                        mk().angle_bracketed_param_types(
+                            vec![mk().mutbl().ptr_ty(
+                                mk().path_ty(vec!["libc","c_char"])
+                            )]
+                        ),
+                    )])),
+                    Some(mk().call_expr(
+                        mk().path_expr(vec!["Vec","new"]),
+                        vec![] as Vec<P<Expr>>)
+                    ),
+                ))));
+                stmts.push(mk().semi_stmt(mk().for_expr(
+                    mk().tuple_pat(vec![mk().ident_pat("var_name"), mk().ident_pat("var_value")]),
+                    mk().call_expr(vars_fn, vec![] as Vec<P<Expr>>),
+                    mk().block(vec![
+                        mk().local_stmt(P(mk().local(
+                            mk().ident_pat("var"),
+                            Some(mk().path_ty(vec!["String"])),
+                            Some(mk().mac_expr(mk().mac(
+                                vec!["format"],
+                                vec![
+                                    Token::interpolated(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit("{}={}")))),
+                                    Token::Comma,
+                                    Token::Ident(mk().ident("var_name")),
+                                    Token::Comma,
+                                    Token::Ident(mk().ident("var_value")),
+                                ].into_iter().collect::<TokenStream>(),
+                            )))
+                        ))),
+                        mk().semi_stmt(mk().method_call_expr(
+                            mk().path_expr(vec!["vars"]),
+                            "push",
+                            vec![
+                                mk().method_call_expr(
+                                    mk().method_call_expr(
+                                        mk().call_expr(
+                                            mk().path_expr(vec!["","std","ffi","CString","new"]),
+                                            vec![mk().path_expr(vec!["var"])],
+                                        ),
+                                        "expect",
+                                        vec![mk().lit_expr(
+                                            mk().str_lit("Failed to convert environment variable into CString.")
+                                        )],
+                                    ),
+                                    "into_raw",
+                                    vec![] as Vec<P<Expr>>,
+                                )
+                            ],
+                        ))
+                    ]),
+                    None as Option<Ident>,
+                )));
+                stmts.push(mk().semi_stmt(mk().method_call_expr(
+                    mk().path_expr(vec!["vars"]),
+                    "push",
+                    vec![
+                        mk().call_expr(
+                            mk().path_expr(vec!["","std","ptr","null_mut"]),
+                            vec![] as Vec<P<Expr>>,
+                        )
+                    ],
+                )));
+
+                let envp_ty: P<Ty> = match self.ast_context.index(parameters[2]).kind {
+                    CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
+                    _ => Err(format!("Cannot find type of 'envp' argument in main function")),
+                }?;
+
+                let envp = mk().method_call_expr(mk().ident_expr("vars"), "as_mut_ptr", no_args);
+
+                main_args.push(mk().cast_expr(envp, envp_ty));
+            }
+
+            // Check `main` has the right form
+            if n != 0 && n != 2 && n != 3 {
+                Err(format!("Main function should have 0, 2, or 3 parameters, not {}.", n))?;
             };
+
+            let call_main = mk().cast_expr(
+                mk().call_expr(main_fn, main_args),
+                mk().path_ty(vec!["i32"]),
+            );
+            let call_exit = mk().call_expr(exit_fn, vec![call_main]);
+            let unsafe_block = mk().unsafe_().block(vec![mk().expr_stmt(call_exit)]);
+
+            stmts.push(mk().expr_stmt(mk().block_expr(unsafe_block)));
 
             let block = mk().block(stmts);
             Ok(mk().fn_item("main", decl, block))

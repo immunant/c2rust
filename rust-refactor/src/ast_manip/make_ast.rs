@@ -896,6 +896,15 @@ impl Builder {
         })
     }
 
+    pub fn tuple_pat<Pa>(self, pats: Vec<Pa>) -> P<Pat> where Pa: Make<P<Pat>> {
+        let pats: Vec<P<Pat>> = pats.into_iter().map(|x| x.make(&self)).collect();
+        P(Pat {
+            id: DUMMY_NODE_ID,
+            node: PatKind::Tuple(pats, None),
+            span: DUMMY_SP,
+        })
+    }
+
     pub fn qpath_pat<Pa>(self, qself: Option<QSelf>, path: Pa) -> P<Pat>
         where Pa: Make<Path> {
         let path = path.make(&self);
