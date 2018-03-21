@@ -2293,10 +2293,15 @@ impl Translation {
                              Some(read.clone())))
             );
 
-        let one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
+        let mut one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
         // *p + 1
         let val =
-            if self.ast_context.resolve_type(ty.ctype).kind.is_pointer() {
+            if let &CTypeKind::Pointer(pointee) = &self.ast_context.resolve_type(ty.ctype).kind {
+
+                if let Some(n) = self.compute_size_of_expr(pointee.ctype) {
+                    one = n
+                }
+
                 let n = if up { one } else { mk().unary_expr(ast::UnOp::Neg, one) };
                 mk().method_call_expr(read.clone(), "offset", vec![n])
             } else {
