@@ -292,7 +292,13 @@ class TestDirectory:
                                 for test_fn in test_file.test_functions)
 
         if not any_tests:
-            description = "No tests were found...\n"
+            description = "No tests were found..."
+            logging.debug("%s:", self.name)
+            logging.debug("%s [ SKIPPED ] %s %s", OKBLUE, NO_COLOUR, description)
+            return []
+
+        if not self.c_files:
+            description = "No c files were found..."
             logging.debug("%s:", self.name)
             logging.debug("%s [ SKIPPED ] %s %s", OKBLUE, NO_COLOUR, description)
             return []
@@ -311,11 +317,6 @@ class TestDirectory:
             sys.stdout.write('\n')
             sys.stdout.write(str(exception))
 
-            return []
-
-        if not static_library:
-            description = "No c files were found...\n"
-            logging.debug("%s [ SKIPPED ] %s %s", OKBLUE, NO_COLOUR, description)
             return []
 
         self.generated_files["c_lib"].append(static_library)
