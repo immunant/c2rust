@@ -293,8 +293,11 @@ class TestDirectory:
 
         if not any_tests:
             description = "No tests were found...\n"
-            self.print_status(OKBLUE, "SKIPPED", description)
+            logging.debug("%s:", self.name)
+            logging.debug("%s [ SKIPPED ] %s %s", OKBLUE, NO_COLOUR, description)
             return []
+
+        sys.stdout.write("{}:\n".format(self.name))
 
         # .c -> .a
         description = "libtest.a: creating a static C library..."
@@ -312,7 +315,7 @@ class TestDirectory:
 
         if not static_library:
             description = "No c files were found...\n"
-            self.print_status(OKBLUE, "SKIPPED", description)
+            logging.debug("%s [ SKIPPED ] %s %s", OKBLUE, NO_COLOUR, description)
             return []
 
         self.generated_files["c_lib"].append(static_library)
@@ -567,8 +570,6 @@ def main() -> None:
 
     for test_directory in test_directories:
         if args.regex_directories.fullmatch(test_directory.name):
-            sys.stdout.write("{}:\n".format(test_directory.name))
-
             # Testdirectories are run one after another. Only test directories that match the '--only-directories'
             # or tests that match the '--only-files' arguments are run.
             # We make a best effort to clean up files we left behind.
