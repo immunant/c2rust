@@ -38,6 +38,7 @@ pub struct TypedAstContext {
     pub c_stmts: HashMap<CStmtId, CStmt>,
 
     pub c_decls_top: Vec<CDeclId>,
+    pub c_main: Option<CDeclId>,
     pub c_files: HashMap<u64, String>,
     pub field_parents: HashMap<CFieldId, CDeclId>,
 }
@@ -51,6 +52,7 @@ impl TypedAstContext {
             c_stmts: HashMap::new(),
 
             c_decls_top: Vec::new(),
+            c_main: None,
             c_files: HashMap::new(),
             field_parents: HashMap::new(),
         }
