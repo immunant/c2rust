@@ -2040,10 +2040,13 @@ impl Translation {
                 Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
 
             CastKind::ArrayToPointerDecay => {
-                let is_const = match &self.ast_context.resolve_type(ty.ctype).kind {
-                    &CTypeKind::Pointer(pointee) => pointee.qualifiers.is_const,
-                    _ => false,
+
+                let pointee = match &self.ast_context.resolve_type(ty.ctype).kind {
+                    &CTypeKind::Pointer(pointee) => pointee,
+                    _ => panic!("Dereferencing a non-pointer"),
                 };
+
+                let is_const = pointee.qualifiers.is_const;
 
                 match &self.ast_context.index(expr).kind {
                     &CExprKind::Literal(_,CLiteral::String(ref bytes,1)) if is_const => {
@@ -2057,8 +2060,14 @@ impl Translation {
                         Ok(WithStmts { stmts: vec![], val: val, })
                     }
                     _ => {
-                        let method = if is_const { "as_ptr" } else { "as_mut_ptr" };
-                        Ok(val.map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>)))
+                        // Variable length arrays are already represented as pointers.
+                        let source_ty = self.ast_context[expr].kind.get_type();
+                        if let &CTypeKind::VariableArray(..) = &self.ast_context.resolve_type(source_ty).kind {
+                            Ok(val)
+                        } else {
+                            let method = if is_const { "as_ptr" } else { "as_mut_ptr" };
+                            Ok(val.map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>)))
+                        }
                     },
                 }
 
@@ -2589,15 +2598,19 @@ impl Translation {
             c_ast::UnOp::PostDecrement => self.convert_post_increment(use_, cqual_type, false, arg),
             c_ast::UnOp::Deref => {
                 self.convert_expr(ExprUse::RValue, arg, false)?.result_map(|val: P<Expr>| {
-                    let mut val = mk().unary_expr(ast::UnOp::Deref, val);
 
-                    // If the type on the other side of the pointer we are dereferencing is volatile and
-                    // this whole expression is not an LValue, we should make this a volatile read
-                    if use_ != ExprUse::LValue && cqual_type.qualifiers.is_volatile {
-                        val = self.volatile_read(&val, ctype)?
+                    if let Some(_vla) = self.compute_size_of_expr(ctype) {
+                        Ok(val)
+                    } else {
+                        let mut val = mk().unary_expr(ast::UnOp::Deref, val);
+
+                        // If the type on the other side of the pointer we are dereferencing is volatile and
+                        // this whole expression is not an LValue, we should make this a volatile read
+                        if use_ != ExprUse::LValue && cqual_type.qualifiers.is_volatile {
+                            val = self.volatile_read(&val, ctype)?
+                        }
+                        Ok(val)
                     }
-
-                    Ok(val)
                 })
             },
             c_ast::UnOp::Plus => self.convert_expr(ExprUse::RValue, arg, false), // promotion is explicit in the clang AST
@@ -2808,16 +2821,22 @@ impl Translation {
         &self,
         lhs_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
-        lhs: P<Expr>,
-        rhs: P<Expr>
+        mut lhs: P<Expr>,
+        mut rhs: P<Expr>
     ) -> P<Expr> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
-        if lhs_type.is_pointer() {
+        if let &CTypeKind::Pointer(pointee) = lhs_type {
+            if let Some(sz) = self.compute_size_of_expr(pointee.ctype) {
+                rhs = mk().binary_expr(BinOpKind::Mul, cast_int(rhs, "isize"), cast_int(sz, "isize"))
+            }
             pointer_offset(lhs, rhs)
-        } else if rhs_type.is_pointer() {
-            pointer_offset(lhs, rhs)
+        } else if let &CTypeKind::Pointer(pointee) = rhs_type {
+            if let Some(sz) = self.compute_size_of_expr(pointee.ctype) {
+                lhs = mk().binary_expr(BinOpKind::Mul, cast_int(lhs, "isize"), cast_int(sz, "isize"))
+            }
+            pointer_offset(rhs, lhs)
         } else if lhs_type.is_unsigned_integral_type() {
             mk().method_call_expr(lhs, mk().path_segment("wrapping_add"), vec![rhs])
         } else {

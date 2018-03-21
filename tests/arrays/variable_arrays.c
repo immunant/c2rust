@@ -14,15 +14,31 @@ void use_arrays(const int n, const int m, int a[const][n*n][m]) {
 
 }
 
+/* Same thing as use_arrays, but using addition and deref */
+void use_arrays2(const int n, const int m, int a[const][n*n][m]) {
+
+        int counter = 1;
+
+        for (int i = 0; i < 2; i++) {
+                for (int j = 0; j < n*n; j++) {
+                        for (int k = 0; k < m; k++) {
+                                *(*(j+*(a+i))+k) = counter++;
+                        }
+                }
+        }
+
+}
+
 void variable_arrays(int buf[const]) {
 
-        int grid[2][4][5];
+        int grid[4][4][5];
 
         use_arrays(2,5,grid);
+        use_arrays(2,5,grid+2);
 
         int counter = 0;
 
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 4; j++) {
                         for (int k = 0; k < 5; k++) {
                                 buf[counter++] = grid[i][j][k];
