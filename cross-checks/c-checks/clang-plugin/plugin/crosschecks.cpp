@@ -860,7 +860,7 @@ CrossCheckInserter::build_hasher_init(const std::string &hasher_prefix,
 QualType CrossCheckInserter::get_adjusted_hash_type(QualType ty, ASTContext &ctx) {
     if (ty->isRecordType()) {
         // We pass records by pointer, not by value
-        return ctx.getPointerType(ty);
+        return ctx.getPointerType(ty.getUnqualifiedType());
     } else if (ty->isFunctionType()) {
         // We decay function pointers to void* types, since
         // that's what the runtime helper functions take
@@ -886,7 +886,7 @@ Expr *CrossCheckInserter::forward_hash_argument(Expr *arg, QualType ty, ASTConte
     if (ty->isRecordType()) {
         // We forward structure/union arguments by pointer, not by value
         return new (ctx) UnaryOperator(arg, UO_AddrOf,
-                                       ctx.getPointerType(ty),
+                                       ctx.getPointerType(ty.getUnqualifiedType()),
                                        VK_RValue, OK_Ordinary,
                                        SourceLocation());
     } else if (ty->isArrayType()) {
