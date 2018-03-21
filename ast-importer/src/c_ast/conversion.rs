@@ -1121,6 +1121,11 @@ impl ConversionContext {
                     let is_extern = expect_bool(&node.extras[1]).expect("Expected to find visibility");
                     let is_inline = expect_bool(&node.extras[2]).expect("Expected to find inline");
 
+                    let is_main = expect_bool(&node.extras[3]).expect("Expected to find main");
+                    if is_main {
+                        self.typed_context.c_main = Some(CDeclId(new_id));
+                    }
+
                     let typ_old = node.type_id.expect("Expected to find a type on a function decl");
                     let typ = CTypeId(self.visit_node_type(typ_old, FUNC_TYPE));
 

@@ -1,7 +1,7 @@
 use syntax::ast;
 use syntax::ast::*;
 use syntax::tokenstream::{TokenStream};
-use syntax::parse::token::{DelimToken,Token};
+use syntax::parse::token::{DelimToken,Token,Nonterminal};
 use syntax::abi::Abi;
 use std::collections::HashMap;
 use renamer::Renamer;
@@ -232,6 +232,7 @@ pub fn translate(
     cross_checks: bool,
     cross_check_configs: Vec<&str>,
     prefix_function_names: Option<&str>,
+    translate_entry: bool,
 ) -> String {
 
     let mut t = Translation::new(
@@ -242,6 +243,9 @@ pub fn translate(
         debug_relooper_labels,
         cross_checks,
     );
+    if !translate_entry {
+        t.ast_context.c_main = None;
+    }
 
     enum Name<'a> {
         VarName(&'a str),
@@ -321,6 +325,14 @@ pub fn translate(
         }
     }
 
+    // Add the main entry point
+    if let Some(main_id) = t.ast_context.c_main {
+        match t.convert_main(main_id) {
+            Ok(item) => t.items.push(item),
+            Err(e) => eprintln!("Skipping main declaration due to error: {}", e)
+        }
+    };
+
     to_string(|s| {
 
         let mut features =
@@ -387,6 +399,7 @@ pub fn translate(
     })
 }
 
+
 /// Convert a boolean expression to a c_int
 fn bool_to_int(val: P<Expr>) -> P<Expr> {
     mk().cast_expr(val, mk().path_ty(vec!["libc","c_int"]))
@@ -443,6 +456,9 @@ impl Translation {
                 "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof",
                 "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual",
                 "yield",
+
+                // Prevent use for other reasons
+                "main",
             ])),
             loops: LoopContext::new(),
             zero_inits: RefCell::new(HashMap::new()),
@@ -464,6 +480,208 @@ impl Translation {
         if self.cross_checks {
             mk.call_attr("cross_check", args)
         } else { mk }
+    }
+
+    fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, String> {
+        if let CDeclKind::Function { ref parameters, .. } = self.ast_context.index(main_id).kind {
+            let decl = mk().fn_decl(
+                vec![],
+                FunctionRetTy::Ty(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
+                false
+            );
+
+            let main_fn_name = self.renamer.borrow()
+                .get(&main_id).expect("Could not find main function in renamer");
+            let main_fn = mk().path_expr(vec![main_fn_name]);
+
+            let exit_fn = mk().path_expr(vec!["", "std", "process", "exit"]);
+            let args_fn = mk().path_expr(vec!["", "std", "env", "args"]);
+            let vars_fn = mk().path_expr(vec!["", "std", "env", "vars"]);
+
+            let no_args: Vec<P<Expr>> = vec![];
+
+            let mut stmts: Vec<Stmt> = vec![];
+            let mut main_args: Vec<P<Expr>> = vec![];
+
+            let n = parameters.len();
+
+            if n >= 2 {
+                // `argv` and `argc`
+
+                stmts.push(mk().local_stmt(P(mk().local(
+                    mk().mutbl().ident_pat("args"),
+                    Some(mk().path_ty(vec![mk().path_segment_with_params(
+                        "Vec",
+                        mk().angle_bracketed_param_types(
+                            vec![mk().mutbl().ptr_ty(
+                                mk().path_ty(vec!["libc","c_char"])
+                            )]
+                        ),
+                    )])),
+                    Some(mk().call_expr(
+                        mk().path_expr(vec!["Vec","new"]),
+                        vec![] as Vec<P<Expr>>)
+                    ),
+                ))));
+                stmts.push(mk().semi_stmt(mk().for_expr(
+                    mk().ident_pat("arg"),
+                    mk().call_expr(args_fn, vec![] as Vec<P<Expr>>),
+                    mk().block(vec![
+                        mk().semi_stmt(mk().method_call_expr(
+                            mk().path_expr(vec!["args"]),
+                            "push",
+                            vec![
+                                mk().method_call_expr(
+                                    mk().method_call_expr(
+                                        mk().call_expr(
+                                            mk().path_expr(vec!["","std","ffi","CString","new"]),
+                                            vec![mk().path_expr(vec!["arg"])],
+                                        ),
+                                        "expect",
+                                        vec![mk().lit_expr(
+                                            mk().str_lit("Failed to convert argument into CString.")
+                                        )],
+                                    ),
+                                    "into_raw",
+                                    vec![] as Vec<P<Expr>>,
+                                )
+                            ],
+                        ))
+                    ]),
+                    None as Option<Ident>,
+                )));
+                stmts.push(mk().semi_stmt(mk().method_call_expr(
+                    mk().path_expr(vec!["args"]),
+                    "push",
+                    vec![
+                        mk().call_expr(
+                            mk().path_expr(vec!["","std","ptr","null_mut"]),
+                            vec![] as Vec<P<Expr>>,
+                        )
+                    ],
+                )));
+
+
+                let argc_ty: P<Ty> = match self.ast_context.index(parameters[0]).kind {
+                    CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
+                    _ => Err(format!("Cannot find type of 'argc' argument in main function")),
+                }?;
+                let argv_ty: P<Ty> = match self.ast_context.index(parameters[1]).kind {
+                    CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
+                    _ => Err(format!("Cannot find type of 'argv' argument in main function")),
+                }?;
+
+                let args = mk().ident_expr("args");
+                let argc = mk().binary_expr(
+                    BinOpKind::Sub,
+                    mk().method_call_expr(args.clone(), "len", no_args.clone()),
+                    mk().lit_expr(mk().int_lit(1,""))
+                );
+                let argv = mk().method_call_expr(args, "as_mut_ptr", no_args.clone());
+
+                main_args.push(mk().cast_expr(argc, argc_ty));
+                main_args.push(mk().cast_expr(argv, argv_ty));
+            }
+
+            if n >= 3 {
+                // non-standard `envp`
+
+                stmts.push(mk().local_stmt(P(mk().local(
+                    mk().mutbl().ident_pat("vars"),
+                    Some(mk().path_ty(vec![mk().path_segment_with_params(
+                        "Vec",
+                        mk().angle_bracketed_param_types(
+                            vec![mk().mutbl().ptr_ty(
+                                mk().path_ty(vec!["libc","c_char"])
+                            )]
+                        ),
+                    )])),
+                    Some(mk().call_expr(
+                        mk().path_expr(vec!["Vec","new"]),
+                        vec![] as Vec<P<Expr>>)
+                    ),
+                ))));
+                stmts.push(mk().semi_stmt(mk().for_expr(
+                    mk().tuple_pat(vec![mk().ident_pat("var_name"), mk().ident_pat("var_value")]),
+                    mk().call_expr(vars_fn, vec![] as Vec<P<Expr>>),
+                    mk().block(vec![
+                        mk().local_stmt(P(mk().local(
+                            mk().ident_pat("var"),
+                            Some(mk().path_ty(vec!["String"])),
+                            Some(mk().mac_expr(mk().mac(
+                                vec!["format"],
+                                vec![
+                                    Token::interpolated(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit("{}={}")))),
+                                    Token::Comma,
+                                    Token::Ident(mk().ident("var_name")),
+                                    Token::Comma,
+                                    Token::Ident(mk().ident("var_value")),
+                                ].into_iter().collect::<TokenStream>(),
+                            )))
+                        ))),
+                        mk().semi_stmt(mk().method_call_expr(
+                            mk().path_expr(vec!["vars"]),
+                            "push",
+                            vec![
+                                mk().method_call_expr(
+                                    mk().method_call_expr(
+                                        mk().call_expr(
+                                            mk().path_expr(vec!["","std","ffi","CString","new"]),
+                                            vec![mk().path_expr(vec!["var"])],
+                                        ),
+                                        "expect",
+                                        vec![mk().lit_expr(
+                                            mk().str_lit("Failed to convert environment variable into CString.")
+                                        )],
+                                    ),
+                                    "into_raw",
+                                    vec![] as Vec<P<Expr>>,
+                                )
+                            ],
+                        ))
+                    ]),
+                    None as Option<Ident>,
+                )));
+                stmts.push(mk().semi_stmt(mk().method_call_expr(
+                    mk().path_expr(vec!["vars"]),
+                    "push",
+                    vec![
+                        mk().call_expr(
+                            mk().path_expr(vec!["","std","ptr","null_mut"]),
+                            vec![] as Vec<P<Expr>>,
+                        )
+                    ],
+                )));
+
+                let envp_ty: P<Ty> = match self.ast_context.index(parameters[2]).kind {
+                    CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
+                    _ => Err(format!("Cannot find type of 'envp' argument in main function")),
+                }?;
+
+                let envp = mk().method_call_expr(mk().ident_expr("vars"), "as_mut_ptr", no_args);
+
+                main_args.push(mk().cast_expr(envp, envp_ty));
+            }
+
+            // Check `main` has the right form
+            if n != 0 && n != 2 && n != 3 {
+                Err(format!("Main function should have 0, 2, or 3 parameters, not {}.", n))?;
+            };
+
+            let call_main = mk().cast_expr(
+                mk().call_expr(main_fn, main_args),
+                mk().path_ty(vec!["i32"]),
+            );
+            let call_exit = mk().call_expr(exit_fn, vec![call_main]);
+            let unsafe_block = mk().unsafe_().block(vec![mk().expr_stmt(call_exit)]);
+
+            stmts.push(mk().expr_stmt(mk().block_expr(unsafe_block)));
+
+            let block = mk().block(stmts);
+            Ok(mk().fn_item("main", decl, block))
+        } else {
+            Err(format!("Cannot translate non-function main entry point"))
+        }
     }
 
     fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> Result<P<Item>, String> {
@@ -563,7 +781,7 @@ impl Translation {
             CDeclKind::EnumConstant { .. } => Err(format!("Enum variants should be handled inside enums")),
 
             CDeclKind::Function { .. } if !toplevel => Err(format!("Function declarations must be top-level")),
-            CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body } => {
+            CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body, .. } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
 
@@ -581,7 +799,9 @@ impl Translation {
                     }
                 }
 
-                self.convert_function(is_extern, is_inline, is_var, new_name, name, &args, ret, body)
+                let is_main = self.ast_context.c_main == Some(decl_id);
+
+                self.convert_function(is_extern, is_inline, is_main, is_var, new_name, name, &args, ret, body)
             },
 
             CDeclKind::Typedef { ref typ, .. } => {
@@ -647,6 +867,7 @@ impl Translation {
         &self,
         is_extern: bool,
         is_inline: bool,
+        is_main: bool,
         is_variadic: bool,
         new_name: &str,
         name: &str,
@@ -689,6 +910,7 @@ impl Translation {
                 let ret_type_id: CTypeId = self.ast_context.resolve_type_id(return_type.ctype);
                 let ret = match self.ast_context.index(ret_type_id).kind {
                     CTypeKind::Void => cfg::ImplicitReturnType::Void,
+                    _ if is_main => cfg::ImplicitReturnType::Main,
                     _ => cfg::ImplicitReturnType::NoImplicitReturnType,
                 };
 
@@ -700,7 +922,9 @@ impl Translation {
                 let block = stmts_block(body_stmts);
 
                 // Only add linkage attributes if the function is `extern`
-                let mk_ = if is_extern && !is_inline {
+                let mk_ = if is_main {
+                    mk()
+                } else if is_extern && !is_inline {
                     mk_linkage(false, new_name, name)
                         .abi(Abi::C)
                         .vis(Visibility::Public)

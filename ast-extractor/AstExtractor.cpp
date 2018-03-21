@@ -847,10 +847,13 @@ class TranslateASTVisitor final
 
                                  auto is_extern = FD->isExternC();
                                  cbor_encode_boolean(array, is_extern);
-                                 
+
                                  auto def = FD->getDefinition();
                                  bool is_inline = def && def->isInlineSpecified();
                                  cbor_encode_boolean(array, is_inline);
+
+                                 auto is_main = FD->isMain();
+                                 cbor_encode_boolean(array, is_main);
                              });
           typeEncoder.VisitQualType(functionType);
 

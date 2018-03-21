@@ -865,6 +865,22 @@ impl Builder {
         })
     }
 
+    pub fn for_expr<Pa, E, B, I>(self, pat: Pa, expr: E, body: B, label: Option<I>) -> P<Expr>
+        where Pa: Make<P<Pat>>, E: Make<P<Expr>>, B: Make<P<Block>>, I: Make<Ident> {
+        let pat = pat.make(&self);
+        let expr = expr.make(&self);
+        let body = body.make(&self);
+        let label = label.map(|l| l.make(&self))
+            .map(|l| Spanned { node: l, span: DUMMY_SP });
+
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::ForLoop(pat, expr, body, label),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
 
     // Patterns
 
@@ -876,6 +892,15 @@ impl Builder {
             node: PatKind::Ident(BindingMode::ByValue(self.mutbl),
                                  Spanned { node: name, span: DUMMY_SP },
                                  None),
+            span: DUMMY_SP,
+        })
+    }
+
+    pub fn tuple_pat<Pa>(self, pats: Vec<Pa>) -> P<Pat> where Pa: Make<P<Pat>> {
+        let pats: Vec<P<Pat>> = pats.into_iter().map(|x| x.make(&self)).collect();
+        P(Pat {
+            id: DUMMY_NODE_ID,
+            node: PatKind::Tuple(pats, None),
             span: DUMMY_SP,
         })
     }
