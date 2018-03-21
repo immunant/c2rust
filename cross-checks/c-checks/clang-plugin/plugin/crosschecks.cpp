@@ -861,11 +861,20 @@ QualType CrossCheckInserter::get_adjusted_hash_type(QualType ty, ASTContext &ctx
     if (ty->isRecordType()) {
         // We pass records by pointer, not by value
         return ctx.getPointerType(ty);
+    } else if (ty->isFunctionType()) {
+        // We decay function pointers to void* types, since
+        // that's what the runtime helper functions take
+        return ctx.getPointerType(ctx.VoidTy);
     } else if (ty->isPointerType()) {
         auto pointee_ty = ty->getAs<PointerType>()->getPointeeType();
         if (pointee_ty->isFunctionType()) {
             // Force-convert function pointers to void*
             return ctx.getPointerType(ctx.VoidTy);
+        } else {
+            // Remove qualifiers from the pointee
+            // TODO: this should be recursive and remove ALL qualifiers,
+            // but it currently only removes the outer-most ones
+            return ctx.getPointerType(pointee_ty.getUnqualifiedType());
         }
     }
     return ctx.getAdjustedParameterType(ty);
@@ -894,10 +903,13 @@ Expr *CrossCheckInserter::forward_hash_argument(Expr *arg, QualType ty, ASTConte
         ty = ctx.getPointerType(ctx.VoidTy);
     } else if (ty->isPointerType()) {
         auto pointee_ty = ty->getAs<PointerType>()->getPointeeType();
+        ck = CK_BitCast;
         if (pointee_ty->isFunctionType()) {
             // Force-convert function pointers to void*
-            ck = CK_BitCast;
             ty = ctx.getPointerType(ctx.VoidTy);
+        } else {
+            // Remove qualifiers from the pointee
+            ty = ctx.getPointerType(pointee_ty.getUnqualifiedType());
         }
     }
     return ImplicitCastExpr::Create(ctx, ty, ck, arg, nullptr, VK_RValue);
