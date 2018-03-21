@@ -24,6 +24,10 @@ fn main() {
             .long("prefix-function-names")
             .help("Adds a prefix to all function names. Generally only useful for testing")
             .takes_value(true))
+        .arg(Arg::with_name("translate-entry")
+            .long("translate-entry")
+            .help("Creates an entry point that calls the C main function")
+            .takes_value(false))
 
         // `AstContext` and `TypedAstContext` related
         .arg(Arg::with_name("dump-untyped-clang-ast")
@@ -78,6 +82,7 @@ fn main() {
 
     let file = matches.value_of("INPUT").unwrap();
     let prefix_function_names = matches.value_of("prefix-function-names");
+    let translate_entry = matches.is_present("translate-entry");
     let dump_untyped_context = matches.is_present("dump-untyped-clang-ast");
     let dump_typed_context = matches.is_present("dump-typed-clang-ast");
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
@@ -143,6 +148,7 @@ fn main() {
         cross_checks,
         cross_check_configs,
         prefix_function_names,
+        translate_entry,
     ));
 }
 

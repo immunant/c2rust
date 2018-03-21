@@ -232,6 +232,7 @@ pub fn translate(
     cross_checks: bool,
     cross_check_configs: Vec<&str>,
     prefix_function_names: Option<&str>,
+    translate_entry: bool,
 ) -> String {
 
     let mut t = Translation::new(
@@ -242,6 +243,9 @@ pub fn translate(
         debug_relooper_labels,
         cross_checks,
     );
+    if !translate_entry {
+        t.ast_context.c_main = None;
+    }
 
     enum Name<'a> {
         VarName(&'a str),
@@ -383,6 +387,116 @@ pub fn translate(
             s.print_item(x)?;
         }
 
+        // Add the main entry point
+        if let Some(main_id) = t.ast_context.c_main {
+            if let CDeclKind::Function { ref parameters, .. } = t.ast_context.index(main_id).kind {
+                let decl = mk().fn_decl(
+                    vec![],
+                    FunctionRetTy::Ty(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
+                    false
+                );
+
+                let main_fn_name = t.renamer.borrow()
+                    .get(&main_id).expect("Could not find main function in renamer");
+                let main_fn = mk().path_expr(vec![main_fn_name]);
+
+                let exit_fn = mk().path_expr(vec!["", "std", "process", "exit"]);
+                let args_fn = mk().path_expr(vec!["", "std", "env", "args"]);
+
+                let no_args: Vec<P<Expr>> = vec![];
+
+                let mut stmts: Vec<Stmt> = vec![];
+
+                if parameters.len() == 0 {
+                    // Zero-argument variant of main
+
+                    let call_main = mk().cast_expr(
+                        mk().call_expr(main_fn, vec![] as Vec<P<Expr>>),
+                        mk().path_ty(vec!["i32"]),
+                    );
+                    let call_exit = mk().call_expr(exit_fn, vec![call_main]);
+                    let unsafe_block = mk().unsafe_().block(vec![mk().expr_stmt(call_exit)]);
+
+                    stmts.push(mk().expr_stmt(mk().block_expr(unsafe_block)));
+                } else if parameters.len() == 2 {
+                    // Two argument variant of main
+
+                    stmts.push(mk().local_stmt(P(mk().local(
+                        mk().mutbl().ident_pat("args"),
+                        Some(mk().path_ty(vec![mk().path_segment_with_params(
+                            "Vec",
+                            mk().angle_bracketed_param_types(
+                                vec![mk().mutbl().ptr_ty(
+                                    mk().path_ty(vec!["libc","c_char"])
+                                )]
+                            ),
+                        )])),
+                        Some(mk().call_expr(
+                            mk().path_expr(vec!["Vec","new"]),
+                            vec![] as Vec<P<Expr>>)
+                        ),
+                    ))));
+                    stmts.push(mk().expr_stmt(mk().for_expr(
+                        mk().ident_pat("arg"),
+                        mk().call_expr(args_fn, vec![] as Vec<P<Expr>>),
+                        mk().block(vec![
+                            mk().semi_stmt(mk().method_call_expr(
+                                mk().path_expr(vec!["args"]),
+                                "push",
+                                vec![
+                                    mk().method_call_expr(
+                                        mk().method_call_expr(
+                                            mk().call_expr(
+                                                mk().path_expr(vec!["","std","ffi","CString","new"]),
+                                                vec![mk().path_expr(vec!["arg"])],
+                                            ),
+                                            "unwrap",
+                                            vec![] as Vec<P<Expr>>,
+                                        ),
+                                        "into_raw",
+                                        vec![] as Vec<P<Expr>>,
+                                    )
+                                ],
+                            ))
+                        ]),
+                        None as Option<Ident>,
+                    )));
+
+                    let argc_ty: P<Ty> = match t.ast_context.index(parameters[0]).kind {
+                        CDeclKind::Variable { ref typ, .. } => t.convert_type(typ.ctype).unwrap(),
+                        _ => panic!("Cannot find type of argc"),
+                    };
+                    let argv_ty: P<Ty> = match t.ast_context.index(parameters[1]).kind {
+                        CDeclKind::Variable { ref typ, .. } => t.convert_type(typ.ctype).unwrap(),
+                        _ => panic!("Cannot find type of argv"),
+                    };
+
+                    let args = mk().ident_expr("args");
+                    let argc = mk().method_call_expr(args.clone(), "len", no_args.clone());
+                    let argv = mk().method_call_expr(args, "as_mut_ptr", no_args);
+
+                    let call_main = mk().cast_expr(
+                        mk().call_expr(main_fn, vec![
+                            mk().cast_expr(argc, argc_ty),
+                            mk().cast_expr(argv, argv_ty),
+                        ]),
+                        mk().path_ty(vec!["i32"]),
+                    );
+                    let call_exit = mk().call_expr(exit_fn, vec![call_main]);
+                    let unsafe_block = mk().unsafe_().block(vec![mk().expr_stmt(call_exit)]);
+
+                    stmts.push(mk().expr_stmt(mk().block_expr(unsafe_block)));
+                } else {
+                    panic!("Main function should have zero or two parameters")
+                };
+
+                let block = mk().block(stmts);
+                s.print_item(&mk().fn_item("main", decl, block))?;
+            } else {
+                eprintln!("Cannot translate non-function main entry point")
+            }
+        };
+
         Ok(())
     })
 }
@@ -443,6 +557,9 @@ impl Translation {
                 "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof",
                 "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual",
                 "yield",
+
+                // Prevent use for other reasons
+                "main",
             ])),
             loops: LoopContext::new(),
             zero_inits: RefCell::new(HashMap::new()),
@@ -563,7 +680,7 @@ impl Translation {
             CDeclKind::EnumConstant { .. } => Err(format!("Enum variants should be handled inside enums")),
 
             CDeclKind::Function { .. } if !toplevel => Err(format!("Function declarations must be top-level")),
-            CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body } => {
+            CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body, .. } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
 
@@ -581,7 +698,9 @@ impl Translation {
                     }
                 }
 
-                self.convert_function(is_extern, is_inline, is_var, new_name, name, &args, ret, body)
+                let is_main = self.ast_context.c_main == Some(decl_id);
+
+                self.convert_function(is_extern, is_inline, is_main, is_var, new_name, name, &args, ret, body)
             },
 
             CDeclKind::Typedef { ref typ, .. } => {
@@ -647,6 +766,7 @@ impl Translation {
         &self,
         is_extern: bool,
         is_inline: bool,
+        is_main: bool,
         is_variadic: bool,
         new_name: &str,
         name: &str,
@@ -689,6 +809,7 @@ impl Translation {
                 let ret_type_id: CTypeId = self.ast_context.resolve_type_id(return_type.ctype);
                 let ret = match self.ast_context.index(ret_type_id).kind {
                     CTypeKind::Void => cfg::ImplicitReturnType::Void,
+                    _ if is_main => cfg::ImplicitReturnType::Main,
                     _ => cfg::ImplicitReturnType::NoImplicitReturnType,
                 };
 
@@ -700,7 +821,9 @@ impl Translation {
                 let block = stmts_block(body_stmts);
 
                 // Only add linkage attributes if the function is `extern`
-                let mk_ = if is_extern && !is_inline {
+                let mk_ = if is_main {
+                    mk()
+                } else if is_extern && !is_inline {
                     mk_linkage(false, new_name, name)
                         .abi(Abi::C)
                         .vis(Visibility::Public)
