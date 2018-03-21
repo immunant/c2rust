@@ -873,7 +873,8 @@ QualType CrossCheckInserter::get_adjusted_hash_type(QualType ty, ASTContext &ctx
         } else {
             // Remove qualifiers from the pointee
             // TODO: this should be recursive and remove ALL qualifiers,
-            // but it currently only removes the outer-most ones
+            // but it currently only removes the outer-most ones, e.g.
+            // a type like "const char* const*" will still assert
             return ctx.getPointerType(pointee_ty.getUnqualifiedType());
         }
     }
