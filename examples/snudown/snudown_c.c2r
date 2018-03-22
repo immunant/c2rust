@@ -73,6 +73,7 @@ src/buffer.c:
     - item: defaults
       all_args: default
 
+src/bufprintf.c:
     - item: function
       name: bufprintf
       disable_xchecks: true
