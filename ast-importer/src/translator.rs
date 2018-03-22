@@ -2050,7 +2050,10 @@ impl Translation {
                             // Detect a quirk where the bitcast is superfluous.
                             // See this issue: https://github.com/GaloisInc/C2Rust/issues/32
                             if target_ty == source_ty {
-                                return Ok(x)
+                                // Don't skip the cast if we're going from const to mutable
+                                if source_quals.map_or(true, |x| !x.is_const) || ty.qualifiers.is_const {
+                                    return Ok(x)
+                                }
                             }
 
                             let quals_agree = if let Some(sq) = source_quals {
