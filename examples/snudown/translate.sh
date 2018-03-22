@@ -12,8 +12,6 @@ XCHECK_PLUGIN=$XCHECK_TOPDIR/rustc-plugin/target/debug/libcross_check_plugin.so
 XCHECK_DERIVE=$XCHECK_TOPDIR/derive-macros/target/debug/libcross_check_derive.so
 XCHECK_RUNTIME=$XCHECK_TOPDIR/runtime/target/debug/libcross_check_runtime.rlib
 
-`cd src && gperf html_entities.gperf --output-file=html_entities.h`
-
 OUTPUT_DIR=translator-build
 
 translate() {
@@ -50,6 +48,8 @@ END
 
 }
 
+# Generate html_entities.h from html_entities.gpers (setup.py used to do this)
+`cd src && gperf html_entities.gperf --output-file=html_entities.h`
 
 if [ "${1}" == "translate" ]; then
   echo "[" > compile_commands.json
