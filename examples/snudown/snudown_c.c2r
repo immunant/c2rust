@@ -1,3 +1,4 @@
+# Cross-check configuration file for the C version of snudown
 ---
 # System headers
 /usr/include/python2.7/object.h:

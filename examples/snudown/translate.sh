@@ -1,7 +1,7 @@
 #!/bin/bash
 
 MACHINE_NAME=`uname -n`
-C2RUST=../../..
+C2RUST=$(readlink -f $(dirname $0)/../..)
 AST_EXTRACTOR=$C2RUST/dependencies/llvm-6.0.0/build.$MACHINE_NAME/bin/ast-extractor
 AST_IMPORTER=$C2RUST/ast-importer/target/debug/ast_importer
 LIB_PATH=$HOME/.rustup/toolchains/nightly-2018-01-06-x86_64-unknown-linux-gnu/lib/
@@ -11,8 +11,6 @@ XCHECK_TOPDIR=$C2RUST/cross-checks/rust-checks
 XCHECK_PLUGIN=$XCHECK_TOPDIR/rustc-plugin/target/debug/libcross_check_plugin.so
 XCHECK_DERIVE=$XCHECK_TOPDIR/derive-macros/target/debug/libcross_check_derive.so
 XCHECK_RUNTIME=$XCHECK_TOPDIR/runtime/target/debug/libcross_check_runtime.rlib
-
-`cd src && gperf html_entities.gperf --output-file=html_entities.h`
 
 OUTPUT_DIR=translator-build
 
@@ -50,6 +48,8 @@ END
 
 }
 
+# Generate html_entities.h from html_entities.gpers (setup.py used to do this)
+`cd src && gperf html_entities.gperf --output-file=html_entities.h`
 
 if [ "${1}" == "translate" ]; then
   echo "[" > compile_commands.json
