@@ -106,12 +106,23 @@ fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
     }
 }
 
+/// Pointer offset that casts its argument to isize
 fn pointer_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
-    mk().method_call_expr(ptr, "offset", vec![cast_int(offset, "isize")])
+    pointer_offset_isize(ptr, cast_int(offset, "isize"))
+}
+
+
+/// Pointer offset that requires its argument to have type isize
+fn pointer_offset_isize(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
+    mk().method_call_expr(ptr, "offset", vec![offset])
 }
 
 fn pointer_neg_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
     let offset = cast_int(offset, "isize");
+    pointer_neg_offset_isize(ptr, offset)
+}
+
+fn pointer_neg_offset_isize(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
     mk().method_call_expr(ptr, "offset", vec![mk().unary_expr(ast::UnOp::Neg, offset)])
 }
 
@@ -2538,8 +2549,13 @@ impl Translation {
                 let n = if up { one } else { mk().unary_expr(ast::UnOp::Neg, one) };
                 mk().method_call_expr(read.clone(), "offset", vec![n])
             } else {
-                let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
-                mk().binary_expr(k, read.clone(), one)
+                if self.ast_context.resolve_type(ty.ctype).kind.is_unsigned_integral_type() {
+                    let m = if up { "wrapping_add" } else { "wrapping_sub" };
+                    mk().method_call_expr(read.clone(), m, vec![one])
+                } else {
+                    let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
+                    mk().binary_expr(k, read.clone(), one)
+                }
             };
 
         // *p = *p + rhs
@@ -2699,16 +2715,29 @@ impl Translation {
 
         let is_volatile = initial_lhs_type_id.qualifiers.is_volatile;
         let is_volatile_compound_assign = op.underlying_assignment().is_some() && is_volatile;
-        let pointer_lhs = match &self.ast_context.resolve_type(qtype.ctype).kind {
+
+        let qtype_kind = &self.ast_context.resolve_type(qtype.ctype).kind;
+        let compute_type_kind = &self.ast_context.resolve_type(compute_lhs_type_id.ctype).kind;
+
+        let pointer_lhs = match qtype_kind {
             &CTypeKind::Pointer(pointee) => Some(pointee),
             _ => None,
+        };
+
+        let is_unsigned_arith = match op {
+            c_ast::BinOp::AssignAdd | c_ast::BinOp::AssignSubtract |
+            c_ast::BinOp::AssignMultiply | c_ast::BinOp::AssignDivide |
+            c_ast::BinOp::AssignModulus
+             => compute_type_kind.is_unsigned_integral_type(),
+            _ => false,
         };
 
         let (write, read, lhs_stmts) =
             if initial_lhs_type_id.ctype != compute_lhs_type_id.ctype ||
                 use_ == ExprUse::RValue ||
                 pointer_lhs.is_some() ||
-                is_volatile_compound_assign {
+                is_volatile_compound_assign ||
+                is_unsigned_arith {
             let WithStmts { val: (write, read), stmts: lhs_stmts } = self.name_reference_write_read(lhs)?;
             (write, read, lhs_stmts)
         } else {
@@ -2730,7 +2759,7 @@ impl Translation {
             c_ast::BinOp::Assign => self.volatile_write(&write, initial_lhs_type_id.ctype, rhs)?,
 
             // Anything volatile needs to be desugared into explicit reads and writes
-            op if is_volatile => {
+            op if is_volatile || is_unsigned_arith => {
                 let op = op.underlying_assignment().expect("Cannot convert non-assignment operator");
 
                 let val = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
@@ -2744,27 +2773,34 @@ impl Translation {
                     mk().cast_expr(val, write_type)
                 };
 
-                self.volatile_write(&write, initial_lhs_type_id.ctype, val)?
+                if is_volatile {
+                    self.volatile_write(&write, initial_lhs_type_id.ctype, val)?
+                } else {
+                    mk().assign_expr(write, val)
+                }
             },
 
             // Everything else
             c_ast::BinOp::AssignAdd
             if pointer_lhs.is_some() =>
                 {
-                    let rhs = match self.compute_size_of_expr(pointer_lhs.unwrap().ctype) {
-                        Some(sz) => mk().binary_expr(BinOpKind::Mul, cast_int(rhs,"isize"), cast_int(sz,"isize")),
-                        None => rhs,
+                    let ptr = match self.compute_size_of_expr(pointer_lhs.unwrap().ctype) {
+                        Some(sz) => {
+                            let offset = mk().binary_expr(BinOpKind::Mul, cast_int(rhs,"isize"), cast_int(sz,"isize"));
+                            pointer_offset_isize(write.clone(), offset)
+                        },
+                        None => pointer_offset(write.clone(), rhs),
                     };
-                    mk().assign_expr(&write, pointer_offset(write.clone(), rhs))
+                    mk().assign_expr(&write, ptr)
                 },
             c_ast::BinOp::AssignSubtract
             if pointer_lhs.is_some() => {
                 {
-                    let rhs = match self.compute_size_of_expr(pointer_lhs.unwrap().ctype) {
-                        Some(sz) => mk().binary_expr(BinOpKind::Mul, cast_int(rhs,"isize"), cast_int(sz,"isize")),
-                        None => rhs,
+                    let ptr = match self.compute_size_of_expr(pointer_lhs.unwrap().ctype) {
+                        Some(sz) => pointer_neg_offset_isize(write.clone(), mk().binary_expr(BinOpKind::Mul, cast_int(rhs,"isize"), cast_int(sz,"isize"))),
+                        None => pointer_neg_offset(write.clone(), rhs),
                     };
-                    mk().assign_expr(&write, pointer_neg_offset(write.clone(), rhs))
+                    mk().assign_expr(&write, ptr)
                 }
             },
 
@@ -2847,15 +2883,21 @@ impl Translation {
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         if let &CTypeKind::Pointer(pointee) = lhs_type {
-            if let Some(sz) = self.compute_size_of_expr(pointee.ctype) {
-                rhs = mk().binary_expr(BinOpKind::Mul, cast_int(rhs, "isize"), cast_int(sz, "isize"))
+            match self.compute_size_of_expr(pointee.ctype) {
+                Some(sz) => {
+                    let rhs = mk().binary_expr(BinOpKind::Mul, cast_int(rhs, "isize"), cast_int(sz, "isize"));
+                    pointer_offset_isize(lhs, rhs)
+                }
+                None => pointer_offset(lhs, rhs)
             }
-            pointer_offset(lhs, rhs)
         } else if let &CTypeKind::Pointer(pointee) = rhs_type {
-            if let Some(sz) = self.compute_size_of_expr(pointee.ctype) {
-                lhs = mk().binary_expr(BinOpKind::Mul, cast_int(lhs, "isize"), cast_int(sz, "isize"))
+            match self.compute_size_of_expr(pointee.ctype) {
+                Some(sz) => {
+                    let lhs = mk().binary_expr(BinOpKind::Mul, cast_int(lhs, "isize"), cast_int(sz, "isize"));
+                    pointer_offset_isize(rhs, lhs)
+                }
+                None => pointer_offset(rhs, lhs),
             }
-            pointer_offset(rhs, lhs)
         } else if lhs_type.is_unsigned_integral_type() {
             mk().method_call_expr(lhs, mk().path_segment("wrapping_add"), vec![rhs])
         } else {
@@ -2889,11 +2931,10 @@ impl Translation {
 
             mk().cast_expr(offset, ty)
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
-            let rhs = match self.compute_size_of_expr(pointee.ctype) {
-                None => rhs,
-                Some(sz) => mk().binary_expr(BinOpKind::Mul, cast_int(rhs,"isize"), cast_int(sz, "isize")),
-            };
-            pointer_neg_offset(lhs, rhs)
+            match self.compute_size_of_expr(pointee.ctype) {
+                None => pointer_neg_offset(lhs, rhs),
+                Some(sz) => pointer_neg_offset_isize(lhs, mk().binary_expr(BinOpKind::Mul, cast_int(rhs,"isize"), cast_int(sz, "isize"))),
+            }
         } else if lhs_type.is_unsigned_integral_type() {
             mk().method_call_expr(lhs, mk().path_segment("wrapping_sub"), vec![rhs])
         } else {
