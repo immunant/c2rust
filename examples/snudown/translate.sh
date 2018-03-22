@@ -63,7 +63,7 @@ if [ "${1}" == "translate" ]; then
   compile_commands_entry "markdown"
   echo "]" >> $SNUDOWN/compile_commands.json
 
-  mkdir $OUTPUT_DIR
+  mkdir -p $OUTPUT_DIR
  
   translate "autolink"
   translate "buffer"
@@ -82,7 +82,7 @@ elif [ "$1" == "rustcheck" ]; then
   compile_commands_entry "markdown"
   echo "]" >> $SNUDOWN/compile_commands.json
 
-  mkdir $OUTPUT_DIR
+  mkdir -p $OUTPUT_DIR
 
   translate_xcheck "autolink"
   translate_xcheck "buffer"
