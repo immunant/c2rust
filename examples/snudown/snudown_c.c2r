@@ -7,7 +7,7 @@
       custom_hash: "xcheck_hash_PyMemberDef"
 
 # Our own custom cross-checks
-xchecks.c:
+../xchecks.c:
     - item: defaults
       disable_xchecks: true
 
