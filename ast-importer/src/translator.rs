@@ -2295,7 +2295,7 @@ impl Translation {
             &CDeclKind::Union { name: ref opt_union_name, .. } => {
                 let union_name = opt_union_name.as_ref().expect("Anonymous unions not implemented");
                 match &self.ast_context.index(union_field_id).kind {
-                    &CDeclKind::Field { name: ref field_name, typ: field_ty } => {
+                    &CDeclKind::Field { typ: field_ty, .. } => {
                         let val = if ids.is_empty() {
                             WithStmts {
                                 stmts: vec![],
@@ -2307,6 +2307,7 @@ impl Translation {
 
                         Ok(val.map(|v| {
                             let name = vec![mk().path_segment(union_name)];
+                            let field_name = self.type_converter.borrow().resolve_field_name(Some(union_id), union_field_id).unwrap();
                             let fields = vec![mk().field(field_name, v)];
                             mk().struct_expr(name, fields)
                         }))
@@ -2327,7 +2328,7 @@ impl Translation {
                 let mut fieldnames = vec![];
 
                 for &x in fields {
-                    let name = self.type_converter.borrow_mut().resolve_field_name(Some(struct_id), x).unwrap();
+                    let name = self.type_converter.borrow().resolve_field_name(Some(struct_id), x).unwrap();
                     if let &CDeclKind::Field { typ, .. } = &self.ast_context.index(x).kind {
                         fieldnames.push((name, typ));
                     } else {
@@ -2429,7 +2430,7 @@ impl Translation {
                         let name = self.type_converter.borrow_mut().resolve_field_name(Some(decl_id), *field_id).unwrap();
 
                         match &self.ast_context.index(*field_id).kind {
-                            &CDeclKind::Field { ref typ, .. } => {
+                            &CDeclKind::Field { typ, .. } => {
                                 let field_init = self.implicit_default_expr(typ.ctype)?;
                                 Ok(mk().field(name, field_init))
                             }
@@ -2444,11 +2445,13 @@ impl Translation {
             // Zero initialize the first field
             &CDeclKind::Union { ref fields, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
-                let field_id = fields.first().ok_or(format!("A union should have a field"))?;
+                let &field_id = fields.first().ok_or(format!("A union should have a field"))?;
 
-                let field = match &self.ast_context.index(*field_id).kind {
-                    &CDeclKind::Field { ref name, ref typ } => {
+                let field = match &self.ast_context.index(field_id).kind {
+                    &CDeclKind::Field { typ, .. } => {
                         let field_init = self.implicit_default_expr(typ.ctype)?;
+                        let name = self.type_converter.borrow().resolve_field_name(Some(decl_id), field_id).unwrap();
+
                         Ok(mk().field(name, field_init))
                     }
                     _ => Err(format!("Found non-field in record field list"))
