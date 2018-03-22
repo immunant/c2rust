@@ -162,6 +162,61 @@ private:
     std::vector<Element> elements;
 };
 
+struct HashFunction {
+    HashFunctionName name;
+
+    // The original type of the hashed value, as passed to get_type_hash_function
+    QualType orig_ty;
+
+    // The actual type of the main hash function argument "x",
+    // as it appears in the function declaration
+    QualType actual_ty;
+
+    HashFunction() = delete;
+    HashFunction(const HashFunctionName &n, QualType oty, QualType aty)
+        : name(n), orig_ty(oty), actual_ty(aty) {
+    }
+
+    // Convert the main argument "x" from its original type
+    // to the type in the hash function's signature
+    Expr *forward_argument(Expr *arg, ASTContext &ctx) const {
+        assert(arg->isLValue() && "Passed non-lvalue to forward_argument");
+        CastKind ck = CK_LValueToRValue;
+        QualType rv_ty = arg->getType().getCanonicalType();
+        bool by_pointer = false;
+        if (rv_ty->isRecordType()) {
+            // We forward structure/union arguments by pointer, not by value
+            by_pointer = true;
+        } else if (rv_ty->isArrayType()) {
+            // If the field is an array type T[...], decay it to
+            // a pointer T*, and pass that pointer to the field
+            // hash function
+            ck = CK_ArrayToPointerDecay;
+            rv_ty = ctx.getDecayedType(rv_ty);
+        } else if (rv_ty->isFunctionType()) {
+            // FIXME: we could instead set by_pointer=true here and
+            // force a conversion to "void*", but the result
+            // seems to be the same
+            ck = CK_FunctionToPointerDecay;
+            rv_ty = ctx.getDecayedType(rv_ty);
+        }
+        Expr *rv;
+        if (by_pointer) {
+            rv_ty = ctx.getPointerType(rv_ty);
+            rv = new (ctx) UnaryOperator(arg, UO_AddrOf, rv_ty,
+                                         VK_RValue, OK_Ordinary,
+                                         SourceLocation());
+        } else {
+            rv = ImplicitCastExpr::Create(ctx, rv_ty, ck, arg, nullptr, VK_RValue);
+        }
+        if (rv_ty != actual_ty) {
+            rv = ImplicitCastExpr::Create(ctx, actual_ty, CK_BitCast, rv,
+                                          nullptr, VK_RValue);
+        }
+        return rv;
+    }
+};
+
 class CrossCheckInserter : public SemaConsumer {
 private:
     Config config;
@@ -273,8 +328,9 @@ private:
                  ASTContext &ctx, DefaultFn default_fn,
                  CustomArgsFn custom_args_fn);
 
-    HashFunctionName get_type_hash_function(QualType ty, ASTContext &ctx,
-                                            bool build_it);
+    const HashFunction
+    get_type_hash_function(QualType ty, ASTContext &ctx,
+                           bool build_it);
 
     using StmtVec = SmallVector<Stmt*, 16>;
 
@@ -332,31 +388,21 @@ private:
                       FunctionDecl *parent,
                       ASTContext &ctx);
 
-    QualType get_adjusted_hash_type(QualType ty, ASTContext &ctx);
-
-    Expr *forward_hash_argument(Expr *arg, QualType ty, ASTContext &ctx);
-
     template<typename BodyFn>
-    void build_generic_hash_function(const HashFunctionName &func_name,
-                                     QualType ty,
+    void build_generic_hash_function(const HashFunction &func,
                                      ASTContext &ctx,
                                      BodyFn body_fn);
 
-    void build_pointer_hash_function(const HashFunctionName &func_name,
-                                     QualType ty,
-                                     const HashFunctionName &pointee_name,
-                                     QualType pointee_ty,
+    void build_pointer_hash_function(const HashFunction &func,
+                                     const HashFunction &pointee,
                                      ASTContext &ctx);
 
-    void build_array_hash_function(const HashFunctionName &func_name,
-                                   QualType ty,
-                                   const HashFunctionName &element_name,
-                                   QualType element_ty,
+    void build_array_hash_function(const HashFunction &func,
+                                   const HashFunction &element,
                                    const llvm::APInt &num_elements,
                                    ASTContext &ctx);
 
-    void build_record_hash_function(const HashFunctionName &func_name,
-                                    QualType ty,
+    void build_record_hash_function(const HashFunction &func,
                                     const std::string &record_name,
                                     ASTContext &ctx);
 
@@ -659,7 +705,7 @@ CrossCheckInserter::build_xcheck(const XCheck &xcheck, XCheck::Tag tag,
     return res;
 }
 
-HashFunctionName
+const HashFunction
 CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
                                            bool build_it) {
     // If this type is an anonymous record, e.g.
@@ -692,38 +738,38 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
         switch (cast<BuiltinType>(ty)->getKind()) {
         case BuiltinType::Void:
             // TODO: we should never actually be able to hash a void
-            return "void"sv;
+            return HashFunction{"void"sv,    ty, ctx.VoidTy};
         case BuiltinType::Bool:
-            return "bool"sv;
+            return HashFunction{"bool"sv,    ty, ctx.BoolTy};
         case BuiltinType::Char_S:
         case BuiltinType::Char_U:
-            return "char"sv;
+            return HashFunction{"char"sv,    ty, ctx.CharTy};
         case BuiltinType::UChar:
-            return "uchar"sv;
+            return HashFunction{"uchar"sv,   ty, ctx.UnsignedCharTy};
         case BuiltinType::UShort:
-            return "ushort"sv;
+            return HashFunction{"ushort"sv,  ty, ctx.UnsignedShortTy};
         case BuiltinType::UInt:
-            return "uint"sv;
+            return HashFunction{"uint"sv,    ty, ctx.UnsignedIntTy};
         case BuiltinType::ULong:
-            return "ulong"sv;
+            return HashFunction{"ulong"sv,   ty, ctx.UnsignedLongTy};
         case BuiltinType::ULongLong:
-            return "ullong"sv;
+            return HashFunction{"ullong"sv,  ty, ctx.UnsignedLongLongTy};
         case BuiltinType::SChar:
-            return "schar"sv;
+            return HashFunction{"schar"sv,   ty, ctx.SignedCharTy};
         case BuiltinType::Short:
-            return "short"sv;
+            return HashFunction{"short"sv,   ty, ctx.ShortTy};
         case BuiltinType::Int:
-            return "int"sv;
+            return HashFunction{"int"sv,     ty, ctx.IntTy};
         case BuiltinType::Long:
-            return "long"sv;
+            return HashFunction{"long"sv,    ty, ctx.LongTy};
         case BuiltinType::LongLong:
-            return "llong"sv;
+            return HashFunction{"llong"sv,   ty, ctx.LongLongTy};
         case BuiltinType::Float:
-            return "float"sv;
+            return HashFunction{"float"sv,   ty, ctx.FloatTy};
         case BuiltinType::Double:
-            return "double"sv;
+            return HashFunction{"double"sv,  ty, ctx.DoubleTy};
         case BuiltinType::LongDouble:
-            return "ldouble"sv;
+            return HashFunction{"ldouble"sv, ty, ctx.LongDoubleTy};
         default:
             ty->dump();
             llvm_unreachable("Unknown/unhandled builtin type");
@@ -733,33 +779,31 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
 
     case Type::FunctionNoProto:
     case Type::FunctionProto:
-        return "function"sv;
+        return HashFunction{"function"sv, ty, ctx.getPointerType(ctx.VoidTy)};
 
     case Type::Pointer: {
         auto pointee_ty = cast<PointerType>(ty)->getPointeeType();
-        auto pointee_name = get_type_hash_function(pointee_ty, ctx, build_it);
-        auto func_name = pointee_name;
-        func_name.append("ptr"sv);
+        auto pointee = get_type_hash_function(pointee_ty, ctx, build_it);
+        HashFunction func{pointee.name, ty, ctx.getPointerType(pointee.actual_ty)};
+        func.name.append("ptr"sv);
         if (build_it) {
-            build_pointer_hash_function(func_name, ty, pointee_name,
-                                        pointee_ty, ctx);
+            build_pointer_hash_function(func, pointee, ctx);
         }
-        return func_name;
+        return func;
     }
 
     case Type::ConstantArray: {
         auto array_ty = cast<ConstantArrayType>(ty);
         auto element_ty = array_ty->getElementType();
-        auto element_name = get_type_hash_function(element_ty, ctx, build_it);
+        auto element = get_type_hash_function(element_ty, ctx, build_it);
         auto num_elements = array_ty->getSize();
-        auto func_name = element_name;
-        func_name.append("array"sv);
-        func_name.append(llvm::utostr(num_elements.getZExtValue()));
+        HashFunction func{element.name, ty, ctx.getPointerType(element.actual_ty)};
+        func.name.append("array"sv);
+        func.name.append(llvm::utostr(num_elements.getZExtValue()));
         if (build_it) {
-            build_array_hash_function(func_name, ty, element_name,
-                                      element_ty, num_elements, ctx);
+            build_array_hash_function(func, element, num_elements, ctx);
         }
-        return func_name;
+        return func;
     }
 
     case Type::Record: {
@@ -780,12 +824,13 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
             llvm_unreachable("Could not retrieve record identifier");
         }
         std::string record_name = record_id->getName();
-        HashFunctionName func_name{record_name};
-        func_name.append(record_decl->getKindName().str());
+        HashFunction func{record_name, ty,
+            ctx.getPointerType(ty.getUnqualifiedType())};
+        func.name.append(record_decl->getKindName().str());
         if (build_it) {
-            build_record_hash_function(func_name, ty, record_name, ctx);
+            build_record_hash_function(func, record_name, ctx);
         }
-        return func_name;
+        return func;
     }
 
     default:
@@ -857,75 +902,14 @@ CrossCheckInserter::build_hasher_init(const std::string &hasher_prefix,
     return { hasher_var, hasher_var_ptr, { hasher_var_decl_stmt, init_call } };
 }
 
-QualType CrossCheckInserter::get_adjusted_hash_type(QualType ty, ASTContext &ctx) {
-    if (ty->isRecordType()) {
-        // We pass records by pointer, not by value
-        return ctx.getPointerType(ty.getUnqualifiedType());
-    } else if (ty->isFunctionType()) {
-        // We decay function pointers to void* types, since
-        // that's what the runtime helper functions take
-        return ctx.getPointerType(ctx.VoidTy);
-    } else if (ty->isPointerType()) {
-        auto pointee_ty = ty->getAs<PointerType>()->getPointeeType();
-        if (pointee_ty->isFunctionType()) {
-            // Force-convert function pointers to void*
-            return ctx.getPointerType(ctx.VoidTy);
-        } else {
-            // Remove qualifiers from the pointee
-            // TODO: this should be recursive and remove ALL qualifiers,
-            // but it currently only removes the outer-most ones, e.g.
-            // a type like "const char* const*" will still assert
-            return ctx.getPointerType(pointee_ty.getUnqualifiedType());
-        }
-    }
-    return ctx.getAdjustedParameterType(ty);
-}
-
-Expr *CrossCheckInserter::forward_hash_argument(Expr *arg, QualType ty, ASTContext &ctx) {
-    assert(arg->isLValue() && "Passed non-lvalue to forward_hash_argument");
-    CastKind ck = CK_LValueToRValue;
-    if (ty->isRecordType()) {
-        // We forward structure/union arguments by pointer, not by value
-        return new (ctx) UnaryOperator(arg, UO_AddrOf,
-                                       ctx.getPointerType(ty.getUnqualifiedType()),
-                                       VK_RValue, OK_Ordinary,
-                                       SourceLocation());
-    } else if (ty->isArrayType()) {
-        // If the field is an array type T[...], decay it to
-        // a pointer T*, and pass that pointer to the field
-        // hash function
-        ck = CK_ArrayToPointerDecay;
-        ty = ctx.getDecayedType(ty);
-    } else if (ty->isFunctionType()) {
-        ck = CK_FunctionToPointerDecay;
-        // We decay function pointers to void* types, since
-        // that's what the runtime helper functions take
-        //ty = ctx.getDecayedType(ty);
-        ty = ctx.getPointerType(ctx.VoidTy);
-    } else if (ty->isPointerType()) {
-        auto pointee_ty = ty->getAs<PointerType>()->getPointeeType();
-        ck = CK_BitCast;
-        if (pointee_ty->isFunctionType()) {
-            // Force-convert function pointers to void*
-            ty = ctx.getPointerType(ctx.VoidTy);
-        } else {
-            // Remove qualifiers from the pointee
-            ty = ctx.getPointerType(pointee_ty.getUnqualifiedType());
-        }
-    }
-    return ImplicitCastExpr::Create(ctx, ty, ck, arg, nullptr, VK_RValue);
-}
-
 template<typename BodyFn>
-void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &func_name,
-                                                     QualType ty,
+void CrossCheckInserter::build_generic_hash_function(const HashFunction &func,
                                                      ASTContext &ctx,
                                                      BodyFn body_fn) {
-    auto full_name = func_name.full_name();
+    auto full_name = func.name.full_name();
     auto fn_decl = get_function_decl(full_name,
                                      ctx.UnsignedLongTy,
-                                     { get_adjusted_hash_type(ty, ctx),
-                                       ctx.getSizeType() },
+                                     { func.actual_ty, ctx.getSizeType() },
                                      SC_Extern,
                                      ctx);
     if (fn_decl->hasBody())
@@ -961,16 +945,14 @@ void CrossCheckInserter::build_generic_hash_function(const HashFunctionName &fun
     pending_hash_functions.erase(full_name);
 }
 
-void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &func_name,
-                                                     QualType ty,
-                                                     const HashFunctionName &pointee_name,
-                                                     QualType pointee_ty,
+void CrossCheckInserter::build_pointer_hash_function(const HashFunction &func,
+                                                     const HashFunction &pointee,
                                                      ASTContext &ctx) {
     // __c2rust_hash_void_ptr is implemented in the runtime
-    if (pointee_ty->isVoidType())
+    if (pointee.orig_ty->isVoidType())
         return;
-    if (pointee_ty->isIncompleteType() &&
-        !pointee_ty->isRecordType()) {
+    if (pointee.orig_ty->isIncompleteType() &&
+        !pointee.orig_ty->isRecordType()) {
         // We only allow pointers to incomplete structures
         return;
     }
@@ -985,7 +967,7 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
     // }
     //
     // TODO: add a depth parameter and decrement it on recursion
-    auto body_fn = [this, &ctx, &pointee_name, pointee_ty] (FunctionDecl *fn_decl) -> StmtVec {
+    auto body_fn = [this, &ctx, &pointee] (FunctionDecl *fn_decl) -> StmtVec {
         assert(fn_decl->getNumParams() == 2 &&
                "Invalid hash function signature");
         auto param = fn_decl->getParamDecl(0);
@@ -1020,14 +1002,13 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
 
         // Build the call to the pointee function
         auto param_deref_lv =
-            new (ctx) UnaryOperator(param_ref_lv, UO_Deref, pointee_ty,
+            new (ctx) UnaryOperator(param_ref_lv, UO_Deref, pointee.orig_ty,
                                     VK_LValue, OK_Ordinary,
                                     SourceLocation());
-        auto param_deref_rv = forward_hash_argument(param_deref_lv,
-                                                    pointee_ty, ctx);
+        auto param_deref_rv = pointee.forward_argument(param_deref_lv, ctx);
         auto param_depth = get_depth(fn_decl, true, ctx);
         auto param_hash_call =
-            build_call(pointee_name.full_name(), ctx.UnsignedLongTy,
+            build_call(pointee.name.full_name(), ctx.UnsignedLongTy,
                        { param_deref_rv, param_depth }, ctx);
 
         // Build the conditional expression and return statement
@@ -1035,16 +1016,14 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunctionName &fun
             new (ctx) ReturnStmt(SourceLocation(), param_hash_call, nullptr);
         return { if_invalid, depth_check, return_hash_stmt };
     };
-    build_generic_hash_function(func_name, ty, ctx, body_fn);
+    build_generic_hash_function(func, ctx, body_fn);
 }
 
-void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_name,
-                                                   QualType ty,
-                                                   const HashFunctionName &element_name,
-                                                   QualType element_ty,
+void CrossCheckInserter::build_array_hash_function(const HashFunction &func,
+                                                   const HashFunction &element,
                                                    const llvm::APInt &num_elements,
                                                    ASTContext &ctx) {
-    if (element_ty->isIncompleteType()) {
+    if (element.orig_ty->isIncompleteType()) {
         // TODO: figure out what to do about this
         // for now, we just expect the user to provide a custom function
         return;
@@ -1067,7 +1046,7 @@ void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_
     std::string hasher_prefix{"__c2rust_hasher_"};
     hasher_prefix += hasher_name;
     auto body_fn =
-            [this, &ctx, &element_name, element_ty, &num_elements,
+            [this, &ctx, &element, &num_elements,
              hasher_prefix = std::move(hasher_prefix)]
             (FunctionDecl *fn_decl) -> StmtVec {
         StmtVec stmts;
@@ -1109,7 +1088,7 @@ void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_
                                               i_ty, VK_RValue, OK_Ordinary,
                                               SourceLocation());
         // Loop body: __c2rust_hasher_H_update(hasher, __c2rust_hash_T(x[i]));
-        assert(!element_ty->isIncompleteType() &&
+        assert(!element.orig_ty->isIncompleteType() &&
                "Attempting to dereference incomplete type");
         auto param = fn_decl->getParamDecl(0);
         auto param_ty = param->getType();
@@ -1117,10 +1096,10 @@ void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_
             new (ctx) DeclRefExpr(param, false, param_ty,
                                   VK_LValue, SourceLocation());
         auto param_i_lv = new (ctx) ArraySubscriptExpr(param_ref_lv, i_var_rv,
-                                                       element_ty, VK_LValue,
+                                                       element.orig_ty, VK_LValue,
                                                        OK_Ordinary, SourceLocation());
-        auto param_i_rv = forward_hash_argument(param_i_lv, element_ty, ctx);
-        auto param_i_hash_fn = element_name.full_name();
+        auto param_i_rv = element.forward_argument(param_i_lv, ctx);
+        auto param_i_hash_fn = element.name.full_name();
         auto param_i_depth = get_depth(fn_decl, true, ctx);
         auto param_i_hash = build_call(param_i_hash_fn, ctx.UnsignedLongTy,
                                        { param_i_rv, param_i_depth }, ctx);
@@ -1143,15 +1122,14 @@ void CrossCheckInserter::build_array_hash_function(const HashFunctionName &func_
         stmts.push_back(return_stmt);
         return stmts;
     };
-    build_generic_hash_function(func_name, ty, ctx, body_fn);
+    build_generic_hash_function(func, ctx, body_fn);
 }
 
-void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func_name,
-                                                    QualType ty,
+void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
                                                     const std::string &record_name,
                                                     ASTContext &ctx) {
     auto &diags = ctx.getDiagnostics();
-    auto record_ty = cast<RecordType>(ty);
+    auto record_ty = cast<RecordType>(func.orig_ty);
     auto record_decl = record_ty->getDecl();
     std::optional<StructConfigRef> record_cfg;
     auto ploc = ctx.getSourceManager().getPresumedLoc(record_decl->getLocStart());
@@ -1176,13 +1154,13 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
         // and instead declare our function using "alias", e.g.:
         // uint64_t __c2rust_hash_T_struct(struct T *x) __attribute__((alias("...")));
         auto &hash_fn_name = *record_cfg->get().custom_hash;
-        auto body_fn = [this, &ctx, &hash_fn_name] (FunctionDecl *fn_decl) -> StmtVec {
+        auto body_fn = [this, &ctx, &hash_fn_name, &func] (FunctionDecl *fn_decl) -> StmtVec {
             auto param = fn_decl->getParamDecl(0);
             auto param_ty = param->getType();
             auto param_ref_lv =
                 new (ctx) DeclRefExpr(param, false, param_ty,
                                       VK_LValue, SourceLocation());
-            auto param_ref_rv = forward_hash_argument(param_ref_lv, param_ty, ctx);
+            auto param_ref_rv = func.forward_argument(param_ref_lv, ctx);
             auto new_depth = get_depth(fn_decl, false, ctx);
             auto hash_fn_call = build_call(hash_fn_name,
                                            ctx.UnsignedLongTy,
@@ -1191,7 +1169,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                 new (ctx) ReturnStmt(SourceLocation(), hash_fn_call, nullptr);
             return { return_stmt };
         };
-        build_generic_hash_function(func_name, ty, ctx, body_fn);
+        build_generic_hash_function(func, ctx, body_fn);
         return;
     }
 
@@ -1289,12 +1267,12 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                 auto param_ref_rv =
                     new (ctx) DeclRefExpr(param, false, param->getType(),
                                           VK_RValue, SourceLocation());
-                std::string field_hash_fn;
+                std::string field_hash_fn_name;
                 ExprVec field_hash_args;
                 if (field_xcheck.type == XCheck::CUSTOM) {
                     auto xcheck_data = std::get<std::string>(field_xcheck.data);
                     auto field_hash_fn_sig = parse_custom_xcheck(xcheck_data, ctx);
-                    field_hash_fn = std::string{std::get<0>(field_hash_fn_sig)};
+                    field_hash_fn_name = std::string{std::get<0>(field_hash_fn_sig)};
 
                     // Build the argument vector
                     auto &args = std::get<1>(field_hash_fn_sig);
@@ -1308,17 +1286,17 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
                                                           args, arg_build_fn);
                 } else {
                     auto field_ty = field->getType();
-                    field_hash_fn =
-                        get_type_hash_function(field_ty, ctx, true).full_name();
+                    auto field_hash_fn = get_type_hash_function(field_ty, ctx, true);
+                    field_hash_fn_name = field_hash_fn.name.full_name();
                     auto field_ref_lv =
                         new (ctx) MemberExpr(param_ref_rv, true, SourceLocation(),
                                              field, SourceLocation(),
                                              field->getType(), VK_LValue, OK_Ordinary);
-                    auto field_ref_rv = forward_hash_argument(field_ref_lv, field_ty, ctx);
+                    auto field_ref_rv = field_hash_fn.forward_argument(field_ref_lv, ctx);
                     field_hash_args.push_back(field_ref_rv);
                 }
                 field_hash_args.push_back(field_depth);
-                field_hash = build_call(field_hash_fn,
+                field_hash = build_call(field_hash_fn_name,
                                         ctx.UnsignedLongTy,
                                         field_hash_args, ctx);
             }
@@ -1338,7 +1316,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunctionName &func
         stmts.push_back(return_stmt);
         return stmts;
     };
-    build_generic_hash_function(func_name, ty, ctx, body_fn);
+    build_generic_hash_function(func, ctx, body_fn);
 }
 
 template<typename BuildFn>
@@ -1414,17 +1392,16 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
         // By default, we just call __c2rust_hash_T(x)
         // where T is the type of the parameter
         // FIXME: include shasher/ahasher
-        auto hash_fn_name = get_type_hash_function(param->getType(), ctx, true);
+        auto hash_fn = get_type_hash_function(param->getOriginalType(), ctx, true);
 
         // Forward the value of the parameter to the hash function
-        auto param_ty = param->getType();
         auto param_ref_lv =
-            new (ctx) DeclRefExpr(param, false, param_ty,
+            new (ctx) DeclRefExpr(param, false, param->getType(),
                                   VK_LValue, SourceLocation());
-        auto param_ref_rv = forward_hash_argument(param_ref_lv, param_ty, ctx);
+        auto param_ref_rv = hash_fn.forward_argument(param_ref_lv, ctx);
         auto hash_depth = build_max_hash_depth(ctx);
         // TODO: pass PODs by value, non-PODs by pointer???
-        return build_call(hash_fn_name.full_name(), ctx.UnsignedLongTy,
+        return build_call(hash_fn.name.full_name(), ctx.UnsignedLongTy,
                           { param_ref_rv, hash_depth }, ctx);
     };
     auto param_xcheck_custom_args_fn = [&ctx, &param_decls] (CustomArgVec args) {
@@ -1633,12 +1610,12 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                     // By default, we just call __c2rust_hash_T(x)
                     // where T is the type of the parameter
                     // FIXME: include shasher/ahasher
-                    auto hash_fn_name = get_type_hash_function(result_ty, ctx, true);
+                    auto hash_fn = get_type_hash_function(result_ty, ctx, true);
                     auto result_lv = new (ctx) DeclRefExpr(result_var, false, result_ty,
                                                            VK_LValue, SourceLocation());
-                    auto result_rv = forward_hash_argument(result_lv, result_ty, ctx);
+                    auto result_rv = hash_fn.forward_argument(result_lv, ctx);
                     auto hash_depth = build_max_hash_depth(ctx);
-                    return build_call(hash_fn_name.full_name(), ctx.UnsignedLongTy,
+                    return build_call(hash_fn.name.full_name(), ctx.UnsignedLongTy,
                                       { result_rv, hash_depth }, ctx);
                 };
                 auto result_xcheck_stmts =
