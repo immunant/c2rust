@@ -29,7 +29,7 @@ translate_xcheck() {
   $AST_EXTRACTOR $SNUDOWN/src/$1.c
   env RUST_BACKTRACE=1 LD_LIBRARY_PATH=$LIB_PATH \
       $AST_IMPORTER --reloop-cfgs --cross-checks \
-      --cross-check-config ../snudown_rust.c2r \
+      --cross-check-config $SNUDOWN/../snudown_rust.c2r \
       -- $SNUDOWN/src/$1.c.cbor > $OUTPUT_DIR/$1.rs
   #$RUSTFMT $OUTPUT_DIR/$1.rs --force
   rustc -g --crate-type=rlib --crate-name=$1 \
