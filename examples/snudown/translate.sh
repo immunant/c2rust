@@ -1,7 +1,7 @@
 #!/bin/bash
 
 MACHINE_NAME=`uname -n`
-C2RUST=../../..
+C2RUST=$(readlink -f $(dirname $0)/../..)
 AST_EXTRACTOR=$C2RUST/dependencies/llvm-6.0.0/build.$MACHINE_NAME/bin/ast-extractor
 AST_IMPORTER=$C2RUST/ast-importer/target/debug/ast_importer
 LIB_PATH=$HOME/.rustup/toolchains/nightly-2018-01-06-x86_64-unknown-linux-gnu/lib/
