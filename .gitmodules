@@ -4,3 +4,6 @@
 [submodule "ReMon"]
 	path = cross-checks/ReMon
 	url = git@github.com:securesystemslab/ReMon.git
+[submodule "examples/snudown/repo"]
+	path = examples/snudown/repo
+	url = https://github.com/immunant/snudown.git
