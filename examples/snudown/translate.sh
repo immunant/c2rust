@@ -15,6 +15,9 @@ XCHECK_RUNTIME=$XCHECK_TOPDIR/runtime/target/debug/libcross_check_runtime.rlib
 
 OUTPUT_DIR=$SNUDOWN/translator-build
 
+# Stop on first error
+set -e
+
 translate() {
   $AST_EXTRACTOR $SNUDOWN/src/$1.c
   env RUST_BACKTRACE=1 LD_LIBRARY_PATH=$LIB_PATH $AST_IMPORTER --reloop-cfgs $SNUDOWN/src/$1.c.cbor > $OUTPUT_DIR/$1.rs
