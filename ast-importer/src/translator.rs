@@ -116,13 +116,27 @@ fn pointer_neg_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
 }
 
 /// Construct a new constant null pointer expression
-fn null_expr() -> P<Expr>  {
-    mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "null"]), vec![] as Vec<P<Expr>>)
+fn null_expr(ty: P<Ty>) -> P<Expr>  {
+    mk().call_expr(mk().path_expr(vec![
+        mk().path_segment(""),
+        mk().path_segment("std"),
+        mk().path_segment("ptr"),
+        mk().path_segment_with_params("null", mk().angle_bracketed_param_types(vec![
+            ty
+        ])),
+    ]), vec![] as Vec<P<Expr>>)
 }
 
 /// Construct a new mutable null pointer expression
-fn null_mut_expr() -> P<Expr> {
-    mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "null_mut"]), vec![] as Vec<P<Expr>>)
+fn null_mut_expr(ty: P<Ty>) -> P<Expr> {
+    mk().call_expr(mk().path_expr(vec![
+        mk().path_segment(""),
+        mk().path_segment("std"),
+        mk().path_segment("ptr"),
+        mk().path_segment_with_params("null_mut", mk().angle_bracketed_param_types(vec![
+            ty
+        ])),
+    ]), vec![] as Vec<P<Expr>>)
 }
 
 fn neg_expr(arg: P<Expr>) -> P<Expr> {
@@ -1317,6 +1331,18 @@ impl Translation {
         self.type_converter.borrow_mut().convert(&self.ast_context, type_id)
     }
 
+    fn null_ptr(&self, type_id: CTypeId) -> Result<P<Expr>, String> {
+        let rust_ty = self.convert_type(type_id)?;
+
+        match rust_ty.node {
+            TyKind::Ptr(MutTy { ref ty, mutbl }) => match mutbl {
+                Mutability::Mutable => Ok(null_mut_expr(ty.clone())),
+                Mutability::Immutable => Ok(null_expr(ty.clone())),
+            }
+            _ => Err(format!("Cannot make a null expression for a non-pointer type {:?}", type_id))
+        }
+    }
+
     /// Write to a `lhs` that is volatile
     pub fn volatile_write(&self, lhs: &P<Expr>, lhs_type: CTypeId, rhs: P<Expr>) -> Result<P<Expr>, String> {
         let addr_lhs = match lhs.node {
@@ -2076,14 +2102,10 @@ impl Translation {
             CastKind::NullToPointer => {
                 assert!(val.stmts.is_empty());
 
-
                 let res = if self.is_function_pointer(ty.ctype) {
                     mk().path_expr(vec!["None"])
                 } else {
-                    match &self.ast_context.resolve_type(ty.ctype).kind {
-                        &CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => null_expr(),
-                        _ => null_mut_expr(),
-                    }
+                    self.null_ptr(ty.ctype)?
                 };
 
                 Ok(WithStmts::new(res))
@@ -2295,7 +2317,8 @@ impl Translation {
     }
 
     pub fn implicit_default_expr(&self, ty_id: CTypeId) -> Result<P<Expr>, String> {
-        let resolved_ty = &self.ast_context.resolve_type(ty_id).kind;
+        let resolved_ty_id = self.ast_context.resolve_type_id(ty_id);
+        let resolved_ty = &self.ast_context.index(resolved_ty_id).kind;
 
         if resolved_ty.is_bool() {
             Ok(mk().lit_expr(mk().bool_lit(false)))
@@ -2305,8 +2328,8 @@ impl Translation {
             Ok(mk().lit_expr(mk().float_unsuffixed_lit("0.")))
         } else if self.is_function_pointer(ty_id) {
             Ok(mk().path_expr(vec!["None"]))
-        } else if let &CTypeKind::Pointer(p) = resolved_ty {
-            Ok(if p.qualifiers.is_const { null_expr() } else { null_mut_expr() })
+        } else if let &CTypeKind::Pointer(_) = resolved_ty {
+            self.null_ptr(resolved_ty_id)
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
             let sz = mk().lit_expr(mk().int_lit(sz as u128, LitIntType::Unsuffixed));
             Ok(mk().repeat_expr(self.implicit_default_expr(elt)?, sz))
