@@ -1,4 +1,12 @@
 #!/bin/bash
+#
+# This file builds a C2Rust translated version of snudown,
+# either with or without cross-checks
+#
+# Usage:
+# $ ./translate.sh translate
+# or
+# $ ./translate.sh rustcheck
 
 MACHINE_NAME=`uname -n`
 C2RUST=$(readlink -f $(dirname $0)/../..)
