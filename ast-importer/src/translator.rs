@@ -733,7 +733,7 @@ impl Translation {
             .ok_or_else(|| format!("Missing decl {:?}", decl_id))?
             .kind {
             CDeclKind::Struct { ref fields, .. } => {
-                let name = self.type_converter.borrow_mut().resolve_decl_name(decl_id).unwrap();
+                let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 // Gather up all the field names and field types
                 let mut field_entries = vec![];
@@ -755,7 +755,7 @@ impl Translation {
             }
 
             CDeclKind::Union { ref fields, .. } => {
-                let name = self.type_converter.borrow_mut().resolve_decl_name(decl_id).unwrap();
+                let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 let mut field_syns = vec![];
                 for &x in fields {
@@ -849,7 +849,7 @@ impl Translation {
             },
 
             CDeclKind::Typedef { ref typ, .. } => {
-                let new_name = &self.type_converter.borrow_mut().resolve_decl_name(decl_id).unwrap();
+                let new_name = &self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 let ty = self.convert_type(typ.ctype)?;
                 Ok(mk().pub_().type_item(new_name, ty))
@@ -2427,7 +2427,7 @@ impl Translation {
                 let fields: Result<Vec<Field>, String> = fields
                     .into_iter()
                     .map(|field_id: &CFieldId| -> Result<Field, String> {
-                        let name = self.type_converter.borrow_mut().resolve_field_name(Some(decl_id), *field_id).unwrap();
+                        let name = self.type_converter.borrow().resolve_field_name(Some(decl_id), *field_id).unwrap();
 
                         match &self.ast_context.index(*field_id).kind {
                             &CDeclKind::Field { typ, .. } => {
