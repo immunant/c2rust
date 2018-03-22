@@ -1,3 +1,4 @@
+# Cross-check configuration file for the Rust version of snudown
 ---
 translator-build/autolink.rs:
     - item: defaults
