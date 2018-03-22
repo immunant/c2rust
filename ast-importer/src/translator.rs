@@ -2876,8 +2876,8 @@ impl Translation {
         &self,
         lhs_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
-        mut lhs: P<Expr>,
-        mut rhs: P<Expr>
+        lhs: P<Expr>,
+        rhs: P<Expr>
     ) -> P<Expr> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
