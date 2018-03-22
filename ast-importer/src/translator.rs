@@ -508,7 +508,13 @@ impl Translation {
     }
 
     fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, String> {
-        if let CDeclKind::Function { ref parameters, .. } = self.ast_context.index(main_id).kind {
+        if let CDeclKind::Function { ref parameters, typ, .. } = self.ast_context.index(main_id).kind {
+
+            let ret: CTypeKind = match &self.ast_context.resolve_type(typ).kind {
+                &CTypeKind::Function(ret, _, _) => self.ast_context.resolve_type(ret.ctype).kind.clone(),
+                k => return Err(format!("Type of main function {:?} was not a function type, got {:?}", main_id, k))
+            };
+
             let decl = mk().fn_decl(
                 vec![],
                 FunctionRetTy::Ty(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
@@ -693,14 +699,27 @@ impl Translation {
                 Err(format!("Main function should have 0, 2, or 3 parameters, not {}.", n))?;
             };
 
-            let call_main = mk().cast_expr(
-                mk().call_expr(main_fn, main_args),
-                mk().path_ty(vec!["i32"]),
-            );
-            let call_exit = mk().call_expr(exit_fn, vec![call_main]);
-            let unsafe_block = mk().unsafe_().block(vec![mk().expr_stmt(call_exit)]);
+            if let CTypeKind::Void = ret {
+                let call_main = mk().call_expr(main_fn, main_args);
+                let unsafe_block = mk().unsafe_().block(vec![mk().expr_stmt(call_main)]);
 
-            stmts.push(mk().expr_stmt(mk().block_expr(unsafe_block)));
+                stmts.push(mk().expr_stmt(mk().block_expr(unsafe_block)));
+
+                let exit_arg = mk().lit_expr(mk().int_lit(0,"i32"));
+                let call_exit = mk().call_expr(exit_fn, vec![exit_arg]);
+
+                stmts.push(mk().semi_stmt(call_exit));
+            } else {
+                let call_main = mk().cast_expr(
+                    mk().call_expr(main_fn, main_args),
+                    mk().path_ty(vec!["i32"]),
+                );
+
+                let call_exit = mk().call_expr(exit_fn, vec![call_main]);
+                let unsafe_block = mk().unsafe_().block(vec![mk().expr_stmt(call_exit)]);
+
+                stmts.push(mk().expr_stmt(mk().block_expr(unsafe_block)));
+            };
 
             let block = mk().block(stmts);
             Ok(mk().fn_item("main", decl, block))
@@ -1350,18 +1369,27 @@ impl Translation {
                 Mutability::Mutable => Ok(null_mut_expr(ty.clone())),
                 Mutability::Immutable => Ok(null_expr(ty.clone())),
             }
-            _ => Err(format!("Cannot make a null expression for a non-pointer type {:?}", type_id))
+            ref k => Err(format!("Cannot make a null expression for a non-pointer type {:?}, {:?}", type_id, k))
         }
     }
 
     /// Write to a `lhs` that is volatile
-    pub fn volatile_write(&self, lhs: &P<Expr>, lhs_type: CTypeId, rhs: P<Expr>) -> Result<P<Expr>, String> {
+    pub fn volatile_write(&self, lhs: &P<Expr>, lhs_type: CQualTypeId, rhs: P<Expr>) -> Result<P<Expr>, String> {
         let addr_lhs = match lhs.node {
-            ExprKind::Unary(ast::UnOp::Deref, ref e) => e.clone(),
+            ExprKind::Unary(ast::UnOp::Deref, ref e) => {
+                if lhs_type.qualifiers.is_const {
+                    let lhs_type = self.convert_type(lhs_type.ctype)?;
+                    let ty = mk().mutbl().ptr_ty(lhs_type);
+
+                    mk().cast_expr(e, ty)
+                } else {
+                    e.clone()
+                }
+            }
             _ => {
                 let addr_lhs = mk().mutbl().addr_of_expr(lhs);
 
-                let lhs_type = self.convert_type(lhs_type)?;
+                let lhs_type = self.convert_type(lhs_type.ctype)?;
                 let ty = mk().mutbl().ptr_ty(lhs_type);
 
                 mk().cast_expr(addr_lhs, ty)
@@ -1372,13 +1400,22 @@ impl Translation {
     }
 
     /// Read from a `lhs` that is volatile
-    pub fn volatile_read(&self, lhs: &P<Expr>, lhs_type: CTypeId) -> Result<P<Expr>, String> {
+    pub fn volatile_read(&self, lhs: &P<Expr>, lhs_type: CQualTypeId) -> Result<P<Expr>, String> {
         let addr_lhs = match lhs.node {
-            ExprKind::Unary(ast::UnOp::Deref, ref e) => e.clone(),
+            ExprKind::Unary(ast::UnOp::Deref, ref e) => {
+                if !lhs_type.qualifiers.is_const {
+                    let lhs_type = self.convert_type(lhs_type.ctype)?;
+                    let ty = mk().ptr_ty(lhs_type);
+
+                    mk().cast_expr(e, ty)
+                } else {
+                    e.clone()
+                }
+            }
             _ => {
                 let addr_lhs = mk().addr_of_expr(lhs);
 
-                let lhs_type = self.convert_type(lhs_type)?;
+                let lhs_type = self.convert_type(lhs_type.ctype)?;
                 let ty = mk().ptr_ty(lhs_type);
 
                 mk().cast_expr(addr_lhs, ty)
@@ -1583,7 +1620,7 @@ impl Translation {
                 // If the variable is volatile and used as something that isn't an LValue, this
                 // constitutes a volatile read.
                 if use_ != ExprUse::LValue && qual_ty.qualifiers.is_volatile {
-                    val = self.volatile_read(&val, qual_ty.ctype)?;
+                    val = self.volatile_read(&val, qual_ty)?;
                 }
 
                 // If the variable is actually an `EnumConstant`, we need to add a cast to the
@@ -2500,7 +2537,7 @@ impl Translation {
         // Given the LHS access to a variable, produce the RHS one
         let read = |write: P<Expr>| -> Result<P<Expr>, String> {
             if reference_ty.qualifiers.is_volatile {
-                self.volatile_read(&write, reference_ty.ctype)
+                self.volatile_read(&write, reference_ty)
             } else {
                 Ok(write)
             }
@@ -2583,7 +2620,7 @@ impl Translation {
 
         // *p = *p + rhs
         let assign_stmt = if ty.qualifiers.is_volatile {
-            self.volatile_write(&write, ty.ctype, val)?
+            self.volatile_write(&write, ty, val)?
 
         } else {
             mk().assign_expr(&write, val)
@@ -2646,7 +2683,7 @@ impl Translation {
                         // If the type on the other side of the pointer we are dereferencing is volatile and
                         // this whole expression is not an LValue, we should make this a volatile read
                         if use_ != ExprUse::LValue && cqual_type.qualifiers.is_volatile {
-                            val = self.volatile_read(&val, ctype)?
+                            val = self.volatile_read(&val, cqual_type)?
                         }
                         Ok(val)
                     }
@@ -2779,7 +2816,7 @@ impl Translation {
         let assign_stmt = match op {
             // Regular (possibly volatile) assignment
             c_ast::BinOp::Assign if !is_volatile => mk().assign_expr(&write, rhs),
-            c_ast::BinOp::Assign => self.volatile_write(&write, initial_lhs_type_id.ctype, rhs)?,
+            c_ast::BinOp::Assign => self.volatile_write(&write, initial_lhs_type_id, rhs)?,
 
             // Anything volatile needs to be desugared into explicit reads and writes
             op if is_volatile || is_unsigned_arith => {
@@ -2797,7 +2834,7 @@ impl Translation {
                 };
 
                 if is_volatile {
-                    self.volatile_write(&write, initial_lhs_type_id.ctype, val)?
+                    self.volatile_write(&write, initial_lhs_type_id, val)?
                 } else {
                     mk().assign_expr(write, val)
                 }
