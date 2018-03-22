@@ -523,12 +523,12 @@ impl Builder {
         where E: Make<P<Expr>>, T: Make<P<Ty>> {
         let e = e.make(&self);
         let t = t.make(&self);
-        mk().paren_expr(P(Expr {
+        P(Expr {
             id: DUMMY_NODE_ID,
             node: ExprKind::Cast(e, t),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
-        }))
+        })
     }
 
     pub fn type_expr<E, T>(self, e: E, t: T) -> P<Expr>
