@@ -7,7 +7,7 @@
       custom_hash: "xcheck_hash_PyMemberDef"
 
 # Our own custom cross-checks
-xchecks.c:
+../xchecks.c:
     - item: defaults
       disable_xchecks: true
 
@@ -73,6 +73,7 @@ src/buffer.c:
     - item: defaults
       all_args: default
 
+src/bufprintf.c:
     - item: function
       name: bufprintf
       disable_xchecks: true
