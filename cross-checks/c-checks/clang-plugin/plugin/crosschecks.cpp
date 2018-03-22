@@ -164,7 +164,12 @@ private:
 
 struct HashFunction {
     HashFunctionName name;
+
+    // The original type of the hashed value, as passed to get_type_hash_function
     QualType orig_ty;
+
+    // The actual type of the main hash function argument "x",
+    // as it appears in the function declaration
     QualType actual_ty;
 
     HashFunction() = delete;
