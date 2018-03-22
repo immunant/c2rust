@@ -852,7 +852,7 @@ impl Translation {
                 let new_name = &self.type_converter.borrow_mut().resolve_decl_name(decl_id).unwrap();
 
                 let ty = self.convert_type(typ.ctype)?;
-                Ok(mk().type_item(new_name, ty))
+                Ok(mk().pub_().type_item(new_name, ty))
             },
 
             // Extern variable without intializer (definition elsewhere)
