@@ -103,6 +103,7 @@ elif [ "$1" == "rustcheck" ]; then
   rustc --crate-name=snudownrust --crate-type=staticlib -L $OUTPUT_DIR \
       --extern cross_check_derive=$XCHECK_DERIVE \
       --extern cross_check_runtime=$XCHECK_RUNTIME \
-      $C2RUST/examples/snudown/snudownrustxcheck.rs -o $OUTPUT_DIR/libsnudownrustxcheck.a
+      --cfg "feature=\"cross-check\"" \
+      $C2RUST/examples/snudown/snudownrust.rs -o $OUTPUT_DIR/libsnudownrustxcheck.a
 
 fi
