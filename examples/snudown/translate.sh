@@ -13,7 +13,10 @@ XCHECK_PLUGIN=$XCHECK_TOPDIR/rustc-plugin/target/debug/libcross_check_plugin.so
 XCHECK_DERIVE=$XCHECK_TOPDIR/derive-macros/target/debug/libcross_check_derive.so
 XCHECK_RUNTIME=$XCHECK_TOPDIR/runtime/target/debug/libcross_check_runtime.rlib
 
-OUTPUT_DIR=$SNUDOWN/translator-build
+# FIXME: this should be an absolute path, but rustc-plugin cannot handle
+# absolute paths for the external configuration
+#OUTPUT_DIR=$SNUDOWN/translator-build
+OUTPUT_DIR=translator-build
 
 # Stop on first error
 set -e
@@ -42,7 +45,7 @@ translate_xcheck() {
 
 compile_commands_entry() {
 
-        cat >> $SNUDOWN/compile_commands.json <<END
+        cat >> compile_commands.json <<END
 {
   "directory": "${SNUDOWN}",
   "command": "cc -o ${OUTPUT_DIR}/${1}.c.o -c ${SNUDOWN}/src/${1}.c -Wwrite-strings -D_FORTIFY_SOURCE=0 -DNDEBUG=1",
@@ -56,12 +59,12 @@ END
 `cd $SNUDOWN/src && gperf html_entities.gperf --output-file=html_entities.h`
 
 if [ "${1}" == "translate" ]; then
-  echo "[" > $SNUDOWN/compile_commands.json
+  echo "[" > compile_commands.json
   compile_commands_entry "autolink"
   compile_commands_entry "buffer"
   compile_commands_entry "stack"
   compile_commands_entry "markdown"
-  echo "]" >> $SNUDOWN/compile_commands.json
+  echo "]" >> compile_commands.json
 
   mkdir -p $OUTPUT_DIR
  
@@ -75,12 +78,12 @@ if [ "${1}" == "translate" ]; then
 
 elif [ "$1" == "rustcheck" ]; then
 
-  echo "[" > $SNUDOWN/compile_commands.json
+  echo "[" > compile_commands.json
   compile_commands_entry "autolink"
   compile_commands_entry "buffer"
   compile_commands_entry "stack"
   compile_commands_entry "markdown"
-  echo "]" >> $SNUDOWN/compile_commands.json
+  echo "]" >> compile_commands.json
 
   mkdir -p $OUTPUT_DIR
 
