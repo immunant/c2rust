@@ -91,7 +91,7 @@ def configure_and_build_llvm(args: str) -> None:
                      "-DCMAKE_CXX_FLAGS=-I{}/include".format(CBOR_PREFIX),
                      "-DCMAKE_EXE_LINKER_FLAGS=-L{}/lib".format(CBOR_PREFIX),
                      "-DCMAKE_BUILD_TYPE=" + build_type,
-                     "-DLLVM_ENABLE_ASSERTIONS={}".format(int(args.asserts)),
+                     "-DLLVM_ENABLE_ASSERTIONS=" + "1" if args.assertions else "0"
                      "-DLLVM_TARGETS_TO_BUILD=X86",
                      "-DBUILD_SHARED_LIBS=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
@@ -299,9 +299,9 @@ def _parse_args():
     parser.add_argument('--with-clang', default=False,
                         action='store_true', dest='with_clang',
                         help='build clang with this tool')
-    parser.add_argument('--with-no-asserts', default=True,
-                        action='store_false', dest='asserts',
-                        help='build the tool and clang with no assertions')
+    parser.add_argument('--without-assertions', default=True,
+                        action='store_false', dest='assertions',
+                        help='build the tool and clang without assertions')
     return parser.parse_args()
 
 
