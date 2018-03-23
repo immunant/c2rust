@@ -78,7 +78,7 @@ def transpile_files(cc_db: TextIO,
                     jobs: int,
                     filter: str = None,
                     import_only: bool = False,
-                    verbose: bool = False) -> None:
+                    verbose: bool = False) -> bool:
     """
     run the ast-extractor and ast-importer on all C files
     in a compile commands database.
@@ -89,7 +89,7 @@ def transpile_files(cc_db: TextIO,
     cc_db = json.load(cc_db)
 
     if filter:  # skip commands not matching file filter
-        cc_db = [c for c in cc_db if filter in f['file']]
+        cc_db = [c for c in cc_db if filter in c['file']]
 
     ensure_code_compiled_with_clang(cc_db)
     include_dirs = get_system_include_dirs()
@@ -115,28 +115,40 @@ def transpile_files(cc_db: TextIO,
             file_basename = os.path.basename(cmd['file'])
             cbor_basename = os.path.basename(cbor_file)
             logging.info(" importing ast from %s", cbor_basename)
+            translation_cmd = "RUST_BACKTRACE=1 \\\n"
+            translation_cmd += "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
+            translation_cmd += str(ast_impo[cbor_file])
+            logging.debug("translation command:\n %s", translation_cmd)
             try:
                 retcode, stdout, stderr = ast_impo[cbor_file].run()
                 return (file_basename, retcode, stdout, stderr)
             except pb.ProcessExecutionError as pee:
                 return (file_basename, pee.retcode, pee.stdout, pee.stderr)
 
-    results = (transpile_single(cmd) for cmd in cc_db)
+    commands = sorted(cc_db, key=lambda cmd: os.path.basename(cmd['file']))
+    results = (transpile_single(cmd) for cmd in commands)
 
-    success = True
+    successes, failures = 0, 0
     for (fname, retcode, stdout, stderr) in results:
         file_basename = os.path.basename(fname)
         if not retcode:
-            logging.info(" import successful")
+            successes += 1
+            print(OKGREEN + " import successful" + NO_COLOUR)
+            logging.debug(" import successful")
         else:  # non-zero retcode
-            success = False
+            failures += 1
             if verbose:
-                logging.warning(" import failed")
+                print(FAIL + " import failed" + NO_COLOUR)
+                logging.debug(" import failed")
                 logging.warning(stderr)
             else:
-                logging.warning(" import failed (error in log)")
+                print(FAIL + " import failed (error in log)" + NO_COLOUR)
+                logging.debug(" import failed")
                 logging.debug(stderr)
-    return success
+    print("translations: " + str(successes + failures))
+    print("successes...: " + str(successes))
+    print("failures....: " + str(failures))
+    return failures == 0
 
 
 def parse_args() -> argparse.Namespace:

@@ -1300,6 +1300,12 @@ impl Builder {
         Self::foreign_item(name, self.attrs, self.vis, ForeignItemKind::Static(ty, is_mut))
     }
 
+    pub fn foreign_ty<I>(self, name: I) -> ForeignItem
+        where I: Make<Ident> {
+        let name = name.make(&self);
+        Self::foreign_item(name, self.attrs, self.vis, ForeignItemKind::Ty)
+    }
+
 
     // Misc nodes
 

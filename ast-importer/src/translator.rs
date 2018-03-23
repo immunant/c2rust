@@ -20,6 +20,7 @@ use cfg;
 
 pub struct Translation {
     pub items: Vec<P<Item>>,
+    pub foreign_items: Vec<ForeignItem>,
     type_converter: RefCell<TypeConverter>,
     pub ast_context: TypedAstContext,
     renamer: RefCell<Renamer<CDeclId>>,
@@ -124,6 +125,13 @@ fn pointer_neg_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
 
 fn pointer_neg_offset_isize(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
     mk().method_call_expr(ptr, "offset", vec![mk().unary_expr(ast::UnOp::Neg, offset)])
+}
+
+/// Given an expression with type Option<fn(...)->...>, unwrap
+/// the Option and return the function.
+fn unwrap_function_pointer(ptr: P<Expr>) -> P<Expr> {
+    let err_msg = mk().lit_expr(mk().str_lit("non-null function pointer"));
+    mk().method_call_expr(ptr, "expect", vec![err_msg])
 }
 
 /// Construct a new constant null pointer expression
@@ -323,7 +331,8 @@ pub fn translate(
         };
         if needs_export {
             match t.convert_decl(true, decl_id) {
-                Ok(item) => t.items.push(item),
+                Ok(ConvertedDecl::Item(item)) => t.items.push(item),
+                Ok(ConvertedDecl::ForeignItem(item)) => t.foreign_items.push(item),
                 Err(e) => {
                     let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
                     eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
@@ -341,7 +350,8 @@ pub fn translate(
         };
         if needs_export {
             match t.convert_decl(true, *top_id) {
-                Ok(item) => t.items.push(item),
+                Ok(ConvertedDecl::Item(item)) => t.items.push(item),
+                Ok(ConvertedDecl::ForeignItem(item)) => t.foreign_items.push(item),
                 Err(e) => {
                     let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
                     eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
@@ -361,7 +371,7 @@ pub fn translate(
     to_string(|s| {
 
         let mut features =
-            vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut"]),
+            vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut", "extern_types"]),
                  ("allow"  ,vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
                                  "dead_code", "mutable_transmutes"]),
             ];
@@ -415,6 +425,8 @@ pub fn translate(
                               .extern_crate_item("cross_check_runtime", None))?;
         }
 
+        s.print_item(&mk().abi(Abi::C).foreign_items(t.foreign_items))?;
+
         // Add the items accumulated
         for x in t.items.iter() {
             s.print_item(x)?;
@@ -457,6 +469,11 @@ pub enum ExprUse {
     RValue,
 }
 
+enum ConvertedDecl {
+    ForeignItem(ForeignItem),
+    Item(P<Item>),
+}
+
 impl Translation {
     pub fn new(
         ast_context: TypedAstContext,
@@ -468,6 +485,7 @@ impl Translation {
     ) -> Translation {
         Translation {
             items: vec![],
+            foreign_items: vec![],
             type_converter: RefCell::new(TypeConverter::new()),
             ast_context,
             renamer: RefCell::new(Renamer::new(&[
@@ -728,11 +746,19 @@ impl Translation {
         }
     }
 
-    fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> Result<P<Item>, String> {
+    fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> Result<ConvertedDecl, String> {
         match self.ast_context.c_decls.get(&decl_id)
             .ok_or_else(|| format!("Missing decl {:?}", decl_id))?
             .kind {
-            CDeclKind::Struct { ref fields, .. } => {
+            CDeclKind::Struct { fields: None, .. } |
+            CDeclKind::Union { fields: None, .. } |
+            CDeclKind::Enum { integral_type: None, .. } => {
+                let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+                let extern_item = mk().foreign_ty(name);
+                Ok(ConvertedDecl::ForeignItem(extern_item))
+            }
+
+            CDeclKind::Struct { fields: Some(ref fields), .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 // Gather up all the field names and field types
@@ -748,13 +774,13 @@ impl Translation {
                     }
                 }
 
-                Ok(self.mk_cross_check(mk().pub_(), vec!["none"])
+                Ok(ConvertedDecl::Item(self.mk_cross_check(mk().pub_(), vec!["none"])
                     .call_attr("derive", vec!["Copy", "Clone"])
                     .call_attr("repr", vec!["C"])
-                    .struct_item(name, field_entries))
+                    .struct_item(name, field_entries)))
             }
 
-            CDeclKind::Union { ref fields, .. } => {
+            CDeclKind::Union { fields: Some(ref fields), .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 let mut field_syns = vec![];
@@ -772,15 +798,15 @@ impl Translation {
 
                 if field_syns.is_empty() {
                     // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
-                    Ok(self.mk_cross_check(mk().pub_(), vec!["none"])
+                    Ok(ConvertedDecl::Item(self.mk_cross_check(mk().pub_(), vec!["none"])
                         .call_attr("derive", vec!["Copy", "Clone"])
                         .call_attr("repr", vec!["C"])
-                        .struct_item(name, vec![]))
+                        .struct_item(name, vec![])))
                 } else {
-                    Ok(self.mk_cross_check(mk().pub_(), vec!["none"])
+                    Ok(ConvertedDecl::Item(self.mk_cross_check(mk().pub_(), vec!["none"])
                         .call_attr("derive", vec!["Copy", "Clone"])
                         .call_attr("repr", vec!["C"])
-                        .union_item(name, field_syns))
+                        .union_item(name, field_syns)))
                 }
             }
 
@@ -816,10 +842,10 @@ impl Translation {
                     }
                 }
 
-                Ok(self.mk_cross_check(mk().pub_(), vec!["none"])
+                Ok(ConvertedDecl::Item(self.mk_cross_check(mk().pub_(), vec!["none"])
                     .call_attr("derive", vec!["Copy", "Clone"])
                     .call_attr("repr", vec!["C"])
-                    .enum_item(enum_name, variant_syns))
+                    .enum_item(enum_name, variant_syns)))
             },
 
             CDeclKind::EnumConstant { .. } => Err(format!("Enum variants should be handled inside enums")),
@@ -852,7 +878,7 @@ impl Translation {
                 let new_name = &self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 let ty = self.convert_type(typ.ctype)?;
-                Ok(mk().pub_().type_item(new_name, ty))
+                Ok(ConvertedDecl::Item(mk().pub_().type_item(new_name, ty)))
             },
 
             // Extern variable without intializer (definition elsewhere)
@@ -867,8 +893,7 @@ impl Translation {
                     .set_mutbl(mutbl)
                     .foreign_static(new_name, ty);
 
-                Ok(mk().abi(Abi::C)
-                    .foreign_items(vec![extern_item]))
+                Ok(ConvertedDecl::ForeignItem(extern_item))
             }
 
             // Extern variable with initializer (definition here)
@@ -882,11 +907,11 @@ impl Translation {
 
                 // Force mutability due to the potential for raw pointers occuring in the type
 
-                Ok(mk_linkage(false, new_name, ident)
+                Ok(ConvertedDecl::Item(mk_linkage(false, new_name, ident)
                     .vis(Visibility::Public)
                     .abi(Abi::C)
                     .mutbl()
-                    .static_item(new_name, ty, init))
+                    .static_item(new_name, ty, init)))
             }
 
             // Static variable (definition here)
@@ -897,8 +922,8 @@ impl Translation {
                 let init = init?.to_expr();
 
                 // Force mutability due to the potential for raw pointers occurring in the type
-                Ok(mk().mutbl()
-                    .static_item(new_name, ty, init))
+                Ok(ConvertedDecl::Item(mk().mutbl()
+                    .static_item(new_name, ty, init)))
             }
 
             CDeclKind::Variable { .. } => Err(format!("This should be handled in 'convert_decl_stmt'")),
@@ -918,7 +943,7 @@ impl Translation {
         arguments: &[(CDeclId, String, CQualTypeId)],
         return_type: CQualTypeId,
         body: Option<CStmtId>,
-    ) -> Result<P<Item>, String> {
+    ) -> Result<ConvertedDecl, String> {
         self.with_scope(|| {
             let mut args: Vec<Arg> = vec![];
 
@@ -976,15 +1001,14 @@ impl Translation {
                     mk().abi(Abi::C)
                 };
 
-                Ok(mk_.unsafe_().fn_item(new_name, decl, block))
+                Ok(ConvertedDecl::Item(mk_.unsafe_().fn_item(new_name, decl, block)))
             } else {
                 // Translating an extern function declaration
 
                 let function_decl = mk_linkage(true, new_name, name)
                     .foreign_fn(new_name, decl);
 
-                Ok(mk().abi(Abi::C)
-                    .foreign_items(vec![function_decl]))
+                Ok(ConvertedDecl::ForeignItem(function_decl))
             }
         })
     }
@@ -1328,7 +1352,11 @@ impl Translation {
                         vec![],
                     ))
                 } else {
-                    let item = self.convert_decl(false, decl_id)?;
+                    let item = match self.convert_decl(false, decl_id)? {
+                        ConvertedDecl::Item(item) => item,
+                        ConvertedDecl::ForeignItem(item) => mk().abi(Abi::C).foreign_items(vec![item]),
+                    };
+
                     Ok(cfg::DeclStmtInfo::new(
                         vec![mk().item_stmt(item.clone())],
                         vec![],
@@ -1634,6 +1662,7 @@ impl Translation {
                 Ok(WithStmts::new(val))
             }
 
+            CExprKind::OffsetOf(ty, val) |
             CExprKind::Literal(ty, CLiteral::Integer(val)) => {
                 let intty = match &self.ast_context.resolve_type(ty.ctype).kind {
                     &CTypeKind::Int => LitIntType::Signed(IntTy::I32),
@@ -1903,10 +1932,9 @@ impl Translation {
                 let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _) =>
                         self.convert_expr(ExprUse::RValue, fexp, false)?,
-                    _ => {
+                    _ =>
                         self.convert_expr(ExprUse::RValue, func, false)?.map(|x|
-                            mk().method_call_expr(x, "unwrap", vec![] as Vec<P<Expr>>))
-                    }
+                            unwrap_function_pointer(x)),
                 };
 
                 let mut args_new: Vec<P<Expr>> = vec![];
@@ -2206,6 +2234,7 @@ impl Translation {
             _ => panic!("{:?} does not point to an `enum` declaration")
         };
 
+        let underlying_type_id = underlying_type_id.expect("Attempt to construct value of forward declared enum");
         let underlying_type = self.convert_type(underlying_type_id.ctype).unwrap();
 
         for &variant_id in variants {
@@ -2327,6 +2356,11 @@ impl Translation {
             &CDeclKind::Struct { ref fields, .. } => {
                 let mut fieldnames = vec![];
 
+                let fields = match fields {
+                    &Some(ref fields) => fields,
+                    &None => return Err(format!("Attempted to construct forward-declared struct")),
+                };
+
                 for &x in fields {
                     let name = self.type_converter.borrow().resolve_field_name(Some(struct_id), x).unwrap();
                     if let &CDeclKind::Field { typ, .. } = &self.ast_context.index(x).kind {
@@ -2424,6 +2458,12 @@ impl Translation {
             // Zero initialize all of the fields
             &CDeclKind::Struct { ref fields, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+
+                let fields = match *fields {
+                    Some(ref fields) => fields,
+                    None => return Err(format!("Attempted to zero-initialize forward-declared struct")),
+                };
+
                 let fields: Result<Vec<Field>, String> = fields
                     .into_iter()
                     .map(|field_id: &CFieldId| -> Result<Field, String> {
@@ -2445,6 +2485,12 @@ impl Translation {
             // Zero initialize the first field
             &CDeclKind::Union { ref fields, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+
+                let fields = match *fields {
+                    Some(ref fields) => fields,
+                    None => return Err(format!("Attempted to zero-initialize forward-declared struct")),
+                };
+
                 let &field_id = fields.first().ok_or(format!("A union should have a field"))?;
 
                 let field = match &self.ast_context.index(field_id).kind {
@@ -2681,7 +2727,9 @@ impl Translation {
             c_ast::UnOp::Deref => {
                 self.convert_expr(ExprUse::RValue, arg, false)?.result_map(|val: P<Expr>| {
 
-                    if let Some(_vla) = self.compute_size_of_expr(ctype) {
+                    if let CTypeKind::Function(..) = self.ast_context.resolve_type(ctype).kind {
+                        Ok(unwrap_function_pointer(val))
+                    } else if let Some(_vla) = self.compute_size_of_expr(ctype) {
                         Ok(val)
                     } else {
                         let mut val = mk().unary_expr(ast::UnOp::Deref, val);

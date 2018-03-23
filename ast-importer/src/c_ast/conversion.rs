@@ -784,6 +784,17 @@ impl ConversionContext {
                     self.visit_node_type(wrapped, expected_ty);
                 }
 
+                ASTEntryTag::TagOffsetOfExpr if expected_ty & (EXPR | STMT) != 0 => {
+                    let value = expect_u64(&node.extras[0]).expect("Expected offset value");
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    let offset_of = CExprKind::OffsetOf(ty, value);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, offset_of);
+                }
+
                 ASTEntryTag::TagIntegerLiteral if expected_ty & (EXPR | STMT) != 0 => {
                     let value = expect_u64(&node.extras[0]).expect("Expected integer literal value");
 
@@ -1171,8 +1182,7 @@ impl ConversionContext {
                         })
                         .collect();
 
-                    let integral_type_id = node.type_id.expect("Enum declaration should have underlying type id");
-                    let integral_type = self.visit_qualified_type(integral_type_id);
+                    let integral_type = node.type_id.map(|x| self.visit_qualified_type(x));
 
                     let enum_decl = CDeclKind::Enum { name, variants, integral_type };
 
@@ -1212,17 +1222,21 @@ impl ConversionContext {
 
                 ASTEntryTag::TagStructDecl if expected_ty & RECORD_DECL != 0 => {
                     let name = expect_opt_str(&node.extras[0]).unwrap().map(str::to_string);
-                    let fields: Vec<CDeclId> = node.children
-                        .iter()
-                        .map(|id| {
-                            let field = id.expect("Record field decl not found");
-                            CDeclId(self.visit_node_type(field, FIELD_DECL))
-                        })
-                        .collect();
-
-                    for &field in &fields {
-                        self.typed_context.field_parents.insert(field, CDeclId(new_id));
-                    }
+                    let has_def = expect_bool(&node.extras[1]).expect("Expected has_def flag on struct");
+                    let fields: Option<Vec<CDeclId>> =
+                    if has_def {
+                        Some(node.children
+                            .iter()
+                            .map(|id| {
+                                let field = id.expect("Record field decl not found");
+                                let id = CDeclId(self.visit_node_type(field, FIELD_DECL));
+                                self.typed_context.field_parents.insert(id, CDeclId(new_id));
+                                id
+                            })
+                            .collect())
+                    } else {
+                        None
+                    };
 
                     let record = CDeclKind::Struct { name, fields };
 
@@ -1232,17 +1246,21 @@ impl ConversionContext {
 
                 ASTEntryTag::TagUnionDecl if expected_ty & RECORD_DECL != 0 => {
                     let name = expect_opt_str(&node.extras[0]).unwrap().map(str::to_string);
-                    let fields: Vec<CDeclId> = node.children
-                        .iter()
-                        .map(|id| {
-                            let field = id.expect("Record field decl not found");
-                            CDeclId(self.visit_node_type(field, FIELD_DECL))
-                        })
-                        .collect();
-
-                    for &field in &fields {
-                        self.typed_context.field_parents.insert(field, CDeclId(new_id));
-                    }
+                    let has_def = expect_bool(&node.extras[1]).expect("Expected has_def flag on struct");
+                    let fields: Option<Vec<CDeclId>> =
+                        if has_def {
+                            Some(node.children
+                                .iter()
+                                .map(|id| {
+                                    let field = id.expect("Record field decl not found");
+                                    let id = CDeclId(self.visit_node_type(field, FIELD_DECL));
+                                    self.typed_context.field_parents.insert(id, CDeclId(new_id));
+                                    id
+                                })
+                                .collect())
+                        } else {
+                            None
+                        };
 
                     let record = CDeclKind::Union { name, fields };
 
