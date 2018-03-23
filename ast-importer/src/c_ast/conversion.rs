@@ -784,6 +784,17 @@ impl ConversionContext {
                     self.visit_node_type(wrapped, expected_ty);
                 }
 
+                ASTEntryTag::TagOffsetOfExpr if expected_ty & (EXPR | STMT) != 0 => {
+                    let value = expect_u64(&node.extras[0]).expect("Expected offset value");
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    let offset_of = CExprKind::OffsetOf(ty, value);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, offset_of);
+                }
+
                 ASTEntryTag::TagIntegerLiteral if expected_ty & (EXPR | STMT) != 0 => {
                     let value = expect_u64(&node.extras[0]).expect("Expected integer literal value");
 
@@ -1170,7 +1181,7 @@ impl ConversionContext {
                             CDeclId(self.visit_node_type(con, ENUM_CON))
                         })
                         .collect();
-                    
+
                     let integral_type = node.type_id.map(|x| self.visit_qualified_type(x));
 
                     let enum_decl = CDeclKind::Enum { name, variants, integral_type };

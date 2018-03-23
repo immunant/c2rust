@@ -84,6 +84,7 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b" ")?;
                 Ok(())
             }
+            Some(&CExprKind::OffsetOf(_, val)) => self.writer.write_fmt(format_args!("{}", val)),
             Some(&CExprKind::Literal(_, ref lit)) => self.print_lit(&lit, context),
             Some(&CExprKind::Unary(_, op, rhs)) => {
                 if op.is_prefix() {

@@ -1662,6 +1662,7 @@ impl Translation {
                 Ok(WithStmts::new(val))
             }
 
+            CExprKind::OffsetOf(ty, val) |
             CExprKind::Literal(ty, CLiteral::Integer(val)) => {
                 let intty = match &self.ast_context.resolve_type(ty.ctype).kind {
                     &CTypeKind::Int => LitIntType::Signed(IntTy::I32),
