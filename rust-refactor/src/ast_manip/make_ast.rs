@@ -485,12 +485,20 @@ impl Builder {
 
     pub fn binary_expr<O, E>(self, op: O, lhs: E, rhs: E) -> P<Expr>
         where O: Make<BinOpKind>, E: Make<P<Expr>> {
-        let op = mk().spanned(op.make(&self));
-        let lhs = lhs.make(&self);
+        let op = op.make(&self);
+        let op_ = mk().spanned(op);
+        let mut lhs = lhs.make(&self);
         let rhs = rhs.make(&self);
+
+        match op {
+            BinOpKind::Lt | BinOpKind::Shl if has_rightmost_cast(&*lhs) =>
+            lhs = mk().paren_expr(lhs),
+            _ => {}
+        }
+
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Binary(op, lhs, rhs),
+            node: ExprKind::Binary(op_, lhs, rhs),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })
@@ -1447,4 +1455,16 @@ impl Builder {
 
 pub fn mk() -> Builder {
     Builder::new()
+}
+
+/// Detect a cast that would create a syntax error when it was the left
+/// argument to a less-than operator. This is a work-around for an upstream
+/// libsyntax bug.
+fn has_rightmost_cast(expr: &Expr) -> bool {
+    match &expr.node {
+        &ExprKind::Cast(..) => true,
+        &ExprKind::Unary(_,ref arg) => has_rightmost_cast(&**arg),
+        &ExprKind::Binary(_,_,ref rhs) => has_rightmost_cast(&**rhs),
+        _ => false,
+    }
 }
