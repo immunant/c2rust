@@ -125,22 +125,30 @@ def transpile_files(cc_db: TextIO,
             except pb.ProcessExecutionError as pee:
                 return (file_basename, pee.retcode, pee.stdout, pee.stderr)
 
-    results = (transpile_single(cmd) for cmd in cc_db)
+    commands = sorted(cc_db, key=lambda cmd: os.path.basename(cmd['file']))
+    results = (transpile_single(cmd) for cmd in commands)
 
-    success = True
+    successes, failures = 0, 0
     for (fname, retcode, stdout, stderr) in results:
         file_basename = os.path.basename(fname)
         if not retcode:
-            logging.info(" import successful")
+            successes += 1
+            print(OKGREEN + " import successful" + NO_COLOUR)
+            logging.debug(" import successful")
         else:  # non-zero retcode
-            success = False
+            failures += 1
             if verbose:
-                logging.warning(" import failed")
+                print(FAIL + " import failed" + NO_COLOUR)
+                logging.debug(" import failed")
                 logging.warning(stderr)
             else:
-                logging.warning(" import failed (error in log)")
+                print(FAIL + " import failed (error in log)" + NO_COLOUR)
+                logging.debug(" import failed")
                 logging.debug(stderr)
-    return success
+    print("translations: " + str(successes + failures))
+    print("successes...: " + str(successes))
+    print("failures....: " + str(failures))
+    return failures == 0
 
 
 def parse_args() -> argparse.Namespace:
