@@ -88,6 +88,7 @@ impl TypedAstContext {
             CExprKind::Call(_, _, _) => false,
             CExprKind::Literal(_, _) => true,
             CExprKind::DeclRef(_, _) => true,
+            CExprKind::OffsetOf(..) => true,
 
             CExprKind::ImplicitCast(_, e, _, _) => self.is_expr_pure(e),
             CExprKind::ExplicitCast(_, e, _, _) => self.is_expr_pure(e),
@@ -274,6 +275,9 @@ pub enum CExprKind {
     // Unary type operator.
     UnaryType(CQualTypeId, UnTypeOp, Option<CExprId>, CQualTypeId),
 
+    // Offsetof expression.
+    OffsetOf(CQualTypeId, u64),
+
     // Binary operator
     Binary(CQualTypeId, BinOp, CExprId, CExprId, Option<CQualTypeId>, Option<CQualTypeId>),
 
@@ -325,6 +329,7 @@ impl CExprKind {
     pub fn get_qual_type(&self) -> CQualTypeId {
         match *self {
             CExprKind::Literal(ty, _) => ty,
+            CExprKind::OffsetOf(ty, _) => ty,
             CExprKind::Unary(ty, _, _) => ty,
             CExprKind::UnaryType(ty, _, _, _) => ty,
             CExprKind::Binary(ty, _, _, _, _, _) => ty,

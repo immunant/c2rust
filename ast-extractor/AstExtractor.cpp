@@ -621,6 +621,22 @@ class TranslateASTVisitor final
           return true;
       }
       
+      bool VisitOffsetOfExpr(OffsetOfExpr *E) {
+          std::vector<void*> childIds;
+
+          encode_entry(E, TagOffsetOfExpr, childIds, [E,this](CborEncoder *extras){
+              APSInt value;
+              bool is_contant = E->isIntegerConstantExpr(value, *this->Context);
+              
+              if (is_contant) {
+                  cbor_encode_uint(extras, value.getZExtValue());
+              } else {
+                  cbor_encode_null(extras);
+              }
+          });
+          return true;
+      }
+      
       bool VisitParenExpr(ParenExpr *E) {
           std::vector<void*> childIds { E->getSubExpr() };
           encode_entry(E, TagParenExpr, childIds);

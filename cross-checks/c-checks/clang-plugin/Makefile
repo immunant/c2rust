@@ -8,13 +8,7 @@ RUNTIME_PATH := $(shell find . -name libruntime.a)
 #PLUGIN_CC := clang
 PLUGIN_CC := $(realpath ../../../dependencies/llvm-6.0.0/build.$(shell uname -n)/bin/clang)
 
-PLUGIN_CC_ARGS := -Wno-unknown-attributes
-PLUGIN_CC_ARGS += -Xclang -load
-PLUGIN_CC_ARGS += -Xclang $(PLUGIN_PATH)
-PLUGIN_CC_ARGS += -Xclang -add-plugin
-PLUGIN_CC_ARGS += -Xclang crosschecks
-PLUGIN_CC_ARGS += -Xclang -plugin-arg-crosschecks
-PLUGIN_CC_ARGS += -Xclang -Ctest.c2r
+PLUGIN_CC_ARGS := -Xclang -plugin-arg-crosschecks -Xclang -Ctest.c2r
 
 ifneq ($(filter yes true,$(DUMP_AST)),)
 PLUGIN_CC_ARGS += -Xclang -ast-dump
@@ -34,6 +28,6 @@ clean:
 
 test: test.c
 	@echo Building test...
-	$(PLUGIN_CC) $(PLUGIN_CC_ARGS) -ffunction-sections -fuse-ld=gold -Wl,--gc-sections,--icf=safe,-rpath,$(FAKECHECKS_PATH) -L$(FAKECHECKS_PATH) -lfakechecks -std=c11 $(TEST_CFLAGS) -o test $< $(RUNTIME_PATH)
+	./cc_wrapper.sh $(PLUGIN_CC) $(PLUGIN_PATH) $(PLUGIN_CC_ARGS) -ffunction-sections -fuse-ld=gold -Wl,--gc-sections,--icf=safe,-rpath,$(FAKECHECKS_PATH) -L$(FAKECHECKS_PATH) -lfakechecks -std=c11 $(TEST_CFLAGS) -o test $< $(RUNTIME_PATH)
 	@echo Running test...
 	./test
