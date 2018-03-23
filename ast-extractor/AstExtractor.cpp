@@ -932,13 +932,14 @@ class TranslateASTVisitor final
           auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;
           
           encode_entry(D, tag, childIds, QualType(),
-          [D](CborEncoder *local){
+          [D,def](CborEncoder *local){
               auto name = D->getNameAsString();
               if (name.empty()) {
                   cbor_encode_null(local);
               } else {
                   cbor_encode_string(local, name);
               }
+              cbor_encode_boolean(local, !!def);
           });
           
           return true;
@@ -1002,6 +1003,7 @@ class TranslateASTVisitor final
                              [D, this](CborEncoder *array) {
                                  auto name = D->getNameAsString();
                                  cbor_encode_string(array, name);
+                                 
                                  if (D->isBitField()) {
                                      cbor_encode_uint(array, D->getBitWidthValue(*this->Context));
                                  } else {

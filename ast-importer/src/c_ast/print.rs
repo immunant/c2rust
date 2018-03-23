@@ -507,16 +507,16 @@ impl<W: Write> Printer<W> {
                 Ok(())
             }
 
-            Some(&CDeclKind::Struct { ref name, ref fields }) => {
+            Some(&CDeclKind::Struct { ref name, ref fields, .. }) => {
                 self.writer.write_all(b"struct ")?;
                 match name {
                     &Some(ref n) => self.writer.write_fmt(format_args!("{} {{", n))?,
                     &None => self.writer.write_all(b"{\n")?,
                 }
                 self.indent();
-                for field in fields {
+                for &field in fields.as_ref().unwrap_or(&vec![]) {
                     self.pad()?;
-                    self.print_decl(*field, true, true,context)?;
+                    self.print_decl(field, true, true,context)?;
                 }
                 self.indent();
                 self.pad()?;
@@ -528,16 +528,16 @@ impl<W: Write> Printer<W> {
                 Ok(())
             },
 
-            Some(&CDeclKind::Union { ref name, ref fields }) => {
+            Some(&CDeclKind::Union { ref name, ref fields, .. }) => {
                 self.writer.write_all(b"union ")?;
                 match name {
                     &Some(ref n) => self.writer.write_fmt(format_args!("{} {{", n))?,
                     &None => self.writer.write_all(b"{\n")?,
                 }
                 self.indent();
-                for field in fields {
+                for &field in fields.as_ref().unwrap_or(&vec![]) {
                     self.pad()?;
-                    self.print_decl(*field, true, true,context)?;
+                    self.print_decl(field, true, true,context)?;
                 }
                 self.indent();
                 self.pad()?;

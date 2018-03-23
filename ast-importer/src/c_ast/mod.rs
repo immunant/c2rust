@@ -207,7 +207,7 @@ pub enum CDeclKind {
     Enum {
         name: Option<String>,
         variants: Vec<CEnumConstantId>,
-        integral_type: CQualTypeId,
+        integral_type: Option<CQualTypeId>,
     },
 
     EnumConstant {
@@ -224,13 +224,13 @@ pub enum CDeclKind {
     // Struct
     Struct {
         name: Option<String>,
-        fields: Vec<CFieldId>,
+        fields: Option<Vec<CFieldId>>,
     },
 
     // Union
     Union {
         name: Option<String>,
-        fields: Vec<CFieldId>,
+        fields: Option<Vec<CFieldId>>,
     },
 
     // Field

@@ -368,7 +368,7 @@ pub fn translate(
     to_string(|s| {
 
         let mut features =
-            vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut"]),
+            vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut", "extern_types"]),
                  ("allow"  ,vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
                                  "dead_code", "mutable_transmutes"]),
             ];
@@ -739,7 +739,15 @@ impl Translation {
         match self.ast_context.c_decls.get(&decl_id)
             .ok_or_else(|| format!("Missing decl {:?}", decl_id))?
             .kind {
-            CDeclKind::Struct { ref fields, .. } => {
+            CDeclKind::Struct { fields: None, .. } |
+            CDeclKind::Union { fields: None, .. } |
+            CDeclKind::Enum { integral_type: None, .. } => {
+                let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+                let extern_item = mk().foreign_ty(name);
+                Ok(mk().abi(Abi::C).foreign_items(vec![extern_item]))
+            }
+
+            CDeclKind::Struct { fields: Some(ref fields), .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 // Gather up all the field names and field types
@@ -761,7 +769,7 @@ impl Translation {
                     .struct_item(name, field_entries))
             }
 
-            CDeclKind::Union { ref fields, .. } => {
+            CDeclKind::Union { fields: Some(ref fields), .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 let mut field_syns = vec![];
@@ -2212,6 +2220,7 @@ impl Translation {
             _ => panic!("{:?} does not point to an `enum` declaration")
         };
 
+        let underlying_type_id = underlying_type_id.expect("Attempt to construct value of forward declared enum");
         let underlying_type = self.convert_type(underlying_type_id.ctype).unwrap();
 
         for &variant_id in variants {
@@ -2333,6 +2342,11 @@ impl Translation {
             &CDeclKind::Struct { ref fields, .. } => {
                 let mut fieldnames = vec![];
 
+                let fields = match fields {
+                    &Some(ref fields) => fields,
+                    &None => return Err(format!("Attempted to construct forward-declared struct")),
+                };
+
                 for &x in fields {
                     let name = self.type_converter.borrow().resolve_field_name(Some(struct_id), x).unwrap();
                     if let &CDeclKind::Field { typ, .. } = &self.ast_context.index(x).kind {
@@ -2430,6 +2444,12 @@ impl Translation {
             // Zero initialize all of the fields
             &CDeclKind::Struct { ref fields, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+
+                let fields = match *fields {
+                    Some(ref fields) => fields,
+                    None => return Err(format!("Attempted to zero-initialize forward-declared struct")),
+                };
+
                 let fields: Result<Vec<Field>, String> = fields
                     .into_iter()
                     .map(|field_id: &CFieldId| -> Result<Field, String> {
@@ -2451,6 +2471,12 @@ impl Translation {
             // Zero initialize the first field
             &CDeclKind::Union { ref fields, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+
+                let fields = match *fields {
+                    Some(ref fields) => fields,
+                    None => return Err(format!("Attempted to zero-initialize forward-declared struct")),
+                };
+
                 let &field_id = fields.first().ok_or(format!("A union should have a field"))?;
 
                 let field = match &self.ast_context.index(field_id).kind {
