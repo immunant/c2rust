@@ -85,7 +85,7 @@ src/buffer.h:
       fields:
         data: disabled # FIXME: hash up to buf.size bytes
 
-src/html_entities.gperf:
+html_entities.gperf:
     - item: defaults
       all_args: default
 

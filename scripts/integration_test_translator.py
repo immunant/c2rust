@@ -100,18 +100,20 @@ def test_hello_world(_: argparse.Namespace) -> None:
 
 
 def test_json_c(args: argparse.Namespace) -> bool:
-    with pb.local.cwd(DEPS_DIR):
-        download_archive(JSON_C_URL, JSON_C_ARCHIVE)
-        invoke_quietly(TAR, "xf", JSON_C_ARCHIVE)
+    if not os.path.isfile(os.path.join(DEPS_DIR, JSON_C_ARCHIVE)):
+        with pb.local.cwd(DEPS_DIR):
+            download_archive(JSON_C_URL, JSON_C_ARCHIVE)
+            invoke_quietly(TAR, "xf", JSON_C_ARCHIVE)
 
     cc_db_file = os.path.join(JSON_C_SRC, CC_DB_JSON)
-    if not os.path.isfile(cc_db_file):
-        with pb.local.cwd(JSON_C_SRC), pb.local.env(CC="clang"):
-            if os.path.isfile('Makefile'):
-                invoke(MAKE['clean'])
-            configure = pb.local.get("./configure")
-            invoke(configure)
-            invoke(BEAR[MAKE[JOBS]])
+    # unconditionally compile json-c since we don't know if
+    # cc_db was generated from the environment we're in.
+    with pb.local.cwd(JSON_C_SRC), pb.local.env(CC="clang"):
+        if os.path.isfile('Makefile'):
+            invoke(MAKE['clean'])
+        configure = pb.local.get("./configure")
+        invoke(configure)
+        invoke(BEAR[MAKE[JOBS]])
 
     if not os.path.isfile(cc_db_file):
         die("missing " + cc_db_file, errno.ENOENT)
@@ -126,9 +128,11 @@ def test_lua(args: argparse.Namespace) -> bool:
     a compiler command database, and use it to
     drive the transpiler.
     """
-    with pb.local.cwd(DEPS_DIR):
-        download_archive(LUA_URL, LUA_ARCHIVE)
-        invoke_quietly(TAR, "xf", LUA_ARCHIVE)
+
+    if not os.path.isfile(os.path.join(DEPS_DIR, LUA_ARCHIVE)):
+        with pb.local.cwd(DEPS_DIR):
+            download_archive(LUA_URL, LUA_ARCHIVE)
+            invoke_quietly(TAR, "xf", LUA_ARCHIVE)
 
     # edit $LUA_SRC/src/Makefile to change CC
     expr = 's/^CC=/CC?=/g'
@@ -136,10 +140,12 @@ def test_lua(args: argparse.Namespace) -> bool:
     SED('--in-place', '-e', expr, makefile)
 
     cc_db_file = os.path.join(LUA_SRC, CC_DB_JSON)
-    if not os.path.isfile(cc_db_file):
-        with pb.local.cwd(LUA_SRC), pb.local.env(CC="clang"):
-            invoke(MAKE['clean'])
-            invoke(BEAR[MAKE["linux", JOBS]])
+
+    # unconditionally compile lua since we don't know if
+    # cc_db was generated from the environment we're in.
+    with pb.local.cwd(LUA_SRC), pb.local.env(CC="clang"):
+        invoke(MAKE['clean'])
+        invoke(BEAR[MAKE["linux", JOBS]])
 
     if not os.path.isfile(cc_db_file):
         die("missing " + cc_db_file, errno.ENOENT)
@@ -149,17 +155,20 @@ def test_lua(args: argparse.Namespace) -> bool:
 
 
 def test_ruby(args: argparse.Namespace) -> bool:
-    with pb.local.cwd(DEPS_DIR):
-        download_archive(RUBY_URL, RUBY_ARCHIVE)
-        invoke_quietly(TAR, "xf", RUBY_ARCHIVE)
+    if not os.path.isfile(os.path.join(DEPS_DIR, RUBY_ARCHIVE)):
+        with pb.local.cwd(DEPS_DIR):
+            download_archive(RUBY_URL, RUBY_ARCHIVE)
+            invoke_quietly(TAR, "xf", RUBY_ARCHIVE)
 
     cc_db_file = os.path.join(RUBY_SRC, CC_DB_JSON)
-    if not os.path.isfile(cc_db_file):
-        with pb.local.cwd(RUBY_SRC), pb.local.env(CC="clang",
-                                                  cflags="-w"):
-            configure = pb.local.get("./configure")
-            invoke(configure)
-            invoke(BEAR[MAKE[JOBS]])
+    
+    # unconditionally compile ruby since we don't know if
+    # cc_db was generated from the environment we're in.
+    with pb.local.cwd(RUBY_SRC), pb.local.env(CC="clang",
+                                              cflags="-w"):
+        configure = pb.local.get("./configure")
+        invoke(configure)
+        invoke(BEAR[MAKE[JOBS]])
 
     if not os.path.isfile(cc_db_file):
         die("missing " + cc_db_file, errno.ENOENT)
@@ -201,6 +210,12 @@ def main() -> None:
             msg = b + " not found; run build_translator.py first?"
             die(msg, errno.ENOENT)
 
+    # the macOS and Linux builds of the ast-extractor alias each other
+    if not is_elf_exe(AST_EXTR):
+        msg = "ast-importer was built for macOS;"
+        msg += " please run build_translator.py and retry."
+        die(msg)
+
     ensure_dir(DEPS_DIR)
 
     args = parse_args()
@@ -212,7 +227,7 @@ def main() -> None:
              test_json_c,
              test_ruby,
              test_lua]
-    tests = [t for t in tests if args.regex.match(t.__name__)]
+    tests = [t for t in tests if args.regex.search(t.__name__)]
 
     if not tests:
         die("nothing to test")

@@ -11,6 +11,12 @@ union my_union_flipped {
 union empty_union {
 };
 
+union union_with_anon_struct {
+    struct {
+        int a;
+    };
+};
+
 void entry(const unsigned int buffer_size, int buffer[const])
 {
     int i = 0;
@@ -23,6 +29,8 @@ void entry(const unsigned int buffer_size, int buffer[const])
     union my_union_flipped u5 = { 6 };
     union my_union_flipped u6 = { .as_chars = {7,8} };
 
+    // Unions with anonymous structs would previously fail to init:
+    union union_with_anon_struct anon;
 
     buffer[i++] = sizeof(union my_union);
     buffer[i++] = sizeof(union my_union_flipped);

@@ -1,11 +1,27 @@
 #!/bin/bash
+#
+# This file builds a C2Rust translated version of snudown,
+# either with or without cross-checks
+#
+# Usage:
+# $ ./translate.sh translate
+# or
+# $ ./translate.sh rustcheck
 
 MACHINE_NAME=`uname -n`
+MACHINE_TYPE=`uname -s`
+
+LIB_PATH=""
+if [ $MACHINE_TYPE == "Darwin" ]; then
+  LIB_PATH=$HOME/.rustup/toolchains/nightly-2018-01-06-x86_64-apple-darwin/lib
+else 
+  LIB_PATH=$HOME/.rustup/toolchains/nightly-2018-01-06-x86_64-unknown-linux-gnu/lib
+fi
+
 C2RUST=$(readlink -f $(dirname $0)/../..)
 SNUDOWN=$(readlink -f $(dirname $0)/repo)
 AST_EXTRACTOR=$C2RUST/dependencies/llvm-6.0.0/build.$MACHINE_NAME/bin/ast-extractor
 AST_IMPORTER=$C2RUST/ast-importer/target/debug/ast_importer
-LIB_PATH=$HOME/.rustup/toolchains/nightly-2018-01-06-x86_64-unknown-linux-gnu/lib/
 RUSTFMT=rustfmt
 
 XCHECK_TOPDIR=$C2RUST/cross-checks/rust-checks
@@ -95,6 +111,7 @@ elif [ "$1" == "rustcheck" ]; then
   rustc --crate-name=snudownrust --crate-type=staticlib -L $OUTPUT_DIR \
       --extern cross_check_derive=$XCHECK_DERIVE \
       --extern cross_check_runtime=$XCHECK_RUNTIME \
-      $C2RUST/examples/snudown/snudownrustxcheck.rs -o $OUTPUT_DIR/libsnudownrustxcheck.a
+      --cfg "feature=\"cross-check\"" \
+      $C2RUST/examples/snudown/snudownrust.rs -o $OUTPUT_DIR/libsnudownrustxcheck.a
 
 fi
