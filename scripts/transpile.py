@@ -78,7 +78,7 @@ def transpile_files(cc_db: TextIO,
                     jobs: int,
                     filter: str = None,
                     import_only: bool = False,
-                    verbose: bool = False) -> None:
+                    verbose: bool = False) -> bool:
     """
     run the ast-extractor and ast-importer on all C files
     in a compile commands database.
@@ -89,7 +89,7 @@ def transpile_files(cc_db: TextIO,
     cc_db = json.load(cc_db)
 
     if filter:  # skip commands not matching file filter
-        cc_db = [c for c in cc_db if filter in f['file']]
+        cc_db = [c for c in cc_db if filter in c['file']]
 
     ensure_code_compiled_with_clang(cc_db)
     include_dirs = get_system_include_dirs()
@@ -115,6 +115,10 @@ def transpile_files(cc_db: TextIO,
             file_basename = os.path.basename(cmd['file'])
             cbor_basename = os.path.basename(cbor_file)
             logging.info(" importing ast from %s", cbor_basename)
+            translation_cmd = "RUST_BACKTRACE=1 \\\n"
+            translation_cmd += "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
+            translation_cmd += str(ast_impo[cbor_file])
+            logging.debug("translation command:\n %s", translation_cmd)
             try:
                 retcode, stdout, stderr = ast_impo[cbor_file].run()
                 return (file_basename, retcode, stdout, stderr)
