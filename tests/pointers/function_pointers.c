@@ -27,7 +27,7 @@ void entry3(const unsigned sz, int buffer[const])
         p7 = &intval;
 
         if (!p5 && p7 && !!p7 && p7 != 0) {
-                buffer[i++] = p7('a');
+                buffer[i++] = (*p7)('a');
         }
 
         char_to_int_fp funs[3] = { intval, negintval };

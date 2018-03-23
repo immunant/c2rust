@@ -126,6 +126,13 @@ fn pointer_neg_offset_isize(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
     mk().method_call_expr(ptr, "offset", vec![mk().unary_expr(ast::UnOp::Neg, offset)])
 }
 
+/// Given an expression with type Option<fn(...)->...>, unwrap
+/// the Option and return the function.
+fn unwrap_function_pointer(ptr: P<Expr>) -> P<Expr> {
+    let err_msg = mk().lit_expr(mk().str_lit("non-null function pointer"));
+    mk().method_call_expr(ptr, "expect", vec![err_msg])
+}
+
 /// Construct a new constant null pointer expression
 fn null_expr(ty: P<Ty>) -> P<Expr>  {
     mk().call_expr(mk().path_expr(vec![
@@ -1903,10 +1910,9 @@ impl Translation {
                 let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _) =>
                         self.convert_expr(ExprUse::RValue, fexp, false)?,
-                    _ => {
+                    _ =>
                         self.convert_expr(ExprUse::RValue, func, false)?.map(|x|
-                            mk().method_call_expr(x, "unwrap", vec![] as Vec<P<Expr>>))
-                    }
+                            unwrap_function_pointer(x)),
                 };
 
                 let mut args_new: Vec<P<Expr>> = vec![];
@@ -2681,7 +2687,9 @@ impl Translation {
             c_ast::UnOp::Deref => {
                 self.convert_expr(ExprUse::RValue, arg, false)?.result_map(|val: P<Expr>| {
 
-                    if let Some(_vla) = self.compute_size_of_expr(ctype) {
+                    if let CTypeKind::Function(..) = self.ast_context.resolve_type(ctype).kind {
+                        Ok(unwrap_function_pointer(val))
+                    } else if let Some(_vla) = self.compute_size_of_expr(ctype) {
                         Ok(val)
                     } else {
                         let mut val = mk().unary_expr(ast::UnOp::Deref, val);
