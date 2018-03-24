@@ -2974,7 +2974,7 @@ impl Translation {
 
             c_ast::BinOp::EqualEqual => bool_to_int(mk().binary_expr(BinOpKind::Eq, lhs, rhs)),
             c_ast::BinOp::NotEqual => bool_to_int(mk().binary_expr(BinOpKind::Ne, lhs, rhs)),
-            c_ast::BinOp::Less => bool_to_int(mk().binary_expr(BinOpKind::Lt, mk().paren_expr(lhs), rhs)),
+            c_ast::BinOp::Less => bool_to_int(mk().binary_expr(BinOpKind::Lt, lhs, rhs)),
             c_ast::BinOp::Greater => bool_to_int(mk().binary_expr(BinOpKind::Gt, lhs, rhs)),
             c_ast::BinOp::GreaterEqual => bool_to_int(mk().binary_expr(BinOpKind::Ge, lhs, rhs)),
             c_ast::BinOp::LessEqual => bool_to_int(mk().binary_expr(BinOpKind::Le, lhs, rhs)),
