@@ -850,6 +850,7 @@ impl ConversionContext {
                         "!" => UnOp::Not,
                         "++" => if prefix { UnOp::PreIncrement } else { UnOp::PostIncrement },
                         "--" => if prefix { UnOp::PreDecrement } else { UnOp::PostDecrement },
+                        "__extension__" => panic!("Operator __extension__ not supported yet."),
                         o => panic!("Unexpected operator: {}", o),
                     };
 

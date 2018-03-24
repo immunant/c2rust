@@ -2763,6 +2763,8 @@ impl Translation {
                 let WithStmts { val: arg, stmts } = self.convert_expr(ExprUse::RValue, arg, false)?;
                 Ok(WithStmts { val: self.convert_not(t, arg), stmts })
             },
+            c_ast::UnOp::Real | c_ast::UnOp::Imag | c_ast::UnOp::Extension | c_ast::UnOp::Coawait =>
+                panic!("Unsupported operator"),
         }
     }
 
