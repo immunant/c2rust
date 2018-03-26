@@ -2006,7 +2006,7 @@ impl Translation {
                         } else  {
                             let mut vals: Vec<P<Expr>> = vec![];
                             for v in ids {
-                                let mut x = self.convert_expr(ExprUse::RValue, *v, false)?;
+                                let mut x = self.convert_expr(ExprUse::RValue, *v, is_static)?;
                                 stmts.append(&mut x.stmts);
                                 vals.push(x.val);
                             }

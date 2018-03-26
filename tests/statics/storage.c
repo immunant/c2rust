@@ -25,6 +25,12 @@ typedef struct {
   char string[3];
 } StringStruct;
 
+// Issue similar to GH #83: Propagate is_static attribute
+static char const ab_month_name[12][4] =
+{
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+};
 static const char *hello = "hello";
 
 void entry(const unsigned buffer_size, int buffer[]) {
