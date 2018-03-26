@@ -219,6 +219,8 @@ struct HashFunction {
 
 class CrossCheckInserter : public SemaConsumer {
 private:
+    bool disable_xchecks;
+
     Config config;
 
     // Cache the (file, function) => config mapping
@@ -415,7 +417,8 @@ private:
 
 public:
     CrossCheckInserter() = delete;
-    CrossCheckInserter(Config &&cfg) : config(std::move(cfg)) {
+    CrossCheckInserter(bool dx, Config &&cfg)
+            : disable_xchecks(dx), config(std::move(cfg)) {
         for (auto &file_config : config) {
             auto &file_name = file_config.first;
             for (auto &item : file_config.second)
@@ -1442,7 +1445,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
 
             }
 
-            bool disable_xchecks = false;
+            bool disable_xchecks = this->disable_xchecks;
             if (file_defaults && file_defaults->get().disable_xchecks)
                 disable_xchecks = *file_defaults->get().disable_xchecks;
             if (func_cfg && func_cfg->get().disable_xchecks)
@@ -1703,12 +1706,13 @@ public:
 
 class CrossCheckInsertionAction : public PluginASTAction {
 private:
+    bool disable_xchecks = false;
     Config config;
 
 protected:
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &ci,
                                                    llvm::StringRef) override {
-        return llvm::make_unique<CrossCheckInserter>(std::move(config));
+        return llvm::make_unique<CrossCheckInserter>(disable_xchecks, std::move(config));
     }
 
     bool ParseArgs(const CompilerInstance &ci,
@@ -1737,6 +1741,10 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
         report_clang_error(diags, "missing %0 option(s), starting at index %1",
                            missing_arg_count, missing_arg_index);
         return false;
+    }
+
+    if (parsed_args.hasArg(OPT_disable_xchecks)) {
+        disable_xchecks = true;
     }
 
     auto config_files = parsed_args.getAllArgValues(OPT_config_files);
