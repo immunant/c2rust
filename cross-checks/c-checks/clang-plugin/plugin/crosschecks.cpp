@@ -1425,7 +1425,9 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
         if (FunctionDecl *fd = dyn_cast<FunctionDecl>(d)) {
             if (!fd->hasBody())
                 continue;
-            if (fd->getName().startswith("__c2rust")) {
+            auto fd_ident = fd->getIdentifier();
+            if (fd_ident != nullptr &&
+                fd_ident->getName().startswith("__c2rust")) {
                 // Ignore our own functions
                 continue;
             }
@@ -1439,10 +1441,10 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 if (it != defaults_configs.end()) {
                     file_defaults = it->second;
                 }
-
-                std::string func_name = fd->getName().str();
-                func_cfg = get_function_config(file_name, func_name);
-
+                if (fd_ident != nullptr) {
+                    std::string func_name = fd_ident->getName().str();
+                    func_cfg = get_function_config(file_name, func_name);
+                }
             }
 
             bool disable_xchecks = this->disable_xchecks;
