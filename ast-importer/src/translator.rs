@@ -1733,7 +1733,7 @@ impl Translation {
                 self.convert_cast(use_, ty, expr, kind, opt_field_id, true),
 
             CExprKind::Unary(type_id, op, arg) =>
-                self.convert_unary_operator(use_, op, type_id, arg),
+                self.convert_unary_operator(use_, op, type_id, arg, is_static),
 
             CExprKind::Conditional(_, cond, lhs, rhs) => {
                 let cond = self.convert_condition(true, cond)?;
@@ -2693,6 +2693,7 @@ impl Translation {
         name: c_ast::UnOp,
         cqual_type: CQualTypeId,
         arg: CExprId,
+        is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, String> {
         let CQualTypeId { ctype, .. } = cqual_type;
         let ty = self.convert_type(ctype)?;
@@ -2704,7 +2705,7 @@ impl Translation {
                 // In this translation, there are only pointers to functions and
                 // & becomes a no-op when applied to a function.
 
-                let arg = self.convert_expr(ExprUse::LValue, arg, false)?;
+                let arg = self.convert_expr(ExprUse::LValue, arg, is_static)?;
 
                 if self.is_function_pointer(ctype) {
                     Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
@@ -2725,7 +2726,7 @@ impl Translation {
             c_ast::UnOp::PostIncrement => self.convert_post_increment(use_, cqual_type, true, arg),
             c_ast::UnOp::PostDecrement => self.convert_post_increment(use_, cqual_type, false, arg),
             c_ast::UnOp::Deref => {
-                self.convert_expr(ExprUse::RValue, arg, false)?.result_map(|val: P<Expr>| {
+                self.convert_expr(ExprUse::RValue, arg, is_static)?.result_map(|val: P<Expr>| {
 
                     if let CTypeKind::Function(..) = self.ast_context.resolve_type(ctype).kind {
                         Ok(unwrap_function_pointer(val))
@@ -2743,10 +2744,10 @@ impl Translation {
                     }
                 })
             },
-            c_ast::UnOp::Plus => self.convert_expr(ExprUse::RValue, arg, false), // promotion is explicit in the clang AST
+            c_ast::UnOp::Plus => self.convert_expr(ExprUse::RValue, arg, is_static), // promotion is explicit in the clang AST
 
             c_ast::UnOp::Negate => {
-                let val = self.convert_expr(ExprUse::RValue, arg, false)?;
+                let val = self.convert_expr(ExprUse::RValue, arg, is_static)?;
 
                 if is_int(&resolved_ctype.kind) {
                     Ok(val.map(wrapping_neg_expr))
@@ -2755,16 +2756,16 @@ impl Translation {
                 }
             }
             c_ast::UnOp::Complement =>
-                Ok(self.convert_expr(ExprUse::RValue, arg, false)?
+                Ok(self.convert_expr(ExprUse::RValue, arg, is_static)?
                     .map(|a| mk().unary_expr(ast::UnOp::Not, a))),
 
             c_ast::UnOp::Not => {
                 let t = self.ast_context.index(arg).kind.get_type();
-                let WithStmts { val: arg, stmts } = self.convert_expr(ExprUse::RValue, arg, false)?;
+                let WithStmts { val: arg, stmts } = self.convert_expr(ExprUse::RValue, arg, is_static)?;
                 Ok(WithStmts { val: self.convert_not(t, arg), stmts })
             },
             c_ast::UnOp::Extension => {
-                let arg = self.convert_expr(use_, arg, false)?;
+                let arg = self.convert_expr(use_, arg, is_static)?;
                 Ok(arg)
             },
             c_ast::UnOp::Real | c_ast::UnOp::Imag | c_ast::UnOp::Coawait =>
