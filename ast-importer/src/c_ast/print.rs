@@ -195,6 +195,10 @@ impl<W: Write> Printer<W> {
             UnOp::PostDecrement => self.writer.write_all(b"--"),
             UnOp::Complement => self.writer.write_all(b"~"),
             UnOp::Not => self.writer.write_all(b"!"),
+            UnOp::Real => self.writer.write_all(b"__real"),
+            UnOp::Imag => self.writer.write_all(b"__imag"),
+            UnOp::Extension => self.writer.write_all(b"__extension__"),
+            UnOp::Coawait => self.writer.write_all(b"co_await"),
         }
     }
 

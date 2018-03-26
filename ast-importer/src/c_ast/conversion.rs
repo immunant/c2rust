@@ -850,6 +850,10 @@ impl ConversionContext {
                         "!" => UnOp::Not,
                         "++" => if prefix { UnOp::PreIncrement } else { UnOp::PostIncrement },
                         "--" => if prefix { UnOp::PreDecrement } else { UnOp::PostDecrement },
+                        "__real" => UnOp::Real,
+                        "__imag" => UnOp::Imag,
+                        "__extension__" => UnOp::Extension,
+                        "co_await" => UnOp::Coawait,
                         o => panic!("Unexpected operator: {}", o),
                     };
 

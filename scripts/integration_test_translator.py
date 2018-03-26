@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
-import sys
-import errno
-import logging
-import argparse
-import multiprocessing
 
 from common import *
 from transpile import transpile_files
+import tempfile
 
 LUA_URL = "https://www.lua.org/ftp/lua-5.3.4.tar.gz"
 LUA_ARCHIVE = os.path.basename(LUA_URL)
@@ -22,7 +17,7 @@ RUBY_SRC = RUBY_ARCHIVE.replace(".tar.gz", "")
 RUBY_SRC = os.path.join(DEPS_DIR, RUBY_SRC)
 
 JSON_C_URL = "https://s3.amazonaws.com/" + \
-    "json-c_releases/releases/json-c-0.12.1.tar.gz"
+    "json-c_releases/releases/json-c-0.13.1.tar.gz"
 JSON_C_ARCHIVE = os.path.basename(JSON_C_URL)
 JSON_C_SRC = JSON_C_ARCHIVE.replace(".tar.gz", "")
 JSON_C_SRC = os.path.join(DEPS_DIR, JSON_C_SRC)
@@ -53,20 +48,21 @@ minimal_cc_db = """ \
     "file": "test.c"
   }}
 ]
-""".format(os.path.join(ROOT_DIR, "scripts"))
+""".format(tempfile.gettempdir())
 
 
 def _test_minimal(code_snippet: str) -> bool:
     ast_extr = get_cmd_or_die(AST_EXTR)
     ast_impo = get_cmd_or_die(AST_IMPO)
-    cfile = os.path.join(ROOT_DIR, "scripts/test.c")
+
+    tempdir = tempfile.gettempdir()
+    cfile = os.path.join(tempdir, "test.c")
     with open(cfile, 'w') as fh:
         fh.write(code_snippet)
 
     # avoid warnings about missing compiler flags, not strictly required
-    cc_json = "scripts/compile_commands.json"
-    minimal_cc_db_path = os.path.join(ROOT_DIR, cc_json)
-    with open(minimal_cc_db_path, 'w') as fh:
+    cc_json = os.path.join(tempdir, "compile_commands.json")
+    with open(cc_json, 'w') as fh:
         fh.write(minimal_cc_db)
 
     cborfile = cfile + '.cbor'

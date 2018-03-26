@@ -385,7 +385,7 @@ pub enum CastKind {
     ConstCast,
 }
 
-/// Represents a unary operator in C (6.5.3 Unary operators)
+/// Represents a unary operator in C (6.5.3 Unary operators) and GNU C extensions
 #[derive(Debug, Clone, Copy)]
 pub enum UnOp {
     AddressOf,      // &x
@@ -398,6 +398,10 @@ pub enum UnOp {
     PreDecrement,   // --x
     Complement,     // ~x
     Not,            // !x
+    Real,           // [GNU C] __real x
+    Imag,           // [GNU C] __imag x
+    Extension,      // [GNU C] __extension__ x
+    Coawait,        // [C++ Coroutines] co_await x
 }
 
 /// Represents a unary type operator in C
