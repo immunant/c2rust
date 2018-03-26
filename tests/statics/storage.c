@@ -1,4 +1,4 @@
-// TODO: test extern variables (whose definition is not here) 
+// TODO: test extern variables (whose definition is not here)
 
 // forward decl
 static int baz(void);
@@ -21,12 +21,22 @@ int baz(void) {
   return k + 1;
 }
 
+typedef struct {
+  char string[3];
+} StringStruct;
+
 static const char *hello = "hello";
 
 void entry(const unsigned buffer_size, int buffer[]) {
 
     if (buffer_size < 11) return;
     static const char *world = "world";
+
+    // GH #83: Previously static structs would not propagate the
+    // is_static attribute down to their string array fields
+    static StringStruct Foo = {
+      "foo",
+    };
 
     buffer[0] = baz();
     buffer[1] = baz();
