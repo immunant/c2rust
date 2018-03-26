@@ -1656,6 +1656,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
         } else if (VarDecl *vd = dyn_cast<VarDecl>(d)) {
             global_vars.emplace(llvm_string_ref_to_sv(vd->getName()), vd);
         } else if (RecordDecl *rd = dyn_cast<RecordDecl>(d)) {
+            bool disable_xchecks = this->disable_xchecks;
+            // TODO: allow override from config file
+            if (disable_xchecks)
+                continue;
+
             // Instantiate the hash function for this type
             if (rd->isCompleteDefinition() && rd->getIdentifier() != nullptr) {
                 auto record_ty = ctx.getRecordType(rd);
@@ -1665,6 +1670,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 }
             }
         } else if (TypedefDecl *td = dyn_cast<TypedefDecl>(d)) {
+            bool disable_xchecks = this->disable_xchecks;
+            // TODO: allow override from config file
+            if (disable_xchecks)
+                continue;
+
             auto typedef_ty = ctx.getTypedefType(td);
             auto under_ty = td->getUnderlyingType();
             if (under_ty->isStructureType()) {
