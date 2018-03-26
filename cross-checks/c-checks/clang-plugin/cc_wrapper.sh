@@ -16,4 +16,5 @@ shift
 
 exec "$PLUGIN_CC" -Xclang -load -Xclang "$PLUGIN" \
     -Xclang -add-plugin -Xclang crosschecks \
-    -Wno-unknown-attributes "$@"
+    -ffunction-sections -Wl,--gc-sections,--icf=safe \
+    -fuse-ld=gold -Wno-unknown-attributes "$@"
