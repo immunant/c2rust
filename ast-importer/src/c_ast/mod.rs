@@ -58,6 +58,20 @@ impl TypedAstContext {
         }
     }
 
+    pub fn is_forward_declared_type(&self, typ: CTypeId) -> bool {
+        match self.resolve_type(typ).kind.as_underlying_decl() {
+            Some(decl_id) => {
+                match self[decl_id].kind {
+                    CDeclKind::Struct { fields: None, .. } => true,
+                    CDeclKind::Union { fields: None, .. } => true,
+                    CDeclKind::Enum { integral_type: None, .. } => true,
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
         match self.index(typ).kind {
             CTypeKind::Attributed(ty) => self.resolve_type_id(ty.ctype),

@@ -1392,8 +1392,16 @@ impl Translation {
     fn null_ptr(&self, type_id: CTypeId) -> Result<P<Expr>, String> {
         let rust_ty = self.convert_type(type_id)?;
 
+        let is_forward_pointer = match self.ast_context.resolve_type(type_id).kind {
+            CTypeKind::Pointer(pointee) => self.ast_context.is_forward_declared_type(pointee.ctype),
+            _ => return Err(format!("Cannot make null pointer for non-pointer type")),
+        };
+
         match rust_ty.node {
             TyKind::Ptr(MutTy { ref ty, mutbl }) => match mutbl {
+                _ if is_forward_pointer =>
+                    Ok(mk().cast_expr(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                                      mk().set_mutbl(mutbl).ptr_ty(ty.clone()))),
                 Mutability::Mutable => Ok(null_mut_expr(ty.clone())),
                 Mutability::Immutable => Ok(null_expr(ty.clone())),
             }
