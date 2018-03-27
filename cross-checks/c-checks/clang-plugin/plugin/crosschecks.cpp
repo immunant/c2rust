@@ -219,6 +219,8 @@ struct HashFunction {
 
 class CrossCheckInserter : public SemaConsumer {
 private:
+    bool disable_xchecks;
+
     Config config;
 
     // Cache the (file, function) => config mapping
@@ -415,7 +417,8 @@ private:
 
 public:
     CrossCheckInserter() = delete;
-    CrossCheckInserter(Config &&cfg) : config(std::move(cfg)) {
+    CrossCheckInserter(bool dx, Config &&cfg)
+            : disable_xchecks(dx), config(std::move(cfg)) {
         for (auto &file_config : config) {
             auto &file_name = file_config.first;
             for (auto &item : file_config.second)
@@ -1422,7 +1425,9 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
         if (FunctionDecl *fd = dyn_cast<FunctionDecl>(d)) {
             if (!fd->hasBody())
                 continue;
-            if (fd->getName().startswith("__c2rust")) {
+            auto fd_ident = fd->getIdentifier();
+            if (fd_ident != nullptr &&
+                fd_ident->getName().startswith("__c2rust")) {
                 // Ignore our own functions
                 continue;
             }
@@ -1436,13 +1441,13 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 if (it != defaults_configs.end()) {
                     file_defaults = it->second;
                 }
-
-                std::string func_name = fd->getName().str();
-                func_cfg = get_function_config(file_name, func_name);
-
+                if (fd_ident != nullptr) {
+                    std::string func_name = fd_ident->getName().str();
+                    func_cfg = get_function_config(file_name, func_name);
+                }
             }
 
-            bool disable_xchecks = false;
+            bool disable_xchecks = this->disable_xchecks;
             if (file_defaults && file_defaults->get().disable_xchecks)
                 disable_xchecks = *file_defaults->get().disable_xchecks;
             if (func_cfg && func_cfg->get().disable_xchecks)
@@ -1651,6 +1656,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
         } else if (VarDecl *vd = dyn_cast<VarDecl>(d)) {
             global_vars.emplace(llvm_string_ref_to_sv(vd->getName()), vd);
         } else if (RecordDecl *rd = dyn_cast<RecordDecl>(d)) {
+            bool disable_xchecks = this->disable_xchecks;
+            // TODO: allow override from config file
+            if (disable_xchecks)
+                continue;
+
             // Instantiate the hash function for this type
             if (rd->isCompleteDefinition() && rd->getIdentifier() != nullptr) {
                 auto record_ty = ctx.getRecordType(rd);
@@ -1660,6 +1670,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 }
             }
         } else if (TypedefDecl *td = dyn_cast<TypedefDecl>(d)) {
+            bool disable_xchecks = this->disable_xchecks;
+            // TODO: allow override from config file
+            if (disable_xchecks)
+                continue;
+
             auto typedef_ty = ctx.getTypedefType(td);
             auto under_ty = td->getUnderlyingType();
             if (under_ty->isStructureType()) {
@@ -1703,12 +1718,13 @@ public:
 
 class CrossCheckInsertionAction : public PluginASTAction {
 private:
+    bool disable_xchecks = false;
     Config config;
 
 protected:
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &ci,
                                                    llvm::StringRef) override {
-        return llvm::make_unique<CrossCheckInserter>(std::move(config));
+        return llvm::make_unique<CrossCheckInserter>(disable_xchecks, std::move(config));
     }
 
     bool ParseArgs(const CompilerInstance &ci,
@@ -1737,6 +1753,10 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
         report_clang_error(diags, "missing %0 option(s), starting at index %1",
                            missing_arg_count, missing_arg_index);
         return false;
+    }
+
+    if (parsed_args.hasArg(OPT_disable_xchecks)) {
+        disable_xchecks = true;
     }
 
     auto config_files = parsed_args.getAllArgValues(OPT_config_files);

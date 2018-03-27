@@ -2006,7 +2006,7 @@ impl Translation {
                         } else  {
                             let mut vals: Vec<P<Expr>> = vec![];
                             for v in ids {
-                                let mut x = self.convert_expr(ExprUse::RValue, *v, false)?;
+                                let mut x = self.convert_expr(ExprUse::RValue, *v, is_static)?;
                                 stmts.append(&mut x.stmts);
                                 vals.push(x.val);
                             }
@@ -2020,10 +2020,10 @@ impl Translation {
                         Ok(WithStmts {stmts, val })
                     }
                     &CTypeKind::Struct(struct_id) => {
-                        self.convert_struct_literal(struct_id, ids.as_ref())
+                        self.convert_struct_literal(struct_id, ids.as_ref(), is_static)
                     }
                     &CTypeKind::Union(union_id) => {
-                        self.convert_union_literal(union_id, ids.as_ref(), ty, opt_union_field_id)
+                        self.convert_union_literal(union_id, ids.as_ref(), ty, opt_union_field_id, is_static)
                     }
                     &CTypeKind::Pointer(_) => {
                         let id = ids.first().unwrap();
@@ -2346,7 +2346,8 @@ impl Translation {
         union_id: CRecordId,
         ids: &[CExprId],
         _ty: CQualTypeId,
-        opt_union_field_id: Option<CFieldId>
+        opt_union_field_id: Option<CFieldId>,
+        is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, String> {
         let union_field_id = opt_union_field_id.expect("union field ID");
 
@@ -2361,7 +2362,7 @@ impl Translation {
                                 val: self.implicit_default_expr(field_ty.ctype)?,
                             }
                         } else {
-                            self.convert_expr(ExprUse::RValue, ids[0], false)?
+                            self.convert_expr(ExprUse::RValue, ids[0], is_static)?
                         };
 
                         Ok(val.map(|v| {
@@ -2378,7 +2379,7 @@ impl Translation {
         }
     }
 
-    fn convert_struct_literal(&self, struct_id: CRecordId, ids: &[CExprId])
+    fn convert_struct_literal(&self, struct_id: CRecordId, ids: &[CExprId], is_static: bool)
                               -> Result<WithStmts<P<Expr>>, String> {
         let struct_decl = &self.ast_context.index(struct_id).kind;
 
@@ -2415,7 +2416,7 @@ impl Translation {
             let v = ids[i];
             let &(ref field_name, _) = &field_decls[i];
 
-            let mut x = self.convert_expr(ExprUse::RValue, v, false)?;
+            let mut x = self.convert_expr(ExprUse::RValue, v, is_static)?;
             stmts.append(&mut x.stmts);
             fields.push(mk().field(field_name, x.val));
         }

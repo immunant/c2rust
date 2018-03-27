@@ -3,5 +3,7 @@ To build snudown with the C2Rust translator and/or cross-checks, go into the `re
 * `--clang-crosschecks` to build the C version of snudown with full cross-checking
 * `--translator` to translate the C code to Rust without any checks
 * `--rust-crosschecks` to translate to cross-checked Rust code
+* running with no flags will build the C version of the code
+* Note that `-f` may need to be appended to the end of the command, if running consecutively
 
 After building any of the 3 versions, run `python setup.py test` to test it.
