@@ -58,6 +58,20 @@ impl TypedAstContext {
         }
     }
 
+    pub fn is_forward_declared_type(&self, typ: CTypeId) -> bool {
+        match self.resolve_type(typ).kind.as_underlying_decl() {
+            Some(decl_id) => {
+                match self[decl_id].kind {
+                    CDeclKind::Struct { fields: None, .. } => true,
+                    CDeclKind::Union { fields: None, .. } => true,
+                    CDeclKind::Enum { integral_type: None, .. } => true,
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
         match self.index(typ).kind {
             CTypeKind::Attributed(ty) => self.resolve_type_id(ty.ctype),
@@ -89,6 +103,7 @@ impl TypedAstContext {
             CExprKind::Literal(_, _) => true,
             CExprKind::DeclRef(_, _) => true,
             CExprKind::OffsetOf(..) => true,
+            CExprKind::Statements(..) => false, // TODO: more precision
 
             CExprKind::ImplicitCast(_, e, _, _) => self.is_expr_pure(e),
             CExprKind::ExplicitCast(_, e, _, _) => self.is_expr_pure(e),
@@ -317,6 +332,9 @@ pub enum CExprKind {
 
     // Predefined expr
     Predefined(CQualTypeId, CExprId),
+
+    // Statement expression
+    Statements(CQualTypeId, CStmtId),
 }
 
 #[derive(Copy, Debug, Clone)]
@@ -345,6 +363,7 @@ impl CExprKind {
             CExprKind::ImplicitValueInit(ty) => ty,
             CExprKind::CompoundLiteral(ty, _) => ty,
             CExprKind::Predefined(ty, _) => ty,
+            CExprKind::Statements(ty, _) => ty,
         }
     }
 

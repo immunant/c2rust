@@ -3,7 +3,7 @@ use syntax::ast::*;
 use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{DelimToken,Token,Nonterminal};
 use syntax::abi::Abi;
-use std::collections::HashMap;
+use std::collections::{HashMap,HashSet};
 use renamer::Renamer;
 use convert_type::TypeConverter;
 use loops::*;
@@ -299,9 +299,35 @@ pub fn translate(
         prefix_names(&mut t, prefix);
     }
 
-    // Populate renamer with top-level names
+    // Identify typedefs that name unnamed types and collapse the two declarations
+    // into a single name and declaration, eliminating the typedef altogether.
+    let mut prenamed_decls: HashSet<CDeclId> = HashSet::new();
+    for (&decl_id, decl) in &ast_context.c_decls {
+        if let &CDeclKind::Typedef { ref name, typ } = &decl.kind {
+            if let Some(subdecl_id) = ast_context.resolve_type(typ.ctype).kind.as_underlying_decl() {
+
+                let is_unnamed = match &ast_context[subdecl_id].kind {
+                    &CDeclKind::Struct { name: None, .. } => true,
+                    &CDeclKind::Union { name: None, .. } => true,
+                    &CDeclKind::Enum { name: None, .. } => true,
+                    _ => false,
+                };
+
+                if is_unnamed && !prenamed_decls.contains(&subdecl_id) {
+                    prenamed_decls.insert(decl_id);
+                    prenamed_decls.insert(subdecl_id);
+
+                    t.type_converter.borrow_mut().declare_decl_name(decl_id, name);
+                    t.type_converter.borrow_mut().alias_decl_name(subdecl_id, decl_id);
+                }
+            }
+        }
+    }
+
+        // Populate renamer with top-level names
     for (&decl_id, decl) in &ast_context.c_decls {
         let decl_name = match &decl.kind {
+            _ if prenamed_decls.contains(&decl_id) => Name::NoName,
             &CDeclKind::Struct { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
             &CDeclKind::Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
             &CDeclKind::Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
@@ -326,7 +352,7 @@ pub fn translate(
             &CDeclKind::Struct { .. } => true,
             &CDeclKind::Enum { .. } => true,
             &CDeclKind::Union { .. } => true,
-            &CDeclKind::Typedef { .. } => true,
+            &CDeclKind::Typedef { .. } => !prenamed_decls.contains(&decl_id),
             _ => false,
         };
         if needs_export {
@@ -425,11 +451,13 @@ pub fn translate(
                               .extern_crate_item("cross_check_runtime", None))?;
         }
 
-        s.print_item(&mk().abi(Abi::C).foreign_items(t.foreign_items))?;
+        if !t.foreign_items.is_empty() {
+            s.print_item(&mk().abi(Abi::C).foreign_items(t.foreign_items))?
+        }
 
         // Add the items accumulated
-        for x in t.items.iter() {
-            s.print_item(x)?;
+        for x in t.items {
+            s.print_item(&*x)?;
         }
 
         Ok(())
@@ -1392,8 +1420,16 @@ impl Translation {
     fn null_ptr(&self, type_id: CTypeId) -> Result<P<Expr>, String> {
         let rust_ty = self.convert_type(type_id)?;
 
+        let is_forward_pointer = match self.ast_context.resolve_type(type_id).kind {
+            CTypeKind::Pointer(pointee) => self.ast_context.is_forward_declared_type(pointee.ctype),
+            _ => return Err(format!("Cannot make null pointer for non-pointer type")),
+        };
+
         match rust_ty.node {
             TyKind::Ptr(MutTy { ref ty, mutbl }) => match mutbl {
+                _ if is_forward_pointer =>
+                    Ok(mk().cast_expr(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                                      mk().set_mutbl(mutbl).ptr_ty(ty.clone()))),
                 Mutability::Mutable => Ok(null_mut_expr(ty.clone())),
                 Mutability::Immutable => Ok(null_expr(ty.clone())),
             }
@@ -2023,7 +2059,7 @@ impl Translation {
                         self.convert_struct_literal(struct_id, ids.as_ref(), is_static)
                     }
                     &CTypeKind::Union(union_id) => {
-                        self.convert_union_literal(union_id, ids.as_ref(), ty, opt_union_field_id)
+                        self.convert_union_literal(union_id, ids.as_ref(), ty, opt_union_field_id, is_static)
                     }
                     &CTypeKind::Pointer(_) => {
                         let id = ids.first().unwrap();
@@ -2040,6 +2076,36 @@ impl Translation {
 
             CExprKind::Predefined(_, val_id) =>
                 self.convert_expr(use_, val_id, false),
+
+            CExprKind::Statements(_, compound_stmt_id) =>
+                self.convert_statement_expression(use_, compound_stmt_id, is_static),
+        }
+    }
+
+    fn convert_statement_expression(&self, use_: ExprUse, compound_stmt_id: CStmtId, is_static: bool)
+        -> Result<WithStmts<P<Expr>>, String> {
+
+        match &self.ast_context[compound_stmt_id].kind {
+            &CStmtKind::Compound(ref substmt_ids) if !substmt_ids.is_empty() => {
+
+                let n = substmt_ids.len();
+                let mut stmts = vec![];
+
+                for &substmt_id in &substmt_ids[0 .. n-1] {
+                    stmts.append(&mut self.convert_stmt(substmt_id)?);
+                }
+
+                let result_id = substmt_ids[n-1];
+                match self.ast_context[result_id].kind {
+                    CStmtKind::Expr(expr_id) => {
+                        let mut result = self.convert_expr(use_, expr_id, is_static)?;
+                        stmts.append(&mut result.stmts);
+                        Ok(WithStmts{stmts, val: result.val})
+                    }
+                    _ => Err(format!("Statement expression didn't end in an expression")),
+                }
+            }
+            _ => Err(format!("Bad statement expression")),
         }
     }
 
@@ -2316,7 +2382,8 @@ impl Translation {
         union_id: CRecordId,
         ids: &[CExprId],
         _ty: CQualTypeId,
-        opt_union_field_id: Option<CFieldId>
+        opt_union_field_id: Option<CFieldId>,
+        is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, String> {
         let union_field_id = opt_union_field_id.expect("union field ID");
 
@@ -2331,7 +2398,7 @@ impl Translation {
                                 val: self.implicit_default_expr(field_ty.ctype)?,
                             }
                         } else {
-                            self.convert_expr(ExprUse::RValue, ids[0], false)?
+                            self.convert_expr(ExprUse::RValue, ids[0], is_static)?
                         };
 
                         Ok(val.map(|v| {

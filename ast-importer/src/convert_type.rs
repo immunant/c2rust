@@ -40,6 +40,10 @@ impl TypeConverter {
         self.renamer.insert(decl_id, name).expect("Name already assigned")
     }
 
+    pub fn alias_decl_name(&mut self, new_decl_id: CDeclId, old_decl_id: CDeclId) {
+        self.renamer.alias(new_decl_id, &old_decl_id)
+    }
+
     pub fn resolve_decl_name(&self, decl_id: CDeclId) -> Option<String> {
         self.renamer.get(&decl_id)
     }
@@ -193,6 +197,8 @@ impl TypeConverter {
                 let fn_ty = self.convert_function(ctxt, ret, params, is_var)?;
                 Ok(fn_ty)
             }
+
+            CTypeKind::TypeOf(ty) => self.convert(ctxt, ty),
 
             ref t => Err(format!("Unsupported type {:?}", t)),
         }

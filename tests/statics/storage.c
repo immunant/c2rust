@@ -24,6 +24,10 @@ int baz(void) {
 typedef struct {
   char string[3];
 } StringStruct;
+typedef union StringUnion {
+  char string[3];
+  int data;
+} StringUnion;
 
 // Issue similar to GH #83: Propagate is_static attribute
 static char const ab_month_name[12][4] =
@@ -38,10 +42,13 @@ void entry(const unsigned buffer_size, int buffer[]) {
     if (buffer_size < 11) return;
     static const char *world = "world";
 
-    // GH #83: Previously static structs would not propagate the
+    // GH #83: Previously static structs&unions would not propagate the
     // is_static attribute down to their string array fields
     static StringStruct Foo = {
       "foo",
+    };
+    static StringUnion Bar = {
+      .string="foo",
     };
 
     buffer[0] = baz();

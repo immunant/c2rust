@@ -1127,6 +1127,18 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, CExprKind::InitList(ty, exprs, union_field_id))
                 }
 
+                ASTEntryTag::TagStmtExpr => {
+                    let child_id = node.children[0].expect("Expected compound statement ID");
+                    let child = self.visit_stmt(child_id);
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    let stmt_expr = CExprKind::Statements(ty, child);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, stmt_expr)
+                }
+
                 // Declarations
 
                 ASTEntryTag::TagFunctionDecl if expected_ty & OTHER_DECL != 0 => {
