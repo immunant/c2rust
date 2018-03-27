@@ -14,6 +14,11 @@ shift
 PLUGIN=$1
 shift
 
+RUNTIME=$(readlink -f $(dirname $PLUGIN)/../runtime/libruntime.a)
+if [ ! -e $RUNTIME ]; then
+   unset RUNTIME
+fi
+
 exec "$PLUGIN_CC" -Xclang -load -Xclang "$PLUGIN" \
     -Xclang -add-plugin -Xclang crosschecks \
-    -Wno-unknown-attributes "$@"
+    -Wno-unknown-attributes "$@" "$RUNTIME"
