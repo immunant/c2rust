@@ -2040,6 +2040,36 @@ impl Translation {
 
             CExprKind::Predefined(_, val_id) =>
                 self.convert_expr(use_, val_id, false),
+
+            CExprKind::Statements(_, compound_stmt_id) =>
+                self.convert_statement_expression(use_, compound_stmt_id, is_static),
+        }
+    }
+
+    fn convert_statement_expression(&self, use_: ExprUse, compound_stmt_id: CStmtId, is_static: bool)
+        -> Result<WithStmts<P<Expr>>, String> {
+
+        match &self.ast_context[compound_stmt_id].kind {
+            &CStmtKind::Compound(ref substmt_ids) if !substmt_ids.is_empty() => {
+
+                let n = substmt_ids.len();
+                let mut stmts = vec![];
+
+                for &substmt_id in &substmt_ids[0 .. n-1] {
+                    stmts.append(&mut self.convert_stmt(substmt_id)?);
+                }
+
+                let result_id = substmt_ids[n-1];
+                match self.ast_context[result_id].kind {
+                    CStmtKind::Expr(expr_id) => {
+                        let mut result = self.convert_expr(use_, expr_id, is_static)?;
+                        stmts.append(&mut result.stmts);
+                        Ok(WithStmts{stmts, val: result.val})
+                    }
+                    _ => Err(format!("Statement expression didn't end in an expression")),
+                }
+            }
+            _ => Err(format!("Bad statement expression")),
         }
     }
 

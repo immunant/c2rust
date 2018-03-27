@@ -70,6 +70,9 @@ impl<W: Write> Printer<W> {
     pub fn print_expr_prec(&mut self, _precedence: i32, expr_id: CExprId, context: &TypedAstContext) -> Result<()> {
 
         match context.c_exprs.get(&expr_id).map(|l| &l.kind) {
+            Some(&CExprKind::Statements(..)) =>
+                self.writer.write_all(b"STMT-EXPR"), // TODO
+
             Some(&CExprKind::UnaryType(_, kind, opt_expr, arg_ty)) => {
                 let kind_str = match kind {
                     UnTypeOp::SizeOf => b"sizeof(".as_ref(),

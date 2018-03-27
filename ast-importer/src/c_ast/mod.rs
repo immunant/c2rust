@@ -89,6 +89,7 @@ impl TypedAstContext {
             CExprKind::Literal(_, _) => true,
             CExprKind::DeclRef(_, _) => true,
             CExprKind::OffsetOf(..) => true,
+            CExprKind::Statements(..) => false, // TODO: more precision
 
             CExprKind::ImplicitCast(_, e, _, _) => self.is_expr_pure(e),
             CExprKind::ExplicitCast(_, e, _, _) => self.is_expr_pure(e),
@@ -317,6 +318,9 @@ pub enum CExprKind {
 
     // Predefined expr
     Predefined(CQualTypeId, CExprId),
+
+    // Statement expression
+    Statements(CQualTypeId, CStmtId),
 }
 
 #[derive(Copy, Debug, Clone)]
@@ -345,6 +349,7 @@ impl CExprKind {
             CExprKind::ImplicitValueInit(ty) => ty,
             CExprKind::CompoundLiteral(ty, _) => ty,
             CExprKind::Predefined(ty, _) => ty,
+            CExprKind::Statements(ty, _) => ty,
         }
     }
 

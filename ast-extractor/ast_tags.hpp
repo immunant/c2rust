@@ -61,6 +61,7 @@ enum ASTEntryTag {
     
     TagCompoundLiteralExpr,
     TagPredefinedExpr,
+    TagStmtExpr,
     
     TagIntegerLiteral = 300,
     TagStringLiteral,

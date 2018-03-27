@@ -621,6 +621,12 @@ class TranslateASTVisitor final
           return true;
       }
       
+      bool VisitStmtExpr(StmtExpr *E) {
+          std::vector<void*> childIds { E->getSubStmt() };
+          encode_entry(E, TagStmtExpr, childIds);
+          return true;
+      }
+      
       bool VisitOffsetOfExpr(OffsetOfExpr *E) {
           std::vector<void*> childIds;
 
