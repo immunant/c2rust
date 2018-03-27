@@ -1146,7 +1146,14 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
         if (struct_xcheck_blacklist.count(blacklist_key) > 0)
             return;
     }
-    if (record_cfg && record_cfg->get().disable_xchecks) {
+    bool disable_xchecks = this->disable_xchecks;
+#if 0 // FIXME: implement this
+    if (file_defaults && file_defaults->get().disable_xchecks)
+        disable_xchecks = *file_defaults->get().disable_xchecks;
+#endif
+    if (record_cfg && record_cfg->get().disable_xchecks)
+        disable_xchecks = *record_cfg->get().disable_xchecks;
+    if (disable_xchecks) {
         // Cross-checks are disabled for this record
         return;
     }
