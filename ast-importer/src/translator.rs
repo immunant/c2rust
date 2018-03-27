@@ -3,7 +3,7 @@ use syntax::ast::*;
 use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{DelimToken,Token,Nonterminal};
 use syntax::abi::Abi;
-use std::collections::HashMap;
+use std::collections::{HashMap,HashSet};
 use renamer::Renamer;
 use convert_type::TypeConverter;
 use loops::*;
@@ -299,9 +299,35 @@ pub fn translate(
         prefix_names(&mut t, prefix);
     }
 
-    // Populate renamer with top-level names
+    // Identify typedefs that name unnamed types and collapse the two declarations
+    // into a single name and declaration, eliminating the typedef altogether.
+    let mut prenamed_decls: HashSet<CDeclId> = HashSet::new();
+    for (&decl_id, decl) in &ast_context.c_decls {
+        if let &CDeclKind::Typedef { ref name, typ } = &decl.kind {
+            if let Some(subdecl_id) = ast_context.resolve_type(typ.ctype).kind.as_underlying_decl() {
+
+                let is_unnamed = match &ast_context[subdecl_id].kind {
+                    &CDeclKind::Struct { name: None, .. } => true,
+                    &CDeclKind::Union { name: None, .. } => true,
+                    &CDeclKind::Enum { name: None, .. } => true,
+                    _ => false,
+                };
+
+                if is_unnamed && !prenamed_decls.contains(&subdecl_id) {
+                    prenamed_decls.insert(decl_id);
+                    prenamed_decls.insert(subdecl_id);
+
+                    t.type_converter.borrow_mut().declare_decl_name(decl_id, name);
+                    t.type_converter.borrow_mut().alias_decl_name(subdecl_id, decl_id);
+                }
+            }
+        }
+    }
+
+        // Populate renamer with top-level names
     for (&decl_id, decl) in &ast_context.c_decls {
         let decl_name = match &decl.kind {
+            _ if prenamed_decls.contains(&decl_id) => Name::NoName,
             &CDeclKind::Struct { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
             &CDeclKind::Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
             &CDeclKind::Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
@@ -326,7 +352,7 @@ pub fn translate(
             &CDeclKind::Struct { .. } => true,
             &CDeclKind::Enum { .. } => true,
             &CDeclKind::Union { .. } => true,
-            &CDeclKind::Typedef { .. } => true,
+            &CDeclKind::Typedef { .. } => !prenamed_decls.contains(&decl_id),
             _ => false,
         };
         if needs_export {
@@ -425,11 +451,13 @@ pub fn translate(
                               .extern_crate_item("cross_check_runtime", None))?;
         }
 
-        s.print_item(&mk().abi(Abi::C).foreign_items(t.foreign_items))?;
+        if !t.foreign_items.is_empty() {
+            s.print_item(&mk().abi(Abi::C).foreign_items(t.foreign_items))?
+        }
 
         // Add the items accumulated
-        for x in t.items.iter() {
-            s.print_item(x)?;
+        for x in t.items {
+            s.print_item(&*x)?;
         }
 
         Ok(())
