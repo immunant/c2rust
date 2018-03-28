@@ -34,6 +34,7 @@ def test_cross_checks():
         rust_proj_path = os.path.dirname(line)
         logging.info("entering %s", rust_proj_path)
         with pb.local.cwd(rust_proj_path):
+            invoke(rustup, ["run", CUSTOM_RUST_NAME, "cargo", "clean"])
             args = ["run", CUSTOM_RUST_NAME, "cargo", "test"]
             if rust_proj_path.endswith("runtime"):
                 # adding these args avoids taking a dependency on
