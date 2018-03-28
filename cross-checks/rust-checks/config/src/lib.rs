@@ -191,6 +191,10 @@ pub struct StructConfig {
     pub custom_hash: Option<String>,
 
     pub fields: HashMap<FieldIndex, XCheckType>,
+
+    // Nested items; in this context, it means
+    // methods implemented in impl's
+    nested: Option<ItemList>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -215,6 +219,7 @@ impl ItemConfig {
     pub fn nested_items(&self) -> Option<&ItemList> {
         match *self {
             ItemConfig::Function(FunctionConfig { ref nested, .. }) => nested.as_ref(),
+            ItemConfig::Struct(StructConfig { ref nested, .. }) => nested.as_ref(),
             // TODO: other cases
             _ => None
         }
