@@ -83,6 +83,7 @@ def configure_and_build_llvm(args: str) -> None:
         if run_cmake:
             cmake = get_cmd_or_die("cmake")
             max_link_jobs = est_parallel_link_jobs()
+            assertions = "1" if args.assertions else "0"
             cargs = ["-G", "Ninja", LLVM_SRC,
                      "-Wno-dev",
                      "-DCMAKE_C_COMPILER=clang",
@@ -91,7 +92,7 @@ def configure_and_build_llvm(args: str) -> None:
                      "-DCMAKE_CXX_FLAGS=-I{}/include".format(CBOR_PREFIX),
                      "-DCMAKE_EXE_LINKER_FLAGS=-L{}/lib".format(CBOR_PREFIX),
                      "-DCMAKE_BUILD_TYPE=" + build_type,
-                     "-DLLVM_ENABLE_ASSERTIONS=" + "1" if args.assertions else "0"
+                     "-DLLVM_ENABLE_ASSERTIONS=" + assertions
                      "-DLLVM_TARGETS_TO_BUILD=X86",
                      "-DBUILD_SHARED_LIBS=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
@@ -259,7 +260,7 @@ def integrate_ast_extractor():
         LLVM_SRC, "tools/clang/tools/extra/ast-extractor")
     clang_tools_extra = os.path.abspath(
         os.path.join(extractor_dest, os.pardir))
-    # NOTE: `os.path.exists` returns False on broken symlinks, 
+    # NOTE: `os.path.exists` returns False on broken symlinks,
     # `lexists` returns True.
     if not os.path.lexists(extractor_dest):
         # NOTE: using os.symlink to emulate `ln -s` would be unwieldy
