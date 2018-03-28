@@ -257,7 +257,7 @@ fn prefix_names(translation: &mut Translation, prefix: &str) {
 }
 
 pub fn translate(
-    ast_context: &TypedAstContext,
+    ast_context: TypedAstContext,
     reloop_cfgs: bool,
     dump_function_cfgs: bool,
     dump_structures: bool,
@@ -269,16 +269,19 @@ pub fn translate(
 ) -> String {
 
     let mut t = Translation::new(
-        ast_context.clone(),
+        ast_context,
         reloop_cfgs,
         dump_function_cfgs,
         dump_structures,
         debug_relooper_labels,
         cross_checks,
     );
+
     if !translate_entry {
         t.ast_context.c_main = None;
     }
+
+    t.ast_context.simplify();
 
     enum Name<'a> {
         VarName(&'a str),
@@ -302,11 +305,11 @@ pub fn translate(
     // Identify typedefs that name unnamed types and collapse the two declarations
     // into a single name and declaration, eliminating the typedef altogether.
     let mut prenamed_decls: HashSet<CDeclId> = HashSet::new();
-    for (&decl_id, decl) in &ast_context.c_decls {
+    for (&decl_id, decl) in &t.ast_context.c_decls {
         if let &CDeclKind::Typedef { ref name, typ } = &decl.kind {
-            if let Some(subdecl_id) = ast_context.resolve_type(typ.ctype).kind.as_underlying_decl() {
+            if let Some(subdecl_id) = t.ast_context.resolve_type(typ.ctype).kind.as_underlying_decl() {
 
-                let is_unnamed = match &ast_context[subdecl_id].kind {
+                let is_unnamed = match &t.ast_context[subdecl_id].kind {
                     &CDeclKind::Struct { name: None, .. } => true,
                     &CDeclKind::Union { name: None, .. } => true,
                     &CDeclKind::Enum { name: None, .. } => true,
@@ -325,7 +328,7 @@ pub fn translate(
     }
 
         // Populate renamer with top-level names
-    for (&decl_id, decl) in &ast_context.c_decls {
+    for (&decl_id, decl) in &t.ast_context.c_decls {
         let decl_name = match &decl.kind {
             _ if prenamed_decls.contains(&decl_id) => Name::NoName,
             &CDeclKind::Struct { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
@@ -335,7 +338,7 @@ pub fn translate(
             &CDeclKind::Function { ref name, .. } => Name::VarName(name),
             // &CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
             &CDeclKind::Variable { ref ident, .. }
-              if ast_context.c_decls_top.contains(&decl_id) => Name::VarName(ident),
+              if t.ast_context.c_decls_top.contains(&decl_id) => Name::VarName(ident),
             _ => Name::NoName,
         };
         match decl_name {
@@ -347,7 +350,7 @@ pub fn translate(
     }
 
     // Export all types
-    for (&decl_id, decl) in &ast_context.c_decls {
+    for (&decl_id, decl) in &t.ast_context.c_decls {
         let needs_export = match &decl.kind {
             &CDeclKind::Struct { .. } => true,
             &CDeclKind::Enum { .. } => true,
@@ -368,8 +371,8 @@ pub fn translate(
     }
 
     // Export top-level value declarations
-    for top_id in &ast_context.c_decls_top {
-        let needs_export = match &ast_context.c_decls[top_id].kind {
+    for top_id in &t.ast_context.c_decls_top {
+        let needs_export = match &t.ast_context.c_decls[top_id].kind {
             &CDeclKind::Function { .. } => true,
             &CDeclKind::Variable { .. } => true,
             _ => false,

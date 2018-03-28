@@ -140,7 +140,7 @@ fn main() {
     conv.convert(&untyped_context);
 
     println!("{}", translate(
-        &conv.typed_context,
+        conv.typed_context,
         reloop_cfgs,
         dump_function_cfgs,
         dump_structures,

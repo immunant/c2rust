@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap,HashSet};
 use std::ops::Index;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
@@ -129,6 +129,35 @@ impl TypedAstContext {
             CExprKind::CompoundLiteral(_, val) => self.is_expr_pure(val),
             CExprKind::Predefined(_,_) => false,
         }
+    }
+
+    pub fn simplify(&mut self) {
+
+        // Find all referenced declaration IDs
+        let mut live: HashSet<CDeclId> = HashSet::new();
+        for decl in self.c_exprs.values() {
+            if let CExprKind::DeclRef(_, decl_id) = decl.kind {
+                live.insert(decl_id);
+            }
+        }
+
+        let mut removed = HashSet::new();
+
+        self.c_decls.retain(| &decl_id, decl| {
+            if live.contains(&decl_id) { return true; }
+            match decl.kind {
+                CDeclKind::Function { body: None, .. } => {
+                    removed.insert(decl_id);
+                    false
+                },
+                _ => true,
+            }
+        });
+
+        self.c_decls_top.retain(|x| !removed.contains(x));
+
+        // TODO traverse all the types rooted in casts and variable declarations
+        // to find all the live type declarations recursively.
     }
 }
 
