@@ -150,9 +150,13 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                                                      self.config(),
                                                      &mod_file_name)
         } else { None };
-        let mut new_config = file_defaults_config
-            .map(|cfg| cfg.inherit(item))
-            .unwrap_or_else(|| self.config().inherit(item));
+        let mut new_config = if let Some(cfg) = file_defaults_config {
+            // Build new config from file defaults
+            cfg.inherit(item)
+        } else {
+            // Inherit from parent scope
+            self.config().inherit(item)
+        };
 
         // We have either a #[cross_check] attribute
         // or external config, so create a new ScopeCheckConfig
