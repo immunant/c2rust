@@ -133,7 +133,7 @@ def test_lua(args: argparse.Namespace) -> bool:
     # edit $LUA_SRC/src/Makefile to change CC
     expr = 's/^CC=/CC?=/g'
     makefile = os.path.join(LUA_SRC, "src/Makefile")
-    SED('--in-place', '-e', expr, makefile)
+    SED('-i', '-e', expr, makefile)
 
     cc_db_file = os.path.join(LUA_SRC, CC_DB_JSON)
 
@@ -157,7 +157,7 @@ def test_ruby(args: argparse.Namespace) -> bool:
             invoke_quietly(TAR, "xf", RUBY_ARCHIVE)
 
     cc_db_file = os.path.join(RUBY_SRC, CC_DB_JSON)
-    
+
     # unconditionally compile ruby since we don't know if
     # cc_db was generated from the environment we're in.
     with pb.local.cwd(RUBY_SRC), pb.local.env(CC="clang",
@@ -196,18 +196,18 @@ def main() -> None:
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
-    if on_mac():
-        die("this script only runs on Linux")
+    # if on_mac():
+    #     die("this script only runs on Linux")
 
     # check that the binaries have been built first
-    bins = [BEAR_BIN, AST_EXTR, AST_IMPO]
+    bins = [AST_EXTR, AST_IMPO]
     for b in bins:
         if not os.path.isfile(b):
             msg = b + " not found; run build_translator.py first?"
             die(msg, errno.ENOENT)
 
     # the macOS and Linux builds of the ast-extractor alias each other
-    if not is_elf_exe(AST_EXTR):
+    if not is_elf_exe(AST_EXTR) and not on_mac():
         msg = "ast-importer was built for macOS;"
         msg += " please run build_translator.py and retry."
         die(msg)
