@@ -91,7 +91,8 @@ def transpile_files(cc_db: TextIO,
     if filter:  # skip commands not matching file filter
         cc_db = [c for c in cc_db if filter in c['file']]
 
-    ensure_code_compiled_with_clang(cc_db)
+    if not on_mac():
+        ensure_code_compiled_with_clang(cc_db)
     include_dirs = get_system_include_dirs()
 
     def transpile_single(cmd) -> Tuple[str, int, str, str]:

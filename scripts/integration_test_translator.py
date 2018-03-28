@@ -4,10 +4,13 @@
 
 from common import *
 from transpile import transpile_files
+from shutil import rmtree
 import tempfile
 
-LUA_URL = "https://www.lua.org/ftp/lua-5.3.4.tar.gz"
-LUA_ARCHIVE = os.path.basename(LUA_URL)
+# LUA_URL = "https://www.lua.org/ftp/lua-5.3.4.tar.gz"
+# LUA_ARCHIVE = os.path.basename(LUA_URL)
+LUA_URL = "https://github.com/LuaDist/lua/archive/5.3.2.tar.gz"
+LUA_ARCHIVE = "lua-5.3.2.tar.gz"
 LUA_SRC = LUA_ARCHIVE.replace(".tar.gz", "")
 LUA_SRC = os.path.join(DEPS_DIR, LUA_SRC)
 
@@ -25,6 +28,7 @@ JSON_C_SRC = os.path.join(DEPS_DIR, JSON_C_SRC)
 TAR = get_cmd_or_die("tar")
 SED = get_cmd_or_die("sed")
 MAKE = get_cmd_or_die("make")
+CMAKE = get_cmd_or_die("cmake")
 BEAR = get_cmd_or_die(BEAR_BIN)
 JOBS = "-j2"  # main updates jobs based on args
 
@@ -128,21 +132,20 @@ def test_lua(args: argparse.Namespace) -> bool:
     if not os.path.isfile(os.path.join(DEPS_DIR, LUA_ARCHIVE)):
         with pb.local.cwd(DEPS_DIR):
             download_archive(LUA_URL, LUA_ARCHIVE)
+    if not os.path.isdir(LUA_SRC):
+        with pb.local.cwd(DEPS_DIR):
             invoke_quietly(TAR, "xf", LUA_ARCHIVE)
-
-    # edit $LUA_SRC/src/Makefile to change CC
-    expr = 's/^CC=/CC?=/g'
-    makefile = os.path.join(LUA_SRC, "src/Makefile")
-    SED('-i', '-e', expr, makefile)
-
-    cc_db_file = os.path.join(LUA_SRC, CC_DB_JSON)
 
     # unconditionally compile lua since we don't know if
     # cc_db was generated from the environment we're in.
-    with pb.local.cwd(LUA_SRC), pb.local.env(CC="clang"):
-        invoke(MAKE['clean'])
-        invoke(BEAR[MAKE["linux", JOBS]])
+    build_dir = os.path.join(LUA_SRC, "build")
+    rmtree(build_dir, ignore_errors=True)
+    os.mkdir(build_dir)
+    with pb.local.cwd(build_dir), pb.local.env(CC="clang"):
+        invoke(CMAKE['-DCMAKE_EXPORT_COMPILE_COMMANDS=1', LUA_SRC])
+        invoke(MAKE[JOBS])
 
+    cc_db_file = os.path.join(LUA_SRC, "build", CC_DB_JSON)
     if not os.path.isfile(cc_db_file):
         die("missing " + cc_db_file, errno.ENOENT)
 
@@ -151,6 +154,9 @@ def test_lua(args: argparse.Namespace) -> bool:
 
 
 def test_ruby(args: argparse.Namespace) -> bool:
+    if on_mac():
+        die("transpiling ruby on mac is not supported.")
+
     if not os.path.isfile(os.path.join(DEPS_DIR, RUBY_ARCHIVE)):
         with pb.local.cwd(DEPS_DIR):
             download_archive(RUBY_URL, RUBY_ARCHIVE)
