@@ -92,7 +92,7 @@ def configure_and_build_llvm(args: str) -> None:
                      "-DCMAKE_CXX_FLAGS=-I{}/include".format(CBOR_PREFIX),
                      "-DCMAKE_EXE_LINKER_FLAGS=-L{}/lib".format(CBOR_PREFIX),
                      "-DCMAKE_BUILD_TYPE=" + build_type,
-                     "-DLLVM_ENABLE_ASSERTIONS=" + assertions
+                     "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DLLVM_TARGETS_TO_BUILD=X86",
                      "-DBUILD_SHARED_LIBS=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
