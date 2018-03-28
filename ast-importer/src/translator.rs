@@ -402,7 +402,7 @@ pub fn translate(
         let mut features =
             vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut", "extern_types"]),
                  ("allow"  ,vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
-                                 "dead_code", "mutable_transmutes"]),
+                                 "dead_code", "mutable_transmutes", "unused_mut"]),
             ];
         if cross_checks {
             features.push(("feature", vec!["plugin", "custom_attribute"]));
@@ -785,7 +785,7 @@ impl Translation {
             CDeclKind::Union { fields: None, .. } |
             CDeclKind::Enum { integral_type: None, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
-                let extern_item = mk().foreign_ty(name);
+                let extern_item = mk().pub_().foreign_ty(name);
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
 
