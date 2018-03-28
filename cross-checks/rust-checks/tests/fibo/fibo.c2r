@@ -39,4 +39,13 @@ src/fibo.rs:
         //0: { fixed: 0x123456 }
         //1: none
         //2: { custom: "tch" }
+
+      nested:
+        - item: function
+          name: foo
+          entry: { fixed: 0x3456789a }
+          exit: default
+          args:
+            self: default
+
 ...

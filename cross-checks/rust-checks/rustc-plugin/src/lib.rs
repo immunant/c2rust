@@ -15,6 +15,7 @@ use rustc_plugin::Registry;
 use syntax::ast;
 use syntax::fold;
 
+use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -149,9 +150,13 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                                                      self.config(),
                                                      &mod_file_name)
         } else { None };
-        let mut new_config = file_defaults_config
-            .map(|cfg| cfg.inherit(item))
-            .unwrap_or_else(|| self.config().inherit(item));
+        let mut new_config = if let Some(cfg) = file_defaults_config {
+            // Build new config from file defaults
+            cfg.inherit(item)
+        } else {
+            // Inherit from parent scope
+            self.config().inherit(item)
+        };
 
         // We have either a #[cross_check] attribute
         // or external config, so create a new ScopeCheckConfig
@@ -163,7 +168,17 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         };
 
         let item_xcfg_config = {
-            let item_name = item.ident.name.as_str();
+            let item_ident_str = item.ident.name.as_str();
+            // If the item is an impl for a type, e.g.:
+            // `impl T { ... }`, then we take its name
+            // from the type, not from the identifier
+            let item_name = match item.node {
+                ast::ItemKind::Impl(.., ref ty, _) => {
+                    // FIXME: handle generics in the type
+                    Cow::from(pprust::ty_to_string(ty))
+                }
+                _ => Cow::from(&*item_ident_str)
+            };
             last_scope.get_item_config(&*item_name)
         };
         if let Some(ref xcfg) = item_xcfg_config {
@@ -260,79 +275,82 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         }).collect::<Vec<ast::Stmt>>()
     }
 
+    fn build_function_xchecks(&mut self, fn_ident: &ast::Ident,
+                              fn_decl: &ast::FnDecl,
+                              block: P<ast::Block>) -> P<ast::Block> {
+        let checked_block = if self.config().inherited.enabled {
+            // Add the cross-check to the beginning of the function
+            // TODO: only add the checks to C abi functions???
+            let ref cfg = self.config();
+            let entry_xcheck = cfg.inherited.entry
+                .build_ident_xcheck(self.cx, "FUNCTION_ENTRY_TAG", fn_ident);
+            let exit_xcheck = cfg.inherited.exit
+                .build_ident_xcheck(self.cx, "FUNCTION_EXIT_TAG", fn_ident);
+            // Insert cross-checks for function arguments
+            let arg_xchecks = fn_decl.inputs.iter()
+                .flat_map(|ref arg| self.build_arg_xcheck(arg))
+                .collect::<Vec<ast::Stmt>>();
+            let result_xcheck = cfg.inherited.ret
+                .build_xcheck(self.cx, "FUNCTION_RETURN_TAG", |tag| {
+                // By default, we use cross_check_hash
+                // to hash the value of the identifier
+                let (ahasher, shasher) = self.get_hasher_pair();
+                quote_expr!(self.cx, {
+                    use cross_check_runtime::hash::CrossCheckHash as XCH;
+                    let hash = XCH::cross_check_hash::<$ahasher, $shasher>(&__c2rust_fn_result);
+                    hash.map(|hash| ($tag, hash))
+                })
+            });
+
+            let ref fcfg = cfg.function_config();
+            let entry_extra_xchecks = self.build_extra_xchecks(&fcfg.entry_extra);
+            let exit_extra_xchecks = self.build_extra_xchecks(&fcfg.exit_extra);
+            // Extract the result type from the function signature,
+            // so we can attach it to the __c2rust_fn_body closure
+            let result_ty = match fn_decl.output {
+                ast::FunctionRetTy::Default(_) => quote_ty!(self.cx, ()),
+                ast::FunctionRetTy::Ty(ref ty) => ty.clone(),
+            };
+            quote_block!(self.cx, {
+                $entry_xcheck
+                $arg_xchecks
+                $entry_extra_xchecks
+                let mut __c2rust_fn_body = || -> $result_ty { $block };
+                let __c2rust_fn_result = __c2rust_fn_body();
+                $exit_xcheck
+                $result_xcheck
+                $exit_extra_xchecks
+                __c2rust_fn_result
+            })
+        } else {
+            block
+        };
+        // Add our typedefs to the beginning of each function;
+        // whatever the configuration says, we should always add these
+        let (ahasher, shasher) = self.get_hasher_pair();
+        quote_block!(self.cx, {
+            #[allow(dead_code)]
+            mod cross_check_types {
+                pub type DefaultAggHasher    = $ahasher;
+                pub type DefaultSimpleHasher = $shasher;
+            };
+            $checked_block
+        })
+    }
+
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let folded_item = fold::noop_fold_item_simple(item, self);
         match folded_item.node {
             ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) => {
-                let fn_ident = folded_item.ident;
-                let checked_block = if self.config().inherited.enabled {
-                    // Add the cross-check to the beginning of the function
-                    // TODO: only add the checks to C abi functions???
-                    let ref cfg = self.config();
-                    let entry_xcheck = cfg.inherited.entry
-                        .build_ident_xcheck(self.cx, "FUNCTION_ENTRY_TAG", &fn_ident);
-                    let exit_xcheck = cfg.inherited.exit
-                        .build_ident_xcheck(self.cx, "FUNCTION_EXIT_TAG", &fn_ident);
-                    // Insert cross-checks for function arguments
-                    let arg_xchecks = fn_decl.inputs.iter()
-                        .flat_map(|ref arg| self.build_arg_xcheck(arg))
-                        .collect::<Vec<ast::Stmt>>();
-                    let result_xcheck = cfg.inherited.ret
-                        .build_xcheck(self.cx, "FUNCTION_RETURN_TAG", |tag| {
-                        // By default, we use cross_check_hash
-                        // to hash the value of the identifier
-                        let (ahasher, shasher) = self.get_hasher_pair();
-                        quote_expr!(self.cx, {
-                            use cross_check_runtime::hash::CrossCheckHash as XCH;
-                            let hash = XCH::cross_check_hash::<$ahasher, $shasher>(&__c2rust_fn_result);
-                            hash.map(|hash| ($tag, hash))
-                        })
-                    });
-
-                    let ref fcfg = cfg.function_config();
-                    let entry_extra_xchecks = self.build_extra_xchecks(&fcfg.entry_extra);
-                    let exit_extra_xchecks = self.build_extra_xchecks(&fcfg.exit_extra);
-                    // Extract the result type from the function signature,
-                    // so we can attach it to the __c2rust_fn_body closure
-                    let result_ty = match fn_decl.output {
-                        ast::FunctionRetTy::Default(_) => quote_ty!(self.cx, ()),
-                        ast::FunctionRetTy::Ty(ref ty) => ty.clone(),
-                    };
-                    quote_block!(self.cx, {
-                        $entry_xcheck
-                        $arg_xchecks
-                        $entry_extra_xchecks
-                        let mut __c2rust_fn_body = || -> $result_ty { $block };
-                        let __c2rust_fn_result = __c2rust_fn_body();
-                        $exit_xcheck
-                        $result_xcheck
-                        $exit_extra_xchecks
-                        __c2rust_fn_result
-                    })
-                } else {
-                    block
-                };
-
-                // Add our typedefs to the beginning of each function;
-                // whatever the configuration says, we should always add these
-                let block_with_types = {
-                    let (ahasher, shasher) = self.get_hasher_pair();
-                    quote_block!(self.cx, {
-                        #[allow(dead_code)]
-                        mod cross_check_types {
-                            pub type DefaultAggHasher    = $ahasher;
-                            pub type DefaultSimpleHasher = $shasher;
-                        };
-                        $checked_block
-                    })
-                };
+                let checked_block = self.build_function_xchecks(
+                    &folded_item.ident, &*fn_decl, block);
                 let checked_fn = ast::ItemKind::Fn(
                     fn_decl,
                     unsafety,
                     constness,
                     abi,
                     generics,
-                    block_with_types);
+                    checked_block);
                 // Build and return the replacement function item
                 ast::Item {
                     node: checked_fn,
@@ -396,6 +414,53 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
             let new_item = self.internal_fold_item_simple(item);
             self.scope_stack.pop();
             new_item
+        }
+    }
+
+    fn fold_impl_item(&mut self, item: ast::ImplItem) -> SmallVector<ast::ImplItem> {
+        match item.node {
+            ast::ImplItemKind::Method(sig, body) => {
+                // FIXME: this is a bit hacky: we forcibly build a fake
+                // Item::Fn with the same signature and body as our method,
+                // then add cross-checks to that one
+                let fake_item = ast::Item {
+                    ident:  item.ident,
+                    attrs:  item.attrs,
+                    id:     item.id,
+                    vis:    item.vis,
+                    span:   item.span,
+                    tokens: item.tokens,
+                    node: ast::ItemKind::Fn(sig.decl, sig.unsafety,
+                                            sig.constness, sig.abi,
+                                            item.generics, body)
+                };
+                let folded_fake_item = self.fold_item_simple(fake_item);
+                let (folded_sig, folded_generics, folded_body) = match folded_fake_item.node {
+                    ast::ItemKind::Fn(decl, unsafety, constness, abi, generics, body) => {
+                        let sig = ast::MethodSig {
+                            unsafety: unsafety,
+                            constness: constness,
+                            abi: abi,
+                            decl: decl
+                        };
+                        // TODO: call noop_fold_method_sig on sig???
+                        (sig, generics, body)
+                    }
+                    n @ _ => panic!("unexpected folded item node: {:?}", n)
+                };
+                SmallVector::one(ast::ImplItem {
+                    ident:  folded_fake_item.ident,
+                    attrs:  folded_fake_item.attrs,
+                    id:     folded_fake_item.id,
+                    vis:    folded_fake_item.vis,
+                    span:   folded_fake_item.span,
+                    tokens: folded_fake_item.tokens,
+                    defaultness: item.defaultness,
+                    generics: folded_generics,
+                    node: ast::ImplItemKind::Method(folded_sig, folded_body)
+                })
+            }
+            _ => fold::noop_fold_impl_item(item, self)
         }
     }
 

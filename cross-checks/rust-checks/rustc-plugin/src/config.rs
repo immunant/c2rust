@@ -81,6 +81,9 @@ pub enum ItemCheckConfig {
     // Structure item configuration
     Struct(StructCheckConfig),
 
+    // `impl` for a structure
+    Impl,
+
     // Other items (for now, this shouldn't really occur)
     Other,
 }
@@ -108,6 +111,7 @@ impl ScopeCheckConfig {
             ast::ItemKind::Enum(..) |
             ast::ItemKind::Struct(..) |
             ast::ItemKind::Union(..) => ItemCheckConfig::Struct(Default::default()),
+            ast::ItemKind::Impl(..)  => ItemCheckConfig::Impl,
             _ => ItemCheckConfig::Other,
         };
         ScopeCheckConfig {
@@ -282,6 +286,15 @@ impl ScopeCheckConfig {
                 parse_optional_field!(>custom_hash,  self_struc, xcfg_struc, custom_hash,  Some(custom_hash.clone()));
                 parse_optional_field!(>field_hasher, self_struc, xcfg_struc, field_hasher, Some(field_hasher.clone()));
                 self_struc.fields.extend(xcfg_struc.fields.clone().into_iter());
+            },
+
+            // Parse the relevant fields for `impl`s
+            (&mut ItemCheckConfig::Impl, &xcfg::ItemConfig::Struct(ref xcfg_struc)) => {
+                // Inherited fields
+                // TODO: add a way for the external config to reset these to default
+                parse_optional_field!(^enabled, xcfg_struc, disable_xchecks, !disable_xchecks);
+                parse_optional_field!(^ahasher, xcfg_struc, ahasher, Some(cx.parse_tts(ahasher.clone())));
+                parse_optional_field!(^shasher, xcfg_struc, shasher, Some(cx.parse_tts(shasher.clone())));
             },
             (_, _) => ()
         }
