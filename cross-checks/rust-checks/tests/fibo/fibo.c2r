@@ -43,7 +43,6 @@ src/fibo.rs:
       nested:
         - item: function
           name: foo
-          disable_xchecks: false
           entry: { fixed: 0x3456789a }
           exit: default
           args:
