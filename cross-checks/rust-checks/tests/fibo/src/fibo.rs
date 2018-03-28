@@ -8,6 +8,11 @@
 
 struct FiboArg(u64, u64, #[cross_check(none)] String);
 
+impl FiboArg {
+    fn foo(&self) {
+    }
+}
+
 fn hash_arg<XCHA, XCHS>(arg: &FiboArg, _: usize) -> u64 {
     arg.0.wrapping_mul(0x10000).wrapping_add(arg.1)
 }
@@ -30,6 +35,7 @@ pub fn fibo(n: u64) -> u64 {
     //#[cross_check]
     let fa = FiboArg(n.wrapping_sub(1), n.wrapping_sub(2), n.to_string());
     cross_check_value!(fa);
+    fa.foo();
     match n {
         0 |
         1 => 1,

@@ -15,6 +15,7 @@ use rustc_plugin::Registry;
 use syntax::ast;
 use syntax::fold;
 
+use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -163,7 +164,17 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         };
 
         let item_xcfg_config = {
-            let item_name = item.ident.name.as_str();
+            let item_ident_str = item.ident.name.as_str();
+            // If the item is an impl for a type, e.g.:
+            // `impl T { ... }`, then we take its name
+            // from the type, not from the identifier
+            let item_name = match item.node {
+                ast::ItemKind::Impl(.., ref ty, _) => {
+                    // FIXME: handle generics in the type
+                    Cow::from(pprust::ty_to_string(ty))
+                }
+                _ => Cow::from(&*item_ident_str)
+            };
             last_scope.get_item_config(&*item_name)
         };
         if let Some(ref xcfg) = item_xcfg_config {
@@ -399,6 +410,53 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
             let new_item = self.internal_fold_item_simple(item);
             self.scope_stack.pop();
             new_item
+        }
+    }
+
+    fn fold_impl_item(&mut self, item: ast::ImplItem) -> SmallVector<ast::ImplItem> {
+        match item.node {
+            ast::ImplItemKind::Method(sig, body) => {
+                // FIXME: this is a bit hacky: we forcibly build a fake
+                // Item::Fn with the same signature and body as our method,
+                // then add cross-checks to that one
+                let fake_item = ast::Item {
+                    ident:  item.ident,
+                    attrs:  item.attrs,
+                    id:     item.id,
+                    vis:    item.vis,
+                    span:   item.span,
+                    tokens: item.tokens,
+                    node: ast::ItemKind::Fn(sig.decl, sig.unsafety,
+                                            sig.constness, sig.abi,
+                                            item.generics, body)
+                };
+                let folded_fake_item = self.fold_item_simple(fake_item);
+                let (folded_sig, folded_generics, folded_body) = match folded_fake_item.node {
+                    ast::ItemKind::Fn(decl, unsafety, constness, abi, generics, body) => {
+                        let sig = ast::MethodSig {
+                            unsafety: unsafety,
+                            constness: constness,
+                            abi: abi,
+                            decl: decl
+                        };
+                        // TODO: call noop_fold_method_sig on sig???
+                        (sig, generics, body)
+                    }
+                    n @ _ => panic!("unexpected folded item node: {:?}", n)
+                };
+                SmallVector::one(ast::ImplItem {
+                    ident:  folded_fake_item.ident,
+                    attrs:  folded_fake_item.attrs,
+                    id:     folded_fake_item.id,
+                    vis:    folded_fake_item.vis,
+                    span:   folded_fake_item.span,
+                    tokens: folded_fake_item.tokens,
+                    defaultness: item.defaultness,
+                    generics: folded_generics,
+                    node: ast::ImplItemKind::Method(folded_sig, folded_body)
+                })
+            }
+            _ => fold::noop_fold_impl_item(item, self)
         }
     }
 
