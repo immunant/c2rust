@@ -70,7 +70,7 @@ pub fn expect_string(val: &Cbor) -> Result<String, DecodeError> {
 pub fn expect_u64(val: &Cbor) -> Result<u64, DecodeError> {
     match val {
         &Cbor::Unsigned(x) => Ok(x.into_u64()),
-        _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
+        _ => { Err(DecodeError::TypeMismatch) }
     }
 }
 
@@ -78,21 +78,21 @@ pub fn expect_i64(val: &Cbor) -> Result<i64, DecodeError> {
     match val {
         &Cbor::Unsigned(x) => Ok(x.into_u64() as i64),
         &Cbor::Signed(x) => Ok(x.into_i64()),
-        _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
+        _ => { Err(DecodeError::TypeMismatch) }
     }
 }
 
 pub fn expect_f64(val: &Cbor) -> Result<f64, DecodeError> {
     match val {
         &Cbor::Float(x) => Ok(x.into_f64()),
-        _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
+        _ => { Err(DecodeError::TypeMismatch) }
     }
 }
 
 pub fn expect_str(val: &Cbor) -> Result<&str, DecodeError> {
     match val {
         &Cbor::Unicode(ref s) => Ok(s),
-        _ => { println!("Got, {:?}; Expected string", val); Err(DecodeError::TypeMismatch) }
+        _ => { Err(DecodeError::TypeMismatch) }
     }
 }
 
@@ -100,14 +100,14 @@ pub fn expect_opt_str(val: &Cbor) -> Result<Option<&str>, DecodeError> {
     match val {
         &Cbor::Null => Ok(None),
         &Cbor::Unicode(ref s) => Ok(Some(s)),
-        _ => { println!("Got, {:?}; Expected string", val); Err(DecodeError::TypeMismatch) }
+        _ => { Err(DecodeError::TypeMismatch) }
     }
 }
 
 pub fn expect_bool(val: &Cbor) -> Result<bool, DecodeError> {
     match val {
         &Cbor::Bool(b) => Ok(b),
-        _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
+        _ => { Err(DecodeError::TypeMismatch) }
     }
 }
 
@@ -115,7 +115,7 @@ pub fn expect_opt_u64(val: &Cbor) -> Result<Option<u64>, DecodeError> {
     match val {
         &Cbor::Null => Ok(None),
         &Cbor::Unsigned(x) => Ok(Some(x.into_u64())),
-        _ => { println!("{:?}", val); Err(DecodeError::TypeMismatch) }
+        _ => { Err(DecodeError::TypeMismatch) }
     }
 }
 
