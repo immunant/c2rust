@@ -7,3 +7,6 @@
 [submodule "examples/snudown/repo"]
 	path = examples/snudown/repo
 	url = git@github.com:immunant/snudown.git
+[submodule "examples/xzoom/xzoom"]
+	path = examples/xzoom/repo
+	url = git://git.r-36.net/xzoom
