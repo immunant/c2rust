@@ -4,9 +4,9 @@ MAINTAINER perl@immunant.com
 ARG USER=docker
 ARG UID=1000
 ARG GID=1000
+ARG RUST_VER=nightly-2018-01-06
 ENV HOME=/home/$USER
 ENV DEBIAN_FRONTEND=noninteractive
-ENV RUST_VER=nightly-2018-01-06
 
 USER root
 RUN groupadd -f -g $GID $USER
