@@ -1,5 +1,5 @@
 # Snudown
-To build snudown with the C2Rust translator and/or cross-checks, go into the `repo` directory and run `python setup.py build` with one of the following arguments:
+To build snudown with the C2Rust translator and/or cross-checks, initialize the git submodule by running `git submodule update --init path/to/repo`. Next, `cd` into the `repo` directory and run `python setup.py build` with one of the following arguments:
 * `--translate` to translate the C code to Rust without any checks
 * `--clang-crosschecks` to build the C version of snudown with full cross-checking
 * `--rust-crosschecks` to translate to cross-checked Rust code
