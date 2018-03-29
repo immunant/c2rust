@@ -42,6 +42,10 @@ fn main() {
             .long("dpretty-typed-clang-ast")
             .help("Pretty-prints out the parsed typed Clang AST")
             .takes_value(false))
+        .arg(Arg::with_name("remove-unused-decls")
+            .long("remove-unused-decls")
+            .help("Remove unused declarations from Clang AST")
+            .takes_value(false))
 
         // CFG/Relooper related
         .arg(Arg::with_name("reloop-cfgs")
@@ -94,6 +98,7 @@ fn main() {
     let cross_check_configs = matches.values_of("cross-check-config")
         .map(|vals| vals.collect::<Vec<_>>())
         .unwrap_or_default();
+    let remove_unused_declarations = matches.is_present("remove-unused-decls");
 
     // Extract from the CBOR file the untyped AST
     let untyped_context = match parse_untyped_ast(file) {
@@ -146,6 +151,7 @@ fn main() {
         dump_structures,
         debug_labels,
         cross_checks,
+        remove_unused_declarations,
         cross_check_configs,
         prefix_function_names,
         translate_entry,
