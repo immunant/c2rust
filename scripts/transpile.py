@@ -91,7 +91,8 @@ def transpile_files(cc_db: TextIO,
     if filter:  # skip commands not matching file filter
         cc_db = [c for c in cc_db if filter in c['file']]
 
-    ensure_code_compiled_with_clang(cc_db)
+    if not on_mac():
+        ensure_code_compiled_with_clang(cc_db)
     include_dirs = get_system_include_dirs()
 
     def transpile_single(cmd) -> Tuple[str, int, str, str]:
@@ -121,6 +122,14 @@ def transpile_files(cc_db: TextIO,
             logging.debug("translation command:\n %s", translation_cmd)
             try:
                 retcode, stdout, stderr = ast_impo[cbor_file].run()
+
+                e = "Expected file suffix `.c.cbor`; actual: " + cbor_basename
+                assert cbor_file.endswith(".c.cbor"), e
+                rust_file = cbor_file[:-7] + ".rs"
+                with open(rust_file, "w") as rust_fh:
+                    rust_fh.writelines(stdout)
+                    logging.debug("wrote output rust to %s", rust_file)
+
                 return (file_basename, retcode, stdout, stderr)
             except pb.ProcessExecutionError as pee:
                 return (file_basename, pee.retcode, pee.stdout, pee.stderr)
@@ -134,7 +143,7 @@ def transpile_files(cc_db: TextIO,
         if not retcode:
             successes += 1
             print(OKGREEN + " import successful" + NO_COLOUR)
-            logging.debug(" import successful")
+            logging.debug(" import successful")            
         else:  # non-zero retcode
             failures += 1
             if verbose:

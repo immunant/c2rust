@@ -317,7 +317,9 @@ class TestDirectory:
             sys.stdout.write('\n')
             sys.stdout.write(str(exception))
 
-            return []
+            outcomes.append(TestOutcome.UnexpectedFailure)
+
+            return outcomes
 
         self.generated_files["c_lib"].append(static_library)
         self.generated_files["c_obj"].extend(static_library.obj_files)
@@ -426,6 +428,8 @@ class TestDirectory:
             self.print_status(FAIL, "FAILED", "compile {}".format(main_file_path_short))
             sys.stdout.write('\n')
             sys.stdout.write(str(exception))
+
+            outcomes.append(TestOutcome.UnexpectedFailure)
 
             return outcomes
 
