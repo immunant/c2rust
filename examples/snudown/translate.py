@@ -41,7 +41,7 @@ OUTPUT_DIR="translator-build"
 
 def _get_tool_from_rustup(toolname: str) -> Command:
     rustup = get_cmd_or_die("rustup")
-    toolpath: str = rustup['run', CUSTOM_RUST_NAME, 'which', toolname]
+    toolpath: str = rustup('run', CUSTOM_RUST_NAME, 'which', toolname).strip()
     return pb.local.get(toolpath)
 
 # translate() {
@@ -66,7 +66,7 @@ def translate(slug: str):
                       LD_LIBRARY_PATH=LIB_PATH):
         cbor_path = c_src_path + ".cbor"
         logging.debug("importing %s", cbor_path)
-        retcode, stdout, stderr =  invoke_quietly(ast_impo, '--reloop-cfgs', cbor_path)
+        stdout = ast_impo('--reloop-cfgs', cbor_path)
         logging.debug("job's done")
         with open(rust_src_path, "w") as rust_fh:
             rust_fh.writelines(stdout)
@@ -75,13 +75,13 @@ def translate(slug: str):
     # formatting step
     logging.debug("formatting %s", rust_src_path)
     rustfmt = _get_tool_from_rustup("rustfmt")
-    rustfmt(rust_src_path, '--force')
+    # rustfmt(rust_src_path, '--force')
 
     # compilation step
+    rust_bin_path: str = os.path.join(OUTPUT_DIR, "{}.rlib".format(slug))
     logging.debug("compiling %s -> %s", rust_src_path, rust_bin_path)
     rustc = _get_tool_from_rustup("rustc")
-    rust_bin_path: str = os.path.join(OUTPUT_DIR, "{}.rlib".format(slug))
-    rustc('--create-type=rlib', '--crate-name=' + slug, rust_src_path, '-o', rust_bin_path)
+    rustc('--crate-type=rlib', '--crate-name=' + slug, rust_src_path, '-o', rust_bin_path)
 
 
 # translate_xcheck() {
@@ -144,6 +144,10 @@ if __name__ == "__main__":
 
     setup_logging()
     logging.debug(LIB_PATH)
+
+    git = get_cmd_or_die("git")
+    invoke_quietly(git, "submodule", "update", "--init", SNUDOWN)
+    logging.debug("updated submodule %s", SNUDOWN)
 
     # the macOS and Linux builds of the ast-extractor alias each other
     if not is_elf_exe(AST_EXTR) and not on_mac():
