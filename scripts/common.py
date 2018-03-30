@@ -113,6 +113,12 @@ def get_host_triplet() -> str:
         assert False, "not implemented"
 
 
+def update_or_init_submodule(submodule_path: str):
+    git = get_cmd_or_die("git")
+    invoke_quietly(git, "submodule", "update", "--init", submodule_path)
+    logging.debug("updated submodule %s", submodule_path)
+
+
 def get_rust_toolchain_libpath(name: str) -> str:
     """
     returns library path to custom rust libdir
