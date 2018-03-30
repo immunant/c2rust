@@ -9,6 +9,7 @@
 # or
 # $ ./translate.sh rustcheck
 
+from shutil import rmtree
 from common import *
 from collections import namedtuple
 
@@ -25,7 +26,7 @@ AST_EXTRACTOR = AST_EXTR
 AST_IMPORTER = AST_IMPO
 RUSTFMT = "rustfmt"
 
-XCHECK_TOPDIR = os.path.join(CROSS_CHECKS_DIR, "rust-check")
+XCHECK_TOPDIR = os.path.join(CROSS_CHECKS_DIR, "rust-checks")
 XCHECK_PLUGIN = os.path.join(XCHECK_TOPDIR, "rustc-plugin/target/debug/libcross_check_plugin.so")
 XCHECK_DERIVE = os.path.join(XCHECK_TOPDIR, "derive-macros/target/debug/libcross_check_derive.so")
 XCHECK_RUNTIME = os.path.join(XCHECK_TOPDIR, "runtime/target/debug/libcross_check_runtime.rlib")
@@ -70,12 +71,12 @@ def translate(slug: str, xcheck: bool) -> None:
         logging.debug("wrote rust output to %s", rust_src_path)
 
     # formatting step
-    logging.debug("formatting %s", rust_src_path)
-    rustfmt = _get_tool_from_rustup("rustfmt")
-    rustfmt[rust_src_path, '--force'] & pb.TEE(retcode=None)
+    # logging.debug("formatting %s", rust_src_path)
+    # rustfmt = _get_tool_from_rustup("rustfmt")
+    # rustfmt[rust_src_path, '--force'] & pb.TEE(retcode=None)
 
     # compilation step
-    rust_bin_path: str = os.path.join(OUTPUT_DIR, "{}.rlib".format(slug))
+    rust_bin_path: str = os.path.join(OUTPUT_DIR, "lib{}.rlib".format(slug))
     logging.debug("compiling %s -> %s", rust_src_path, rust_bin_path)
     rustc = _get_tool_from_rustup("rustc")
     args = ['--crate-type=rlib',
@@ -93,7 +94,7 @@ def translate(slug: str, xcheck: bool) -> None:
 CompileCommand = namedtuple('CompileCommand', ['directory', 'command', 'file'])
 
 
-class CCDBBuilder(object):
+class CompileCommandsBuilder(object):
     entries: List[CompileCommand] = []
 
     def add_entry(self, dir: str, cmd: str, file: str) -> None:
@@ -108,21 +109,26 @@ class CCDBBuilder(object):
         with open(outpath, "w") as ccdb_fh:
             ccdb_fh.writelines(outjson)
 
-USAGE = """\
-USAGE:
-$ ./translate.sh translate
-or
-$ ./translate.sh rustcheck
-"""
 
-if __name__ == "__main__":
-
+def main(xchecks: bool):
     setup_logging()
-    logging.debug(LIB_PATH)
 
-    git = get_cmd_or_die("git")
-    invoke_quietly(git, "submodule", "update", "--init", SNUDOWN)
-    logging.debug("updated submodule %s", SNUDOWN)
+    if os.path.isdir(OUTPUT_DIR):
+        logging.debug("removing existing output dir %s", OUTPUT_DIR)
+        rmtree(OUTPUT_DIR)
+    os.mkdir(OUTPUT_DIR)
+
+    # make sure that we built the cross-checking libraries if cross checking
+    if xchecks:
+        bins = [XCHECK_PLUGIN, XCHECK_DERIVE, XCHECK_RUNTIME]
+        for b in bins:
+            if not os.path.isfile(b):
+                msg = "missing binary:\n\t{}\n\nrun `cargo build` to compile it and retry."
+                msg = msg.format(b)
+                die(msg)
+
+    # make sure the snudown submodule is checked out and up to date
+    update_or_init_submodule(SNUDOWN)
 
     # the macOS and Linux builds of the ast-extractor alias each other
     if not is_elf_exe(AST_EXTR) and not on_mac():
@@ -136,17 +142,7 @@ if __name__ == "__main__":
             gperf = get_cmd_or_die("gperf")
             gperf('html_entities.gperf', '--output-file=html_entities.h')
 
-    # TODO: use argparse package instead?
-    if len(sys.argv) < 2 or sys.argv[1] not in ["translate", "rustcheck"]:
-        print(USAGE)
-        die("missing or invalid argument")
-
-    xchecks = True if sys.argv[1] == "rustcheck" else False
-
-    # TODO: make sure that we built $C2Rust/cross-checks/rust-checks/rustc-plugin
-    # TODO: if xchecks is true.
-
-    bldr = CCDBBuilder()
+    bldr = CompileCommandsBuilder()
 
     slugs = ["autolink", "buffer", "stack", "markdown"]
     ctmpl = "cc -o {odir}/{slug}.c.o -c {snudown}/src/{slug}.c -Wwrite-strings -D_FORTIFY_SOURCE=0 -DNDEBUG=1"
@@ -159,23 +155,42 @@ if __name__ == "__main__":
 
     bldr.write_result(os.path.curdir)
 
-    if not os.path.isdir(OUTPUT_DIR):
-        os.mkdir(OUTPUT_DIR)
-
     for s in slugs:
         translate(s, xchecks)
 
-    # TODO: pythonify this:
-    # if not xchecks:
-    #   rustc --crate-name=snudownrust --crate-type=staticlib -L $OUTPUT_DIR \
-    #       $C2RUST/examples/snudown/snudownrust.rs -o $OUTPUT_DIR/libsnudownrust.a
+    rustc = _get_tool_from_rustup("rustc")
+    args = ['--crate-type=staticlib',
+            '--crate-name=snudownrust',
+            '-L', OUTPUT_DIR,
+            os.path.join(C2RUST, "examples/snudown/snudownrust.rs")]
 
-    # else:
-    #   rustc --crate-name=snudownrust --crate-type=staticlib -L $OUTPUT_DIR \
-    #       --extern cross_check_derive=$XCHECK_DERIVE \
-    #       --extern cross_check_runtime=$XCHECK_RUNTIME \
-    #       --cfg "feature=\"cross-check\"" \
-    #       $C2RUST/examples/snudown/snudownrust.rs -o $OUTPUT_DIR/libsnudownrustxcheck.a
+    if xchecks:
+        args += ['--extern', 'cross_check_derive=' + XCHECK_DERIVE]
+        args += ['--extern', 'cross_check_runtime=' + XCHECK_RUNTIME]
+        args += ['--cfg', 'feature=\"cross-check\"']
+        args += ['-o', os.path.join(OUTPUT_DIR, "libsnudownrustxcheck.a")]
+    else:
+        args += ['-o', os.path.join(OUTPUT_DIR, "libsnudownrust.a")]
+    rustc(*args)
+
+    logging.info("success!")
+
+
+USAGE = """\
+USAGE:
+$ ./translate.sh translate
+or
+$ ./translate.sh rustcheck
+"""
+
+if __name__ == "__main__":
+    # TODO: use argparse package instead?
+    if len(sys.argv) < 2 or sys.argv[1] not in ["translate", "rustcheck"]:
+        print(USAGE)
+        die("missing or invalid argument")
+
+    XCHECKS = True if sys.argv[1] == "rustcheck" else False
+    main(XCHECKS)
 
 
 
