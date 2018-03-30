@@ -37,6 +37,7 @@ COMPILER_SUBMOD_DIR = os.path.join(RREF_DIR, 'compiler')
 CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
 REMON_SUBMOD_DIR = os.path.join(CROSS_CHECKS_DIR, 'ReMon')
 LIBCLEVRBUF_DIR = os.path.join(REMON_SUBMOD_DIR, "libclevrbuf")
+EXAMPLES_DIR = os.path.join(ROOT_DIR, 'examples')
 
 AST_IMPO = os.path.join(ROOT_DIR, "ast-importer/target/debug/ast_importer")
 
