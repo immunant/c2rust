@@ -521,7 +521,8 @@ def download_archive(aurl: str, afile: str, asig: str = None):
     # download archive
     if not os.path.isfile(afile):
         logging.info("downloading %s", os.path.basename(afile))
-        curl(aurl, "-o", afile)
+        follow_redirs = "-L"
+        curl(aurl, follow_redirs, "--max-redirs", "20", "-o", afile)
 
     if not asig:
         return
