@@ -289,7 +289,10 @@ def _invoke(console_output, cmd, *arguments):
         die(msg, pee.retcode)
 
 
-def get_cmd_or_die(cmd):
+Command = pb.machines.LocalCommand
+
+
+def get_cmd_or_die(cmd: str) -> Command:
     """
     lookup named command or terminate script.
     """
@@ -297,6 +300,15 @@ def get_cmd_or_die(cmd):
         return pb.local[cmd]
     except pb.CommandNotFound:
         die("{} not in path".format(cmd), errno.ENOENT)
+
+
+def get_cmd_from_rustup(cmd: str) -> Command:
+    """
+    ask rustup for path to cmd for the right rust toolchain.
+    """
+    rustup = get_cmd_or_die("rustup")
+    toolpath: str = rustup('run', CUSTOM_RUST_NAME, 'which', cmd).strip()
+    return pb.local.get(toolpath)
 
 
 def ensure_dir(path):
@@ -323,7 +335,7 @@ def git_ignore_dir(path):
             handle.write("*\n")
 
 
-def setup_logging(logLevel=logging.INFO):
+def setup_logging(log_level=logging.INFO):
     logging.basicConfig(
         filename=sys.argv[0].replace(".py", ".log"),
         filemode='w',
@@ -331,7 +343,7 @@ def setup_logging(logLevel=logging.INFO):
     )
 
     console = logging.StreamHandler()
-    console.setLevel(logLevel)
+    console.setLevel(log_level)
     logging.root.addHandler(console)
 
 
@@ -379,9 +391,10 @@ def ensure_clang_version(min_ver: List[int]):
     clang = get_cmd_or_die("clang")
     version = clang("--version")
 
-    def _common_check(m):
-        if m:
-            version = m.group(1)
+    def _common_check(match):
+        nonlocal version
+        if match:
+            version = match.group(1)
             # print(version)
             version = [int(d) for d in version.split(".")]
             emsg = "can't compare versions {} and {}".format(version, min_ver)

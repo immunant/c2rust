@@ -13,8 +13,6 @@ from shutil import rmtree
 from common import *
 from collections import namedtuple
 
-Command = pb.machines.LocalCommand
-
 MACHINE_NAME = platform.node()
 MACHINE_TYPE = platform.platform()
 
@@ -34,12 +32,6 @@ XCHECK_RUNTIME = os.path.join(XCHECK_TOPDIR, "runtime/target/debug/libcross_chec
 # # FIXME: this should be an absolute path, but rustc-plugin cannot handle
 # # absolute paths for the external configuration
 OUTPUT_DIR = "translator-build"
-
-
-def _get_tool_from_rustup(toolname: str) -> Command:
-    rustup = get_cmd_or_die("rustup")
-    toolpath: str = rustup('run', CUSTOM_RUST_NAME, 'which', toolname).strip()
-    return pb.local.get(toolpath)
 
 
 def translate(slug: str, xcheck: bool) -> None:
@@ -78,7 +70,7 @@ def translate(slug: str, xcheck: bool) -> None:
     # compilation step
     rust_bin_path: str = os.path.join(OUTPUT_DIR, "lib{}.rlib".format(slug))
     logging.debug("compiling %s -> %s", rust_src_path, rust_bin_path)
-    rustc = _get_tool_from_rustup("rustc")
+    rustc = get_cmd_from_rustup("rustc")
     args = ['--crate-type=rlib',
             '--crate-name=' + slug,
             rust_src_path,
@@ -158,7 +150,7 @@ def main(xchecks: bool):
     for s in slugs:
         translate(s, xchecks)
 
-    rustc = _get_tool_from_rustup("rustc")
+    rustc = get_cmd_from_rustup("rustc")
     args = ['--crate-type=staticlib',
             '--crate-name=snudownrust',
             '-L', OUTPUT_DIR,
