@@ -47,7 +47,7 @@ def translate(slug: str, xcheck: bool) -> None:
     ast_extr(c_src_path)
 
     # importer step
-    rust_src_path: str = os.path.join(OUTPUT_DIR, "{}.rs".format(slug))
+    rust_src_path = os.path.join(OUTPUT_DIR, "{}.rs".format(slug))
     with pb.local.env(RUST_BACKTRACE=1,
                       LD_LIBRARY_PATH=LIB_PATH):
         cbor_path = c_src_path + ".cbor"
@@ -68,7 +68,7 @@ def translate(slug: str, xcheck: bool) -> None:
     # rustfmt[rust_src_path, '--force'] & pb.TEE(retcode=None)
 
     # compilation step
-    rust_bin_path: str = os.path.join(OUTPUT_DIR, "lib{}.rlib".format(slug))
+    rust_bin_path = os.path.join(OUTPUT_DIR, "lib{}.rlib".format(slug))
     logging.debug("compiling %s -> %s", rust_src_path, rust_bin_path)
     rustc = get_cmd_from_rustup("rustc")
     args = ['--crate-type=rlib',
@@ -95,8 +95,8 @@ class CompileCommandsBuilder(object):
 
     def write_result(self, outdir: str) -> None:
         assert os.path.isdir(outdir), "No such dir: " + outdir
-        outpath: str = os.path.join(outdir, CC_DB_JSON)
-        outjson: str = json.dumps(self.entries, indent=2)
+        outpath = os.path.join(outdir, CC_DB_JSON)
+        outjson = json.dumps(self.entries, indent=2)
         # print(outjson)
         with open(outpath, "w") as ccdb_fh:
             ccdb_fh.writelines(outjson)

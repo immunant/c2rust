@@ -307,7 +307,7 @@ def get_cmd_from_rustup(cmd: str) -> Command:
     ask rustup for path to cmd for the right rust toolchain.
     """
     rustup = get_cmd_or_die("rustup")
-    toolpath: str = rustup('run', CUSTOM_RUST_NAME, 'which', cmd).strip()
+    toolpath = rustup('run', CUSTOM_RUST_NAME, 'which', cmd).strip()
     return pb.local.get(toolpath)
 
 
