@@ -1,4 +1,4 @@
-# xzoom
+# grabc
 
 ## Getting Started
 
@@ -6,7 +6,7 @@ If the repo submodule appears to be empty or out of date, you may need to run `g
 
 ## Required Manual Changes
 
-You may need to add `#include <unistd.h>` to xzoom.c for it to properly generate (otherwise `main_0` goes missing). This include is normally only added with the `TIMER` macro enabled, but seems to be required for standard functionality. (We could fork the repo if we want to make this change explicit for the purposes of automated testing.)
+The translator will generate this bit of code which will not compile: `static mut cross_cursor: Cursor = ::std::ptr::null_mut::<libc::c_void>() as Cursor;`. This should be replaced with the equivalent code: `static mut cross_cursor: Cursor = 0;` (`Cursor` is just an alias for an int)
 
 ## Required Extractor Params
 

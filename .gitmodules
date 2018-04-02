@@ -10,3 +10,6 @@
 [submodule "examples/xzoom/xzoom"]
 	path = examples/xzoom/repo
 	url = git://git.r-36.net/xzoom
+[submodule "examples/grabc/repo"]
+	path = examples/grabc/repo
+	url = git@github.com:immunant/grabc.git
