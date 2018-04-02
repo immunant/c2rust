@@ -152,6 +152,9 @@ impl TypedAstContext {
         // unused function declaration uses a VLA and that VLA's size expression mentions
         // some definitions.
         for decl in self.c_exprs.values() {
+
+            type_queue.push(decl.kind.get_type());
+
             match decl.kind {
 
                 // Could mention external functions, variables, and enum constants
@@ -160,15 +163,14 @@ impl TypedAstContext {
                     // This declref could refer to an enum constant, so we want to keep the enum
                     // declaration for that constant live
                     if let Some(&parent_id) = self.field_parents.get(&decl_id) {
-                        live.insert(parent_id);
-                        if let CDeclKind::Enum { ref variants, .. } = self[parent_id].kind {
-                            live.extend(variants);
+                        if live.insert(parent_id) {
+                            if let CDeclKind::Enum { ref variants, .. } = self[parent_id].kind {
+                                live.extend(variants);
+                            }
                         }
                     }
                 }
-                CExprKind::ExplicitCast(ty, _, _, _) => { type_queue.push(ty.ctype); }
                 CExprKind::UnaryType(_,_,_,type_id) => { type_queue.push(type_id.ctype); }
-                CExprKind::CompoundLiteral(ty,_) => { type_queue.push(ty.ctype); }
                 _ => {}
             }
         }
@@ -195,10 +197,9 @@ impl TypedAstContext {
         // Check variables after unused function declarations are removed so that their parameters
         // don't keep extra types alive
         for (decl_id, decl) in &self.c_decls {
-            match decl.kind {
-                CDeclKind::Variable { typ, .. } =>
-                    { live.insert(*decl_id); type_queue.push(typ.ctype); }
-                _ => {}
+            if let CDeclKind::Variable { typ, .. } = decl.kind {
+                live.insert(*decl_id);
+                type_queue.push(typ.ctype);
             }
         }
 
