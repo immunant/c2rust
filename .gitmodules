@@ -13,3 +13,6 @@
 [submodule "examples/grabc/repo"]
 	path = examples/grabc/repo
 	url = git@github.com:immunant/grabc.git
+[submodule "examples/urlparser/repo"]
+	path = examples/urlparser/repo
+	url = git@github.com:jwerle/url.h.git
