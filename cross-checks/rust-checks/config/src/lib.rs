@@ -12,7 +12,7 @@ pub mod attr;
 use std::collections::HashMap;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum XCheckType {
     // Basic types
     Default,
@@ -25,6 +25,9 @@ pub enum XCheckType {
     // Types with additional parameters
     Fixed(u64),
     Djb2(String),
+
+    // Hash using the default hash for another type
+    AsType(String),
 
     // Compute the cross-check value from an arbitrary Rust expression
     Custom(String),

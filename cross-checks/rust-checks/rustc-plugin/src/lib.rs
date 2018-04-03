@@ -215,13 +215,16 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 let arg_xcheck_cfg = self.config().function_config()
                     .args.get(&arg_idx)
                     .unwrap_or(&self.config().inherited.all_args);
-                arg_xcheck_cfg.build_xcheck(self.cx, "FUNCTION_ARG_TAG", |tag| {
+                arg_xcheck_cfg.build_xcheck(self.cx, "FUNCTION_ARG_TAG", "val_ref",
+                                            |tag, pre_hash_stmts| {
                     // By default, we use cross_check_hash
                     // to hash the value of the identifier
                     let (ahasher, shasher) = self.get_hasher_pair();
                     quote_expr!(self.cx, {
                         use cross_check_runtime::hash::CrossCheckHash as XCH;
-                        let hash = XCH::cross_check_hash::<$ahasher, $shasher>(&$ident);
+                        let val_ref = &$ident;
+                        $pre_hash_stmts
+                        let hash = XCH::cross_check_hash::<$ahasher, $shasher>(val_ref);
                         hash.map(|hash| ($tag, hash))
                     })
                 })
@@ -291,13 +294,16 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 .flat_map(|ref arg| self.build_arg_xcheck(arg))
                 .collect::<Vec<ast::Stmt>>();
             let result_xcheck = cfg.inherited.ret
-                .build_xcheck(self.cx, "FUNCTION_RETURN_TAG", |tag| {
+                .build_xcheck(self.cx, "FUNCTION_RETURN_TAG", "val_ref",
+                              |tag, pre_hash_stmts| {
                 // By default, we use cross_check_hash
                 // to hash the value of the identifier
                 let (ahasher, shasher) = self.get_hasher_pair();
                 quote_expr!(self.cx, {
                     use cross_check_runtime::hash::CrossCheckHash as XCH;
-                    let hash = XCH::cross_check_hash::<$ahasher, $shasher>(&__c2rust_fn_result);
+                    let val_ref = &__c2rust_fn_result;
+                    $pre_hash_stmts
+                    let hash = XCH::cross_check_hash::<$ahasher, $shasher>(val_ref);
                     hash.map(|hash| ($tag, hash))
                 })
             });
@@ -529,6 +535,9 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
         let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
             match *sf_xcheck {
                 xcfg::XCheckType::Default => None,
+
+                xcfg::XCheckType::AsType(ref ty) =>
+                    Some(quote_attr!(self.cx, #[cross_check_hash(as_type=$ty)])),
 
                 xcfg::XCheckType::None |
                 xcfg::XCheckType::Disabled =>

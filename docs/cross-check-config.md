@@ -101,6 +101,7 @@ There are several types of cross-check implemented in the compiler:
 `none` or `disabled` | | Disables cross-checking or hashing for the current value.
 `fixed` | `u64` | Sets the cross-checked value to the given 64-bit integer.
 `djb2` | `String` | Sets the cross-checked value to the [djb2](http://www.cse.yorku.ca/~oz/hash.html) hash of the given string. This is mainly useful for overriding function entry cross-checks, in case the function names don't match between languages.
+`as_type` | `String` | Perform the default value cross-check, but after casting the value to the given type, e.g., cast it to a `u32` then cross-check it as a `u32`.
 `custom` | `String` | Parses the given string as a C or Rust expression and uses it to compute the cross-checked value. In most cases, the string is inserted verbatim into the cross-check code, e.g., for function argument cross-checks.
  
  Each cross-check is encoded in YAML as either a single word with the type, e.g., `default`, or a single-element associative array mapping the type to its argument, e.g., `{ fixed: 0x1234 }`.
