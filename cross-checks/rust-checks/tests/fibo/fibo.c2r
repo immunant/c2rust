@@ -15,6 +15,7 @@ src/fibo.rs:
       //entry: { fixed: 0x123456 }
       args:
         //n: default
+        //n: { as_type: "u32" }
       //entry: none
       all_args: { fixed: 0x3456 }
       //all_args: { custom: "foo(&n)" }
