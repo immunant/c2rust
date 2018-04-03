@@ -2874,10 +2874,17 @@ impl Translation {
             Ok(mk().assign_op_expr(bin_op_kind, write, rhs))
         } else {
             let lhs_type = self.convert_type(compute_lhs_ty.ctype)?;
-            let lhs = mk().cast_expr(read, lhs_type);
+            let lhs = mk().cast_expr(read, lhs_type.clone());
             let ty = self.convert_type(compute_res_ty.ctype)?;
             let val = self.convert_binary_operator(bin_op, ty, compute_res_ty.ctype, compute_lhs_ty, rhs_ty, lhs, rhs);
-            let val = mk().cast_expr(val, self.convert_type(lhs_ty.ctype)?);
+
+            let is_enum_result = self.ast_context[self.ast_context.resolve_type_id(lhs_ty.ctype)].kind.is_enum();
+            let result_type = self.convert_type(lhs_ty.ctype)?;
+            let val = if is_enum_result {
+                transmute_expr(lhs_type, result_type, val)
+            } else {
+                mk().cast_expr(val, result_type)
+            };
             Ok(mk().assign_expr(write.clone(), val))
         }
     }
@@ -2970,9 +2977,17 @@ impl Translation {
                 } else {
                     let lhs_type = self.convert_type(compute_type.unwrap().ctype)?;
                     let write_type = self.convert_type(qtype.ctype)?;
-                    let lhs = mk().cast_expr(read.clone(), lhs_type);
+                    let lhs = mk().cast_expr(read.clone(), lhs_type.clone());
                     let ty = self.convert_type(result_type_id.ctype)?;
                     let val = self.convert_binary_operator(op, ty, result_type_id.ctype, compute_lhs_type_id, rhs_type_id, lhs, rhs);
+
+                    let is_enum_result = self.ast_context[self.ast_context.resolve_type_id(qtype.ctype)].kind.is_enum();
+                    let result_type = self.convert_type(qtype.ctype)?;
+                    let val = if is_enum_result {
+                        transmute_expr(lhs_type, result_type, val)
+                    } else {
+                        mk().cast_expr(val, result_type)
+                    };
                     mk().cast_expr(val, write_type)
                 };
 
