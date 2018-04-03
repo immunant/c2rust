@@ -6,7 +6,6 @@ ARG UID=1000
 ARG GID=1000
 ENV HOME=/home/$USER
 ENV DEBIAN_FRONTEND=noninteractive
-ENV RUST_VER=nightly-2018-01-06
 
 USER root
 RUN groupadd -f -g $GID $USER
@@ -23,6 +22,7 @@ RUN apt-get update -qq && \
                        curl \
                        git \
                        gnupg2 \
+                       gperf \
                        htop \
                        ipython3 \
                        libreadline-dev \
@@ -51,6 +51,7 @@ RUN pip3 install --no-cache-dir --upgrade cbor \
 
 USER $USER
 # Provision rust language and packages (should not run as root)
+ARG RUST_VER=nightly-2018-01-06
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain $RUST_VER
 RUN echo "source ~/.cargo/env" >> ~/.bashrc
 RUN . $HOME/.cargo/env && \

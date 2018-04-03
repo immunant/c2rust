@@ -19,3 +19,4 @@ docker run \
     --volume $(dirname $SSH_AUTH_SOCK):$(dirname $SSH_AUTH_SOCK) \
     --env SSH_AUTH_SOCK=$SSH_AUTH_SOCK \
     c2rust
+

@@ -12,6 +12,8 @@ llvm.build*
 **/tests/
 *.pyc
 .vagrant
+**/compile_commands.json
+**/Cargo.lock
 
 # Testing directory
 !tests

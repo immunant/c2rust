@@ -11,7 +11,7 @@ SCRIPT_DIR="$(dirname "$0")"
 apt-get update -qq
 # Haven't found a way to upgrade open-vm-tools non-interactively
 # apt-get install -y --only-upgrade open-vm-tools
-apt-get install -qq htop unzip tmux lldb-5.0 vim curl gnupg2 cmake 
+apt-get install -qq htop unzip tmux lldb-5.0 vim curl gnupg2 cmake gperf
 apt-get install -qq software-properties-common build-essential llvm-5.0 clang-5.0 ninja-build
 
 update-alternatives --install /usr/bin/clang clang /usr/bin/clang-5.0 100

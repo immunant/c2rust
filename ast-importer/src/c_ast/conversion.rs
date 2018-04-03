@@ -1194,7 +1194,9 @@ impl ConversionContext {
                         .iter()
                         .map(|id| {
                             let con = id.expect("Enum constant not found");
-                            CDeclId(self.visit_node_type(con, ENUM_CON))
+                            let id = CDeclId(self.visit_node_type(con, ENUM_CON));
+                            self.typed_context.field_parents.insert(id, CDeclId(new_id));
+                            id
                         })
                         .collect();
 

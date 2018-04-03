@@ -12,12 +12,10 @@ def checkout_and_build_libclevrbuf():
     NOTE: we don't need libclevrbuf if we simply pass
     `--features "xcheck-with-dlsym"` in the `runtime/` dir.
     """
-    git = get_cmd_or_die("git")
     make = get_cmd_or_die("make")
 
     if not os.path.isdir(LIBCLEVRBUF_DIR):
-        logging.info("fetching ReMon submodule...")
-        invoke(git, "submodule", "update", "--init", REMON_SUBMOD_DIR)
+        update_or_init_submodule(REMON_SUBMOD_DIR)
 
     if not os.path.isfile(os.path.join(LIBCLEVRBUF_DIR, "libclevrbuf.so")):
         with pb.local.cwd(LIBCLEVRBUF_DIR):

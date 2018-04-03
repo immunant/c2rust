@@ -37,6 +37,7 @@ COMPILER_SUBMOD_DIR = os.path.join(RREF_DIR, 'compiler')
 CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
 REMON_SUBMOD_DIR = os.path.join(CROSS_CHECKS_DIR, 'ReMon')
 LIBCLEVRBUF_DIR = os.path.join(REMON_SUBMOD_DIR, "libclevrbuf")
+EXAMPLES_DIR = os.path.join(ROOT_DIR, 'examples')
 
 AST_IMPO = os.path.join(ROOT_DIR, "ast-importer/target/debug/ast_importer")
 
@@ -110,6 +111,12 @@ def get_host_triplet() -> str:
         return "x86_64-apple-darwin"
     else:
         assert False, "not implemented"
+
+
+def update_or_init_submodule(submodule_path: str):
+    git = get_cmd_or_die("git")
+    invoke_quietly(git, "submodule", "update", "--init", submodule_path)
+    logging.debug("updated submodule %s", submodule_path)
 
 
 def get_rust_toolchain_libpath(name: str) -> str:
@@ -282,7 +289,10 @@ def _invoke(console_output, cmd, *arguments):
         die(msg, pee.retcode)
 
 
-def get_cmd_or_die(cmd):
+Command = pb.machines.LocalCommand
+
+
+def get_cmd_or_die(cmd: str) -> Command:
     """
     lookup named command or terminate script.
     """
@@ -290,6 +300,15 @@ def get_cmd_or_die(cmd):
         return pb.local[cmd]
     except pb.CommandNotFound:
         die("{} not in path".format(cmd), errno.ENOENT)
+
+
+def get_cmd_from_rustup(cmd: str) -> Command:
+    """
+    ask rustup for path to cmd for the right rust toolchain.
+    """
+    rustup = get_cmd_or_die("rustup")
+    toolpath = rustup('run', CUSTOM_RUST_NAME, 'which', cmd).strip()
+    return pb.local.get(toolpath)
 
 
 def ensure_dir(path):
@@ -316,7 +335,7 @@ def git_ignore_dir(path):
             handle.write("*\n")
 
 
-def setup_logging(logLevel=logging.INFO):
+def setup_logging(log_level=logging.INFO):
     logging.basicConfig(
         filename=sys.argv[0].replace(".py", ".log"),
         filemode='w',
@@ -324,7 +343,7 @@ def setup_logging(logLevel=logging.INFO):
     )
 
     console = logging.StreamHandler()
-    console.setLevel(logLevel)
+    console.setLevel(log_level)
     logging.root.addHandler(console)
 
 
@@ -372,9 +391,10 @@ def ensure_clang_version(min_ver: List[int]):
     clang = get_cmd_or_die("clang")
     version = clang("--version")
 
-    def _common_check(m):
-        if m:
-            version = m.group(1)
+    def _common_check(match):
+        nonlocal version
+        if match:
+            version = match.group(1)
             # print(version)
             version = [int(d) for d in version.split(".")]
             emsg = "can't compare versions {} and {}".format(version, min_ver)
@@ -514,7 +534,8 @@ def download_archive(aurl: str, afile: str, asig: str = None):
     # download archive
     if not os.path.isfile(afile):
         logging.info("downloading %s", os.path.basename(afile))
-        curl(aurl, "-o", afile)
+        follow_redirs = "-L"
+        curl(aurl, follow_redirs, "--max-redirs", "20", "-o", afile)
 
     if not asig:
         return

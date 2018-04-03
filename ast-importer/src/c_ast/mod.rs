@@ -133,31 +133,158 @@ impl TypedAstContext {
 
     pub fn simplify(&mut self) {
 
-        // Find all referenced declaration IDs
+        // Set of declarations that should be preserved
         let mut live: HashSet<CDeclId> = HashSet::new();
-        for decl in self.c_exprs.values() {
-            if let CExprKind::DeclRef(_, decl_id) = decl.kind {
-                live.insert(decl_id);
+
+        // Vector of types that need to be visited which can cause declarations to be live
+        let mut type_queue: Vec<CTypeId> = vec![];
+
+        // All variable and function definitions are considered live
+        for (&decl_id, decl) in &self.c_decls {
+            match decl.kind {
+                CDeclKind::Function { body: Some(_), .. } => { live.insert(decl_id); }
+                CDeclKind::Variable { is_defn: true, .. } => { live.insert(decl_id); }
+                _ => {}
             }
         }
 
-        let mut removed = HashSet::new();
+        // All expressions are considered live (this is an overapproximation if an otherwise
+        // unused function declaration uses a VLA and that VLA's size expression mentions
+        // some definitions.
+        for decl in self.c_exprs.values() {
+
+            type_queue.push(decl.kind.get_type());
+
+            match decl.kind {
+
+                // Could mention external functions, variables, and enum constants
+                CExprKind::DeclRef(_, decl_id) => {
+                    live.insert(decl_id);
+                    // This declref could refer to an enum constant, so we want to keep the enum
+                    // declaration for that constant live
+                    if let Some(&parent_id) = self.field_parents.get(&decl_id) {
+                        if live.insert(parent_id) {
+                            if let CDeclKind::Enum { ref variants, .. } = self[parent_id].kind {
+                                live.extend(variants);
+                            }
+                        }
+                    }
+                }
+                CExprKind::UnaryType(_,_,_,type_id) => { type_queue.push(type_id.ctype); }
+                _ => {}
+            }
+        }
+
+        // Track all the variables associated with pruned function prototypes for removal
+        let mut bad_variables: HashSet<CDeclId> = HashSet::new();
 
         self.c_decls.retain(| &decl_id, decl| {
             if live.contains(&decl_id) { return true; }
-            match decl.kind {
-                CDeclKind::Function { body: None, .. } => {
-                    removed.insert(decl_id);
+            match &decl.kind {
+                &CDeclKind::Function { body: None, ref parameters, .. } => {
+                    bad_variables.extend(parameters);
                     false
                 },
                 _ => true,
             }
         });
 
-        self.c_decls_top.retain(|x| !removed.contains(x));
+        // Clean up all of the variables associated with the removed function prototypes
+        for decl_id in bad_variables {
+            self.c_decls.remove(&decl_id);
+        }
 
-        // TODO traverse all the types rooted in casts and variable declarations
-        // to find all the live type declarations recursively.
+        // Check variables after unused function declarations are removed so that their parameters
+        // don't keep extra types alive
+        for (decl_id, decl) in &self.c_decls {
+            if let CDeclKind::Variable { typ, .. } = decl.kind {
+                live.insert(*decl_id);
+                type_queue.push(typ.ctype);
+            }
+        }
+
+        // Recursively traverse the set of types that were reachable above marking all of the
+        // transitively reachable declarations as live
+        let mut types_visited: HashSet<CTypeId> = HashSet::new();
+        while let Some(type_id) = type_queue.pop() {
+            if !types_visited.insert(type_id) { continue }
+
+            match self.c_types[&type_id].kind {
+                // Leaf nodes
+                CTypeKind::Void | CTypeKind::Bool | CTypeKind::Char | CTypeKind::SChar |
+                CTypeKind::Short | CTypeKind::Int | CTypeKind::Long | CTypeKind::LongLong |
+                CTypeKind::UChar | CTypeKind::UShort | CTypeKind::UInt | CTypeKind::ULong |
+                CTypeKind::ULongLong | CTypeKind::Float | CTypeKind::Double |
+                CTypeKind::LongDouble | CTypeKind::Int128 | CTypeKind::UInt128 |
+                CTypeKind::TypeOfExpr(_) | CTypeKind::BuiltinFn => {}
+
+                // Types with CTypeId fields
+                CTypeKind::Complex(type_id) | CTypeKind::Paren(type_id) |
+                CTypeKind::ConstantArray(type_id, _) | CTypeKind::Elaborated(type_id) |
+                CTypeKind::TypeOf(type_id) | CTypeKind::Decayed(type_id) |
+                CTypeKind::IncompleteArray(type_id) | CTypeKind::VariableArray(type_id, _)
+                => type_queue.push(type_id),
+
+                // Types with CQualtypeId fields
+                CTypeKind::Pointer(qtype_id) | CTypeKind::Attributed(qtype_id) |
+                CTypeKind::BlockPointer(qtype_id) => type_queue.push(qtype_id.ctype),
+
+                CTypeKind::Function(qtype_id, ref qtype_ids, _) => {
+                    type_queue.push(qtype_id.ctype);
+                    type_queue.extend(qtype_ids.iter().map(|x| x.ctype));
+                }
+
+                CTypeKind::Typedef(decl_id) => {
+                    if live.insert(decl_id) {
+                        if let CDeclKind::Typedef { typ, .. } = self[decl_id].kind {
+                            type_queue.push(typ.ctype);
+                        }
+                    }
+                }
+
+                CTypeKind::Struct(decl_id) => {
+                    if live.insert(decl_id) {
+                        if let CDeclKind::Struct { fields: Some(ref arr), .. } = self[decl_id].kind {
+                            live.extend(arr);
+                            for &field_id in arr {
+                                if let CDeclKind::Field { typ, .. } = self[field_id].kind {
+                                    type_queue.push(typ.ctype)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                CTypeKind::Union(decl_id) => {
+                    if live.insert(decl_id) {
+                        if let CDeclKind::Union { fields: Some(ref arr), .. } = self[decl_id].kind {
+                            live.extend(arr);
+                            for &field_id in arr {
+                                if let CDeclKind::Field { typ, .. } = self[field_id].kind {
+                                    type_queue.push(typ.ctype)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                CTypeKind::Enum(decl_id) => {
+                    if live.insert(decl_id) {
+                        if let CDeclKind::Enum { variants: ref arr, .. } = self[decl_id].kind {
+                            live.extend(arr);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Prune out any declaration that isn't considered live
+        self.c_decls.retain(| &decl_id, _decl|
+            live.contains(&decl_id)
+        );
+
+        // Prune out top declarations that are not considered live
+        self.c_decls_top.retain(|x| live.contains(x));
     }
 }
 

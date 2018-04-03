@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
 import re
 import sys
 import json
@@ -17,11 +16,11 @@ import multiprocessing
 from common import *
 from typing import *
 from typing.io import *
-from concurrent.futures import ThreadPoolExecutor
 
 
 def try_locate_elf_object(cmd: dict) -> Optional[str]:
     # first look for -o in compiler command
+    command = None
     if "arguments" in cmd:
         command = " ".join(cmd['arguments'])
     elif "command" in cmd:
@@ -139,7 +138,6 @@ def transpile_files(cc_db: TextIO,
 
     successes, failures = 0, 0
     for (fname, retcode, stdout, stderr) in results:
-        file_basename = os.path.basename(fname)
         if not retcode:
             successes += 1
             print(OKGREEN + " import successful" + NO_COLOUR)
