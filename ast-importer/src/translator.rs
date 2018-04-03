@@ -2189,6 +2189,15 @@ impl Translation {
                 })
             }
 
+            CastKind::IntegralToPointer if self.is_function_pointer(ty.ctype) => {
+                let target_ty = self.convert_type(ty.ctype)?;
+                Ok(val.map(|x| {
+                    let intptr_t = mk().path_ty(vec!["libc","intptr_t"]);
+                    let intptr = mk().cast_expr(x, intptr_t.clone());
+                    transmute_expr(intptr_t, target_ty, intptr)
+                }))
+            }
+
             CastKind::IntegralToPointer | CastKind::PointerToIntegral |
             CastKind::IntegralCast | CastKind::FloatingCast | CastKind::FloatingToIntegral |
             CastKind::IntegralToFloating => {
