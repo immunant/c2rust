@@ -16,3 +16,6 @@
 [submodule "examples/urlparser/repo"]
 	path = examples/urlparser/repo
 	url = git@github.com:jwerle/url.h.git
+[submodule "examples/genann/repo"]
+	path = examples/genann/repo
+	url = git@github.com:codeplea/genann.git
