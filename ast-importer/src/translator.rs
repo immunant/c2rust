@@ -1423,28 +1423,23 @@ impl Translation {
         self.type_converter.borrow_mut().convert(&self.ast_context, type_id)
     }
 
-    /// Construct an expression for a NULL at any type, including forward declarations,
-    /// function pointers, and normal pointers.
     fn null_ptr(&self, type_id: CTypeId) -> Result<P<Expr>, String> {
+        let rust_ty = self.convert_type(type_id)?;
 
-        if self.is_function_pointer(type_id) {
-            return Ok(mk().path_expr(vec!["None"]))
-        }
-
-        let pointee = match self.ast_context.resolve_type(type_id).kind {
-            CTypeKind::Pointer(pointee) => pointee,
+        let is_forward_pointer = match self.ast_context.resolve_type(type_id).kind {
+            CTypeKind::Pointer(pointee) => self.ast_context.is_forward_declared_type(pointee.ctype),
             _ => return Err(format!("Cannot make null pointer for non-pointer type")),
         };
 
-        if self.ast_context.is_forward_declared_type(pointee.ctype) {
-            let ty = self.convert_type(type_id)?;
-            Ok(mk().cast_expr(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)), ty))
-        } else if pointee.qualifiers.is_const {
-            let ty = self.convert_type(pointee.ctype)?;
-            Ok(null_expr(ty))
-        } else {
-            let ty = self.convert_type(pointee.ctype)?;
-            Ok(null_mut_expr(ty))
+        match rust_ty.node {
+            TyKind::Ptr(MutTy { ref ty, mutbl }) => match mutbl {
+                _ if is_forward_pointer =>
+                    Ok(mk().cast_expr(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                                      mk().set_mutbl(mutbl).ptr_ty(ty.clone()))),
+                Mutability::Mutable => Ok(null_mut_expr(ty.clone())),
+                Mutability::Immutable => Ok(null_expr(ty.clone())),
+            }
+            ref k => Err(format!("Cannot make a null expression for a non-pointer type {:?}, {:?}", type_id, k))
         }
     }
 
@@ -2266,7 +2261,14 @@ impl Translation {
 
             CastKind::NullToPointer => {
                 assert!(val.stmts.is_empty());
-                Ok(WithStmts::new(self.null_ptr(ty.ctype)?))
+
+                let res = if self.is_function_pointer(ty.ctype) {
+                    mk().path_expr(vec!["None"])
+                } else {
+                    self.null_ptr(ty.ctype)?
+                };
+
+                Ok(WithStmts::new(res))
             }
 
             CastKind::ToUnion => {
@@ -2492,6 +2494,8 @@ impl Translation {
             Ok(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)))
         } else if resolved_ty.is_floating_type() {
             Ok(mk().lit_expr(mk().float_unsuffixed_lit("0.")))
+        } else if self.is_function_pointer(ty_id) {
+            Ok(mk().path_expr(vec!["None"]))
         } else if let &CTypeKind::Pointer(_) = resolved_ty {
             self.null_ptr(resolved_ty_id)
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
