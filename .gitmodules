@@ -19,3 +19,6 @@
 [submodule "examples/genann/repo"]
 	path = examples/genann/repo
 	url = git@github.com:codeplea/genann.git
+[submodule "examples/lil/repo"]
+	path = examples/lil/repo
+	url = git@github.com:immunant/lil.git
