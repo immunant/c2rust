@@ -913,7 +913,11 @@ impl Translation {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, _, init) = self.convert_variable(initializer, typ, is_static)?;
 
-                let init = init?.to_expr();
+                // Conservatively assume that some aspect of the initializer is unsafe
+                let mut init = init?;
+                init.stmts.push(mk().expr_stmt(init.val));
+                let init = mk().unsafe_().block(init.stmts);
+                let init = mk().block_expr(init);
 
                 // Force mutability due to the potential for raw pointers occuring in the type
 
@@ -929,11 +933,14 @@ impl Translation {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, _, init) = self.convert_variable(initializer, typ, true)?;
 
-                let init = init?.to_expr();
+                // Conservatively assume that some aspect of the initializer is unsafe
+                let mut init = init?;
+                init.stmts.push(mk().expr_stmt(init.val));
+                let init = mk().unsafe_().block(init.stmts);
+                let init = mk().block_expr(init);
 
                 // Force mutability due to the potential for raw pointers occurring in the type
-                Ok(ConvertedDecl::Item(mk().mutbl()
-                    .static_item(new_name, ty, init)))
+                Ok(ConvertedDecl::Item(mk().mutbl().static_item(new_name, ty, init)))
             }
 
             CDeclKind::Variable { .. } => Err(format!("This should be handled in 'convert_decl_stmt'")),
@@ -2751,15 +2758,32 @@ impl Translation {
                 if self.is_function_pointer(ctype) {
                     Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
                 } else {
-                    let mutbl = match resolved_ctype.kind {
-                        CTypeKind::Pointer(pointee) if pointee.qualifiers.is_const => Mutability::Immutable,
-                        _ => Mutability::Mutable,
+                    let pointee = match resolved_ctype.kind {
+                        CTypeKind::Pointer(pointee) => pointee,
+                        _ => return Err(format!("Address-of should return a pointer")),
                     };
 
-                    Ok(arg.map(|a| {
-                        let addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
-                        mk().cast_expr(addr_of_arg, ty)
-                    }))
+                    let mutbl = if pointee.qualifiers.is_const {
+                        Mutability::Immutable
+                    } else {
+                        Mutability::Mutable
+                    };
+
+                    arg.result_map(|a| {
+                        if is_static {
+                            let mut addr_of_arg = mk().addr_of_expr(a);
+                            if mutbl == Mutability::Mutable {
+                                let mut qtype = pointee;
+                                qtype.qualifiers.is_const = true;
+                                let ty_ = self.type_converter.borrow_mut().convert_pointer(&self.ast_context, qtype)?;
+                                addr_of_arg = mk().cast_expr(addr_of_arg, ty_);
+                            }
+                            Ok(mk().cast_expr(addr_of_arg, ty))
+                        } else {
+                            let addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
+                            Ok(mk().cast_expr(addr_of_arg, ty))
+                        }
+                    })
                 }
             },
             c_ast::UnOp::PreIncrement => self.convert_pre_increment(cqual_type, true, arg),

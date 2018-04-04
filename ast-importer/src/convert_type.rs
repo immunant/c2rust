@@ -88,6 +88,42 @@ impl TypeConverter {
         return Ok(mk().unsafe_().abi(Abi::C).barefn_ty(fn_ty));
     }
 
+    pub fn convert_pointer(&mut self, ctxt: &TypedAstContext, qtype: CQualTypeId) -> Result<P<Ty>, String> {
+        match ctxt.resolve_type(qtype.ctype).kind {
+
+            // While void converts to () in function returns, it converts to c_void
+            // in the case of pointers.
+            CTypeKind::Void => {
+                let mutbl = if qtype.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
+                Ok(mk().set_mutbl(mutbl).ptr_ty(mk().path_ty(vec!["libc","c_void"])))
+            }
+
+            CTypeKind::VariableArray(mut elt,_len) => {
+                while let CTypeKind::VariableArray(elt_, _) = ctxt.resolve_type(elt).kind {
+                    elt = elt_
+                }
+                let child_ty = self.convert(ctxt, elt)?;
+                let mutbl = if qtype.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
+                Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
+            }
+
+            // Function pointers are translated to Option applied to the function type
+            // in order to support NULL function pointers natively
+            CTypeKind::Function(ref ret, ref params, is_var) => {
+                let fn_ty = self.convert_function(ctxt, ret, params, is_var)?;
+                let param = mk().angle_bracketed_param_types(vec![fn_ty]);
+                let optn_ty = mk().path_ty(vec![mk().path_segment_with_params("Option", param)]);
+                Ok(optn_ty)
+            }
+
+            _ => {
+                let child_ty = self.convert(ctxt, qtype.ctype)?;
+                let mutbl = if qtype.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
+                Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
+            }
+        }
+    }
+
     /// Convert a `C` type to a `Rust` one. For the moment, these are expected to have compatible
     /// memory layouts.
     pub fn convert(&mut self, ctxt: &TypedAstContext, ctype: CTypeId) -> Result<P<Ty>, String> {
@@ -112,41 +148,7 @@ impl TypeConverter {
             CTypeKind::Int128 => Ok(mk().path_ty(mk().path(vec!["i128"]))),
             CTypeKind::UInt128 => Ok(mk().path_ty(mk().path(vec!["u128"]))),
 
-            CTypeKind::Pointer(CQualTypeId { ref qualifiers, ref ctype }) => {
-                match ctxt.resolve_type(*ctype).kind {
-
-                    // While void converts to () in function returns, it converts to c_void
-                    // in the case of pointers.
-                    CTypeKind::Void => {
-                            let mutbl = if qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
-                            Ok(mk().set_mutbl(mutbl).ptr_ty(mk().path_ty(vec!["libc","c_void"])))
-                    }
-
-                    CTypeKind::VariableArray(mut elt,_len) => {
-                        while let CTypeKind::VariableArray(elt_, _) = ctxt.resolve_type(elt).kind {
-                            elt = elt_
-                        }
-                        let child_ty = self.convert(ctxt, elt)?;
-                        let mutbl = if qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
-                        Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
-                    }
-
-                    // Function pointers are translated to Option applied to the function type
-                    // in order to support NULL function pointers natively
-                    CTypeKind::Function(ref ret, ref params, is_var) => {
-                        let fn_ty = self.convert_function(ctxt, ret, params, is_var)?;
-                        let param = mk().angle_bracketed_param_types(vec![fn_ty]);
-                        let optn_ty = mk().path_ty(vec![mk().path_segment_with_params("Option", param)]);
-                        Ok(optn_ty)
-                    }
-
-                    _ => {
-                        let child_ty = self.convert(ctxt, *ctype)?;
-                        let mutbl = if qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
-                        Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
-                    }
-                }
-            }
+            CTypeKind::Pointer(qtype) => self.convert_pointer(ctxt, qtype),
 
             CTypeKind::Elaborated(ref ctype) => self.convert(ctxt, *ctype),
             CTypeKind::Decayed(ref ctype) => self.convert(ctxt, *ctype),
