@@ -1,7 +1,7 @@
 extern crate libc;
 
 use arrays::rust_entry;
-use incomplete_arrays::rust_entry2;
+use incomplete_arrays::{rust_test_sized_array,rust_entry2};
 use variable_arrays::rust_variable_arrays;
 use self::libc::{c_int, c_uint};
 
@@ -14,12 +14,21 @@ extern "C" {
     fn entry2(_: c_uint, _: *mut c_int);
 
     #[no_mangle]
+    fn test_sized_array() -> c_uint;
+
+    #[no_mangle]
     fn variable_arrays(_: *mut c_int);
 }
 
 const BUFFER_SIZE: usize = 49;
 const BUFFER_SIZE2: usize = 2;
 const BUFFER_SIZEV: usize = 88;
+
+pub fn test_sized_array_impls() {
+    unsafe {
+        assert_eq!(rust_test_sized_array(), test_sized_array());
+    }
+}
 
 pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
