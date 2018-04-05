@@ -1892,7 +1892,14 @@ impl Translation {
 
                 let simple_index_array =
                 match lhs_node {
-                    &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _) => Some(arr),
+                    &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _) => {
+                        match self.ast_context.resolve_type(self.ast_context[arr].kind.get_type()).kind {
+                            // These get translated to 0-element arrays, this avoids the bounds check
+                            // that using an array subscript in Rust would cause
+                            CTypeKind::IncompleteArray(_) => None,
+                            _ => Some(arr),
+                        }
+                    }
                     _ => None,
                 };
 
@@ -2770,19 +2777,25 @@ impl Translation {
                     };
 
                     arg.result_map(|a| {
+                        let mut addr_of_arg: P<Expr>;
+
                         if is_static {
-                            let mut addr_of_arg = mk().addr_of_expr(a);
+                            // static variable initializers aren't able to use &mut,
+                            // so we work around that by using & and an extra cast
+                            // through &mut to *const to *mut
+                            addr_of_arg = mk().addr_of_expr(a);
                             if mutbl == Mutability::Mutable {
                                 let mut qtype = pointee;
                                 qtype.qualifiers.is_const = true;
                                 let ty_ = self.type_converter.borrow_mut().convert_pointer(&self.ast_context, qtype)?;
                                 addr_of_arg = mk().cast_expr(addr_of_arg, ty_);
                             }
-                            Ok(mk().cast_expr(addr_of_arg, ty))
                         } else {
-                            let addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
-                            Ok(mk().cast_expr(addr_of_arg, ty))
+                            // Normal case is allowed to use &mut if needed
+                            addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
                         }
+
+                        Ok(mk().cast_expr(addr_of_arg, ty))
                     })
                 }
             },

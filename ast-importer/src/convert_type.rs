@@ -182,7 +182,9 @@ impl TypeConverter {
             CTypeKind::IncompleteArray(element) => {
                 // FIXME: handle translation of incomplete arrays
                 let ty = self.convert(ctxt, element)?;
-                Ok(mk().slice_ty(ty))
+                let zero_lit = mk().int_lit(0, LitIntType::Unsuffixed);
+                let zero = mk().lit_expr(zero_lit);
+                Ok(mk().array_ty(ty, zero))
             }
 
             CTypeKind::VariableArray(mut elt, _) => {
