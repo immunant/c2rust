@@ -1,4 +1,14 @@
 #include <stdlib.h>
+#include <stdbool.h>
+
+extern uint32_t SOME_INTS[];
+
+bool check_some_ints(void) {
+        return SOME_INTS[0] == 2
+            && SOME_INTS[1] == 0
+            && SOME_INTS[2] == 1
+            && SOME_INTS[3] == 8;
+}
 
 struct sized_array {
         size_t n;
