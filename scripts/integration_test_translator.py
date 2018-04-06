@@ -202,21 +202,12 @@ def main() -> None:
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
-    # if on_mac():
-    #     die("this script only runs on Linux")
-
     # check that the binaries have been built first
     bins = [AST_EXTR, AST_IMPO]
     for b in bins:
         if not os.path.isfile(b):
             msg = b + " not found; run build_translator.py first?"
             die(msg, errno.ENOENT)
-
-    # the macOS and Linux builds of the ast-extractor alias each other
-    if not is_elf_exe(AST_EXTR) and not on_mac():
-        msg = "ast-importer was built for macOS;"
-        msg += " please run build_translator.py and retry."
-        die(msg)
 
     ensure_dir(DEPS_DIR)
 

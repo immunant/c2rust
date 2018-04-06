@@ -150,11 +150,12 @@ def update_cbor_prefix(makefile):
 def build_ast_importer():
     cargo = get_cmd_or_die("cargo")
 
-    # assert os.path.isdir(os.path.join(COMPILER_SUBMOD_DIR, 'src'))
-
     with pb.local.cwd(os.path.join(ROOT_DIR, "ast-importer")):
-        # we build with custom rust toolchain here
-        invoke(cargo, "+" + CUSTOM_RUST_NAME, "build")
+        # use different target dirs for different hosts
+        target_dir = "target." + platform.node()
+        with pb.local.env(CARGO_TARGET_DIR=target_dir):
+            # build with custom rust toolchain
+            invoke(cargo, "+" + CUSTOM_RUST_NAME, "build")
 
 
 def build_a_bear():

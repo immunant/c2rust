@@ -39,7 +39,8 @@ REMON_SUBMOD_DIR = os.path.join(CROSS_CHECKS_DIR, 'ReMon')
 LIBCLEVRBUF_DIR = os.path.join(REMON_SUBMOD_DIR, "libclevrbuf")
 EXAMPLES_DIR = os.path.join(ROOT_DIR, 'examples')
 
-AST_IMPO = os.path.join(ROOT_DIR, "ast-importer/target/debug/ast_importer")
+AST_IMPO = "ast-importer/target.{}/debug/ast_importer".format(platform.node())
+AST_IMPO = os.path.join(ROOT_DIR, AST_IMPO)
 
 CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.2"
 CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.2.tar.gz")
