@@ -2377,9 +2377,9 @@ impl Translation {
     ) -> Result<WithStmts<P<Expr>>, String> {
         let union_field_id = opt_union_field_id.expect("union field ID");
 
-        match &self.ast_context.index(union_id).kind {
-            &CDeclKind::Union { name: ref opt_union_name, .. } => {
-                let union_name = opt_union_name.as_ref().expect("Anonymous unions not implemented");
+        match self.ast_context.index(union_id).kind {
+            CDeclKind::Union { .. } => {
+                let union_name = self.type_converter.borrow().resolve_decl_name(union_id).unwrap();
                 match &self.ast_context.index(union_field_id).kind {
                     &CDeclKind::Field { typ: field_ty, .. } => {
                         let val = if ids.is_empty() {
