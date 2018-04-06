@@ -6,6 +6,10 @@
       name: PyMemberDef
       custom_hash: "xcheck_hash_PyMemberDef"
 
+/usr/include/python3.6m/unicodeobject.h:
+    - item: defaults
+      disable_xchecks: true
+
 # Our own custom cross-checks
 ../xchecks.c:
     - item: defaults
