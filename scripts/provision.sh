@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# are we on a debian or ubuntu host?
+if [ ! -f /etc/debian_release ]; then
+    echo "Run this script on a Debian/Ubuntu host."
+    exit 1
+fi
+
 # Make debconf use a frontend that expects no interactive input
 export DEBIAN_FRONTEND=noninteractive
 SCRIPT_DIR="$(dirname "$0")"
@@ -40,8 +46,6 @@ apt-get install -qq libbz2-dev
 apt-get install -qq python-setuptools tcl-dev liblzma-dev libgdbm-dev
 apt-get -qq --no-install-recommends install tk-dev
 
-# snudown dependencies
-apt-get install -qq python2.7-dev
 
 # redis and sqlite dependencies
 apt-get install -qq tcl tcl-dev

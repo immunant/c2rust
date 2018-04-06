@@ -30,7 +30,6 @@ RUN apt-get update -qq && \
                        llvm-5.0 \    
                        make \
                        ninja-build \
-                       python2.7-dev \
                        python3 \
                        python3-pip \
                        tmux \
