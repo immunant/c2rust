@@ -102,7 +102,17 @@ class CompileCommandsBuilder(object):
             ccdb_fh.writelines(outjson)
 
 
-def main(xchecks: bool):
+def generate_html_entries_header():
+    """
+    Generate html_entities.h from html_entities.gperf
+    """
+    if not os.path.isfile(os.path.join(SNUDOWN, "src/html_entities.h")):
+        with pb.local.cwd(os.path.join(SNUDOWN, "src")):
+            gperf = get_cmd_or_die("gperf")
+            gperf('html_entities.gperf', '--output-file=html_entities.h')
+
+
+def main(xcheck: bool):
     setup_logging()
 
     if os.path.isdir(OUTPUT_DIR):
@@ -111,7 +121,7 @@ def main(xchecks: bool):
     os.mkdir(OUTPUT_DIR)
 
     # make sure that we built the cross-checking libraries if cross checking
-    if xchecks:
+    if xcheck:
         bins = [XCHECK_PLUGIN, XCHECK_DERIVE, XCHECK_RUNTIME]
         for b in bins:
             if not os.path.isfile(b):
@@ -120,7 +130,7 @@ def main(xchecks: bool):
                 die(msg)
 
     # make sure the snudown submodule is checked out and up to date
-    update_or_init_submodule(SNUDOWN)
+    # update_or_init_submodule(SNUDOWN)
 
     # the macOS and Linux builds of the ast-extractor alias each other
     if not is_elf_exe(AST_EXTR) and not on_mac():
@@ -128,11 +138,7 @@ def main(xchecks: bool):
         msg += " please run build_translator.py and retry."
         die(msg)
 
-    # Generate html_entities.h from html_entities.gpers (setup.py used to do this)
-    if not os.path.isfile(os.path.join(SNUDOWN, "src/html_entities.h")):
-        with pb.local.cwd(os.path.join(SNUDOWN, "src")):
-            gperf = get_cmd_or_die("gperf")
-            gperf('html_entities.gperf', '--output-file=html_entities.h')
+    generate_html_entries_header()
 
     bldr = CompileCommandsBuilder()
 
@@ -148,7 +154,7 @@ def main(xchecks: bool):
     bldr.write_result(os.path.curdir)
 
     for s in slugs:
-        translate(s, xchecks)
+        translate(s, xcheck)
 
     rustc = get_cmd_from_rustup("rustc")
     args = ['--crate-type=staticlib',
@@ -156,7 +162,7 @@ def main(xchecks: bool):
             '-L', OUTPUT_DIR,
             os.path.join(C2RUST, "examples/snudown/snudownrust.rs")]
 
-    if xchecks:
+    if xcheck:
         args += ['--extern', 'cross_check_derive=' + XCHECK_DERIVE]
         args += ['--extern', 'cross_check_runtime=' + XCHECK_RUNTIME]
         args += ['--cfg', 'feature=\"cross-check\"']
@@ -181,8 +187,8 @@ if __name__ == "__main__":
         print(USAGE)
         die("missing or invalid argument")
 
-    XCHECKS = True if sys.argv[1] == "rustcheck" else False
-    main(XCHECKS)
+    XCHECK = True if sys.argv[1] == "rustcheck" else False
+    main(XCHECK)
 
 
 
