@@ -40,8 +40,6 @@ apt-get install -qq libbz2-dev
 apt-get install -qq python-setuptools tcl-dev liblzma-dev libgdbm-dev
 apt-get -qq --no-install-recommends install tk-dev
 
-# snudown dependencies
-apt-get install -qq python2.7-dev
 
 # redis and sqlite dependencies
 apt-get install -qq tcl tcl-dev
