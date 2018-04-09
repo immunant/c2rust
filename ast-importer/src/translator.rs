@@ -1396,7 +1396,18 @@ impl Translation {
             None => self.implicit_default_expr(typ.ctype).map(WithStmts::new),
         };
 
-        let ty = self.convert_type(typ.ctype)?;
+        // Variable declarations for variable-length arrays use the type of a pointer to the
+        // underlying array element
+        let ty = if let CTypeKind::VariableArray(mut elt, _) = self.ast_context.resolve_type(typ.ctype).kind {
+            while let CTypeKind::VariableArray(elt_, _) = self.ast_context.resolve_type(elt).kind {
+                elt = elt_
+            }
+            let ty = self.convert_type(elt)?;
+            mk().path_ty(vec![mk().path_segment_with_params("Vec", mk().angle_bracketed_param_types(vec![ty]))])
+        } else {
+            self.convert_type(typ.ctype)?
+        };
+
         let mutbl = if typ.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
 
         Ok((ty, mutbl, init))
@@ -1674,6 +1685,10 @@ impl Translation {
                 if let &CDeclKind::EnumConstant { .. } = decl {
                     let ty = self.convert_type(qual_ty.ctype)?;
                     val = mk().cast_expr(val, ty);
+                }
+
+                if let CTypeKind::VariableArray(..) = self.ast_context.resolve_type(qual_ty.ctype).kind {
+                    val = mk().method_call_expr(val, "as_mut_ptr", vec![] as Vec<P<Expr>>);
                 }
 
                 Ok(WithStmts::new(val))
@@ -2492,8 +2507,7 @@ impl Translation {
             let val = self.implicit_default_expr(inner)?;
             let from_elem = mk().path_expr(vec!["", "std","vec","from_elem"]);
             let alloc = mk().call_expr(from_elem, vec![val, count]);
-            let ptr = mk().method_call_expr(alloc, "as_mut_ptr", vec![] as Vec<P<Expr>>);
-            Ok(ptr)
+            Ok(alloc)
         } else {
             Err(format!("Unsupported default initializer: {:?}", resolved_ty))
         }
