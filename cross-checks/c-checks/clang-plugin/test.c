@@ -19,6 +19,9 @@ struct Foo {
     uint64_t n1, n2;
     struct Foo *p;
     uint64_t nn[2];
+    struct {
+        uint64_t n3;
+    } n3;
 };
 
 uint64_t my_Foo_hash(struct Foo *x) {

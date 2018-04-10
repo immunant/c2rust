@@ -129,11 +129,12 @@ std::string_view llvm_string_ref_to_sv(llvm::StringRef sr) {
 
 class HashFunctionName {
 public:
-    using Element = std::variant<std::string, std::string_view>;
+    using Element = std::variant<std::string, std::string_view, llvm::StringRef>;
 
     HashFunctionName() {}
-    HashFunctionName(std::string_view sv) : elements{1, sv} {}
-    HashFunctionName(std::string str) : elements{1, str} {}
+    HashFunctionName(std::string_view sv) : elements{1, sv}  {}
+    HashFunctionName(std::string str)     : elements{1, str} {}
+    HashFunctionName(llvm::StringRef sr)  : elements{1, sr}  {}
 
     void append(std::string str) {
         elements.emplace_back(str);
@@ -151,6 +152,8 @@ public:
                 res += *s;
             } else if (auto *sv = std::get_if<std::string_view>(&elem)) {
                 res += *sv;
+            } else if (auto *sr = std::get_if<llvm::StringRef>(&elem)) {
+                res += *sr;
             } else {
                 assert(false && "Invalid HashFunctionName::Element variant type");
             }
@@ -331,7 +334,8 @@ private:
                  CustomArgsFn custom_args_fn);
 
     const HashFunction
-    get_type_hash_function(QualType ty, ASTContext &ctx,
+    get_type_hash_function(QualType ty, llvm::StringRef candidate_name,
+                           ASTContext &ctx,
                            bool build_it);
 
     using StmtVec = SmallVector<Stmt*, 16>;
@@ -411,6 +415,7 @@ private:
     TinyStmtVec
     build_parameter_xcheck(ParmVarDecl *param,
                            const DefaultsConfigOptRef file_defaults,
+                           llvm::StringRef func_name,
                            const std::optional<FunctionConfigRef> &func_cfg,
                            const DeclMap &param_decls,
                            ASTContext &ctx);
@@ -709,33 +714,9 @@ CrossCheckInserter::build_xcheck(const XCheck &xcheck, XCheck::Tag tag,
 }
 
 const HashFunction
-CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
+CrossCheckInserter::get_type_hash_function(QualType ty, llvm::StringRef candidate_name,
+                                           ASTContext &ctx,
                                            bool build_it) {
-    // If this type is an anonymous record, e.g.
-    // `struct { ... };`, then we try to use the name
-    // of the inner-most typedef instead, since a lot of C code
-    // defines structures using the `typedef struct` pattern:
-    // `typedef struct { ... } struct_name;`
-    IdentifierInfo *inner_typedef_id = nullptr;
-    for (;;) {
-        if (auto *td = ty->getAs<TypedefType>()) {
-            auto td_id = td->getDecl()->getIdentifier();
-            if (td_id != nullptr)
-                inner_typedef_id = td_id;
-            ty = td->desugar();
-        } else if (auto *et = ty->getAs<ElaboratedType>()) {
-            ty = et->desugar();
-        } else if (auto *pt = ty->getAs<ParenType>()) {
-            ty = pt->desugar();
-        } else if (auto *at = ty->getAs<AttributedType>()) {
-            ty = at->desugar();
-        } else if (auto *at = ty->getAs<AdjustedType>()) {
-            ty = at->getOriginalType();
-        } else {
-            break;
-        }
-    }
-
     switch (ty->getTypeClass()) {
     case Type::Builtin: {
         switch (cast<BuiltinType>(ty)->getKind()) {
@@ -786,7 +767,7 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
 
     case Type::Pointer: {
         auto pointee_ty = cast<PointerType>(ty)->getPointeeType();
-        auto pointee = get_type_hash_function(pointee_ty, ctx, build_it);
+        auto pointee = get_type_hash_function(pointee_ty, candidate_name, ctx, build_it);
         HashFunction func{pointee.name, ty, ctx.getPointerType(pointee.actual_ty)};
         func.name.append("ptr"sv);
         if (build_it) {
@@ -798,7 +779,7 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
     case Type::ConstantArray: {
         auto array_ty = cast<ConstantArrayType>(ty);
         auto element_ty = array_ty->getElementType();
-        auto element = get_type_hash_function(element_ty, ctx, build_it);
+        auto element = get_type_hash_function(element_ty, candidate_name, ctx, build_it);
         auto num_elements = array_ty->getSize();
         HashFunction func{element.name, ty, ctx.getPointerType(element.actual_ty)};
         func.name.append("array"sv);
@@ -820,21 +801,50 @@ CrossCheckInserter::get_type_hash_function(QualType ty, ASTContext &ctx,
         auto record_ty = cast<RecordType>(ty);
         auto record_decl = record_ty->getDecl();
         auto record_id = record_decl->getIdentifier();
-        if (record_id == nullptr)
-            record_id = inner_typedef_id;
-        if (record_id == nullptr) {
+        if (record_id != nullptr)
+            candidate_name = record_id->getName();
+        if (candidate_name.empty()) {
             record_ty->dump();
-            llvm_unreachable("Could not retrieve record identifier");
+            report_clang_error(ctx.getDiagnostics(),
+                               "unable to retrieve record name");
         }
-        std::string record_name = record_id->getName();
-        HashFunction func{record_name, ty,
+        HashFunction func{candidate_name, ty,
             ctx.getPointerType(ty.getUnqualifiedType())};
         func.name.append(record_decl->getKindName().str());
         if (build_it) {
-            build_record_hash_function(func, record_name, ctx);
+            build_record_hash_function(func, candidate_name, ctx);
         }
         return func;
     }
+
+    case Type::Typedef: {
+        // If this type is an anonymous record, e.g.
+        // `struct { ... };`, then we try to use the name
+        // of the inner-most typedef instead, since a lot of C code
+        // defines structures using the `typedef struct` pattern:
+        // `typedef struct { ... } struct_name;`
+        auto *td = ty->getAs<TypedefType>();
+        auto td_id = td->getDecl()->getIdentifier();
+        if (td_id != nullptr)
+            candidate_name = td_id->getName();
+        return get_type_hash_function(td->desugar(), candidate_name, ctx, build_it);
+    }
+
+    case Type::Elaborated:
+        return get_type_hash_function(ty->getAs<ElaboratedType>()->desugar(),
+                                      candidate_name, ctx, build_it);
+
+    case Type::Paren:
+        return get_type_hash_function(ty->getAs<ParenType>()->desugar(),
+                                      candidate_name, ctx, build_it);
+
+    case Type::Attributed:
+        return get_type_hash_function(ty->getAs<AttributedType>()->desugar(),
+                                      candidate_name, ctx, build_it);
+
+    case Type::Adjusted:
+        return get_type_hash_function(ty->getAs<AdjustedType>()->getOriginalType(),
+                                      candidate_name, ctx, build_it);
 
     default:
         ty->dump(llvm::errs());
@@ -1227,7 +1237,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
     std::string hasher_prefix{"__c2rust_hasher_"};
     hasher_prefix += hasher_name;
     auto body_fn =
-            [this, &ctx, &record_def,
+            [this, &ctx, &record_def, &record_name,
              record_cfg = std::move(record_cfg),
              hasher_prefix = std::move(hasher_prefix)]
             (FunctionDecl *fn_decl) -> StmtVec {
@@ -1300,8 +1310,11 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
                     field_hash_args = generic_custom_args(ctx, field_decls,
                                                           args, arg_build_fn);
                 } else {
+                    std::string field_ty_name = record_name;
+                    field_ty_name += "$field$";
+                    field_ty_name += field->getName();
                     auto field_ty = field->getType();
-                    auto field_hash_fn = get_type_hash_function(field_ty, ctx, true);
+                    auto field_hash_fn = get_type_hash_function(field_ty, field_ty_name, ctx, true);
                     field_hash_fn_name = field_hash_fn.name.full_name();
                     auto field_ref_lv =
                         new (ctx) MemberExpr(param_ref_rv, true, SourceLocation(),
@@ -1386,6 +1399,7 @@ CrossCheckInserter::generic_custom_args(ASTContext &ctx,
 CrossCheckInserter::TinyStmtVec
 CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
                                            const DefaultsConfigOptRef file_defaults,
+                                           llvm::StringRef func_name,
                                            const std::optional<FunctionConfigRef> &func_cfg,
                                            const DeclMap &param_decls,
                                            ASTContext &ctx) {
@@ -1403,11 +1417,15 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
             param_xcheck = it->second;
         }
     }
-    auto param_xcheck_default_fn = [this, &ctx, param] (void) {
+    auto param_xcheck_default_fn = [this, &ctx, func_name, param] (void) {
         // By default, we just call __c2rust_hash_T(x)
         // where T is the type of the parameter
         // FIXME: include shasher/ahasher
-        auto hash_fn = get_type_hash_function(param->getOriginalType(), ctx, true);
+        std::string param_ty_name = func_name;
+        param_ty_name += "$arg$";
+        param_ty_name += param->getName();
+        auto hash_fn = get_type_hash_function(param->getOriginalType(),
+                                              param_ty_name, ctx, true);
 
         // Forward the value of the parameter to the hash function
         auto param_ref_lv =
@@ -1438,8 +1456,12 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             if (!fd->hasBody())
                 continue;
             auto fd_ident = fd->getIdentifier();
-            if (fd_ident != nullptr &&
-                fd_ident->getName().startswith("__c2rust")) {
+            if (fd_ident == nullptr) {
+                // TODO: emit a warning
+                continue;
+            }
+            auto func_name = fd_ident->getName();
+            if (func_name.startswith("__c2rust")) {
                 // Ignore our own functions
                 continue;
             }
@@ -1453,10 +1475,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 if (it != defaults_configs.end()) {
                     file_defaults = it->second;
                 }
-                if (fd_ident != nullptr) {
-                    std::string func_name = fd_ident->getName().str();
-                    func_cfg = get_function_config(file_name, func_name);
-                }
+                func_cfg = get_function_config(file_name, func_name);
             }
 
             bool disable_xchecks = this->disable_xchecks;
@@ -1511,8 +1530,8 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             // Add cross-checks for the function parameters
             for (auto &param : fd->parameters()) {
                 auto param_xcheck_stmts =
-                    build_parameter_xcheck(param, file_defaults, func_cfg,
-                                           param_decls, ctx);
+                    build_parameter_xcheck(param, file_defaults, func_name,
+                                           func_cfg, param_decls, ctx);
                 add_body_stmts(param_xcheck_stmts);
             }
 
@@ -1623,11 +1642,14 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 if (func_cfg && func_cfg->get().ret)
                     result_xcheck = *func_cfg->get().ret;
 
-                auto result_xcheck_default_fn = [this, &ctx, result_var, result_ty] (void) {
+                auto result_xcheck_default_fn = [this, &ctx, func_name,
+                                                 result_var, result_ty] (void) {
                     // By default, we just call __c2rust_hash_T(x)
                     // where T is the type of the parameter
                     // FIXME: include shasher/ahasher
-                    auto hash_fn = get_type_hash_function(result_ty, ctx, true);
+                    std::string result_ty_name = func_name;
+                    result_ty_name += "$result";
+                    auto hash_fn = get_type_hash_function(result_ty, result_ty_name, ctx, true);
                     auto result_lv = new (ctx) DeclRefExpr(result_var, false, result_ty,
                                                            VK_LValue, SourceLocation());
                     auto result_rv = hash_fn.forward_argument(result_lv, ctx);
@@ -1678,7 +1700,8 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 auto record_ty = ctx.getRecordType(rd);
                 if (record_ty->isStructureType()) {
                     // FIXME: only structures for now
-                    get_type_hash_function(record_ty, ctx, true);
+                    llvm::StringRef candidate_name;
+                    get_type_hash_function(record_ty, candidate_name, ctx, true);
                 }
             }
         } else if (TypedefDecl *td = dyn_cast<TypedefDecl>(d)) {
@@ -1691,7 +1714,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             auto under_ty = td->getUnderlyingType();
             if (under_ty->isStructureType()) {
                 // FIXME: handle more types, e.g., enum
-                get_type_hash_function(typedef_ty, ctx, true);
+                llvm::StringRef candidate_name;
+                auto td_id = td->getIdentifier();
+                if (td_id != nullptr)
+                    candidate_name = td_id->getName();
+                get_type_hash_function(typedef_ty, candidate_name, ctx, true);
             }
         }
     }
