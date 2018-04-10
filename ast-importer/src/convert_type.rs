@@ -13,7 +13,7 @@ pub struct TypeConverter {
     fields: HashMap<CDeclId, Renamer<CFieldId>>,
 }
 
-static RESERVED_NAMES: [&str; 52] = [
+static RESERVED_NAMES: [&str; 100] = [
     // Keywords currently in use
     "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn",
     "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
@@ -24,6 +24,25 @@ static RESERVED_NAMES: [&str; 52] = [
     "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof",
     "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual",
     "yield",
+
+    // Types exported in prelude
+    "Copy", "Send", "Sized", "Sync",
+    "Drop", "Fn", "FnMut", "FnOnce",
+    "Box", "ToOwned", "Clone",
+    "PartialEq", "PartialOrd", "Eq", "Ord",
+    "AsRef", "AsMut", "Into", "From",
+    "Default",
+    "Iterator", "Extend", "IntoIterator", "DoubleEndedIterator", "ExactSizeIterator",
+    "Option", "Result", "SliceConcatExt",
+    "String", "ToString",
+    "Vec",
+
+    "bool", "char",
+    "f32", "f64",
+    "i8", "i16", "i32", "i64", "i128", "isize",
+    "u8", "u16", "u32", "u64", "u128", "usize",
+    "str",
+
 ];
 
 impl TypeConverter {
