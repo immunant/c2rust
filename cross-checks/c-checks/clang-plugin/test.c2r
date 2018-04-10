@@ -52,6 +52,7 @@ test.c:
 
     - item: struct
       name: Foo
+      disable_xchecks: false
       #custom_hash: "my_Foo_hash"
       #field_hasher: "foo_hasher"
       fields:
