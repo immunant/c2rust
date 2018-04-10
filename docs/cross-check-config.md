@@ -269,3 +269,33 @@ The configuration settings described above apply to the scope of an item. While 
 Custom cross-check definitions have a different format for each language. The rustc plugin accepts any Rust expression that is valid on function entry as a custom cross-check.
 
 The clang plugin, on the other hand, only accepts a limited subset of C expressions: each cross-check specification contains the name of the function to call, optionally followed by a list of parameters to pass to the function, e.g., `function` or `function(arg1, arg2, ...)`. Each parameter is the name of a global variable or function argument, and is optionally preceded by `&` (to pass the parameter by address instead of value) or by `*` (to dereference the value if it is a pointer).
+
+## Anonymous structures
+C allows developers to define anonymous structures that define the type for a single value, e.g.:
+```C
+struct {
+  int x;
+} y;
+```
+For a variety of reasons, we need to assign names to these structures ourselves.
+The most important reason is that we need to identify these structures in the external configuration files.
+We assign the names using one of the following formats, depending on the context where the anonymous structure is defined:
+
+  Assigned name | Meaning
+ ---------------|---------
+ `Foo$field$x`  | This structure defines the type for the field `x` of the outer structure `Foo`. Note that `Foo` itself may also be an anonymous structure that follows the same naming policy.
+ `foo$arg$x`    | This structure defines the type for the argument `x` of function `foo` (as illustrated below).
+ `foo$result`   | This structure defines the return type for function `foo`.
+
+### Examples
+```C
+struct Foo {
+  struct {                  // This gets named `Foo$field$x`
+    int x;
+  }
+};
+
+struct { int a; }           // This gets the `foo$result` name
+foo(struct { int b; } x ) { // The `x` argument type gets the `foo$arg$x` name
+}
+```
