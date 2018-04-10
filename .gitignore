@@ -14,6 +14,7 @@ llvm.build*
 .vagrant
 **/compile_commands.json
 **/Cargo.lock
+.python-version
 
 # Testing directory
 !tests
