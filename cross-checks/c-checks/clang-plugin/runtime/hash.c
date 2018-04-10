@@ -8,16 +8,16 @@
 // Define __c2rust_hash_T functions for all the fixed-size types
 #define DEFINE_FIXED_HASH(short_ty, val_ty, xor_const)                    \
     static uint64_t __c2rust_hash_ ## short_ty (val_ty x, size_t depth) { \
-        return (xor_const) ^ (uint64_t) x;                                \
+        return (0x ## xor_const ## ULL) ^ (uint64_t) x;                   \
     }
-DEFINE_FIXED_HASH(u8,  uint8_t,  0x0000000000000000ULL)
-DEFINE_FIXED_HASH(u16, uint16_t, 0x5a5a5a5a5a5a5a5aULL)
-DEFINE_FIXED_HASH(u32, uint32_t, 0xb4b4b4b4b4b4b4b4ULL)
-DEFINE_FIXED_HASH(u64, uint64_t, 0x0f0f0f0f0f0f0f0eULL)
-DEFINE_FIXED_HASH(i8,   int8_t,  0xc3c3c3c3c3c3c3c2ULL)
-DEFINE_FIXED_HASH(i16,  int16_t, 0x1e1e1e1e1e1e1e1cULL)
-DEFINE_FIXED_HASH(i32,  int32_t, 0x7878787878787876ULL)
-DEFINE_FIXED_HASH(i64,  int64_t, 0xd2d2d2d2d2d2d2d0ULL)
+DEFINE_FIXED_HASH(u8,  uint8_t,  0000000000000000)
+DEFINE_FIXED_HASH(u16, uint16_t, 5a5a5a5a5a5a5a5a)
+DEFINE_FIXED_HASH(u32, uint32_t, b4b4b4b4b4b4b4b4)
+DEFINE_FIXED_HASH(u64, uint64_t, 0f0f0f0f0f0f0f0e)
+DEFINE_FIXED_HASH(i8,   int8_t,  c3c3c3c3c3c3c3c2)
+DEFINE_FIXED_HASH(i16,  int16_t, 1e1e1e1e1e1e1e1c)
+DEFINE_FIXED_HASH(i32,  int32_t, 7878787878787876)
+DEFINE_FIXED_HASH(i64,  int64_t, d2d2d2d2d2d2d2d0)
 
 // Now define __c2rust_hash_T functions for primitive C types
 // as aliases to the fixed-size functions defined above
