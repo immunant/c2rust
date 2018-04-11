@@ -512,6 +512,9 @@ impl Translation {
 
                 // Prevent use for other reasons
                 "main",
+
+                // prelude names
+                "drop", "Some", "None", "Ok", "Err",
             ])),
             loops: LoopContext::new(),
             zero_inits: RefCell::new(HashMap::new()),
