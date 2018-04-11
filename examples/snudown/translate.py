@@ -19,7 +19,6 @@ MACHINE_TYPE = platform.platform()
 LIB_PATH = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
 
 C2RUST = ROOT_DIR
-SNUDOWN = os.path.join(EXAMPLES_DIR, "snudown/repo")
 AST_EXTRACTOR = AST_EXTR
 AST_IMPORTER = AST_IMPO
 RUSTFMT = "rustfmt"
@@ -34,7 +33,7 @@ XCHECK_RUNTIME = os.path.join(XCHECK_TOPDIR, "runtime/target/debug/libcross_chec
 OUTPUT_DIR = "translator-build"
 
 
-def translate(slug: str, xcheck: bool) -> None:
+def translate(slug: str, xcheck: bool, snudown: str) -> None:
     """
     :param slug: file name without directory or suffix
     :param xcheck: insert cross checking code
@@ -43,7 +42,7 @@ def translate(slug: str, xcheck: bool) -> None:
     ast_impo = get_cmd_or_die(AST_IMPO)
 
     # extraction step
-    c_src_path = os.path.join(SNUDOWN, "src/{}.c".format(slug))
+    c_src_path = os.path.join(snudown, "src/{}.c".format(slug))
     ast_extr(c_src_path)
 
     # importer step
@@ -55,7 +54,7 @@ def translate(slug: str, xcheck: bool) -> None:
         args = ['--reloop-cfgs', cbor_path]
         if xcheck:
             args += ['--cross-checks',
-                     '--cross-check-config', os.path.join(SNUDOWN, "../snudown_rust.c2r")]
+                     '--cross-check-config', os.path.join(snudown, "../snudown_rust.c2r")]
         stdout = ast_impo(*args)
         logging.debug("job's done")
         with open(rust_src_path, "w") as rust_fh:
@@ -102,17 +101,17 @@ class CompileCommandsBuilder(object):
             ccdb_fh.writelines(outjson)
 
 
-def generate_html_entries_header():
+def generate_html_entries_header(snudown: str):
     """
     Generate html_entities.h from html_entities.gperf
     """
-    if not os.path.isfile(os.path.join(SNUDOWN, "src/html_entities.h")):
-        with pb.local.cwd(os.path.join(SNUDOWN, "src")):
+    if not os.path.isfile(os.path.join(snudown, "src/html_entities.h")):
+        with pb.local.cwd(os.path.join(snudown, "src")):
             gperf = get_cmd_or_die("gperf")
             gperf('html_entities.gperf', '--output-file=html_entities.h')
 
 
-def main(xcheck: bool):
+def main(xcheck: bool, snudown: str):
     setup_logging()
 
     if os.path.isdir(OUTPUT_DIR):
@@ -130,7 +129,7 @@ def main(xcheck: bool):
                 die(msg)
 
     # make sure the snudown submodule is checked out and up to date
-    # update_or_init_submodule(SNUDOWN)
+    # update_or_init_submodule(snudown)
 
     # the macOS and Linux builds of the ast-extractor alias each other
     if not is_elf_exe(AST_EXTR) and not on_mac():
@@ -138,7 +137,7 @@ def main(xcheck: bool):
         msg += " please run build_translator.py and retry."
         die(msg)
 
-    generate_html_entries_header()
+    generate_html_entries_header(snudown)
 
     bldr = CompileCommandsBuilder()
 
@@ -146,15 +145,15 @@ def main(xcheck: bool):
     ctmpl = "cc -o {odir}/{slug}.c.o -c {snudown}/src/{slug}.c -Wwrite-strings -D_FORTIFY_SOURCE=0 -DNDEBUG=1"
 
     for s in slugs:
-        cmd = ctmpl.format(odir=OUTPUT_DIR, slug=s, snudown=SNUDOWN)
-        file = os.path.join(SNUDOWN, "src", s + ".c")
+        cmd = ctmpl.format(odir=OUTPUT_DIR, slug=s, snudown=snudown)
+        file = os.path.join(snudown, "src", s + ".c")
         assert os.path.isfile(file), "No such file: " + file
-        bldr.add_entry(SNUDOWN, cmd, file)
+        bldr.add_entry(snudown, cmd, file)
 
     bldr.write_result(os.path.curdir)
 
     for s in slugs:
-        translate(s, xcheck)
+        translate(s, xcheck, snudown)
 
     rustc = get_cmd_from_rustup("rustc")
     args = ['--crate-type=staticlib',
@@ -176,19 +175,20 @@ def main(xcheck: bool):
 
 USAGE = """\
 USAGE:
-$ ./translate.sh translate
+$ ./translate.sh translate <snudown directory>
 or
-$ ./translate.sh rustcheck
+$ ./translate.sh rustcheck <snudown directory>
 """
 
 if __name__ == "__main__":
     # TODO: use argparse package instead?
-    if len(sys.argv) < 2 or sys.argv[1] not in ["translate", "rustcheck"]:
+    if len(sys.argv) < 3 or sys.argv[1] not in ["translate", "rustcheck"]:
         print(USAGE)
         die("missing or invalid argument")
 
     XCHECK = True if sys.argv[1] == "rustcheck" else False
-    main(XCHECK)
+    SNUDOWN = os.path.realpath(sys.argv[2])
+    main(XCHECK, SNUDOWN)
 
 
 
