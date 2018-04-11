@@ -178,19 +178,20 @@ USAGE:
 $ ./translate.sh translate <snudown directory>
 or
 $ ./translate.sh rustcheck <snudown directory>
+or
+$ ./translate.sh html_entities <snudown directory>
 """
 
 if __name__ == "__main__":
     # TODO: use argparse package instead?
-    if len(sys.argv) < 3 or sys.argv[1] not in ["translate", "rustcheck"]:
+    if len(sys.argv) < 3 or sys.argv[1] not in ["translate", "rustcheck", "html_entities"]:
         print(USAGE)
         die("missing or invalid argument")
 
-    XCHECK = True if sys.argv[1] == "rustcheck" else False
     SNUDOWN = os.path.realpath(sys.argv[2])
-    main(XCHECK, SNUDOWN)
-
-
-
-
+    if sys.argv[1] == "html_entities":
+        generate_html_entries_header(SNUDOWN)
+    else:
+        XCHECK = True if sys.argv[1] == "rustcheck" else False
+        main(XCHECK, SNUDOWN)
 
