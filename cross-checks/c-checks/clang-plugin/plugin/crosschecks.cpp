@@ -94,6 +94,17 @@ report_clang_error(DiagnosticsEngine &diags,
     args_to_stream(db, std::forward<Args>(args)...);
 }
 
+template<unsigned N, typename... Args>
+static inline void
+report_clang_warning(DiagnosticsEngine &diags,
+                     const char (&fmt)[N],
+                     Args&&... args) {
+    unsigned diag_id =
+        diags.getCustomDiagID(DiagnosticsEngine::Warning, fmt);
+    auto db = diags.Report(diag_id);
+    args_to_stream(db, std::forward<Args>(args)...);
+}
+
 using StringRef = std::reference_wrapper<const std::string>;
 using StringRefPair = std::pair<StringRef, StringRef>;
 using DefaultsConfigRef = std::reference_wrapper<DefaultsConfig>;
@@ -1222,9 +1233,9 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
         return;
     }
     if (record_def->isUnion()) {
-        report_clang_error(diags, "default cross-checking is not supported for unions, "
-                                  "please use a custom cross-check for '%0'",
-                                  record_name);
+        report_clang_warning(diags, "default cross-checking is not supported for unions, "
+                                    "please use a custom cross-check for '%0'",
+                                    record_name);
         return;
     }
     assert((record_def->isStruct() || record_def->isClass()) &&
