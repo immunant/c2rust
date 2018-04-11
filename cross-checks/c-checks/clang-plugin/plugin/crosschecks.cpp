@@ -1224,7 +1224,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
     if (record_def->isUnion()) {
         report_clang_error(diags, "default cross-checking is not supported for unions, "
                                   "please use a custom cross-check for '%0'",
-                                  record_decl->getDeclName().getAsString());
+                                  record_name);
         return;
     }
     assert((record_def->isStruct() || record_def->isClass()) &&
@@ -1266,7 +1266,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
                 auto record_decl = field->getParent();
                 report_clang_error(diags, "default cross-checking is not supported for bitfields, "
                                           "please use a custom cross-check for '%0'",
-                                          record_decl->getDeclName().getAsString());
+                                          record_name);
                 return {};
             }
 
