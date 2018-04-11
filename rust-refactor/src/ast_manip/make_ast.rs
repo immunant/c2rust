@@ -1141,6 +1141,14 @@ impl Builder {
                    ItemKind::Static(ty, self.mutbl, init))
     }
 
+    pub fn const_item<I, T, E>(self, name: I, ty: T, init: E) -> P<Item>
+        where I: Make<Ident>, T: Make<P<Ty>>, E: Make<P<Expr>> {
+        let name = name.make(&self);
+        let ty = ty.make(&self);
+        let init = init.make(&self);
+        Self::item(name, self.attrs, self.vis, ItemKind::Const(ty, init))
+    }
+
     pub fn fn_item<I, D, B>(self, name: I, decl: D, block: B) -> P<Item>
         where I: Make<Ident>, D: Make<P<FnDecl>>, B: Make<P<Block>> {
         let name = name.make(&self);

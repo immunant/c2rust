@@ -1195,7 +1195,7 @@ impl ConversionContext {
                         .map(|id| {
                             let con = id.expect("Enum constant not found");
                             let id = CDeclId(self.visit_node_type(con, ENUM_CON));
-                            self.typed_context.field_parents.insert(id, CDeclId(new_id));
+                            self.typed_context.parents.insert(id, CDeclId(new_id));
                             id
                         })
                         .collect();
@@ -1248,7 +1248,7 @@ impl ConversionContext {
                             .map(|id| {
                                 let field = id.expect("Record field decl not found");
                                 let id = CDeclId(self.visit_node_type(field, FIELD_DECL));
-                                self.typed_context.field_parents.insert(id, CDeclId(new_id));
+                                self.typed_context.parents.insert(id, CDeclId(new_id));
                                 id
                             })
                             .collect())
@@ -1272,7 +1272,7 @@ impl ConversionContext {
                                 .map(|id| {
                                     let field = id.expect("Record field decl not found");
                                     let id = CDeclId(self.visit_node_type(field, FIELD_DECL));
-                                    self.typed_context.field_parents.insert(id, CDeclId(new_id));
+                                    self.typed_context.parents.insert(id, CDeclId(new_id));
                                     id
                                 })
                                 .collect())

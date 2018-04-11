@@ -285,13 +285,13 @@ pub fn translate(
     // into a single name and declaration, eliminating the typedef altogether.
     let mut prenamed_decls: HashSet<CDeclId> = HashSet::new();
     for (&decl_id, decl) in &t.ast_context.c_decls {
-        if let &CDeclKind::Typedef { ref name, typ } = &decl.kind {
+        if let CDeclKind::Typedef { ref name, typ } = decl.kind {
             if let Some(subdecl_id) = t.ast_context.resolve_type(typ.ctype).kind.as_underlying_decl() {
 
-                let is_unnamed = match &t.ast_context[subdecl_id].kind {
-                    &CDeclKind::Struct { name: None, .. } => true,
-                    &CDeclKind::Union { name: None, .. } => true,
-                    &CDeclKind::Enum { name: None, .. } => true,
+                let is_unnamed = match t.ast_context[subdecl_id].kind {
+                    CDeclKind::Struct { name: None, .. } => true,
+                    CDeclKind::Union { name: None, .. } => true,
+                    CDeclKind::Enum { name: None, .. } => true,
                     _ => false,
                 };
 
@@ -308,15 +308,15 @@ pub fn translate(
 
         // Populate renamer with top-level names
     for (&decl_id, decl) in &t.ast_context.c_decls {
-        let decl_name = match &decl.kind {
+        let decl_name = match decl.kind {
             _ if prenamed_decls.contains(&decl_id) => Name::NoName,
-            &CDeclKind::Struct { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
-            &CDeclKind::Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
-            &CDeclKind::Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
-            &CDeclKind::Typedef { ref name, .. } => Name::TypeName(name),
-            &CDeclKind::Function { ref name, .. } => Name::VarName(name),
-            // &CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
-            &CDeclKind::Variable { ref ident, .. }
+            CDeclKind::Struct { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
+            CDeclKind::Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
+            CDeclKind::Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
+            CDeclKind::Typedef { ref name, .. } => Name::TypeName(name),
+            CDeclKind::Function { ref name, .. } => Name::VarName(name),
+            CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
+            CDeclKind::Variable { ref ident, .. }
               if t.ast_context.c_decls_top.contains(&decl_id) => Name::VarName(ident),
             _ => Name::NoName,
         };
@@ -330,11 +330,12 @@ pub fn translate(
 
     // Export all types
     for (&decl_id, decl) in &t.ast_context.c_decls {
-        let needs_export = match &decl.kind {
-            &CDeclKind::Struct { .. } => true,
-            &CDeclKind::Enum { .. } => true,
-            &CDeclKind::Union { .. } => true,
-            &CDeclKind::Typedef { .. } => !prenamed_decls.contains(&decl_id),
+        let needs_export = match decl.kind {
+            CDeclKind::Struct { .. } => true,
+            CDeclKind::Enum { .. } => true,
+            CDeclKind::EnumConstant { .. } => true,
+            CDeclKind::Union { .. } => true,
+            CDeclKind::Typedef { .. } => !prenamed_decls.contains(&decl_id),
             _ => false,
         };
         if needs_export {
@@ -351,9 +352,9 @@ pub fn translate(
 
     // Export top-level value declarations
     for top_id in &t.ast_context.c_decls_top {
-        let needs_export = match &t.ast_context.c_decls[top_id].kind {
-            &CDeclKind::Function { .. } => true,
-            &CDeclKind::Variable { .. } => true,
+        let needs_export = match t.ast_context.c_decls[top_id].kind {
+            CDeclKind::Function { .. } => true,
+            CDeclKind::Variable { .. } => true,
             _ => false,
         };
         if needs_export {
@@ -777,8 +778,8 @@ impl Translation {
                 // Gather up all the field names and field types
                 let mut field_entries = vec![];
                 for &x in fields {
-                    match &self.ast_context.index(x).kind {
-                        &CDeclKind::Field { ref name, typ } => {
+                    match self.ast_context.index(x).kind {
+                        CDeclKind::Field { ref name, typ } => {
                             let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
                             let typ = self.convert_type(typ.ctype)?;
                             field_entries.push(mk().pub_().struct_field(name, typ))
@@ -799,8 +800,8 @@ impl Translation {
                 let mut field_syns = vec![];
                 for &x in fields {
                     let field_decl = self.ast_context.index(x);
-                    match &field_decl.kind {
-                        &CDeclKind::Field { ref name, typ } => {
+                    match field_decl.kind {
+                        CDeclKind::Field { ref name, typ } => {
                             let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
                             let typ = self.convert_type(typ.ctype)?;
                             field_syns.push(mk().struct_field(name, typ))
@@ -825,43 +826,21 @@ impl Translation {
 
             CDeclKind::Field { .. } => Err(format!("Field declarations should be handled inside structs/unions")),
 
-            CDeclKind::Enum { ref variants, .. } => {
+            CDeclKind::Enum { integral_type: Some(integral_type), .. } => {
                 let enum_name = &self.type_converter.borrow().resolve_decl_name(decl_id).expect("Enums should already be renamed");
-
-                let mut variant_syns = vec![];
-
-                // C allows multiple variants to share the same representation while Rust does not.
-                // We track which values have been used in order to avoid generating invalid Rust.
-                let mut value_map = HashMap::<i64, CDeclId>::new();
-
-                for &v in variants {
-                    let enum_constant_decl = self.ast_context.index(v);
-                    match &enum_constant_decl.kind {
-                        &CDeclKind::EnumConstant { ref name, value } => {
-
-                            if value_map.contains_key(&value) {
-                                self.renamer.borrow_mut().alias(v, &value_map[&value]);
-                            } else {
-                                let disc = signed_int_expr(value);
-                                let variant = &self.renamer.borrow_mut()
-                                    .insert(v, &format!("{}::{}", enum_name, name))
-                                    .expect(&format!("Failed to insert enum variant '{}'", name));
-                                let variant = variant.trim_left_matches(&format!("{}::", enum_name));
-                                value_map.insert(value, v);
-                                variant_syns.push(mk().unit_variant(variant, Some(disc)));
-                            }
-                        }
-                        _ => return Err(format!("Found non-variant in enum variant list")),
-                    }
-                }
-
+                let ty = self.convert_type(integral_type.ctype)?;
                 Ok(ConvertedDecl::Item(self.mk_cross_check(mk().pub_(), vec!["none"])
-                    .call_attr("derive", vec!["Copy", "Clone"])
-                    .call_attr("repr", vec!["C"])
-                    .enum_item(enum_name, variant_syns)))
+                    .type_item(enum_name, ty)))
             },
 
-            CDeclKind::EnumConstant { .. } => Err(format!("Enum variants should be handled inside enums")),
+            CDeclKind::EnumConstant { value, .. } => {
+                let name = self.renamer.borrow_mut().get(&decl_id).expect("Enum constant not named");
+                let enum_id = self.ast_context.parents[&decl_id];
+                let enum_name = self.type_converter.borrow().resolve_decl_name(enum_id).expect("Enums should already be renamed");
+                let ty = mk().path_ty(mk().path(vec![enum_name]));
+                let val = signed_int_expr(value);
+                Ok(ConvertedDecl::Item(mk().const_item(name, ty, val)))
+            }
 
             CDeclKind::Function { .. } if !toplevel => Err(format!("Function declarations must be top-level")),
             CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body, .. } => {
@@ -2266,7 +2245,7 @@ impl Translation {
 
             CastKind::ToUnion => {
                 let field_id = opt_field_id.expect("Missing field ID in union cast");
-                let union_id = self.ast_context.field_parents[&field_id];
+                let union_id = self.ast_context.parents[&field_id];
 
                 let union_name = self.type_converter.borrow().resolve_decl_name(union_id).expect("required union name");
                 let field_name = self.type_converter.borrow().resolve_field_name(Some(union_id), field_id).expect("field name required");
@@ -2303,17 +2282,14 @@ impl Translation {
             _ => panic!("{:?} does not point to an `enum` type"),
         };
 
-        let (variants, underlying_type_id) = match &self.ast_context[def_id].kind {
-            &CDeclKind::Enum { ref variants, integral_type, .. } => (variants, integral_type),
+        let (variants, underlying_type_id) = match self.ast_context[def_id].kind {
+            CDeclKind::Enum { ref variants, integral_type, .. } => (variants, integral_type),
             _ => panic!("{:?} does not point to an `enum` declaration")
         };
 
-        let underlying_type_id = underlying_type_id.expect("Attempt to construct value of forward declared enum");
-        let underlying_type = self.convert_type(underlying_type_id.ctype).unwrap();
-
         for &variant_id in variants {
-            match &self.ast_context[variant_id].kind {
-                &CDeclKind::EnumConstant { value: v, .. } =>
+            match self.ast_context[variant_id].kind {
+                CDeclKind::EnumConstant { value: v, .. } =>
                 if value == v {
                     let name = self.renamer.borrow().get(&variant_id).unwrap();
                     return mk().path_expr(vec![name])
@@ -2322,6 +2298,7 @@ impl Translation {
             }
         }
 
+        let underlying_type_id = underlying_type_id.expect("Attempt to construct value of forward declared enum");
         let value = match self.ast_context.resolve_type(underlying_type_id.ctype).kind {
             CTypeKind::UInt => mk().lit_expr(mk().int_lit((value as u32) as u128, LitIntType::Unsuffixed)),
             CTypeKind::ULong => mk().lit_expr(mk().int_lit((value as u64) as u128, LitIntType::Unsuffixed)),
@@ -2330,7 +2307,7 @@ impl Translation {
 
         let target_ty = self.convert_type(enum_type_id).unwrap();
 
-        transmute_expr(underlying_type, target_ty, value)
+        mk().cast_expr(value, target_ty)
     }
 
     /// This handles translating casts when the target type in an `enum` type.
@@ -2345,13 +2322,13 @@ impl Translation {
         enum_decl: CEnumId,      // ID of the enum declaration corresponding to the target type
         expr: CExprId,           // ID of initial C argument to cast
         val: WithStmts<P<Expr>>, // translated Rust argument to cast
-        source_ty: P<Ty>,        // source type of cast
+        _source_ty: P<Ty>,        // source type of cast
         target_ty: P<Ty>,        // target type of cast
     ) -> WithStmts<P<Expr>> {
 
         // Extract the IDs of the `EnumConstant` decls underlying the enum.
-        let variants = match &self.ast_context.index(enum_decl).kind {
-            &CDeclKind::Enum { ref variants, .. } => variants,
+        let variants = match self.ast_context.index(enum_decl).kind {
+            CDeclKind::Enum { ref variants, .. } => variants,
             _ => panic!("{:?} does not point to an `enum` declaration")
         };
 
@@ -2382,7 +2359,7 @@ impl Translation {
             _ => {},
         }
 
-        val.map(|x| transmute_expr(source_ty, target_ty, x))
+        val.map(|x| mk().cast_expr(x, target_ty))
     }
 
     fn convert_union_literal(
@@ -2398,8 +2375,8 @@ impl Translation {
         match self.ast_context.index(union_id).kind {
             CDeclKind::Union { .. } => {
                 let union_name = self.type_converter.borrow().resolve_decl_name(union_id).unwrap();
-                match &self.ast_context.index(union_field_id).kind {
-                    &CDeclKind::Field { typ: field_ty, .. } => {
+                match self.ast_context.index(union_field_id).kind {
+                    CDeclKind::Field { typ: field_ty, .. } => {
                         let val = if ids.is_empty() {
                             WithStmts {
                                 stmts: vec![],
@@ -2425,10 +2402,9 @@ impl Translation {
 
     fn convert_struct_literal(&self, struct_id: CRecordId, ids: &[CExprId], is_static: bool)
                               -> Result<WithStmts<P<Expr>>, String> {
-        let struct_decl = &self.ast_context.index(struct_id).kind;
 
-        let field_decls = match struct_decl {
-            &CDeclKind::Struct { ref fields, .. } => {
+        let field_decls = match self.ast_context.index(struct_id).kind {
+            CDeclKind::Struct { ref fields, .. } => {
                 let mut fieldnames = vec![];
 
                 let fields = match fields {
@@ -2438,7 +2414,7 @@ impl Translation {
 
                 for &x in fields {
                     let name = self.type_converter.borrow().resolve_field_name(Some(struct_id), x).unwrap();
-                    if let &CDeclKind::Field { typ, .. } = &self.ast_context.index(x).kind {
+                    if let CDeclKind::Field { typ, .. } = self.ast_context.index(x).kind {
                         fieldnames.push((name, typ));
                     } else {
                         panic!("Struct field decl type mismatch")
@@ -2525,10 +2501,10 @@ impl Translation {
         }
 
         // Otherwise, construct the initializer
-        let init = match &self.ast_context.index(decl_id).kind {
+        let init = match self.ast_context.index(decl_id).kind {
 
             // Zero initialize all of the fields
-            &CDeclKind::Struct { ref fields, .. } => {
+            CDeclKind::Struct { ref fields, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 let fields = match *fields {
@@ -2541,8 +2517,8 @@ impl Translation {
                     .map(|field_id: &CFieldId| -> Result<Field, String> {
                         let name = self.type_converter.borrow().resolve_field_name(Some(decl_id), *field_id).unwrap();
 
-                        match &self.ast_context.index(*field_id).kind {
-                            &CDeclKind::Field { typ, .. } => {
+                        match self.ast_context.index(*field_id).kind {
+                            CDeclKind::Field { typ, .. } => {
                                 let field_init = self.implicit_default_expr(typ.ctype)?;
                                 Ok(mk().field(name, field_init))
                             }
@@ -2555,7 +2531,7 @@ impl Translation {
             },
 
             // Zero initialize the first field
-            &CDeclKind::Union { ref fields, .. } => {
+            CDeclKind::Union { ref fields, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 let fields = match *fields {
@@ -2565,8 +2541,8 @@ impl Translation {
 
                 let &field_id = fields.first().ok_or(format!("A union should have a field"))?;
 
-                let field = match &self.ast_context.index(field_id).kind {
-                    &CDeclKind::Field { typ, .. } => {
+                let field = match self.ast_context.index(field_id).kind {
+                    CDeclKind::Field { typ, .. } => {
                         let field_init = self.implicit_default_expr(typ.ctype)?;
                         let name = self.type_converter.borrow().resolve_field_name(Some(decl_id), field_id).unwrap();
 
@@ -2579,7 +2555,7 @@ impl Translation {
             },
 
             // Transmute the number `0` into the enum type
-            &CDeclKind::Enum { .. } => Ok(self.enum_for_i64(type_id, 0)),
+            CDeclKind::Enum { .. } => Ok(self.enum_for_i64(type_id, 0)),
 
             _ => Err(format!("Declaration is not associated with a type"))
         };

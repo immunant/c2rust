@@ -40,7 +40,7 @@ pub struct TypedAstContext {
     pub c_decls_top: Vec<CDeclId>,
     pub c_main: Option<CDeclId>,
     pub c_files: HashMap<u64, String>,
-    pub field_parents: HashMap<CFieldId, CDeclId>,
+    pub parents: HashMap<CDeclId, CDeclId>, // record fields and enum constants
 }
 
 impl TypedAstContext {
@@ -54,7 +54,7 @@ impl TypedAstContext {
             c_decls_top: Vec::new(),
             c_main: None,
             c_files: HashMap::new(),
-            field_parents: HashMap::new(),
+            parents: HashMap::new(),
         }
     }
 
@@ -162,7 +162,7 @@ impl TypedAstContext {
                     live.insert(decl_id);
                     // This declref could refer to an enum constant, so we want to keep the enum
                     // declaration for that constant live
-                    if let Some(&parent_id) = self.field_parents.get(&decl_id) {
+                    if let Some(&parent_id) = self.parents.get(&decl_id) {
                         if live.insert(parent_id) {
                             if let CDeclKind::Enum { ref variants, .. } = self[parent_id].kind {
                                 live.extend(variants);
