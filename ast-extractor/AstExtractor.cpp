@@ -259,6 +259,7 @@ public:
             cbor_encoder_close_container(local, &arrayEncoder);
 
             cbor_encode_boolean(local, T->getExtProtoInfo().Variadic);
+            cbor_encode_boolean(local, T->getNoReturnAttr());
         });
 
         VisitQualType(T->getReturnType());

@@ -229,7 +229,7 @@ impl TypedAstContext {
                 CTypeKind::Pointer(qtype_id) | CTypeKind::Attributed(qtype_id, _) |
                 CTypeKind::BlockPointer(qtype_id) => type_queue.push(qtype_id.ctype),
 
-                CTypeKind::Function(qtype_id, ref qtype_ids, _) => {
+                CTypeKind::Function(qtype_id, ref qtype_ids, _, _) => {
                     type_queue.push(qtype_id.ctype);
                     type_queue.extend(qtype_ids.iter().map(|x| x.ctype));
                 }
@@ -844,7 +844,8 @@ pub enum CTypeKind {
     //
     // Note a function taking no arguments should have one `void` argument. Functions without any
     // arguments and in K&R format.
-    Function(CQualTypeId, Vec<CQualTypeId>, bool),
+    // Flags: is_variable_argument, is_noreturn
+    Function(CQualTypeId, Vec<CQualTypeId>, bool, bool),
 
     // Type definition type (6.7.7)
     Typedef(CTypedefId),

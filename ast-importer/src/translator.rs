@@ -542,9 +542,9 @@ impl Translation {
     fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, String> {
         if let CDeclKind::Function { ref parameters, typ, .. } = self.ast_context.index(main_id).kind {
 
-            let ret: CTypeKind = match &self.ast_context.resolve_type(typ).kind {
-                &CTypeKind::Function(ret, _, _) => self.ast_context.resolve_type(ret.ctype).kind.clone(),
-                k => return Err(format!("Type of main function {:?} was not a function type, got {:?}", main_id, k))
+            let ret: CTypeKind = match self.ast_context.resolve_type(typ).kind {
+                CTypeKind::Function(ret, _, _, _) => self.ast_context.resolve_type(ret.ctype).kind.clone(),
+                ref k => return Err(format!("Type of main function {:?} was not a function type, got {:?}", main_id, k))
             };
 
             let decl = mk().fn_decl(
@@ -847,9 +847,9 @@ impl Translation {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
 
-                let (ret, is_var): (CQualTypeId, bool) = match &self.ast_context.resolve_type(typ).kind {
-                    &CTypeKind::Function(ret, _, is_var) => (ret, is_var),
-                    k => return Err(format!("Type of function {:?} was not a function type, got {:?}", decl_id, k))
+                let (ret, is_var): (Option<CQualTypeId>, bool) = match self.ast_context.resolve_type(typ).kind {
+                    CTypeKind::Function(ret, _, is_var, is_noreturn) => (if is_noreturn { None } else { Some(ret) }, is_var),
+                    ref k => return Err(format!("Type of function {:?} was not a function type, got {:?}", decl_id, k))
                 };
 
                 let mut args: Vec<(CDeclId, String, CQualTypeId)> = vec![];
@@ -940,7 +940,7 @@ impl Translation {
         new_name: &str,
         name: &str,
         arguments: &[(CDeclId, String, CQualTypeId)],
-        return_type: CQualTypeId,
+        return_type: Option<CQualTypeId>,
         body: Option<CStmtId>,
     ) -> Result<ConvertedDecl, String> {
         self.with_scope(|| {
@@ -967,7 +967,11 @@ impl Translation {
                 args.push(mk().arg(ty, pat))
             }
 
-            let ret = FunctionRetTy::Ty(self.convert_type(return_type.ctype)?);
+            let ret = match return_type {
+                Some(return_type) => self.convert_type(return_type.ctype)?,
+                None => mk().never_ty(),
+            };
+            let ret = FunctionRetTy::Ty(ret);
 
             let decl = mk().fn_decl(args, ret, is_variadic);
 
@@ -975,11 +979,18 @@ impl Translation {
             if let Some(body) = body {
                 // Translating an actual function
 
-                let ret_type_id: CTypeId = self.ast_context.resolve_type_id(return_type.ctype);
-                let ret = match self.ast_context.index(ret_type_id).kind {
-                    CTypeKind::Void => cfg::ImplicitReturnType::Void,
-                    _ if is_main => cfg::ImplicitReturnType::Main,
-                    _ => cfg::ImplicitReturnType::NoImplicitReturnType,
+                let ret = match return_type {
+                    Some(return_type) => {
+                        let ret_type_id: CTypeId = self.ast_context.resolve_type_id(return_type.ctype);
+                        if let CTypeKind::Void = self.ast_context.index(ret_type_id).kind {
+                            cfg::ImplicitReturnType::Void
+                        } else if is_main {
+                            cfg::ImplicitReturnType::Main
+                        } else {
+                            cfg::ImplicitReturnType::NoImplicitReturnType
+                        }
+                    }
+                    _ => cfg::ImplicitReturnType::Void,
                 };
 
                 let mut body_stmts = vec![];
