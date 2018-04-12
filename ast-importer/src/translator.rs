@@ -839,7 +839,7 @@ impl Translation {
                 let enum_name = self.type_converter.borrow().resolve_decl_name(enum_id).expect("Enums should already be renamed");
                 let ty = mk().path_ty(mk().path(vec![enum_name]));
                 let val = signed_int_expr(value);
-                Ok(ConvertedDecl::Item(mk().const_item(name, ty, val)))
+                Ok(ConvertedDecl::Item(mk().pub_().const_item(name, ty, val)))
             }
 
             CDeclKind::Function { .. } if !toplevel => Err(format!("Function declarations must be top-level")),

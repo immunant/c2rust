@@ -25,9 +25,9 @@ pub fn test_buffer() {
 }
 
 pub fn test_types() {
-    assert_eq!(e::foo as u32, 1);
-    assert_eq!(e::bar as u32, 2);
-    assert_eq!(e::baz as u32, 3);
+    assert_eq!(foo as u32, 1);
+    assert_eq!(bar as u32, 2);
+    assert_eq!(baz as u32, 3);
 
     // FIXME: union fields are private
     // let my_union = u { x: 32 };
