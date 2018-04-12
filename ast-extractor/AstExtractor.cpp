@@ -1171,7 +1171,7 @@ void TypeEncoder::VisitTypedefType(const TypedefType *T) {
     
     auto D = T->getDecl()->getCanonicalDecl();
 
-    encodeType(T, TagTypedefType, [D, T](CborEncoder *local) {
+    encodeType(T, TagTypedefType, [D](CborEncoder *local) {
         cbor_encode_uint(local, uintptr_t(D));
     });
     astEncoder->TraverseDecl(D);
