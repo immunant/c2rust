@@ -537,7 +537,17 @@ impl ConversionContext {
                 TypeTag::TagAttributedType => {
                     let ty_id = expect_u64(&ty_node.extras[0]).expect("Attributed type child not found");
                     let ty = self.visit_qualified_type(ty_id);
-                    let ty = CTypeKind::Attributed(ty);
+
+                    let kind = match expect_opt_str(&ty_node.extras[1]).expect("Attributed type kind not found")
+                        {
+                            None => None,
+                            Some("noreturn") => Some(Attribute::NoReturn),
+                            Some("nullable") => Some(Attribute::Nullable),
+                            Some("notnull") => Some(Attribute::NotNull),
+                            Some(other) => panic!("Unknown type attribute: {}", other),
+                        };
+
+                    let ty = CTypeKind::Attributed(ty, kind);
                     self.add_type(new_id, not_located(ty));
                     self.processed_nodes.insert(new_id, TYPE);
                 }

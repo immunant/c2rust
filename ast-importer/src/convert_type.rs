@@ -214,7 +214,7 @@ impl TypeConverter {
                 Ok(mk().mutbl().ptr_ty(child_ty))
             }
 
-            CTypeKind::Attributed(ty) => self.convert(ctxt, ty.ctype),
+            CTypeKind::Attributed(ty, _) => self.convert(ctxt, ty.ctype),
 
             CTypeKind::Function(ref ret, ref params, is_var) => {
                 let fn_ty = self.convert_function(ctxt, ret, params, is_var)?;

@@ -74,7 +74,7 @@ impl TypedAstContext {
 
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
         match self.index(typ).kind {
-            CTypeKind::Attributed(ty) => self.resolve_type_id(ty.ctype),
+            CTypeKind::Attributed(ty, _) => self.resolve_type_id(ty.ctype),
             CTypeKind::Elaborated(ty) => self.resolve_type_id(ty),
             CTypeKind::Decayed(ty) => self.resolve_type_id(ty),
             CTypeKind::TypeOf(ty) => self.resolve_type_id(ty),
@@ -226,7 +226,7 @@ impl TypedAstContext {
                 => type_queue.push(type_id),
 
                 // Types with CQualtypeId fields
-                CTypeKind::Pointer(qtype_id) | CTypeKind::Attributed(qtype_id) |
+                CTypeKind::Pointer(qtype_id) | CTypeKind::Attributed(qtype_id, _) |
                 CTypeKind::BlockPointer(qtype_id) => type_queue.push(qtype_id.ctype),
 
                 CTypeKind::Function(qtype_id, ref qtype_ids, _) => {
@@ -867,9 +867,16 @@ pub enum CTypeKind {
 
     BuiltinFn,
 
-    Attributed(CQualTypeId),
+    Attributed(CQualTypeId, Option<Attribute>),
 
     BlockPointer(CQualTypeId),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum Attribute {
+    NoReturn,
+    NotNull,
+    Nullable,
 }
 
 impl CTypeKind {
