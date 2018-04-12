@@ -40,7 +40,7 @@ pub struct TypedAstContext {
     pub c_decls_top: Vec<CDeclId>,
     pub c_main: Option<CDeclId>,
     pub c_files: HashMap<u64, String>,
-    pub field_parents: HashMap<CFieldId, CDeclId>,
+    pub parents: HashMap<CDeclId, CDeclId>, // record fields and enum constants
 }
 
 impl TypedAstContext {
@@ -54,7 +54,7 @@ impl TypedAstContext {
             c_decls_top: Vec::new(),
             c_main: None,
             c_files: HashMap::new(),
-            field_parents: HashMap::new(),
+            parents: HashMap::new(),
         }
     }
 
@@ -74,7 +74,7 @@ impl TypedAstContext {
 
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
         match self.index(typ).kind {
-            CTypeKind::Attributed(ty) => self.resolve_type_id(ty.ctype),
+            CTypeKind::Attributed(ty, _) => self.resolve_type_id(ty.ctype),
             CTypeKind::Elaborated(ty) => self.resolve_type_id(ty),
             CTypeKind::Decayed(ty) => self.resolve_type_id(ty),
             CTypeKind::TypeOf(ty) => self.resolve_type_id(ty),
@@ -162,7 +162,7 @@ impl TypedAstContext {
                     live.insert(decl_id);
                     // This declref could refer to an enum constant, so we want to keep the enum
                     // declaration for that constant live
-                    if let Some(&parent_id) = self.field_parents.get(&decl_id) {
+                    if let Some(&parent_id) = self.parents.get(&decl_id) {
                         if live.insert(parent_id) {
                             if let CDeclKind::Enum { ref variants, .. } = self[parent_id].kind {
                                 live.extend(variants);
@@ -226,10 +226,10 @@ impl TypedAstContext {
                 => type_queue.push(type_id),
 
                 // Types with CQualtypeId fields
-                CTypeKind::Pointer(qtype_id) | CTypeKind::Attributed(qtype_id) |
+                CTypeKind::Pointer(qtype_id) | CTypeKind::Attributed(qtype_id, _) |
                 CTypeKind::BlockPointer(qtype_id) => type_queue.push(qtype_id.ctype),
 
-                CTypeKind::Function(qtype_id, ref qtype_ids, _) => {
+                CTypeKind::Function(qtype_id, ref qtype_ids, _, _) => {
                     type_queue.push(qtype_id.ctype);
                     type_queue.extend(qtype_ids.iter().map(|x| x.ctype));
                 }
@@ -844,7 +844,8 @@ pub enum CTypeKind {
     //
     // Note a function taking no arguments should have one `void` argument. Functions without any
     // arguments and in K&R format.
-    Function(CQualTypeId, Vec<CQualTypeId>, bool),
+    // Flags: is_variable_argument, is_noreturn
+    Function(CQualTypeId, Vec<CQualTypeId>, bool, bool),
 
     // Type definition type (6.7.7)
     Typedef(CTypedefId),
@@ -867,9 +868,16 @@ pub enum CTypeKind {
 
     BuiltinFn,
 
-    Attributed(CQualTypeId),
+    Attributed(CQualTypeId, Option<Attribute>),
 
     BlockPointer(CQualTypeId),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum Attribute {
+    NoReturn,
+    NotNull,
+    Nullable,
 }
 
 impl CTypeKind {

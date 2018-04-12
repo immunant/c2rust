@@ -91,10 +91,11 @@ impl TypeConverter {
     }
 
     /// Helper function handling conversion of function types in `convert`.
+    /// Optional return type excludes a ty when a function doesn't return.
     fn convert_function(
       &mut self,
       ctxt: &TypedAstContext,
-      ret: &CQualTypeId,
+      ret: Option<CQualTypeId>,
       params: &Vec<CQualTypeId>,
       is_variadic: bool
     ) -> Result<P<Ty>, String> {
@@ -102,7 +103,12 @@ impl TypeConverter {
             mk().arg(self.convert(ctxt, x.ctype).unwrap(),
                                  mk().wild_pat())
         ).collect();
-        let output = self.convert(ctxt, ret.ctype)?;
+
+        let output = match ret {
+            None => mk().never_ty(),
+            Some(ret) => self.convert(ctxt, ret.ctype)?,
+        };
+
         let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output), is_variadic);
         return Ok(mk().unsafe_().abi(Abi::C).barefn_ty(fn_ty));
     }
@@ -128,8 +134,9 @@ impl TypeConverter {
 
             // Function pointers are translated to Option applied to the function type
             // in order to support NULL function pointers natively
-            CTypeKind::Function(ref ret, ref params, is_var) => {
-                let fn_ty = self.convert_function(ctxt, ret, params, is_var)?;
+            CTypeKind::Function(ret, ref params, is_var, is_noreturn) => {
+                let opt_ret = if is_noreturn { None } else { Some(ret) };
+                let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
                 let param = mk().angle_bracketed_param_types(vec![fn_ty]);
                 let optn_ty = mk().path_ty(vec![mk().path_segment_with_params("Option", param)]);
                 Ok(optn_ty)
@@ -199,7 +206,6 @@ impl TypeConverter {
             }
 
             CTypeKind::IncompleteArray(element) => {
-                // FIXME: handle translation of incomplete arrays
                 let ty = self.convert(ctxt, element)?;
                 let zero_lit = mk().int_lit(0, LitIntType::Unsuffixed);
                 let zero = mk().lit_expr(zero_lit);
@@ -214,10 +220,11 @@ impl TypeConverter {
                 Ok(mk().mutbl().ptr_ty(child_ty))
             }
 
-            CTypeKind::Attributed(ty) => self.convert(ctxt, ty.ctype),
+            CTypeKind::Attributed(ty, _) => self.convert(ctxt, ty.ctype),
 
-            CTypeKind::Function(ref ret, ref params, is_var) => {
-                let fn_ty = self.convert_function(ctxt, ret, params, is_var)?;
+            CTypeKind::Function(ret, ref params, is_var, is_noreturn) => {
+                let opt_ret = if is_noreturn { None } else { Some(ret) };
+                let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
                 Ok(fn_ty)
             }
 

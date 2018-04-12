@@ -473,7 +473,8 @@ impl ConversionContext {
                         .collect();
                     let ret = arguments.remove(0);
                     let is_variadic = expect_bool(&ty_node.extras[1]).expect("Variadicity of function type not found");
-                    let function_ty = CTypeKind::Function(ret, arguments, is_variadic);
+                    let is_noreturn = expect_bool(&ty_node.extras[2]).expect("NoReturn of function type not found");
+                    let function_ty = CTypeKind::Function(ret, arguments, is_variadic, is_noreturn);
                     self.add_type(new_id, not_located(function_ty));
                     self.processed_nodes.insert(new_id, FUNC_TYPE);
                 }
@@ -537,7 +538,17 @@ impl ConversionContext {
                 TypeTag::TagAttributedType => {
                     let ty_id = expect_u64(&ty_node.extras[0]).expect("Attributed type child not found");
                     let ty = self.visit_qualified_type(ty_id);
-                    let ty = CTypeKind::Attributed(ty);
+
+                    let kind = match expect_opt_str(&ty_node.extras[1]).expect("Attributed type kind not found")
+                        {
+                            None => None,
+                            Some("noreturn") => Some(Attribute::NoReturn),
+                            Some("nullable") => Some(Attribute::Nullable),
+                            Some("notnull") => Some(Attribute::NotNull),
+                            Some(other) => panic!("Unknown type attribute: {}", other),
+                        };
+
+                    let ty = CTypeKind::Attributed(ty, kind);
                     self.add_type(new_id, not_located(ty));
                     self.processed_nodes.insert(new_id, TYPE);
                 }
@@ -1195,7 +1206,7 @@ impl ConversionContext {
                         .map(|id| {
                             let con = id.expect("Enum constant not found");
                             let id = CDeclId(self.visit_node_type(con, ENUM_CON));
-                            self.typed_context.field_parents.insert(id, CDeclId(new_id));
+                            self.typed_context.parents.insert(id, CDeclId(new_id));
                             id
                         })
                         .collect();
@@ -1248,7 +1259,7 @@ impl ConversionContext {
                             .map(|id| {
                                 let field = id.expect("Record field decl not found");
                                 let id = CDeclId(self.visit_node_type(field, FIELD_DECL));
-                                self.typed_context.field_parents.insert(id, CDeclId(new_id));
+                                self.typed_context.parents.insert(id, CDeclId(new_id));
                                 id
                             })
                             .collect())
@@ -1272,7 +1283,7 @@ impl ConversionContext {
                                 .map(|id| {
                                     let field = id.expect("Record field decl not found");
                                     let id = CDeclId(self.visit_node_type(field, FIELD_DECL));
-                                    self.typed_context.field_parents.insert(id, CDeclId(new_id));
+                                    self.typed_context.parents.insert(id, CDeclId(new_id));
                                     id
                                 })
                                 .collect())

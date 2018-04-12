@@ -119,9 +119,23 @@ public:
     void VisitAttributedType(const AttributedType *T) {
         auto t = T->getModifiedType();
         auto qt = encodeQualType(t);
+        auto k = T->getAttrKind();
         
-        encodeType(T, TagAttributedType, [T,qt](CborEncoder *local) {
+        encodeType(T, TagAttributedType, [qt,k](CborEncoder *local) {
             cbor_encode_uint(local, qt);
+            
+            const char *tag;
+            switch (k) {
+                default: tag = nullptr; break;
+                case AttributedType::attr_noreturn: tag = "noreturn"; break;
+                case AttributedType::attr_nonnull: tag = "notnull"; break;
+                case AttributedType::attr_nullable: tag = "nullable"; break;
+            }
+            if (tag) {
+                cbor_encode_text_stringz(local, tag);
+            } else {
+                cbor_encode_null(local);
+            }
         });
         
         VisitQualType(t);
@@ -131,7 +145,7 @@ public:
         auto t = T->getInnerType();
         auto qt = encodeQualType(t);
         
-        encodeType(T, TagParenType, [T,qt](CborEncoder *local) {
+        encodeType(T, TagParenType, [qt](CborEncoder *local) {
             cbor_encode_uint(local, qt);
         });
         
@@ -245,6 +259,7 @@ public:
             cbor_encoder_close_container(local, &arrayEncoder);
 
             cbor_encode_boolean(local, T->getExtProtoInfo().Variadic);
+            cbor_encode_boolean(local, T->getNoReturnAttr());
         });
 
         VisitQualType(T->getReturnType());
