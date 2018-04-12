@@ -281,6 +281,7 @@ public:
             cbor_encoder_close_container(local, &arrayEncoder);
 
             cbor_encode_boolean(local, false);
+            cbor_encode_boolean(local, T->getNoReturnAttr());
         });
 
         VisitQualType(T->getReturnType());
