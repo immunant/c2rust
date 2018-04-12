@@ -838,7 +838,11 @@ impl Translation {
                 let enum_id = self.ast_context.parents[&decl_id];
                 let enum_name = self.type_converter.borrow().resolve_decl_name(enum_id).expect("Enums should already be renamed");
                 let ty = mk().path_ty(mk().path(vec![enum_name]));
-                let val = signed_int_expr(value);
+                let val = match value {
+                    ConstIntExpr::I(value) => signed_int_expr(value),
+                    ConstIntExpr::U(value) => mk().lit_expr(mk().int_lit(value as u128, LitIntType::Unsuffixed)),
+                };
+
                 Ok(ConvertedDecl::Item(mk().pub_().const_item(name, ty, val)))
             }
 
@@ -2301,7 +2305,7 @@ impl Translation {
         for &variant_id in variants {
             match self.ast_context[variant_id].kind {
                 CDeclKind::EnumConstant { value: v, .. } =>
-                if value == v {
+                if v == ConstIntExpr::I(value) || v == ConstIntExpr::U(value as u64) {
                     let name = self.renamer.borrow().get(&variant_id).unwrap();
                     return mk().path_expr(vec![name])
                 }

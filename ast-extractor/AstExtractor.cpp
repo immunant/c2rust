@@ -1023,8 +1023,12 @@ class TranslateASTVisitor final
               auto name = D->getNameAsString();
               cbor_encode_string(local, name);
 
-              auto val = D->getInitVal().getSExtValue();
-              cbor_encode_int(local, val);
+                auto value = D->getInitVal();
+                if (value.isSigned()) {
+                    cbor_encode_int(local, value.getSExtValue());
+                } else {
+                    cbor_encode_uint(local, value.getZExtValue());
+                }
           });
           return true;
       }

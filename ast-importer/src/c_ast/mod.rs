@@ -384,7 +384,7 @@ pub enum CDeclKind {
 
     EnumConstant {
         name: String,
-        value: i64,
+        value: ConstIntExpr,
     },
 
     // Typedef
@@ -667,7 +667,7 @@ pub enum CLiteral {
 }
 
 /// Represents a constant integer expression as used in a case expression
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ConstIntExpr {
     U(u64),
     I(i64),
