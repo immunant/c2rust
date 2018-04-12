@@ -1,6 +1,6 @@
 extern crate libc;
 
-use enum_as_int::{E, rust_entry};
+use enum_as_int::{E, A, B, rust_entry};
 use enum_ret::{Color, rust_entry2};
 use enum_duplicate::{e, rust_entry3};
 use top_enum::{E as otherE, rust_entry4};
@@ -34,8 +34,8 @@ const BUFFER_SIZE5: usize = 6;
 
 
 pub fn test_variants() {
-    assert_eq!(E::A as u32, 0);
-    assert_eq!(E::B as u32, 1);
+    assert_eq!(A as u32, 0);
+    assert_eq!(B as u32, 1);
 
 }
 
