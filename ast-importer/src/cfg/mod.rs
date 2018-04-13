@@ -842,7 +842,7 @@ impl CfgBuilder {
                 let else_entry = if false_variant.is_none() { next_entry } else { self.fresh_label() };
 
                 // Condition
-                let WithStmts { stmts, val } = translator.convert_condition(true, scrutinee)?;
+                let WithStmts { stmts, val } = translator.convert_condition(true, scrutinee, false)?;
                 wip.extend(stmts);
                 self.add_wip_block(wip, Branch(val, then_entry, else_entry));
 
@@ -874,7 +874,7 @@ impl CfgBuilder {
                 self.add_wip_block(wip, Jump(cond_entry));
 
                 // Condition
-                let WithStmts { stmts, val } = translator.convert_condition(true, condition)?;
+                let WithStmts { stmts, val } = translator.convert_condition(true, condition, false)?;
                 let mut cond_wip = self.new_wip_block(cond_entry);
                 cond_wip.extend(stmts);
                 self.add_wip_block(cond_wip, Branch(val, body_entry, next_entry));
@@ -917,7 +917,7 @@ impl CfgBuilder {
                 self.continue_labels.pop();
 
                 // Condition
-                let WithStmts { stmts, val } = translator.convert_condition(true, condition)?;
+                let WithStmts { stmts, val } = translator.convert_condition(true, condition, false)?;
                 let mut cond_wip = self.new_wip_block(cond_entry);
                 cond_wip.extend(stmts);
                 self.add_wip_block(cond_wip, Branch(val, body_entry, next_entry));
@@ -944,7 +944,7 @@ impl CfgBuilder {
 
                     // Condition
                     if let Some(cond) = condition {
-                        let WithStmts { stmts, val } = translator.convert_condition(true, cond)?;
+                        let WithStmts { stmts, val } = translator.convert_condition(true, cond, false)?;
                         let mut cond_wip = slf.new_wip_block(cond_entry);
                         cond_wip.extend(stmts);
                         slf.add_wip_block(cond_wip, Branch(val, body_entry, next_label));

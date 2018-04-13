@@ -1161,15 +1161,15 @@ impl Translation {
     }
 
     /// Convert a C expression to a rust boolean expression
-    pub fn convert_condition(&self, target: bool, cond_id: CExprId) -> Result<WithStmts<P<Expr>>, String> {
+    pub fn convert_condition(&self, target: bool, cond_id: CExprId, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
         let ty_id = self.ast_context.index(cond_id).kind.get_type();
 
-        Ok(self.convert_expr(ExprUse::RValue, cond_id, false)?
+        Ok(self.convert_expr(ExprUse::RValue, cond_id, is_static)?
             .map(|e| self.match_bool(target, ty_id, e)))
     }
 
     fn convert_while_stmt(&self, cond_id: CExprId, body_id: CStmtId) -> Result<Vec<Stmt>, String> {
-        let cond = self.convert_condition(true, cond_id)?;
+        let cond = self.convert_condition(true, cond_id, false)?;
 
         self.loops.push_loop(LoopType::While);
         let body_res = self.convert_stmt(body_id);
@@ -1183,7 +1183,7 @@ impl Translation {
     }
 
     fn convert_do_stmt(&self, body_id: CStmtId, cond_id: CExprId) -> Result<Vec<Stmt>, String> {
-        let cond = self.convert_condition(false, cond_id)?;
+        let cond = self.convert_condition(false, cond_id, false)?;
         self.loops.push_loop(LoopType::DoWhile);
         let body_res = self.convert_stmt(body_id);
         let mut loop_ = self.loops.pop_loop();
@@ -1251,7 +1251,7 @@ impl Translation {
 
             let looper = match cond_id {
                 None => mk().loop_expr(body_block, loop_.label), // loop
-                Some(i) => mk().while_expr(self.convert_condition(true, i)?.to_expr(), body_block, loop_.label), // while
+                Some(i) => mk().while_expr(self.convert_condition(true, i, false)?.to_expr(), body_block, loop_.label), // while
             };
 
             init.push(mk().expr_stmt(looper));
@@ -1266,7 +1266,7 @@ impl Translation {
         then_id: CStmtId,
         else_id: Option<CStmtId>
     ) -> Result<Vec<Stmt>, String> {
-        let mut cond = self.convert_condition(true, cond_id)?;
+        let mut cond = self.convert_condition(true, cond_id, false)?;
         let then_stmts = stmts_block(self.convert_stmt(then_id)?);
         let else_stmts = else_id
             .map_or(
@@ -1756,19 +1756,19 @@ impl Translation {
             }
 
             CExprKind::ImplicitCast(ty, expr, kind, opt_field_id) =>
-                self.convert_cast(use_, ty, expr, kind, opt_field_id, false),
+                self.convert_cast(use_, ty, expr, kind, opt_field_id, false, is_static),
 
             CExprKind::ExplicitCast(ty, expr, kind, opt_field_id) =>
-                self.convert_cast(use_, ty, expr, kind, opt_field_id, true),
+                self.convert_cast(use_, ty, expr, kind, opt_field_id, true, is_static),
 
             CExprKind::Unary(type_id, op, arg) =>
                 self.convert_unary_operator(use_, op, type_id, arg, is_static),
 
             CExprKind::Conditional(_, cond, lhs, rhs) => {
-                let cond = self.convert_condition(true, cond)?;
+                let cond = self.convert_condition(true, cond, is_static)?;
 
-                let lhs = self.convert_expr(use_, lhs, false)?;
-                let rhs = self.convert_expr(use_, rhs, false)?;
+                let lhs = self.convert_expr(use_, lhs, is_static)?;
+                let rhs = self.convert_expr(use_, rhs, is_static)?;
 
                 if use_ == ExprUse::Unused {
                     let then: P<Block> = mk().block(lhs.stmts);
@@ -1788,20 +1788,20 @@ impl Translation {
 
             CExprKind::BinaryConditional(ty, lhs, rhs) => {
                 if use_ == ExprUse::Unused {
-                    let mut lhs = self.convert_expr(ExprUse::RValue, lhs, false)?;
+                    let mut lhs = self.convert_expr(ExprUse::RValue, lhs, is_static)?;
                     let cond = self.match_bool(false, ty.ctype, lhs.val);
 
                     lhs.stmts.push(
                         mk().semi_stmt(
                             mk().ifte_expr(cond, mk().block(self.convert_expr(ExprUse::Unused,
-                                                                              rhs, false)?.stmts), None as Option<P<Expr>>)));
+                                                                              rhs, is_static)?.stmts), None as Option<P<Expr>>)));
                     Ok(WithStmts { stmts: lhs.stmts, val: Translation::panic(), })
                 } else {
                     self.name_reference_write_read(lhs)?.result_map(|(_, lhs_val)| {
                         let cond = self.match_bool(true, ty.ctype, lhs_val.clone());
                         let ite = mk().ifte_expr(cond,
                                        mk().block(vec![mk().expr_stmt(lhs_val)]),
-                                       Some(self.convert_expr(use_, rhs, false)?.to_expr()));
+                                       Some(self.convert_expr(use_, rhs, is_static)?.to_expr()));
                         Ok(ite)
                     })
                 }
@@ -1812,8 +1812,8 @@ impl Translation {
                     c_ast::BinOp::Comma => {
 
                         // The value of the LHS of a comma expression is always discarded
-                        let lhs = self.convert_expr(ExprUse::Unused, lhs, false)?;
-                        let rhs = self.convert_expr(use_, rhs, false)?;
+                        let lhs = self.convert_expr(ExprUse::Unused, lhs, is_static)?;
+                        let rhs = self.convert_expr(use_, rhs, is_static)?;
 
                         Ok(WithStmts {
                             stmts: lhs.stmts.into_iter().chain(rhs.stmts).collect(),
@@ -1827,10 +1827,10 @@ impl Translation {
                         let rhs_ty = self.ast_context.index(rhs).kind.get_type();
 
                         let lhs =
-                            self.convert_expr(ExprUse::RValue, lhs, false)?
+                            self.convert_expr(ExprUse::RValue, lhs, is_static)?
                                 .map(|x| self.match_bool(true, lhs_ty, x));
                         let rhs =
-                            self.convert_expr(ExprUse::RValue, rhs, false)?
+                            self.convert_expr(ExprUse::RValue, rhs, is_static)?
                                 .map(|x| self.match_bool(true, rhs_ty, x));
 
                         Ok(lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::And, x, rhs.to_expr()))))
@@ -1842,10 +1842,10 @@ impl Translation {
                         let rhs_ty = self.ast_context.index(rhs).kind.get_type();
 
                         let lhs =
-                            self.convert_expr(ExprUse::RValue, lhs, false)?
+                            self.convert_expr(ExprUse::RValue, lhs, is_static)?
                                 .map(|x| self.match_bool(true, lhs_ty, x));
                         let rhs =
-                            self.convert_expr(ExprUse::RValue, rhs, false)?
+                            self.convert_expr(ExprUse::RValue, rhs, is_static)?
                                 .map(|x| self.match_bool(true, rhs_ty, x));
 
                         Ok(lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::Or, x, rhs.to_expr()))))
@@ -1873,8 +1873,8 @@ impl Translation {
                         let lhs_type = self.ast_context.index(lhs).kind.get_qual_type();
                         let rhs_type = self.ast_context.index(rhs).kind.get_qual_type();
 
-                        let WithStmts { val: lhs, stmts: lhs_stmts } = self.convert_expr(ExprUse::RValue, lhs, false)?;
-                        let WithStmts { val: rhs, stmts: rhs_stmts } = self.convert_expr(ExprUse::RValue, rhs, false)?;
+                        let WithStmts { val: lhs, stmts: lhs_stmts } = self.convert_expr(ExprUse::RValue, lhs, is_static)?;
+                        let WithStmts { val: rhs, stmts: rhs_stmts } = self.convert_expr(ExprUse::RValue, rhs, is_static)?;
 
                         let mut stmts = vec![];
                         stmts.extend(lhs_stmts);
@@ -1899,7 +1899,7 @@ impl Translation {
 
                 let mut stmts = vec![];
 
-                let mut rhs = self.convert_expr(ExprUse::RValue, *rhs, false)?;
+                let mut rhs = self.convert_expr(ExprUse::RValue, *rhs, is_static)?;
                 stmts.extend(rhs.stmts);
 
                 let simple_index_array =
@@ -1927,7 +1927,7 @@ impl Translation {
                         ref other => panic!("Unexpected array type {:?}", other),
                     };
 
-                    let lhs = self.convert_expr(use_, arr, false)?;
+                    let lhs = self.convert_expr(use_, arr, is_static)?;
                     stmts.extend(lhs.stmts);
 
                     // Don't dereference the offset if we're still within the variable portion
@@ -1941,7 +1941,7 @@ impl Translation {
                     }
                 } else {
 
-                    let lhs = self.convert_expr(ExprUse::RValue, *lhs, false)?;
+                    let lhs = self.convert_expr(ExprUse::RValue, *lhs, is_static)?;
                     stmts.extend(lhs.stmts);
 
                     let lhs_type_id = lhs_node.get_type();
@@ -1967,15 +1967,15 @@ impl Translation {
             CExprKind::Call(_, func, ref args) => {
                 let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _) =>
-                        self.convert_expr(ExprUse::RValue, fexp, false)?,
+                        self.convert_expr(ExprUse::RValue, fexp, is_static)?,
                     _ =>
-                        self.convert_expr(ExprUse::RValue, func, false)?.map(|x|
+                        self.convert_expr(ExprUse::RValue, func, is_static)?.map(|x|
                             unwrap_function_pointer(x)),
                 };
 
                 let mut args_new: Vec<P<Expr>> = vec![];
                 for arg in args {
-                    let WithStmts { stmts: ss, val } = self.convert_expr(ExprUse::RValue, *arg, false)?;
+                    let WithStmts { stmts: ss, val } = self.convert_expr(ExprUse::RValue, *arg, is_static)?;
                     stmts.extend(ss);
                     args_new.push(val);
                 }
@@ -1994,7 +1994,7 @@ impl Translation {
             }
 
             CExprKind::Member(_, expr, decl, kind) => {
-                let struct_val = self.convert_expr(use_, expr, false)?;
+                let struct_val = self.convert_expr(use_, expr, is_static)?;
                 let field_name = self.type_converter.borrow().resolve_field_name(None, decl).unwrap();
 
                 if use_ == ExprUse::Unused {
@@ -2011,7 +2011,7 @@ impl Translation {
             }
 
             CExprKind::CompoundLiteral(_, val) =>
-                self.convert_expr(use_, val, false),
+                self.convert_expr(use_, val, is_static),
 
             CExprKind::InitList(ty, ref ids, opt_union_field_id) => {
                 let resolved = &self.ast_context.resolve_type(ty.ctype).kind;
@@ -2036,7 +2036,7 @@ impl Translation {
                         let mut stmts: Vec<Stmt> = vec![];
                         let val: P<Expr> = if is_string {
                             let v = ids.first().unwrap();
-                            let mut x = self.convert_expr(ExprUse::RValue, *v, false)?;
+                            let mut x = self.convert_expr(ExprUse::RValue, *v, is_static)?;
                             stmts.append(&mut x.stmts);
                             x.val
                         } else  {
@@ -2063,7 +2063,7 @@ impl Translation {
                     }
                     &CTypeKind::Pointer(_) => {
                         let id = ids.first().unwrap();
-                        let mut x = self.convert_expr(ExprUse::RValue, *id, false);
+                        let mut x = self.convert_expr(ExprUse::RValue, *id, is_static);
                         Ok(x.unwrap())
                     }
                     t => {
@@ -2075,7 +2075,7 @@ impl Translation {
                 Ok(WithStmts::new(self.implicit_default_expr(ty.ctype)?)),
 
             CExprKind::Predefined(_, val_id) =>
-                self.convert_expr(use_, val_id, false),
+                self.convert_expr(use_, val_id, is_static),
 
             CExprKind::Statements(_, compound_stmt_id) =>
                 self.convert_statement_expression(use_, compound_stmt_id, is_static),
@@ -2116,17 +2116,18 @@ impl Translation {
         expr: CExprId,
         kind: CastKind,
         opt_field_id: Option<CFieldId>,
-        is_explicit: bool)
+        is_explicit: bool,
+        is_static: bool)
         -> Result<WithStmts<P<Expr>>, String> {
 
         let val = if is_explicit {
             let mut stmts = self.compute_variable_array_sizes(ty.ctype)?;
-            let mut val = self.convert_expr(use_, expr, false)?;
+            let mut val = self.convert_expr(use_, expr, is_static)?;
             stmts.append(&mut val.stmts);
             val.stmts = stmts;
             val
         } else {
-            self.convert_expr(use_, expr, false)?
+            self.convert_expr(use_, expr, is_static)?
         };
 
         match kind {
