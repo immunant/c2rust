@@ -616,9 +616,45 @@ class TranslateASTVisitor final
           return true;
       }
       
+      // Encode ASM statements using the following encoding:
+      // Child IDs: ASM string, inputs expressions, output expressions
+      // Extras:
+      //   Boolean true if volatile, false otherwise
+      //   List of input constraints
+      //   List of output constraints
+      //   List of clobbers
+      //
+      // The number of input and output expressions in the child id list will
+      // match the length of the corresponding constraint arrays.
       bool VisitGCCAsmStmt(GCCAsmStmt *E) {
-          std::vector<void*> childIds;
-          encode_entry(E, TagAsmStmt, childIds);
+          
+          std::vector<void*> childIds { E->getAsmString() };
+          copy(E->begin_inputs(),  E->end_inputs(),  std::back_inserter(childIds));
+          copy(E->begin_outputs(), E->end_outputs(), std::back_inserter(childIds));
+          
+          encode_entry(E, TagAsmStmt, childIds, [E](CborEncoder *local) {
+              
+              auto writeList = [E,local]
+                (unsigned(AsmStmt::*NumFunc)() const,
+                 llvm::StringRef(AsmStmt::*StrFunc)(unsigned) const)
+              {
+                  auto num = (E->*NumFunc)();
+
+                  CborEncoder array;
+                  cbor_encoder_create_array(local, &array, num);
+
+                  for (decltype(num) i = 0; i < num; ++i) {
+                      cbor_encode_string(&array, (E->*StrFunc)(i).str());
+                  }
+                  
+                  cbor_encoder_close_container(local, &array);
+              };
+
+              cbor_encode_boolean(local, E->isVolatile());
+              writeList(&AsmStmt::getNumInputs,   &AsmStmt::getInputConstraint);
+              writeList(&AsmStmt::getNumOutputs,  &AsmStmt::getOutputConstraint);
+              writeList(&AsmStmt::getNumClobbers, &AsmStmt::getClobber);
+          });
           return true;
       }
       
