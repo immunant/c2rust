@@ -786,6 +786,12 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_STMT);
                 }
 
+                ASTEntryTag::TagAsmStmt if expected_ty & OTHER_STMT != 0 => {
+                    let stmt = CStmtKind::Asm;
+                    self.add_stmt(new_id, located(node, stmt));
+                    self.processed_nodes.insert(new_id, OTHER_STMT);
+                }
+
                 // Expressions
 
                 ASTEntryTag::TagParenExpr if expected_ty & (EXPR | STMT) != 0 => {

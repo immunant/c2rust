@@ -40,6 +40,8 @@ enum ASTEntryTag {
     TagDefaultStmt,
     TagDoStmt,
     
+    TagAsmStmt,
+    
     
     TagBinaryOperator = 200,
     TagUnaryOperator,
