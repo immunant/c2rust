@@ -1127,8 +1127,9 @@ impl CfgBuilder {
                 Ok(Some(self.new_wip_block(next_label)))
             }
 
-            CStmtKind::Asm => {
-                Err(format!("Inline assembly not supported"))
+            CStmtKind::Asm{is_volatile, ref asm, ref inputs, ref outputs, ref clobbers} => {
+                wip.extend(translator.convert_asm(is_volatile, asm, inputs, outputs, clobbers)?);
+                Ok(Some(wip))
             }
         }
     }

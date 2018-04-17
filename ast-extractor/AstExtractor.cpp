@@ -51,13 +51,17 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder>
    
     std::unordered_set<const clang::Type*> exports;
     
-    bool isUnexported(const clang::Type *ptr) {
+    bool markExported(const clang::Type *ptr) {
         return exports.emplace(ptr).second;
+    }
+    
+    bool isExported(const clang::Type *ptr) {
+        return exports.find(ptr) != exports.end();
     }
     
     void encodeType(const clang::Type *T, TypeTag tag,
                     std::function<void(CborEncoder*)> extra = [](CborEncoder*){}) {
-        if (!isUnexported(T)) return;
+        if (!markExported(T)) return;
         
         CborEncoder local;
         cbor_encoder_create_array(encoder, &local, CborIndefiniteLength);
@@ -111,8 +115,9 @@ public:
             auto desugared = sugared->find((void*) s.Ty);
             if (desugared != sugared->end())
               VisitQualType(desugared->second);
-            else
-              Visit(s.Ty);
+            else if (!isExported(s.Ty)) {
+                Visit(s.Ty);
+            }
         }
     }
     
@@ -616,9 +621,47 @@ class TranslateASTVisitor final
           return true;
       }
       
+      // Encode ASM statements using the following encoding:
+      // Child IDs: inputs expressions, output expressions
+      // Extras:
+      //   Boolean true if volatile, false otherwise
+      //   Assembly program fragment string
+      //   List of input constraints
+      //   List of output constraints
+      //   List of clobbers
+      //
+      // The number of input and output expressions in the child id list will
+      // match the length of the corresponding constraint arrays.
       bool VisitGCCAsmStmt(GCCAsmStmt *E) {
+          
           std::vector<void*> childIds;
-          encode_entry(E, TagAsmStmt, childIds);
+          copy(E->begin_inputs(),  E->end_inputs(),  std::back_inserter(childIds));
+          copy(E->begin_outputs(), E->end_outputs(), std::back_inserter(childIds));
+          
+          encode_entry(E, TagAsmStmt, childIds, [E](CborEncoder *local) {
+              
+              auto writeList = [E,local]
+                (unsigned(AsmStmt::*NumFunc)() const,
+                 llvm::StringRef(AsmStmt::*StrFunc)(unsigned) const)
+              {
+                  auto num = (E->*NumFunc)();
+
+                  CborEncoder array;
+                  cbor_encoder_create_array(local, &array, num);
+
+                  for (decltype(num) i = 0; i < num; ++i) {
+                      cbor_encode_string(&array, (E->*StrFunc)(i).str());
+                  }
+                  
+                  cbor_encoder_close_container(local, &array);
+              };
+
+              cbor_encode_boolean(local, E->isVolatile());
+              cbor_encode_string(local, E->getAsmString()->getString().str());
+              writeList(&AsmStmt::getNumInputs,   &AsmStmt::getInputConstraint);
+              writeList(&AsmStmt::getNumOutputs,  &AsmStmt::getOutputConstraint);
+              writeList(&AsmStmt::getNumClobbers, &AsmStmt::getClobber);
+          });
           return true;
       }
       

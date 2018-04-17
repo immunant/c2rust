@@ -31,6 +31,7 @@ pub struct Translation {
     dump_structures: bool,
     debug_relooper_labels: bool,
     cross_checks: bool,
+    translate_asm: bool,
 }
 
 #[derive(Debug)]
@@ -240,6 +241,7 @@ pub fn translate(
     debug_relooper_labels: bool,
     cross_checks: bool,
     remove_unused_declarations: bool,
+    translate_asm: bool,
     cross_check_configs: Vec<&str>,
     prefix_function_names: Option<&str>,
     translate_entry: bool,
@@ -252,6 +254,7 @@ pub fn translate(
         dump_structures,
         debug_relooper_labels,
         cross_checks,
+        translate_asm,
     );
 
     if !translate_entry {
@@ -380,7 +383,7 @@ pub fn translate(
     to_string(|s| {
 
         let mut features =
-            vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut", "extern_types"]),
+            vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut", "extern_types", "asm"]),
                  ("allow"  ,vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
                                  "dead_code", "mutable_transmutes", "unused_mut"]),
             ];
@@ -493,6 +496,7 @@ impl Translation {
         dump_structures: bool,
         debug_relooper_labels: bool,
         cross_checks: bool,
+        translate_asm: bool,
     ) -> Translation {
         Translation {
             items: vec![],
@@ -524,6 +528,7 @@ impl Translation {
             dump_structures,
             debug_relooper_labels,
             cross_checks,
+            translate_asm,
         }
     }
 
@@ -1156,8 +1161,75 @@ impl Translation {
                 }
             },
 
+            CStmtKind::Asm{is_volatile, ref asm, ref inputs, ref outputs, ref clobbers} => {
+                self.convert_asm(is_volatile, asm, inputs, outputs, clobbers)
+            }
+
             ref stmt => Err(format!("convert_stmt {:?}", stmt)),
         }
+    }
+
+    pub fn convert_asm
+        (&self,
+         is_volatile: bool,
+         asm: &str,
+         inputs: &[AsmOperand],
+         outputs: &[AsmOperand],
+         clobbers: &[String])
+        -> Result<Vec<Stmt>, String> {
+
+        if !self.translate_asm {
+            return Err(format!("Inline assembly not enabled, to enable use -translate-asm"))
+        }
+
+        fn push_expr(tokens: &mut Vec<Token>, expr: P<Expr>) {
+            tokens.push(Token::interpolated(Nonterminal::NtExpr(expr)));
+        }
+
+        let mut stmts: Vec<Stmt> = vec![];
+        let mut tokens: Vec<Token> = vec![];
+        let mut first;
+
+        // Assembly template
+        push_expr(&mut tokens, mk().lit_expr(mk().str_lit(asm)));
+
+        // Outputs and Inputs
+        for list in vec![outputs, inputs] {
+
+            first = true;
+            tokens.push(Token::Colon); // Always emitted, even if list is empty
+
+            for &AsmOperand { ref constraints, expression } in list {
+                if first { first = false } else { tokens.push(Token::Comma) }
+
+                let mut result = self.convert_expr(ExprUse::LValue, expression, false)?;
+                stmts.append(&mut result.stmts);
+
+                push_expr(&mut tokens, mk().lit_expr(mk().str_lit(constraints)));
+                push_expr(&mut tokens, mk().paren_expr(result.val));
+            }
+        }
+
+        // Clobbers
+        first = true;
+        tokens.push(Token::Colon);
+        for clobber in clobbers {
+            if first { first = false } else { tokens.push(Token::Comma) }
+            push_expr(&mut tokens, mk().lit_expr(mk().str_lit(clobber)));
+        }
+
+        // Options
+        if is_volatile {
+            tokens.push(Token::Colon);
+            push_expr(&mut tokens, mk().lit_expr(mk().str_lit("volatile")));
+        }
+
+        let mac = mk().mac(vec!["asm"], tokens.into_iter().collect::<TokenStream>());
+        let mac = mk().mac_expr(mac);
+        let mac = mk().expr_stmt(mac);
+        stmts.push(mac);
+
+        Ok(stmts)
     }
 
     /// Convert a C expression to a rust boolean expression

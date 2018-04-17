@@ -787,7 +787,30 @@ impl ConversionContext {
                 }
 
                 ASTEntryTag::TagAsmStmt if expected_ty & OTHER_STMT != 0 => {
-                    let stmt = CStmtKind::Asm;
+
+                    let is_volatile = expect_bool(&node.extras[0]).expect("volatile flag");
+                    let asm = expect_string(&node.extras[1]).expect("assembly string");
+                    let raw_inputs = expect_array(&node.extras[2]).expect("input constraints array");
+                    let raw_outputs = expect_array(&node.extras[3]).expect("output constraints array");
+                    let raw_clobbers = expect_array(&node.extras[4]).expect("clobber array");
+
+                    let (input_children, output_children) = node.children.split_at(raw_inputs.len());
+
+                    let inputs: Vec<AsmOperand> = raw_inputs.iter().zip(input_children).map(|(c,e)| {
+                        let constraints = expect_string(c).expect("constraint string");
+                        let expression = self.visit_expr(e.expect("expression"));
+                        AsmOperand { constraints, expression }
+                    }).collect();
+
+                    let outputs: Vec<AsmOperand> = raw_outputs.iter().zip(output_children).map(|(c,e)| {
+                        let constraints = expect_string(c).expect("constraint string");
+                        let expression = self.visit_expr(e.expect("expression"));
+                        AsmOperand { constraints, expression }
+                    }).collect();
+
+                    let clobbers: Vec<String> = raw_clobbers.iter().map(|c| expect_string(c).expect("clobber string")).collect();
+
+                    let stmt = CStmtKind::Asm { is_volatile, asm, inputs, outputs, clobbers };
                     self.add_stmt(new_id, located(node, stmt));
                     self.processed_nodes.insert(new_id, OTHER_STMT);
                 }
