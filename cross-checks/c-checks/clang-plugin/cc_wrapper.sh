@@ -10,9 +10,17 @@ fi
 
 PLUGIN_CC=$1
 shift
+if [ ! -e $PLUGIN_CC ]; then
+    echo "Compiler not found at '$PLUGIN_CC'" >&2
+    exit 1
+fi
 
 PLUGIN=$1
 shift
+if [ ! -e $PLUGIN ]; then
+    echo "Compiler plugin not found at '$PLUGIN'" >&2
+    exit 1
+fi
 
 RUNTIME=$(readlink -f $(dirname $PLUGIN)/../runtime/libruntime.a)
 if [ ! -e $RUNTIME ]; then
