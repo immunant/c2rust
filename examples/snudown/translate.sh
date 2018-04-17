@@ -25,9 +25,9 @@ AST_IMPORTER=$C2RUST/ast-importer/target/debug/ast_importer
 RUSTFMT=rustfmt
 
 XCHECK_TOPDIR=$C2RUST/cross-checks/rust-checks
-XCHECK_PLUGIN=$XCHECK_TOPDIR/rustc-plugin/target/debug/libcross_check_plugin.so
-XCHECK_DERIVE=$XCHECK_TOPDIR/derive-macros/target/debug/libcross_check_derive.so
-XCHECK_RUNTIME=$XCHECK_TOPDIR/runtime/target/debug/libcross_check_runtime.rlib
+XCHECK_PLUGIN=$XCHECK_TOPDIR/target/debug/libcross_check_plugin.so
+XCHECK_DERIVE=$XCHECK_TOPDIR/target/debug/libcross_check_derive.so
+XCHECK_RUNTIME=$XCHECK_TOPDIR/target/debug/libcross_check_runtime.rlib
 
 # FIXME: this should be an absolute path, but rustc-plugin cannot handle
 # absolute paths for the external configuration
