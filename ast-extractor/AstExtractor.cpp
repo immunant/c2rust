@@ -51,13 +51,17 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder>
    
     std::unordered_set<const clang::Type*> exports;
     
-    bool isUnexported(const clang::Type *ptr) {
+    bool markExported(const clang::Type *ptr) {
         return exports.emplace(ptr).second;
+    }
+    
+    bool isExported(const clang::Type *ptr) {
+        return exports.find(ptr) != exports.end();
     }
     
     void encodeType(const clang::Type *T, TypeTag tag,
                     std::function<void(CborEncoder*)> extra = [](CborEncoder*){}) {
-        if (!isUnexported(T)) return;
+        if (!markExported(T)) return;
         
         CborEncoder local;
         cbor_encoder_create_array(encoder, &local, CborIndefiniteLength);
@@ -111,8 +115,9 @@ public:
             auto desugared = sugared->find((void*) s.Ty);
             if (desugared != sugared->end())
               VisitQualType(desugared->second);
-            else
-              Visit(s.Ty);
+            else if (!isExported(s.Ty)) {
+                Visit(s.Ty);
+            }
         }
     }
     
