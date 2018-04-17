@@ -14,4 +14,4 @@ synstructure = "0.6.1"
 quote = "0.3.15"
 
 [dev-dependencies]
-cross-check-runtime = { path = "../runtime", features = ["xcheck-with-dlsym"] }
+cross-check-runtime = { path = "../runtime" }
