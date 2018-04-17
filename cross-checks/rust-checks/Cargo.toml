@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "config",
+    "derive-macros",
+    "runtime",
+    "rustc-plugin",
+]
+exclude = [
+    "tests"
+]
