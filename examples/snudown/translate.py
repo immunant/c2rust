@@ -24,9 +24,10 @@ AST_IMPORTER = AST_IMPO
 RUSTFMT = "rustfmt"
 
 XCHECK_TOPDIR = os.path.join(CROSS_CHECKS_DIR, "rust-checks")
-XCHECK_PLUGIN = os.path.join(XCHECK_TOPDIR, "rustc-plugin/target/debug/libcross_check_plugin.so")
-XCHECK_DERIVE = os.path.join(XCHECK_TOPDIR, "derive-macros/target/debug/libcross_check_derive.so")
-XCHECK_RUNTIME = os.path.join(XCHECK_TOPDIR, "runtime/target/debug/libcross_check_runtime.rlib")
+XCHECK_TARGET_DIR = os.path.join(XCHECK_TOPDIR, "target", "debug")
+XCHECK_PLUGIN  = os.path.join(XCHECK_TARGET_DIR, "libcross_check_plugin.so")
+XCHECK_DERIVE  = os.path.join(XCHECK_TARGET_DIR, "libcross_check_derive.so")
+XCHECK_RUNTIME = os.path.join(XCHECK_TARGET_DIR, "libcross_check_runtime.rlib")
 
 # # FIXME: this should be an absolute path, but rustc-plugin cannot handle
 # # absolute paths for the external configuration
