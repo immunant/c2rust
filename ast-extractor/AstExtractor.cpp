@@ -617,9 +617,10 @@ class TranslateASTVisitor final
       }
       
       // Encode ASM statements using the following encoding:
-      // Child IDs: ASM string, inputs expressions, output expressions
+      // Child IDs: inputs expressions, output expressions
       // Extras:
       //   Boolean true if volatile, false otherwise
+      //   Assembly program fragment string
       //   List of input constraints
       //   List of output constraints
       //   List of clobbers
@@ -628,7 +629,7 @@ class TranslateASTVisitor final
       // match the length of the corresponding constraint arrays.
       bool VisitGCCAsmStmt(GCCAsmStmt *E) {
           
-          std::vector<void*> childIds { E->getAsmString() };
+          std::vector<void*> childIds;
           copy(E->begin_inputs(),  E->end_inputs(),  std::back_inserter(childIds));
           copy(E->begin_outputs(), E->end_outputs(), std::back_inserter(childIds));
           
@@ -651,6 +652,7 @@ class TranslateASTVisitor final
               };
 
               cbor_encode_boolean(local, E->isVolatile());
+              cbor_encode_string(local, E->getAsmString()->getString().str());
               writeList(&AsmStmt::getNumInputs,   &AsmStmt::getInputConstraint);
               writeList(&AsmStmt::getNumOutputs,  &AsmStmt::getOutputConstraint);
               writeList(&AsmStmt::getNumClobbers, &AsmStmt::getClobber);

@@ -728,8 +728,20 @@ pub enum CStmtKind {
     // Declarations (variables, etc.)
     Decls(Vec<CDeclId>),
 
-    // GCC inline assembly (not supported)
-    Asm,
+    // GCC inline assembly
+    Asm {
+        asm: String,
+        inputs: Vec<AsmOperand>,
+        outputs: Vec<AsmOperand>,
+        clobbers: Vec<String>,
+        is_volatile: bool,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub struct AsmOperand {
+    pub constraints: String,
+    pub expression: CExprId,
 }
 
 /// Type qualifiers (6.7.3)
