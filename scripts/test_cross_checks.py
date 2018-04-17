@@ -26,19 +26,12 @@ def test_cross_checks():
     find = get_cmd_or_die("find")
     rustup = get_cmd_or_die("rustup")
 
-    results = find(CROSS_CHECKS_DIR, "-type", "f", "-name", "Cargo.toml")
-    lines = results.split(os.linesep)[:-1]  # exclude trailing empty string
-    for line in lines:
-        rust_proj_path = os.path.dirname(line)
-        logging.info("entering %s", rust_proj_path)
-        with pb.local.cwd(rust_proj_path):
-            invoke(rustup, ["run", CUSTOM_RUST_NAME, "cargo", "clean"])
-            args = ["run", CUSTOM_RUST_NAME, "cargo", "test"]
-            if rust_proj_path.endswith("runtime"):
-                # adding these args avoids taking a dependency on
-                # ReMon's libclevrbuf.
-                args += ["--features", "xcheck-with-dlsym"]
-            invoke(rustup, *args)
+    rust_proj_path = os.path.join(CROSS_CHECKS_DIR, "rust-checks")
+    logging.info("entering %s", rust_proj_path)
+    with pb.local.cwd(rust_proj_path):
+        invoke(rustup, ["run", CUSTOM_RUST_NAME, "cargo", "clean"])
+        args = ["run", CUSTOM_RUST_NAME, "cargo", "test"]
+        invoke(rustup, *args)
 
 
 def main():
