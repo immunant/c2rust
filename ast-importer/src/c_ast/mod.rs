@@ -727,6 +727,9 @@ pub enum CStmtKind {
 
     // Declarations (variables, etc.)
     Decls(Vec<CDeclId>),
+
+    // GCC inline assembly (not supported)
+    Asm,
 }
 
 /// Type qualifiers (6.7.3)

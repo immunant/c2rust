@@ -616,6 +616,12 @@ class TranslateASTVisitor final
           return true;
       }
       
+      bool VisitGCCAsmStmt(GCCAsmStmt *E) {
+          std::vector<void*> childIds;
+          encode_entry(E, TagAsmStmt, childIds);
+          return true;
+      }
+      
       //
       // Expressions
       //

@@ -1126,6 +1126,10 @@ impl CfgBuilder {
                 // Return
                 Ok(Some(self.new_wip_block(next_label)))
             }
+
+            CStmtKind::Asm => {
+                Err(format!("Inline assembly not supported"))
+            }
         }
     }
 }
