@@ -7,6 +7,12 @@ members = [
     "libclevrbuf-sys",
     "libfakechecks-sys",
 ]
+default-members = [
+    "config",
+    "derive-macros",
+    "runtime",
+    "rustc-plugin",
+]
 exclude = [
     "tests"
 ]
