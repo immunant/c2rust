@@ -37,6 +37,7 @@ dependencies = [
  "cross-check-derive 0.1.0",
  "cross-check-plugin 0.1.0",
  "cross-check-runtime 0.1.0",
+ "xcheck-dlsym 0.1.0",
 ]
 
 [[package]]
@@ -125,6 +126,10 @@ dependencies = [
 name = "unicode-xid"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "xcheck-dlsym"
+version = "0.1.0"
 
 [[package]]
 name = "yaml-rust"

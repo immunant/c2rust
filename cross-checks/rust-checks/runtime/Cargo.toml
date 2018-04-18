@@ -3,12 +3,10 @@ name = "cross-check-runtime"
 version = "0.1.0"
 authors = ["Andrei Homescu <ah@immunant.com>"]
 readme = "README.md"
-build = "build.rs"
 
 [features]
 xcheck-with-dlsym = []
 xcheck-with-weak = []
-xcheck-provided = []
 djb2-ssse3 = ["simd"]
 libc-hash = []
 

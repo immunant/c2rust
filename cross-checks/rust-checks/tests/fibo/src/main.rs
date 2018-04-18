@@ -7,6 +7,8 @@ extern crate cross_check_derive;
 #[macro_use]
 extern crate cross_check_runtime;
 
+extern crate xcheck_dlsym;
+
 mod fibo;
 
 fn main() {
