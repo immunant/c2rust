@@ -4,6 +4,8 @@ members = [
     "derive-macros",
     "runtime",
     "rustc-plugin",
+    "libclevrbuf-sys",
+    "libfakechecks-sys",
 ]
 exclude = [
     "tests"

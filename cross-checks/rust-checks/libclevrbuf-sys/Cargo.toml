@@ -1,0 +1,10 @@
+[package]
+name = "libclevrbuf-sys"
+version = "0.1.0"
+authors = ["Andrei Homescu <ah@immunant.com>"]
+links = "clevrbuf"
+build = "build.rs"
+
+[lib]
+name = "libclevrbuf_sys"
+path = "lib.rs"

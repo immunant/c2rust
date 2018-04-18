@@ -1,0 +1,10 @@
+[package]
+name = "libfakechecks-sys"
+version = "0.1.0"
+authors = ["Andrei Homescu <ah@immunant.com>"]
+links = "fakechecks"
+build = "build.rs"
+
+[lib]
+name = "libfakechecks_sys"
+path = "lib.rs"
