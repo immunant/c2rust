@@ -11,7 +11,8 @@ pub unsafe extern fn rb_xcheck(tag: u8, val: u64) {
     static RB_XCHECK_INIT: ::std::sync::Once = std::sync::ONCE_INIT;
     RB_XCHECK_INIT.call_once(|| {
         use std::os::unix::ffi::OsStrExt;
-        let lib_path = std::env::var_os("RB_XCHECK_LIB").unwrap();
+        let lib_path = std::env::var_os("RB_XCHECK_LIB")
+            .expect("Variable RB_XCHECK_LIB not set");
         let lib = libc::dlopen(lib_path.as_bytes().as_ptr() as *const i8, libc::RTLD_NOW);
         if lib.is_null() {
             panic!("Could not load rb_xcheck library from: {:?}", lib_path);
