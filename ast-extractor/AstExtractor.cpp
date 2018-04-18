@@ -358,25 +358,6 @@ class TranslateASTVisitor final
           return exportedTags.emplace(ptr,tag).second;
       }
       
-      void encodeSourcePos(CborEncoder *enc, SourceLocation loc) {
-          auto& manager = Context->getSourceManager();
-          auto line = manager.getPresumedLineNumber(loc);
-          auto col  = manager.getPresumedColumnNumber(loc);
-          auto fileid = manager.getFileID(loc);
-          auto entry = manager.getFileEntryForID(fileid);
-          
-          auto filename = string("?");
-          if (entry) {
-              filename = entry->getName().str();
-          }
-          
-          auto pair = filenames.insert(std::make_pair(filename, filenames.size()));
-          
-          cbor_encode_uint(enc, pair.first->second);
-          cbor_encode_uint(enc, line);
-          cbor_encode_uint(enc, col);
-      }
-      
       // Template required because Decl and Stmt don't share a common base class
       void encode_entry_raw
              (void *ast,
@@ -475,6 +456,25 @@ class TranslateASTVisitor final
       
       const std::unordered_map<string,uint64_t> &getFilenames() const {
           return filenames;
+      }
+      
+      void encodeSourcePos(CborEncoder *enc, SourceLocation loc) {
+          auto& manager = Context->getSourceManager();
+          auto line = manager.getPresumedLineNumber(loc);
+          auto col  = manager.getPresumedColumnNumber(loc);
+          auto fileid = manager.getFileID(loc);
+          auto entry = manager.getFileEntryForID(fileid);
+          
+          auto filename = string("?");
+          if (entry) {
+              filename = entry->getName().str();
+          }
+          
+          auto pair = filenames.insert(std::make_pair(filename, filenames.size()));
+          
+          cbor_encode_uint(enc, pair.first->second);
+          cbor_encode_uint(enc, line);
+          cbor_encode_uint(enc, col);
       }
       
       //
@@ -1259,7 +1259,7 @@ public:
         : outfile(InFile.str().append(".cbor")) { }
     
     virtual void HandleTranslationUnit(clang::ASTContext &Context) {
-        
+  
         CborEncoder encoder;
 
         // There are some type nodes (see `TypedefType` and `RecordType`) which
@@ -1295,6 +1295,21 @@ public:
             for (auto &kv : filenames) {
                 auto str = kv.first;
                 cbor_encode_string(&array, str);
+            }
+            cbor_encoder_close_container(&encoder, &array);
+            
+            // Emit comments as array of arrays. Each comment is represented as an array
+            // of source position followed by comment string.
+            //
+            // Getting all comments will require processing the file with -fparse-all-comments !
+            auto comments = Context.getRawCommentList().getComments();
+            cbor_encoder_create_array(&encoder, &array, comments.size());
+            for (auto comment : comments) {
+                CborEncoder entry;
+                cbor_encoder_create_array(&array, &entry, 4);
+                visitor.encodeSourcePos(&entry, comment->getLocStart()); // emits 3 values
+                cbor_encode_string(&entry, comment->getRawText(Context.getSourceManager()).str());
+                cbor_encoder_close_container(&array, &entry);
             }
             cbor_encoder_close_container(&encoder, &array);
         };
