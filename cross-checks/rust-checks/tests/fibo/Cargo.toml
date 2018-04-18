@@ -12,4 +12,6 @@ path = "../../derive-macros"
 
 [dependencies.cross-check-runtime]
 path = "../../runtime"
-features = ["xcheck-with-dlsym"]
+
+[dependencies.xcheck-dlsym]
+path = "../../backends/xcheck-dlsym"
