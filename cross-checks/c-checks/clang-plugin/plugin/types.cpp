@@ -61,6 +61,13 @@ CrossCheckInserter::get_type_hash_function(QualType ty, llvm::StringRef candidat
         break;
     }
 
+    case Type::Enum: {
+        // Cross-check an enum type as the underlying integer type
+        auto *ed = cast<EnumType>(ty)->getDecl();
+        return get_type_hash_function(ed->getIntegerType(),
+                                      candidate_name, ctx, build_it);
+    }
+
     case Type::FunctionNoProto:
     case Type::FunctionProto:
         return HashFunction{"function"sv, ty, ctx.getPointerType(ctx.VoidTy)};
