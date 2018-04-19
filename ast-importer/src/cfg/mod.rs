@@ -699,12 +699,14 @@ impl CfgBuilder {
 
     /// Add a basic block to the control flow graph, specifying under which label to insert it.
     fn add_block(&mut self, lbl: Label, bb: BasicBlock<Label,StmtOrDecl>) -> () {
+        let currently_live = self.currently_live
+            .last_mut()
+            .expect("Found no live currently live scope");
+
         for decl in &bb.defined {
-            self.currently_live
-                .last_mut()
-                .expect("Found no live currently live scope")
-                .insert(*decl);
+            currently_live.insert(*decl);
         }
+
         match self.graph.nodes.insert(lbl, bb) {
             None => { },
             Some(_) => panic!("Label {:?} cannot identify two basic blocks", lbl),
@@ -718,8 +720,8 @@ impl CfgBuilder {
         self.add_block(label, BasicBlock { body, terminator, defined, live });
     }
 
-    // Update the terminator of an existing block. This is for the special cases where you don't
-    // know the terminators of a block by visiting it.
+    /// Update the terminator of an existing block. This is for the special cases where you don't
+    /// know the terminators of a block by visiting it.
     fn update_terminator(&mut self, lbl: Label, new_term: GenTerminator<Label>) -> () {
         match self.graph.nodes.get_mut(&lbl) {
             None => panic!("Cannot find label {:?} to update", lbl),
@@ -727,6 +729,8 @@ impl CfgBuilder {
         }
     }
 
+    /// REMARK: make sure that basic blocks are constructed either entirely inside or entirely
+    ///         outside `with_scope`. Otherwise, the scope of the block is going to be confused.
     fn with_scope<B, F: FnOnce(&mut Self) -> B>(&mut self, translator: &Translation, cont: F) -> B {
 
         // Open a new scope
@@ -927,10 +931,15 @@ impl CfgBuilder {
             }
 
             CStmtKind::ForLoop { init, condition, increment, body } => {
+                let for_entry = self.fresh_label();
                 let cond_entry = self.fresh_label();
                 let body_entry = self.fresh_label();
                 let incr_entry = self.fresh_label();
                 let next_label = self.fresh_label();
+
+                // Close off our WIP (it is important this happen _outside_ the `with_scope` call)
+                self.add_wip_block(wip, Jump(for_entry));
+                let wip = self.new_wip_block(for_entry);
 
                 self.with_scope(translator, |slf| -> Result<(), String> {
                     // Init
@@ -1003,6 +1012,11 @@ impl CfgBuilder {
             }
 
             CStmtKind::Compound(ref comp_stmts) => {
+
+                // Close off our WIP (it is important this happen _outside_ the `with_scope` call)
+                let compound_entry = self.fresh_label();
+                self.add_wip_block(wip, Jump(compound_entry));
+                let wip = self.new_wip_block(compound_entry);
 
                 // We feed the optional output WIP into the WIP input of the next block
                 let wip = self.with_scope(translator, |slf| -> Result<Option<WipBlock>, String> {
