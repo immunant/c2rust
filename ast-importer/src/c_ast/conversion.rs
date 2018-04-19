@@ -286,6 +286,18 @@ impl ConversionContext {
     /// This populates the `typed_context` of the `ConversionContext` it is called on.
     pub fn convert(&mut self, untyped_context: &AstContext) -> () {
 
+        for raw_comment in &untyped_context.comments {
+            let comment = Located {
+                loc: Some(SrcLoc {
+                    line: raw_comment.line,
+                    column: raw_comment.column,
+                    fileid: raw_comment.fileid
+                }),
+                kind: raw_comment.string.clone(),
+            };
+            self.typed_context.comments.push(comment);
+        }
+
         // Continue popping Clang nodes off of the stack of nodes we have promised to visit
         while let Some((node_id, expected_ty)) = self.visit_as.pop() {
 

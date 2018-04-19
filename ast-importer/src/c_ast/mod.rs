@@ -41,6 +41,8 @@ pub struct TypedAstContext {
     pub c_main: Option<CDeclId>,
     pub c_files: HashMap<u64, String>,
     pub parents: HashMap<CDeclId, CDeclId>, // record fields and enum constants
+
+    pub comments: Vec<Located<String>>,
 }
 
 impl TypedAstContext {
@@ -55,6 +57,8 @@ impl TypedAstContext {
             c_main: None,
             c_files: HashMap::new(),
             parents: HashMap::new(),
+
+            comments: vec![],
         }
     }
 
