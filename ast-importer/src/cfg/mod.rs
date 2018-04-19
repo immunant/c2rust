@@ -1027,7 +1027,16 @@ impl CfgBuilder {
             CStmtKind::Expr(expr) => {
                 wip.extend(translator.convert_expr(ExprUse::Unused, expr, false)?.stmts);
 
-                Ok(Some(wip))
+                // If we can tell the expression is going to diverge, there is no falling through to
+                // the next block.
+                let next = if translator.ast_context.expr_diverges(expr) {
+                    self.add_wip_block(wip, End);
+                    None
+                } else {
+                    Some(wip)
+                };
+
+                Ok(next)
             }
 
             CStmtKind::Break => {

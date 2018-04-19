@@ -131,6 +131,27 @@ impl TypedAstContext {
         }
     }
 
+    // Pessimistically try to check if an expression doesn't return. If it does, or we can't tell
+    /// that it doesn't, return `false`.
+    pub fn expr_diverges(&self, expr_id: CExprId) -> bool {
+        let func_id = match self.index(expr_id).kind {
+            CExprKind::Call(_, func_id, _) => func_id,
+            _ => return false,
+        };
+
+        let type_id = self.index(func_id).kind.get_type();
+        let pointed_id = match self.index(type_id).kind {
+            CTypeKind::Pointer(pointer_qualtype) => pointer_qualtype.ctype,
+            _ => return false,
+        };
+
+        match self.index(pointed_id).kind {
+            CTypeKind::Function(_, _, _, no_return) => no_return,
+            _ => false,
+        }
+    }
+
+
     pub fn simplify(&mut self) {
 
         // Set of declarations that should be preserved
