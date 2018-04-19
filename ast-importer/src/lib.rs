@@ -2,6 +2,7 @@
 #![feature(i128_type)]
 extern crate cbor;
 extern crate syntax;
+extern crate syntax_pos;
 extern crate idiomize;
 extern crate dtoa;
 

@@ -25,6 +25,14 @@ pub struct TypeNode {
     pub extras: Vec<Cbor>,
 }
 
+#[derive(Debug,Clone)]
+pub struct CommentNode {
+    pub fileid: u64,
+    pub line: u64,
+    pub column: u64,
+    pub string: String,
+}
+
 impl TypeNode {
     // Masks used to decode the IDs given to type nodes
     pub const ID_MASK: u64 = !0b111;
@@ -38,6 +46,7 @@ pub struct AstContext {
     pub ast_nodes: HashMap<u64, AstNode>,
     pub type_nodes: HashMap<u64, TypeNode>,
     pub top_nodes: Vec<u64>,
+    pub comments: Vec<CommentNode>,
 }
 
 #[derive(Debug)]
@@ -135,11 +144,15 @@ pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError>
 
     let mut asts: HashMap<u64, AstNode> = HashMap::new();
     let mut types: HashMap<u64, TypeNode> = HashMap::new();
+    let mut comments: Vec<CommentNode> = vec![];
 
     let mut top_cbors : Vec<Cbor> = vec![];
     for item in items {
         top_cbors.push(item.unwrap());
     }
+
+    let raw_comments = top_cbors.remove(3);
+    let raw_comments = expect_array(&raw_comments).expect("Bad comment array");
 
     let filenames = top_cbors.remove(2);
     let _filenames = expect_array(&filenames).expect("Bad filename array");
@@ -152,7 +165,16 @@ pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError>
     let all_nodes = expect_array(&all_nodes).expect("Bad top nodes array");
 
 
-
+    for x in raw_comments {
+        let entry = expect_array(x).expect("comment entry should be array");
+        let node = CommentNode {
+            fileid: expect_u64(&entry[0])?,
+            line: expect_u64(&entry[1])?,
+            column: expect_u64(&entry[2])?,
+            string: expect_string(&entry[3])?,
+        };
+        comments.push(node)
+    }
 
     for x in all_nodes {
         let entry = expect_array(x).expect("All nodes entry not array");
@@ -193,5 +215,6 @@ pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError>
         top_nodes,
         ast_nodes: asts,
         type_nodes: types,
+        comments,
     })
 }
