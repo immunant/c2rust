@@ -102,6 +102,44 @@ impl StructureLabel<StmtOrDecl> {
     }
 }
 
+
+/// These IDs identify groups of basic blocks corresponding to loops in a CFG
+#[derive(Copy,Clone,PartialEq,Eq,PartialOrd,Ord,Debug,Hash)]
+pub struct LoopId(u64);
+
+/// Information about loops in a CFG
+#[derive(Clone,Debug)]
+struct LoopInfo<Lbl: Hash + Eq> {
+    /// Given a node, find the tightest enclosing loop
+    node_loops: HashMap<Lbl, LoopId>,
+
+    /// Given a loop, find all the nodes in it, along with the next tighest loop around it.
+    loops: HashMap<LoopId, (HashSet<Lbl>, Option<LoopId>)>,
+}
+
+impl<Lbl: Hash + Eq> LoopInfo<Lbl> {
+    pub fn new() -> Self {
+        LoopInfo { node_loops: HashMap::new(), loops: HashMap::new() }
+    }
+
+    /// Find the smallest possible loop that contains all of the items
+    pub fn tightest_common_loop<E: Iterator<Item=Lbl>>(&self, mut entries: E) -> Option<LoopId> {
+        let first = if let Some(f) = entries.next() { f } else { return None };
+
+        let mut loop_id = if let Some(i) = self.node_loops.get(&first) { *i } else { return None };
+
+        for entry in entries {
+            let (ref in_loop, parent_id) = self.loops[&loop_id];
+            while !in_loop.contains(&entry) {
+                loop_id = if let Some(i) = parent_id { i } else { return None };
+            }
+        }
+
+        return Some(loop_id);
+    }
+}
+
+
 /// These are the things that the relooper algorithm produces.
 #[derive(Clone,Debug)]
 pub enum Structure<Stmt> {
@@ -340,6 +378,9 @@ pub struct Cfg<Lbl: Eq + Hash, Stmt> {
 
     /// Nodes in the graph
     nodes: HashMap<Lbl, BasicBlock<Lbl,Stmt>>,
+
+    /// Loops in the graph
+    loops: LoopInfo<Lbl>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -431,7 +472,11 @@ impl<Lbl: Copy + Eq + Hash, Stmt> Cfg<Lbl, Stmt> {
             visited
         };
 
-        self.nodes.retain(|lbl, _| visited.contains(lbl))
+        self.nodes.retain(|lbl, _| visited.contains(lbl));
+        self.loops.node_loops.retain(|lbl, _| visited.contains(lbl));
+        for (_, &mut (ref mut set, _)) in self.loops.loops.iter_mut() {
+            set.retain(|lbl| visited.contains(lbl));
+        }
     }
 
     /// Removes empty blocks whose terminator is just a `Jump` by merging them with the block they
@@ -494,6 +539,12 @@ impl<Lbl: Copy + Eq + Hash, Stmt> Cfg<Lbl, Stmt> {
                 }
             }
         }
+
+        // We filter out blocks that were deleted from loop info
+        self.loops.node_loops.retain(|lbl, _| actual_rewrites.get(lbl).is_none());
+        for (_, &mut (ref mut set, _)) in self.loops.loops.iter_mut() {
+            set.retain(|lbl| actual_rewrites.get(lbl).is_none());
+        }
     }
 
     /// Given an empty `BasicBlock` that ends in a `Jump`, return the target label. In all other
@@ -516,6 +567,8 @@ struct CfgBuilder {
 
     /// Source for generating fresh synthetic labels
     prev_label: u64,
+    /// Source for generating fresh loop IDs
+    prev_loop_id: u64,
 
     /// Stack of labels identifying what a 'break' should jump to. We push onto this stack when
     /// entering a construct that can break and pop when exiting that construct.
@@ -532,6 +585,11 @@ struct CfgBuilder {
 
     /// Information about all of the C declarations we have seen so far.
     decls_seen: DeclStmtStore,
+
+    /// Loops we are currently in. Every time we enter a loop, we push a new vector onto this field.
+    /// When we exit that loop, we pop the vector, add all the labels to the next entry in the
+    /// `Vec`, and also add the loop to the CFG.
+    loops: Vec<(LoopId, Vec<Label>)>,
 }
 
 /// Stores information about translating C declarations to Rust statements. When seeing a C
@@ -711,6 +769,8 @@ impl CfgBuilder {
             None => { },
             Some(_) => panic!("Label {:?} cannot identify two basic blocks", lbl),
         }
+
+        self.loops.last_mut().map(|&mut (_, ref mut loop_vec)| loop_vec.push(lbl));
     }
 
     /// Create a basic block from a WIP block by tacking on the right terminator. Once this is done,
@@ -727,6 +787,30 @@ impl CfgBuilder {
             None => panic!("Cannot find label {:?} to update", lbl),
             Some(bb) => bb.terminator = new_term,
         }
+    }
+
+    /// Open a loop
+    fn open_loop(&mut self) -> () {
+        let loop_id: LoopId = self.fresh_loop_id();
+        self.loops.push((loop_id, vec![]));
+    }
+
+    /// Close a loop
+    fn close_loop(&mut self) -> () {
+        let (loop_id, loop_contents) = self.loops.pop().expect("No loop to close.");
+
+
+        for elem in &loop_contents {
+            if !self.graph.loops.node_loops.contains_key(elem) {
+                self.graph.loops.node_loops.insert(*elem, loop_id);
+            }
+        }
+
+        // Add the loop contents to the outer loop (if there is one)
+        self.loops.last_mut().map(|&mut (_, ref mut outer_loop)| outer_loop.extend(loop_contents.iter()));
+
+        let outer_loop_id: Option<LoopId> = self.loops.last().map(|&(i,_)| i);
+        self.graph.loops.loops.insert(loop_id, (loop_contents.into_iter().collect(), outer_loop_id));
     }
 
     /// REMARK: make sure that basic blocks are constructed either entirely inside or entirely
@@ -770,6 +854,12 @@ impl CfgBuilder {
         Label::Synthetic(self.prev_label)
     }
 
+    /// Generate a fresh (synthetic) label.
+    fn fresh_loop_id(&mut self) -> LoopId {
+        self.prev_loop_id += 1;
+        LoopId(self.prev_loop_id)
+    }
+
     /// Create a new `CfgBuilder` with a single entry label.
     fn new() -> CfgBuilder {
         let entries = vec![Label::Synthetic(0)].into_iter().collect();
@@ -778,9 +868,11 @@ impl CfgBuilder {
             graph: Cfg {
                 entries,
                 nodes: HashMap::new(),
+                loops: LoopInfo::new(),
             },
 
             prev_label: 0,
+            prev_loop_id: 0,
 
             break_labels: vec![],
             continue_labels: vec![],
@@ -788,6 +880,8 @@ impl CfgBuilder {
 
             currently_live: vec![HashSet::new()],
             decls_seen: DeclStmtStore::new(),
+
+            loops: vec![],
         }
     }
 
@@ -876,6 +970,7 @@ impl CfgBuilder {
                 let next_entry = self.fresh_label();
 
                 self.add_wip_block(wip, Jump(cond_entry));
+                self.open_loop();
 
                 // Condition
                 let WithStmts { stmts, val } = translator.convert_condition(true, condition, false)?;
@@ -895,6 +990,7 @@ impl CfgBuilder {
 
                 self.break_labels.pop();
                 self.continue_labels.pop();
+                self.close_loop();
 
                 //Return
                 Ok(Some(self.new_wip_block(next_entry)))
@@ -906,6 +1002,7 @@ impl CfgBuilder {
                 let next_entry = self.fresh_label();
 
                 self.add_wip_block(wip, Jump(body_entry));
+                self.open_loop();
 
                 // Body
                 self.break_labels.push(next_entry);
@@ -925,6 +1022,8 @@ impl CfgBuilder {
                 let mut cond_wip = self.new_wip_block(cond_entry);
                 cond_wip.extend(stmts);
                 self.add_wip_block(cond_wip, Branch(val, body_entry, next_entry));
+
+                self.close_loop();
 
                 //Return
                 Ok(Some(self.new_wip_block(next_entry)))
@@ -950,6 +1049,8 @@ impl CfgBuilder {
                     if let Some(wip_init) = init_stuff {
                         slf.add_wip_block(wip_init, Jump(cond_entry));
                     }
+
+                    slf.open_loop();
 
                     // Condition
                     if let Some(cond) = condition {
@@ -987,6 +1088,8 @@ impl CfgBuilder {
                           slf.add_wip_block(incr_wip, Jump(cond_entry));
                         }
                     }
+
+                    slf.close_loop();
 
                     Ok(())
                 })?;

@@ -20,7 +20,7 @@ pub fn reloop(
         .collect();
 
     let mut relooped_with_decls: Vec<Structure<StmtOrDecl>> = vec![];
-    let mut state = RelooperState::new();
+    let mut state = RelooperState::new(cfg.loops);
     state.relooper(entries, blocks, &mut relooped_with_decls);
 
     // These are declarations we need to lift
@@ -53,12 +53,15 @@ struct RelooperState {
 
     /// Declarations that will have to be lifted to the top of the output
     lifted: HashSet<CDeclId>,
+
+    /// Information about loops
+    loop_info: LoopInfo<Label>,
 }
 
 impl RelooperState {
 
-    pub fn new() -> Self {
-        RelooperState { scopes: vec![HashSet::new()], lifted: HashSet::new() }
+    pub fn new(loop_info: LoopInfo<Label>) -> Self {
+        RelooperState { scopes: vec![HashSet::new()], lifted: HashSet::new(), loop_info }
     }
 
     pub fn open_scope(&mut self) {
@@ -246,58 +249,113 @@ impl RelooperState {
                 .cloned()
                 .collect();
 
+
+
+
+
+            println!("About to make a loop. Entries: {:?}, New returns: {:?}", entries, new_returns);
+
             // Partition blocks into those belonging in or after the loop
             type StructuredBlocks = HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>;
             let (mut body_blocks, mut follow_blocks): (StructuredBlocks, StructuredBlocks) = blocks
                 .into_iter()
                 .partition(|&(ref lbl, _)| new_returns.contains(lbl) || entries.contains(lbl));
 
-            let mut follow_entries = out_edges(&body_blocks);
 
+            // try to match an existing loop
+            let mut existing_loop = if let Some(loop_id) = self.loop_info.tightest_common_loop(entries.iter().chain(new_returns.iter()).cloned()) {
+                let mut desired_body: HashSet<Label> = self.loop_info.loops[&loop_id].0.clone();
 
-            // Move into `body_blocks` some `follow_blocks`.
-            //
-            // The goal of this step is to decide which (if any) extra blocks we should toss into the
-            // loop. There are two competing forces:
-            //
-            //    * we want to reduce the size of `follow_entries` (0 or 1 is optimal)
-            //    * pushing entries into the loop risks forcing making a `Multiple` in it
-            //
-            // I've taken the following heuristic:
-            //
-            //   1. Don't do anything if `follow_entries` is zero or one (since that means whatever
-            //      follows the loop will be nice looking).
-            //   2. Otherwise, recursively push into the loop `follow_entries` as long as they have no
-            //      more than 1 successor (the hope is that some of the chains will join).
-            //
-            // TODO: there has got to be a more disiplined approach for this.
-            if follow_entries.len() > 1 {
-                for follow_entry in follow_entries.clone().iter() {
-                    let mut following: Label = *follow_entry;
+                desired_body.retain(|l| !entries.contains(l));
+                desired_body.retain(|l| !new_returns.contains(l));
 
-                    loop {
-                        // If this block might have come from 2 places, give up
-                        if predecessor_map[&following].len() != 1 {
-                            break;
-                        }
+                let mut body_blocks = body_blocks.clone();
+                let mut follow_blocks = follow_blocks.clone();
+                let mut follow_entries = out_edges(&body_blocks);
 
-                        // Otherwise, move it into the loop
-                        let bb = if let Some(bb) = follow_blocks.remove(&following) { bb } else { break; };
-                        let succs = bb.successors();
+                // Keep moving follow_entries that are also in desired_body into the loop
+                let mut something_happened = true;
+                while something_happened {
+                    something_happened = false;
 
-                        body_blocks.insert(following, bb);
+                    let to_move: Vec<Label> = follow_entries.intersection(&desired_body).cloned().collect();
+
+                    for following in to_move {
+                        let bb = if let Some(bb) = follow_blocks.remove(&following) { bb } else { continue; };
+                        something_happened = true;
+
+                        desired_body.remove(&following);
+
                         follow_entries.remove(&following);
-                        follow_entries.extend(&succs);
-
-                        // If it has more than one successor, don't try following the successor
-                        if succs.len() != 1 {
-                            break;
-                        }
-
-                        following = *succs.iter().next().unwrap();
+                        follow_entries.extend(&bb.successors());
+                        body_blocks.insert(following, bb);
                     }
                 }
-            }
+
+                if desired_body.is_empty() {
+                    println!("Used snazzy mechanism");
+                    Some((body_blocks, follow_blocks, follow_entries))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            let (mut body_blocks, mut follow_blocks, mut follow_entries) = match existing_loop {
+                Some(s) => s,
+                None => {
+                    let mut body_blocks = body_blocks.clone();
+                    let mut follow_blocks = follow_blocks.clone();
+                    let mut follow_entries = out_edges(&body_blocks);
+
+                    // Move into `body_blocks` some `follow_blocks`.
+                    //
+                    // The goal of this step is to decide which (if any) extra blocks we should toss into the
+                    // loop. There are two competing forces:
+                    //
+                    //    * we want to reduce the size of `follow_entries` (0 or 1 is optimal)
+                    //    * pushing entries into the loop risks forcing making a `Multiple` in it
+                    //
+                    // I've taken the following heuristic:
+                    //
+                    //   1. Don't do anything if `follow_entries` is zero or one (since that means whatever
+                    //      follows the loop will be nice looking).
+                    //   2. Otherwise, recursively push into the loop `follow_entries` as long as they have no
+                    //      more than 1 successor (the hope is that some of the chains will join).
+                    //
+                    // TODO: there has got to be a more disiplined approach for this.
+                    if follow_entries.len() > 1 {
+                        for follow_entry in follow_entries.clone().iter() {
+                            let mut following: Label = *follow_entry;
+
+                            loop {
+                                // If this block might have come from 2 places, give up
+                                if predecessor_map[&following].len() != 1 {
+                                    break;
+                                }
+
+                                // Otherwise, move it into the loop
+                                let bb = if let Some(bb) = follow_blocks.remove(&following) { bb } else { break; };
+                                let succs = bb.successors();
+
+                                body_blocks.insert(following, bb);
+                                follow_entries.remove(&following);
+                                follow_entries.extend(&succs);
+
+                                // If it has more than one successor, don't try following the successor
+                                if succs.len() != 1 {
+                                    break;
+                                }
+
+                                following = *succs.iter().next().unwrap();
+                            }
+                        }
+                    }
+
+                    (body_blocks, follow_blocks, follow_entries)
+                }
+            };
 
 
             // Rename some `GoTo`s in the loop body to `ExitTo`s
