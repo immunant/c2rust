@@ -18,7 +18,7 @@ Building from scratch takes on the order of 30 minutes. This script works on at 
 
 On Ubuntu, ninja-build is required.
 
-To manually build the `ast-extractor`, check out [this Wiki page][0]. To manually build the
+To manually build the `ast-extractor`, check out [these build instructions][0]. To manually build the
 `ast-importer`, check out [its README](ast-importer/README.md).
 
 ### Testing
@@ -31,5 +31,5 @@ built, you should be able to run the tests with
 This basically tests that the original C file and translated Rust file produce the same output when
 compiled and run. More details about tests are in [this README](tests/README.md).
 
- [0]: https://github.com/GaloisInc/C2Rust/wiki/Building-AST-extractor
+ [0]: docs/building-ast-extractor.md
 
