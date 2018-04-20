@@ -3,11 +3,6 @@
 #
 # This script builds a C2Rust translated version of snudown,
 # either with or without cross-checks
-#
-# Usage:
-# $ ./translate.sh translate
-# or
-# $ ./translate.sh rustcheck
 
 from shutil import rmtree
 from common import *
@@ -176,11 +171,11 @@ def main(xcheck: bool, snudown: str):
 
 USAGE = """\
 USAGE:
-$ ./translate.sh translate <snudown directory>
+$ ./translate.py translate <snudown directory>
 or
-$ ./translate.sh rustcheck <snudown directory>
+$ ./translate.py rustcheck <snudown directory>
 or
-$ ./translate.sh html_entities <snudown directory>
+$ ./translate.py html_entities <snudown directory>
 """
 
 if __name__ == "__main__":
