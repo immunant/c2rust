@@ -42,10 +42,6 @@ fn main() {
             .long("dpretty-typed-clang-ast")
             .help("Pretty-prints out the parsed typed Clang AST")
             .takes_value(false))
-        .arg(Arg::with_name("remove-unused-decls")
-            .long("remove-unused-decls")
-            .help("Remove unused declarations from Clang AST")
-            .takes_value(false))
         .arg(Arg::with_name("translate-asm")
             .long("translate-asm")
             .help("Translate inline assembly without translating the assembly fragment")
@@ -102,7 +98,6 @@ fn main() {
     let cross_check_configs = matches.values_of("cross-check-config")
         .map(|vals| vals.collect::<Vec<_>>())
         .unwrap_or_default();
-    let remove_unused_declarations = matches.is_present("remove-unused-decls");
     let translate_asm = matches.is_present("translate-asm");
 
     // Extract from the CBOR file the untyped AST
@@ -156,7 +151,6 @@ fn main() {
         dump_structures,
         debug_labels,
         cross_checks,
-        remove_unused_declarations,
         translate_asm,
         cross_check_configs,
         prefix_function_names,
