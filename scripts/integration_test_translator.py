@@ -56,7 +56,7 @@ minimal_cc_db = """ \
 
 
 def _test_minimal(code_snippet: str) -> bool:
-    ast_extr = get_cmd_or_die(AST_EXTR)
+    ast_expo = get_cmd_or_die(AST_EXPO)
     ast_impo = get_cmd_or_die(AST_IMPO)
 
     tempdir = tempfile.gettempdir()
@@ -71,7 +71,7 @@ def _test_minimal(code_snippet: str) -> bool:
 
     cborfile = cfile + '.cbor'
 
-    invoke(ast_extr[cfile])
+    invoke(ast_expo[cfile])
 
     ld_lib_path = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
 
@@ -203,7 +203,7 @@ def main() -> None:
     logging.debug("args: %s", " ".join(sys.argv))
 
     # check that the binaries have been built first
-    bins = [AST_EXTR, AST_IMPO]
+    bins = [AST_EXPO, AST_IMPO]
     for b in bins:
         if not os.path.isfile(b):
             msg = b + " not found; run build_translator.py first?"

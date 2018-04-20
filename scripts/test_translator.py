@@ -21,7 +21,7 @@ from rust_file import (
 from typing import Generator, List, Optional, Set, Iterable, Tuple
 
 # Executables we are going to test
-ast_exporter = get_cmd_or_die(AST_EXTR)
+ast_exporter = get_cmd_or_die(AST_EXPO)
 ast_importer = get_cmd_or_die(AST_IMPO)
 
 # Tools we will need
@@ -553,7 +553,7 @@ def main() -> None:
     logging.debug("args: %s", " ".join(sys.argv))
 
     # check that the binaries have been built first
-    bins = [AST_EXTR, AST_IMPO]
+    bins = [AST_EXPO, AST_IMPO]
     for b in bins:
         if not os.path.isfile(b):
             msg = b + " not found; run build_translator.py first?"

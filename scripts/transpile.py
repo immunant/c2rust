@@ -82,7 +82,7 @@ def transpile_files(cc_db: TextIO,
     run the ast-exporter and ast-importer on all C files
     in a compile commands database.
     """
-    ast_extr = get_cmd_or_die(AST_EXTR)
+    ast_expo = get_cmd_or_die(AST_EXPO)
     ast_impo = get_cmd_or_die(AST_IMPO)
     cc_db_name = cc_db.name
     cc_db = json.load(cc_db)
@@ -99,7 +99,7 @@ def transpile_files(cc_db: TextIO,
         if import_only:
             cbor_file = os.path.join(cmd['directory'], cmd['file'] + ".cbor")
         else:
-            cbor_file = export_ast_from(ast_extr, cc_db_name,
+            cbor_file = export_ast_from(ast_expo, cc_db_name,
                                          include_dirs, **cmd)
         assert os.path.isfile(cbor_file), "missing: " + cbor_file
 

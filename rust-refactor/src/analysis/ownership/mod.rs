@@ -327,7 +327,7 @@ impl<'tcx> AnalysisResult<'tcx> {
     }
 }
 
-/// Extract the useful information from the `Ctxt`, and collect it into an `AnalysisResult`.
+/// Export the useful information from the `Ctxt`, and collect it into an `AnalysisResult`.
 fn convert_results<'a, 'tcx>(cx: &Ctxt<'a, 'tcx>) -> AnalysisResult<'tcx> {
     let mut r = AnalysisResult {
         statics: HashMap::new(),

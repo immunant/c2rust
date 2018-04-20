@@ -265,7 +265,7 @@ impl<T> Cursor<T> {
         self.right.push(new);
     }
 
-    /// Extract the elements between `start` and `end`, transform them using `func`, and insert the
+    /// Export the elements between `start` and `end`, transform them using `func`, and insert the
     /// results in their place.  Afterward, the cursor points past the end of the replacement
     /// sequnece.
     pub fn replace_range<F>(&mut self, start: Mark, end: Mark, func: F)

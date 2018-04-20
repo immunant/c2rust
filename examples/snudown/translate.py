@@ -14,7 +14,7 @@ MACHINE_TYPE = platform.platform()
 LIB_PATH = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
 
 C2RUST = ROOT_DIR
-AST_EXTRACTOR = AST_EXTR
+AST_EXPORTER = AST_EXPO
 AST_IMPORTER = AST_IMPO
 RUSTFMT = "rustfmt"
 
@@ -34,7 +34,7 @@ def translate(slug: str, xcheck: bool, snudown: str) -> None:
     :param slug: file name without directory or suffix
     :param xcheck: insert cross checking code
     """
-    ast_extr = get_cmd_or_die(AST_EXTR)
+    ast_extr = get_cmd_or_die(AST_EXPO)
     ast_impo = get_cmd_or_die(AST_IMPO)
 
     # export step
@@ -128,7 +128,7 @@ def main(xcheck: bool, snudown: str):
     # update_or_init_submodule(snudown)
 
     # the macOS and Linux builds of the ast-importer alias each other
-    if not is_elf_exe(AST_EXTR) and not on_mac():
+    if not is_elf_exe(AST_EXPO) and not on_mac():
         msg = "ast-importer was built for macOS;"
         msg += " please run build_translator.py and retry."
         die(msg)

@@ -29,7 +29,7 @@ pub fn reloop(
     // These are the statements that emerge from these lifts
     let lifted_stmts: Vec<Stmt> = lift_me
         .iter()
-        .flat_map(|&decl: &CDeclId| store.extract_decl(decl).unwrap())
+        .flat_map(|&decl: &CDeclId| store.export_decl(decl).unwrap())
         .collect();
 
     // We map over the existing structure and flatten everything to `Stmt`
