@@ -8,7 +8,7 @@ If the repo submodule appears to be empty or out of date, you may need to run `g
 
 This library requires no manual changes as part of translating to valid Rust code; however, it may require slight modification when attempting to link to example executables.
 
-## Required Extractor Params
+## Required Exporter Params
 
 Pass the `-Wwrite-strings` flag to ensure global strings are exported correctly (required only for `example3` and `example4` but not the library or other examples).
 

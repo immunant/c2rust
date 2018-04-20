@@ -20,7 +20,7 @@ def _parse_args():
     """
     define and parse command line arguments here.
     """
-    desc = 'Pretty print CBOR file output by AST extractor.'
+    desc = 'Pretty print CBOR file output by AST exporter.'
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('cbor', type=argparse.FileType('rb'),
                         help="cbor file to pretty print.")

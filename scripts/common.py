@@ -78,12 +78,12 @@ LLVM_ARCHIVE_FILES = [os.path.basename(s) for s in LLVM_ARCHIVE_URLS]
 LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "") for s in LLVM_ARCHIVE_FILES]
 LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
 
-AST_EXTR = os.path.join(LLVM_BLD, "bin/ast-extractor")
+AST_EXTR = os.path.join(LLVM_BLD, "bin/ast-exporter")
 
 MIN_PLUMBUM_VERSION = (1, 6, 3)
 CMAKELISTS_COMMANDS = \
 """
-add_subdirectory(ast-extractor)
+add_subdirectory(ast-exporter)
 """.format(prefix=CBOR_PREFIX)  # nopep8
 CC_DB_JSON = "compile_commands.json"
 
@@ -432,14 +432,14 @@ def get_system_include_dirs() -> List[str]:
     return [d.replace(" (framework directory)", "") for d in dirs]
 
 
-def extract_ast_from(ast_extr: pb.commands.BaseCommand,
+def export_ast_from(ast_extr: pb.commands.BaseCommand,
                      cc_db_path: str,
                      sys_incl_dirs: List[str],
                      **kwargs) -> str:
     """
-    run ast-extractor for a single compiler invocation.
+    run ast-exporter for a single compiler invocation.
 
-    :param ast_extr: command object representing ast-extractor
+    :param ast_extr: command object representing ast-exporter
     :param cc_db_path: path/to/compile_commands.json
     :param sys_incl_dirs: list of system include directories
     :return: path to generated cbor file.
@@ -455,17 +455,17 @@ def extract_ast_from(ast_extr: pb.commands.BaseCommand,
     if not os.path.isfile(filepath):
         die("missing file " + filepath)
     try:
-        # prepare ast-extractor arguments
+        # prepare ast-exporter arguments
         cc_db_dir = os.path.dirname(cc_db_path)
         args = ["-p", cc_db_dir, filepath]
         # this is required to locate system libraries
         args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
 
-        # run ast-extractor
-        logging.info("extracting ast from %s", os.path.basename(filename))
+        # run ast-exporter
+        logging.info("exporting ast from %s", os.path.basename(filename))
         # log the command in a format that's easy to re-run
-        extraction_cmd = str(ast_extr[args])
-        logging.debug("extraction command:\n %s", extraction_cmd)
+        export_cmd = str(ast_extr[args])
+        logging.debug("export command:\n %s", export_cmd)
         ast_extr[args] & pb.TEE  # nopep8
         cbor_outfile = filepath + ".cbor"
         assert os.path.isfile(cbor_outfile), "missing: " + cbor_outfile

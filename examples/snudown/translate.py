@@ -37,11 +37,11 @@ def translate(slug: str, xcheck: bool, snudown: str) -> None:
     ast_extr = get_cmd_or_die(AST_EXTR)
     ast_impo = get_cmd_or_die(AST_IMPO)
 
-    # extraction step
+    # export step
     c_src_path = os.path.join(snudown, "src/{}.c".format(slug))
     ast_extr(c_src_path)
 
-    # importer step
+    # import step
     rust_src_path = os.path.join(OUTPUT_DIR, "{}.rs".format(slug))
     with pb.local.env(RUST_BACKTRACE=1,
                       LD_LIBRARY_PATH=LIB_PATH):
@@ -127,7 +127,7 @@ def main(xcheck: bool, snudown: str):
     # make sure the snudown submodule is checked out and up to date
     # update_or_init_submodule(snudown)
 
-    # the macOS and Linux builds of the ast-extractor alias each other
+    # the macOS and Linux builds of the ast-importer alias each other
     if not is_elf_exe(AST_EXTR) and not on_mac():
         msg = "ast-importer was built for macOS;"
         msg += " please run build_translator.py and retry."

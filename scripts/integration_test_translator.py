@@ -83,7 +83,7 @@ def _test_minimal(code_snippet: str) -> bool:
     args += ['--ddump-untyped-clang-ast']
     args += [cborfile]
 
-    # import extracted ast
+    # import ast
     with pb.local.env(RUST_BACKTRACE='1',
                       LD_LIBRARY_PATH=ld_lib_path):
         invoke(ast_impo, args)

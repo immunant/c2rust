@@ -100,7 +100,7 @@ fn main() {
         .unwrap_or_default();
     let translate_asm = matches.is_present("translate-asm");
 
-    // Extract from the CBOR file the untyped AST
+    // Export the untyped AST to a CBOR file
     let untyped_context = match parse_untyped_ast(file) {
         Err(e) => panic!("{:#?}", e),
         Ok(cxt) => cxt,

@@ -100,15 +100,15 @@ def configure_and_build_llvm(args: str) -> None:
         else:
             logging.debug("found existing ninja.build, not running cmake")
         if args.with_clang:
-            invoke(ninja['ast-extractor', 'clang'])
+            invoke(ninja['ast-exporter', 'clang'])
         else:
-            invoke(ninja['ast-extractor'])
+            invoke(ninja['ast-exporter'])
 
 
 def update_cmakelists(filepath):
     if not os.path.isfile(filepath):
         die("not found: " + filepath, errno.ENOENT)
-    indicator = "add_subdirectory(ast-extractor)"
+    indicator = "add_subdirectory(ast-exporter)"
 
     with open(filepath, "r") as handle:
         cmakelists = handle.readlines()
@@ -237,7 +237,7 @@ def install_tinycbor() -> Optional[str]:
     # make && install
     # NOTE: we use bear to wrap make invocations such that
     # we get a .json database of compiler commands that we
-    # can use to test ast-extractor. On macOS, bear requires
+    # can use to test ast-exporter. On macOS, bear requires
     # system integrity protection to be turned off, so we
     # only use bear on Ubuntu Linux hosts.
     with pb.local.cwd(CBOR_SRC):
@@ -251,29 +251,29 @@ def install_tinycbor() -> Optional[str]:
     return path_to_cc_db()
 
 
-def integrate_ast_extractor():
+def integrate_ast_exporter():
     """
-    link ast-extractor into $LLVM_SRC/tools/clang/tools/extra
+    link ast-exporter into $LLVM_SRC/tools/clang/tools/extra
     """
-    abs_src = os.path.join(ROOT_DIR, "ast-extractor")
-    src = "../../../../../../../ast-extractor"
-    extractor_dest = os.path.join(
-        LLVM_SRC, "tools/clang/tools/extra/ast-extractor")
+    abs_src = os.path.join(ROOT_DIR, "ast-exporter")
+    src = "../../../../../../../ast-exporter"
+    exporter_dest = os.path.join(
+        LLVM_SRC, "tools/clang/tools/extra/ast-exporter")
     clang_tools_extra = os.path.abspath(
-        os.path.join(extractor_dest, os.pardir))
+        os.path.join(exporter_dest, os.pardir))
     # NOTE: `os.path.exists` returns False on broken symlinks,
     # `lexists` returns True.
-    if not os.path.lexists(extractor_dest):
+    if not os.path.lexists(exporter_dest):
         # NOTE: using os.symlink to emulate `ln -s` would be unwieldy
         ln = get_cmd_or_die("ln")
         with pb.local.cwd(clang_tools_extra):
             ln("-s", src)
-    assert os.path.islink(extractor_dest), \
-        "missing link: %s->%s" % (src, extractor_dest)
+    assert os.path.islink(exporter_dest), \
+        "missing link: %s->%s" % (src, exporter_dest)
     # check that link points to its intended target
-    link_target = os.path.realpath(extractor_dest)
-    print(extractor_dest)
-    print(abs_src)
+    link_target = os.path.realpath(exporter_dest)
+    # print(exporter_dest)
+    # print(abs_src)
     assert link_target == abs_src, \
         "invalid link target: %s!=%s" % (link_target, abs_src)
 
@@ -285,7 +285,7 @@ def _parse_args():
     """
     define and parse command line arguments here.
     """
-    desc = 'download dependencies for the AST extractor and built it.'
+    desc = 'download dependencies for the AST exporter and built it.'
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('-c', '--clean-all', default=False,
                         action='store_true', dest='clean_all',
@@ -294,7 +294,7 @@ def _parse_args():
     parser.add_argument('-d', '--debug', default=False,
                         action='store_true', dest='debug',
                         help=dhelp)
-    thelp = 'sanity test ast extractor using tinycbor (linux only)'
+    thelp = 'sanity test ast exporter using tinycbor (linux only)'
     parser.add_argument('-t', '--test', default=False,
                         action='store_true', dest='sanity_test',
                         help=thelp)
@@ -307,24 +307,24 @@ def _parse_args():
     return parser.parse_args()
 
 
-def test_ast_extractor(cc_db_path: str):
+def test_ast_exporter(cc_db_path: str):
     """
-    run ast-extractor on tinycbor if on linux. testing is
+    run ast-exporter on tinycbor if on linux. testing is
     not supported on macOS since bear requires system integrity
     protection to be disabled.
     """
     assert not on_mac(), "sanity testing requires linux host"
 
-    ast_extr = os.path.join(LLVM_BIN, "ast-extractor")
+    ast_extr = os.path.join(LLVM_BIN, "ast-exporter")
     if not os.path.isfile(ast_extr):
-        die("ast-extractor not found in " + LLVM_BIN)
+        die("ast-exporter not found in " + LLVM_BIN)
     ast_extr = get_cmd_or_die(ast_extr)
 
     include_dirs = get_system_include_dirs()
 
     with open(cc_db_path, "r") as handle:
         cc_db = json.load(handle)
-    cbor_files = [extract_ast_from(ast_extr, cc_db_path, include_dirs, **cmd)
+    cbor_files = [exporter_ast_from(ast_extr, cc_db_path, include_dirs, **cmd)
                   for cmd in cc_db]
 
     logging.info("PASS sanity testing")
@@ -381,7 +381,7 @@ def _main():
 
     download_llvm_sources()
 
-    integrate_ast_extractor()
+    integrate_ast_exporter()
 
     cc_db = install_tinycbor()
 
@@ -395,7 +395,7 @@ def _main():
     build_ast_importer()
 
     if not on_mac() and args.sanity_test:
-        test_ast_extractor(cc_db)
+        test_ast_exporter(cc_db)
 
 
 if __name__ == "__main__":

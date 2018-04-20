@@ -79,7 +79,7 @@ def transpile_files(cc_db: TextIO,
                     import_only: bool = False,
                     verbose: bool = False) -> bool:
     """
-    run the ast-extractor and ast-importer on all C files
+    run the ast-exporter and ast-importer on all C files
     in a compile commands database.
     """
     ast_extr = get_cmd_or_die(AST_EXTR)
@@ -99,7 +99,7 @@ def transpile_files(cc_db: TextIO,
         if import_only:
             cbor_file = os.path.join(cmd['directory'], cmd['file'] + ".cbor")
         else:
-            cbor_file = extract_ast_from(ast_extr, cc_db_name,
+            cbor_file = export_ast_from(ast_extr, cc_db_name,
                                          include_dirs, **cmd)
         assert os.path.isfile(cbor_file), "missing: " + cbor_file
 
@@ -109,7 +109,7 @@ def transpile_files(cc_db: TextIO,
         if 'LD_LIBRARY_PATH' in pb.local.env:
             ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
-        # import extracted ast
+        # import ast
         with pb.local.env(RUST_BACKTRACE='1',
                           LD_LIBRARY_PATH=ld_lib_path):
             file_basename = os.path.basename(cmd['file'])
@@ -167,7 +167,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('commands_json', type=argparse.FileType('r'))
     parser.add_argument('-i', '--import-only', default=False,
                         action='store_true', dest='import_only',
-                        help='skip ast extraction step')
+                        help='skip ast export step')
     parser.add_argument('-f', '--filter', default="",
                         help='only process files matching filter')
     parser.add_argument('-v', '--verbose', default=False, dest="verbose",
