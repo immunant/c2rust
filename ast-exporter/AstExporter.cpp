@@ -24,7 +24,7 @@ using namespace llvm;
 using namespace clang;
 using namespace clang::tooling;
 
-#define DEBUG_TYPE "ast-extractor"
+#define DEBUG_TYPE "ast-exporter"
 
 using std::string;
 using clang::QualType;
