@@ -311,7 +311,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             let ref fcfg = cfg.function_config();
             let entry_extra_xchecks = self.build_extra_xchecks(&fcfg.entry_extra);
             let exit_extra_xchecks = self.build_extra_xchecks(&fcfg.exit_extra);
-            // Extract the result type from the function signature,
+            // Export the result type from the function signature,
             // so we can attach it to the __c2rust_fn_body closure
             let result_ty = match fn_decl.output {
                 ast::FunctionRetTy::Default(_) => quote_ty!(self.cx, ()),

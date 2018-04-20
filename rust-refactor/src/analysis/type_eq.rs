@@ -472,7 +472,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     }
 
 
-    // Helpers for extracting information from function types.
+    // Helpers for exporting information from function types.
 
     fn fn_num_inputs(&self, lty: LTy<'tcx>) -> usize {
         use rustc::ty::TypeVariants::*;
