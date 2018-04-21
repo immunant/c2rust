@@ -36,6 +36,7 @@ use c_ast::*;
 
 pub mod relooper;
 pub mod structures;
+pub mod loops;
 
 /// These labels identify basic blocks in a regular CFG.
 #[derive(Copy,Clone,PartialEq,Eq,PartialOrd,Ord,Debug,Hash)]
@@ -106,6 +107,13 @@ impl StructureLabel<StmtOrDecl> {
 /// These IDs identify groups of basic blocks corresponding to loops in a CFG
 #[derive(Copy,Clone,PartialEq,Eq,PartialOrd,Ord,Debug,Hash)]
 pub struct LoopId(u64);
+
+impl LoopId {
+    fn pretty_print(&self) -> String {
+        let &LoopId(loop_id) = self;
+        format!("l_{}", loop_id)
+    }
+}
 
 /// Information about loops in a CFG
 #[derive(Clone,Debug)]
@@ -206,7 +214,7 @@ impl Structure<StmtOrDecl> {
 
 /// Generalized basic block.
 #[derive(Clone, Debug)]
-struct BasicBlock<L,S> {
+pub struct BasicBlock<L,S> {
     /// Jump-free code
     body: Vec<S>,
 
@@ -1274,7 +1282,8 @@ impl Cfg<Label,StmtOrDecl> {
         &self,
         ctx: &TypedAstContext,
         store: &DeclStmtStore,
-        file_path: String
+        show_loops: bool,
+        file_path: String,
     ) -> io::Result<()> {
 
         // Utility function for sanitizing strings
@@ -1333,6 +1342,28 @@ impl Cfg<Label,StmtOrDecl> {
                 )
             };
 
+            //  Scope the node with the loops it is part of
+            let mut closing_braces = 0;
+            if show_loops {
+                file.write(b"  ")?;
+
+                let mut loop_id_opt: Option<LoopId> = self.loops.node_loops.get(lbl).cloned();
+                let mut loop_ids = vec![];
+                while let Some(loop_id) = loop_id_opt {
+                    loop_ids.push(loop_id);
+                    loop_id_opt = self.loops.loops[&loop_id].1;
+                }
+
+                closing_braces = loop_ids.len();
+                for loop_id in loop_ids.iter().rev() {
+                    file.write_fmt(format_args!(
+                    "subgraph cluster_{} {{ label = \"{}\"; graph[style=dotted];",
+                    loop_id.pretty_print(),
+                    loop_id.pretty_print(),
+                    ))?;
+                }
+            }
+
             // A node
             file.write_fmt(format_args!(
                 "  {} [label=\"{}:\\l-----{}{}\\l{}-----{}\"];\n",
@@ -1358,6 +1389,14 @@ impl Cfg<Label,StmtOrDecl> {
                 }),
                 sanitize_label(pretty_terminator),
             ))?;
+
+            //  Close the loops the node is part of
+            for _ in 0..closing_braces {
+                file.write(b"  }")?;
+            }
+            if closing_braces > 0 {
+                file.write(b"\n")?;
+            }
 
             // All the edges starting from this node
             let edges: Vec<(String, Label)> = match bb.terminator {

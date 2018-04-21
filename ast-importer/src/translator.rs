@@ -32,6 +32,8 @@ pub struct Translation {
     debug_relooper_labels: bool,
     cross_checks: bool,
     translate_asm: bool,
+    use_c_loop_info: bool,
+    simplify_structures: bool,
 }
 
 #[derive(Debug)]
@@ -245,6 +247,8 @@ pub fn translate(
     cross_check_configs: Vec<&str>,
     prefix_function_names: Option<&str>,
     translate_entry: bool,
+    use_c_loop_info: bool,
+    simplify_structures: bool,
 ) -> String {
 
     let mut t = Translation::new(
@@ -255,6 +259,8 @@ pub fn translate(
         debug_relooper_labels,
         cross_checks,
         translate_asm,
+        use_c_loop_info,
+        simplify_structures,
     );
 
     if !translate_entry {
@@ -497,6 +503,8 @@ impl Translation {
         debug_relooper_labels: bool,
         cross_checks: bool,
         translate_asm: bool,
+        use_c_loop_info: bool,
+        simplify_structures: bool,
     ) -> Translation {
         Translation {
             items: vec![],
@@ -529,6 +537,8 @@ impl Translation {
             debug_relooper_labels,
             cross_checks,
             translate_asm,
+            use_c_loop_info,
+            simplify_structures,
         }
     }
 
@@ -1046,12 +1056,20 @@ impl Translation {
 
                 if self.dump_function_cfgs {
                     graph
-                        .dump_dot_graph(&self.ast_context, &store, format!("{}_{}.dot", "cfg", name))
+                        .dump_dot_graph(
+                            &self.ast_context, &store,
+                            self.use_c_loop_info,
+                            format!("{}_{}.dot", "cfg", name)
+                        )
                         .expect("Failed to write CFG .dot file");
                 }
 
-                let simplify_structures = true;
-                let (lifted_stmts, relooped) = cfg::relooper::reloop(graph, store, simplify_structures);
+                let (lifted_stmts, relooped) = cfg::relooper::reloop(
+                    graph,
+                    store,
+                    self.simplify_structures,
+                    self.use_c_loop_info,
+                );
 
                 if self.dump_structures {
                     eprintln!("Relooped structures:");
@@ -2200,8 +2218,8 @@ impl Translation {
         kind: CastKind,
         opt_field_id: Option<CFieldId>,
         is_explicit: bool,
-        is_static: bool)
-        -> Result<WithStmts<P<Expr>>, String> {
+        is_static: bool,
+    ) -> Result<WithStmts<P<Expr>>, String> {
 
         let val = if is_explicit {
             let mut stmts = self.compute_variable_array_sizes(ty.ctype)?;
