@@ -78,7 +78,7 @@ LLVM_ARCHIVE_FILES = [os.path.basename(s) for s in LLVM_ARCHIVE_URLS]
 LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "") for s in LLVM_ARCHIVE_FILES]
 LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
 
-AST_EXTR = os.path.join(LLVM_BLD, "bin/ast-exporter")
+AST_EXPO = os.path.join(LLVM_BLD, "bin/ast-exporter")
 
 MIN_PLUMBUM_VERSION = (1, 6, 3)
 CMAKELISTS_COMMANDS = \
@@ -432,14 +432,14 @@ def get_system_include_dirs() -> List[str]:
     return [d.replace(" (framework directory)", "") for d in dirs]
 
 
-def export_ast_from(ast_extr: pb.commands.BaseCommand,
-                     cc_db_path: str,
-                     sys_incl_dirs: List[str],
-                     **kwargs) -> str:
+def export_ast_from(ast_expo: pb.commands.BaseCommand,
+                    cc_db_path: str,
+                    sys_incl_dirs: List[str],
+                    **kwargs) -> str:
     """
     run ast-exporter for a single compiler invocation.
 
-    :param ast_extr: command object representing ast-exporter
+    :param ast_expo: command object representing ast-exporter
     :param cc_db_path: path/to/compile_commands.json
     :param sys_incl_dirs: list of system include directories
     :return: path to generated cbor file.
@@ -464,9 +464,9 @@ def export_ast_from(ast_extr: pb.commands.BaseCommand,
         # run ast-exporter
         logging.info("exporting ast from %s", os.path.basename(filename))
         # log the command in a format that's easy to re-run
-        export_cmd = str(ast_extr[args])
+        export_cmd = str(ast_expo[args])
         logging.debug("export command:\n %s", export_cmd)
-        ast_extr[args] & pb.TEE  # nopep8
+        ast_expo[args] & pb.TEE  # nopep8
         cbor_outfile = filepath + ".cbor"
         assert os.path.isfile(cbor_outfile), "missing: " + cbor_outfile
         return cbor_outfile
@@ -477,7 +477,7 @@ def export_ast_from(ast_extr: pb.commands.BaseCommand,
             mesg = "Received signal: "
             mesg += signal.Signals(-pee.retcode).name
 
-        logging.fatal("command failed: %s", ast_extr[args])
+        logging.fatal("command failed: %s", ast_expo[args])
         die("sanity testing: " + mesg, pee.retcode)
 
 

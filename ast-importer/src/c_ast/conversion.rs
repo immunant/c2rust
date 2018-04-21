@@ -185,7 +185,7 @@ impl ConversionContext {
     /// Returns the new ID that identifies this new node.
     fn visit_node_type(&mut self, node_id: ClangId, node_ty: NodeType) -> NewId {
 
-        // Type node IDs have extract information on them
+        // Type node IDs have extra information on them
         let node_id = if node_ty & node_types::TYPE != 0 {
             node_id & TypeNode::ID_MASK
         } else {
