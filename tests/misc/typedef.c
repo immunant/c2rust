@@ -8,7 +8,7 @@ typedef int (my_fn)(int i);                 //  'type my_fn = fn(libc::c_int) ->
 
 int identity(int x) { return x; }
 
-// The qualifiers should still be exported from typedefs when needed (for example at binding
+// The qualifiers should still be extracted from typedefs when needed (for example at binding
 // sites)
 int entry()
 {
