@@ -97,6 +97,7 @@ enum TypeTag {
     TagEnumType,
     TagFunctionType,
     TagTypeOfType,
+    TagVectorType,
     
     TagTypedefType,
     TagElaboratedType,
