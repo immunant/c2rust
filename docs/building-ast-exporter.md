@@ -1,6 +1,6 @@
-**NOTE:** On macOS and Linux, you can use `build_ast_extractor.py` to perform these steps.
+**NOTE:** On macOS and Linux, you can use `build_translator.py` to perform these steps.
 
-Building this ast-extractor currently requires an LLVM project checkout.
+Building the ast-exporter currently requires an LLVM project checkout.
 I haven't sliced the portion of the CMake build system that LLVM uses
 to build its tools. These instruction use the directory `~/clang-llvm`
 because the tutorial does.
@@ -11,7 +11,7 @@ This build process is based on the following tutorial:
 CMake supports multiple build system targets. The tutorial uses `ninja`
 and locally I've been using XCode to build.
 
-The extractor uses *tinycbor* for CBOR serialization: <https://github.com/01org/tinycbor> I installed this into
+The exporter uses *tinycbor* for CBOR serialization: <https://github.com/01org/tinycbor> I installed this into
 `/usr/local` to make it available locally.
 
 Initial source checkout
@@ -26,12 +26,12 @@ cd clang/tools
 git clone http://llvm.org/git/clang-tools-extra.git extra
 ```
 
-Here's where I added the ast-extractor source directory to the llvm build tree.
+Here's where I added the ast-exporter source directory to the llvm build tree.
 
 ```
 $ cd ~/clang-llvm/llvm/tools/clang/tools/extra
-$ echo 'add_subdirectory(ast-extractor)' >> CMakeLists.txt
-$ ln -s $PATH_TO_ast_extractor
+$ echo 'add_subdirectory(ast-exporter)' >> CMakeLists.txt
+$ ln -s $PATH_TO_ast_exporter
 ```
 
 Building with Ninja
@@ -46,7 +46,7 @@ cmake -G Ninja ../llvm -DLLVM_BUILD_TESTS=ON  # Enable tests; default is off.
 ninja
 ninja check       # Test LLVM only. (optional)
 ninja clang-test  # Test Clang only. (optional)
-ninja ast-extractor
+ninja ast-exporter
 ```
 
 Building with XCode
@@ -61,7 +61,7 @@ $ cmake -G Xcode ../llvm/
 $ open LLVM.xcodeproj
 ```
 
-Debugging the AST Extractor
+Debugging the AST Exporter
 ===========================
 
-The `ast-extractor` uses [LLVMs debug macros](http://llvm.org/docs/ProgrammersManual.html#the-debug-macro-and-debug-option). To enable debug output add `-debug-only=ast-extractor` to the command line invocation.
+The `ast-exporter` uses [LLVMs debug macros](http://llvm.org/docs/ProgrammersManual.html#the-debug-macro-and-debug-option). To enable debug output add `-debug-only=ast-exporter` to the command line invocation.
