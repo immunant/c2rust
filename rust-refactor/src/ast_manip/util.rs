@@ -5,7 +5,7 @@ use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
 
 
-/// Export the symbol from a pattern-like AST.
+/// Extract the symbol from a pattern-like AST.
 pub trait PatternSymbol {
     fn pattern_symbol(&self) -> Option<Symbol>;
 }

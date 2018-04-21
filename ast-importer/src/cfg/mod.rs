@@ -326,8 +326,8 @@ impl StmtOrDecl {
     fn place_decls(self, lift_me: &HashSet<CDeclId>, store: &mut DeclStmtStore) -> Vec<Stmt> {
         match self {
             StmtOrDecl::Stmt(s) => vec![s],
-            StmtOrDecl::Decl(d) if lift_me.contains(&d) => store.export_assign(d).unwrap(),
-            StmtOrDecl::Decl(d) => store.export_decl_and_assign(d).unwrap(),
+            StmtOrDecl::Decl(d) if lift_me.contains(&d) => store.extract_assign(d).unwrap(),
+            StmtOrDecl::Decl(d) => store.extract_decl_and_assign(d).unwrap(),
         }
     }
 }
@@ -588,7 +588,7 @@ impl DeclStmtStore {
 
     /// Extract _just_ the Rust statements for a declaration (without initialization). Used when you
     /// want to move just a declaration to a larger scope.
-    pub fn export_decl(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
+    pub fn extract_decl(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
         let DeclStmtInfo { decl, assign, pre_init, .. } = self.store
             .remove(&decl_id)
             .ok_or(format!("Cannot find information on declaration {:?}", decl_id))?;
@@ -604,7 +604,7 @@ impl DeclStmtStore {
    /// Extract _just_ the Rust statements for an initializer (without the declaration it was
    /// initially attached to). Used when you've moved a declaration but now you need to also run the
    /// initializer.
-    pub fn export_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
+    pub fn extract_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
         let DeclStmtInfo { decl, assign, pre_init, .. } = self.store
             .remove(&decl_id)
             .ok_or(format!("Cannot find information on declaration {:?}", decl_id))?;
@@ -624,7 +624,7 @@ impl DeclStmtStore {
 
     /// Extract the Rust statements for the full declaration and initializers. Used for when you
     /// didn't need to move a declaration at all.
-    pub fn export_decl_and_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
+    pub fn extract_decl_and_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
         let DeclStmtInfo { decl_and_assign, pre_init, .. } = self.store
             .remove(&decl_id)
             .ok_or(format!("Cannot find information on declaration {:?}", decl_id))?;

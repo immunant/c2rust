@@ -78,7 +78,7 @@ LLVM_ARCHIVE_FILES = [os.path.basename(s) for s in LLVM_ARCHIVE_URLS]
 LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "") for s in LLVM_ARCHIVE_FILES]
 LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
 
-AST_EXPO = os.path.join(LLVM_BLD, "bin/ast-exporter")
+AST_EXTR = os.path.join(LLVM_BLD, "bin/ast-exporter")
 
 MIN_PLUMBUM_VERSION = (1, 6, 3)
 CMAKELISTS_COMMANDS = \
