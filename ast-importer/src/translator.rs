@@ -1377,7 +1377,7 @@ impl Translation {
     pub fn convert_decl_stmt_info(&self, decl_id: CDeclId) -> Result<cfg::DeclStmtInfo, String> {
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ } if !is_static && !is_extern => {
-                assert!(is_defn, "Only local variable definitions should be exported");
+                assert!(is_defn, "Only local variable definitions should be extracted");
 
                 let mut stmts = self.compute_variable_array_sizes(typ.ctype)?;
 
@@ -2422,7 +2422,7 @@ impl Translation {
         target_ty: P<Ty>,        // target type of cast
     ) -> WithStmts<P<Expr>> {
 
-        // Export the IDs of the `EnumConstant` decls underlying the enum.
+        // Extract the IDs of the `EnumConstant` decls underlying the enum.
         let variants = match self.ast_context.index(enum_decl).kind {
             CDeclKind::Enum { ref variants, .. } => variants,
             _ => panic!("{:?} does not point to an `enum` declaration")
