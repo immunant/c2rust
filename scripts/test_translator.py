@@ -21,7 +21,7 @@ from rust_file import (
 from typing import Generator, List, Optional, Set, Iterable, Tuple
 
 # Executables we are going to test
-ast_extractor = get_cmd_or_die(AST_EXTR)
+ast_exporter = get_cmd_or_die(AST_EXPO)
 ast_importer = get_cmd_or_die(AST_IMPO)
 
 # Tools we will need
@@ -99,8 +99,8 @@ class CFile:
         self.path = path
         self.enable_relooper = "enable_relooper" in flags
 
-    def extract(self) -> CborFile:
-        # run the extractor
+    def export(self) -> CborFile:
+        # run the exporter
         args = [self.path]
 
         # NOTE: it doesn't seem necessary to specify system include
@@ -110,8 +110,8 @@ class CFile:
         ## args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
 
         # log the command in a format that's easy to re-run
-        logging.debug("extraction command:\n %s", str(ast_extractor[args]))
-        retcode, stdout, stderr = ast_extractor[args].run(retcode=None)
+        logging.debug("export command:\n %s", str(ast_exporter[args]))
+        retcode, stdout, stderr = ast_exporter[args].run(retcode=None)
 
         logging.debug("stdout:\n%s", stdout)
 
@@ -281,7 +281,7 @@ class TestDirectory:
 
         # REVIEW: This will override the previous compile_commands.json
         # Is there a way to specify different compile_commands_X.json files
-        # to the extractor?
+        # to the exporter?
         with open(cc_db, 'w') as fh:
             fh.write(compile_commands)
 
@@ -327,7 +327,7 @@ class TestDirectory:
         # .c -> .c.cbor
         for c_file in self.c_files:
             _, c_file_short = os.path.split(c_file.path)
-            description = "{}: extracting the C file into CBOR...".format(c_file_short)
+            description = "{}: exporting the C file into CBOR...".format(c_file_short)
 
             # Run the step
             self.print_status(WARNING, "RUNNING", description)
@@ -335,9 +335,9 @@ class TestDirectory:
             self._generate_cc_db(c_file.path)
 
             try:
-                cbor_file = c_file.extract()
+                cbor_file = c_file.export()
             except NonZeroReturn as exception:
-                self.print_status(FAIL, "FAILED", "extract " + c_file_short)
+                self.print_status(FAIL, "FAILED", "export " + c_file_short)
                 sys.stdout.write('\n')
                 sys.stdout.write(str(exception))
 
@@ -553,7 +553,7 @@ def main() -> None:
     logging.debug("args: %s", " ".join(sys.argv))
 
     # check that the binaries have been built first
-    bins = [AST_EXTR, AST_IMPO]
+    bins = [AST_EXPO, AST_IMPO]
     for b in bins:
         if not os.path.isfile(b):
             msg = b + " not found; run build_translator.py first?"

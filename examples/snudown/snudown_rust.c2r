@@ -83,11 +83,6 @@ translator-build/markdown.rs:
       disable_xchecks: false
 
     - item: function
-      name: tag_length
-      args:
-        autolink: disabled
-
-    - item: function
       name: is_ref
       args:
         last: disabled # TODO: cross-check this on exit

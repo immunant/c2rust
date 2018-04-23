@@ -242,7 +242,6 @@ pub fn translate(
     dump_structures: bool,
     debug_relooper_labels: bool,
     cross_checks: bool,
-    remove_unused_declarations: bool,
     translate_asm: bool,
     cross_check_configs: Vec<&str>,
     prefix_function_names: Option<&str>,
@@ -267,9 +266,7 @@ pub fn translate(
         t.ast_context.c_main = None;
     }
 
-    if remove_unused_declarations {
-        t.ast_context.simplify()
-    }
+    t.ast_context.simplify();
 
     enum Name<'a> {
         VarName(&'a str),

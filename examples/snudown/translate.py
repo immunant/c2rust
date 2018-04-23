@@ -3,11 +3,6 @@
 #
 # This script builds a C2Rust translated version of snudown,
 # either with or without cross-checks
-#
-# Usage:
-# $ ./translate.sh translate
-# or
-# $ ./translate.sh rustcheck
 
 from shutil import rmtree
 from common import *
@@ -19,7 +14,7 @@ MACHINE_TYPE = platform.platform()
 LIB_PATH = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
 
 C2RUST = ROOT_DIR
-AST_EXTRACTOR = AST_EXTR
+AST_EXPORTER = AST_EXPO
 AST_IMPORTER = AST_IMPO
 RUSTFMT = "rustfmt"
 
@@ -39,14 +34,14 @@ def translate(slug: str, xcheck: bool, snudown: str) -> None:
     :param slug: file name without directory or suffix
     :param xcheck: insert cross checking code
     """
-    ast_extr = get_cmd_or_die(AST_EXTR)
+    ast_expo = get_cmd_or_die(AST_EXPO)
     ast_impo = get_cmd_or_die(AST_IMPO)
 
-    # extraction step
+    # export step
     c_src_path = os.path.join(snudown, "src/{}.c".format(slug))
-    ast_extr(c_src_path)
+    ast_expo(c_src_path)
 
-    # importer step
+    # import step
     rust_src_path = os.path.join(OUTPUT_DIR, "{}.rs".format(slug))
     with pb.local.env(RUST_BACKTRACE=1,
                       LD_LIBRARY_PATH=LIB_PATH):
@@ -132,8 +127,8 @@ def main(xcheck: bool, snudown: str):
     # make sure the snudown submodule is checked out and up to date
     # update_or_init_submodule(snudown)
 
-    # the macOS and Linux builds of the ast-extractor alias each other
-    if not is_elf_exe(AST_EXTR) and not on_mac():
+    # the macOS and Linux builds of the ast-importer alias each other
+    if not is_elf_exe(AST_EXPO) and not on_mac():
         msg = "ast-importer was built for macOS;"
         msg += " please run build_translator.py and retry."
         die(msg)
@@ -176,11 +171,11 @@ def main(xcheck: bool, snudown: str):
 
 USAGE = """\
 USAGE:
-$ ./translate.sh translate <snudown directory>
+$ ./translate.py translate <snudown directory>
 or
-$ ./translate.sh rustcheck <snudown directory>
+$ ./translate.py rustcheck <snudown directory>
 or
-$ ./translate.sh html_entities <snudown directory>
+$ ./translate.py html_entities <snudown directory>
 """
 
 if __name__ == "__main__":

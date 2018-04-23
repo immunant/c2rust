@@ -8,7 +8,7 @@ If the repo submodule appears to be empty or out of date, you may need to run `g
 
 This library requires no manual changes as part of translating to valid Rust code; however, it may require slight modification when attempting to link to the executable.
 
-## Required Extractor Params
+## Required Exporter Params
 
 No params are strictly required at this time.
 

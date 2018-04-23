@@ -8,7 +8,7 @@ If the repo submodule appears to be empty or out of date, you may need to run `g
 
 The translator will generate this bit of code which will not compile: `static mut cross_cursor: Cursor = ::std::ptr::null_mut::<libc::c_void>() as Cursor;`. This should be replaced with the equivalent code: `static mut cross_cursor: Cursor = 0;` (`Cursor` is just an alias for an int)
 
-## Required Extractor Params
+## Required Exporter Params
 
 No params are strictly required at this time.
 

@@ -18,7 +18,7 @@ fn main() {
         // .no_unstable_rust()
         // The input header we would like to generate
         // bindings for.
-        .header("../ast-extractor/ast_tags.hpp")
+        .header("../ast-exporter/ast_tags.hpp")
         .generate_comments(true)
         .derive_default(true)
         // Finish the builder and generate the bindings.

@@ -16,7 +16,12 @@ llvm.build*
 **/Cargo.lock
 .python-version
 
-# Testing directory
+# cross-checks
+cross-checks/c-checks/clang-plugin/build
+cross-checks/libfakechecks/*.o
+cross-checks/libfakechecks/*.so
+
+# tests
 !tests
 tests/*.rs
 tests/*.a

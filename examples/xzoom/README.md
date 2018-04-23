@@ -8,7 +8,7 @@ If the repo submodule appears to be empty or out of date, you may need to run `g
 
 You may need to add `#include <unistd.h>` to xzoom.c for it to properly generate (otherwise `main_0` goes missing). This include is normally only added with the `TIMER` macro enabled, but seems to be required for standard functionality. (We could fork the repo if we want to make this change explicit for the purposes of automated testing.)
 
-## Required Extractor Params
+## Required Exporter Params
 
 No params are strictly required at this time.
 

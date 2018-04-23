@@ -8,7 +8,7 @@ If the repo submodule appears to be empty or out of date, you may need to run `g
 
 No manual changes are required.
 
-## Required Extractor Params
+## Required Exporter Params
 
 Pass the `-Wwrite-strings` flag to ensure global strings are exported correctly.
 
