@@ -7,7 +7,8 @@ use super::*;
 pub fn reloop(
     cfg: Cfg<Label, StmtOrDecl>,  // the control flow graph to reloop
     mut store: DeclStmtStore,     // store of what to do with declarations
-    simplify_structures: bool,    // whether to simplify the output structure
+    simplify_structures: bool,    // simplify the output structure
+    use_c_loop_info: bool,        // use the loop information in the CFG (slower, but better)
 ) -> (Vec<Stmt>, Vec<Structure<Stmt>>) {
 
     let entries = cfg.entries;
@@ -20,7 +21,8 @@ pub fn reloop(
         .collect();
 
     let mut relooped_with_decls: Vec<Structure<StmtOrDecl>> = vec![];
-    let mut state = RelooperState::new();
+    let loop_info = if use_c_loop_info { Some(cfg.loops) } else { None };
+    let mut state = RelooperState::new(loop_info);
     state.relooper(entries, blocks, &mut relooped_with_decls);
 
     // These are declarations we need to lift
@@ -53,12 +55,15 @@ struct RelooperState {
 
     /// Declarations that will have to be lifted to the top of the output
     lifted: HashSet<CDeclId>,
+
+    /// Information about loops
+    loop_info: Option<LoopInfo<Label>>,
 }
 
 impl RelooperState {
 
-    pub fn new() -> Self {
-        RelooperState { scopes: vec![HashSet::new()], lifted: HashSet::new() }
+    pub fn new(loop_info: Option<LoopInfo<Label>>) -> Self {
+        RelooperState { scopes: vec![HashSet::new()], lifted: HashSet::new(), loop_info }
     }
 
     pub fn open_scope(&mut self) {
@@ -119,6 +124,8 @@ impl RelooperState {
             }
             flipped_map
         }
+
+        type StructuredBlocks = HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>;
 
         // Find all labels reachable via a `GoTo` from the current set of blocks
         let reachable_labels: HashSet<Label> = blocks
@@ -247,58 +254,52 @@ impl RelooperState {
                 .collect();
 
             // Partition blocks into those belonging in or after the loop
-            type StructuredBlocks = HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>;
             let (mut body_blocks, mut follow_blocks): (StructuredBlocks, StructuredBlocks) = blocks
                 .into_iter()
                 .partition(|&(ref lbl, _)| new_returns.contains(lbl) || entries.contains(lbl));
-
             let mut follow_entries = out_edges(&body_blocks);
 
 
-            // Move into `body_blocks` some `follow_blocks`.
-            //
-            // The goal of this step is to decide which (if any) extra blocks we should toss into the
-            // loop. There are two competing forces:
-            //
-            //    * we want to reduce the size of `follow_entries` (0 or 1 is optimal)
-            //    * pushing entries into the loop risks forcing making a `Multiple` in it
-            //
-            // I've taken the following heuristic:
-            //
-            //   1. Don't do anything if `follow_entries` is zero or one (since that means whatever
-            //      follows the loop will be nice looking).
-            //   2. Otherwise, recursively push into the loop `follow_entries` as long as they have no
-            //      more than 1 successor (the hope is that some of the chains will join).
-            //
-            // TODO: there has got to be a more disiplined approach for this.
-            if follow_entries.len() > 1 {
-                for follow_entry in follow_entries.clone().iter() {
-                    let mut following: Label = *follow_entry;
+            // Try to match an existing loop (from the initial C)
+            let mut matched_existing_loop = false;
+            if let Some(ref loop_info) = self.loop_info {
+                let must_be_in_loop = entries.iter().chain(new_returns.iter()).cloned();
+                if let Some(loop_id) = loop_info.tightest_common_loop(must_be_in_loop) {
 
-                    loop {
-                        // If this block might have come from 2 places, give up
-                        if predecessor_map[&following].len() != 1 {
-                            break;
-                        }
+                    // Construct the target group of labels
+                    let mut desired_body: HashSet<Label> = loop_info.loops[&loop_id].0.clone();
+                    desired_body.retain(|l| !entries.contains(l));
+                    desired_body.retain(|l| !new_returns.contains(l));
 
-                        // Otherwise, move it into the loop
-                        let bb = if let Some(bb) = follow_blocks.remove(&following) { bb } else { break; };
-                        let succs = bb.successors();
+                    // Make copies that we can trash
+                    let mut body_blocks_copy = body_blocks.clone();
+                    let mut follow_blocks_copy = follow_blocks.clone();
+                    let mut follow_entries_copy = follow_entries.clone();
 
-                        body_blocks.insert(following, bb);
-                        follow_entries.remove(&following);
-                        follow_entries.extend(&succs);
+                    if loops::match_loop_body(
+                        desired_body,
+                        &mut body_blocks_copy,
+                        &mut follow_blocks_copy,
+                        &mut follow_entries_copy,
+                    ) {
+                        matched_existing_loop = true;
 
-                        // If it has more than one successor, don't try following the successor
-                        if succs.len() != 1 {
-                            break;
-                        }
-
-                        following = *succs.iter().next().unwrap();
+                        body_blocks = body_blocks_copy;
+                        follow_blocks = follow_blocks_copy;
+                        follow_entries = follow_entries_copy;
                     }
                 }
             }
 
+            // If matching an existing loop didn't work, fall back on a heuristic
+            if !matched_existing_loop {
+                loops::heuristic_loop_body(
+                    &predecessor_map,
+                    &mut body_blocks,
+                    &mut follow_blocks,
+                    &mut follow_entries,
+                );
+            }
 
             // Rename some `GoTo`s in the loop body to `ExitTo`s
             for (_, bb) in body_blocks.iter_mut() {
@@ -340,7 +341,7 @@ impl RelooperState {
             .collect()
         );
 
-        let handled_entries: HashMap<Label, HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>> = singly_reached
+        let handled_entries: HashMap<Label, StructuredBlocks> = singly_reached
             .into_iter()
             .map(|(lbl, within)| {
                 let val = blocks
@@ -358,7 +359,7 @@ impl RelooperState {
             .cloned()
             .collect();
 
-        let mut handled_blocks: HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>> = HashMap::new();
+        let mut handled_blocks: StructuredBlocks = HashMap::new();
         for (_, map) in &handled_entries {
             for (k, v) in map {
                 handled_blocks.entry(*k).or_insert(v.clone());
@@ -366,7 +367,7 @@ impl RelooperState {
         }
         let handled_blocks = handled_blocks;
 
-        let follow_blocks: HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>> = blocks
+        let follow_blocks: StructuredBlocks = blocks
             .into_iter()
             .filter(|&(lbl, _)| !handled_blocks.contains_key(&lbl))
             .collect();

@@ -52,6 +52,14 @@ fn main() {
             .long("reloop-cfgs")
             .help("Translate function bodies using a CFG/Relooper approach")
             .takes_value(false))
+        .arg(Arg::with_name("no-simplify-structures")
+            .long("no-simplify-structures")
+            .help("Do not run a pass to simplify structures")
+            .takes_value(false))
+        .arg(Arg::with_name("use-c-loop-info")
+            .long("use-c-loop-info")
+            .help("Keep and use information about C loops")
+            .takes_value(false))
         .arg(Arg::with_name("dump-function-cfgs")
             .long("ddump-function-cfgs")
             .help("Dumps into files DOT visualizations of the CFGs of every function")
@@ -91,6 +99,8 @@ fn main() {
     let dump_typed_context = matches.is_present("dump-typed-clang-ast");
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
     let reloop_cfgs = matches.is_present("reloop-cfgs");
+    let use_c_loop_info = matches.is_present("use-c-loop-info");
+    let simplify_structures = !matches.is_present("no-simplify-structures");
     let dump_function_cfgs = matches.is_present("dump-function-cfgs");
     let dump_structures = matches.is_present("dump-structures");
     let debug_labels = matches.is_present("debug-labels");
@@ -155,6 +165,8 @@ fn main() {
         cross_check_configs,
         prefix_function_names,
         translate_entry,
+        use_c_loop_info,
+        simplify_structures,
     ));
 }
 

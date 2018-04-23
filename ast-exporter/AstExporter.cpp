@@ -201,6 +201,15 @@ public:
     
     // definition below due to recursive call into AST translator
     void VisitRecordType(const RecordType *T);
+
+    void VisitVectorType(const clang::VectorType *T) {
+        auto t = T->desugar();
+        auto qt = encodeQualType(t);
+        encodeType(T, TagVectorType, [qt](CborEncoder *local){
+            cbor_encode_uint(local, qt);
+        });
+        VisitQualType(t);
+    }
     
     void VisitBuiltinType(const BuiltinType *T) {
         TypeTag tag;
