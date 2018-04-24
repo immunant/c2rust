@@ -551,6 +551,15 @@ impl CExprKind {
     pub fn get_type(&self) -> CTypeId {
         self.get_qual_type().ctype
     }
+
+    /// Try to determine the truthiness or falsiness of the expression. Return `None` if we can't
+    /// say anything.
+    pub fn get_bool(&self) -> Option<bool> {
+        match *self{
+            CExprKind::Literal(_, ref lit) => Some(lit.get_bool()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -689,6 +698,19 @@ pub enum CLiteral {
     Character(u64),
     Floating(f64),
     String(Vec<u8>, u8), // Literal bytes and unit byte width
+}
+
+impl CLiteral {
+    /// Determine the truthiness or falsiness of the literal.
+    pub fn get_bool(&self) -> bool {
+        match *self{
+            CLiteral::Integer(x) => x != 0u64,
+            CLiteral::Character(x) => x != 0u64,
+            CLiteral::Floating(x) => x != 0f64,
+            _ => true
+
+        }
+    }
 }
 
 /// Represents a constant integer expression as used in a case expression

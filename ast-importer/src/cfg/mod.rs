@@ -967,9 +967,17 @@ impl CfgBuilder {
 
                 // Condition
                 let WithStmts { stmts, val } = translator.convert_condition(true, condition, false)?;
+                let is_infinite = translator.ast_context[condition].kind.get_bool().unwrap_or(false);
                 let mut cond_wip = self.new_wip_block(cond_entry);
                 cond_wip.extend(stmts);
-                self.add_wip_block(cond_wip, Branch(val, body_entry, next_entry));
+                self.add_wip_block(
+                    cond_wip,
+                    if is_infinite {
+                        Jump(body_entry)
+                    } else {
+                        Branch(val, body_entry, next_entry)
+                    },
+                );
 
                 // Body
                 self.break_labels.push(next_entry);
@@ -1012,9 +1020,17 @@ impl CfgBuilder {
 
                 // Condition
                 let WithStmts { stmts, val } = translator.convert_condition(true, condition, false)?;
+                let is_infinite = translator.ast_context[condition].kind.get_bool().unwrap_or(false);
                 let mut cond_wip = self.new_wip_block(cond_entry);
                 cond_wip.extend(stmts);
-                self.add_wip_block(cond_wip, Branch(val, body_entry, next_entry));
+                self.add_wip_block(
+                    cond_wip,
+                    if is_infinite {
+                        Jump(body_entry)
+                    } else {
+                        Branch(val, body_entry, next_entry)
+                    },
+                );
 
                 self.close_loop();
 
@@ -1048,9 +1064,17 @@ impl CfgBuilder {
                     // Condition
                     if let Some(cond) = condition {
                         let WithStmts { stmts, val } = translator.convert_condition(true, cond, false)?;
+                        let is_infinite = translator.ast_context[cond].kind.get_bool().unwrap_or(false);
                         let mut cond_wip = slf.new_wip_block(cond_entry);
                         cond_wip.extend(stmts);
-                        slf.add_wip_block(cond_wip, Branch(val, body_entry, next_label));
+                        slf.add_wip_block(
+                            cond_wip,
+                            if is_infinite {
+                                Jump(body_entry)
+                            } else {
+                                Branch(val, body_entry, next_label)
+                            },
+                        );
                     } else {
                         slf.add_block(cond_entry, BasicBlock::new_jump(body_entry));
                     }
