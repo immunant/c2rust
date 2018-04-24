@@ -1573,7 +1573,20 @@ impl Translation {
             }
         };
 
-        Ok(mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "read_volatile"]), vec![addr_lhs]))
+        // We explicitly annotate the type of pointer we're reading from
+        // in order to avoid omitted bit-casts to const from causing the
+        // wrong type to be inferred via the result of the pointer.
+        let mut path_parts: Vec<PathSegment> = vec![];
+        for elt in vec!["", "std", "ptr"] {
+            path_parts.push(mk().path_segment(elt))
+        }
+        let elt_ty = self.convert_type(lhs_type.ctype)?;
+        let ty_params = mk().angle_bracketed_param_types(vec![elt_ty]);
+        let elt = mk().path_segment_with_params("read_volatile", ty_params);
+        path_parts.push(elt);
+
+        let read_volatile_expr = mk().path_expr(path_parts);
+        Ok(mk().call_expr(read_volatile_expr, vec![addr_lhs]))
     }
 
     /// If the referenced expression is a DeclRef inside an Unary or ImplicitCast node, return
