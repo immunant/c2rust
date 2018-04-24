@@ -9,6 +9,7 @@ pub fn reloop(
     mut store: DeclStmtStore,     // store of what to do with declarations
     simplify_structures: bool,    // simplify the output structure
     use_c_loop_info: bool,        // use the loop information in the CFG (slower, but better)
+    use_c_multiple_info: bool,    // use the multiple information in the CFG (slower, but better)
 ) -> (Vec<Stmt>, Vec<Structure<Stmt>>) {
 
     let entries = cfg.entries;
@@ -22,7 +23,8 @@ pub fn reloop(
 
     let mut relooped_with_decls: Vec<Structure<StmtOrDecl>> = vec![];
     let loop_info = if use_c_loop_info { Some(cfg.loops) } else { None };
-    let mut state = RelooperState::new(loop_info);
+    let multiple_info = if use_c_multiple_info { Some(cfg.multiples) } else { None };
+    let mut state = RelooperState::new(loop_info, multiple_info);
     state.relooper(entries, blocks, &mut relooped_with_decls);
 
     // These are declarations we need to lift
@@ -58,12 +60,23 @@ struct RelooperState {
 
     /// Information about loops
     loop_info: Option<LoopInfo<Label>>,
+
+    /// Information about multiples
+    multiple_info: Option<MultipleInfo<Label>>,
 }
 
 impl RelooperState {
 
-    pub fn new(loop_info: Option<LoopInfo<Label>>) -> Self {
-        RelooperState { scopes: vec![HashSet::new()], lifted: HashSet::new(), loop_info }
+    pub fn new(
+        loop_info: Option<LoopInfo<Label>>,
+        multiple_info: Option<MultipleInfo<Label>>,
+    ) -> Self {
+        RelooperState {
+            scopes: vec![HashSet::new()],
+            lifted: HashSet::new(),
+            loop_info,
+            multiple_info,
+        }
     }
 
     pub fn open_scope(&mut self) {
@@ -245,7 +258,48 @@ impl RelooperState {
             (predecessor_map, strict_reachable_from)
         };
 
-        if none_branch_to.is_empty() {
+        // Try to match an existing branch point (from the intial C). See `MultipleInfo` for more
+        // information on this.
+        let mut recognized_c_multiple = false;
+        if let Some(ref multiple_info) = self.multiple_info {
+
+            let entries_key = entries.iter().cloned().collect();
+            if let Some(&(join, ref arms)) = multiple_info.get_multiple(&entries_key) {
+                recognized_c_multiple = true;
+
+                for (entry, content) in arms {
+                    let mut to_visit: Vec<Label> = vec![*entry];
+                    let mut visited: HashSet<Label> = HashSet::new();
+
+                    while let Some(lbl) = to_visit.pop() {
+                        // Stop at things you've already seen or the join block
+                        if !visited.insert(lbl) || lbl == join {
+                            continue;
+                        }
+
+                        if let Some(bb) = blocks.get(&lbl) {
+
+                            // If this isn't something we are supposed to encounter, break and fail.
+                            if !content.contains(&lbl) {
+                                recognized_c_multiple = false;
+                                break;
+                            }
+
+                            to_visit.extend(bb.successors())
+                        }
+                    }
+
+                    // Check we've actually visited all of the expected content
+                    visited.remove(&join);
+                    if let Some(_) = visited.difference(content).next() {
+                        recognized_c_multiple = false;
+                    }
+                }
+            }
+        }
+
+
+        if none_branch_to.is_empty() && !recognized_c_multiple {
             let new_returns: HashSet<Label> = strict_reachable_from
                 .iter()
                 .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl))
@@ -267,7 +321,7 @@ impl RelooperState {
                 if let Some(loop_id) = loop_info.tightest_common_loop(must_be_in_loop) {
 
                     // Construct the target group of labels
-                    let mut desired_body: HashSet<Label> = loop_info.loops[&loop_id].0.clone();
+                    let mut desired_body: HashSet<Label> = loop_info.get_loop_contents(loop_id).clone();
                     desired_body.retain(|l| !entries.contains(l));
                     desired_body.retain(|l| !new_returns.contains(l));
 

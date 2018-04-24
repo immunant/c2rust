@@ -53,22 +53,32 @@ fn main() {
             .help("Translate function bodies using a CFG/Relooper approach")
             .takes_value(false))
         .arg(Arg::with_name("no-simplify-structures")
+            .requires("reloop-cfgs")
             .long("no-simplify-structures")
             .help("Do not run a pass to simplify structures")
             .takes_value(false))
         .arg(Arg::with_name("use-c-loop-info")
+            .requires("reloop-cfgs")
             .long("use-c-loop-info")
             .help("Keep and use information about C loops")
             .takes_value(false))
+        .arg(Arg::with_name("use-c-multiple-info")
+            .requires("reloop-cfgs")
+            .long("use-c-multiple-info")
+            .help("Keep and use information about C branches")
+            .takes_value(false))
         .arg(Arg::with_name("dump-function-cfgs")
+            .requires("reloop-cfgs")
             .long("ddump-function-cfgs")
             .help("Dumps into files DOT visualizations of the CFGs of every function")
             .takes_value(false))
         .arg(Arg::with_name("dump-structures")
+            .requires("reloop-cfgs")
             .long("ddump-structures")
             .help("Dumps out to STDERR the intermediate structures produced by relooper")
             .takes_value(false))
         .arg(Arg::with_name("debug-labels")
+            .requires("reloop-cfgs")
             .long("ddebug-labels")
             .help("Generate readable 'current_block' values in relooper")
             .takes_value(false))
@@ -90,6 +100,11 @@ fn main() {
             .help("Sets the input CBOR file to use")
             .required(true)
             .index(1))
+        .arg(Arg::with_name("invalid-code")
+            .long("invalid-code")
+            .help("How to handle violated invariants or invalid code")
+            .possible_values(&["panic", "compile_error"])
+            .default_value("compile_error"))
         .get_matches();
 
     let file = matches.value_of("INPUT").unwrap();
@@ -100,6 +115,7 @@ fn main() {
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
     let reloop_cfgs = matches.is_present("reloop-cfgs");
     let use_c_loop_info = matches.is_present("use-c-loop-info");
+    let use_c_multiple_info = matches.is_present("use-c-multiple-info");
     let simplify_structures = !matches.is_present("no-simplify-structures");
     let dump_function_cfgs = matches.is_present("dump-function-cfgs");
     let dump_structures = matches.is_present("dump-structures");
@@ -109,6 +125,11 @@ fn main() {
         .map(|vals| vals.collect::<Vec<_>>())
         .unwrap_or_default();
     let translate_asm = matches.is_present("translate-asm");
+    let panic_on_translator_failure = match matches.value_of("invalid-code") {
+        Some("panic") => true,
+        Some("compile_error") => false,
+        _ => panic!("Invalid option"),
+    };
 
     // Extract the untyped AST from the CBOR file 
     let untyped_context = match parse_untyped_ast(file) {
@@ -156,6 +177,7 @@ fn main() {
 
     println!("{}", translate(
         conv.typed_context,
+        panic_on_translator_failure,
         reloop_cfgs,
         dump_function_cfgs,
         dump_structures,
@@ -166,6 +188,7 @@ fn main() {
         prefix_function_names,
         translate_entry,
         use_c_loop_info,
+        use_c_multiple_info,
         simplify_structures,
     ));
 }
