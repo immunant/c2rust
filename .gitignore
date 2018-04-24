@@ -17,9 +17,10 @@ llvm.build*
 .python-version
 
 # cross-checks
-cross-checks/c-checks/clang-plugin/build
-cross-checks/libfakechecks/*.o
-cross-checks/libfakechecks/*.so
+/cross-checks/c-checks/clang-plugin/build
+/cross-checks/c-checks/clang-plugin/test
+/cross-checks/libfakechecks/*.o
+/cross-checks/libfakechecks/*.so
 
 # tests
 !tests

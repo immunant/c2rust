@@ -33,7 +33,9 @@ pub struct Translation {
     cross_checks: bool,
     translate_asm: bool,
     use_c_loop_info: bool,
+    use_c_multiple_info: bool,
     simplify_structures: bool,
+    panic_on_translator_failure: bool,
 }
 
 #[derive(Debug)]
@@ -237,6 +239,7 @@ fn prefix_names(translation: &mut Translation, prefix: &str) {
 
 pub fn translate(
     ast_context: TypedAstContext,
+    panic_on_translator_failure: bool,
     reloop_cfgs: bool,
     dump_function_cfgs: bool,
     dump_structures: bool,
@@ -247,11 +250,13 @@ pub fn translate(
     prefix_function_names: Option<&str>,
     translate_entry: bool,
     use_c_loop_info: bool,
+    use_c_multiple_info: bool,
     simplify_structures: bool,
 ) -> String {
 
     let mut t = Translation::new(
         ast_context,
+        panic_on_translator_failure,
         reloop_cfgs,
         dump_function_cfgs,
         dump_structures,
@@ -259,6 +264,7 @@ pub fn translate(
         cross_checks,
         translate_asm,
         use_c_loop_info,
+        use_c_multiple_info,
         simplify_structures,
     );
 
@@ -494,6 +500,7 @@ enum ConvertedDecl {
 impl Translation {
     pub fn new(
         ast_context: TypedAstContext,
+        panic_on_translator_failure: bool,
         reloop_cfgs: bool,
         dump_function_cfgs: bool,
         dump_structures: bool,
@@ -501,6 +508,7 @@ impl Translation {
         cross_checks: bool,
         translate_asm: bool,
         use_c_loop_info: bool,
+        use_c_multiple_info: bool,
         simplify_structures: bool,
     ) -> Translation {
         Translation {
@@ -508,6 +516,7 @@ impl Translation {
             foreign_items: vec![],
             type_converter: RefCell::new(TypeConverter::new()),
             ast_context,
+            panic_on_translator_failure,
             renamer: RefCell::new(Renamer::new(&[
                 // Keywords currently in use
                 "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn",
@@ -536,13 +545,18 @@ impl Translation {
             translate_asm,
             use_c_loop_info,
             simplify_structures,
+            use_c_multiple_info,
         }
     }
 
     // This node should _never_ show up in the final generated code. This is an easy way to notice
     // if it does.
-    pub fn panic() -> P<Expr> {
-        mk().mac_expr(mk().mac(vec!["compile_error"], vec![]))
+    pub fn panic(&self, msg: &str) -> P<Expr> {
+        let macro_name = if self.panic_on_translator_failure { "panic" } else { "compile_error" };
+        let macro_msg = vec![
+            Token::interpolated(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit(msg)))),
+        ].into_iter().collect::<TokenStream>();
+        mk().mac_expr(mk().mac(vec![macro_name], macro_msg))
     }
 
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
@@ -1066,6 +1080,7 @@ impl Translation {
                     store,
                     self.simplify_structures,
                     self.use_c_loop_info,
+                    self.use_c_multiple_info,
                 );
 
                 if self.dump_structures {
@@ -1887,7 +1902,7 @@ impl Translation {
 
                     Ok(cond.and_then(|c| WithStmts {
                         stmts: vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(els)))],
-                        val: Translation::panic(),
+                        val: self.panic("Conditional expression is not supposed to be used"),
                     }))
                 } else {
                     let then: P<Block> = lhs.to_block();
@@ -1906,7 +1921,10 @@ impl Translation {
                         mk().semi_stmt(
                             mk().ifte_expr(cond, mk().block(self.convert_expr(ExprUse::Unused,
                                                                               rhs, is_static)?.stmts), None as Option<P<Expr>>)));
-                    Ok(WithStmts { stmts: lhs.stmts, val: Translation::panic(), })
+                    Ok(WithStmts {
+                        stmts: lhs.stmts,
+                        val: self.panic("Binary conditional expression is not supposed to be used"),
+                    })
                 } else {
                     self.name_reference_write_read(lhs)?.result_map(|(_, lhs_val)| {
                         let cond = self.match_bool(true, ty.ctype, lhs_val.clone());
@@ -2098,7 +2116,8 @@ impl Translation {
                     // all side-effects (and a function call can always have side-effects)
                     stmts.push(mk().semi_stmt(call_expr));
 
-                    Ok(WithStmts { stmts, val: Translation::panic() })
+                    let val = self.panic("Function call expression is not supposed to be used");
+                    Ok(WithStmts { stmts, val })
                 } else {
                     Ok(WithStmts { stmts, val: call_expr })
                 }
@@ -3068,7 +3087,7 @@ impl Translation {
             (write, read, lhs_stmts)
         } else {
             let WithStmts { val: write, stmts: lhs_stmts } = self.name_reference_write(lhs)?;
-            (write, Translation::panic(), lhs_stmts)
+            (write, self.panic("Volatile value is not supposed to be read"), lhs_stmts)
         };
 
         let WithStmts { val: rhs, stmts: rhs_stmts } = rhs_translation;
