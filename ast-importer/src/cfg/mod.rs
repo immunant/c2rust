@@ -401,7 +401,9 @@ impl Cfg<Label, StmtOrDecl> {
             let ret_expr: Option<P<Expr>> = match ret {
                 ImplicitReturnType::Main => Some(mk().lit_expr(mk().int_lit(0, ""))),
                 ImplicitReturnType::Void => None as Option<P<Expr>>,
-                ImplicitReturnType::NoImplicitReturnType => Some(Translation::panic()), // TODO: this could be better
+                ImplicitReturnType::NoImplicitReturnType => Some(
+                    translator.panic("Reached end of non-void function without returning")
+                ),
             };
             body.push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(ret_expr))));
 
