@@ -33,6 +33,7 @@ pub struct Translation {
     cross_checks: bool,
     translate_asm: bool,
     use_c_loop_info: bool,
+    use_c_multiple_info: bool,
     simplify_structures: bool,
 }
 
@@ -247,6 +248,7 @@ pub fn translate(
     prefix_function_names: Option<&str>,
     translate_entry: bool,
     use_c_loop_info: bool,
+    use_c_multiple_info: bool,
     simplify_structures: bool,
 ) -> String {
 
@@ -259,6 +261,7 @@ pub fn translate(
         cross_checks,
         translate_asm,
         use_c_loop_info,
+        use_c_multiple_info,
         simplify_structures,
     );
 
@@ -501,6 +504,7 @@ impl Translation {
         cross_checks: bool,
         translate_asm: bool,
         use_c_loop_info: bool,
+        use_c_multiple_info: bool,
         simplify_structures: bool,
     ) -> Translation {
         Translation {
@@ -536,6 +540,7 @@ impl Translation {
             translate_asm,
             use_c_loop_info,
             simplify_structures,
+            use_c_multiple_info,
         }
     }
 
@@ -1066,6 +1071,7 @@ impl Translation {
                     store,
                     self.simplify_structures,
                     self.use_c_loop_info,
+                    self.use_c_multiple_info,
                 );
 
                 if self.dump_structures {

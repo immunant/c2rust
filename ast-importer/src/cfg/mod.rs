@@ -30,6 +30,7 @@ use std::ops::Deref;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use std::hash::Hash;
+use std::collections::BTreeSet;
 
 use translator::*;
 use c_ast::*;
@@ -37,6 +38,10 @@ use c_ast::*;
 pub mod relooper;
 pub mod structures;
 pub mod loops;
+pub mod multiples;
+
+use cfg::loops::*;
+use cfg::multiples::*;
 
 /// These labels identify basic blocks in a regular CFG.
 #[derive(Copy,Clone,PartialEq,Eq,PartialOrd,Ord,Debug,Hash)]
@@ -104,50 +109,6 @@ impl StructureLabel<StmtOrDecl> {
 }
 
 
-/// These IDs identify groups of basic blocks corresponding to loops in a CFG
-#[derive(Copy,Clone,PartialEq,Eq,PartialOrd,Ord,Debug,Hash)]
-pub struct LoopId(u64);
-
-impl LoopId {
-    fn pretty_print(&self) -> String {
-        let &LoopId(loop_id) = self;
-        format!("l_{}", loop_id)
-    }
-}
-
-/// Information about loops in a CFG
-#[derive(Clone,Debug)]
-struct LoopInfo<Lbl: Hash + Eq> {
-    /// Given a node, find the tightest enclosing loop
-    node_loops: HashMap<Lbl, LoopId>,
-
-    /// Given a loop, find all the nodes in it, along with the next tighest loop around it.
-    loops: HashMap<LoopId, (HashSet<Lbl>, Option<LoopId>)>,
-}
-
-impl<Lbl: Hash + Eq> LoopInfo<Lbl> {
-    pub fn new() -> Self {
-        LoopInfo { node_loops: HashMap::new(), loops: HashMap::new() }
-    }
-
-    /// Find the smallest possible loop that contains all of the items
-    pub fn tightest_common_loop<E: Iterator<Item=Lbl>>(&self, mut entries: E) -> Option<LoopId> {
-        let first = if let Some(f) = entries.next() { f } else { return None };
-
-        let mut loop_id = if let Some(i) = self.node_loops.get(&first) { *i } else { return None };
-
-        for entry in entries {
-            let (ref in_loop, parent_id) = self.loops[&loop_id];
-            while !in_loop.contains(&entry) {
-                loop_id = if let Some(i) = parent_id { i } else { return None };
-            }
-        }
-
-        return Some(loop_id);
-    }
-}
-
-
 /// These are the things that the relooper algorithm produces.
 #[derive(Clone,Debug)]
 pub enum Structure<Stmt> {
@@ -162,7 +123,7 @@ pub enum Structure<Stmt> {
         entries: HashSet<Label>,
         body: Vec<Structure<Stmt>>,
     },
-    /// Branching constructs??
+    /// Branching constructs
     Multiple {
         entries: HashSet<Label>,
         branches: HashMap<Label, Vec<Structure<Stmt>>>,
@@ -380,7 +341,7 @@ impl StmtOrDecl {
 
 /// A CFG graph of regular basic blocks.
 #[derive(Clone, Debug)]
-pub struct Cfg<Lbl: Eq + Hash, Stmt> {
+pub struct Cfg<Lbl: Ord + Hash, Stmt> {
     /// Entry point in the graph
     entries: HashSet<Lbl>,
 
@@ -389,6 +350,9 @@ pub struct Cfg<Lbl: Eq + Hash, Stmt> {
 
     /// Loops in the graph
     loops: LoopInfo<Lbl>,
+
+    /// Branching in the graph
+    multiples: MultipleInfo<Lbl>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -454,7 +418,7 @@ impl Cfg<Label, StmtOrDecl> {
 
 /// The polymorphism here is only to make it clear exactly how little these functions need to know
 /// about the actual contents of the CFG - we only actual call these on one monomorphic CFG type.
-impl<Lbl: Copy + Eq + Hash, Stmt> Cfg<Lbl, Stmt> {
+impl<Lbl: Copy + Ord + Hash, Stmt> Cfg<Lbl, Stmt> {
 
     /// Removes blocks that cannot be reached from the CFG
     pub fn prune_unreachable_blocks_mut(&mut self) -> () {
@@ -481,10 +445,8 @@ impl<Lbl: Copy + Eq + Hash, Stmt> Cfg<Lbl, Stmt> {
         };
 
         self.nodes.retain(|lbl, _| visited.contains(lbl));
-        self.loops.node_loops.retain(|lbl, _| visited.contains(lbl));
-        for (_, &mut (ref mut set, _)) in self.loops.loops.iter_mut() {
-            set.retain(|lbl| visited.contains(lbl));
-        }
+        self.loops.filter_unreachable(&visited);
+        // TODO mutliple info
     }
 
     /// Removes empty blocks whose terminator is just a `Jump` by merging them with the block they
@@ -548,11 +510,8 @@ impl<Lbl: Copy + Eq + Hash, Stmt> Cfg<Lbl, Stmt> {
             }
         }
 
-        // We filter out blocks that were deleted from loop info
-        self.loops.node_loops.retain(|lbl, _| actual_rewrites.get(lbl).is_none());
-        for (_, &mut (ref mut set, _)) in self.loops.loops.iter_mut() {
-            set.retain(|lbl| actual_rewrites.get(lbl).is_none());
-        }
+        self.loops.rewrite_blocks(&actual_rewrites);
+        self.multiples.rewrite_blocks(&actual_rewrites);
     }
 
     /// Given an empty `BasicBlock` that ends in a `Jump`, return the target label. In all other
@@ -598,6 +557,12 @@ struct CfgBuilder {
     /// When we exit that loop, we pop the vector, add all the labels to the next entry in the
     /// `Vec`, and also add the loop to the CFG.
     loops: Vec<(LoopId, Vec<Label>)>,
+
+    /// Multiple branching we are currently in. Every time we enter another arm of a branching
+    /// construct, we add it into here. When we finish processing the branch, we remove it.
+    ///
+    /// NOTE: we technically don't need the `Label` here - it is just for debugging.
+    multiples: Vec<(Label, Vec<Label>)>,
 }
 
 /// Stores information about translating C declarations to Rust statements. When seeing a C
@@ -779,6 +744,7 @@ impl CfgBuilder {
         }
 
         self.loops.last_mut().map(|&mut (_, ref mut loop_vec)| loop_vec.push(lbl));
+        self.multiples.last_mut().map(|&mut (_, ref mut arm_vec)| arm_vec.push(lbl));
     }
 
     /// Create a basic block from a WIP block by tacking on the right terminator. Once this is done,
@@ -806,19 +772,27 @@ impl CfgBuilder {
     /// Close a loop
     fn close_loop(&mut self) -> () {
         let (loop_id, loop_contents) = self.loops.pop().expect("No loop to close.");
-
-
-        for elem in &loop_contents {
-            if !self.graph.loops.node_loops.contains_key(elem) {
-                self.graph.loops.node_loops.insert(*elem, loop_id);
-            }
-        }
+        let outer_loop_id: Option<LoopId> = self.loops.last().map(|&(i,_)| i);
 
         // Add the loop contents to the outer loop (if there is one)
         self.loops.last_mut().map(|&mut (_, ref mut outer_loop)| outer_loop.extend(loop_contents.iter()));
 
-        let outer_loop_id: Option<LoopId> = self.loops.last().map(|&(i,_)| i);
-        self.graph.loops.loops.insert(loop_id, (loop_contents.into_iter().collect(), outer_loop_id));
+        self.graph.loops.add_loop(loop_id, loop_contents.into_iter().collect(), outer_loop_id);
+    }
+
+    /// Open an arm
+    fn open_arm(&mut self, arm_start: Label) -> () {
+        self.multiples.push((arm_start, vec![]));
+    }
+
+    /// Close an arm
+    fn close_arm(&mut self) -> (Label, HashSet<Label>) {
+        let (arm_start, arm_contents) = self.multiples.pop().expect("No arm to close.");
+
+        // Add the arm contents to the outer arm (if there is one)
+        self.multiples.last_mut().map(|&mut (_, ref mut outer_arm)| outer_arm.extend(arm_contents.iter()));
+
+        (arm_start, arm_contents.into_iter().collect())
     }
 
     /// REMARK: make sure that basic blocks are constructed either entirely inside or entirely
@@ -865,7 +839,7 @@ impl CfgBuilder {
     /// Generate a fresh (synthetic) label.
     fn fresh_loop_id(&mut self) -> LoopId {
         self.prev_loop_id += 1;
-        LoopId(self.prev_loop_id)
+        LoopId::new(self.prev_loop_id)
     }
 
     /// Create a new `CfgBuilder` with a single entry label.
@@ -877,6 +851,7 @@ impl CfgBuilder {
                 entries,
                 nodes: HashMap::new(),
                 loops: LoopInfo::new(),
+                multiples: MultipleInfo::new(),
             },
 
             prev_label: 0,
@@ -890,6 +865,7 @@ impl CfgBuilder {
             decls_seen: DeclStmtStore::new(),
 
             loops: vec![],
+            multiples: vec![],
         }
     }
 
@@ -952,14 +928,18 @@ impl CfgBuilder {
                 wip.extend(stmts);
                 self.add_wip_block(wip, Branch(val, then_entry, else_entry));
 
+
                 // Then case
+                self.open_arm(then_entry);
                 let then_wip = self.new_wip_block(then_entry);
                 let then_stuff = self.convert_stmt_help(translator, true_variant, then_wip)?;
                 if let Some(wip_then) = then_stuff {
                     self.add_wip_block(wip_then, Jump(next_entry));
                 }
+                let then_arm = self.close_arm();
 
                 // Else case
+                self.open_arm(else_entry);
                 if let Some(false_var) = false_variant {
                     let else_wip = self.new_wip_block(else_entry);
                     let else_stuff = self.convert_stmt_help(translator, false_var, else_wip)?;
@@ -967,6 +947,9 @@ impl CfgBuilder {
                         self.add_wip_block(wip_else, Jump(next_entry));
                     }
                 };
+                let else_arm = self.close_arm();
+
+                self.graph.multiples.add_multiple(next_entry, vec![then_arm, else_arm]);
 
                 // Return
                 Ok(Some(self.new_wip_block(next_entry)))
@@ -1261,7 +1244,7 @@ impl CfgBuilder {
                 Ok(Some(self.new_wip_block(next_label)))
             }
 
-            CStmtKind::Asm{is_volatile, ref asm, ref inputs, ref outputs, ref clobbers} => {
+            CStmtKind::Asm { is_volatile, ref asm, ref inputs, ref outputs, ref clobbers } => {
                 wip.extend(translator.convert_asm(is_volatile, asm, inputs, outputs, clobbers)?);
                 Ok(Some(wip))
             }
@@ -1347,12 +1330,7 @@ impl Cfg<Label,StmtOrDecl> {
             if show_loops {
                 file.write(b"  ")?;
 
-                let mut loop_id_opt: Option<LoopId> = self.loops.node_loops.get(lbl).cloned();
-                let mut loop_ids = vec![];
-                while let Some(loop_id) = loop_id_opt {
-                    loop_ids.push(loop_id);
-                    loop_id_opt = self.loops.loops[&loop_id].1;
-                }
+                let loop_ids: Vec<LoopId> = self.loops.enclosing_loops(lbl);
 
                 closing_braces = loop_ids.len();
                 for loop_id in loop_ids.iter().rev() {

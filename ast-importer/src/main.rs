@@ -60,6 +60,10 @@ fn main() {
             .long("use-c-loop-info")
             .help("Keep and use information about C loops")
             .takes_value(false))
+        .arg(Arg::with_name("use-c-multiple-info")
+            .long("use-c-multiple-info")
+            .help("Keep and use information about C branches")
+            .takes_value(false))
         .arg(Arg::with_name("dump-function-cfgs")
             .long("ddump-function-cfgs")
             .help("Dumps into files DOT visualizations of the CFGs of every function")
@@ -100,6 +104,7 @@ fn main() {
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
     let reloop_cfgs = matches.is_present("reloop-cfgs");
     let use_c_loop_info = matches.is_present("use-c-loop-info");
+    let use_c_multiple_info = matches.is_present("use-c-multiple-info");
     let simplify_structures = !matches.is_present("no-simplify-structures");
     let dump_function_cfgs = matches.is_present("dump-function-cfgs");
     let dump_structures = matches.is_present("dump-structures");
@@ -166,6 +171,7 @@ fn main() {
         prefix_function_names,
         translate_entry,
         use_c_loop_info,
+        use_c_multiple_info,
         simplify_structures,
     ));
 }
