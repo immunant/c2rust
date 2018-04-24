@@ -1,0 +1,33 @@
+os: osx
+osx_image: xcode9.3 # request macOS 10.13
+sudo: enabled
+
+# TODO: figure out why submodule checkout fails
+git:
+  submodules: false
+
+language: c
+
+before_install:
+  - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
+  - HOMEBREW_NO_AUTO_UPDATE=1 brew install ccache ninja
+  - export PATH="/usr/local/opt/ccache/libexec:$PATH"
+  - sudo -H pip3 install --upgrade pip
+  - sudo -H pip3 install plumbum colorlog typing cbor cbor2 pylint psutil
+
+install:
+  - ./scripts/provision_rust.sh
+  - . ~/.cargo/env
+
+# run everything as one command to terminate on first failure
+script: |
+  python3 ./scripts/build_translator.py &&
+  python3 ./scripts/test_translator.py ./tests &&
+  python3 ./scripts/test_cross_checks.py
+
+notifications:
+  slack:
+    secure: PGx/GuDpc+o6RjGibb90fy+GokJ3H/SnsJ5ci4MZQSMwraWkoZapj2Z6DucfWmgDUs2gKa6edM6VWlnON2bxtNtygmaEN4ksR2xlNm5Ap8ZNGFyd00xVopdvnsg8F0G8qnre0No6MUmpcGoDiRuegoF2NucJOsTbxrIggLoIoMdPsz4vP0YDqQ967g77qHt1HJshItnMFgwbRQq/fGUJvikVJ8vkqTKFfDapk+Aq1UtD8FBiTRLLB8IpM7Tgqe/eZRMNKZrOGnX3dBp8hRAIZKH5153AuubrVeKY3e+U9jhcUh55W7vpGMDdv7qWH6KYp4nM3E1xin0pROK+tQI4j+ZouJZrXIdz++htpOKwdKuVUc81eZeGTW0+423NwblKXe3xeK9Nc2F9v4df1INJTkKkZnu026G+/+uVQKMikeA5aQvgXHyJYsHqMjXDhBPZHvFlu8aIcIVHnbDW4Qwo2mEUqPtz65elW5FfRTth+Ld8g9y3rGrAJaE/MB0XKa4i33s0bzSKxnTUkyvNfXb9JIHhl8cAfSGEAgGaeG1Q8uMcO5SGtXinZsNBL+z4jgYzGTKya83O/Zrfly12lA3JoHA3H/VlV9z1thZ/d4JrXRbUrbBN42vhk4vtiUja1yqlViZ8B7f0R5vLeOvebooBSrxVQ/1P79IEbPia3TaIpv4=
+    on_success: change
+    on_failure: always
+  email: false
