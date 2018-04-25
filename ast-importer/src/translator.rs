@@ -34,6 +34,7 @@ pub struct TranslationConfig {
     pub use_c_multiple_info: bool,
     pub simplify_structures: bool,
     pub panic_on_translator_failure: bool,
+    pub emit_module: bool,
 }
 
 pub struct Translation {
@@ -371,60 +372,61 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
     };
 
     to_string(|s| {
+        if !t.tcfg.emit_module {
+            let mut features =
+                vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut", "extern_types", "asm"]),
+                     ("allow"  ,vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
+                                     "dead_code", "mutable_transmutes", "unused_mut"]),
+                ];
+            if t.tcfg.cross_checks {
+                features.push(("feature", vec!["plugin", "custom_attribute"]));
+                features.push(("cross_check", vec!["yes"]));
+            }
 
-        let mut features =
-            vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut", "extern_types", "asm"]),
-                 ("allow"  ,vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
-                                 "dead_code", "mutable_transmutes", "unused_mut"]),
-            ];
-        if t.tcfg.cross_checks {
-            features.push(("feature", vec!["plugin", "custom_attribute"]));
-            features.push(("cross_check", vec!["yes"]));
-        }
+            for (key,values) in features {
+                for value in values {
+                    s.print_attribute(&mk().attribute::<_, TokenStream>(
+                        AttrStyle::Inner,
+                        vec![key],
+                        vec![
+                            Token::OpenDelim(DelimToken::Paren),
+                            Token::Ident(mk().ident(value)),
+                            Token::CloseDelim(DelimToken::Paren),
+                        ].into_iter().collect(),
+                    ))?
+                }
+            }
 
-        for (key,values) in features {
-            for value in values {
+            if t.tcfg.cross_checks {
+                let mut xcheck_attr_args = String::new();
+                for ref config_file in &t.tcfg.cross_check_configs {
+                    if !xcheck_attr_args.is_empty() {
+                        xcheck_attr_args.push(',');
+                    }
+                    xcheck_attr_args.push_str("config_file=\"");
+                    xcheck_attr_args.push_str(config_file);
+                    xcheck_attr_args.push('"');
+                }
+                let xcheck_attr = format!("cross_check_plugin({})", xcheck_attr_args);
                 s.print_attribute(&mk().attribute::<_, TokenStream>(
                     AttrStyle::Inner,
-                    vec![key],
+                    vec!["plugin"],
                     vec![
                         Token::OpenDelim(DelimToken::Paren),
-                        Token::Ident(mk().ident(value)),
+                        Token::Ident(mk().ident(xcheck_attr)),
                         Token::CloseDelim(DelimToken::Paren),
                     ].into_iter().collect(),
                 ))?
             }
-        }
 
-        if t.tcfg.cross_checks {
-            let mut xcheck_attr_args = String::new();
-            for ref config_file in &t.tcfg.cross_check_configs {
-                if !xcheck_attr_args.is_empty() {
-                    xcheck_attr_args.push(',');
-                }
-                xcheck_attr_args.push_str("config_file=\"");
-                xcheck_attr_args.push_str(config_file);
-                xcheck_attr_args.push('"');
+            // Add `extern crate libc` to the top of the file
+            s.print_item(&mk().extern_crate_item("libc", None))?;
+            if t.tcfg.cross_checks {
+                s.print_item(&mk().single_attr("macro_use")
+                                  .extern_crate_item("cross_check_derive", None))?;
+                s.print_item(&mk().single_attr("macro_use")
+                                  .extern_crate_item("cross_check_runtime", None))?;
             }
-            let xcheck_attr = format!("cross_check_plugin({})", xcheck_attr_args);
-            s.print_attribute(&mk().attribute::<_, TokenStream>(
-                AttrStyle::Inner,
-                vec!["plugin"],
-                vec![
-                    Token::OpenDelim(DelimToken::Paren),
-                    Token::Ident(mk().ident(xcheck_attr)),
-                    Token::CloseDelim(DelimToken::Paren),
-                ].into_iter().collect(),
-            ))?
-        }
-
-        // Add `extern crate libc` to the top of the file
-        s.print_item(&mk().extern_crate_item("libc", None))?;
-        if t.tcfg.cross_checks {
-            s.print_item(&mk().single_attr("macro_use")
-                              .extern_crate_item("cross_check_derive", None))?;
-            s.print_item(&mk().single_attr("macro_use")
-                              .extern_crate_item("cross_check_runtime", None))?;
         }
 
         if !t.foreign_items.is_empty() {

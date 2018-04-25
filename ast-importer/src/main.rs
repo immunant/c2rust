@@ -106,6 +106,10 @@ fn main() {
             .help("How to handle violated invariants or invalid code")
             .possible_values(&["panic", "compile_error"])
             .default_value("compile_error"))
+        .arg(Arg::with_name("emit-module")
+             .long("emit-module")
+             .help("Emit the .rs file as a module instead of a crate, excluding the crate preamble")
+             .takes_value(false))
         .get_matches();
 
     // Build a TranslationConfig from the command line
@@ -125,6 +129,7 @@ fn main() {
         use_c_loop_info:        matches.is_present("use-c-loop-info"),
         use_c_multiple_info:    matches.is_present("use-c-multiple-info"),
         simplify_structures:    !matches.is_present("no-simplify-structures"),
+        emit_module:            matches.is_present("emit-module"),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
                 Some("panic") => true,
