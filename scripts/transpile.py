@@ -76,6 +76,7 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
 def transpile_files(cc_db: TextIO,
                     jobs: int,
                     filter: str = None,
+                    extra_impo_args: List[str] = [],
                     import_only: bool = False,
                     verbose: bool = False) -> bool:
     """
@@ -117,10 +118,10 @@ def transpile_files(cc_db: TextIO,
             logging.info(" importing ast from %s", cbor_basename)
             translation_cmd = "RUST_BACKTRACE=1 \\\n"
             translation_cmd += "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
-            translation_cmd += str(ast_impo[cbor_file])
+            translation_cmd += str(ast_impo[cbor_file, extra_impo_args])
             logging.debug("translation command:\n %s", translation_cmd)
             try:
-                retcode, stdout, stderr = ast_impo[cbor_file].run()
+                retcode, stdout, stderr = ast_impo[cbor_file, extra_impo_args].run()
 
                 e = "Expected file suffix `.c.cbor`; actual: " + cbor_basename
                 assert cbor_file.endswith(".c.cbor"), e
@@ -186,6 +187,7 @@ def main():
     transpile_files(args.commands_json,
                     args.jobs,
                     args.filter,
+                    [],
                     args.import_only,
                     args.verbose)
 
