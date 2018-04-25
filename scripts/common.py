@@ -459,7 +459,8 @@ def export_ast_from(ast_expo: pb.commands.BaseCommand,
         cc_db_dir = os.path.dirname(cc_db_path)
         args = ["-p", cc_db_dir, filepath]
         # this is required to locate system libraries
-        args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
+        ### TODO: do we need this on Mac???
+        ###args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
 
         # run ast-exporter
         logging.info("exporting ast from %s", os.path.basename(filename))
