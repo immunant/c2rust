@@ -18,24 +18,34 @@ use dtoa;
 
 use cfg;
 
+/// Configuration settings for the translation process
+#[derive(Default, Debug)]
+pub struct TranslationConfig {
+    pub reloop_cfgs: bool,
+    pub dump_function_cfgs: bool,
+    pub dump_structures: bool,
+    pub debug_relooper_labels: bool,
+    pub cross_checks: bool,
+    pub cross_check_configs: Vec<String>,
+    pub prefix_function_names: Option<String>,
+    pub translate_asm: bool,
+    pub translate_entry: bool,
+    pub use_c_loop_info: bool,
+    pub use_c_multiple_info: bool,
+    pub simplify_structures: bool,
+    pub panic_on_translator_failure: bool,
+    pub emit_module: bool,
+}
+
 pub struct Translation {
     pub items: Vec<P<Item>>,
     pub foreign_items: Vec<ForeignItem>,
     type_converter: RefCell<TypeConverter>,
     pub ast_context: TypedAstContext,
+    pub tcfg: TranslationConfig,
     renamer: RefCell<Renamer<CDeclId>>,
     loops: LoopContext,
-    reloop_cfgs: bool,
     zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
-    dump_function_cfgs: bool,
-    dump_structures: bool,
-    debug_relooper_labels: bool,
-    cross_checks: bool,
-    translate_asm: bool,
-    use_c_loop_info: bool,
-    use_c_multiple_info: bool,
-    simplify_structures: bool,
-    panic_on_translator_failure: bool,
 }
 
 #[derive(Debug)]
@@ -223,52 +233,24 @@ pub fn signed_int_expr(value: i64) -> P<Expr> {
 }
 
 // This should only be used for tests
-fn prefix_names(translation: &mut Translation, prefix: &str) {
+fn prefix_names(translation: &mut Translation, prefix: String) {
     for (&decl_id, ref mut decl) in &mut translation.ast_context.c_decls {
         match decl.kind {
             CDeclKind::Function { ref mut name, ref body, .. } if body.is_some() => {
-                name.insert_str(0, prefix);
+                name.insert_str(0, &prefix);
 
                 translation.renamer.borrow_mut().insert(decl_id, &name);
             },
-            CDeclKind::Variable { ref mut ident, is_static, .. } if is_static => ident.insert_str(0, prefix),
+            CDeclKind::Variable { ref mut ident, is_static, .. } if is_static => ident.insert_str(0, &prefix),
             _ => (),
         }
     }
 }
 
-pub fn translate(
-    ast_context: TypedAstContext,
-    panic_on_translator_failure: bool,
-    reloop_cfgs: bool,
-    dump_function_cfgs: bool,
-    dump_structures: bool,
-    debug_relooper_labels: bool,
-    cross_checks: bool,
-    translate_asm: bool,
-    cross_check_configs: Vec<&str>,
-    prefix_function_names: Option<&str>,
-    translate_entry: bool,
-    use_c_loop_info: bool,
-    use_c_multiple_info: bool,
-    simplify_structures: bool,
-) -> String {
+pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> String {
+    let mut t = Translation::new(ast_context, tcfg);
 
-    let mut t = Translation::new(
-        ast_context,
-        panic_on_translator_failure,
-        reloop_cfgs,
-        dump_function_cfgs,
-        dump_structures,
-        debug_relooper_labels,
-        cross_checks,
-        translate_asm,
-        use_c_loop_info,
-        use_c_multiple_info,
-        simplify_structures,
-    );
-
-    if !translate_entry {
+    if !t.tcfg.translate_entry {
         t.ast_context.c_main = None;
     }
 
@@ -289,7 +271,7 @@ pub fn translate(
     }
 
     // Used for testing; so that we don't overlap with C function names
-    if let Some(prefix) = prefix_function_names {
+    if let Some(prefix) = t.tcfg.prefix_function_names.clone() {
         prefix_names(&mut t, prefix);
     }
 
@@ -390,60 +372,61 @@ pub fn translate(
     };
 
     to_string(|s| {
+        if !t.tcfg.emit_module {
+            let mut features =
+                vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut", "extern_types", "asm"]),
+                     ("allow"  ,vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
+                                     "dead_code", "mutable_transmutes", "unused_mut"]),
+                ];
+            if t.tcfg.cross_checks {
+                features.push(("feature", vec!["plugin", "custom_attribute"]));
+                features.push(("cross_check", vec!["yes"]));
+            }
 
-        let mut features =
-            vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut", "extern_types", "asm"]),
-                 ("allow"  ,vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
-                                 "dead_code", "mutable_transmutes", "unused_mut"]),
-            ];
-        if cross_checks {
-            features.push(("feature", vec!["plugin", "custom_attribute"]));
-            features.push(("cross_check", vec!["yes"]));
-        }
+            for (key,values) in features {
+                for value in values {
+                    s.print_attribute(&mk().attribute::<_, TokenStream>(
+                        AttrStyle::Inner,
+                        vec![key],
+                        vec![
+                            Token::OpenDelim(DelimToken::Paren),
+                            Token::Ident(mk().ident(value)),
+                            Token::CloseDelim(DelimToken::Paren),
+                        ].into_iter().collect(),
+                    ))?
+                }
+            }
 
-        for (key,values) in features {
-            for value in values {
+            if t.tcfg.cross_checks {
+                let mut xcheck_attr_args = String::new();
+                for ref config_file in &t.tcfg.cross_check_configs {
+                    if !xcheck_attr_args.is_empty() {
+                        xcheck_attr_args.push(',');
+                    }
+                    xcheck_attr_args.push_str("config_file=\"");
+                    xcheck_attr_args.push_str(config_file);
+                    xcheck_attr_args.push('"');
+                }
+                let xcheck_attr = format!("cross_check_plugin({})", xcheck_attr_args);
                 s.print_attribute(&mk().attribute::<_, TokenStream>(
                     AttrStyle::Inner,
-                    vec![key],
+                    vec!["plugin"],
                     vec![
                         Token::OpenDelim(DelimToken::Paren),
-                        Token::Ident(mk().ident(value)),
+                        Token::Ident(mk().ident(xcheck_attr)),
                         Token::CloseDelim(DelimToken::Paren),
                     ].into_iter().collect(),
                 ))?
             }
-        }
 
-        if cross_checks {
-            let mut xcheck_attr_args = String::new();
-            for ref config_file in &cross_check_configs {
-                if !xcheck_attr_args.is_empty() {
-                    xcheck_attr_args.push(',');
-                }
-                xcheck_attr_args.push_str("config_file=\"");
-                xcheck_attr_args.push_str(config_file);
-                xcheck_attr_args.push('"');
+            // Add `extern crate libc` to the top of the file
+            s.print_item(&mk().extern_crate_item("libc", None))?;
+            if t.tcfg.cross_checks {
+                s.print_item(&mk().single_attr("macro_use")
+                                  .extern_crate_item("cross_check_derive", None))?;
+                s.print_item(&mk().single_attr("macro_use")
+                                  .extern_crate_item("cross_check_runtime", None))?;
             }
-            let xcheck_attr = format!("cross_check_plugin({})", xcheck_attr_args);
-            s.print_attribute(&mk().attribute::<_, TokenStream>(
-                AttrStyle::Inner,
-                vec!["plugin"],
-                vec![
-                    Token::OpenDelim(DelimToken::Paren),
-                    Token::Ident(mk().ident(xcheck_attr)),
-                    Token::CloseDelim(DelimToken::Paren),
-                ].into_iter().collect(),
-            ))?
-        }
-
-        // Add `extern crate libc` to the top of the file
-        s.print_item(&mk().extern_crate_item("libc", None))?;
-        if cross_checks {
-            s.print_item(&mk().single_attr("macro_use")
-                              .extern_crate_item("cross_check_derive", None))?;
-            s.print_item(&mk().single_attr("macro_use")
-                              .extern_crate_item("cross_check_runtime", None))?;
         }
 
         if !t.foreign_items.is_empty() {
@@ -498,25 +481,13 @@ enum ConvertedDecl {
 }
 
 impl Translation {
-    pub fn new(
-        ast_context: TypedAstContext,
-        panic_on_translator_failure: bool,
-        reloop_cfgs: bool,
-        dump_function_cfgs: bool,
-        dump_structures: bool,
-        debug_relooper_labels: bool,
-        cross_checks: bool,
-        translate_asm: bool,
-        use_c_loop_info: bool,
-        use_c_multiple_info: bool,
-        simplify_structures: bool,
-    ) -> Translation {
+    pub fn new(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Translation {
         Translation {
             items: vec![],
             foreign_items: vec![],
             type_converter: RefCell::new(TypeConverter::new()),
             ast_context,
-            panic_on_translator_failure,
+            tcfg,
             renamer: RefCell::new(Renamer::new(&[
                 // Keywords currently in use
                 "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn",
@@ -537,22 +508,13 @@ impl Translation {
             ])),
             loops: LoopContext::new(),
             zero_inits: RefCell::new(HashMap::new()),
-            reloop_cfgs,
-            dump_function_cfgs,
-            dump_structures,
-            debug_relooper_labels,
-            cross_checks,
-            translate_asm,
-            use_c_loop_info,
-            simplify_structures,
-            use_c_multiple_info,
         }
     }
 
     // This node should _never_ show up in the final generated code. This is an easy way to notice
     // if it does.
     pub fn panic(&self, msg: &str) -> P<Expr> {
-        let macro_name = if self.panic_on_translator_failure { "panic" } else { "compile_error" };
+        let macro_name = if self.tcfg.panic_on_translator_failure { "panic" } else { "compile_error" };
         let macro_msg = vec![
             Token::interpolated(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit(msg)))),
         ].into_iter().collect::<TokenStream>();
@@ -560,7 +522,7 @@ impl Translation {
     }
 
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
-        if self.cross_checks {
+        if self.tcfg.cross_checks {
             mk.call_attr("cross_check", args)
         } else { mk }
     }
@@ -1062,14 +1024,14 @@ impl Translation {
 
         // Function body scope
         self.with_scope(|| {
-            if self.reloop_cfgs {
+            if self.tcfg.reloop_cfgs {
                 let (graph, store) = cfg::Cfg::from_stmt(self, body_id, ret)?;
 
-                if self.dump_function_cfgs {
+                if self.tcfg.dump_function_cfgs {
                     graph
                         .dump_dot_graph(
                             &self.ast_context, &store,
-                            self.use_c_loop_info,
+                            self.tcfg.use_c_loop_info,
                             format!("{}_{}.dot", "cfg", name)
                         )
                         .expect("Failed to write CFG .dot file");
@@ -1078,12 +1040,12 @@ impl Translation {
                 let (lifted_stmts, relooped) = cfg::relooper::reloop(
                     graph,
                     store,
-                    self.simplify_structures,
-                    self.use_c_loop_info,
-                    self.use_c_multiple_info,
+                    self.tcfg.simplify_structures,
+                    self.tcfg.use_c_loop_info,
+                    self.tcfg.use_c_multiple_info,
                 );
 
-                if self.dump_structures {
+                if self.tcfg.dump_structures {
                     eprintln!("Relooped structures:");
                     for s in &relooped {
                         eprintln!("  {:#?}", s);
@@ -1095,7 +1057,7 @@ impl Translation {
                 let mut stmts: Vec<Stmt> = lifted_stmts;
                 if cfg::structures::has_multiple(&relooped) {
 
-                    let current_block_ty = if self.debug_relooper_labels {
+                    let current_block_ty = if self.tcfg.debug_relooper_labels {
                         mk().ref_lt_ty("'static", mk().path_ty(vec!["str"]))
                     } else {
                         mk().path_ty(vec!["u64"])
@@ -1110,7 +1072,7 @@ impl Translation {
                 stmts.extend(cfg::structures::structured_cfg(
                     &relooped,
                     current_block,
-                    self.debug_relooper_labels
+                    self.tcfg.debug_relooper_labels
                 ));
                 Ok(stmts)
             } else {
@@ -1208,7 +1170,7 @@ impl Translation {
          clobbers: &[String])
         -> Result<Vec<Stmt>, String> {
 
-        if !self.translate_asm {
+        if !self.tcfg.translate_asm {
             return Err(format!("Inline assembly not enabled, to enable use -translate-asm"))
         }
 
