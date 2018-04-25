@@ -11,6 +11,7 @@ use ast_importer::clang_ast::process;
 use ast_importer::c_ast::*;
 use ast_importer::c_ast::Printer;
 use ast_importer::clang_ast::AstContext;
+use ast_importer::translator::TranslationConfig;
 use clap::{Arg, App};
 
 fn main() {
@@ -107,29 +108,35 @@ fn main() {
             .default_value("compile_error"))
         .get_matches();
 
+    // Build a TranslationConfig from the command line
+    let tcfg = TranslationConfig {
+        reloop_cfgs:            matches.is_present("reloop-cfgs"),
+        dump_function_cfgs:     matches.is_present("dump-function-cfgs"),
+        dump_structures:        matches.is_present("dump-structures"),
+        debug_relooper_labels:  matches.is_present("debug-labels"),
+        cross_checks:           matches.is_present("cross-checks"),
+        cross_check_configs:    matches.values_of("cross-check-config")
+            .map(|vals| vals.map(String::from).collect::<Vec<_>>())
+            .unwrap_or_default(),
+        prefix_function_names:  matches.value_of("prefix-function-names")
+            .map(String::from),
+        translate_asm:          matches.is_present("translate-asm"),
+        translate_entry:        matches.is_present("translate-entry"),
+        use_c_loop_info:        matches.is_present("use-c-loop-info"),
+        use_c_multiple_info:    matches.is_present("use-c-multiple-info"),
+        simplify_structures:    !matches.is_present("no-simplify-structures"),
+        panic_on_translator_failure: {
+            match matches.value_of("invalid-code") {
+                Some("panic") => true,
+                Some("compile_error") => false,
+                _ => panic!("Invalid option"),
+            }
+        },
+    };
     let file = matches.value_of("INPUT").unwrap();
-    let prefix_function_names = matches.value_of("prefix-function-names");
-    let translate_entry = matches.is_present("translate-entry");
     let dump_untyped_context = matches.is_present("dump-untyped-clang-ast");
     let dump_typed_context = matches.is_present("dump-typed-clang-ast");
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
-    let reloop_cfgs = matches.is_present("reloop-cfgs");
-    let use_c_loop_info = matches.is_present("use-c-loop-info");
-    let use_c_multiple_info = matches.is_present("use-c-multiple-info");
-    let simplify_structures = !matches.is_present("no-simplify-structures");
-    let dump_function_cfgs = matches.is_present("dump-function-cfgs");
-    let dump_structures = matches.is_present("dump-structures");
-    let debug_labels = matches.is_present("debug-labels");
-    let cross_checks = matches.is_present("cross-checks");
-    let cross_check_configs = matches.values_of("cross-check-config")
-        .map(|vals| vals.collect::<Vec<_>>())
-        .unwrap_or_default();
-    let translate_asm = matches.is_present("translate-asm");
-    let panic_on_translator_failure = match matches.value_of("invalid-code") {
-        Some("panic") => true,
-        Some("compile_error") => false,
-        _ => panic!("Invalid option"),
-    };
 
     // Extract the untyped AST from the CBOR file 
     let untyped_context = match parse_untyped_ast(file) {
@@ -175,22 +182,7 @@ fn main() {
     let mut conv = ConversionContext::new(&untyped_context);
     conv.convert(&untyped_context);
 
-    println!("{}", translate(
-        conv.typed_context,
-        panic_on_translator_failure,
-        reloop_cfgs,
-        dump_function_cfgs,
-        dump_structures,
-        debug_labels,
-        cross_checks,
-        translate_asm,
-        cross_check_configs,
-        prefix_function_names,
-        translate_entry,
-        use_c_loop_info,
-        use_c_multiple_info,
-        simplify_structures,
-    ));
+    println!("{}", translate(conv.typed_context, tcfg));
 }
 
 fn parse_untyped_ast(filename: &str) -> Result<AstContext, Error> {
