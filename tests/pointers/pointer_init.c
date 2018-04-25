@@ -6,6 +6,12 @@ ulp foo() {
     return NULL;
 }
 
+// GH #99: Previously bitcasts were ignored for int* to const int*
+// messing up type inference in read_volatile type conversion
+int simple(int const * *x, int * volatile *y) {
+    return *x == *y;
+}
+
 void entry(const unsigned int buffer_size, int buffer[]) {
     char *test = {"string"};
     buffer[0] = test[0];
