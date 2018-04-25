@@ -22,6 +22,7 @@ use cfg;
 #[derive(Default, Debug)]
 pub struct TranslationConfig {
     pub reloop_cfgs: bool,
+    pub fail_on_multiple: bool,
     pub dump_function_cfgs: bool,
     pub dump_structures: bool,
     pub debug_relooper_labels: bool,
@@ -1056,6 +1057,10 @@ impl Translation {
                 let current_block = mk().ident_expr(&current_block_ident);
                 let mut stmts: Vec<Stmt> = lifted_stmts;
                 if cfg::structures::has_multiple(&relooped) {
+
+                    if self.tcfg.fail_on_multiple {
+                        panic!("Uses of `current_block' are illegal with `--fail-on-multiple'.");
+                    }
 
                     let current_block_ty = if self.tcfg.debug_relooper_labels {
                         mk().ref_lt_ty("'static", mk().path_ty(vec!["str"]))

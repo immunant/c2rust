@@ -45,9 +45,10 @@ class TestOutcome(Enum):
 
 
 class CborFile:
-    def __init__(self, path: str, enable_relooper: bool=False) -> None:
+    def __init__(self, path: str, enable_relooper: bool=False, disallow_current_block: bool=False) -> None:
         self.path = path
         self.enable_relooper = enable_relooper
+        self.disallow_current_block = disallow_current_block
 
     def translate(self) -> RustFile:
         c_file_path, _ = os.path.splitext(self.path)
@@ -68,6 +69,10 @@ class CborFile:
 
         if self.enable_relooper:
             args.append("--reloop-cfgs")
+          #  args.append("--use-c-loop-info")
+          #  args.append("--use-c-multiple-info")
+        if self.disallow_current_block:
+            args.append("--fail-on-multiple")
 
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
             # log the command in a format that's easy to re-run
@@ -98,6 +103,7 @@ class CFile:
 
         self.path = path
         self.enable_relooper = "enable_relooper" in flags
+        self.disallow_current_block = "disallow_current_block" in flags
 
     def export(self) -> CborFile:
         # run the exporter
@@ -118,7 +124,7 @@ class CFile:
         if retcode != 0:
             raise NonZeroReturn(stderr)
 
-        return CborFile(self.path + ".cbor", self.enable_relooper)
+        return CborFile(self.path + ".cbor", self.enable_relooper, self.disallow_current_block)
 
 
 def build_static_library(c_files: Iterable[CFile], output_path: str) -> Optional[CStaticLibrary]:

@@ -29,6 +29,11 @@ fn main() {
             .long("translate-entry")
             .help("Creates an entry point that calls the C main function")
             .takes_value(false))
+        .arg(Arg::with_name("fail-on-multiple")
+             .long("fail-on-multiple")
+             .requires("reloop-cfgs")
+             .help("Fail to translate if we ever need 'current_block'")
+             .takes_value(false))
 
         // `AstContext` and `TypedAstContext` related
         .arg(Arg::with_name("dump-untyped-clang-ast")
@@ -115,6 +120,7 @@ fn main() {
     // Build a TranslationConfig from the command line
     let tcfg = TranslationConfig {
         reloop_cfgs:            matches.is_present("reloop-cfgs"),
+        fail_on_multiple:       matches.is_present("fail-on-multiple"),
         dump_function_cfgs:     matches.is_present("dump-function-cfgs"),
         dump_structures:        matches.is_present("dump-structures"),
         debug_relooper_labels:  matches.is_present("debug-labels"),
