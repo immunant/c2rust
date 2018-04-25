@@ -805,7 +805,7 @@ impl CfgBuilder {
         let new_vars = self.current_variables();
         self.currently_live.push(new_vars);
 
-        let b = translator.with_scope(|| cont(self));
+        let b = cont(self);
 
         // Close the scope
         self.currently_live
