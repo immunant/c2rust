@@ -3,8 +3,6 @@ extern crate libc;
 use idiomatic_switch::rust_idiomatic_switch;
 use idiomatic_nested_loops::rust_break_multiple;
 
-use self::libc::c_int;
-
 pub fn test_idiomatic_switch() {
     unsafe {
         assert_eq!(rust_idiomatic_switch(-1), 1);

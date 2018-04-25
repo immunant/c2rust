@@ -377,39 +377,55 @@ pub enum ImplicitReturnType {
     /// > If the `}` that terminates a function is reached, and the value of the function call is
     /// > used by the caller, the behavior is undefined."
     NoImplicitReturnType,
+
+    /// This is for handling statement expressions
+    StmtExpr(ExprUse, CExprId, bool),
 }
 
 /// A complete control-flow graph
 impl Cfg<Label, StmtOrDecl> {
 
     /// Completely process a statement into a control flow graph.
-    pub fn from_stmt(
+    pub fn from_stmts(
         translator: &Translation,
-        stmt_id: CStmtId,
+        stmt_ids: &[CStmtId],
         ret: ImplicitReturnType,
     ) -> Result<(Self, DeclStmtStore), String> {
 
         let mut cfg_builder = CfgBuilder::new();
-        let entry = *cfg_builder.graph.entries.iter().next().expect("from_stmt: expected an entry");
+        let entry = *cfg_builder.graph.entries.iter().next().expect("from_stmts: expected entry");
 
-        let body_stuff = translator.with_scope(|| {
+        translator.with_scope(|| -> Result<(), String> {
             let entry_wip = cfg_builder.new_wip_block(entry);
-            cfg_builder.convert_stmt_help(translator, stmt_id, entry_wip)
+            let body_stuff = cfg_builder.convert_stmts_help(translator, stmt_ids, entry_wip)?;
+
+            if let Some(WipBlock { label: body_label, mut body, defined, live }) = body_stuff {
+
+                let ret_expr: Option<P<Expr>> = match ret {
+                    ImplicitReturnType::Main => Some(mk().lit_expr(mk().int_lit(0, ""))),
+                    ImplicitReturnType::Void => None as Option<P<Expr>>,
+                    ImplicitReturnType::NoImplicitReturnType => Some(
+                        translator.panic("Reached end of non-void function without returning")
+                    ),
+                    ImplicitReturnType::StmtExpr(use_, expr_id, is_static) => {
+                        let WithStmts { mut stmts, val } = translator.convert_expr(
+                            use_,
+                            expr_id,
+                            is_static,
+                        )?;
+
+                        body.extend(stmts.into_iter().map(|s| StmtOrDecl::Stmt(s)));
+                        Some(val)
+                    }
+                };
+                body.push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(ret_expr))));
+
+                let body_bb = BasicBlock { body, terminator: End, defined, live };
+                cfg_builder.add_block(body_label, body_bb);
+            }
+
+            Ok(())
         })?;
-        if let Some(WipBlock { label: body_label, mut body, defined, live }) = body_stuff {
-
-            let ret_expr: Option<P<Expr>> = match ret {
-                ImplicitReturnType::Main => Some(mk().lit_expr(mk().int_lit(0, ""))),
-                ImplicitReturnType::Void => None as Option<P<Expr>>,
-                ImplicitReturnType::NoImplicitReturnType => Some(
-                    translator.panic("Reached end of non-void function without returning")
-                ),
-            };
-            body.push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(ret_expr))));
-
-            let body_bb = BasicBlock { body, terminator: End, defined, live };
-            cfg_builder.add_block(body_label, body_bb);
-        }
 
         cfg_builder.graph.prune_empty_blocks_mut();
         cfg_builder.graph.prune_unreachable_blocks_mut();
@@ -799,7 +815,7 @@ impl CfgBuilder {
 
     /// REMARK: make sure that basic blocks are constructed either entirely inside or entirely
     ///         outside `with_scope`. Otherwise, the scope of the block is going to be confused.
-    fn with_scope<B, F: FnOnce(&mut Self) -> B>(&mut self, translator: &Translation, cont: F) -> B {
+    fn with_scope<B, F: FnOnce(&mut Self) -> B>(&mut self, _translator: &Translation, cont: F) -> B {
 
         // Open a new scope
         let new_vars = self.current_variables();
@@ -869,6 +885,39 @@ impl CfgBuilder {
             loops: vec![],
             multiples: vec![],
         }
+    }
+
+    /// Same as `convert_stmt_help`, but operates over a sequence of statements
+    fn convert_stmts_help(
+        &mut self,
+        translator: &Translation,
+        stmt_ids: &[CStmtId],     // C statements to translate
+        wip: WipBlock,            // Current WIP block
+    ) -> Result<Option<WipBlock>, String> {
+
+        // Close off our WIP (it is important this happen _outside_ the `with_scope` call)
+        let compound_entry = self.fresh_label();
+        self.add_wip_block(wip, Jump(compound_entry));
+        let wip = self.new_wip_block(compound_entry);
+
+        // We feed the optional output WIP into the WIP input of the next block
+        let wip = self.with_scope(translator, |slf| -> Result<Option<WipBlock>, String> {
+            let mut wip = Some(wip);
+            for stmt in stmt_ids {
+                let new_label = slf.fresh_label();
+                let new_wip = wip.unwrap_or(slf.new_wip_block(new_label));
+                wip = slf.convert_stmt_help(translator, *stmt, new_wip)?;
+            }
+            Ok(wip)
+        })?;
+
+        // We need to close off the final WIP block (if there is even one) because whatever
+        // follows will be in a different scope.
+        Ok(wip.map(|last_wip| {
+            let new_label = self.fresh_label();
+            self.add_wip_block(last_wip, Jump(new_label));
+            self.new_wip_block(new_label)
+        }))
     }
 
 
@@ -1131,32 +1180,11 @@ impl CfgBuilder {
                 Ok(None)
             }
 
-            CStmtKind::Compound(ref comp_stmts) => {
-
-                // Close off our WIP (it is important this happen _outside_ the `with_scope` call)
-                let compound_entry = self.fresh_label();
-                self.add_wip_block(wip, Jump(compound_entry));
-                let wip = self.new_wip_block(compound_entry);
-
-                // We feed the optional output WIP into the WIP input of the next block
-                let wip = self.with_scope(translator, |slf| -> Result<Option<WipBlock>, String> {
-                    let mut wip = Some(wip);
-                    for stmt in comp_stmts {
-                        let new_label = slf.fresh_label();
-                        let new_wip = wip.unwrap_or(slf.new_wip_block(new_label));
-                        wip = slf.convert_stmt_help(translator, *stmt, new_wip)?;
-                    }
-                    Ok(wip)
-                })?;
-
-                // We need to close off the final WIP block (if there is even one) because whatever
-                // follows will be in a different scope.
-                Ok(wip.map(|last_wip| {
-                    let new_label = self.fresh_label();
-                    self.add_wip_block(last_wip, Jump(new_label));
-                    self.new_wip_block(new_label)
-                }))
-            }
+            CStmtKind::Compound(ref comp_stmts) => self.convert_stmts_help(
+                translator,
+                comp_stmts.as_slice(),
+                wip
+            ),
 
             CStmtKind::Expr(expr) => {
                 wip.extend(translator.convert_expr(ExprUse::Unused, expr, false)?.stmts);

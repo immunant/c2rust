@@ -1459,6 +1459,19 @@ impl Builder {
             attrs: self.attrs.into(),
         })
     }
+
+    pub fn closure_expr<D,E>(self, capture: CaptureBy, /* mov: Movability, */ decl: D, body: E) -> P<Expr>
+        where D: Make<P<FnDecl>>, E: Make<P<Expr>>
+    {
+        let decl = decl.make(&self);
+        let body = body.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Closure(capture, /* mov, */ decl, body, DUMMY_SP),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
 }
 
 pub fn mk() -> Builder {
