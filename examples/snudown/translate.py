@@ -6,6 +6,7 @@
 
 from shutil import rmtree
 from common import *
+import transpile
 from collections import namedtuple
 
 MACHINE_NAME = platform.node()
@@ -29,40 +30,18 @@ XCHECK_RUNTIME = os.path.join(XCHECK_TARGET_DIR, "libcross_check_runtime.rlib")
 OUTPUT_DIR = "translator-build"
 
 
-def translate(slug: str, xcheck: bool, snudown: str) -> None:
+def compile_rust(slug: str, xcheck: bool, snudown: str) -> None:
     """
     :param slug: file name without directory or suffix
     :param xcheck: insert cross checking code
     """
-    ast_expo = get_cmd_or_die(AST_EXPO)
-    ast_impo = get_cmd_or_die(AST_IMPO)
-
-    # export step
-    c_src_path = os.path.join(snudown, "src/{}.c".format(slug))
-    ast_expo(c_src_path)
-
-    # import step
-    rust_src_path = os.path.join(OUTPUT_DIR, "{}.rs".format(slug))
-    with pb.local.env(RUST_BACKTRACE=1,
-                      LD_LIBRARY_PATH=LIB_PATH):
-        cbor_path = c_src_path + ".cbor"
-        logging.debug("importing %s", cbor_path)
-        args = ['--reloop-cfgs', cbor_path]
-        if xcheck:
-            args += ['--cross-checks',
-                     '--cross-check-config', os.path.join(snudown, "../snudown_rust.c2r")]
-        stdout = ast_impo(*args)
-        logging.debug("job's done")
-        with open(rust_src_path, "w") as rust_fh:
-            rust_fh.writelines(stdout)
-        logging.debug("wrote rust output to %s", rust_src_path)
-
     # formatting step
     # logging.debug("formatting %s", rust_src_path)
     # rustfmt = _get_tool_from_rustup("rustfmt")
     # rustfmt[rust_src_path, '--force'] & pb.TEE(retcode=None)
 
     # compilation step
+    rust_src_path = os.path.join("src", "{}.rs".format(slug))
     rust_bin_path = os.path.join(OUTPUT_DIR, "lib{}.rlib".format(slug))
     logging.debug("compiling %s -> %s", rust_src_path, rust_bin_path)
     rustc = get_cmd_from_rustup("rustc")
@@ -95,6 +74,8 @@ class CompileCommandsBuilder(object):
         # print(outjson)
         with open(outpath, "w") as ccdb_fh:
             ccdb_fh.writelines(outjson)
+
+        return outpath
 
 
 def generate_html_entries_header(snudown: str):
@@ -138,18 +119,26 @@ def main(xcheck: bool, snudown: str):
     bldr = CompileCommandsBuilder()
 
     slugs = ["autolink", "buffer", "stack", "markdown"]
-    ctmpl = "cc -o {odir}/{slug}.c.o -c {snudown}/src/{slug}.c -Wwrite-strings -D_FORTIFY_SOURCE=0 -DNDEBUG=1"
+    ctmpl = "cc -o {snudown}/src/{slug}.c.o -c {snudown}/src/{slug}.c -Isrc -Ihtml -Wwrite-strings -D_FORTIFY_SOURCE=0 -DNDEBUG=1"
 
     for s in slugs:
-        cmd = ctmpl.format(odir=OUTPUT_DIR, slug=s, snudown=snudown)
+        cmd = ctmpl.format(slug=s, snudown=snudown)
         file = os.path.join(snudown, "src", s + ".c")
         assert os.path.isfile(file), "No such file: " + file
         bldr.add_entry(snudown, cmd, file)
 
-    bldr.write_result(os.path.curdir)
+    cmds_json_path = bldr.write_result(os.path.curdir)
+    with open(cmds_json_path, "r") as cmds_json:
+        impo_args = ["--reloop-cfgs"]
+        if xcheck:
+            impo_args += ['--cross-checks',
+                          '--cross-check-config',
+                          os.path.join(snudown, "../snudown_rust.c2r")]
+        transpile.transpile_files(cmds_json, multiprocessing.cpu_count(),
+                                  extra_impo_args=impo_args)
 
     for s in slugs:
-        translate(s, xcheck, snudown)
+        compile_rust(s, xcheck, snudown)
 
     rustc = get_cmd_from_rustup("rustc")
     args = ['--crate-type=staticlib',
