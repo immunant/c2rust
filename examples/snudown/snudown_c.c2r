@@ -10,6 +10,11 @@
     - item: defaults
       disable_xchecks: true
 
+# Ubuntu builds with _FORTIFY_SOURCE, which includes this
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:
+    - item: defaults
+      disable_xchecks: true
+
 # Our own custom cross-checks
 ../xchecks.c:
     - item: defaults
