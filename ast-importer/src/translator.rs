@@ -1,5 +1,6 @@
 use syntax::ast;
 use syntax::ast::*;
+use syntax::codemap::{DUMMY_SP};
 use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{DelimToken,Token,Nonterminal};
 use syntax::abi::Abi;
@@ -990,7 +991,12 @@ impl Translation {
                 for &(_, _, typ) in arguments {
                     body_stmts.append(&mut self.compute_variable_array_sizes(typ.ctype)?);
                 }
-                body_stmts.append(&mut self.convert_function_body(name, body, ret)?);
+
+                let body_ids = match self.ast_context.index(body).kind {
+                    CStmtKind::Compound(ref stmts) => stmts,
+                    _ => panic!("function body expects to be a compound statement"),
+                };
+                body_stmts.append(&mut self.convert_function_body(name, body_ids, ret)?);
                 let block = stmts_block(body_stmts);
 
                 // Only add linkage attributes if the function is `extern`
@@ -1019,14 +1025,14 @@ impl Translation {
     fn convert_function_body(
         &self,
         name: &str,
-        body_id: CStmtId,
+        body_ids: &[CStmtId],
         ret: cfg::ImplicitReturnType,
     ) -> Result<Vec<Stmt>, String> {
 
         // Function body scope
         self.with_scope(|| {
             if self.tcfg.reloop_cfgs {
-                let (graph, store) = cfg::Cfg::from_stmt(self, body_id, ret)?;
+                let (graph, store) = cfg::Cfg::from_stmts(self, body_ids, ret)?;
 
                 if self.tcfg.dump_function_cfgs {
                     graph
@@ -1081,16 +1087,11 @@ impl Translation {
                 ));
                 Ok(stmts)
             } else {
-                match self.ast_context.index(body_id).kind {
-                    CStmtKind::Compound(ref stmts) => {
-                        let mut res = vec![];
-                        for &stmt in stmts {
-                            res.append(&mut self.convert_stmt(stmt)?)
-                        }
-                        Ok(res)
-                    }
-                    _ => panic!("function body expects to be a compound statement"),
+                let mut res = vec![];
+                for &stmt in body_ids {
+                    res.append(&mut self.convert_stmt(stmt)?)
                 }
+                Ok(res)
             }
         })
     }
@@ -2179,27 +2180,51 @@ impl Translation {
         }
     }
 
-    fn convert_statement_expression(&self, use_: ExprUse, compound_stmt_id: CStmtId, is_static: bool)
-        -> Result<WithStmts<P<Expr>>, String> {
+    fn convert_statement_expression(
+        &self,
+        use_: ExprUse,
+        compound_stmt_id: CStmtId,
+        is_static: bool
+    ) -> Result<WithStmts<P<Expr>>, String> {
 
         match &self.ast_context[compound_stmt_id].kind {
             &CStmtKind::Compound(ref substmt_ids) if !substmt_ids.is_empty() => {
 
                 let n = substmt_ids.len();
-                let mut stmts = vec![];
+                let result_id = substmt_ids[n - 1];
 
-                for &substmt_id in &substmt_ids[0 .. n-1] {
-                    stmts.append(&mut self.convert_stmt(substmt_id)?);
-                }
+                let expr_id = match self.ast_context[result_id].kind {
+                    CStmtKind::Expr(expr_id) => Ok(expr_id),
+                    ref s => Err(format!("Statement expression didn't end in an expression: {:?}", s)),
+                }?;
 
-                let result_id = substmt_ids[n-1];
-                match self.ast_context[result_id].kind {
-                    CStmtKind::Expr(expr_id) => {
-                        let mut result = self.convert_expr(use_, expr_id, is_static)?;
-                        stmts.append(&mut result.stmts);
-                        Ok(WithStmts{stmts, val: result.val})
+                if self.tcfg.reloop_cfgs {
+                    let name = format!("<stmt-expr_{:?}>", compound_stmt_id);
+                    let ret = cfg::ImplicitReturnType::StmtExpr(use_, expr_id, is_static);
+                    let stmts = self.convert_function_body(&name, &substmt_ids[0 .. (n-1)], ret)?;
+
+                    let decl = mk().fn_decl(
+                        vec![] as Vec<ast::Arg>,
+                        ast::FunctionRetTy::Default(DUMMY_SP),
+                        false,
+                    );
+                    let closure_body = mk().block_expr(mk().block(stmts));
+                    let closure = mk().closure_expr(ast::CaptureBy::Value, decl, closure_body);
+                    let closure_call = mk().call_expr(closure, vec![] as Vec<P<ast::Expr>>);
+
+                    Ok(WithStmts::new(closure_call))
+                } else {
+
+                    let mut stmts = vec![];
+
+                    for &substmt_id in &substmt_ids[0..n - 1] {
+                        stmts.append(&mut self.convert_stmt(substmt_id)?);
                     }
-                    _ => Err(format!("Statement expression didn't end in an expression")),
+
+                    let mut result = self.convert_expr(use_, expr_id, is_static)?;
+                    stmts.append(&mut result.stmts);
+                    Ok(WithStmts { stmts, val: result.val })
+
                 }
             }
             _ => Err(format!("Bad statement expression")),

@@ -2,7 +2,6 @@ extern crate libc;
 
 use dfa_binary_multiple_three::rust_multiple_three;
 
-use self::libc::{c_char, c_int};
 use std::ffi::CString;
 
 pub fn test_multiple_three() {
