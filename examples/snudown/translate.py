@@ -30,33 +30,6 @@ XCHECK_RUNTIME = os.path.join(XCHECK_TARGET_DIR, "libcross_check_runtime.rlib")
 OUTPUT_DIR = "translator-build"
 
 
-def compile_rust(slug: str, xcheck: bool, snudown: str) -> None:
-    """
-    :param slug: file name without directory or suffix
-    :param xcheck: insert cross checking code
-    """
-    # formatting step
-    # logging.debug("formatting %s", rust_src_path)
-    # rustfmt = _get_tool_from_rustup("rustfmt")
-    # rustfmt[rust_src_path, '--force'] & pb.TEE(retcode=None)
-
-    # compilation step
-    rust_src_path = os.path.join("src", "{}.rs".format(slug))
-    rust_bin_path = os.path.join(OUTPUT_DIR, "lib{}.rlib".format(slug))
-    logging.debug("compiling %s -> %s", rust_src_path, rust_bin_path)
-    rustc = get_cmd_from_rustup("rustc")
-    args = ['--crate-type=rlib',
-            '--crate-name=' + slug,
-            rust_src_path,
-            '-o', rust_bin_path,
-            '-g']
-    if xcheck:
-        args += ['--extern', 'cross_check_plugin=' + XCHECK_PLUGIN,
-                 '--extern', 'cross_check_derive=' + XCHECK_DERIVE,
-                 '--extern', 'cross_check_runtime=' + XCHECK_RUNTIME]
-    rustc(*args)
-
-
 CompileCommand = namedtuple('CompileCommand', ['directory', 'command', 'file'])
 
 
@@ -130,30 +103,15 @@ def main(xcheck: bool, snudown: str):
     cmds_json_path = bldr.write_result(os.path.curdir)
     with open(cmds_json_path, "r") as cmds_json:
         impo_args = ["--reloop-cfgs"]
-        if xcheck:
-            impo_args += ['--cross-checks',
-                          '--cross-check-config',
-                          os.path.join(snudown, "../snudown_rust.c2r")]
         transpile.transpile_files(cmds_json, multiprocessing.cpu_count(),
-                                  extra_impo_args=impo_args)
+                                  extra_impo_args=impo_args,
+                                  emit_build_files=True,
+                                  cross_checks=xcheck,
+                                  cross_check_config=[os.path.join(snudown, "../snudown_rust.c2r")])
 
-    for s in slugs:
-        compile_rust(s, xcheck, snudown)
-
-    rustc = get_cmd_from_rustup("rustc")
-    args = ['--crate-type=staticlib',
-            '--crate-name=snudownrust',
-            '-L', OUTPUT_DIR,
-            os.path.join(C2RUST, "examples/snudown/snudownrust.rs")]
-
-    if xcheck:
-        args += ['--extern', 'cross_check_derive=' + XCHECK_DERIVE]
-        args += ['--extern', 'cross_check_runtime=' + XCHECK_RUNTIME]
-        args += ['--cfg', 'feature=\"cross-check\"']
-        args += ['-o', os.path.join(OUTPUT_DIR, "libsnudownrustxcheck.a")]
-    else:
-        args += ['-o', os.path.join(OUTPUT_DIR, "libsnudownrust.a")]
-    rustc(*args)
+    with pb.local.cwd(os.path.join(snudown, "c2rust-build")):
+        cargo = get_cmd_or_die("cargo")
+        cargo("build")
 
     logging.info("success!")
 
