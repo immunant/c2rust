@@ -114,10 +114,6 @@ features = ["libc-hash"]
            runtime_path=runtime_path))
 
     lib_rs_path = os.path.join(build_dir, "lib.rs")
-    # TODO: cross-check features + attrs
-    # TODO: cross-check extern crates
-    # TODO: cross-check config files
-    # TODO: import modules
     with open(lib_rs_path, "w") as lib_rs:
         lib_rs.write("""\
 #![feature(libc)]
