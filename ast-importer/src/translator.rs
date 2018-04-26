@@ -2187,6 +2187,15 @@ impl Translation {
         is_static: bool
     ) -> Result<WithStmts<P<Expr>>, String> {
 
+        fn as_semi_return_stmt(stmt: &ast::Stmt) -> Option<Option<P<ast::Expr>>> {
+            if let ast::Stmt { node: ast::StmtKind::Semi(ref expr), .. } = *stmt {
+                if let ast::Expr { node: ast::ExprKind::Ret(ref ret_val), .. } = **expr {
+                    return Some(ret_val.clone())
+                }
+            }
+            None
+        }
+
         match &self.ast_context[compound_stmt_id].kind {
             &CStmtKind::Compound(ref substmt_ids) if !substmt_ids.is_empty() => {
 
@@ -2201,7 +2210,19 @@ impl Translation {
                 if self.tcfg.reloop_cfgs {
                     let name = format!("<stmt-expr_{:?}>", compound_stmt_id);
                     let ret = cfg::ImplicitReturnType::StmtExpr(use_, expr_id, is_static);
-                    let stmts = self.convert_function_body(&name, &substmt_ids[0 .. (n-1)], ret)?;
+                    let mut stmts = self.convert_function_body(&name, &substmt_ids[0 .. (n-1)], ret)?;
+
+                    if let Some(stmt) = stmts.pop() {
+                        match as_semi_return_stmt(&stmt) {
+                            Some(val) => return Ok(WithStmts::new(mk().block_expr({
+                                match val {
+                                    None => mk().block(stmts),
+                                    Some(val) => WithStmts { stmts, val }.to_block()
+                                }
+                            }))),
+                            _ => stmts.push(stmt),
+                        }
+                    }
 
                     let decl = mk().fn_decl(
                         vec![] as Vec<ast::Arg>,
@@ -2209,9 +2230,8 @@ impl Translation {
                         false,
                     );
                     let closure_body = mk().block_expr(mk().block(stmts));
-                    let closure = mk().closure_expr(ast::CaptureBy::Value, decl, closure_body);
+                    let closure = mk().closure_expr(ast::CaptureBy::Ref, decl, closure_body);
                     let closure_call = mk().call_expr(closure, vec![] as Vec<P<ast::Expr>>);
-
                     Ok(WithStmts::new(closure_call))
                 } else {
 

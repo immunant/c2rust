@@ -392,8 +392,12 @@ impl Cfg<Label, StmtOrDecl> {
         ret: ImplicitReturnType,
     ) -> Result<(Self, DeclStmtStore), String> {
 
-        let mut cfg_builder = CfgBuilder::new();
-        let entry = *cfg_builder.graph.entries.iter().next().expect("from_stmts: expected entry");
+        let allow_return = match ret {
+            ImplicitReturnType::StmtExpr(_,_,_) => false,
+            _ => true,
+        };
+        let mut cfg_builder = CfgBuilder::new(allow_return);
+        let entry = *cfg_builder.graph.entries.iter().next().ok_or("from_stmts: expected entry")?;
 
         translator.with_scope(|| -> Result<(), String> {
             let entry_wip = cfg_builder.new_wip_block(entry);
@@ -426,6 +430,18 @@ impl Cfg<Label, StmtOrDecl> {
 
             Ok(())
         })?;
+
+        // Check the graph doesn't reference any labels it doesn't contain
+        let bad_labels: Vec<&CLabelId> = cfg_builder.c_labels_used
+            .difference(&cfg_builder.c_labels_defined)
+            .collect();
+        if !bad_labels.is_empty() {
+            Err(format!(
+                "Control flow graph for statements {:?} references undefined label(s): {:?}",
+                stmt_ids,
+                bad_labels,
+            ))?
+        }
 
         cfg_builder.graph.prune_empty_blocks_mut();
         cfg_builder.graph.prune_unreachable_blocks_mut();
@@ -550,10 +566,14 @@ struct CfgBuilder {
     /// Identifies the 'BasicBlock' to start with in 'graph'
     graph: Cfg<Label,StmtOrDecl>,
 
-    /// Source for generating fresh synthetic labels
-    prev_label: u64,
-    /// Source for generating fresh loop IDs
-    prev_loop_id: u64,
+    /// Variables in scope right before the current statement. The wrapping `Vec` witnesses the
+    /// notion of scope: later elements in the vector are always supersets of earlier elements.
+    currently_live: Vec<HashSet<CDeclId>>,
+    /// Information about all of the C declarations we have seen so far.
+    decls_seen: DeclStmtStore,
+
+
+    // Book-keeping information for translating switch statements
 
     /// Stack of labels identifying what a 'break' should jump to. We push onto this stack when
     /// entering a construct that can break and pop when exiting that construct.
@@ -564,18 +584,31 @@ struct CfgBuilder {
     /// body of a 'switch'.
     switch_expr_cases: Vec<SwitchCases>,
 
-    /// Variables in scope right before the current statement. The wrapping `Vec` witnesses the
-    /// notion of scope: later elements in the vector are always supersets of earlier elements.
-    currently_live: Vec<HashSet<CDeclId>>,
 
-    /// Information about all of the C declarations we have seen so far.
-    decls_seen: DeclStmtStore,
+    // Fresh ID sources
+
+    /// Source for generating fresh synthetic labels
+    prev_label: u64,
+    /// Source for generating fresh loop IDs
+    prev_loop_id: u64,
+
+
+    // Information for filtering out invalid CFGs
+
+    /// Information about all of the C labels we have seen defined so far
+    c_labels_defined: HashSet<CLabelId>,
+    /// Information about all of the C labels we have seen used so far
+    c_labels_used: HashSet<CLabelId>,
+    /// Are we allowed to translate `return` statements here?
+    c_return_permitted: bool,
+
+
+    // Book-keeping information to build up the `loops` and `multiples` fields in `graph`.
 
     /// Loops we are currently in. Every time we enter a loop, we push a new vector onto this field.
     /// When we exit that loop, we pop the vector, add all the labels to the next entry in the
     /// `Vec`, and also add the loop to the CFG.
     loops: Vec<(LoopId, Vec<Label>)>,
-
     /// Multiple branching we are currently in. Every time we enter another arm of a branching
     /// construct, we add it into here. When we finish processing the branch, we remove it.
     ///
@@ -861,7 +894,7 @@ impl CfgBuilder {
     }
 
     /// Create a new `CfgBuilder` with a single entry label.
-    fn new() -> CfgBuilder {
+    fn new(c_return_permitted: bool) -> CfgBuilder {
         let entries = vec![Label::Synthetic(0)].into_iter().collect();
 
         CfgBuilder {
@@ -884,6 +917,10 @@ impl CfgBuilder {
 
             loops: vec![],
             multiples: vec![],
+
+            c_labels_defined: HashSet::new(),
+            c_labels_used: HashSet::new(),
+            c_return_permitted,
         }
     }
 
@@ -954,6 +991,10 @@ impl CfgBuilder {
                 Ok(Some(wip))
             }
 
+            CStmtKind::Return(_) if !self.c_return_permitted => Err(format!(
+                "Return statements (in this case {:?}) are disallowed in this context.",
+                stmt_id,
+            )),
             CStmtKind::Return(expr) => {
                 let val = match expr.map(|i| translator.convert_expr(ExprUse::RValue, i, false)) {
                     Some(r) => Some(r?),
@@ -1167,6 +1208,7 @@ impl CfgBuilder {
             CStmtKind::Label(sub_stmt) => {
                 let this_label = Label::FromC(stmt_id);
                 self.add_wip_block(wip, Jump(this_label));
+                self.c_labels_defined.insert(stmt_id);
 
                 // Sub stmt
                 let sub_stmt_wip = self.new_wip_block(this_label);
@@ -1176,6 +1218,7 @@ impl CfgBuilder {
             CStmtKind::Goto(label_id) => {
                 let tgt_label = Label::FromC(label_id);
                 self.add_wip_block(wip, Jump(tgt_label));
+                self.c_labels_used.insert(label_id);
 
                 Ok(None)
             }
@@ -1202,14 +1245,20 @@ impl CfgBuilder {
             }
 
             CStmtKind::Break => {
-                let tgt_label = *self.break_labels.last().expect("Nothing to 'break' to");
+                let tgt_label = *self.break_labels.last().ok_or(format!(
+                    "Cannot find what to break from in this ({:?}) 'break' statement",
+                    stmt_id,
+                ))?;
                 self.add_wip_block(wip, Jump(tgt_label));
 
                 Ok(None)
             }
 
             CStmtKind::Continue => {
-                let tgt_label = *self.continue_labels.last().expect("Nothing to 'continue' to");
+                let tgt_label = *self.continue_labels.last().ok_or(format!(
+                    "Cannot find what to continue from in this ({:?}) 'continue' statement",
+                    stmt_id,
+                ))?;
                 self.add_wip_block(wip, Jump(tgt_label));
 
                 Ok(None)
@@ -1235,7 +1284,10 @@ impl CfgBuilder {
                 };
                 self.switch_expr_cases
                     .last_mut()
-                    .expect("'case' outside of 'switch'")
+                    .ok_or(format!(
+                        "Cannot find the 'switch' wrapping this ({:?}) 'case' statement",
+                        stmt_id,
+                    ))?
                     .cases
                     .push((mk().lit_pat(branch), this_label));
 
