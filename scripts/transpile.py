@@ -189,9 +189,9 @@ def transpile_files(cc_db: TextIO,
         impo_args.append('--emit-module')
     if cross_checks:
         impo_args.append('--cross-checks')
-    for ccc in cross_check_config:
-        impo_args.append('--cross-check-config')
-        impo_args.append(ccc)
+        for ccc in cross_check_config:
+            impo_args.append('--cross-check-config')
+            impo_args.append(ccc)
 
     def transpile_single(cmd) -> Tuple[str, int, str, str, str]:
 
