@@ -13,6 +13,8 @@ import argparse
 import platform
 import multiprocessing
 
+import mako.template
+
 from common import *
 from typing import *
 from typing.io import *
@@ -21,7 +23,7 @@ from typing.io import *
 # Template for the contents of the Cargo.toml file
 CARGO_TOML_TEMPLATE = """\
 [package]
-name = "{crate_name}"
+name = "${crate_name}"
 authors = ["C2Rust"]
 version = "0.0.0"
 publish = false
@@ -30,19 +32,17 @@ publish = false
 path = "lib.rs"
 crate-type = ["staticlib"]
 
-{xchecks}
-"""
-
-CARGO_TOML_XCHECKS_TEMPLATE = """\
+% if cross_checks:
 [dependencies.cross-check-plugin]
-path = "{plugin_path}"
+path = "${plugin_path}"
 
 [dependencies.cross-check-derive]
-path = "{derive_path}"
+path = "${derive_path}"
 
 [dependencies.cross-check-runtime]
-path = "{runtime_path}"
+path = "${runtime_path}"
 features = ["libc-hash"]
+% endif
 """
 
 # Template for the crate root lib.rs file
@@ -62,29 +62,23 @@ LIB_RS_TEMPLATE = """\
 #![allow(mutable_transmutes)]
 #![allow(unused_mut)]
 
-{xcheck_attrs}
+% if cross_checks:
+#![feature(plugin, custom_attribute)]
+#![plugin(cross_check_plugin(${plugin_args}))]
+#![cross_check(yes)]
+% endif
 
 extern crate libc;
 
-{xcheck_crates}
-
-{modules}
-"""
-
-# Cross-check-related attributes; these need to occur before the
-# first item, i.e., the `extern crate libc;` above
-LIB_RS_XCHECK_ATTRS_TEMPLATE = """\
-#![feature(plugin, custom_attribute)]
-#![plugin(cross_check_plugin({plugin_args}))]
-#![cross_check(yes)]
-"""
-
-# Crates required by the cross-checking infrastructure
-LIB_RS_XCHECK_CRATES_TEMPLATE = """\
+% if cross_checks:
 #[macro_use] extern crate cross_check_derive;
 #[macro_use] extern crate cross_check_runtime;
-"""
+% endif
 
+% for (module_name, module_path, line_prefix) in modules:
+${line_prefix}#[path = "${module_path}"] pub mod ${module_name};
+% endfor
+"""
 
 def try_locate_elf_object(cmd: dict) -> Optional[str]:
     # first look for -o in compiler command
@@ -151,46 +145,37 @@ def write_build_files(cc_db_name: str, modules: List[Tuple[str, bool]],
     cargo_toml_path = os.path.join(build_dir, "Cargo.toml")
     with open(cargo_toml_path, "w") as cargo_toml:
         # TODO: allow clients to change the name of the library
-        xchecks = ''
-        if cross_checks:
-            rust_checks_path = os.path.join(CROSS_CHECKS_DIR, "rust-checks")
-            plugin_path  = os.path.join(rust_checks_path, "rustc-plugin")
-            derive_path  = os.path.join(rust_checks_path, "derive-macros")
-            runtime_path = os.path.join(rust_checks_path, "runtime")
-            xchecks = CARGO_TOML_XCHECKS_TEMPLATE.format(
-                    plugin_path=plugin_path,
-                    derive_path=derive_path,
-                    runtime_path=runtime_path)
-        cargo_toml.write(CARGO_TOML_TEMPLATE.format(
+        rust_checks_path = os.path.join(CROSS_CHECKS_DIR, "rust-checks")
+        plugin_path  = os.path.join(rust_checks_path, "rustc-plugin")
+        derive_path  = os.path.join(rust_checks_path, "derive-macros")
+        runtime_path = os.path.join(rust_checks_path, "runtime")
+        tmpl = mako.template.Template(CARGO_TOML_TEMPLATE)
+        cargo_toml.write(tmpl.render(
             crate_name="c2rust-build",
-            xchecks=xchecks))
+            cross_checks=cross_checks,
+            plugin_path=plugin_path,
+            derive_path=derive_path,
+            runtime_path=runtime_path))
 
     lib_rs_path = os.path.join(build_dir, "lib.rs")
     with open(lib_rs_path, "w") as lib_rs:
-        xcheck_attrs = ''
-        xcheck_crates = ''
-        if cross_checks:
-            config_files = ('config_file = "{}"'.format(os.path.relpath(ccc,
-                build_dir)) for ccc in cross_check_config)
-            plugin_args = ", ".join(config_files)
-            xcheck_attrs = LIB_RS_XCHECK_ATTRS_TEMPLATE.format(plugin_args=plugin_args)
-            xcheck_crates = LIB_RS_XCHECK_CRATES_TEMPLATE.format()
-
-        module_lines = ''
+        template_modules = []
         for (module, module_exists) in modules:
             module_name, _ = os.path.splitext(os.path.basename(module))
             module_relpath = os.path.relpath(module, build_dir)
             line_prefix = '' if module_exists else '#FAILED: '
-            module_lines += '{line_prefix}#[path = "{path}"] pub mod {name};\n'.format(
-                    path=module_relpath,
-                    name=module_name,
-                    line_prefix=line_prefix)
+            template_modules.append((module_name, module_relpath, line_prefix))
 
-        # Write the file according to the templates
-        lib_rs.write(LIB_RS_TEMPLATE.format(
-            xcheck_attrs=xcheck_attrs,
-            xcheck_crates=xcheck_crates,
-            modules=module_lines))
+        config_files = ('config_file = "{config_file}"'.format(
+            config_file=os.path.relpath(ccc, build_dir))
+            for ccc in cross_check_config)
+        plugin_args = ", ".join(config_files)
+
+        tmpl = mako.template.Template(LIB_RS_TEMPLATE)
+        lib_rs.write(tmpl.render(
+            cross_checks=cross_checks,
+            plugin_args=plugin_args,
+            modules=template_modules))
 
 
 def transpile_files(cc_db: TextIO,
