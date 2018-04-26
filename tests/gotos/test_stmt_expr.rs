@@ -6,9 +6,9 @@ use self::libc::c_int;
 
 pub fn test_stmt_expr_relooper() {
     unsafe {
-        assert_eq!(rust_stmt_expr_func(0), 13);
-        assert_eq!(rust_stmt_expr_func(1), 12);
-        assert_eq!(rust_stmt_expr_func(2), 26);
-        assert_eq!(rust_stmt_expr_func(3), 28);
+        assert_eq!(rust_stmt_expr_func(0), 14);
+        assert_eq!(rust_stmt_expr_func(1), 13);
+        assert_eq!(rust_stmt_expr_func(2), 27);
+        assert_eq!(rust_stmt_expr_func(3), 29);
     }
 }
