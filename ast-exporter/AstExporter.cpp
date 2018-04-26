@@ -979,13 +979,16 @@ class TranslateASTVisitor final
               return true;
 
           auto is_defn = false;
+          auto def = VD;
           // Focus on the definition for a particular canonical declaration
           for (auto x : VD->redecls()) {
-              if (!x->hasExternalStorage() || x->getInit()) { is_defn = true; }
+              if (!x->hasExternalStorage() || x->getInit()) { is_defn = true; def = x; }
           }
           
           std::vector<void*> childIds { (void*)VD->getAnyInitializer() } ;
-          auto T = VD->getType();
+          
+          // Use the type from the definition in case the extern was an incomplete type
+          auto T = def->getType();
           
           encode_entry(VD, TagVarDecl, childIds, T,
                              [VD, is_defn](CborEncoder *array){
