@@ -18,6 +18,74 @@ from typing import *
 from typing.io import *
 
 
+# Template for the contents of the Cargo.toml file
+CARGO_TOML_TEMPLATE = """\
+[package]
+name = "{crate_name}"
+authors = ["C2Rust"]
+version = "0.0.0"
+publish = false
+
+[lib]
+path = "lib.rs"
+crate-type = ["staticlib"]
+
+{xchecks}
+"""
+
+CARGO_TOML_XCHECKS_TEMPLATE = """\
+[dependencies.cross-check-plugin]
+path = "{plugin_path}"
+
+[dependencies.cross-check-derive]
+path = "{derive_path}"
+
+[dependencies.cross-check-runtime]
+path = "{runtime_path}"
+features = ["libc-hash"]
+"""
+
+# Template for the crate root lib.rs file
+LIB_RS_TEMPLATE = """\
+#![feature(libc)]
+#![feature(i128_type)]
+#![feature(const_ptr_null)]
+#![feature(offset_to)]
+#![feature(const_ptr_null_mut)]
+#![feature(extern_types)]
+#![feature(asm)]
+
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(dead_code)]
+#![allow(mutable_transmutes)]
+#![allow(unused_mut)]
+
+{xcheck_attrs}
+
+extern crate libc;
+
+{xcheck_crates}
+
+{modules}
+"""
+
+# Cross-check-related attributes; these need to occur before the
+# first item, i.e., the `extern crate libc;` above
+LIB_RS_XCHECK_ATTRS_TEMPLATE = """\
+#![feature(plugin, custom_attribute)]
+#![plugin(cross_check_plugin({plugin_args}))]
+#![cross_check(yes)]
+"""
+
+# Crates required by the cross-checking infrastructure
+LIB_RS_XCHECK_CRATES_TEMPLATE = """\
+#[macro_use] extern crate cross_check_derive;
+#[macro_use] extern crate cross_check_runtime;
+"""
+
+
 def try_locate_elf_object(cmd: dict) -> Optional[str]:
     # first look for -o in compiler command
     command = None
@@ -83,80 +151,46 @@ def write_build_files(cc_db_name: str, modules: List[Tuple[str, bool]],
     cargo_toml_path = os.path.join(build_dir, "Cargo.toml")
     with open(cargo_toml_path, "w") as cargo_toml:
         # TODO: allow clients to change the name of the library
-        cargo_toml.write("""\
-[package]
-name = "c2rust-build"
-authors = ["C2Rust"]
-version = "0.0.0"
-publish = false
-
-[lib]
-path = "lib.rs"
-crate-type = ["staticlib"]
-
-""")
+        xchecks = ''
         if cross_checks:
             rust_checks_path = os.path.join(CROSS_CHECKS_DIR, "rust-checks")
             plugin_path  = os.path.join(rust_checks_path, "rustc-plugin")
             derive_path  = os.path.join(rust_checks_path, "derive-macros")
             runtime_path = os.path.join(rust_checks_path, "runtime")
-            cargo_toml.write("""\
-[dependencies.cross-check-plugin]
-path = "{plugin_path}"
-
-[dependencies.cross-check-derive]
-path = "{derive_path}"
-
-[dependencies.cross-check-runtime]
-path = "{runtime_path}"
-features = ["libc-hash"]
-""".format(plugin_path=plugin_path, derive_path=derive_path,
-           runtime_path=runtime_path))
+            xchecks = CARGO_TOML_XCHECKS_TEMPLATE.format(
+                    plugin_path=plugin_path,
+                    derive_path=derive_path,
+                    runtime_path=runtime_path)
+        cargo_toml.write(CARGO_TOML_TEMPLATE.format(
+            crate_name="c2rust-build",
+            xchecks=xchecks))
 
     lib_rs_path = os.path.join(build_dir, "lib.rs")
     with open(lib_rs_path, "w") as lib_rs:
-        lib_rs.write("""\
-#![feature(libc)]
-#![feature(i128_type)]
-#![feature(const_ptr_null)]
-#![feature(offset_to)]
-#![feature(const_ptr_null_mut)]
-#![feature(extern_types)]
-#![feature(asm)]
-
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-#![allow(dead_code)]
-#![allow(mutable_transmutes)]
-#![allow(unused_mut)]
-""")
-
+        xcheck_attrs = ''
+        xcheck_crates = ''
         if cross_checks:
             config_files = ('config_file = "{}"'.format(os.path.relpath(ccc,
                 build_dir)) for ccc in cross_check_config)
             plugin_args = ", ".join(config_files)
-            lib_rs.write("""\
-#![feature(plugin, custom_attribute)]
-#![plugin(cross_check_plugin({plugin_args}))]
-#![cross_check(yes)]
-""".format(plugin_args=plugin_args))
+            xcheck_attrs = LIB_RS_XCHECK_ATTRS_TEMPLATE.format(plugin_args=plugin_args)
+            xcheck_crates = LIB_RS_XCHECK_CRATES_TEMPLATE.format()
 
-        lib_rs.write("extern crate libc;\n")
-        if cross_checks:
-            lib_rs.write("""\
-#[macro_use] extern crate cross_check_derive;
-#[macro_use] extern crate cross_check_runtime;
-""")
-
+        module_lines = ''
         for (module, module_exists) in modules:
             module_name, _ = os.path.splitext(os.path.basename(module))
             module_relpath = os.path.relpath(module, build_dir)
             line_prefix = '' if module_exists else '#FAILED: '
-            lib_rs.write('{line_prefix}#[path = "{path}"] pub mod {name};\n'
-                    .format(path=module_relpath, name=module_name,
-                            line_prefix=line_prefix))
+            module_lines += '{line_prefix}#[path = "{path}"] pub mod {name};\n'.format(
+                    path=module_relpath,
+                    name=module_name,
+                    line_prefix=line_prefix)
 
+        # Write the file according to the templates
+        lib_rs.write(LIB_RS_TEMPLATE.format(
+            xcheck_attrs=xcheck_attrs,
+            xcheck_crates=xcheck_crates,
+            modules=module_lines))
 
 
 def transpile_files(cc_db: TextIO,
