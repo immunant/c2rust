@@ -19,12 +19,6 @@ AST_EXPORTER = AST_EXPO
 AST_IMPORTER = AST_IMPO
 RUSTFMT = "rustfmt"
 
-XCHECK_TOPDIR = os.path.join(CROSS_CHECKS_DIR, "rust-checks")
-XCHECK_TARGET_DIR = os.path.join(XCHECK_TOPDIR, "target", "debug")
-XCHECK_PLUGIN  = os.path.join(XCHECK_TARGET_DIR, "libcross_check_plugin.so")
-XCHECK_DERIVE  = os.path.join(XCHECK_TARGET_DIR, "libcross_check_derive.so")
-XCHECK_RUNTIME = os.path.join(XCHECK_TARGET_DIR, "libcross_check_runtime.rlib")
-
 
 CompileCommand = namedtuple('CompileCommand', ['directory', 'command', 'file'])
 
@@ -59,15 +53,6 @@ def generate_html_entries_header(snudown: str):
 
 def main(xcheck: bool, snudown: str):
     setup_logging()
-
-    # make sure that we built the cross-checking libraries if cross checking
-    if xcheck:
-        bins = [XCHECK_PLUGIN, XCHECK_DERIVE, XCHECK_RUNTIME]
-        for b in bins:
-            if not os.path.isfile(b):
-                msg = "missing binary:\n\t{}\n\nrun `cargo build` to compile it and retry."
-                msg = msg.format(b)
-                die(msg)
 
     # make sure the snudown submodule is checked out and up to date
     # update_or_init_submodule(snudown)
