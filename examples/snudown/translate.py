@@ -25,10 +25,6 @@ XCHECK_PLUGIN  = os.path.join(XCHECK_TARGET_DIR, "libcross_check_plugin.so")
 XCHECK_DERIVE  = os.path.join(XCHECK_TARGET_DIR, "libcross_check_derive.so")
 XCHECK_RUNTIME = os.path.join(XCHECK_TARGET_DIR, "libcross_check_runtime.rlib")
 
-# # FIXME: this should be an absolute path, but rustc-plugin cannot handle
-# # absolute paths for the external configuration
-OUTPUT_DIR = "translator-build"
-
 
 CompileCommand = namedtuple('CompileCommand', ['directory', 'command', 'file'])
 
@@ -63,11 +59,6 @@ def generate_html_entries_header(snudown: str):
 
 def main(xcheck: bool, snudown: str):
     setup_logging()
-
-    if os.path.isdir(OUTPUT_DIR):
-        logging.debug("removing existing output dir %s", OUTPUT_DIR)
-        rmtree(OUTPUT_DIR)
-    os.mkdir(OUTPUT_DIR)
 
     # make sure that we built the cross-checking libraries if cross checking
     if xcheck:
