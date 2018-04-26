@@ -1281,6 +1281,26 @@ impl Builder {
         Self::item(name, self.attrs, self.vis, ItemKind::ExternCrate(rename))
     }
 
+    // `use <path>;` item
+    // TODO: for now, we only support simple paths with an optional rename;
+    // if we ever need them, we should add support for globs and nested trees,
+    // e.g., `use foo::*;` and `use foo::{a, b, c};`
+    pub fn use_item<Pa, I>(self, path: Pa, rename: Option<I>) -> P<Item>
+        where Pa: Make<Path>, I: Make<Ident>
+    {
+        let path = path.make(&self);
+        let rename = rename
+            .map(|n| n.make(&self))
+            .unwrap_or_else(|| path.segments.last().unwrap().identifier);
+        let use_tree = UseTree {
+            span: DUMMY_SP,
+            prefix: path,
+            kind: UseTreeKind::Simple(rename),
+        };
+        Self::item(keywords::Invalid.ident(), self.attrs, self.vis,
+                   ItemKind::Use(P(use_tree)))
+    }
+
     pub fn foreign_items(self, items: Vec<ForeignItem>) -> P<Item>
     {
         let fgn_mod = ForeignMod { abi: self.abi, items };
