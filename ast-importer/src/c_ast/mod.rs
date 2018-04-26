@@ -173,14 +173,43 @@ impl TypedAstContext {
             }
         }
 
+        for stmt in self.c_stmts.values() {
+            if let CStmtKind::Decls(ref decl_ids) = stmt.kind {
+                live.extend(decl_ids);
+                for decl_id in decl_ids {
+                    match self.c_decls[decl_id].kind {
+                        CDeclKind::Typedef { typ, .. } => type_queue.push(typ.ctype),
+                        CDeclKind::Enum { ref variants, .. } => live.extend(variants),
+                        CDeclKind::Struct { fields: Some(ref arr), .. } => {
+                            live.extend(arr);
+                            for &field_id in arr {
+                                if let CDeclKind::Field { typ, .. } = self[field_id].kind {
+                                    type_queue.push(typ.ctype)
+                                }
+                            }
+                        }
+                        CDeclKind::Union { fields: Some(ref arr), .. } => {
+                            for &field_id in arr {
+                                live.insert(field_id);
+                                if let CDeclKind::Field { typ, .. } = self[field_id].kind {
+                                    type_queue.push(typ.ctype)
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
         // All expressions are considered live (this is an overapproximation if an otherwise
         // unused function declaration uses a VLA and that VLA's size expression mentions
         // some definitions.
-        for decl in self.c_exprs.values() {
+        for expr in self.c_exprs.values() {
 
-            type_queue.push(decl.kind.get_type());
+            type_queue.push(expr.kind.get_type());
 
-            match decl.kind {
+            match expr.kind {
 
                 // Could mention external functions, variables, and enum constants
                 CExprKind::DeclRef(_, decl_id) => {
