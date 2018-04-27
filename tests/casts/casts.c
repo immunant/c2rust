@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 void cast_stuff() {
         int inta[10] = {0};
         int *intp = 0;
@@ -17,5 +19,6 @@ void cast_stuff() {
         int x9 = (int)10.0;
         _Bool x10 = (_Bool)10;
         _Bool x11 = (_Bool)10.5;
-        double x12 = (double)10.5f;
+        _Bool x12 = NULL;
+        double x13 = (double)10.5f;
 }

@@ -2345,6 +2345,7 @@ impl Translation {
                 }))
             }
 
+
             CastKind::IntegralToPointer | CastKind::PointerToIntegral |
             CastKind::IntegralCast | CastKind::FloatingCast | CastKind::FloatingToIntegral |
             CastKind::IntegralToFloating => {
@@ -2423,7 +2424,7 @@ impl Translation {
                 ))
             },
 
-            CastKind::IntegralToBoolean | CastKind::FloatingToBoolean => {
+            CastKind::IntegralToBoolean | CastKind::FloatingToBoolean | CastKind::PointerToBoolean => {
                 let val_ty = self.ast_context.index(expr).kind.get_type();
                 Ok(val.map(|x| self.match_bool(true, val_ty, x)))
             }
@@ -2431,6 +2432,7 @@ impl Translation {
             // I don't know how to actually cause clang to generate this
             CastKind::BooleanToSignedIntegral =>
                 Err(format!("TODO boolean to signed integral not supported")),
+
 
             CastKind::FloatingRealToComplex | CastKind::FloatingComplexToIntegralComplex |
             CastKind::FloatingComplexCast | CastKind::FloatingComplexToReal |
