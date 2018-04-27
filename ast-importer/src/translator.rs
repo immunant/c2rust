@@ -25,6 +25,7 @@ pub struct TranslationConfig {
     pub reloop_cfgs: bool,
     pub fail_on_multiple: bool,
     pub dump_function_cfgs: bool,
+    pub dump_cfg_liveness: bool,
     pub dump_structures: bool,
     pub debug_relooper_labels: bool,
     pub cross_checks: bool,
@@ -1038,6 +1039,7 @@ impl Translation {
                     graph
                         .dump_dot_graph(
                             &self.ast_context, &store,
+                            self.tcfg.dump_cfg_liveness,
                             self.tcfg.use_c_loop_info,
                             format!("{}_{}.dot", "cfg", name)
                         )
