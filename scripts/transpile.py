@@ -13,10 +13,72 @@ import argparse
 import platform
 import multiprocessing
 
+import mako.template
+
 from common import *
 from typing import *
 from typing.io import *
 
+
+# Template for the contents of the Cargo.toml file
+CARGO_TOML_TEMPLATE = """\
+[package]
+name = "${crate_name}"
+authors = ["C2Rust"]
+version = "0.0.0"
+publish = false
+
+[lib]
+path = "lib.rs"
+crate-type = ["staticlib"]
+
+% if cross_checks:
+[dependencies.cross-check-plugin]
+path = "${plugin_path}"
+
+[dependencies.cross-check-derive]
+path = "${derive_path}"
+
+[dependencies.cross-check-runtime]
+path = "${runtime_path}"
+features = ["libc-hash"]
+% endif
+"""
+
+# Template for the crate root lib.rs file
+LIB_RS_TEMPLATE = """\
+#![feature(libc)]
+#![feature(i128_type)]
+#![feature(const_ptr_null)]
+#![feature(offset_to)]
+#![feature(const_ptr_null_mut)]
+#![feature(extern_types)]
+#![feature(asm)]
+
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(dead_code)]
+#![allow(mutable_transmutes)]
+#![allow(unused_mut)]
+
+% if cross_checks:
+#![feature(plugin, custom_attribute)]
+#![plugin(cross_check_plugin(${plugin_args}))]
+#![cross_check(yes)]
+% endif
+
+extern crate libc;
+
+% if cross_checks:
+#[macro_use] extern crate cross_check_derive;
+#[macro_use] extern crate cross_check_runtime;
+% endif
+
+% for (module_name, module_path, line_prefix) in modules:
+${line_prefix}#[path = "${module_path}"] pub mod ${module_name};
+% endfor
+"""
 
 def try_locate_elf_object(cmd: dict) -> Optional[str]:
     # first look for -o in compiler command
@@ -73,12 +135,58 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
         die(msg)
 
 
+def write_build_files(cc_db_name: str, modules: List[Tuple[str, bool]],
+                      cross_checks: bool, cross_check_config: List[str]):
+    cc_db_dir = os.path.dirname(cc_db_name)
+    build_dir = os.path.join(cc_db_dir, "c2rust-build")
+    shutil.rmtree(build_dir, ignore_errors=True)
+    os.mkdir(build_dir)
+
+    cargo_toml_path = os.path.join(build_dir, "Cargo.toml")
+    with open(cargo_toml_path, "w") as cargo_toml:
+        # TODO: allow clients to change the name of the library
+        rust_checks_path = os.path.join(CROSS_CHECKS_DIR, "rust-checks")
+        plugin_path  = os.path.join(rust_checks_path, "rustc-plugin")
+        derive_path  = os.path.join(rust_checks_path, "derive-macros")
+        runtime_path = os.path.join(rust_checks_path, "runtime")
+        tmpl = mako.template.Template(CARGO_TOML_TEMPLATE)
+        cargo_toml.write(tmpl.render(
+            crate_name="c2rust-build",
+            cross_checks=cross_checks,
+            plugin_path=plugin_path,
+            derive_path=derive_path,
+            runtime_path=runtime_path))
+
+    lib_rs_path = os.path.join(build_dir, "lib.rs")
+    with open(lib_rs_path, "w") as lib_rs:
+        template_modules = []
+        for (module, module_exists) in modules:
+            module_name, _ = os.path.splitext(os.path.basename(module))
+            module_relpath = os.path.relpath(module, build_dir)
+            line_prefix = '' if module_exists else '#FAILED: '
+            template_modules.append((module_name, module_relpath, line_prefix))
+
+        config_files = ('config_file = "{config_file}"'.format(
+            config_file=os.path.relpath(ccc, build_dir))
+            for ccc in cross_check_config)
+        plugin_args = ", ".join(config_files)
+
+        tmpl = mako.template.Template(LIB_RS_TEMPLATE)
+        lib_rs.write(tmpl.render(
+            cross_checks=cross_checks,
+            plugin_args=plugin_args,
+            modules=template_modules))
+
+
 def transpile_files(cc_db: TextIO,
                     jobs: int,
                     filter: str = None,
                     extra_impo_args: List[str] = [],
                     import_only: bool = False,
-                    verbose: bool = False) -> bool:
+                    verbose: bool = False,
+                    emit_build_files: bool = True,
+                    cross_checks: bool = False,
+                    cross_check_config: List[str] = []) -> bool:
     """
     run the ast-exporter and ast-importer on all C files
     in a compile commands database.
@@ -95,7 +203,16 @@ def transpile_files(cc_db: TextIO,
         ensure_code_compiled_with_clang(cc_db)
     include_dirs = get_system_include_dirs()
 
-    def transpile_single(cmd) -> Tuple[str, int, str, str]:
+    impo_args = []
+    if emit_build_files:
+        impo_args.append('--emit-module')
+    if cross_checks:
+        impo_args.append('--cross-checks')
+        for ccc in cross_check_config:
+            impo_args.append('--cross-check-config')
+            impo_args.append(ccc)
+
+    def transpile_single(cmd) -> Tuple[str, int, str, str, str]:
 
         if import_only:
             cbor_file = os.path.join(cmd['directory'], cmd['file'] + ".cbor")
@@ -118,10 +235,10 @@ def transpile_files(cc_db: TextIO,
             logging.info(" importing ast from %s", cbor_basename)
             translation_cmd = "RUST_BACKTRACE=1 \\\n"
             translation_cmd += "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
-            translation_cmd += str(ast_impo[cbor_file, extra_impo_args])
+            translation_cmd += str(ast_impo[cbor_file, impo_args, extra_impo_args])
             logging.debug("translation command:\n %s", translation_cmd)
             try:
-                retcode, stdout, stderr = ast_impo[cbor_file, extra_impo_args].run()
+                retcode, stdout, stderr = ast_impo[cbor_file, impo_args, extra_impo_args].run()
 
                 e = "Expected file suffix `.c.cbor`; actual: " + cbor_basename
                 assert cbor_file.endswith(".c.cbor"), e
@@ -130,15 +247,22 @@ def transpile_files(cc_db: TextIO,
                     rust_fh.writelines(stdout)
                     logging.debug("wrote output rust to %s", rust_file)
 
-                return (file_basename, retcode, stdout, stderr)
+                return (file_basename, retcode, stdout, stderr,
+                        os.path.abspath(rust_file))
             except pb.ProcessExecutionError as pee:
-                return (file_basename, pee.retcode, pee.stdout, pee.stderr)
+                return (file_basename, pee.retcode, pee.stdout, pee.stderr,
+                        None)
 
     commands = sorted(cc_db, key=lambda cmd: os.path.basename(cmd['file']))
     results = (transpile_single(cmd) for cmd in commands)
 
+    if emit_build_files:
+        modules = [(rust_src, retcode == 0) for (_, retcode, _, _, rust_src) in
+                   results if rust_src is not None]
+        write_build_files(cc_db_name, modules, cross_checks, cross_check_config)
+
     successes, failures = 0, 0
-    for (fname, retcode, stdout, stderr) in results:
+    for (fname, retcode, stdout, stderr, _) in results:
         if not retcode:
             successes += 1
             print(OKGREEN + " import successful" + NO_COLOUR)
@@ -176,6 +300,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-j', '--jobs', type=int, dest="jobs",
                         default=multiprocessing.cpu_count(),
                         help='max number of concurrent jobs')
+    parser.add_argument('-x', '--cross-checks', default=False,
+                        help='enable cross-checks')
+    parser.add_argument('-X', '--cross-check-config', action='append',
+                        help='cross-check configuration file(s)')
     return parser.parse_args()
 
 
@@ -189,7 +317,9 @@ def main():
                     args.filter,
                     [],
                     args.import_only,
-                    args.verbose)
+                    args.verbose,
+                    args.cross_checks,
+                    args.cross_check_config)
 
     logging.info(u"success 👍")
 

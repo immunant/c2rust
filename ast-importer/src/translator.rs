@@ -25,6 +25,7 @@ pub struct TranslationConfig {
     pub reloop_cfgs: bool,
     pub fail_on_multiple: bool,
     pub dump_function_cfgs: bool,
+    pub dump_cfg_liveness: bool,
     pub dump_structures: bool,
     pub debug_relooper_labels: bool,
     pub cross_checks: bool,
@@ -374,7 +375,9 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
     };
 
     to_string(|s| {
-        if !t.tcfg.emit_module {
+        if t.tcfg.emit_module {
+            s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
+        } else {
             let mut features =
                 vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut", "extern_types", "asm"]),
                      ("allow"  ,vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
@@ -1038,6 +1041,7 @@ impl Translation {
                     graph
                         .dump_dot_graph(
                             &self.ast_context, &store,
+                            self.tcfg.dump_cfg_liveness,
                             self.tcfg.use_c_loop_info,
                             format!("{}_{}.dot", "cfg", name)
                         )
