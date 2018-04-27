@@ -1088,7 +1088,7 @@ impl Translation {
                     &relooped,
                     current_block,
                     self.tcfg.debug_relooper_labels
-                ));
+                )?);
                 Ok(stmts)
             } else {
                 let mut res = vec![];
