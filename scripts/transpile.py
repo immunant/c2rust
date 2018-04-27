@@ -66,14 +66,12 @@ LIB_RS_TEMPLATE = """\
 #![feature(plugin, custom_attribute)]
 #![plugin(cross_check_plugin(${plugin_args}))]
 #![cross_check(yes)]
-% endif
 
-extern crate libc;
-
-% if cross_checks:
 #[macro_use] extern crate cross_check_derive;
 #[macro_use] extern crate cross_check_runtime;
 % endif
+
+extern crate libc;
 
 % for (module_name, module_path, line_prefix) in modules:
 ${line_prefix}#[path = "${module_path}"] pub mod ${module_name};
