@@ -2,8 +2,8 @@
 //! there is a point in the relooper algorithm where we commit to making a `Loop` structure. At that
 //! point, we partition blocks into those that go into the loop and those that go after the loop.
 //!
-//! Relooper gives us a handful of blocks _must_ go in the loop, but we have some freedom to choose
-//! which other blocks we want to push into the loop.
+//! Relooper gives us a handful of blocks which _must_ go in the loop, but we have some freedom to
+//! choose which other blocks we want to also push into the loop.
 //!
 //! Our choice can be informed by one of two strategies:
 //!
@@ -44,6 +44,7 @@ pub fn match_loop_body(
 
             follow_entries.remove(&following);
             follow_entries.extend(&bb.successors());
+            follow_entries.retain(|e| !body_blocks.contains_key(e));
             body_blocks.insert(following, bb);
         }
     }
