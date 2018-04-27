@@ -2626,6 +2626,9 @@ impl Translation {
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
             let sz = mk().lit_expr(mk().int_lit(sz as u128, LitIntType::Unsuffixed));
             Ok(mk().repeat_expr(self.implicit_default_expr(elt, is_static)?, sz))
+        } else if let &CTypeKind::IncompleteArray(_) = resolved_ty {
+            // Incomplete arrays are translated to zero length arrays
+            Ok(mk().array_expr(vec![] as Vec<P<Expr>>))
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id, is_static)
         } else if let &CTypeKind::VariableArray(elt, _) = resolved_ty {
@@ -2636,13 +2639,13 @@ impl Translation {
             // Find base element type of potentially nested arrays
             let mut inner = elt;
             while let &CTypeKind::VariableArray(elt_, _)
-                      = &self.ast_context.resolve_type(inner).kind {
+            = &self.ast_context.resolve_type(inner).kind {
                 inner = elt_;
             }
 
             let count = self.compute_size_of_expr(ty_id).unwrap();
             let val = self.implicit_default_expr(inner, is_static)?;
-            let from_elem = mk().path_expr(vec!["", "std","vec","from_elem"]);
+            let from_elem = mk().path_expr(vec!["", "std", "vec", "from_elem"]);
             let alloc = mk().call_expr(from_elem, vec![val, count]);
             Ok(alloc)
         } else {
