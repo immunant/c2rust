@@ -1371,6 +1371,7 @@ impl Cfg<Label,StmtOrDecl> {
         &self,
         ctx: &TypedAstContext,
         store: &DeclStmtStore,
+        show_liveness: bool,
         show_loops: bool,
         file_path: String,
     ) -> io::Result<()> {
@@ -1453,8 +1454,8 @@ impl Cfg<Label,StmtOrDecl> {
                 "  {} [label=\"{}:\\l-----{}{}\\l{}-----{}\"];\n",
                 lbl.debug_print(),
                 lbl.debug_print(),
-                live,
-                defined,
+                if show_liveness { live } else { String::new() },
+                if show_liveness { defined } else { String::new() },
                 format!("-----\\l{}", if bb.body.is_empty() {
                     String::from("")
                 } else {
