@@ -978,12 +978,20 @@ class TranslateASTVisitor final
           if(!VD->isCanonicalDecl() && !(VD->isExternC() && VD->isLocalVarDecl()))
               return true;
 
-          std::vector<void*> childIds =
-          { VD->getInit() } ;
-          auto T = VD->getType();
+          auto is_defn = false;
+          auto def = VD;
+          // Focus on the definition for a particular canonical declaration
+          for (auto x : VD->redecls()) {
+              if (!x->hasExternalStorage() || x->getInit()) { is_defn = true; def = x; }
+          }
+          
+          std::vector<void*> childIds { (void*)VD->getAnyInitializer() } ;
+          
+          // Use the type from the definition in case the extern was an incomplete type
+          auto T = def->getType();
           
           encode_entry(VD, TagVarDecl, childIds, T,
-                             [VD](CborEncoder *array){
+                             [VD, is_defn](CborEncoder *array){
                                  auto name = VD->getNameAsString();
                                  cbor_encode_string(array, name);
 
@@ -993,7 +1001,6 @@ class TranslateASTVisitor final
                                  auto is_extern = VD->isExternC();
                                  cbor_encode_boolean(array, is_extern);
 
-                                 auto is_defn = VD->isThisDeclarationADefinition() != clang::VarDecl::DefinitionKind::DeclarationOnly;
                                  cbor_encode_boolean(array, is_defn);
                              });
           
@@ -1263,6 +1270,7 @@ void TypeEncoder::VisitVariableArrayType(const VariableArrayType *T) {
 
 class TranslateConsumer : public clang::ASTConsumer {
     const std::string outfile;
+
 public:
     explicit TranslateConsumer(llvm::StringRef InFile) 
         : outfile(InFile.str().append(".cbor")) { }
@@ -1349,14 +1357,6 @@ public:
 // Apply a custom category to all command-line options so that they are the
 // only ones displayed.
 static llvm::cl::OptionCategory MyToolCategory("my-tool options");
-
-// CommonOptionsParser declares HelpMessage with a description of the common
-// command-line options related to the compilation database and input files.
-// It's nice to have this help message in all tools.
-static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
-
-// A help message for this specific tool can be added afterwards.
-static cl::extrahelp MoreHelp("\nMore help text...");
 
 int main(int argc, const char **argv) {
   CommonOptionsParser OptionsParser(argc, argv, MyToolCategory);

@@ -1,6 +1,6 @@
 # Cross-check configuration file for the Rust version of snudown
 ---
-src/autolink.rs:
+../src/autolink.rs:
     - item: defaults
       all_args: default
 
@@ -40,7 +40,7 @@ src/autolink.rs:
         rewind_p: disabled
         no_slash: disabled
 
-src/buffer.rs:
+../src/buffer.rs:
     - item: defaults
       all_args: default
 
@@ -50,7 +50,7 @@ src/buffer.rs:
       fields:
         data: disabled # FIXME: hash up to buf.size bytes
 
-src/markdown.rs:
+../src/markdown.rs:
     - item: defaults
       all_args: default
 
@@ -93,7 +93,7 @@ src/markdown.rs:
         columns: disabled
         column_data: disabled
 
-src/stack.rs:
+../src/stack.rs:
     - item: defaults
       all_args: default
 
