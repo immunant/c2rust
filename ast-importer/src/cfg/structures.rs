@@ -7,7 +7,7 @@ pub fn structured_cfg(
     root: &Vec<Structure<Stmt>>,
     current_block: P<Expr>,
     debug_labels: bool
-) -> Vec<Stmt> {
+) -> Result<Vec<Stmt>, String> {
     let mut stmts = structured_cfg_help(
         vec![],
         &HashSet::new(),
@@ -15,7 +15,7 @@ pub fn structured_cfg(
         &mut HashSet::new(),
         current_block,
         debug_labels,
-    );
+    )?;
 
     // If the very last statement in the vector is a `return`, we can either cut it out or replace
     // it with the returned value.
@@ -37,7 +37,7 @@ pub fn structured_cfg(
         _ => { }
     }
 
-    stmts
+    Ok(stmts)
 }
 
 /// Recursive helper for `structured_cfg`
@@ -50,7 +50,7 @@ fn structured_cfg_help(
     used_loop_labels: &mut HashSet<Label>,
     current_block: P<Expr>,
     debug_labels: bool,
-) -> Vec<Stmt> {
+) -> Result<Vec<Stmt>, String> {
 
     let mut next: &HashSet<Label> = next;
     let mut rest: Vec<Stmt> = vec![];
@@ -72,7 +72,7 @@ fn structured_cfg_help(
                     }
                 };
 
-                let mut branch = |slbl: &StructureLabel<Stmt>| -> Vec<Stmt> {
+                let mut branch = |slbl: &StructureLabel<Stmt>| -> Result<Vec<Stmt>, String> {
                     match slbl {
                         &StructureLabel::Nested(ref nested) =>
                             structured_cfg_help(
@@ -85,37 +85,41 @@ fn structured_cfg_help(
 
                         &StructureLabel::GoTo(to) |
                         &StructureLabel::ExitTo(to) if next.contains(&to) =>
-                            insert_goto(to, &next, vec![]),
+                            Ok(insert_goto(to, &next, vec![])),
 
                         &StructureLabel::ExitTo(to) => {
 
                             let mut immediate = true;
                             for &(label, ref local) in &exits {
                                 if let Some(&(ref follow, exit_style)) = local.get(&to) {
-                                    return insert_goto(
+                                    return Ok(insert_goto(
                                         to,
                                         follow,
                                         mk_exit(immediate, exit_style, label, used_loop_labels),
-                                    )
+                                    ))
                                 }
                                 immediate = false;
                             }
 
-                            panic!("Not a valid exit - nothing to exit to")
+                            Err(format!("Not a valid exit: {:?} has nothing to exit to", to))
                         }
-                        _ => panic!("Not a valid exit"),
+
+                        &StructureLabel::GoTo(to) => Err(format!(
+                            "Not a valid exit: {:?} (GoTo isn't falling through)",
+                            to
+                        )),
                     }
                 };
 
                 new_rest.extend(match terminator {
                     &End => vec![],
-                    &Jump(ref to) => branch(to),
-                    &Branch(ref c, ref t, ref f) => mk_if(c.clone(), branch(t), branch(f)),
+                    &Jump(ref to) => branch(to)?,
+                    &Branch(ref c, ref t, ref f) => mk_if(c.clone(), branch(t)?, branch(f)?),
                     &Switch { ref expr, ref cases } => {
-                        let branched_cases = cases
+                        let branched_cases: Vec<(Vec<P<Pat>>, Vec<Stmt>)> = cases
                             .iter()
-                            .map(|&(ref pats, ref slbl)| (pats.clone(), branch(slbl)))
-                            .collect();
+                            .map(|&(ref pats, ref slbl)| Ok((pats.clone(), branch(slbl)?)))
+                            .collect::<Result<Vec<(Vec<P<Pat>>, Vec<Stmt>)>, String>>()?;
 
                         mk_match(expr.clone(), branched_cases)
                     },
@@ -125,7 +129,7 @@ fn structured_cfg_help(
             &Structure::Multiple { ref branches, ref then, .. } => {
                 let cases: Vec<(Label, Vec<Stmt>)> = branches
                     .iter()
-                    .map(|(lbl, body)| {
+                    .map(|(lbl, body)| -> Result<(Label, Vec<Stmt>), String> {
                         let stmts = structured_cfg_help(
                             exits.clone(),
                             next,
@@ -133,10 +137,10 @@ fn structured_cfg_help(
                             used_loop_labels,
                             current_block.clone(),
                             debug_labels,
-                        );
-                        (*lbl, stmts)
+                        )?;
+                        Ok((*lbl, stmts))
                     })
-                    .collect();
+                    .collect::<Result<Vec<(Label, Vec<Stmt>)>, String>>()?;
 
                 let then: Vec<Stmt> = structured_cfg_help(
                     exits.clone(),
@@ -145,13 +149,14 @@ fn structured_cfg_help(
                     used_loop_labels,
                     current_block.clone(),
                     debug_labels,
-                );
+                )?;
 
                 new_rest.extend(mk_goto_table(cases, then, current_block.clone(), debug_labels));
             }
 
             &Structure::Loop { ref body, ref entries } => {
-                let label = entries.iter().next().expect("there were no labels");
+                let label = entries.iter().next()
+                    .ok_or(format!("The loop {:?} has no entry", structure))?;
 
                 let mut these_exits = HashMap::new();
                 these_exits.extend(entries
@@ -173,7 +178,7 @@ fn structured_cfg_help(
                     used_loop_labels,
                     current_block.clone(),
                     debug_labels,
-                );
+                )?;
                 let loop_lbl = if used_loop_labels.contains(label) { Some(*label) } else { None };
                 new_rest.extend(mk_loop(loop_lbl, body));
             }
@@ -185,7 +190,7 @@ fn structured_cfg_help(
         next = structure.get_entries();
     }
 
-    rest
+    Ok(rest)
 }
 
 /// Checks if there are any `Multiple` structures anywhere. Only if so will there be any need for a
