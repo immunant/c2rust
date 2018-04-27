@@ -112,9 +112,9 @@ fn sequence_option<A,E>(x: Option<Result<A,E>>) -> Result<Option<A>, E> {
 }
 
 fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
-    let opt_literal_val = match &val.node {
-        &ExprKind::Lit(ref l) => match &l.node {
-            &LitKind::Int(i,_) => Some(i),
+    let opt_literal_val = match val.node {
+        ExprKind::Lit(ref l) => match l.node {
+            LitKind::Int(i,_) => Some(i),
             _ => None,
         }
         _ => None,
@@ -1470,9 +1470,7 @@ impl Translation {
         // Variable declarations for variable-length arrays use the type of a pointer to the
         // underlying array element
         let ty = if let CTypeKind::VariableArray(mut elt, _) = self.ast_context.resolve_type(typ.ctype).kind {
-            while let CTypeKind::VariableArray(elt_, _) = self.ast_context.resolve_type(elt).kind {
-                elt = elt_
-            }
+            elt = self.variable_array_base_type(elt);
             let ty = self.convert_type(elt)?;
             mk().path_ty(vec![mk().path_segment_with_params("Vec", mk().angle_bracketed_param_types(vec![ty]))])
         } else {
@@ -1612,8 +1610,8 @@ impl Translation {
     // Compute the offset multiplier for variable length array indexing
     // Rust type: usize
     pub fn compute_size_of_expr(&self, type_id: CTypeId) -> Option<P<Expr>> {
-        match &self.ast_context.resolve_type(type_id).kind {
-            &CTypeKind::VariableArray(elts, Some(counts)) => {
+        match self.ast_context.resolve_type(type_id).kind {
+            CTypeKind::VariableArray(elts, Some(counts)) => {
                 let opt_esize = self.compute_size_of_expr(elts);
                 let csize_name = self.renamer.borrow().get(&CDeclId(counts.0))
                                 .expect("Failed to lookup VLA expression");
@@ -1629,6 +1627,16 @@ impl Translation {
         }
     }
 
+    /// Variable element arrays are represented by a flat array of non-variable-length array
+    /// elements. This function traverses potentially multiple levels of variable-length array
+    /// to find the underlying element type.
+    fn variable_array_base_type(&self, mut elt: CTypeId) -> CTypeId {
+        while let CTypeKind::VariableArray(elt_, _) = self.ast_context.resolve_type(elt).kind {
+            elt = elt_;
+        }
+        elt
+    }
+
     /// This generates variables that store the computed sizes of the variable-length arrays in
     /// the given type.
     pub fn compute_variable_array_sizes(&self, mut type_id: CTypeId) -> Result<Vec<Stmt>, String> {
@@ -1636,10 +1644,10 @@ impl Translation {
         let mut stmts = vec![];
 
         loop {
-            match &self.ast_context.resolve_type(type_id).kind {
-                &CTypeKind::Pointer(elt) => type_id = elt.ctype,
-                &CTypeKind::ConstantArray(elt, _) => type_id = elt,
-                &CTypeKind::VariableArray(elt, Some(expr_id)) => {
+            match self.ast_context.resolve_type(type_id).kind {
+                CTypeKind::Pointer(elt) => type_id = elt.ctype,
+                CTypeKind::ConstantArray(elt, _) => type_id = elt,
+                CTypeKind::VariableArray(elt, Some(expr_id)) => {
                     type_id = elt;
 
                     // Convert this expression
@@ -1662,8 +1670,8 @@ impl Translation {
     // Compute the size of a type
     // Rust type: usize
     pub fn compute_size_of_type(&self, type_id: CTypeId) -> Result<WithStmts<P<Expr>>, String> {
-        if let &CTypeKind::VariableArray(elts, len) =
-            &self.ast_context.resolve_type(type_id).kind {
+        if let CTypeKind::VariableArray(elts, len) =
+            self.ast_context.resolve_type(type_id).kind {
 
             let len = len.expect("Sizeof a VLA type with count expression omitted");
 
@@ -1696,10 +1704,7 @@ impl Translation {
     pub fn compute_align_of_type(&self, mut type_id: CTypeId)
         -> Result<WithStmts<P<Expr>>, String> {
 
-        while let CTypeKind::VariableArray(elts, _) =
-            self.ast_context.resolve_type(type_id).kind {
-            type_id = elts;
-        }
+        type_id = self.variable_array_base_type(type_id);
 
         let ty = self.convert_type(type_id)?;
 
@@ -1733,12 +1738,7 @@ impl Translation {
                             None => self.compute_size_of_type(arg_ty.ctype)?,
                             Some(_) =>
                                 {
-                                    let mut inner = arg_ty.ctype;
-                                    while let &CTypeKind::VariableArray(elt_, _)
-                                    = &self.ast_context.resolve_type(inner).kind {
-                                        inner = elt_;
-                                    }
-
+                                    let inner = self.variable_array_base_type(arg_ty.ctype);
                                     let inner_size = self.compute_size_of_type(inner)?;
 
                                     if let Some(sz) = self.compute_size_of_expr(arg_ty.ctype) {
@@ -1791,13 +1791,13 @@ impl Translation {
 
             CExprKind::OffsetOf(ty, val) |
             CExprKind::Literal(ty, CLiteral::Integer(val)) => {
-                let intty = match &self.ast_context.resolve_type(ty.ctype).kind {
-                    &CTypeKind::Int => LitIntType::Signed(IntTy::I32),
-                    &CTypeKind::Long => LitIntType::Signed(IntTy::I64),
-                    &CTypeKind::LongLong => LitIntType::Signed(IntTy::I64),
-                    &CTypeKind::UInt => LitIntType::Unsigned(UintTy::U32),
-                    &CTypeKind::ULong => LitIntType::Unsigned(UintTy::U64),
-                    &CTypeKind::ULongLong => LitIntType::Unsigned(UintTy::U64),
+                let intty = match self.ast_context.resolve_type(ty.ctype).kind {
+                    CTypeKind::Int => LitIntType::Signed(IntTy::I32),
+                    CTypeKind::Long => LitIntType::Signed(IntTy::I64),
+                    CTypeKind::LongLong => LitIntType::Signed(IntTy::I64),
+                    CTypeKind::UInt => LitIntType::Unsigned(UintTy::U32),
+                    CTypeKind::ULong => LitIntType::Unsigned(UintTy::U64),
+                    CTypeKind::ULongLong => LitIntType::Unsigned(UintTy::U64),
                     _ => LitIntType::Unsuffixed,
                 };
                 Ok(WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), intty))))
@@ -1811,11 +1811,11 @@ impl Translation {
                 let mut bytes: Vec<u8> = vec![];
                 dtoa::write(&mut bytes, val).unwrap();
                 let str = String::from_utf8(bytes).unwrap();
-                let float_ty = match &self.ast_context.resolve_type(ty.ctype).kind {
-                    &CTypeKind::LongDouble => FloatTy::F64,
-                    &CTypeKind::Double => FloatTy::F64,
-                    &CTypeKind::Float => FloatTy::F32,
-                    k => panic!("Unsupported floating point literal type {:?}", k),
+                let float_ty = match self.ast_context.resolve_type(ty.ctype).kind {
+                    CTypeKind::LongDouble => FloatTy::F64,
+                    CTypeKind::Double => FloatTy::F64,
+                    CTypeKind::Float => FloatTy::F32,
+                    ref k => panic!("Unsupported floating point literal type {:?}", k),
                 };
                 Ok(WithStmts::new(mk().lit_expr(mk().float_lit(str, float_ty))))
             }
@@ -1823,9 +1823,9 @@ impl Translation {
             CExprKind::Literal(ty, CLiteral::String(ref val, width)) => {
                 let mut val = val.to_owned();
 
-                match &self.ast_context.resolve_type(ty.ctype).kind {
+                match self.ast_context.resolve_type(ty.ctype).kind {
                     // Match the literal size to the expected size padding with zeros as needed
-                    &CTypeKind::ConstantArray(_, size) => val.resize(size*(width as usize),0),
+                    CTypeKind::ConstantArray(_, size) => val.resize(size*(width as usize),0),
 
                     // Add zero terminator
                     _ => for _ in 0..width { val.push(0); },
@@ -2048,8 +2048,8 @@ impl Translation {
                     let lhs_type_id = lhs_node.get_type();
 
                     // Determine the type of element being indexed
-                    let pointee_type_id = match &self.ast_context.resolve_type(lhs_type_id).kind {
-                        &CTypeKind::Pointer(pointee_id) => pointee_id,
+                    let pointee_type_id = match self.ast_context.resolve_type(lhs_type_id).kind {
+                        CTypeKind::Pointer(pointee_id) => pointee_id,
                         _ => panic!("Subscript applied to non-pointer"),
                     };
 
@@ -2200,8 +2200,8 @@ impl Translation {
             None
         }
 
-        match &self.ast_context[compound_stmt_id].kind {
-            &CStmtKind::Compound(ref substmt_ids) if !substmt_ids.is_empty() => {
+        match self.ast_context[compound_stmt_id].kind {
+            CStmtKind::Compound(ref substmt_ids) if !substmt_ids.is_empty() => {
 
                 let n = substmt_ids.len();
                 let result_id = substmt_ids[n - 1];
@@ -2368,15 +2368,15 @@ impl Translation {
 
             CastKind::ArrayToPointerDecay => {
 
-                let pointee = match &self.ast_context.resolve_type(ty.ctype).kind {
-                    &CTypeKind::Pointer(pointee) => pointee,
+                let pointee = match self.ast_context.resolve_type(ty.ctype).kind {
+                    CTypeKind::Pointer(pointee) => pointee,
                     _ => panic!("Dereferencing a non-pointer"),
                 };
 
                 let is_const = pointee.qualifiers.is_const;
 
-                match &self.ast_context.index(expr).kind {
-                    &CExprKind::Literal(_,CLiteral::String(ref bytes,1)) if is_const => {
+                match self.ast_context.index(expr).kind {
+                    CExprKind::Literal(_,CLiteral::String(ref bytes,1)) if is_const => {
                         let target_ty = self.convert_type(ty.ctype)?;
 
                         let mut bytes = bytes.to_owned();
@@ -2389,7 +2389,7 @@ impl Translation {
                     _ => {
                         // Variable length arrays are already represented as pointers.
                         let source_ty = self.ast_context[expr].kind.get_type();
-                        if let &CTypeKind::VariableArray(..) = &self.ast_context.resolve_type(source_ty).kind {
+                        if let CTypeKind::VariableArray(..) = self.ast_context.resolve_type(source_ty).kind {
                             Ok(val)
                         } else {
                             let method = if is_const { "as_ptr" } else { "as_mut_ptr" };
@@ -2439,8 +2439,8 @@ impl Translation {
     /// variant directly, otherwise it transmutes a number to the enum type.
     fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> P<Expr> {
 
-        let def_id = match &self.ast_context.resolve_type(enum_type_id).kind {
-            &CTypeKind::Enum(def_id) => def_id,
+        let def_id = match self.ast_context.resolve_type(enum_type_id).kind {
+            CTypeKind::Enum(def_id) => def_id,
             _ => panic!("{:?} does not point to an `enum` type"),
         };
 
@@ -2494,22 +2494,22 @@ impl Translation {
             _ => panic!("{:?} does not point to an `enum` declaration")
         };
 
-        match &self.ast_context.index(expr).kind {
+        match self.ast_context.index(expr).kind {
             // This is the case of finding a variable which is an `EnumConstant` of the same enum
             // we are casting to. Here, we can just remove the extraneous cast instead of generating
             // a new one.
-            &CExprKind::DeclRef(_, decl_id) if variants.contains(&decl_id) =>
+            CExprKind::DeclRef(_, decl_id) if variants.contains(&decl_id) =>
                 return val.map(|x| match x.node {
                     ast::ExprKind::Cast(ref e, _) => e.clone(),
                     _ => panic!(format!("DeclRef {:?} of enum {:?} is not cast", expr, enum_decl)),
                 }),
 
-            &CExprKind::Literal(_, CLiteral::Integer(i)) => {
+            CExprKind::Literal(_, CLiteral::Integer(i)) => {
                 let new_val = self.enum_for_i64(enum_type, i as i64);
                 return WithStmts { stmts: val.stmts, val: new_val }
             }
 
-            &CExprKind::Unary(_, c_ast::UnOp::Negate, subexpr_id) => {
+            CExprKind::Unary(_, c_ast::UnOp::Negate, subexpr_id) => {
                 if let &CExprKind::Literal(_, CLiteral::Integer(i)) = &self.ast_context[subexpr_id].kind {
                     let new_val = self.enum_for_i64(enum_type, -(i as i64));
                     return WithStmts { stmts: val.stmts, val: new_val }
@@ -2641,11 +2641,7 @@ impl Translation {
             // element type.
 
             // Find base element type of potentially nested arrays
-            let mut inner = elt;
-            while let &CTypeKind::VariableArray(elt_, _)
-            = &self.ast_context.resolve_type(inner).kind {
-                inner = elt_;
-            }
+            let inner = self.variable_array_base_type(elt);
 
             let count = self.compute_size_of_expr(ty_id).unwrap();
             let val = self.implicit_default_expr(inner, is_static)?;
