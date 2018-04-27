@@ -1238,8 +1238,15 @@ impl Translation {
     pub fn convert_condition(&self, target: bool, cond_id: CExprId, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
         let ty_id = self.ast_context.index(cond_id).kind.get_type();
 
-        Ok(self.convert_expr(ExprUse::RValue, cond_id, is_static)?
-            .map(|e| self.match_bool(target, ty_id, e)))
+        match self.ast_context[cond_id].kind {
+            CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id) => {
+                self.convert_condition(!target, subexpr_id, is_static)
+            }
+            _ => {
+                let val = self.convert_expr(ExprUse::RValue, cond_id, is_static)?;
+                Ok(val.map(|e| self.match_bool(target, ty_id, e)))
+            }
+        }
     }
 
     fn convert_while_stmt(&self, cond_id: CExprId, body_id: CStmtId) -> Result<Vec<Stmt>, String> {
@@ -2116,10 +2123,9 @@ impl Translation {
                 self.convert_expr(use_, val, is_static),
 
             CExprKind::InitList(ty, ref ids, opt_union_field_id) => {
-                let resolved = &self.ast_context.resolve_type(ty.ctype).kind;
 
-                match resolved {
-                    &CTypeKind::ConstantArray(ty, n) => {
+                match self.ast_context.resolve_type(ty.ctype).kind {
+                    CTypeKind::ConstantArray(ty, n) => {
                         // Convert all of the provided initializer values
 
                         // Need to check to see if the next item is a string literal,
@@ -2157,18 +2163,18 @@ impl Translation {
 
                         Ok(WithStmts {stmts, val })
                     }
-                    &CTypeKind::Struct(struct_id) => {
+                    CTypeKind::Struct(struct_id) => {
                         self.convert_struct_literal(struct_id, ids.as_ref(), is_static)
                     }
-                    &CTypeKind::Union(union_id) => {
+                    CTypeKind::Union(union_id) => {
                         self.convert_union_literal(union_id, ids.as_ref(), ty, opt_union_field_id, is_static)
                     }
-                    &CTypeKind::Pointer(_) => {
+                    CTypeKind::Pointer(_) => {
                         let id = ids.first().unwrap();
                         let mut x = self.convert_expr(ExprUse::RValue, *id, is_static);
                         Ok(x.unwrap())
                     }
-                    t => {
+                    ref t => {
                         panic!("Init list not implemented for {:?}", t);
                     }
                 }
