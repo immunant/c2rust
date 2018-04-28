@@ -74,7 +74,7 @@ LIB_RS_TEMPLATE = """\
 extern crate libc;
 
 % for (module_name, module_path, line_prefix) in modules:
-${line_prefix}#[path = "${module_path}"] pub mod ${module_name};
+${line_prefix}#[path = "${module_path}"] pub mod ${module_name.replace('-', '_')};
 % endfor
 """
 
