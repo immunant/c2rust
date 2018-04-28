@@ -305,6 +305,7 @@ def parse_args() -> argparse.Namespace:
                         action='store_true',
                         help='enable cross-checks')
     parser.add_argument('-X', '--cross-check-config', action='append',
+                        default=[],
                         help='cross-check configuration file(s)')
     return parser.parse_args()
 
