@@ -298,7 +298,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-j', '--jobs', type=int, dest="jobs",
                         default=multiprocessing.cpu_count(),
                         help='max number of concurrent jobs')
+    parser.add_argument('-e', '--emit-build-files', default=False,
+                        action='store_true',
+                        help='emit Rust build files, i.e., Cargo.toml and lib.rs')
     parser.add_argument('-x', '--cross-checks', default=False,
+                        action='store_true',
                         help='enable cross-checks')
     parser.add_argument('-X', '--cross-check-config', action='append',
                         help='cross-check configuration file(s)')
@@ -316,6 +320,7 @@ def main():
                     [],
                     args.import_only,
                     args.verbose,
+                    args.emit_build_files,
                     args.cross_checks,
                     args.cross_check_config)
 
