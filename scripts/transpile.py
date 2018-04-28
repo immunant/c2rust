@@ -66,14 +66,12 @@ LIB_RS_TEMPLATE = """\
 #![feature(plugin, custom_attribute)]
 #![plugin(cross_check_plugin(${plugin_args}))]
 #![cross_check(yes)]
-% endif
 
-extern crate libc;
-
-% if cross_checks:
 #[macro_use] extern crate cross_check_derive;
 #[macro_use] extern crate cross_check_runtime;
 % endif
+
+extern crate libc;
 
 % for (module_name, module_path, line_prefix) in modules:
 ${line_prefix}#[path = "${module_path}"] pub mod ${module_name};
@@ -135,10 +133,9 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
         die(msg)
 
 
-def write_build_files(cc_db_name: str, modules: List[Tuple[str, bool]],
+def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
                       cross_checks: bool, cross_check_config: List[str]):
-    cc_db_dir = os.path.dirname(cc_db_name)
-    build_dir = os.path.join(cc_db_dir, "c2rust-build")
+    build_dir = os.path.join(dest_dir, "c2rust-build")
     shutil.rmtree(build_dir, ignore_errors=True)
     os.mkdir(build_dir)
 
@@ -259,7 +256,8 @@ def transpile_files(cc_db: TextIO,
     if emit_build_files:
         modules = [(rust_src, retcode == 0) for (_, retcode, _, _, rust_src) in
                    results if rust_src is not None]
-        write_build_files(cc_db_name, modules, cross_checks, cross_check_config)
+        cc_db_dir = os.path.dirname(cc_db_name)
+        write_build_files(cc_db_dir, modules, cross_checks, cross_check_config)
 
     successes, failures = 0, 0
     for (fname, retcode, stdout, stderr, _) in results:
@@ -300,9 +298,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-j', '--jobs', type=int, dest="jobs",
                         default=multiprocessing.cpu_count(),
                         help='max number of concurrent jobs')
+    parser.add_argument('-e', '--emit-build-files', default=False,
+                        action='store_true',
+                        help='emit Rust build files, i.e., Cargo.toml and lib.rs')
     parser.add_argument('-x', '--cross-checks', default=False,
+                        action='store_true',
                         help='enable cross-checks')
     parser.add_argument('-X', '--cross-check-config', action='append',
+                        default=[],
                         help='cross-check configuration file(s)')
     return parser.parse_args()
 
@@ -318,6 +321,7 @@ def main():
                     [],
                     args.import_only,
                     args.verbose,
+                    args.emit_build_files,
                     args.cross_checks,
                     args.cross_check_config)
 
