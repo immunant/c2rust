@@ -301,14 +301,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-a', '--importer-arg', dest="extra_impo_args",
                         default=[], action='append',
                         help='extra arguments for ast-importer')
-    parser.add_argument('-e', '--emit-build-files', default=False,
-                        action='store_true',
+    parser.add_argument('-e', '--emit-build-files',
+                        default=False, action='store_true',
                         help='emit Rust build files, i.e., Cargo.toml and lib.rs')
-    parser.add_argument('-x', '--cross-checks', default=False,
-                        action='store_true',
+    parser.add_argument('-x', '--cross-checks',
+                        default=False, action='store_true',
                         help='enable cross-checks')
-    parser.add_argument('-X', '--cross-check-config', action='append',
-                        default=[],
+    parser.add_argument('-X', '--cross-check-config',
+                        default=[], action='append',
                         help='cross-check configuration file(s)')
     return parser.parse_args()
 
