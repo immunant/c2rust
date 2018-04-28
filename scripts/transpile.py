@@ -298,6 +298,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-j', '--jobs', type=int, dest="jobs",
                         default=multiprocessing.cpu_count(),
                         help='max number of concurrent jobs')
+    parser.add_argument('-a', '--importer-arg', dest="extra_impo_args",
+                        default=[], action='append',
+                        help='extra arguments for ast-importer')
     parser.add_argument('-e', '--emit-build-files', default=False,
                         action='store_true',
                         help='emit Rust build files, i.e., Cargo.toml and lib.rs')
@@ -318,7 +321,7 @@ def main():
     transpile_files(args.commands_json,
                     args.jobs,
                     args.filter,
-                    [],
+                    args.extra_impo_args,
                     args.import_only,
                     args.verbose,
                     args.emit_build_files,
