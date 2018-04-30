@@ -63,15 +63,15 @@ fn main() {
             .long("no-simplify-structures")
             .help("Do not run a pass to simplify structures")
             .takes_value(false))
-        .arg(Arg::with_name("use-c-loop-info")
+        .arg(Arg::with_name("ignore-c-loop-info")
             .requires("reloop-cfgs")
-            .long("use-c-loop-info")
-            .help("Keep and use information about C loops")
+            .long("ignore-c-loop-info")
+            .help("Don't keep/use information about C loops")
             .takes_value(false))
-        .arg(Arg::with_name("use-c-multiple-info")
+        .arg(Arg::with_name("ignore-c-multiple-info")
             .requires("reloop-cfgs")
-            .long("use-c-multiple-info")
-            .help("Keep and use information about C branches")
+            .long("ignore-c-multiple-info")
+            .help("Don't keep/use information about C branches")
             .takes_value(false))
         .arg(Arg::with_name("dump-function-cfgs")
             .requires("reloop-cfgs")
@@ -138,8 +138,8 @@ fn main() {
             .map(String::from),
         translate_asm:          matches.is_present("translate-asm"),
         translate_entry:        matches.is_present("translate-entry"),
-        use_c_loop_info:        matches.is_present("use-c-loop-info"),
-        use_c_multiple_info:    matches.is_present("use-c-multiple-info"),
+        use_c_loop_info:        !matches.is_present("ignore-c-loop-info"),
+        use_c_multiple_info:    !matches.is_present("ignore-c-multiple-info"),
         simplify_structures:    !matches.is_present("no-simplify-structures"),
         emit_module:            matches.is_present("emit-module"),
         panic_on_translator_failure: {
