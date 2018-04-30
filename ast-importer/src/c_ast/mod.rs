@@ -609,6 +609,7 @@ pub enum CastKind {
     FloatingToIntegral,
     FloatingToBoolean,
     BooleanToSignedIntegral,
+    PointerToBoolean,
     FloatingCast,
     FloatingRealToComplex,
     FloatingComplexToReal,

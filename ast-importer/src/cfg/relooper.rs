@@ -225,38 +225,41 @@ impl RelooperState {
         // --------------------------------------
         // Loops
 
+
+        // DFS transitive closure
+        fn transitive_closure<V: Copy + Hash + Eq>(adjacency_list: &HashMap<V, HashSet<V>>) -> HashMap<V, HashSet<V>> {
+            let mut edges: HashSet<(V, V)> = HashSet::new();
+            let mut to_visit: Vec<(V, V)> = adjacency_list.keys().map(|v| (*v,*v)).collect();
+
+            while let Some((s,v)) = to_visit.pop() {
+                for i in adjacency_list.get(&v).unwrap_or(&HashSet::new()) {
+                    if edges.insert((s,*i)) {
+                        to_visit.push((s, *i));
+                    }
+                }
+            }
+
+            let mut closure: HashMap<V, HashSet<V>> = HashMap::new();
+            for (f,t) in edges {
+                closure.entry(f).or_insert(HashSet::new()).insert(t);
+            }
+
+            closure
+        }
+
         // This information is necessary for both the `Loop` and `Multiple` cases
         let (predecessor_map, strict_reachable_from) = {
             let mut successor_map: HashMap<Label, HashSet<Label>> = blocks
                 .iter()
                 .map(|(lbl, bb)| (*lbl, bb.successors()))
                 .collect();
-            let predecessor_map = flip_edges(successor_map.clone());
 
-            // Iteratively make this bigger
-            loop {
-                let mut new_successor_map: HashMap<Label, HashSet<Label>> = HashMap::new();
-                for (lbl, seens) in successor_map.iter() {
-                    let mut new_seen = HashSet::new();
-                    new_seen.extend(seens);
-                    for seen in seens {
-                        new_seen.extend(successor_map.get(seen).unwrap_or(&HashSet::new()));
-                    }
-                    new_successor_map.insert(*lbl, new_seen);
-                }
-
-                if successor_map == new_successor_map {
-                    break;
-                } else {
-                    successor_map = new_successor_map;
-                }
-            }
-
-            // Flip edges
-            let strict_reachable_from = flip_edges(successor_map);
+            let strict_reachable_from = flip_edges(transitive_closure(&successor_map));
+            let predecessor_map = flip_edges(successor_map);
 
             (predecessor_map, strict_reachable_from)
         };
+
 
         // Try to match an existing branch point (from the intial C). See `MultipleInfo` for more
         // information on this.

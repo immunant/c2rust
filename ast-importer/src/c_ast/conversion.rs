@@ -128,6 +128,7 @@ fn parse_cast_kind(kind: &str) -> CastKind {
         "FloatingToIntegral" => CastKind::FloatingToIntegral,
         "FloatingToBoolean" => CastKind::FloatingToBoolean,
         "BooleanToSignedIntegral" => CastKind::BooleanToSignedIntegral,
+        "PointerToBoolean" =>  CastKind::PointerToBoolean,
         "FloatingCast" => CastKind::FloatingCast,
         "FloatingRealToComplex" => CastKind::FloatingRealToComplex,
         "FloatingComplexToReal" => CastKind::FloatingComplexToReal,
