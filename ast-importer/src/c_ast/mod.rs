@@ -45,6 +45,13 @@ pub struct TypedAstContext {
     pub comments: Vec<Located<String>>,
 }
 
+/// Comments associated with a typed AST context
+#[derive(Debug, Clone)]
+pub struct CommentContext {
+    decl_comments: HashMap<CDeclId, Vec<String>>,
+    stmt_comments: HashMap<CStmtId, Vec<String>>,
+}
+
 impl TypedAstContext {
     pub fn new() -> TypedAstContext {
         TypedAstContext {
@@ -102,7 +109,6 @@ impl TypedAstContext {
     /// that it doesn't, return `false`.
     pub fn is_expr_pure(&self, expr: CExprId) -> bool {
         match self.index(expr).kind {
-
             CExprKind::Call(_, _, _) => false,
             CExprKind::Literal(_, _) => true,
             CExprKind::DeclRef(_, _) => true,
@@ -128,10 +134,10 @@ impl TypedAstContext {
             CExprKind::Conditional(_, c, lhs, rhs) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
             CExprKind::BinaryConditional(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
 
-            CExprKind::InitList{..} => false,
-            CExprKind::ImplicitValueInit{..} => false,
+            CExprKind::InitList { .. } => false,
+            CExprKind::ImplicitValueInit { .. } => false,
             CExprKind::CompoundLiteral(_, val) => self.is_expr_pure(val),
-            CExprKind::Predefined(_,_) => false,
+            CExprKind::Predefined(_, _) => false,
         }
     }
 
@@ -157,7 +163,6 @@ impl TypedAstContext {
 
 
     pub fn simplify(&mut self) {
-
         // Set of declarations that should be preserved
         let mut live: HashSet<CDeclId> = HashSet::new();
 
@@ -206,11 +211,9 @@ impl TypedAstContext {
         // unused function declaration uses a VLA and that VLA's size expression mentions
         // some definitions.
         for expr in self.c_exprs.values() {
-
             type_queue.push(expr.kind.get_type());
 
             match expr.kind {
-
                 // Could mention external functions, variables, and enum constants
                 CExprKind::DeclRef(_, decl_id) => {
                     live.insert(decl_id);
@@ -224,7 +227,7 @@ impl TypedAstContext {
                         }
                     }
                 }
-                CExprKind::UnaryType(_,_,_,type_id) => { type_queue.push(type_id.ctype); }
+                CExprKind::UnaryType(_, _, _, type_id) => { type_queue.push(type_id.ctype); }
                 _ => {}
             }
         }
@@ -232,7 +235,7 @@ impl TypedAstContext {
         // Track all the variables associated with pruned function prototypes for removal
         let mut bad_variables: HashSet<CDeclId> = HashSet::new();
 
-        self.c_decls.retain(| &decl_id, decl| {
+        self.c_decls.retain(|&decl_id, decl| {
             if live.contains(&decl_id) { return true; }
             match &decl.kind {
                 &CDeclKind::Function { body: None, ref parameters, .. } => {
@@ -333,12 +336,102 @@ impl TypedAstContext {
         }
 
         // Prune out any declaration that isn't considered live
-        self.c_decls.retain(| &decl_id, _decl|
+        self.c_decls.retain(|&decl_id, _decl|
             live.contains(&decl_id)
         );
 
         // Prune out top declarations that are not considered live
         self.c_decls_top.retain(|x| live.contains(x));
+    }
+}
+
+impl CommentContext {
+    pub fn empty() -> CommentContext {
+        CommentContext {
+            decl_comments: HashMap::new(),
+            stmt_comments: HashMap::new(),
+        }
+    }
+
+
+    // Try to match up every comment with a declaration or a statement
+    pub fn new(
+        ast_context: &mut TypedAstContext
+    ) -> CommentContext {
+
+        // Group and sort declarations by file and by position
+        let mut decls: HashMap<u64, Vec<(SrcLoc, CDeclId)>> = HashMap::new();
+        for (decl_id, ref loc_decl) in &ast_context.c_decls {
+            if let Some(loc) = loc_decl.loc {
+                decls.entry(loc.fileid).or_insert(vec![]).push((loc, *decl_id));
+            }
+        }
+        decls.iter_mut().for_each(|(_, v)| v.sort());
+
+        // Group and sort statements by file and by position
+        let mut stmts: HashMap<u64, Vec<(SrcLoc, CStmtId)>> = HashMap::new();
+        for (stmt_id, ref loc_stmt) in &ast_context.c_stmts {
+            if let Some(loc) = loc_stmt.loc {
+                stmts.entry(loc.fileid).or_insert(vec![]).push((loc, *stmt_id));
+            }
+        }
+        stmts.iter_mut().for_each(|(_, v)| v.sort());
+
+
+        let mut decl_comments: HashMap<CDeclId, Vec<String>> = HashMap::new();
+        let mut stmt_comments: HashMap<CStmtId, Vec<String>> = HashMap::new();
+
+        let empty_vec1 = &vec![];
+        let empty_vec2 = &vec![];
+
+
+        // Match comments to declarations and statements
+        while let Some(Located { loc, kind: comment_str }) = ast_context.comments.pop() {
+            if let Some(loc) = loc {
+                let this_file_decls = decls.get(&loc.fileid).unwrap_or(empty_vec1);
+                let this_file_stmts = stmts.get(&loc.fileid).unwrap_or(empty_vec2);
+
+                // Find the closest declaration and statement
+                let decl_ix = this_file_decls
+                    .binary_search_by_key(&loc, |&(l,_)| l)
+                    .unwrap_or_else(|x| x);
+                let stmt_ix = this_file_stmts
+                    .binary_search_by_key(&loc, |&(l,_)| l)
+                    .unwrap_or_else(|x| x);
+
+                // Prefer the one that is higher up (biasing towards declarations if there is a tie)
+                match (this_file_decls.get(decl_ix), this_file_stmts.get(stmt_ix)) {
+                    (Some(&(l1, d)), Some(&(l2, s))) => {
+                        if l1 > l2 {
+                            stmt_comments.entry(s).or_insert(vec![]).push(comment_str);
+                        } else {
+                            decl_comments.entry(d).or_insert(vec![]).push(comment_str);
+                        }
+                    }
+                    (Some(&(_, d)), None) => {
+                        decl_comments.entry(d).or_insert(vec![]).push(comment_str);
+                    }
+                    (None, Some(&(_, s))) => {
+                        stmt_comments.entry(s).or_insert(vec![]).push(comment_str);
+                    }
+                    (None, None) => {
+                        eprintln!("Didn't find a target node for the comment '{}'", comment_str);
+                    },
+                };
+            }
+        }
+
+        CommentContext { decl_comments, stmt_comments }
+    }
+
+    // Extract the comment for a given declaration
+    pub fn remove_decl_comment(&mut self, decl_id: CDeclId) -> Vec<String> {
+        self.decl_comments.remove(&decl_id).unwrap_or(vec![])
+    }
+
+    // Extract the comment for a given statement
+    pub fn remove_stmt_comment(&mut self, stmt_id: CStmtId) -> Vec<String> {
+        self.stmt_comments.remove(&stmt_id).unwrap_or(vec![])
     }
 }
 
@@ -387,12 +480,13 @@ impl Index<CStmtId> for TypedAstContext {
 }
 
 /// Represents a position inside a C source file
-#[derive(Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
 pub struct SrcLoc {
+    pub fileid: u64,
     pub line: u64,
     pub column: u64,
-    pub fileid: u64,
 }
+
 
 /// Represents some AST node possibly with source location information bundled with it
 #[derive(Debug, Clone)]

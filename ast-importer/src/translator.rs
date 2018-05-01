@@ -41,10 +41,11 @@ pub struct TranslationConfig {
 }
 
 pub struct Translation {
-    pub items: Vec<P<Item>>,
-    pub foreign_items: Vec<ForeignItem>,
+    pub items: Vec<(Vec<String>, P<Item>)>,
+    pub foreign_items: Vec<(Vec<String>, ForeignItem)>,
     type_converter: RefCell<TypeConverter>,
     pub ast_context: TypedAstContext,
+    pub comment_context: CommentContext,
     pub tcfg: TranslationConfig,
     renamer: RefCell<Renamer<CDeclId>>,
     loops: LoopContext,
@@ -336,9 +337,11 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             _ => false,
         };
         if needs_export {
+            let comments = t.comment_context.remove_decl_comment(decl_id);
+
             match t.convert_decl(true, decl_id) {
-                Ok(ConvertedDecl::Item(item)) => t.items.push(item),
-                Ok(ConvertedDecl::ForeignItem(item)) => t.foreign_items.push(item),
+                Ok(ConvertedDecl::Item(item)) => t.items.push((comments, item)),
+                Ok(ConvertedDecl::ForeignItem(item)) => t.foreign_items.push((comments, item)),
                 Err(e) => {
                     let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
                     eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
@@ -355,9 +358,11 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             _ => false,
         };
         if needs_export {
+            let comments = t.comment_context.remove_decl_comment(*top_id);
+
             match t.convert_decl(true, *top_id) {
-                Ok(ConvertedDecl::Item(item)) => t.items.push(item),
-                Ok(ConvertedDecl::ForeignItem(item)) => t.foreign_items.push(item),
+                Ok(ConvertedDecl::Item(item)) => t.items.push((comments, item)),
+                Ok(ConvertedDecl::ForeignItem(item)) => t.foreign_items.push((comments, item)),
                 Err(e) => {
                     let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
                     eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
@@ -368,8 +373,10 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
     // Add the main entry point
     if let Some(main_id) = t.ast_context.c_main {
+        let comments = t.comment_context.remove_decl_comment(main_id);
+
         match t.convert_main(main_id) {
-            Ok(item) => t.items.push(item),
+            Ok(item) => t.items.push((comments, item)),
             Err(e) => eprintln!("Skipping main declaration due to error: {}", e)
         }
     };
@@ -435,12 +442,19 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         }
 
         if !t.foreign_items.is_empty() {
-            s.print_item(&mk().abi(Abi::C).foreign_items(t.foreign_items))?
+            s.print_item(&mk().abi(Abi::C).foreign_items(t.foreign_items.into_iter().map(|(_,i)| i).collect()))?
         }
 
         // Add the items accumulated
-        for x in t.items {
+        for (comments, x) in t.items {
+            if !comments.is_empty() {
+                for comment in comments {
+                    s.hardbreak_if_not_bol()?;
+                    s.writer().word(&comment)?;
+                }
+            }
             s.print_item(&*x)?;
+
         }
 
         Ok(())
@@ -486,12 +500,15 @@ enum ConvertedDecl {
 }
 
 impl Translation {
-    pub fn new(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Translation {
+    pub fn new(mut ast_context: TypedAstContext, tcfg: TranslationConfig) -> Translation {
+        let comment_context = CommentContext::new(&mut ast_context);
+
         Translation {
             items: vec![],
             foreign_items: vec![],
             type_converter: RefCell::new(TypeConverter::new()),
             ast_context,
+            comment_context,
             tcfg,
             renamer: RefCell::new(Renamer::new(&[
                 // Keywords currently in use
