@@ -448,8 +448,15 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         // Add the items accumulated
         for (comments, x) in t.items {
             if !comments.is_empty() {
-                for comment in comments {
+                for mut comment in comments {
                     s.hardbreak_if_not_bol()?;
+
+                    // Add a space to disrupt potential doc comments
+                    if comment.starts_with("//!") || comment.starts_with("///") ||
+                        comment.starts_with("/**") || comment.starts_with("/*!") {
+                        comment.insert(2,' ');
+                    }
+
                     s.writer().word(&comment)?;
                 }
             }
