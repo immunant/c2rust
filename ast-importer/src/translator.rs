@@ -535,6 +535,17 @@ impl Translation {
     /// Add a `comment` at the current position, then return the `Span` that should be given to
     /// something we want associated with this comment.
     pub fn add_comment(&self, lines: Vec<String>) -> Span {
+        let lines = lines
+            .into_iter()
+            .map(|mut comment| {
+                if comment.starts_with("//!") || comment.starts_with("///") ||
+                    comment.starts_with("/**") || comment.starts_with("/*!") {
+                    comment.insert(2,' ');
+                }
+                comment
+            })
+            .collect();
+
         let mut curpos = self.span_source.borrow_mut();
         *curpos += 1;
         self.comments.borrow_mut().push(comments::Comment {
@@ -1048,7 +1059,7 @@ impl Translation {
                     mk().abi(Abi::C)
                 };
 
-                Ok(ConvertedDecl::Item(mk_.span(span).fn_item(new_name, decl, block)))
+                Ok(ConvertedDecl::Item(mk_.span(span).unsafe_().fn_item(new_name, decl, block)))
             } else {
                 // Translating an extern function declaration
 
