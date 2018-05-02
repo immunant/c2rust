@@ -19,6 +19,7 @@ use syntax;
 use syntax::ast::*;
 use syntax::ptr::P;
 use idiomize::ast_manip::make_ast::*;
+use syntax::codemap::{DUMMY_SP};
 use std::collections::{HashSet, HashMap};
 use c_ast::CLabelId;
 use std::ops::Index;
@@ -1351,7 +1352,7 @@ impl CfgBuilder {
             }
 
             CStmtKind::Asm { is_volatile, ref asm, ref inputs, ref outputs, ref clobbers } => {
-                wip.extend(translator.convert_asm(is_volatile, asm, inputs, outputs, clobbers)?);
+                wip.extend(translator.convert_asm(DUMMY_SP, is_volatile, asm, inputs, outputs, clobbers)?);
                 Ok(Some(wip))
             }
         }
