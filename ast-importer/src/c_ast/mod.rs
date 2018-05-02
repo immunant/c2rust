@@ -28,6 +28,7 @@ pub use self::print::Printer;
 
 mod conversion;
 mod print;
+pub mod iterators;
 
 /// AST context containing all of the nodes in the Clang AST
 #[derive(Debug, Clone)]

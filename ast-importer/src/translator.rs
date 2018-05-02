@@ -11,6 +11,7 @@ use loops::*;
 use idiomize::ast_manip::make_ast::*;
 use c_ast;
 use c_ast::*;
+use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;
 use syntax::print::pprust::*;
 use std::ops::Index;
@@ -1390,6 +1391,18 @@ impl Translation {
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ } if !is_static && !is_extern => {
                 assert!(is_defn, "Only local variable definitions should be extracted");
+
+                for i in initializer {
+                    for x in DFExpr::new(&self.ast_context, i.into()) {
+                        if let SomeId::Expr(e) = x {
+                            if let CExprKind::DeclRef(_, d) = self.ast_context[e].kind {
+                                if d == decl_id {
+                                    return Err(format!("Self-referential initializers not supported"))
+                                }
+                            }
+                        }
+                    }
+                }
 
                 let mut stmts = self.compute_variable_array_sizes(typ.ctype)?;
 
