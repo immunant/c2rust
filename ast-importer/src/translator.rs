@@ -1417,13 +1417,23 @@ impl Translation {
                 assert!(is_defn, "Only local variable definitions should be extracted");
 
                 for i in initializer {
-                    for x in DFExpr::new(&self.ast_context, i.into()) {
-                        if let SomeId::Expr(e) = x {
-                            if let CExprKind::DeclRef(_, d) = self.ast_context[e].kind {
-                                if d == decl_id {
-                                    return Err(format!("Self-referential initializers not supported"))
+                    let mut iter = DFExpr::new(&self.ast_context, i.into());
+                    while let Some(x) = iter.next() {
+                        match x {
+                            SomeId::Expr(e) => {
+                                match self.ast_context[e].kind {
+                                    CExprKind::DeclRef(_, d) if d == decl_id =>
+                                        return Err(format!("Self-referential initializers not supported")),
+                                    CExprKind::UnaryType(_, _, Some(_), _) => iter.prune(1),
+                                    _ => {}
                                 }
                             }
+                            SomeId::Type(t) => {
+                                if let CTypeKind::TypeOfExpr(_) = self.ast_context[t].kind {
+                                    iter.prune(1);
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }

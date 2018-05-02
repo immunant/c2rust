@@ -37,6 +37,10 @@ impl<'context> DFExpr<'context> {
             context, stack: vec![start]
         }
     }
+    pub fn prune(&mut self, n: usize) {
+        let new_len = self.stack.len() - n;
+        self.stack.truncate(new_len)
+    }
 }
 
 fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
