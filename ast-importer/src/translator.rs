@@ -416,7 +416,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
             if t.tcfg.cross_checks {
                 let mut xcheck_attr_args = String::new();
-                for ref config_file in &t.tcfg.cross_check_configs {
+                for config_file in &t.tcfg.cross_check_configs {
                     if !xcheck_attr_args.is_empty() {
                         xcheck_attr_args.push(',');
                     }
@@ -919,13 +919,13 @@ impl Translation {
                 assert!(is_static, "An extern variable must be static");
                 assert!(initializer.is_none(), "An extern variable that isn't a definition can't have an initializer");
 
-                let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
+                let new_name = self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, _) = self.convert_variable(None, typ, is_static)?;
 
-                let extern_item = mk_linkage(true, new_name, ident)
+                let extern_item = mk_linkage(true, &new_name, ident)
                     .span(s)
                     .set_mutbl(mutbl)
-                    .foreign_static(new_name, ty);
+                    .foreign_static(&new_name, ty);
 
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
@@ -1429,12 +1429,7 @@ impl Translation {
     pub fn convert_decl_stmt(&self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
 
         match self.convert_decl_stmt_info(decl_id)? {
-            cfg::DeclStmtInfo { pre_init: Some(i), decl_and_assign: Some(d), .. } => {
-                let mut ret: Vec<Stmt> = vec![];
-                ret.extend(i);
-                ret.extend(d);
-                Ok(ret)
-            }
+            cfg::DeclStmtInfo { decl_and_assign: Some(d), .. } => Ok(d),
             _ => Err(format!("convert_decl_stmt: couldn't get declaration and initialization info"))
         }
     }
@@ -1470,11 +1465,12 @@ impl Translation {
             CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ } if !is_static && !is_extern => {
                 assert!(is_defn, "Only local variable definitions should be extracted");
 
-                for expr_id in initializer {
-                    if self.has_decl_reference(decl_id, expr_id) {
-                        return Err(format!("Self-referential initializers not supported"))
-                    }
-                }
+                let has_self_reference =
+                    if let Some(expr_id) = initializer {
+                        self.has_decl_reference(decl_id, expr_id)
+                    } else {
+                        false
+                    };
 
                 let mut stmts = self.compute_variable_array_sizes(typ.ctype)?;
 
@@ -1486,21 +1482,47 @@ impl Translation {
 
                 stmts.append(&mut init.stmts);
 
-                let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
-                let zeroed = self.implicit_default_expr(typ.ctype, is_static)?;
-                let local_mut = mk().local(pat_mut, Some(ty.clone()), Some(zeroed));
+                if has_self_reference {
+                    let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
+                    let zeroed = self.implicit_default_expr(typ.ctype, is_static)?;
+                    let local_mut = mk().local(pat_mut, Some(ty.clone()), Some(zeroed));
 
-                let pat = mk().set_mutbl(mutbl).ident_pat(rust_name.clone());
+                    let assign = mk().assign_expr(mk().ident_expr(rust_name), init.val);
 
-                let local = mk().local(pat, Some(ty), Some(init.val.clone()));
-                let assign = mk().assign_expr(mk().ident_expr(rust_name), init.val);
+                    let mut assign_stmts = stmts.clone();
+                    assign_stmts.push(mk().semi_stmt(assign.clone()));
 
-                Ok(cfg::DeclStmtInfo::new(
-                    vec![mk().local_stmt(P(local_mut))],
-                    vec![mk().semi_stmt(assign)],
-                    vec![mk().local_stmt(P(local))],
-                    stmts,
-                ))
+                    let mut decl_and_assign = vec![mk().local_stmt(P(local_mut.clone()))];
+                    decl_and_assign.append(&mut stmts);
+                    decl_and_assign.push(mk().expr_stmt(assign));
+
+                    Ok(cfg::DeclStmtInfo::new(
+                        vec![mk().local_stmt(P(local_mut))],
+                        assign_stmts,
+                        decl_and_assign,
+                    ))
+                } else {
+                    let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
+                    let zeroed = self.implicit_default_expr(typ.ctype, is_static)?;
+                    let local_mut = mk().local(pat_mut, Some(ty.clone()), Some(zeroed));
+
+                    let pat = mk().set_mutbl(mutbl).ident_pat(rust_name.clone());
+
+                    let local = mk().local(pat, Some(ty), Some(init.val.clone()));
+                    let assign = mk().assign_expr(mk().ident_expr(rust_name), init.val);
+
+                    let mut assign_stmts = stmts.clone();
+                    assign_stmts.push(mk().semi_stmt(assign));
+
+                    let mut decl_and_assign = stmts;
+                    decl_and_assign.push(mk().local_stmt(P(local)));
+
+                    Ok(cfg::DeclStmtInfo::new(
+                        vec![mk().local_stmt(P(local_mut))],
+                        assign_stmts,
+                        decl_and_assign,
+                    ))
+                }
             }
 
             ref decl => {
@@ -1529,7 +1551,6 @@ impl Translation {
                         vec![],
                         vec![],
                         vec![],
-                        vec![],
                     ))
                 } else {
                     let item = match self.convert_decl(false, decl_id)? {
@@ -1541,7 +1562,6 @@ impl Translation {
                         vec![mk().item_stmt(item.clone())],
                         vec![],
                         vec![mk().item_stmt(item)],
-                        vec![],
                     ))
                 }
             },

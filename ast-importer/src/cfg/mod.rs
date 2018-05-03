@@ -642,9 +642,6 @@ pub struct DeclStmtInfo {
 
     /// Both the declaration and the assignment
     pub decl_and_assign: Option<Vec<Stmt>>,
-
-    /// Statements that need to run to make `assign` and `decl_and_assign` work
-    pub pre_init: Option<Vec<Stmt>>,
 }
 
 impl DeclStmtInfo {
@@ -652,13 +649,11 @@ impl DeclStmtInfo {
         decl: Vec<Stmt>,
         assign: Vec<Stmt>,
         decl_and_assign: Vec<Stmt>,
-        pre_init: Vec<Stmt>
     ) -> Self {
         DeclStmtInfo {
             decl: Some(decl),
             assign: Some(assign),
             decl_and_assign: Some(decl_and_assign),
-            pre_init: Some(pre_init),
         }
     }
 }
@@ -672,13 +667,13 @@ impl DeclStmtStore {
     /// Extract _just_ the Rust statements for a declaration (without initialization). Used when you
     /// want to move just a declaration to a larger scope.
     pub fn extract_decl(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
-        let DeclStmtInfo { decl, assign, pre_init, .. } = self.store
+        let DeclStmtInfo { decl, assign, .. } = self.store
             .remove(&decl_id)
             .ok_or(format!("Cannot find information on declaration {:?}", decl_id))?;
 
         let decl: Vec<Stmt> = decl.ok_or(format!("Declaration for {:?} has already been extracted", decl_id))?;
 
-        let pruned = DeclStmtInfo { decl: None, assign, decl_and_assign: None, pre_init };
+        let pruned = DeclStmtInfo { decl: None, assign, decl_and_assign: None };
         self.store.insert(decl_id, pruned);
 
         Ok(decl)
@@ -688,57 +683,42 @@ impl DeclStmtStore {
    /// initially attached to). Used when you've moved a declaration but now you need to also run the
    /// initializer.
     pub fn extract_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
-        let DeclStmtInfo { decl, assign, pre_init, .. } = self.store
+        let DeclStmtInfo { decl, assign, .. } = self.store
             .remove(&decl_id)
             .ok_or(format!("Cannot find information on declaration {:?}", decl_id))?;
 
-        let pre_init: Vec<Stmt> = pre_init.ok_or(format!("Pre-initializer for {:?} has already been extracted", decl_id))?;
         let assign: Vec<Stmt> = assign.ok_or(format!("Assignment for {:?} has already been extracted", decl_id))?;
 
-        let pruned = DeclStmtInfo { decl, assign: None, decl_and_assign: None, pre_init: None };
+        let pruned = DeclStmtInfo { decl, assign: None, decl_and_assign: None };
         self.store.insert(decl_id, pruned);
 
-        let mut ret: Vec<Stmt> = vec![];
-        ret.extend(&mut pre_init.into_iter());
-        ret.extend(&mut assign.into_iter());
-
-        Ok(ret)
+        Ok(assign)
     }
 
     /// Extract the Rust statements for the full declaration and initializers. Used for when you
     /// didn't need to move a declaration at all.
     pub fn extract_decl_and_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
-        let DeclStmtInfo { decl_and_assign, pre_init, .. } = self.store
+        let DeclStmtInfo { decl_and_assign, .. } = self.store
             .remove(&decl_id)
             .ok_or(format!("Cannot find information on declaration {:?}", decl_id))?;
 
-        let pre_init: Vec<Stmt> = pre_init.ok_or(format!("Pre-initializer for {:?} has already been extracted", decl_id))?;
         let decl_and_assign: Vec<Stmt> = decl_and_assign.ok_or(format!("Declaration with assignment for {:?} has already been extracted", decl_id))?;
 
-        let pruned = DeclStmtInfo { decl: None, assign: None, decl_and_assign: None, pre_init: None };
+        let pruned = DeclStmtInfo { decl: None, assign: None, decl_and_assign: None };
         self.store.insert(decl_id, pruned);
 
-        let mut ret: Vec<Stmt> = vec![];
-        ret.extend(&mut pre_init.into_iter());
-        ret.extend(&mut decl_and_assign.into_iter());
-
-        Ok(ret)
+        Ok(decl_and_assign)
     }
 
     /// Extract the Rust statements for the full declaration and initializers. DEBUGGING ONLY.
     pub fn peek_decl_and_assign(&self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
-        let &DeclStmtInfo { ref decl_and_assign, ref pre_init, .. } = self.store
+        let &DeclStmtInfo { ref decl_and_assign, .. } = self.store
             .get(&decl_id)
             .ok_or(format!("Cannot find information on declaration {:?}", decl_id))?;
 
-        let pre_init: Vec<Stmt> = pre_init.clone().ok_or(format!("Pre-initializer for {:?} has already been extracted", decl_id))?;
         let decl_and_assign: Vec<Stmt> = decl_and_assign.clone().ok_or(format!("Declaration with assignment for {:?} has already been extracted", decl_id))?;
 
-        let mut ret: Vec<Stmt> = vec![];
-        ret.extend(&mut pre_init.into_iter());
-        ret.extend(&mut decl_and_assign.into_iter());
-
-        Ok(ret)
+        Ok(decl_and_assign)
     }
 }
 
