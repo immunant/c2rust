@@ -1018,8 +1018,16 @@ impl CfgBuilder {
 
                 // Condition
                 let WithStmts { stmts, val } = translator.convert_condition(true, scrutinee, false)?;
+                let cond_val = translator.ast_context[scrutinee].kind.get_bool();
                 wip.extend(stmts);
-                self.add_wip_block(wip, Branch(val, then_entry, else_entry));
+                self.add_wip_block(
+                    wip,
+                    match cond_val {
+                        Some(true) => Jump(then_entry),
+                        Some(false) => Jump(else_entry),
+                        None => Branch(val, then_entry, else_entry)
+                    },
+                );
 
 
                 // Then case
@@ -1058,15 +1066,15 @@ impl CfgBuilder {
 
                 // Condition
                 let WithStmts { stmts, val } = translator.convert_condition(true, condition, false)?;
-                let is_infinite = translator.ast_context[condition].kind.get_bool().unwrap_or(false);
+                let cond_val = translator.ast_context[condition].kind.get_bool();
                 let mut cond_wip = self.new_wip_block(cond_entry);
                 cond_wip.extend(stmts);
                 self.add_wip_block(
                     cond_wip,
-                    if is_infinite {
-                        Jump(body_entry)
-                    } else {
-                        Branch(val, body_entry, next_entry)
+                    match cond_val {
+                        Some(true) => Jump(body_entry),
+                        Some(false) => Jump(next_entry),
+                        None => Branch(val, body_entry, next_entry)
                     },
                 );
 
@@ -1111,15 +1119,15 @@ impl CfgBuilder {
 
                 // Condition
                 let WithStmts { stmts, val } = translator.convert_condition(true, condition, false)?;
-                let is_infinite = translator.ast_context[condition].kind.get_bool().unwrap_or(false);
+                let cond_val = translator.ast_context[condition].kind.get_bool();
                 let mut cond_wip = self.new_wip_block(cond_entry);
                 cond_wip.extend(stmts);
                 self.add_wip_block(
                     cond_wip,
-                    if is_infinite {
-                        Jump(body_entry)
-                    } else {
-                        Branch(val, body_entry, next_entry)
+                    match cond_val {
+                        Some(true) => Jump(body_entry),
+                        Some(false) => Jump(next_entry),
+                        None => Branch(val, body_entry, next_entry),
                     },
                 );
 
@@ -1155,15 +1163,15 @@ impl CfgBuilder {
                     // Condition
                     if let Some(cond) = condition {
                         let WithStmts { stmts, val } = translator.convert_condition(true, cond, false)?;
-                        let is_infinite = translator.ast_context[cond].kind.get_bool().unwrap_or(false);
+                        let cond_val = translator.ast_context[cond].kind.get_bool();
                         let mut cond_wip = slf.new_wip_block(cond_entry);
                         cond_wip.extend(stmts);
                         slf.add_wip_block(
                             cond_wip,
-                            if is_infinite {
-                                Jump(body_entry)
-                            } else {
-                                Branch(val, body_entry, next_label)
+                            match cond_val {
+                                Some(true) => Jump(body_entry),
+                                Some(false) => Jump(next_label),
+                                None => Branch(val, body_entry, next_label),
                             },
                         );
                     } else {
