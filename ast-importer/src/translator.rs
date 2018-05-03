@@ -14,6 +14,7 @@ use loops::*;
 use idiomize::ast_manip::make_ast::*;
 use c_ast;
 use c_ast::*;
+use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;
 use syntax::print::pprust::*;
 use std::ops::Index;
@@ -1438,10 +1439,42 @@ impl Translation {
         }
     }
 
+    /// Search for references to the given declaration in a value position
+    /// inside the given expression. Uses of the declaration inside typeof
+    /// operations are ignored because our translation will ignore them
+    /// and use the computed types instead.
+    fn has_decl_reference(&self, decl_id: CDeclId, expr_id: CExprId) -> bool {
+        let mut iter = DFExpr::new(&self.ast_context, expr_id.into());
+        while let Some(x) = iter.next() {
+            match x {
+                SomeId::Expr(e) => {
+                    match self.ast_context[e].kind {
+                        CExprKind::DeclRef(_, d) if d == decl_id => return true,
+                        CExprKind::UnaryType(_, _, Some(_), _) => iter.prune(1),
+                        _ => {}
+                    }
+                }
+                SomeId::Type(t) => {
+                    if let CTypeKind::TypeOfExpr(_) = self.ast_context[t].kind {
+                        iter.prune(1);
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
     pub fn convert_decl_stmt_info(&self, decl_id: CDeclId) -> Result<cfg::DeclStmtInfo, String> {
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ } if !is_static && !is_extern => {
                 assert!(is_defn, "Only local variable definitions should be extracted");
+
+                for expr_id in initializer {
+                    if self.has_decl_reference(decl_id, expr_id) {
+                        return Err(format!("Self-referential initializers not supported"))
+                    }
+                }
 
                 let mut stmts = self.compute_variable_array_sizes(typ.ctype)?;
 
