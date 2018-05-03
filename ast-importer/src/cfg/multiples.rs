@@ -72,7 +72,7 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
     pub fn rewrite_blocks(&mut self, rewrites: &HashMap<Lbl, Lbl>) -> () {
         self.multiples = self.multiples
             .iter()
-            .map(|(entries, &(ref join_lbl, ref arms))| {
+            .filter_map(|(entries, &(ref join_lbl, ref arms))| {
                 let entries: BTreeSet<Lbl> = entries
                     .iter()
                     .map(|lbl| rewrites.get(lbl).unwrap_or(lbl).clone())
@@ -89,7 +89,11 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
                         (arm_lbl, arm_body)
                     })
                     .collect();
-                (entries, (join_lbl, arms))
+                if arms.len() > 1 {
+                    Some((entries, (join_lbl, arms)))
+                } else {
+                    None
+                }
             })
             .collect();
     }
@@ -99,7 +103,9 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
         let entry_set: BTreeSet<Lbl> = arms.iter().map(|&(ref l,_)| l.clone()).collect();
         let arm_map: HashMap<Lbl, HashSet<Lbl>> = arms.into_iter().collect();
 
-        self.multiples.insert(entry_set, (join, arm_map));
+        if arm_map.len() > 1 {
+            self.multiples.insert(entry_set, (join, arm_map));
+        }
     }
 
     pub fn get_multiple<'a>(
@@ -108,3 +114,4 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
         self.multiples.get(entries)
     }
 }
+
