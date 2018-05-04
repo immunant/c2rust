@@ -19,6 +19,7 @@ use syntax::ptr::*;
 use syntax::print::pprust::*;
 use std::ops::Index;
 use std::cell::RefCell;
+use std::char;
 use dtoa;
 
 use cfg;
@@ -1916,7 +1917,20 @@ impl Translation {
             }
 
             CExprKind::Literal(_, CLiteral::Character(val)) => {
-                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), LitIntType::Unsuffixed))))
+                let expr = match char::from_u32(val as u32) {
+                    Some(c) => {
+                        let lit = mk().char_lit(c);
+                        let expr = mk().lit_expr(lit);
+                        let i32_type = mk().path_ty(vec!["i32"]);
+                        mk().cast_expr(expr, i32_type)
+                    }
+                    None => {
+                        // Fallback for characters outside of the valid Unicode range
+                        let lit = mk().int_lit(val as u128, LitIntType::Signed(IntTy::I32));
+                        mk().lit_expr(lit)
+                    }
+                };
+                Ok(WithStmts::new(expr))
             }
 
             CExprKind::Literal(ty, CLiteral::Floating(val)) => {
