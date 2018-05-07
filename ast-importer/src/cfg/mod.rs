@@ -97,7 +97,7 @@ impl StructureLabel<StmtOrDecl> {
         self,
         lift_me: &HashSet<CDeclId>,
         store: &mut DeclStmtStore,
-    ) -> StructureLabel<Stmt> {
+    ) -> StructureLabel<StmtOrComment> {
         match self {
             StructureLabel::GoTo(l) => StructureLabel::GoTo(l),
             StructureLabel::ExitTo(l) => StructureLabel::ExitTo(l),
@@ -146,12 +146,12 @@ impl Structure<StmtOrDecl> {
 
     /// Produce a new `Structure` from the existing one by replacing all `StmtOrDecl::Decl`
     /// variants with either a declaration with initializer or only an initializer.
-    fn place_decls(self, lift_me: &HashSet<CDeclId>, store: &mut DeclStmtStore) -> Structure<Stmt> {
+    fn place_decls(self, lift_me: &HashSet<CDeclId>, store: &mut DeclStmtStore) -> Structure<StmtOrComment> {
         match self {
             Structure::Simple { entries, body, terminator } => {
                 let mut body = body
                     .into_iter()
-                    .flat_map(|s: StmtOrDecl| -> Vec<Stmt> { s.place_decls(lift_me, store) })
+                    .flat_map(|s: StmtOrDecl| -> Vec<StmtOrComment> { s.place_decls(lift_me, store) })
                     .collect();
                 let terminator = terminator.place_decls(lift_me, store);
                 Structure::Simple { entries, body, terminator }
@@ -286,7 +286,7 @@ impl GenTerminator<StructureLabel<StmtOrDecl>> {
         self,
         lift_me: &HashSet<CDeclId>,
         store: &mut DeclStmtStore
-    ) -> GenTerminator<StructureLabel<Stmt>> {
+    ) -> GenTerminator<StructureLabel<StmtOrComment>> {
         match self {
             End => End,
             Jump(l) => {
@@ -317,7 +317,7 @@ pub struct SwitchCases {
     default: Option<Label>,
 }
 
-/// A Rust statement, or a C declaration.
+/// A Rust statement, or a C declaration, or a comment
 #[derive(Clone, Debug)]
 pub enum StmtOrDecl {
     /// Rust statement that was translated from a non-compound and non-declaration C statement.
@@ -325,17 +325,35 @@ pub enum StmtOrDecl {
 
     /// C declaration
     Decl(CDeclId),
+
+    /// Comment
+    Comment(String),
+}
+
+/// A Rust statement, or a comment
+#[derive(Clone, Debug)]
+pub enum StmtOrComment {
+    /// Rust statement
+    Stmt(Stmt),
+
+    /// Comment
+    Comment(String),
 }
 
 impl StmtOrDecl {
 
     /// Produce a `Stmt` by replacing `StmtOrDecl::Decl`  variants with either a declaration with
     /// initializer or only an initializer.
-    fn place_decls(self, lift_me: &HashSet<CDeclId>, store: &mut DeclStmtStore) -> Vec<Stmt> {
+    fn place_decls(self, lift_me: &HashSet<CDeclId>, store: &mut DeclStmtStore) -> Vec<StmtOrComment> {
         match self {
-            StmtOrDecl::Stmt(s) => vec![s],
-            StmtOrDecl::Decl(d) if lift_me.contains(&d) => store.extract_assign(d).unwrap(),
-            StmtOrDecl::Decl(d) => store.extract_decl_and_assign(d).unwrap(),
+            StmtOrDecl::Stmt(s) => vec![StmtOrComment::Stmt(s)],
+            StmtOrDecl::Comment(c) => vec![StmtOrComment::Comment(c)],
+            StmtOrDecl::Decl(d) if lift_me.contains(&d) => {
+                store.extract_assign(d).unwrap().into_iter().map(StmtOrComment::Stmt).collect()
+            },
+            StmtOrDecl::Decl(d) => {
+                store.extract_decl_and_assign(d).unwrap().into_iter().map(StmtOrComment::Stmt).collect()
+            },
         }
     }
 }
@@ -357,7 +375,7 @@ pub struct Cfg<Lbl: Ord + Hash, Stmt> {
 }
 
 #[derive(Copy, Clone, Debug)]
-enum ExitStyle {
+pub enum ExitStyle {
     Continue,
     Break,
 }
@@ -755,6 +773,10 @@ impl WipBlock {
     pub fn push_decl(&mut self, decl: CDeclId) {
         self.body.push(StmtOrDecl::Decl(decl))
     }
+
+    pub fn push_comment(&mut self, cmmt: String) {
+        self.body.push(StmtOrDecl::Comment(cmmt))
+    }
 }
 
 /// This impl block deals with creating control flow graphs
@@ -958,6 +980,11 @@ impl CfgBuilder {
         mut wip: WipBlock,        // Current WIP block
     ) -> Result<Option<WipBlock>, String> {
 
+        // Add statement comment into current block right before the current statement
+        for cmmt in translator.comment_context.borrow_mut().remove_stmt_comment(stmt_id) {
+            wip.push_comment(cmmt);
+        }
+
         match translator.ast_context.index(stmt_id).kind {
             CStmtKind::Empty => Ok(Some(wip)),
 
@@ -965,6 +992,11 @@ impl CfgBuilder {
                 for decl in decls {
                     let info = translator.convert_decl_stmt_info(*decl)?;
                     self.decls_seen.store.insert(*decl, info);
+
+                    // Add declaration comment into current block right before the declaration
+                    for cmmt in translator.comment_context.borrow_mut().remove_decl_comment(*decl) {
+                        wip.push_comment(cmmt);
+                    }
 
                     wip.push_decl(*decl);
                     wip.defined.insert(*decl);
@@ -1450,13 +1482,16 @@ impl Cfg<Label,StmtOrDecl> {
                 } else {
                     sanitize_label(bb.body
                         .iter()
-                        .flat_map(|stmt_or_decl: &StmtOrDecl| -> Vec<Stmt> {
+                        .flat_map(|stmt_or_decl: &StmtOrDecl| -> Vec<String> {
                             match stmt_or_decl {
-                                &StmtOrDecl::Stmt(ref s) => vec![s.clone()],
-                                &StmtOrDecl::Decl(ref d) => store.peek_decl_and_assign(*d).unwrap(),
+                                &StmtOrDecl::Stmt(ref s) => vec![pprust::stmt_to_string(s)],
+                                &StmtOrDecl::Decl(ref d) => {
+                                    let ss = store.peek_decl_and_assign(*d).unwrap();
+                                    ss.iter().map(pprust::stmt_to_string).collect()
+                                },
+                                &StmtOrDecl::Comment(ref s) => vec![s.clone()],
                             }
                         })
-                        .map(|stmt: Stmt| pprust::stmt_to_string(&stmt))
                         .collect::<Vec<String>>()
                         .join("\n")
                     )

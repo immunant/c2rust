@@ -10,7 +10,7 @@ pub fn reloop(
     simplify_structures: bool,    // simplify the output structure
     use_c_loop_info: bool,        // use the loop information in the CFG (slower, but better)
     use_c_multiple_info: bool,    // use the multiple information in the CFG (slower, but better)
-) -> (Vec<Stmt>, Vec<Structure<Stmt>>) {
+) -> (Vec<Stmt>, Vec<Structure<StmtOrComment>>) {
 
     let entries = cfg.entries;
     let blocks = cfg.nodes
@@ -37,7 +37,7 @@ pub fn reloop(
         .collect();
 
     // We map over the existing structure and flatten everything to `Stmt`
-    let mut relooped: Vec<Structure<Stmt>> = relooped_with_decls
+    let mut relooped: Vec<Structure<StmtOrComment>> = relooped_with_decls
         .into_iter()
         .map(|s| s.place_decls(&lift_me, &mut store))
         .collect();

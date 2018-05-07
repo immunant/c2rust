@@ -1,8 +1,5 @@
 use syntax::ast;
 use syntax::ast::*;
-use syntax::parse::lexer::comments;
-use syntax_pos::BytePos;
-use syntax_pos::hygiene::SyntaxContext;
 use syntax::codemap::{DUMMY_SP, Span};
 use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{DelimToken,Token,Nonterminal};
@@ -14,6 +11,7 @@ use loops::*;
 use idiomize::ast_manip::make_ast::*;
 use c_ast;
 use c_ast::*;
+use comment_store::*;
 use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;
 use syntax::print::pprust::*;
@@ -54,11 +52,8 @@ pub struct Translation {
     renamer: RefCell<Renamer<CDeclId>>,
     loops: LoopContext,
     zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
-
     pub comment_context: RefCell<CommentContext>,
-    comments: RefCell<Vec<comments::Comment>>,
-
-    span_source: RefCell<u32>,
+    pub comment_store: RefCell<CommentStore>,
 }
 
 #[derive(Debug)]
@@ -386,7 +381,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
 
     to_string(|s| {
-        s.comments().get_or_insert(vec![]).extend(t.comments.into_inner());
+        s.comments().get_or_insert(vec![]).extend(t.comment_store.into_inner().into_comments());
 
         if t.tcfg.emit_module {
             s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
@@ -507,7 +502,6 @@ impl Translation {
             foreign_items: vec![],
             type_converter: RefCell::new(TypeConverter::new()),
             ast_context,
-            comment_context,
             tcfg,
             renamer: RefCell::new(Renamer::new(&[
                 // Keywords currently in use
@@ -529,34 +523,9 @@ impl Translation {
             ])),
             loops: LoopContext::new(),
             zero_inits: RefCell::new(HashMap::new()),
-            span_source: RefCell::new(0),
-            comments: RefCell::new(vec![]),
+            comment_context,
+            comment_store: RefCell::new(CommentStore::new()),
         }
-    }
-
-    /// Add a `comment` at the current position, then return the `Span` that should be given to
-    /// something we want associated with this comment.
-    pub fn add_comment(&self, lines: Vec<String>) -> Span {
-        let lines = lines
-            .into_iter()
-            .map(|mut comment| {
-                if comment.starts_with("//!") || comment.starts_with("///") ||
-                    comment.starts_with("/**") || comment.starts_with("/*!") {
-                    comment.insert(2,' ');
-                }
-                comment
-            })
-            .collect();
-
-        let mut curpos = self.span_source.borrow_mut();
-        *curpos += 1;
-        self.comments.borrow_mut().push(comments::Comment {
-            style: comments::CommentStyle::Isolated,
-            lines: lines, // .lines().map(String::from).collect(),
-            pos: BytePos(*curpos),
-        });
-        *curpos += 1;
-        Span::new(BytePos(*curpos), BytePos(*curpos), SyntaxContext::empty())
     }
 
     // This node should _never_ show up in the final generated code. This is an easy way to notice
@@ -797,7 +766,10 @@ impl Translation {
     }
 
     fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> Result<ConvertedDecl, String> {
-        let s = self.add_comment(self.comment_context.borrow_mut().remove_decl_comment(decl_id));
+        let s = {
+            let decl_cmt = self.comment_context.borrow_mut().remove_decl_comment(decl_id);
+            self.comment_store.borrow_mut().add_comment(decl_cmt)
+        };
 
         match self.ast_context.c_decls.get(&decl_id)
             .ok_or_else(|| format!("Missing decl {:?}", decl_id))?
@@ -1135,6 +1107,7 @@ impl Translation {
 
                 stmts.extend(cfg::structures::structured_cfg(
                     &relooped,
+                    &mut self.comment_store.borrow_mut(),
                     current_block,
                     self.tcfg.debug_relooper_labels
                 )?);
@@ -1150,7 +1123,10 @@ impl Translation {
     }
 
     fn convert_stmt(&self, stmt_id: CStmtId) -> Result<Vec<Stmt>, String> {
-        let s = self.add_comment(self.comment_context.borrow_mut().remove_stmt_comment(stmt_id));
+        let s = {
+            let stmt_cmt = self.comment_context.borrow_mut().remove_stmt_comment(stmt_id);
+            self.comment_store.borrow_mut().add_comment(stmt_cmt)
+        };
 
         match self.ast_context.index(stmt_id).kind {
             CStmtKind::Empty => Ok(vec![]),
