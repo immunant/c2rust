@@ -3014,6 +3014,11 @@ impl Translation {
         match name {
             c_ast::UnOp::AddressOf => {
 
+                // C99 6.5.3.2 para 4
+                if let CExprKind::Unary(_, c_ast::UnOp::Deref, target) = self.ast_context[arg].kind {
+                    return self.convert_expr(use_, target, is_static)
+                }
+
                 // In this translation, there are only pointers to functions and
                 // & becomes a no-op when applied to a function.
 
@@ -3061,23 +3066,27 @@ impl Translation {
             c_ast::UnOp::PostIncrement => self.convert_post_increment(use_, cqual_type, true, arg),
             c_ast::UnOp::PostDecrement => self.convert_post_increment(use_, cqual_type, false, arg),
             c_ast::UnOp::Deref => {
-                self.convert_expr(ExprUse::RValue, arg, is_static)?.result_map(|val: P<Expr>| {
 
-                    if let CTypeKind::Function(..) = self.ast_context.resolve_type(ctype).kind {
-                        Ok(unwrap_function_pointer(val))
-                    } else if let Some(_vla) = self.compute_size_of_expr(ctype) {
-                        Ok(val)
-                    } else {
-                        let mut val = mk().unary_expr(ast::UnOp::Deref, val);
+                if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, arg_) = self.ast_context[arg].kind {
+                    self.convert_expr(ExprUse::RValue, arg_, is_static)
+                } else {
+                    self.convert_expr(ExprUse::RValue, arg, is_static)?.result_map(|val: P<Expr>| {
+                        if let CTypeKind::Function(..) = self.ast_context.resolve_type(ctype).kind {
+                            Ok(unwrap_function_pointer(val))
+                        } else if let Some(_vla) = self.compute_size_of_expr(ctype) {
+                            Ok(val)
+                        } else {
+                            let mut val = mk().unary_expr(ast::UnOp::Deref, val);
 
-                        // If the type on the other side of the pointer we are dereferencing is volatile and
-                        // this whole expression is not an LValue, we should make this a volatile read
-                        if use_ != ExprUse::LValue && cqual_type.qualifiers.is_volatile {
-                            val = self.volatile_read(&val, cqual_type)?
+                            // If the type on the other side of the pointer we are dereferencing is volatile and
+                            // this whole expression is not an LValue, we should make this a volatile read
+                            if use_ != ExprUse::LValue && cqual_type.qualifiers.is_volatile {
+                                val = self.volatile_read(&val, cqual_type)?
+                            }
+                            Ok(val)
                         }
-                        Ok(val)
-                    }
-                })
+                    })
+                }
             },
             c_ast::UnOp::Plus => self.convert_expr(ExprUse::RValue, arg, is_static), // promotion is explicit in the clang AST
 
