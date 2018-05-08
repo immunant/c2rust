@@ -133,8 +133,12 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         let mut loop_id = if let Some(i) = self.node_loops.get(&first) { *i } else { return None };
 
         for entry in entries {
-            let (ref in_loop, parent_id) = self.loops[&loop_id];
-            while !in_loop.contains(&entry) {
+            // Widen the loop until it contains the `entry`, or it can no longer be widened.
+            loop {
+                let (ref in_loop, mut parent_id) = self.loops[&loop_id];
+                if in_loop.contains(&entry) {
+                    break;
+                }
                 loop_id = if let Some(i) = parent_id { i } else { return None };
             }
         }

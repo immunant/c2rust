@@ -2,7 +2,7 @@
 use rustc::hir;
 use syntax::abi::Abi;
 use syntax::ast::*;
-use syntax::codemap::{DUMMY_SP, Spanned};
+use syntax::codemap::{DUMMY_SP, Spanned, Span};
 use syntax::parse::token::{self, Token, DelimToken};
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder, ThinTokenStream};
@@ -207,6 +207,7 @@ pub struct Builder {
     constness: Constness,
     abi: Abi,
     attrs: Vec<Attribute>,
+    span: Span,
 }
 
 #[allow(dead_code)]
@@ -220,6 +221,7 @@ impl Builder {
             constness: Constness::NotConst,
             abi: Abi::Rust,
             attrs: Vec::new(),
+            span: DUMMY_SP,
         }
     }
 
@@ -278,6 +280,14 @@ impl Builder {
         let abi = abi.make(&self);
         Builder {
             abi: abi,
+            ..self
+        }
+    }
+
+    pub fn span<S: Make<Span>>(self, span: S) -> Self {
+        let span = span.make(&self);
+        Builder {
+            span: span,
             ..self
         }
     }
@@ -1083,7 +1093,7 @@ impl Builder {
         Stmt {
             id: DUMMY_NODE_ID,
             node: StmtKind::Local(local),
-            span: DUMMY_SP,
+            span: self.span,
         }
     }
 
@@ -1093,7 +1103,7 @@ impl Builder {
         Stmt {
             id: DUMMY_NODE_ID,
             node: StmtKind::Expr(expr),
-            span: DUMMY_SP,
+            span: self.span,
         }
     }
 
@@ -1103,7 +1113,7 @@ impl Builder {
         Stmt {
             id: DUMMY_NODE_ID,
             node: StmtKind::Semi(expr),
-            span: DUMMY_SP,
+            span: self.span,
         }
     }
 
@@ -1113,21 +1123,21 @@ impl Builder {
         Stmt {
             id: DUMMY_NODE_ID,
             node: StmtKind::Item(item),
-            span: DUMMY_SP,
+            span: self.span,
         }
     }
 
 
     // Items
 
-    fn item(name: Ident, attrs: Vec<Attribute>, vis: Visibility, node: ItemKind) -> P<Item> {
+    fn item(name: Ident, attrs: Vec<Attribute>, vis: Visibility, span: Span, node: ItemKind) -> P<Item> {
         P(Item {
             ident: name,
             attrs: attrs,
             id: DUMMY_NODE_ID,
             node: node,
             vis: vis,
-            span: DUMMY_SP,
+            span: span,
             tokens: None,
         })
     }
@@ -1137,7 +1147,7 @@ impl Builder {
         let name = name.make(&self);
         let ty = ty.make(&self);
         let init = init.make(&self);
-        Self::item(name, self.attrs, self.vis,
+        Self::item(name, self.attrs, self.vis, self.span,
                    ItemKind::Static(ty, self.mutbl, init))
     }
 
@@ -1146,7 +1156,7 @@ impl Builder {
         let name = name.make(&self);
         let ty = ty.make(&self);
         let init = init.make(&self);
-        Self::item(name, self.attrs, self.vis, ItemKind::Const(ty, init))
+        Self::item(name, self.attrs, self.vis, self.span, ItemKind::Const(ty, init))
     }
 
     pub fn fn_item<I, D, B>(self, name: I, decl: D, block: B) -> P<Item>
@@ -1154,7 +1164,7 @@ impl Builder {
         let name = name.make(&self);
         let decl = decl.make(&self);
         let block = block.make(&self);
-        Self::item(name, self.attrs, self.vis,
+        Self::item(name, self.attrs, self.vis, self.span,
                    ItemKind::Fn(decl,
                                 self.unsafety,
                                 Spanned { span: DUMMY_SP, node: self.constness },
@@ -1175,7 +1185,7 @@ impl Builder {
     pub fn struct_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
         where I: Make<Ident> {
         let name = name.make(&self);
-        Self::item(name, self.attrs, self.vis,
+        Self::item(name, self.attrs, self.vis, self.span,
                    ItemKind::Struct(VariantData::Struct(fields, DUMMY_NODE_ID),
                                     self.generics))
     }
@@ -1197,7 +1207,7 @@ impl Builder {
     pub fn union_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
         where I: Make<Ident> {
         let name = name.make(&self);
-        Self::item(name, self.attrs, self.vis,
+        Self::item(name, self.attrs, self.vis, self.span,
                    ItemKind::Union(VariantData::Struct(fields, DUMMY_NODE_ID),
                                     self.generics))
     }
@@ -1205,7 +1215,7 @@ impl Builder {
     pub fn enum_item<I>(self, name: I, fields: Vec<Variant>) -> P<Item>
         where I: Make<Ident> {
         let name = name.make(&self);
-        Self::item(name, self.attrs, self.vis,
+        Self::item(name, self.attrs, self.vis, self.span,
                    ItemKind::Enum(EnumDef { variants: fields }, self.generics))
     }
 
@@ -1227,7 +1237,7 @@ impl Builder {
         let ty = ty.make(&self);
         let name = name.make(&self);
         let kind = ItemKind::Ty(ty, self.generics);
-        Self::item(name, self.attrs, self.vis, kind)
+        Self::item(name, self.attrs, self.vis, self.span, kind)
     }
 
     pub fn variant<I>(self, name: I, dat: VariantData) -> Variant
@@ -1263,7 +1273,7 @@ impl Builder {
         where T: Make<P<Ty>>
     {
         let ty = ty.make(&self);
-        Self::item(keywords::Invalid.ident(), self.attrs, self.vis,
+        Self::item(keywords::Invalid.ident(), self.attrs, self.vis, self.span,
                    ItemKind::Impl(self.unsafety,
                                   ImplPolarity::Positive,
                                   Defaultness::Final,
@@ -1278,7 +1288,7 @@ impl Builder {
     {
         let name = name.make(&self);
         let rename = rename.map(|n| n.make(&self).name);
-        Self::item(name, self.attrs, self.vis, ItemKind::ExternCrate(rename))
+        Self::item(name, self.attrs, self.vis, self.span, ItemKind::ExternCrate(rename))
     }
 
     // `use <path>;` item
@@ -1297,27 +1307,27 @@ impl Builder {
             prefix: path,
             kind: UseTreeKind::Simple(rename),
         };
-        Self::item(keywords::Invalid.ident(), self.attrs, self.vis,
+        Self::item(keywords::Invalid.ident(), self.attrs, self.vis, self.span,
                    ItemKind::Use(P(use_tree)))
     }
 
     pub fn foreign_items(self, items: Vec<ForeignItem>) -> P<Item>
     {
         let fgn_mod = ForeignMod { abi: self.abi, items };
-        Self::item(keywords::Invalid.ident(), self.attrs, self.vis, ItemKind::ForeignMod(fgn_mod))
+        Self::item(keywords::Invalid.ident(), self.attrs, self.vis, self.span, ItemKind::ForeignMod(fgn_mod))
     }
 
 
     // Foreign Items
 
-    fn foreign_item(name: Ident, attrs: Vec<Attribute>, vis: Visibility, node: ForeignItemKind) -> ForeignItem {
+    fn foreign_item(name: Ident, attrs: Vec<Attribute>, vis: Visibility, span: Span, node: ForeignItemKind) -> ForeignItem {
         ForeignItem {
             ident: name,
             attrs: attrs,
             id: DUMMY_NODE_ID,
             node: node,
             vis: vis,
-            span: DUMMY_SP,
+            span: span,
         }
     }
 
@@ -1325,7 +1335,7 @@ impl Builder {
         where I: Make<Ident>, D: Make<P<FnDecl>> {
         let name = name.make(&self);
         let decl = decl.make(&self);
-        Self::foreign_item(name, self.attrs, self.vis, ForeignItemKind::Fn(decl, self.generics))
+        Self::foreign_item(name, self.attrs, self.vis, self.span, ForeignItemKind::Fn(decl, self.generics))
     }
 
     pub fn foreign_static<I, T>(self, name: I, ty: T) -> ForeignItem
@@ -1333,13 +1343,13 @@ impl Builder {
         let name = name.make(&self);
         let ty = ty.make(&self);
         let is_mut = self.mutbl == Mutability::Mutable;
-        Self::foreign_item(name, self.attrs, self.vis, ForeignItemKind::Static(ty, is_mut))
+        Self::foreign_item(name, self.attrs, self.vis, self.span, ForeignItemKind::Static(ty, is_mut))
     }
 
     pub fn foreign_ty<I>(self, name: I) -> ForeignItem
         where I: Make<Ident> {
         let name = name.make(&self);
-        Self::foreign_item(name, self.attrs, self.vis, ForeignItemKind::Ty)
+        Self::foreign_item(name, self.attrs, self.vis, self.span, ForeignItemKind::Ty)
     }
 
 
