@@ -3014,6 +3014,11 @@ impl Translation {
         match name {
             c_ast::UnOp::AddressOf => {
 
+                // C99 6.5.3.2 para 4
+                if let CExprKind::Unary(_, c_ast::UnOp::Deref, target) = self.ast_context[arg].kind {
+                    return self.convert_expr(use_, target, is_static)
+                }
+
                 // In this translation, there are only pointers to functions and
                 // & becomes a no-op when applied to a function.
 
@@ -3061,7 +3066,7 @@ impl Translation {
             c_ast::UnOp::PostIncrement => self.convert_post_increment(use_, cqual_type, true, arg),
             c_ast::UnOp::PostDecrement => self.convert_post_increment(use_, cqual_type, false, arg),
             c_ast::UnOp::Deref => {
-                
+
                 if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, arg_) = self.ast_context[arg].kind {
                     self.convert_expr(ExprUse::RValue, arg_, is_static)
                 } else {
