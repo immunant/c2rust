@@ -70,6 +70,19 @@ impl TypedAstContext {
         }
     }
 
+    pub fn is_null_expr(&self, expr_id: CExprId) -> bool {
+        match self[expr_id].kind {
+            CExprKind::ExplicitCast(_, _, CastKind::NullToPointer, _) |
+            CExprKind::ImplicitCast(_, _, CastKind::NullToPointer, _) => true,
+
+            CExprKind::ExplicitCast(ty, e, CastKind::BitCast, _) |
+            CExprKind::ImplicitCast(ty, e, CastKind::BitCast, _) =>
+                self.resolve_type(ty.ctype).kind.is_pointer() && self.is_null_expr(e),
+
+            _ => false,
+        }
+    }
+
     pub fn is_forward_declared_type(&self, typ: CTypeId) -> bool {
         match self.resolve_type(typ).kind.as_underlying_decl() {
             Some(decl_id) => {
