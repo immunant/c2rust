@@ -1266,37 +1266,45 @@ impl Translation {
     pub fn convert_condition(&self, target: bool, cond_id: CExprId, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
         let ty_id = self.ast_context.index(cond_id).kind.get_type();
 
+        let null_pointer_case = |negated: bool, ptr: CExprId| -> Result<WithStmts<P<Expr>>, String> {
+            let val = self.convert_expr(ExprUse::RValue, ptr, is_static)?;
+            Ok(val.map(|e| {
+                if self.is_function_pointer(self.ast_context.index(ptr).kind.get_type()) {
+                    if negated {
+                        mk().method_call_expr(e, "is_none", vec![] as Vec<P<Expr>>)
+                    } else {
+                        mk().method_call_expr(e, "is_some", vec![] as Vec<P<Expr>>)
+                    }
+                } else {
+                    let is_null = mk().method_call_expr(e, "is_null", vec![] as Vec<P<Expr>>);
+                    if negated {
+                        mk().unary_expr(ast::UnOp::Not, is_null)
+                    } else {
+                        is_null
+                    }
+                }
+            }))
+        };
+
         match self.ast_context[cond_id].kind {
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, null_expr, ptr, _, _)
-            if self.ast_context.is_null_expr(null_expr) &&
-                !self.is_function_pointer(self.ast_context.index(null_expr).kind.get_type()) => {
-                let val = self.convert_expr(ExprUse::RValue, ptr, is_static)?;
-                Ok(val.map(|e| mk().method_call_expr(e, "is_null", vec![] as Vec<P<Expr>>)))
+            if self.ast_context.is_null_expr(null_expr) => {
+                null_pointer_case(false, ptr)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, ptr, null_expr, _, _)
-            if self.ast_context.is_null_expr(null_expr) &&
-                !self.is_function_pointer(self.ast_context.index(null_expr).kind.get_type()) => {
-                let val = self.convert_expr(ExprUse::RValue, ptr, is_static)?;
-                Ok(val.map(|e| mk().method_call_expr(e, "is_null", vec![] as Vec<P<Expr>>)))
+            if self.ast_context.is_null_expr(null_expr) => {
+                null_pointer_case(false, ptr)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::NotEqual, null_expr, ptr, _, _)
-            if self.ast_context.is_null_expr(null_expr) &&
-                !self.is_function_pointer(self.ast_context.index(null_expr).kind.get_type()) => {
-                let val = self.convert_expr(ExprUse::RValue, ptr, is_static)?;
-                Ok(val.map(|e|
-                    mk().unary_expr(ast::UnOp::Not,
-                                    mk().method_call_expr(e, "is_null", vec![] as Vec<P<Expr>>))))
+            if self.ast_context.is_null_expr(null_expr) => {
+                null_pointer_case(true, ptr)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::NotEqual, ptr, null_expr, _, _)
-            if self.ast_context.is_null_expr(null_expr) &&
-                !self.is_function_pointer(self.ast_context.index(null_expr).kind.get_type()) => {
-                let val = self.convert_expr(ExprUse::RValue, ptr, is_static)?;
-                Ok(val.map(|e|
-                    mk().unary_expr(ast::UnOp::Not,
-                                    mk().method_call_expr(e, "is_null", vec![] as Vec<P<Expr>>))))
+            if self.ast_context.is_null_expr(null_expr) => {
+                null_pointer_case(true, ptr)
             }
 
             CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id) => {
