@@ -794,8 +794,8 @@ class TranslateASTVisitor final
                                      auto source_type = ICE->getSubExpr()->getType();
                                      auto target_type = ICE->getType();
                                     
-                                     if (auto *source_ptr = dyn_cast<clang::PointerType>(source_type.getTypePtrOrNull())) {
-                                         if (auto *target_ptr = dyn_cast<clang::PointerType>(target_type.getTypePtrOrNull())) {
+                                     if (auto *source_ptr = dyn_cast_or_null<clang::PointerType>(source_type.getTypePtrOrNull())) {
+                                         if (auto *target_ptr = dyn_cast_or_null<clang::PointerType>(target_type.getTypePtrOrNull())) {
                                              
                                              auto source_pointee = source_ptr->getPointeeType();
                                              auto target_pointee = target_ptr->getPointeeType();
@@ -805,7 +805,6 @@ class TranslateASTVisitor final
                                                  target_pointee->getUnqualifiedDesugaredType()) {
                                                  cast_name = "ConstCast";
                                              }
-                                             
                                          }
                                      }
                                  }
