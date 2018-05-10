@@ -1289,22 +1289,22 @@ impl Translation {
         match self.ast_context[cond_id].kind {
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, null_expr, ptr, _, _)
             if self.ast_context.is_null_expr(null_expr) => {
-                null_pointer_case(false, ptr)
+                null_pointer_case(!target, ptr)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, ptr, null_expr, _, _)
             if self.ast_context.is_null_expr(null_expr) => {
-                null_pointer_case(false, ptr)
+                null_pointer_case(!target, ptr)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::NotEqual, null_expr, ptr, _, _)
             if self.ast_context.is_null_expr(null_expr) => {
-                null_pointer_case(true, ptr)
+                null_pointer_case(target, ptr)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::NotEqual, ptr, null_expr, _, _)
             if self.ast_context.is_null_expr(null_expr) => {
-                null_pointer_case(true, ptr)
+                null_pointer_case(target, ptr)
             }
 
             CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id) => {
