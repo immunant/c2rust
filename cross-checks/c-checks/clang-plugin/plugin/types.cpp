@@ -97,6 +97,21 @@ CrossCheckInserter::get_type_hash_function(QualType ty, llvm::StringRef candidat
         return func;
     }
 
+    case Type::IncompleteArray: {
+        // For now, we hash incomplete arrays as 1-element arrays
+        // FIXME: the array may be empty
+        auto array_ty = cast<IncompleteArrayType>(ty);
+        auto element_ty = array_ty->getElementType();
+        auto element = get_type_hash_function(element_ty, candidate_name, ctx, build_it);
+        HashFunction func{element.name, ty, ctx.getPointerType(element.actual_ty)};
+        func.name.append("incarray"sv);
+        if (build_it) {
+            llvm::APInt one{ctx.getTypeSize(ctx.getSizeType()), 1};
+            build_array_hash_function(func, element, one, ctx);
+        }
+        return func;
+    }
+
     case Type::Record: {
         // Build the type name as "name_kind", where "kind" can be
         // "struct", "class" (for C++), "union" or "enum"
