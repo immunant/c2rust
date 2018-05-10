@@ -1266,10 +1266,51 @@ impl Translation {
     pub fn convert_condition(&self, target: bool, cond_id: CExprId, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
         let ty_id = self.ast_context.index(cond_id).kind.get_type();
 
+        let null_pointer_case = |negated: bool, ptr: CExprId| -> Result<WithStmts<P<Expr>>, String> {
+            let val = self.convert_expr(ExprUse::RValue, ptr, is_static)?;
+            Ok(val.map(|e| {
+                if self.is_function_pointer(self.ast_context.index(ptr).kind.get_type()) {
+                    if negated {
+                        mk().method_call_expr(e, "is_none", vec![] as Vec<P<Expr>>)
+                    } else {
+                        mk().method_call_expr(e, "is_some", vec![] as Vec<P<Expr>>)
+                    }
+                } else {
+                    let is_null = mk().method_call_expr(e, "is_null", vec![] as Vec<P<Expr>>);
+                    if negated {
+                        mk().unary_expr(ast::UnOp::Not, is_null)
+                    } else {
+                        is_null
+                    }
+                }
+            }))
+        };
+
         match self.ast_context[cond_id].kind {
+            CExprKind::Binary(_, c_ast::BinOp::EqualEqual, null_expr, ptr, _, _)
+            if self.ast_context.is_null_expr(null_expr) => {
+                null_pointer_case(!target, ptr)
+            }
+
+            CExprKind::Binary(_, c_ast::BinOp::EqualEqual, ptr, null_expr, _, _)
+            if self.ast_context.is_null_expr(null_expr) => {
+                null_pointer_case(!target, ptr)
+            }
+
+            CExprKind::Binary(_, c_ast::BinOp::NotEqual, null_expr, ptr, _, _)
+            if self.ast_context.is_null_expr(null_expr) => {
+                null_pointer_case(target, ptr)
+            }
+
+            CExprKind::Binary(_, c_ast::BinOp::NotEqual, ptr, null_expr, _, _)
+            if self.ast_context.is_null_expr(null_expr) => {
+                null_pointer_case(target, ptr)
+            }
+
             CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id) => {
                 self.convert_condition(!target, subexpr_id, is_static)
             }
+
             _ => {
                 let val = self.convert_expr(ExprUse::RValue, cond_id, is_static)?;
                 Ok(val.map(|e| self.match_bool(target, ty_id, e)))
@@ -1988,13 +2029,14 @@ impl Translation {
 
             CExprKind::BinaryConditional(ty, lhs, rhs) => {
                 if use_ == ExprUse::Unused {
-                    let mut lhs = self.convert_expr(ExprUse::RValue, lhs, is_static)?;
-                    let cond = self.match_bool(false, ty.ctype, lhs.val);
+                    let mut lhs = self.convert_condition(false, lhs, is_static)?;
 
                     lhs.stmts.push(
                         mk().semi_stmt(
-                            mk().ifte_expr(cond, mk().block(self.convert_expr(ExprUse::Unused,
-                                                                              rhs, is_static)?.stmts), None as Option<P<Expr>>)));
+                            mk().ifte_expr(lhs.val,
+                                           mk().block(self.convert_expr(ExprUse::Unused,
+                                                                        rhs, is_static)?.stmts),
+                                           None as Option<P<Expr>>)));
                     Ok(WithStmts {
                         stmts: lhs.stmts,
                         val: self.panic("Binary conditional expression is not supposed to be used"),
@@ -2010,8 +2052,8 @@ impl Translation {
                 }
             },
 
-            CExprKind::Binary(type_id, ref op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) => {
-                match *op {
+            CExprKind::Binary(type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) => {
+                match op {
                     c_ast::BinOp::Comma => {
 
                         // The value of the LHS of a comma expression is always discarded
@@ -2025,32 +2067,14 @@ impl Translation {
                     }
 
                     c_ast::BinOp::And => {
-                        // XXX: do we need the RHS to always be used?
-                        let lhs_ty = self.ast_context.index(lhs).kind.get_type();
-                        let rhs_ty = self.ast_context.index(rhs).kind.get_type();
-
-                        let lhs =
-                            self.convert_expr(ExprUse::RValue, lhs, is_static)?
-                                .map(|x| self.match_bool(true, lhs_ty, x));
-                        let rhs =
-                            self.convert_expr(ExprUse::RValue, rhs, is_static)?
-                                .map(|x| self.match_bool(true, rhs_ty, x));
-
+                        let lhs = self.convert_condition(true, lhs, is_static)?;
+                        let rhs = self.convert_condition(true, rhs, is_static)?;
                         Ok(lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::And, x, rhs.to_expr()))))
                     }
 
                     c_ast::BinOp::Or => {
-                        // XXX: do we need the RHS to always be used?
-                        let lhs_ty = self.ast_context.index(lhs).kind.get_type();
-                        let rhs_ty = self.ast_context.index(rhs).kind.get_type();
-
-                        let lhs =
-                            self.convert_expr(ExprUse::RValue, lhs, is_static)?
-                                .map(|x| self.match_bool(true, lhs_ty, x));
-                        let rhs =
-                            self.convert_expr(ExprUse::RValue, rhs, is_static)?
-                                .map(|x| self.match_bool(true, rhs_ty, x));
-
+                        let lhs = self.convert_condition(true, lhs, is_static)?;
+                        let rhs = self.convert_condition(true, rhs, is_static)?;
                         Ok(lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::Or, x, rhs.to_expr()))))
                     }
 
@@ -2067,7 +2091,7 @@ impl Translation {
                     c_ast::BinOp::AssignBitOr |
                     c_ast::BinOp::AssignBitAnd |
                     c_ast::BinOp::Assign => {
-                        self.convert_assignment_operator(use_, *op, type_id, lhs, rhs, opt_lhs_type_id, opt_res_type_id)
+                        self.convert_assignment_operator(use_, op, type_id, lhs, rhs, opt_lhs_type_id, opt_res_type_id)
                     },
 
                     _ => {
@@ -2083,7 +2107,7 @@ impl Translation {
                         stmts.extend(lhs_stmts);
                         stmts.extend(rhs_stmts);
 
-                        let val = self.convert_binary_operator(*op, ty, type_id.ctype, lhs_type, rhs_type, lhs, rhs);
+                        let val = self.convert_binary_operator(op, ty, type_id.ctype, lhs_type, rhs_type, lhs, rhs);
 
                         Ok(WithStmts { stmts, val })
                     }
@@ -2198,19 +2222,27 @@ impl Translation {
             }
 
             CExprKind::Member(_, expr, decl, kind) => {
-                let struct_val = self.convert_expr(use_, expr, is_static)?;
-                let field_name = self.type_converter.borrow().resolve_field_name(None, decl).unwrap();
 
                 if use_ == ExprUse::Unused {
-                    Ok(struct_val)
+                    self.convert_expr(use_, expr, is_static)
                 } else {
-                    Ok(struct_val.map(|v| {
-                        let v = match kind {
-                            MemberKind::Arrow => mk().unary_expr(ast::UnOp::Deref, v),
-                            MemberKind::Dot => v,
-                        };
-                        mk().field_expr(v, field_name)
-                    }))
+                    let field_name = self.type_converter.borrow().resolve_field_name(None, decl).unwrap();
+                    match kind {
+                        MemberKind::Dot => {
+                            let val = self.convert_expr(use_, expr, is_static)?;
+                            Ok(val.map(|v| mk().field_expr(v, field_name)))
+                        }
+                        MemberKind::Arrow => {
+                            if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id)
+                            = self.ast_context[expr].kind {
+                                let val = self.convert_expr(use_, subexpr_id, is_static)?;
+                                Ok(val.map(|v| mk().field_expr(v, field_name)))
+                            } else {
+                                let val = self.convert_expr(use_, expr, is_static)?;
+                                Ok(val.map(|v| mk().field_expr(mk().unary_expr(ast::UnOp::Deref, v), field_name)))
+                            }
+                        }
+                    }
                 }
             }
 
@@ -2520,8 +2552,7 @@ impl Translation {
             },
 
             CastKind::IntegralToBoolean | CastKind::FloatingToBoolean | CastKind::PointerToBoolean => {
-                let val_ty = self.ast_context.index(expr).kind.get_type();
-                Ok(val.map(|x| self.match_bool(true, val_ty, x)))
+                self.convert_condition(true, expr, is_static)
             }
 
             // I don't know how to actually cause clang to generate this
@@ -3104,9 +3135,8 @@ impl Translation {
                     .map(|a| mk().unary_expr(ast::UnOp::Not, a))),
 
             c_ast::UnOp::Not => {
-                let t = self.ast_context.index(arg).kind.get_type();
-                let WithStmts { val: arg, stmts } = self.convert_expr(ExprUse::RValue, arg, is_static)?;
-                Ok(WithStmts { val: self.convert_not(t, arg), stmts })
+                let val = self.convert_condition(false, arg, is_static)?;
+                Ok(val.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc", "c_int"]))))
             },
             c_ast::UnOp::Extension => {
                 let arg = self.convert_expr(use_, arg, is_static)?;
@@ -3481,12 +3511,6 @@ impl Translation {
                 mk().binary_expr(BinOpKind::Eq, zero, val)
             }
         }
-    }
-
-    /// Convert expression to c_int using '!' behavior
-    fn convert_not(&self, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
-        let b = self.match_bool(false, ty_id, val);
-        mk().cast_expr(b, mk().path_ty(vec!["libc", "c_int"]))
     }
 
     fn is_function_pointer(&self, typ: CTypeId) -> bool {
