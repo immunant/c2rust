@@ -80,6 +80,9 @@ LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
 
 AST_EXPO = os.path.join(LLVM_BLD, "bin/ast-exporter")
 
+CLANG_XCHECK_PLUGIN_SRC = os.path.join(CROSS_CHECKS_DIR, "c-checks", "clang-plugin")
+CLANG_XCHECK_PLUGIN_BLD = os.path.join(DEPS_DIR, 'clang-xcheck-plugin.{}'.format(platform.node()))
+
 MIN_PLUMBUM_VERSION = (1, 6, 3)
 CMAKELISTS_COMMANDS = \
 """
