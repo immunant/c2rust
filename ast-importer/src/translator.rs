@@ -2222,19 +2222,27 @@ impl Translation {
             }
 
             CExprKind::Member(_, expr, decl, kind) => {
-                let struct_val = self.convert_expr(use_, expr, is_static)?;
-                let field_name = self.type_converter.borrow().resolve_field_name(None, decl).unwrap();
 
                 if use_ == ExprUse::Unused {
-                    Ok(struct_val)
+                    self.convert_expr(use_, expr, is_static)
                 } else {
-                    Ok(struct_val.map(|v| {
-                        let v = match kind {
-                            MemberKind::Arrow => mk().unary_expr(ast::UnOp::Deref, v),
-                            MemberKind::Dot => v,
-                        };
-                        mk().field_expr(v, field_name)
-                    }))
+                    let field_name = self.type_converter.borrow().resolve_field_name(None, decl).unwrap();
+                    match kind {
+                        MemberKind::Dot => {
+                            let val = self.convert_expr(use_, expr, is_static)?;
+                            Ok(val.map(|v| mk().field_expr(v, field_name)))
+                        }
+                        MemberKind::Arrow => {
+                            if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id)
+                            = self.ast_context[expr].kind {
+                                let val = self.convert_expr(use_, subexpr_id, is_static)?;
+                                Ok(val.map(|v| mk().field_expr(v, field_name)))
+                            } else {
+                                let val = self.convert_expr(use_, expr, is_static)?;
+                                Ok(val.map(|v| mk().field_expr(mk().unary_expr(ast::UnOp::Deref, v), field_name)))
+                            }
+                        }
+                    }
                 }
             }
 
