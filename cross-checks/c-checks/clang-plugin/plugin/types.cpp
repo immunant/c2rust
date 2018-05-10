@@ -106,7 +106,8 @@ CrossCheckInserter::get_type_hash_function(QualType ty, llvm::StringRef candidat
         HashFunction func{element.name, ty, ctx.getPointerType(element.actual_ty)};
         func.name.append("incarray"sv);
         if (build_it) {
-            build_array_hash_function(func, element, llvm::APInt(32, 1), ctx);
+            llvm::APInt one{ctx.getTypeSize(ctx.getSizeType()), 1};
+            build_array_hash_function(func, element, one, ctx);
         }
         return func;
     }
