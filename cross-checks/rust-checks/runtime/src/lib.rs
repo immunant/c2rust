@@ -1,3 +1,4 @@
+#![feature(never_type)]
 
 #![cfg_attr(feature="xcheck-with-dlsym", feature(const_fn))]
 #![cfg_attr(feature="xcheck-with-dlsym", feature(const_ptr_null_mut))]

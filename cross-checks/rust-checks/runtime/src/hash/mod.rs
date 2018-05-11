@@ -45,6 +45,20 @@ pub trait CrossCheckHash {
             where HA: CrossCheckHasher, HS: CrossCheckHasher;
 }
 
+impl CrossCheckHash for ! {
+    #[inline]
+    fn cross_check_hash<HA, HS>(&self) -> Option<u64>
+            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        panic!("Attempted to CrossCheckHash a 'never' value")
+    }
+
+    #[inline]
+    fn cross_check_hash_depth<HA, HS>(&self, _depth: usize) -> u64
+            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        panic!("Attempted to CrossCheckHash a 'never' value")
+    }
+}
+
 impl CrossCheckHash for () {
     #[inline]
     fn cross_check_hash<HA, HS>(&self) -> Option<u64>
