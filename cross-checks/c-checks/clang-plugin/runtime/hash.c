@@ -74,6 +74,7 @@ uint64_t __c2rust_hash_double(double x, size_t depth) {
 #define NULL_POINTER_HASH     0x726174536c6c754eULL // "NullStar" in ASCII
 #define VOID_POINTER_HASH     0x7261745364696f56ULL // "VoidStar" in ASCII
 #define FUNC_POINTER_HASH     0x72617453636e7546ULL // "FuncStar" in ASCII
+#define ANY_UNION_HASH        0x6e6f696e55796e41ULL // "AnyUnion" in ASCII
 
 _Bool __c2rust_pointer_is_invalid(void *p) {
     return p == NULL;
@@ -93,6 +94,10 @@ uint64_t __c2rust_hash_array_leaf() {
 
 uint64_t __c2rust_hash_record_leaf() {
     return LEAF_RECORD_HASH;
+}
+
+uint64_t __c2rust_hash_anyunion() {
+    return ANY_UNION_HASH;
 }
 
 uint64_t __c2rust_hash_void_ptr(void *p, size_t depth) {

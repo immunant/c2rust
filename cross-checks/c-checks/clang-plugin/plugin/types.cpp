@@ -544,9 +544,23 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
         return;
     }
     if (record_def->isUnion()) {
-        report_clang_warning(diags, "default cross-checking is not supported for unions, "
+        report_clang_warning(diags, "emitting generic 'AnyUnion' cross-check for union, "
                                     "please use a custom cross-check for '%0'",
                                     record_name);
+        // uint64_t __c2rust_hash_T_union(struct T x, size_t depth) {
+        //   if (depth == 0)
+        //      return __c2rust_hash_record_leaf();
+        //   return __c2rust_hash_anyunion();
+        // }
+        auto body_fn = [this, &ctx] (FunctionDecl *fn_decl) -> StmtVec {
+            auto depth_check = build_depth_check(fn_decl, "record"sv, ctx);
+            auto anyunion_call = build_call("__c2rust_hash_anyunion",
+                                             ctx.UnsignedLongTy, { }, ctx);
+            auto return_stmt =
+                new (ctx) ReturnStmt(SourceLocation(), anyunion_call, nullptr);
+            return { depth_check, return_stmt };
+        };
+        build_generic_hash_function(func, ctx, body_fn);
         return;
     }
     assert((record_def->isStruct() || record_def->isClass()) &&
