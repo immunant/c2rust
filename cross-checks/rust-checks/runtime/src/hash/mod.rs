@@ -144,7 +144,7 @@ impl<'a, T: ?Sized + CrossCheckHash> CrossCheckHash for &'a mut T {
 }
 
 // Hash implementation for raw pointers
-impl<T: CrossCheckHash> CrossCheckHash for *const T {
+impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *const T {
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
@@ -162,7 +162,7 @@ impl<T: CrossCheckHash> CrossCheckHash for *const T {
     }
 }
 
-impl<T: CrossCheckHash> CrossCheckHash for *mut T {
+impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *mut T {
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
