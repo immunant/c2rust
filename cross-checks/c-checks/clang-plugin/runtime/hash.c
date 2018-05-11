@@ -42,6 +42,10 @@ DEFINE_CTYPE_HASH(char,   char,               u, __SCHAR_WIDTH__);
 DEFINE_CTYPE_HASH(char,   char,               i, __SCHAR_WIDTH__);
 #endif
 
+uint64_t __c2rust_hash_bool(_Bool x, size_t depth) {
+    return x ? 0x8787878787878785ULL : 0x8787878787878784ULL;
+}
+
 // TODO: implement more types, e.g., bool, char, double, float
 
 #if __SIZEOF_FLOAT__ == 4
