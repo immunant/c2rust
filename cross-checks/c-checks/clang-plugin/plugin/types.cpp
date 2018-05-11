@@ -521,7 +521,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
     }
 
     // Build the following code:
-    // uint64_t __c2rust_hash_T_struct(struct T x, size_t depth) {
+    // uint64_t __c2rust_hash_T_struct(struct T *x, size_t depth) {
     //   if (depth == 0)
     //      return __c2rust_hash_record_leaf();
     //
@@ -547,7 +547,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
         report_clang_warning(diags, "emitting generic 'AnyUnion' cross-check for union, "
                                     "please use a custom cross-check for '%0'",
                                     record_name);
-        // uint64_t __c2rust_hash_T_union(struct T x, size_t depth) {
+        // uint64_t __c2rust_hash_T_union(struct T *x, size_t depth) {
         //   if (depth == 0)
         //      return __c2rust_hash_record_leaf();
         //   return __c2rust_hash_anyunion();
