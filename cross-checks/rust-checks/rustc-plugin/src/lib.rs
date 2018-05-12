@@ -608,6 +608,9 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
             // Foreign type, implement CrossCheckHash for it
             // This is implemented as a call to the `__c2rust_hash_T` function
             // TODO: include ahasher/shasher into the function name
+            // TODO: configure this via attribute&external configuration
+            //       * option to disable CrossCheckHash altogether
+            //       * option to use a custom function
             let ty_name = folded_ni.ident;
             let hash_fn_name = format!("__c2rust_hash_{}", ty_name);
             let hash_fn = ast::Ident::from_str(&hash_fn_name);
