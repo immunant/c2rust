@@ -119,16 +119,34 @@ impl_primitive_hash!(f32,   write_f32);
 impl_primitive_hash!(f64,   write_f64);
 
 // TODO: hash for strings (str type)
-// TODO: hash for slices ([T] type)
 
 // Placeholder values for reference/pointers to use when
 // we reach depth == 0 and cannot descend any further
 const LEAF_REFERENCE_VALUE: u32 = 0xDEADBEEFu32;
 const LEAF_POINTER_VALUE: u32 = 0xDEADBEEFu32;
+const LEAF_ARRAY_HASH:   u64 = 0x797272416661654c_u64; // "LeafArry" in ASCII
 const NULL_POINTER_HASH: u64 = 0x726174536c6c754e_u64; // "NullStar" in ASCII
 const LEAF_POINTER_HASH: u64 = 0x726174536661654c_u64; // "LeafStar" in ASCII
 const VOID_POINTER_HASH: u64 = 0x7261745364696f56_u64; // "VoidStar" in ASCII
 const FUNC_POINTER_HASH: u64 = 0x72617453636e7546_u64; // "FuncStar" in ASCII
+
+// Hash implementation for slices
+impl<'a, T:CrossCheckHash> CrossCheckHash for [T] {
+    #[inline]
+    fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
+            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        if depth == 0 {
+            LEAF_ARRAY_HASH
+        } else {
+            let mut h = HA::default();
+            for elem in self {
+                let elem_hash = elem.cross_check_hash_depth::<HA, HS>(depth - 1);
+                h.write_u64(elem_hash);
+            }
+            h.finish()
+        }
+    }
+}
 
 // Hash implementation for references
 impl<'a, T: ?Sized + CrossCheckHash> CrossCheckHash for &'a T {
@@ -244,6 +262,33 @@ impl_fnopt_hash!(A, B, C, D, E, F, G, H, I);
 impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J);
 impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K);
 impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K, L);
+
+macro_rules! impl_array_hash {
+    ($($N:expr)+) => { $(
+        impl<T: CrossCheckHash> CrossCheckHash for [T; $N] {
+            #[inline]
+            fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
+                    where HA: CrossCheckHasher, HS: CrossCheckHasher {
+                self[..].cross_check_hash_depth::<HA, HS>(depth)
+            }
+        }
+    )+ }
+}
+
+#[cfg(feature="fixed-length-array-hash")]
+impl_array_hash!{
+    // Values from 0 to 32
+     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
+    15 16 17 18 19 20 21 22 23 24 25 26 27 28 29
+    // Powers of two
+      31   32   33
+      63   64   65
+     127  128  129
+     255  256  257
+     511  512  513
+    1023 1024 1025
+}
+
 
 #[cfg(feature="libc-hash")]
 impl CrossCheckHash for libc::c_void {

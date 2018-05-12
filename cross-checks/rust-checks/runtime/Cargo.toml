@@ -9,6 +9,7 @@ xcheck-with-dlsym = []
 xcheck-with-weak = []
 djb2-ssse3 = ["simd"]
 libc-hash = []
+fixed-length-array-hash = []
 
 [dependencies]
 simd = { version = "0.2.0", optional = true }
