@@ -348,6 +348,34 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         })
     }
 
+    fn build_union_hash(&mut self, union_ident: &ast::Ident) -> P<ast::Item> {
+        let custom_hash_opt = &self.config().struct_config().custom_hash;
+        let hash_body = if let Some(ref custom_hash) = *custom_hash_opt {
+            // User provided a custom hash function, use it
+            self.cx.parse_expr(custom_hash.clone())
+        } else {
+            // TODO: emit warning
+            quote_expr!(self.cx, {
+                if _depth == 0 {
+                    ::cross_check_runtime::hash::LEAF_RECORD_HASH
+                } else {
+                    ::cross_check_runtime::hash::ANY_UNION_HASH
+                }
+            })
+        };
+        quote_item!(self.cx,
+            impl ::cross_check_runtime::hash::CrossCheckHash for $union_ident {
+                #[inline]
+                fn cross_check_hash_depth<HA, HS>(&self, _depth: usize) -> u64
+                        where HA: ::cross_check_runtime::hash::CrossCheckHasher,
+                              HS: ::cross_check_runtime::hash::CrossCheckHasher {
+                    $hash_body
+                }
+            }
+        ).expect(&format!("unable to implement CrossCheckHash for union '{}'",
+                          union_ident.to_string()))
+    }
+
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let folded_item = fold::noop_fold_item_simple(item, self);
         match folded_item.node {
@@ -367,8 +395,11 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     ..folded_item
                 }
             }
-            // FIXME: disabled!!!
-            // ast::ItemKind::Union(_, _) |
+            ast::ItemKind::Union(_, _) => {
+                let union_hash_impl = self.build_union_hash(&folded_item.ident);
+                self.pending_items.push(union_hash_impl);
+                folded_item
+            }
             ast::ItemKind::Enum(_, _) |
             ast::ItemKind::Struct(_, _) => {
                 // Prepend #[derive(CrossCheckHash)] automatically
