@@ -292,6 +292,21 @@ impl_array_hash!{
     1023 1024 1025
 }
 
+// Helper macro that implements CrossCheckHash for a fixed-size array with
+// a given type and a list of sizes, i.e., `[T; N]` for several values of N
+#[macro_export]
+macro_rules! cross_check_hash_array {
+    [$ET:ty; [$($N:expr),+]] => { $(
+        impl $crate::hash::CrossCheckHash for [$ET; $N] {
+            #[inline]
+            fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
+                    where HA: $crate::hash::CrossCheckHasher,
+                          HS: $crate::hash::CrossCheckHasher {
+                self[..].cross_check_hash_depth::<HA, HS>(depth)
+            }
+        }
+    )+ }
+}
 
 #[cfg(feature="libc-hash")]
 impl CrossCheckHash for libc::c_void {
