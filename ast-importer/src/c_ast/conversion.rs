@@ -492,7 +492,7 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, FUNC_TYPE);
                 }
 
-                TypeTag::TagTypeOfType if expected_ty & OTHER_TYPE != 0 => {
+                TypeTag::TagTypeOfType if expected_ty & TYPE != 0 => {
                     let type_of_old = expect_u64(&ty_node.extras[0]).expect("Type of (type) child not found");
                     let type_of = self.visit_type(type_of_old);
 
