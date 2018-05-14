@@ -134,7 +134,7 @@ pub const FUNC_POINTER_HASH: u64 = 0x72617453636e7546_u64; // "FuncStar" in ASCI
 pub const ANY_UNION_HASH:    u64 = 0x6e6f696e55796e41_u64; // "AnyUnion" in ASCII
 
 // Hash implementation for slices
-impl<'a, T:CrossCheckHash> CrossCheckHash for [T] {
+impl<'a, T: CrossCheckHash> CrossCheckHash for [T] {
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
