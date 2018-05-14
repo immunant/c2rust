@@ -124,11 +124,14 @@ impl_primitive_hash!(f64,   write_f64);
 // we reach depth == 0 and cannot descend any further
 const LEAF_REFERENCE_VALUE: u32 = 0xDEADBEEFu32;
 const LEAF_POINTER_VALUE: u32 = 0xDEADBEEFu32;
-const LEAF_ARRAY_HASH:   u64 = 0x797272416661654c_u64; // "LeafArry" in ASCII
-const NULL_POINTER_HASH: u64 = 0x726174536c6c754e_u64; // "NullStar" in ASCII
-const LEAF_POINTER_HASH: u64 = 0x726174536661654c_u64; // "LeafStar" in ASCII
-const VOID_POINTER_HASH: u64 = 0x7261745364696f56_u64; // "VoidStar" in ASCII
-const FUNC_POINTER_HASH: u64 = 0x72617453636e7546_u64; // "FuncStar" in ASCII
+
+pub const LEAF_ARRAY_HASH:   u64 = 0x797272416661654c_u64; // "LeafArry" in ASCII
+pub const LEAF_RECORD_HASH:  u64 = 0x647263526661654c_u64; // "LeafRcrd" in ASCII
+pub const NULL_POINTER_HASH: u64 = 0x726174536c6c754e_u64; // "NullStar" in ASCII
+pub const LEAF_POINTER_HASH: u64 = 0x726174536661654c_u64; // "LeafStar" in ASCII
+pub const VOID_POINTER_HASH: u64 = 0x7261745364696f56_u64; // "VoidStar" in ASCII
+pub const FUNC_POINTER_HASH: u64 = 0x72617453636e7546_u64; // "FuncStar" in ASCII
+pub const ANY_UNION_HASH:    u64 = 0x6e6f696e55796e41_u64; // "AnyUnion" in ASCII
 
 // Hash implementation for slices
 impl<'a, T:CrossCheckHash> CrossCheckHash for [T] {
