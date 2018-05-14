@@ -186,7 +186,10 @@ impl TypedAstContext {
         // All variable and function definitions are considered live
         for (&decl_id, decl) in &self.c_decls {
             match decl.kind {
-                CDeclKind::Function { body: Some(_), .. } => { live.insert(decl_id); }
+                CDeclKind::Function { typ, body: Some(_), .. } => {
+                    live.insert(decl_id);
+                    type_queue.push(typ); // references the return type
+                }
                 CDeclKind::Variable { is_defn: true, .. } => { live.insert(decl_id); }
                 _ => {}
             }
