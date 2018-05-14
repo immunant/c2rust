@@ -378,6 +378,7 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
 bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
     for (auto *d : dg) {
         auto &ctx = d->getASTContext();
+        auto &diags = ctx.getDiagnostics();
         if (FunctionDecl *fd = dyn_cast<FunctionDecl>(d)) {
             if (!fd->hasBody())
                 continue;
@@ -389,6 +390,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             auto func_name = fd_ident->getName();
             if (func_name.startswith("__c2rust")) {
                 // Ignore our own functions
+                continue;
+            }
+            if (fd->isVariadic()) {
+                report_clang_warning(diags, "cross-checks not supported for variadic functions, "
+                                            "disabling for '%0'", func_name);
                 continue;
             }
 
