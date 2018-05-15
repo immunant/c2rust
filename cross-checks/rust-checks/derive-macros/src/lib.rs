@@ -55,10 +55,14 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         // Hash this value using the default algorithm
         let hasher = top_args.get_ident_arg("field_hasher", ahasher);
         quote! {
-            #[allow(unused_mut)]
-            let mut h = #hasher::default();
-            match *self { #hash_fields }
-            h.finish()
+            if _depth == 0 {
+                ::cross_check_runtime::hash::LEAF_RECORD_HASH
+            } else {
+                #[allow(unused_mut)]
+                let mut h = #hasher::default();
+                match *self { #hash_fields }
+                h.finish()
+            }
         }
     });
     s.bound_impl("::cross_check_runtime::hash::CrossCheckHash", quote! {
