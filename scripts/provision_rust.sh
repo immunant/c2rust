@@ -24,5 +24,6 @@ fi
 # make rust environment available for commands below 
 source ~/.cargo/env
 
-# the idiomize testsuite depends on rustfmt
-rustup run $RUST_VER cargo install --force rustfmt
+# required for idiomize tests
+# rustup run $RUST_VER cargo install --force rustfmt
+rustup component add rustfmt-preview   

@@ -77,17 +77,17 @@ def run_tests(testcases: List[str]) -> None:
 
 def main():
     # TODO: implement rustfmt and diff actions from `run-test.sh`
-    # TODO: check rustfmt version   
 
     setup_logging()
     ensure_rustc_version(CUSTOM_RUST_RUSTC_VERSION)
-    ensure_rustfmt_version()
+    # TODO: update rustfmt version check once idiomize bitrot has been fixed
+    # ensure_rustfmt_version()
     test_dir = os.path.join(RREF_DIR, "tests")
     assert os.path.isdir(test_dir), "test dir missing: " + test_dir
     idiomize_binary = os.path.join(RREF_DIR, "target/debug/idiomize")
     if not os.path.isfile(idiomize_binary):
         die("build idiomize binary first. expected: " + idiomize_binary)
-    
+
     testcases = get_testcases(test_dir)
     run_tests(sorted(testcases))
 
