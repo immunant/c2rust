@@ -1,10 +1,9 @@
 #!/bin/bash
 
-# are we on a debian or ubuntu host?
-if [ ! -f /etc/debian_release ]; then
-    echo "Run this script on a Debian/Ubuntu host."
-    exit 1
-fi
+# Are we on a supported distro?
+dpkg-vendor --derives-from Debian || {
+    echo >&2 "Run this script on a Debian/Ubuntu host."; exit 1; 
+}
 
 # Make debconf use a frontend that expects no interactive input
 export DEBIAN_FRONTEND=noninteractive
