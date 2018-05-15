@@ -678,6 +678,12 @@ class TranslateASTVisitor final
       // Expressions
       //
       
+      bool VisitVAArgExpr(VAArgExpr *E) {
+          std::vector<void*> childIds { E->getSubExpr() };
+          encode_entry(E, TagVAArgExpr, childIds);
+          return true;
+      }
+      
       bool VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *E) {
           std::vector<void*> childIds { E->isArgumentType() ? nullptr : E->getArgumentExpr() };
           auto t = E->getTypeOfArgument();

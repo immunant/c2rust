@@ -46,27 +46,22 @@ impl<'context> DFExpr<'context> {
 fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
     use c_ast::CExprKind::*;
     match *kind {
-        Literal(..) => vec![],
+        OffsetOf(..) | Literal(..) | ImplicitValueInit(..) => vec![],
+        DeclRef(_, _) => vec![], // don't follow references back!
         Unary(_ty, _op, subexpr) => intos![subexpr],
         UnaryType(_ty, _op, opt_expr_id, _) => opt_expr_id.iter().map(|&x| x.into()).collect(),
-        OffsetOf(..) => vec![],
         Binary(_ty, _op, lhs, rhs, _, _) => intos![lhs, rhs],
-        ImplicitCast(_, e, _, _) => intos![e],
-        ExplicitCast(_, e, _, _) => intos![e],
-        DeclRef(_, _) => vec![], // don't follow references back!
         Call(_, f, ref args) => {
             let mut res = intos![f];
             for &a in args { res.push(a.into()) }
             res
         }
-        Member(_, e, _, _) => intos![e],
         ArraySubscript(_, l, r) => intos![l,r],
         Conditional(_, c, t, e) => intos![c,t,e],
         BinaryConditional(_, c, t) => intos![c,t],
         InitList(_, ref xs, _) => xs.iter().map(|&x| x.into()).collect(),
-        ImplicitValueInit(_) => vec![],
-        CompoundLiteral(_, e) => intos![e],
-        Predefined(_, e) => intos![e],
+        ImplicitCast(_, e, _, _) | ExplicitCast(_, e, _, _) |
+        Member(_, e, _, _) | CompoundLiteral(_, e) | Predefined(_, e) | VAArg(_,e) => intos![e],
         Statements(_, s) => vec![s.into()],
     }
 }

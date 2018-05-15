@@ -185,6 +185,9 @@ impl<W: Write> Printer<W> {
             Some(&CExprKind::Predefined(_, val)) =>
                 self.print_expr(val, context),
 
+            Some(&CExprKind::VAArg(_,val)) =>
+                self.print_expr(val, context),
+
             None => panic!("Could not find expression with ID {:?}", expr_id),
            // _ => unimplemented!("Printer::print_expr"),
         }
