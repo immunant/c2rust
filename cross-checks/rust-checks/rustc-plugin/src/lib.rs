@@ -17,7 +17,7 @@ use syntax::fold;
 
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -376,6 +376,35 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                           union_ident.to_string()))
     }
 
+    #[cfg(not(feature="c-hash-functions"))]
+    fn build_type_c_hash_function(&mut self, _: &ast::Ident) -> Option<P<ast::Item>> {
+        assert!(cfg!(feature="c-hash-functions")); // Expected to fail, is intentional
+        None
+    }
+
+    #[cfg(feature="c-hash-functions")]
+    fn build_type_c_hash_function(&mut self, ty_ident: &ast::Ident) -> Option<P<ast::Item>> {
+        assert!(cfg!(feature="c-hash-functions"));
+        let hash_fn_name = format!("__c2rust_hash_{}", ty_ident);
+        let hash_fn = ast::Ident::from_str(&hash_fn_name);
+
+        // Check if function has already been emitted;
+        // FIXME: should this check be optional (compile-time feature)???
+        if !self.expander.c_hash_functions.borrow_mut().insert(hash_fn_name) {
+            return None;
+        }
+
+        let (ahasher, shasher) = self.get_hasher_pair();
+        Some(quote_item!(self.cx,
+            #[no_mangle]
+            pub unsafe extern "C" fn $hash_fn(x: *mut $ty_ident, depth: usize) -> u64 {
+                use ::cross_check_runtime::hash::CrossCheckHash;
+                CrossCheckHash::cross_check_hash_depth::<$ahasher, $shasher>(&*x, depth)
+            }
+        ).expect(&format!("unable to implement C ABI hash function for type '{}'",
+                          ty_ident.to_string())))
+    }
+
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let folded_item = fold::noop_fold_item_simple(item, self);
         match folded_item.node {
@@ -398,6 +427,10 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             ast::ItemKind::Union(_, _) => {
                 let union_hash_impl = self.build_union_hash(&folded_item.ident);
                 self.pending_items.push(union_hash_impl);
+                if cfg!(feature="c-hash-functions") {
+                    let c_hash_func = self.build_type_c_hash_function(&folded_item.ident);
+                    self.pending_items.extend(c_hash_func.into_iter());
+                }
                 folded_item
             }
             ast::ItemKind::Enum(_, _) |
@@ -413,6 +446,11 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     if !attr_args.is_empty() {
                         let xcheck_hash_attr = quote_attr!(self.cx, #[cross_check_hash($attr_args)]);
                         item_attrs.push(xcheck_hash_attr);
+                    }
+
+                    if cfg!(feature="c-hash-functions") {
+                        let c_hash_func = self.build_type_c_hash_function(&folded_item.ident);
+                        self.pending_items.extend(c_hash_func.into_iter());
                     }
                 }
                 ast::Item {
@@ -669,11 +707,17 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
     }
 }
 
+#[derive(Default)]
 struct CrossCheckExpander {
     // Arguments passed to plugin
     // TODO: pre-parse them???
     external_config: xcfg::Config,
     macro_scopes: RefCell<HashMap<Span, Rc<config::InheritedCheckConfig>>>,
+
+    // List of already emitted C ABI hash functions,
+    // used to prevent the emission of duplicates
+    #[cfg(feature="c-hash-functions")]
+    c_hash_functions: RefCell<HashSet<String>>,
 }
 
 impl CrossCheckExpander {
@@ -681,6 +725,7 @@ impl CrossCheckExpander {
         CrossCheckExpander {
             external_config: CrossCheckExpander::parse_config_files(args),
             macro_scopes: Default::default(),
+            ..Default::default()
         }
     }
 

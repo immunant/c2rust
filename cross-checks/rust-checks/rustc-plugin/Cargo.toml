@@ -9,6 +9,7 @@ plugin = true
 
 [features]
 expand-macros = []
+c-hash-functions = []
 
 [dependencies]
 matches = "0.1.6"
