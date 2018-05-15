@@ -54,8 +54,11 @@ USER $USER
 ARG RUST_VER=nightly-2018-01-06
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain $RUST_VER
 RUN echo "source ~/.cargo/env" >> ~/.bashrc
+# Required for idiomize tests
+# RUN . $HOME/.cargo/env && \
+#    rustup run $RUST_VER cargo install --force rustfmt
 RUN . $HOME/.cargo/env && \
-    rustup run $RUST_VER cargo install --force rustfmt
+   rustup component add rustfmt-preview   
 
 
 

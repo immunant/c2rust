@@ -2314,6 +2314,9 @@ impl Translation {
 
             CExprKind::Statements(_, compound_stmt_id) =>
                 self.convert_statement_expression(use_, compound_stmt_id, is_static),
+
+            CExprKind::VAArg(..) =>
+                Err(format!("Variable argument lists are not supported")),
         }
     }
 

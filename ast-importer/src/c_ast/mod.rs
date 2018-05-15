@@ -123,35 +123,35 @@ impl TypedAstContext {
     /// that it doesn't, return `false`.
     pub fn is_expr_pure(&self, expr: CExprId) -> bool {
         match self.index(expr).kind {
-            CExprKind::Call(_, _, _) => false,
-            CExprKind::Literal(_, _) => true,
-            CExprKind::DeclRef(_, _) => true,
-            CExprKind::OffsetOf(..) => true,
+            CExprKind::Call(_, _, _) |
+            CExprKind::Unary(_, UnOp::PreIncrement, _) |
+            CExprKind::Unary(_, UnOp::PostIncrement, _) |
+            CExprKind::Unary(_, UnOp::PreDecrement, _) |
+            CExprKind::Unary(_, UnOp::PostDecrement, _) |
+            CExprKind::Binary(_, BinOp::Assign, _, _, _, _) |
+            CExprKind::InitList { .. } |
+            CExprKind::ImplicitValueInit { .. } |
+            CExprKind::Predefined(_, _) |
             CExprKind::Statements(..) => false, // TODO: more precision
 
-            CExprKind::ImplicitCast(_, e, _, _) => self.is_expr_pure(e),
-            CExprKind::ExplicitCast(_, e, _, _) => self.is_expr_pure(e),
-            CExprKind::Member(_, e, _, _) => self.is_expr_pure(e),
+            CExprKind::Literal(_, _) |
+            CExprKind::DeclRef(_, _) |
+            CExprKind::UnaryType(_, _, _, _) |
+            CExprKind::OffsetOf(..) => true,
 
-            CExprKind::Unary(_, UnOp::PreIncrement, _) => false,
-            CExprKind::Unary(_, UnOp::PostIncrement, _) => false,
-            CExprKind::Unary(_, UnOp::PreDecrement, _) => false,
-            CExprKind::Unary(_, UnOp::PostDecrement, _) => false,
+            CExprKind::ImplicitCast(_, e, _, _) |
+            CExprKind::ExplicitCast(_, e, _, _) |
+            CExprKind::Member(_, e, _, _) |
+            CExprKind::CompoundLiteral(_, e) |
+            CExprKind::VAArg(_, e) |
             CExprKind::Unary(_, _, e) => self.is_expr_pure(e),
-            CExprKind::UnaryType(_, _, _, _) => true,
 
-            CExprKind::Binary(_, BinOp::Assign, _, _, _, _) => false,
             CExprKind::Binary(_, op, _, _, _, _) if op.underlying_assignment().is_some() => false,
             CExprKind::Binary(_, _, lhs, rhs, _, _) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
 
             CExprKind::ArraySubscript(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
             CExprKind::Conditional(_, c, lhs, rhs) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
             CExprKind::BinaryConditional(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
-
-            CExprKind::InitList { .. } => false,
-            CExprKind::ImplicitValueInit { .. } => false,
-            CExprKind::CompoundLiteral(_, val) => self.is_expr_pure(val),
-            CExprKind::Predefined(_, _) => false,
         }
     }
 
@@ -656,6 +656,9 @@ pub enum CExprKind {
 
     // Statement expression
     Statements(CQualTypeId, CStmtId),
+
+    // Variable argument list
+    VAArg(CQualTypeId, CExprId),
 }
 
 #[derive(Copy, Debug, Clone)]
@@ -667,24 +670,25 @@ pub enum MemberKind {
 impl CExprKind {
     pub fn get_qual_type(&self) -> CQualTypeId {
         match *self {
-            CExprKind::Literal(ty, _) => ty,
-            CExprKind::OffsetOf(ty, _) => ty,
-            CExprKind::Unary(ty, _, _) => ty,
-            CExprKind::UnaryType(ty, _, _, _) => ty,
-            CExprKind::Binary(ty, _, _, _, _, _) => ty,
-            CExprKind::ImplicitCast(ty, _, _, _) => ty,
-            CExprKind::ExplicitCast(ty, _, _, _) => ty,
-            CExprKind::DeclRef(ty, _) => ty,
-            CExprKind::Call(ty, _, _) => ty,
-            CExprKind::Member(ty, _, _, _) => ty,
-            CExprKind::ArraySubscript(ty, _, _) => ty,
-            CExprKind::Conditional(ty, _, _, _) => ty,
-            CExprKind::BinaryConditional(ty, _, _) => ty,
-            CExprKind::InitList(ty, _, _) => ty,
-            CExprKind::ImplicitValueInit(ty) => ty,
-            CExprKind::CompoundLiteral(ty, _) => ty,
-            CExprKind::Predefined(ty, _) => ty,
-            CExprKind::Statements(ty, _) => ty,
+            CExprKind::Literal(ty, _) |
+            CExprKind::OffsetOf(ty, _) |
+            CExprKind::Unary(ty, _, _) |
+            CExprKind::UnaryType(ty, _, _, _) |
+            CExprKind::Binary(ty, _, _, _, _, _) |
+            CExprKind::ImplicitCast(ty, _, _, _) |
+            CExprKind::ExplicitCast(ty, _, _, _) |
+            CExprKind::DeclRef(ty, _) |
+            CExprKind::Call(ty, _, _) |
+            CExprKind::Member(ty, _, _, _) |
+            CExprKind::ArraySubscript(ty, _, _) |
+            CExprKind::Conditional(ty, _, _, _) |
+            CExprKind::BinaryConditional(ty, _, _) |
+            CExprKind::InitList(ty, _, _) |
+            CExprKind::ImplicitValueInit(ty) |
+            CExprKind::CompoundLiteral(ty, _) |
+            CExprKind::Predefined(ty, _) |
+            CExprKind::Statements(ty, _) |
+            CExprKind::VAArg(ty, _) => ty,
         }
     }
 
