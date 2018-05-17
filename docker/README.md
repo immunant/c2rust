@@ -1,5 +1,8 @@
 # C2Rust Vagrant environment
 
+Building LLVM will require more than the default 2GB of RAM on macOS.
+4GB should be sufficient.
+
 - build and run (tested on macOS with Docker CE)
 ```
 cd $C2Rust/docker
