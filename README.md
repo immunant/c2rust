@@ -6,6 +6,17 @@ The `ast-exporter` extracts from a C file the abstract syntax tree and type info
 Clang and serializes it into CBOR files. The `ast-importer` consumes these CBOR files and generates
 Rust source code preserving the semantics (as understood under C99) of the initial C program.
 
+The translated Rust files will not depend directly on each other like
+normal Rust modules. They will export and import functions through the C
+API. These modules can be compiled together into a single static Rust
+library.
+
+There are several [known limitations](https://github.com/GaloisInc/C2Rust/wiki/Known-Limitations-of-Translation)
+in this translator. Some of these restrictions come from limitations of
+Rust and others come from complexities of the features themselves. The
+translator will attempt to skip function definitions that use
+unsupported features.
+
 ### Building
 
 These two projects have some large dependencies (namely parts of LLVM and Clang). If you've installed 
