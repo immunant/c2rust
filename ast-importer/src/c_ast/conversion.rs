@@ -1219,7 +1219,7 @@ impl ConversionContext {
                     }
 
                     let typ_old = node.type_id.expect("Expected to find a type on a function decl");
-                    let typ = CTypeId(self.visit_node_type(typ_old, FUNC_TYPE));
+                    let typ = CTypeId(self.visit_node_type(typ_old, TYPE));
 
                     let (body_id, parameter_ids) = node.children.split_last()
                         .expect("Expected to find a function body");

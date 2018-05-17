@@ -33,3 +33,27 @@ compiled and run. More details about tests are in [this README](tests/README.md)
 
  [0]: docs/building-ast-exporter.md
 
+### Using the translator
+
+The C2Rust translation process relies use Clang to parse and type-check
+input C files. For Clang to do this it needs to know information that is
+passed in via command-line flags. This information can be found in an
+automatically generated `compile_commands.json`.
+
+The `compile_commands.json` file can be automatically create using
+either `cmake` or `Bear`.
+
+#### Generating `compile_commands.json` with `cmake`
+
+When creating the initial build directory with cmake specify
+`-DMAKE_EXPORT_COMPILE_COMMANDS=1`. This only works on projects
+configured to be built by cmake. This works on Linux and MacOS.
+
+    $ mkdir build
+    $ cd build
+    $ cmake -DMAKE_EXPORT_COMPILE_COMMANDS=1 ..
+
+#### Generating `compile_commands.json` with `bear`
+
+    $ ./configure CC=clang
+    $ bear make
