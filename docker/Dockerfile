@@ -27,7 +27,7 @@ RUN apt-get update -qq && \
                        ipython3 \
                        libreadline-dev \
                        lldb-5.0 \
-                       llvm-5.0 \    
+                       llvm-5.0 \
                        make \
                        ninja-build \
                        python3 \
@@ -39,15 +39,16 @@ RUN apt-get update -qq && \
 
 RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-5.0 100 && \
     update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-5.0 100 && \
-    update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-5.0 100 
+    update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-5.0 100
 
 # Provision Python3 packages (using --no-cache-dir to avoid warnings)
 RUN pip3 install --no-cache-dir --upgrade cbor \
                                           colorlog \
+                                          mako \
                                           pip \
                                           plumbum \
                                           psutil \
-                                          typing 
+                                          typing
 
 USER $USER
 # Provision rust language and packages (should not run as root)
@@ -58,7 +59,4 @@ RUN echo "source ~/.cargo/env" >> ~/.bashrc
 # RUN . $HOME/.cargo/env && \
 #    rustup run $RUST_VER cargo install --force rustfmt
 RUN . $HOME/.cargo/env && \
-   rustup component add rustfmt-preview   
-
-
-
+   rustup component add rustfmt-preview

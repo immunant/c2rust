@@ -55,5 +55,17 @@ configured to be built by cmake. This works on Linux and MacOS.
 
 #### Generating `compile_commands.json` with `bear`
 
+When building on Linux, *Bear* is automatically build by the
+`build_translator.py` script and installed into the `dependencies`
+directory.
+
     $ ./configure CC=clang
     $ bear make
+
+#### Translating source files
+
+The `transpile.py` script will automatically translate all of the C
+source files mentioned in the previously generated
+`compile_commands.json`.
+
+    $ scripts/transpile.py ./compile_commands.json
