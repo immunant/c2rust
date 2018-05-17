@@ -183,16 +183,12 @@ impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *const T {
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
-        if self.is_null() {
-            //CrossCheckHash::cross_check_hash_depth::<HA, HS>(&0usize, 1)
-            NULL_POINTER_HASH
-        } else if depth == 0 {
-            LEAF_POINTER_HASH
-        } else {
-            unsafe {
-                // FIXME: even non-NULL pointers may be invalid
-                (**self).cross_check_hash_depth::<HA, HS>(depth - 1)
-            }
+        let r = unsafe { self.as_ref() };
+        match (r, depth) {
+            (None, _) => NULL_POINTER_HASH,
+            (_,    0) => LEAF_POINTER_HASH,
+            // FIXME: even non-NULL pointers may be invalid
+            (Some(r), _) => (*r).cross_check_hash_depth::<HA, HS>(depth - 1)
         }
     }
 }
@@ -201,16 +197,12 @@ impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *mut T {
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
-        if self.is_null() {
-            //CrossCheckHash::cross_check_hash_depth::<HA, HS>(&0usize, 1)
-            NULL_POINTER_HASH
-        } else if depth == 0 {
-            LEAF_POINTER_HASH
-        } else {
-            unsafe {
-                // FIXME: even non-NULL pointers may be invalid
-                (**self).cross_check_hash_depth::<HA, HS>(depth - 1)
-            }
+        let r = unsafe { self.as_ref() };
+        match (r, depth) {
+            (None, _) => NULL_POINTER_HASH,
+            (_,    0) => LEAF_POINTER_HASH,
+            // FIXME: even non-NULL pointers may be invalid
+            (Some(r), _) => (*r).cross_check_hash_depth::<HA, HS>(depth - 1)
         }
     }
 }
