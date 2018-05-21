@@ -9,7 +9,7 @@ use rouille::Request;
 use rouille::Response;
 use std::fs::File;
 use std::path::Path;
-use std::io::{Read,Write};
+use std::io::{self,Read,Write};
 use std::process::Command;
 use tempfile::tempdir;
 use std::str;
@@ -19,7 +19,7 @@ struct TranslateErr<'a> {
     description: &'a str,
 }
 
-fn get_file(content_type: &'static str, path: &Path, filename: &str) -> Response {
+fn get_file(content_type: &'static str, path: &Path, filename: &Path) -> Response {
 
     let index_html = match File::open(path.join(filename)) {
         Ok(x) => x,
@@ -63,7 +63,7 @@ fn translate(request: &Request) -> Response {
 
     if !output.status.success() {
         // these errors can really stack up
-        let error_string = try_or_400!(str::from_utf8(&output.stdout[..]));
+        let error_string = try_or_400!(str::from_utf8(&output.stderr[..]));
 
         return Response::json(&TranslateErr { description: error_string })
             .with_status_code(400)
@@ -80,19 +80,22 @@ fn translate(request: &Request) -> Response {
 }
 
 fn my_router(request: &Request) -> Response {
-    router!(request,
+    rouille::log(request, io::stdout(), || {
+
+        router!(request,
         (GET) (/) => {
-            get_file("text/html", Path::new("webroot"), "index.html")
+            get_file("text/html", Path::new("webroot"), Path::new("index.html"))
         },
-        (GET) (/script) => {
-            get_file("text/javascript", Path::new("webroot"), "translator.js")
+        (GET) (/static/{_filename: String}) => {
+            rouille::match_assets(&request, "webroot")
         },
         (GET) (/ace/{filename: String}) => {
-            get_file("text/javascript", Path::new("webroot/ace"), &filename)
+            get_file("text/javascript", Path::new("webroot/ace"), Path::new(&filename))
         },
         (POST) (/translate) => { translate(request) },
         _ => { Response::empty_404() },
     )
+    })
 }
 
 fn main() {

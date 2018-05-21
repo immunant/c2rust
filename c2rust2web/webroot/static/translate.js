@@ -14,10 +14,15 @@ $('#translate').click(function() {
         data: data,
         dataType: 'text',
         success: function(resp, status, jqXHR) {
+            rust_editor.session.setMode("ace/mode/rust");
             rust_editor.setValue(resp);
+            $("#rust_editor > .editor_title").text("Generated Rust source code")
         },
     }).fail(function(e) {
         var errorObj = $.parseJSON(e.responseText);
-        alert(errorObj.description);
+        rust_editor.session.setMode("ace/mode/text");
+        rust_editor.setValue(errorObj.description);
+
+        $("#rust_editor > .editor_title").text("Error message")
     });
 });

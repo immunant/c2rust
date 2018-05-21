@@ -3,19 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <title>C2Rust Demonstration</title>
-    <style type="text/css">
-        #rust_src, #c_src {
-            width: 1000px;
-            height: 400px;
-        }
-    </style>
+    <link href="/static/translate.css" rel="stylesheet">
 
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
     <script src="ace/ace.js" type="text/javascript" charset="utf-8"></script>
 </head>
-    <div id="c_src">int id (int x) { return x; }</div>
-    <div id="rust_src"></div>
+<h1>C2Rust demonstration</h1>
+<div id="editors">
+    <div id="c_editor" class="editor">
+        <div class="editor_title">C source code</div>
+        <div id="c_src">int id (int x) { return x; }</div>
+    </div>
+    <div id="rust_editor" class="editor">
+        <div class="editor_title">Output</div>
+        <div id="rust_src"></div>
+    </div>
+</div>
+<div id="buttons">
     <input id="translate" type="button" value="Translate"/>
-    <script src="script" type="text/javascript" charset="utf-8"></script>
+</div>
+    <script src="/static/translate.js" type="text/javascript" charset="utf-8"></script>
 </body>
 </html>
