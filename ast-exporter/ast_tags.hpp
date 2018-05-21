@@ -98,27 +98,28 @@ enum TypeTag {
     TagEnumType,
     TagFunctionType,
     TagTypeOfType,
-    TagVectorType,
     
+    TagVectorType,
     TagTypedefType,
     TagElaboratedType,
     TagUChar,
     TagSChar,
-    TagChar,
     
+    TagChar,
     TagVoid,
     TagBool,
     TagDecayedType,
     TagParenType,
-    TagSWChar,
     
+    TagSWChar,
     TagUWChar,
     TagInt128,
     TagUInt128,
     TagBuiltinFn,
-    TagAttributedType,
     
+    TagAttributedType,
     TagBlockPointer,
+    TagComplexType,
 };
 
 enum StringTypeTag {

@@ -453,6 +453,16 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagComplexType if expected_ty & OTHER_TYPE != 0 => {
+                    let subelt = expect_u64(&ty_node.extras[0])
+                        .expect("Complex child not found");
+                    let subelt_new = self.visit_type(subelt);
+
+                    let complex_ty = CTypeKind::Complex(subelt_new);
+                    self.add_type(new_id, not_located(complex_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
                 TypeTag::TagStructType if expected_ty & OTHER_TYPE != 0 => {
                     let decl = expect_u64(&ty_node.extras[0])
                         .expect("Struct decl not found");

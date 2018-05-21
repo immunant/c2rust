@@ -211,6 +211,17 @@ public:
         VisitQualType(t);
     }
     
+    void VisitComplexType(const ComplexType *T) {
+        auto t = T->getElementType();
+        auto qt = encodeQualType(t);
+        
+        encodeType(T, TagComplexType, [qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
+        });
+        
+        VisitQualType(t);
+    }
+    
     void VisitBuiltinType(const BuiltinType *T) {
         TypeTag tag;
         auto kind = T->getKind();
