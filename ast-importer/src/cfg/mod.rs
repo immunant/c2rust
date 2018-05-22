@@ -33,6 +33,9 @@ use std::hash::Hasher;
 use std::hash::Hash;
 use std::collections::BTreeSet;
 
+use serde::ser::{Serialize, Serializer, SerializeStruct, SerializeStructVariant, SerializeTupleVariant};
+use serde_json;
+
 use translator::*;
 use c_ast::*;
 
@@ -78,6 +81,12 @@ impl Label {
 
     fn to_string_expr(&self) -> P<Expr> {
         mk().lit_expr(mk().str_lit(self.debug_print()))
+    }
+}
+
+impl Serialize for Label {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.debug_print())
     }
 }
 
@@ -190,6 +199,29 @@ pub struct BasicBlock<L,S> {
     defined: HashSet<CDeclId>,
 }
 
+impl<L: Clone, S1> BasicBlock<L, S1> {
+    /// Produce a copy of the current basic block, but transform all of the statements using the
+    /// function provided.
+    fn map_stmts<S2, F: Fn(&S1) -> S2>(&self, f: F) -> BasicBlock<L, S2> {
+        BasicBlock {
+            body: self.body.iter().map(f).collect(),
+            terminator: self.terminator.clone(),
+            live: self.live.clone(),
+            defined: self.defined.clone(),
+        }
+    }
+
+}
+
+impl<L: Serialize, St: Serialize> Serialize for BasicBlock<L, St> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut st = serializer.serialize_struct("BasicBlock", 2)?;
+        st.serialize_field("body", &self.body)?;
+        st.serialize_field("terminator", &self.terminator)?;
+        st.end()
+    }
+}
+
 impl<L,S> BasicBlock<L,S> {
     fn new(terminator: GenTerminator<L>) -> Self {
         BasicBlock { body: vec![], terminator, live: HashSet::new(), defined: HashSet::new() }
@@ -234,6 +266,38 @@ pub enum GenTerminator<Lbl> {
     Switch {
         expr: P<Expr>,
         cases: Vec<(Vec<P<Pat>>, Lbl)>, // TODO: support ranges of expressions
+    }
+}
+
+impl<L: Serialize> Serialize for GenTerminator<L> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match *self {
+            GenTerminator::End => serializer.serialize_unit_variant("Terminator", 0, "End"),
+            GenTerminator::Jump(ref l) => {
+                let mut tv = serializer.serialize_tuple_variant("Terminator", 1, "Jump", 1)?;
+                tv.serialize_field(l)?;
+                tv.end()
+            }
+            GenTerminator::Branch(ref e, ref l1, ref l2) => {
+                let mut tv = serializer.serialize_struct_variant("Terminator", 2, "Branch", 3)?;
+                tv.serialize_field("condition", &pprust::expr_to_string(e))?;
+                tv.serialize_field("then", l1)?;
+                tv.serialize_field("else", l2)?;
+                tv.end()
+            }
+            GenTerminator::Switch { ref expr, ref cases } => {
+                let mut cases_sane: Vec<(String, &L)> = vec![];
+                for &(ref ps, ref l) in cases {
+                    let pats: Vec<String> = ps.iter().map(|x| pprust::pat_to_string(x)).collect();
+                    cases_sane.push((pats.join(" | "), l));
+                }
+
+                let mut tv = serializer.serialize_struct_variant("Terminator", 3, "Switch", 2)?;
+                tv.serialize_field("expression", &pprust::expr_to_string(expr))?;
+                tv.serialize_field("cases", &cases_sane)?;
+                tv.end()
+            }
+        }
     }
 }
 
@@ -330,6 +394,19 @@ pub enum StmtOrDecl {
     Comment(String),
 }
 
+impl StmtOrDecl {
+    pub fn to_string(&self, store: &DeclStmtStore) -> Vec<String> {
+        match *self {
+            StmtOrDecl::Stmt(ref s) => vec![pprust::stmt_to_string(s)],
+            StmtOrDecl::Decl(ref d) => {
+                let ss = store.peek_decl_and_assign(*d).unwrap();
+                ss.iter().map(pprust::stmt_to_string).collect()
+            },
+            StmtOrDecl::Comment(ref s) => vec![s.clone()],
+        }
+    }
+}
+
 /// A Rust statement, or a comment
 #[derive(Clone, Debug)]
 pub enum StmtOrComment {
@@ -372,6 +449,28 @@ pub struct Cfg<Lbl: Ord + Hash, Stmt> {
 
     /// Branching in the graph
     multiples: MultipleInfo<Lbl>,
+}
+
+impl<L: Clone + Ord + Hash, S1> Cfg<L, S1> {
+    /// Produce a copy of the current CFG, but transform all of the statements using the
+    /// function provided.
+    pub fn map_stmts<S2, F: Fn(&S1) -> S2>(&self, f: F) -> Cfg<L, S2> {
+        let entries = self.entries.clone();
+        let nodes = self.nodes.iter().map(|(l,bb)| (l.clone(), bb.map_stmts(&f))).collect();
+        let loops = self.loops.clone();
+        let multiples = self.multiples.clone();
+
+        Cfg { entries, nodes, loops, multiples }
+    }
+}
+
+impl<L: Serialize + Ord + Hash, St: Serialize> Serialize for Cfg<L, St> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut st = serializer.serialize_struct("ControlFlowGraph", 2)?;
+        st.serialize_field("entries", &self.entries)?;
+        st.serialize_field("nodes", &self.nodes)?;
+        st.end()
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1388,6 +1487,19 @@ impl CfgBuilder {
 /// ```
 impl Cfg<Label,StmtOrDecl> {
 
+    pub fn dump_json_graph(
+        &self,
+        store: &DeclStmtStore,
+        file_path: String,
+    ) -> io::Result<()> {
+        let cfg_mapped = self.map_stmts(|sd: &StmtOrDecl| -> Vec<String> { sd.to_string(store) });
+
+        let file = File::create(file_path)?;
+        serde_json::to_writer(file, &cfg_mapped)?;
+
+        Ok(())
+    }
+
     pub fn dump_dot_graph(
         &self,
         ctx: &TypedAstContext,
@@ -1482,16 +1594,7 @@ impl Cfg<Label,StmtOrDecl> {
                 } else {
                     sanitize_label(bb.body
                         .iter()
-                        .flat_map(|stmt_or_decl: &StmtOrDecl| -> Vec<String> {
-                            match stmt_or_decl {
-                                &StmtOrDecl::Stmt(ref s) => vec![pprust::stmt_to_string(s)],
-                                &StmtOrDecl::Decl(ref d) => {
-                                    let ss = store.peek_decl_and_assign(*d).unwrap();
-                                    ss.iter().map(pprust::stmt_to_string).collect()
-                                },
-                                &StmtOrDecl::Comment(ref s) => vec![s.clone()],
-                            }
-                        })
+                        .flat_map(|sd: &StmtOrDecl| -> Vec<String> { sd.to_string(store) })
                         .collect::<Vec<String>>()
                         .join("\n")
                     )

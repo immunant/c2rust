@@ -28,6 +28,7 @@ pub struct TranslationConfig {
     pub reloop_cfgs: bool,
     pub fail_on_multiple: bool,
     pub dump_function_cfgs: bool,
+    pub json_function_cfgs: bool,
     pub dump_cfg_liveness: bool,
     pub dump_structures: bool,
     pub debug_relooper_labels: bool,
@@ -1067,6 +1068,10 @@ impl Translation {
                             format!("{}_{}.dot", "cfg", name)
                         )
                         .expect("Failed to write CFG .dot file");
+                }
+                if self.tcfg.json_function_cfgs {
+                    graph.dump_json_graph(&store, format!("{}_{}.json", "cfg", name))
+                        .expect("Failed to write CFG .json file");
                 }
 
                 let (lifted_stmts, relooped) = cfg::relooper::reloop(
