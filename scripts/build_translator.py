@@ -147,15 +147,19 @@ def update_cbor_prefix(makefile):
             fh.writelines("".join(lines))
 
 
-def build_ast_importer():
+def build_ast_importer(debug: bool):
     cargo = get_cmd_or_die("cargo")
+    build_flags = ["build"]
+
+    if not debug:
+        build_flags.append("--release")
 
     with pb.local.cwd(os.path.join(ROOT_DIR, "ast-importer")):
         # use different target dirs for different hosts
         target_dir = "target." + platform.node()
         with pb.local.env(CARGO_TARGET_DIR=target_dir):
             # build with custom rust toolchain
-            invoke(cargo, "+" + CUSTOM_RUST_NAME, "build")
+            invoke(cargo, "+" + CUSTOM_RUST_NAME, *build_flags)
 
 
 def build_a_bear():
@@ -392,7 +396,7 @@ def _main():
     # prebuilt nightly binaries with rustup
     # download_and_build_custom_rustc(args)
 
-    build_ast_importer()
+    build_ast_importer(args.debug)
 
     if not on_mac() and args.sanity_test:
         test_ast_exporter(cc_db)
