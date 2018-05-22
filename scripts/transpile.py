@@ -183,13 +183,14 @@ def transpile_files(cc_db: TextIO,
                     verbose: bool = False,
                     emit_build_files: bool = True,
                     cross_checks: bool = False,
-                    cross_check_config: List[str] = []) -> bool:
+                    cross_check_config: List[str] = [],
+                    debug: bool) -> bool:
     """
     run the ast-exporter and ast-importer on all C files
     in a compile commands database.
     """
     ast_expo = get_cmd_or_die(AST_EXPO)
-    ast_impo = get_cmd_or_die(AST_IMPO)
+    ast_impo = get_cmd_or_die(AST_IMPO if debug else AST_IMPO_RELEASE)
     cc_db_name = cc_db.name
     cc_db = json.load(cc_db)
 
@@ -264,7 +265,7 @@ def transpile_files(cc_db: TextIO,
         if not retcode:
             successes += 1
             print(OKGREEN + " import successful" + NO_COLOUR)
-            logging.debug(" import successful")            
+            logging.debug(" import successful")
         else:  # non-zero retcode
             failures += 1
             if verbose:
@@ -310,6 +311,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-X', '--cross-check-config',
                         default=[], action='append',
                         help='cross-check configuration file(s)')
+    parser.add_argument('-d', '--debug',
+                        default=False, action='store_true',
+                        help='use debug build of ast importer')
     return parser.parse_args()
 
 
@@ -326,7 +330,8 @@ def main():
                     args.verbose,
                     args.emit_build_files,
                     args.cross_checks,
-                    args.cross_check_config)
+                    args.cross_check_config,
+                    args.debug)
 
     logging.info(u"success 👍")
 
