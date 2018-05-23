@@ -80,8 +80,11 @@ fn translate(request: &Request) -> Response {
 }
 
 fn my_router(request: &Request) -> Response {
-    rouille::log(request, io::stdout(), || {
 
+    // For whatever reason log doesn't bother recording the remote address
+    print!("{} ", request.remote_addr());
+
+    rouille::log(request, io::stdout(), || {
         router!(request,
         (GET) (/) => {
             get_file("text/html", Path::new("webroot"), Path::new("index.html"))
@@ -94,8 +97,7 @@ fn my_router(request: &Request) -> Response {
         },
         (POST) (/translate) => { translate(request) },
         _ => { Response::empty_404() },
-    )
-    })
+    )})
 }
 
 fn main() {

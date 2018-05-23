@@ -6,5 +6,5 @@ authors = ["Eric Mertens <emertens@galois.com>"]
 [dependencies]
 rouille = "2.1.0"
 tempfile = "3.0.2"
-serde_derive = "^1"
-serde = "^1"
+serde_derive = "1"
+serde = "1"
