@@ -184,7 +184,7 @@ def transpile_files(cc_db: TextIO,
                     emit_build_files: bool = True,
                     cross_checks: bool = False,
                     cross_check_config: List[str] = [],
-                    debug: bool) -> bool:
+                    debug: bool = False) -> bool:
     """
     run the ast-exporter and ast-importer on all C files
     in a compile commands database.
