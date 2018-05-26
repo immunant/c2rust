@@ -32,10 +32,6 @@ from rust_file import (
 )
 from typing import Generator, List, Optional, Set, Iterable
 
-# Executables we are going to test
-ast_exporter = get_cmd_or_die(c.AST_EXPO)
-ast_importer = get_cmd_or_die(c.AST_IMPO)
-
 # Tools we will need
 clang = get_cmd_or_die("clang")
 rustc = get_cmd_or_die("rustc")
@@ -74,6 +70,8 @@ class CborFile:
             ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
         # run the importer
+        ast_importer = get_cmd_or_die(c.AST_IMPO)
+
         args = [
             self.path,
             "--prefix-function-names",
@@ -121,6 +119,8 @@ class CFile:
         self.disallow_current_block = "disallow_current_block" in flags
 
     def export(self) -> CborFile:
+        ast_exporter = get_cmd_or_die(c.AST_EXPO)
+
         # run the exporter
         args = [self.path]
 
