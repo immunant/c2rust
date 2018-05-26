@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import os
 import re
 import sys
 import json
-import cbor
-import errno
 import shutil
-import signal
 import logging
 import argparse
-import platform
 import multiprocessing
+from typing import Optional, List, Tuple
+from typing.io import TextIO
 
 import mako.template
 
-from common import *
-from typing import *
-from typing.io import *
+from common import (
+    config as c,
+    pb,
+    Colors,
+    die,
+    json_pp_obj,
+    get_cmd_or_die,
+    on_mac,
+    get_system_include_dirs,
+    export_ast_from,
+    get_rust_toolchain_libpath,
+    setup_logging,
+)
 
 
 # Template for the contents of the Cargo.toml file
@@ -78,6 +87,7 @@ ${line_prefix}#[path = "${module_path}"] pub mod ${module_name.replace('-', '_')
 % endfor
 """
 
+
 def try_locate_elf_object(cmd: dict) -> Optional[str]:
     # first look for -o in compiler command
     command = None
@@ -115,7 +125,7 @@ def try_locate_elf_object(cmd: dict) -> Optional[str]:
 
 def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
     # filter non C code commands first
-    c_cc_db = [c for c in cc_db if c['file'].endswith(".c")]
+    c_cc_db = [f for f in cc_db if c['file'].endswith(".c")]
     if not len(c_cc_db):
         msg = "didn't find any commands compiling C files"
         die(msg)
@@ -142,9 +152,9 @@ def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
     cargo_toml_path = os.path.join(build_dir, "Cargo.toml")
     with open(cargo_toml_path, "w") as cargo_toml:
         # TODO: allow clients to change the name of the library
-        rust_checks_path = os.path.join(CROSS_CHECKS_DIR, "rust-checks")
-        plugin_path  = os.path.join(rust_checks_path, "rustc-plugin")
-        derive_path  = os.path.join(rust_checks_path, "derive-macros")
+        rust_checks_path = os.path.join(c.CROSS_CHECKS_DIR, "rust-checks")
+        plugin_path = os.path.join(rust_checks_path, "rustc-plugin")
+        derive_path = os.path.join(rust_checks_path, "derive-macros")
         runtime_path = os.path.join(rust_checks_path, "runtime")
         tmpl = mako.template.Template(CARGO_TOML_TEMPLATE)
         cargo_toml.write(tmpl.render(
@@ -183,14 +193,13 @@ def transpile_files(cc_db: TextIO,
                     verbose: bool = False,
                     emit_build_files: bool = True,
                     cross_checks: bool = False,
-                    cross_check_config: List[str] = [],
-                    debug: bool = False) -> bool:
+                    cross_check_config: List[str] = []) -> bool:
     """
     run the ast-exporter and ast-importer on all C files
     in a compile commands database.
     """
-    ast_expo = get_cmd_or_die(AST_EXPO)
-    ast_impo = get_cmd_or_die(AST_IMPO if debug else AST_IMPO_RELEASE)
+    ast_expo = get_cmd_or_die(c.AST_EXPO)
+    ast_impo = get_cmd_or_die(c.AST_IMPO)
     cc_db_name = cc_db.name
     cc_db = json.load(cc_db)
 
@@ -216,10 +225,10 @@ def transpile_files(cc_db: TextIO,
             cbor_file = os.path.join(cmd['directory'], cmd['file'] + ".cbor")
         else:
             cbor_file = export_ast_from(ast_expo, cc_db_name,
-                                         include_dirs, **cmd)
+                                        include_dirs, **cmd)
         assert os.path.isfile(cbor_file), "missing: " + cbor_file
 
-        ld_lib_path = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
+        ld_lib_path = get_rust_toolchain_libpath(c.CUSTOM_RUST_NAME)
 
         # don't overwrite existing ld lib path if any...
         if 'LD_LIBRARY_PATH' in pb.local.env:
@@ -233,10 +242,12 @@ def transpile_files(cc_db: TextIO,
             logging.info(" importing ast from %s", cbor_basename)
             translation_cmd = "RUST_BACKTRACE=1 \\\n"
             translation_cmd += "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
-            translation_cmd += str(ast_impo[cbor_file, impo_args, extra_impo_args])
+            translation_cmd += str(
+                ast_impo[cbor_file, impo_args, extra_impo_args])
             logging.debug("translation command:\n %s", translation_cmd)
             try:
-                retcode, stdout, stderr = ast_impo[cbor_file, impo_args, extra_impo_args].run()
+                retcode, stdout, stderr = ast_impo[cbor_file, impo_args,
+                                                   extra_impo_args].run()
 
                 e = "Expected file suffix `.c.cbor`; actual: " + cbor_basename
                 assert cbor_file.endswith(".c.cbor"), e
@@ -264,16 +275,17 @@ def transpile_files(cc_db: TextIO,
     for (fname, retcode, stdout, stderr, _) in results:
         if not retcode:
             successes += 1
-            print(OKGREEN + " import successful" + NO_COLOUR)
+            print(Colors.OKGREEN + " import successful" + Colors.NO_COLOR)
             logging.debug(" import successful")
         else:  # non-zero retcode
             failures += 1
             if verbose:
-                print(FAIL + " import failed" + NO_COLOUR)
+                print(Colors.FAIL + " import failed" + Colors.NO_COLOR)
                 logging.debug(" import failed")
                 logging.warning(stderr)
             else:
-                print(FAIL + " import failed (error in log)" + NO_COLOUR)
+                print(Colors.FAIL + " import failed (error in log)" +
+                      Colors.NO_COLOR)
                 logging.debug(" import failed")
                 logging.debug(stderr)
     print("translations: " + str(successes + failures))
@@ -304,16 +316,15 @@ def parse_args() -> argparse.Namespace:
                         help='extra arguments for ast-importer')
     parser.add_argument('-e', '--emit-build-files',
                         default=False, action='store_true',
-                        help='emit Rust build files, i.e., Cargo.toml and lib.rs')
+                        help='emit Rust build files, i.e., Cargo.toml '
+                             'and lib.rs')
     parser.add_argument('-x', '--cross-checks',
                         default=False, action='store_true',
                         help='enable cross-checks')
     parser.add_argument('-X', '--cross-check-config',
                         default=[], action='append',
                         help='cross-check configuration file(s)')
-    parser.add_argument('-d', '--debug',
-                        default=False, action='store_true',
-                        help='use debug build of ast importer')
+    c.add_args(parser)
     return parser.parse_args()
 
 
@@ -322,6 +333,7 @@ def main():
     logging.debug("args: %s", " ".join(sys.argv))
 
     args = parse_args()
+    c.update_args(args)
     transpile_files(args.commands_json,
                     args.jobs,
                     args.filter,
@@ -330,10 +342,10 @@ def main():
                     args.verbose,
                     args.emit_build_files,
                     args.cross_checks,
-                    args.cross_check_config,
-                    args.debug)
+                    args.cross_check_config)
 
     logging.info(u"success 👍")
+
 
 if __name__ == "__main__":
     main()

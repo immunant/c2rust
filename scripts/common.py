@@ -20,85 +20,109 @@ except ImportError:
     print("error: python package plumbum is not installed.", file=sys.stderr)
     sys.exit(errno.ENOENT)
 
-NCPUS = str(multiprocessing.cpu_count())
 
-# Terminal escape codes
-OKBLUE = '\033[94m'
-OKGREEN = '\033[92m'
-WARNING = '\033[93m'
-FAIL = '\033[91m'
-NO_COLOUR = '\033[0m'
+class Colors:
+    # Terminal escape codes
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    NO_COLOR = '\033[0m'
 
-ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
-DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
-RREF_DIR = os.path.join(ROOT_DIR, 'rust-refactor')
-COMPILER_SUBMOD_DIR = os.path.join(RREF_DIR, 'compiler')
-CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
-REMON_SUBMOD_DIR = os.path.join(CROSS_CHECKS_DIR, 'ReMon')
-LIBCLEVRBUF_DIR = os.path.join(REMON_SUBMOD_DIR, "libclevrbuf")
-EXAMPLES_DIR = os.path.join(ROOT_DIR, 'examples')
 
-AST_IMPO = "ast-importer/target.{}/debug/ast_importer".format(platform.node())
-AST_IMPO = os.path.join(ROOT_DIR, AST_IMPO)
-AST_IMPO_RELEASE = "ast-importer/target.{}/release/ast_importer".format(platform.node())
-AST_IMPO_RELEASE = os.path.join(ROOT_DIR, AST_IMPO_RELEASE)
+class Config:
+    NCPUS = str(multiprocessing.cpu_count())
 
-CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.2"
-CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.2.tar.gz")
-CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
-CBOR_SRC = os.path.join(DEPS_DIR, CBOR_SRC)
-CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
-# use an install prefix unique to the host
-CBOR_PREFIX += platform.node()  # returns hostname
+    ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
+    ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
+    DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
+    RREF_DIR = os.path.join(ROOT_DIR, 'rust-refactor')
+    COMPILER_SUBMOD_DIR = os.path.join(RREF_DIR, 'compiler')
+    CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
+    REMON_SUBMOD_DIR = os.path.join(CROSS_CHECKS_DIR, 'ReMon')
+    LIBCLEVRBUF_DIR = os.path.join(REMON_SUBMOD_DIR, "libclevrbuf")
+    EXAMPLES_DIR = os.path.join(ROOT_DIR, 'examples')
 
-BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.11"
-BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.11.tar.gz")
-BEAR_SRC = os.path.basename(BEAR_ARCHIVE).replace(".tar.gz", "")
-BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
-BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear.")
-# use an install prefix unique to the host
-BEAR_PREFIX += platform.node()  # returns hostname
-BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
+    CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.2"
+    CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.2.tar.gz")
+    CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
+    CBOR_SRC = os.path.join(DEPS_DIR, CBOR_SRC)
+    CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
+    # use an install prefix unique to the host
+    CBOR_PREFIX += platform.node()  # returns hostname
 
-LLVM_VER = "6.0.0"
-LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
-LLVM_BLD = os.path.join(DEPS_DIR, 'llvm-{ver}/build.'.format(ver=LLVM_VER))
-# make the build directory unique to the hostname such that
-# building inside a vagrant/docker environment uses a different
-# folder than building directly on the host.
-LLVM_BLD += platform.node()  # returns hostname
-LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
-LLVM_ARCHIVE_URLS = """
-http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz
-http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz
-http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz
-""".split("\n")
-LLVM_ARCHIVE_URLS = [s.format(ver=LLVM_VER) for s in LLVM_ARCHIVE_URLS if s]
-LLVM_SIGNATURE_URLS = [s + ".sig" for s in LLVM_ARCHIVE_URLS]
-LLVM_ARCHIVE_FILES = [os.path.basename(s) for s in LLVM_ARCHIVE_URLS]
-LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "") for s in LLVM_ARCHIVE_FILES]
-LLVM_ARCHIVE_FILES = [os.path.join(DEPS_DIR, s) for s in LLVM_ARCHIVE_FILES]
+    BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.11"
+    BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.11.tar.gz")
+    BEAR_SRC = os.path.basename(BEAR_ARCHIVE).replace(".tar.gz", "")
+    BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
+    BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear.")
+    # use an install prefix unique to the host
+    BEAR_PREFIX += platform.node()  # returns hostname
+    BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
-AST_EXPO = os.path.join(LLVM_BLD, "bin/ast-exporter")
+    LLVM_VER = "6.0.0"
+    # make the build directory unique to the hostname such that
+    # building inside a vagrant/docker environment uses a different
+    # folder than building directly on the host.
+    LLVM_ARCHIVE_URLS = [
+        'http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz',
+        'http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz',
+        'http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz',
+    ]
+    LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
+    LLVM_BLD = (os.path.join(DEPS_DIR, 'llvm-{ver}/build.'.format(ver=LLVM_VER)) +
+                platform.node())  # returns hostname
+    LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
+    AST_EXPO = os.path.join(LLVM_BLD, "bin/ast-exporter")
 
-CLANG_XCHECK_PLUGIN_SRC = os.path.join(CROSS_CHECKS_DIR, "c-checks", "clang-plugin")
-CLANG_XCHECK_PLUGIN_BLD = os.path.join(DEPS_DIR, 'clang-xcheck-plugin.{}'.format(platform.node()))
+    CLANG_XCHECK_PLUGIN_SRC = os.path.join(CROSS_CHECKS_DIR, "c-checks", "clang-plugin")
+    CLANG_XCHECK_PLUGIN_BLD = os.path.join(DEPS_DIR, 'clang-xcheck-plugin.{}'.format(platform.node()))
 
-MIN_PLUMBUM_VERSION = (1, 6, 3)
-CMAKELISTS_COMMANDS = \
-"""
+    MIN_PLUMBUM_VERSION = (1, 6, 3)
+    CMAKELISTS_COMMANDS = """
 add_subdirectory(ast-exporter)
 """.format(prefix=CBOR_PREFIX)  # nopep8
-CC_DB_JSON = "compile_commands.json"
+    CC_DB_JSON = "compile_commands.json"
 
-# CUSTOM_RUST_URL = "git@github.com:rust-lang/rust"
-# CUSTOM_RUST_PREFIX = os.path.join(DEPS_DIR, "rust")
-# CUSTOM_RUST_REV = "cfcac37204c8dbdde192c1c9387cdbe663fe5ed5"
-# NOTE: `rustup run nightly-2017-11-20 -- rustc --version` should output
-# rustc 1.23.0-nightly (5041b3bb3 2017-11-19)
-CUSTOM_RUST_NAME = 'nightly-2018-01-06'
-CUSTOM_RUST_RUSTC_VERSION = "rustc 1.24.0-nightly (b98fd524e 2018-01-05)"
+    # CUSTOM_RUST_URL = "git@github.com:rust-lang/rust"
+    # CUSTOM_RUST_PREFIX = os.path.join(DEPS_DIR, "rust")
+    # CUSTOM_RUST_REV = "cfcac37204c8dbdde192c1c9387cdbe663fe5ed5"
+    # NOTE: `rustup run nightly-2017-11-20 -- rustc --version` should output
+    # rustc 1.23.0-nightly (5041b3bb3 2017-11-19)
+    CUSTOM_RUST_NAME = 'nightly-2018-01-06'
+    CUSTOM_RUST_RUSTC_VERSION = "rustc 1.24.0-nightly (b98fd524e 2018-01-05)"
+
+    def __init__(self):
+        self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER) for s in Config.LLVM_ARCHIVE_URLS]
+        self.LLVM_SIGNATURE_URLS = [s + ".sig" for s in self.LLVM_ARCHIVE_URLS]
+        self.LLVM_ARCHIVE_FILES = [os.path.basename(s) for s in self.LLVM_ARCHIVE_URLS]
+        self.LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "") for s in self.LLVM_ARCHIVE_FILES]
+        self.LLVM_ARCHIVE_FILES = [os.path.join(Config.DEPS_DIR, s) for s in self.LLVM_ARCHIVE_FILES]
+        self.update_args()
+
+    def update_args(self, args=None):
+        build_type = 'release'
+        if args:
+            if args.debug:
+                build_type = 'debug'
+
+        self.AST_IMPO = "ast-importer/target.{}/{}/ast_importer".format(
+            platform.node(), build_type)
+        self.AST_IMPO = os.path.join(self.ROOT_DIR, self.AST_IMPO)
+
+    @staticmethod
+    def add_args(parser: argparse.ArgumentParser):
+        """Add common command-line arguments that CommonGlobals understands to
+        construct necessary paths.
+        """
+        dhelp = 'use debug build of toolchain (default build' \
+                ' is release+asserts)'
+        parser.add_argument('-d', '--debug', default=False,
+                            action='store_true', dest='debug',
+                            help=dhelp)
+
+
+config = Config()
 
 
 def have_rust_toolchain(name: str) -> bool:
@@ -136,7 +160,7 @@ def get_rust_toolchain_libpath(name: str) -> str:
     host_triplet = get_host_triplet()
 
     libpath = ".rustup/toolchains/{}-{}/lib/"
-    libpath = libpath.format(CUSTOM_RUST_NAME, host_triplet)
+    libpath = libpath.format(config.CUSTOM_RUST_NAME, host_triplet)
     libpath = os.path.join(pb.local.env['HOME'], libpath)
     emsg = "custom rust compiler lib path missing: " + libpath
     assert os.path.isdir(libpath), emsg
@@ -154,9 +178,9 @@ def download_and_build_custom_rustc(args):
 
     # check if rustup already lists c2rust custom toolchain
     # so we can avoid this time consuming step if we're not cleaning.
-    if args.clean_all and have_rust_toolchain(CUSTOM_RUST_NAME):
-        rustup['toolchain', 'uninstall', CUSTOM_RUST_NAME] & pb.FG
-    elif have_rust_toolchain(CUSTOM_RUST_NAME):
+    if args.clean_all and have_rust_toolchain(config.CUSTOM_RUST_NAME):
+        rustup['toolchain', 'uninstall', config.CUSTOM_RUST_NAME] & pb.FG
+    elif have_rust_toolchain(config.CUSTOM_RUST_NAME):
         m = "skipping custom rust toolchain build step; already installed"
         logging.info(m)
         return
@@ -168,9 +192,9 @@ def download_and_build_custom_rustc(args):
     with pb.local.env(GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"):
         # recursively update and (optionally) initialize submodules
         invoke(git, "submodule", "update", "--init", "--recursive",
-               COMPILER_SUBMOD_DIR)
+               config.COMPILER_SUBMOD_DIR)
 
-    with pb.local.cwd(COMPILER_SUBMOD_DIR):
+    with pb.local.cwd(config.COMPILER_SUBMOD_DIR):
         # seems that just updating submodule gives us the right version
         # invoke(git, 'reset', '--hard', CUSTOM_RUST_REV)
 
@@ -182,14 +206,14 @@ def download_and_build_custom_rustc(args):
             configure = pb.local['./configure']
             configure & pb.FG
 
-        x_py['build', '-j' + NCPUS] & pb.FG
+        x_py['build', '-j' + config.NCPUS] & pb.FG
 
-    build_output = os.path.join(COMPILER_SUBMOD_DIR,
+    build_output = os.path.join(config.COMPILER_SUBMOD_DIR,
                                 "build",
                                 target_triple,
                                 "stage2")
     assert os.path.isdir(build_output)
-    rustup['toolchain', 'link', CUSTOM_RUST_NAME, build_output] & pb.FG
+    rustup['toolchain', 'link', config.CUSTOM_RUST_NAME, build_output] & pb.FG
 
 
 def on_mac() -> bool:
@@ -313,7 +337,7 @@ def get_cmd_from_rustup(cmd: str) -> Command:
     ask rustup for path to cmd for the right rust toolchain.
     """
     rustup = get_cmd_or_die("rustup")
-    toolpath = rustup('run', CUSTOM_RUST_NAME, 'which', cmd).strip()
+    toolpath = rustup('run', config.CUSTOM_RUST_NAME, 'which', cmd).strip()
     return pb.local.get(toolpath)
 
 
@@ -372,7 +396,7 @@ def json_pp_obj(json_obj) -> str:
 def ensure_rustc_version(expected_version_str: str):
     rustc = get_cmd_or_die("rustc")
     rustup = get_cmd_or_die("rustup")
-    actual_version = rustup("run", CUSTOM_RUST_NAME, rustc["--version"])
+    actual_version = rustup("run", config.CUSTOM_RUST_NAME, rustc["--version"])
     if expected_version_str not in actual_version:
         emsg = "expected version: {}\n"
         emsg = emsg + 9 * "." + "actual version: {}"
@@ -385,7 +409,7 @@ def ensure_rustfmt_version():
     rustfmt = get_cmd_or_die("rustfmt")
     rustup = get_cmd_or_die("rustup")
     rustfmt_cmd = rustfmt["--force", "--version"]
-    actual_version = rustup("run", CUSTOM_RUST_NAME, rustfmt_cmd)
+    actual_version = rustup("run", config.CUSTOM_RUST_NAME, rustfmt_cmd)
     if expected_version_str not in actual_version:
         emsg = "expected version: {}\n"
         emsg = emsg + 9 * "." + "actual version: {}"
@@ -464,8 +488,9 @@ def export_ast_from(ast_expo: pb.commands.BaseCommand,
         cc_db_dir = os.path.dirname(cc_db_path)
         args = ["-p", cc_db_dir, filepath]
         # this is required to locate system libraries
-        ### TODO: do we need this on Mac???
-        ###args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
+
+        # TODO: do we need this on Mac???
+        # args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
 
         # run ast-exporter
         logging.info("exporting ast from %s", os.path.basename(filename))

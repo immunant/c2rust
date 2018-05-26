@@ -7,47 +7,64 @@ import sys
 import json
 import errno
 import shutil
-import signal
 import logging
 import argparse
+import platform
+from typing import Optional
 
-
-from common import *
-from typing import *
+from common import (
+    config as c,
+    pb,
+    get_cmd_or_die,
+    download_archive,
+    die,
+    est_parallel_link_jobs,
+    invoke,
+    ensure_dir,
+    on_mac,
+    get_system_include_dirs,
+    export_ast_from,
+    setup_logging,
+    have_rust_toolchain,
+    ensure_clang_version,
+    ensure_rustc_version,
+    git_ignore_dir,
+    on_linux,
+)
 
 
 def download_llvm_sources():
     tar = get_cmd_or_die("tar")
 
-    with pb.local.cwd(DEPS_DIR):
+    with pb.local.cwd(c.DEPS_DIR):
         # download archives and signatures
         for (aurl, asig, afile, _) in zip(
-                LLVM_ARCHIVE_URLS,
-                LLVM_SIGNATURE_URLS,
-                LLVM_ARCHIVE_FILES,
-                LLVM_ARCHIVE_DIRS):
+                c.LLVM_ARCHIVE_URLS,
+                c.LLVM_SIGNATURE_URLS,
+                c.LLVM_ARCHIVE_FILES,
+                c.LLVM_ARCHIVE_DIRS):
 
             # download archive + signature
             download_archive(aurl, afile, asig)
 
     # first extract llvm archive
-    if not os.path.isdir(LLVM_SRC):
-        logging.info("extracting %s", LLVM_ARCHIVE_FILES[0])
-        tar("xf", LLVM_ARCHIVE_FILES[0])
-        os.rename(LLVM_ARCHIVE_DIRS[0], LLVM_SRC)
+    if not os.path.isdir(c.LLVM_SRC):
+        logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[0])
+        tar("xf", c.LLVM_ARCHIVE_FILES[0])
+        os.rename(c.LLVM_ARCHIVE_DIRS[0], c.LLVM_SRC)
 
     # then clang front end
-    with pb.local.cwd(os.path.join(LLVM_SRC, "tools")):
+    with pb.local.cwd(os.path.join(c.LLVM_SRC, "tools")):
         if not os.path.isdir("clang"):
-            logging.info("extracting %s", LLVM_ARCHIVE_FILES[1])
-            tar("xf", os.path.join(ROOT_DIR, LLVM_ARCHIVE_FILES[1]))
-            os.rename(LLVM_ARCHIVE_DIRS[1], "clang")
+            logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[1])
+            tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[1]))
+            os.rename(c.LLVM_ARCHIVE_DIRS[1], "clang")
 
         with pb.local.cwd("clang/tools"):
             if not os.path.isdir("extra"):
-                logging.info("extracting %s", LLVM_ARCHIVE_FILES[2])
-                tar("xf", os.path.join(ROOT_DIR, LLVM_ARCHIVE_FILES[2]))
-                os.rename(LLVM_ARCHIVE_DIRS[2], "extra")
+                logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[2])
+                tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[2]))
+                os.rename(c.LLVM_ARCHIVE_DIRS[2], "extra")
 
 
 def get_ninja_build_type(ninja_build_file):
@@ -72,8 +89,8 @@ def configure_and_build_llvm(args: str) -> None:
     ninja = get_cmd_or_die("ninja")
     # Possible values are Release, Debug, RelWithDebInfo and MinSizeRel
     build_type = "Debug" if args.debug else "RelWithDebInfo"
-    ninja_build_file = os.path.join(LLVM_BLD, "build.ninja")
-    with pb.local.cwd(LLVM_BLD):
+    ninja_build_file = os.path.join(c.LLVM_BLD, "build.ninja")
+    with pb.local.cwd(c.LLVM_BLD):
         if os.path.isfile(ninja_build_file):
             prev_build_type = get_ninja_build_type(ninja_build_file)
             run_cmake = prev_build_type != build_type
@@ -84,13 +101,13 @@ def configure_and_build_llvm(args: str) -> None:
             cmake = get_cmd_or_die("cmake")
             max_link_jobs = est_parallel_link_jobs()
             assertions = "1" if args.assertions else "0"
-            cargs = ["-G", "Ninja", LLVM_SRC,
+            cargs = ["-G", "Ninja", c.LLVM_SRC,
                      "-Wno-dev",
                      "-DCMAKE_C_COMPILER=clang",
                      "-DCMAKE_CXX_COMPILER=clang++",
-                     "-DCMAKE_C_FLAGS=-I{}/include".format(CBOR_PREFIX),
-                     "-DCMAKE_CXX_FLAGS=-I{}/include".format(CBOR_PREFIX),
-                     "-DCMAKE_EXE_LINKER_FLAGS=-L{}/lib".format(CBOR_PREFIX),
+                     "-DCMAKE_C_FLAGS=-I{}/include".format(c.CBOR_PREFIX),
+                     "-DCMAKE_CXX_FLAGS=-I{}/include".format(c.CBOR_PREFIX),
+                     "-DCMAKE_EXE_LINKER_FLAGS=-L{}/lib".format(c.CBOR_PREFIX),
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DLLVM_TARGETS_TO_BUILD=X86",
@@ -117,7 +134,7 @@ def update_cmakelists(filepath):
 
     if add_commands:
         with open(filepath, "a+") as handle:
-            handle.writelines(CMAKELISTS_COMMANDS)
+            handle.writelines(c.CMAKELISTS_COMMANDS)
         logging.debug("added commands to %s", filepath)
 
 
@@ -136,8 +153,8 @@ def update_cbor_prefix(makefile):
             if m:
                 logging.debug("tinycbor prefix: '%s'", m.group(1))
                 prefix = m.group(1)
-                writeback = prefix != CBOR_PREFIX
-                lines.append("prefix = " + CBOR_PREFIX + os.linesep)
+                writeback = prefix != c.CBOR_PREFIX
+                lines.append("prefix = " + c.CBOR_PREFIX + os.linesep)
             else:
                 lines.append(line)
 
@@ -154,12 +171,12 @@ def build_ast_importer(debug: bool):
     if not debug:
         build_flags.append("--release")
 
-    with pb.local.cwd(os.path.join(ROOT_DIR, "ast-importer")):
+    with pb.local.cwd(os.path.join(c.ROOT_DIR, "ast-importer")):
         # use different target dirs for different hosts
         target_dir = "target." + platform.node()
         with pb.local.env(CARGO_TARGET_DIR=target_dir):
             # build with custom rust toolchain
-            invoke(cargo, "+" + CUSTOM_RUST_NAME, *build_flags)
+            invoke(cargo, "+" + c.CUSTOM_RUST_NAME, *build_flags)
 
 
 def build_a_bear():
@@ -168,28 +185,28 @@ def build_a_bear():
     latest bear rather than trying to support multiple versions.
     FIXME: might be better to handle multiple versions instead.
     """
-    if os.path.isdir(BEAR_PREFIX):
+    if os.path.isdir(c.BEAR_PREFIX):
         logging.debug("skipping Bear installation")
         return
 
     # download
-    if not os.path.isfile(BEAR_ARCHIVE):
+    if not os.path.isfile(c.BEAR_ARCHIVE):
         curl = get_cmd_or_die("curl")
-        curl['-s', BEAR_URL, '-o', BEAR_ARCHIVE] & pb.TEE
+        curl['-s', c.BEAR_URL, '-o', c.BEAR_ARCHIVE] & pb.TEE
 
     # remove any existing build dir since we don't know if
     # bear was built for the current host environment.
-    if os.path.isdir(BEAR_SRC):
-        shutil.rmtree(BEAR_SRC, ignore_errors=True)
+    if os.path.isdir(c.BEAR_SRC):
+        shutil.rmtree(c.BEAR_SRC, ignore_errors=True)
 
     # unpack
     tar = get_cmd_or_die("tar")
-    with pb.local.cwd(DEPS_DIR):
-        tar['xf', BEAR_ARCHIVE] & pb.TEE
+    with pb.local.cwd(c.DEPS_DIR):
+        tar['xf', c.BEAR_ARCHIVE] & pb.TEE
 
     # cmake
-    bear_build_dir = os.path.join(BEAR_SRC, "build")
-    bear_install_prefix = "-DCMAKE_INSTALL_PREFIX=" + BEAR_PREFIX
+    bear_build_dir = os.path.join(c.BEAR_SRC, "build")
+    bear_install_prefix = "-DCMAKE_INSTALL_PREFIX=" + c.BEAR_PREFIX
     ensure_dir(bear_build_dir)
     with pb.local.cwd(bear_build_dir):
         cmake = get_cmd_or_die("cmake")
@@ -202,7 +219,7 @@ def install_tinycbor() -> Optional[str]:
     """
     download, unpack, build, and install tinycbor.
     """
-    cc_cmd_db = os.path.join(CBOR_SRC, "compile_commands.json")
+    cc_cmd_db = os.path.join(c.CBOR_SRC, "compile_commands.json")
 
     def path_to_cc_db():
         if not os.path.isfile(cc_cmd_db) and not on_mac():
@@ -214,29 +231,29 @@ def install_tinycbor() -> Optional[str]:
     # 2. we have the right archive downloaded (catches version changes), and
     # 3. we have a compile commands database for sanity testing or
     #    we're on mac where we can't use bear to generate the database.
-    if os.path.isdir(CBOR_PREFIX) and \
-       os.path.isfile(CBOR_ARCHIVE) and \
+    if os.path.isdir(c.CBOR_PREFIX) and \
+       os.path.isfile(c.CBOR_ARCHIVE) and \
        (os.path.isfile(cc_cmd_db) or on_mac()):
         logging.debug("skipping tinycbor installation")
         return path_to_cc_db()
 
     # download
-    if not os.path.isfile(CBOR_ARCHIVE):
+    if not os.path.isfile(c.CBOR_ARCHIVE):
         curl = get_cmd_or_die("curl")
-        curl['-s', CBOR_URL, '-o', CBOR_ARCHIVE] & pb.TEE
+        curl['-s', c.CBOR_URL, '-o', c.CBOR_ARCHIVE] & pb.TEE
 
     # remove any existing build dir since we don't know if
     # tinycbor was built for the current host environment.
-    if os.path.isdir(CBOR_SRC):
-        shutil.rmtree(CBOR_SRC, ignore_errors=True)
+    if os.path.isdir(c.CBOR_SRC):
+        shutil.rmtree(c.CBOR_SRC, ignore_errors=True)
 
     # unpack
     tar = get_cmd_or_die("tar")
-    with pb.local.cwd(DEPS_DIR):
-        tar['xf', CBOR_ARCHIVE] & pb.TEE
+    with pb.local.cwd(c.DEPS_DIR):
+        tar['xf', c.CBOR_ARCHIVE] & pb.TEE
 
     # update install prefix
-    update_cbor_prefix(os.path.join(CBOR_SRC, "Makefile"))
+    update_cbor_prefix(os.path.join(c.CBOR_SRC, "Makefile"))
 
     # make && install
     # NOTE: we use bear to wrap make invocations such that
@@ -244,10 +261,10 @@ def install_tinycbor() -> Optional[str]:
     # can use to test ast-exporter. On macOS, bear requires
     # system integrity protection to be turned off, so we
     # only use bear on Ubuntu Linux hosts.
-    with pb.local.cwd(CBOR_SRC):
+    with pb.local.cwd(c.CBOR_SRC):
         make = get_cmd_or_die("make")
         if not on_mac():
-            bear = get_cmd_or_die(BEAR_BIN)
+            bear = get_cmd_or_die(c.BEAR_BIN)
             make = bear[make]
         make & pb.TEE  # nopep8
         make('install')  # & pb.TEE
@@ -259,10 +276,10 @@ def integrate_ast_exporter():
     """
     link ast-exporter into $LLVM_SRC/tools/clang/tools/extra
     """
-    abs_src = os.path.join(ROOT_DIR, "ast-exporter")
+    abs_src = os.path.join(c.ROOT_DIR, "ast-exporter")
     src = "../../../../../../../ast-exporter"
     exporter_dest = os.path.join(
-        LLVM_SRC, "tools/clang/tools/extra/ast-exporter")
+        c.LLVM_SRC, "tools/clang/tools/extra/ast-exporter")
     clang_tools_extra = os.path.abspath(
         os.path.join(exporter_dest, os.pardir))
     # NOTE: `os.path.exists` returns False on broken symlinks,
@@ -294,10 +311,6 @@ def _parse_args():
     parser.add_argument('-c', '--clean-all', default=False,
                         action='store_true', dest='clean_all',
                         help='clean everything before building')
-    dhelp = 'build in debug mode (default build is release+asserts)'
-    parser.add_argument('-d', '--debug', default=False,
-                        action='store_true', dest='debug',
-                        help=dhelp)
     thelp = 'sanity test ast exporter using tinycbor (linux only)'
     parser.add_argument('-t', '--test', default=False,
                         action='store_true', dest='sanity_test',
@@ -308,7 +321,10 @@ def _parse_args():
     parser.add_argument('--without-assertions', default=True,
                         action='store_false', dest='assertions',
                         help='build the tool and clang without assertions')
-    return parser.parse_args()
+    c.add_args(parser)
+    args = parser.parse_args()
+    c.update_args(args)
+    return args
 
 
 def test_ast_exporter(cc_db_path: str):
@@ -319,17 +335,17 @@ def test_ast_exporter(cc_db_path: str):
     """
     assert not on_mac(), "sanity testing requires linux host"
 
-    ast_extr = os.path.join(LLVM_BIN, "ast-exporter")
+    ast_extr = os.path.join(c.LLVM_BIN, "ast-exporter")
     if not os.path.isfile(ast_extr):
-        die("ast-exporter not found in " + LLVM_BIN)
+        die("ast-exporter not found in " + c.LLVM_BIN)
     ast_extr = get_cmd_or_die(ast_extr)
 
     include_dirs = get_system_include_dirs()
 
     with open(cc_db_path, "r") as handle:
         cc_db = json.load(handle)
-    cbor_files = [exporter_ast_from(ast_extr, cc_db_path, include_dirs, **cmd)
-                  for cmd in cc_db]
+    for cmd in cc_db:
+        exporter_ast_from(ast_extr, cc_db_path, include_dirs, **cmd)
 
     logging.info("PASS sanity testing")
 
@@ -337,7 +353,7 @@ def test_ast_exporter(cc_db_path: str):
 def binary_in_path(binary_name) -> bool:
     try:
         # raises CommandNotFound exception if not available.
-        _ = pb.local[binary_name]
+        _ = pb.local[binary_name]  # noqa: F841
         return True
     except pb.CommandNotFound:
         return False
@@ -352,35 +368,35 @@ def _main():
     # FIXME: option to build LLVM/Clang from master?
 
     # earlier plumbum versions are missing features such as TEE
-    if pb.__version__ < MIN_PLUMBUM_VERSION:
+    if pb.__version__ < c.MIN_PLUMBUM_VERSION:
         err = "locally installed version {} of plumbum is too old.\n" \
             .format(pb.__version__)
         err += "please upgrade plumbum to version {} or later." \
-            .format(MIN_PLUMBUM_VERSION)
+            .format(c.MIN_PLUMBUM_VERSION)
         die(err)
 
     args = _parse_args()
     if args.clean_all:
         logging.info("cleaning all dependencies and previous built files")
-        shutil.rmtree(LLVM_SRC, ignore_errors=True)
-        shutil.rmtree(LLVM_BLD, ignore_errors=True)
-        shutil.rmtree(DEPS_DIR, ignore_errors=True)
+        shutil.rmtree(c.LLVM_SRC, ignore_errors=True)
+        shutil.rmtree(c.LLVM_BLD, ignore_errors=True)
+        shutil.rmtree(c.DEPS_DIR, ignore_errors=True)
 
     # prerequisites
-    if not have_rust_toolchain(CUSTOM_RUST_NAME):
-        die("missing rust toolchain: " + CUSTOM_RUST_NAME, errno.ENOENT)
+    if not have_rust_toolchain(c.CUSTOM_RUST_NAME):
+        die("missing rust toolchain: " + c.CUSTOM_RUST_NAME, errno.ENOENT)
 
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])
-    ensure_rustc_version(CUSTOM_RUST_RUSTC_VERSION)
+    ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
 
-    ensure_dir(LLVM_BLD)
-    ensure_dir(DEPS_DIR)
-    git_ignore_dir(DEPS_DIR)
+    ensure_dir(c.LLVM_BLD)
+    ensure_dir(c.DEPS_DIR)
+    git_ignore_dir(c.DEPS_DIR)
 
     if on_linux():
         build_a_bear()
-        if not os.path.isfile(BEAR_BIN):
+        if not os.path.isfile(c.BEAR_BIN):
             die("bear not found", errno.ENOENT)
 
     download_llvm_sources()

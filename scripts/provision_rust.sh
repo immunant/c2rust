@@ -26,4 +26,4 @@ source ~/.cargo/env
 
 # required for idiomize tests
 # rustup run $RUST_VER cargo install --force rustfmt
-rustup component add rustfmt-preview   
+rustup component add rustfmt-preview

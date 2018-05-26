@@ -1,12 +1,25 @@
 #!/usr/bin/env python3
 
+import errno
 import os
 import sys
 import logging
 import argparse
 import re
 
-from common import *
+from common import (
+    config as c,
+    pb,
+    Colors,
+    get_cmd_or_die,
+    get_rust_toolchain_libpath,
+    NonZeroReturn,
+    regex,
+    setup_logging,
+    die,
+    ensure_dir,
+    ensure_rustc_version,
+)
 from enum import Enum
 from rust_file import (
     CrateType,
@@ -15,14 +28,13 @@ from rust_file import (
     RustFunction,
     RustMatch,
     RustMod,
-    RustUse,
     RustVisibility,
 )
-from typing import Generator, List, Optional, Set, Iterable, Tuple
+from typing import Generator, List, Optional, Set, Iterable
 
 # Executables we are going to test
-ast_exporter = get_cmd_or_die(AST_EXPO)
-ast_importer = get_cmd_or_die(AST_IMPO)
+ast_exporter = get_cmd_or_die(c.AST_EXPO)
+ast_importer = get_cmd_or_die(c.AST_IMPO)
 
 # Tools we will need
 clang = get_cmd_or_die("clang")
@@ -45,7 +57,8 @@ class TestOutcome(Enum):
 
 
 class CborFile:
-    def __init__(self, path: str, enable_relooper: bool=False, disallow_current_block: bool=False) -> None:
+    def __init__(self, path: str, enable_relooper: bool = False,
+                 disallow_current_block: bool = False) -> None:
         self.path = path
         self.enable_relooper = enable_relooper
         self.disallow_current_block = disallow_current_block
@@ -56,7 +69,7 @@ class CborFile:
         rust_src = extensionless_file + ".rs"
 
         # help plumbum find rust
-        ld_lib_path = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
+        ld_lib_path = get_rust_toolchain_libpath(c.CUSTOM_RUST_NAME)
         if 'LD_LIBRARY_PATH' in pb.local.env:
             ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
@@ -69,8 +82,8 @@ class CborFile:
 
         if self.enable_relooper:
             args.append("--reloop-cfgs")
-          #  args.append("--use-c-loop-info")
-          #  args.append("--use-c-multiple-info")
+            #  args.append("--use-c-loop-info")
+            #  args.append("--use-c-multiple-info")
         if self.disallow_current_block:
             args.append("--fail-on-multiple")
 
@@ -79,7 +92,8 @@ class CborFile:
             translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
             translation_cmd += str(ast_importer[args] > rust_src)
             logging.debug("translation command:\n %s", translation_cmd)
-            retcode, stdout, stderr = (ast_importer[args] > rust_src).run(retcode=None)
+            retcode, stdout, stderr = (ast_importer[args] > rust_src).run(
+                retcode=None)
 
         logging.debug("stdout:\n%s", stdout)
 
@@ -90,14 +104,15 @@ class CborFile:
 
 
 class CStaticLibrary:
-    def __init__(self, path: str, link_name: str, obj_files: List[str]) -> None:
+    def __init__(self, path: str, link_name: str,
+                 obj_files: List[str]) -> None:
         self.path = path
         self.link_name = link_name
         self.obj_files = obj_files
 
 
 class CFile:
-    def __init__(self, path: str, flags: Set[str]=None) -> None:
+    def __init__(self, path: str, flags: Set[str] = None) -> None:
         if not flags:
             flags = set()
 
@@ -111,9 +126,9 @@ class CFile:
 
         # NOTE: it doesn't seem necessary to specify system include
         # directories and in fact it may cause problems on macOS.
-        ## make sure we can locate system include files
-        ## sys_incl_dirs = get_system_include_dirs()
-        ## args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
+        # make sure we can locate system include files
+        # sys_incl_dirs = get_system_include_dirs()
+        # args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
 
         # log the command in a format that's easy to re-run
         logging.debug("export command:\n %s", str(ast_exporter[args]))
@@ -124,10 +139,12 @@ class CFile:
         if retcode != 0:
             raise NonZeroReturn(stderr)
 
-        return CborFile(self.path + ".cbor", self.enable_relooper, self.disallow_current_block)
+        return CborFile(self.path + ".cbor", self.enable_relooper,
+                        self.disallow_current_block)
 
 
-def build_static_library(c_files: Iterable[CFile], output_path: str) -> Optional[CStaticLibrary]:
+def build_static_library(c_files: Iterable[CFile],
+                         output_path: str) -> Optional[CStaticLibrary]:
     current_path = os.getcwd()
 
     os.chdir(output_path)
@@ -170,13 +187,14 @@ def build_static_library(c_files: Iterable[CFile], output_path: str) -> Optional
 
 
 class TestFunction:
-    def __init__(self, name: str, flags: Set[str]=set()) -> None:
+    def __init__(self, name: str, flags: Set[str] = set()) -> None:
         self.name = name
         self.pass_expected = "xfail" not in flags
 
 
 class TestFile(RustFile):
-    def __init__(self, path: str, test_functions: List[TestFunction]=None, flags: Set[str]=None) -> None:
+    def __init__(self, path: str, test_functions: List[TestFunction] = None,
+                 flags: Set[str] = None) -> None:
         if not flags:
             flags = set()
 
@@ -215,7 +233,8 @@ class TestDirectory:
 
                     if c_file:
                         self.c_files.append(c_file)
-                elif filename.startswith("test_") and ext == ".rs" and files.search(filename):
+                elif (filename.startswith("test_") and ext == ".rs" and
+                      files.search(filename)):
                     rs_test_file = self._read_rust_test_file(path)
 
                     self.rs_test_files.append(rs_test_file)
@@ -247,7 +266,8 @@ class TestDirectory:
             flags_str = file_config.group(0)[3:]
             file_flags = {flag.strip() for flag in flags_str.split(',')}
 
-        found_tests = re.findall(r"(//(.*))?\npub fn (test_\w+)\(\)", file_buffer)
+        found_tests = re.findall(
+            r"(//(.*))?\npub fn (test_\w+)\(\)", file_buffer)
         test_fns = []
 
         for _, config, test_name in found_tests:
@@ -257,14 +277,15 @@ class TestDirectory:
 
         return TestFile(path, test_fns, file_flags)
 
-    def print_status(self, color: str, status: str, message: Optional[str]) -> None:
+    def print_status(self, color: str, status: str,
+                     message: Optional[str]) -> None:
         """
         Print coloured status information. Overwrites current line.
         """
         sys.stdout.write('\r')
         sys.stdout.write('\033[K')
 
-        sys.stdout.write(color + ' [ ' + status + ' ] ' + NO_COLOUR)
+        sys.stdout.write(color + ' [ ' + status + ' ] ' + Colors.NO_COLOR)
         if message:
             sys.stdout.write(message)
 
@@ -295,18 +316,20 @@ class TestDirectory:
         outcomes = []
 
         any_tests = any(test_fn for test_file in self.rs_test_files
-                                for test_fn in test_file.test_functions)
+                        for test_fn in test_file.test_functions)
 
         if not any_tests:
             description = "No tests were found..."
             logging.debug("%s:", self.name)
-            logging.debug("%s [ SKIPPED ] %s %s", OKBLUE, NO_COLOUR, description)
+            logging.debug("%s [ SKIPPED ] %s %s", Colors.OKBLUE,
+                          Colors.NO_COLOR, description)
             return []
 
         if not self.c_files:
             description = "No c files were found..."
             logging.debug("%s:", self.name)
-            logging.debug("%s [ SKIPPED ] %s %s", OKBLUE, NO_COLOUR, description)
+            logging.debug("%s [ SKIPPED ] %s %s", Colors.OKBLUE,
+                          Colors.NO_COLOR, description)
             return []
 
         sys.stdout.write("{}:\n".format(self.name))
@@ -314,12 +337,12 @@ class TestDirectory:
         # .c -> .a
         description = "libtest.a: creating a static C library..."
 
-        self.print_status(WARNING, "RUNNING", description)
+        self.print_status(Colors.WARNING, "RUNNING", description)
 
         try:
             static_library = build_static_library(self.c_files, self.full_path)
         except NonZeroReturn as exception:
-            self.print_status(FAIL, "FAILED", "create libtest.a")
+            self.print_status(Colors.FAIL, "FAILED", "create libtest.a")
             sys.stdout.write('\n')
             sys.stdout.write(str(exception))
 
@@ -333,17 +356,19 @@ class TestDirectory:
         # .c -> .c.cbor
         for c_file in self.c_files:
             _, c_file_short = os.path.split(c_file.path)
-            description = "{}: exporting the C file into CBOR...".format(c_file_short)
+            description = "{}: exporting the C file into CBOR...".format(
+                c_file_short)
 
             # Run the step
-            self.print_status(WARNING, "RUNNING", description)
+            self.print_status(Colors.WARNING, "RUNNING", description)
 
             self._generate_cc_db(c_file.path)
 
             try:
                 cbor_file = c_file.export()
             except NonZeroReturn as exception:
-                self.print_status(FAIL, "FAILED", "export " + c_file_short)
+                self.print_status(Colors.FAIL, "FAILED", "export " +
+                                  c_file_short)
                 sys.stdout.write('\n')
                 sys.stdout.write(str(exception))
 
@@ -360,12 +385,13 @@ class TestDirectory:
             _, cbor_file_short = os.path.split(cbor_file.path)
             description = "{}: translate the CBOR...".format(cbor_file_short)
 
-            self.print_status(WARNING, "RUNNING", description)
+            self.print_status(Colors.WARNING, "RUNNING", description)
 
             try:
                 translated_rust_file = cbor_file.translate()
             except NonZeroReturn as exception:
-                self.print_status(FAIL, "FAILED", "translate " + cbor_file_short)
+                self.print_status(Colors.FAIL, "FAILED", "translate " +
+                                  cbor_file_short)
                 sys.stdout.write('\n')
                 sys.stdout.write(str(exception))
 
@@ -377,7 +403,8 @@ class TestDirectory:
             _, rust_file_short = os.path.split(translated_rust_file.path)
             extensionless_rust_file, _ = os.path.splitext(rust_file_short)
 
-            rust_file_builder.add_mod(RustMod(extensionless_rust_file, RustVisibility.Public))
+            rust_file_builder.add_mod(RustMod(extensionless_rust_file,
+                                              RustVisibility.Public))
 
         match_arms = []
 
@@ -390,12 +417,14 @@ class TestDirectory:
                 try:
                     test_file.compile(CrateType.Library, save_output=False)
 
-                    self.print_status(FAIL, "OK", "Unexpected success {}".format(file_name))
+                    self.print_status(Colors.FAIL, "OK",
+                                      "Unexpected success {}".format(file_name))
                     sys.stdout.write('\n')
 
                     outcomes.append(TestOutcome.UnexpectedSuccess)
                 except NonZeroReturn as exception:
-                    self.print_status(OKBLUE, "FAILED", "Expected failure {}".format(file_name))
+                    self.print_status(Colors.OKBLUE, "FAILED",
+                                      "Expected failure {}".format(file_name))
                     sys.stdout.write('\n')
 
                     logging.error("stderr:%s\n", str(exception))
@@ -405,12 +434,16 @@ class TestDirectory:
                 continue
 
             for test_function in test_file.test_functions:
-                rust_file_builder.add_mod(RustMod(extensionless_file_name, RustVisibility.Public))
-                left = "Some(\"{}::{}\")".format(extensionless_file_name, test_function.name)
-                right = "{}::{}()".format(extensionless_file_name, test_function.name)
+                rust_file_builder.add_mod(RustMod(extensionless_file_name,
+                                                  RustVisibility.Public))
+                left = "Some(\"{}::{}\")".format(extensionless_file_name,
+                                                 test_function.name)
+                right = "{}::{}()".format(extensionless_file_name,
+                                          test_function.name)
                 match_arms.append((left, right))
 
-        match_arms.append(("e", "panic!(\"Tried to run unknown test: {:?}\", e)"))
+        match_arms.append(("e",
+                           "panic!(\"Tried to run unknown test: {:?}\", e)"))
 
         test_main_body = [
             RustMatch("std::env::args().nth(1).as_ref().map(AsRef::<str>::as_ref)", match_arms),
@@ -431,7 +464,7 @@ class TestDirectory:
         except NonZeroReturn as exception:
             _, main_file_path_short = os.path.split(main_file.path)
 
-            self.print_status(FAIL, "FAILED", "compile {}".format(main_file_path_short))
+            self.print_status(Colors.FAIL, "FAILED", "compile {}".format(main_file_path_short))
             sys.stdout.write('\n')
             sys.stdout.write(str(exception))
 
@@ -459,25 +492,25 @@ class TestDirectory:
 
                 if retcode == 0:
                     if test_function.pass_expected:
-                        self.print_status(OKGREEN, "OK", "    test " + test_str)
+                        self.print_status(Colors.OKGREEN, "OK", "    test " + test_str)
                         sys.stdout.write('\n')
 
                         outcomes.append(TestOutcome.Success)
                     else:
-                        self.print_status(FAIL, "FAILED", "test " + test_str)
+                        self.print_status(Colors.FAIL, "FAILED", "test " + test_str)
                         sys.stdout.write('\n')
 
                         outcomes.append(TestOutcome.UnexpectedSuccess)
 
                 elif retcode != 0:
                     if test_function.pass_expected:
-                        self.print_status(FAIL, "FAILED", "test " + test_str)
+                        self.print_status(Colors.FAIL, "FAILED", "test " + test_str)
                         sys.stdout.write('\n')
                         sys.stdout.write(stderr)
 
                         outcomes.append(TestOutcome.UnexpectedFailure)
                     else:
-                        self.print_status(OKBLUE, "FAILED", "test " + test_str)
+                        self.print_status(Colors.OKBLUE, "FAILED", "test " + test_str)
                         sys.stdout.write('\n')
 
                         outcomes.append(TestOutcome.Failure)
@@ -485,7 +518,7 @@ class TestDirectory:
         if not outcomes:
             display_text = "   No rust file(s) matching " + self.files.pattern
             display_text += " within this folder\n"
-            self.print_status(OKBLUE, "N/A", display_text)
+            self.print_status(Colors.OKBLUE, "N/A", display_text)
         return outcomes
 
     def cleanup(self) -> None:
@@ -521,7 +554,9 @@ def readable_directory(directory: str) -> str:
         return directory
 
 
-def get_testdirectories(directory: str, files: str, keep: List[str]) -> Generator[TestDirectory, None, None]:
+def get_testdirectories(
+        directory: str, files: str,
+        keep: List[str]) -> Generator[TestDirectory, None, None]:
     for entry in os.listdir(directory):
         path = os.path.abspath(os.path.join(directory, entry))
 
@@ -551,22 +586,25 @@ def main() -> None:
         choices=intermediate_files + ['all'], default=[],
         help="Which intermediate files to not clear"
     )
+    c.add_args(parser)
 
     args = parser.parse_args()
-    test_directories = get_testdirectories(args.directory, args.regex_files, args.keep)
+    c.update_args(args)
+    test_directories = get_testdirectories(args.directory, args.regex_files,
+                                           args.keep)
     setup_logging(args.logLevel)
 
     logging.debug("args: %s", " ".join(sys.argv))
 
     # check that the binaries have been built first
-    bins = [AST_EXPO, AST_IMPO]
+    bins = [c.AST_EXPO, c.AST_IMPO]
     for b in bins:
         if not os.path.isfile(b):
             msg = b + " not found; run build_translator.py first?"
             die(msg, errno.ENOENT)
 
-    ensure_dir(DEPS_DIR)
-    ensure_rustc_version(CUSTOM_RUST_RUSTC_VERSION)
+    ensure_dir(c.DEPS_DIR)
+    ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
 
     if not test_directories:
         die("nothing to test")
@@ -581,9 +619,10 @@ def main() -> None:
 
     for test_directory in test_directories:
         if args.regex_directories.fullmatch(test_directory.name):
-            # Testdirectories are run one after another. Only test directories that match the '--only-directories'
-            # or tests that match the '--only-files' arguments are run.
-            # We make a best effort to clean up files we left behind.
+            # Testdirectories are run one after another. Only test directories
+            # that match the '--only-directories' or tests that match the
+            # '--only-files' arguments are run.  We make a best effort to clean
+            # up files we left behind.
             try:
                 statuses = test_directory.run()
             except (KeyboardInterrupt, SystemExit):

@@ -25,7 +25,8 @@ class RustFile:
     def __init__(self, path: str) -> None:
         self.path = path
 
-    def compile(self, crate_type: CrateType, save_output: bool=False) -> Optional[LocalCommand]:
+    def compile(self, crate_type: CrateType,
+                save_output: bool = False) -> Optional[LocalCommand]:
         current_dir, _ = os.path.split(self.path)
         extensionless_file, _ = os.path.splitext(self.path)
 
@@ -66,7 +67,7 @@ class RustFile:
 
 
 class RustMod:
-    def __init__(self, name: str, visibility: RustVisibility=None) -> None:
+    def __init__(self, name: str, visibility: RustVisibility = None) -> None:
         self.name = name
         self.visibility = visibility or RustVisibility.Private
 
@@ -81,7 +82,7 @@ class RustMod:
 
 
 class RustUse:
-    def __init__(self, use: List[str], visibility: RustVisibility=None) -> str:
+    def __init__(self, use: List[str], visibility: RustVisibility = None) -> str:
         self.use = "::".join(use)
         self.visibility = visibility or RustVisibility.Private
 
@@ -97,7 +98,8 @@ class RustUse:
 
 # TODO: Support params, lifetimes, generics, etc if needed
 class RustFunction:
-    def __init__(self, name: str, visibility: RustVisibility=None, body: List[str]=None) -> None:
+    def __init__(self, name: str, visibility: RustVisibility = None,
+                 body: List[str] = None) -> None:
         self.name = name
         self.visibility = visibility or RustVisibility.Private
         self.body = body or []
