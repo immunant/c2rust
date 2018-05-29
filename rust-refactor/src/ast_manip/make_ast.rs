@@ -539,8 +539,13 @@ impl Builder {
 
     pub fn cast_expr<E, T>(self, e: E, t: T) -> P<Expr>
         where E: Make<P<Expr>>, T: Make<P<Ty>> {
-        let e = e.make(&self);
+        let mut e = e.make(&self);
         let t = t.make(&self);
+
+        // Workaround for a bug in libsyntax require us to emit extra parentheses
+        let cast_if = if let ExprKind::If(..) = e.node { true } else { false };
+        if cast_if { e = mk().paren_expr(e); }
+
         P(Expr {
             id: DUMMY_NODE_ID,
             node: ExprKind::Cast(e, t),
