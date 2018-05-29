@@ -125,7 +125,7 @@ def try_locate_elf_object(cmd: dict) -> Optional[str]:
 
 def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
     # filter non C code commands first
-    c_cc_db = [f for f in cc_db if c['file'].endswith(".c")]
+    c_cc_db = [f for f in cc_db if f['file'].endswith(".c")]
     if not len(c_cc_db):
         msg = "didn't find any commands compiling C files"
         die(msg)
