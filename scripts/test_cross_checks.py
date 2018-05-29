@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 
+import errno
 import os
 import logging
 import plumbum as pb
 
-from common import *
+from common import (
+    config as c,
+    get_cmd_or_die,
+    update_or_init_submodule,
+    invoke,
+    setup_logging,
+    have_rust_toolchain,
+    die,
+)
 
 
 def checkout_and_build_libclevrbuf():
@@ -14,23 +23,22 @@ def checkout_and_build_libclevrbuf():
     """
     make = get_cmd_or_die("make")
 
-    if not os.path.isdir(LIBCLEVRBUF_DIR):
-        update_or_init_submodule(REMON_SUBMOD_DIR)
+    if not os.path.isdir(c.LIBCLEVRBUF_DIR):
+        update_or_init_submodule(c.REMON_SUBMOD_DIR)
 
-    if not os.path.isfile(os.path.join(LIBCLEVRBUF_DIR, "libclevrbuf.so")):
-        with pb.local.cwd(LIBCLEVRBUF_DIR):
+    if not os.path.isfile(os.path.join(c.LIBCLEVRBUF_DIR, "libclevrbuf.so")):
+        with pb.local.cwd(c.LIBCLEVRBUF_DIR):
             invoke(make, "lib")
 
 
 def test_cross_checks():
-    find = get_cmd_or_die("find")
     rustup = get_cmd_or_die("rustup")
 
-    rust_proj_path = os.path.join(CROSS_CHECKS_DIR, "rust-checks")
+    rust_proj_path = os.path.join(c.CROSS_CHECKS_DIR, "rust-checks")
     logging.info("entering %s", rust_proj_path)
     with pb.local.cwd(rust_proj_path):
-        invoke(rustup, ["run", CUSTOM_RUST_NAME, "cargo", "clean"])
-        args = ["run", CUSTOM_RUST_NAME, "cargo", "test"]
+        invoke(rustup, ["run", c.CUSTOM_RUST_NAME, "cargo", "clean"])
+        args = ["run", c.CUSTOM_RUST_NAME, "cargo", "test"]
         invoke(rustup, *args)
 
 
@@ -38,8 +46,8 @@ def main():
     setup_logging()
 
     # prerequisites
-    if not have_rust_toolchain(CUSTOM_RUST_NAME):
-        die("missing rust toolchain: " + CUSTOM_RUST_NAME, errno.ENOENT)
+    if not have_rust_toolchain(c.CUSTOM_RUST_NAME):
+        die("missing rust toolchain: " + c.CUSTOM_RUST_NAME, errno.ENOENT)
 
     # checkout_and_build_libclevrbuf()
     test_cross_checks()

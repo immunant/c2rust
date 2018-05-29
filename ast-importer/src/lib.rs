@@ -6,6 +6,9 @@ extern crate syntax_pos;
 extern crate idiomize;
 extern crate dtoa;
 
+extern crate serde;
+extern crate serde_json;
+
 pub mod renamer;
 pub mod name_manager;
 pub mod clang_ast;

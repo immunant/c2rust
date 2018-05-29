@@ -78,6 +78,11 @@ fn main() {
             .long("ddump-function-cfgs")
             .help("Dumps into files DOT visualizations of the CFGs of every function")
             .takes_value(false))
+        .arg(Arg::with_name("json-function-cfgs")
+            .requires("reloop-cfgs")
+            .long("json-function-cfgs")
+            .help("Dumps into files JSON visualizations of the CFGs of every function")
+            .takes_value(false))
         .arg(Arg::with_name("dump-cfgs-liveness")
             .requires("dump-function-cfgs")
             .long("ddump-cfgs-liveness")
@@ -127,6 +132,7 @@ fn main() {
         reloop_cfgs:            matches.is_present("reloop-cfgs"),
         fail_on_multiple:       matches.is_present("fail-on-multiple"),
         dump_function_cfgs:     matches.is_present("dump-function-cfgs"),
+        json_function_cfgs:     matches.is_present("json-function-cfgs"),
         dump_cfg_liveness:      matches.is_present("dump-cfgs-liveness"),
         dump_structures:        matches.is_present("dump-structures"),
         debug_relooper_labels:  matches.is_present("debug-labels"),

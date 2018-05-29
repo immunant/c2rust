@@ -107,7 +107,7 @@ TAGS = {
     512: "TagLongDouble",
     513: "TagFloat",
     514: "TagConstantArrayType",
-    
+
     515: "TagVariableArrayType",
     516: "TagIncompleteArrayType",
     517: "TagEnumType",

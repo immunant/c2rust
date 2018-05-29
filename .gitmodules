@@ -25,3 +25,6 @@
 [submodule "c2rust2web/ace-builds"]
 	path = c2rust2web/ace-builds
 	url = git@github.com:ajaxorg/ace-builds.git
+[submodule "examples/libxml2/repo"]
+	path = examples/libxml2/repo
+	url = git@github.com:immunant/libxml2-rs.git

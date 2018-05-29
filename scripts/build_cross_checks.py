@@ -4,16 +4,26 @@
 import os
 import re
 import sys
-import json
 import errno
 import shutil
-import signal
 import logging
 import argparse
 
 
-from common import *
-from typing import *
+from common import (
+    config as c,
+    pb,
+    die,
+    get_cmd_or_die,
+    est_parallel_link_jobs,
+    invoke,
+    setup_logging,
+    have_rust_toolchain,
+    ensure_clang_version,
+    ensure_rustc_version,
+    ensure_dir,
+    git_ignore_dir,
+)
 
 
 # TODO: move to common.py???
@@ -39,8 +49,8 @@ def build_clang_plugin(args: str) -> None:
     ninja = get_cmd_or_die("ninja")
     # Possible values are Release, Debug, RelWithDebInfo and MinSizeRel
     build_type = "Debug" if args.debug else "RelWithDebInfo"
-    ninja_build_file = os.path.join(CLANG_XCHECK_PLUGIN_BLD, "build.ninja")
-    with pb.local.cwd(CLANG_XCHECK_PLUGIN_BLD):
+    ninja_build_file = os.path.join(c.CLANG_XCHECK_PLUGIN_BLD, "build.ninja")
+    with pb.local.cwd(c.CLANG_XCHECK_PLUGIN_BLD):
         if os.path.isfile(ninja_build_file):
             prev_build_type = get_ninja_build_type(ninja_build_file)
             run_cmake = prev_build_type != build_type
@@ -50,9 +60,9 @@ def build_clang_plugin(args: str) -> None:
         if run_cmake:
             cmake = get_cmd_or_die("cmake")
             max_link_jobs = est_parallel_link_jobs()
-            cargs = ["-G", "Ninja", CLANG_XCHECK_PLUGIN_SRC,
-                     "-DLLVM_DIR={}/lib/cmake/llvm".format(LLVM_BLD),
-                     "-DClang_DIR={}/lib/cmake/clang".format(LLVM_BLD),
+            cargs = ["-G", "Ninja", c.CLANG_XCHECK_PLUGIN_SRC,
+                     "-DLLVM_DIR={}/lib/cmake/llvm".format(c.LLVM_BLD),
+                     "-DClang_DIR={}/lib/cmake/clang".format(c.LLVM_BLD),
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DBUILD_SHARED_LIBS=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
@@ -83,29 +93,29 @@ def _main():
     logging.debug("args: %s", " ".join(sys.argv))
 
     # earlier plumbum versions are missing features such as TEE
-    if pb.__version__ < MIN_PLUMBUM_VERSION:
+    if pb.__version__ < c.MIN_PLUMBUM_VERSION:
         err = "locally installed version {} of plumbum is too old.\n" \
             .format(pb.__version__)
         err += "please upgrade plumbum to version {} or later." \
-            .format(MIN_PLUMBUM_VERSION)
+            .format(c.MIN_PLUMBUM_VERSION)
         die(err)
 
     args = _parse_args()
     if args.clean_all:
         logging.info("cleaning all dependencies and previous built files")
-        shutil.rmtree(CLANG_XCHECK_PLUGIN_BLD, ignore_errors=True)
+        shutil.rmtree(c.CLANG_XCHECK_PLUGIN_BLD, ignore_errors=True)
 
     # prerequisites
-    if not have_rust_toolchain(CUSTOM_RUST_NAME):
-        die("missing rust toolchain: " + CUSTOM_RUST_NAME, errno.ENOENT)
+    if not have_rust_toolchain(c.CUSTOM_RUST_NAME):
+        die("missing rust toolchain: " + c.CUSTOM_RUST_NAME, errno.ENOENT)
 
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])
-    ensure_rustc_version(CUSTOM_RUST_RUSTC_VERSION)
+    ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
 
-    ensure_dir(CLANG_XCHECK_PLUGIN_BLD)
-    ensure_dir(DEPS_DIR)
-    git_ignore_dir(DEPS_DIR)
+    ensure_dir(c.CLANG_XCHECK_PLUGIN_BLD)
+    ensure_dir(c.DEPS_DIR)
+    git_ignore_dir(c.DEPS_DIR)
 
     build_clang_plugin(args)
 

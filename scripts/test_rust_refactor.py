@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
 
 import os
+import logging
+from typing import List
+
 import plumbum as pb
 
-from common import *
+from common import (
+    config as c,
+    Colors,
+    get_cmd_or_die,
+    get_rust_toolchain_libpath,
+    get_host_triplet,
+    setup_logging,
+    ensure_rustc_version,
+    die,
+)
 
 # Tools we will need
 rustfmt = get_cmd_or_die("rustfmt")
@@ -26,13 +38,13 @@ def get_testcases(directory: str) -> List[str]:
 
 
 def run_tests(testcases: List[str]) -> None:
-    ipath = os.path.join(RREF_DIR, "target/debug/idiomize")
+    ipath = os.path.join(c.RREF_DIR, "target/debug/idiomize")
     # refactor = '{ip} -P ../.. -p plugin_stub -r alongside'.format(ip=ipath)
     # NOTE:PL: I removed the plugin options (-P, -p) to get the tests to run.
     refactor = '{ip} -r alongside'.format(ip=ipath)
 
     # help plumbum find rust
-    ld_lib_path = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
+    ld_lib_path = get_rust_toolchain_libpath(c.CUSTOM_RUST_NAME)
     if 'LD_LIBRARY_PATH' in pb.local.env:
         ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
@@ -49,7 +61,7 @@ def run_tests(testcases: List[str]) -> None:
         for test in testcases:
             script = pb.local.get(test)
             testdir = os.path.dirname(test)
-            testname = os.path.basename(testdir)         
+            testname = os.path.basename(testdir)
             try:
                 with pb.local.cwd(testdir):
                     logging.debug("testing: %s", testdir)
@@ -63,10 +75,10 @@ def run_tests(testcases: List[str]) -> None:
                     new_rust = os.path.join(testdir, "new.rs")
                     diff["-wB", new_rust, old_new_rust].run()
 
-                    print(" {}[ OK ]{} ".format(OKGREEN, NO_COLOUR) + testname)
+                    print(" {}[ OK ]{} ".format(Colors.OKGREEN, Colors.NO_COLOR) + testname)
                     logging.debug(" [ OK ] " + testname)
             except pb.ProcessExecutionError as pee:
-                print(" {}[FAIL]{} ".format(FAIL, NO_COLOUR) + testname)
+                print(" {}[FAIL]{} ".format(Colors.FAIL, Colors.NO_COLOR) + testname)
                 logging.debug(" [FAIL] " + testname)
                 logfile = os.path.join(testdir, "log")
                 if os.path.exists(logfile):
@@ -79,12 +91,12 @@ def main():
     # TODO: implement rustfmt and diff actions from `run-test.sh`
 
     setup_logging()
-    ensure_rustc_version(CUSTOM_RUST_RUSTC_VERSION)
+    ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
     # TODO: update rustfmt version check once idiomize bitrot has been fixed
     # ensure_rustfmt_version()
-    test_dir = os.path.join(RREF_DIR, "tests")
+    test_dir = os.path.join(c.RREF_DIR, "tests")
     assert os.path.isdir(test_dir), "test dir missing: " + test_dir
-    idiomize_binary = os.path.join(RREF_DIR, "target/debug/idiomize")
+    idiomize_binary = os.path.join(c.RREF_DIR, "target/debug/idiomize")
     if not os.path.isfile(idiomize_binary):
         die("build idiomize binary first. expected: " + idiomize_binary)
 

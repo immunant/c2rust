@@ -1,35 +1,56 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-
-from common import *
-from transpile import transpile_files
+import argparse
+import errno
+import logging
+import multiprocessing
+import os
 from shutil import rmtree
+import sys
 import tempfile
+
+from transpile import transpile_files
+
+from common import (
+    config as c,
+    pb,
+    get_cmd_or_die,
+    invoke,
+    get_rust_toolchain_libpath,
+    download_archive,
+    invoke_quietly,
+    die,
+    on_mac,
+    regex,
+    setup_logging,
+    ensure_dir,
+)
+
 
 # LUA_URL = "https://www.lua.org/ftp/lua-5.3.4.tar.gz"
 # LUA_ARCHIVE = os.path.basename(LUA_URL)
 LUA_URL = "https://github.com/LuaDist/lua/archive/5.3.2.tar.gz"
 LUA_ARCHIVE = "lua-5.3.2.tar.gz"
 LUA_SRC = LUA_ARCHIVE.replace(".tar.gz", "")
-LUA_SRC = os.path.join(DEPS_DIR, LUA_SRC)
+LUA_SRC = os.path.join(c.DEPS_DIR, LUA_SRC)
 
 RUBY_URL = "https://cache.ruby-lang.org/pub/ruby/2.4/ruby-2.4.1.tar.gz"
 RUBY_ARCHIVE = os.path.basename(RUBY_URL)
 RUBY_SRC = RUBY_ARCHIVE.replace(".tar.gz", "")
-RUBY_SRC = os.path.join(DEPS_DIR, RUBY_SRC)
+RUBY_SRC = os.path.join(c.DEPS_DIR, RUBY_SRC)
 
 JSON_C_URL = "https://s3.amazonaws.com/" + \
-    "json-c_releases/releases/json-c-0.13.1.tar.gz"
+             "json-c_releases/releases/json-c-0.13.1.tar.gz"
 JSON_C_ARCHIVE = os.path.basename(JSON_C_URL)
 JSON_C_SRC = JSON_C_ARCHIVE.replace(".tar.gz", "")
-JSON_C_SRC = os.path.join(DEPS_DIR, JSON_C_SRC)
+JSON_C_SRC = os.path.join(c.DEPS_DIR, JSON_C_SRC)
 
 TAR = get_cmd_or_die("tar")
 SED = get_cmd_or_die("sed")
 MAKE = get_cmd_or_die("make")
 CMAKE = get_cmd_or_die("cmake")
-BEAR = get_cmd_or_die(BEAR_BIN)
+BEAR = get_cmd_or_die(c.BEAR_BIN)
 JOBS = "-j2"  # main updates jobs based on args
 
 minimal_snippet = """ \
@@ -56,8 +77,8 @@ minimal_cc_db = """ \
 
 
 def _test_minimal(code_snippet: str) -> bool:
-    ast_expo = get_cmd_or_die(AST_EXPO)
-    ast_impo = get_cmd_or_die(AST_IMPO)
+    ast_expo = get_cmd_or_die(c.AST_EXPO)
+    ast_impo = get_cmd_or_die(c.AST_IMPO)
 
     tempdir = tempfile.gettempdir()
     cfile = os.path.join(tempdir, "test.c")
@@ -73,7 +94,7 @@ def _test_minimal(code_snippet: str) -> bool:
 
     invoke(ast_expo[cfile])
 
-    ld_lib_path = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
+    ld_lib_path = get_rust_toolchain_libpath(c.CUSTOM_RUST_NAME)
 
     # don't overwrite existing ld lib path if any...
     if 'LD_LIBRARY_PATH' in pb.local.env:
@@ -100,12 +121,12 @@ def test_hello_world(_: argparse.Namespace) -> None:
 
 
 def test_json_c(args: argparse.Namespace) -> bool:
-    if not os.path.isfile(os.path.join(DEPS_DIR, JSON_C_ARCHIVE)):
-        with pb.local.cwd(DEPS_DIR):
+    if not os.path.isfile(os.path.join(c.DEPS_DIR, JSON_C_ARCHIVE)):
+        with pb.local.cwd(c.DEPS_DIR):
             download_archive(JSON_C_URL, JSON_C_ARCHIVE)
             invoke_quietly(TAR, "xf", JSON_C_ARCHIVE)
 
-    cc_db_file = os.path.join(JSON_C_SRC, CC_DB_JSON)
+    cc_db_file = os.path.join(JSON_C_SRC, c.CC_DB_JSON)
     # unconditionally compile json-c since we don't know if
     # cc_db was generated from the environment we're in.
     with pb.local.cwd(JSON_C_SRC), pb.local.env(CC="clang"):
@@ -129,11 +150,11 @@ def test_lua(args: argparse.Namespace) -> bool:
     drive the transpiler.
     """
 
-    if not os.path.isfile(os.path.join(DEPS_DIR, LUA_ARCHIVE)):
-        with pb.local.cwd(DEPS_DIR):
+    if not os.path.isfile(os.path.join(c.DEPS_DIR, LUA_ARCHIVE)):
+        with pb.local.cwd(c.DEPS_DIR):
             download_archive(LUA_URL, LUA_ARCHIVE)
     if not os.path.isdir(LUA_SRC):
-        with pb.local.cwd(DEPS_DIR):
+        with pb.local.cwd(c.DEPS_DIR):
             invoke_quietly(TAR, "xf", LUA_ARCHIVE)
 
     # unconditionally compile lua since we don't know if
@@ -145,7 +166,7 @@ def test_lua(args: argparse.Namespace) -> bool:
         invoke(CMAKE['-DCMAKE_EXPORT_COMPILE_COMMANDS=1', LUA_SRC])
         invoke(MAKE[JOBS])
 
-    cc_db_file = os.path.join(LUA_SRC, "build", CC_DB_JSON)
+    cc_db_file = os.path.join(LUA_SRC, "build", c.CC_DB_JSON)
     if not os.path.isfile(cc_db_file):
         die("missing " + cc_db_file, errno.ENOENT)
 
@@ -157,12 +178,12 @@ def test_ruby(args: argparse.Namespace) -> bool:
     if on_mac():
         die("transpiling ruby on mac is not supported.")
 
-    if not os.path.isfile(os.path.join(DEPS_DIR, RUBY_ARCHIVE)):
-        with pb.local.cwd(DEPS_DIR):
+    if not os.path.isfile(os.path.join(c.DEPS_DIR, RUBY_ARCHIVE)):
+        with pb.local.cwd(c.DEPS_DIR):
             download_archive(RUBY_URL, RUBY_ARCHIVE)
             invoke_quietly(TAR, "xf", RUBY_ARCHIVE)
 
-    cc_db_file = os.path.join(RUBY_SRC, CC_DB_JSON)
+    cc_db_file = os.path.join(RUBY_SRC, c.CC_DB_JSON)
 
     # unconditionally compile ruby since we don't know if
     # cc_db was generated from the environment we're in.
@@ -203,13 +224,13 @@ def main() -> None:
     logging.debug("args: %s", " ".join(sys.argv))
 
     # check that the binaries have been built first
-    bins = [AST_EXPO, AST_IMPO]
+    bins = [c.AST_EXPO, c.AST_IMPO]
     for b in bins:
         if not os.path.isfile(b):
             msg = b + " not found; run build_translator.py first?"
             die(msg, errno.ENOENT)
 
-    ensure_dir(DEPS_DIR)
+    ensure_dir(c.DEPS_DIR)
 
     args = parse_args()
     JOBS = '-j' + str(args.jobs)
