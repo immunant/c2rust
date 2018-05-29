@@ -45,6 +45,7 @@ pub struct TranslationConfig {
 }
 
 pub struct Translation {
+    pub features: RefCell<HashSet<&'static str>>,
     pub items: Vec<P<Item>>,
     pub foreign_items: Vec<ForeignItem>,
     type_converter: RefCell<TypeConverter>,
@@ -387,17 +388,19 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         if t.tcfg.emit_module {
             s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
         } else {
-            let mut features =
-                vec![("feature",vec!["libc","i128_type","const_ptr_null","offset_to", "const_ptr_null_mut", "extern_types", "asm"]),
-                     ("allow"  ,vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
-                                     "dead_code", "mutable_transmutes", "unused_mut"]),
-                ];
+            let mut pragmas: HashMap<&str, Vec<&str>> = HashMap::new();
+            pragmas.insert("feature", vec!["libc","i128_type"]);
+            pragmas.insert("allow", vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
+                                     "dead_code", "mutable_transmutes", "unused_mut"]);
+
+            pragmas.get_mut("feature").unwrap().extend(t.features.borrow().iter());
+
             if t.tcfg.cross_checks {
-                features.push(("feature", vec!["plugin", "custom_attribute"]));
-                features.push(("cross_check", vec!["yes"]));
+                pragmas.get_mut("feature").unwrap().append(&mut vec!["plugin", "custom_attribute"]);
+                pragmas.insert("cross_check", vec!["yes"]);
             }
 
-            for (key,values) in features {
+            for (key,values) in pragmas {
                 for value in values {
                     s.print_attribute(&mk().attribute::<_, TokenStream>(
                         AttrStyle::Inner,
@@ -499,6 +502,7 @@ impl Translation {
         let comment_context = RefCell::new(CommentContext::new(&mut ast_context));
 
         Translation {
+            features: RefCell::new(HashSet::new()),
             items: vec![],
             foreign_items: vec![],
             type_converter: RefCell::new(TypeConverter::new()),
@@ -778,6 +782,7 @@ impl Translation {
             CDeclKind::Struct { fields: None, .. } |
             CDeclKind::Union { fields: None, .. } |
             CDeclKind::Enum { integral_type: None, .. } => {
+                self.features.borrow_mut().insert("extern_types");
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
                 let extern_item = mk().span(s).pub_().foreign_ty(name);
                 Ok(ConvertedDecl::ForeignItem(extern_item))
@@ -1216,6 +1221,8 @@ impl Translation {
         if !self.tcfg.translate_asm {
             return Err(format!("Inline assembly not enabled, to enable use -translate-asm"))
         }
+
+        self.features.borrow_mut().insert("asm");
 
         fn push_expr(tokens: &mut Vec<Token>, expr: P<Expr>) {
             tokens.push(Token::interpolated(Nonterminal::NtExpr(expr)));
@@ -3435,6 +3442,10 @@ impl Translation {
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         if let &CTypeKind::Pointer(pointee) = rhs_type {
+
+            // The offset_to method is locked behind a feature gate
+            self.features.borrow_mut().insert("offset_to");
+
             // offset_to returns None when a pointer
             // offset_opt := rhs.offset_to(lhs)
             let offset_opt = mk().method_call_expr(rhs, "offset_to", vec![lhs]);
