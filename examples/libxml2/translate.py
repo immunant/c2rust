@@ -12,9 +12,9 @@ import os
 
 desc = 'transpile files in compiler_commands.json.'
 parser = argparse.ArgumentParser(description="Translates libxml2 into the repo/rust/src directory")
-parser.add_argument('-d', '--debug',
-                    default=False, action='store_true',
-                    help='Use the debug build of the ast-importer')
+parser.add_argument('-f', '--filter',
+                    default=None,
+                    help='Filters translated files')
 # parser.add_argument('-o', '--only',
 #                     default=False, action='store_true',
 #                     help='Translates only a single libxml2 C file')
@@ -41,7 +41,7 @@ if __name__ == "__main__":
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
     with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json, num_jobs, extra_impo_args=importer_args, emit_build_files=False)
+        transpile_files(cc_json, num_jobs, extra_impo_args=importer_args, filter=args.filter, emit_build_files=False)
 
     # .rs files will be written to repos, but we need it in repos/rust
     plumbum_rs_glob = local.path(LIBXML2_REPO) // "*.rs"
