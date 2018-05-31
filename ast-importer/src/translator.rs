@@ -42,6 +42,7 @@ pub struct TranslationConfig {
     pub simplify_structures: bool,
     pub panic_on_translator_failure: bool,
     pub emit_module: bool,
+    pub fail_on_error: bool,
 }
 
 pub struct Translation {
@@ -113,8 +114,7 @@ impl WithStmts<P<Expr>> {
 fn sequence_option<A,E>(x: Option<Result<A,E>>) -> Result<Option<A>, E> {
     match x {
         None => Ok(None),
-        Some(Ok(o)) => Ok(Some(o)),
-        Some(Err(e)) => Err(e),
+        Some(o) => Ok(Some(o?)),
     }
 }
 
@@ -257,6 +257,14 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
     }
 }
 
+pub fn translate_failure(tcfg: &TranslationConfig, msg: &str) {
+    if tcfg.fail_on_error {
+        panic!("{}", msg)
+    } else {
+        eprintln!("{}", msg)
+    }
+}
+
 pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> String {
     let mut t = Translation::new(ast_context, tcfg);
 
@@ -348,7 +356,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 Ok(ConvertedDecl::ForeignItem(mut item)) => t.foreign_items.push(item),
                 Err(e) => {
                     let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
-                    eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
+                    let msg = format!("Skipping declaration due to error: {}, kind: {:?}", e, k);
+                    translate_failure(&t.tcfg, &msg)
                 },
             }
         }
@@ -367,7 +376,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 Ok(ConvertedDecl::ForeignItem(mut item)) => t.foreign_items.push(item),
                 Err(e) => {
                     let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
-                    eprintln!("Skipping declaration due to error: {}, kind: {:?}", e, k)
+                    let msg = format!("Failed translating declaration due to error: {}, kind: {:?}", e, k);
+                    translate_failure(&t.tcfg, &msg)
                 },
             }
         }
@@ -377,7 +387,10 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
     if let Some(main_id) = t.ast_context.c_main {
         match t.convert_main(main_id) {
             Ok(item) => t.items.push(item),
-            Err(e) => eprintln!("Skipping main declaration due to error: {}", e)
+            Err(e) => {
+                let msg = format!("Failed translating main declaration due to error: {}", e);
+                translate_failure(&t.tcfg, &msg)
+            }
         }
     };
 
