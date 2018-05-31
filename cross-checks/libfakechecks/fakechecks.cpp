@@ -7,12 +7,11 @@
 #include <mutex>
 
 #include <alloca.h>
+#include <pthread.h>
 #include <unistd.h>
 
 std::atomic<FILE*> fout_atomic{nullptr};
 std::mutex fout_mutex;
-// FIXME: should be atomic???
-pid_t fout_pid = -1;
 
 bool append_pid = false;
 std::once_flag append_pid_flag;
@@ -23,35 +22,30 @@ static void init_flags() {
         if (strcmp(append_pid_var, "1") == 0 ||
             strcasecmp(append_pid_var, "true") == 0 ||
             strcasecmp(append_pid_var, "yes") == 0) {
+            // Append PID to file name
             append_pid = true;
+            pthread_atfork(nullptr, nullptr, [] () {
+                // On fork, clear fout
+                auto old_fout = fout_atomic.exchange(nullptr);
+                if (old_fout != nullptr) {
+                    fclose(old_fout);
+                }
+            });
         }
     });
-}
-
-static bool same_fout_pid(pid_t current_pid) {
-    if (__builtin_expect((current_pid == fout_pid), 1))
-        return true;
-
-    // PID changed, reset fout
-    auto old_fout = fout_atomic.exchange(nullptr);
-    if (old_fout != nullptr) {
-        fclose(old_fout);
-    }
-    return false;
 }
 
 // Thread-safe initialization for fout
 static FILE *get_fout() {
     init_flags();
 
-    auto pid = append_pid ? getpid() : -1;
     FILE *fout = fout_atomic.load();
-    if (fout != nullptr && same_fout_pid(pid))
+    if (fout != nullptr)
         return fout;
 
     std::lock_guard<std::mutex> lock(fout_mutex);
     fout = fout_atomic.load();
-    if (fout != nullptr && same_fout_pid(pid))
+    if (fout != nullptr)
         return fout;
 
     const char *out_file = getenv("FAKECHECKS_OUTPUT_FILE");
@@ -62,6 +56,7 @@ static FILE *get_fout() {
             // Append the PID to the file name
             auto pid_out_len = strlen(out_file) + 16;
             char *pid_out_file = static_cast<char*>(alloca(pid_out_len));
+            auto pid = getpid();
             snprintf(pid_out_file, pid_out_len, "%s.%d", out_file, pid);
             fout = fopen(pid_out_file, "w");
         } else {
@@ -74,7 +69,6 @@ static FILE *get_fout() {
         }
     }
     fout_atomic.store(fout);
-    fout_pid = pid;
     return fout;
 }
 
