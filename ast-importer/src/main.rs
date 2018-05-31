@@ -125,10 +125,15 @@ fn main() {
              .long("emit-module")
              .help("Emit the .rs file as a module instead of a crate, excluding the crate preamble")
              .takes_value(false))
+        .arg(Arg::with_name("fail-on-error")
+             .long("fail-on-error")
+             .help("Fail to translate a module when a portion is not able to be translated")
+             .takes_value(false))
         .get_matches();
 
     // Build a TranslationConfig from the command line
     let tcfg = TranslationConfig {
+        fail_on_error:          matches.is_present("fail-on-error"),
         reloop_cfgs:            matches.is_present("reloop-cfgs"),
         fail_on_multiple:       matches.is_present("fail-on-multiple"),
         dump_function_cfgs:     matches.is_present("dump-function-cfgs"),
