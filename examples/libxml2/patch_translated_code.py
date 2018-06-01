@@ -21,14 +21,13 @@ config = Config()
 C2RUST_DIR = config.ROOT_DIR
 LIBXML2_REPO = os.path.join(C2RUST_DIR, "examples/libxml2/repo")
 RUST_ROOT_DIR = os.path.join(LIBXML2_REPO, "rust")
-RUST_SRC_DIR = os.path.join(RUST_ROOT_DIR, "src")
 PATCHES = {
-    "threads.rs": {
+    "src/threads.rs": {
         "replace_all": [
             ("unsafe { 1i32.wrapping_neg() }", "-1"),
         ],
     },
-    "xmlunicode.rs": {
+    "src/xmlunicode.rs": {
         "replace_all_null_ptr_cast": [
             "xmlUnicodeBlocks.as_ptr()",
             "xmlUnicodeCats.as_mut_ptr()",
@@ -122,7 +121,7 @@ PATCHES = {
             "xmlCG.shortRange = xmlCS.as_ptr();",
         ],
     },
-    "chvalid.rs": {
+    "src/chvalid.rs": {
         "replace_all_null_ptr_cast": [
             "xmlIsIdeographic_srng.as_ptr()",
             "xmlIsExtender_srng.as_ptr()",
@@ -142,7 +141,7 @@ PATCHES = {
             "xmlIsBaseCharGroup.shortRange = xmlIsBaseChar_srng.as_ptr();",
         ]
     },
-    "HTMLparser.rs": {
+    "src/HTMLparser.rs": {
         "replace_all_null_ptr": [
             "html_attrs.as_ptr()",
             "html_inline.as_ptr()",
@@ -534,6 +533,12 @@ PATCHES = {
             "html40ElementTable[47].attrs_opt = input_attrs.as_ptr() as *mut *const _;",
         ],
     },
+    "examples/xmllint.rs": {
+        "replace_all": [
+            # Sed doesn't seem to like it when I add a \n between the externs:
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    }
 }
 INIT_ARRAY = """
 extern "C" fn run_static_initializers() {{
@@ -568,7 +573,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     for file_name, patch_config in PATCHES.items():
-        file_path = os.path.join(RUST_SRC_DIR, file_name)
+        file_path = os.path.join(RUST_ROOT_DIR, file_name)
 
         if "replace_all" in patch_config:
             replace_all(file_path, patch_config["replace_all"])
