@@ -22,8 +22,14 @@ use dtoa;
 
 use cfg;
 
+#[derive(Debug, Copy, Clone)]
+pub enum ReplaceMode {
+    None,
+    Extern,
+}
+
 /// Configuration settings for the translation process
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct TranslationConfig {
     pub reloop_cfgs: bool,
     pub fail_on_multiple: bool,
@@ -43,6 +49,7 @@ pub struct TranslationConfig {
     pub panic_on_translator_failure: bool,
     pub emit_module: bool,
     pub fail_on_error: bool,
+    pub replace_unsupported_decls: ReplaceMode,
 }
 
 pub struct Translation {
@@ -896,7 +903,17 @@ impl Translation {
 
                 let is_main = self.ast_context.c_main == Some(decl_id);
 
-                self.convert_function(s, is_extern, is_inline, is_main, is_var, new_name, name, &args, ret, body)
+                let converted_function =
+                    self.convert_function(s, is_extern, is_inline, is_main, is_var,
+                                          new_name, name, &args, ret, body);
+
+                converted_function.or_else(|e|
+                    match self.tcfg.replace_unsupported_decls {
+                        ReplaceMode::Extern if body.is_none() =>
+                            self.convert_function(s, is_extern, false, is_main, is_var,
+                                                  new_name, name, &args, ret, None),
+                        _ => Err(e),
+                    })
             },
 
             CDeclKind::Typedef { ref typ, .. } => {
