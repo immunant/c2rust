@@ -2388,12 +2388,36 @@ impl Translation {
         match builtin_name {
             "__builtin_huge_valf" =>
                 Ok(WithStmts::new(mk().path_expr(vec!["","std","f32","INFINITY"]))),
-            "__builtin_huge_val" =>
+            "__builtin_huge_val" | "__builtin_huge_vall"=>
+                Ok(WithStmts::new(mk().path_expr(vec!["","std","f64","INFINITY"]))),
+            "__builtin_inff" =>
+                Ok(WithStmts::new(mk().path_expr(vec!["","std","f32","INFINITY"]))),
+            "__builtin_inf" | "__builtin_infl" =>
                 Ok(WithStmts::new(mk().path_expr(vec!["","std","f64","INFINITY"]))),
             "__builtin_nanf" =>
                 Ok(WithStmts::new(mk().path_expr(vec!["","std","f32","NAN"]))),
             "__builtin_nan" =>
                 Ok(WithStmts::new(mk().path_expr(vec!["","std","f64","NAN"]))),
+            "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
+                let val = self.convert_expr(ExprUse::RValue, args[0], is_static)?;
+                Ok(val.map(|x| {
+                    let zeros = mk().method_call_expr(x, "leading_zeros", vec![] as Vec<P<Expr>>);
+                    mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
+                }))
+            }
+            "__builtin_ctz" | "__builtin_ctzl" | "__builtin_ctzll" => {
+                let val = self.convert_expr(ExprUse::RValue, args[0], is_static)?;
+                Ok(val.map(|x| {
+                    let zeros = mk().method_call_expr(x, "trailing_zeros", vec![] as Vec<P<Expr>>);
+                    mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
+                }))
+            }
+            "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
+                let val = self.convert_expr(ExprUse::RValue, args[0], is_static)?;
+                Ok(val.map(|x|
+                    mk().method_call_expr(x, "swap_bytes", vec![] as Vec<P<Expr>>)
+                ))
+            }
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }
