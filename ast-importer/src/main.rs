@@ -11,7 +11,7 @@ use ast_importer::clang_ast::process;
 use ast_importer::c_ast::*;
 use ast_importer::c_ast::Printer;
 use ast_importer::clang_ast::AstContext;
-use ast_importer::translator::TranslationConfig;
+use ast_importer::translator::{ReplaceMode,TranslationConfig};
 use clap::{Arg, App};
 
 fn main() {
@@ -160,6 +160,7 @@ fn main() {
                 _ => panic!("Invalid option"),
             }
         },
+        replace_unsupported_decls: ReplaceMode::Extern,
     };
     let file = matches.value_of("INPUT").unwrap();
     let dump_untyped_context = matches.is_present("dump-untyped-clang-ast");
