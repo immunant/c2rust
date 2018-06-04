@@ -290,18 +290,19 @@ impl TypedAstContext {
                 CTypeKind::UChar | CTypeKind::UShort | CTypeKind::UInt | CTypeKind::ULong |
                 CTypeKind::ULongLong | CTypeKind::Float | CTypeKind::Double |
                 CTypeKind::LongDouble | CTypeKind::Int128 | CTypeKind::UInt128 |
-                CTypeKind::TypeOfExpr(_) | CTypeKind::BuiltinFn => {}
+                CTypeKind::TypeOfExpr(_) | CTypeKind::BuiltinFn | CTypeKind::Half => {}
 
                 // Types with CTypeId fields
                 CTypeKind::Complex(type_id) | CTypeKind::Paren(type_id) |
                 CTypeKind::ConstantArray(type_id, _) | CTypeKind::Elaborated(type_id) |
                 CTypeKind::TypeOf(type_id) | CTypeKind::Decayed(type_id) |
-                CTypeKind::IncompleteArray(type_id) | CTypeKind::VariableArray(type_id, _)
-                => type_queue.push(type_id),
+                CTypeKind::IncompleteArray(type_id) | CTypeKind::VariableArray(type_id, _) =>
+                    type_queue.push(type_id),
 
                 // Types with CQualtypeId fields
                 CTypeKind::Pointer(qtype_id) | CTypeKind::Attributed(qtype_id, _) |
-                CTypeKind::BlockPointer(qtype_id) => type_queue.push(qtype_id.ctype),
+                CTypeKind::BlockPointer(qtype_id) | CTypeKind::Vector(qtype_id) =>
+                    type_queue.push(qtype_id.ctype),
 
                 CTypeKind::Function(qtype_id, ref qtype_ids, _, _) => {
                     type_queue.push(qtype_id.ctype);
@@ -1078,6 +1079,10 @@ pub enum CTypeKind {
     Attributed(CQualTypeId, Option<Attribute>),
 
     BlockPointer(CQualTypeId),
+
+    Vector(CQualTypeId),
+
+    Half,
 }
 
 #[derive(Copy, Clone, Debug)]

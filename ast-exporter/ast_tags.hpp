@@ -120,6 +120,7 @@ enum TypeTag {
     TagAttributedType,
     TagBlockPointer,
     TagComplexType,
+    TagHalf,
 };
 
 enum StringTypeTag {

@@ -2218,7 +2218,7 @@ impl Translation {
                     // Determine the type of element being indexed
                     let pointee_type_id = match self.ast_context.resolve_type(lhs_type_id).kind {
                         CTypeKind::Pointer(pointee_id) => pointee_id,
-                        _ => panic!("Subscript applied to non-pointer"),
+                        _ => return Err(format!("Subscript applied to non-pointer")),
                     };
 
                     if let Some(sz) = self.compute_size_of_expr(pointee_type_id.ctype) {
@@ -2348,7 +2348,7 @@ impl Translation {
                         Ok(x.unwrap())
                     }
                     ref t => {
-                        panic!("Init list not implemented for {:?}", t);
+                        Err(format!("Init list not implemented for {:?}", t))
                     }
                 }
             }
@@ -2369,8 +2369,8 @@ impl Translation {
     fn convert_builtin(
         &self,
         fexp: CExprId,
-        _args: &[CExprId],
-        _is_static: bool,
+        args: &[CExprId],
+        is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, String> {
 
         let decl_id =

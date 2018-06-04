@@ -165,9 +165,10 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
         Elaborated(_) => vec![], // These are references to previous definitions
         TypeOfExpr(e) => intos![e],
         Void | Bool | Short | Int | Long | LongLong | UShort | UInt | ULong | ULongLong | SChar |
-        UChar | Char | Double | LongDouble | Float | Int128 | UInt128 | BuiltinFn => vec![],
+        UChar | Char | Double | LongDouble | Float | Int128 | UInt128 | BuiltinFn | Half => vec![],
 
-        Pointer(qtype) | Attributed(qtype, _) | BlockPointer(qtype) => intos![qtype.ctype],
+        Pointer(qtype) | Attributed(qtype, _) | BlockPointer(qtype) | Vector(qtype) =>
+            intos![qtype.ctype],
 
         Decayed(ctype) | Paren(ctype) | TypeOf(ctype) | Complex(ctype) |
         ConstantArray(ctype, _) | IncompleteArray(ctype) => intos![ctype],

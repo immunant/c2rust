@@ -423,6 +423,11 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagHalf if expected_ty & OTHER_TYPE != 0 => {
+                    self.add_type(new_id, not_located(CTypeKind::Half));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
                 TypeTag::TagInt128 if expected_ty & OTHER_TYPE != 0 => {
                     self.add_type(new_id, not_located(CTypeKind::Int128));
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
@@ -611,6 +616,16 @@ impl ConversionContext {
                 TypeTag::TagBuiltinFn => {
                     let ty = CTypeKind::BuiltinFn;
                     self.add_type(new_id, not_located(ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
+                TypeTag::TagVectorType => {
+                    let elt = expect_u64(&ty_node.extras[0])
+                        .expect("Vector child not found");
+                    let elt_new = self.visit_qualified_type(elt);
+
+                    let vector_ty = CTypeKind::Vector(elt_new);
+                    self.add_type(new_id, not_located(vector_ty));
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 

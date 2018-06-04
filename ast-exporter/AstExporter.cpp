@@ -238,9 +238,10 @@ public:
             case BuiltinType::UInt:       tag = TagUInt;        break;
             case BuiltinType::ULong:      tag = TagULong;       break;
             case BuiltinType::ULongLong:  tag = TagULongLong;   break;
+            case BuiltinType::Half:       tag = TagHalf;        break;
+            case BuiltinType::Float:      tag = TagFloat;       break;
             case BuiltinType::Double:     tag = TagDouble;      break;
             case BuiltinType::LongDouble: tag = TagLongDouble;  break;
-            case BuiltinType::Float:      tag = TagFloat;       break;
             case BuiltinType::SChar:      tag = TagSChar;       break;
             case BuiltinType::UChar:      tag = TagUChar;       break;
             case BuiltinType::Char_U:     tag = TagChar;        break;
