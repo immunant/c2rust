@@ -2220,6 +2220,10 @@ impl Translation {
                 let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _) =>
                         self.convert_expr(ExprUse::RValue, fexp, is_static)?,
+
+                    CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _) =>
+                        return self.convert_builtin(fexp, args, is_static),
+
                     _ =>
                         self.convert_expr(ExprUse::RValue, func, is_static)?.map(|x|
                             unwrap_function_pointer(x)),
@@ -2342,6 +2346,38 @@ impl Translation {
 
             CExprKind::VAArg(..) =>
                 Err(format!("Variable argument lists are not supported")),
+        }
+    }
+
+    fn convert_builtin(
+        &self,
+        fexp: CExprId,
+        _args: &[CExprId],
+        _is_static: bool,
+    ) -> Result<WithStmts<P<Expr>>, String> {
+
+        let decl_id =
+            match self.ast_context[fexp].kind {
+                CExprKind::DeclRef(_, decl_id) => decl_id,
+                _ => return Err(format!("Expected declref when processing builtin")),
+            };
+
+        let builtin_name: &str =
+            match self.ast_context[decl_id].kind {
+                CDeclKind::Function { ref name, .. } => name,
+                _ => return Err(format!("Expected function when processing builtin")),
+            };
+
+        match builtin_name {
+            "__builtin_huge_valf" =>
+                Ok(WithStmts::new(mk().path_expr(vec!["","std","f32","INFINITY"]))),
+            "__builtin_huge_val" =>
+                Ok(WithStmts::new(mk().path_expr(vec!["","std","f64","INFINITY"]))),
+            "__builtin_nanf" =>
+                Ok(WithStmts::new(mk().path_expr(vec!["","std","f32","NAN"]))),
+            "__builtin_nan" =>
+                Ok(WithStmts::new(mk().path_expr(vec!["","std","f64","NAN"]))),
+            _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }
 
