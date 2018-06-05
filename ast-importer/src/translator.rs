@@ -996,6 +996,11 @@ impl Translation {
         return_type: Option<CQualTypeId>,
         body: Option<CStmtId>,
     ) -> Result<ConvertedDecl, String> {
+
+        if is_variadic && body.is_some() {
+            return Err(format!("Variadic function implementations not supported"))
+        }
+
         self.with_scope(|| {
             let mut args: Vec<Arg> = vec![];
 
