@@ -975,7 +975,7 @@ class TranslateASTVisitor final
                                  
                                  Builtin::Context c;
                                  auto bid = FD->getBuiltinID();
-                                 cbor_encode_boolean(array, bid && c.isLibFunction(bid));
+                                 cbor_encode_boolean(array,                                                    bid && !c.getHeaderName(bid));
                              });
           typeEncoder.VisitQualType(functionType);
 
