@@ -481,7 +481,7 @@ impl<W: Write> Printer<W> {
                 }
             },
 
-            Some(&CDeclKind::Typedef { ref name, ref typ }) => {
+            Some(&CDeclKind::Typedef { ref name, ref typ, .. }) => {
                 self.writer.write_fmt(format_args!("typedef {} = ", name))?;
                 self.print_qtype(*typ, None, context)?;
                 if newline {

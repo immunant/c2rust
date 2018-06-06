@@ -1243,6 +1243,8 @@ impl ConversionContext {
                         self.typed_context.c_main = Some(CDeclId(new_id));
                     }
 
+                    let is_implicit = expect_bool(&node.extras[4]).expect("Expected to find implicit");
+
                     let typ_old = node.type_id.expect("Expected to find a type on a function decl");
                     let typ = CTypeId(self.visit_node_type(typ_old, TYPE));
 
@@ -1259,7 +1261,8 @@ impl ConversionContext {
                         })
                         .collect();
 
-                    let function_decl = CDeclKind::Function { is_extern, is_inline, typ, name, parameters, body };
+                    let function_decl =
+                        CDeclKind::Function { is_extern, is_inline, is_implicit, typ, name, parameters, body };
 
                     self.add_decl(new_id, located(node, function_decl));
                     self.processed_nodes.insert(new_id, OTHER_DECL);
@@ -1267,11 +1270,12 @@ impl ConversionContext {
 
                 ASTEntryTag::TagTypedefDecl if expected_ty & TYPDEF_DECL != 0 => {
                     let name = expect_str(&node.extras[0]).expect("Expected to find typedef name").to_string();
+                    let is_implicit = expect_bool(&node.extras[1]).expect("Expected to find implicit");
 
                     let typ_old = node.type_id.expect("Expected to find type on typedef declaration");
                     let typ = self.visit_qualified_type(typ_old);
 
-                    let typdef_decl = CDeclKind::Typedef { name, typ };
+                    let typdef_decl = CDeclKind::Typedef { name, typ, is_implicit };
 
                     self.add_decl(new_id, located(node, typdef_decl));
                     self.processed_nodes.insert(new_id, TYPDEF_DECL);

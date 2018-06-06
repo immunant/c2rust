@@ -525,6 +525,7 @@ pub enum CDeclKind {
     Function {
         is_extern: bool,
         is_inline: bool,
+        is_implicit: bool,
         typ: CFuncTypeId,
         name: String,
         parameters: Vec<CParamId>,
@@ -557,6 +558,7 @@ pub enum CDeclKind {
     Typedef {
         name: String,
         typ: CQualTypeId,
+        is_implicit: bool,
     },
 
     // Struct

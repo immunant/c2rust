@@ -16,6 +16,7 @@
 #include "clang/AST/DeclVisitor.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Tooling/Tooling.h"
+#include "clang/Basic/Builtins.h"
 
 #include <tinycbor/cbor.h>
 #include "ast_tags.hpp"
@@ -971,6 +972,10 @@ class TranslateASTVisitor final
 
                                  auto is_main = FD->isMain();
                                  cbor_encode_boolean(array, is_main);
+                                 
+                                 Builtin::Context c;
+                                 auto bid = FD->getBuiltinID();
+                                 cbor_encode_boolean(array, bid && c.isLibFunction(bid));
                              });
           typeEncoder.VisitQualType(functionType);
 
@@ -1157,6 +1162,8 @@ class TranslateASTVisitor final
                              [D](CborEncoder *array) {
                                  auto name = D->getNameAsString();
                                  cbor_encode_string(array, name);
+                                 
+                                 cbor_encode_boolean(array, D->isImplicit());
                              });
 
           typeEncoder.VisitQualType(typeForDecl);

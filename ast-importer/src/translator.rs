@@ -304,7 +304,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
     // into a single name and declaration, eliminating the typedef altogether.
     let mut prenamed_decls: HashSet<CDeclId> = HashSet::new();
     for (&decl_id, decl) in &t.ast_context.c_decls {
-        if let CDeclKind::Typedef { ref name, typ } = decl.kind {
+        if let CDeclKind::Typedef { ref name, typ, .. } = decl.kind {
             if let Some(subdecl_id) = t.ast_context.resolve_type(typ.ctype).kind.as_underlying_decl() {
 
                 let is_unnamed = match t.ast_context[subdecl_id].kind {
@@ -354,7 +354,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             CDeclKind::Enum { .. } => true,
             CDeclKind::EnumConstant { .. } => true,
             CDeclKind::Union { .. } => true,
-            CDeclKind::Typedef { .. } => !prenamed_decls.contains(&decl_id),
+            CDeclKind::Typedef { .. } =>
+                !prenamed_decls.contains(&decl_id),
             _ => false,
         };
         if needs_export {
@@ -373,7 +374,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
     // Export top-level value declarations
     for top_id in &t.ast_context.c_decls_top {
         let needs_export = match t.ast_context.c_decls[top_id].kind {
-            CDeclKind::Function { .. } => true,
+            CDeclKind::Function { is_implicit, .. } => !is_implicit,
             CDeclKind::Variable { .. } => true,
             _ => false,
         };
