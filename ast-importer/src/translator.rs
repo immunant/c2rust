@@ -2429,6 +2429,8 @@ impl Translation {
                     mk().method_call_expr(x, "swap_bytes", vec![] as Vec<P<Expr>>)
                 ))
             }
+            "__builtin_expect" =>
+                self.convert_expr(ExprUse::RValue, args[0], is_static),
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }
