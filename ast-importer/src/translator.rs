@@ -409,17 +409,22 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         if t.tcfg.emit_module {
             s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
         } else {
+
+            let mut features = vec!["libc"];
+
             let mut pragmas: HashMap<&str, Vec<&str>> = HashMap::new();
-            pragmas.insert("feature", vec!["libc","i128_type"]);
             pragmas.insert("allow", vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
                                      "dead_code", "mutable_transmutes", "unused_mut"]);
 
-            pragmas.get_mut("feature").unwrap().extend(t.features.borrow().iter());
+            features.extend(t.features.borrow().iter());
+            features.extend(t.type_converter.borrow().features_used());
 
             if t.tcfg.cross_checks {
-                pragmas.get_mut("feature").unwrap().append(&mut vec!["plugin", "custom_attribute"]);
+                features.append(&mut vec!["plugin", "custom_attribute"]);
                 pragmas.insert("cross_check", vec!["yes"]);
             }
+
+            pragmas.insert("feature", features);
 
             for (key,values) in pragmas {
                 for value in values {

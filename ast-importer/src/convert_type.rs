@@ -5,12 +5,13 @@ use idiomize::ast_manip::make_ast::*;
 use syntax::ptr::P;
 use std::ops::Index;
 use renamer::*;
-use std::collections::HashMap;
+use std::collections::{HashSet,HashMap};
 use c_ast::CDeclId;
 
 pub struct TypeConverter {
     renamer: Renamer<CDeclId>,
     fields: HashMap<CDeclId, Renamer<CFieldId>>,
+    features: HashSet<&'static str>,
 }
 
 static RESERVED_NAMES: [&str; 100] = [
@@ -48,11 +49,15 @@ static RESERVED_NAMES: [&str; 100] = [
 impl TypeConverter {
 
     pub fn new() -> TypeConverter {
-
         TypeConverter {
             renamer: Renamer::new(&RESERVED_NAMES),
             fields: HashMap::new(),
+            features: HashSet::new(),
         }
+    }
+
+    pub fn features_used(&self) -> &HashSet<&'static str> {
+        &self.features
     }
 
     pub fn declare_decl_name(&mut self, decl_id: CDeclId, name: &str) -> String {
@@ -171,8 +176,14 @@ impl TypeConverter {
             CTypeKind::Double => Ok(mk().path_ty(mk().path(vec!["libc","c_double"]))),
             CTypeKind::LongDouble => Ok(mk().path_ty(mk().path(vec!["libc","c_double"]))),
             CTypeKind::Float => Ok(mk().path_ty(mk().path(vec!["libc","c_float"]))),
-            CTypeKind::Int128 => Ok(mk().path_ty(mk().path(vec!["i128"]))),
-            CTypeKind::UInt128 => Ok(mk().path_ty(mk().path(vec!["u128"]))),
+            CTypeKind::Int128 => {
+                self.features.insert("i128_type");
+                Ok(mk().path_ty(mk().path(vec!["i128"])))
+            },
+            CTypeKind::UInt128 => {
+                self.features.insert("i128_type");
+                Ok(mk().path_ty(mk().path(vec!["u128"])))
+            },
 
             CTypeKind::Pointer(qtype) => self.convert_pointer(ctxt, qtype),
 
