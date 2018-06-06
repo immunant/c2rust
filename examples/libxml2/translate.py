@@ -52,7 +52,48 @@ if __name__ == "__main__":
 
     # Move test files to examples directory (since they have their own main function)
     xmllint_rs = os.path.join(LIBXML2_REPO, "xmllint.rs")
-    mv_args = [xmllint_rs, RUST_EXAMPLES_DIR]
+    runtest_rs = os.path.join(LIBXML2_REPO, "runtest.rs")
+    testapi_rs = os.path.join(LIBXML2_REPO, "testapi.rs")
+    testsax_rs = os.path.join(LIBXML2_REPO, "testSAX.rs")
+    testuri_rs = os.path.join(LIBXML2_REPO, "testURI.rs")
+    testdict_rs = os.path.join(LIBXML2_REPO, "testdict.rs")
+    testhtml_rs = os.path.join(LIBXML2_REPO, "testHTML.rs")
+    testc14n_rs = os.path.join(LIBXML2_REPO, "testC14N.rs")
+    testchar_rs = os.path.join(LIBXML2_REPO, "testchar.rs")
+    testrelax_rs = os.path.join(LIBXML2_REPO, "testRelax.rs")
+    testxpath_rs = os.path.join(LIBXML2_REPO, "testXPath.rs")
+    testmodule_rs = os.path.join(LIBXML2_REPO, "testModule.rs")
+    # testwriter_rs = os.path.join(LIBXML2_REPO, "testWriter.rs")
+    testlimits_rs = os.path.join(LIBXML2_REPO, "testlimits.rs")
+    testreader_rs = os.path.join(LIBXML2_REPO, "testReader.rs")
+    testregexp_rs = os.path.join(LIBXML2_REPO, "testRegexp.rs")
+    testrecurse_rs = os.path.join(LIBXML2_REPO, "testrecurse.rs")
+    testschemas_rs = os.path.join(LIBXML2_REPO, "testSchemas.rs")
+    testthreads_rs = os.path.join(LIBXML2_REPO, "testThreads.rs")
+    testautomata_rs = os.path.join(LIBXML2_REPO, "testAutomata.rs")
+    mv_args = [
+        xmllint_rs,
+        testapi_rs,
+        testsax_rs,
+        testuri_rs,
+        testdict_rs,
+        testhtml_rs,
+        testc14n_rs,
+        testchar_rs,
+        testrelax_rs,
+        testxpath_rs,
+        testregexp_rs,
+        testmodule_rs,
+        # testwriter_rs,
+        testlimits_rs,
+        testreader_rs,
+        testrecurse_rs,
+        testschemas_rs,
+        testthreads_rs,
+        testautomata_rs,
+        runtest_rs,
+        RUST_EXAMPLES_DIR,
+    ]
     retcode, stdout, stderr = mv[mv_args].run()
 
     assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)

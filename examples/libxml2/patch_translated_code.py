@@ -539,14 +539,14 @@ PATCHES = {
             ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
         ],
     },
-    "src/xpath.rs": {
-        "replace_all": [
-            ("Some(__builtin_inff).expect(\"non-null function pointer\")()", "::std::f32::INFINITY"),
-            # Ugly workarounds, ahoy!
-            ("Some(__builtin_nanf).expect(\"non-null function pointer\")", "(|_| ::std::f32::NAN)"),
-            ("Some(__builtin_clzll).expect(\"non-null function pointer\")", "(|x: libc::c_ulonglong| x.leading_zeros() as i32)"),
-        ]
-    }
+    # "src/xpath.rs": {
+    #     "replace_all": [
+    #         ("Some(__builtin_inff).expect(\"non-null function pointer\")()", "::std::f32::INFINITY"),
+    #         # Ugly workarounds, ahoy!
+    #         ("Some(__builtin_nanf).expect(\"non-null function pointer\")", "(|_| ::std::f32::NAN)"),
+    #         ("Some(__builtin_clzll).expect(\"non-null function pointer\")", "(|x: libc::c_ulonglong| x.leading_zeros() as i32)"),
+    #     ]
+    # }
 }
 INIT_ARRAY = """
 extern "C" fn run_static_initializers() {{
