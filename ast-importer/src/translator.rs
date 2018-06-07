@@ -2437,6 +2437,14 @@ impl Translation {
             }
             "__builtin_expect" =>
                 self.convert_expr(ExprUse::RValue, args[0], is_static),
+
+            "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
+                let val = self.convert_expr(ExprUse::RValue, args[0], is_static)?;
+                Ok(val.map(|x| {
+                    let zeros = mk().method_call_expr(x, "count_ones", vec![] as Vec<P<Expr>>);
+                    mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
+                }))
+            }
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }
