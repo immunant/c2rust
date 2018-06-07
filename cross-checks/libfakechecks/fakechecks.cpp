@@ -19,9 +19,10 @@ std::once_flag append_pid_flag;
 static void init_flags() {
     std::call_once(append_pid_flag, [] () {
         auto append_pid_var = getenv("FAKECHECKS_APPEND_PID");
-        if (strcmp(append_pid_var, "1") == 0 ||
-            strcasecmp(append_pid_var, "true") == 0 ||
-            strcasecmp(append_pid_var, "yes") == 0) {
+        if (append_pid_var != nullptr &&
+            (strcmp(append_pid_var, "1") == 0 ||
+             strcasecmp(append_pid_var, "true") == 0 ||
+             strcasecmp(append_pid_var, "yes") == 0)) {
             // Append PID to file name
             append_pid = true;
             pthread_atfork(nullptr, nullptr, [] () {
