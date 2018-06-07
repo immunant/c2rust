@@ -1,8 +1,10 @@
 
 TEST_CFLAGS=-g -O2
 
-PLUGIN_PATH := $(shell find . -name CrossChecks.so)
-RUNTIME_PATH := $(shell find . -name libruntime.a)
+#PLUGIN_PATH := $(shell find . -name CrossChecks.so)
+#RUNTIME_PATH := $(shell find . -name libruntime.a)
+PLUGIN_PATH := $(realpath ../../../dependencies/clang-xcheck-plugin.$(shell uname -n)/plugin/CrossChecks.so)
+RUNTIME_PATH := $(realpath ../../../dependencies/clang-xcheck-plugin.$(shell uname -n)/runtime/libruntime.a)
 
 # Override this to change the path to the clang binary
 #PLUGIN_CC := clang
