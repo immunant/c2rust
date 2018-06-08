@@ -1324,9 +1324,9 @@ impl Translation {
             Ok(val.map(|e| {
                 if self.is_function_pointer(self.ast_context.index(ptr).kind.get_type()) {
                     if negated {
-                        mk().method_call_expr(e, "is_none", vec![] as Vec<P<Expr>>)
-                    } else {
                         mk().method_call_expr(e, "is_some", vec![] as Vec<P<Expr>>)
+                    } else {
+                        mk().method_call_expr(e, "is_none", vec![] as Vec<P<Expr>>)
                     }
                 } else {
                     let is_null = mk().method_call_expr(e, "is_null", vec![] as Vec<P<Expr>>);
