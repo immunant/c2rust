@@ -26,18 +26,47 @@ in `libxml2`:
 
 `./translate.py` to translate all required c files (including tests) into the `libxml2/repo/rust/src` and `libxml2/repo/rust/examples` directories.
 
-# Fix Known Issues
+# Fix Known Translation Issues
 
 in `libxml2`:
 
-`./patch_translated_code.py` to step through applying patches to some known issues in the generated code.
+`./patch_translated_code.py` to apply patches to some known issues in the generated code.
 
-# Run libxml2 c tests
+# Run Libxml2 C Tests
 
 Since each of these tests have their own main file, we decided to move them to the rust examples directory instead of trying to wrap them in the test framework.
 
 You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one of the files in `libxml2/repo/rust/examples`, not including the file extension.
 
-# Known Issues
+# Outstanding Test Issues
 
-Coming soon
+## Definitely Not Working
+
+* `xmllint` may core dump with some params, ie `--auto`.
+* `runtest` has missing functions for some reason (likely needs own runtest_variadic.c)
+* `testHTML` has missing functions for some reason (likely needs own testHTML_variadic.c)
+* `testThreads` core dumps; a bunch of threaded panics when unwrapping null fn ptr
+* `testapi` has a bunch of remaining linking errors
+* `testchar` has a test failure (maybe good for debugging?) and null fn ptr panic, core dump
+* `testrecurse` has missing functions (likely needs own testrecurse_variadic.c)
+* `testSAX` has missing functions (likely needs own testSAX_variadic.c)
+* `testdict` out of bounds index, core dump
+* `testModule` has remaining linker errors
+* `testXPath` out of bounds index, core dump
+
+## Maybe Runnable
+
+* `testC14N` works with no params, but needs to be tested w/ real file input
+* `testReader` works with no params, but needs to be tested w/ real file input
+* `testRelax` works with no params, but needs to be tested w/ real file input
+* `testRegexp` works with no params, but needs to be tested w/ read file input
+* `testSchemas` works with no params, but needs to be tested w/ read file input
+
+## Runnable
+
+* `testlimits` runs w/o memory crashes, but fails throughout the test
+
+## Working
+
+* `testAutomata` takes a file from `test/automata` and produces equivalent output to C run
+* `testURI` waits on input from stdin, needs example input from `test/URI`. See `Makefile.am` and `result/URI/uri.data` for examples
