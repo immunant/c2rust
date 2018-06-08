@@ -16,8 +16,9 @@ void entry3(const unsigned sz, int buffer[const])
         p3 = &intval;
 
         if (!p1 && p3 && !!p3 && p3 != 0) {
-                buffer[i++] = p3('a');
+                buffer[i] = p3('a');
         }
+        i++;
 
         char_to_int_fp p4;
         char_to_int_fp p5 = 0;
@@ -27,12 +28,19 @@ void entry3(const unsigned sz, int buffer[const])
         p7 = &intval;
 
         if (!p5 && p7 && !!p7 && p7 != 0) {
-                buffer[i++] = (*p7)('a');
+                buffer[i] = (*p7)('a');
         }
+        i++;
 
         char_to_int_fp funs[3] = { intval, negintval };
 
         for (int j = 0; funs[j]; j++) {
                 buffer[i++] = funs[j] ? funs[j]('a'+j) : 55;
         }
+
+        // validate function pointer comparison to null
+        buffer[i++] = p1 == 0;
+        buffer[i++] = p1 != 0;
+        buffer[i++] = p2 == 0;
+        buffer[i++] = p2 != 0;
 }
