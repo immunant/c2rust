@@ -46,6 +46,8 @@ impl<'context> DFExpr<'context> {
 fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
     use c_ast::CExprKind::*;
     match *kind {
+        BadExpr => vec![],
+        ShuffleVector(..) | ConvertVector(..) => vec![],
         OffsetOf(..) | Literal(..) | ImplicitValueInit(..) => vec![],
         DeclRef(_, _) => vec![], // don't follow references back!
         Unary(_ty, _op, subexpr) => intos![subexpr],

@@ -930,6 +930,17 @@ class TranslateASTVisitor final
           return true;
       }
  
+      bool VisitShuffleVectorExpr(ShuffleVectorExpr *E) {
+          std::vector<void*> childIds;
+          encode_entry(E, TagShuffleVectorExpr, childIds);
+          return true;
+      }
+      
+      bool VisitConvertVectorExpr(ConvertVectorExpr *E) {
+          std::vector<void*> childIds;
+          encode_entry(E, TagConvertVectorExpr, childIds);
+          return true;
+      }
       
       //
       // Declarations
@@ -959,7 +970,7 @@ class TranslateASTVisitor final
 
           auto functionType = FD->getType();
           encode_entry(FD, TagFunctionDecl, childIds, functionType,
-                             [FD](CborEncoder *array) {
+                             [this,FD](CborEncoder *array) {
                                  auto name = FD->getNameAsString();
                                  cbor_encode_string(array, name);
 
@@ -973,9 +984,8 @@ class TranslateASTVisitor final
                                  auto is_main = FD->isMain();
                                  cbor_encode_boolean(array, is_main);
                                  
-                                 Builtin::Context c;
                                  auto bid = FD->getBuiltinID();
-                                 cbor_encode_boolean(array,                                                    bid && !c.getHeaderName(bid));
+                                 cbor_encode_boolean(array,                                                    bid && !Context->BuiltinInfo.getHeaderName(bid));
                              });
           typeEncoder.VisitQualType(functionType);
 

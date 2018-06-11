@@ -66,6 +66,9 @@ enum ASTEntryTag {
     TagStmtExpr,
     TagVAArgExpr,
     
+    TagShuffleVectorExpr,
+    TagConvertVectorExpr,
+    
     TagIntegerLiteral = 300,
     TagStringLiteral,
     TagCharacterLiteral,
