@@ -7,7 +7,7 @@ SCRIPT_DIR="$(dirname "$0")"
 
 # pull the rust version out of ../scripts/common.py to keep things synched
 PYTHON_DIR="$SCRIPT_DIR/../scripts"
-PYTHON_CMD="from common import CUSTOM_RUST_NAME; print(CUSTOM_RUST_NAME)"
+PYTHON_CMD="from common import Config; print(Config.CUSTOM_RUST_NAME)"
 RUST_VER=$(cd $PYTHON_DIR && python3 -B -c "$PYTHON_CMD")
 
 docker build \

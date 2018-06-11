@@ -26,18 +26,47 @@ in `libxml2`:
 
 `./translate.py` to translate all required c files (including tests) into the `libxml2/repo/rust/src` and `libxml2/repo/rust/examples` directories.
 
-# Fix Known Issues
+# Fix Known Translation Issues
 
 in `libxml2`:
 
-`./patch_translated_code.py` to step through applying patches to some known issues in the generated code.
+`./patch_translated_code.py` to apply patches to some known issues in the generated code.
 
-# Run libxml2 c tests
+# Run Libxml2 C Tests
 
 Since each of these tests have their own main file, we decided to move them to the rust examples directory instead of trying to wrap them in the test framework.
 
 You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one of the files in `libxml2/repo/rust/examples`, not including the file extension.
 
-# Known Issues
+# Outstanding Test Issues
 
-Coming soon
+## Definitely Not Working
+
+* `runtest` has missing functions for some reason (likely needs own runtest_variadic.c)
+* `testHTML` has missing functions for some reason (likely needs own testHTML_variadic.c)
+* `testapi` has a bunch of remaining linking errors
+* `testrecurse` has missing functions (likely needs own testrecurse_variadic.c)
+* `testSAX` has missing functions (likely needs own testSAX_variadic.c)
+* `testModule` has remaining linker errors
+
+## Maybe Runnable
+
+* `testXPath` works with no params, but needs to be tested w/ real file input
+* `xmllint` now works with `--auto`, but needs additional testing params and inputs
+* `testReader` works with no params, but needs to be tested w/ real file input
+* `testRelax` works with no params, but needs to be tested w/ real file input
+* `testRegexp` works with no params, but needs to be tested w/ read file input
+
+## Runnable
+
+* `testThreads` prints a bunch of parsing errors
+* `testlimits` runs w/o memory crashes, but fails throughout the test
+
+## Working
+
+* `testC14N` prints parsed output when given a file to read from `test/c14n`
+* `testSchemas` no longer crashes when provided a file from `test/schemas/*.xsd`
+* `testchar` prints tests completed
+* `testdict` prints "dictionary tests succeeded 20000 strings"
+* `testAutomata` takes a file from `test/automata` and produces equivalent output to C run
+* `testURI` waits on input from stdin, needs example input from `test/URI`. See `Makefile.am` and `result/URI/uri.data` for examples

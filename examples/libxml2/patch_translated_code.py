@@ -539,14 +539,96 @@ PATCHES = {
             ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
         ],
     },
-    # "src/xpath.rs": {
-    #     "replace_all": [
-    #         ("Some(__builtin_inff).expect(\"non-null function pointer\")()", "::std::f32::INFINITY"),
-    #         # Ugly workarounds, ahoy!
-    #         ("Some(__builtin_nanf).expect(\"non-null function pointer\")", "(|_| ::std::f32::NAN)"),
-    #         ("Some(__builtin_clzll).expect(\"non-null function pointer\")", "(|x: libc::c_ulonglong| x.leading_zeros() as i32)"),
-    #     ]
-    # }
+    "examples/runtest.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testC14N.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testHTML.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testReader.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testRelax.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testThreads.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testapi.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testchar.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testlimits.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testrecurse.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testSAX.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testURI.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testAutomata.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testdict.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testModule.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testRegexp.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testSchemas.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
+    "examples/testXPath.rs": {
+        "replace_all": [
+            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+        ],
+    },
 }
 INIT_ARRAY = """
 extern "C" fn run_static_initializers() {{
