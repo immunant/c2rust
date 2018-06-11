@@ -42,31 +42,31 @@ You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one
 
 ## Definitely Not Working
 
-* `xmllint` may core dump with some params, ie `--auto`.
 * `runtest` has missing functions for some reason (likely needs own runtest_variadic.c)
 * `testHTML` has missing functions for some reason (likely needs own testHTML_variadic.c)
-* `testThreads` core dumps; a bunch of threaded panics when unwrapping null fn ptr
 * `testapi` has a bunch of remaining linking errors
-* `testchar` has a test failure (maybe good for debugging?) and null fn ptr panic, core dump
 * `testrecurse` has missing functions (likely needs own testrecurse_variadic.c)
 * `testSAX` has missing functions (likely needs own testSAX_variadic.c)
-* `testdict` out of bounds index, core dump
 * `testModule` has remaining linker errors
-* `testXPath` out of bounds index, core dump
 
 ## Maybe Runnable
 
-* `testC14N` works with no params, but needs to be tested w/ real file input
+* `testXPath` works with no params, but needs to be tested w/ real file input
+* `xmllint` now works with `--auto`, but needs additional testing params and inputs
 * `testReader` works with no params, but needs to be tested w/ real file input
 * `testRelax` works with no params, but needs to be tested w/ real file input
 * `testRegexp` works with no params, but needs to be tested w/ read file input
-* `testSchemas` works with no params, but needs to be tested w/ read file input
 
 ## Runnable
 
+* `testThreads` prints a bunch of parsing errors
 * `testlimits` runs w/o memory crashes, but fails throughout the test
 
 ## Working
 
+* `testC14N` prints parsed output when given a file to read from `test/c14n`
+* `testSchemas` no longer crashes when provided a file from `test/schemas/*.xsd`
+* `testchar` prints tests completed
+* `testdict` prints "dictionary tests succeeded 20000 strings"
 * `testAutomata` takes a file from `test/automata` and produces equivalent output to C run
 * `testURI` waits on input from stdin, needs example input from `test/URI`. See `Makefile.am` and `result/URI/uri.data` for examples
