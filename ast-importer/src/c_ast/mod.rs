@@ -166,7 +166,10 @@ impl TypedAstContext {
             _ => return false,
         };
 
-        let type_id = self.index(func_id).kind.get_type();
+        let type_id = match self[func_id].kind.get_type() {
+                None => return false,
+                Some(t) => t,
+        };
         let pointed_id = match self.index(type_id).kind {
             CTypeKind::Pointer(pointer_qualtype) => pointer_qualtype.ctype,
             _ => return false,
@@ -231,7 +234,9 @@ impl TypedAstContext {
         // unused function declaration uses a VLA and that VLA's size expression mentions
         // some definitions.
         for expr in self.c_exprs.values() {
-            type_queue.push(expr.kind.get_type());
+            if let Some(t) = expr.kind.get_type() {
+                type_queue.push(t);
+            }
 
             match expr.kind {
                 // Could mention external functions, variables, and enum constants
@@ -707,8 +712,8 @@ impl CExprKind {
         }
     }
 
-    pub fn get_type(&self) -> CTypeId {
-        self.get_qual_type().expect("get_type called on bad expression").ctype
+    pub fn get_type(&self) -> Option<CTypeId> {
+        self.get_qual_type().map(|x|x.ctype)
     }
 
     /// Try to determine the truthiness or falsiness of the expression. Return `None` if we can't
