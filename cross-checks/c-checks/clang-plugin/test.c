@@ -18,7 +18,7 @@ uint64_t deref(uint64_t *x) DISABLE_XCHECKS(true) {
     return x ? *x : 0xDEADBEEF;
 }
 
-struct Foo {
+struct DISABLE_XCHECKS(false) Foo {
     uint64_t n1, n2;
     struct Foo *p CROSS_CHECK("{ fixed: 0x123 }");
     uint64_t nn[2];
