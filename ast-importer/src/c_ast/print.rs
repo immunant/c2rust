@@ -70,6 +70,13 @@ impl<W: Write> Printer<W> {
     pub fn print_expr_prec(&mut self, _precedence: i32, expr_id: CExprId, context: &TypedAstContext) -> Result<()> {
 
         match context.c_exprs.get(&expr_id).map(|l| &l.kind) {
+            Some(&CExprKind::BadExpr) =>
+                self.writer.write_all(b"BAD"),
+            Some(&CExprKind::ShuffleVector(..)) =>
+                self.writer.write_all(b"SHUFFLE"),
+            Some(&CExprKind::ConvertVector(..)) =>
+                self.writer.write_all(b"CONVERT"),
+
             Some(&CExprKind::Statements(_, compound_stmt_id)) => {
                 self.writer.write_all(b"(")?;
                 self.print_stmt(compound_stmt_id, false, false, context)?;

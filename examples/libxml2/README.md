@@ -10,6 +10,18 @@ You will need to edit the newly generated Makefile. Add these changes:
 * `am_runsuite_OBJECTS`, `am_runtest_OBJECTS`, `am_runxmlconf_OBJECTS`, `am_testAutomata_OBJECTS`, `am_testC14N_OBJECTS`, `am_testHTML_OBJECTS`, `am_testModule_OBJECTS`, `am_testReader_OBJECTS`, `am_testRegexp_OBJECTS`, `am_testRelax_OBJECTS`, `am_testSAX_OBJECTS`, `am_testSchemas_OBJECTS`, `am_testThreads_OBJECTS`, `am_testURI_OBJECTS`, `am_testXPath_OBJECTS`, `am_testapi_OBJECTS`, `am_testchar_OBJECTS`, `am_testdict_OBJECTS`, `am_testlimits_OBJECTS`, `am_testrecurse_OBJECTS`, `am_xmlcatalog_OBJECTS` need `variadic.$(OBJEXT)`
 * `am_xmllint_OBJECTS` needs `variadic.$(OBJEXT)` and `xmllint_variadic.$(OBJEXT)`
 
+You will also need to change:
+```bash
+clean-libtool:
+    -rm -rf .libs _libs
+```
+To:
+```bash
+clean-libtool:
+    -rm -rf .libs/*.o _libs
+```
+This will remove all `.o`'s from the `.libs` directory, so `testdso.so` can be utilized by `testModule`
+
 # Create a compile_commands.json
 
 in `libxml2/repo`:
@@ -44,10 +56,8 @@ You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one
 
 * `runtest` has missing functions for some reason (likely needs own runtest_variadic.c)
 * `testHTML` has missing functions for some reason (likely needs own testHTML_variadic.c)
-* `testapi` has a bunch of remaining linking errors
-* `testrecurse` has missing functions (likely needs own testrecurse_variadic.c)
 * `testSAX` has missing functions (likely needs own testSAX_variadic.c)
-* `testModule` has remaining linker errors
+* `testModule` can't find file
 
 ## Maybe Runnable
 
@@ -55,15 +65,17 @@ You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one
 * `xmllint` now works with `--auto`, but needs additional testing params and inputs
 * `testReader` works with no params, but needs to be tested w/ real file input
 * `testRelax` works with no params, but needs to be tested w/ real file input
-* `testRegexp` works with no params, but needs to be tested w/ read file input
 
 ## Runnable
 
-* `testThreads` prints a bunch of parsing errors
-* `testlimits` runs w/o memory crashes, but fails throughout the test
-
 ## Working
 
+* `testRegexp` works with files from `test/regexp` and produces same output as C version
+* `testrecurse` prints "Total 9 tests, no errors"
+* `testlimits` prints "Total 514 tests, no errors"
+    * Note: text output seems noticeably slower than the C version
+* `testThreads` prints nothing (but no longer prints parsing errors)
+* `testapi` runs successfully and prints "Total: 1172 functions, 280928 tests, 0 errors"
 * `testC14N` prints parsed output when given a file to read from `test/c14n`
 * `testSchemas` no longer crashes when provided a file from `test/schemas/*.xsd`
 * `testchar` prints tests completed

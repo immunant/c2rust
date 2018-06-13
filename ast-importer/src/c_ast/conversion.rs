@@ -1229,6 +1229,26 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, vaarg_expr)
                 }
 
+                ASTEntryTag::TagShuffleVectorExpr => {
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    let e = CExprKind::ShuffleVector(ty);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
+                }
+
+                ASTEntryTag::TagConvertVectorExpr => {
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    let e = CExprKind::ConvertVector(ty);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
+                }
+
                 // Declarations
 
                 ASTEntryTag::TagFunctionDecl if expected_ty & OTHER_DECL != 0 => {

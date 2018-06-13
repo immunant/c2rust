@@ -1913,7 +1913,11 @@ impl Translation {
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
     pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
-        match self.ast_context.index(expr_id).kind {
+        match self.ast_context[expr_id].kind {
+            CExprKind::BadExpr => Err(format!("convert_expr: expression kind not supported")),
+            CExprKind::ShuffleVector(..) => Err(format!("shuffle vector not supported")),
+            CExprKind::ConvertVector(..) => Err(format!("convert vector not supported")),
+
             CExprKind::UnaryType(_ty, kind, opt_expr, arg_ty) => {
                 let result = match kind {
                     UnTypeOp::SizeOf =>
@@ -2150,8 +2154,8 @@ impl Translation {
                     _ => {
                         let ty = self.convert_type(type_id.ctype)?;
 
-                        let lhs_type = self.ast_context.index(lhs).kind.get_qual_type();
-                        let rhs_type = self.ast_context.index(rhs).kind.get_qual_type();
+                        let lhs_type = self.ast_context.index(lhs).kind.get_qual_type().ok_or_else(|| format!("bad lhs type"))?;
+                        let rhs_type = self.ast_context.index(rhs).kind.get_qual_type().ok_or_else(|| format!("bad rhs type"))?;
 
                         let WithStmts { val: lhs, stmts: lhs_stmts } = self.convert_expr(ExprUse::RValue, lhs, is_static)?;
                         let WithStmts { val: rhs, stmts: rhs_stmts } = self.convert_expr(ExprUse::RValue, rhs, is_static)?;
@@ -3031,7 +3035,7 @@ impl Translation {
         reference: CExprId,
         uses_read: bool,
     ) -> Result<WithStmts<(P<Expr>, Option<P<Expr>>)>, String> {
-        let reference_ty = self.ast_context.index(reference).kind.get_qual_type();
+        let reference_ty = self.ast_context.index(reference).kind.get_qual_type().ok_or_else(|| format!("bad reference type"))?;
         let WithStmts {
             val: reference,
             mut stmts,
@@ -3101,7 +3105,7 @@ impl Translation {
 
         let op = if up { c_ast::BinOp::AssignAdd } else { c_ast::BinOp::AssignSubtract };
         let one = WithStmts::new(mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed)));
-        let arg_type = self.ast_context[arg].kind.get_qual_type();
+        let arg_type = self.ast_context[arg].kind.get_qual_type().ok_or_else(|| format!("bad arg type"))?;
         self.convert_assignment_operator_with_rhs(ExprUse::RValue, op, arg_type, arg, ty, one, Some(arg_type), Some(arg_type))
     }
 
@@ -3112,7 +3116,7 @@ impl Translation {
             return self.convert_pre_increment(ty, up, arg)
         }
 
-        let ty = self.ast_context.index(arg).kind.get_qual_type();
+        let ty = self.ast_context.index(arg).kind.get_qual_type().ok_or_else(|| format!("bad post inc type"))?;
 
         let WithStmts { val: (write, read), stmts: mut lhs_stmts } = self.name_reference_write_read(arg)?;
 
@@ -3324,7 +3328,7 @@ impl Translation {
         result_type: Option<CQualTypeId>
     ) -> Result<WithStmts<P<Expr>>, String> {
 
-        let rhs_type_id = self.ast_context.index(rhs).kind.get_qual_type();
+        let rhs_type_id = self.ast_context.index(rhs).kind.get_qual_type().ok_or_else(|| format!("bad assignment rhs type"))?;
         let rhs_translation = self.convert_expr(ExprUse::RValue, rhs, false)?;
         self.convert_assignment_operator_with_rhs(use_, op, qtype, lhs, rhs_type_id, rhs_translation, compute_type, result_type)
     }
@@ -3345,7 +3349,7 @@ impl Translation {
 
         let result_type_id = result_type.unwrap_or(qtype);
         let compute_lhs_type_id = compute_type.unwrap_or(qtype);
-        let initial_lhs_type_id = self.ast_context.index(lhs).kind.get_qual_type();
+        let initial_lhs_type_id = self.ast_context.index(lhs).kind.get_qual_type().ok_or_else(|| format!("bad initial lhs type"))?;
 
         let is_volatile = initial_lhs_type_id.qualifiers.is_volatile;
         let is_volatile_compound_assign = op.underlying_assignment().is_some() && is_volatile;

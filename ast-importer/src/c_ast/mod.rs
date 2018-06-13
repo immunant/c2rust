@@ -123,6 +123,9 @@ impl TypedAstContext {
     /// that it doesn't, return `false`.
     pub fn is_expr_pure(&self, expr: CExprId) -> bool {
         match self.index(expr).kind {
+            CExprKind::BadExpr |
+            CExprKind::ShuffleVector(..) |
+            CExprKind::ConvertVector(..) |
             CExprKind::Call(_, _, _) |
             CExprKind::Unary(_, UnOp::PreIncrement, _) |
             CExprKind::Unary(_, UnOp::PostIncrement, _) |
@@ -466,10 +469,10 @@ impl Index<CTypeId> for TypedAstContext {
 
 impl Index<CExprId> for TypedAstContext {
     type Output = CExpr;
-
     fn index(&self, index: CExprId) -> &CExpr {
+        static BADEXPR: CExpr = Located { loc: None, kind: CExprKind::BadExpr, };
         match self.c_exprs.get(&index) {
-            None => panic!("Could not find {:?} in TypedAstContext", index),
+            None => &BADEXPR, // panic!("Could not find {:?} in TypedAstContext", index),
             Some(ty) => ty,
         }
     }
@@ -662,6 +665,12 @@ pub enum CExprKind {
 
     // Variable argument list
     VAArg(CQualTypeId, CExprId),
+
+    // Unsupported vector operations,
+    ShuffleVector(CQualTypeId),
+    ConvertVector(CQualTypeId),
+
+    BadExpr,
 }
 
 #[derive(Copy, Debug, Clone)]
@@ -671,8 +680,9 @@ pub enum MemberKind {
 }
 
 impl CExprKind {
-    pub fn get_qual_type(&self) -> CQualTypeId {
+    pub fn get_qual_type(&self) -> Option<CQualTypeId> {
         match *self {
+            CExprKind::BadExpr => None,
             CExprKind::Literal(ty, _) |
             CExprKind::OffsetOf(ty, _) |
             CExprKind::Unary(ty, _, _) |
@@ -691,12 +701,14 @@ impl CExprKind {
             CExprKind::CompoundLiteral(ty, _) |
             CExprKind::Predefined(ty, _) |
             CExprKind::Statements(ty, _) |
-            CExprKind::VAArg(ty, _) => ty,
+            CExprKind::VAArg(ty, _) |
+            CExprKind::ShuffleVector(ty) |
+            CExprKind::ConvertVector(ty) => Some(ty),
         }
     }
 
     pub fn get_type(&self) -> CTypeId {
-        self.get_qual_type().ctype
+        self.get_qual_type().expect("get_type called on bad expression").ctype
     }
 
     /// Try to determine the truthiness or falsiness of the expression. Return `None` if we can't
