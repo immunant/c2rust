@@ -411,22 +411,22 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         } else {
 
             let mut features = vec!["libc"];
-
-            let mut pragmas: HashMap<&str, Vec<&str>> = HashMap::new();
-            pragmas.insert("allow", vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
-                                     "dead_code", "mutable_transmutes", "unused_mut"]);
-
             features.extend(t.features.borrow().iter());
             features.extend(t.type_converter.borrow().features_used());
 
+            let mut pragmas: Vec<(&str, Vec<&str>)> =
+                vec![("allow", vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
+                                    "dead_code", "mutable_transmutes", "unused_mut"])];
+
             if t.tcfg.cross_checks {
                 features.append(&mut vec!["plugin", "custom_attribute"]);
-                pragmas.insert("cross_check", vec!["yes"]);
+                pragmas.push(("cross_check", vec!["yes"]));
             }
 
-            pragmas.insert("feature", features);
+            pragmas.push(("feature", features));
 
-            for (key,values) in pragmas {
+            for (key, mut values) in pragmas {
+                values.sort();
                 for value in values {
                     s.print_attribute(&mk().attribute::<_, TokenStream>(
                         AttrStyle::Inner,
