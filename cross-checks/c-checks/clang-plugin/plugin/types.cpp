@@ -468,7 +468,13 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
     auto record_decl = record_ty->getDecl();
 
     DefaultsConfigOptRef file_defaults;
-    std::optional<StructConfigRef> record_cfg;
+    StructConfig record_cfg{record_name};
+    // Read the inline function configurations
+    parse_xcheck_attrs(record_decl, [&record_cfg, &record_name] (llvm::yaml::Input &yin) {
+        StructConfig scfg{record_name};
+        yin >> scfg;
+        record_cfg.update(scfg);
+    });
     auto ploc = ctx.getSourceManager().getPresumedLoc(record_decl->getLocStart());
     if (ploc.isValid()) {
         std::string file_name(ploc.getFilename());
@@ -476,7 +482,9 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
         if (it != defaults_configs.end()) {
             file_defaults = it->second;
         }
-        record_cfg = get_struct_config(file_name, record_name);
+        auto scfg = get_struct_config(file_name, record_name);
+        if (scfg)
+            record_cfg.update(*scfg);
 
         // Check the blacklist first
         std::pair<std::string_view, std::string_view>
@@ -487,20 +495,20 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
     bool disable_xchecks = this->disable_xchecks;
     if (file_defaults && file_defaults->get().disable_xchecks)
         disable_xchecks = *file_defaults->get().disable_xchecks;
-    if (record_cfg && record_cfg->get().disable_xchecks)
-        disable_xchecks = *record_cfg->get().disable_xchecks;
+    if (record_cfg.disable_xchecks)
+        disable_xchecks = *record_cfg.disable_xchecks;
     if (disable_xchecks) {
         // Cross-checks are disabled for this record
         return;
     }
 
-    if (record_cfg && record_cfg->get().custom_hash) {
+    if (record_cfg.custom_hash) {
         // The user specified a "custom_hash" function, so just forward
         // the structure to it
         // FIXME: would be nice to not have to emit a function body,
         // and instead declare our function using "alias", e.g.:
         // uint64_t __c2rust_hash_T_struct(struct T *x) __attribute__((alias("...")));
-        auto &hash_fn_name = *record_cfg->get().custom_hash;
+        auto &hash_fn_name = *record_cfg.custom_hash;
         auto body_fn = [this, &ctx, &hash_fn_name, &func] (FunctionDecl *fn_decl) -> StmtVec {
             auto param = fn_decl->getParamDecl(0);
             auto param_ty = param->getType();
@@ -567,8 +575,8 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
            "Called build_record_hash_function on neither a struct nor a class");
 
     std::string hasher_name{"jodyhash"};
-    if (record_cfg && record_cfg->get().field_hasher) {
-        hasher_name = *record_cfg->get().field_hasher;
+    if (record_cfg.field_hasher) {
+        hasher_name = *record_cfg.field_hasher;
     }
     std::string hasher_prefix{"__c2rust_hasher_"};
     hasher_prefix += hasher_name;
@@ -607,12 +615,12 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
             }
 
             XCheck field_xcheck;
-            if (record_cfg) {
-                auto &fields = record_cfg->get().fields;
-                auto it = fields.find(field->getName());
-                if (it != fields.end()) {
-                    field_xcheck = it->second;
-                }
+            parse_xcheck_attrs(field, [&field_xcheck] (llvm::yaml::Input &yin) {
+                yin >> field_xcheck;
+            });
+            auto it = record_cfg.fields.find(field->getName());
+            if (it != record_cfg.fields.end()) {
+                field_xcheck = it->second;
             }
             if (field_xcheck.type == XCheck::DISABLED)
                 continue;

@@ -18,46 +18,12 @@ void MappingTraits<ExtraXCheck>::mapping(IO &io, ExtraXCheck &ex) {
     io.mapRequired("custom", ex.custom);
 }
 
-template<>
-void yamlize(IO &io, XCheck &xc, bool, EmptyContext &ctx) {
-    if (io.outputting()) {
-        // TODO: implement
-        llvm_unreachable("Unimplemented");
-    } else {
-        io.beginEnumScalar();
-#define CHECK_ENUM(_s, _e)               \
-    if (io.matchEnumScalar(_s, false)) { \
-        xc.type = XCheck::_e;            \
-        return;                          \
-    }
-        CHECK_ENUM("default",  DEFAULT);
-        CHECK_ENUM("none",     DISABLED);
-        CHECK_ENUM("disabled", DISABLED);
-#undef CHECK_ENUM
-        // Skip calling io.endEnumScalar(),
-        // since that just exits with an error
-        // for all values not covered above
+void MappingTraits<FunctionConfig>::mapping(IO &io, FunctionConfig &cfg) {
+    cfg.read_config(io);
+}
 
-        io.beginMapping();
-#define CHECK_DATA(_s, _dt, _e) do {              \
-        EmptyContext ctx;                         \
-        Optional<_dt> data;                       \
-        io.mapOptionalWithContext(_s, data, ctx); \
-        if (data) {                               \
-            xc.type = XCheck::_e;                 \
-            xc.data = *data;                      \
-            return;                               \
-        }                                         \
-    } while (0)
-        CHECK_DATA("fixed",  uint64_t,    FIXED);
-        CHECK_DATA("djb2",   std::string, DJB2);
-        CHECK_DATA("custom", std::string, CUSTOM);
-#undef CHECK_DATA
-        io.endMapping();
-
-        // We couldn't handle this input, so throw an error
-        io.setError("Unknown cross-check type");
-    }
+void MappingTraits<StructConfig>::mapping(IO &io, StructConfig &cfg) {
+    cfg.read_config(io);
 }
 
 void MappingTraits<ItemConfig>::mapping(IO &io, ItemConfig &cfg) {
@@ -82,11 +48,15 @@ void MappingTraits<ItemConfig>::mapping(IO &io, ItemConfig &cfg) {
         std::string item_type;
         io.mapRequired("item", item_type);
         if (item_type == "defaults") {
-            cfg = DefaultsConfig(io);
+            cfg.emplace<DefaultsConfig>(io);
         } else if (item_type == "function") {
-            cfg = FunctionConfig(io);
+            std::string name;
+            io.mapRequired("name", name);
+            cfg.emplace<FunctionConfig>(name).read_config(io);
         } else if (item_type == "struct") {
-            cfg = StructConfig(io);
+            std::string name;
+            io.mapRequired("name", name);
+            cfg.emplace<StructConfig>(name).read_config(io);
         } else {
             io.setError(Twine("Unknown item type: ") + item_type);
         }

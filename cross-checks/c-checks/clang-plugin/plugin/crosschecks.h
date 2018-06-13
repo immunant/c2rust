@@ -8,6 +8,7 @@
 #include "clang/Sema/SemaConsumer.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/Regex.h"
 
 #include "config.h"
 
@@ -214,6 +215,23 @@ private:
         return {};
     }
 
+    // Regex that matches cross-check annotations
+    llvm::Regex xcheck_ann_regex{"^[:space:]*cross_check[:space:]*:(.*)$"};
+
+    template<typename Fn>
+    void parse_xcheck_attrs(Decl *decl, Fn fn) {
+        for (const auto *aa : decl->specific_attrs<clang::AnnotateAttr>()) {
+            auto ann = aa->getAnnotation();
+            llvm::SmallVector<llvm::StringRef, 2> groups;
+            if (xcheck_ann_regex.match(ann, &groups)) {
+                std::string xcheck_str = groups[1];
+                llvm::yaml::Input yin{xcheck_str};
+                fn(yin);
+                // TODO: check yin.error()
+            }
+        }
+    }
+
     ASTConsumer *toplevel_consumer = nullptr;
 
     std::vector<FunctionDecl*> new_funcs;
@@ -418,7 +436,7 @@ private:
     build_parameter_xcheck(ParmVarDecl *param,
                            const DefaultsConfigOptRef file_defaults,
                            llvm::StringRef func_name,
-                           const std::optional<FunctionConfigRef> &func_cfg,
+                           const FunctionConfig &func_cfg,
                            const DeclMap &param_decls,
                            ASTContext &ctx);
 

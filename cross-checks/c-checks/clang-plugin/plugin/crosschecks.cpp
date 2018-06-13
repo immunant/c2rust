@@ -326,22 +326,21 @@ CrossCheckInserter::TinyStmtVec
 CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
                                            const DefaultsConfigOptRef file_defaults,
                                            llvm::StringRef func_name,
-                                           const std::optional<FunctionConfigRef> &func_cfg,
+                                           const FunctionConfig &func_cfg,
                                            const DeclMap &param_decls,
                                            ASTContext &ctx) {
     XCheck param_xcheck{XCheck::DISABLED};
     if (file_defaults && file_defaults->get().all_args)
         param_xcheck = *file_defaults->get().all_args;
-    if (func_cfg) {
-        auto &func_cfg_ref = func_cfg->get();
-        if (func_cfg_ref.all_args) {
-            param_xcheck = *func_cfg_ref.all_args;
-        }
-
-        auto it = func_cfg_ref.args.find(param->getName());
-        if (it != func_cfg_ref.args.end()) {
-            param_xcheck = it->second;
-        }
+    if (func_cfg.all_args) {
+        param_xcheck = *func_cfg.all_args;
+    }
+    parse_xcheck_attrs(param, [&param_xcheck] (llvm::yaml::Input &yin) {
+        yin >> param_xcheck;
+    });
+    auto it = func_cfg.args.find(param->getName());
+    if (it != func_cfg.args.end()) {
+        param_xcheck = it->second;
     }
     auto param_xcheck_default_fn = [this, &ctx, func_name, param] (void) {
         // By default, we just call __c2rust_hash_T(x)
@@ -398,8 +397,15 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 continue;
             }
 
+            FunctionConfig func_cfg{llvm_string_ref_to_sv(func_name)};
+            // Read the inline function configurations
+            parse_xcheck_attrs(fd, [&func_cfg, func_name] (llvm::yaml::Input &yin) {
+                FunctionConfig fcfg{llvm_string_ref_to_sv(func_name)};
+                yin >> fcfg;
+                func_cfg.update(fcfg);
+            });
+            // Read the external function configuration
             DefaultsConfigOptRef file_defaults;
-            std::optional<FunctionConfigRef> func_cfg;
             auto ploc = ctx.getSourceManager().getPresumedLoc(fd->getLocStart());
             if (ploc.isValid()) {
                 std::string file_name(ploc.getFilename());
@@ -407,14 +413,16 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 if (it != defaults_configs.end()) {
                     file_defaults = it->second;
                 }
-                func_cfg = get_function_config(file_name, func_name);
+                auto fcfg = get_function_config(file_name, func_name);
+                if (fcfg)
+                    func_cfg.update(*fcfg);
             }
 
             bool disable_xchecks = this->disable_xchecks;
             if (file_defaults && file_defaults->get().disable_xchecks)
                 disable_xchecks = *file_defaults->get().disable_xchecks;
-            if (func_cfg && func_cfg->get().disable_xchecks)
-                disable_xchecks = *func_cfg->get().disable_xchecks;
+            if (func_cfg.disable_xchecks)
+                disable_xchecks = *func_cfg.disable_xchecks;
             if (disable_xchecks)
                 continue;
 
@@ -429,8 +437,8 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             XCheck entry_xcheck{XCheck::DEFAULT};
             if (file_defaults && file_defaults->get().entry)
                 entry_xcheck = *file_defaults->get().entry;
-            if (func_cfg && func_cfg->get().entry)
-                entry_xcheck = *func_cfg->get().entry;
+            if (func_cfg.entry)
+                entry_xcheck = *func_cfg.entry;
             auto entry_xcheck_default_fn = [&ctx, fd] (void) {
                 auto rb_xcheck_hash = djb2_hash(fd->getName());
                 return IntegerLiteral::Create(ctx,
@@ -472,15 +480,13 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 llvm_unreachable("invalid XCheck::DEFAULT for extra cross-check");
                 return nullptr;
             };
-            if (func_cfg) {
-                for (auto &ex : func_cfg->get().entry_extra) {
-                    XCheck extra_xcheck{XCheck::CUSTOM, ex.custom};
-                    auto extra_xcheck_stmts = build_xcheck(extra_xcheck,
-                                                           ex.tag, ctx,
-                                                           extra_xcheck_default_fn,
-                                                           param_custom_args_fn);
-                    add_body_stmts(extra_xcheck_stmts);
-                }
+            for (auto &ex : func_cfg.entry_extra) {
+                XCheck extra_xcheck{XCheck::CUSTOM, ex.custom};
+                auto extra_xcheck_stmts = build_xcheck(extra_xcheck,
+                                                       ex.tag, ctx,
+                                                       extra_xcheck_default_fn,
+                                                       param_custom_args_fn);
+                add_body_stmts(extra_xcheck_stmts);
             }
 
             // Build the body function and call it
@@ -555,8 +561,8 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             XCheck exit_xcheck{XCheck::DEFAULT};
             if (file_defaults && file_defaults->get().exit)
                 exit_xcheck = *file_defaults->get().exit;
-            if (func_cfg && func_cfg->get().exit)
-                exit_xcheck = *func_cfg->get().exit;
+            if (func_cfg.exit)
+                exit_xcheck = *func_cfg.exit;
             auto exit_xcheck_stmts =
                 build_xcheck(exit_xcheck, XCheck::Tag::FUNCTION_EXIT,
                              ctx, entry_xcheck_default_fn, no_custom_args);
@@ -571,8 +577,8 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 XCheck result_xcheck{XCheck::DEFAULT};
                 if (file_defaults && file_defaults->get().ret)
                     result_xcheck = *file_defaults->get().ret;
-                if (func_cfg && func_cfg->get().ret)
-                    result_xcheck = *func_cfg->get().ret;
+                if (func_cfg.ret)
+                    result_xcheck = *func_cfg.ret;
 
                 auto result_xcheck_default_fn = [this, &ctx, func_name,
                                                  result_var, result_ty] (void) {
@@ -594,15 +600,13 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                  ctx, result_xcheck_default_fn, param_custom_args_fn);
                 add_body_stmts(result_xcheck_stmts);
             }
-            if (func_cfg) {
-                // Add exit_extra checks
-                for (auto &ex : func_cfg->get().exit_extra) {
-                    XCheck extra_xcheck{XCheck::CUSTOM, ex.custom};
-                    auto extra_xcheck_stmts =
-                        build_xcheck(extra_xcheck, ex.tag, ctx,
-                                     extra_xcheck_default_fn, param_custom_args_fn);
-                    add_body_stmts(extra_xcheck_stmts);
-                }
+            // Add exit_extra checks
+            for (auto &ex : func_cfg.exit_extra) {
+                XCheck extra_xcheck{XCheck::CUSTOM, ex.custom};
+                auto extra_xcheck_stmts =
+                    build_xcheck(extra_xcheck, ex.tag, ctx,
+                                 extra_xcheck_default_fn, param_custom_args_fn);
+                add_body_stmts(extra_xcheck_stmts);
             }
 
             // Add the final return
