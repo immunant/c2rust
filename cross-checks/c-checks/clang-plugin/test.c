@@ -3,41 +3,44 @@
 
 uint64_t ctr = 0;
 
-uint64_t foo(void) {
+#define CROSS_CHECK(x)  __attribute__((annotate("cross_check:" x)))
+#define DISABLE_XCHECKS(x) CROSS_CHECK("{ disable_xchecks: " #x " }")
+
+uint64_t foo(void) DISABLE_XCHECKS(true) {
     return 0x123457890ABCDEFULL;
 }
 
-uint64_t id(uint64_t x) {
+uint64_t id(uint64_t x) DISABLE_XCHECKS(true) {
     return x;
 }
 
-uint64_t deref(uint64_t *x) {
+uint64_t deref(uint64_t *x) DISABLE_XCHECKS(true) {
     return x ? *x : 0xDEADBEEF;
 }
 
 struct Foo {
     uint64_t n1, n2;
-    struct Foo *p;
+    struct Foo *p CROSS_CHECK("{ fixed: 0x123 }");
     uint64_t nn[2];
     struct {
         uint64_t n3;
     } n3;
 };
 
-uint64_t my_Foo_hash(struct Foo *x) {
+uint64_t my_Foo_hash(struct Foo *x) DISABLE_XCHECKS(true) {
     return (128 + x->n1) * 256 + (x->n2 + 128);
 }
 
-uint64_t double_hash(uint64_t a, uint64_t b) {
+uint64_t double_hash(uint64_t a, uint64_t b) DISABLE_XCHECKS(true) {
     return a * 65536 + b;
 }
 
-inline int nn_n(uint64_t *nn) {
+inline int nn_n(uint64_t *nn) DISABLE_XCHECKS(true) {
     return nn[0];
 }
 
 uint64_t fibo(uint64_t n[3], const uint64_t *p, const uint64_t *q, struct Foo foo,
-              int (*stop)(uint64_t)) {
+              int (*stop)(uint64_t) CROSS_CHECK("{ fixed: 0x12340000 }")) CROSS_CHECK("{ all_args: default }") {
 #if 0
     printf("fibo call %llu:%llu %p %p\n", ctr, n, p, q);
 #endif
@@ -58,7 +61,7 @@ int check_stop(uint64_t n) {
     return n <= 1;
 }
 
-int main() {
+int main() DISABLE_XCHECKS(false) {
 #if 0
     printf("Profiling test!!!\n");
     fibo(4);

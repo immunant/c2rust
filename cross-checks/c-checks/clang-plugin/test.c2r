@@ -5,7 +5,7 @@ test.c:
 
     - item: function
       name: main
-      disable_xchecks: false
+      #disable_xchecks: false
       #entry: disabled
       #entry: { djb2: "" }
 
@@ -32,14 +32,14 @@ test.c:
         #p: { custom: "deref(p)" }
         #p: { custom: "id(ctr)" }
         #q: default
-        foo: default
+        #foo: default
         #foo: { custom: "my_Foo_hash(foo)" }
         #n: disabled
         #n: { custom: "id(n)" }
         #n: { custom: "deref(n)" }
         #n: { custom: "id(n, x)" }
         #n: { fixed: 0xabcd1234 }
-        stop: default
+        #stop: default
 
       entry_extra:
         - { custom: "my_Foo_hash(foo)" }
@@ -63,7 +63,7 @@ test.c:
         #n2: { custom: "id" }
         #n2: { custom: "foo(n1, n2)" }
         n2: { custom: "double_hash(n1, n2)" }
-        p: disabled # TODO: enable when MAX_DEPTH is implemented
+        #p: disabled # TODO: enable when MAX_DEPTH is implemented
 
     - item: struct
       name: Foo$field$n3
