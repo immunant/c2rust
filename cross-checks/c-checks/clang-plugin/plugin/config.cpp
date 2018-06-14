@@ -19,11 +19,11 @@ void MappingTraits<ExtraXCheck>::mapping(IO &io, ExtraXCheck &ex) {
 }
 
 void MappingTraits<FunctionConfig>::mapping(IO &io, FunctionConfig &cfg) {
-    cfg.read_config(io);
+    cfg.yamlize(io);
 }
 
 void MappingTraits<StructConfig>::mapping(IO &io, StructConfig &cfg) {
-    cfg.read_config(io);
+    cfg.yamlize(io);
 }
 
 void MappingTraits<ItemConfig>::mapping(IO &io, ItemConfig &cfg) {
@@ -52,11 +52,11 @@ void MappingTraits<ItemConfig>::mapping(IO &io, ItemConfig &cfg) {
         } else if (item_type == "function") {
             std::string name;
             io.mapRequired("name", name);
-            cfg.emplace<FunctionConfig>(name).read_config(io);
+            cfg.emplace<FunctionConfig>(name).yamlize(io);
         } else if (item_type == "struct") {
             std::string name;
             io.mapRequired("name", name);
-            cfg.emplace<StructConfig>(name).read_config(io);
+            cfg.emplace<StructConfig>(name).yamlize(io);
         } else {
             io.setError(Twine("Unknown item type: ") + item_type);
         }

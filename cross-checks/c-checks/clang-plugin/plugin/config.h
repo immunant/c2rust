@@ -138,7 +138,7 @@ struct FunctionConfig {
 
     FunctionConfig(std::string_view n) : name(n) {}
 
-    void read_config(llvm::yaml::IO &io) {
+    void yamlize(llvm::yaml::IO &io) {
         io.mapOptional("disable_xchecks", disable_xchecks);
         io.mapOptional("entry",     entry);
         io.mapOptional("exit",      exit);
@@ -186,7 +186,7 @@ struct StructConfig {
 
     StructConfig(std::string_view n) : name(n) {}
 
-    void read_config(llvm::yaml::IO &io) {
+    void yamlize(llvm::yaml::IO &io) {
         io.mapOptional("disable_xchecks", disable_xchecks);
         io.mapOptional("field_hasher",  field_hasher);
         io.mapOptional("custom_hash",   custom_hash);
