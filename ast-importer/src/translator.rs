@@ -411,22 +411,22 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         } else {
 
             let mut features = vec!["libc"];
-
-            let mut pragmas: HashMap<&str, Vec<&str>> = HashMap::new();
-            pragmas.insert("allow", vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
-                                     "dead_code", "mutable_transmutes", "unused_mut"]);
-
             features.extend(t.features.borrow().iter());
             features.extend(t.type_converter.borrow().features_used());
 
+            let mut pragmas: Vec<(&str, Vec<&str>)> =
+                vec![("allow", vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
+                                    "dead_code", "mutable_transmutes", "unused_mut"])];
+
             if t.tcfg.cross_checks {
                 features.append(&mut vec!["plugin", "custom_attribute"]);
-                pragmas.insert("cross_check", vec!["yes"]);
+                pragmas.push(("cross_check", vec!["yes"]));
             }
 
-            pragmas.insert("feature", features);
+            pragmas.push(("feature", features));
 
-            for (key,values) in pragmas {
+            for (key, mut values) in pragmas {
+                values.sort();
                 for value in values {
                     s.print_attribute(&mk().attribute::<_, TokenStream>(
                         AttrStyle::Inner,
@@ -1317,12 +1317,13 @@ impl Translation {
 
     /// Convert a C expression to a rust boolean expression
     pub fn convert_condition(&self, target: bool, cond_id: CExprId, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
-        let ty_id = self.ast_context.index(cond_id).kind.get_type();
+        let ty_id = self.ast_context[cond_id].kind.get_type().ok_or_else(|| format!("bad condition type"))?;
 
         let null_pointer_case = |negated: bool, ptr: CExprId| -> Result<WithStmts<P<Expr>>, String> {
             let val = self.convert_expr(ExprUse::RValue, ptr, is_static)?;
+            let ptr_type = self.ast_context[ptr].kind.get_type().ok_or_else(||format!("bad pointer type for condition"))?;
             Ok(val.map(|e| {
-                if self.is_function_pointer(self.ast_context.index(ptr).kind.get_type()) {
+                if self.is_function_pointer(ptr_type) {
                     if negated {
                         mk().method_call_expr(e, "is_some", vec![] as Vec<P<Expr>>)
                     } else {
@@ -2175,7 +2176,8 @@ impl Translation {
                 let lhs_node = &self.ast_context.index(*lhs).kind;
                 let rhs_node = &self.ast_context.index(*rhs).kind;
 
-                let lhs_is_pointer = self.ast_context.resolve_type(lhs_node.get_type()).kind.is_pointer();
+                let lhs_node_type = lhs_node.get_type().ok_or_else(|| format!("lhs node bad type"))?;
+                let lhs_is_pointer = self.ast_context.resolve_type(lhs_node_type).kind.is_pointer();
 
                 // From here on in, the LHS is the pointer/array and the RHS the index
                 let (lhs, rhs, lhs_node) =
@@ -2189,7 +2191,8 @@ impl Translation {
                 let simple_index_array =
                 match lhs_node {
                     &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _) => {
-                        match self.ast_context.resolve_type(self.ast_context[arr].kind.get_type()).kind {
+                        let arr_type = self.ast_context[arr].kind.get_type().ok_or_else(|| format!("bad arr type"))?;
+                        match self.ast_context.resolve_type(arr_type).kind {
                             // These get translated to 0-element arrays, this avoids the bounds check
                             // that using an array subscript in Rust would cause
                             CTypeKind::IncompleteArray(_) => None,
@@ -2203,7 +2206,7 @@ impl Translation {
                     // If the LHS just underwent an implicit cast from array to pointer, bypass that
                     // to make an actual Rust indexing operation
 
-                    let t = self.ast_context[arr].kind.get_type();
+                    let t = self.ast_context[arr].kind.get_type().ok_or_else(|| format!("bad arr type"))?;
                     let var_elt_type_id = match self.ast_context.resolve_type(t).kind {
                         CTypeKind::ConstantArray(..) => None,
                         CTypeKind::IncompleteArray(..) => None,
@@ -2228,7 +2231,7 @@ impl Translation {
                     let lhs = self.convert_expr(ExprUse::RValue, *lhs, is_static)?;
                     stmts.extend(lhs.stmts);
 
-                    let lhs_type_id = lhs_node.get_type();
+                    let lhs_type_id = lhs_node.get_type().ok_or_else(|| format!("bad lhs type"))?;
 
                     // Determine the type of element being indexed
                     let pointee_type_id = match self.ast_context.resolve_type(lhs_type_id).kind {
@@ -2585,7 +2588,7 @@ impl Translation {
                         }
                     }
 
-                    let source_ty_id = self.ast_context.index(expr).kind.get_type();
+                    let source_ty_id = self.ast_context[expr].kind.get_type().ok_or_else(|| format!("bad source type"))?;
 
                     if self.is_function_pointer(ty.ctype) || self.is_function_pointer(source_ty_id) {
                         let source_ty = self.convert_type(source_ty_id)?;
@@ -2615,7 +2618,8 @@ impl Translation {
                 let target_ty = self.convert_type(ty.ctype)?;
                 let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
 
-                let source_ty_ctype_id = self.ast_context.index(expr).kind.get_type();
+                let source_ty_ctype_id = self.ast_context[expr].kind.get_type()
+                    .ok_or_else(|| format!("bad source expression"))?;
 
                 if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
                     // Casts targeting `enum` types...
@@ -2658,7 +2662,7 @@ impl Translation {
                     }
                     _ => {
                         // Variable length arrays are already represented as pointers.
-                        let source_ty = self.ast_context[expr].kind.get_type();
+                        let source_ty = self.ast_context[expr].kind.get_type().ok_or_else(|| format!("bad variable array source type"))?;
                         if let CTypeKind::VariableArray(..) = self.ast_context.resolve_type(source_ty).kind {
                             Ok(val)
                         } else {
