@@ -10,18 +10,6 @@ You will need to edit the newly generated Makefile. Add these changes:
 * `am_runsuite_OBJECTS`, `am_runtest_OBJECTS`, `am_runxmlconf_OBJECTS`, `am_testAutomata_OBJECTS`, `am_testC14N_OBJECTS`, `am_testHTML_OBJECTS`, `am_testModule_OBJECTS`, `am_testReader_OBJECTS`, `am_testRegexp_OBJECTS`, `am_testRelax_OBJECTS`, `am_testSAX_OBJECTS`, `am_testSchemas_OBJECTS`, `am_testThreads_OBJECTS`, `am_testURI_OBJECTS`, `am_testXPath_OBJECTS`, `am_testapi_OBJECTS`, `am_testchar_OBJECTS`, `am_testdict_OBJECTS`, `am_testlimits_OBJECTS`, `am_testrecurse_OBJECTS`, `am_xmlcatalog_OBJECTS` need `variadic.$(OBJEXT)`
 * `am_xmllint_OBJECTS` needs `variadic.$(OBJEXT)` and `xmllint_variadic.$(OBJEXT)`
 
-You will also need to change:
-```bash
-clean-libtool:
-    -rm -rf .libs _libs
-```
-To:
-```bash
-clean-libtool:
-    -rm -rf .libs/*.o _libs
-```
-This will remove all `.o`'s from the `.libs` directory, so `testdso.so` can be utilized by `testModule`
-
 # Create a compile_commands.json
 
 in `libxml2/repo`:
@@ -30,7 +18,7 @@ in `libxml2/repo`:
 
 If your `compile_commands.json` enables optimizations(`-O2`) you will need to remove them so that unsupported compiler_builtins are less likely to be generated and leave you in an uncompilable state.
 
-Run `make clean` here to get rid of gcc staticlibs or else you may see `CRITICAL:root:error: some ELF objects were not compiled with clang:` in the next step
+Run `rm .libs/*.o` here to get rid of gcc generated staticlibs or else you may see `CRITICAL:root:error: some ELF objects were not compiled with clang:` in the next step
 
 # Generate Rust Code
 
@@ -54,22 +42,23 @@ You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one
 
 ## Definitely Not Working
 
-* `runtest` has missing functions for some reason (likely needs own runtest_variadic.c)
-* `testHTML` has missing functions for some reason (likely needs own testHTML_variadic.c)
-* `testSAX` has missing functions (likely needs own testSAX_variadic.c)
-* `testModule` can't find file
+* `runtest` has missing functions for some reason (likely needs variadic.c support)
 
 ## Maybe Runnable
 
 * `testXPath` works with no params, but needs to be tested w/ real file input
-* `xmllint` now works with `--auto`, but needs additional testing params and inputs
-* `testReader` works with no params, but needs to be tested w/ real file input
 * `testRelax` works with no params, but needs to be tested w/ real file input
 
 ## Runnable
 
+* `testReader` seems to be mostly working identically but with some slight formatting differences. Try `testReader --valid test/japancrlf.xml`
+
 ## Working
 
+* `xmllint` seems to work equivalently with files as in C
+* `testSAX` prints out nothing on success, just like C version
+* `testModule` prints "Success!"
+* `testHTML` works with input files from `test/HTML` and produces same output as C version
 * `testRegexp` works with files from `test/regexp` and produces same output as C version
 * `testrecurse` prints "Total 9 tests, no errors"
 * `testlimits` prints "Total 514 tests, no errors"
