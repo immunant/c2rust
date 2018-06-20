@@ -63,6 +63,7 @@ def build_clang_plugin(args: str) -> None:
             cargs = ["-G", "Ninja", c.CLANG_XCHECK_PLUGIN_SRC,
                      "-DLLVM_DIR={}/lib/cmake/llvm".format(c.LLVM_BLD),
                      "-DClang_DIR={}/lib/cmake/clang".format(c.LLVM_BLD),
+                     "-DLLVM_EXTERNAL_LIT={}/bin/llvm-lit".format(c.LLVM_BLD),
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DBUILD_SHARED_LIBS=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
