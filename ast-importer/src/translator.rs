@@ -174,23 +174,6 @@ fn wrapping_neg_expr(arg: P<Expr>) -> P<Expr> {
     mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<P<Expr>>)
 }
 
-fn is_int(ty: &CTypeKind) -> bool {
-    match *ty {
-        CTypeKind::SChar |
-        CTypeKind::Short |
-        CTypeKind::Int |
-        CTypeKind::Long |
-        CTypeKind::LongLong |
-        CTypeKind::UChar |
-        CTypeKind::UShort |
-        CTypeKind::UInt |
-        CTypeKind::ULong |
-        CTypeKind::ULongLong |
-        CTypeKind::Int128 |
-        CTypeKind::UInt128 => true,
-        _ => false,
-    }
-}
 
 fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> {
     let type_args = vec![source_ty, target_ty];
@@ -3264,7 +3247,7 @@ impl Translation {
             c_ast::UnOp::Negate => {
                 let val = self.convert_expr(ExprUse::RValue, arg, is_static)?;
 
-                if is_int(&resolved_ctype.kind) {
+                if resolved_ctype.kind.is_unsigned_integral_type() {
                     Ok(val.map(wrapping_neg_expr))
                 } else {
                     Ok(val.map(neg_expr))
