@@ -19,6 +19,7 @@ use std::ops::Index;
 use std::cell::RefCell;
 use std::char;
 use dtoa;
+use with_stmts::WithStmts;
 
 use cfg;
 
@@ -66,57 +67,6 @@ pub struct Translation {
     pub comment_store: RefCell<CommentStore>,
 }
 
-#[derive(Debug)]
-pub struct WithStmts<T> {
-    pub stmts: Vec<Stmt>,
-    pub val: T,
-}
-
-impl<T> WithStmts<T> {
-    pub fn new(val: T) -> Self {
-        WithStmts { stmts: vec![], val, }
-    }
-    pub fn and_then<U,F: FnOnce(T) -> WithStmts<U>>(self, f : F) -> WithStmts<U> {
-        let mut next = f(self.val);
-        let mut stmts = self.stmts;
-        stmts.append(&mut next.stmts);
-        WithStmts {
-            val: next.val,
-            stmts
-        }
-    }
-    pub fn map<U,F: FnOnce(T) -> U>(self, f : F) -> WithStmts<U> {
-        WithStmts {
-            val: f(self.val),
-            stmts: self.stmts,
-        }
-    }
-    pub fn result_map<U,E,F: FnOnce(T) -> Result<U,E>>(self, f : F) -> Result<WithStmts<U>,E> {
-        Ok(WithStmts {
-            val: f(self.val)?,
-            stmts: self.stmts,
-        })
-    }
-}
-
-impl WithStmts<P<Expr>> {
-
-    /// Package a series of statements and an expression into one block expression
-    pub fn to_expr(mut self) -> P<Expr> {
-        if self.stmts.is_empty() {
-            self.val
-        } else {
-            self.stmts.push(mk().expr_stmt(self.val));
-            mk().block_expr(mk().block(self.stmts))
-        }
-    }
-
-    /// Package a series of statements and an expression into one block
-    pub fn to_block(mut self) -> P<Block> {
-        self.stmts.push(mk().expr_stmt(self.val));
-        mk().block(self.stmts)
-    }
-}
 
 fn sequence_option<A,E>(x: Option<Result<A,E>>) -> Result<Option<A>, E> {
     match x {
@@ -1302,26 +1252,27 @@ impl Translation {
     pub fn convert_condition(&self, target: bool, cond_id: CExprId, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
         let ty_id = self.ast_context[cond_id].kind.get_type().ok_or_else(|| format!("bad condition type"))?;
 
-        let null_pointer_case = |negated: bool, ptr: CExprId| -> Result<WithStmts<P<Expr>>, String> {
-            let val = self.convert_expr(ExprUse::RValue, ptr, is_static)?;
-            let ptr_type = self.ast_context[ptr].kind.get_type().ok_or_else(||format!("bad pointer type for condition"))?;
-            Ok(val.map(|e| {
-                if self.is_function_pointer(ptr_type) {
-                    if negated {
-                        mk().method_call_expr(e, "is_some", vec![] as Vec<P<Expr>>)
-                    } else {
-                        mk().method_call_expr(e, "is_none", vec![] as Vec<P<Expr>>)
-                    }
-                } else {
-                    let is_null = mk().method_call_expr(e, "is_null", vec![] as Vec<P<Expr>>);
-                    if negated {
-                        mk().unary_expr(ast::UnOp::Not, is_null)
-                    } else {
-                        is_null
-                    }
-                }
-            }))
-        };
+        let null_pointer_case =
+            |negated: bool, ptr: CExprId| -> Result<WithStmts<P<Expr>>, String> {
+                    let val = self.convert_expr(ExprUse::RValue, ptr, is_static)?;
+                    let ptr_type = self.ast_context[ptr].kind.get_type().ok_or_else(|| format!("bad pointer type for condition"))?;
+                    Ok(val.map(|e| {
+                        if self.is_function_pointer(ptr_type) {
+                            if negated {
+                                mk().method_call_expr(e, "is_some", vec![] as Vec<P<Expr>>)
+                            } else {
+                                mk().method_call_expr(e, "is_none", vec![] as Vec<P<Expr>>)
+                            }
+                        } else {
+                            let is_null = mk().method_call_expr(e, "is_null", vec![] as Vec<P<Expr>>);
+                            if negated {
+                                mk().unary_expr(ast::UnOp::Not, is_null)
+                            } else {
+                                is_null
+                            }
+                        }
+                    }))
+                };
 
         match self.ast_context[cond_id].kind {
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, null_expr, ptr, _, _)
@@ -1457,15 +1408,16 @@ impl Translation {
     ) -> Result<Vec<Stmt>, String> {
         let mut cond = self.convert_condition(true, cond_id, false)?;
         let then_stmts = stmts_block(self.convert_stmt(then_id)?);
-        let else_stmts = else_id
-            .map_or(
-                Ok(None),
-                |x| {
-                    let stmt = self.convert_stmt(x);
-                    stmt.map(|s| Some(mk().block_expr(stmts_block(s))))
-                })?;
+        let else_stmts = match else_id {
+            None => None,
+            Some(x) => {
+                let stmt = self.convert_stmt(x)?;
+                Some(mk().block_expr(stmts_block(stmt)))
+            }
+        };
 
-        cond.stmts.push(mk().span(span).semi_stmt(mk().ifte_expr(cond.val, then_stmts, else_stmts)));
+        let ifte = mk().ifte_expr(cond.val, then_stmts, else_stmts);
+        cond.stmts.push(mk().span(span).semi_stmt(ifte));
         Ok(cond.stmts)
     }
 

@@ -18,6 +18,7 @@ pub mod comment_store;
 pub mod translator;
 pub mod c_ast;
 pub mod cfg;
+pub mod with_stmts;
 
 #[cfg(test)]
 mod tests {
