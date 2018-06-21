@@ -40,21 +40,15 @@ You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one
 
 # Outstanding Test Issues
 
-## Definitely Not Working
-
-* `runtest` has missing functions for some reason (likely needs variadic.c support)
-
-## Maybe Runnable
-
-* `testXPath` works with no params, but needs to be tested w/ real file input
-* `testRelax` works with no params, but needs to be tested w/ real file input
-
 ## Runnable
 
+* `runtest` seems to mostly work, but has inconsistent success. C version seems to be more consistently successful (maybe the test is just poorly written?)
 * `testReader` seems to be mostly working identically but with some slight formatting differences. Try `testReader --valid test/japancrlf.xml`
 
 ## Working
 
+* `testRelax` seems to work equivalently with files as in C
+* `testXPath` seems to work equivalently with files as in C
 * `xmllint` seems to work equivalently with files as in C
 * `testSAX` prints out nothing on success, just like C version
 * `testModule` prints "Success!"

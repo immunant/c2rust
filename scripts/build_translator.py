@@ -111,15 +111,19 @@ def configure_and_build_llvm(args: str) -> None:
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DLLVM_TARGETS_TO_BUILD=X86",
+                     "-DLLVM_INCLUDE_UTILS=1",
+                     "-DLLVM_BUILD_UTILS=1",
                      "-DBUILD_SHARED_LIBS=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
             invoke(cmake[cargs])
         else:
             logging.debug("found existing ninja.build, not running cmake")
+
+        ninja_args = ['ast-exporter']
+        ninja_args += ['FileCheck', 'count', 'not']
         if args.with_clang:
-            invoke(ninja['ast-exporter', 'clang'])
-        else:
-            invoke(ninja['ast-exporter'])
+            ninja_args.append('clang')
+        invoke(ninja, *ninja_args)
 
 
 def update_cmakelists(filepath):

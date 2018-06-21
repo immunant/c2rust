@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from common import Config
-from plumbum.cmd import echo, sed
+from plumbum.cmd import echo, perl
 from plumbum import local
 from transpile import transpile_files
 from typing import Iterable, Tuple
@@ -24,55 +24,55 @@ RUST_ROOT_DIR = os.path.join(LIBXML2_REPO, "rust")
 PATCHES = {
     "src/threads.rs": {
         "replace_all": [
-            ("unsafe { 1i32.wrapping_neg() }", "-1"),
+            ("unsafe \{ 1i32.wrapping_neg\(\) \}", "-1"),
         ],
     },
     "src/xmlunicode.rs": {
         "replace_all_null_ptr_cast": [
-            "xmlUnicodeBlocks.as_ptr()",
-            "xmlUnicodeCats.as_mut_ptr()",
-            "xmlZS.as_ptr()",
-            "xmlSoL.as_ptr()",
-            "xmlSoS.as_ptr()",
-            "xmlSmL.as_ptr()",
-            "xmlSmS.as_ptr()",
-            "xmlSkS.as_ptr()",
-            "xmlScS.as_ptr()",
-            "xmlSL.as_ptr()",
-            "xmlSS.as_ptr()",
-            "xmlPsS.as_ptr()",
-            "xmlPoL.as_ptr()",
-            "xmlPoS.as_ptr()",
-            "xmlPeS.as_ptr()",
-            "xmlPdS.as_ptr()",
-            "xmlPL.as_ptr()",
-            "xmlPS.as_ptr()",
-            "xmlNoL.as_ptr()",
-            "xmlNoS.as_ptr()",
-            "xmlNdL.as_ptr()",
-            "xmlNdS.as_ptr()",
-            "xmlNL.as_ptr()",
-            "xmlNS.as_ptr()",
-            "xmlMnL.as_ptr()",
-            "xmlMnS.as_ptr()",
-            "xmlMcL.as_ptr()",
-            "xmlMcS.as_ptr()",
-            "xmlML.as_ptr()",
-            "xmlMS.as_ptr()",
-            "xmlLuL.as_ptr()",
-            "xmlLuS.as_ptr()",
-            "xmlLtS.as_ptr()",
-            "xmlLoL.as_ptr()",
-            "xmlLoS.as_ptr()",
-            "xmlLmS.as_ptr()",
-            "xmlLlL.as_ptr()",
-            "xmlLlS.as_ptr()",
-            "xmlLL.as_ptr()",
-            "xmlLS.as_ptr()",
-            "xmlCfL.as_ptr()",
-            "xmlCfS.as_ptr()",
-            "xmlCL.as_ptr()",
-            "xmlCS.as_ptr()",
+            "xmlUnicodeBlocks.as_ptr\(\)",
+            "xmlUnicodeCats.as_mut_ptr\(\)",
+            "xmlZS.as_ptr\(\)",
+            "xmlSoL.as_ptr\(\)",
+            "xmlSoS.as_ptr\(\)",
+            "xmlSmL.as_ptr\(\)",
+            "xmlSmS.as_ptr\(\)",
+            "xmlSkS.as_ptr\(\)",
+            "xmlScS.as_ptr\(\)",
+            "xmlSL.as_ptr\(\)",
+            "xmlSS.as_ptr\(\)",
+            "xmlPsS.as_ptr\(\)",
+            "xmlPoL.as_ptr\(\)",
+            "xmlPoS.as_ptr\(\)",
+            "xmlPeS.as_ptr\(\)",
+            "xmlPdS.as_ptr\(\)",
+            "xmlPL.as_ptr\(\)",
+            "xmlPS.as_ptr\(\)",
+            "xmlNoL.as_ptr\(\)",
+            "xmlNoS.as_ptr\(\)",
+            "xmlNdL.as_ptr\(\)",
+            "xmlNdS.as_ptr\(\)",
+            "xmlNL.as_ptr\(\)",
+            "xmlNS.as_ptr\(\)",
+            "xmlMnL.as_ptr\(\)",
+            "xmlMnS.as_ptr\(\)",
+            "xmlMcL.as_ptr\(\)",
+            "xmlMcS.as_ptr\(\)",
+            "xmlML.as_ptr\(\)",
+            "xmlMS.as_ptr\(\)",
+            "xmlLuL.as_ptr\(\)",
+            "xmlLuS.as_ptr\(\)",
+            "xmlLtS.as_ptr\(\)",
+            "xmlLoL.as_ptr\(\)",
+            "xmlLoS.as_ptr\(\)",
+            "xmlLmS.as_ptr\(\)",
+            "xmlLlL.as_ptr\(\)",
+            "xmlLlS.as_ptr\(\)",
+            "xmlLL.as_ptr\(\)",
+            "xmlLS.as_ptr\(\)",
+            "xmlCfL.as_ptr\(\)",
+            "xmlCfS.as_ptr\(\)",
+            "xmlCL.as_ptr\(\)",
+            "xmlCS.as_ptr\(\)",
         ],
         "init_array": [
             "xmlUnicodeBlockTbl.table = xmlUnicodeBlocks.as_ptr();",
@@ -123,13 +123,13 @@ PATCHES = {
     },
     "src/chvalid.rs": {
         "replace_all_null_ptr_cast": [
-            "xmlIsIdeographic_srng.as_ptr()",
-            "xmlIsExtender_srng.as_ptr()",
-            "xmlIsDigit_srng.as_ptr()",
-            "xmlIsCombining_srng.as_ptr()",
-            "xmlIsChar_lrng.as_ptr()",
-            "xmlIsChar_srng.as_ptr()",
-            "xmlIsBaseChar_srng.as_ptr()",
+            "xmlIsIdeographic_srng.as_ptr\(\)",
+            "xmlIsExtender_srng.as_ptr\(\)",
+            "xmlIsDigit_srng.as_ptr\(\)",
+            "xmlIsCombining_srng.as_ptr\(\)",
+            "xmlIsChar_lrng.as_ptr\(\)",
+            "xmlIsChar_srng.as_ptr\(\)",
+            "xmlIsBaseChar_srng.as_ptr\(\)",
         ],
         "init_array": [
             "xmlIsIdeographicGroup.shortRange = xmlIsIdeographic_srng.as_ptr();",
@@ -143,94 +143,94 @@ PATCHES = {
     },
     "src/HTMLparser.rs": {
         "replace_all_null_ptr": [
-            "html_attrs.as_ptr()",
-            "html_inline.as_ptr()",
-            "ul_depr.as_ptr()",
-            " li_elt.as_ptr()",
-            "bgcolor_attr.as_ptr()",
-            "talign_attrs.as_ptr()",
-            "tr_contents.as_ptr()",
-            " i18n_attrs.as_ptr()",
-            "html_pcdata.as_ptr()",
-            "tr_elt.as_ptr()",
-            "th_td_depr.as_ptr()",
-            "th_td_attr.as_ptr()",
-            "html_flow.as_ptr()",
-            "rows_cols_attr.as_ptr()",
-            "textarea_attrs.as_ptr()",
-            "table_depr.as_ptr()",
-            "table_attrs.as_ptr()",
-            "table_contents.as_ptr()",
-            "type_attr.as_ptr()",
-            "style_attrs.as_ptr()",
-            "select_attrs.as_ptr()",
-            "select_content.as_ptr()",
-            "language_attr.as_ptr()",
-            "script_attrs.as_ptr()",
-            "quote_attrs.as_ptr()",
-            "width_attr.as_ptr()",
-            "pre_content.as_ptr()",
-            "name_attr.as_ptr()",
-            "param_attrs.as_ptr()",
-            "align_attr.as_ptr()",
-            "option_attrs.as_ptr()",
-            "label_attr.as_ptr()",
-            "optgroup_attrs.as_ptr()",
-            "option_elt.as_ptr()",
-            " ol_attrs.as_ptr()",
-            "object_depr.as_ptr()",
-            "object_attrs.as_ptr()",
-            "object_contents.as_ptr()",
-            "noframes_content.as_ptr()",
-            "content_attr.as_ptr()",
-            "meta_attrs.as_ptr()",
-            "compact_attrs.as_ptr()",
-            "blockli_elt.as_ptr()",
-            "map_contents.as_ptr()",
-            "target_attr.as_ptr()",
-            "link_attrs.as_ptr()",
-            "legend_attrs.as_ptr()",
-            "label_attrs.as_ptr()",
-            "prompt_attrs.as_ptr()",
-            "edit_attrs.as_ptr()",
-            " a_attrs.as_ptr()",
-            "inline_p.as_ptr()",
-            "flow_param.as_ptr()",
-            "applet_attrs.as_ptr()",
-            "area_attrs.as_ptr()",
-            "alt_attr.as_ptr()",
-            "href_attrs.as_ptr()",
-            "basefont_attrs.as_ptr()",
-            "core_i18n_attrs.as_ptr()",
-            "dir_attr.as_ptr()",
-            "body_contents.as_ptr()",
-            "body_attrs.as_ptr()",
-            "body_depr.as_ptr()",
-            "core_attrs.as_ptr()",
-            "clear_attrs.as_ptr()",
-            "button_attrs.as_ptr()",
-            "col_attrs.as_ptr()",
-            "col_elt.as_ptr()",
-            "dl_contents.as_ptr()",
-            "compact_attr.as_ptr()",
-            "embed_attrs.as_ptr()",
-            "fieldset_contents.as_ptr()",
-            " font_attrs.as_ptr()",
-            "form_contents.as_ptr()",
-            "form_attrs.as_ptr()",
-            "action_attr.as_ptr()",
-            " frame_attrs.as_ptr()",
-            "iframe_attrs.as_ptr()",
-            "frameset_contents.as_ptr()",
-            "frameset_attrs.as_ptr()",
-            "head_contents.as_ptr()",
-            "head_attrs.as_ptr()",
-            "hr_depr.as_ptr()",
-            "html_content.as_ptr()",
-            "version_attr.as_ptr()",
-            "img_attrs.as_ptr()",
-            "src_alt_attrs.as_ptr()",
-            "input_attrs.as_ptr()",
+            "html_attrs.as_ptr\(\)",
+            "html_inline.as_ptr\(\)",
+            "ul_depr.as_ptr\(\)",
+            " li_elt.as_ptr\(\)",
+            "bgcolor_attr.as_ptr\(\)",
+            "talign_attrs.as_ptr\(\)",
+            "tr_contents.as_ptr\(\)",
+            " i18n_attrs.as_ptr\(\)",
+            "html_pcdata.as_ptr\(\)",
+            "tr_elt.as_ptr\(\)",
+            "th_td_depr.as_ptr\(\)",
+            "th_td_attr.as_ptr\(\)",
+            "html_flow.as_ptr\(\)",
+            "rows_cols_attr.as_ptr\(\)",
+            "textarea_attrs.as_ptr\(\)",
+            "table_depr.as_ptr\(\)",
+            "table_attrs.as_ptr\(\)",
+            "table_contents.as_ptr\(\)",
+            "type_attr.as_ptr\(\)",
+            "style_attrs.as_ptr\(\)",
+            "select_attrs.as_ptr\(\)",
+            "select_content.as_ptr\(\)",
+            "language_attr.as_ptr\(\)",
+            "script_attrs.as_ptr\(\)",
+            "quote_attrs.as_ptr\(\)",
+            "width_attr.as_ptr\(\)",
+            "pre_content.as_ptr\(\)",
+            "name_attr.as_ptr\(\)",
+            "param_attrs.as_ptr\(\)",
+            "align_attr.as_ptr\(\)",
+            "option_attrs.as_ptr\(\)",
+            "label_attr.as_ptr\(\)",
+            "optgroup_attrs.as_ptr\(\)",
+            "option_elt.as_ptr\(\)",
+            " ol_attrs.as_ptr\(\)",
+            "object_depr.as_ptr\(\)",
+            "object_attrs.as_ptr\(\)",
+            "object_contents.as_ptr\(\)",
+            "noframes_content.as_ptr\(\)",
+            "content_attr.as_ptr\(\)",
+            "meta_attrs.as_ptr\(\)",
+            "compact_attrs.as_ptr\(\)",
+            "blockli_elt.as_ptr\(\)",
+            "map_contents.as_ptr\(\)",
+            "target_attr.as_ptr\(\)",
+            "link_attrs.as_ptr\(\)",
+            "legend_attrs.as_ptr\(\)",
+            "label_attrs.as_ptr\(\)",
+            "prompt_attrs.as_ptr\(\)",
+            "edit_attrs.as_ptr\(\)",
+            " a_attrs.as_ptr\(\)",
+            "inline_p.as_ptr\(\)",
+            "flow_param.as_ptr\(\)",
+            "applet_attrs.as_ptr\(\)",
+            "area_attrs.as_ptr\(\)",
+            "alt_attr.as_ptr\(\)",
+            "href_attrs.as_ptr\(\)",
+            "basefont_attrs.as_ptr\(\)",
+            "core_i18n_attrs.as_ptr\(\)",
+            "dir_attr.as_ptr\(\)",
+            "body_contents.as_ptr\(\)",
+            "body_attrs.as_ptr\(\)",
+            "body_depr.as_ptr\(\)",
+            "core_attrs.as_ptr\(\)",
+            "clear_attrs.as_ptr\(\)",
+            "button_attrs.as_ptr\(\)",
+            "col_attrs.as_ptr\(\)",
+            "col_elt.as_ptr\(\)",
+            "dl_contents.as_ptr\(\)",
+            "compact_attr.as_ptr\(\)",
+            "embed_attrs.as_ptr\(\)",
+            "fieldset_contents.as_ptr\(\)",
+            " font_attrs.as_ptr\(\)",
+            "form_contents.as_ptr\(\)",
+            "form_attrs.as_ptr\(\)",
+            "action_attr.as_ptr\(\)",
+            " frame_attrs.as_ptr\(\)",
+            "iframe_attrs.as_ptr\(\)",
+            "frameset_contents.as_ptr\(\)",
+            "frameset_attrs.as_ptr\(\)",
+            "head_contents.as_ptr\(\)",
+            "head_attrs.as_ptr\(\)",
+            "hr_depr.as_ptr\(\)",
+            "html_content.as_ptr\(\)",
+            "version_attr.as_ptr\(\)",
+            "img_attrs.as_ptr\(\)",
+            "src_alt_attrs.as_ptr\(\)",
+            "input_attrs.as_ptr\(\)",
         ],
         "init_array": [
             "html40ElementTable[1].attrs_opt = html_attrs.as_ptr() as *mut *const _;",
@@ -536,97 +536,101 @@ PATCHES = {
     "examples/xmllint.rs": {
         "replace_all": [
             # Sed doesn't seem to like it when I add a \n between the externs:
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/runtest.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "#![feature(used)]\nextern crate libc;\nextern crate libxml2_rs;"),
+            ("=\n\s*unsafe \{\n\s*\(::std::mem::size_of::<\[xmlThreadParams; 7]>\(\) as\n\s*libc::c_ulong\).wrapping_div\(::std::mem::size_of::<xmlThreadParams>\(\)\n\s*as libc::c_ulong\) as libc::c_uint\n\s*\};", "= 7;")
         ],
+        "init_array": [
+            "num_threads = (::std::mem::size_of::<[xmlThreadParams; 7]>() as libc::c_ulong).wrapping_div(::std::mem::size_of::<xmlThreadParams>() as libc::c_ulong) as libc::c_uint;"
+        ]
     },
     "examples/testC14N.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testHTML.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testReader.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testRelax.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testThreads.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testapi.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testchar.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testlimits.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testrecurse.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testSAX.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testURI.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testAutomata.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testdict.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testModule.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testRegexp.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testSchemas.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
     "examples/testXPath.rs": {
         "replace_all": [
-            ("extern crate libc;", "extern crate libc;extern crate libxml2_rs;"),
+            ("extern crate libc;", "extern crate libc;\nextern crate libxml2_rs;"),
         ],
     },
 }
@@ -647,15 +651,15 @@ compile_error!("Your target OS does not have support for static initialization a
 
 # TODO: Better error handling
 def replace_all(file_path: str, replacements: Iterable[Tuple[str, str]]) -> None:
-    sed_args = ["-i"]
+    perl_args = ["-000", "-pi"]
 
     for replace_from, replace_to in replacements:
-        sed_args.append("-e")
-        sed_args.append("s/{}/{}/".format(replace_from, replace_to))
+        perl_args.append("-e")
+        perl_args.append("s/{}/{}/g;".format(replace_from, replace_to))
 
-    sed_args.append(file_path)
+    perl_args.append(file_path)
 
-    retcode, stdout, stderr = sed[sed_args].run()
+    retcode, stdout, stderr = perl[perl_args].run()
 
     assert retcode != 1, "Failed to apply patch {}/replace_all:\n{}".format(file_name, stderr)
 
@@ -680,12 +684,12 @@ if __name__ == "__main__":
             formatted_replacements = []
 
             for replacement in patch_config["replace_all_null_ptr_cast"]:
-                if replacement.endswith("as_ptr()"):
+                if replacement.endswith("as_ptr\(\)"):
                     formatted_replacements.append((replacement, "0 as *const _"))
-                elif replacement.endswith("as_mut_ptr()"):
+                elif replacement.endswith("as_mut_ptr\(\)"):
                     formatted_replacements.append((replacement, "0 as *mut _"))
                 else:
-                    assert False
+                    assert False, "Could not find supported replacement"
 
             replace_all(file_path, formatted_replacements)
 
@@ -696,4 +700,3 @@ if __name__ == "__main__":
             retcode, stdout, stderr = (echo[init_array] >> file_path).run()
 
             assert retcode != 1, "Failed to apply patch {}/init_array:\n{}".format(file_name, stderr)
-

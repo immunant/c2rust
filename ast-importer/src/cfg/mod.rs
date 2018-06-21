@@ -37,6 +37,7 @@ use serde::ser::{Serialize, Serializer, SerializeStruct, SerializeStructVariant,
 use serde_json;
 
 use translator::*;
+use with_stmts::WithStmts;
 use c_ast::*;
 
 pub mod relooper;
