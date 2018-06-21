@@ -16,12 +16,12 @@
 //!
 
 use syntax;
-use syntax::ast::*;
+use syntax::ast::{Arm, Expr, ExprKind, LitIntType, Pat, Stmt, StmtKind};
 use syntax::ptr::P;
-use idiomize::ast_manip::make_ast::*;
 use syntax::codemap::{DUMMY_SP};
 use std::collections::{HashSet, HashMap};
 use c_ast::CLabelId;
+use rust_ast::*;
 use std::ops::Index;
 use syntax::print::pprust;
 use std::io;

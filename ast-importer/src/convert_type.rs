@@ -1,7 +1,6 @@
 use c_ast::*;
+use rust_ast::*;
 use syntax::ast::*;
-use syntax::abi::Abi;
-use idiomize::ast_manip::make_ast::*;
 use syntax::ptr::P;
 use std::ops::Index;
 use renamer::*;
@@ -115,7 +114,7 @@ impl TypeConverter {
         };
 
         let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output), is_variadic);
-        return Ok(mk().unsafe_().abi(Abi::C).barefn_ty(fn_ty));
+        return Ok(mk().unsafe_().abi("C").barefn_ty(fn_ty));
     }
 
     pub fn convert_pointer(&mut self, ctxt: &TypedAstContext, qtype: CQualTypeId) -> Result<P<Ty>, String> {

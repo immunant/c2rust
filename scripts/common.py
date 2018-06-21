@@ -89,8 +89,8 @@ add_subdirectory(ast-exporter)
     # CUSTOM_RUST_REV = "cfcac37204c8dbdde192c1c9387cdbe663fe5ed5"
     # NOTE: `rustup run nightly-2017-11-20 -- rustc --version` should output
     # rustc 1.23.0-nightly (5041b3bb3 2017-11-19)
-    CUSTOM_RUST_NAME = 'nightly-2018-01-06'
-    CUSTOM_RUST_RUSTC_VERSION = "rustc 1.24.0-nightly (b98fd524e 2018-01-05)"
+    CUSTOM_RUST_NAME = 'nightly-2018-06-20'
+    CUSTOM_RUST_RUSTC_VERSION = "rustc 1.28.0-nightly (f28c7aef7 2018-06-19)"
 
     def __init__(self):
         self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER) for s in Config.LLVM_ARCHIVE_URLS]

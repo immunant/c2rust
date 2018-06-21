@@ -1,16 +1,15 @@
-use syntax::ast;
+use syntax::{with_globals, ast};
 use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Span};
 use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{DelimToken,Token,Nonterminal};
-use syntax::abi::Abi;
 use std::collections::{HashMap,HashSet};
 use renamer::Renamer;
 use convert_type::TypeConverter;
 use loops::*;
-use idiomize::ast_manip::make_ast::*;
 use c_ast;
 use c_ast::*;
+use rust_ast::*;
 use comment_store::*;
 use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;
@@ -207,7 +206,7 @@ fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> 
 pub fn stmts_block(mut stmts: Vec<Stmt>) -> P<Block> {
     if stmts.len() == 1 {
         if let StmtKind::Expr(ref e) = stmts[0].node {
-            if let ExprKind::Block(ref b) = e.node {
+            if let ExprKind::Block(ref b, _) = e.node {
                 return b.clone()
             }
         }
@@ -273,6 +272,7 @@ pub fn translate_failure(tcfg: &TranslationConfig, msg: &str) {
 }
 
 pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> String {
+
     let mut t = Translation::new(ast_context, tcfg);
 
     if !t.tcfg.translate_entry {
@@ -300,188 +300,188 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         prefix_names(&mut t, prefix);
     }
 
-    // Identify typedefs that name unnamed types and collapse the two declarations
-    // into a single name and declaration, eliminating the typedef altogether.
-    let mut prenamed_decls: HashSet<CDeclId> = HashSet::new();
-    for (&decl_id, decl) in &t.ast_context.c_decls {
-        if let CDeclKind::Typedef { ref name, typ, .. } = decl.kind {
-            if let Some(subdecl_id) = t.ast_context.resolve_type(typ.ctype).kind.as_underlying_decl() {
+    with_globals(|| {
+        // Identify typedefs that name unnamed types and collapse the two declarations
+        // into a single name and declaration, eliminating the typedef altogether.
+        let mut prenamed_decls: HashSet<CDeclId> = HashSet::new();
+        for (&decl_id, decl) in &t.ast_context.c_decls {
+            if let CDeclKind::Typedef { ref name, typ, .. } = decl.kind {
+                if let Some(subdecl_id) = t.ast_context.resolve_type(typ.ctype).kind.as_underlying_decl() {
+                    let is_unnamed = match t.ast_context[subdecl_id].kind {
+                        CDeclKind::Struct { name: None, .. } => true,
+                        CDeclKind::Union { name: None, .. } => true,
+                        CDeclKind::Enum { name: None, .. } => true,
+                        _ => false,
+                    };
 
-                let is_unnamed = match t.ast_context[subdecl_id].kind {
-                    CDeclKind::Struct { name: None, .. } => true,
-                    CDeclKind::Union { name: None, .. } => true,
-                    CDeclKind::Enum { name: None, .. } => true,
-                    _ => false,
-                };
+                    if is_unnamed && !prenamed_decls.contains(&subdecl_id) {
+                        prenamed_decls.insert(decl_id);
+                        prenamed_decls.insert(subdecl_id);
 
-                if is_unnamed && !prenamed_decls.contains(&subdecl_id) {
-                    prenamed_decls.insert(decl_id);
-                    prenamed_decls.insert(subdecl_id);
-
-                    t.type_converter.borrow_mut().declare_decl_name(decl_id, name);
-                    t.type_converter.borrow_mut().alias_decl_name(subdecl_id, decl_id);
+                        t.type_converter.borrow_mut().declare_decl_name(decl_id, name);
+                        t.type_converter.borrow_mut().alias_decl_name(subdecl_id, decl_id);
+                    }
                 }
             }
         }
-    }
 
         // Populate renamer with top-level names
-    for (&decl_id, decl) in &t.ast_context.c_decls {
-        let decl_name = match decl.kind {
-            _ if prenamed_decls.contains(&decl_id) => Name::NoName,
-            CDeclKind::Struct { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
-            CDeclKind::Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
-            CDeclKind::Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
-            CDeclKind::Typedef { ref name, .. } => Name::TypeName(name),
-            CDeclKind::Function { ref name, .. } => Name::VarName(name),
-            CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
-            CDeclKind::Variable { ref ident, .. }
-              if t.ast_context.c_decls_top.contains(&decl_id) => Name::VarName(ident),
-            _ => Name::NoName,
-        };
-        match decl_name {
-            Name::NoName => (),
-            Name::AnonymousType => { t.type_converter.borrow_mut().declare_decl_name(decl_id, "unnamed"); }
-            Name::TypeName(name)=> { t.type_converter.borrow_mut().declare_decl_name(decl_id, name); }
-            Name::VarName(name) => { t.renamer.borrow_mut().insert(decl_id, &name); }
+        for (&decl_id, decl) in &t.ast_context.c_decls {
+            let decl_name = match decl.kind {
+                _ if prenamed_decls.contains(&decl_id) => Name::NoName,
+                CDeclKind::Struct { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
+                CDeclKind::Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
+                CDeclKind::Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
+                CDeclKind::Typedef { ref name, .. } => Name::TypeName(name),
+                CDeclKind::Function { ref name, .. } => Name::VarName(name),
+                CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
+                CDeclKind::Variable { ref ident, .. }
+                if t.ast_context.c_decls_top.contains(&decl_id) => Name::VarName(ident),
+                _ => Name::NoName,
+            };
+            match decl_name {
+                Name::NoName => (),
+                Name::AnonymousType => { t.type_converter.borrow_mut().declare_decl_name(decl_id, "unnamed"); }
+                Name::TypeName(name) => { t.type_converter.borrow_mut().declare_decl_name(decl_id, name); }
+                Name::VarName(name) => { t.renamer.borrow_mut().insert(decl_id, &name); }
+            }
         }
-    }
 
-    // Export all types
-    for (&decl_id, decl) in &t.ast_context.c_decls {
-        let needs_export = match decl.kind {
-            CDeclKind::Struct { .. } => true,
-            CDeclKind::Enum { .. } => true,
-            CDeclKind::EnumConstant { .. } => true,
-            CDeclKind::Union { .. } => true,
-            CDeclKind::Typedef { .. } =>
-                !prenamed_decls.contains(&decl_id),
-            _ => false,
-        };
-        if needs_export {
-            match t.convert_decl(true, decl_id) {
-                Ok(ConvertedDecl::Item(item)) => t.items.push(item),
-                Ok(ConvertedDecl::ForeignItem(mut item)) => t.foreign_items.push(item),
+        // Export all types
+        for (&decl_id, decl) in &t.ast_context.c_decls {
+            let needs_export = match decl.kind {
+                CDeclKind::Struct { .. } => true,
+                CDeclKind::Enum { .. } => true,
+                CDeclKind::EnumConstant { .. } => true,
+                CDeclKind::Union { .. } => true,
+                CDeclKind::Typedef { .. } =>
+                    !prenamed_decls.contains(&decl_id),
+                _ => false,
+            };
+            if needs_export {
+                match t.convert_decl(true, decl_id) {
+                    Ok(ConvertedDecl::Item(item)) => t.items.push(item),
+                    Ok(ConvertedDecl::ForeignItem(mut item)) => t.foreign_items.push(item),
+                    Err(e) => {
+                        let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
+                        let msg = format!("Skipping declaration due to error: {}, kind: {:?}", e, k);
+                        translate_failure(&t.tcfg, &msg)
+                    },
+                }
+            }
+        }
+
+        // Export top-level value declarations
+        for top_id in &t.ast_context.c_decls_top {
+            let needs_export = match t.ast_context.c_decls[top_id].kind {
+                CDeclKind::Function { is_implicit, .. } => !is_implicit,
+                CDeclKind::Variable { .. } => true,
+                _ => false,
+            };
+            if needs_export {
+                match t.convert_decl(true, *top_id) {
+                    Ok(ConvertedDecl::Item(mut item)) => t.items.push(item),
+                    Ok(ConvertedDecl::ForeignItem(mut item)) => t.foreign_items.push(item),
+                    Err(e) => {
+                        let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
+                        let msg = format!("Failed translating declaration due to error: {}, kind: {:?}", e, k);
+                        translate_failure(&t.tcfg, &msg)
+                    },
+                }
+            }
+        }
+
+        // Add the main entry point
+        if let Some(main_id) = t.ast_context.c_main {
+            match t.convert_main(main_id) {
+                Ok(item) => t.items.push(item),
                 Err(e) => {
-                    let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
-                    let msg = format!("Skipping declaration due to error: {}, kind: {:?}", e, k);
+                    let msg = format!("Failed translating main declaration due to error: {}", e);
                     translate_failure(&t.tcfg, &msg)
-                },
+                }
             }
-        }
-    }
-
-    // Export top-level value declarations
-    for top_id in &t.ast_context.c_decls_top {
-        let needs_export = match t.ast_context.c_decls[top_id].kind {
-            CDeclKind::Function { is_implicit, .. } => !is_implicit,
-            CDeclKind::Variable { .. } => true,
-            _ => false,
         };
-        if needs_export {
-            match t.convert_decl(true, *top_id) {
-                Ok(ConvertedDecl::Item(mut item)) => t.items.push(item),
-                Ok(ConvertedDecl::ForeignItem(mut item)) => t.foreign_items.push(item),
-                Err(e) => {
-                    let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
-                    let msg = format!("Failed translating declaration due to error: {}, kind: {:?}", e, k);
-                    translate_failure(&t.tcfg, &msg)
-                },
-            }
-        }
-    }
-
-    // Add the main entry point
-    if let Some(main_id) = t.ast_context.c_main {
-        match t.convert_main(main_id) {
-            Ok(item) => t.items.push(item),
-            Err(e) => {
-                let msg = format!("Failed translating main declaration due to error: {}", e);
-                translate_failure(&t.tcfg, &msg)
-            }
-        }
-    };
 
 
-    to_string(|s| {
-        s.comments().get_or_insert(vec![]).extend(t.comment_store.into_inner().into_comments());
+        to_string(|s| {
+            s.comments().get_or_insert(vec![]).extend(t.comment_store.into_inner().into_comments());
 
-        if t.tcfg.emit_module {
-            s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
-        } else {
+            if t.tcfg.emit_module {
+                s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
+            } else {
+                let mut features = vec!["libc"];
+                features.extend(t.features.borrow().iter());
+                features.extend(t.type_converter.borrow().features_used());
 
-            let mut features = vec!["libc"];
-            features.extend(t.features.borrow().iter());
-            features.extend(t.type_converter.borrow().features_used());
+                let mut pragmas: Vec<(&str, Vec<&str>)> =
+                    vec![("allow", vec!["non_upper_case_globals", "non_camel_case_types", "non_snake_case",
+                                        "dead_code", "mutable_transmutes", "unused_mut"])];
 
-            let mut pragmas: Vec<(&str, Vec<&str>)> =
-                vec![("allow", vec!["non_upper_case_globals", "non_camel_case_types","non_snake_case",
-                                    "dead_code", "mutable_transmutes", "unused_mut"])];
+                if t.tcfg.cross_checks {
+                    features.append(&mut vec!["plugin", "custom_attribute"]);
+                    pragmas.push(("cross_check", vec!["yes"]));
+                }
 
-            if t.tcfg.cross_checks {
-                features.append(&mut vec!["plugin", "custom_attribute"]);
-                pragmas.push(("cross_check", vec!["yes"]));
-            }
+                pragmas.push(("feature", features));
 
-            pragmas.push(("feature", features));
+                for (key, mut values) in pragmas {
+                    values.sort();
+                    for value in values {
+                        s.print_attribute(&mk().attribute::<_, TokenStream>(
+                            AttrStyle::Inner,
+                            vec![key],
+                            vec![
+                                Token::OpenDelim(DelimToken::Paren),
+                                Token::from_ast_ident(mk().ident(value)),
+                                Token::CloseDelim(DelimToken::Paren),
+                            ].into_iter().collect(),
+                        ))?
+                    }
+                }
 
-            for (key, mut values) in pragmas {
-                values.sort();
-                for value in values {
+                if t.tcfg.cross_checks {
+                    let mut xcheck_attr_args = String::new();
+                    for config_file in &t.tcfg.cross_check_configs {
+                        if !xcheck_attr_args.is_empty() {
+                            xcheck_attr_args.push(',');
+                        }
+                        xcheck_attr_args.push_str("config_file=\"");
+                        xcheck_attr_args.push_str(config_file);
+                        xcheck_attr_args.push('"');
+                    }
+                    let xcheck_attr = format!("cross_check_plugin({})", xcheck_attr_args);
                     s.print_attribute(&mk().attribute::<_, TokenStream>(
                         AttrStyle::Inner,
-                        vec![key],
+                        vec!["plugin"],
                         vec![
                             Token::OpenDelim(DelimToken::Paren),
-                            Token::Ident(mk().ident(value)),
+                            Token::from_ast_ident(mk().ident(xcheck_attr)),
                             Token::CloseDelim(DelimToken::Paren),
                         ].into_iter().collect(),
                     ))?
                 }
-            }
 
-            if t.tcfg.cross_checks {
-                let mut xcheck_attr_args = String::new();
-                for config_file in &t.tcfg.cross_check_configs {
-                    if !xcheck_attr_args.is_empty() {
-                        xcheck_attr_args.push(',');
-                    }
-                    xcheck_attr_args.push_str("config_file=\"");
-                    xcheck_attr_args.push_str(config_file);
-                    xcheck_attr_args.push('"');
+                // Add `extern crate libc` to the top of the file
+                s.print_item(&mk().extern_crate_item("libc", None))?;
+                if t.tcfg.cross_checks {
+                    s.print_item(&mk().single_attr("macro_use")
+                        .extern_crate_item("cross_check_derive", None))?;
+                    s.print_item(&mk().single_attr("macro_use")
+                        .extern_crate_item("cross_check_runtime", None))?;
                 }
-                let xcheck_attr = format!("cross_check_plugin({})", xcheck_attr_args);
-                s.print_attribute(&mk().attribute::<_, TokenStream>(
-                    AttrStyle::Inner,
-                    vec!["plugin"],
-                    vec![
-                        Token::OpenDelim(DelimToken::Paren),
-                        Token::Ident(mk().ident(xcheck_attr)),
-                        Token::CloseDelim(DelimToken::Paren),
-                    ].into_iter().collect(),
-                ))?
             }
 
-            // Add `extern crate libc` to the top of the file
-            s.print_item(&mk().extern_crate_item("libc", None))?;
-            if t.tcfg.cross_checks {
-                s.print_item(&mk().single_attr("macro_use")
-                                  .extern_crate_item("cross_check_derive", None))?;
-                s.print_item(&mk().single_attr("macro_use")
-                                  .extern_crate_item("cross_check_runtime", None))?;
+            if !t.foreign_items.is_empty() {
+                s.print_item(&mk().abi("C").foreign_items(t.foreign_items))?
             }
-        }
 
-        if !t.foreign_items.is_empty() {
-            s.print_item(&mk().abi(Abi::C).foreign_items(t.foreign_items))?
-        }
+            // Add the items accumulated
+            for x in t.items {
+                s.print_item(&*x)?;
+            }
 
-        // Add the items accumulated
-        for x in t.items {
-            s.print_item(&*x)?;
-        }
-
-        Ok(())
+            Ok(())
+        })
     })
 }
 
@@ -712,9 +712,9 @@ impl Translation {
                                 vec![
                                     Token::interpolated(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit("{}={}")))),
                                     Token::Comma,
-                                    Token::Ident(mk().ident("var_name")),
+                                    Token::from_ast_ident(mk().ident("var_name")),
                                     Token::Comma,
-                                    Token::Ident(mk().ident("var_value")),
+                                    Token::from_ast_ident(mk().ident("var_value")),
                                 ].into_iter().collect::<TokenStream>(),
                             )))
                         ))),
@@ -962,8 +962,8 @@ impl Translation {
 
                 Ok(ConvertedDecl::Item(mk_linkage(false, new_name, ident)
                     .span(s)
-                    .vis(Visibility::Public)
-                    .abi(Abi::C)
+                    .pub_()
+                    .abi("C")
                     .mutbl()
                     .static_item(new_name, ty, init)))
             }
@@ -1074,10 +1074,10 @@ impl Translation {
                     mk()
                 } else if is_extern && !is_inline {
                     mk_linkage(false, new_name, name)
-                        .abi(Abi::C)
-                        .vis(Visibility::Public)
+                        .abi("C")
+                        .pub_()
                 } else {
-                    mk().abi(Abi::C)
+                    mk().abi("C")
                 };
 
                 Ok(ConvertedDecl::Item(mk_.span(span).unsafe_().fn_item(new_name, decl, block)))
@@ -1627,7 +1627,7 @@ impl Translation {
                 } else {
                     let item = match self.convert_decl(false, decl_id)? {
                         ConvertedDecl::Item(item) => item,
-                        ConvertedDecl::ForeignItem(item) => mk().abi(Abi::C).foreign_items(vec![item]),
+                        ConvertedDecl::ForeignItem(item) => mk().abi("C").foreign_items(vec![item]),
                     };
 
                     Ok(cfg::DeclStmtInfo::new(
@@ -2506,7 +2506,7 @@ impl Translation {
                         false,
                     );
                     let closure_body = mk().block_expr(mk().block(stmts));
-                    let closure = mk().closure_expr(ast::CaptureBy::Ref, decl, closure_body);
+                    let closure = mk().closure_expr(ast::CaptureBy::Ref, ast::Movability::Movable, decl, closure_body);
                     let closure_call = mk().call_expr(closure, vec![] as Vec<P<ast::Expr>>);
                     Ok(WithStmts::new(closure_call))
                 } else {
@@ -3051,7 +3051,6 @@ impl Translation {
                 ExprKind::Path(..) |
                 ExprKind::Unary(ast::UnOp::Deref, _) |
                 ExprKind::Field(..) |
-                ExprKind::TupField(..) |
                 ExprKind::Index(..) => true,
                 _ => false,
             }
@@ -3063,7 +3062,6 @@ impl Translation {
                 ExprKind::Path(..) => true,
                 ExprKind::Unary(ast::UnOp::Deref, ref e) |
                 ExprKind::Field(ref e, _) |
-                ExprKind::TupField(ref e, _) |
                 ExprKind::Index(ref e, _) => is_simple_lvalue(e),
                 _ => false,
             }
