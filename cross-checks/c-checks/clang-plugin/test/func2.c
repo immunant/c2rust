@@ -1,4 +1,4 @@
-// RUN: %clang_xcheck %fakechecks -O2 -o %t %s %xcheck_runtime
+// RUN: %clang_xcheck -O2 -o %t %s %xcheck_runtime %fakechecks
 // RUN: %t 2>&1 | FileCheck %s
 
 #include <stdio.h>
