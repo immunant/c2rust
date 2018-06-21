@@ -330,7 +330,7 @@ private:
             // *arg
             case CustomArg::DEREF:
                 arg_ref_rv = new (ctx) UnaryOperator(arg_ref_lv, UO_Deref,
-                                                     arg_ref_lv->getType(),
+                                                     arg_ref_lv->getType()->getPointeeType(),
                                                      VK_RValue, OK_Ordinary,
                                                      SourceLocation());
                 break;
