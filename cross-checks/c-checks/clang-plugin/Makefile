@@ -30,6 +30,6 @@ clean:
 
 test.bin: test.c
 	@echo Building test...
-	./cc_wrapper.sh $(PLUGIN_CC) $(PLUGIN_PATH) $(PLUGIN_CC_ARGS) -ffunction-sections -fuse-ld=gold -Wl,--gc-sections,--icf=safe,-rpath,$(FAKECHECKS_PATH) -L$(FAKECHECKS_PATH) -lfakechecks -std=c11 $(TEST_CFLAGS) -o test.bin $< $(RUNTIME_PATH)
+	./cc_wrapper.sh $(PLUGIN_CC) $(PLUGIN_PATH) $(PLUGIN_CC_ARGS) -ffunction-sections -fuse-ld=gold -Wl,--gc-sections,--icf=safe,-rpath,$(FAKECHECKS_PATH) -L$(FAKECHECKS_PATH) -lfakechecks -std=c11 -Iinclude $(TEST_CFLAGS) -o test.bin $< $(RUNTIME_PATH)
 	@echo Running test...
 	./test.bin

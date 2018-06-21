@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdint.h>
 
-uint64_t ctr = 0;
+#include <cross_checks.h>
 
-#define CROSS_CHECK(x)  __attribute__((annotate("cross_check:" x)))
-#define DISABLE_XCHECKS(x) CROSS_CHECK("{ disable_xchecks: " #x " }")
+uint64_t ctr = 0;
 
 uint64_t foo(void) DISABLE_XCHECKS(true) {
     return 0x123457890ABCDEFULL;
