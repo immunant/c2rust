@@ -127,8 +127,8 @@ pub fn get_syntax_item_args(mi: &ast::MetaItem) -> ArgList<'static> {
             match item.node {
                 ast::NestedMetaItemKind::MetaItem(ref mi) => {
                     let kw = unsafe {
-                        let kw_str = mi.name.interned().as_str();
-                        // FIXME: this looks unsafe, but mi.name.as_str()
+                        let kw_str = mi.name().interned().as_str();
+                        // FIXME: this looks unsafe, but mi.name().as_str()
                         // returns an InternedString whose sole member is
                         // a &'static str (which we're forcing the conversion to)
                         // Ideally, InternedString's as_ref() or deref() would

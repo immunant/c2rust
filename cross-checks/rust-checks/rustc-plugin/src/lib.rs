@@ -215,7 +215,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             ast::PatKind::Ident(_, ref ident, _) => {
                 // Parameter pattern is just an identifier,
                 // so we can reference it directly by name
-                let arg_idx = xcfg::FieldIndex::from_str(&*ident.node.name.as_str());
+                let arg_idx = xcfg::FieldIndex::from_str(&*ident.name.as_str());
                 let arg_xcheck_cfg = self.config().function_config()
                     .args.get(&arg_idx)
                     .unwrap_or(&self.config().inherited.all_args);
@@ -671,35 +671,37 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
 
     // TODO: fold_block???
 
-    fn fold_foreign_item(&mut self, ni: ast::ForeignItem) -> ast::ForeignItem {
-        let folded_ni = fold::noop_fold_foreign_item(ni, self);
-        if let ast::ForeignItemKind::Ty = folded_ni.node {
-            // Foreign type, implement CrossCheckHash for it
-            // This is implemented as a call to the `__c2rust_hash_T` function
-            // TODO: include ahasher/shasher into the function name
-            // TODO: configure this via attribute&external configuration
-            //       * option to disable CrossCheckHash altogether
-            //       * option to use a custom function
-            let ty_name = folded_ni.ident;
-            let hash_fn_name = format!("__c2rust_hash_{}", ty_name);
-            let hash_fn = ast::Ident::from_str(&hash_fn_name);
-            let hash_impl_item = quote_item!(self.cx,
-                impl ::cross_check_runtime::hash::CrossCheckHash for $ty_name {
-                    #[inline]
-                    fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-                            where HA: ::cross_check_runtime::hash::CrossCheckHasher,
-                                  HS: ::cross_check_runtime::hash::CrossCheckHasher {
-                        extern {
-                            #[no_mangle]
-                            fn $hash_fn(_: *const $ty_name, _: usize) -> u64;
+    fn fold_foreign_item(&mut self, ni: ast::ForeignItem) -> SmallVector<ast::ForeignItem> {
+        let folded_items = fold::noop_fold_foreign_item(ni, self);
+        folded_items.into_iter().map(|folded_ni| {
+            if let ast::ForeignItemKind::Ty = folded_ni.node {
+                // Foreign type, implement CrossCheckHash for it
+                // This is implemented as a call to the `__c2rust_hash_T` function
+                // TODO: include ahasher/shasher into the function name
+                // TODO: configure this via attribute&external configuration
+                //       * option to disable CrossCheckHash altogether
+                //       * option to use a custom function
+                let ty_name = folded_ni.ident;
+                let hash_fn_name = format!("__c2rust_hash_{}", ty_name);
+                let hash_fn = ast::Ident::from_str(&hash_fn_name);
+                let hash_impl_item = quote_item!(self.cx,
+                    impl ::cross_check_runtime::hash::CrossCheckHash for $ty_name {
+                        #[inline]
+                        fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
+                                where HA: ::cross_check_runtime::hash::CrossCheckHasher,
+                                      HS: ::cross_check_runtime::hash::CrossCheckHasher {
+                            extern {
+                                #[no_mangle]
+                                fn $hash_fn(_: *const $ty_name, _: usize) -> u64;
+                            }
+                            unsafe { $hash_fn(self as *const $ty_name, depth) }
                         }
-                        unsafe { $hash_fn(self as *const $ty_name, depth) }
                     }
-                }
-            ).expect(&format!("unable to implement CrossCheckHash for foreign type '{}'", ty_name));
-            self.pending_items.push(hash_impl_item);
-        };
-        folded_ni
+                ).expect(&format!("unable to implement CrossCheckHash for foreign type '{}'", ty_name));
+                self.pending_items.push(hash_impl_item);
+            };
+            folded_ni
+        }).collect()
     }
 
     fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
