@@ -7,7 +7,7 @@
 #include <cross_checks.h>
 
 struct Foo {
-    int a CROSS_CHECK("{ custom: ab_hash(a, b) }");
+    int a CUSTOM_XCHECK("ab_hash(a, b)");
     int b;
 };
 
@@ -15,7 +15,7 @@ uint64_t ab_hash(int a, int b) DISABLE_XCHECKS(true) {
     return a * 6631 + b;
 }
 
-int foo(struct Foo x CROSS_CHECK("default")) {
+int foo(struct Foo x DEFAULT_XCHECK) {
     return x.a + x.b;
 }
 

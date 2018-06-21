@@ -10,7 +10,7 @@ struct Foo {
     int b;
 };
 
-int foo(struct Foo x CROSS_CHECK("{ fixed: 0x1234 }")) {
+int foo(struct Foo x FIXED_XCHECK("0x1234")) {
     return x.a + x.b;
 }
 

@@ -8,11 +8,11 @@
 struct Foo {
     // Fixed value cross-checks for both fields,
     // checks should be identical
-    int a CROSS_CHECK("{ fixed: 0x1234 }");
-    int b CROSS_CHECK("{ fixed: 0xabcd }");
+    int a FIXED_XCHECK("0x1234");
+    int b FIXED_XCHECK("0xabcd");
 };
 
-int foo(struct Foo x CROSS_CHECK("default")) {
+int foo(struct Foo x DEFAULT_XCHECK) {
     return x.a + x.b;
 }
 

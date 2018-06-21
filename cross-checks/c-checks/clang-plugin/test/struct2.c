@@ -10,7 +10,7 @@ struct Foo {
     int b;
 };
 
-int foo(struct Foo x CROSS_CHECK("default")) {
+int foo(struct Foo x DEFAULT_XCHECK) {
     return x.a + x.b;
 }
 

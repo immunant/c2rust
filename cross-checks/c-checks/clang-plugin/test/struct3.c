@@ -7,10 +7,10 @@
 
 struct Foo {
     int a;
-    int b CROSS_CHECK("disabled");
+    int b DISABLED_XCHECK;
 };
 
-int foo(struct Foo x CROSS_CHECK("default")) {
+int foo(struct Foo x DEFAULT_XCHECK) {
     return x.a + x.b;
 }
 

@@ -7,7 +7,7 @@
 #include <cross_checks.h>
 
 // Structure with custom hash function
-struct CROSS_CHECK("{ custom_hash: my_Foo_hash }") Foo {
+struct CUSTOM_HASH_XCHECK("my_Foo_hash") Foo {
     int a;
     int b;
 };
@@ -16,7 +16,7 @@ uint64_t my_Foo_hash(struct Foo *x) DISABLE_XCHECKS(true) {
     return 0x12345678ULL;
 }
 
-int foo(struct Foo x CROSS_CHECK("default")) {
+int foo(struct Foo x DEFAULT_XCHECK) {
     return x.a + x.b;
 }
 

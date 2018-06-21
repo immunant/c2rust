@@ -5,7 +5,7 @@
 
 #include <cross_checks.h>
 
-int foo(int x CROSS_CHECK("{ fixed: 0x1234 }")) {
+int foo(int x FIXED_XCHECK("0x1234")) {
     return x + 1;
 }
 
