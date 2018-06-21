@@ -190,7 +190,7 @@ CrossCheckInserter::parse_custom_xcheck(std::string_view sv,
                                          "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                                          "0123456789");
     if (name_len == std::string_view::npos)
-        return { std::string{sv}, {} };
+        name_len = sv.length();
 
     CustomFnSig res{sv.substr(0, name_len), {}};
     sv.remove_prefix(name_len);
