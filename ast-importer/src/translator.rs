@@ -9,7 +9,7 @@ use convert_type::TypeConverter;
 use loops::*;
 use c_ast;
 use c_ast::*;
-use rust_ast::*;
+use rust_ast::{mk, Builder};
 use comment_store::*;
 use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;

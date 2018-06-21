@@ -21,7 +21,6 @@ use syntax::ptr::P;
 use syntax::codemap::{DUMMY_SP};
 use std::collections::{HashSet, HashMap};
 use c_ast::CLabelId;
-use rust_ast::*;
 use std::ops::Index;
 use syntax::print::pprust;
 use std::io;
@@ -39,6 +38,7 @@ use serde_json;
 use translator::*;
 use with_stmts::WithStmts;
 use c_ast::*;
+use rust_ast::mk;
 
 pub mod relooper;
 pub mod structures;
