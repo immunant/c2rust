@@ -70,13 +70,17 @@ class Config:
         'http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz',
     ]
     LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
-    LLVM_BLD = (os.path.join(DEPS_DIR, 'llvm-{ver}/build.'.format(ver=LLVM_VER)) +
-                platform.node())  # returns hostname
+    LLVM_BLD = os.path.join(DEPS_DIR,
+                            'llvm-{ver}/build.'.format(ver=LLVM_VER))
+    LLVM_BLD += platform.node()  # returns hostname
     LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
     AST_EXPO = os.path.join(LLVM_BLD, "bin/ast-exporter")
 
-    CLANG_XCHECK_PLUGIN_SRC = os.path.join(CROSS_CHECKS_DIR, "c-checks", "clang-plugin")
-    CLANG_XCHECK_PLUGIN_BLD = os.path.join(DEPS_DIR, 'clang-xcheck-plugin.{}'.format(platform.node()))
+    CLANG_XCHECK_PLUGIN_SRC = os.path.join(CROSS_CHECKS_DIR,
+                                           "c-checks", "clang-plugin")
+    CLANG_XCHECK_PLUGIN_BLD = os.path.join(DEPS_DIR,
+                                           'clang-xcheck-plugin.')
+    CLANG_XCHECK_PLUGIN_BLD += platform.node()  # returns hostname
 
     MIN_PLUMBUM_VERSION = (1, 6, 3)
     CMAKELISTS_COMMANDS = """
@@ -84,21 +88,37 @@ add_subdirectory(ast-exporter)
 """.format(prefix=CBOR_PREFIX)  # nopep8
     CC_DB_JSON = "compile_commands.json"
 
-    # CUSTOM_RUST_URL = "git@github.com:rust-lang/rust"
-    # CUSTOM_RUST_PREFIX = os.path.join(DEPS_DIR, "rust")
-    # CUSTOM_RUST_REV = "cfcac37204c8dbdde192c1c9387cdbe663fe5ed5"
-    # NOTE: `rustup run nightly-2017-11-20 -- rustc --version` should output
-    # rustc 1.23.0-nightly (5041b3bb3 2017-11-19)
     CUSTOM_RUST_NAME = 'nightly-2018-06-20'
+    # output of `rustup run $CUSTOM_RUST_NAME -- rustc --version`
     CUSTOM_RUST_RUSTC_VERSION = "rustc 1.28.0-nightly (f28c7aef7 2018-06-19)"
 
     def __init__(self):
-        self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER) for s in Config.LLVM_ARCHIVE_URLS]
+        self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER) 
+                                  for s in Config.LLVM_ARCHIVE_URLS]
         self.LLVM_SIGNATURE_URLS = [s + ".sig" for s in self.LLVM_ARCHIVE_URLS]
-        self.LLVM_ARCHIVE_FILES = [os.path.basename(s) for s in self.LLVM_ARCHIVE_URLS]
-        self.LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "") for s in self.LLVM_ARCHIVE_FILES]
-        self.LLVM_ARCHIVE_FILES = [os.path.join(Config.DEPS_DIR, s) for s in self.LLVM_ARCHIVE_FILES]
+        self.LLVM_ARCHIVE_FILES = [os.path.basename(s)
+                                   for s in self.LLVM_ARCHIVE_URLS]
+        self.LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "")
+                                  for s in self.LLVM_ARCHIVE_FILES]
+        self.LLVM_ARCHIVE_FILES = [os.path.join(Config.DEPS_DIR, s)
+                                   for s in self.LLVM_ARCHIVE_FILES]
+        self.check_rust_toolchain()
         self.update_args()
+
+    def check_rust_toolchain(self):
+        """
+        Sanity check that the value of self.CUSTOM_RUST_NAME matches
+        the contents of self.ROOT_DIR/rust-toolchain.
+        """
+        toolchain_path = os.path.join(self.ROOT_DIR, "rust-toolchain")
+        if os.path.exists(toolchain_path):
+            with open(toolchain_path) as fh:
+                toolchain_name = fh.readline().strip()
+            emesg = "Rust version mismatch.\n"
+            emesg += "\tcommon.py expects:       {}\n" \
+                     .format(self.CUSTOM_RUST_NAME)
+            emesg += "\trust-toolchain requests: {}\n".format(toolchain_name)
+            assert self.CUSTOM_RUST_NAME == toolchain_name, emesg
 
     def update_args(self, args=None):
         build_type = 'release'
