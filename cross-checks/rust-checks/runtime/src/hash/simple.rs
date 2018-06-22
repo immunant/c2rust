@@ -128,19 +128,19 @@ mod tests {
         use std::f32::consts as consts_f32;
         use std::f64::consts as consts_f64;
         // TODO: also test usize and isize???
-        test_value!(0x00000000000012_u8,  write_u8,   0x0000000000000012_u64);
-        test_value!(0x00000000001234_u16, write_u16,  0x5a5a5a5a5a5a486e_u64);
-        test_value!(0x00000012345678_u32, write_u32,  0xb4b4b4b4a680e2cc_u64);
-        test_value!(0x12345789abcdef_u64, write_u64,  0x0f1d3b5886a4c2e1_u64);
-        test_value!(0x00000000000012_i8,  write_i8,   0xc3c3c3c3c3c3c3d0_u64);
-        test_value!(0x00000000001234_i16, write_i16,  0x1e1e1e1e1e1e0c28_u64);
-        test_value!(0x00000012345678_i32, write_i32,  0x787878786a4c2e0e_u64);
-        test_value!(0x12345789abcdef_i64, write_i64,  0xd2c0e6855b791f3f_u64);
-        test_value!(false,                write_bool, 0x8787878787878784_u64);
-        test_value!(true,                 write_bool, 0x8787878787878785_u64);
-        test_value!(1.0_f32,              write_f32,  0x3c3c3c3c03bc3c38_u64);
-        test_value!(consts_f32::PI,       write_f32,  0x3c3c3c3c7c7533e3_u64);
-        test_value!(1.0_f64,              write_f64,  0xa966969696969692_u64);
-        test_value!(consts_f64::PI,       write_f64,  0xd69fb76dc2d2bb8a_u64);
+        test_value!(0x000000000000012_u8,  write_u8,   0x0000000000000012_u64);
+        test_value!(0x000000000001234_u16, write_u16,  0x5a5a5a5a5a5a486e_u64);
+        test_value!(0x000000012345678_u32, write_u32,  0xb4b4b4b4a680e2cc_u64);
+        test_value!(0x123456789abcdef_u64, write_u64,  0x0e2c4a6886a4c2e1_u64);
+        test_value!(0x000000000000012_i8,  write_i8,   0xc3c3c3c3c3c3c3d0_u64);
+        test_value!(0x000000000001234_i16, write_i16,  0x1e1e1e1e1e1e0c28_u64);
+        test_value!(0x000000012345678_i32, write_i32,  0x787878786a4c2e0e_u64);
+        test_value!(0x123456789abcdef_i64, write_i64,  0xd3f197b55b791f3f_u64);
+        test_value!(false,                 write_bool, 0x8787878787878784_u64);
+        test_value!(true,                  write_bool, 0x8787878787878785_u64);
+        test_value!(1.0_f32,               write_f32,  0x3c3c3c3c03bc3c38_u64);
+        test_value!(consts_f32::PI,        write_f32,  0x3c3c3c3c7c7533e3_u64);
+        test_value!(1.0_f64,               write_f64,  0xa966969696969692_u64);
+        test_value!(consts_f64::PI,        write_f64,  0xd69fb76dc2d2bb8a_u64);
     }
 }
