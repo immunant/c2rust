@@ -115,8 +115,9 @@ add_subdirectory(ast-exporter)
             with open(toolchain_path) as fh:
                 toolchain_name = fh.readline().strip()
             emesg = "Rust version mismatch.\n"
-            emesg += f"\tcommon.py expects:       {self.CUSTOM_RUST_NAME}\n"
-            emesg += f"\trust-toolchain requests: {toolchain_name}\n"
+            emesg += "\tcommon.py expects:       {}\n" \
+                     .format(self.CUSTOM_RUST_NAME)
+            emesg += "\trust-toolchain requests: {}\n".format(toolchain_name)
             assert self.CUSTOM_RUST_NAME == toolchain_name, emesg
 
     def update_args(self, args=None):
