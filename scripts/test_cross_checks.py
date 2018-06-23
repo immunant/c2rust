@@ -30,8 +30,21 @@ def checkout_and_build_libclevrbuf():
         with pb.local.cwd(c.LIBCLEVRBUF_DIR):
             invoke(make, "lib")
 
+def build_libfakechecks():
+    make = get_cmd_or_die("make")
+    if not os.path.isfile(os.path.join(c.LIBFAKECHECKS_DIR, "libfakechecks.so")):
+        with pb.local.cwd(c.LIBFAKECHECKS_DIR):
+            invoke(make, "all")
 
-def test_cross_checks():
+def test_clang_cross_checks():
+    ninja = get_cmd_or_die("ninja")
+    logging.info("entering %s", c.CLANG_XCHECK_PLUGIN_BLD)
+    with pb.local.cwd(c.CLANG_XCHECK_PLUGIN_BLD):
+        # FIXME: do we really need to clean before every test run???
+        invoke(ninja, ["clean"])
+        invoke(ninja, ["check-cross-checks"])
+
+def test_rust_cross_checks():
     rustup = get_cmd_or_die("rustup")
 
     rust_proj_path = os.path.join(c.CROSS_CHECKS_DIR, "rust-checks")
@@ -50,7 +63,9 @@ def main():
         die("missing rust toolchain: " + c.CUSTOM_RUST_NAME, errno.ENOENT)
 
     # checkout_and_build_libclevrbuf()
-    test_cross_checks()
+    build_libfakechecks()
+    test_clang_cross_checks()
+    test_rust_cross_checks()
 
 
 if __name__ == "__main__":

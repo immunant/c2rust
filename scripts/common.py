@@ -40,6 +40,7 @@ class Config:
     COMPILER_SUBMOD_DIR = os.path.join(RREF_DIR, 'compiler')
     CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
     REMON_SUBMOD_DIR = os.path.join(CROSS_CHECKS_DIR, 'ReMon')
+    LIBFAKECHECKS_DIR = os.path.join(CROSS_CHECKS_DIR, "libfakechecks")
     LIBCLEVRBUF_DIR = os.path.join(REMON_SUBMOD_DIR, "libclevrbuf")
     EXAMPLES_DIR = os.path.join(ROOT_DIR, 'examples')
 
