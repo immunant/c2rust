@@ -12,15 +12,14 @@ SCRIPT_DIR="$(dirname "$0")"
 
 apt-get update -qq
 apt-get install -qq htop unzip tmux vim curl gnupg2 cmake gperf
-apt-get install -qq software-properties-common build-essential  ninja-build
+apt-get install -qq software-properties-common build-essential clang-5.0 ninja-build
 
-# update-alternatives --install /usr/bin/clang clang /usr/bin/clang-5.0 100
-# update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-5.0 100
+update-alternatives --install /usr/bin/clang clang /usr/bin/clang-5.0 100
+update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-5.0 100
 # update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-5.0 100
 
 # Install python3.6 and packages
 apt-get install -qq python3-pip
-pip3 install --upgrade pip
 pip3 install -r /tmp/requirements.txt
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 
