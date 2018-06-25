@@ -1360,6 +1360,8 @@ impl ConversionContext {
                 ASTEntryTag::TagStructDecl if expected_ty & RECORD_DECL != 0 => {
                     let name = expect_opt_str(&node.extras[0]).unwrap().map(str::to_string);
                     let has_def = expect_bool(&node.extras[1]).expect("Expected has_def flag on struct");
+                    let attrs = expect_array(&node.extras[2]).expect("Expected attribute array on record");
+
                     let fields: Option<Vec<CDeclId>> =
                     if has_def {
                         Some(node.children
@@ -1375,7 +1377,17 @@ impl ConversionContext {
                         None
                     };
 
-                    let record = CDeclKind::Struct { name, fields };
+                    let mut is_packed = false;
+                    let mut is_aligned = false;
+                    for attr in attrs {
+                        match expect_str(attr).expect("Records attributes should be strings") {
+                            "packed" => is_packed = true,
+                            "aligned" => is_aligned = true,
+                            _ => {}
+                        }
+                    }
+
+                    let record = CDeclKind::Struct { name, fields, is_packed, is_aligned };
 
                     self.add_decl(new_id, located(node, record));
                     self.processed_nodes.insert(new_id, RECORD_DECL);

@@ -1086,7 +1086,8 @@ class TranslateASTVisitor final
 
               // 3. Attributes stored as an array of attribute names
               CborEncoder attrs;
-              cbor_encoder_create_array(local, &attrs, D->getAttrs().size());
+              size_t attrs_n = D->hasAttrs() ? D->getAttrs().size() : 0;
+              cbor_encoder_create_array(local, &attrs, attrs_n);
               for (auto a: D->attrs()) {
                   cbor_encode_text_stringz(&attrs, a->getSpelling());
               }

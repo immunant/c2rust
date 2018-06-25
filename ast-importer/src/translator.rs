@@ -755,7 +755,7 @@ impl Translation {
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
 
-            CDeclKind::Struct { fields: Some(ref fields), .. } => {
+            CDeclKind::Struct { fields: Some(ref fields), is_packed, is_aligned, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 // Gather up all the field names and field types
@@ -771,9 +771,14 @@ impl Translation {
                     }
                 }
 
+                let mut reprs = vec!["C"];
+                if is_packed { reprs.push("packed"); };
+                // https://github.com/rust-lang/rust/issues/33626
+                if is_aligned { return Err(format!("aligned attribute is not supported on structs")) };
+
                 Ok(ConvertedDecl::Item(self.mk_cross_check(mk().span(s).pub_(), vec!["none"])
                     .call_attr("derive", vec!["Copy", "Clone"])
-                    .call_attr("repr", vec!["C"])
+                    .call_attr("repr", reprs)
                     .struct_item(name, field_entries)))
             }
 
