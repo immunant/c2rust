@@ -1,25 +1,29 @@
 # Clang plugin for crosschecking on C programs
 
-This is a cross-check inserter for C programs developed using the clang plugin feature.
+This is a cross-check inserter for C programs implemented as a clang compiler plugin.
 
 ## Building and running the plugin
 
-1. To Build this program, which is built with llvm-6.0.0, you must use a matching clang version, _clang.6.0.0_.
+1. To Build this program, which depends on llvm-6.0.0, you must use a matching clang version, _clang-6.0_.
 
-   `./scripts/build_translator.py --with-clang`, this command will build clang in the build process. 
+   `$C2RUST/scripts/build_translator.py --with-clang`, this command will build clang in the build process. 
 
-2. Create a build directory, then 
-
+2. Build `libfakechecks` (optional, useful for testing):
    ```bash
-    $ cd build 
-    $ cmake -G Ninja -DClang_DIR=../../../dependencies/llvm-6.0.0/build.machine_name/lib/cmake/clang ../ 
-    $ ninja
-    ```
+    $ cd $C2RUST/cross-checks/libfakechecks
+    $ make all
+   ```
 
-   (The reason we set the clang directory to one installed with the build, is due to this [bug](https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=862328))
+3. Build the clang plugin using the build script:
 
-3. Also note, that the clang you're using must not be a debug version. 
+   `$C2RUST/scripts/build_cross_checks.py`
+
+   (We use our own built clang to build and run the plugin due to this [bug](https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=862328))
+
+4. Also note, that the clang you're using must not be a debug version. 
 
 ## Testing
 
-This plugin could be tested in this directory with _test.c_, notice `PLUGIN_CC` should be changed to be the clang built, or a path clang-6.0.0 
+This plugin could be tested in this directory by running `make test.bin`. Note that `PLUGIN_CC` should be changed to the clang from the repository, or another custom clang-6.0.
+
+
