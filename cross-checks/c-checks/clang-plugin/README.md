@@ -26,6 +26,6 @@ This is a cross-check inserter for C programs implemented as a clang compiler pl
 
 ## Testing
 
-This plugin could be tested in this directory by running `make test.bin`. Note that `PLUGIN_CC` should be changed to the clang from the repository, or another custom clang-6.0.
+This plugin could be tested in this directory by running `make test`. Note that `PLUGIN_CC` should be changed to the clang from the repository, or another custom clang-6.0.
 
 
