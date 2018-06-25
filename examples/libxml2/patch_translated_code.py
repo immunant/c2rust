@@ -24,7 +24,7 @@ RUST_ROOT_DIR = os.path.join(LIBXML2_REPO, "rust")
 PATCHES = {
     "src/threads.rs": {
         "replace_all": [
-            ("unsafe { 1i32.wrapping_neg\(\) }", "-1"),
+            ("unsafe \{ 1i32.wrapping_neg\(\) \}", "-1"),
         ],
     },
     "src/xmlunicode.rs": {
@@ -542,7 +542,7 @@ PATCHES = {
     "examples/runtest.rs": {
         "replace_all": [
             ("extern crate libc;", "#![feature(used)]\nextern crate libc;\nextern crate libxml2_rs;"),
-            ("=\n\s*unsafe {\n\s*\(::std::mem::size_of::<\[xmlThreadParams; 7]>\(\) as\n\s*libc::c_ulong\).wrapping_div\(::std::mem::size_of::<xmlThreadParams>\(\)\n\s*as libc::c_ulong\) as libc::c_uint\n\s*};", "= 7;")
+            ("=\n\s*unsafe \{\n\s*\(::std::mem::size_of::<\[xmlThreadParams; 7]>\(\) as\n\s*libc::c_ulong\).wrapping_div\(::std::mem::size_of::<xmlThreadParams>\(\)\n\s*as libc::c_ulong\) as libc::c_uint\n\s*\};", "= 7;")
         ],
         "init_array": [
             "num_threads = (::std::mem::size_of::<[xmlThreadParams; 7]>() as libc::c_ulong).wrapping_div(::std::mem::size_of::<xmlThreadParams>() as libc::c_ulong) as libc::c_uint;"

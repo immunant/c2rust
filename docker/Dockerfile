@@ -52,7 +52,7 @@ RUN pip3 install --no-cache-dir --upgrade cbor \
 
 USER $USER
 # Provision rust language and packages (should not run as root)
-ARG RUST_VER=nightly-2018-01-06
+ARG RUST_VER=nightly-2018-06-20
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain $RUST_VER
 RUN echo "source ~/.cargo/env" >> ~/.bashrc
 # Required for idiomize tests

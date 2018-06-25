@@ -151,7 +151,7 @@ impl ScopeCheckConfig {
     }
 
     pub fn parse_attr_config(&mut self, cx: &ExtCtxt, mi: &ast::MetaItem) {
-        assert!(mi.name == "cross_check");
+        assert!(mi.name() == "cross_check");
         let args = xcfg::attr::get_syntax_item_args(mi);
         for (name, arg) in args.iter() {
             match (*name, &mut self.item) {

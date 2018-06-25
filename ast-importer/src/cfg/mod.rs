@@ -16,9 +16,8 @@
 //!
 
 use syntax;
-use syntax::ast::*;
+use syntax::ast::{Arm, Expr, ExprKind, LitIntType, Pat, Stmt, StmtKind};
 use syntax::ptr::P;
-use idiomize::ast_manip::make_ast::*;
 use syntax::codemap::{DUMMY_SP};
 use std::collections::{HashSet, HashMap};
 use c_ast::CLabelId;
@@ -39,6 +38,7 @@ use serde_json;
 use translator::*;
 use with_stmts::WithStmts;
 use c_ast::*;
+use rust_ast::mk;
 
 pub mod relooper;
 pub mod structures;

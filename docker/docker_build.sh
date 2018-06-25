@@ -5,10 +5,9 @@ set -e
 IMG_NAME=c2rust
 SCRIPT_DIR="$(dirname "$0")"
 
-# pull the rust version out of ../scripts/common.py to keep things synched
-PYTHON_DIR="$SCRIPT_DIR/../scripts"
-PYTHON_CMD="from common import Config; print(Config.CUSTOM_RUST_NAME)"
-RUST_VER=$(cd $PYTHON_DIR && python3 -B -c "$PYTHON_CMD")
+# pull the rust version out of ../rust-toolchain to keep things synched
+RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain"
+RUST_VER=$(cat $RUST_TOOLCHAIN_FILE | tr -d '\n')
 
 docker build \
     --build-arg UID=$(id -u $(logname)) \

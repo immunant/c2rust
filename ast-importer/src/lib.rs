@@ -1,9 +1,8 @@
 #![feature(rustc_private)]
-#![feature(i128_type)]
 extern crate cbor;
 extern crate syntax;
 extern crate syntax_pos;
-extern crate idiomize;
+extern crate rustc_target;
 extern crate dtoa;
 
 extern crate serde;
@@ -16,6 +15,7 @@ pub mod loops;
 pub mod comment_store;
 pub mod translator;
 pub mod c_ast;
+pub mod rust_ast;
 pub mod cfg;
 pub mod with_stmts;
 

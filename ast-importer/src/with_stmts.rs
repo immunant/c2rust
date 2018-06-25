@@ -1,5 +1,5 @@
 use syntax::ast::{Stmt, Block, Expr};
-use idiomize::ast_manip::make_ast::mk;
+use rust_ast::mk;
 use syntax::ptr::P;
 
 #[derive(Debug)]

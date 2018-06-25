@@ -14,9 +14,9 @@ uint64_t deref_mul_31(int *x) DISABLE_XCHECKS(true) {
     return x ? (*x * 31) : 0xDEADBEEF;
 }
 
-int foo(int *x CROSS_CHECK("{ custom: mul_17(*x) }"),
-        int *y CROSS_CHECK("{ custom: deref_mul_31(y) }"),
-        int  z CROSS_CHECK("{ custom: deref_mul_31(&z) }")) {
+int foo(int *x CUSTOM_XCHECK("mul_17(*x)"),
+        int *y CUSTOM_XCHECK("deref_mul_31(y)"),
+        int  z CUSTOM_XCHECK("deref_mul_31(&z)")) {
     return *x + *y + z;
 }
 
