@@ -451,6 +451,9 @@ pub enum ExprUse {
     RValue,
 }
 
+/// Declarations can be converted into a normal item, or into a foreign item.
+/// Foreign items are called out specially because we'll combine all of them
+/// into a single extern block at the end of translation.
 enum ConvertedDecl {
     ForeignItem(ForeignItem),
     Item(P<Item>),
@@ -490,6 +493,11 @@ impl Translation {
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
         }
+    }
+
+    /// Called when translation makes use of a language feature that will require a feature-gate.
+    fn use_feature(&self, feature: &'static str) {
+        self.features.borrow_mut().insert(feature);
     }
 
     // This node should _never_ show up in the final generated code. This is an easy way to notice
@@ -741,7 +749,7 @@ impl Translation {
             CDeclKind::Struct { fields: None, .. } |
             CDeclKind::Union { fields: None, .. } |
             CDeclKind::Enum { integral_type: None, .. } => {
-                self.features.borrow_mut().insert("extern_types");
+                self.use_feature("extern_types");
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
                 let extern_item = mk().span(s).pub_().foreign_ty(name);
                 Ok(ConvertedDecl::ForeignItem(extern_item))
@@ -1123,14 +1131,17 @@ impl Translation {
                 Ok(res)
             },
 
-            CStmtKind::Return(expr) => self.convert_return_stmt(s, expr),
+            CStmtKind::Return(expr) =>
+                self.convert_return_stmt(s, expr),
 
             CStmtKind::If { scrutinee, true_variant, false_variant } =>
                 self.convert_if_stmt(s, scrutinee, true_variant, false_variant),
 
-            CStmtKind::While { condition, body } => self.convert_while_stmt(s, condition, body),
+            CStmtKind::While { condition, body } =>
+                self.convert_while_stmt(s, condition, body),
 
-            CStmtKind::DoWhile { body, condition } => self.convert_do_stmt(s, body, condition),
+            CStmtKind::DoWhile { body, condition } =>
+                self.convert_do_stmt(s, body, condition),
 
             CStmtKind::ForLoop { init, condition, increment, body } =>
                 self.convert_for_stmt(s, init, condition, increment, body),
@@ -1146,7 +1157,8 @@ impl Translation {
                 })
             },
 
-            CStmtKind::Expr(expr) => Ok(self.convert_expr(ExprUse::Unused, expr, false)?.stmts),
+            CStmtKind::Expr(expr) =>
+                Ok(self.convert_expr(ExprUse::Unused, expr, false)?.stmts),
 
             CStmtKind::Break => {
                 let mut loop_ = self.loops.current_loop_mut();
@@ -1193,10 +1205,10 @@ impl Translation {
         -> Result<Vec<Stmt>, String> {
 
         if !self.tcfg.translate_asm {
-            return Err(format!("Inline assembly not enabled, to enable use -translate-asm"))
+            return Err(format!("Inline assembly not enabled, to enable use --translate-asm"))
         }
 
-        self.features.borrow_mut().insert("asm");
+        self.use_feature("asm");
 
         fn push_expr(tokens: &mut Vec<Token>, expr: P<Expr>) {
             tokens.push(Token::interpolated(Nonterminal::NtExpr(expr)));
@@ -3504,7 +3516,7 @@ impl Translation {
         if let &CTypeKind::Pointer(pointee) = rhs_type {
 
             // The offset_to method is locked behind a feature gate
-            self.features.borrow_mut().insert("offset_to");
+            self.use_feature("offset_to");
 
             // offset_to returns None when a pointer
             // offset_opt := rhs.offset_to(lhs)
