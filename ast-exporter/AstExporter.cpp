@@ -1067,18 +1067,30 @@ class TranslateASTVisitor final
                   childIds.push_back(x->getCanonicalDecl());
               }
           }
-          
+
           auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;
           
           encode_entry(D, tag, childIds, QualType(),
           [D,def](CborEncoder *local){
+              
+              // 1. Encode name or null
               auto name = D->getNameAsString();
               if (name.empty()) {
                   cbor_encode_null(local);
               } else {
                   cbor_encode_string(local, name);
               }
+              
+              // 2. Boolean true when definition present
               cbor_encode_boolean(local, !!def);
+
+              // 3. Attributes stored as an array of attribute names
+              CborEncoder attrs;
+              cbor_encoder_create_array(local, &attrs, D->getAttrs().size());
+              for (auto a: D->attrs()) {
+                  cbor_encode_text_stringz(&attrs, a->getSpelling());
+              }
+              cbor_encoder_close_container(local, &attrs);
           });
           
           return true;

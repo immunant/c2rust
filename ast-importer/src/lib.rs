@@ -10,7 +10,6 @@ extern crate serde;
 extern crate serde_json;
 
 pub mod renamer;
-pub mod name_manager;
 pub mod clang_ast;
 pub mod convert_type;
 pub mod loops;
