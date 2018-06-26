@@ -41,5 +41,6 @@ mkdir -p $CMAKE_PREFIX
 # on ubuntu, call update alternatives
 source /etc/os-release
 if [ "$NAME" == "Ubuntu" ]; then
+  update-alternatives --remove-all cmake 
   update-alternatives --install /usr/bin/cmake cmake "$CMAKE_PREFIX/bin/cmake" 1 --slave /usr/bin/ccmake ccmake "$CMAKE_PREFIX/bin/ccmake" --slave /usr/bin/cpack cpack "$CMAKE_PREFIX/bin/cpack" --slave /usr/bin/ctest ctest "$CMAKE_PREFIX/bin/ctest" --slave /usr/bin/cmake-gui cmake-gui "$CMAKE_PREFIX/bin/cmake-gui"
 fi
