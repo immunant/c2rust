@@ -63,10 +63,8 @@ def main():
         die("missing rust toolchain: " + c.CUSTOM_RUST_NAME, errno.ENOENT)
 
     # checkout_and_build_libclevrbuf()
-    # FIXME: disabled until teamcity runs build_cross_checks.py,
-    # which also requires `build_translator.py --with-clang`
-    #build_libfakechecks()
-    #test_clang_cross_checks()
+    build_libfakechecks()
+    test_clang_cross_checks()
     test_rust_cross_checks()
 
 
