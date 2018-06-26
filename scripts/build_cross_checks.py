@@ -67,7 +67,8 @@ def build_clang_plugin(args: str) -> None:
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DBUILD_SHARED_LIBS=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
-            invoke(cmake[cargs])
+            with pb.local.env(CC="clang", CXX="clang++"):
+                invoke(cmake[cargs])
         else:
             logging.debug("found existing ninja.build, not running cmake")
         invoke(ninja)
