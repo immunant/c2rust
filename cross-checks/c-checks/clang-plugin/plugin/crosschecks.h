@@ -367,7 +367,7 @@ private:
 
     Expr *build_max_hash_depth(ASTContext &ctx) {
         auto hash_depth_ty = ctx.getSizeType();
-        llvm::APInt hash_depth{ctx.getTypeSize(hash_depth_ty), MAX_HASH_DEPTH};
+        llvm::APInt hash_depth(ctx.getTypeSize(hash_depth_ty), MAX_HASH_DEPTH);
         return IntegerLiteral::Create(ctx, hash_depth,
                                       hash_depth_ty,
                                       SourceLocation());
@@ -383,7 +383,7 @@ private:
         if (!sub1)
             return depth_rv;
 
-        llvm::APInt one{ctx.getTypeSize(depth_ty), 1};
+        llvm::APInt one(ctx.getTypeSize(depth_ty), 1);
         auto one_lit = IntegerLiteral::Create(ctx, one, depth_ty,
                                                      SourceLocation());
         return new (ctx) BinaryOperator(depth_rv, one_lit,

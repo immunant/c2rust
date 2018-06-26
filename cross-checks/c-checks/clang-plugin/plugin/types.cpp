@@ -106,7 +106,7 @@ CrossCheckInserter::get_type_hash_function(QualType ty, llvm::StringRef candidat
         HashFunction func{element.name, ty, ctx.getPointerType(element.actual_ty)};
         func.name.append("incarray"sv);
         if (build_it) {
-            llvm::APInt one{ctx.getTypeSize(ctx.getSizeType()), 1};
+            llvm::APInt one(ctx.getTypeSize(ctx.getSizeType()), 1);
             build_array_hash_function(func, element, one, ctx);
         }
         return func;
@@ -182,7 +182,7 @@ Stmt *CrossCheckInserter::build_depth_check(FunctionDecl *fn_decl,
     //   return __c2rust_hash_$item_leaf();
     auto depth = get_depth(fn_decl, false, ctx);
     auto depth_ty = depth->getType();
-    llvm::APInt zero{ctx.getTypeSize(depth_ty), 0};
+    llvm::APInt zero(ctx.getTypeSize(depth_ty), 0);
     auto zero_lit = IntegerLiteral::Create(ctx, zero, depth_ty, SourceLocation());
     auto depth_cmp = new (ctx) BinaryOperator(depth, zero_lit,
                                               BO_EQ, ctx.IntTy,
@@ -399,7 +399,7 @@ void CrossCheckInserter::build_array_hash_function(const HashFunction &func,
         auto i_ty = ctx.getSizeType();
         auto i_var = VarDecl::Create(ctx, fn_decl, SourceLocation(), SourceLocation(),
                                      i_id, i_ty, nullptr, SC_None);
-        llvm::APInt zero{ctx.getTypeSize(i_ty), 0};
+        llvm::APInt zero(ctx.getTypeSize(i_ty), 0);
         auto i_init = IntegerLiteral::Create(ctx, zero, i_ty, SourceLocation());
         i_var->setInit(i_init);
         auto i_decl_stmt = new (ctx) DeclStmt(DeclGroupRef(i_var),
