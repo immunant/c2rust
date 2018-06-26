@@ -3,7 +3,7 @@
 Building LLVM will require more than the default 2GB of RAM on macOS.
 4GB should be sufficient.
 
-- build and run (tested on macOS with Docker CE)
+To build and run (tested on macOS 11.13 with Docker CE 18.03):
 ```
 cd $C2Rust/docker
 # create image
@@ -20,8 +20,7 @@ docker rm -f c2rust
 
 ```
 
-
-## Careful: the following commands delete data
+## Warning: the following commands delete data
 
 removing all containers:
 ```

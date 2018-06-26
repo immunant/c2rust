@@ -3,11 +3,15 @@
 - CMake 3.9.1
 - Ninja 1.7.2
 
+## Installing Prerequisites
+
+Download a copy of vagrant from https://www.vagrantup.com/downloads.html. Vagrant supports a range of virtualization engines. We recommend you use either [VirtualBox](https://www.virtualbox.org/wiki/Downloads) or on the VMWare editions, e.g., [VMWare Workstation Player](https://www.vmware.com/products/workstation-player/workstation-player-evaluation.html).
+
 ## Running with Virtualbox
 `vagrant up`
 
 ## Running with VMWare Fusion
-Requires paid plug in https://www.vagrantup.com/vmware/index.html
+Requires paid plug-in. See https://www.vagrantup.com/vmware/index.html
 
 1. install plugin
 `vagrant plugin install vagrant-vmware-fusion` 

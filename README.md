@@ -11,19 +11,30 @@ normal Rust modules. They will export and import functions through the C
 API. These modules can be compiled together into a single static Rust
 library.
 
-There are several [known limitations](https://github.com/immunant/c2rust/wiki/Known-Limitations-of-Translation)
+There are several [known limitations](docs/known-limitations.md)
 in this translator. Some of these restrictions come from limitations of
 Rust and others come from complexities of the features themselves. The
 translator will attempt to skip function definitions that use
 unsupported features.
 
+### Setting up a build environment
+
+There are three ways to build the C2Rust project:
+
+1. In the provided vagrant environment. See the [vagrant README](vagrant/README.md)
+2. In the provided docker environment. See the [docker README](docker/README.md)
+3. Building directly on a macOS or Linux host. The previous two options automatically install all pre-requisites during provisioning. With this option, prerequisites must be installed manually. 
+    - If you are on a Debian-based OS, you can run `provision_deb.sh` to do so. 
+   
+
 ### Building
 
-These two projects have some large dependencies (namely parts of LLVM and Clang). If you've installed 
-the necessary tools, the following should build `ast-exporter` and `ast-importer` and all of their
-dependencies, automatically pulling them in if necessary.
+These two projects have some large dependencies (namely parts of LLVM and Clang). If 
+you've installed  the necessary tools, the following should build `ast-exporter` and 
+`ast-importer` and all of their dependencies, automatically pulling them in if 
+necessary.
 
-Building from scratch takes on the order of 30 minutes. This script works on at least MacOS.
+Building from scratch takes on the order of 30 minutes. The script has been tested on recent versions of macOS and Ubuntu.
 
     $ ./scripts/build_translator.py
 
