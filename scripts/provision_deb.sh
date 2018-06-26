@@ -1,32 +1,28 @@
 #!/bin/bash
 
-# Are we on a supported distro?
-dpkg-vendor --derives-from Debian || {
-    echo >&2 "Run this script on a Debian/Ubuntu host."; exit 1; 
+# Are we on a supported distro? Note: We can't use dpkg-vendor 
+# because it is installed via `build-essential`.
+grep -Ei 'debian|buntu|mint' /etc/*release > /dev/null || {
+    echo >&2 "Run this script on a Debian-based host."; exit 1; 
 }
 
 # Make debconf use a frontend that expects no interactive input
 export DEBIAN_FRONTEND=noninteractive
 SCRIPT_DIR="$(dirname "$0")"
 
-# Latest cmake directly from cmake.org -> /opt
-# Note: not required on 17.10 and later.
-# bash $SCRIPT_DIR/provision_cmake.sh
-
 apt-get update -qq
-# Haven't found a way to upgrade open-vm-tools non-interactively
-# apt-get install -y --only-upgrade open-vm-tools
-apt-get install -qq htop unzip tmux lldb-5.0 vim curl gnupg2 cmake gperf
-apt-get install -qq software-properties-common build-essential llvm-5.0 clang-5.0 ninja-build
+# dirmngr is required for gnupg2 key retrieval
+apt-get install -qq --install-recommends dirmngr
+apt-get install -qq htop unzip tmux vim curl gnupg2 cmake gperf
+apt-get install -qq software-properties-common build-essential clang-5.0 ninja-build
 
 update-alternatives --install /usr/bin/clang clang /usr/bin/clang-5.0 100
 update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-5.0 100
-update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-5.0 100
+# update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-5.0 100
 
 # Install python3.6 and packages
 apt-get install -qq python3-pip
-pip3 install --upgrade pip
-pip3 install plumbum colorlog typing cbor cbor2 mako pylint psutil
+pip3 install -r /tmp/requirements.txt
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 
 # Dependencies for test programs #

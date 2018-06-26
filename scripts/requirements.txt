@@ -1,0 +1,7 @@
+cbor
+colorlog 
+mako
+pip
+plumbum >= 1.6.3
+psutil
+typing
