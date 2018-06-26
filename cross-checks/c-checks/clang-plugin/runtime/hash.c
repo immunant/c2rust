@@ -6,40 +6,43 @@
 #define POINTER_HASH_FUNCTION(...)        WIDTH_HASH_FUNCTION(u, __INTPTR_WIDTH__) (__VA_ARGS__)
 
 // Define __c2rust_hash_T functions for all the fixed-size types
-#define DEFINE_FIXED_HASH(short_ty, val_ty, xor_const)                    \
+#define _STRINGIFY(x)   #x
+#define STRINGIFY(x)    _STRINGIFY(x)
+#define DEFINE_FIXED_HASH(short_ty, short_byte_ty, val_ty, xor_const)     \
     static uint64_t __c2rust_hash_ ## short_ty (val_ty x, size_t depth) { \
         return (0x ## xor_const ## ULL) ^ (uint64_t) x;                   \
-    }
-DEFINE_FIXED_HASH(u8,  uint8_t,  0000000000000000)
-DEFINE_FIXED_HASH(u16, uint16_t, 5a5a5a5a5a5a5a5a)
-DEFINE_FIXED_HASH(u32, uint32_t, b4b4b4b4b4b4b4b4)
-DEFINE_FIXED_HASH(u64, uint64_t, 0f0f0f0f0f0f0f0e)
-DEFINE_FIXED_HASH(i8,   int8_t,  c3c3c3c3c3c3c3c2)
-DEFINE_FIXED_HASH(i16,  int16_t, 1e1e1e1e1e1e1e1c)
-DEFINE_FIXED_HASH(i32,  int32_t, 7878787878787876)
-DEFINE_FIXED_HASH(i64,  int64_t, d2d2d2d2d2d2d2d0)
+    }                                                                     \
+    uint64_t __c2rust_hash_ ## short_byte_ty (val_ty x, size_t depth)     \
+    __attribute__((alias(STRINGIFY(__c2rust_hash_ ## short_ty))));
+
+DEFINE_FIXED_HASH(u8,  U1, uint8_t,  0000000000000000)
+DEFINE_FIXED_HASH(u16, U2, uint16_t, 5a5a5a5a5a5a5a5a)
+DEFINE_FIXED_HASH(u32, U4, uint32_t, b4b4b4b4b4b4b4b4)
+DEFINE_FIXED_HASH(u64, U8, uint64_t, 0f0f0f0f0f0f0f0e)
+DEFINE_FIXED_HASH(i8,  I1,  int8_t,  c3c3c3c3c3c3c3c2)
+DEFINE_FIXED_HASH(i16, I2,  int16_t, 1e1e1e1e1e1e1e1c)
+DEFINE_FIXED_HASH(i32, I4,  int32_t, 7878787878787876)
+DEFINE_FIXED_HASH(i64, I8,  int64_t, d2d2d2d2d2d2d2d0)
 
 // Now define __c2rust_hash_T functions for primitive C types
 // as aliases to the fixed-size functions defined above
-#define _STRINGIFY(x)   #x
-#define STRINGIFY(x)    _STRINGIFY(x)
 #define DEFINE_CTYPE_HASH(c_ty_name, c_ty, sign, width)         \
     uint64_t __c2rust_hash_ ## c_ty_name (c_ty x, size_t depth) \
     __attribute__((alias(STRINGIFY(WIDTH_HASH_FUNCTION(sign, width)))));
-DEFINE_CTYPE_HASH(uchar,  unsigned char,      u, __SCHAR_WIDTH__);
-DEFINE_CTYPE_HASH(ushort, unsigned short,     u, __SHRT_WIDTH__);
-DEFINE_CTYPE_HASH(uint,   unsigned int,       u, __INT_WIDTH__);
-DEFINE_CTYPE_HASH(ulong,  unsigned long,      u, __LONG_WIDTH__);
-DEFINE_CTYPE_HASH(ullong, unsigned long long, u, __LONG_LONG_WIDTH__);
-DEFINE_CTYPE_HASH(schar,  signed char,        i, __SCHAR_WIDTH__);
-DEFINE_CTYPE_HASH(short,  short,              i, __SHRT_WIDTH__);
-DEFINE_CTYPE_HASH(int,    int,                i, __INT_WIDTH__);
-DEFINE_CTYPE_HASH(long,   long,               i, __LONG_WIDTH__);
-DEFINE_CTYPE_HASH(llong,  unsigned long long, i, __LONG_LONG_WIDTH__);
+DEFINE_CTYPE_HASH(uchar,  unsigned char,      U, 1);
+DEFINE_CTYPE_HASH(ushort, unsigned short,     U, __SIZEOF_SHORT__);
+DEFINE_CTYPE_HASH(uint,   unsigned int,       U, __SIZEOF_INT__);
+DEFINE_CTYPE_HASH(ulong,  unsigned long,      U, __SIZEOF_LONG__);
+DEFINE_CTYPE_HASH(ullong, unsigned long long, U, __SIZEOF_LONG_LONG__);
+DEFINE_CTYPE_HASH(schar,  signed char,        I, 1);
+DEFINE_CTYPE_HASH(short,  short,              I, __SIZEOF_SHORT__);
+DEFINE_CTYPE_HASH(int,    int,                I, __SIZEOF_INT__);
+DEFINE_CTYPE_HASH(long,   long,               I, __SIZEOF_LONG__);
+DEFINE_CTYPE_HASH(llong,  long long,          I, __SIZEOF_LONG_LONG__);
 #ifdef __CHAR_UNSIGNED__
-DEFINE_CTYPE_HASH(char,   char,               u, __SCHAR_WIDTH__);
+DEFINE_CTYPE_HASH(char,   char,               U, 1);
 #else
-DEFINE_CTYPE_HASH(char,   char,               i, __SCHAR_WIDTH__);
+DEFINE_CTYPE_HASH(char,   char,               I, 1);
 #endif
 
 uint64_t __c2rust_hash_bool(_Bool x, size_t depth) {
