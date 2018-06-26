@@ -11,7 +11,7 @@ normal Rust modules. They will export and import functions through the C
 API. These modules can be compiled together into a single static Rust
 library.
 
-There are several [known limitations](https://github.com/GaloisInc/C2Rust/wiki/Known-Limitations-of-Translation)
+There are several [known limitations](https://github.com/immunant/c2rust/wiki/Known-Limitations-of-Translation)
 in this translator. Some of these restrictions come from limitations of
 Rust and others come from complexities of the features themselves. The
 translator will attempt to skip function definitions that use
