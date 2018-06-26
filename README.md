@@ -23,7 +23,8 @@ These two projects have some large dependencies (namely parts of LLVM and Clang)
 the necessary tools, the following should build `ast-exporter` and `ast-importer` and all of their
 dependencies, automatically pulling them in if necessary.
 
-Building from scratch takes on the order of 30 minutes. This script works on at least MacOS.
+Building from scratch takes on the order of 30 minutes. This script works on at least MacOS and require 
+`python 3`, `psutil` and `plumbum`.
 
     $ ./scripts/build_translator.py
 
