@@ -8,14 +8,14 @@ git:
 
 language: c
 
-before_install:
+cache: ccache
+
+install:
   - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
   - HOMEBREW_NO_AUTO_UPDATE=1 brew install ccache ninja
   - export PATH="/usr/local/opt/ccache/libexec:$PATH"
   - sudo -H pip3 install --upgrade pip
   - sudo -H pip3 install plumbum colorlog typing cbor cbor2 pylint psutil
-
-install:
   - ./scripts/provision_rust.sh
   - . ~/.cargo/env
 
