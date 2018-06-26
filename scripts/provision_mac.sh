@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# complain if we're not on macOS
+UNAME=$(uname -s)
+if [ "$UNAME" != "Darwin" ]; then
+  echo >&2 "Run this script on a macOS host."; exit 1; 
+fi
+
+# make sure we have all prerequisites
+prereqs=(brew pip3 clang)
+for prereq in "${prereqs[@]}"; do
+    type -P "$prereq" >/dev/null || { 
+        echo >&2 "$prereq not in path."; exit 1; 
+    }
+done
+
+SCRIPT_DIR="$(dirname "$0")"
+export HOMEBREW_NO_AUTO_UPDATE=1
+
+hb_packages=(python ninja ccache)
+for item in "${hb_packages[@]}"; do
+  brew info "${item}" | grep --quiet 'Not installed' && brew install "${item}"
+done
+
+# Python 3 packages
+pip3 install -r "$SCRIPT_DIR/requirements.txt" --user --disable-pip-version-check --quiet
+
+# Rust and dependencies
+"$SCRIPT_DIR/provision_rust.sh"

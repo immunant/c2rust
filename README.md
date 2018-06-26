@@ -25,6 +25,7 @@ There are three ways to build the C2Rust project:
 2. In the provided docker environment. See the [docker README](docker/README.md)
 3. Building directly on a macOS or Linux host. The previous two options automatically install all pre-requisites during provisioning. With this option, prerequisites must be installed manually. 
     - If you are on a Debian-based OS, you can run `provision_deb.sh` to do so. 
+    - If you are on macOS, install the Xcode command-line tools (e.g., `xcode-select --install`) and [homebrew](https://brew.sh/) first. Then run `provision_mac.sh`.
    
 
 ### Building
@@ -37,8 +38,6 @@ necessary.
 Building from scratch takes on the order of 30 minutes. The script has been tested on recent versions of macOS and Ubuntu.
 
     $ ./scripts/build_translator.py
-
-On Ubuntu, ninja-build is required.
 
 To manually build the `ast-exporter`, check out [these build instructions][0]. To manually build the
 `ast-importer`, check out [its README](ast-importer/README.md).

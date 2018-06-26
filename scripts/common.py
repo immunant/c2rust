@@ -544,6 +544,7 @@ def _get_gpg_cmd():
     except pb.CommandNotFound:
         gpg = get_cmd_or_die("gpg")
 
+    gpg.env = {'LANG': 'en'}  # request english output
     gpg_ver = gpg("--version")
     logging.debug("gpg version output:\n%s", gpg_ver)
     emsg = "{} in path is too old".format(gpg.executable.basename)
