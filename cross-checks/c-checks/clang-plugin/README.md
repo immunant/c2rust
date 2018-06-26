@@ -27,9 +27,11 @@ This is a cross-check inserter for C programs implemented as a clang compiler pl
     $ cc_wrapper.sh .../clang-6.0 .../CrossChecks.so <rest of command line...>
   ```
   or add the following arguments manually to the clang command line, e.g., using `CFLAGS`:
-  `-Xclang -load -Xclang .../CrossChecks.so -Xclang -add-plugin -Xclang crosschecks`
+  ```
+  -Xclang -load -Xclang .../CrossChecks.so -Xclang -add-plugin -Xclang crosschecks
+  ```
   and link against `libruntime.a`.
-  In either approach, the target binary must be linked against one of the `rb_xcheck` implementation libraries: `libfakechecks.so` or `libclevrbuf.so`.
+  In both cases, the target binary must then be linked against one of the `rb_xcheck` implementation libraries: `libfakechecks.so` or `libclevrbuf.so`.
 
 ## Testing
 
