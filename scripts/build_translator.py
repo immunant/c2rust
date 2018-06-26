@@ -20,6 +20,7 @@ from common import (
     die,
     est_parallel_link_jobs,
     invoke,
+    install_sig,
     ensure_dir,
     on_mac,
     get_system_include_dirs,
@@ -35,6 +36,9 @@ from common import (
 
 def download_llvm_sources():
     tar = get_cmd_or_die("tar")
+
+    # make sure we have the gpg public key installed first
+    install_sig(c.LLVM_PUBKEY)
 
     with pb.local.cwd(c.DEPS_DIR):
         # download archives and signatures

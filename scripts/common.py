@@ -70,6 +70,8 @@ class Config:
         'http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz',
     ]
+    # See http://releases.llvm.org/download.html#6.0.0
+    LLVM_PUBKEY = os.path.join(ROOT_DIR, "scripts/llvm-6.0.0-key.asc")
     LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
     LLVM_BLD = os.path.join(DEPS_DIR,
                             'llvm-{ver}/build.'.format(ver=LLVM_VER))
@@ -533,7 +535,7 @@ def export_ast_from(ast_expo: pb.commands.BaseCommand,
         die("sanity testing: " + mesg, pee.retcode)
 
 
-def check_sig(afile: str, asigfile: str) -> None:
+def _get_gpg_cmd():
     # on macOS, run `brew install gpg`
     gpg = None
     try:
@@ -546,6 +548,23 @@ def check_sig(afile: str, asigfile: str) -> None:
     logging.debug("gpg version output:\n%s", gpg_ver)
     emsg = "{} in path is too old".format(gpg.executable.basename)
     assert "gpg (GnuPG) 1.4" not in gpg_ver, emsg
+
+    return gpg
+
+
+def install_sig(sigfile: str) -> None:
+    gpg = _get_gpg_cmd()
+
+    retcode, _, stderr = gpg['--import', sigfile].run(retcode=None)
+    if retcode:
+        logging.fatal(stderr)
+        die('could not import gpg key: ' + sigfile, retcode)
+    else:
+        logging.debug(stderr)
+
+
+def check_sig(afile: str, asigfile: str) -> None:
+    gpg = _get_gpg_cmd()
 
     def cleanup_on_failure(files: List[str]) -> None:
         for f in files:
@@ -584,20 +603,20 @@ def check_sig(afile: str, asigfile: str) -> None:
 def download_archive(aurl: str, afile: str, asig: str = None):
     curl = get_cmd_or_die("curl")
 
-    # download archive
-    if not os.path.isfile(afile):
-        logging.info("downloading %s", os.path.basename(afile))
-        follow_redirs = "-L"
-        curl(aurl, follow_redirs, "--max-redirs", "20", "-o", afile)
+    def _download_helper(url: str, file: str):
+        if not os.path.isfile(file):
+            logging.info("downloading %s", os.path.basename(afile))
+            follow_redirs = "-L"
+            curl(url, follow_redirs, "--max-redirs", "20", "-o", file)
+
+    _download_helper(aurl, afile)
 
     if not asig:
         return
 
     # download archive signature
     asigfile = afile + ".sig"
-    if not os.path.isfile(asig):
-        logging.debug("downloading %s", asigfile)
-        curl(asig, "-o", asigfile)
+    _download_helper(asig, asigfile)
 
     check_sig(afile, asigfile)
 
