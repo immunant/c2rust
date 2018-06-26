@@ -91,3 +91,15 @@ source files mentioned in the previously generated
 `compile_commands.json`.
 
     $ scripts/transpile.py ./compile_commands.json
+
+## Legal
+
+This material is available under the BSD-3 style license as found in the
+`LICENSE` file.
+
+This material is based upon work supported by the United States Air Force and
+DARPA under Contract No. FA8750-15-C-0124.  Any opinions, findings and
+conclusions or recommendations  expressed in this material are those of the
+author(s) and do not necessarily reflect the views of the United States Air
+Force and DARPA.  Distribution Statement A, “Approved for Public Release,
+Distribution Unlimited.”
