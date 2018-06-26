@@ -11,6 +11,8 @@ export DEBIAN_FRONTEND=noninteractive
 SCRIPT_DIR="$(dirname "$0")"
 
 apt-get update -qq
+# dirmngr is required for gnupg2 key retrieval
+apt-get install -qq --install-recommends dirmngr
 apt-get install -qq htop unzip tmux vim curl gnupg2 cmake gperf
 apt-get install -qq software-properties-common build-essential clang-5.0 ninja-build
 
