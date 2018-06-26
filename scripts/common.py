@@ -521,6 +521,8 @@ def check_sig(afile: str, asigfile: str) -> None:
     except pb.CommandNotFound:
         gpg = get_cmd_or_die("gpg")
 
+    # force set to english
+    gpg.env = {'LANG': 'en'}
     gpg_ver = gpg("--version")
     logging.debug("gpg version output:\n%s", gpg_ver)
     emsg = "{} in path is too old".format(gpg.executable.basename)
