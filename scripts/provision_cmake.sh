@@ -8,13 +8,13 @@ fi
 # exit early if cmake in path is the one to be installed
 if type "cmake" > /dev/null 2>&1; then
   # CMAKE_VERSION=$(cmake --version)
-  cmake --version | grep -q "3.7.2" && { echo "Cmake requirements already met. Nothing to do."; exit 0; }
+  cmake --version | grep -q "3.9.1" && { echo "Cmake requirements already met. Nothing to do."; exit 0; }
 fi
 
-CMAKE_URL="https://cmake.org/files/v3.7/cmake-3.7.2-Linux-x86_64.sh"
+CMAKE_URL="https://cmake.org/files/v3.9/cmake-3.9.1-Linux-x86_64.sh"
 CMAKE_SCRIPT=${CMAKE_URL##*/}
 CMAKE_PREFIX=/opt/$CMAKE_SCRIPT
-CMAKE_SHA256="2e250d9a23764a9c54262c1ddc275b02666b81e2cbe05459d15906825655874b  $CMAKE_SCRIPT"
+CMAKE_SHA256="6fdaa13c978e3e9d0b23a17bb16e68d344a459217df0378b0785674f206562fc  $CMAKE_SCRIPT"
 
 WORK_DIR=`mktemp -d` && cd $WORK_DIR
 
