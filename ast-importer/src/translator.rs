@@ -2475,7 +2475,14 @@ impl Translation {
 
                 }
             }
-            _ => Err(format!("Bad statement expression")),
+            _ => {
+                if let ExprUse::Unused = use_ {
+                    let val = self.panic("Empty statement expression is not supposed to be used");
+                    Ok(WithStmts { stmts: vec![], val })
+                } else {
+                    Err(format!("Bad statement expression"))
+                }
+            },
         }
     }
 
