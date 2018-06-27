@@ -26,8 +26,9 @@ install:
 
 # NOTE: travis doesn't automatically terminate if command fails.
 script: 
-  - python3 ./scripts/build_translator.py || travis_terminate 1
+  - python3 ./scripts/build_translator.py --with-clang || travis_terminate 1
   - python3 ./scripts/test_translator.py ./tests || travis_terminate 1
+  - python3 ./scripts/build_cross_checks.py || travis_terminate 1
   - python3 ./scripts/test_cross_checks.py || travis_terminate 1
 
 notifications:
