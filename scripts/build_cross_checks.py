@@ -20,7 +20,6 @@ from common import (
     setup_logging,
     have_rust_toolchain,
     ensure_clang_version,
-    ensure_rustc_version,
     ensure_dir,
     git_ignore_dir,
 )
@@ -112,7 +111,9 @@ def _main():
 
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])
-    ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
+    # NOTE: it seems safe to disable this check since we now
+    # that we use a rust-toolchain file for rustc versioning.
+    # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
 
     ensure_dir(c.CLANG_XCHECK_PLUGIN_BLD)
     ensure_dir(c.DEPS_DIR)

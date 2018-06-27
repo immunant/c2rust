@@ -18,7 +18,6 @@ from common import (
     setup_logging,
     die,
     ensure_dir,
-    ensure_rustc_version,
 )
 from enum import Enum
 from rust_file import (
@@ -604,7 +603,9 @@ def main() -> None:
             die(msg, errno.ENOENT)
 
     ensure_dir(c.DEPS_DIR)
-    ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
+    # NOTE: it seems safe to disable this check since we now
+    # that we use a rust-toolchain file for rustc versioning.
+    # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
 
     if not test_directories:
         die("nothing to test")
