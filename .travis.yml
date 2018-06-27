@@ -1,17 +1,23 @@
 os: osx
 osx_image: xcode9.3 # request macOS 10.13
 sudo: enabled
+language: generic
 
 # TODO: figure out why submodule checkout fails
 git:
   submodules: false
 
-language: generic
+env:
+  - USE_CCACHE=1
+  - CCACHE_COMPRESS=1
+  - CCACHE_MAXSIZE=750M
+  - CCACHE_CPP2=1
 
 # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
 cache: 
-  - directories:
-    - $HOME/.cargo # equivalent to `cache: cargo`
+  cargo: true
+  ccache: true
+  directories: # handle non-obvious Rust target dirs
     - $TRAVIS_BUILD_DIR/ast-importer/target
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/rustc-plugin/target
@@ -22,14 +28,21 @@ cache:
 install:
   - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
   - ./scripts/provision_mac.sh
+
+before_script:
+  - export PATH="/usr/local/opt/ccache/libexec:$PATH"
+  - export CXX=clang++
+  - export CC=clang
   - . ~/.cargo/env
 
 # NOTE: travis doesn't automatically terminate if command fails.
 script: 
-  - python3 ./scripts/build_translator.py --with-clang || travis_terminate 1
+  - python3 ./scripts/build_translator.py  || travis_terminate 1
   - python3 ./scripts/test_translator.py ./tests || travis_terminate 1
-  - python3 ./scripts/build_cross_checks.py || travis_terminate 1
-  - python3 ./scripts/test_cross_checks.py || travis_terminate 1
+ # NOTE: disabled because it takes to long to compile on free plan :/
+ # To enable, add `--with-clang` to build_translator.py line above.
+ # - python3 ./scripts/build_cross_checks.py || travis_terminate 1
+ # - python3 ./scripts/test_cross_checks.py || travis_terminate 1
 
 notifications:
   slack:
