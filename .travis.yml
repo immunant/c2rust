@@ -22,6 +22,7 @@ cache:
 install:
   - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
   - ./scripts/provision_mac.sh
+  - . ~/.cargo/env
 
 # NOTE: travis doesn't automatically terminate if command fails.
 script: 
