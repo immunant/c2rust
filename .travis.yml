@@ -8,10 +8,14 @@ git:
   submodules: false
 
 env:
-  - USE_CCACHE=1
-  - CCACHE_COMPRESS=1
-  - CCACHE_MAXSIZE=750M
-  - CCACHE_CPP2=1
+  global:
+    - PATH="/usr/local/opt/ccache/libexec:$PATH"
+    - CXX=clang++
+    - CC=clang
+    - USE_CCACHE=1
+    - CCACHE_COMPRESS=1
+    - CCACHE_MAXSIZE=750M
+    - CCACHE_CPP2=1
 
 # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
 cache: 
@@ -28,11 +32,6 @@ cache:
 install:
   - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
   - ./scripts/provision_mac.sh
-
-before_script:
-  - export PATH="/usr/local/opt/ccache/libexec:$PATH"
-  - export CXX=clang++
-  - export CC=clang
   - . ~/.cargo/env
 
 # NOTE: travis doesn't automatically terminate if command fails.
