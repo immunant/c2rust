@@ -503,6 +503,19 @@ class TranslateASTVisitor final
       // Statements
       //
       
+      /*
+      bool VisitAttributedStmt(AttributedStmt *S) {
+          std::vector<void*> childIds { S->getSubStmt() };
+          encode_entry(S, TagAttributedStmt, childIds,
+                       [S](CborEncoder *array){
+                           for (auto s: S->getAttrs()) {
+                               cbor_encode_text_stringz(array, s->getSpelling());
+                           }
+          });
+          return true;
+      }
+      */
+      
       bool VisitCompoundStmt(CompoundStmt *CS) {
           std::vector<void*> childIds;
           for (auto x : CS->children()) {
@@ -778,6 +791,8 @@ class TranslateASTVisitor final
        */
       bool VisitInitListExpr(InitListExpr *ILE) {
           auto inits = ILE->inits();
+          
+          
           std::vector<void*> childIds(inits.begin(), inits.end());
           encode_entry(ILE, TagInitListExpr, childIds, [ILE](CborEncoder *extras) {
               auto union_field = ILE->getInitializedFieldInUnion();
@@ -788,6 +803,63 @@ class TranslateASTVisitor final
               }
           });
           
+          return true;
+      }
+      
+      /*
+       Describes a designated initializer expression
+       Children: initializer
+       Extras:
+       - Array of designators
+       
+       Designator format:
+       [1, array_index]            { [1]      = 2 }
+       [2, field_id]               { .field   = 1 }
+       [3, array_start, array_end] { [1 .. 2] = 3 }
+       */
+      bool VisitDesignatedInitExpr(DesignatedInitExpr *E) {
+          std::vector<void*> childIds { E->getInit() };
+
+          encode_entry(E, TagDesignatedInitExpr, childIds, [this,E](CborEncoder *extras) {
+              
+              CborEncoder array;
+              cbor_encoder_create_array(extras, &array, 0);
+              for (auto &designator: E->designators()) {
+                  CborEncoder entry;
+                  if (designator.isArrayDesignator()) {
+                      cbor_encoder_create_array(&array, &entry, 2);
+                      cbor_encode_int(&entry, 1);
+                      
+                      APSInt Result;
+                      bool success = E->getArrayIndex(designator)->isIntegerConstantExpr(Result, *Context);
+                      assert(success && "designator array index not integer constant expr");
+                      cbor_encode_int(&entry, Result.getZExtValue());
+                      
+                  } else if (designator.isFieldDesignator()) {
+                      cbor_encoder_create_array(&array, &entry, 2);
+                      cbor_encode_int(&entry, 2);
+                      cbor_encode_uint(&entry, uintptr_t(designator.getField()));
+                  } else if (designator.isArrayRangeDesignator()) {
+                      cbor_encoder_create_array(&array, &entry, 3);
+                      cbor_encode_int(&entry, 3);
+                      
+                      APSInt Result;
+                      bool success = E->getArrayRangeStart(designator)->isIntegerConstantExpr(Result, *Context);
+                      assert(success && "designator array range start not integer constant expr");
+                      cbor_encode_int(&entry, Result.getZExtValue());
+                      
+                      success = E->getArrayRangeEnd(designator)->isIntegerConstantExpr(Result, *Context);
+                      assert(success && "designator array range end not integer constant expr");
+                      cbor_encode_int(&entry, Result.getZExtValue());
+                  } else {
+                      assert(0 && "unknown designator kind");
+                  }
+                  cbor_encoder_close_container(&array, &entry);
+              }
+              cbor_encoder_close_container(extras, &array);
+              
+          });
+
           return true;
       }
       
