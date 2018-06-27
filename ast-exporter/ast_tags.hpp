@@ -41,7 +41,7 @@ enum ASTEntryTag {
     TagDoStmt,
     
     TagAsmStmt,
-    
+    TagAttributedStmt,
     
     TagBinaryOperator = 200,
     TagUnaryOperator,
@@ -65,9 +65,10 @@ enum ASTEntryTag {
     TagPredefinedExpr,
     TagStmtExpr,
     TagVAArgExpr,
-    
     TagShuffleVectorExpr,
+    
     TagConvertVectorExpr,
+    TagDesignatedInitExpr,
     
     TagIntegerLiteral = 300,
     TagStringLiteral,
