@@ -6,14 +6,22 @@ sudo: enabled
 git:
   submodules: false
 
-language: rust
+language: generic
 
-cache: cargo
+# https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
+cache: 
+  - directories:
+    - $HOME/.cargo # equivalent to `cache: cargo`
+    - $TRAVIS_BUILD_DIR/ast-importer/target
+    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
+    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/rustc-plugin/target
+    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/runtime/target
+    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/derive-macros/target
+    - $TRAVIS_BUILD_DIR/rust-refactor/target
 
 install:
   - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
   - ./scripts/provision_mac.sh
-  # - . ~/.cargo/env
 
 # NOTE: travis doesn't automatically terminate if command fails.
 script: 
