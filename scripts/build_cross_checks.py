@@ -22,23 +22,8 @@ from common import (
     ensure_clang_version,
     ensure_dir,
     git_ignore_dir,
+    get_ninja_build_type,
 )
-
-
-# TODO: move to common.py???
-def get_ninja_build_type(ninja_build_file):
-    signature = "# CMAKE generated file: DO NOT EDIT!" + os.linesep
-    with open(ninja_build_file, "r") as handle:
-        lines = handle.readlines()
-        if not lines[0] == signature:
-            die("unexpected content in ninja.build: " + ninja_build_file)
-        r = re.compile(r'^#\s*Configuration:\s*(\w+)')
-        for line in lines:
-            m = r.match(line)
-            if m:
-                # print m.group(1)
-                return m.group(1)
-        die("missing content in ninja.build: " + ninja_build_file)
 
 
 def build_clang_plugin(args: str) -> None:

@@ -28,6 +28,7 @@ from common import (
     ensure_clang_version,
     git_ignore_dir,
     on_linux,
+    get_ninja_build_type,
 )
 
 
@@ -66,21 +67,6 @@ def download_llvm_sources():
                 logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[2])
                 tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[2]))
                 os.rename(c.LLVM_ARCHIVE_DIRS[2], "extra")
-
-
-def get_ninja_build_type(ninja_build_file):
-    signature = "# CMAKE generated file: DO NOT EDIT!" + os.linesep
-    with open(ninja_build_file, "r") as handle:
-        lines = handle.readlines()
-        if not lines[0] == signature:
-            die("unexpected content in ninja.build: " + ninja_build_file)
-        r = re.compile(r'^#\s*Configuration:\s*(\w+)')
-        for line in lines:
-            m = r.match(line)
-            if m:
-                # print m.group(1)
-                return m.group(1)
-        die("missing content in ninja.build: " + ninja_build_file)
 
 
 def configure_and_build_llvm(args: str) -> None:

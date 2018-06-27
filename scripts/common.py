@@ -474,6 +474,21 @@ def ensure_clang_version(min_ver: List[int]):
         assert False, "run this script on macOS or linux"
 
 
+def get_ninja_build_type(ninja_build_file):
+    signature = "# CMAKE generated file: DO NOT EDIT!" + os.linesep
+    with open(ninja_build_file, "r") as handle:
+        lines = handle.readlines()
+        if not lines[0] == signature:
+            die("unexpected content in ninja.build: " + ninja_build_file)
+        r = re.compile(r'^#\s*Configuration:\s*(\w+)')
+        for line in lines:
+            m = r.match(line)
+            if m:
+                # print m.group(1)
+                return m.group(1)
+        die("missing content in ninja.build: " + ninja_build_file)
+
+
 def get_system_include_dirs() -> List[str]:
     """
     note: assumes code was compiled with clang installed locally.
