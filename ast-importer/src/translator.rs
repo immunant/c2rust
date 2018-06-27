@@ -64,6 +64,7 @@ pub struct Translation {
     zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
     pub comment_context: RefCell<CommentContext>,
     pub comment_store: RefCell<CommentStore>,
+    static_initializers: RefCell<Vec<Stmt>>,
 }
 
 
@@ -335,6 +336,14 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             }
         };
 
+        // Initialize global statics when necessary
+        if !t.static_initializers.borrow().is_empty() {
+            let (initializer_fn, initializer_static) = t.generate_global_static_init();
+
+            t.items.push(initializer_fn);
+            t.items.push(initializer_static);
+            t.use_feature("used");
+        }
 
         to_string(|s| {
             s.comments().get_or_insert(vec![]).extend(t.comment_store.into_inner().into_comments());
@@ -495,6 +504,7 @@ impl Translation {
             zero_inits: RefCell::new(HashMap::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
+            static_initializers: RefCell::new(Vec::new()),
         }
     }
 
@@ -517,6 +527,29 @@ impl Translation {
         if self.tcfg.cross_checks {
             mk.call_attr("cross_check", args)
         } else { mk }
+    }
+
+    fn generate_global_static_init(&mut self) -> (P<Item>, P<Item>) {
+        // If we don't want to consume self.static_initializers for some reason, we could clone the vec
+        let static_initializers = self.static_initializers.replace(Vec::new());
+
+        let fn_name = self.renamer.borrow_mut().pick_name("run_static_initializers");
+        let fn_ty = FunctionRetTy::Ty(mk().tuple_ty(vec![] as Vec<P<Ty>>));
+        let fn_decl = mk().fn_decl(vec![], fn_ty, false);
+        let fn_block = mk().block(static_initializers);
+        let fn_item = mk().unsafe_().abi("C").fn_item(&fn_name, &fn_decl, fn_block);
+
+        let static_attributes = mk()
+            .single_attr("used")
+            .call_attr("cfg_attr", vec!["target_os = \"linux\"", "link_section = \".init_array\""])
+            .call_attr("cfg_attr", vec!["target_os = \"windows\"", "link_section = \".CRT$XIB\""])
+            .call_attr("cfg_attr", vec!["target_os = \"macos\"", "link_section = \"__DATA,__mod_init_func\""]);
+        let static_array_size = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
+        let static_ty = mk().array_ty(mk().unsafe_().abi("C").barefn_ty(fn_decl), static_array_size);
+        let static_val = mk().array_expr(vec![mk().path_expr(vec![fn_name])]);
+        let static_item = static_attributes.static_item("INIT_ARRAY", static_ty, static_val);
+
+        (fn_item, static_item)
     }
 
     fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, String> {
@@ -925,7 +958,26 @@ impl Translation {
                 let mut init = init?;
                 init.stmts.push(mk().expr_stmt(init.val));
                 let init = mk().unsafe_().block(init.stmts);
-                let init = mk().block_expr(init);
+                let mut init = mk().block_expr(init);
+
+                // Collects problematic static initializers and offloads them to sections for the linker
+                // to initialize for us
+                // FIXME: Does not yet discriminate which statics need offloaded initialization. Currently does all.
+                // FIXME: Only does static objects on the whole, needs to be able to handle individual fields as well.
+                // REVIEW: Does this apply to fn local statics?
+                // REVIEW: This does not (yet?) promote function scoped statics to globals when necessary
+                if is_static {
+                    if let Some(expr_id) = initializer {
+                        if let ExprKind::Block(block, _) = &init.node {
+                            self.collect_static_initializer(new_name, &block.stmts[0]);
+                        } else {
+                            // This should be unreachable (at least on initializer side) once completing analysis on initializer which must exist?
+                            panic!("Not working"); // FIXME: return Result?
+                        }
+
+                        init = self.implicit_default_expr(typ.ctype, is_static)?;
+                    }
+                }
 
                 // Force mutability due to the potential for raw pointers occuring in the type
 
@@ -1505,6 +1557,25 @@ impl Translation {
             }
         }
         false
+    }
+
+    fn collect_static_initializer(&self, name: &str, stmt: &Stmt) {
+        let expr = if let StmtKind::Expr(ref expr) = stmt.node {
+
+            mk().expr_stmt(mk().assign_expr(mk().path_expr(vec![name]), expr))
+        } else {
+            panic!("Expected expr"); // FIXME: Return Result?
+        };
+
+        self.static_initializers.borrow_mut().push(expr);
+    }
+
+    fn find_uncompilable_static_initializers(&self, expr_id: CExprId) {
+        let iter = DFExpr::new(&self.ast_context, expr_id.into());
+
+        for i in iter {
+            println!("// {:?}", i);
+        }
     }
 
     pub fn convert_decl_stmt_info(&self, decl_id: CDeclId) -> Result<cfg::DeclStmtInfo, String> {
