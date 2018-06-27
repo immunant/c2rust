@@ -22,6 +22,7 @@ cache:
   cargo: true
   ccache: true
   directories: # handle non-obvious Rust target dirs
+    - $HOME/Library/Caches/Homebrew
     - $TRAVIS_BUILD_DIR/ast-importer/target
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/rustc-plugin/target
