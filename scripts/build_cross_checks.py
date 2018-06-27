@@ -23,6 +23,7 @@ from common import (
     ensure_dir,
     git_ignore_dir,
     get_ninja_build_type,
+    on_mac,
 )
 
 
@@ -74,6 +75,9 @@ def _parse_args():
 
 
 def _main():
+    if on_mac():
+        die("Cross-checking is only supported on Linux hosts.")
+
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
