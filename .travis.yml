@@ -36,14 +36,14 @@ install:
   - . ~/.cargo/env
 
 # NOTE: travis doesn't automatically terminate if command fails.
-# NOTE: cross-check tests time out on the free plan without caching.
-# To enable, add `--with-clang` to build_translator.py line.
 script: 
   - ccache -s
   - python3 ./scripts/build_translator.py --with-clang  || travis_terminate 1
   - python3 ./scripts/test_translator.py ./tests || travis_terminate 1
-  - python3 ./scripts/build_cross_checks.py || travis_terminate 1
-  - python3 ./scripts/test_cross_checks.py || travis_terminate 1
+ # NOTE: times out on the free plan without caching
+ # To enable, add `--with-clang` to build_translator.py line above.
+ - python3 ./scripts/build_cross_checks.py || travis_terminate 1
+ - python3 ./scripts/test_cross_checks.py || travis_terminate 1
   - ccache -s
 
 notifications:
