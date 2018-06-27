@@ -11,14 +11,15 @@ language: rust
 cache: cargo
 
 install:
+  - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
   - ./scripts/provision_mac.sh
   # - . ~/.cargo/env
 
-# run everything as one command to terminate on first failure
-script: |
-  python3 ./scripts/build_translator.py &&
-  python3 ./scripts/test_translator.py ./tests &&
-  python3 ./scripts/test_cross_checks.py
+# NOTE: travis doesn't automatically terminate if command fails.
+script: 
+  - python3 ./scripts/build_translator.py || travis_terminate 1
+  - python3 ./scripts/test_translator.py ./tests || travis_terminate 1
+  - python3 ./scripts/test_cross_checks.py || travis_terminate 1
 
 notifications:
   slack:
