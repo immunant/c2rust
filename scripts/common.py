@@ -31,6 +31,10 @@ class Colors:
 
 
 class Config:
+    HOST_SUFFIX = os.getenv('TRAVIS')
+    # use hostname outside travis continuous integration builds
+    HOST_SUFFIX = "travis" if HOST_SUFFIX == "true" else platform.node()
+
     NCPUS = str(multiprocessing.cpu_count())
 
     ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -50,7 +54,7 @@ class Config:
     CBOR_SRC = os.path.join(DEPS_DIR, CBOR_SRC)
     CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
     # use an install prefix unique to the host
-    CBOR_PREFIX += platform.node()  # returns hostname
+    CBOR_PREFIX += HOST_SUFFIX
 
     BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.11"
     BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.11.tar.gz")
@@ -58,7 +62,7 @@ class Config:
     BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
     BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear.")
     # use an install prefix unique to the host
-    BEAR_PREFIX += platform.node()  # returns hostname
+    BEAR_PREFIX += HOST_SUFFIX
     BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
     LLVM_VER = "6.0.0"
@@ -75,7 +79,7 @@ class Config:
     LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
     LLVM_BLD = os.path.join(DEPS_DIR,
                             'llvm-{ver}/build.'.format(ver=LLVM_VER))
-    LLVM_BLD += platform.node()  # returns hostname
+    LLVM_BLD += HOST_SUFFIX
     LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
     AST_EXPO = os.path.join(LLVM_BLD, "bin/ast-exporter")
 
@@ -83,7 +87,7 @@ class Config:
                                            "c-checks", "clang-plugin")
     CLANG_XCHECK_PLUGIN_BLD = os.path.join(DEPS_DIR,
                                            'clang-xcheck-plugin.')
-    CLANG_XCHECK_PLUGIN_BLD += platform.node()  # returns hostname
+    CLANG_XCHECK_PLUGIN_BLD += HOST_SUFFIX
 
     MIN_PLUMBUM_VERSION = (1, 6, 3)
     CMAKELISTS_COMMANDS = """
@@ -130,7 +134,7 @@ add_subdirectory(ast-exporter)
                 build_type = 'debug'
 
         self.AST_IMPO = "ast-importer/target.{}/{}/ast_importer".format(
-            platform.node(), build_type)
+            self.HOST_SUFFIX, build_type)
         self.AST_IMPO = os.path.join(self.ROOT_DIR, self.AST_IMPO)
 
     @staticmethod

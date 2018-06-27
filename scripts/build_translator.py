@@ -9,7 +9,6 @@ import errno
 import shutil
 import logging
 import argparse
-import platform
 from typing import Optional
 
 from common import (
@@ -181,7 +180,7 @@ def build_ast_importer(debug: bool):
 
     with pb.local.cwd(os.path.join(c.ROOT_DIR, "ast-importer")):
         # use different target dirs for different hosts
-        target_dir = "target." + platform.node()
+        target_dir = "target." + c.HOST_SUFFIX
         with pb.local.env(CARGO_TARGET_DIR=target_dir):
             # build with custom rust toolchain
             invoke(cargo, "+" + c.CUSTOM_RUST_NAME, *build_flags)

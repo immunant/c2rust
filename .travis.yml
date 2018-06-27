@@ -1,29 +1,50 @@
 os: osx
 osx_image: xcode9.3 # request macOS 10.13
 sudo: enabled
+language: generic
 
 # TODO: figure out why submodule checkout fails
 git:
   submodules: false
 
-language: c
+env:
+  global:
+    - PATH="/usr/local/opt/ccache/libexec:$PATH"
+    - CXX=clang++
+    - CC=clang
+    - USE_CCACHE=1
+    - CCACHE_COMPRESS=1
+    - CCACHE_CPP2=1
 
-cache: ccache
+# https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
+cache: 
+  directories: # handle non-obvious Rust target dirs
+    - $HOME/.rustup
+    - $HOME/.cargo
+    - $HOME/.ccache
+    - $HOME/Library/Caches/Homebrew
+    - $TRAVIS_BUILD_DIR/ast-importer/target.travis
+    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
+    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/rustc-plugin/target
+    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/runtime/target
+    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/derive-macros/target
+    - $TRAVIS_BUILD_DIR/rust-refactor/target
 
 install:
   - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
-  - HOMEBREW_NO_AUTO_UPDATE=1 brew install ccache ninja
-  - export PATH="/usr/local/opt/ccache/libexec:$PATH"
-  - sudo -H pip3 install --upgrade pip
-  - sudo -H pip3 install plumbum colorlog typing cbor cbor2 pylint psutil
-  - ./scripts/provision_rust.sh
+  - ./scripts/provision_mac.sh
   - . ~/.cargo/env
 
-# run everything as one command to terminate on first failure
-script: |
-  python3 ./scripts/build_translator.py &&
-  python3 ./scripts/test_translator.py ./tests &&
-  python3 ./scripts/test_cross_checks.py
+# NOTE: travis doesn't automatically terminate if command fails.
+script: 
+  - ccache -s
+  - python3 ./scripts/build_translator.py  || travis_terminate 1
+  - python3 ./scripts/test_translator.py ./tests || travis_terminate 1
+ # NOTE: disabled because it takes to long to compile on free plan :/
+ # To enable, add `--with-clang` to build_translator.py line above.
+ # - python3 ./scripts/build_cross_checks.py || travis_terminate 1
+ # - python3 ./scripts/test_cross_checks.py || travis_terminate 1
+  - ccache -s
 
 notifications:
   slack:
