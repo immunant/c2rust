@@ -18,9 +18,9 @@ env:
 
 # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
 cache: 
-  cargo: true
-  ccache: true
   directories: # handle non-obvious Rust target dirs
+    - $HOME/.cargo
+    - $HOME/.ccache
     - $HOME/Library/Caches/Homebrew
     - $TRAVIS_BUILD_DIR/ast-importer/target
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
