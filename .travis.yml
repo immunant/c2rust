@@ -6,18 +6,13 @@ sudo: enabled
 git:
   submodules: false
 
-language: c
+language: rust
 
-cache: ccache
+cache: cargo
 
 install:
-  - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
-  - HOMEBREW_NO_AUTO_UPDATE=1 brew install ccache ninja
-  - export PATH="/usr/local/opt/ccache/libexec:$PATH"
-  - sudo -H pip3 install --upgrade pip
-  - sudo -H pip3 install plumbum colorlog typing cbor cbor2 pylint psutil
-  - ./scripts/provision_rust.sh
-  - . ~/.cargo/env
+  - ./scripts/provision_mac.sh
+  # - . ~/.cargo/env
 
 # run everything as one command to terminate on first failure
 script: |
