@@ -9,7 +9,7 @@ from common import *
 import transpile
 from collections import namedtuple
 
-MACHINE_NAME = platform.node()
+MACHINE_NAME = common.config.HOST_SUFFIX
 MACHINE_TYPE = platform.platform()
 
 LIB_PATH = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)

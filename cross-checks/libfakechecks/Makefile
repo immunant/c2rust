@@ -10,7 +10,7 @@ all: $(LIB)
 clean:
 	rm -f $(LIB) fakechecks.o
 
-$(LIB): CXXFLAGS += -fPIC
+$(LIB): CXXFLAGS += -fPIC -std=c++14
 $(LIB): LDFLAGS += -fPIC -lpthread
 $(LIB): fakechecks.o
 	$(CXX) -shared $(LDFLAGS) -o $@ $^
