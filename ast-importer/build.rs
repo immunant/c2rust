@@ -21,6 +21,9 @@ fn main() {
         .header("../ast-exporter/ast_tags.hpp")
         .generate_comments(true)
         .derive_default(true)
+        .rustified_enum("ASTEntryTag")
+        .rustified_enum("TypeTag")
+        .rustified_enum("StringTypeTag")
         // Finish the builder and generate the bindings.
         .generate()
         // Unwrap the Result and panic on failure.

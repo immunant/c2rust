@@ -6,13 +6,13 @@ build = "build.rs"
 
 [dependencies]
 cbor = { git = "https://github.com/GaloisInc/rust-cbor" } # "0.4"
-clap = "2.26.0"
+clap = "2.32"
 dtoa = "0.4.2"
 serde = "1.0"
 serde_json = "1.0"
 
 [build-dependencies]
-bindgen="0.29.0"
+bindgen="0.37"
 
 # [target.'cfg(NOT_A_PLATFORM)'.dependencies]
 # arena                 = {path = "../rust-refactor/compiler/src/libarena"}
