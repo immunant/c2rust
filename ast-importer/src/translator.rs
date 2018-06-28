@@ -391,13 +391,9 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                         name: mk().ident("plugin"),
                         body: MetaItemBody::Arguments(plugin_args),
                     };
-                    &mk().meta_item_attr(plugin_item)
-                        .as_inner_attrs()
-                        .into_iter()
-                        .for_each(|attr| {
-                            s.print_attribute(&attr)
-                                .expect("Could not print inner attribute");
-                        });
+                    for attr in mk().meta_item_attr(plugin_item).as_inner_attrs() {
+                        s.print_attribute(&attr)?;
+                    }
                 }
 
                 // Add `extern crate libc` to the top of the file
