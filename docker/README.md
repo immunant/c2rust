@@ -1,24 +1,29 @@
-# C2Rust Vagrant environment
+# C2Rust Docker environment
 
-Building LLVM will require more than the default 2GB of RAM on macOS.
-4GB should be sufficient.
+Tested with Docker Community Edition 18.03. The version distributed with your host OS may be too old. Follow the installation [instructions](https://docs.docker.com/install/) to get the latest version. 
 
-To build and run (tested on macOS 11.13 with Docker CE 18.03):
-```
-cd $C2Rust/docker
-# create image
-docker build -t c2rust .
-# create container
-docker run --name c2rust --hostname docker -it -v $PWD/..:/home/docker/C2Rust c2rust
-# start start container
-docker start c2rust
-docker stop c2rust
-# connect to running container
-docker exec -it c2rust /bin/bash
-# delete container (force stop if running)
-docker rm -f c2rust
+Building the docker image: 
 
-```
+    $ cd /path/to/c2rust/docker
+    $ ./docker_build.sh
+
+
+Creating a container:
+
+    $ ./docker_run.sh
+
+Stopping and starting containers:
+
+    $ docker start c2rust
+    $ docker stop c2rust
+
+Connect to a running container:
+
+    $ ./docker_exec.sh
+
+Delete c2rust container (force stop if running)
+
+    $ docker rm -f c2rust
 
 ## Warning: the following commands delete data
 
