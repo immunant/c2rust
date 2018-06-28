@@ -7,7 +7,7 @@ if [ "$UNAME" != "Darwin" ]; then
 fi
 
 # make sure we have all prerequisites
-prereqs=(brew pip3 clang)
+prereqs=(brew clang)
 for prereq in "${prereqs[@]}"; do
     type -P "$prereq" >/dev/null || { 
         echo >&2 "$prereq not in path."; exit 1; 
@@ -17,10 +17,14 @@ done
 SCRIPT_DIR="$(dirname "$0")"
 export HOMEBREW_NO_AUTO_UPDATE=1
 
-hb_packages=(python ninja ccache)
+hb_packages=(python cmake ninja gpg ccache)
 for item in "${hb_packages[@]}"; do
   brew info "${item}" | grep --quiet 'Not installed' && brew install "${item}"
 done
+
+type -P "pip3" >/dev/null || {
+    echo >&2 "pip3 not in path."; exit 1;
+}
 
 # Python 3 packages
 pip3 install -r "$SCRIPT_DIR/requirements.txt" --user --disable-pip-version-check --quiet

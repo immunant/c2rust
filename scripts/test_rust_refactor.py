@@ -13,7 +13,6 @@ from common import (
     get_rust_toolchain_libpath,
     get_host_triplet,
     setup_logging,
-    ensure_rustc_version,
     die,
 )
 
@@ -91,7 +90,9 @@ def main():
     # TODO: implement rustfmt and diff actions from `run-test.sh`
 
     setup_logging()
-    ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
+    # NOTE: it seems safe to disable this check since we now
+    # that we use a rust-toolchain file for rustc versioning.
+    # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
     # TODO: update rustfmt version check once idiomize bitrot has been fixed
     # ensure_rustfmt_version()
     test_dir = os.path.join(c.RREF_DIR, "tests")
