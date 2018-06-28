@@ -13,7 +13,7 @@
         return (0x ## xor_const ## ULL) ^ (uint64_t) x;                   \
     }                                                                     \
     uint64_t __c2rust_hash_ ## short_byte_ty (val_ty x, size_t depth)     \
-    __attribute__((alias(STRINGIFY(__c2rust_hash_ ## short_ty))));
+    __attribute__((weak, alias(STRINGIFY(__c2rust_hash_ ## short_ty))));
 
 DEFINE_FIXED_HASH(u8,  U1, uint8_t,  0000000000000000)
 DEFINE_FIXED_HASH(u16, U2, uint16_t, 5a5a5a5a5a5a5a5a)
@@ -28,7 +28,7 @@ DEFINE_FIXED_HASH(i64, I8,  int64_t, d2d2d2d2d2d2d2d0)
 // as aliases to the fixed-size functions defined above
 #define DEFINE_CTYPE_HASH(c_ty_name, c_ty, sign, width)         \
     uint64_t __c2rust_hash_ ## c_ty_name (c_ty x, size_t depth) \
-    __attribute__((alias(STRINGIFY(WIDTH_HASH_FUNCTION(sign, width)))));
+    __attribute__((weak, alias(STRINGIFY(WIDTH_HASH_FUNCTION(sign, width)))));
 DEFINE_CTYPE_HASH(uchar,  unsigned char,      U, 1);
 DEFINE_CTYPE_HASH(ushort, unsigned short,     U, __SIZEOF_SHORT__);
 DEFINE_CTYPE_HASH(uint,   unsigned int,       U, __SIZEOF_INT__);
