@@ -72,6 +72,8 @@ impl<W: Write> Printer<W> {
         match context.c_exprs.get(&expr_id).map(|l| &l.kind) {
             Some(&CExprKind::BadExpr) =>
                 self.writer.write_all(b"BAD"),
+            Some(&CExprKind::DesignatedInitExpr(..)) =>
+                self.writer.write_all(b"DESIGNATED INIT EXPR"),
             Some(&CExprKind::ShuffleVector(..)) =>
                 self.writer.write_all(b"SHUFFLE"),
             Some(&CExprKind::ConvertVector(..)) =>
@@ -168,7 +170,7 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b" ?: ")?;
                 self.print_expr(rhs, context)
             }
-            Some(&CExprKind::InitList(_, ref xs, _)) => {
+            Some(&CExprKind::InitList(_, ref xs, _, _)) => {
                 self.writer.write_all(b"{")?;
                 let mut started = false;
                 for x in xs {

@@ -792,12 +792,18 @@ class TranslateASTVisitor final
       bool VisitInitListExpr(InitListExpr *ILE) {
           auto inits = ILE->inits();
           
-          
           std::vector<void*> childIds(inits.begin(), inits.end());
           encode_entry(ILE, TagInitListExpr, childIds, [ILE](CborEncoder *extras) {
               auto union_field = ILE->getInitializedFieldInUnion();
               if (union_field) {
                   cbor_encode_uint(extras, uintptr_t(union_field));
+              } else {
+                  cbor_encode_null(extras);
+              }
+              
+              auto syntax = ILE->getSyntacticForm();
+              if (syntax) {
+                  cbor_encode_uint(extras, uintptr_t(syntax));
               } else {
                   cbor_encode_null(extras);
               }
@@ -823,7 +829,7 @@ class TranslateASTVisitor final
           encode_entry(E, TagDesignatedInitExpr, childIds, [this,E](CborEncoder *extras) {
               
               CborEncoder array;
-              cbor_encoder_create_array(extras, &array, 0);
+              cbor_encoder_create_array(extras, &array, E->designators().size());
               for (auto &designator: E->designators()) {
                   CborEncoder entry;
                   if (designator.isArrayDesignator()) {

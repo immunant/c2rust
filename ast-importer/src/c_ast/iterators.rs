@@ -47,6 +47,7 @@ fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
     use c_ast::CExprKind::*;
     match *kind {
         BadExpr => vec![],
+        DesignatedInitExpr(..) => vec![], // the relevant information will be found in the semantic initializer
         ShuffleVector(..) | ConvertVector(..) => vec![],
         OffsetOf(..) | Literal(..) | ImplicitValueInit(..) => vec![],
         DeclRef(_, _) => vec![], // don't follow references back!
@@ -61,7 +62,7 @@ fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
         ArraySubscript(_, l, r) => intos![l,r],
         Conditional(_, c, t, e) => intos![c,t,e],
         BinaryConditional(_, c, t) => intos![c,t],
-        InitList(_, ref xs, _) => xs.iter().map(|&x| x.into()).collect(),
+        InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
         ImplicitCast(_, e, _, _) | ExplicitCast(_, e, _, _) |
         Member(_, e, _, _) | CompoundLiteral(_, e) | Predefined(_, e) | VAArg(_,e) => intos![e],
         Statements(_, s) => vec![s.into()],

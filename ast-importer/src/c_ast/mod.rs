@@ -142,6 +142,7 @@ impl TypedAstContext {
             CExprKind::UnaryType(_, _, _, _) |
             CExprKind::OffsetOf(..) => true,
 
+            CExprKind::DesignatedInitExpr(_,_,e) |
             CExprKind::ImplicitCast(_, e, _, _) |
             CExprKind::ExplicitCast(_, e, _, _) |
             CExprKind::Member(_, e, _, _) |
@@ -655,8 +656,8 @@ pub enum CExprKind {
     // Binary conditional operator ?: GNU extension
     BinaryConditional(CQualTypeId, CExprId, CExprId),
 
-    // Initializer list
-    InitList(CQualTypeId, Vec<CExprId>, Option<CFieldId>),
+    // Initializer list - type, initializers, union field, syntactic form
+    InitList(CQualTypeId, Vec<CExprId>, Option<CFieldId>, Option<CExprId>),
 
     // Designated initializer
     ImplicitValueInit(CQualTypeId),
@@ -676,6 +677,9 @@ pub enum CExprKind {
     // Unsupported vector operations,
     ShuffleVector(CQualTypeId),
     ConvertVector(CQualTypeId),
+
+    // From syntactic form of initializer list expressions
+    DesignatedInitExpr(CQualTypeId, Vec<Designator>, CExprId),
 
     BadExpr,
 }
@@ -703,14 +707,15 @@ impl CExprKind {
             CExprKind::ArraySubscript(ty, _, _) |
             CExprKind::Conditional(ty, _, _, _) |
             CExprKind::BinaryConditional(ty, _, _) |
-            CExprKind::InitList(ty, _, _) |
+            CExprKind::InitList(ty, _, _, _) |
             CExprKind::ImplicitValueInit(ty) |
             CExprKind::CompoundLiteral(ty, _) |
             CExprKind::Predefined(ty, _) |
             CExprKind::Statements(ty, _) |
             CExprKind::VAArg(ty, _) |
             CExprKind::ShuffleVector(ty) |
-            CExprKind::ConvertVector(ty) => Some(ty),
+            CExprKind::ConvertVector(ty) |
+            CExprKind::DesignatedInitExpr(ty,_,_) => Some(ty),
         }
     }
 
@@ -1104,6 +1109,13 @@ pub enum CTypeKind {
     Vector(CQualTypeId),
 
     Half,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum Designator {
+    Index(u64),
+    Range(u64,u64),
+    Field(CFieldId),
 }
 
 #[derive(Copy, Clone, Debug)]

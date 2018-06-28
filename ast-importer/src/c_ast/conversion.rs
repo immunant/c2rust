@@ -1201,8 +1201,34 @@ impl ConversionContext {
                     let ty = self.visit_qualified_type(ty_old);
 
                     let union_field_id = expect_opt_u64(&node.extras[0]).expect("Bad union field ID entry").map(|x| self.visit_decl(x));
+                    let syntax_id = expect_opt_u64(&node.extras[1]).expect("Bad syntax ID entry").map(|x| self.visit_expr(x));
 
-                    self.expr_possibly_as_stmt(expected_ty, new_id, node, CExprKind::InitList(ty, exprs, union_field_id))
+                    let kind = CExprKind::InitList(ty, exprs, union_field_id, syntax_id);
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, kind)
+                }
+
+                ASTEntryTag::TagDesignatedInitExpr => {
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    let designator_cbors = expect_array(&node.extras[0]).expect("Expected designators array");
+                    let designators = designator_cbors.into_iter().map(|x| {
+                        let entry = expect_array(x).expect("expected designator array");
+                        match expect_u64(&entry[0]).expect("expected designator tag") {
+                            1 => Designator::Index(expect_u64(&entry[1]).expect("expected array index")),
+                            2 => Designator::Field(CDeclId(expect_u64(&entry[1]).expect("expected field id"))),
+                            3 => Designator::Range(expect_u64(&entry[1]).expect("expected array start"),
+                                                   expect_u64(&entry[2]).expect("expected array end")),
+                            n => panic!("invalid designator tag: {}", n),
+                        }
+                    } ).collect();
+
+                    let init_id = node.children[0].expect("Expected initializer expression on designated init expr");
+                    let init_expr = self.visit_expr(init_id);
+
+                    let kind = CExprKind::DesignatedInitExpr(ty, designators, init_expr);
+                    println!("debug {:?}", kind);
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, kind)
                 }
 
                 ASTEntryTag::TagStmtExpr => {
@@ -1387,7 +1413,7 @@ impl ConversionContext {
                         }
                     }
 
-                    let record = CDeclKind::Struct { name, fields, is_packed, is_aligned };
+                    let record = CDeclKind::Struct { name, fields, is_packed, manual_alignment };
 
                     self.add_decl(new_id, located(node, record));
                     self.processed_nodes.insert(new_id, RECORD_DECL);
