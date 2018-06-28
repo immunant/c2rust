@@ -14,6 +14,7 @@ WORKDIR $HOME
 
 # Provision debian and python packages 
 COPY provision_deb.sh /tmp/provision_deb.sh
+COPY requirements.txt /tmp/requirements.txt
 RUN chmod +x /tmp/provision_deb.sh && /tmp/provision_deb.sh
 
 COPY provision_rust.sh /tmp/provision_rust.sh
