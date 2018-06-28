@@ -1227,7 +1227,7 @@ impl ConversionContext {
                     let init_expr = self.visit_expr(init_id);
 
                     let kind = CExprKind::DesignatedInitExpr(ty, designators, init_expr);
-                    println!("debug {:?}", kind);
+
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, kind)
                 }
 
