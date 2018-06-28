@@ -529,6 +529,85 @@ impl Translation {
         } else { mk }
     }
 
+    fn static_initializer_maybe_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
+        use c_ast::UnOp::Negate;
+
+        let expr_id = match expr_id {
+            Some(expr_id) => expr_id,
+            None => return false,
+        };
+
+        let iter = DFExpr::new(&self.ast_context, expr_id.into());
+
+        for i in iter {
+            let expr_id = match i {
+                SomeId::Expr(expr_id) => expr_id,
+                _ => unreachable!("Found static initializer type other than expr"), // REVIEW: Actually unreachable?
+            };
+
+            match self.ast_context[expr_id].kind {
+                CExprKind::DeclRef(typ, decl_id) => {
+                    println!("// decl ref typ: {:?}, decl_id: {:?}", typ, decl_id);
+                },
+                CExprKind::UnaryType(typ, kind, opt_expr, arg_type) => {
+                    println!("// unary type typ: {:?}, kind: {:?}, expr: {:?}, arg_type: {:?}", typ, kind, opt_expr, arg_type);
+                    // return true;
+                },
+                CExprKind::Literal(typ, ref lit) => {
+                    println!("// literal type: {:?}, lit: {:?}", typ, lit);
+                    // return true;
+                },
+                CExprKind::Unary(typ, Negate, expr_id) => {
+                    println!("// unary type: {:?}, negated: true, expr_id: {:?}", typ, expr_id);
+                    if self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
+                        return true;
+                    }
+                },
+                CExprKind::ImplicitCast(typ, expr, cast_kind, opt_field_id) => {
+                    println!("// implicit cast typ: {:?}, expr: {:?}, cast_kind: {:?}, field_id: {:?}", typ, expr, cast_kind, opt_field_id);
+                },
+                CExprKind::InitList(typ, ref ids, opt_field_id) => {
+                    println!("// init list typ: {:?}, ids: {:?}, field_id: {:?}", typ, ids, opt_field_id);
+                },
+                CExprKind::Unary(typ, negate, expr_id) => {
+                    println!("// unary type: {:?}, negated: {:?}, expr_id: {:?}", typ, negate, expr_id);
+                },
+                _ => panic!("Unmatched expr type: {:?}", self.ast_context[expr_id].kind), // FIXME:
+            }
+        }
+
+        false
+    }
+
+    fn add_static_initializer_to_section(&self, name: &str, typ: CQualTypeId, init: &mut P<Expr>) -> Result<(), String> {
+        // REVIEW: Does this apply to fn local statics? This does not (yet?) promote function scoped statics to
+        // globals when necessary. This fn might need to be called elsewhere too
+
+        let root_lhs_expr = mk().path_expr(vec![name]);
+        let assign_expr = {
+            let block = match &init.node {
+                ExprKind::Block(block, _) => block,
+                _ => unreachable!("Found static initializer type other than block"), // REVIEW: Actually unreachable?
+            };
+
+            let expr = match &block.stmts[0].node {
+                StmtKind::Expr(ref expr) => expr,
+                _ => unreachable!("Found static initializer type other than Expr"), // REVIEW: Actually unreachable?
+            };
+
+            mk().assign_expr(root_lhs_expr, expr)
+        };
+
+        let stmt = mk().expr_stmt(assign_expr);
+
+        self.static_initializers.borrow_mut().push(stmt);
+
+        // TODO: Add comment to default initializer saying "Initialized in run_static_initializers"
+        *init = self.implicit_default_expr(typ.ctype, true)?;
+
+        Ok(())
+    }
+
     fn generate_global_static_init(&mut self) -> (P<Item>, P<Item>) {
         // If we don't want to consume self.static_initializers for some reason, we could clone the vec
         let static_initializers = self.static_initializers.replace(Vec::new());
@@ -962,21 +1041,8 @@ impl Translation {
 
                 // Collects problematic static initializers and offloads them to sections for the linker
                 // to initialize for us
-                // FIXME: Does not yet discriminate which statics need offloaded initialization. Currently does all.
-                // FIXME: Only does static objects on the whole, needs to be able to handle individual fields as well.
-                // REVIEW: Does this apply to fn local statics?
-                // REVIEW: This does not (yet?) promote function scoped statics to globals when necessary
-                if is_static {
-                    if let Some(expr_id) = initializer {
-                        if let ExprKind::Block(block, _) = &init.node {
-                            self.collect_static_initializer(new_name, &block.stmts[0]);
-                        } else {
-                            // This should be unreachable (at least on initializer side) once completing analysis on initializer which must exist?
-                            panic!("Not working"); // FIXME: return Result?
-                        }
-
-                        init = self.implicit_default_expr(typ.ctype, is_static)?;
-                    }
+                if self.static_initializer_maybe_uncompilable(initializer) {
+                    self.add_static_initializer_to_section(new_name, typ, &mut init)?;
                 }
 
                 // Force mutability due to the potential for raw pointers occuring in the type
@@ -1557,25 +1623,6 @@ impl Translation {
             }
         }
         false
-    }
-
-    fn collect_static_initializer(&self, name: &str, stmt: &Stmt) {
-        let expr = if let StmtKind::Expr(ref expr) = stmt.node {
-
-            mk().expr_stmt(mk().assign_expr(mk().path_expr(vec![name]), expr))
-        } else {
-            panic!("Expected expr"); // FIXME: Return Result?
-        };
-
-        self.static_initializers.borrow_mut().push(expr);
-    }
-
-    fn find_uncompilable_static_initializers(&self, expr_id: CExprId) {
-        let iter = DFExpr::new(&self.ast_context, expr_id.into());
-
-        for i in iter {
-            println!("// {:?}", i);
-        }
     }
 
     pub fn convert_decl_stmt_info(&self, decl_id: CDeclId) -> Result<cfg::DeclStmtInfo, String> {
