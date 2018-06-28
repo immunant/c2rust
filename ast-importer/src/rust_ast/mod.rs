@@ -1520,6 +1520,18 @@ impl Builder {
         }
     }
 
+    // Convert the current internal list of outer attributes
+    // into a vector of inner attributes, e.g.:
+    // `#[foo]` => `#![foo]`
+    pub fn as_inner_attrs(self) -> Vec<Attribute> {
+        self.attrs.into_iter().map(|outer_attr| {
+            Attribute {
+                style: AttrStyle::Inner,
+                ..outer_attr
+            }
+        }).collect::<Vec<Attribute>>()
+    }
+
     pub fn mac<Pa, Ts>(self, path: Pa, tts: Ts) -> Mac
         where Pa: Make<Path>, Ts: Make<ThinTokenStream> {
         let path = path.make(&self);

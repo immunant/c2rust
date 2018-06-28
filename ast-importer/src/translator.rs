@@ -373,25 +373,31 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 }
 
                 if t.tcfg.cross_checks {
-                    let mut xcheck_attr_args = String::new();
+                    let mut xcheck_plugin_args: Vec<MetaItemInner> = vec![];
                     for config_file in &t.tcfg.cross_check_configs {
-                        if !xcheck_attr_args.is_empty() {
-                            xcheck_attr_args.push(',');
-                        }
-                        xcheck_attr_args.push_str("config_file=\"");
-                        xcheck_attr_args.push_str(config_file);
-                        xcheck_attr_args.push('"');
+                        let file_lit = mk().str_lit(config_file);
+                        let file_item = MetaItem {
+                            name: mk().ident("config_file"),
+                            body: MetaItemBody::Equals(file_lit),
+                        };
+                        xcheck_plugin_args.push(MetaItemInner::MetaItem(file_item));
                     }
-                    let xcheck_attr = format!("cross_check_plugin({})", xcheck_attr_args);
-                    s.print_attribute(&mk().attribute::<_, TokenStream>(
-                        AttrStyle::Inner,
-                        vec!["plugin"],
-                        vec![
-                            Token::OpenDelim(DelimToken::Paren),
-                            Token::from_ast_ident(mk().ident(xcheck_attr)),
-                            Token::CloseDelim(DelimToken::Paren),
-                        ].into_iter().collect(),
-                    ))?
+                    let xcheck_plugin_item = MetaItem {
+                        name: mk().ident("cross_check_plugin"),
+                        body: MetaItemBody::Arguments(xcheck_plugin_args),
+                    };
+                    let plugin_args = vec![MetaItemInner::MetaItem(xcheck_plugin_item)];
+                    let plugin_item = MetaItem {
+                        name: mk().ident("plugin"),
+                        body: MetaItemBody::Arguments(plugin_args),
+                    };
+                    &mk().meta_item_attr(plugin_item)
+                        .as_inner_attrs()
+                        .into_iter()
+                        .for_each(|attr| {
+                            s.print_attribute(&attr)
+                                .expect("Could not print inner attribute");
+                        });
                 }
 
                 // Add `extern crate libc` to the top of the file
