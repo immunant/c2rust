@@ -27,6 +27,7 @@ There are three ways to build the C2Rust project:
     - If you are on a Debian-based OS, you can run `provision_deb.sh` to do so. 
     - If you are on macOS, install the Xcode command-line tools (e.g., `xcode-select --install`) and [homebrew](https://brew.sh/) first. Then run `provision_mac.sh`.
    
+*NOTE*: The translator supports both macOS and Linux. Other features, such as cross checking the functionality between C and Rust code, are currently limited to Linux hosts. 
 
 ### Building
 

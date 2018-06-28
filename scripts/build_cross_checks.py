@@ -20,26 +20,11 @@ from common import (
     setup_logging,
     have_rust_toolchain,
     ensure_clang_version,
-    ensure_rustc_version,
     ensure_dir,
     git_ignore_dir,
+    get_ninja_build_type,
+    on_mac,
 )
-
-
-# TODO: move to common.py???
-def get_ninja_build_type(ninja_build_file):
-    signature = "# CMAKE generated file: DO NOT EDIT!" + os.linesep
-    with open(ninja_build_file, "r") as handle:
-        lines = handle.readlines()
-        if not lines[0] == signature:
-            die("unexpected content in ninja.build: " + ninja_build_file)
-        r = re.compile(r'^#\s*Configuration:\s*(\w+)')
-        for line in lines:
-            m = r.match(line)
-            if m:
-                # print m.group(1)
-                return m.group(1)
-        die("missing content in ninja.build: " + ninja_build_file)
 
 
 def build_clang_plugin(args: str) -> None:
@@ -90,6 +75,9 @@ def _parse_args():
 
 
 def _main():
+    if on_mac():
+        die("Cross-checking is only supported on Linux hosts.")
+
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
@@ -112,7 +100,9 @@ def _main():
 
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])
-    ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
+    # NOTE: it seems safe to disable this check since we now
+    # that we use a rust-toolchain file for rustc versioning.
+    # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
 
     ensure_dir(c.CLANG_XCHECK_PLUGIN_BLD)
     ensure_dir(c.DEPS_DIR)

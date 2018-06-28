@@ -22,11 +22,6 @@ C2RUST_DIR = config.ROOT_DIR
 LIBXML2_REPO = os.path.join(C2RUST_DIR, "examples/libxml2/repo")
 RUST_ROOT_DIR = os.path.join(LIBXML2_REPO, "rust")
 PATCHES = {
-    "src/threads.rs": {
-        "replace_all": [
-            ("unsafe \{ 1i32.wrapping_neg\(\) \}", "-1"),
-        ],
-    },
     "src/xmlunicode.rs": {
         "replace_all_null_ptr_cast": [
             "xmlUnicodeBlocks.as_ptr\(\)",
