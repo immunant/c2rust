@@ -2,7 +2,7 @@
 use syntax::ast::*;
 use syntax_pos::symbol::Symbol;
 use syntax::codemap::{DUMMY_SP, dummy_spanned, Span};
-use syntax::parse::token::{self, Token, DelimToken};
+use syntax::parse::token::{self, Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder, ThinTokenStream};
 use syntax::symbol::keywords;
@@ -224,6 +224,28 @@ impl Make<PathParameters> for ParenthesizedParameterData {
     }
 }
 
+/// Syntax for attr_literals feature attributes
+///
+/// ```
+/// attr : '#' '!'? '[' meta_item ']' ;
+/// meta_item : IDENT ( '=' LIT | '(' meta_item_inner? ')' )? ;
+/// meta_item_inner : (meta_item | LIT) (',' meta_item_inner)? ;
+/// ```
+pub struct MetaItem {
+    pub name: Ident,
+    pub body: MetaItemBody,
+}
+
+pub enum MetaItemBody {
+    None,
+    Equals(P<Lit>),
+    Arguments(Vec<MetaItemInner>),
+}
+
+pub enum MetaItemInner {
+    MetaItem(MetaItem),
+    Lit(P<Lit>),
+}
 
 #[derive(Clone)]
 pub struct Builder {
@@ -386,6 +408,70 @@ impl Builder {
             }
 
             builder.push(Token::CloseDelim(DelimToken::Paren));
+            builder.build()
+        };
+
+        let mut attrs = self.attrs;
+        attrs.push(Attribute {
+            id: AttrId(0),
+            style: AttrStyle::Outer,
+            path: func,
+            tokens: tokens,
+            is_sugared_doc: false,
+            span: DUMMY_SP,
+        });
+        Builder {
+            attrs: attrs,
+            ..self
+        }
+    }
+
+    pub fn meta_item_attr(self, metaitem: MetaItem) -> Self {
+
+        fn build_metaitem(builder: &mut TokenStreamBuilder, metaitem: MetaItem) {
+            builder.push(Token::from_ast_ident(metaitem.name));
+            build_metaitem_body(builder, metaitem.body);
+        }
+
+        fn build_metaitem_body(builder: &mut TokenStreamBuilder, body: MetaItemBody) {
+            match body {
+                MetaItemBody::None => {}
+                MetaItemBody::Arguments(args) => {
+                    let mut is_first = true;
+
+                    builder.push(Token::OpenDelim(DelimToken::Paren));
+
+                    for arg in args {
+                        if is_first {
+                            is_first = false
+                        } else {
+                            builder.push(Token::Comma);
+                        }
+                        match arg {
+                            MetaItemInner::MetaItem(subitem) => build_metaitem(builder, subitem),
+                            MetaItemInner::Lit(lit) =>  {
+                                let lit_expr = mk().lit_expr(lit);
+                                builder.push(Token::interpolated(Nonterminal::NtLiteral(lit_expr)));
+                            }
+                        }
+                    }
+
+                    builder.push(Token::CloseDelim(DelimToken::Paren));
+                }
+                MetaItemBody::Equals(lit) => {
+                    builder.push(Token::Eq);
+                    let lit_expr = mk().lit_expr(lit);
+                    builder.push(Token::interpolated(Nonterminal::NtLiteral(lit_expr)));
+                }
+            }
+        }
+
+
+        let func: Path = mk().path(vec![metaitem.name]);
+
+        let tokens: TokenStream = {
+            let mut builder = TokenStreamBuilder::new();
+            build_metaitem_body(&mut builder, metaitem.body);
             builder.build()
         };
 

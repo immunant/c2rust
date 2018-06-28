@@ -9,7 +9,7 @@ use convert_type::TypeConverter;
 use loops::*;
 use c_ast;
 use c_ast::*;
-use rust_ast::{mk, Builder};
+use rust_ast::{mk, Builder, MetaItem, MetaItemBody, MetaItemInner};
 use comment_store::*;
 use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;
@@ -755,7 +755,7 @@ impl Translation {
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
 
-            CDeclKind::Struct { fields: Some(ref fields), is_packed, is_aligned, .. } => {
+            CDeclKind::Struct { fields: Some(ref fields), is_packed, manual_alignment, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 // Gather up all the field names and field types
@@ -771,14 +771,34 @@ impl Translation {
                     }
                 }
 
-                let mut reprs = vec!["C"];
-                if is_packed { reprs.push("packed"); };
+                fn simple_metaitem(name: &str) -> MetaItemInner {
+                    MetaItemInner::MetaItem(MetaItem { name: mk().ident(name), body: MetaItemBody::None })
+                }
+
+                let mut reprs = vec![simple_metaitem("C")];
+
+                if is_packed { reprs.push(simple_metaitem("packed")); };
                 // https://github.com/rust-lang/rust/issues/33626
-                if is_aligned { return Err(format!("aligned attribute is not supported on structs")) };
+                if let Some(alignment) = manual_alignment {
+                    self.use_feature("repr_align");
+                    self.use_feature("attr_literals");
+
+                    let lit = mk().int_lit(alignment as u128, LitIntType::Unsuffixed);
+                    let inner = MetaItem {
+                        name: mk().ident("align"),
+                        body: MetaItemBody::Arguments(vec![MetaItemInner::Lit(lit)]),
+                    };
+                    reprs.push(MetaItemInner::MetaItem(inner));
+                };
+
+                let repr_attr = MetaItem {
+                    name: mk().ident("repr"),
+                    body: MetaItemBody::Arguments( reprs)
+                };
 
                 Ok(ConvertedDecl::Item(self.mk_cross_check(mk().span(s).pub_(), vec!["none"])
                     .call_attr("derive", vec!["Copy", "Clone"])
-                    .call_attr("repr", reprs)
+                    .meta_item_attr(repr_attr)
                     .struct_item(name, field_entries)))
             }
 
@@ -1867,6 +1887,7 @@ impl Translation {
     /// ignored.
     pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
         match self.ast_context[expr_id].kind {
+            CExprKind::DesignatedInitExpr(..) => Err(format!("Unexpected designated init expr")),
             CExprKind::BadExpr => Err(format!("convert_expr: expression kind not supported")),
             CExprKind::ShuffleVector(..) => Err(format!("shuffle vector not supported")),
             CExprKind::ConvertVector(..) => Err(format!("convert vector not supported")),
@@ -2265,7 +2286,7 @@ impl Translation {
             CExprKind::CompoundLiteral(_, val) =>
                 self.convert_expr(use_, val, is_static),
 
-            CExprKind::InitList(ty, ref ids, opt_union_field_id) => {
+            CExprKind::InitList(ty, ref ids, opt_union_field_id, _) => {
 
                 match self.ast_context.resolve_type(ty.ctype).kind {
                     CTypeKind::ConstantArray(ty, n) => {

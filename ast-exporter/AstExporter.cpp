@@ -1170,6 +1170,15 @@ class TranslateASTVisitor final
                   cbor_encode_text_stringz(&attrs, a->getSpelling());
               }
               cbor_encoder_close_container(local, &attrs);
+
+              // 4. Encode manually specified alignment
+              auto align = D->getMaxAlignment();
+              if (align == 0) {
+                  cbor_encode_null(local);
+              } else {
+                  cbor_encode_uint(local, align);
+              }
+
           });
           
           return true;

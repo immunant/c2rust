@@ -1387,6 +1387,7 @@ impl ConversionContext {
                     let name = expect_opt_str(&node.extras[0]).unwrap().map(str::to_string);
                     let has_def = expect_bool(&node.extras[1]).expect("Expected has_def flag on struct");
                     let attrs = expect_array(&node.extras[2]).expect("Expected attribute array on record");
+                    let manual_alignment = expect_opt_u64(&node.extras[3]).expect("Expected struct alignment");
 
                     let fields: Option<Vec<CDeclId>> =
                     if has_def {
@@ -1404,11 +1405,9 @@ impl ConversionContext {
                     };
 
                     let mut is_packed = false;
-                    let mut is_aligned = false;
                     for attr in attrs {
                         match expect_str(attr).expect("Records attributes should be strings") {
                             "packed" => is_packed = true,
-                            "aligned" => is_aligned = true,
                             _ => {}
                         }
                     }
