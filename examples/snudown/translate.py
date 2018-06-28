@@ -9,16 +9,6 @@ from common import *
 import transpile
 from collections import namedtuple
 
-MACHINE_NAME = common.config.HOST_SUFFIX
-MACHINE_TYPE = platform.platform()
-
-LIB_PATH = get_rust_toolchain_libpath(CUSTOM_RUST_NAME)
-
-C2RUST = ROOT_DIR
-AST_EXPORTER = AST_EXPO
-AST_IMPORTER = AST_IMPO
-RUSTFMT = "rustfmt"
-
 
 CompileCommand = namedtuple('CompileCommand', ['directory', 'command', 'file'])
 
@@ -32,7 +22,7 @@ class CompileCommandsBuilder(object):
 
     def write_result(self, outdir: str) -> None:
         assert os.path.isdir(outdir), "No such dir: " + outdir
-        outpath = os.path.join(outdir, CC_DB_JSON)
+        outpath = os.path.join(outdir, config.CC_DB_JSON)
         outjson = json.dumps(self.entries, indent=2)
         # print(outjson)
         with open(outpath, "w") as ccdb_fh:
@@ -58,7 +48,7 @@ def main(xcheck: bool, snudown: str):
     # update_or_init_submodule(snudown)
 
     # the macOS and Linux builds of the ast-importer alias each other
-    if not is_elf_exe(AST_EXPO) and not on_mac():
+    if not is_elf_exe(config.AST_EXPO) and not on_mac():
         msg = "ast-importer was built for macOS;"
         msg += " please run build_translator.py and retry."
         die(msg)
