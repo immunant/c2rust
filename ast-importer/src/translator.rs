@@ -359,16 +359,17 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
                 for (key, mut values) in pragmas {
                     values.sort();
-                    for value in values {
-                        s.print_attribute(&mk().attribute::<_, TokenStream>(
-                            AttrStyle::Inner,
-                            vec![key],
-                            vec![
-                                Token::OpenDelim(DelimToken::Paren),
-                                Token::from_ast_ident(mk().ident(value)),
-                                Token::CloseDelim(DelimToken::Paren),
-                            ].into_iter().collect(),
-                        ))?
+                    let value_attr_vec = values.into_iter()
+                        .map(|value| MetaItemInner::MetaItem(MetaItem {
+                            name: mk().ident(value),
+                            body: MetaItemBody::None,
+                        })).collect::<Vec<_>>();
+                    let item = MetaItem {
+                        name: mk().ident(key),
+                        body: MetaItemBody::Arguments(value_attr_vec),
+                    };
+                    for attr in mk().meta_item_attr(item).as_inner_attrs() {
+                        s.print_attribute(&attr)?;
                     }
                 }
 
