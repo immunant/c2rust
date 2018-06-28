@@ -2,7 +2,7 @@ use syntax::{with_globals, ast};
 use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Span};
 use syntax::tokenstream::{TokenStream};
-use syntax::parse::token::{DelimToken,Token,Nonterminal};
+use syntax::parse::token::{Token,Nonterminal};
 use std::collections::{HashMap,HashSet};
 use renamer::Renamer;
 use convert_type::TypeConverter;
