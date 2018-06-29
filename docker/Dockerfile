@@ -1,4 +1,4 @@
-FROM ubuntu:artful
+FROM ubuntu:bionic
 LABEL maintainer="perl@immunant.com"
 
 ARG USER=docker
