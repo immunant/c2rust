@@ -1,7 +1,7 @@
 # C2Rust Vagrant environment
-- Ubuntu 17.10 (GNU/Linux 4.13.0-21-generic x86_64)
-- CMake 3.9.1
-- Ninja 1.7.2
+- Ubuntu 18.04 (GNU/Linux 4.15.0-12-generic x86_64)
+- CMake 3.10.2
+- Ninja 1.8.2
 
 ## Installing Prerequisites
 
