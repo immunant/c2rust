@@ -22,7 +22,7 @@ update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-5.0 100
 
 # Install python3.6 and packages
 apt-get install -qq python3-pip
-pip3 install --disable-pip-version-check -r $SCRIPT_DIR/requirements.txt
+pip3 install --no-cache-dir --disable-pip-version-check -r $SCRIPT_DIR/requirements.txt
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 
 # Dependencies for test programs #
