@@ -69,18 +69,6 @@ uint32_t djb2_hash(llvm::StringRef str) {
 
 #endif
 
-// Ugly hack: a few structures in system headers contain unions
-// or anonymous structures, which we can't handle (yet),
-// so we maintain a hard-coded blacklist
-std::set<std::pair<std::string_view, std::string_view>>
-CrossCheckInserter::struct_xcheck_blacklist = {
-    { "/usr/include/bits/types/__mbstate_t.h"sv,    "__mbstate_t"sv      },
-    { "/usr/include/bits/thread-shared-types.h"sv,  "__pthread_cond_s"sv },
-    { "/usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h"sv, "__mbstate_t"sv},
-    { "/usr/include/x86_64-linux-gnu/bits/thread-shared-types.h"sv, "__pthread_cond_s"sv},
-
-};
-
 FunctionDecl *CrossCheckInserter::get_function_decl(llvm::StringRef name,
                                                     QualType result_ty,
                                                     ArrayRef<QualType> arg_tys,
