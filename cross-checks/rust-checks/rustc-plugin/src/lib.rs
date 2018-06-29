@@ -150,8 +150,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
 
         // Check if there are any file-level defaults, and if so, apply them
         let file_defaults_config = if !same_file {
-            self.expander.build_file_defaults_config(self.cx,
-                                                     self.config(),
+            self.expander.build_file_defaults_config(self.config(),
                                                      &mod_file_name)
         } else { None };
         let mut new_config = if let Some(cfg) = file_defaults_config {
@@ -168,7 +167,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         let xcheck_attr = find_cross_check_attr(&item.attrs);
         if let Some(ref attr) = xcheck_attr {
             let mi = attr.parse_meta(self.cx.parse_sess).unwrap();
-            new_config.parse_attr_config(self.cx, &mi);
+            new_config.parse_attr_config(&mi);
         };
 
         let item_xcfg_config = {
@@ -186,7 +185,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             last_scope.get_item_config(&*item_name)
         };
         if let Some(ref xcfg) = item_xcfg_config {
-            new_config.parse_xcfg_config(self.cx, xcfg);
+            new_config.parse_xcfg_config(xcfg);
         };
 
         // Since rustc switched FileName from String to an enum,
@@ -204,9 +203,18 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     }
 
     // Get the ahasher/shasher pair
-    fn get_hasher_pair(&self) -> (&Vec<TokenTree>, &Vec<TokenTree>) {
-        (self.config().inherited.ahasher.as_ref().unwrap_or(self.default_ahasher.as_ref()),
-         self.config().inherited.shasher.as_ref().unwrap_or(self.default_shasher.as_ref()))
+    fn get_hasher_pair(&self) -> (Vec<TokenTree>, Vec<TokenTree>) {
+        let ahasher = if let Some(ahasher_str) = self.config().inherited.ahasher.clone() {
+            self.cx.parse_tts(ahasher_str)
+        } else {
+            self.default_ahasher.clone()
+        };
+        let shasher = if let Some(shasher_str) = self.config().inherited.shasher.clone() {
+            self.cx.parse_tts(shasher_str)
+        } else {
+            self.default_shasher.clone()
+        };
+        (ahasher, shasher)
     }
 
     // Get the cross-check block for this argument
@@ -242,16 +250,12 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     // doesn't seem to be a good way to create NestedMetaItems
     fn build_hash_attr_args(&self) -> Vec<String> {
         let mut res: Vec<String> = vec![];
-        if let Some(ref ahasher) = self.config().inherited.ahasher {
-            let ahasher_str = pprust::tts_to_string(
-                &ahasher.to_tokens(self.cx));
-            let mi = format!("ahasher=\"{}\"", ahasher_str);
+        if let Some(ref ahasher) = self.config().inherited.ahasher.as_ref() {
+            let mi = format!("ahasher=\"{}\"", ahasher);
             res.push(mi);
         }
-        if let Some(ref shasher) = self.config().inherited.shasher {
-            let shasher_str = pprust::tts_to_string(
-                &shasher.to_tokens(self.cx));
-            let mi = format!("shasher=\"{}\"", shasher_str);
+        if let Some(ref shasher) = self.config().inherited.shasher.as_ref() {
+            let mi = format!("shasher=\"{}\"", shasher);
             res.push(mi);
         }
         let struct_config = self.config().struct_config();
@@ -764,7 +768,7 @@ impl CrossCheckExpander {
 
     /// Build a FileDefaults ScopeCheckConfig for the given file,
     /// if we have any FileDefaults in the external configuration
-    fn build_file_defaults_config(&self, cx: &ExtCtxt, parent: &config::ScopeCheckConfig,
+    fn build_file_defaults_config(&self, parent: &config::ScopeCheckConfig,
                                   file_name: &str) -> Option<config::ScopeCheckConfig> {
         let file_items = self.external_config.get_file_items(file_name);
         file_items.map(|file_items| {
@@ -777,7 +781,7 @@ impl CrossCheckExpander {
                 }
             }
             let file_item_cfg = xcfg::ItemConfig::Defaults(file_cfg);
-            new_config.parse_xcfg_config(cx, &file_item_cfg);
+            new_config.parse_xcfg_config(&file_item_cfg);
             new_config
         })
     }
@@ -798,11 +802,11 @@ impl MultiItemModifier for CrossCheckExpander {
                 let ni = match (&i.node, span_scope) {
                     (&ast::ItemKind::Mod(_), None) => {
                         let mut top_config = config::ScopeCheckConfig::new();
-                        top_config.parse_attr_config(cx, mi);
+                        top_config.parse_attr_config(mi);
                         let top_file_name = cx.codemap().span_to_filename(sp);
                         let top_file_name = top_file_name.to_string();
                         // FIXME: do we need to build a FileDefaults???
-                        let top_config = self.build_file_defaults_config(cx, &top_config,
+                        let top_config = self.build_file_defaults_config(&top_config,
                                                                          &top_file_name)
                             .unwrap_or(top_config);
                         let top_scope = ScopeConfig::new(&self.external_config,
@@ -816,7 +820,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         // If this #[cross_check(...)] expansion is caused by a
                         // macro expansion, handle it here
                         let mut config = config::ScopeCheckConfig::from_item(&i, scope_config);
-                        config.parse_attr_config(cx, mi);
+                        config.parse_attr_config(mi);
                         let file_name = cx.codemap().span_to_filename(sp);
                         let file_name = file_name.to_string();
                         // TODO: build a FileDefaults???

@@ -3,10 +3,6 @@ use syntax::ast;
 
 use std::rc::Rc;
 
-use syntax::ext::base::ExtCtxt;
-use syntax::ext::quote::rt::ExtParseUtils;
-use syntax::tokenstream::TokenTree;
-
 use std::collections::HashMap;
 
 use xcfg;
@@ -24,8 +20,8 @@ pub struct InheritedCheckConfig {
     pub ret: xcfg::XCheckType,
 
     // Overrides for ahasher/shasher
-    pub ahasher: Option<Vec<TokenTree>>,
-    pub shasher: Option<Vec<TokenTree>>,
+    pub ahasher: Option<String>,
+    pub shasher: Option<String>,
 }
 
 impl Default for InheritedCheckConfig {
@@ -150,7 +146,7 @@ impl ScopeCheckConfig {
         }
     }
 
-    pub fn parse_attr_config(&mut self, cx: &ExtCtxt, mi: &ast::MetaItem) {
+    pub fn parse_attr_config(&mut self, mi: &ast::MetaItem) {
         assert!(mi.name() == "cross_check");
         let args = xcfg::attr::get_syntax_item_args(mi);
         for (name, arg) in args.iter() {
@@ -165,11 +161,11 @@ impl ScopeCheckConfig {
                 }
                 ("ahasher", _) => {
                     Rc::make_mut(&mut self.inherited).ahasher =
-                        Some(cx.parse_tts(String::from(arg.as_str())));
+                        Some(String::from(arg.as_str()));
                 }
                 ("shasher", _) => {
                     Rc::make_mut(&mut self.inherited).shasher =
-                        Some(cx.parse_tts(String::from(arg.as_str())));
+                        Some(String::from(arg.as_str()));
                 }
 
                 // Function-specific attributes
@@ -232,7 +228,7 @@ impl ScopeCheckConfig {
         }
     }
 
-    pub fn parse_xcfg_config(&mut self, cx: &ExtCtxt, xcfg: &xcfg::ItemConfig) {
+    pub fn parse_xcfg_config(&mut self, xcfg: &xcfg::ItemConfig) {
         macro_rules! parse_optional_field {
             // Field for the current scope
             (>$self_name:ident, $self_parent:ident, $xcfg_parent:ident, $xcfg_name:ident, $new_value:expr) => (
@@ -265,8 +261,8 @@ impl ScopeCheckConfig {
                 parse_optional_field!(^all_args, xcfg_func, all_args, all_args.clone());
                 parse_optional_field!(^ret,      xcfg_func, ret,      ret.clone());
                 // TODO: add a way for the external config to reset these to default
-                parse_optional_field!(^ahasher, xcfg_func, ahasher, Some(cx.parse_tts(ahasher.clone())));
-                parse_optional_field!(^shasher, xcfg_func, shasher, Some(cx.parse_tts(shasher.clone())));
+                parse_optional_field!(^ahasher, xcfg_func, ahasher, Some(ahasher.clone()));
+                parse_optional_field!(^shasher, xcfg_func, shasher, Some(shasher.clone()));
                 // Function-specific fields
                 self_func.args.extend(xcfg_func.args.iter().map(|(k, v)| {
                     (xcfg::FieldIndex::from_str(k), v.clone())
@@ -280,8 +276,8 @@ impl ScopeCheckConfig {
                 // Inherited fields
                 // TODO: add a way for the external config to reset these to default
                 parse_optional_field!(^enabled, xcfg_struc, disable_xchecks, !disable_xchecks);
-                parse_optional_field!(^ahasher, xcfg_struc, ahasher, Some(cx.parse_tts(ahasher.clone())));
-                parse_optional_field!(^shasher, xcfg_struc, shasher, Some(cx.parse_tts(shasher.clone())));
+                parse_optional_field!(^ahasher, xcfg_struc, ahasher, Some(ahasher.clone()));
+                parse_optional_field!(^shasher, xcfg_struc, shasher, Some(shasher.clone()));
                 // Structure-specific fields
                 parse_optional_field!(>custom_hash,  self_struc, xcfg_struc, custom_hash,  Some(custom_hash.clone()));
                 parse_optional_field!(>field_hasher, self_struc, xcfg_struc, field_hasher, Some(field_hasher.clone()));
@@ -293,8 +289,8 @@ impl ScopeCheckConfig {
                 // Inherited fields
                 // TODO: add a way for the external config to reset these to default
                 parse_optional_field!(^enabled, xcfg_struc, disable_xchecks, !disable_xchecks);
-                parse_optional_field!(^ahasher, xcfg_struc, ahasher, Some(cx.parse_tts(ahasher.clone())));
-                parse_optional_field!(^shasher, xcfg_struc, shasher, Some(cx.parse_tts(shasher.clone())));
+                parse_optional_field!(^ahasher, xcfg_struc, ahasher, Some(ahasher.clone()));
+                parse_optional_field!(^shasher, xcfg_struc, shasher, Some(shasher.clone()));
             },
             (_, _) => ()
         }
