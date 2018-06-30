@@ -35,7 +35,7 @@ use xcheck_util::CrossCheckBuilder;
 
 struct ScopeConfig<'xcfg> {
     file_name: Rc<String>, // FIXME: this should be a &str
-    items: Option<Rc<xcfg::NamedItemList<'xcfg>>>,
+    items: Option<xcfg::NamedItemList<'xcfg>>,
     check_config: config::ScopeCheckConfig,
 
     // Index of the next field in this scope (if the scope is a structure)
@@ -48,8 +48,7 @@ impl<'xcfg> ScopeConfig<'xcfg> {
     fn new(cfg: &'xcfg xcfg::Config, file_name: String,
            ccc: config::ScopeCheckConfig) -> ScopeConfig<'xcfg> {
         let items = cfg.get_file_items(&file_name)
-                       .map(xcfg::NamedItemList::new)
-                       .map(Rc::new);
+                       .map(xcfg::NamedItemList::new);
         ScopeConfig {
             file_name: Rc::new(file_name),
             items: items,
@@ -70,8 +69,7 @@ impl<'xcfg> ScopeConfig<'xcfg> {
         ScopeConfig {
             file_name: self.file_name.clone(),
             items: item_config.and_then(xcfg::ItemConfig::nested_items)
-                              .map(xcfg::NamedItemList::new)
-                              .map(Rc::new),
+                              .map(xcfg::NamedItemList::new),
             check_config: ccc,
             field_idx: Cell::new(0),
         }
