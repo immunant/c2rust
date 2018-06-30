@@ -150,8 +150,8 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
 
         // Check if there are any file-level defaults, and if so, apply them
         let file_defaults_config = if !same_file {
-            self.expander.build_file_defaults_config(self.config(),
-                                                     &mod_file_name)
+            self.config().new_file_defaults(&self.expander.external_config,
+                                            &mod_file_name)
         } else { None };
         let mut new_config = if let Some(cfg) = file_defaults_config {
             // Build new config from file defaults
@@ -765,26 +765,6 @@ impl CrossCheckExpander {
             })
         })
     }
-
-    /// Build a FileDefaults ScopeCheckConfig for the given file,
-    /// if we have any FileDefaults in the external configuration
-    fn build_file_defaults_config(&self, parent: &config::ScopeCheckConfig,
-                                  file_name: &str) -> Option<config::ScopeCheckConfig> {
-        let file_items = self.external_config.get_file_items(file_name);
-        file_items.map(|file_items| {
-            let mut new_config = parent.new_file();
-            let mut file_cfg = xcfg::DefaultsConfig::default();
-            for item in file_items.items().iter() {
-                match item {
-                    &xcfg::ItemConfig::Defaults(ref def) => file_cfg.merge(def),
-                    _ => (),
-                }
-            }
-            let file_item_cfg = xcfg::ItemConfig::Defaults(file_cfg);
-            new_config.parse_xcfg_config(&file_item_cfg);
-            new_config
-        })
-    }
 }
 
 impl MultiItemModifier for CrossCheckExpander {
@@ -806,8 +786,9 @@ impl MultiItemModifier for CrossCheckExpander {
                         let top_file_name = cx.codemap().span_to_filename(sp);
                         let top_file_name = top_file_name.to_string();
                         // FIXME: do we need to build a FileDefaults???
-                        let top_config = self.build_file_defaults_config(&top_config,
-                                                                         &top_file_name)
+                        let top_config =
+                            top_config.new_file_defaults(&self.external_config,
+                                                         &top_file_name)
                             .unwrap_or(top_config);
                         let top_scope = ScopeConfig::new(&self.external_config,
                                                          top_file_name,

@@ -120,11 +120,26 @@ impl ScopeCheckConfig {
         Self::from_item(item, Rc::clone(&self.inherited))
     }
 
-    pub fn new_file(&self) -> Self {
-        ScopeCheckConfig {
-            inherited: Rc::clone(&self.inherited),
-            item: ItemCheckConfig::FileDefaults,
-        }
+    /// Build a FileDefaults ScopeCheckConfig for the given file,
+    /// if we have any FileDefaults in the external configuration
+    pub fn new_file_defaults(&self, external_config: &xcfg::Config,
+                             file_name: &str) -> Option<Self> {
+        let file_items = external_config.get_file_items(file_name);
+        file_items.map(|file_items| {
+            let mut new_config = ScopeCheckConfig {
+                inherited: Rc::clone(&self.inherited),
+                item: ItemCheckConfig::FileDefaults,
+            };
+            for item in file_items.items().iter() {
+                match item {
+                    &xcfg::ItemConfig::Defaults(_) => {
+                        new_config.parse_xcfg_config(item);
+                    }
+                    _ => (),
+                }
+            }
+            new_config
+        })
     }
 
     // Getters for various options
