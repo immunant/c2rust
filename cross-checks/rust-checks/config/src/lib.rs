@@ -132,7 +132,7 @@ pub struct FunctionConfig {
     pub shasher: Option<String>,
 
     // Nested items
-    nested: Option<ItemList>,
+    pub nested: Option<ItemList>,
 
     // Extra cross-checks
     pub entry_extra: Vec<ExtraXCheck>,
@@ -197,7 +197,7 @@ pub struct StructConfig {
 
     // Nested items; in this context, it means
     // methods implemented in impl's
-    nested: Option<ItemList>,
+    pub nested: Option<ItemList>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -238,9 +238,9 @@ impl ItemList {
     }
 }
 
+#[derive(Debug, Default)]
 pub struct NamedItemList<'a> {
     // FIXME: _items is unused; do we really need it???
-    _items: &'a ItemList,
     pub name_map: HashMap<&'a str, &'a ItemConfig>,
 }
 
@@ -250,9 +250,12 @@ impl<'a> NamedItemList<'a> {
             .filter_map(|item| item.name().map(|name| (name, item)))
             .collect();
         NamedItemList {
-            _items: items,
             name_map: map,
         }
+    }
+
+    pub fn extend(&mut self, other: NamedItemList<'a>) {
+        self.name_map.extend(other.name_map.into_iter());
     }
 }
 
