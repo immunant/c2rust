@@ -2756,8 +2756,28 @@ impl Translation {
                         if let CTypeKind::VariableArray(..) = self.ast_context.resolve_type(source_ty).kind {
                             Ok(val)
                         } else {
-                            let method = if is_const { "as_ptr" } else { "as_mut_ptr" };
-                            Ok(val.map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>)))
+                            let method = if is_const || is_static {
+                                "as_ptr"
+                            } else {
+                                "as_mut_ptr"
+                            };
+
+                            let mut call = val.map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>));
+
+                            // Static arrays can now use as_ptr with the const_slice_as_ptr feature
+                            // enabled. Can also cast that const ptr to a mutable pointer as we do here:
+                            if is_static {
+                                self.use_feature("const_slice_as_ptr");
+
+                                let WithStmts { val, stmts } = call;
+                                let inferred_type = mk().mutbl().infer_ty();
+                                let ptr_type = mk().ptr_ty(inferred_type);
+                                let val = mk().cast_expr(val, ptr_type);
+
+                                call = WithStmts { val, stmts };
+                            }
+
+                            Ok(call)
                         }
                     },
                 }
