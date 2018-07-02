@@ -531,6 +531,7 @@ impl Translation {
 
     fn static_initializer_maybe_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
         use c_ast::UnOp::Negate;
+        use c_ast::CastKind::PointerToIntegral;
 
         let expr_id = match expr_id {
             Some(expr_id) => expr_id,
@@ -546,33 +547,20 @@ impl Translation {
             };
 
             match self.ast_context[expr_id].kind {
-                CExprKind::DeclRef(typ, decl_id) => {
-                    println!("// decl ref typ: {:?}, decl_id: {:?}", typ, decl_id);
-                },
-                CExprKind::UnaryType(typ, kind, opt_expr, arg_type) => {
-                    println!("// unary type typ: {:?}, kind: {:?}, expr: {:?}, arg_type: {:?}", typ, kind, opt_expr, arg_type);
-                    // return true;
-                },
-                CExprKind::Literal(typ, ref lit) => {
-                    println!("// literal type: {:?}, lit: {:?}", typ, lit);
-                    // return true;
-                },
                 CExprKind::Unary(typ, Negate, expr_id) => {
-                    println!("// unary type: {:?}, negated: true, expr_id: {:?}", typ, expr_id);
                     if self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
                         return true;
                     }
                 },
-                CExprKind::ImplicitCast(typ, expr, cast_kind, opt_field_id) => {
-                    println!("// implicit cast typ: {:?}, expr: {:?}, cast_kind: {:?}, field_id: {:?}", typ, expr, cast_kind, opt_field_id);
+                CExprKind::ImplicitCast(typ, expr, PointerToIntegral, opt_field_id) => {
+                    return true;
                 },
-                CExprKind::InitList(typ, ref ids, opt_field_id) => {
-                    println!("// init list typ: {:?}, ids: {:?}, field_id: {:?}", typ, ids, opt_field_id);
+                CExprKind::Binary(typ, op, lhs_expr_id, rhs_expr_id, opt_lhs_type_id, opt_rhs_type_id) => {
+                    if self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
+                        return true;
+                    }
                 },
-                CExprKind::Unary(typ, negate, expr_id) => {
-                    println!("// unary type: {:?}, negated: {:?}, expr_id: {:?}", typ, negate, expr_id);
-                },
-                _ => panic!("Unmatched expr type: {:?}", self.ast_context[expr_id].kind), // FIXME:
+                _ => {},
             }
         }
 
@@ -1039,7 +1027,7 @@ impl Translation {
                 let init = mk().unsafe_().block(init.stmts);
                 let mut init = mk().block_expr(init);
 
-                // Collects problematic static initializers and offloads them to sections for the linker
+                // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
                 if self.static_initializer_maybe_uncompilable(initializer) {
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
@@ -1064,7 +1052,13 @@ impl Translation {
                 let mut init = init?;
                 init.stmts.push(mk().expr_stmt(init.val));
                 let init = mk().unsafe_().block(init.stmts);
-                let init = mk().block_expr(init);
+                let mut init = mk().block_expr(init);
+
+                // Collect problematic static initializers and offload them to sections for the linker
+                // to initialize for us
+                if self.static_initializer_maybe_uncompilable(initializer) {
+                    self.add_static_initializer_to_section(new_name, typ, &mut init)?;
+                }
 
                 // Force mutability due to the potential for raw pointers occurring in the type
                 Ok(ConvertedDecl::Item(mk().span(s).mutbl().static_item(new_name, ty, init)))
