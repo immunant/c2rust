@@ -2769,12 +2769,14 @@ impl Translation {
                             if is_static {
                                 self.use_feature("const_slice_as_ptr");
 
-                                let WithStmts { val, stmts } = call;
-                                let inferred_type = mk().mutbl().infer_ty();
-                                let ptr_type = mk().ptr_ty(inferred_type);
-                                let val = mk().cast_expr(val, ptr_type);
+                                if !is_const {
+                                    let WithStmts { val, stmts } = call;
+                                    let inferred_type = mk().mutbl().infer_ty();
+                                    let ptr_type = mk().ptr_ty(inferred_type);
+                                    let val = mk().cast_expr(val, ptr_type);
 
-                                call = WithStmts { val, stmts };
+                                    call = WithStmts { val, stmts };
+                                }
                             }
 
                             Ok(call)
