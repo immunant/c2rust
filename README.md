@@ -91,10 +91,14 @@ source files mentioned in the previously generated
 
     $ scripts/transpile.py ./compile_commands.json
 
-## Legal
+## Acknowledgements and Licensing
 
 This material is available under the BSD-3 style license as found in the
 `LICENSE` file.
+
+The C2Rust translator is inspired by Jamey Sharp's [Corrode](https://github.com/jameysharp/corrode) translator. We rely on 
+[Emscripten](https://github.com/kripken/emscripten)'s 
+Relooper algorithm to translate arbitrary C control flows.
 
 This material is based upon work supported by the United States Air Force and
 DARPA under Contract No. FA8750-15-C-0124.  Any opinions, findings and
