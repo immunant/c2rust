@@ -64,7 +64,7 @@ pub struct Translation {
     zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
     pub comment_context: RefCell<CommentContext>,
     pub comment_store: RefCell<CommentStore>,
-    static_initializers: RefCell<Vec<Stmt>>,
+    sectioned_static_initializers: RefCell<Vec<Stmt>>,
 }
 
 
@@ -337,7 +337,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         };
 
         // Initialize global statics when necessary
-        if !t.static_initializers.borrow().is_empty() {
+        if !t.sectioned_static_initializers.borrow().is_empty() {
             let (initializer_fn, initializer_static) = t.generate_global_static_init();
 
             t.items.push(initializer_fn);
@@ -504,7 +504,7 @@ impl Translation {
             zero_inits: RefCell::new(HashMap::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
-            static_initializers: RefCell::new(Vec::new()),
+            sectioned_static_initializers: RefCell::new(Vec::new()),
         }
     }
 
@@ -547,15 +547,13 @@ impl Translation {
             };
 
             match self.ast_context[expr_id].kind {
-                CExprKind::Unary(typ, Negate, expr_id) => {
+                CExprKind::Unary(typ, Negate, _) => {
                     if self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
                         return true;
                     }
                 },
-                CExprKind::ImplicitCast(typ, expr, PointerToIntegral, opt_field_id) => {
-                    return true;
-                },
-                CExprKind::Binary(typ, op, lhs_expr_id, rhs_expr_id, opt_lhs_type_id, opt_rhs_type_id) => {
+                CExprKind::ImplicitCast(_, _, PointerToIntegral, _) => return true,
+                CExprKind::Binary(typ, _, _, _, _, _) => {
                     if self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
                         return true;
                     }
@@ -568,9 +566,6 @@ impl Translation {
     }
 
     fn add_static_initializer_to_section(&self, name: &str, typ: CQualTypeId, init: &mut P<Expr>) -> Result<(), String> {
-        // REVIEW: Does this apply to fn local statics? This does not (yet?) promote function scoped statics to
-        // globals when necessary. This fn might need to be called elsewhere too
-
         let root_lhs_expr = mk().path_expr(vec![name]);
         let assign_expr = {
             let block = match &init.node {
@@ -588,7 +583,7 @@ impl Translation {
 
         let stmt = mk().expr_stmt(assign_expr);
 
-        self.static_initializers.borrow_mut().push(stmt);
+        self.sectioned_static_initializers.borrow_mut().push(stmt);
 
         // TODO: Add comment to default initializer saying "Initialized in run_static_initializers"
         *init = self.implicit_default_expr(typ.ctype, true)?;
@@ -597,13 +592,13 @@ impl Translation {
     }
 
     fn generate_global_static_init(&mut self) -> (P<Item>, P<Item>) {
-        // If we don't want to consume self.static_initializers for some reason, we could clone the vec
-        let static_initializers = self.static_initializers.replace(Vec::new());
+        // If we don't want to consume self.sectioned_static_initializers for some reason, we could clone the vec
+        let sectioned_static_initializers = self.sectioned_static_initializers.replace(Vec::new());
 
         let fn_name = self.renamer.borrow_mut().pick_name("run_static_initializers");
         let fn_ty = FunctionRetTy::Ty(mk().tuple_ty(vec![] as Vec<P<Ty>>));
         let fn_decl = mk().fn_decl(vec![], fn_ty, false);
-        let fn_block = mk().block(static_initializers);
+        let fn_block = mk().block(sectioned_static_initializers);
         let fn_item = mk().unsafe_().abi("C").fn_item(&fn_name, &fn_decl, fn_block);
 
         let static_attributes = mk()

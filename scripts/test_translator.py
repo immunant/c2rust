@@ -377,7 +377,7 @@ class TestDirectory:
             self.generated_files["cbor"].append(cbor_file)
 
         rust_file_builder = RustFileBuilder()
-        rust_file_builder.add_features(["libc", "i128_type", "extern_types", "used"])
+        rust_file_builder.add_features(["libc", "extern_types", "used"])
 
         # .cbor -> .rs
         for cbor_file in self.generated_files["cbor"]:
