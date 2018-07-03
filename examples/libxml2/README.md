@@ -39,11 +39,11 @@ You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one
 
 ## Runnable
 
-* `runtest` seems to mostly work, but has inconsistent success. C version seems to be more consistently successful (maybe the test is just poorly written?)
-* `testReader` seems to be mostly working identically but with some slight formatting differences. Try `testReader --valid test/japancrlf.xml`
+* `testReader` seems to be mostly working identically but with some slight differences. Try `testReader --valid test/japancrlf.xml`. It produces an extra "Ns verBoom: Validation failed: no DTD found !, (null), (null)"
 
 ## Working
 
+* `runtest` seems to be consistently successful now
 * `testRelax` seems to work equivalently with files as in C
 * `testXPath` seems to work equivalently with files as in C
 * `xmllint` seems to work equivalently with files as in C
