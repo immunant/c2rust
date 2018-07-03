@@ -532,6 +532,7 @@ impl Translation {
     fn static_initializer_maybe_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
         use c_ast::UnOp::Negate;
         use c_ast::CastKind::PointerToIntegral;
+        use c_ast::BinOp::{Add, Subtract, Multiply, Divide, Modulus};
 
         let expr_id = match expr_id {
             Some(expr_id) => expr_id,
@@ -543,7 +544,7 @@ impl Translation {
         for i in iter {
             let expr_id = match i {
                 SomeId::Expr(expr_id) => expr_id,
-                _ => unreachable!("Found static initializer type other than expr"), // REVIEW: Actually unreachable?
+                _ => unreachable!("Found static initializer type other than expr"),
             };
 
             match self.ast_context[expr_id].kind {
@@ -553,8 +554,13 @@ impl Translation {
                     }
                 },
                 CExprKind::ImplicitCast(_, _, PointerToIntegral, _) => return true,
-                CExprKind::Binary(typ, _, _, _, _, _) => {
-                    if self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
+                CExprKind::Binary(typ, op, _, _, _, _) => {
+                    let problematic_op = match op {
+                        Add | Subtract | Multiply | Divide | Modulus => true,
+                        _ => false,
+                    };
+
+                    if problematic_op && self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
                         return true;
                     }
                 },
@@ -570,12 +576,12 @@ impl Translation {
         let assign_expr = {
             let block = match &init.node {
                 ExprKind::Block(block, _) => block,
-                _ => unreachable!("Found static initializer type other than block"), // REVIEW: Actually unreachable?
+                _ => unreachable!("Found static initializer type other than block"),
             };
 
             let expr = match &block.stmts[0].node {
                 StmtKind::Expr(ref expr) => expr,
-                _ => unreachable!("Found static initializer type other than Expr"), // REVIEW: Actually unreachable?
+                _ => unreachable!("Found static initializer type other than Expr"),
             };
 
             mk().assign_expr(root_lhs_expr, expr)
@@ -1029,7 +1035,7 @@ impl Translation {
                 }
 
                 // Force mutability due to the potential for raw pointers occuring in the type
-
+                // and because we're assigning to these variables in the external initializer
                 Ok(ConvertedDecl::Item(mk_linkage(false, new_name, ident)
                     .span(s)
                     .pub_()
