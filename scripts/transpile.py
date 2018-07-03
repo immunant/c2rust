@@ -344,7 +344,7 @@ def main():
                     args.cross_checks,
                     args.cross_check_config)
 
-    logging.info(u"success 👍")
+    logging.info("success")
 
 
 if __name__ == "__main__":
