@@ -68,12 +68,12 @@ either `cmake` or `Bear`.
 #### Generating `compile_commands.json` with `cmake`
 
 When creating the initial build directory with cmake specify
-`-DMAKE_EXPORT_COMPILE_COMMANDS=1`. This only works on projects
+`-DCMAKE_EXPORT_COMPILE_COMMANDS=1`. This only works on projects
 configured to be built by cmake. This works on Linux and MacOS.
 
     $ mkdir build
     $ cd build
-    $ cmake -DMAKE_EXPORT_COMPILE_COMMANDS=1 ..
+    $ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 ..
 
 #### Generating `compile_commands.json` with `bear`
 

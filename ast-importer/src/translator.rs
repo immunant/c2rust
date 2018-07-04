@@ -64,6 +64,7 @@ pub struct Translation {
     zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
     pub comment_context: RefCell<CommentContext>,
     pub comment_store: RefCell<CommentStore>,
+    sectioned_static_initializers: RefCell<Vec<Stmt>>,
 }
 
 
@@ -335,6 +336,14 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             }
         };
 
+        // Initialize global statics when necessary
+        if !t.sectioned_static_initializers.borrow().is_empty() {
+            let (initializer_fn, initializer_static) = t.generate_global_static_init();
+
+            t.items.push(initializer_fn);
+            t.items.push(initializer_static);
+            t.use_feature("used");
+        }
 
         to_string(|s| {
             s.comments().get_or_insert(vec![]).extend(t.comment_store.into_inner().into_comments());
@@ -495,6 +504,7 @@ impl Translation {
             zero_inits: RefCell::new(HashMap::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
+            sectioned_static_initializers: RefCell::new(Vec::new()),
         }
     }
 
@@ -517,6 +527,97 @@ impl Translation {
         if self.tcfg.cross_checks {
             mk.call_attr("cross_check", args)
         } else { mk }
+    }
+
+    fn static_initializer_maybe_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
+        use c_ast::UnOp::Negate;
+        use c_ast::CastKind::PointerToIntegral;
+        use c_ast::BinOp::{Add, Subtract, Multiply, Divide, Modulus};
+
+        let expr_id = match expr_id {
+            Some(expr_id) => expr_id,
+            None => return false,
+        };
+
+        let iter = DFExpr::new(&self.ast_context, expr_id.into());
+
+        for i in iter {
+            let expr_id = match i {
+                SomeId::Expr(expr_id) => expr_id,
+                _ => unreachable!("Found static initializer type other than expr"),
+            };
+
+            match self.ast_context[expr_id].kind {
+                CExprKind::Unary(typ, Negate, _) => {
+                    if self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
+                        return true;
+                    }
+                },
+                CExprKind::ImplicitCast(_, _, PointerToIntegral, _) => return true,
+                CExprKind::Binary(typ, op, _, _, _, _) => {
+                    let problematic_op = match op {
+                        Add | Subtract | Multiply | Divide | Modulus => true,
+                        _ => false,
+                    };
+
+                    if problematic_op && self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
+                        return true;
+                    }
+                },
+                _ => {},
+            }
+        }
+
+        false
+    }
+
+    fn add_static_initializer_to_section(&self, name: &str, typ: CQualTypeId, init: &mut P<Expr>) -> Result<(), String> {
+        let root_lhs_expr = mk().path_expr(vec![name]);
+        let assign_expr = {
+            let block = match &init.node {
+                ExprKind::Block(block, _) => block,
+                _ => unreachable!("Found static initializer type other than block"),
+            };
+
+            let expr = match &block.stmts[0].node {
+                StmtKind::Expr(ref expr) => expr,
+                _ => unreachable!("Found static initializer type other than Expr"),
+            };
+
+            mk().assign_expr(root_lhs_expr, expr)
+        };
+
+        let stmt = mk().expr_stmt(assign_expr);
+
+        self.sectioned_static_initializers.borrow_mut().push(stmt);
+
+        // TODO: Add comment to default initializer saying "Initialized in run_static_initializers"
+        *init = self.implicit_default_expr(typ.ctype, true)?;
+
+        Ok(())
+    }
+
+    fn generate_global_static_init(&mut self) -> (P<Item>, P<Item>) {
+        // If we don't want to consume self.sectioned_static_initializers for some reason, we could clone the vec
+        let sectioned_static_initializers = self.sectioned_static_initializers.replace(Vec::new());
+
+        let fn_name = self.renamer.borrow_mut().pick_name("run_static_initializers");
+        let fn_ty = FunctionRetTy::Ty(mk().tuple_ty(vec![] as Vec<P<Ty>>));
+        let fn_decl = mk().fn_decl(vec![], fn_ty, false);
+        let fn_block = mk().block(sectioned_static_initializers);
+        let fn_item = mk().unsafe_().abi("C").fn_item(&fn_name, &fn_decl, fn_block);
+
+        let static_attributes = mk()
+            .single_attr("used")
+            .call_attr("cfg_attr", vec!["target_os = \"linux\"", "link_section = \".init_array\""])
+            .call_attr("cfg_attr", vec!["target_os = \"windows\"", "link_section = \".CRT$XIB\""])
+            .call_attr("cfg_attr", vec!["target_os = \"macos\"", "link_section = \"__DATA,__mod_init_func\""]);
+        let static_array_size = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
+        let static_ty = mk().array_ty(mk().unsafe_().abi("C").barefn_ty(fn_decl), static_array_size);
+        let static_val = mk().array_expr(vec![mk().path_expr(vec![fn_name])]);
+        let static_item = static_attributes.static_item("INIT_ARRAY", static_ty, static_val);
+
+        (fn_item, static_item)
     }
 
     fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, String> {
@@ -925,10 +1026,16 @@ impl Translation {
                 let mut init = init?;
                 init.stmts.push(mk().expr_stmt(init.val));
                 let init = mk().unsafe_().block(init.stmts);
-                let init = mk().block_expr(init);
+                let mut init = mk().block_expr(init);
+
+                // Collect problematic static initializers and offload them to sections for the linker
+                // to initialize for us
+                if self.static_initializer_maybe_uncompilable(initializer) {
+                    self.add_static_initializer_to_section(new_name, typ, &mut init)?;
+                }
 
                 // Force mutability due to the potential for raw pointers occuring in the type
-
+                // and because we're assigning to these variables in the external initializer
                 Ok(ConvertedDecl::Item(mk_linkage(false, new_name, ident)
                     .span(s)
                     .pub_()
@@ -946,7 +1053,13 @@ impl Translation {
                 let mut init = init?;
                 init.stmts.push(mk().expr_stmt(init.val));
                 let init = mk().unsafe_().block(init.stmts);
-                let init = mk().block_expr(init);
+                let mut init = mk().block_expr(init);
+
+                // Collect problematic static initializers and offload them to sections for the linker
+                // to initialize for us
+                if self.static_initializer_maybe_uncompilable(initializer) {
+                    self.add_static_initializer_to_section(new_name, typ, &mut init)?;
+                }
 
                 // Force mutability due to the potential for raw pointers occurring in the type
                 Ok(ConvertedDecl::Item(mk().span(s).mutbl().static_item(new_name, ty, init)))
@@ -2649,8 +2762,30 @@ impl Translation {
                         if let CTypeKind::VariableArray(..) = self.ast_context.resolve_type(source_ty).kind {
                             Ok(val)
                         } else {
-                            let method = if is_const { "as_ptr" } else { "as_mut_ptr" };
-                            Ok(val.map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>)))
+                            let method = if is_const || is_static {
+                                "as_ptr"
+                            } else {
+                                "as_mut_ptr"
+                            };
+
+                            let mut call = val.map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>));
+
+                            // Static arrays can now use as_ptr with the const_slice_as_ptr feature
+                            // enabled. Can also cast that const ptr to a mutable pointer as we do here:
+                            if is_static {
+                                self.use_feature("const_slice_as_ptr");
+
+                                if !is_const {
+                                    let WithStmts { val, stmts } = call;
+                                    let inferred_type = mk().mutbl().infer_ty();
+                                    let ptr_type = mk().ptr_ty(inferred_type);
+                                    let val = mk().cast_expr(val, ptr_type);
+
+                                    call = WithStmts { val, stmts };
+                                }
+                            }
+
+                            Ok(call)
                         }
                     },
                 }

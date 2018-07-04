@@ -193,7 +193,8 @@ def transpile_files(cc_db: TextIO,
                     verbose: bool = False,
                     emit_build_files: bool = True,
                     cross_checks: bool = False,
-                    cross_check_config: List[str] = []) -> bool:
+                    cross_check_config: List[str] = [],
+                    reloop_cfgs: bool = True) -> bool:
     """
     run the ast-exporter and ast-importer on all C files
     in a compile commands database.
@@ -218,6 +219,8 @@ def transpile_files(cc_db: TextIO,
         for ccc in cross_check_config:
             impo_args.append('--cross-check-config')
             impo_args.append(ccc)
+    if reloop_cfgs:
+        impo_args.append('--reloop-cfgs')
 
     def transpile_single(cmd) -> Tuple[str, int, str, str, str]:
 
@@ -294,6 +297,11 @@ def transpile_files(cc_db: TextIO,
     return failures == 0
 
 
+class NegateAction(argparse.Action):
+    def __call__(self, parser, ns, values, option):
+        setattr(ns, self.dest, option[2:4] != 'no')
+
+
 def parse_args() -> argparse.Namespace:
     """
     define and parse command line arguments here.
@@ -324,6 +332,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-X', '--cross-check-config',
                         default=[], action='append',
                         help='cross-check configuration file(s)')
+    parser.add_argument('--reloop-cfgs', '--no-reloop-cfgs', nargs=0,
+                        default=True, dest="reloop_cfgs",
+                        action=NegateAction,
+                        help='enable (disable) relooper; enabled by '
+                             'default')
     c.add_args(parser)
     return parser.parse_args()
 
@@ -342,9 +355,10 @@ def main():
                     args.verbose,
                     args.emit_build_files,
                     args.cross_checks,
-                    args.cross_check_config)
+                    args.cross_check_config,
+                    args.reloop_cfgs)
 
-    logging.info(u"success 👍")
+    logging.info("success")
 
 
 if __name__ == "__main__":

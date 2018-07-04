@@ -1321,7 +1321,7 @@ impl CfgBuilder {
 
                     Ok(())
                 })?;
-              
+
                 // Return (it is important this happen _outside_ the `with_scope` call)
                 Ok(Some(self.new_wip_block(next_label)))
             },
