@@ -10,6 +10,7 @@ extern crate serde_yaml;
 pub mod attr;
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "snake_case")]
@@ -73,7 +74,7 @@ pub struct ExtraXCheck {
     pub custom: String,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, Clone)]
 #[serde(default)]
 pub struct DefaultsConfig {
     pub disable_xchecks: Option<bool>,
@@ -104,7 +105,7 @@ impl DefaultsConfig {
     }
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, Clone)]
 #[serde(default)]
 pub struct FunctionConfig {
     // Name of the function
@@ -132,7 +133,7 @@ pub struct FunctionConfig {
     pub shasher: Option<String>,
 
     // Nested items
-    nested: Option<ItemList>,
+    pub nested: Option<ItemList>,
 
     // Extra cross-checks
     pub entry_extra: Vec<ExtraXCheck>,
@@ -175,7 +176,7 @@ impl FieldIndex {
     }
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, Clone)]
 #[serde(default)]
 pub struct StructConfig {
     pub name: String,
@@ -197,10 +198,10 @@ pub struct StructConfig {
 
     // Nested items; in this context, it means
     // methods implemented in impl's
-    nested: Option<ItemList>,
+    pub nested: Option<ItemList>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "item", rename_all = "lowercase")]
 pub enum ItemConfig {
     Defaults(DefaultsConfig),
@@ -229,37 +230,41 @@ impl ItemConfig {
     }
 }
 
-#[derive(Deserialize, Debug, Default)]
-pub struct ItemList(Vec<ItemConfig>);
+#[derive(Deserialize, Debug, Default, Clone)]
+pub struct ItemList(Vec<Rc<ItemConfig>>);
 
 impl ItemList {
-    pub fn items(&self) -> &Vec<ItemConfig> {
+    pub fn items(&self) -> &Vec<Rc<ItemConfig>> {
         &self.0
     }
 }
 
-pub struct NamedItemList<'a> {
+#[derive(Debug, Default, Clone)]
+pub struct NamedItemList {
     // FIXME: _items is unused; do we really need it???
-    _items: &'a ItemList,
-    pub name_map: HashMap<&'a str, &'a ItemConfig>,
+    pub name_map: HashMap<String, Rc<ItemConfig>>,
 }
 
-impl<'a> NamedItemList<'a> {
-    pub fn new(items: &'a ItemList) -> NamedItemList<'a> {
+impl NamedItemList {
+    pub fn new(items: &ItemList) -> NamedItemList {
         let map = items.0.iter()
-            .filter_map(|item| item.name().map(|name| (name, item)))
+            .filter_map(|item| item.name().map(
+                    |name| (String::from(name), Rc::clone(item))))
             .collect();
         NamedItemList {
-            _items: items,
             name_map: map,
         }
     }
+
+    pub fn extend(&mut self, other: NamedItemList) {
+        self.name_map.extend(other.name_map.into_iter());
+    }
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, Clone)]
 pub struct FileConfig(ItemList);
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, Clone)]
 pub struct Config(HashMap<String, FileConfig>);
 
 impl Config {
