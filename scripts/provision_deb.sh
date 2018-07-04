@@ -14,8 +14,8 @@ apt-get update -qq
 # dirmngr is required for gnupg2 key retrieval
 apt-get install -qq --install-recommends dirmngr
 apt-get install -qq bear build-essential clang-5.0 cmake curl \
-    git gnupg2 gperf htop ninja-build software-properties-common \
-    tmux unzip vim
+    git gnupg2 gperf htop ninja-build python-dev \
+    software-properties-common tmux unzip vim
 
 update-alternatives --install /usr/bin/clang clang /usr/bin/clang-5.0 100
 update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-5.0 100
@@ -29,8 +29,7 @@ pip3 install --no-cache-dir --disable-pip-version-check -r $SCRIPT_DIR/requireme
 # Dependencies for test programs #
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 
 
-# json-c dependencies
-apt-get install -qq automake autoconf
+apt-get install -qq automake autoconf libtool
 
 # lua dependencies
 apt-get install -qq libreadline-dev
