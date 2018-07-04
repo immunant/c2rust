@@ -68,9 +68,9 @@ def main(xcheck: bool, snudown: str):
 
     cmds_json_path = bldr.write_result(os.path.curdir)
     with open(cmds_json_path, "r") as cmds_json:
-        impo_args = ["--reloop-cfgs"]
-        transpile.transpile_files(cmds_json, multiprocessing.cpu_count(),
-                                  extra_impo_args=impo_args,
+        transpile.transpile_files(cmds_json,
+                                  multiprocessing.cpu_count(),
+                                  extra_impo_args=[],
                                   emit_build_files=True,
                                   cross_checks=xcheck,
                                   cross_check_config=[os.path.join(snudown, "../snudown_rust.c2r")])

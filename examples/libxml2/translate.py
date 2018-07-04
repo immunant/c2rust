@@ -36,7 +36,7 @@ RUST_SRC_DIR = os.path.join(RUST_ROOT_DIR, "src")
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    importer_args = ["--reloop-cfgs", "--translate-entry"]
+    importer_args = ["--translate-entry"]
     num_jobs = multiprocessing.cpu_count()
 
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
