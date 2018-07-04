@@ -10,6 +10,7 @@ extern crate serde_yaml;
 pub mod attr;
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "snake_case")]
@@ -73,7 +74,7 @@ pub struct ExtraXCheck {
     pub custom: String,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, Clone)]
 #[serde(default)]
 pub struct DefaultsConfig {
     pub disable_xchecks: Option<bool>,
@@ -104,7 +105,7 @@ impl DefaultsConfig {
     }
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, Clone)]
 #[serde(default)]
 pub struct FunctionConfig {
     // Name of the function
@@ -175,7 +176,7 @@ impl FieldIndex {
     }
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, Clone)]
 #[serde(default)]
 pub struct StructConfig {
     pub name: String,
@@ -200,7 +201,7 @@ pub struct StructConfig {
     pub nested: Option<ItemList>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "item", rename_all = "lowercase")]
 pub enum ItemConfig {
     Defaults(DefaultsConfig),
@@ -229,40 +230,41 @@ impl ItemConfig {
     }
 }
 
-#[derive(Deserialize, Debug, Default)]
-pub struct ItemList(Vec<ItemConfig>);
+#[derive(Deserialize, Debug, Default, Clone)]
+pub struct ItemList(Vec<Rc<ItemConfig>>);
 
 impl ItemList {
-    pub fn items(&self) -> &Vec<ItemConfig> {
+    pub fn items(&self) -> &Vec<Rc<ItemConfig>> {
         &self.0
     }
 }
 
-#[derive(Debug, Default)]
-pub struct NamedItemList<'a> {
+#[derive(Debug, Default, Clone)]
+pub struct NamedItemList {
     // FIXME: _items is unused; do we really need it???
-    pub name_map: HashMap<&'a str, &'a ItemConfig>,
+    pub name_map: HashMap<String, Rc<ItemConfig>>,
 }
 
-impl<'a> NamedItemList<'a> {
-    pub fn new(items: &'a ItemList) -> NamedItemList<'a> {
+impl NamedItemList {
+    pub fn new(items: &ItemList) -> NamedItemList {
         let map = items.0.iter()
-            .filter_map(|item| item.name().map(|name| (name, item)))
+            .filter_map(|item| item.name().map(
+                    |name| (String::from(name), Rc::clone(item))))
             .collect();
         NamedItemList {
             name_map: map,
         }
     }
 
-    pub fn extend(&mut self, other: NamedItemList<'a>) {
+    pub fn extend(&mut self, other: NamedItemList) {
         self.name_map.extend(other.name_map.into_iter());
     }
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, Clone)]
 pub struct FileConfig(ItemList);
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, Clone)]
 pub struct Config(HashMap<String, FileConfig>);
 
 impl Config {
