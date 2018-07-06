@@ -16,7 +16,7 @@ use syntax::ast;
 use syntax::fold;
 
 use std::borrow::Cow;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -35,18 +35,12 @@ use xcheck_util::CrossCheckBuilder;
 #[derive(Debug, Clone)]
 struct ScopeConfig {
     check_config: config::ScopeCheckConfig,
-
-    // Index of the next field in this scope (if the scope is a structure)
-    // We use this to keep track of the index/ident of the next field
-    // in a tuple
-    field_idx: Cell<usize>,
 }
 
 impl ScopeConfig {
     fn new(ccc: config::ScopeCheckConfig) -> ScopeConfig {
         ScopeConfig {
             check_config: ccc,
-            field_idx: Cell::new(0),
         }
     }
 }
@@ -125,6 +119,11 @@ struct CrossChecker<'a, 'cx: 'a, 'exp> {
     // New items to add at the next item boundary
     pending_items: Vec<P<ast::Item>>,
 
+    // Index of the next field in this scope (if the scope is a structure)
+    // We use this to keep track of the index/ident of the next field
+    // in a tuple
+    field_idx_stack: Vec<usize>,
+
     // Whether to skip calling build_new_scope() on the first scope.
     // We set this to true for #[cross_check(...)] invocations caused
     // by macro expansions, since the compiler passes the attribute to us
@@ -157,6 +156,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             default_ahasher: default_ahasher,
             default_shasher: default_shasher,
             pending_items: vec![],
+            field_idx_stack: vec![],
             skip_first_scope: skip_first_scope,
         }
     }
@@ -567,8 +567,10 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
     }
 
     fn fold_variant_data(&mut self, vdata: ast::VariantData) -> ast::VariantData {
-        self.last_scope().field_idx.set(0);
-        fold::noop_fold_variant_data(vdata, self)
+        self.field_idx_stack.push(0);
+        let res = fold::noop_fold_variant_data(vdata, self);
+        self.field_idx_stack.pop();
+        res
     }
 
     fn fold_struct_field(&mut self, sf: ast::StructField) -> ast::StructField {
@@ -576,15 +578,16 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
 
         // Get the name of the field; the compiler should give us the name
         // if the field is in a Struct. If it's in a Tuple, we use
-        // the field index, which we need to compute ourselves from field_idx.
+        // the field index, which we need to compute ourselves from field_idx_stack.
         let sf_name = folded_sf.ident
             .map(|ident| xcfg::FieldIndex::from_str(&*ident.name.as_str()))
             .unwrap_or_else(|| {
-                // We use field_idx to keep track of the index/name
+                // We use field_idx_stack to keep track of the index/name
                 // of the fields inside a VariantData
-                let idx = self.last_scope().field_idx.get();
-                self.last_scope().field_idx.set(idx + 1);
-                xcfg::FieldIndex::Int(idx)
+                let idx = self.field_idx_stack.last_mut().unwrap();
+                let res = xcfg::FieldIndex::Int(*idx);
+                *idx += 1;
+                res
             });
 
         let sf_attr_xcheck = self.parse_field_attr(&folded_sf.attrs);
