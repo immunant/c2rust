@@ -548,6 +548,7 @@ impl Translation {
             };
 
             match self.ast_context[expr_id].kind {
+                CExprKind::Conditional(_, _, _, _) => return true,
                 CExprKind::Unary(typ, Negate, _) => {
                     if self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
                         return true;
@@ -1057,9 +1058,9 @@ impl Translation {
 
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
-                if self.static_initializer_maybe_uncompilable(initializer) {
-                    self.add_static_initializer_to_section(new_name, typ, &mut init)?;
-                }
+                // if self.static_initializer_maybe_uncompilable(initializer) {
+                //     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
+                // }
 
                 // Force mutability due to the potential for raw pointers occurring in the type
                 Ok(ConvertedDecl::Item(mk().span(s).mutbl().static_item(new_name, ty, init)))

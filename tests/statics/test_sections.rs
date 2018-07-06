@@ -14,5 +14,6 @@ pub fn test_sectioned_statics() {
         assert_eq!(rust_section_foo_b_field.b, -1);
         assert_eq!(rust_section_foo_b_field.c, 1.2);
         assert_eq!(rust_section_num_params, 2);
+        assert!(rust_if_expr == 30 || rust_if_expr == 31);
     }
 }
