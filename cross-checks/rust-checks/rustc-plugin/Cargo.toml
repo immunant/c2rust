@@ -13,7 +13,7 @@ c-hash-functions = []
 
 [dependencies]
 matches = "0.1.6"
-cross-check-config = { path = "../config", features = ["parse-syntax"] }
+cross-check-config = { path = "../config", features = ["parse-syntax", "scopes"] }
 
 [dev-dependencies]
 cross-check-derive = { path = "../derive-macros" }

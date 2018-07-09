@@ -8,7 +8,6 @@ extern crate matches;
 
 extern crate cross_check_config as xcfg;
 
-mod config;
 mod util;
 
 use rustc_plugin::Registry;
@@ -32,23 +31,30 @@ use syntax::util::small_vector::SmallVector;
 
 use util::CrossCheckBuilder;
 
-impl config::ScopeStack {
-    /// Push a Rust AST item to a config::ScopeStack
+trait AstItemScope {
+    fn push_ast_item(&mut self, item: &ast::Item,
+                     mi: Option<&ast::MetaItem>,
+                     external_config: &xcfg::Config,
+                     cx: &ExtCtxt) -> usize;
+}
+
+impl AstItemScope for xcfg::scopes::ScopeStack {
+    /// Push a Rust AST item to a xcfg::scopes::ScopeStack
     fn push_ast_item(&mut self, item: &ast::Item,
                      mi: Option<&ast::MetaItem>,
                      external_config: &xcfg::Config,
                      cx: &ExtCtxt) -> usize {
         let (span, item_kind, item_xcfg) = match item.node {
             ast::ItemKind::Fn(..)     =>
-                (item.span, Some(config::ItemKind::Function),
+                (item.span, Some(xcfg::scopes::ItemKind::Function),
                  Some(xcfg::ItemConfig::Function(Default::default()))),
             ast::ItemKind::Enum(..)   |
             ast::ItemKind::Struct(..) |
             ast::ItemKind::Union(..)  =>
-                (item.span, Some(config::ItemKind::Struct),
+                (item.span, Some(xcfg::scopes::ItemKind::Struct),
                  Some(xcfg::ItemConfig::Struct(Default::default()))),
             ast::ItemKind::Impl(..)   =>
-                (item.span, Some(config::ItemKind::Impl),
+                (item.span, Some(xcfg::scopes::ItemKind::Impl),
                  Some(xcfg::ItemConfig::Struct(Default::default()))),
             ast::ItemKind::Mod(ref m) => (m.inner,   None, None),
             _                         => (item.span, None, None)
@@ -97,7 +103,7 @@ impl config::ScopeStack {
 struct CrossChecker<'a, 'cx: 'a, 'exp> {
     expander: &'exp CrossCheckExpander,
     cx: &'a mut ExtCtxt<'cx>,
-    scope_stack: config::ScopeStack,
+    scope_stack: xcfg::scopes::ScopeStack,
     default_ahasher: Vec<TokenTree>,
     default_shasher: Vec<TokenTree>,
 
@@ -124,7 +130,7 @@ fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
 impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     fn new(expander: &'exp CrossCheckExpander,
            cx: &'a mut ExtCtxt<'cx>,
-           scope_stack: config::ScopeStack,
+           scope_stack: xcfg::scopes::ScopeStack,
            skip_first_scope: bool) -> CrossChecker<'a, 'cx, 'exp> {
         let default_ahasher = {
             let q = quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher);
@@ -147,7 +153,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     }
 
     #[inline]
-    fn config(&self) -> &config::ScopeConfig {
+    fn config(&self) -> &xcfg::scopes::ScopeConfig {
         self.scope_stack.last()
     }
 
@@ -672,7 +678,7 @@ struct CrossCheckExpander {
     // Arguments passed to plugin
     // TODO: pre-parse them???
     external_config: xcfg::Config,
-    macro_scopes: RefCell<HashMap<Span, config::ScopeConfig>>,
+    macro_scopes: RefCell<HashMap<Span, xcfg::scopes::ScopeConfig>>,
 
     // List of already emitted C ABI hash functions,
     // used to prevent the emission of duplicates
@@ -706,11 +712,11 @@ impl CrossCheckExpander {
             .fold(Default::default(), |acc, fc| acc.merge(fc))
     }
 
-    fn insert_macro_scope(&self, sp: Span, config: config::ScopeConfig) {
+    fn insert_macro_scope(&self, sp: Span, config: xcfg::scopes::ScopeConfig) {
         self.macro_scopes.borrow_mut().insert(sp, config);
     }
 
-    fn find_span_scope(&self, sp: Span) -> Option<config::ScopeConfig> {
+    fn find_span_scope(&self, sp: Span) -> Option<xcfg::scopes::ScopeConfig> {
         let macro_scopes = self.macro_scopes.borrow();
         macro_scopes.get(&sp).cloned().or_else(|| {
             sp.ctxt().outer().expn_info().and_then(|ei| {
@@ -734,7 +740,7 @@ impl MultiItemModifier for CrossCheckExpander {
                 // ignore this expansion and let the higher level one do everything
                 let ni = match (&i.node, span_scope) {
                     (&ast::ItemKind::Mod(_), None) => {
-                        let mut scope_stack = config::ScopeStack::new();
+                        let mut scope_stack = xcfg::scopes::ScopeStack::new();
                         // Parse the top-level attribute configuration
                         let mut top_xcfg = xcfg::ItemConfig::Defaults(Default::default());
                         util::parse_attr_config(&mut top_xcfg, &mi);
@@ -749,7 +755,7 @@ impl MultiItemModifier for CrossCheckExpander {
                     (_, Some(scope)) => {
                         // If this #[cross_check(...)] expansion is caused by a
                         // macro expansion, handle it here
-                        let mut scope_stack = config::ScopeStack::from_scope(scope);
+                        let mut scope_stack = xcfg::scopes::ScopeStack::from_scope(scope);
                         scope_stack.push_ast_item(&i, Some(mi),
                                                   &self.external_config, cx);
                         // TODO: if build_item_scope returns None, keep scope_config

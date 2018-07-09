@@ -2,18 +2,16 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use xcfg;
-
 #[derive(Debug, Clone)]
 pub struct InheritedConfig {
     // Whether cross-checks are enabled overall
     pub enabled: bool,
 
     // Function-specific overrides
-    pub entry: xcfg::XCheckType,
-    pub exit: xcfg::XCheckType,
-    pub all_args: xcfg::XCheckType,
-    pub ret: xcfg::XCheckType,
+    pub entry: super::XCheckType,
+    pub exit: super::XCheckType,
+    pub all_args: super::XCheckType,
+    pub ret: super::XCheckType,
 
     // Overrides for ahasher/shasher
     pub ahasher: Option<String>,
@@ -24,10 +22,10 @@ impl Default for InheritedConfig {
     fn default() -> InheritedConfig {
         InheritedConfig {
             enabled: true,
-            entry: xcfg::XCheckType::Default,
-            exit: xcfg::XCheckType::Default,
-            all_args: xcfg::XCheckType::None,
-            ret: xcfg::XCheckType::Default,
+            entry: super::XCheckType::Default,
+            exit: super::XCheckType::Default,
+            all_args: super::XCheckType::None,
+            ret: super::XCheckType::Default,
             ahasher: None,
             shasher: None,
         }
@@ -36,9 +34,9 @@ impl Default for InheritedConfig {
 
 #[derive(Debug, Clone)]
 pub struct FunctionConfig {
-    pub args: HashMap<xcfg::FieldIndex, xcfg::XCheckType>,
-    pub entry_extra: Vec<xcfg::ExtraXCheck>,
-    pub exit_extra: Vec<xcfg::ExtraXCheck>,
+    pub args: HashMap<super::FieldIndex, super::XCheckType>,
+    pub entry_extra: Vec<super::ExtraXCheck>,
+    pub exit_extra: Vec<super::ExtraXCheck>,
 }
 
 // We want all_args set to None, so we need a custom Default implementation
@@ -56,7 +54,7 @@ impl Default for FunctionConfig {
 pub struct StructConfig {
     pub custom_hash: Option<String>,
     pub field_hasher: Option<String>,
-    pub fields: HashMap<xcfg::FieldIndex, xcfg::XCheckType>,
+    pub fields: HashMap<super::FieldIndex, super::XCheckType>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -90,7 +88,7 @@ pub struct ScopeConfig {
     pub file_name: Option<Rc<String>>, // FIXME: this should be a &str
 
     // Configuration for items contained in this scope
-    pub items: Option<xcfg::NamedItemList>,
+    pub items: Option<super::NamedItemList>,
 
     // Cross-check configuration inherited from parent
     pub inherited: Rc<InheritedConfig>,
@@ -111,7 +109,7 @@ impl ScopeConfig {
 
     /// Build a FileDefaults ScopeConfig for the given file,
     /// if we have any FileDefaults in the external configuration
-    pub fn new_file(&self, external_config: &xcfg::Config,
+    pub fn new_file(&self, external_config: &super::Config,
                     file_name: &str) -> Option<Self> {
         if self.same_file(file_name) {
             return None;
@@ -120,13 +118,13 @@ impl ScopeConfig {
         file_items.map(|file_items| {
             let mut new_config = ScopeConfig {
                 file_name: Some(Rc::new(String::from(file_name))),
-                items: Some(xcfg::NamedItemList::new(file_items)),
+                items: Some(super::NamedItemList::new(file_items)),
                 inherited: Rc::clone(&self.inherited),
                 item: ItemConfig::FileDefaults,
             };
             for item in file_items.items().iter() {
                 match **item {
-                    xcfg::ItemConfig::Defaults(_) => {
+                    super::ItemConfig::Defaults(_) => {
                         new_config.parse_xcfg_config(item);
                     }
                     _ => (),
@@ -161,7 +159,7 @@ impl ScopeConfig {
             .unwrap_or(false)
     }
 
-    fn get_item_xcfg(&self, item: &str) -> Option<&xcfg::ItemConfig> {
+    fn get_item_xcfg(&self, item: &str) -> Option<&super::ItemConfig> {
         self.items
             .as_ref()
             .and_then(|nil| nil.name_map.get(item))
@@ -187,7 +185,7 @@ impl ScopeConfig {
         }
     }
 
-    pub fn parse_xcfg_config(&mut self, xcfg: &xcfg::ItemConfig) {
+    pub fn parse_xcfg_config(&mut self, xcfg: &super::ItemConfig) {
         macro_rules! parse_optional_field {
             // Field for the current scope
             (>$self_name:ident, $self_parent:ident, $xcfg_parent:ident, $xcfg_name:ident, $new_value:expr) => (
@@ -203,8 +201,8 @@ impl ScopeConfig {
             )
         }
         match (&mut self.item, xcfg) {
-            (&mut ItemConfig::Top,          &xcfg::ItemConfig::Defaults(ref xcfg_defs)) |
-            (&mut ItemConfig::FileDefaults, &xcfg::ItemConfig::Defaults(ref xcfg_defs)) => {
+            (&mut ItemConfig::Top,          &super::ItemConfig::Defaults(ref xcfg_defs)) |
+            (&mut ItemConfig::FileDefaults, &super::ItemConfig::Defaults(ref xcfg_defs)) => {
                 // Inherited fields
                 parse_optional_field!(^enabled,  xcfg_defs, disable_xchecks, !disable_xchecks);
                 parse_optional_field!(^entry,    xcfg_defs, entry,    entry.clone());
@@ -213,7 +211,7 @@ impl ScopeConfig {
                 parse_optional_field!(^ret,      xcfg_defs, ret,      ret.clone());
             },
 
-            (&mut ItemConfig::Function(ref mut self_func), &xcfg::ItemConfig::Function(ref xcfg_func)) => {
+            (&mut ItemConfig::Function(ref mut self_func), &super::ItemConfig::Function(ref xcfg_func)) => {
                 // Inherited fields
                 parse_optional_field!(^enabled,  xcfg_func, disable_xchecks, !disable_xchecks);
                 parse_optional_field!(^entry,    xcfg_func, entry,    entry.clone());
@@ -225,18 +223,18 @@ impl ScopeConfig {
                 parse_optional_field!(^shasher, xcfg_func, shasher, Some(shasher.clone()));
                 // Function-specific fields
                 self_func.args.extend(xcfg_func.args.iter().map(|(k, v)| {
-                    (xcfg::FieldIndex::from_str(k), v.clone())
+                    (super::FieldIndex::from_str(k), v.clone())
                 }));
                 self_func.entry_extra.extend(xcfg_func.entry_extra.iter().cloned());
                 self_func.exit_extra.extend(xcfg_func.exit_extra.iter().cloned());
                 // TODO: parse more fields: exit, ret
                 if let Some(ref nested_items) = xcfg_func.nested {
                     self.items.get_or_insert_with(Default::default)
-                        .extend(xcfg::NamedItemList::new(nested_items));
+                        .extend(super::NamedItemList::new(nested_items));
                 }
             },
 
-            (&mut ItemConfig::Struct(ref mut self_struc), &xcfg::ItemConfig::Struct(ref xcfg_struc)) => {
+            (&mut ItemConfig::Struct(ref mut self_struc), &super::ItemConfig::Struct(ref xcfg_struc)) => {
                 // Inherited fields
                 // TODO: add a way for the external config to reset these to default
                 parse_optional_field!(^enabled, xcfg_struc, disable_xchecks, !disable_xchecks);
@@ -248,12 +246,12 @@ impl ScopeConfig {
                 self_struc.fields.extend(xcfg_struc.fields.clone().into_iter());
                 if let Some(ref nested_items) = xcfg_struc.nested {
                     self.items.get_or_insert_with(Default::default)
-                        .extend(xcfg::NamedItemList::new(nested_items));
+                        .extend(super::NamedItemList::new(nested_items));
                 }
             },
 
             // Parse the relevant fields for `impl`s
-            (&mut ItemConfig::Impl, &xcfg::ItemConfig::Struct(ref xcfg_struc)) => {
+            (&mut ItemConfig::Impl, &super::ItemConfig::Struct(ref xcfg_struc)) => {
                 // Inherited fields
                 // TODO: add a way for the external config to reset these to default
                 parse_optional_field!(^enabled, xcfg_struc, disable_xchecks, !disable_xchecks);
@@ -261,7 +259,7 @@ impl ScopeConfig {
                 parse_optional_field!(^shasher, xcfg_struc, shasher, Some(shasher.clone()));
                 if let Some(ref nested_items) = xcfg_struc.nested {
                     self.items.get_or_insert_with(Default::default)
-                        .extend(xcfg::NamedItemList::new(nested_items));
+                        .extend(super::NamedItemList::new(nested_items));
                 }
             },
             p @ (_, _) => panic!(format!("mismatched configuration: {:?}", p))
@@ -287,7 +285,7 @@ impl ScopeStack {
         }
     }
 
-    pub fn push_file(&mut self, external_config: &xcfg::Config,
+    pub fn push_file(&mut self, external_config: &super::Config,
                      file_name: &str) -> Option<&ScopeConfig> {
         let file_scope = self.last().new_file(external_config, file_name);
         file_scope.map(move |file_scope| {
@@ -298,8 +296,8 @@ impl ScopeStack {
 
     pub fn push_item(&mut self, item_kind: ItemKind,
                      file_name: &str, item_name: &str,
-                     pre_xcfg: Option<xcfg::ItemConfig>,
-                     post_xcfg: Option<xcfg::ItemConfig>) -> &ScopeConfig {
+                     pre_xcfg: Option<super::ItemConfig>,
+                     post_xcfg: Option<super::ItemConfig>) -> &ScopeConfig {
         let new_config = {
             let old_config = self.last();
             let mut new_config = old_config.new_item(item_kind, file_name);
