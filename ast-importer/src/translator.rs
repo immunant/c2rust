@@ -2542,6 +2542,14 @@ impl Translation {
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
+
+            // If the target does not support data prefetch, the address expression is evaluated if
+            // it includes side effects but no other code is generated and GCC does not issue a warning.
+            // void __builtin_prefetch (const void *addr, ...);
+            "__builtin_prefetch" => {
+                self.convert_expr(ExprUse::Unused, args[0], is_static)
+            }
+
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }
