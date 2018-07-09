@@ -95,18 +95,89 @@ fn parse_xcheck_type(name: &'static str, arg: &ArgValue) -> xcfg::XCheckType {
      }
 }
 
-pub fn parse_xcheck_arglist(args: &ArgList<'static>) -> Option<xcfg::XCheckType> {
+pub fn parse_xcheck_arglist(args: &ArgList<'static>, or_default: bool) -> Option<xcfg::XCheckType> {
     if args.len() > 1 {
         panic!("expected single argument for cross-check type attribute");
     }
     args.iter().next()
         .map(|(name, ref arg)| parse_xcheck_type(name, arg))
+        .or(if or_default { Some(xcfg::XCheckType::Default) } else { None })
 }
 
-pub fn parse_xcheck_arg(arg: &ArgValue<'static>) -> Option<xcfg::XCheckType> {
-    match *arg {
+pub fn parse_xcheck_arg(arg: &ArgValue<'static>, or_default: bool) -> Option<xcfg::XCheckType> {
+    let res = match *arg {
         ArgValue::Nothing => None,
-        ArgValue::List(ref l) => parse_xcheck_arglist(l),
+        ArgValue::List(ref l) => parse_xcheck_arglist(l, or_default),
         _ => panic!("unexpected argument to all_args():{:?}", *arg)
+    };
+    res.or(if or_default { Some(xcfg::XCheckType::Default) } else { None })
+}
+
+pub fn parse_attr_config(item_xcfg: &mut xcfg::ItemConfig, mi: &ast::MetaItem) {
+    assert!(mi.name() == "cross_check");
+    match item_xcfg {
+        &mut xcfg::ItemConfig::Defaults(ref mut d) => parse_defaults_attr_config(d, mi),
+        &mut xcfg::ItemConfig::Function(ref mut f) => parse_function_attr_config(f, mi),
+        &mut xcfg::ItemConfig::Struct(ref mut s)   => parse_struct_attr_config(s, mi),
+        _ => panic!("unexpected item: {:#?}", item_xcfg)
+    }
+}
+
+fn parse_defaults_attr_config(d: &mut xcfg::DefaultsConfig, mi: &ast::MetaItem) {
+    let args = xcfg::attr::get_syntax_item_args(mi);
+    for (name, arg) in args.iter() {
+        match *name {
+            "disabled" | "none" => d.disable_xchecks = Some(true),
+            "enabled"  | "yes"  => d.disable_xchecks = Some(false),
+            "entry"    => d.entry    = parse_xcheck_arg(&arg, true),
+            "exit"     => d.exit     = parse_xcheck_arg(&arg, true),
+            "all_args" => d.all_args = parse_xcheck_arg(&arg, true),
+            "ret"      => d.ret      = parse_xcheck_arg(&arg, true),
+            _ => panic!("unexpected cross_check item: {}", name)
+        }
+    }
+}
+
+fn parse_function_attr_config(f: &mut xcfg::FunctionConfig, mi: &ast::MetaItem) {
+    let args = xcfg::attr::get_syntax_item_args(mi);
+    for (name, arg) in args.iter() {
+        match *name {
+            "disabled" | "none" => f.disable_xchecks = Some(true),
+            "enabled"  | "yes"  => f.disable_xchecks = Some(false),
+            "entry"    => f.entry    = parse_xcheck_arg(&arg, true),
+            "exit"     => f.exit     = parse_xcheck_arg(&arg, true),
+            "all_args" => f.all_args = parse_xcheck_arg(&arg, true),
+            "ret"      => f.ret      = parse_xcheck_arg(&arg, true),
+            "args"     => {
+                // Parse per-argument cross-check types
+                f.args.extend(arg.as_list().iter().filter_map(|(name, arg)| {
+                    if let xcfg::attr::ArgValue::List(ref l) = *arg {
+                        let arg_xcheck = parse_xcheck_arglist(l, false)
+                            .expect(&format!("expected valid cross-check type \
+                                              for argument: {}", name));
+                        Some((String::from(*name), arg_xcheck))
+                    } else { None }
+                }));
+            }
+            "ahasher"  => f.ahasher  = Some(String::from(arg.as_str())),
+            "shasher"  => f.shasher  = Some(String::from(arg.as_str())),
+            // TODO: handle entry_extra and exit_extra for Function
+            _ => panic!("unexpected cross_check item: {}", name)
+        }
+    }
+}
+
+fn parse_struct_attr_config(s: &mut xcfg::StructConfig, mi: &ast::MetaItem) {
+    let args = xcfg::attr::get_syntax_item_args(mi);
+    for (name, arg) in args.iter() {
+        match *name {
+            "disabled" | "none" => s.disable_xchecks = Some(true),
+            "enabled"  | "yes"  => s.disable_xchecks = Some(false),
+            "ahasher"  => s.ahasher  = Some(String::from(arg.as_str())),
+            "shasher"  => s.shasher  = Some(String::from(arg.as_str())),
+            "field_hasher" => s.field_hasher = Some(String::from(arg.as_str())),
+            "custom_hash"  => s.custom_hash  = Some(String::from(arg.as_str())),
+            _ => panic!("unexpected cross_check item: {}", name)
+        }
     }
 }
