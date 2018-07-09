@@ -192,8 +192,31 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
 
                 translation.renamer.borrow_mut().insert(decl_id, &name);
             },
-            CDeclKind::Variable { ref mut ident, is_static, .. } if is_static => ident.insert_str(0, &prefix),
+            CDeclKind::Variable { ref mut ident, is_static: true, .. } => ident.insert_str(0, &prefix),
             _ => (),
+        }
+    }
+}
+
+fn lift_fn_scoped_statics(translation: &mut Translation) {
+    let ast_context_stmts = &mut translation.ast_context.c_stmts;
+    let ast_context_decls = &translation.ast_context.c_decls;
+    let ast_context_decls_top = &mut translation.ast_context.c_decls_top;
+    let renamer = &mut translation.renamer.borrow_mut();
+
+    for (_, loc) in ast_context_stmts {
+        if let CStmtKind::Decls(ref mut decl_ids) = loc.kind {
+            decl_ids.retain(|decl_id| {
+                match ast_context_decls[decl_id].kind {
+                    CDeclKind::Variable { ref ident, is_static: true, is_extern: false, is_defn: true, .. } => {
+                        renamer.insert_root(*decl_id, ident);
+                        ast_context_decls_top.push(*decl_id);
+
+                        false
+                    },
+                    _ => true,
+                }
+            });
         }
     }
 }
@@ -234,6 +257,10 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
     if let Some(prefix) = t.tcfg.prefix_function_names.clone() {
         prefix_names(&mut t, prefix);
     }
+
+    // Lift problematic fn scoped static initializers into the global scope
+    // so that they can later be sectioned along with global statics
+    lift_fn_scoped_statics(&mut t);
 
     with_globals(|| {
         // Identify typedefs that name unnamed types and collapse the two declarations
@@ -1062,11 +1089,12 @@ impl Translation {
 
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
-                // if self.static_initializer_maybe_uncompilable(initializer) {
-                //     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
-                // }
+                if self.static_initializer_maybe_uncompilable(initializer) {
+                    self.add_static_initializer_to_section(new_name, typ, &mut init)?;
+                }
 
                 // Force mutability due to the potential for raw pointers occurring in the type
+                // and because we're assigning to these variables in the external initializer
                 Ok(ConvertedDecl::Item(mk().span(s).mutbl().static_item(new_name, ty, init)))
             }
 
