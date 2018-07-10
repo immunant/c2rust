@@ -19,6 +19,7 @@ use std::cell::RefCell;
 use std::char;
 use dtoa;
 use with_stmts::WithStmts;
+use indexmap::IndexSet;
 
 use cfg;
 
@@ -3839,8 +3840,7 @@ impl Translation {
 
     fn lift_fn_scoped_statics(&mut self) {
         let renamer = &mut self.renamer.borrow_mut();
-        // TODO: Replace with indexset
-        let mut stmt_id_decl_ids_set = HashSet::new();
+        let mut stmt_id_decl_ids_set = IndexSet::new();
 
         // Find problematic stmts, rescope decl_id
         for (stmt_id, loc) in &self.ast_context.c_stmts {
