@@ -262,7 +262,7 @@ impl ScopeConfig {
                         .extend(super::NamedItemList::new(nested_items));
                 }
             },
-            p @ (_, _) => panic!(format!("mismatched configuration: {:?}", p))
+            p @ (_, _) => panic!("mismatched configuration: {:?}", p)
         }
     }
 }
