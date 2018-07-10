@@ -198,29 +198,6 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
     }
 }
 
-fn lift_fn_scoped_statics(translation: &mut Translation) {
-    let ast_context_stmts = &mut translation.ast_context.c_stmts;
-    let ast_context_decls = &translation.ast_context.c_decls;
-    let ast_context_decls_top = &mut translation.ast_context.c_decls_top;
-    let renamer = &mut translation.renamer.borrow_mut();
-
-    for (_, loc) in ast_context_stmts {
-        if let CStmtKind::Decls(ref mut decl_ids) = loc.kind {
-            decl_ids.retain(|decl_id| {
-                match ast_context_decls[decl_id].kind {
-                    CDeclKind::Variable { ref ident, is_static: true, is_extern: false, is_defn: true, .. } => {
-                        renamer.insert_root(*decl_id, ident);
-                        ast_context_decls_top.push(*decl_id);
-
-                        false
-                    },
-                    _ => true,
-                }
-            });
-        }
-    }
-}
-
 pub fn translate_failure(tcfg: &TranslationConfig, msg: &str) {
     if tcfg.fail_on_error {
         panic!("{}", msg)
@@ -260,7 +237,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
     // Lift problematic fn scoped static initializers into the global scope
     // so that they can later be sectioned along with global statics
-    lift_fn_scoped_statics(&mut t);
+    t.lift_fn_scoped_statics();
 
     with_globals(|| {
         // Identify typedefs that name unnamed types and collapse the two declarations
@@ -560,7 +537,7 @@ impl Translation {
         } else { mk }
     }
 
-    fn static_initializer_maybe_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
+    fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
         use c_ast::UnOp::Negate;
         use c_ast::CastKind::PointerToIntegral;
         use c_ast::BinOp::{Add, Subtract, Multiply, Divide, Modulus};
@@ -1062,7 +1039,7 @@ impl Translation {
 
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
-                if self.static_initializer_maybe_uncompilable(initializer) {
+                if self.static_initializer_is_uncompilable(initializer) {
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
                 }
 
@@ -1089,7 +1066,7 @@ impl Translation {
 
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
-                if self.static_initializer_maybe_uncompilable(initializer) {
+                if self.static_initializer_is_uncompilable(initializer) {
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
                 }
 
@@ -3858,5 +3835,38 @@ impl Translation {
                 _ => false,
             }
         })
+    }
+
+    fn lift_fn_scoped_statics(&mut self) {
+        let renamer = &mut self.renamer.borrow_mut();
+        // TODO: Replace with indexset
+        let mut stmt_id_decl_ids_set = HashSet::new();
+
+        // Find problematic stmts, rescope decl_id
+        for (stmt_id, loc) in &self.ast_context.c_stmts {
+            if let CStmtKind::Decls(ref decl_ids) = loc.kind {
+                for decl_id in decl_ids {
+                    match &self.ast_context.c_decls[decl_id].kind {
+                        CDeclKind::Variable { ref ident, is_static: true, is_extern: false, is_defn: true, initializer, .. } => {
+                            let problematic_initializer = self.static_initializer_is_uncompilable(*initializer);
+
+                            if problematic_initializer {
+                                stmt_id_decl_ids_set.insert((*stmt_id, *decl_id));
+                                renamer.insert_root(*decl_id, ident);
+                                self.ast_context.c_decls_top.push(*decl_id);
+                            }
+                        },
+                        _ => {},
+                    }
+                }
+            }
+        }
+
+        // Remove problematic decl_ids from stmts
+        for (stmt_id, loc) in &mut self.ast_context.c_stmts {
+            if let CStmtKind::Decls(ref mut decl_ids) = loc.kind {
+                decl_ids.retain(|&decl_id| !stmt_id_decl_ids_set.contains(&(*stmt_id, decl_id)));
+            };
+        }
     }
 }
