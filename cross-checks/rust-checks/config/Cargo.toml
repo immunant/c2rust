@@ -7,6 +7,7 @@ authors = ["Andrei Homescu <ah@immunant.com>"]
 parse-syn = ["syn"]
 parse-syntax = []
 with-quote = []
+scopes = []
 
 [dependencies]
 serde = { version = "1.0", features = ["rc"] }

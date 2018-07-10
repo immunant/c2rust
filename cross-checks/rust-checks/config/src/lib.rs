@@ -8,6 +8,7 @@ extern crate serde;
 extern crate serde_yaml;
 
 pub mod attr;
+#[cfg(feature="scopes")] pub mod scopes;
 
 use std::collections::HashMap;
 use std::rc::Rc;
