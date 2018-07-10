@@ -450,7 +450,7 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b"(\n")?;
                 self.indent();
                 for parameter in parameters {
-                    match context.c_decls.get(&parameter).map(|l| &l.kind) {
+                    match context.c_decls.get(parameter).map(|l| &l.kind) {
                         Some(&CDeclKind::Variable { ref ident, ref typ, .. }) => {
                             self.pad()?;
                             self.print_qtype(*typ, Some(ident.as_str()), context)?;
@@ -625,7 +625,7 @@ impl<W: Write> Printer<W> {
             Some(&CTypeKind::Paren(ref ctype)) => self.parenthesize(true, |slf| slf.print_type(*ctype, ident, context)),
 
             Some(&CTypeKind::Enum(ref enum_id)) => {
-                match context.c_decls.get(&enum_id).map(|l| &l.kind) {
+                match context.c_decls.get(enum_id).map(|l| &l.kind) {
                     Some(&CDeclKind::Enum { name: Some(ref n), .. }) => self.writer.write_fmt(format_args!(" {}", n))?,
                     Some(&CDeclKind::Enum { name: None, .. }) => unimplemented!(),
                     Some(_) => panic!("An enum type  is supposed to point to an enum decl"),
