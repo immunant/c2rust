@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "config",
+    "config-capi",
     "derive-macros",
     "runtime",
     "rustc-plugin",
