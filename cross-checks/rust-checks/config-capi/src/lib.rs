@@ -27,9 +27,81 @@ const ITEM_KIND_FUNCTION: c_uint = 0;
 const ITEM_KIND_STRUCT:   c_uint = 1;
 const ITEM_KIND_IMPL:     c_uint = 2;
 
+// Common basic data structures and functions
+#[repr(C)]
+pub struct StringLenPtr {
+    ptr: *const c_char,
+    len: c_uint,
+}
+
+impl StringLenPtr {
+    fn from_str(s: &str) -> StringLenPtr {
+        StringLenPtr {
+            ptr: s.as_ptr() as *const c_char,
+            len: s.len() as c_uint,
+        }
+    }
+
+    fn from_option_str(s: &Option<String>) -> StringLenPtr {
+        let (ptr, len) = match s {
+            Some(s) => (s.as_ptr(), s.len()),
+            None    => (ptr::null(), 0),
+        };
+        StringLenPtr {
+            ptr: ptr as *const c_char,
+            len: len as c_uint,
+        }
+    }
+
+    unsafe fn to_slice(&self) -> &[u8] {
+        slice::from_raw_parts(self.ptr as *const u8, self.len as usize)
+    }
+}
+
+impl Default for StringLenPtr {
+    fn default() -> StringLenPtr {
+        StringLenPtr {
+            ptr: ptr::null(),
+            len: 0,
+        }
+    }
+}
+
+#[repr(C)]
+pub struct VecLenPtr<T> {
+    ptr: *const T,
+    len: c_uint,
+}
+
+impl<T> VecLenPtr<T> {
+    fn from_slice(v: &[T]) -> VecLenPtr<T> {
+        VecLenPtr {
+            ptr: v.as_ptr(),
+            len: v.len() as c_uint,
+        }
+    }
+}
+
+impl<T> Default for VecLenPtr<T> {
+    fn default() -> VecLenPtr<T> {
+        VecLenPtr {
+            ptr: ptr::null(),
+            len: 0,
+        }
+    }
+}
+
+#[inline]
+fn option_to_ptr<T>(opt: Option<&T>) -> *const T {
+    match opt {
+        Some(x) => x,
+        None => ptr::null()
+    }
+}
+
 // Top-level parsing API
-pub unsafe extern fn xcfg_config_parse(buf: *const c_char, len: c_uint) -> *const xcfg::Config {
-    let slice = slice::from_raw_parts(buf as *const u8, len as usize);
+pub unsafe extern fn xcfg_config_parse(buf: StringLenPtr) -> *const xcfg::Config {
+    let slice = buf.to_slice();
     let cfg = serde_yaml::from_slice(slice)
         .expect(&format!("invalid YAML: '{:?}'", slice));
     Box::into_raw(Box::new(cfg))
@@ -182,41 +254,6 @@ pub unsafe extern fn xcfg_scope_ret(scope_config: *mut xcfg::scopes::ScopeConfig
     &(*scope_config).inherited.ret
 }
 
-#[repr(C)]
-pub struct StringLenPtr {
-    ptr: *const c_char,
-    len: c_uint,
-}
-
-impl StringLenPtr {
-    fn from_str(s: &str) -> StringLenPtr {
-        StringLenPtr {
-            ptr: s.as_ptr() as *const c_char,
-            len: s.len() as c_uint,
-        }
-    }
-
-    fn from_option_str(s: &Option<String>) -> StringLenPtr {
-        let (ptr, len) = match s {
-            Some(s) => (s.as_ptr(), s.len()),
-            None    => (ptr::null(), 0),
-        };
-        StringLenPtr {
-            ptr: ptr as *const c_char,
-            len: len as c_uint,
-        }
-    }
-}
-
-impl Default for StringLenPtr {
-    fn default() -> StringLenPtr {
-        StringLenPtr {
-            ptr: ptr::null(),
-            len: 0,
-        }
-    }
-}
-
 pub unsafe extern fn xcfg_scope_ahasher(scope_config: *mut xcfg::scopes::ScopeConfig)
     -> StringLenPtr {
     StringLenPtr::from_option_str(&(*scope_config).inherited.ahasher)
@@ -225,14 +262,6 @@ pub unsafe extern fn xcfg_scope_ahasher(scope_config: *mut xcfg::scopes::ScopeCo
 pub unsafe extern fn xcfg_scope_shasher(scope_config: *mut xcfg::scopes::ScopeConfig)
     -> StringLenPtr {
     StringLenPtr::from_option_str(&(*scope_config).inherited.shasher)
-}
-
-#[inline]
-fn option_to_ptr<T>(opt: Option<&T>) -> *const T {
-    match opt {
-        Some(x) => x,
-        None => ptr::null()
-    }
 }
 
 pub unsafe extern fn xcfg_scope_function_arg(scope_config: *mut xcfg::scopes::ScopeConfig,
@@ -245,30 +274,6 @@ pub unsafe extern fn xcfg_scope_function_arg(scope_config: *mut xcfg::scopes::Sc
             option_to_ptr(f.args.get(&arg_index))
         }
         _ => ptr::null()
-    }
-}
-
-#[repr(C)]
-pub struct VecLenPtr<T> {
-    ptr: *const T,
-    len: c_uint,
-}
-
-impl<T> VecLenPtr<T> {
-    fn from_slice(v: &[T]) -> VecLenPtr<T> {
-        VecLenPtr {
-            ptr: v.as_ptr(),
-            len: v.len() as c_uint,
-        }
-    }
-}
-
-impl<T> Default for VecLenPtr<T> {
-    fn default() -> VecLenPtr<T> {
-        VecLenPtr {
-            ptr: ptr::null(),
-            len: 0,
-        }
     }
 }
 
