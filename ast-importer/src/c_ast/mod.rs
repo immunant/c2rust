@@ -1,4 +1,5 @@
 use std::collections::{HashMap,HashSet};
+use indexmap::IndexMap;
 use std::ops::Index;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
@@ -35,8 +36,11 @@ pub mod iterators;
 pub struct TypedAstContext {
     pub c_types: HashMap<CTypeId, CType>,
     pub c_exprs: HashMap<CExprId, CExpr>,
-    pub c_decls: HashMap<CDeclId, CDecl>,
     pub c_stmts: HashMap<CStmtId, CStmt>,
+
+    // Decls require a stable iteration order as this map will be
+    // iterated over export all defined types during translation.
+    pub c_decls: IndexMap<CDeclId, CDecl>,
 
     pub c_decls_top: Vec<CDeclId>,
     pub c_main: Option<CDeclId>,
@@ -58,7 +62,7 @@ impl TypedAstContext {
         TypedAstContext {
             c_types: HashMap::new(),
             c_exprs: HashMap::new(),
-            c_decls: HashMap::new(),
+            c_decls: IndexMap::new(),
             c_stmts: HashMap::new(),
 
             c_decls_top: Vec::new(),
