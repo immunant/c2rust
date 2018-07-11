@@ -296,18 +296,18 @@ impl ScopeStack {
 
     pub fn push_item(&mut self, item_kind: ItemKind,
                      file_name: &str, item_name: &str,
-                     pre_xcfg: Option<super::ItemConfig>,
-                     post_xcfg: Option<super::ItemConfig>) -> &ScopeConfig {
+                     pre_xcfg: &[super::ItemConfig],
+                     post_xcfg: &[super::ItemConfig]) -> &ScopeConfig {
         let new_config = {
             let old_config = self.last();
             let mut new_config = old_config.new_item(item_kind, file_name);
-            if let Some(xcfg) = pre_xcfg {
+            for xcfg in pre_xcfg {
                 new_config.parse_xcfg_config(&xcfg);
             }
             if let Some(ref xcfg) = old_config.get_item_xcfg(item_name) {
                 new_config.parse_xcfg_config(xcfg);
             };
-            if let Some(xcfg) = post_xcfg {
+            for xcfg in post_xcfg {
                 new_config.parse_xcfg_config(&xcfg);
             }
             new_config

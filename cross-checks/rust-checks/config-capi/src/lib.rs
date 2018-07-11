@@ -189,8 +189,8 @@ pub unsafe extern fn xcfg_scope_stack_push_item(scope_stack: *mut xcfg::scopes::
                                                 item_kind: c_uint,
                                                 file_name: *const c_char,
                                                 item_name: *const c_char,
-                                                pre_xcfg: *const c_char,
-                                                post_xcfg: *const c_char) {
+                                                pre_xcfg: VecLenPtr<*const c_char>,
+                                                post_xcfg: VecLenPtr<*const c_char>) {
     let item_kind = match item_kind {
         ITEM_KIND_FUNCTION => xcfg::scopes::ItemKind::Function,
         ITEM_KIND_STRUCT   => xcfg::scopes::ItemKind::Struct,
@@ -199,17 +199,17 @@ pub unsafe extern fn xcfg_scope_stack_push_item(scope_stack: *mut xcfg::scopes::
     };
     let file_name = CStr::from_ptr(file_name).to_str().unwrap();
     let item_name = CStr::from_ptr(item_name).to_str().unwrap();
-    let pre_xcfg = if pre_xcfg.is_null() { None } else {
-        let pre_cstr = CStr::from_ptr(pre_xcfg);
-        Some(serde_yaml::from_slice(pre_cstr.to_bytes())
-            .expect(&format!("invalid YAML: '{:?}'", pre_cstr)))
-    };
-    let post_xcfg = if post_xcfg.is_null() { None } else {
-        let post_cstr = CStr::from_ptr(post_xcfg);
-        Some(serde_yaml::from_slice(post_cstr.to_bytes())
-            .expect(&format!("invalid YAML: '{:?}'", post_cstr)))
-    };
-    (*scope_stack).push_item(item_kind, file_name, item_name, pre_xcfg, post_xcfg);
+    let pre_xcfg = (0..pre_xcfg.len).map(|i| {
+        let pre_cstr = CStr::from_ptr(*pre_xcfg.ptr.offset(i as isize));
+        serde_yaml::from_slice(pre_cstr.to_bytes())
+            .expect(&format!("invalid YAML: '{:?}'", pre_cstr))
+    }).collect::<Vec<_>>();
+    let post_xcfg = (0..post_xcfg.len).map(|i| {
+        let post_cstr = CStr::from_ptr(*post_xcfg.ptr.offset(i as isize));
+        serde_yaml::from_slice(post_cstr.to_bytes())
+            .expect(&format!("invalid YAML: '{:?}'", post_cstr))
+    }).collect::<Vec<_>>();
+    (*scope_stack).push_item(item_kind, file_name, item_name, &pre_xcfg, &post_xcfg);
     // TODO: return something???
 }
 

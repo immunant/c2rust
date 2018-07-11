@@ -93,7 +93,7 @@ impl AstItemScope for xcfg::scopes::ScopeStack {
                 xcfg::attr::syntax::parse_attr_config(&mut item_xcfg, &mi);
             }
             self.push_item(ik, &file_name, &*item_name,
-                           Some(item_xcfg), None);
+                           &[item_xcfg], &[]);
             pushed_count += 1;
         }
         pushed_count
