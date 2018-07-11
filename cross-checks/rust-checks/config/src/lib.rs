@@ -1,5 +1,4 @@
-#![feature(i128_type)]
-#![cfg_attr(feature="parse-syntax", feature(rustc_private))]
+#![cfg_attr(feature="parse-syntax", feature(rustc_private, try_from))]
 
 #[macro_use]
 extern crate serde_derive;
