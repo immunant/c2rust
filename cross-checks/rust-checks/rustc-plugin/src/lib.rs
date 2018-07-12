@@ -85,12 +85,12 @@ impl AstItemScope for xcfg::scopes::ScopeStack {
             // TODO: order???
             let mut item_xcfg = item_xcfg.unwrap();
             if let Some(ref mi) = mi {
-                util::parse_attr_config(&mut item_xcfg, mi);
+                xcfg::attr::syntax::parse_attr_config(&mut item_xcfg, mi);
             }
             let xcheck_attr = find_cross_check_attr(&item.attrs);
             if let Some(ref attr) = xcheck_attr {
                 let mi = attr.parse_meta(cx.parse_sess).unwrap();
-                util::parse_attr_config(&mut item_xcfg, &mi);
+                xcfg::attr::syntax::parse_attr_config(&mut item_xcfg, &mi);
             }
             self.push_item(ik, &file_name, &*item_name,
                            Some(item_xcfg), None);
@@ -432,8 +432,8 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         let xcheck_attr = find_cross_check_attr(attrs);
         xcheck_attr.and_then(|attr| {
             attr.parse_meta(self.cx.parse_sess).ok().and_then(|mi| {
-                let args = xcfg::attr::get_syntax_item_args(&mi);
-                util::parse_xcheck_arglist(&args, false)
+                let args = xcfg::attr::syntax::get_item_args(&mi);
+                xcfg::attr::syntax::parse_xcheck_arglist(&args, false)
             })
         })
     }
@@ -743,7 +743,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         let mut scope_stack = xcfg::scopes::ScopeStack::new();
                         // Parse the top-level attribute configuration
                         let mut top_xcfg = xcfg::ItemConfig::Defaults(Default::default());
-                        util::parse_attr_config(&mut top_xcfg, &mi);
+                        xcfg::attr::syntax::parse_attr_config(&mut top_xcfg, &mi);
                         scope_stack.last_mut().parse_xcfg_config(&top_xcfg);
                         // Build the scope config for this item
                         scope_stack.push_ast_item(&i, Some(mi),
