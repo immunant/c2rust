@@ -1,6 +1,9 @@
 #ifndef CROSSCHECK_PLUGIN_CROSSCHECKS_H
 #define CROSSCHECK_PLUGIN_CROSSCHECKS_H
 
+#include <algorithm>
+#include <variant>
+
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTMutationListener.h"
@@ -8,6 +11,7 @@
 #include "clang/Sema/SemaConsumer.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Regex.h"
 
 #include "config.h"
@@ -52,25 +56,10 @@ report_clang_warning(DiagnosticsEngine &diags,
 }
 
 using StringRef = std::reference_wrapper<const std::string>;
-using StringRefPair = std::pair<StringRef, StringRef>;
-using DefaultsConfigRef = std::reference_wrapper<DefaultsConfig>;
-using DefaultsConfigOptRef = std::optional<DefaultsConfigRef>;
-using FunctionConfigRef = std::reference_wrapper<FunctionConfig>;
-using StructConfigRef = std::reference_wrapper<StructConfig>;
 
 struct StringRefCompare {
     bool operator()(const StringRef &lhs, const StringRef &rhs) const {
         return lhs.get() < rhs.get();
-    }
-};
-
-struct StringRefPairCompare {
-    bool operator()(const StringRefPair &lhs, const StringRefPair &rhs) const {
-        if (lhs.first.get() == rhs.first.get()) {
-            return lhs.second.get() < rhs.second.get();
-        } else {
-            return lhs.first.get()  < rhs.first.get();
-        }
     }
 };
 
@@ -181,39 +170,8 @@ class CrossCheckInserter : public SemaConsumer {
 private:
     bool disable_xchecks;
 
-    Config config;
-
-    // Cache the (file, function) => config mapping
-    // for fast lookup
-    // FIXME: uses std::map which is O(logN), would be nice
-    // to use std::unordered_map, but that one doesn't compile
-    // with StringRefPair keys
-    std::map<StringRef, DefaultsConfig,
-        StringRefCompare> defaults_configs;
-    std::map<StringRefPair, FunctionConfigRef,
-        StringRefPairCompare> function_configs;
-    std::map<StringRefPair, StructConfigRef,
-        StringRefPairCompare> struct_configs;
-
-    std::optional<FunctionConfigRef>
-    get_function_config(const std::string &file_name,
-                        const std::string &func_name) {
-        StringRefPair key(std::cref(file_name), std::cref(func_name));
-        auto file_it = function_configs.find(key);
-        if (file_it != function_configs.end())
-            return std::make_optional(file_it->second);
-        return {};
-    }
-
-    std::optional<StructConfigRef>
-    get_struct_config(const std::string &file_name,
-                      const std::string &struct_name) {
-        StringRefPair key(std::cref(file_name), std::cref(struct_name));
-        auto file_it = struct_configs.find(key);
-        if (file_it != struct_configs.end())
-            return std::make_optional(file_it->second);
-        return {};
-    }
+    const config::Config *config;
+    config::ScopeStack *config_stack;
 
     // Regex that matches cross-check annotations
     llvm::Regex xcheck_ann_regex{"^[:space:]*cross_check[:space:]*:(.*)$"};
@@ -224,12 +182,52 @@ private:
             auto ann = aa->getAnnotation();
             llvm::SmallVector<llvm::StringRef, 2> groups;
             if (xcheck_ann_regex.match(ann, &groups)) {
-                std::string xcheck_str = groups[1];
-                llvm::yaml::Input yin{xcheck_str};
-                fn(yin);
-                // TODO: check yin.error()
+                fn(groups[1]);
             }
         }
+    }
+
+    // For now, the attributes we accept may optionally be enclosed in spaces
+    // like a YAML mapping, e.g., "{ foo: bar }"; when passing the mapping to
+    // the Rust configuration parser, we need to strip away the braces
+    llvm::Regex xcheck_brace_regex{"^[:space:]*\\{(.*)\\}[:space:]*$"};
+
+    template<typename Iter>
+    llvm::SmallVector<std::string, 16>
+    build_xcfg_yaml(llvm::StringRef item_name, llvm::StringRef item_kind,
+                    clang::Decl *item_decl, llvm::StringRef extras_name, Iter extras) {
+        using namespace std::literals;
+        llvm::SmallVector<std::string, 16> yaml_strings;
+        if (this->disable_xchecks) {
+            auto xc = llvm::formatv("{{ name: {0}, item: {1}, disable_xchecks: true }",
+                                    item_name, item_kind);
+            yaml_strings.push_back(xc);
+        }
+        for (auto e_decl : extras) {
+            auto e_name = e_decl->getName();
+            parse_xcheck_attrs(e_decl, [this, &yaml_strings, item_name,
+                                        item_kind, item_decl,
+                                        extras_name, e_name] (llvm::StringRef s) {
+                if (!s.empty()) {
+                    auto xc = llvm::formatv("{{ name: {0}, item: {1}, {2}: {{ {3}: {4} } }",
+                                            item_name, item_kind, extras_name, e_name, s);
+                    yaml_strings.push_back(xc);
+                }
+            });
+        }
+        parse_xcheck_attrs(item_decl, [this, &yaml_strings, item_name,
+                                       item_kind, item_decl] (llvm::StringRef s) {
+            llvm::StringRef xchecks = s;
+            llvm::SmallVector<llvm::StringRef, 2> groups;
+            if (xcheck_brace_regex.match(s, &groups))
+                xchecks = groups[1]; 
+            if (!xchecks.empty()) {
+                auto xc = llvm::formatv("{{ name: {0}, item: {1}, {2} }",
+                                        item_name, item_kind, xchecks);
+                yaml_strings.push_back(xc);
+            }
+        });
+        return yaml_strings;
     }
 
     ASTConsumer *toplevel_consumer = nullptr;
@@ -347,7 +345,7 @@ private:
 
     template<typename DefaultFn, typename CustomArgsFn>
     TinyStmtVec
-    build_xcheck(const XCheck &xcheck, XCheck::Tag tag,
+    build_xcheck(const XCheck&, config::XCheckTag tag,
                  ASTContext &ctx, DefaultFn default_fn,
                  CustomArgsFn custom_args_fn);
 
@@ -434,28 +432,22 @@ private:
 
     TinyStmtVec
     build_parameter_xcheck(ParmVarDecl *param,
-                           const DefaultsConfigOptRef file_defaults,
                            llvm::StringRef func_name,
-                           const FunctionConfig &func_cfg,
+                           const config::ScopeConfig *func_cfg,
                            const DeclMap &param_decls,
                            ASTContext &ctx);
 
 public:
     CrossCheckInserter() = delete;
-    CrossCheckInserter(bool dx, Config &&cfg)
-            : disable_xchecks(dx), config(std::move(cfg)) {
-        for (auto &file_config : config) {
-            auto &file_name = file_config.first;
-            for (auto &item : file_config.second)
-                if (auto defs = std::get_if<DefaultsConfig>(&item)) {
-                    defaults_configs[file_name].update(*defs);
-                } else if (auto func = std::get_if<FunctionConfig>(&item)) {
-                    StringRefPair key(std::cref(file_name), std::cref(func->name));
-                    function_configs.emplace(key, *func);
-                } else if (auto struc = std::get_if<StructConfig>(&item)) {
-                    StringRefPair key(std::cref(file_name), std::cref(struc->name));
-                    struct_configs.emplace(key, *struc);
-                }
+    CrossCheckInserter(bool dx, const config::Config *cfg)
+            : disable_xchecks(dx), config(cfg) {
+        config_stack = config::xcfg_scope_stack_new(nullptr);
+    }
+
+    ~CrossCheckInserter() {
+        if (config_stack) {
+            config::xcfg_scope_stack_destroy(config_stack);
+            config_stack = nullptr;
         }
     }
 

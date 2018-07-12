@@ -31,6 +31,20 @@ def build_clang_plugin(args: str) -> None:
     """
     run cmake as needed to generate ninja buildfiles. then run ninja.
     """
+    cargo = get_cmd_or_die("cargo")
+    config_capi_src_dir = os.path.join(c.CROSS_CHECKS_DIR, "rust-checks", "config-capi")
+    cargo_target_dir = os.path.join(c.CLANG_XCHECK_PLUGIN_BLD,
+            "config-capi-target")
+    config_lib_path = os.path.join(cargo_target_dir,
+            "debug" if args.debug else "release",
+            "libcross_check_config_capi.a")
+    with pb.local.cwd(config_capi_src_dir):
+        cargo_args = ["build", "--package", "cross-check-config-capi"]
+        if not args.debug:
+            cargo_args.append("--release")
+        with pb.local.env(CARGO_TARGET_DIR=cargo_target_dir):
+           invoke(cargo[cargo_args])
+
     ninja = get_cmd_or_die("ninja")
     # Possible values are Release, Debug, RelWithDebInfo and MinSizeRel
     build_type = "Debug" if args.debug else "RelWithDebInfo"
@@ -49,6 +63,7 @@ def build_clang_plugin(args: str) -> None:
                      "-DLLVM_DIR={}/lib/cmake/llvm".format(c.LLVM_BLD),
                      "-DClang_DIR={}/lib/cmake/clang".format(c.LLVM_BLD),
                      "-DLLVM_EXTERNAL_LIT={}/bin/llvm-lit".format(c.LLVM_BLD),
+                     "-DXCHECK_CONFIG_LIB={}".format(config_lib_path),
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DBUILD_SHARED_LIBS=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
