@@ -2569,6 +2569,13 @@ impl Translation {
                 self.convert_expr(ExprUse::Unused, args[0], is_static)
             }
 
+            "__builtin_va_start" =>
+                Err(format!("va_start not supported - currently va_list and va_arg are supported")),
+            "__builtin_va_copy" =>
+                Err(format!("va_copy not supported - currently va_list and va_arg are supported")),
+            "__builtin_va_end" =>
+                Err(format!("va_end not supported - currently va_list and va_arg are supported")),
+
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }
