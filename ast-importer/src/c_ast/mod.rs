@@ -87,6 +87,9 @@ impl TypedAstContext {
         }
     }
 
+    /// Predicate for struct, union, and enum declarations without
+    /// bodies. These forward declarations are suitable for use as
+    /// the targets of pointers
     pub fn is_forward_declared_type(&self, typ: CTypeId) -> bool {
         match self.resolve_type(typ).kind.as_underlying_decl() {
             Some(decl_id) => {
@@ -99,6 +102,16 @@ impl TypedAstContext {
             }
             _ => false,
         }
+    }
+
+    /// Predicate for function pointers
+    pub fn is_function_pointer(&self, typ: CTypeId) -> bool {
+        let resolved_ctype = self.resolve_type(typ);
+        if let CTypeKind::Pointer(p) = resolved_ctype.kind {
+            if let CTypeKind::Function { .. } = self.resolve_type(p.ctype).kind {
+                true
+            } else { false }
+        } else { false }
     }
 
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
