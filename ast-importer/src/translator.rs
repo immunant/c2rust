@@ -50,6 +50,7 @@ pub struct TranslationConfig {
     pub emit_module: bool,
     pub fail_on_error: bool,
     pub replace_unsupported_decls: ReplaceMode,
+    pub translate_valist: bool,
 }
 
 pub struct Translation {
@@ -474,12 +475,15 @@ enum ConvertedDecl {
 impl Translation {
     pub fn new(mut ast_context: TypedAstContext, tcfg: TranslationConfig) -> Translation {
         let comment_context = RefCell::new(CommentContext::new(&mut ast_context));
+        let mut type_converter = TypeConverter::new();
+
+        if tcfg.translate_valist { type_converter.translate_valist = true }
 
         Translation {
             features: RefCell::new(HashSet::new()),
             items: vec![],
             foreign_items: vec![],
-            type_converter: RefCell::new(TypeConverter::new()),
+            type_converter: RefCell::new(type_converter),
             ast_context,
             tcfg,
             renamer: RefCell::new(Renamer::new(&[
@@ -2469,8 +2473,23 @@ impl Translation {
             CExprKind::Statements(_, compound_stmt_id) =>
                 self.convert_statement_expression(use_, compound_stmt_id, is_static),
 
-            CExprKind::VAArg(..) =>
-                Err(format!("Variable argument lists are not supported")),
+            CExprKind::VAArg(ty, val_id) => {
+                if self.tcfg.translate_valist {
+                    // https://github.com/rust-lang/rust/pull/49878/files
+                    let val = self.convert_expr(ExprUse::RValue, val_id, is_static)?;
+                    let ty = self.convert_type(ty.ctype)?;
+
+                    Ok(val.map(|va| {
+                        let path = mk().path_segment_with_params(
+                            mk().ident("arg"),
+                            mk().angle_bracketed_param_types(vec![ty]));
+                        mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>)
+                    }))
+
+                } else {
+                    Err(format!("Variable argument lists are not supported (requires --translate-valist)"))
+                }
+            }
         }
     }
 
