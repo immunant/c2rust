@@ -32,7 +32,6 @@ pub fn structured_cfg(
         eprintln!("Did not find a statement for comments {:?}", queued);
     }
 
-
     // If the very last statement in the vector is a `return`, we can either cut it out or replace
     // it with the returned value.
     match stmts.last().cloned() {

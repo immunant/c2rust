@@ -8,6 +8,7 @@ use std::collections::{HashSet,HashMap};
 use c_ast::CDeclId;
 
 pub struct TypeConverter {
+    pub translate_valist: bool,
     renamer: Renamer<CDeclId>,
     fields: HashMap<CDeclId, Renamer<CFieldId>>,
     features: HashSet<&'static str>,
@@ -49,6 +50,7 @@ impl TypeConverter {
 
     pub fn new() -> TypeConverter {
         TypeConverter {
+            translate_valist: false,
             renamer: Renamer::new(&RESERVED_NAMES),
             fields: HashMap::new(),
             features: HashSet::new(),
@@ -118,13 +120,14 @@ impl TypeConverter {
     }
 
     pub fn convert_pointer(&mut self, ctxt: &TypedAstContext, qtype: CQualTypeId) -> Result<P<Ty>, String> {
+
         match ctxt.resolve_type(qtype.ctype).kind {
 
             // While void converts to () in function returns, it converts to c_void
             // in the case of pointers.
             CTypeKind::Void => {
                 let mutbl = if qtype.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
-                Ok(mk().set_mutbl(mutbl).ptr_ty(mk().path_ty(vec!["libc","c_void"])))
+                return Ok(mk().set_mutbl(mutbl).ptr_ty(mk().path_ty(vec!["libc","c_void"])))
             }
 
             CTypeKind::VariableArray(mut elt,_len) => {
@@ -133,7 +136,7 @@ impl TypeConverter {
                 }
                 let child_ty = self.convert(ctxt, elt)?;
                 let mutbl = if qtype.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
-                Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
+                return Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
             }
 
             // Function pointers are translated to Option applied to the function type
@@ -143,15 +146,29 @@ impl TypeConverter {
                 let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
                 let param = mk().angle_bracketed_param_types(vec![fn_ty]);
                 let optn_ty = mk().path_ty(vec![mk().path_segment_with_params("Option", param)]);
-                Ok(optn_ty)
+                return Ok(optn_ty)
             }
 
-            _ => {
-                let child_ty = self.convert(ctxt, qtype.ctype)?;
-                let mutbl = if qtype.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
-                Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
+            CTypeKind::Struct(struct_id) => {
+
+                if self.translate_valist {
+                    if let CDeclKind::Struct { name: Some(ref struct_name), .. } = ctxt[struct_id].kind {
+                        if struct_name == "__va_list_tag" {
+                            self.features.insert("c_variadic");
+                            let path = vec!["","std","ffi","VaList"];
+                            let ty = mk().path_ty(path);
+                            return Ok(ty)
+                        }
+                    }
+                }
             }
+
+            _ => {},
         }
+
+        let child_ty = self.convert(ctxt, qtype.ctype)?;
+        let mutbl = if qtype.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
+        Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
     }
 
     /// Convert a `C` type to a `Rust` one. For the moment, these are expected to have compatible

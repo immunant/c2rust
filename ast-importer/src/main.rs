@@ -52,6 +52,10 @@ fn main() {
             .long("translate-asm")
             .help("Translate inline assembly without translating the assembly fragment")
             .takes_value(false))
+        .arg(Arg::with_name("translate-valist")
+            .long("translate-valist")
+            .help("Translate uses of va_list, requires custom rustc")
+            .takes_value(false))
 
         // CFG/Relooper related
         .arg(Arg::with_name("reloop-cfgs")
@@ -149,6 +153,7 @@ fn main() {
             .map(String::from),
         translate_asm:          matches.is_present("translate-asm"),
         translate_entry:        matches.is_present("translate-entry"),
+        translate_valist:       matches.is_present("translate-valist"),
         use_c_loop_info:        !matches.is_present("ignore-c-loop-info"),
         use_c_multiple_info:    !matches.is_present("ignore-c-multiple-info"),
         simplify_structures:    !matches.is_present("no-simplify-structures"),
