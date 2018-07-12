@@ -3824,17 +3824,4 @@ impl Translation {
         self.renamer.borrow_mut().drop_scope();
         result
     }
-
-    // Visit all the declarations in the stmt (or the compound stmt)
-    //
-    // FIXME: when this is done, call this every time we open a scope in the CFG
-    pub fn visit_decls(&self, stmt_ids: &Vec<CStmtId>) -> () {
-        for stmt_id in stmt_ids {
-            if let CStmtKind::Decls(ref decl_ids) = self.ast_context.index(*stmt_id).kind {
-                for _decl_id in decl_ids {
-                    unimplemented!();
-                }
-            }
-        }
-    }
 }
