@@ -71,4 +71,13 @@ mod tests {
         assert_eq!(jodyhash_string("abcdefghijklmnop"), 0xcef9115bbc6c0f84u64);
         assert_eq!(jodyhash_string("zyxwvutsrqponmlk"), 0xe408a517f5c12d07u64);
     }
+
+    // Test that checks the correctness of struct7.c in clang-plugin/test
+    #[test]
+    fn test_clang_plugin_struct7() {
+        let mut h = JodyHasher::default();
+        h.write_u64(06632337_u64);
+        h.write_u64(00001337_u64 ^ 0x7878787878787876_u64);
+        assert_eq!(h.finish(), 0xaf19d4dba0422cc0_u64);
+    }
 }
