@@ -9,17 +9,25 @@ pub enum SomeId {
 }
 
 macro_rules! from_some_id {
-    ( $x:ty, $y:ident ) => {
-        impl From<$x> for SomeId {
-            fn from(a: $x) -> Self { SomeId::$y(a) }
+    ( $field_type:ty, $con_name:ident, $proj_name:ident ) => {
+        impl From<$field_type> for SomeId {
+            fn from(a: $field_type) -> Self { SomeId::$con_name(a) }
+        }
+        impl SomeId {
+            pub fn $proj_name(self) -> Option<$field_type> {
+                match self {
+                    SomeId::$con_name(x) => Some(x),
+                    _ => None,
+                }
+            }
         }
     };
 }
 
-from_some_id!(CExprId, Expr);
-from_some_id!(CStmtId, Stmt);
-from_some_id!(CDeclId, Decl);
-from_some_id!(CTypeId, Type);
+from_some_id!(CExprId, Expr, expr);
+from_some_id!(CStmtId, Stmt, stmt);
+from_some_id!(CDeclId, Decl, decl);
+from_some_id!(CTypeId, Type, type_);
 
 /// Like the vec macro except that it calls the into method on all list elements
 macro_rules! intos {

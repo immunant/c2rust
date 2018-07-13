@@ -1189,7 +1189,7 @@ impl Translation {
 
         // Function body scope
         self.with_scope(|| {
-            if self.tcfg.reloop_cfgs {
+            if self.tcfg.reloop_cfgs || self.function_requires_relooper(body_ids) {
                 let (graph, store) = cfg::Cfg::from_stmts(self, body_ids, ret)?;
 
                 if self.tcfg.dump_function_cfgs {
@@ -3815,5 +3815,20 @@ impl Translation {
         let result = f();
         self.renamer.borrow_mut().drop_scope();
         result
+    }
+
+    /// This predicate checks for control-flow statements under a declaration
+    /// that will require relooper to be enabled to be handled. 
+    fn function_requires_relooper(&self, stmt_ids: &[CStmtId]) -> bool {
+        stmt_ids
+        .iter()
+        .flat_map(|&stmt_id| DFExpr::new(&self.ast_context, stmt_id.into()))
+        .flat_map(SomeId::stmt)
+        .any(|x| {
+            match self.ast_context[x].kind {
+                CStmtKind::Goto(..) | CStmtKind::Label(..) | CStmtKind::Switch{..} => true,
+                _ => false,
+            }
+        })
     }
 }
