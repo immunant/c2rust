@@ -352,9 +352,9 @@ pub unsafe extern fn xcfg_scope_struct_field_hasher(scope_config: Option<&xcfg::
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_struct_field<'a>(scope_config: Option<&'a xcfg::scopes::ScopeConfig>,
-                                                 field_name: StringLenPtr)
-    -> Option<&'a xcfg::XCheckType> {
+pub unsafe extern fn xcfg_scope_struct_field<'sc>(scope_config: Option<&'sc xcfg::scopes::ScopeConfig>,
+                                                  field_name: StringLenPtr)
+    -> Option<&'sc xcfg::XCheckType> {
     scope_config.and_then(|sc| match sc.item {
         xcfg::scopes::ItemConfig::Struct(ref s) => {
             let field_index = xcfg::FieldIndex::Str(String::from(field_name.to_str()));
