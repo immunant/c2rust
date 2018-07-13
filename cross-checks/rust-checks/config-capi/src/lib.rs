@@ -105,14 +105,6 @@ impl<T> Default for VecLenPtr<T> {
     }
 }
 
-#[inline]
-fn option_to_ptr<T>(opt: Option<&T>) -> *const T {
-    match opt {
-        Some(x) => x,
-        None => ptr::null()
-    }
-}
-
 // Top-level parsing API
 #[no_mangle]
 pub unsafe extern fn xcfg_config_new()
@@ -138,46 +130,40 @@ pub unsafe extern fn xcfg_config_destroy(cfg: *mut xcfg::Config) {
 
 // C API for cross-check types
 #[no_mangle]
-pub unsafe extern fn xcfg_xcheck_type(xcheck: *const xcfg::XCheckType)
-    -> c_uint {
-    if xcheck.is_null() {
-        return XCHECK_TYPE_DEFAULT;
-    }
-    match *xcheck {
-        xcfg::XCheckType::Default   => XCHECK_TYPE_DEFAULT,
-        xcfg::XCheckType::None      => XCHECK_TYPE_DISABLED,
-        xcfg::XCheckType::Disabled  => XCHECK_TYPE_DISABLED,
-        xcfg::XCheckType::Fixed(_)  => XCHECK_TYPE_FIXED,
-        xcfg::XCheckType::Djb2(_)   => XCHECK_TYPE_DJB2,
-        xcfg::XCheckType::AsType(_) => XCHECK_TYPE_AS_TYPE,
-        xcfg::XCheckType::Custom(_) => XCHECK_TYPE_CUSTOM,
+pub unsafe extern fn xcfg_xcheck_type(xcheck: Option<&xcfg::XCheckType>) -> c_uint {
+    match xcheck {
+        Some(&xcfg::XCheckType::Default)   => XCHECK_TYPE_DEFAULT,
+        Some(&xcfg::XCheckType::None)      => XCHECK_TYPE_DISABLED,
+        Some(&xcfg::XCheckType::Disabled)  => XCHECK_TYPE_DISABLED,
+        Some(&xcfg::XCheckType::Fixed(_))  => XCHECK_TYPE_FIXED,
+        Some(&xcfg::XCheckType::Djb2(_))   => XCHECK_TYPE_DJB2,
+        Some(&xcfg::XCheckType::AsType(_)) => XCHECK_TYPE_AS_TYPE,
+        Some(&xcfg::XCheckType::Custom(_)) => XCHECK_TYPE_CUSTOM,
+        None => XCHECK_TYPE_DEFAULT,
     }
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_xcheck_data_u64(xcheck: *const xcfg::XCheckType)
-    -> u64 {
-    match *xcheck {
-        xcfg::XCheckType::Fixed(x)  => x,
+pub unsafe extern fn xcfg_xcheck_data_u64(xcheck: Option<&xcfg::XCheckType>) -> u64 {
+    match xcheck {
+        Some(&xcfg::XCheckType::Fixed(x))  => x,
         _ => 0,
     }
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_xcheck_data_string(xcheck: *const xcfg::XCheckType)
-    -> StringLenPtr {
-    match *xcheck {
-        xcfg::XCheckType::Djb2(ref s)   |
-        xcfg::XCheckType::AsType(ref s) |
-        xcfg::XCheckType::Custom(ref s) => StringLenPtr::from_str(s),
+pub unsafe extern fn xcfg_xcheck_data_string(xcheck: Option<&xcfg::XCheckType>) -> StringLenPtr {
+    match xcheck {
+        Some(&xcfg::XCheckType::Djb2(ref s))   |
+        Some(&xcfg::XCheckType::AsType(ref s)) |
+        Some(&xcfg::XCheckType::Custom(ref s)) => StringLenPtr::from_str(s),
         _ => Default::default(),
     }
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_extra_xcheck_tag(extra_xcheck: *const xcfg::ExtraXCheck)
-    -> c_uint {
-    match (*extra_xcheck).tag {
+pub unsafe extern fn xcfg_extra_xcheck_tag(extra_xcheck: Option<&xcfg::ExtraXCheck>) -> c_uint {
+    match extra_xcheck.unwrap().tag {
         xcfg::XCheckTag::Unknown        => XCHECK_TAG_UNKNOWN,
         xcfg::XCheckTag::FunctionEntry  => XCHECK_TAG_FUNCTION_ENTRY,
         xcfg::XCheckTag::FunctionExit   => XCHECK_TAG_FUNCTION_EXIT,
@@ -187,9 +173,9 @@ pub unsafe extern fn xcfg_extra_xcheck_tag(extra_xcheck: *const xcfg::ExtraXChec
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_extra_xcheck_custom(extra_xcheck: *const xcfg::ExtraXCheck)
+pub unsafe extern fn xcfg_extra_xcheck_custom(extra_xcheck: Option<&xcfg::ExtraXCheck>)
     -> StringLenPtr {
-    StringLenPtr::from_str(&(*extra_xcheck).custom)
+    StringLenPtr::from_str(&extra_xcheck.unwrap().custom)
 }
 
 // C API for scope configuration
@@ -212,22 +198,21 @@ pub unsafe extern fn xcfg_scope_stack_destroy(scope_stack: *mut xcfg::scopes::Sc
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_stack_push_file(scope_stack: *mut xcfg::scopes::ScopeStack,
-                                                external_config: *const xcfg::Config,
-                                                file_name: StringLenPtr)
-    -> *const xcfg::scopes::ScopeConfig {
-    let pushed = (*scope_stack).push_file(&*external_config, file_name.to_str());
-    option_to_ptr(pushed)
+pub unsafe extern fn xcfg_scope_stack_push_file<'stk>(scope_stack: Option<&'stk mut xcfg::scopes::ScopeStack>,
+                                                      external_config: Option<&xcfg::Config>,
+                                                      file_name: StringLenPtr)
+    -> Option<&'stk xcfg::scopes::ScopeConfig> {
+    scope_stack.and_then(|stk| stk.push_file(external_config.unwrap(), file_name.to_str()))
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_stack_push_item(scope_stack: *mut xcfg::scopes::ScopeStack,
-                                                item_kind: c_uint,
-                                                file_name: StringLenPtr,
-                                                item_name: StringLenPtr,
-                                                pre_xcfg: VecLenPtr<StringLenPtr>,
-                                                post_xcfg: VecLenPtr<StringLenPtr>)
-    -> *const xcfg::scopes::ScopeConfig {
+pub unsafe extern fn xcfg_scope_stack_push_item<'stk>(scope_stack: Option<&'stk mut xcfg::scopes::ScopeStack>,
+                                                      item_kind: c_uint,
+                                                      file_name: StringLenPtr,
+                                                      item_name: StringLenPtr,
+                                                      pre_xcfg: VecLenPtr<StringLenPtr>,
+                                                      post_xcfg: VecLenPtr<StringLenPtr>)
+    -> Option<&'stk xcfg::scopes::ScopeConfig> {
     let item_kind = match item_kind {
         ITEM_KIND_FUNCTION => xcfg::scopes::ItemKind::Function,
         ITEM_KIND_STRUCT   => xcfg::scopes::ItemKind::Struct,
@@ -246,91 +231,90 @@ pub unsafe extern fn xcfg_scope_stack_push_item(scope_stack: *mut xcfg::scopes::
         serde_yaml::from_slice(post_str.to_slice())
             .expect(&format!("invalid YAML: '{}'", post_str.to_str()))
     }).collect::<Vec<_>>();
-    let pushed = (*scope_stack).push_item(item_kind,
-                                          file_name.to_str(),
-                                          item_name.to_str(),
-                                          &pre_xcfg, &post_xcfg);
-    pushed
+    scope_stack.map(|stk| stk.push_item(item_kind,
+                                        file_name.to_str(),
+                                        item_name.to_str(),
+                                        &pre_xcfg, &post_xcfg))
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_stack_pop(scope_stack: *mut xcfg::scopes::ScopeStack) {
-    (*scope_stack).pop();
+pub unsafe extern fn xcfg_scope_stack_pop(scope_stack: Option<&mut xcfg::scopes::ScopeStack>) {
+    scope_stack.unwrap().pop();
     // TODO: return something???
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_stack_pop_multi(scope_stack: *mut xcfg::scopes::ScopeStack,
+pub unsafe extern fn xcfg_scope_stack_pop_multi(scope_stack: Option<&mut xcfg::scopes::ScopeStack>,
                                                 cnt: c_uint) {
-    (*scope_stack).pop_multi(cnt as usize);
+    scope_stack.unwrap().pop_multi(cnt as usize);
     // TODO: return something???
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_stack_last(scope_stack: *mut xcfg::scopes::ScopeStack)
-    -> *mut xcfg::scopes::ScopeConfig {
-    (*scope_stack).last_mut()
+pub unsafe extern fn xcfg_scope_stack_last<'stk>(scope_stack: Option<&'stk mut xcfg::scopes::ScopeStack>)
+    -> Option<&'stk mut xcfg::scopes::ScopeConfig> {
+    scope_stack.map(xcfg::scopes::ScopeStack::last_mut)
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_enabled(scope_config: *mut xcfg::scopes::ScopeConfig)
+pub unsafe extern fn xcfg_scope_enabled(scope_config: Option<&xcfg::scopes::ScopeConfig>)
     -> c_uint {
-    if (*scope_config).inherited.enabled { 1 } else { 0 }
+    if scope_config.unwrap().inherited.enabled { 1 } else { 0 }
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_entry_xcheck(scope_config: *mut xcfg::scopes::ScopeConfig)
-    -> *const xcfg::XCheckType {
-    &(*scope_config).inherited.entry
+pub unsafe extern fn xcfg_scope_entry_xcheck<'sc>(scope_config: Option<&'sc xcfg::scopes::ScopeConfig>)
+    -> Option<&'sc xcfg::XCheckType> {
+    scope_config.map(|sc| &sc.inherited.entry)
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_exit_xcheck(scope_config: *mut xcfg::scopes::ScopeConfig)
-    -> *const xcfg::XCheckType {
-    &(*scope_config).inherited.exit
+pub unsafe extern fn xcfg_scope_exit_xcheck<'sc>(scope_config: Option<&'sc xcfg::scopes::ScopeConfig>)
+    -> Option<&'sc xcfg::XCheckType> {
+    scope_config.map(|sc| &sc.inherited.exit)
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_all_args_xcheck(scope_config: *mut xcfg::scopes::ScopeConfig)
-    -> *const xcfg::XCheckType {
-    &(*scope_config).inherited.all_args
+pub unsafe extern fn xcfg_scope_all_args_xcheck<'sc>(scope_config: Option<&'sc xcfg::scopes::ScopeConfig>)
+    -> Option<&'sc xcfg::XCheckType> {
+    scope_config.map(|sc| &sc.inherited.all_args)
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_ret_xcheck(scope_config: *mut xcfg::scopes::ScopeConfig)
-    -> *const xcfg::XCheckType {
-    &(*scope_config).inherited.ret
+pub unsafe extern fn xcfg_scope_ret_xcheck<'sc>(scope_config: Option<&'sc xcfg::scopes::ScopeConfig>)
+    -> Option<&'sc xcfg::XCheckType> {
+    scope_config.map(|sc| &sc.inherited.ret)
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_ahasher(scope_config: *mut xcfg::scopes::ScopeConfig)
+pub unsafe extern fn xcfg_scope_ahasher(scope_config: Option<&xcfg::scopes::ScopeConfig>)
     -> StringLenPtr {
-    StringLenPtr::from_option_str(&(*scope_config).inherited.ahasher)
+    StringLenPtr::from_option_str(&scope_config.unwrap().inherited.ahasher)
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_shasher(scope_config: *mut xcfg::scopes::ScopeConfig)
+pub unsafe extern fn xcfg_scope_shasher(scope_config: Option<&xcfg::scopes::ScopeConfig>)
     -> StringLenPtr {
-    StringLenPtr::from_option_str(&(*scope_config).inherited.shasher)
+    StringLenPtr::from_option_str(&scope_config.unwrap().inherited.shasher)
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_function_arg(scope_config: *mut xcfg::scopes::ScopeConfig,
-                                             arg_name: StringLenPtr)
-    -> *const xcfg::XCheckType {
-    match (*scope_config).item {
+pub unsafe extern fn xcfg_scope_function_arg<'sc>(scope_config: Option<&'sc xcfg::scopes::ScopeConfig>,
+                                                 arg_name: StringLenPtr)
+    -> Option<&'sc xcfg::XCheckType> {
+    scope_config.and_then(|sc| match sc.item {
         xcfg::scopes::ItemConfig::Function(ref f) => {
             let arg_index = xcfg::FieldIndex::Str(String::from(arg_name.to_str()));
-            option_to_ptr(f.args.get(&arg_index))
+            f.args.get(&arg_index)
         }
-        _ => ptr::null()
-    }
+        _ => None
+    })
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_function_entry_extra(scope_config: *mut xcfg::scopes::ScopeConfig)
+pub unsafe extern fn xcfg_scope_function_entry_extra(scope_config: Option<&xcfg::scopes::ScopeConfig>)
     -> VecLenPtr<xcfg::ExtraXCheck> {
-    match (*scope_config).item {
+    match scope_config.unwrap().item {
         xcfg::scopes::ItemConfig::Function(ref f) =>
             VecLenPtr::from_slice(&f.entry_extra),
         _ => Default::default(),
@@ -338,9 +322,9 @@ pub unsafe extern fn xcfg_scope_function_entry_extra(scope_config: *mut xcfg::sc
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_function_exit_extra(scope_config: *mut xcfg::scopes::ScopeConfig)
-    -> VecLenPtr<xcfg::ExtraXCheck>{
-    match (*scope_config).item {
+pub unsafe extern fn xcfg_scope_function_exit_extra(scope_config: Option<&xcfg::scopes::ScopeConfig>)
+    -> VecLenPtr<xcfg::ExtraXCheck> {
+    match scope_config.unwrap().item {
         xcfg::scopes::ItemConfig::Function(ref f) =>
             VecLenPtr::from_slice(&f.exit_extra),
         _ => Default::default(),
@@ -348,9 +332,9 @@ pub unsafe extern fn xcfg_scope_function_exit_extra(scope_config: *mut xcfg::sco
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_struct_custom_hash(scope_config: *mut xcfg::scopes::ScopeConfig)
+pub unsafe extern fn xcfg_scope_struct_custom_hash(scope_config: Option<&xcfg::scopes::ScopeConfig>)
     -> StringLenPtr {
-    match (*scope_config).item {
+    match scope_config.unwrap().item {
         xcfg::scopes::ItemConfig::Struct(ref s) =>
             StringLenPtr::from_option_str(&s.custom_hash),
         _ => Default::default(),
@@ -358,9 +342,9 @@ pub unsafe extern fn xcfg_scope_struct_custom_hash(scope_config: *mut xcfg::scop
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_struct_field_hasher(scope_config: *mut xcfg::scopes::ScopeConfig)
+pub unsafe extern fn xcfg_scope_struct_field_hasher(scope_config: Option<&xcfg::scopes::ScopeConfig>)
     -> StringLenPtr {
-    match (*scope_config).item {
+    match scope_config.unwrap().item {
         xcfg::scopes::ItemConfig::Struct(ref s) =>
             StringLenPtr::from_option_str(&s.field_hasher),
         _ => Default::default(),
@@ -368,14 +352,14 @@ pub unsafe extern fn xcfg_scope_struct_field_hasher(scope_config: *mut xcfg::sco
 }
 
 #[no_mangle]
-pub unsafe extern fn xcfg_scope_struct_field(scope_config: *mut xcfg::scopes::ScopeConfig,
-                                             field_name: StringLenPtr)
-    -> *const xcfg::XCheckType {
-    match (*scope_config).item {
+pub unsafe extern fn xcfg_scope_struct_field<'a>(scope_config: Option<&'a xcfg::scopes::ScopeConfig>,
+                                                 field_name: StringLenPtr)
+    -> Option<&'a xcfg::XCheckType> {
+    scope_config.and_then(|sc| match sc.item {
         xcfg::scopes::ItemConfig::Struct(ref s) => {
             let field_index = xcfg::FieldIndex::Str(String::from(field_name.to_str()));
-            option_to_ptr(s.fields.get(&field_index))
+            s.fields.get(&field_index)
         }
-        _ => ptr::null()
-    }
+        _ => None
+    })
 }
