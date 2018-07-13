@@ -32,6 +32,8 @@ use std::hash::Hasher;
 use std::hash::Hash;
 use std::collections::BTreeSet;
 
+use indexmap::IndexMap;
+
 use serde::ser::{Serialize, Serializer, SerializeStruct, SerializeStructVariant, SerializeTupleVariant};
 use serde_json;
 
@@ -137,7 +139,7 @@ pub enum Structure<Stmt> {
     /// Branching constructs
     Multiple {
         entries: HashSet<Label>,
-        branches: HashMap<Label, Vec<Structure<Stmt>>>,
+        branches: IndexMap<Label, Vec<Structure<Stmt>>>,
         then: Vec<Structure<Stmt>>,
     }
 }
