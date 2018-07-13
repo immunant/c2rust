@@ -431,7 +431,7 @@ impl RelooperState {
 
         let follow_entries: HashSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
 
-        let mut all_handlers: HashMap<Label, Vec<Structure<StmtOrDecl>>> = handled_entries
+        let mut all_handlers: IndexMap<Label, Vec<Structure<StmtOrDecl>>> = handled_entries
             .into_iter()
             .map(|(lbl, blocks)| {
                 let entries: HashSet<Label> = vec![lbl].into_iter().collect();

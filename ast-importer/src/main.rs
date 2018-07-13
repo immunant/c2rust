@@ -60,7 +60,7 @@ fn main() {
         // CFG/Relooper related
         .arg(Arg::with_name("reloop-cfgs")
             .long("reloop-cfgs")
-            .help("Translate function bodies using a CFG/Relooper approach")
+            .help("Translate ALL function bodies using a CFG/Relooper approach")
             .takes_value(false))
         .arg(Arg::with_name("no-simplify-structures")
             .requires("reloop-cfgs")
