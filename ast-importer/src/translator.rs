@@ -1415,7 +1415,7 @@ impl Translation {
                     let val = self.convert_expr(ExprUse::RValue, ptr, is_static)?;
                     let ptr_type = self.ast_context[ptr].kind.get_type().ok_or_else(|| format!("bad pointer type for condition"))?;
                     Ok(val.map(|e| {
-                        if self.is_function_pointer(ptr_type) {
+                        if self.ast_context.is_function_pointer(ptr_type) {
                             if negated {
                                 mk().method_call_expr(e, "is_some", vec![] as Vec<P<Expr>>)
                             } else {
@@ -1767,7 +1767,7 @@ impl Translation {
     /// function pointers, and normal pointers.
     fn null_ptr(&self, type_id: CTypeId, is_static: bool) -> Result<P<Expr>, String> {
 
-        if self.is_function_pointer(type_id) {
+        if self.ast_context.is_function_pointer(type_id) {
             return Ok(mk().path_expr(vec!["None"]))
         }
 
@@ -2721,7 +2721,8 @@ impl Translation {
 
                     let source_ty_id = self.ast_context[expr].kind.get_type().ok_or_else(|| format!("bad source type"))?;
 
-                    if self.is_function_pointer(ty.ctype) || self.is_function_pointer(source_ty_id) {
+                    if self.ast_context.is_function_pointer(ty.ctype) ||
+                       self.ast_context.is_function_pointer(source_ty_id) {
                         let source_ty = self.convert_type(source_ty_id)?;
                         let target_ty = self.convert_type(ty.ctype)?;
                         Ok(transmute_expr(source_ty, target_ty, x))
@@ -2733,7 +2734,7 @@ impl Translation {
                 })
             }
 
-            CastKind::IntegralToPointer if self.is_function_pointer(ty.ctype) => {
+            CastKind::IntegralToPointer if self.ast_context.is_function_pointer(ty.ctype) => {
                 let target_ty = self.convert_type(ty.ctype)?;
                 Ok(val.map(|x| {
                     let intptr_t = mk().path_ty(vec!["libc","intptr_t"]);
@@ -3346,7 +3347,7 @@ impl Translation {
 
                 let arg = self.convert_expr(ExprUse::LValue, arg, is_static)?;
 
-                if self.is_function_pointer(ctype) {
+                if self.ast_context.is_function_pointer(ctype) {
                     Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
                 } else {
                     let pointee = match resolved_ctype.kind {
@@ -3751,7 +3752,7 @@ impl Translation {
     fn match_bool(&self, target: bool, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
 
-        if self.is_function_pointer(ty_id) {
+        if self.ast_context.is_function_pointer(ty_id) {
             if target {
                 mk().method_call_expr(val, "is_some", vec![] as Vec<P<Expr>>)
             } else {
@@ -3808,33 +3809,11 @@ impl Translation {
         }
     }
 
-    fn is_function_pointer(&self, typ: CTypeId) -> bool {
-        let resolved_ctype = self.ast_context.resolve_type(typ);
-        if let CTypeKind::Pointer(p) = resolved_ctype.kind {
-            if let CTypeKind::Function { .. } = self.ast_context.resolve_type(p.ctype).kind {
-                true
-            } else { false }
-        } else { false }
-    }
-
     pub fn with_scope<F, A>(&self, f: F) -> A
         where F: FnOnce() -> A {
         self.renamer.borrow_mut().add_scope();
         let result = f();
         self.renamer.borrow_mut().drop_scope();
         result
-    }
-
-    // Visit all the declarations in the stmt (or the compound stmt)
-    //
-    // FIXME: when this is done, call this every time we open a scope in the CFG
-    pub fn visit_decls(&self, stmt_ids: &Vec<CStmtId>) -> () {
-        for stmt_id in stmt_ids {
-            if let CStmtKind::Decls(ref decl_ids) = self.ast_context.index(*stmt_id).kind {
-                for _decl_id in decl_ids {
-                    unimplemented!();
-                }
-            }
-        }
     }
 }
