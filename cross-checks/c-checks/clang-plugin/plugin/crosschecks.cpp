@@ -197,8 +197,10 @@ CrossCheckInserter::parse_custom_xcheck(std::string_view sv,
     bool first = true;
     for (;;) {
         skip_sv_whitespace(&sv);
-        if (sv.empty())
-            break;
+        if (sv.empty()) {
+            report_clang_error(diags, "expected character, reached end of string");
+            return res;
+        }
         if (sv.front() == ')') {
             sv.remove_prefix(1);
             break;
