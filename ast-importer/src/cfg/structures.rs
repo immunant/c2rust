@@ -356,7 +356,7 @@ impl StructureState {
                 queued_comments.push(c);
             },
             Singleton(StmtOrComment::Stmt(mut s)) => {
-                s.span = comment_store.add_comment(queued_comments.drain(..).collect());
+                s.span = comment_store.add_comment_lines(queued_comments.drain(..).collect());
                 output.push(s);
             }
 
@@ -368,7 +368,7 @@ impl StructureState {
             Goto(to) => {
                 // Assign to `current_block` the next label we want to go to.
 
-                let s = comment_store.add_comment(queued_comments.drain(..).collect());
+                let s = comment_store.add_comment_lines(queued_comments.drain(..).collect());
 
                 let lbl_expr = if self.debug_labels { to.to_string_expr() } else { to.to_num_expr() };
                 output.push(mk().span(s).semi_stmt(mk().assign_expr(self.current_block.clone(), lbl_expr)));
@@ -377,7 +377,7 @@ impl StructureState {
             Match(cond, cases) => {
                 // Make a `match`.
 
-                let s = comment_store.add_comment(queued_comments.drain(..).collect());
+                let s = comment_store.add_comment_lines(queued_comments.drain(..).collect());
 
                 let arms: Vec<Arm> = cases
                     .into_iter()
@@ -406,7 +406,7 @@ impl StructureState {
                 //   * `if <cond-expr> { } else { .. }` turns into `if !<cond-expr> { .. }`
                 //
 
-                let s = comment_store.add_comment(queued_comments.drain(..).collect());
+                let s = comment_store.add_comment_lines(queued_comments.drain(..).collect());
 
                 let then = {
                     let mut output = vec![];
@@ -463,7 +463,7 @@ impl StructureState {
             GotoTable(cases, then) => {
                 // Dispatch based on the next `current_block` value.
 
-                let s = comment_store.add_comment(queued_comments.drain(..).collect());
+                let s = comment_store.add_comment_lines(queued_comments.drain(..).collect());
 
                 let mut arms: Vec<Arm> = cases
                     .into_iter()
@@ -504,7 +504,7 @@ impl StructureState {
                 //   * Loops that start with an `if <cond-expr> { break; }` get converted into `while` loops
                 //
 
-                let s = comment_store.add_comment(queued_comments.drain(..).collect());
+                let s = comment_store.add_comment_lines(queued_comments.drain(..).collect());
 
                 let body = {
                     let mut output = vec![];
@@ -542,7 +542,7 @@ impl StructureState {
             Exit(exit_style, lbl) => {
                 // Make a (possibly labelled) `break` or `continue`.
 
-                let s = comment_store.add_comment(queued_comments.drain(..).collect());
+                let s = comment_store.add_comment_lines(queued_comments.drain(..).collect());
 
                 let lbl = lbl.map(|l| l.pretty_print());
                 let e = match exit_style {

@@ -851,7 +851,7 @@ impl Translation {
     fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> Result<ConvertedDecl, String> {
         let s = {
             let decl_cmt = self.comment_context.borrow_mut().remove_decl_comment(decl_id);
-            self.comment_store.borrow_mut().add_comment(decl_cmt)
+            self.comment_store.borrow_mut().add_comment_lines(decl_cmt)
         };
 
         match self.ast_context.c_decls.get(&decl_id)
@@ -1260,7 +1260,7 @@ impl Translation {
     fn convert_stmt(&self, stmt_id: CStmtId) -> Result<Vec<Stmt>, String> {
         let s = {
             let stmt_cmt = self.comment_context.borrow_mut().remove_stmt_comment(stmt_id);
-            self.comment_store.borrow_mut().add_comment(stmt_cmt)
+            self.comment_store.borrow_mut().add_comment_lines(stmt_cmt)
         };
 
         match self.ast_context.index(stmt_id).kind {
