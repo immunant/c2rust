@@ -6,9 +6,12 @@ extern crate serde_derive;
 extern crate serde;
 extern crate serde_yaml;
 
+extern crate globset;
+
 pub mod attr;
 #[cfg(feature="scopes")] pub mod scopes;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -265,30 +268,144 @@ impl NamedItemList {
 pub struct FileConfig(ItemList);
 
 #[derive(Deserialize, Debug, Default, Clone)]
-pub struct Config(HashMap<String, FileConfig>);
+pub struct ExtFileConfig {
+    file: String,
+
+    #[serde(default)]
+    priority: isize,
+
+    items: FileConfig,
+}
+
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum RootConfig {
+    /// Filename-to-config mapping
+    NameMap(HashMap<String, FileConfig>),
+
+    /// Vector of ExtFileConfig elements
+    ExtVector(Vec<ExtFileConfig>),
+}
+
+impl Default for RootConfig {
+    fn default() -> RootConfig {
+        RootConfig::NameMap(Default::default())
+    }
+}
+
+impl RootConfig {
+    fn merge(self, other: Self) -> Self {
+        match (self, other) {
+            (RootConfig::NameMap(mut map_self), RootConfig::NameMap(map_other)) => {
+                for (file_name, cfg) in map_other.into_iter() {
+                    // FIXME: check for duplicates???
+                    (map_self.entry(file_name.clone())
+                           .or_insert(Default::default())
+                           .0).0.extend((cfg.0).0);
+                };
+                RootConfig::NameMap(map_self)
+            },
+            (RootConfig::ExtVector(mut ev_self), RootConfig::ExtVector(ev_other)) => {
+                ev_self.extend(ev_other.into_iter());
+                RootConfig::ExtVector(ev_self)
+            }
+            p @ (_, _) => p.0.into_ext_vector().merge(p.1.into_ext_vector())
+        }
+    }
+
+    fn into_ext_vector(self) -> Self {
+        match self {
+            RootConfig::NameMap(map_self) => {
+                // Convert the NameMap into an ordered Vec
+                // WARNING: the elements are emitted in random order
+                RootConfig::ExtVector(map_self.into_iter()
+                    .map(|(file, cfg)| ExtFileConfig {
+                        file: file,
+                        priority: 0,
+                        items: cfg,
+                    }).collect())
+            },
+            r @ RootConfig::ExtVector(_) => r
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    root: RootConfig,
+
+    /// GlobSet used by ExtVector to match each source file
+    glob_set: RefCell<globset::GlobSet>,
+}
+
+impl Default for Config {
+    fn default() -> Config {
+        let glob_set = globset::GlobSetBuilder::new().build().unwrap();
+        Config {
+            root: RootConfig::default(),
+            glob_set: RefCell::new(glob_set),
+        }
+    }
+}
 
 impl Config {
-    pub fn get_file_config(&self, file: &str) -> Option<&FileConfig> {
-        self.0.get(file)
+    pub fn new(root: RootConfig) -> Config {
+        Config {
+            root: root,
+            ..Default::default()
+        }
+    }
+
+    fn rebuild_glob_set(&self, files: &[ExtFileConfig]) {
+        if self.glob_set.borrow().len() == files.len() {
+            // File vector hasn't changed
+            return;
+        }
+
+        let mut gsb = globset::GlobSetBuilder::new();
+        for ref file in files {
+            let glob = globset::Glob::new(&file.file)
+                .expect(&format!("error creating glob for file: '{}'", file.file));
+            gsb.add(glob);
+        }
+        self.glob_set.replace(gsb.build().unwrap());
+    }
+
+    fn get_file_config(&self, file: &str) -> Option<&FileConfig> {
+        match self.root {
+            RootConfig::NameMap(ref m) => m.get(file),
+            RootConfig::ExtVector(ref files) => {
+                self.rebuild_glob_set(files);
+                // Pick the file with the highest priority,
+                // breaking ties by picking element that comes later
+                // in the configuration file
+                self.glob_set.borrow()
+                    .matches(file)
+                    .into_iter()
+                    .map(|idx| (files[idx].priority, idx))
+                    .max()
+                    .map(|(_, idx)| &files[idx].items)
+            }
+        }
     }
 
     pub fn get_file_items(&self, file: &str) -> Option<&ItemList> {
         self.get_file_config(file).map(|fc| &fc.0)
     }
 
-    pub fn merge(mut self, other: Self) -> Self {
-        for (file_name, cfg) in other.0.into_iter() {
-            // FIXME: check for duplicates???
-            (self.0.entry(file_name.clone())
-                   .or_insert(Default::default())
-                   .0).0.extend((cfg.0).0);
+    pub fn merge(self, other: Self) -> Self {
+        Self {
+            root: self.root.merge(other.root),
+            ..Default::default()
         }
-        self
     }
 }
 
 pub fn parse_string(s: &str) -> Result<Config, String> {
-    serde_yaml::from_str(s).map_err(|e| format!("serde_yaml error: {}", e))
+    serde_yaml::from_str::<RootConfig>(s)
+        .map_err(|e| format!("serde_yaml error: {}", e))
+        .map(|root| Config::new(root))
 }
 
 #[cfg(test)]

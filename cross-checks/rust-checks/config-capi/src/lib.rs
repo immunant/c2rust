@@ -118,6 +118,7 @@ pub unsafe extern fn xcfg_config_parse(cfg: *mut xcfg::Config, buf: StringLenPtr
     let cfg = Box::from_raw(cfg);
     let second_cfg = serde_yaml::from_slice(buf.to_slice())
         .expect(&format!("invalid YAML: '{:?}'", buf.to_str()));
+    let second_cfg = xcfg::Config::new(second_cfg);
     let merged_cfg = cfg.merge(second_cfg);
     Box::into_raw(Box::new(merged_cfg))
 }

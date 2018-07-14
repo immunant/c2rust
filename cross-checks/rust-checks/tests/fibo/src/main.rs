@@ -1,5 +1,5 @@
 #![feature(plugin, custom_attribute)]
-#![plugin(cross_check_plugin(config_file = "fibo.c2r"))]
+#![plugin(cross_check_plugin(config_file = "fibo_globs.c2r"))]
 #![cross_check]
 
 #[macro_use]
