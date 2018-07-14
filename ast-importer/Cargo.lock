@@ -69,7 +69,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "cbor"
 version = "0.4.0"
-source = "git+https://github.com/GaloisInc/rust-cbor#929401434aef6ed7de171c5fe9b6dc8a6c3127a4"
+source = "git+https://github.com/GaloisInc/rust-cbor#dd0148f30c21fb6ddf920cef9104e36c2443c1de"
 dependencies = [
  "byteorder 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-serialize 0.3.24 (registry+https://github.com/rust-lang/crates.io-index)",
