@@ -28,8 +28,8 @@ Foo section_foo_b_field = {1, -1U, 1.2};
 const unsigned int section_num_params = sizeof(params) / sizeof(params[0]);
 const size_t if_expr = sizeof(size_t) == 4 ? 30 : 31;
 
-unsigned fn_scoped_static_init(void) {
-    static unsigned sectioned_scoped_init = -1U;
+size_t fn_scoped_static_init(void) {
+    static size_t sectioned_scoped_init = &section_me;
     static unsigned not_sectioned = 1;
     return sectioned_scoped_init;
 }

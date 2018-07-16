@@ -19,6 +19,9 @@ pub fn test_sectioned_statics() {
         // There's not really a way to test the function scoped static
         // directly since it's (rightly) private. But this does prove
         // that the previously uncompilable static is now being initialized
-        assert_eq!(rust_fn_scoped_static_init(), c_uint::max_value());
+        let ptr_deref = unsafe {
+            *(rust_fn_scoped_static_init() as *const c_uint)
+        };
+        assert_eq!(ptr_deref, c_uint::max_value());
     }
 }
