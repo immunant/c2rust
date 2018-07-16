@@ -1,3 +1,28 @@
+//! This modules handles accumulating / re-arranging comments for the Rust AST.
+//!
+//! The only way we have found to have comments inserted into the pretty-printed Rust output is via
+//! a comment vector. The Rust pretty-printer accepts a vector of comments and, before printing
+//! any AST node, it dumps out the prefix of comments whose position is less than the span of the
+//! AST node.
+//!
+//! The logic for creating/storing a comment vector is in `CommentStore`. For example, if you want
+//! to add a comment to a match arm:
+//!
+//! ```rust
+//!   let sp: Span = cmmt_store.add_comment_lines(vec!["Some comment on an arm"]);
+//!   let arm = mk().span(sp).arm(pats, None, body);
+//!   ...
+//! ```
+//!
+//! Right before printing the output, it is a good idea to use the `CommentTraverser` to make sure
+//! that the comment vector is in the right order. That just means doing something like this:
+//!
+//! ```rust
+//!   let trav: CommentTraverser = cmmt_store.into_comment_traverser();
+//!   let updated_module: Mod = trav.traverse_mod(module);
+//!   let updated_cmmt_store = trav.into_comment_store();
+//! ```
+
 use syntax_pos::BytePos;
 use syntax_pos::hygiene::SyntaxContext;
 use syntax::codemap::{DUMMY_SP, Span};
@@ -31,7 +56,7 @@ impl CommentStore {
         }
     }
 
-    /// Nuke the comment context and get back the accumulated (and ordered) `libsyntax` comments.
+    /// Convert the comment context into the accumulated (and ordered) `libsyntax` comments.
     pub fn into_comments(self) -> Vec<comments::Comment> {
         self.output_comments.into_iter().map(|(_, v)| v).collect()
     }
@@ -95,7 +120,7 @@ impl CommentTraverser {
         }
     }
 
-    // Turn the traverser back into a `CommentStore`.
+    /// Turn the traverser back into a `CommentStore`.
     pub fn into_comment_store(self) -> CommentStore {
 //        assert!(old_comments.is_empty());
         self.store

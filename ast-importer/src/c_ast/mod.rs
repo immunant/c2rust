@@ -437,10 +437,10 @@ impl CommentContext {
 
                 // Find the closest declaration and statement
                 let decl_ix = this_file_decls
-                    .binary_search_by_key(&loc, |&(l,_)| l)
+                    .binary_search_by_key(&loc.line, |&(l,_)| l.line)
                     .unwrap_or_else(|x| x);
                 let stmt_ix = this_file_stmts
-                    .binary_search_by_key(&loc, |&(l,_)| l)
+                    .binary_search_by_key(&loc.line, |&(l,_)| l.line)
                     .unwrap_or_else(|x| x);
 
                 // Prefer the one that is higher up (biasing towards declarations if there is a tie)
