@@ -6,9 +6,12 @@ use std::collections::BTreeMap;
 use syntax::ast::*;
 use rust_ast::traverse;
 
-///
 pub struct CommentStore {
+    /// The `Span` keys do _not_ correspond to the comment position. Instead, they refer to the
+    /// `Span` of whatever is associated with the comment.
     output_comments: BTreeMap<Span, comments::Comment>,
+
+    /// Monotonically increasing source of new byte positions.
     span_source: u32,
 }
 
@@ -21,15 +24,11 @@ impl CommentStore {
         }
     }
 
-    pub fn into_comment_visitor(self) -> CommentTraverser {
+    pub fn into_comment_traverser(self) -> CommentTraverser {
         CommentTraverser {
             old_comments: self.output_comments,
             store: CommentStore::new(),
         }
-    }
-
-    fn mk_span(id: u32) -> Span {
-        Span::new(BytePos(id), BytePos(id), SyntaxContext::empty())
     }
 
     /// Nuke the comment context and get back the accumulated (and ordered) `libsyntax` comments.
@@ -42,7 +41,14 @@ impl CommentStore {
     pub fn add_comment(&mut self, mut cmmt: comments::Comment) -> Span {
         self.span_source += 1;
         cmmt.pos = BytePos(self.span_source);
-        let sp = CommentStore::mk_span(self.span_source);
+
+        self.span_source += 1;
+        let sp = Span::new(
+            BytePos(self.span_source),
+            BytePos(self.span_source),
+            SyntaxContext::empty(),
+        );
+
         self.output_comments.insert(sp, cmmt);
         sp
     }
@@ -87,6 +93,12 @@ impl CommentTraverser {
         } else {
             DUMMY_SP
         }
+    }
+
+    // Turn the traverser back into a `CommentStore`.
+    pub fn into_comment_store(self) -> CommentStore {
+//        assert!(old_comments.is_empty());
+        self.store
     }
 }
 
