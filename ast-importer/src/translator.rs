@@ -55,7 +55,7 @@ pub struct TranslationConfig {
 
 pub struct Translation {
     pub features: RefCell<HashSet<&'static str>>,
-    pub items: Vec<P<Item>>,
+    pub items: RefCell<Vec<P<Item>>>,
     pub foreign_items: Vec<ForeignItem>,
     type_converter: RefCell<TypeConverter>,
     pub ast_context: TypedAstContext,
@@ -192,7 +192,7 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
 
                 translation.renamer.borrow_mut().insert(decl_id, &name);
             },
-            CDeclKind::Variable { ref mut ident, is_static, .. } if is_static => ident.insert_str(0, &prefix),
+            CDeclKind::Variable { ref mut ident, is_static: true, .. } => ident.insert_str(0, &prefix),
             _ => (),
         }
     }
@@ -295,7 +295,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             };
             if needs_export {
                 match t.convert_decl(true, decl_id) {
-                    Ok(ConvertedDecl::Item(item)) => t.items.push(item),
+                    Ok(ConvertedDecl::Item(item)) => t.items.borrow_mut().push(item),
                     Ok(ConvertedDecl::ForeignItem(mut item)) => t.foreign_items.push(item),
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
@@ -315,7 +315,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             };
             if needs_export {
                 match t.convert_decl(true, *top_id) {
-                    Ok(ConvertedDecl::Item(mut item)) => t.items.push(item),
+                    Ok(ConvertedDecl::Item(mut item)) => t.items.borrow_mut().push(item),
                     Ok(ConvertedDecl::ForeignItem(mut item)) => t.foreign_items.push(item),
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
@@ -329,7 +329,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         // Add the main entry point
         if let Some(main_id) = t.ast_context.c_main {
             match t.convert_main(main_id) {
-                Ok(item) => t.items.push(item),
+                Ok(item) => t.items.borrow_mut().push(item),
                 Err(e) => {
                     let msg = format!("Failed translating main declaration due to error: {}", e);
                     translate_failure(&t.tcfg, &msg)
@@ -340,9 +340,11 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         // Initialize global statics when necessary
         if !t.sectioned_static_initializers.borrow().is_empty() {
             let (initializer_fn, initializer_static) = t.generate_global_static_init();
+            let mut items = t.items.borrow_mut();
 
-            t.items.push(initializer_fn);
-            t.items.push(initializer_static);
+
+            items.push(initializer_fn);
+            items.push(initializer_static);
             t.use_feature("used");
         }
 
@@ -422,7 +424,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             }
 
             // Add the items accumulated
-            for x in t.items {
+            for x in t.items.borrow().iter() {
                 s.print_item(&*x)?;
             }
 
@@ -481,7 +483,7 @@ impl Translation {
 
         Translation {
             features: RefCell::new(HashSet::new()),
-            items: vec![],
+            items: RefCell::new(vec![]),
             foreign_items: vec![],
             type_converter: RefCell::new(type_converter),
             ast_context,
@@ -533,7 +535,7 @@ impl Translation {
         } else { mk }
     }
 
-    fn static_initializer_maybe_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
+    fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
         use c_ast::UnOp::Negate;
         use c_ast::CastKind::PointerToIntegral;
         use c_ast::BinOp::{Add, Subtract, Multiply, Divide, Modulus};
@@ -1035,7 +1037,7 @@ impl Translation {
 
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
-                if self.static_initializer_maybe_uncompilable(initializer) {
+                if self.static_initializer_is_uncompilable(initializer) {
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
                 }
 
@@ -1060,13 +1062,8 @@ impl Translation {
                 let init = mk().unsafe_().block(init.stmts);
                 let mut init = mk().block_expr(init);
 
-                // Collect problematic static initializers and offload them to sections for the linker
-                // to initialize for us
-                // if self.static_initializer_maybe_uncompilable(initializer) {
-                //     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
-                // }
-
                 // Force mutability due to the potential for raw pointers occurring in the type
+                // and because we're assigning to these variables in the external initializer
                 Ok(ConvertedDecl::Item(mk().span(s).mutbl().static_item(new_name, ty, init)))
             }
 
@@ -1626,6 +1623,29 @@ impl Translation {
     }
 
     pub fn convert_decl_stmt_info(&self, decl_id: CDeclId) -> Result<cfg::DeclStmtInfo, String> {
+        match self.ast_context.index(decl_id).kind {
+            CDeclKind::Variable { ref ident, is_static: true, is_extern: false, is_defn: true, initializer, typ, .. } => {
+                if self.static_initializer_is_uncompilable(initializer) {
+                    let err_msg = || String::from("Unable to rename function scoped static initializer");
+                    let ident2 = self.renamer.borrow_mut().insert_root(decl_id, ident).ok_or_else(err_msg)?;
+                    let (ty, _, init) = self.convert_variable(initializer, typ, true)?;
+                    let default_init = self.implicit_default_expr(typ.ctype, true)?;
+                    let static_item = mk().mutbl().static_item(&ident2, ty, default_init);
+                    let mut init = init?;
+                    init.stmts.push(mk().expr_stmt(init.val));
+                    let init = mk().unsafe_().block(init.stmts);
+                    let mut init = mk().block_expr(init);
+
+                    self.add_static_initializer_to_section(&ident2, typ, &mut init)?;
+
+                    self.items.borrow_mut().push(static_item);
+
+                    return Ok(cfg::DeclStmtInfo::new(Vec::new(), Vec::new(), Vec::new()));
+                }
+            },
+            _ => {},
+        };
+
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ } if !is_static && !is_extern => {
                 assert!(is_defn, "Only local variable definitions should be extracted");
@@ -3818,7 +3838,7 @@ impl Translation {
     }
 
     /// This predicate checks for control-flow statements under a declaration
-    /// that will require relooper to be enabled to be handled. 
+    /// that will require relooper to be enabled to be handled.
     fn function_requires_relooper(&self, stmt_ids: &[CStmtId]) -> bool {
         stmt_ids
         .iter()

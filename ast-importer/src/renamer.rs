@@ -82,9 +82,11 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
         self.scopes.iter().any(|x| x.contains_value(&key))
     }
 
-    pub fn pick_name(&mut self, basename: &str) -> String {
-
+    /// Assigns a name that doesn't collide with anything in the context of a particular
+    /// scope, defaulting to the current scope if None is provided
+    fn pick_name_in_scope(&mut self, basename: &str, scope: Option<usize>) -> String {
         let mut target = basename.to_string();
+
         for i in 0.. {
             if self.is_target_used(&target) {
                 target = format!("{}_{}", basename, i);
@@ -93,25 +95,59 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
             }
         }
 
-        self.current_scope_mut().reserve(target.clone());
+        match scope {
+            Some(scope_index) => self.scopes[scope_index].reserve(target.clone()),
+            None => self.current_scope_mut().reserve(target.clone()),
+        }
 
         target
+    }
+
+    pub fn pick_name(&mut self, basename: &str) -> String {
+        self.pick_name_in_scope(basename, None)
+    }
+
+    /// Permanently assign a name that doesn't collide with anything
+    /// currently in scope, and also never goes out of scope
+    pub fn pick_name_root(&mut self, basename: &str) -> String {
+        self.pick_name_in_scope(basename, Some(0))
+    }
+
+    /// Introduce a new name binding into a particular scope or the current one if None is provided.
+    /// If the key is unbound in the scope then Some of the resulting mangled name is returned,
+    /// otherwise None.
+    fn insert_in_scope(&mut self, key: T, basename: &str, scope: Option<usize>) -> Option<String> {
+        let contains_key = match scope {
+            Some(scope_index) => self.scopes[scope_index].contains_key(&key),
+            None => self.current_scope().contains_key(&key),
+        };
+
+        if contains_key {
+            return None
+        }
+
+        let target = self.pick_name_in_scope(basename, scope);
+
+        match scope {
+            Some(scope_index) => self.scopes[scope_index].insert(key, target.clone()),
+            None => self.current_scope_mut().insert(key, target.clone()),
+        }
+
+        Some(target)
     }
 
     /// Introduce a new name binding into the current scope. If the key is unbound in
     /// the current scope then Some of the resulting mangled name is returned, otherwise
     /// None.
     pub fn insert(&mut self, key: T, basename: &str) -> Option<String> {
+        self.insert_in_scope(key, basename, None)
+    }
 
-        if self.current_scope().contains_key(&key) {
-            return None
-        }
-
-        let target = self.pick_name(basename);
-
-        self.current_scope_mut().insert(key, target.clone());
-
-        Some(target)
+    /// Introduce a new name binding into the root scope. If the key is unbound in
+    /// the root scope then Some of the resulting mangled name is returned, otherwise
+    /// None.
+    pub fn insert_root(&mut self, key: T, basename: &str) -> Option<String> {
+        self.insert_in_scope(key, basename, Some(0))
     }
 
     /// Assign a name in the current scope without reservation or checking for overlap.

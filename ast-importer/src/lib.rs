@@ -5,7 +5,6 @@ extern crate syntax_pos;
 extern crate rustc_target;
 extern crate dtoa;
 extern crate indexmap;
-
 extern crate serde;
 extern crate serde_json;
 
