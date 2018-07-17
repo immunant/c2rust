@@ -19,6 +19,7 @@ use std::cell::RefCell;
 use std::char;
 use dtoa;
 use with_stmts::WithStmts;
+use rust_ast::traverse::Traversal;
 
 use cfg;
 
@@ -348,8 +349,22 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             t.use_feature("used");
         }
 
+
         to_string(|s| {
-            s.comments().get_or_insert(vec![]).extend(t.comment_store.into_inner().into_comments());
+
+            // Re-order comments
+            let mut traverser = t.comment_store.into_inner().into_comment_traverser();
+
+            let foreign_items: Vec<ForeignItem> = t.foreign_items
+                .into_iter()
+                .map(|fi| traverser.traverse_foreign_item(fi))
+                .collect();
+            let items: Vec<P<Item>> = t.items.into_inner()
+                .into_iter()
+                .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
+                .collect();
+
+            s.comments().get_or_insert(vec![]).extend(traverser.into_comment_store().into_comments());
 
             if t.tcfg.emit_module {
                 s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
@@ -419,12 +434,12 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 }
             }
 
-            if !t.foreign_items.is_empty() {
-                s.print_item(&mk().abi("C").foreign_items(t.foreign_items))?
+            if !foreign_items.is_empty() {
+                s.print_item(&mk().abi("C").foreign_items(foreign_items))?
             }
 
             // Add the items accumulated
-            for x in t.items.borrow().iter() {
+            for x in items {
                 s.print_item(&*x)?;
             }
 
@@ -851,7 +866,7 @@ impl Translation {
     fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> Result<ConvertedDecl, String> {
         let s = {
             let decl_cmt = self.comment_context.borrow_mut().remove_decl_comment(decl_id);
-            self.comment_store.borrow_mut().add_comment(decl_cmt)
+            self.comment_store.borrow_mut().add_comment_lines(decl_cmt)
         };
 
         match self.ast_context.c_decls.get(&decl_id)
@@ -1260,7 +1275,7 @@ impl Translation {
     fn convert_stmt(&self, stmt_id: CStmtId) -> Result<Vec<Stmt>, String> {
         let s = {
             let stmt_cmt = self.comment_context.borrow_mut().remove_stmt_comment(stmt_id);
-            self.comment_store.borrow_mut().add_comment(stmt_cmt)
+            self.comment_store.borrow_mut().add_comment_lines(stmt_cmt)
         };
 
         match self.ast_context.index(stmt_id).kind {

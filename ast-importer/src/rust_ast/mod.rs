@@ -9,6 +9,8 @@ use syntax::symbol::keywords;
 use std::rc::Rc;
 use rustc_target::spec::abi::{lookup, Abi};
 
+pub mod traverse;
+
 /// Conversion of string-like values into interned `Symbol`s.
 pub trait IntoSymbol {
     fn into_symbol(self) -> Symbol;
