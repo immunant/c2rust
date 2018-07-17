@@ -1,8 +1,9 @@
 use syntax::ast::*;
+use syntax::ptr;
 
 /// Traverse the AST in pre-order, which also happens to be the order of subtrees in the
 /// pretty-printed output.
-pub trait Traverse: Sized {
+pub trait Traversal: Sized {
     fn traverse_stmt(&mut self, s: Stmt) -> Stmt {
         traverse_stmt_def(self, s)
     }
@@ -52,261 +53,209 @@ pub trait Traverse: Sized {
     }
 }
 
-pub fn traverse_stmt_def<W: Traverse>(walk: &mut W, mut s: Stmt) -> Stmt {
+/// Apply a `Traversal` to an AST node.
+trait Traversable {
+    fn traverse<T: Traversal>(self, t: &mut T) -> Self;
+}
+
+macro_rules! traversable_impl {
+    ( $traversable_ty:ty, $method_name:ident ) => {
+        impl Traversable for $traversable_ty {
+            fn traverse<T: Traversal>(self, t: &mut T) -> Self {
+                t.$method_name(self)
+            }
+        }
+    };
+}
+
+traversable_impl!(Stmt, traverse_stmt);
+traversable_impl!(Expr, traverse_expr);
+traversable_impl!(TraitItem, traverse_trait_item);
+traversable_impl!(ImplItem, traverse_impl_item);
+traversable_impl!(Block, traverse_block);
+traversable_impl!(Local, traverse_local);
+traversable_impl!(Arm, traverse_arm);
+traversable_impl!(Field, traverse_field);
+traversable_impl!(Mod, traverse_mod);
+traversable_impl!(ForeignMod, traverse_foreign_mod);
+traversable_impl!(Item, traverse_item);
+traversable_impl!(ForeignItem, traverse_foreign_item);
+
+impl<A: Traversable> Traversable for Vec<A> {
+    fn traverse<T: Traversal>(self, t: &mut T) -> Self {
+        self.into_iter().map(|x| x.traverse(t)).collect()
+    }
+}
+
+impl<A: Traversable> Traversable for Option<A> {
+    fn traverse<T: Traversal>(self, t: &mut T) -> Self {
+        self.map(|x| x.traverse(t))
+    }
+}
+
+impl<A: Traversable + 'static> Traversable for ptr::P<A> {
+    fn traverse<T: Traversal>(self, t: &mut T) -> Self {
+        self.map(|x| x.traverse(t))
+    }
+}
+
+
+pub fn traverse_stmt_def<W: Traversal>(walk: &mut W, mut s: Stmt) -> Stmt {
     s.node = match s.node {
-        StmtKind::Local(p_local) => StmtKind::Local(p_local.map(|l| walk.traverse_local(l))),
-        StmtKind::Item(p_item) => StmtKind::Item(p_item.map(|item| walk.traverse_item(item))),
-        StmtKind::Expr(p_expr) => StmtKind::Expr(p_expr.map(|expr| walk.traverse_expr(expr))),
-        StmtKind::Semi(p_expr) => StmtKind::Semi(p_expr.map(|expr| walk.traverse_expr(expr))),
+        StmtKind::Local(p_local) => StmtKind::Local(p_local.traverse(walk)),
+        StmtKind::Item(p_item) => StmtKind::Item(p_item.traverse(walk)),
+        StmtKind::Expr(p_expr) => StmtKind::Expr(p_expr.traverse(walk)),
+        StmtKind::Semi(p_expr) => StmtKind::Semi(p_expr.traverse(walk)),
         StmtKind::Mac(m) => StmtKind::Mac(m),
     };
     s
 }
 
-pub fn traverse_expr_def<W: Traverse>(walk: &mut W, mut e: Expr) -> Expr {
+pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
     e.node = match e.node {
         ExprKind::Box(p_expr) => ExprKind::Box(p_expr.map(|expr| walk.traverse_expr(expr))),
-        ExprKind::Array(vec_p_expr) => ExprKind::Array(vec_p_expr
-            .into_iter()
-            .map(|p_expr| p_expr.map(|expr| walk.traverse_expr(expr)))
-            .collect()
-        ),
-        ExprKind::Call(p_expr, vec_p_expr) => ExprKind::Call(
-            p_expr.map(|expr| walk.traverse_expr(expr)),
-            vec_p_expr
-                .into_iter()
-                .map(|p_expr| p_expr.map(|expr| walk.traverse_expr(expr)))
-                .collect(),
-        ),
-        ExprKind::MethodCall(meth, vec_p_expr) => ExprKind::MethodCall(meth, vec_p_expr
-            .into_iter()
-            .map(|p_expr| p_expr.map(|expr| walk.traverse_expr(expr)))
-            .collect()
-        ),
-        ExprKind::Tup(vec_p_expr) => ExprKind::Tup(vec_p_expr
-            .into_iter()
-            .map(|p_expr| p_expr.map(|expr| walk.traverse_expr(expr)))
-            .collect()
-        ),
+        ExprKind::Array(elems) => ExprKind::Array(elems.traverse(walk)),
+        ExprKind::Call(func, args) => ExprKind::Call(func.traverse(walk), args.traverse(walk)),
+        ExprKind::MethodCall(meth, args) => ExprKind::MethodCall(meth, args.traverse(walk)),
+        ExprKind::Tup(elems) => ExprKind::Tup(elems.traverse(walk)),
         ExprKind::Binary(op, lhs, rhs) => ExprKind::Binary(
             op,
-            lhs.map(|l| walk.traverse_expr(l)),
-            rhs.map(|r| walk.traverse_expr(r)),
+            lhs.traverse(walk),
+            rhs.traverse(walk),
         ),
-        ExprKind::Unary(op, p_expr) => ExprKind::Unary(
-            op,
-            p_expr.map(|expr| walk.traverse_expr(expr)),
+        ExprKind::Unary(op, arg) => ExprKind::Unary(op, arg.traverse(walk)),
+        ExprKind::Cast(arg, t) => ExprKind::Cast(arg.traverse(walk), t),
+        ExprKind::Type(arg, t) => ExprKind::Type(arg.traverse(walk), t),
+        ExprKind::If(cond, thn, els) => ExprKind::If(
+            cond.traverse(walk),
+            thn.traverse(walk),
+            els.traverse(walk),
         ),
-        ExprKind::Cast(p_expr, t) => ExprKind::Cast(
-            p_expr.map(|expr| walk.traverse_expr(expr)),
-            t,
-        ),
-        ExprKind::Type(p_expr, t) => ExprKind::Type(
-            p_expr.map(|expr| walk.traverse_expr(expr)),
-            t,
-        ),
-        ExprKind::If(p_cond, p_block_thn, p_expr_els_opt) => ExprKind::If(
-            p_cond.map(|expr| walk.traverse_expr(expr)),
-            p_block_thn.map(|block_thn| walk.traverse_block(block_thn)),
-            p_expr_els_opt
-                .map(|p_expr_els| p_expr_els.map(|expr_els| walk.traverse_expr(expr_els))),
-        ),
-        ExprKind::IfLet(pats, p_cond, p_block_thn, p_expr_els_opt) => ExprKind::IfLet(
+        ExprKind::IfLet(pats, cond, thn, els) => ExprKind::IfLet(
             pats,
-            p_cond.map(|expr| walk.traverse_expr(expr)),
-            p_block_thn.map(|block_thn| walk.traverse_block(block_thn)),
-            p_expr_els_opt
-                .map(|p_expr_els| p_expr_els.map(|expr_els| walk.traverse_expr(expr_els))),
+            cond.traverse(walk),
+            thn.traverse(walk),
+            els.traverse(walk),
         ),
-        ExprKind::While(p_cond, p_block_body, lbl) => ExprKind::While(
-            p_cond.map(|expr| walk.traverse_expr(expr)),
-            p_block_body.map(|block_body| walk.traverse_block(block_body)),
+        ExprKind::While(cond, block, lbl) => ExprKind::While(
+            cond.traverse(walk),
+            block.traverse(walk),
             lbl,
         ),
-        ExprKind::WhileLet(pats, p_cond, p_block_body, lbl) => ExprKind::WhileLet(
+        ExprKind::WhileLet(pats, cond, block, lbl) => ExprKind::WhileLet(
             pats,
-            p_cond.map(|expr| walk.traverse_expr(expr)),
-            p_block_body.map(|block_body| walk.traverse_block(block_body)),
+            cond.traverse(walk),
+            block.traverse(walk),
             lbl,
         ),
-        ExprKind::ForLoop(pat, p_cond, p_block_body, lbl) => ExprKind::ForLoop(
+        ExprKind::ForLoop(pat, cond, block, lbl) => ExprKind::ForLoop(
             pat,
-            p_cond.map(|expr| walk.traverse_expr(expr)),
-            p_block_body.map(|block_body| walk.traverse_block(block_body)),
+            cond.traverse(walk),
+            block.traverse(walk),
             lbl,
         ),
-        ExprKind::Loop(p_block_body, lbl) => ExprKind::Loop(
-            p_block_body.map(|block_body| walk.traverse_block(block_body)),
-            lbl,
-        ),
-        ExprKind::Match(p_cond, vec_arm) => ExprKind::Match(
-            p_cond.map(|expr| walk.traverse_expr(expr)),
-            vec_arm.into_iter().map(|arm| walk.traverse_arm(arm)).collect(),
-        ),
-        ExprKind::Closure(cap, mov, fn_decl, p_expr, s) => ExprKind::Closure(
+        ExprKind::Loop(block, lbl) => ExprKind::Loop(block.traverse(walk), lbl),
+        ExprKind::Match(cond, arm) => ExprKind::Match(cond.traverse(walk), arm.traverse(walk)),
+        ExprKind::Closure(cap, mov, fn_decl, expr, s) => ExprKind::Closure(
             cap,
             mov,
             fn_decl,
-            p_expr.map(|expr| walk.traverse_expr(expr)),
+            expr.traverse(walk),
             s,
         ),
-        ExprKind::Block(p_block, lbl) => ExprKind::Block(
-            p_block.map(|blk| walk.traverse_block(blk)),
-            lbl
-        ),
-        ExprKind::Catch(p_block) => ExprKind::Catch(
-            p_block.map(|blk| walk.traverse_block(blk)),
-        ),
-        ExprKind::Assign(lhs, rhs) => ExprKind::Assign(
-            lhs.map(|l| walk.traverse_expr(l)),
-            rhs.map(|r| walk.traverse_expr(r)),
-        ),
+        ExprKind::Block(block, lbl) => ExprKind::Block(block.traverse(walk), lbl),
+        ExprKind::Catch(block) => ExprKind::Catch(block.traverse(walk)),
+        ExprKind::Assign(lhs, rhs) => ExprKind::Assign(lhs.traverse(walk), rhs.traverse(walk)),
         ExprKind::AssignOp(op, lhs, rhs) => ExprKind::AssignOp(
             op,
-            lhs.map(|l| walk.traverse_expr(l)),
-            rhs.map(|r| walk.traverse_expr(r)),
+            lhs.traverse(walk),
+            rhs.traverse(walk),
         ),
-        ExprKind::Field(p_expr, f) => ExprKind::Field(
-            p_expr.map(|expr| walk.traverse_expr(expr)),
-            f,
-        ),
-        ExprKind::Index(lhs, rhs) => ExprKind::Index(
-            lhs.map(|l| walk.traverse_expr(l)),
-            rhs.map(|r| walk.traverse_expr(r)),
-        ),
-        ExprKind::Range(lhs_opt, rhs_opt, rl) => ExprKind::Range(
-            lhs_opt.map(|lhs| lhs.map(|l| walk.traverse_expr(l))),
-            rhs_opt.map(|rhs| rhs.map(|r| walk.traverse_expr(r))),
-            rl,
-        ),
+        ExprKind::Field(expr, f) => ExprKind::Field(expr.traverse(walk), f),
+        ExprKind::Index(lhs, rhs) => ExprKind::Index(lhs.traverse(walk), rhs.traverse(walk)),
+        ExprKind::Range(lhs, rhs, l) => ExprKind::Range(lhs.traverse(walk), rhs.traverse(walk), l),
         ExprKind::Path(qself,p) => ExprKind::Path(qself,p),
-        ExprKind::AddrOf(m, p_expr) => ExprKind::AddrOf(
-            m,
-            p_expr.map(|expr| walk.traverse_expr(expr)),
-        ),
-        ExprKind::Break(lbl, opt_p_expr) => ExprKind::Break(
-            lbl,
-            opt_p_expr.map(|p_expr| p_expr.map(|expr| walk.traverse_expr(expr))),
-        ),
+        ExprKind::AddrOf(m, expr) => ExprKind::AddrOf(m, expr.traverse(walk)),
+        ExprKind::Break(lbl, arg) => ExprKind::Break(lbl, arg.traverse(walk)),
         ExprKind::Continue(lbl) => ExprKind::Continue(lbl),
-        ExprKind::Ret(opt_p_expr) => ExprKind::Ret(
-            opt_p_expr.map(|p_expr| p_expr.map(|expr| walk.traverse_expr(expr))),
-        ),
+        ExprKind::Ret(expr) => ExprKind::Ret(expr.traverse(walk)),
         ExprKind::InlineAsm(asm) => ExprKind::InlineAsm(asm),
         ExprKind::Mac(mac) => ExprKind::Mac(mac),
-        ExprKind::Struct(p, vec_field, opt_p_expr) => ExprKind::Struct(
-            p,
-            vec_field.into_iter().map(|field| walk.traverse_field(field)).collect(),
-            opt_p_expr.map(|p_expr| p_expr.map(|expr| walk.traverse_expr(expr))),
-        ),
-        ExprKind::Repeat(p_expr, c) => ExprKind::Repeat(
-            p_expr.map(|expr| walk.traverse_expr(expr)),
-            c,
-        ),
-        ExprKind::Paren(p_expr) => ExprKind::Paren(p_expr.map(|expr| walk.traverse_expr(expr))),
-        ExprKind::Try(p_expr) => ExprKind::Try(p_expr.map(|expr| walk.traverse_expr(expr))),
-        ExprKind::Yield(opt_p_expr) => ExprKind::Yield(
-            opt_p_expr.map(|p_expr| p_expr.map(|expr| walk.traverse_expr(expr)))
-        ),
+        ExprKind::Struct(p, flds, d) => ExprKind::Struct(p, flds.traverse(walk), d.traverse(walk)),
+        ExprKind::Repeat(expr, c) => ExprKind::Repeat(expr.traverse(walk), c),
+        ExprKind::Paren(arg) => ExprKind::Paren(arg.traverse(walk)),
+        ExprKind::Try(arg) => ExprKind::Try(arg.traverse(walk)),
+        ExprKind::Yield(arg) => ExprKind::Yield(arg.traverse(walk)),
         ExprKind::Lit(l) => ExprKind::Lit(l),
         ExprKind::ObsoleteInPlace(lhs, rhs) => ExprKind::ObsoleteInPlace(
-            lhs.map(|l| walk.traverse_expr(l)),
-            rhs.map(|r| walk.traverse_expr(r)),
+            lhs.traverse(walk),
+            rhs.traverse(walk),
         ),
     };
     e
 }
 
-pub fn traverse_trait_item_def<W: Traverse>(walk: &mut W, mut ti: TraitItem) -> TraitItem {
+pub fn traverse_trait_item_def<W: Traversal>(walk: &mut W, mut ti: TraitItem) -> TraitItem {
     ti.node = match ti.node {
-        TraitItemKind::Const(ty, opt_p_expr) => TraitItemKind::Const(
-            ty,
-            opt_p_expr.map(|p_expr| p_expr.map(|expr| walk.traverse_expr(expr))),
-        ),
-        TraitItemKind::Method(sig, opt_p_block) => TraitItemKind::Method(
-            sig,
-            opt_p_block.map(|p_block| p_block.map(|block| walk.traverse_block(block))),
-        ),
+        TraitItemKind::Const(ty, arg) => TraitItemKind::Const(ty, arg.traverse(walk)),
+        TraitItemKind::Method(sig, block) => TraitItemKind::Method(sig, block.traverse(walk)),
         TraitItemKind::Type(bds, t) => TraitItemKind::Type(bds, t),
         TraitItemKind::Macro(mac) => TraitItemKind::Macro(mac),
     };
     ti
 }
 
-pub fn traverse_impl_item_def<W: Traverse>(walk: &mut W, mut ii: ImplItem) -> ImplItem {
+pub fn traverse_impl_item_def<W: Traversal>(walk: &mut W, mut ii: ImplItem) -> ImplItem {
     ii.node = match ii.node {
-        ImplItemKind::Const(ty, p_expr) => ImplItemKind::Const(
-            ty,
-            p_expr.map(|expr| walk.traverse_expr(expr)),
-        ),
-        ImplItemKind::Method(sig, p_block) => ImplItemKind::Method(
-            sig,
-            p_block.map(|block| walk.traverse_block(block)),
-        ),
+        ImplItemKind::Const(ty, expr) => ImplItemKind::Const(ty, expr.traverse(walk)),
+        ImplItemKind::Method(sig, block) => ImplItemKind::Method(sig, block.traverse(walk)),
         ImplItemKind::Type(t) => ImplItemKind::Type(t),
         ImplItemKind::Macro(mac) => ImplItemKind::Macro(mac),
     };
     ii
 }
 
-pub fn traverse_block_def<W: Traverse>(walk: &mut W, mut b: Block) -> Block {
-    b.stmts = b.stmts.into_iter().map(|stmt| walk.traverse_stmt(stmt)).collect();
+pub fn traverse_block_def<W: Traversal>(walk: &mut W, mut b: Block) -> Block {
+    b.stmts = b.stmts.traverse(walk);
     b
 }
 
-pub fn traverse_local_def<W: Traverse>(walk: &mut W, mut l: Local) -> Local {
-    l.init = l.init.map(|p_expr| p_expr.map(|expr| walk.traverse_expr(expr)));
+pub fn traverse_local_def<W: Traversal>(walk: &mut W, mut l: Local) -> Local {
+    l.init = l.init.traverse(walk);
     l
 }
 
-pub fn traverse_arm_def<W: Traverse>(walk: &mut W, mut a: Arm) -> Arm {
-    a.guard = a.guard.map(|p_expr| p_expr.map(|expr| walk.traverse_expr(expr)));
-    a.body = a.body.map(|expr| walk.traverse_expr(expr));
+pub fn traverse_arm_def<W: Traversal>(walk: &mut W, mut a: Arm) -> Arm {
+    a.guard = a.guard.traverse(walk);
+    a.body = a.body.traverse(walk);
     a
 }
 
-pub fn traverse_field_def<W: Traverse>(walk: &mut W, mut f: Field) -> Field {
-    f.expr = f.expr.map(|expr| walk.traverse_expr(expr));
+pub fn traverse_field_def<W: Traversal>(walk: &mut W, mut f: Field) -> Field {
+    f.expr = f.expr.traverse(walk);
     f
 }
 
-pub fn traverse_mod_def<W: Traverse>(walk: &mut W, mut m: Mod) -> Mod {
-    m.items = m.items.into_iter().map(|p_i| p_i.map(|i| walk.traverse_item(i))).collect();
+pub fn traverse_mod_def<W: Traversal>(walk: &mut W, mut m: Mod) -> Mod {
+    m.items = m.items.traverse(walk);
     m
 }
 
-pub fn traverse_foreign_mod_def<W: Traverse>(walk: &mut W, mut m: ForeignMod) -> ForeignMod {
-    m.items = m.items.into_iter().map(|fi| walk.traverse_foreign_item(fi)).collect();
+pub fn traverse_foreign_mod_def<W: Traversal>(walk: &mut W, mut m: ForeignMod) -> ForeignMod {
+    m.items = m.items.traverse(walk);
     m
 }
 
-pub fn traverse_item_def<W: Traverse>(walk: &mut W, mut i: Item) -> Item {
+pub fn traverse_item_def<W: Traversal>(walk: &mut W, mut i: Item) -> Item {
     i.node = match i.node {
-        ItemKind::Static(ty, mu, p_expr) => {
-            let p_expr = p_expr.map(|expr| walk.traverse_expr(expr));
-            ItemKind::Static(ty, mu, p_expr)
-        },
-        ItemKind::Const(ty, p_expr) => ItemKind::Const(
-            ty,
-            p_expr.map(|expr| walk.traverse_expr(expr)),
-        ),
-        ItemKind::Fn(fn_decl, uns, cons, header, gen, p_block) => {
-            let p_block = p_block.map(|block| walk.traverse_block(block));
-            ItemKind::Fn(fn_decl, uns, cons, header, gen, p_block)
-        }
-        ItemKind::Mod(m) => ItemKind::Mod(walk.traverse_mod(m)),
-        ItemKind::ForeignMod(fm) => ItemKind::ForeignMod(walk.traverse_foreign_mod(fm)),
-        ItemKind::Trait(a, u, gen, bds, trait_items) => {
-            let trait_items = trait_items
-                .into_iter()
-                .map(|ti| walk.traverse_trait_item(ti))
-                .collect();
-            ItemKind::Trait(a, u, gen, bds, trait_items)
-        }
-        ItemKind::Impl(u, p, d, gen, tr, ty, impl_items) => {
-            let impl_items = impl_items.into_iter().map(|ti| walk.traverse_impl_item(ti)).collect();
-            ItemKind::Impl(u, p, d, gen, tr, ty, impl_items)
-        }
+        ItemKind::Static(ty, mu, p_expr) => ItemKind::Static(ty, mu, p_expr.traverse(walk)),
+        ItemKind::Const(ty, p_expr) => ItemKind::Const(ty, p_expr.traverse(walk)),
+        ItemKind::Fn(f, uns, c, h, g, blk) => ItemKind::Fn(f, uns, c, h, g, blk.traverse(walk)),
+        ItemKind::Mod(m) => ItemKind::Mod(m.traverse(walk)),
+        ItemKind::ForeignMod(fm) => ItemKind::ForeignMod(fm.traverse(walk)),
+        ItemKind::Trait(a, u, gen, bds, tis) => ItemKind::Trait(a, u, gen, bds, tis.traverse(walk)),
+        ItemKind::Impl(u, p, d, gen, tr, ty, iis) =>
+            ItemKind::Impl(u, p, d, gen, tr, ty, iis.traverse(walk)),
         ItemKind::Use(u) => ItemKind::Use(u),
         ItemKind::ExternCrate(u) => ItemKind::ExternCrate(u),
         ItemKind::GlobalAsm(u) => ItemKind::GlobalAsm(u),

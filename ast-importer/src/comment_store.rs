@@ -1,4 +1,4 @@
-//! This modules handles accumulating / re-arranging comments for the Rust AST.
+//! This module handles accumulating / re-arranging comments for the Rust AST.
 //!
 //! The only way we have found to have comments inserted into the pretty-printed Rust output is via
 //! a comment vector. The Rust pretty-printer accepts a vector of comments and, before printing
@@ -64,9 +64,13 @@ impl CommentStore {
     /// Add a `Comment` at the current position, then return the `Span` that should be given to
     /// something we want associated with this comment.
     pub fn add_comment(&mut self, mut cmmt: comments::Comment) -> Span {
-        self.span_source += 1;
-        cmmt.pos = BytePos(self.span_source);
 
+        // This line is not necessary. All it does is prevent the confusing situation where comments
+        // have exactly the same position as some AST node to which they are _not_ related.
+        self.span_source += 1;
+
+        // The position of the comment has to be LESS than the span of the AST node it annotates.
+        cmmt.pos = BytePos(self.span_source);
         self.span_source += 1;
         let sp = Span::new(
             BytePos(self.span_source),
@@ -127,7 +131,7 @@ impl CommentTraverser {
     }
 }
 
-impl traverse::Traverse for CommentTraverser {
+impl traverse::Traversal for CommentTraverser {
 
     fn traverse_stmt(&mut self, mut s: Stmt) -> Stmt {
         s.span = self.reinsert_comment_at(s.span);

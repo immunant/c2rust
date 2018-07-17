@@ -19,7 +19,7 @@ use std::cell::RefCell;
 use std::char;
 use dtoa;
 use with_stmts::WithStmts;
-use rust_ast::traverse::Traverse;
+use rust_ast::traverse::Traversal;
 
 use cfg;
 
