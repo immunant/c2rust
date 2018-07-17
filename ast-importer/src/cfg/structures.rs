@@ -2,7 +2,7 @@
 
 use super::*;
 
-use comment_store;
+use rust_ast::comment_store;
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(

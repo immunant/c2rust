@@ -10,7 +10,7 @@ use loops::*;
 use c_ast;
 use c_ast::*;
 use rust_ast::{mk, Builder, MetaItem, MetaItemBody, MetaItemInner};
-use comment_store::*;
+use rust_ast::comment_store::CommentStore;
 use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;
 use syntax::print::pprust::*;
