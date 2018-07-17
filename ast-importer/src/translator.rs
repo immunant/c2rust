@@ -613,7 +613,6 @@ impl Translation {
 
         self.sectioned_static_initializers.borrow_mut().push(stmt);
 
-        // TODO: Add comment to default initializer saying "Initialized in run_static_initializers"
         *init = self.implicit_default_expr(typ.ctype, true)?;
 
         Ok(())
@@ -864,7 +863,7 @@ impl Translation {
     }
 
     fn convert_decl(&self, toplevel: bool, decl_id: CDeclId) -> Result<ConvertedDecl, String> {
-        let s = {
+        let mut s = {
             let decl_cmt = self.comment_context.borrow_mut().remove_decl_comment(decl_id);
             self.comment_store.borrow_mut().add_comment_lines(decl_cmt)
         };
@@ -1053,6 +1052,10 @@ impl Translation {
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
                 if self.static_initializer_is_uncompilable(initializer) {
+                    let comment = String::from("// Initialized in run_static_initializers");
+                    // REVIEW: We might want to add the comment to the original span comments
+                    s = self.comment_store.borrow_mut().add_comment_lines(vec![comment]);
+
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
                 }
 
@@ -1645,14 +1648,17 @@ impl Translation {
                     let ident2 = self.renamer.borrow_mut().insert_root(decl_id, ident).ok_or_else(err_msg)?;
                     let (ty, _, init) = self.convert_variable(initializer, typ, true)?;
                     let default_init = self.implicit_default_expr(typ.ctype, true)?;
-                    let static_item = mk().mutbl().static_item(&ident2, ty, default_init);
+                    let comment = String::from("// Initialized in run_static_initializers");
+                    let span = self.comment_store.borrow_mut().add_comment_lines(vec![comment]);
+                    let static_item = mk().span(span).mutbl().static_item(&ident2, ty, default_init);
                     let mut init = init?;
+
                     init.stmts.push(mk().expr_stmt(init.val));
+
                     let init = mk().unsafe_().block(init.stmts);
                     let mut init = mk().block_expr(init);
 
                     self.add_static_initializer_to_section(&ident2, typ, &mut init)?;
-
                     self.items.borrow_mut().push(static_item);
 
                     return Ok(cfg::DeclStmtInfo::new(Vec::new(), Vec::new(), Vec::new()));
