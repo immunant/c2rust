@@ -2854,8 +2854,8 @@ impl Translation {
 
                                 if !is_const {
                                     let WithStmts { val, stmts } = call;
-                                    let inferred_type = mk().mutbl().infer_ty();
-                                    let ptr_type = mk().ptr_ty(inferred_type);
+                                    let inferred_type = mk().infer_ty();
+                                    let ptr_type = mk().mutbl().ptr_ty(inferred_type);
                                     let val = mk().cast_expr(val, ptr_type);
 
                                     call = WithStmts { val, stmts };
