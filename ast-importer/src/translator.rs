@@ -9,7 +9,7 @@ use convert_type::TypeConverter;
 use loops::*;
 use c_ast;
 use c_ast::*;
-use rust_ast::{mk, Builder, MetaItem, MetaItemBody, MetaItemInner};
+use rust_ast::{mk, Builder};
 use rust_ast::comment_store::CommentStore;
 use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;
@@ -55,18 +55,26 @@ pub struct TranslationConfig {
 }
 
 pub struct Translation {
+    
+    // Translation environment
+    pub ast_context: TypedAstContext,
+    pub tcfg: TranslationConfig,
+
+    // Accumulated outputs
     pub features: RefCell<HashSet<&'static str>>,
     pub items: RefCell<Vec<P<Item>>>,
     pub foreign_items: Vec<ForeignItem>,
+    sectioned_static_initializers: RefCell<Vec<Stmt>>,
+
+    // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
-    pub ast_context: TypedAstContext,
-    pub tcfg: TranslationConfig,
     renamer: RefCell<Renamer<CDeclId>>,
     loops: LoopContext,
     zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
-    pub comment_context: RefCell<CommentContext>,
-    pub comment_store: RefCell<CommentStore>,
-    sectioned_static_initializers: RefCell<Vec<Stmt>>,
+
+    // Comment support
+    pub comment_context: RefCell<CommentContext>, // Incoming comments
+    pub comment_store: RefCell<CommentStore>, // Outgoing comments
 }
 
 
@@ -387,39 +395,36 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 for (key, mut values) in pragmas {
                     values.sort();
                     let value_attr_vec = values.into_iter()
-                        .map(|value| MetaItemInner::MetaItem(MetaItem {
-                            name: mk().ident(value),
-                            body: MetaItemBody::None,
-                        })).collect::<Vec<_>>();
-                    let item = MetaItem {
-                        name: mk().ident(key),
-                        body: MetaItemBody::Arguments(value_attr_vec),
-                    };
-                    for attr in mk().meta_item_attr(item).as_inner_attrs() {
+                        .map(|value|
+                            mk().nested_meta_item(
+                                mk().meta_item(vec![value], MetaItemKind::Word)))
+                        .collect::<Vec<_>>();
+                    let item = mk().meta_item(
+                        vec![key],
+                        MetaItemKind::List(value_attr_vec),
+                    );
+                    for attr in mk().meta_item_attr(AttrStyle::Inner, item).as_inner_attrs() {
                         s.print_attribute(&attr)?;
                     }
                 }
 
                 if t.tcfg.cross_checks {
-                    let mut xcheck_plugin_args: Vec<MetaItemInner> = vec![];
+                    let mut xcheck_plugin_args: Vec<NestedMetaItem> = vec![];
                     for config_file in &t.tcfg.cross_check_configs {
                         let file_lit = mk().str_lit(config_file);
-                        let file_item = MetaItem {
-                            name: mk().ident("config_file"),
-                            body: MetaItemBody::Equals(file_lit),
-                        };
-                        xcheck_plugin_args.push(MetaItemInner::MetaItem(file_item));
+                        let file_item = mk().meta_item(vec!["config_file"],file_lit.into_inner());
+                        xcheck_plugin_args.push(mk().nested_meta_item(file_item));
                     }
-                    let xcheck_plugin_item = MetaItem {
-                        name: mk().ident("cross_check_plugin"),
-                        body: MetaItemBody::Arguments(xcheck_plugin_args),
-                    };
-                    let plugin_args = vec![MetaItemInner::MetaItem(xcheck_plugin_item)];
-                    let plugin_item = MetaItem {
-                        name: mk().ident("plugin"),
-                        body: MetaItemBody::Arguments(plugin_args),
-                    };
-                    for attr in mk().meta_item_attr(plugin_item).as_inner_attrs() {
+                    let xcheck_plugin_item = mk().meta_item(
+                        vec!["cross_check_plugin"],
+                        MetaItemKind::List(xcheck_plugin_args),
+                    );
+                    let plugin_args = vec![mk().nested_meta_item(xcheck_plugin_item)];
+                    let plugin_item = mk().meta_item(
+                        vec!["plugin"],
+                        MetaItemKind::List(plugin_args),
+                    );
+                    for attr in mk().meta_item_attr(AttrStyle::Inner, plugin_item).as_inner_attrs() {
                         s.print_attribute(&attr)?;
                     }
                 }
@@ -896,8 +901,10 @@ impl Translation {
                     }
                 }
 
-                fn simple_metaitem(name: &str) -> MetaItemInner {
-                    MetaItemInner::MetaItem(MetaItem { name: mk().ident(name), body: MetaItemBody::None })
+                fn simple_metaitem(name: &str) -> ast::NestedMetaItem {
+                    mk().nested_meta_item(
+                        NestedMetaItemKind::MetaItem(
+                            mk().meta_item(vec![name], MetaItemKind::Word)))
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
@@ -909,21 +916,19 @@ impl Translation {
                     self.use_feature("attr_literals");
 
                     let lit = mk().int_lit(alignment as u128, LitIntType::Unsuffixed);
-                    let inner = MetaItem {
-                        name: mk().ident("align"),
-                        body: MetaItemBody::Arguments(vec![MetaItemInner::Lit(lit)]),
-                    };
-                    reprs.push(MetaItemInner::MetaItem(inner));
+                    let inner = mk().meta_item(
+                        vec!["align"],
+                        MetaItemKind::List(
+                            vec![mk().nested_meta_item(
+                                NestedMetaItemKind::Literal(lit.into_inner()))]));
+                    reprs.push(mk().nested_meta_item(NestedMetaItemKind::MetaItem(inner)));
                 };
 
-                let repr_attr = MetaItem {
-                    name: mk().ident("repr"),
-                    body: MetaItemBody::Arguments( reprs)
-                };
+                let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
 
                 Ok(ConvertedDecl::Item(self.mk_cross_check(mk().span(s).pub_(), vec!["none"])
                     .call_attr("derive", vec!["Copy", "Clone"])
-                    .meta_item_attr(repr_attr)
+                    .meta_item_attr(AttrStyle::Outer, repr_attr)
                     .struct_item(name, field_entries)))
             }
 

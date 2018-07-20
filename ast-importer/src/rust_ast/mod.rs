@@ -2,7 +2,8 @@
 use syntax::ast::*;
 use syntax_pos::symbol::Symbol;
 use syntax::codemap::{DUMMY_SP, dummy_spanned, Span};
-use syntax::parse::token::{self, Token, DelimToken, Nonterminal};
+use syntax::parse::token::{self, Token, DelimToken};
+use syntax::attr::{mk_attr_inner};
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder, ThinTokenStream};
 use syntax::symbol::keywords;
@@ -227,27 +228,22 @@ impl Make<PathParameters> for ParenthesizedParameterData {
     }
 }
 
-/// Syntax for attr_literals feature attributes
-///
-/// ```
-/// attr : '#' '!'? '[' meta_item ']' ;
-/// meta_item : IDENT ( '=' LIT | '(' meta_item_inner? ')' )? ;
-/// meta_item_inner : (meta_item | LIT) (',' meta_item_inner)? ;
-/// ```
-pub struct MetaItem {
-    pub name: Ident,
-    pub body: MetaItemBody,
+impl Make<NestedMetaItemKind> for MetaItem {
+    fn make(self, _mk: &Builder) -> NestedMetaItemKind {
+        NestedMetaItemKind::MetaItem(self)
+    }
 }
 
-pub enum MetaItemBody {
-    None,
-    Equals(P<Lit>),
-    Arguments(Vec<MetaItemInner>),
+impl Make<NestedMetaItemKind> for Lit {
+    fn make(self, _mk: &Builder) -> NestedMetaItemKind {
+        NestedMetaItemKind::Literal(self)
+    }
 }
 
-pub enum MetaItemInner {
-    MetaItem(MetaItem),
-    Lit(P<Lit>),
+impl Make<MetaItemKind> for Lit {
+    fn make(self, _mk: &Builder) -> MetaItemKind {
+        MetaItemKind::NameValue(self)
+    }
 }
 
 #[derive(Clone)]
@@ -411,70 +407,6 @@ impl Builder {
             }
 
             builder.push(Token::CloseDelim(DelimToken::Paren));
-            builder.build()
-        };
-
-        let mut attrs = self.attrs;
-        attrs.push(Attribute {
-            id: AttrId(0),
-            style: AttrStyle::Outer,
-            path: func,
-            tokens: tokens,
-            is_sugared_doc: false,
-            span: DUMMY_SP,
-        });
-        Builder {
-            attrs: attrs,
-            ..self
-        }
-    }
-
-    pub fn meta_item_attr(self, metaitem: MetaItem) -> Self {
-
-        fn build_metaitem(builder: &mut TokenStreamBuilder, metaitem: MetaItem) {
-            builder.push(Token::from_ast_ident(metaitem.name));
-            build_metaitem_body(builder, metaitem.body);
-        }
-
-        fn build_metaitem_body(builder: &mut TokenStreamBuilder, body: MetaItemBody) {
-            match body {
-                MetaItemBody::None => {}
-                MetaItemBody::Arguments(args) => {
-                    let mut is_first = true;
-
-                    builder.push(Token::OpenDelim(DelimToken::Paren));
-
-                    for arg in args {
-                        if is_first {
-                            is_first = false
-                        } else {
-                            builder.push(Token::Comma);
-                        }
-                        match arg {
-                            MetaItemInner::MetaItem(subitem) => build_metaitem(builder, subitem),
-                            MetaItemInner::Lit(lit) =>  {
-                                let lit_expr = mk().lit_expr(lit);
-                                builder.push(Token::interpolated(Nonterminal::NtLiteral(lit_expr)));
-                            }
-                        }
-                    }
-
-                    builder.push(Token::CloseDelim(DelimToken::Paren));
-                }
-                MetaItemBody::Equals(lit) => {
-                    builder.push(Token::Eq);
-                    let lit_expr = mk().lit_expr(lit);
-                    builder.push(Token::interpolated(Nonterminal::NtLiteral(lit_expr)));
-                }
-            }
-        }
-
-
-        let func: Path = mk().path(vec![metaitem.name]);
-
-        let tokens: TokenStream = {
-            let mut builder = TokenStreamBuilder::new();
-            build_metaitem_body(&mut builder, metaitem.body);
             builder.build()
         };
 
@@ -1416,6 +1348,17 @@ impl Builder {
         Self::item(keywords::Invalid.ident(), self.attrs, self.vis, self.span, ItemKind::ForeignMod(fgn_mod))
     }
 
+    pub fn module<I, T>(self, name: I, items: T) -> P<Item>
+        where I: Make<Ident>, T: Make<Vec<P<Item>>> {
+
+        let name = name.make(&self);
+        let items = items.make(&self);
+        let module = Mod {
+            inner: DUMMY_SP,
+            items: items,
+        };
+        Self::item(name, self.attrs, self.vis, self.span, ItemKind::Mod(module))
+    }
 
     // Foreign Items
 
@@ -1521,6 +1464,33 @@ impl Builder {
             is_sugared_doc: false,
             span: DUMMY_SP,
         }
+    }
+
+    pub fn meta_item_attr(mut self, style: AttrStyle, meta_item: MetaItem) -> Self
+    {
+        let mut attr = mk_attr_inner(DUMMY_SP, AttrId(0), meta_item);
+        attr.style = style;
+        self.attrs.push(attr);
+        self
+    }
+
+    pub fn meta_item<I,K>(self, path: I, kind: K) -> MetaItem
+        where I: Make<Path>, K: Make<MetaItemKind> {
+        
+        let path = path.make(&self);
+        let kind = kind.make(&self);
+        MetaItem {
+            ident: path,
+            node: kind,
+            span: DUMMY_SP,
+        }
+    }
+
+    pub fn nested_meta_item<K>(self, kind: K) -> NestedMetaItem
+        where K: Make<NestedMetaItemKind>
+     {
+        let kind = kind.make(&self);
+        dummy_spanned(kind)
     }
 
     // Convert the current internal list of outer attributes
