@@ -20,6 +20,7 @@ use std::char;
 use dtoa;
 use with_stmts::WithStmts;
 use rust_ast::traverse::Traversal;
+use std::io;
 
 use cfg;
 
@@ -360,6 +361,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
         to_string(|s| {
 
+            print_header(s,&t)?;
+
             // Re-order comments
             let mut traverser = t.comment_store.into_inner().into_comment_traverser();
 
@@ -374,71 +377,6 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
             s.comments().get_or_insert(vec![]).extend(traverser.into_comment_store().into_comments());
 
-            if t.tcfg.emit_module {
-                s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
-            } else {
-                let mut features = vec!["libc"];
-                features.extend(t.features.borrow().iter());
-                features.extend(t.type_converter.borrow().features_used());
-
-                let mut pragmas: Vec<(&str, Vec<&str>)> =
-                    vec![("allow", vec!["non_upper_case_globals", "non_camel_case_types", "non_snake_case",
-                                        "dead_code", "mutable_transmutes", "unused_mut"])];
-
-                if t.tcfg.cross_checks {
-                    features.append(&mut vec!["plugin", "custom_attribute"]);
-                    pragmas.push(("cross_check", vec!["yes"]));
-                }
-
-                pragmas.push(("feature", features));
-
-                for (key, mut values) in pragmas {
-                    values.sort();
-                    let value_attr_vec = values.into_iter()
-                        .map(|value|
-                            mk().nested_meta_item(
-                                mk().meta_item(vec![value], MetaItemKind::Word)))
-                        .collect::<Vec<_>>();
-                    let item = mk().meta_item(
-                        vec![key],
-                        MetaItemKind::List(value_attr_vec),
-                    );
-                    for attr in mk().meta_item_attr(AttrStyle::Inner, item).as_inner_attrs() {
-                        s.print_attribute(&attr)?;
-                    }
-                }
-
-                if t.tcfg.cross_checks {
-                    let mut xcheck_plugin_args: Vec<NestedMetaItem> = vec![];
-                    for config_file in &t.tcfg.cross_check_configs {
-                        let file_lit = mk().str_lit(config_file);
-                        let file_item = mk().meta_item(vec!["config_file"],file_lit.into_inner());
-                        xcheck_plugin_args.push(mk().nested_meta_item(file_item));
-                    }
-                    let xcheck_plugin_item = mk().meta_item(
-                        vec!["cross_check_plugin"],
-                        MetaItemKind::List(xcheck_plugin_args),
-                    );
-                    let plugin_args = vec![mk().nested_meta_item(xcheck_plugin_item)];
-                    let plugin_item = mk().meta_item(
-                        vec!["plugin"],
-                        MetaItemKind::List(plugin_args),
-                    );
-                    for attr in mk().meta_item_attr(AttrStyle::Inner, plugin_item).as_inner_attrs() {
-                        s.print_attribute(&attr)?;
-                    }
-                }
-
-                // Add `extern crate libc` to the top of the file
-                s.print_item(&mk().extern_crate_item("libc", None))?;
-                if t.tcfg.cross_checks {
-                    s.print_item(&mk().single_attr("macro_use")
-                        .extern_crate_item("cross_check_derive", None))?;
-                    s.print_item(&mk().single_attr("macro_use")
-                        .extern_crate_item("cross_check_runtime", None))?;
-                }
-            }
-
             if !foreign_items.is_empty() {
                 s.print_item(&mk().abi("C").foreign_items(foreign_items))?
             }
@@ -451,6 +389,72 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             Ok(())
         })
     })
+}
+
+/// Pretty-print the leading pragmas and extern crate declarations
+fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
+    if t.tcfg.emit_module {
+        s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
+    } else {
+        let mut features = vec!["libc"];
+        features.extend(t.features.borrow().iter());
+        features.extend(t.type_converter.borrow().features_used());
+        let mut pragmas: Vec<(&str, Vec<&str>)> =
+            vec![("allow", vec!["non_upper_case_globals", "non_camel_case_types", "non_snake_case",
+                                "dead_code", "mutable_transmutes", "unused_mut"])];
+        if t.tcfg.cross_checks {
+            features.append(&mut vec!["plugin", "custom_attribute"]);
+            pragmas.push(("cross_check", vec!["yes"]));
+        }
+        
+        pragmas.push(("feature", features));
+        for (key, mut values) in pragmas {
+            values.sort();
+            let value_attr_vec = values.into_iter()
+                .map(|value|
+                    mk().nested_meta_item(
+                        mk().meta_item(vec![value], MetaItemKind::Word)))
+                .collect::<Vec<_>>();
+            let item = mk().meta_item(
+                vec![key],
+                MetaItemKind::List(value_attr_vec),
+            );
+            for attr in mk().meta_item_attr(AttrStyle::Inner, item).as_inner_attrs() {
+                s.print_attribute(&attr)?;
+            }
+        }
+        
+        if t.tcfg.cross_checks {
+            let mut xcheck_plugin_args: Vec<NestedMetaItem> = vec![];
+            for config_file in &t.tcfg.cross_check_configs {
+                let file_lit = mk().str_lit(config_file);
+                let file_item = mk().meta_item(vec!["config_file"],file_lit.into_inner());
+                xcheck_plugin_args.push(mk().nested_meta_item(file_item));
+            }
+            let xcheck_plugin_item = mk().meta_item(
+                vec!["cross_check_plugin"],
+                MetaItemKind::List(xcheck_plugin_args),
+            );
+            let plugin_args = vec![mk().nested_meta_item(xcheck_plugin_item)];
+            let plugin_item = mk().meta_item(
+                vec!["plugin"],
+                MetaItemKind::List(plugin_args),
+            );
+            for attr in mk().meta_item_attr(AttrStyle::Inner, plugin_item).as_inner_attrs() {
+                s.print_attribute(&attr)?;
+            }
+        }
+        
+        // Add `extern crate libc` to the top of the file
+        s.print_item(&mk().extern_crate_item("libc", None))?;
+        if t.tcfg.cross_checks {
+            s.print_item(&mk().single_attr("macro_use")
+                .extern_crate_item("cross_check_derive", None))?;
+            s.print_item(&mk().single_attr("macro_use")
+                .extern_crate_item("cross_check_runtime", None))?;
+        }
+    }
+    Ok(())
 }
 
 
