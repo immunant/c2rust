@@ -5,7 +5,7 @@ Tested with Docker Community Edition 18.03. The version distributed with your ho
 Building the docker image: 
 
     $ cd /path/to/c2rust/docker
-    $ ./docker_build.sh
+    $ ../scripts/docker_build.sh
 
 
 Creating a container:
