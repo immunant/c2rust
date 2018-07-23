@@ -56,7 +56,7 @@ pub struct TranslationConfig {
 }
 
 pub struct Translation {
-    
+
     // Translation environment
     pub ast_context: TypedAstContext,
     pub tcfg: TranslationConfig,
@@ -406,7 +406,7 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
             features.append(&mut vec!["plugin", "custom_attribute"]);
             pragmas.push(("cross_check", vec!["yes"]));
         }
-        
+
         pragmas.push(("feature", features));
         for (key, mut values) in pragmas {
             values.sort();
@@ -423,7 +423,7 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
                 s.print_attribute(&attr)?;
             }
         }
-        
+
         if t.tcfg.cross_checks {
             let mut xcheck_plugin_args: Vec<NestedMetaItem> = vec![];
             for config_file in &t.tcfg.cross_check_configs {
@@ -444,7 +444,7 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
                 s.print_attribute(&attr)?;
             }
         }
-        
+
         // Add `extern crate libc` to the top of the file
         s.print_item(&mk().extern_crate_item("libc", None))?;
         if t.tcfg.cross_checks {
@@ -560,7 +560,7 @@ impl Translation {
     }
 
     fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
-        use c_ast::UnOp::Negate;
+        use c_ast::UnOp::{AddressOf, Negate};
         use c_ast::CastKind::PointerToIntegral;
         use c_ast::BinOp::{Add, Subtract, Multiply, Divide, Modulus};
 
@@ -593,6 +593,13 @@ impl Translation {
 
                     if problematic_op && self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
                         return true;
+                    }
+                },
+                CExprKind::Unary(_, AddressOf, expr_id) => {
+                    if let CExprKind::Member(_, expr_id, _, _) = self.ast_context[expr_id].kind {
+                        if let CExprKind::DeclRef(_, _) = self.ast_context[expr_id].kind {
+                            return true;
+                        }
                     }
                 },
                 _ => {},
@@ -1060,7 +1067,7 @@ impl Translation {
 
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
-                if self.static_initializer_is_uncompilable(initializer) {
+                if is_static && self.static_initializer_is_uncompilable(initializer) {
                     let comment = String::from("// Initialized in run_static_initializers");
                     // REVIEW: We might want to add the comment to the original span comments
                     s = self.comment_store.borrow_mut().add_comment_lines(vec![comment]);
@@ -1088,6 +1095,16 @@ impl Translation {
                 init.stmts.push(mk().expr_stmt(init.val));
                 let init = mk().unsafe_().block(init.stmts);
                 let mut init = mk().block_expr(init);
+
+                // Collect problematic static initializers and offload them to sections for the linker
+                // to initialize for us
+                if self.static_initializer_is_uncompilable(initializer) {
+                    let comment = String::from("// Initialized in run_static_initializers");
+                    // REVIEW: We might want to add the comment to the original span comments
+                    s = self.comment_store.borrow_mut().add_comment_lines(vec![comment]);
+
+                    self.add_static_initializer_to_section(new_name, typ, &mut init)?;
+                }
 
                 // Force mutability due to the potential for raw pointers occurring in the type
                 // and because we're assigning to these variables in the external initializer
