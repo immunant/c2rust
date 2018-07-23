@@ -1,4 +1,4 @@
-use std::collections::{HashMap,HashSet};
+use std::collections::{HashMap,HashSet,BTreeMap};
 use indexmap::IndexMap;
 use std::ops::Index;
 
@@ -422,15 +422,15 @@ impl CommentContext {
         stmts.iter_mut().for_each(|(_, v)| v.sort());
 
 
-        let mut decl_comments: HashMap<CDeclId, Vec<String>> = HashMap::new();
-        let mut stmt_comments: HashMap<CStmtId, Vec<String>> = HashMap::new();
+        let mut decl_comments_map: HashMap<CDeclId, BTreeMap<SrcLoc, String>> = HashMap::new();
+        let mut stmt_comments_map: HashMap<CStmtId, BTreeMap<SrcLoc, String>> = HashMap::new();
 
         let empty_vec1 = &vec![];
         let empty_vec2 = &vec![];
 
 
         // Match comments to declarations and statements
-        while let Some(Located { loc, kind: comment_str }) = ast_context.comments.pop() {
+        while let Some(Located { loc, kind: str }) = ast_context.comments.pop() {
             if let Some(loc) = loc {
                 let this_file_decls = decls.get(&loc.fileid).unwrap_or(empty_vec1);
                 let this_file_stmts = stmts.get(&loc.fileid).unwrap_or(empty_vec2);
@@ -447,23 +447,33 @@ impl CommentContext {
                 match (this_file_decls.get(decl_ix), this_file_stmts.get(stmt_ix)) {
                     (Some(&(l1, d)), Some(&(l2, s))) => {
                         if l1 > l2 {
-                            stmt_comments.entry(s).or_insert(vec![]).push(comment_str);
+                            stmt_comments_map.entry(s).or_insert(BTreeMap::new()).insert(loc, str);
                         } else {
-                            decl_comments.entry(d).or_insert(vec![]).push(comment_str);
+                            decl_comments_map.entry(d).or_insert(BTreeMap::new()).insert(loc, str);
                         }
                     }
                     (Some(&(_, d)), None) => {
-                        decl_comments.entry(d).or_insert(vec![]).push(comment_str);
+                        decl_comments_map.entry(d).or_insert(BTreeMap::new()).insert(loc, str);
                     }
                     (None, Some(&(_, s))) => {
-                        stmt_comments.entry(s).or_insert(vec![]).push(comment_str);
+                        stmt_comments_map.entry(s).or_insert(BTreeMap::new()).insert(loc, str);
                     }
                     (None, None) => {
-                        eprintln!("Didn't find a target node for the comment '{}'", comment_str);
+                        eprintln!("Didn't find a target node for the comment '{}'", str);
                     },
                 };
             }
         }
+
+        // Flatten out the nested comment maps
+        let decl_comments = decl_comments_map
+          .into_iter()
+          .map(|(decl_id, map)| (decl_id, map.into_iter().map(|(_, v)| v).collect()))
+          .collect();
+        let stmt_comments = stmt_comments_map
+          .into_iter()
+          .map(|(decl_id, map)| (decl_id, map.into_iter().map(|(_, v)| v).collect()))
+          .collect();
 
         CommentContext { decl_comments, stmt_comments }
     }

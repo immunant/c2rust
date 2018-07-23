@@ -65,7 +65,7 @@ class Config:
     BEAR_PREFIX += HOST_SUFFIX
     BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
 
-    LLVM_VER = "6.0.0"
+    LLVM_VER = "6.0.1"
     # make the build directory unique to the hostname such that
     # building inside a vagrant/docker environment uses a different
     # folder than building directly on the host.
@@ -75,7 +75,8 @@ class Config:
         'http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz',
     ]
     # See http://releases.llvm.org/download.html#6.0.0
-    LLVM_PUBKEY = os.path.join(ROOT_DIR, "scripts/llvm-6.0.0-key.asc")
+    LLVM_PUBKEY = "scripts/llvm-{ver}-key.asc".format(ver=LLVM_VER)
+    LLVM_PUBKEY = os.path.join(ROOT_DIR, LLVM_PUBKEY)
     LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
     LLVM_BLD = os.path.join(DEPS_DIR,
                             'llvm-{ver}/build.'.format(ver=LLVM_VER))
