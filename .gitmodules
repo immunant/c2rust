@@ -25,3 +25,6 @@
 [submodule "examples/libxml2/repo"]
 	path = examples/libxml2/repo
 	url = git@github.com:immunant/libxml2-rs.git
+[submodule "examples/tmux/repo"]
+	path = examples/tmux/repo
+	url = git@github.com:immunant/tmux-rs.git
