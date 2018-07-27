@@ -1351,7 +1351,7 @@ impl Translation {
             },
 
             CStmtKind::Expr(expr) =>
-                Ok(self.convert_expr(ExprUse::Unused, expr, false)?.stmts),
+                Ok(self.convert_expr(ExprUse::Unused, expr, false, true)?.stmts),
 
             CStmtKind::Break => {
                 let mut loop_ = self.loops.current_loop_mut();
@@ -1423,7 +1423,7 @@ impl Translation {
             for &AsmOperand { ref constraints, expression } in list {
                 if first { first = false } else { tokens.push(Token::Comma) }
 
-                let mut result = self.convert_expr(ExprUse::LValue, expression, false)?;
+                let mut result = self.convert_expr(ExprUse::LValue, expression, false, true)?;
                 stmts.append(&mut result.stmts);
 
                 push_expr(&mut tokens, mk().lit_expr(mk().str_lit(constraints)));
@@ -1459,7 +1459,7 @@ impl Translation {
 
         let null_pointer_case =
             |negated: bool, ptr: CExprId| -> Result<WithStmts<P<Expr>>, String> {
-                    let val = self.convert_expr(ExprUse::RValue, ptr, is_static)?;
+                    let val = self.convert_expr(ExprUse::RValue, ptr, is_static, true)?;
                     let ptr_type = self.ast_context[ptr].kind.get_type().ok_or_else(|| format!("bad pointer type for condition"))?;
                     Ok(val.map(|e| {
                         if self.ast_context.is_function_pointer(ptr_type) {
@@ -1505,7 +1505,7 @@ impl Translation {
             }
 
             _ => {
-                let val = self.convert_expr(ExprUse::RValue, cond_id, is_static)?;
+                let val = self.convert_expr(ExprUse::RValue, cond_id, is_static, true)?;
                 Ok(val.map(|e| self.match_bool(target, ty_id, e)))
             }
         }
@@ -1571,7 +1571,7 @@ impl Translation {
             };
 
             let mut inc = match inc_id {
-                Some(i) => self.convert_expr(ExprUse::Unused, i, false)?.stmts,
+                Some(i) => self.convert_expr(ExprUse::Unused, i, false, true)?.stmts,
                 None => vec![],
             };
 
@@ -1629,7 +1629,7 @@ impl Translation {
     fn convert_return_stmt(&self, span: Span, result_id: Option<CExprId>) -> Result<Vec<Stmt>, String> {
         let val: Option<WithStmts<P<Expr>>> =
             sequence_option(result_id
-                .map(|i| self.convert_expr(ExprUse::RValue, i, false))
+                .map(|i| self.convert_expr(ExprUse::RValue, i, false, true))
             )?;
         let mut ws = with_stmts_opt(val);
         let ret = mk().span(span).expr_stmt(mk().return_expr(ws.val));
@@ -1813,7 +1813,7 @@ impl Translation {
         is_static: bool,
     ) -> Result<(P<Ty>, Mutability, Result<WithStmts<P<Expr>>,String>), String> {
         let init = match initializer {
-            Some(x) => self.convert_expr(ExprUse::RValue, x, is_static),
+            Some(x) => self.convert_expr(ExprUse::RValue, x, is_static, true),
             None => self.implicit_default_expr(typ.ctype, is_static).map(WithStmts::new),
         };
 
@@ -2001,7 +2001,7 @@ impl Translation {
                     type_id = elt;
 
                     // Convert this expression
-                    let mut expr = self.convert_expr(ExprUse::RValue, expr_id, false)?;
+                    let mut expr = self.convert_expr(ExprUse::RValue, expr_id, false, true)?;
                     stmts.append(&mut expr.stmts);
                     let name = self.renamer.borrow_mut().insert(CDeclId(expr_id.0), "vla").unwrap(); // try using declref name?
                     // TODO: store the name corresponding to expr_id
@@ -2026,7 +2026,7 @@ impl Translation {
             let len = len.expect("Sizeof a VLA type with count expression omitted");
 
             let mut elts = self.compute_size_of_type(elts)?;
-            let mut len = self.convert_expr(ExprUse::RValue, len, false)?;
+            let mut len = self.convert_expr(ExprUse::RValue, len, false, true)?;
 
             let mut stmts = elts.stmts;
             stmts.append(&mut len.stmts);
@@ -2079,7 +2079,7 @@ impl Translation {
     /// In the case that `use_` is `ExprUse::Unused`, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
-    pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
+    pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool, decay_ref: bool) -> Result<WithStmts<P<Expr>>, String> {
         match self.ast_context[expr_id].kind {
             CExprKind::DesignatedInitExpr(..) => Err(format!("Unexpected designated init expr")),
             CExprKind::BadExpr => Err(format!("convert_expr: expression kind not supported")),
@@ -2222,19 +2222,19 @@ impl Translation {
             }
 
             CExprKind::ImplicitCast(ty, expr, kind, opt_field_id) =>
-                self.convert_cast(use_, ty, expr, kind, opt_field_id, false, is_static),
+                self.convert_cast(use_, ty, expr, kind, opt_field_id, false, is_static, decay_ref),
 
             CExprKind::ExplicitCast(ty, expr, kind, opt_field_id) =>
-                self.convert_cast(use_, ty, expr, kind, opt_field_id, true, is_static),
+                self.convert_cast(use_, ty, expr, kind, opt_field_id, true, is_static, decay_ref),
 
             CExprKind::Unary(type_id, op, arg) =>
-                self.convert_unary_operator(use_, op, type_id, arg, is_static),
+                self.convert_unary_operator(use_, op, type_id, arg, is_static, decay_ref),
 
             CExprKind::Conditional(_, cond, lhs, rhs) => {
                 let cond = self.convert_condition(true, cond, is_static)?;
 
-                let lhs = self.convert_expr(use_, lhs, is_static)?;
-                let rhs = self.convert_expr(use_, rhs, is_static)?;
+                let lhs = self.convert_expr(use_, lhs, is_static, decay_ref)?;
+                let rhs = self.convert_expr(use_, rhs, is_static, decay_ref)?;
 
                 if use_ == ExprUse::Unused {
                     let then: P<Block> = mk().block(lhs.stmts);
@@ -2260,7 +2260,7 @@ impl Translation {
                         mk().semi_stmt(
                             mk().ifte_expr(lhs.val,
                                            mk().block(self.convert_expr(ExprUse::Unused,
-                                                                        rhs, is_static)?.stmts),
+                                                                        rhs, is_static, decay_ref)?.stmts),
                                            None as Option<P<Expr>>)));
                     Ok(WithStmts {
                         stmts: lhs.stmts,
@@ -2271,7 +2271,7 @@ impl Translation {
                         let cond = self.match_bool(true, ty.ctype, lhs_val.clone());
                         let ite = mk().ifte_expr(cond,
                                        mk().block(vec![mk().expr_stmt(lhs_val)]),
-                                       Some(self.convert_expr(use_, rhs, is_static)?.to_expr()));
+                                       Some(self.convert_expr(use_, rhs, is_static, decay_ref)?.to_expr()));
                         Ok(ite)
                     })
                 }
@@ -2282,8 +2282,8 @@ impl Translation {
                     c_ast::BinOp::Comma => {
 
                         // The value of the LHS of a comma expression is always discarded
-                        let lhs = self.convert_expr(ExprUse::Unused, lhs, is_static)?;
-                        let rhs = self.convert_expr(use_, rhs, is_static)?;
+                        let lhs = self.convert_expr(ExprUse::Unused, lhs, is_static, decay_ref)?;
+                        let rhs = self.convert_expr(use_, rhs, is_static, decay_ref)?;
 
                         Ok(WithStmts {
                             stmts: lhs.stmts.into_iter().chain(rhs.stmts).collect(),
@@ -2325,8 +2325,8 @@ impl Translation {
                         let lhs_type = self.ast_context.index(lhs).kind.get_qual_type().ok_or_else(|| format!("bad lhs type"))?;
                         let rhs_type = self.ast_context.index(rhs).kind.get_qual_type().ok_or_else(|| format!("bad rhs type"))?;
 
-                        let WithStmts { val: lhs, stmts: lhs_stmts } = self.convert_expr(ExprUse::RValue, lhs, is_static)?;
-                        let WithStmts { val: rhs, stmts: rhs_stmts } = self.convert_expr(ExprUse::RValue, rhs, is_static)?;
+                        let WithStmts { val: lhs, stmts: lhs_stmts } = self.convert_expr(ExprUse::RValue, lhs, is_static, decay_ref)?;
+                        let WithStmts { val: rhs, stmts: rhs_stmts } = self.convert_expr(ExprUse::RValue, rhs, is_static, decay_ref)?;
 
                         let mut stmts = vec![];
                         stmts.extend(lhs_stmts);
@@ -2352,7 +2352,7 @@ impl Translation {
 
                 let mut stmts = vec![];
 
-                let mut rhs = self.convert_expr(ExprUse::RValue, *rhs, is_static)?;
+                let mut rhs = self.convert_expr(ExprUse::RValue, *rhs, is_static, decay_ref)?;
                 stmts.extend(rhs.stmts);
 
                 let simple_index_array =
@@ -2381,7 +2381,7 @@ impl Translation {
                         ref other => panic!("Unexpected array type {:?}", other),
                     };
 
-                    let lhs = self.convert_expr(use_, arr, is_static)?;
+                    let lhs = self.convert_expr(use_, arr, is_static, decay_ref)?;
                     stmts.extend(lhs.stmts);
 
                     // Don't dereference the offset if we're still within the variable portion
@@ -2395,7 +2395,7 @@ impl Translation {
                     }
                 } else {
 
-                    let lhs = self.convert_expr(ExprUse::RValue, *lhs, is_static)?;
+                    let lhs = self.convert_expr(ExprUse::RValue, *lhs, is_static, decay_ref)?;
                     stmts.extend(lhs.stmts);
 
                     let lhs_type_id = lhs_node.get_type().ok_or_else(|| format!("bad lhs type"))?;
@@ -2421,19 +2421,19 @@ impl Translation {
             CExprKind::Call(_, func, ref args) => {
                 let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _) =>
-                        self.convert_expr(ExprUse::RValue, fexp, is_static)?,
+                        self.convert_expr(ExprUse::RValue, fexp, is_static, decay_ref)?,
 
                     CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _) =>
                         return self.convert_builtin(fexp, args, is_static),
 
                     _ =>
-                        self.convert_expr(ExprUse::RValue, func, is_static)?.map(|x|
-                            unwrap_function_pointer(x)),
+                        self.convert_expr(ExprUse::RValue, func, is_static, decay_ref)?
+                            .map(unwrap_function_pointer),
                 };
 
                 let mut args_new: Vec<P<Expr>> = vec![];
                 for arg in args {
-                    let WithStmts { stmts: ss, val } = self.convert_expr(ExprUse::RValue, *arg, is_static)?;
+                    let WithStmts { stmts: ss, val } = self.convert_expr(ExprUse::RValue, *arg, is_static, false)?;
                     stmts.extend(ss);
                     args_new.push(val);
                 }
@@ -2455,21 +2455,21 @@ impl Translation {
             CExprKind::Member(_, expr, decl, kind) => {
 
                 if use_ == ExprUse::Unused {
-                    self.convert_expr(use_, expr, is_static)
+                    self.convert_expr(use_, expr, is_static, decay_ref)
                 } else {
                     let field_name = self.type_converter.borrow().resolve_field_name(None, decl).unwrap();
                     match kind {
                         MemberKind::Dot => {
-                            let val = self.convert_expr(use_, expr, is_static)?;
+                            let val = self.convert_expr(use_, expr, is_static, decay_ref)?;
                             Ok(val.map(|v| mk().field_expr(v, field_name)))
                         }
                         MemberKind::Arrow => {
                             if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id)
                             = self.ast_context[expr].kind {
-                                let val = self.convert_expr(use_, subexpr_id, is_static)?;
+                                let val = self.convert_expr(use_, subexpr_id, is_static, decay_ref)?;
                                 Ok(val.map(|v| mk().field_expr(v, field_name)))
                             } else {
-                                let val = self.convert_expr(use_, expr, is_static)?;
+                                let val = self.convert_expr(use_, expr, is_static, decay_ref)?;
                                 Ok(val.map(|v| mk().field_expr(mk().unary_expr(ast::UnOp::Deref, v), field_name)))
                             }
                         }
@@ -2478,7 +2478,7 @@ impl Translation {
             }
 
             CExprKind::CompoundLiteral(_, val) =>
-                self.convert_expr(use_, val, is_static),
+                self.convert_expr(use_, val, is_static, decay_ref),
 
             CExprKind::InitList(ty, ref ids, opt_union_field_id, _) => {
 
@@ -2502,13 +2502,13 @@ impl Translation {
                         let mut stmts: Vec<Stmt> = vec![];
                         let val: P<Expr> = if is_string {
                             let v = ids.first().unwrap();
-                            let mut x = self.convert_expr(ExprUse::RValue, *v, is_static)?;
+                            let mut x = self.convert_expr(ExprUse::RValue, *v, is_static, decay_ref)?;
                             stmts.append(&mut x.stmts);
                             x.val
                         } else  {
                             let mut vals: Vec<P<Expr>> = vec![];
                             for v in ids {
-                                let mut x = self.convert_expr(ExprUse::RValue, *v, is_static)?;
+                                let mut x = self.convert_expr(ExprUse::RValue, *v, is_static, decay_ref)?;
                                 stmts.append(&mut x.stmts);
                                 vals.push(x.val);
                             }
@@ -2529,7 +2529,7 @@ impl Translation {
                     }
                     CTypeKind::Pointer(_) => {
                         let id = ids.first().unwrap();
-                        let mut x = self.convert_expr(ExprUse::RValue, *id, is_static);
+                        let mut x = self.convert_expr(ExprUse::RValue, *id, is_static, decay_ref);
                         Ok(x.unwrap())
                     }
                     ref t => {
@@ -2541,7 +2541,7 @@ impl Translation {
                 Ok(WithStmts::new(self.implicit_default_expr(ty.ctype, is_static)?)),
 
             CExprKind::Predefined(_, val_id) =>
-                self.convert_expr(use_, val_id, is_static),
+                self.convert_expr(use_, val_id, is_static, decay_ref),
 
             CExprKind::Statements(_, compound_stmt_id) =>
                 self.convert_statement_expression(use_, compound_stmt_id, is_static),
@@ -2549,7 +2549,7 @@ impl Translation {
             CExprKind::VAArg(ty, val_id) => {
                 if self.tcfg.translate_valist {
                     // https://github.com/rust-lang/rust/pull/49878/files
-                    let val = self.convert_expr(ExprUse::RValue, val_id, is_static)?;
+                    let val = self.convert_expr(ExprUse::RValue, val_id, is_static, decay_ref)?;
                     let ty = self.convert_type(ty.ctype)?;
 
                     Ok(val.map(|va| {
@@ -2599,36 +2599,36 @@ impl Translation {
             "__builtin_nan" =>
                 Ok(WithStmts::new(mk().path_expr(vec!["","std","f64","NAN"]))),
             "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
-                let val = self.convert_expr(ExprUse::RValue, args[0], is_static)?;
+                let val = self.convert_expr(ExprUse::RValue, args[0], is_static, true)?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "leading_zeros", vec![] as Vec<P<Expr>>);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
             "__builtin_ctz" | "__builtin_ctzl" | "__builtin_ctzll" => {
-                let val = self.convert_expr(ExprUse::RValue, args[0], is_static)?;
+                let val = self.convert_expr(ExprUse::RValue, args[0], is_static, true)?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "trailing_zeros", vec![] as Vec<P<Expr>>);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
             "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
-                let val = self.convert_expr(ExprUse::RValue, args[0], is_static)?;
+                let val = self.convert_expr(ExprUse::RValue, args[0], is_static, true)?;
                 Ok(val.map(|x|
                     mk().method_call_expr(x, "swap_bytes", vec![] as Vec<P<Expr>>)
                 ))
             }
             "__builtin_fabs" | "__builtin_fabsf" | "__builtin_fabsl" => {
-                let val = self.convert_expr(ExprUse::RValue, args[0], is_static)?;
+                let val = self.convert_expr(ExprUse::RValue, args[0], is_static, true)?;
                 Ok(val.map(|x|
                     mk().method_call_expr(x, "abs", vec![] as Vec<P<Expr>>)
                 ))
             }
             "__builtin_expect" =>
-                self.convert_expr(ExprUse::RValue, args[0], is_static),
+                self.convert_expr(ExprUse::RValue, args[0], is_static, true),
 
             "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
-                let val = self.convert_expr(ExprUse::RValue, args[0], is_static)?;
+                let val = self.convert_expr(ExprUse::RValue, args[0], is_static, true)?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "count_ones", vec![] as Vec<P<Expr>>);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
@@ -2639,7 +2639,7 @@ impl Translation {
             // it includes side effects but no other code is generated and GCC does not issue a warning.
             // void __builtin_prefetch (const void *addr, ...);
             "__builtin_prefetch" => {
-                self.convert_expr(ExprUse::Unused, args[0], is_static)
+                self.convert_expr(ExprUse::Unused, args[0], is_static, true)
             }
 
             "__builtin_va_start" =>
@@ -2714,7 +2714,7 @@ impl Translation {
                         stmts.append(&mut self.convert_stmt(substmt_id)?);
                     }
 
-                    let mut result = self.convert_expr(use_, expr_id, is_static)?;
+                    let mut result = self.convert_expr(use_, expr_id, is_static, true)?;
                     stmts.append(&mut result.stmts);
                     Ok(WithStmts { stmts, val: result.val })
 
@@ -2740,16 +2740,21 @@ impl Translation {
         opt_field_id: Option<CFieldId>,
         is_explicit: bool,
         is_static: bool,
+        mut decay_ref: bool,
     ) -> Result<WithStmts<P<Expr>>, String> {
+        // A reference must be decayed if a bitcast is required
+        if kind == CastKind::BitCast {
+            decay_ref = true;
+        }
 
         let val = if is_explicit {
             let mut stmts = self.compute_variable_array_sizes(ty.ctype)?;
-            let mut val = self.convert_expr(use_, expr, is_static)?;
+            let mut val = self.convert_expr(use_, expr, is_static, decay_ref)?;
             stmts.append(&mut val.stmts);
             val.stmts = stmts;
             val
         } else {
-            self.convert_expr(use_, expr, is_static)?
+            self.convert_expr(use_, expr, is_static, decay_ref)?
         };
 
         match kind {
@@ -3046,7 +3051,7 @@ impl Translation {
                                 val: self.implicit_default_expr(field_ty.ctype, is_static)?,
                             }
                         } else {
-                            self.convert_expr(ExprUse::RValue, ids[0], is_static)?
+                            self.convert_expr(ExprUse::RValue, ids[0], is_static, true)?
                         };
 
                         Ok(val.map(|v| {
@@ -3099,7 +3104,7 @@ impl Translation {
             let v = ids[i];
             let &(ref field_name, _) = &field_decls[i];
 
-            let mut x = self.convert_expr(ExprUse::RValue, v, is_static)?;
+            let mut x = self.convert_expr(ExprUse::RValue, v, is_static, true)?;
             stmts.append(&mut x.stmts);
             fields.push(mk().field(field_name, x.val));
         }
@@ -3270,7 +3275,7 @@ impl Translation {
         let WithStmts {
             val: reference,
             mut stmts,
-        } = self.convert_expr(ExprUse::LValue, reference, false)?;
+        } = self.convert_expr(ExprUse::LValue, reference, false, true)?;
 
         /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
         fn is_lvalue(e: &Expr) -> bool {
@@ -3402,6 +3407,7 @@ impl Translation {
         cqual_type: CQualTypeId,
         arg: CExprId,
         is_static: bool,
+        decay_ref: bool,
     ) -> Result<WithStmts<P<Expr>>, String> {
         let CQualTypeId { ctype, .. } = cqual_type;
         let ty = self.convert_type(ctype)?;
@@ -3412,13 +3418,13 @@ impl Translation {
 
                 // C99 6.5.3.2 para 4
                 if let CExprKind::Unary(_, c_ast::UnOp::Deref, target) = self.ast_context[arg].kind {
-                    return self.convert_expr(use_, target, is_static)
+                    return self.convert_expr(use_, target, is_static, true)
                 }
 
                 // In this translation, there are only pointers to functions and
                 // & becomes a no-op when applied to a function.
 
-                let arg = self.convert_expr(ExprUse::LValue, arg, is_static)?;
+                let arg = self.convert_expr(ExprUse::LValue, arg, is_static, true)?;
 
                 if self.ast_context.is_function_pointer(ctype) {
                     Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
@@ -3440,7 +3446,7 @@ impl Translation {
                         if is_static {
                             // static variable initializers aren't able to use &mut,
                             // so we work around that by using & and an extra cast
-                            // through &mut to *const to *mut
+                            // through & to *const to *mut
                             addr_of_arg = mk().addr_of_expr(a);
                             if mutbl == Mutability::Mutable {
                                 let mut qtype = pointee;
@@ -3451,6 +3457,11 @@ impl Translation {
                         } else {
                             // Normal case is allowed to use &mut if needed
                             addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
+
+                            // Avoid unnecessary reference to pointer decay in fn call args:
+                            if !decay_ref {
+                                return Ok(addr_of_arg);
+                            }
                         }
 
                         Ok(mk().cast_expr(addr_of_arg, ty))
@@ -3464,9 +3475,9 @@ impl Translation {
             c_ast::UnOp::Deref => {
 
                 if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, arg_) = self.ast_context[arg].kind {
-                    self.convert_expr(ExprUse::RValue, arg_, is_static)
+                    self.convert_expr(ExprUse::RValue, arg_, is_static, true)
                 } else {
-                    self.convert_expr(ExprUse::RValue, arg, is_static)?.result_map(|val: P<Expr>| {
+                    self.convert_expr(ExprUse::RValue, arg, is_static, true)?.result_map(|val: P<Expr>| {
                         if let CTypeKind::Function(..) = self.ast_context.resolve_type(ctype).kind {
                             Ok(unwrap_function_pointer(val))
                         } else if let Some(_vla) = self.compute_size_of_expr(ctype) {
@@ -3484,10 +3495,10 @@ impl Translation {
                     })
                 }
             },
-            c_ast::UnOp::Plus => self.convert_expr(ExprUse::RValue, arg, is_static), // promotion is explicit in the clang AST
+            c_ast::UnOp::Plus => self.convert_expr(ExprUse::RValue, arg, is_static, true), // promotion is explicit in the clang AST
 
             c_ast::UnOp::Negate => {
-                let val = self.convert_expr(ExprUse::RValue, arg, is_static)?;
+                let val = self.convert_expr(ExprUse::RValue, arg, is_static, true)?;
 
                 if resolved_ctype.kind.is_unsigned_integral_type() {
                     Ok(val.map(wrapping_neg_expr))
@@ -3496,7 +3507,7 @@ impl Translation {
                 }
             }
             c_ast::UnOp::Complement =>
-                Ok(self.convert_expr(ExprUse::RValue, arg, is_static)?
+                Ok(self.convert_expr(ExprUse::RValue, arg, is_static, true)?
                     .map(|a| mk().unary_expr(ast::UnOp::Not, a))),
 
             c_ast::UnOp::Not => {
@@ -3504,7 +3515,7 @@ impl Translation {
                 Ok(val.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc", "c_int"]))))
             },
             c_ast::UnOp::Extension => {
-                let arg = self.convert_expr(use_, arg, is_static)?;
+                let arg = self.convert_expr(use_, arg, is_static, true)?;
                 Ok(arg)
             },
             c_ast::UnOp::Real | c_ast::UnOp::Imag | c_ast::UnOp::Coawait =>
@@ -3558,7 +3569,7 @@ impl Translation {
     ) -> Result<WithStmts<P<Expr>>, String> {
 
         let rhs_type_id = self.ast_context.index(rhs).kind.get_qual_type().ok_or_else(|| format!("bad assignment rhs type"))?;
-        let rhs_translation = self.convert_expr(ExprUse::RValue, rhs, false)?;
+        let rhs_translation = self.convert_expr(ExprUse::RValue, rhs, false, true)?;
         self.convert_assignment_operator_with_rhs(use_, op, qtype, lhs, rhs_type_id, rhs_translation, compute_type, result_type)
     }
 

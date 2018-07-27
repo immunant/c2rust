@@ -760,7 +760,7 @@ impl CExprKind {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CastKind {
     BitCast,
     LValueToRValue,
@@ -991,7 +991,7 @@ pub struct AsmOperand {
 }
 
 /// Type qualifiers (6.7.3)
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub struct Qualifiers {
 
     /// The `const` qualifier, which marks lvalues as non-assignable.
@@ -1025,14 +1025,6 @@ impl Qualifiers {
             is_restrict: self.is_restrict || other.is_restrict,
             is_volatile: self.is_volatile || other.is_volatile,
         }
-    }
-}
-
-impl PartialEq for Qualifiers {
-    fn eq(&self, other: &Qualifiers) -> bool {
-        self.is_const == other.is_const &&
-        self.is_restrict == other.is_restrict &&
-        self.is_volatile == other.is_volatile
     }
 }
 
