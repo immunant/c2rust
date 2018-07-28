@@ -224,7 +224,9 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         t.ast_context.c_main = None;
     }
 
-    t.ast_context.simplify();
+    // Headers often pull in declarations that are unused;
+    // we simplify the translator output by omitting those.
+    t.ast_context.prune_unused_decls();
 
     enum Name<'a> {
         VarName(&'a str),

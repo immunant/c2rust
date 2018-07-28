@@ -200,7 +200,7 @@ impl TypedAstContext {
     }
 
 
-    pub fn simplify(&mut self) {
+    pub fn prune_unused_decls(&mut self) {
         // Set of declarations that should be preserved
         let mut live: HashSet<CDeclId> = HashSet::new();
 
@@ -379,12 +379,12 @@ impl TypedAstContext {
             }
         }
 
-        // Prune out any declaration that isn't considered live
+        // Prune any declaration that isn't considered live
         self.c_decls.retain(|&decl_id, _decl|
             live.contains(&decl_id)
         );
 
-        // Prune out top declarations that are not considered live
+        // Prune top declarations that are not considered live
         self.c_decls_top.retain(|x| live.contains(x));
     }
 }
