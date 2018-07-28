@@ -30,7 +30,7 @@ mod node_types {
 }
 
 type ClangId = u64;
-type NewId = u64;
+type ImporterId = u64;
 
 /// Correspondence between old/new IDs.
 ///
@@ -39,9 +39,9 @@ type NewId = u64;
 /// explicit), sometimes we need to collapse (such as inlining 'FieldDecl' into the 'StructDecl').
 #[derive(Debug)]
 pub struct IdMapper {
-    new_id_source: NewId,
-    old_to_new: HashMap<ClangId, NewId>,
-    new_to_old: HashMap<NewId, ClangId>,
+    new_id_source: ImporterId,
+    old_to_new: HashMap<ClangId, ImporterId>,
+    new_to_old: HashMap<ImporterId, ClangId>,
 }
 
 impl IdMapper {
@@ -54,18 +54,18 @@ impl IdMapper {
     }
 
     /// Create a fresh NEW_ID not corresponding to a CLANG_ID
-    fn fresh_id(&mut self) -> NewId {
+    fn fresh_id(&mut self) -> ImporterId {
         self.new_id_source += 1;
         self.new_id_source
     }
 
     /// Lookup the NEW_ID corresponding to a CLANG_ID
-    pub fn get_new(&mut self, old_id: ClangId) -> Option<NewId> {
+    pub fn get_new(&mut self, old_id: ClangId) -> Option<ImporterId> {
         self.old_to_new.get(&old_id).map(|o| *o)
     }
 
     /// Lookup (or create if not a found) a NEW_ID corresponding to a CLANG_ID
-    pub fn get_or_create_new(&mut self, old_id: ClangId) -> NewId {
+    pub fn get_or_create_new(&mut self, old_id: ClangId) -> ImporterId {
         match self.get_new(old_id) {
             Some(new_id) => new_id,
             None => {
@@ -78,13 +78,13 @@ impl IdMapper {
     }
 
     /// Lookup the CLANG_ID corresponding to a NEW_ID
-    pub fn get_old(&mut self, new_id: NewId) -> Option<ClangId> {
+    pub fn get_old(&mut self, new_id: ImporterId) -> Option<ClangId> {
         self.new_to_old.get(&new_id).map(|n| *n)
     }
 
     /// If the `old_id` is present in the mapper, make `other_old_id` map to the same value. Note
     /// that `other_old_id` should not already be in the mapper.
-    pub fn merge_old(&mut self, old_id: ClangId, other_old_id: ClangId) -> Option<NewId> {
+    pub fn merge_old(&mut self, old_id: ClangId, other_old_id: ClangId) -> Option<ImporterId> {
         self.get_new(old_id)
             .map(|new_id| {
                 let inserted = self.old_to_new.insert(other_old_id, new_id).is_some();
@@ -148,11 +148,11 @@ fn parse_cast_kind(kind: &str) -> CastKind {
 /// This stores the information needed to convert an `AstContext` into a `TypedAstContext`.
 pub struct ConversionContext {
 
-    /// Keeps track of the mapping between old and new IDs
+    /// Keeps track of the mapping between IDs used by clang (old) and the AST importer (new)
     pub id_mapper: IdMapper,
 
     /// Keep track of new nodes already processed and their types
-    processed_nodes: HashMap<NewId, NodeType>,
+    processed_nodes: HashMap<ImporterId, NodeType>,
 
     /// Stack of nodes to visit, and the types we expect to see out of them
     visit_as: Vec<(ClangId, NodeType)>,
@@ -184,7 +184,7 @@ impl ConversionContext {
     /// Records the fact that we will need to visit a Clang node and the type we want it to have.
     ///
     /// Returns the new ID that identifies this new node.
-    fn visit_node_type(&mut self, node_id: ClangId, node_ty: NodeType) -> NewId {
+    fn visit_node_type(&mut self, node_id: ClangId, node_ty: NodeType) -> ImporterId {
 
         // Type node IDs have extra information on them
         let node_id = if node_ty & node_types::TYPE != 0 {
@@ -233,22 +233,22 @@ impl ConversionContext {
     }
 
     /// Add a `CType`node into the `TypedAstContext`
-    fn add_type(&mut self, id: NewId, typ: CType) -> () {
+    fn add_type(&mut self, id: ImporterId, typ: CType) -> () {
         self.typed_context.c_types.insert(CTypeId(id), typ);
     }
 
     /// Add a `CStmt` node into the `TypedAstContext`
-    fn add_stmt(&mut self, id: NewId, stmt: CStmt) -> () {
+    fn add_stmt(&mut self, id: ImporterId, stmt: CStmt) -> () {
         self.typed_context.c_stmts.insert(CStmtId(id), stmt);
     }
 
     /// Add a `CExpr` node into the `TypedAstContext`
-    fn add_expr(&mut self, id: NewId, expr: CExpr) -> () {
+    fn add_expr(&mut self, id: ImporterId, expr: CExpr) -> () {
         self.typed_context.c_exprs.insert(CExprId(id), expr);
     }
 
     /// Add a `CDecl` node into the `TypedAstContext`
-    fn add_decl(&mut self, id: NewId, decl: CDecl) -> () {
+    fn add_decl(&mut self, id: ImporterId, decl: CDecl) -> () {
         self.typed_context.c_decls.insert(CDeclId(id), decl);
     }
 
@@ -258,7 +258,7 @@ impl ConversionContext {
     fn expr_possibly_as_stmt(
         &mut self,
         expected_ty: NodeType, // Should be one of `EXPR` or `STMT`
-        new_id: NewId,
+        new_id: ImporterId,
         node: &AstNode,
         expr: CExprKind,
     ) -> () {
@@ -329,7 +329,7 @@ impl ConversionContext {
         &mut self,
         untyped_context: &AstContext,
         node_id: ClangId,                 // Clang ID of node to visit
-        new_id: NewId,                    // New ID of node to visit
+        new_id: ImporterId,                    // New ID of node to visit
         expected_ty: NodeType             // Expected type of node to visit
     ) -> () {
         use self::node_types::*;
