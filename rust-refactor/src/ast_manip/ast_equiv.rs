@@ -1,6 +1,7 @@
 //! `AstEquiv` trait for checking equivalence of two ASTs.
 use std::rc::Rc;
-use syntax::abi::Abi;
+// use syntax::abi::Abi;
+use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::codemap::{Span, Spanned};
 use syntax::ext::hygiene::SyntaxContext;

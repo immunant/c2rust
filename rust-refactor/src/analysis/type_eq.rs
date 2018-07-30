@@ -37,7 +37,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use arena::DroplessArena;
+use arena::SyncDroplessArena;
 use ena::unify::{UnificationTable, UnifyKey};
 use rustc::hir;
 use rustc::hir::*;
@@ -47,7 +47,8 @@ use rustc::hir::itemlikevisit::ItemLikeVisitor;
 use rustc::hir::map::Node::*;
 use rustc::ty::{self, TyCtxt, TypeckTables};
 use rustc::ty::adjustment::Adjust;
-use syntax::abi::Abi;
+// use syntax::abi::Abi;
+use rustc_target::spec::abi::Abi;
 use syntax::ast;
 use syntax::ast::NodeId;
 use syntax::codemap::Span;
@@ -102,7 +103,7 @@ struct LTyTable<'tcx> {
 }
 
 impl<'tcx> LTyTable<'tcx> {
-    fn new(arena: &'tcx DroplessArena) -> LTyTable<'tcx> {
+    fn new(arena: &'tcx SyncDroplessArena) -> LTyTable<'tcx> {
         LTyTable {
             unif: RefCell::new(UnificationTable::new()),
             lcx: LabeledTyCtxt::new(arena),
@@ -295,7 +296,7 @@ impl<'a, 'tcx> type_map::TypeSource for LabelTysSource<'a, 'tcx> {
 
     fn fn_sig(&mut self, did: DefId) -> Option<LFnSig<'tcx>> {
         let sig = self.tcx.fn_sig(did);
-        Some(self.ltt.label_sig(sig.0))
+        Some(self.ltt.label_sig(*sig.skip_binder()))
     }
 
     fn closure_sig(&mut self, did: DefId) -> Option<LFnSig<'tcx>> {
@@ -354,7 +355,7 @@ fn prim_tys<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
 
     map.insert("bool", ltt.label(tcx.mk_bool()));
     map.insert("()", ltt.label(tcx.mk_nil()));
-    map.insert("usize", ltt.label(tcx.mk_mach_uint(ast::UintTy::Us)));
+    map.insert("usize", ltt.label(tcx.mk_mach_uint(ast::UintTy::Usize)));
 
     map
 }
@@ -454,15 +455,15 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
 
     fn compute_def_sig(&self, id: DefId) -> LFnSig<'tcx> {
         let sig = self.tcx.fn_sig(id);
-        let is_extern = match sig.0.abi {
+        let is_extern = match sig.skip_binder().abi {
             Abi::Rust | Abi::RustIntrinsic | Abi::RustCall => false,
             _ => true,
         };
 
         if !is_extern {
-            self.ltt.label_sig(sig.0)
+            self.ltt.label_sig(*sig.skip_binder())
         } else {
-            self.ltt.non_unifiable_sig(sig.0)
+            self.ltt.non_unifiable_sig(*sig.skip_binder())
         }
     }
 
@@ -527,7 +528,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
                 self.def_sig(id).variadic
             },
             TyFnPtr(ty_sig) => {
-                ty_sig.0.variadic
+                ty_sig.skip_binder().variadic
             },
             // TODO: TyClosure
             _ => panic!("fn_is_variadic: not a fn type"),
@@ -558,9 +559,9 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
             ty::TypeVariants::TyAdt(ref adt, _) => adt,
             _ => panic!("field_lty: not a struct ty: {:?}", struct_ty),
         };
-        let variant = adt.struct_variant();
+        let variant = adt.non_enum_variant();
         for field in &variant.fields {
-            if field.name == name {
+            if field.ident.name == name {
                 let base = self.def_lty(field.did);
                 return self.ltt.subst(base, &struct_ty.args);
             }
@@ -703,7 +704,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
 
             ExprClosure(..) => {}, // TODO
 
-            ExprBlock(ref b) => {
+            ExprBlock(ref b, _) => {
                 self.ltt.unify(rty, self.block_lty(b));
             },
 
@@ -714,11 +715,9 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
 
             ExprAssignOp(..) => {}, // TODO
 
-            ExprField(ref e, ref field) => {
-                self.ltt.unify(rty, self.field_lty(self.expr_lty(e), field.node));
+            ExprField(ref e, ref field) => { // TODO: tuples
+                self.ltt.unify(rty, self.field_lty(self.expr_lty(e), field.name));
             },
-
-            ExprTupField(ref _e, ref _idx) => {}, // TODO
 
             ExprIndex(ref _arr, ref _idx) => {}, // TODO
 
@@ -759,7 +758,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
 
             ExprStruct(_, ref fields, ref base) => {
                 for field in fields {
-                    self.ltt.unify(self.field_lty(rty, field.name.node),
+                    self.ltt.unify(self.field_lty(rty, field.ident.name),
                                    self.expr_lty(&field.expr));
                 }
 
@@ -958,7 +957,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
 /// Run the analysis, producing a map from `ast::Ty` `NodeId`s to an equivalence class number.
 pub fn analyze<'a, 'tcx>(hir_map: &hir::map::Map<'tcx>,
                          tcx: TyCtxt<'a, 'tcx, 'tcx>,
-                         tcx_arena: &'tcx DroplessArena,
+                         tcx_arena: &'tcx SyncDroplessArena,
                          krate: &ast::Crate) -> HashMap<NodeId, u32> {
     let ltt = LTyTable::new(tcx_arena);
 

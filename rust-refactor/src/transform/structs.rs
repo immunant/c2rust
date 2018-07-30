@@ -128,7 +128,7 @@ impl Transform for Rename {
 
         let krate = fold_resolved_paths(krate, cx, |qself, mut path, def_id| {
             if def_id == target_def_id {
-                path.segments.last_mut().unwrap().identifier = new_ident;
+                path.segments.last_mut().unwrap().ident = new_ident;
             }
             (qself, path)
         });

@@ -55,7 +55,7 @@ impl Transform for RenameRegex {
 
         let krate = fold_resolved_paths(krate, cx, |qself, mut path, def_id| {
             if let Some(new_ident) = new_idents.get(&def_id) {
-                path.segments.last_mut().unwrap().identifier = new_ident.clone();
+                path.segments.last_mut().unwrap().ident = new_ident.clone();
             }
             (qself, path)
         });

@@ -24,5 +24,5 @@ export refactor='../../target/debug/idiomize  -r alongside'
 export rustflags="-L $rust_dir/lib/rustlib/$triple/lib"
 
 ( cd $1; ./run.sh; )
-$rustfmt --force $1/old.rs.new
-diff -wB $1/new.rs $1/old.rs.new
+$rustfmt $1/old.new
+diff -wB $1/new.rs $1/old.new

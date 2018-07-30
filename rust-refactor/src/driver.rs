@@ -3,7 +3,6 @@
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use arena::DroplessArena;
 use rustc::hir::map as hir_map;
 use rustc::ty::{TyCtxt, AllArenas};
 use rustc::session::{self, Session};
@@ -13,16 +12,16 @@ use rustc_driver::driver::{self, build_output_filenames, CompileController};
 use rustc_errors::DiagnosticBuilder;
 use rustc_metadata::cstore::CStore;
 use rustc_resolve::MakeGlobMap;
-use rustc_trans;
-use rustc_trans::back::link;
-use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem};
+use rustc_codegen_utils::link;
+use rustc_codegen_utils::codegen_backend::CodegenBackend;
+use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ItemKind};
 use syntax::codemap::CodeMap;
 use syntax::codemap::{FileLoader, RealFileLoader};
 use syntax::parse;
-use syntax::parse::token;
 use syntax::parse::parser::Parser;
 use syntax::ptr::P;
 use syntax_pos::FileName;
+use arena::SyncDroplessArena;
 
 use remove_paren::remove_paren;
 use span_fix;
@@ -41,7 +40,7 @@ pub struct Ctxt<'a, 'tcx: 'a> {
     /// This is a reference to the same `DroplessArena` used in `tcx`.  Analyses working with types
     /// use this to allocate extra values with the same lifetime `'tcx` as the types themselves.
     /// This way `Ty` wrappers don't need two lifetime parameters everywhere.
-    tcx_arena: Option<&'tcx DroplessArena>,
+    tcx_arena: Option<&'tcx SyncDroplessArena>,
 
     cstore: &'a CStore,
 }
@@ -86,7 +85,7 @@ impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
                    cstore: &'a CStore,
                    map: &'a hir_map::Map<'tcx>,
                    tcx: TyCtxt<'a, 'tcx, 'tcx>,
-                   tcx_arena: &'tcx DroplessArena) -> Ctxt<'a, 'tcx> {
+                   tcx_arena: &'tcx SyncDroplessArena) -> Ctxt<'a, 'tcx> {
         Ctxt {
             sess,
             cstore,
@@ -112,7 +111,7 @@ impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }
 
-    pub fn ty_arena(&self) -> &'tcx DroplessArena {
+    pub fn ty_arena(&self) -> &'tcx SyncDroplessArena {
         self.tcx_arena
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }
@@ -126,7 +125,7 @@ impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
 /// loader will be used within the compiler.  For example, editor integration uses a custom file
 /// loader to provide the compiler with buffer contents for currently open files.
 pub fn run_compiler<F, R>(args: &[String],
-                          file_loader: Option<Box<FileLoader>>,
+                          file_loader: Option<Box<FileLoader+Sync+Send>>,
                           phase: Phase,
                           func: F) -> R
         where F: FnOnce(Crate, Ctxt) -> R {
@@ -141,7 +140,7 @@ pub fn run_compiler<F, R>(args: &[String],
     let in_path = Some(Path::new(&matches.free[0]).to_owned());
     let input = Input::File(in_path.as_ref().unwrap().clone());
 
-    let (sess, cstore) = build_session(sopts, in_path, file_loader);
+    let (sess, cstore, codegen_backend) = build_session(sopts, in_path, file_loader);
 
     // It might seem tempting to set up a custom CompileController and invoke `compile_input` here,
     // in order to avoid duplicating a bunch of `compile_input`'s logic.  Unfortunately, that
@@ -177,7 +176,7 @@ pub fn run_compiler<F, R>(args: &[String],
 
     let arenas = AllArenas::new();
 
-    let hir_map = hir_map::map_crate(&sess, cstore.as_ref(), &mut expand_result.hir_forest, &expand_result.defs);
+    let hir_map = hir_map::map_crate(&sess, &cstore, &mut expand_result.hir_forest, &expand_result.defs);
 
     if phase == Phase::Phase2 {
         let cx = Ctxt::new_phase_2(&sess, &cstore,&hir_map);
@@ -185,11 +184,12 @@ pub fn run_compiler<F, R>(args: &[String],
     }
 
     driver::phase_3_run_analysis_passes(
+        &*codegen_backend,
         &control,
         // Cloning hir_map seems kind of ugly, but the alternative is to deref the `TyCtxt` to get
         // a `GlobalCtxt` and read its `hir` field.  Since `GlobalCtxt` is actually private, this
         // seems like it would probably stop working at some point.
-        &sess, cstore.as_ref(), hir_map.clone(), expand_result.analysis, expand_result.resolutions,
+        &sess, &cstore, hir_map.clone(), expand_result.analysis, expand_result.resolutions,
         &arenas, &crate_name, &outputs,
         |tcx, _analysis, _incremental_hashes_map, _result| {
             if phase == Phase::Phase3 {
@@ -202,22 +202,25 @@ pub fn run_compiler<F, R>(args: &[String],
 
 fn build_session(sopts: Options,
                  in_path: Option<PathBuf>,
-                 file_loader: Option<Box<FileLoader>>) -> (Session, Rc<CStore>) {
+                 file_loader: Option<Box<FileLoader+Sync+Send>>) -> (Session, CStore, Box<CodegenBackend>) {
     // Corresponds roughly to `run_compiler`.
     let descriptions = rustc_driver::diagnostics_registry();
-    let cstore = Rc::new(CStore::new(Box::new(rustc_trans::LlvmMetadataLoader)));
     let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
     let codemap = Rc::new(CodeMap::with_file_loader(file_loader, sopts.file_path_mapping()));
     // Put a dummy file at the beginning of the codemap, so that no real `Span` will accidentally
     // collide with `DUMMY_SP` (which is `0 .. 0`).
-    codemap.new_filemap_and_lines(Path::new("<dummy>"), " ");
+    codemap.new_filemap(FileName::Custom("<dummy>".to_string()), "".to_string());
+
     let emitter_dest = None;
 
     let sess = session::build_session_with_codemap(
         sopts, in_path, descriptions, codemap, emitter_dest
     );
 
-    (sess, cstore)
+    let codegen_backend = rustc_driver::get_codegen_backend(&sess);
+    let cstore = CStore::new(codegen_backend.metadata_loader());
+
+    (sess, cstore, codegen_backend)
 }
 
 
@@ -258,16 +261,13 @@ pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
 }
 
 pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
-    let mut p = make_parser(sess, "<stmt>", src);
-    let mut stmts = Vec::new();
-    while p.token != token::Eof {
-        match p.parse_full_stmt(false) {
-            Ok(Some(stmt)) => stmts.push(remove_paren(stmt).lone()),
-            Ok(None) => break,
-            Err(db) => emit_and_panic(db, "stmts"),
-        }
+    // TODO: rustc no longer exposes `parse_full_stmt`. `parse_block` is a hacky
+    // workaround that may cause suboptimal error messages.
+    let mut p = make_parser(sess, "<stmt>", &format!("{{ {} }}", src));
+    match p.parse_block() {
+        Ok(blk) => blk.into_inner().stmts.into_iter().map(|s| remove_paren(s).lone()).collect(),
+        Err(db) => emit_and_panic(db, "stmts"),
     }
-    stmts
 }
 
 pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
@@ -284,15 +284,16 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
 }
 
 pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
-    let mut p = make_parser(sess, "<impl>", src);
-    let mut items = vec![];
-    while p.token != token::Eof {
-        match p.parse_impl_item(&mut false) {
-            Ok(item) => {
-                items.push(remove_paren(item).lone());
+    // TODO: rustc no longer exposes `parse_impl_item_`. `parse_item` is a hacky
+    // workaround that may cause suboptimal error messages.
+    let mut p = make_parser(sess, "<impl>", &format!("impl ! {{ {} }}", src));
+    match p.parse_item() {
+        Ok(item) => {
+            match item.expect("expected to find an item").into_inner().node {
+                ItemKind::Impl(_, _, _, _, _, _, items) => items,
+                _ => panic!("expected to find an impl item"),
             }
-            Err(db) => emit_and_panic(db, "impl items"),
         }
+        Err(db) => emit_and_panic(db, "impl items"),
     }
-    items
 }

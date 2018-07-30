@@ -22,7 +22,7 @@
 
 use std::collections::hash_map::{self, HashMap, Entry};
 
-use arena::DroplessArena;
+use arena::SyncDroplessArena;
 use rustc::hir::def_id::DefId;
 use rustc::ty::{Ty, TyCtxt, TypeVariants};
 use rustc_data_structures::indexed_vec::IndexVec;
@@ -100,7 +100,7 @@ pub struct Instantiation {
 pub struct Ctxt<'a, 'tcx: 'a> {
     pub tcx: TyCtxt<'a, 'tcx, 'tcx>,
     pub lcx: LabeledTyCtxt<'tcx, Option<PermVar>>,
-    pub arena: &'tcx DroplessArena,
+    pub arena: &'tcx SyncDroplessArena,
 
     /// Types of non-`fn` definitions.  This includes `static`s and also `struct` fields.
     pub static_summ: HashMap<DefId, LTy<'tcx>>,
@@ -116,7 +116,7 @@ pub struct Ctxt<'a, 'tcx: 'a> {
 
 impl<'a, 'tcx> Ctxt<'a, 'tcx> {
     pub fn new(tcx: TyCtxt<'a, 'tcx, 'tcx>,
-               arena: &'tcx DroplessArena) -> Ctxt<'a, 'tcx> {
+               arena: &'tcx SyncDroplessArena) -> Ctxt<'a, 'tcx> {
         Ctxt {
             tcx: tcx,
             lcx: LabeledTyCtxt::new(arena),
@@ -137,7 +137,7 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
             Entry::Vacant(e) => {
                 *e.insert(self.lcx.label(self.tcx.type_of(did), &mut |ty| {
                     match ty.sty {
-                        TypeVariants::TyRef(_, _) |
+                        TypeVariants::TyRef(_, _, _) |
                         TypeVariants::TyRawPtr(_) => {
                             let v = assign.push(ConcretePerm::Read);
                             Some(PermVar::Static(v))
@@ -166,7 +166,7 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
                 let l_sig = {
                     let mut f = |ty: Ty<'tcx>| {
                         match ty.sty {
-                            TypeVariants::TyRef(_, _) |
+                            TypeVariants::TyRef(_, _, _) |
                             TypeVariants::TyRawPtr(_) => {
                                 let v = Var(counter);
                                 counter += 1;
@@ -177,8 +177,8 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
                     };
 
                     FnSig {
-                        inputs: lcx.label_slice(sig.0.inputs(), &mut f),
-                        output: lcx.label(sig.0.output(), &mut f),
+                        inputs: lcx.label_slice(sig.skip_binder().inputs(), &mut f),
+                        output: lcx.label(sig.skip_binder().output(), &mut f),
                     }
                 };
 

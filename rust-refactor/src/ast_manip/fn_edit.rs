@@ -60,7 +60,7 @@ impl<F> FnFolder<F>
     fn fold_foreign_item_multi(&mut self, i: ForeignItem) -> SmallVector<ForeignItem> {
         match i.node {
             ForeignItemKind::Fn(..) => {},
-            _ => return SmallVector::one(fold::noop_fold_foreign_item(i, self)),
+            _ => return fold::noop_fold_foreign_item(i, self),
         }
 
         unpack!([i.node] ForeignItemKind::Fn(decl, generics));
@@ -86,7 +86,7 @@ impl<F> FnFolder<F>
                 attrs: fl.attrs,
                 vis: vis.clone(),
             }
-        }).map(|i| fold::noop_fold_foreign_item(i, self)).collect()
+        }).flat_map(|i| fold::noop_fold_foreign_item(i, self)).collect()
     }
 }
 

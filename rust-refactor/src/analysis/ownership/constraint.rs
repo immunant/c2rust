@@ -5,7 +5,7 @@ use std::collections::btree_set::{self, BTreeSet};
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
-use arena::DroplessArena;
+use arena::SyncDroplessArena;
 
 use super::{ConcretePerm, PermVar, Var};
 
@@ -64,7 +64,7 @@ impl<'tcx> Perm<'tcx> {
 
     /// Construct the minimum of two permissions.  This needs a reference to the arena, since it
     /// may need to allocate a new slice for `Min`.
-    pub fn min(a: Perm<'tcx>, b: Perm<'tcx>, arena: &'tcx DroplessArena) -> Perm<'tcx> {
+    pub fn min(a: Perm<'tcx>, b: Perm<'tcx>, arena: &'tcx SyncDroplessArena) -> Perm<'tcx> {
         eprintln!("finding min of {:?} and {:?}", a, b);
         match (a, b) {
             // A few easy cases
@@ -131,7 +131,7 @@ impl<'tcx> Perm<'tcx> {
     /// Modify `self` by replacing `old` with each element of `news` in turn, yielding each result
     /// to `callback`.
     pub fn for_each_replacement<F>(&self,
-                                   arena: &'tcx DroplessArena,
+                                   arena: &'tcx SyncDroplessArena,
                                    old: Perm<'tcx>,
                                    news: &[Perm<'tcx>],
                                    mut callback: F)
@@ -246,7 +246,7 @@ impl<'tcx> ConstraintSet<'tcx> {
     /// then add the constraint to `self`.
     pub fn import_substituted<F>(&mut self,
                                  other: &ConstraintSet<'tcx>,
-                                 arena: &'tcx DroplessArena,
+                                 arena: &'tcx SyncDroplessArena,
                                  f: F)
             where F: Fn(Perm<'tcx>) -> Perm<'tcx> {
         debug!("IMPORT {} constraints (substituted)", other.less.len());
@@ -277,7 +277,7 @@ impl<'tcx> ConstraintSet<'tcx> {
 
     /// Clone `self`, substituting each atomic permission using the callback `f`.
     pub fn clone_substituted<F>(&self,
-                                arena: &'tcx DroplessArena,
+                                arena: &'tcx SyncDroplessArena,
                                 f: F) -> ConstraintSet<'tcx>
             where F: Fn(Perm<'tcx>) -> Perm<'tcx> {
         let mut new_cset = ConstraintSet::new();
@@ -550,7 +550,7 @@ impl<'tcx> ConstraintSet<'tcx> {
 
     /// Simplify `min(...) <= ...` constraints as much as possible.  Unlike `... <= min(...)`, it
     /// may not always be possible to completely eliminate such constraints.
-    pub fn simplify_min_lhs(&mut self, arena: &'tcx DroplessArena) {
+    pub fn simplify_min_lhs(&mut self, arena: &'tcx SyncDroplessArena) {
         let mut edit = self.edit();
 
         'next: while let Some((a, b)) = edit.next() {
@@ -639,7 +639,7 @@ impl<'tcx> ConstraintSet<'tcx> {
     }
 
     /// Simplify the constraint set as best we can.
-    pub fn simplify(&mut self, arena: &'tcx DroplessArena) {
+    pub fn simplify(&mut self, arena: &'tcx SyncDroplessArena) {
         self.remove_useless();
         self.expand_min_rhs();
         self.simplify_min_lhs(arena);
@@ -651,7 +651,7 @@ impl<'tcx> ConstraintSet<'tcx> {
     ///
     /// This may be imprecise if a removed permission appears as an argument of a `Min`.  Simplify
     /// the constraint set first to remove as many `Min`s as possible before using this function.
-    pub fn retain_perms<F>(&mut self, arena: &'tcx DroplessArena, filter: F)
+    pub fn retain_perms<F>(&mut self, arena: &'tcx SyncDroplessArena, filter: F)
             where F: Fn(Perm<'tcx>) -> bool {
         // Collect all atomic permissions that appear in the constraint set.
         let mut atomic_perms = HashSet::new();

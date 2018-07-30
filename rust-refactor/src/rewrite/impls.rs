@@ -6,7 +6,8 @@ use std::rc::Rc;
 use diff;
 use rustc::session::Session;
 use syntax::ast::*;
-use syntax::abi::Abi;
+// use syntax::abi::Abi;
+use rustc_target::spec::abi::Abi;
 use syntax::codemap::{Span, Spanned, DUMMY_SP};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::print::pprust;
@@ -178,16 +179,17 @@ impl Splice for Expr {
         rcx.old_exprs()
     }
 
+    // TODO: I (Alec) think this isn't needed anymore. I could be wrong...
     fn get_adjustment(&self, rcx: &RewriteCtxt) -> TextAdjust {
+      /*
         // Check for cases where we can safely omit parentheses.
-        let prec = parser::expr_precedence(self);
+        let prec = self.precedence();
         let need_parens = match rcx.expr_prec() {
             ExprPrec::Normal(min_prec) => prec < min_prec,
             ExprPrec::Cond(min_prec) =>
                 prec < min_prec || parser::contains_exterior_struct_lit(self),
             ExprPrec::Callee(min_prec) => match self.node {
-                ExprKind::Field(..) |
-                ExprKind::TupField(..) => true,
+                ExprKind::Field(..) => true,
                 _ => prec < min_prec,
             },
         };
@@ -197,6 +199,8 @@ impl Splice for Expr {
         } else {
             TextAdjust::None
         }
+      */
+        TextAdjust::None
     }
 }
 

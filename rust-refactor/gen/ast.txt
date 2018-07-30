@@ -41,7 +41,6 @@ enum ItemKind {
     Struct(vd, generics),
     Union(vd, generics),
     Trait(is_auto, unsafety, generics, bounds, items),
-    AutoImpl(unsafety, trait_ref),
     Impl(unsafety, polarity, generics, defaultness, trait_ref, ty, items),
     Mac(mac),
     MacroDef(tts),
@@ -49,7 +48,7 @@ enum ItemKind {
 }
 
 enum UseTreeKind {
-    Simple(ident),
+    Simple(ident, span1, span2),
     Glob,
     Nested(nested),
 }
@@ -79,7 +78,7 @@ enum ImplItemKind {
 struct TraitRef { path, ref_id }
 
 struct EnumDef { variants }
-struct Variant_ { name, #[match=ignore] attrs, data, disr_expr }
+struct Variant_ { ident, #[match=ignore] attrs, data, disr_expr }
 enum VariantData {
     Struct(fields, id),
     Tuple(fields, id),
@@ -96,11 +95,12 @@ enum ForeignItemKind {
     Fn(decl, generics),
     Static(ty, mutbl),
     Ty,
+    Macro(mac),
 }
 
 
 struct Generics { params, where_clause, span }
-struct TyParam { attrs, ident, id, bounds, default, span }
+struct TyParam { attrs, ident, id, bounds, default }
 struct LifetimeDef { attrs, lifetime, bounds }
 struct WhereClause { id, predicates, span }
 enum WherePredicate {
@@ -119,9 +119,9 @@ struct WhereEqPredicate { id, span, lhs_ty, rhs_ty }
 flag TraitBoundModifier;
 
 #[match=ignore]
-enum Visibility {
+enum VisibilityKind {
     Public,
-    Crate(span, crate_sugar),
+    Crate(crate_sugar),
     Restricted { path, id },
     Inherited,
 }
@@ -157,7 +157,7 @@ flag LitIntType;
 flag FloatTy;
 
 struct BareFnTy { unsafety, abi, decl, generic_params }
-struct Lifetime { id, span, ident }
+struct Lifetime { id, ident }
 enum TyParamBound {
     TraitTyParamBound(poly, module),
     RegionTyParamBound(lt),
@@ -195,7 +195,7 @@ struct Expr { id, node, span, #[match=ignore] attrs }
 #[prec_contains_expr]
 enum ExprKind {
     Box(#[prec=PREFIX] expr),
-    InPlace(#[prec_inc=Inplace] place, #[prec=Inplace] expr),
+    ObsoleteInPlace(expr1, expr2),
     Array(elems),
     Call(#[prec=POSTFIX] #[prec_special=Callee] func, args),
     MethodCall(path_seg, #[prec_first=POSTFIX] args),
@@ -212,13 +212,12 @@ enum ExprKind {
     ForLoop(pat, #[prec_special=Cond] iter, body, label),
     Loop(body, label),
     Match(#[prec_special=Cond] target, arms),
-    Closure(cap, decl, body, span),
-    Block(body),
+    Closure(cap, mov, decl, body, span),
+    Block(body, label),
     Catch(body),
     Assign(#[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
     AssignOp(op, #[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
     Field(#[lr_propagate] #[prec=POSTFIX] expr, ident),
-    TupField(#[lr_propagate] #[prec=POSTFIX] expr, idx),
     Index(#[lr_propagate] #[prec=POSTFIX] arr, idx),
     // Special case for `Range`.  `AssocOp` claims that `Range` has higher precedence than
     // `Assign`, but `x .. x = x` gives a parse error instead of `x .. (x = x)`.  Here we use a
@@ -239,13 +238,17 @@ enum ExprKind {
     Yield(#[prec=JUMP] expr),
 }
 
+enum Movability {
+    Static,
+    Movable,
+}
 
 #[match=eq]
 flag UnOp;
 #[match=eq]
 flag BinOpKind;
 struct Field { ident, expr, span, is_shorthand, attrs }
-struct Arm { attrs, pats, guard, body, beginning_vert }
+struct Arm { attrs, pats, guard, body }
 #[match=custom]
 struct Block { stmts, id, rules, span, recovered }
 
@@ -264,6 +267,7 @@ enum PatKind {
     Lit(expr),
     Range(lo, hi, end),
     Slice(start, mid, end),
+    Paren(pat),
     Mac(mac),
 }
 
@@ -307,7 +311,7 @@ flag AttrStyle;
 
 #[match=custom]
 struct Path { span, segments }
-struct PathSegment { identifier, span, parameters }
+struct PathSegment { ident, parameters }
 enum PathParameters {
     AngleBracketed(abpd),
     Parenthesized(ppd),
@@ -315,10 +319,10 @@ enum PathParameters {
 
 struct AngleBracketedParameterData { span, lifetimes, types, bindings }
 struct ParenthesizedParameterData { span, inputs, output }
-struct QSelf { ty, position }
+struct QSelf { ty, path_span, position }
 
 
-struct Mac_ { path, tts }
+struct Mac_ { path, delim, tts }
 flag MacStmtStyle;
 flag TokenStream;
 flag ThinTokenStream;
@@ -332,6 +336,18 @@ volatile, alignstack, dialect, ctxt
 struct GlobalAsm { asm, ctxt }
 struct InlineAsmOutput { constraint, expr, is_rw, is_indirect }
 
+struct Label { ident }
+
+enum MacDelimiter {
+    Parenthesis,
+    Bracket,
+    Brace,
+}
+
+struct AnonConst {
+    id,
+    value,
+}
 
 #[match=custom] flag Ident;
 #[match=eq] flag Name;

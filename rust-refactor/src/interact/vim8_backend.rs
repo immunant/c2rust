@@ -1,6 +1,6 @@
 //! JSON backend, for communication with Vim 8.
 use std::io::{self, BufRead, Write};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, SyncSender};
 use std::thread;
 use json::{self, JsonValue};
 
@@ -8,10 +8,10 @@ use interact::{ToServer, ToClient, MarkInfo};
 use interact::WrapSender;
 
 
-pub fn init<U, F>(to_server: WrapSender<ToServer, U, F>) -> Sender<ToClient>
+pub fn init<U, F>(to_server: WrapSender<ToServer, U, F>) -> SyncSender<ToClient>
         where U: Send + 'static,
               F: Fn(ToServer) -> U + Send + 'static {
-    let (client_send, client_recv) = mpsc::channel();
+    let (client_send, client_recv) = mpsc::sync_channel(1);
 
     thread::spawn(move || {
         let out = io::stdout();

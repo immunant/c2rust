@@ -2,6 +2,7 @@
 //! implementation modules.
 use rustc::hir;
 use rustc::hir::def_id::DefId;
+use rustc::hir::map::Node;
 use rustc::ty::Ty;
 use syntax::ast;    // Can't glob-import because `Ty` already refers to `rustc::ty::Ty`.
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
@@ -137,9 +138,10 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
     }
 
     fn node_def_id(&self, id: NodeId) -> DefId {
-        match self.hir_map().opt_local_def_id(id) {
-            Some(x) => x,
-            None => panic!("not a definition node"),
+        match self.hir_map().find(id) {
+            Some(Node::NodeBinding(_)) => self.node_def_id(self.hir_map().get_parent_node(id)),
+            Some(Node::NodeItem(item)) => self.hir_map().local_def_id(item.id),
+            _ => self.hir_map().local_def_id(id),
         }
     }
 

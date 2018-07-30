@@ -75,7 +75,7 @@ impl<'ast> AnyNode<'ast> {
             AnyNode::ImplItem(i) => Some(i.ident.name),
             AnyNode::ForeignItem(i) => Some(i.ident.name),
             AnyNode::Arg(a) => match a.pat.node {
-                PatKind::Ident(_, ref i, _) => Some(i.node.name),
+                PatKind::Ident(_, ref i, _) => Some(i.name),
                 _ => None,
             },
             AnyNode::Field(f) => f.ident.map(|i| i.name),
@@ -122,7 +122,6 @@ pub enum ItemLikeKind {
     Struct,
     Union,
     Trait,
-    AutoImpl,
     Impl,
     Mac,
     MacroDef,
@@ -147,7 +146,6 @@ impl FromStr for ItemLikeKind {
             "struct" => Ok(ItemLikeKind::Struct),
             "union" => Ok(ItemLikeKind::Union),
             "trait" => Ok(ItemLikeKind::Trait),
-            "default_impl" => Ok(ItemLikeKind::AutoImpl),
             "impl" => Ok(ItemLikeKind::Impl),
             "mac" => Ok(ItemLikeKind::Mac),
             "macro_def" => Ok(ItemLikeKind::MacroDef),
@@ -173,7 +171,6 @@ impl ItemLikeKind {
             ItemKind::Struct(..) => ItemLikeKind::Struct,
             ItemKind::Union(..) => ItemLikeKind::Union,
             ItemKind::Trait(..) => ItemLikeKind::Trait,
-            ItemKind::AutoImpl(..) => ItemLikeKind::AutoImpl,
             ItemKind::Impl(..) => ItemLikeKind::Impl,
             ItemKind::Mac(..) => ItemLikeKind::Mac,
             ItemKind::MacroDef(..) => ItemLikeKind::MacroDef,
@@ -204,6 +201,7 @@ impl ItemLikeKind {
             ForeignItemKind::Fn(..) => ItemLikeKind::Fn,
             ForeignItemKind::Static(..) => ItemLikeKind::Static,
             ForeignItemKind::Ty => ItemLikeKind::Ty,
+            ForeignItemKind::Macro(..) => ItemLikeKind::Mac,
         }
     }
 }
@@ -216,7 +214,7 @@ pub fn matches_filter(st: &CommandState,
     match *filter {
         Filter::Kind(k) => k.contains(node.kind()),
         Filter::ItemKind(k) => node.itemlike_kind().map_or(false, |nk| nk == k),
-        Filter::Public => node.vis().map_or(false, |v| v == &Visibility::Public),
+        Filter::Public => node.vis().map_or(false, |v| v.node == VisibilityKind::Public),
         Filter::Name(ref re) => node.name().map_or(false, |n| re.is_match(&n.as_str())),
         Filter::PathPrefix(drop_segs, ref expect_path) => {
             if !reflect::can_reflect_path(cx.hir_map(), node.id()) {

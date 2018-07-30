@@ -59,7 +59,7 @@ impl Transform for FuncToMacro {
                 tts.append(&mut arg.to_tokens(&ext_ctxt));
             }
 
-            mk().mac_expr(mk().mac(vec![self.macro_name], tts))
+            mk().mac_expr(mk().mac(vec![self.macro_name], tts, MacDelimiter::Parenthesis))
         })
     }
 

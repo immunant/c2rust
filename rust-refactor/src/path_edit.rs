@@ -51,7 +51,7 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
                     match p.node {
                         PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
                                        ident, None) =>
-                            (None, Path::from_ident(ident.span, ident.node)),
+                            (None, Path::from_ident(ident)),
                         PatKind::Path(qself, path) => (qself, path),
                         _ => panic!("expected PatKind::Ident or PatKind::Path"),
                     };

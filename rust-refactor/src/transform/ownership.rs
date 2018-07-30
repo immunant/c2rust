@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use arena::DroplessArena;
+use arena::SyncDroplessArena;
 use rustc::hir;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
@@ -93,15 +93,12 @@ fn do_annotate(st: &CommandState,
 
         fn clean_attrs(&self, attrs: &mut Vec<Attribute>) {
             attrs.retain(|a| {
-                if let Some(name) = a.name() {
-                    match &name.as_str() as &str {
-                        "ownership_mono" |
-                        "ownership_constraints" |
-                        "ownership_static" => return false,
-                        _ => {},
-                    }
+                match &a.name().as_str() as &str {
+                    "ownership_mono" |
+                    "ownership_constraints" |
+                    "ownership_static" => false,
+                    _ => true,
                 }
-                true
             });
         }
     }
@@ -238,11 +235,11 @@ fn perm_token(p: ConcretePerm) -> TokenTree {
         ConcretePerm::Write => "WRITE",
         ConcretePerm::Move => "MOVE",
     };
-    TokenTree::Token(DUMMY_SP, Token::Ident(mk().ident(name)))
+    TokenTree::Token(DUMMY_SP, Token::Ident(mk().ident(name), false))
 }
 
 fn ident_token(name: &str) -> TokenTree {
-    token(Token::Ident(mk().ident(name)))
+    token(Token::Ident(mk().ident(name), false))
 }
 
 fn str_token(s: &str) -> TokenTree {
@@ -427,11 +424,11 @@ fn rename_callee(e: P<Expr>, new_name: &str) -> P<Expr> {
             ExprKind::Path(_, ref mut path) => {
                 // Change the last path segment.
                 let seg = path.segments.last_mut().unwrap();
-                seg.identifier = mk().ident(new_name);
+                seg.ident = mk().ident(new_name);
             },
 
             ExprKind::MethodCall(ref mut seg, _) => {
-                seg.identifier = mk().ident(new_name);
+                seg.ident = mk().ident(new_name);
             },
 
             _ => panic!("rename_callee: unexpected expr kind: {:?}", e),
@@ -471,7 +468,7 @@ fn do_mark_pointers(st: &CommandState, cx: &driver::Ctxt) {
 
     struct AnalysisTypeSource<'a, 'tcx: 'a> {
         ana: &'a ownership::AnalysisResult<'tcx>,
-        arena: &'tcx DroplessArena,
+        arena: &'tcx SyncDroplessArena,
     }
 
     impl<'a, 'tcx> type_map::TypeSource for AnalysisTypeSource<'a, 'tcx> {

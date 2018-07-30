@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::u32;
 
-use arena::DroplessArena;
+use arena::SyncDroplessArena;
 use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::ty::TyCtxt;
@@ -464,7 +464,7 @@ pub fn dump_results(dcx: &driver::Ctxt,
                     results: &AnalysisResult) {
     eprintln!("\n === summary ===");
 
-    let arena = DroplessArena::new();
+    let arena = SyncDroplessArena::new();
     let new_lcx = LabeledTyCtxt::new(&arena);
     let format_sig = |sig: VFnSig, assign: &IndexVec<Var, ConcretePerm>| {
         let mut func = |p: &Option<_>| p.as_ref().map(|&v| assign[v]);

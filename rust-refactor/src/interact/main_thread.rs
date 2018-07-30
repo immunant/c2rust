@@ -7,7 +7,7 @@ use std::io;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::mpsc::{self, Sender, Receiver};
+use std::sync::mpsc::{self, SyncSender, Receiver};
 use std::thread;
 use syntax::ast::*;
 use syntax::codemap::{FileLoader, RealFileLoader};
@@ -30,8 +30,8 @@ use super::MarkInfo;
 
 
 struct InteractState {
-    to_worker: Sender<ToWorker>,
-    to_client: Sender<ToClient>,
+    to_worker: SyncSender<ToWorker>,
+    to_client: SyncSender<ToClient>,
     buffers_available: HashSet<PathBuf>,
 
     state: RefactorState,
@@ -40,8 +40,8 @@ struct InteractState {
 impl InteractState {
     fn new(rustc_args: Vec<String>,
            registry: command::Registry,
-           to_worker: Sender<ToWorker>,
-           to_client: Sender<ToClient>) -> InteractState {
+           to_worker: SyncSender<ToWorker>,
+           to_client: SyncSender<ToClient>) -> InteractState {
         let mut state = RefactorState::new(rustc_args, registry, HashSet::new());
 
         let to_client2 = to_client.clone();
@@ -245,7 +245,7 @@ pub fn interact_command(args: &[String],
                         rustc_args: Vec<String>,
                         registry: command::Registry) {
     let (to_main, main_recv) = mpsc::channel();
-    let (to_worker, worker_recv) = mpsc::channel();
+    let (to_worker, worker_recv) = mpsc::sync_channel(1);
 
     let backend_to_worker = WrapSender::new(to_worker.clone(), ToWorker::InputMessage);
     let to_client =
@@ -265,7 +265,7 @@ pub fn interact_command(args: &[String],
 #[derive(Clone)]
 struct InteractiveFileLoader {
     buffers_available: HashSet<PathBuf>,
-    to_worker: Sender<ToWorker>,
+    to_worker: SyncSender<ToWorker>,
 }
 
 impl FileLoader for InteractiveFileLoader {
@@ -281,7 +281,7 @@ impl FileLoader for InteractiveFileLoader {
         let canon = fs::canonicalize(path)?;
 
         if self.buffers_available.contains(&canon) {
-            let (send, recv) = mpsc::channel();
+            let (send, recv) = mpsc::sync_channel(1);
             self.to_worker.send(ToWorker::NeedFile(canon, send)).unwrap();
             Ok(recv.recv().unwrap())
         } else {

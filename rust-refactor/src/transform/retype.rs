@@ -290,7 +290,10 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
                     let ty = cx.adjusted_node_type(obj.id);
                     match ty.sty {
                         TypeVariants::TyAdt(adt, _) => {
-                            let did = adt.struct_variant().field_named(name.node.name).did;
+                            let did = adt.non_enum_variant().fields
+                              .iter()
+                              .find(|f| f.ident == *name)
+                              .expect(&format!("Couldn't find struct field {}", name)).did;
                             if let Some(&(ref old_ty, ref new_ty)) = cx.hir_map()
                                     .as_local_node_id(did)
                                     .and_then(|id| changed_defs.get(&id)) {

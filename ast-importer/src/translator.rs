@@ -552,7 +552,7 @@ impl Translation {
         let macro_msg = vec![
             Token::interpolated(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit(msg)))),
         ].into_iter().collect::<TokenStream>();
-        mk().mac_expr(mk().mac(vec![macro_name], macro_msg))
+        mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Bracket))
     }
 
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
@@ -800,6 +800,7 @@ impl Translation {
                                     Token::Comma,
                                     Token::from_ast_ident(mk().ident("var_value")),
                                 ].into_iter().collect::<TokenStream>(),
+                                MacDelimiter::Bracket
                             )))
                         ))),
                         mk().semi_stmt(mk().method_call_expr(
@@ -1441,7 +1442,8 @@ impl Translation {
             push_expr(&mut tokens, mk().lit_expr(mk().str_lit("volatile")));
         }
 
-        let mac = mk().mac(vec!["asm"], tokens.into_iter().collect::<TokenStream>());
+        let mac = mk().mac(vec!["asm"], tokens.into_iter().collect::<TokenStream>(),
+                           MacDelimiter::Bracket);
         let mac = mk().mac_expr(mac);
         let mac = mk().span(span).expr_stmt(mac);
         stmts.push(mac);

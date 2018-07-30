@@ -92,8 +92,8 @@ impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for OutputFolder<F> {
                     rest.map(|e| self.fold_expr(e)),
                 ),
 
-                ExprKind::IfLet(pat, cond, then, rest) => ExprKind::IfLet(
-                    self.fold_pat(pat),
+                ExprKind::IfLet(pats, cond, then, rest) => ExprKind::IfLet(
+                    pats.move_map(|p| self.fold_pat(p)),
                     self.with_trailing(false, |f| f.fold_expr(cond)),
                     self.fold_block(then),
                     rest.map(|e| self.fold_expr(e)),
@@ -109,7 +109,7 @@ impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for OutputFolder<F> {
                     arms.move_map(|arm| self.fold_arm(arm)),
                 ),
 
-                ExprKind::Block(b) => ExprKind::Block(self.fold_block(b)),
+                ExprKind::Block(b, lbl) => ExprKind::Block(self.fold_block(b), lbl),
 
                 ExprKind::Catch(_) => {
                     // Explicitly unimplemented.  Depending on whether `catch` winds up

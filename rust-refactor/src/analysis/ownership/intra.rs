@@ -183,7 +183,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 ref mut next_inst_var, ref mut insts, .. } = *self;
         ilcx.label(ty, &mut |ty| {
             match ty.sty {
-                TypeVariants::TyRef(_, _) |
+                TypeVariants::TyRef(_, _, _) |
                 TypeVariants::TyRawPtr(_) => {
                     let v = Var(*next_local_var);
                     *next_local_var += 1;
@@ -270,7 +270,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 let poly_ty = self.static_ty(field_def.did);
                 self.ilcx.subst(poly_ty, &base_ty.args)
             },
-            TypeVariants::TyTuple(_tys, _) => base_ty.args[f.index()],
+            TypeVariants::TyTuple(_tys_) => base_ty.args[f.index()],
             _ => unimplemented!(),
         }
     }
@@ -508,6 +508,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                     eprintln!("    {:?}: {:?}", lv, lv_ty);
                     eprintln!("    ^-- {:?}: {:?}", rv, rv_ty);
                 },
+                StatementKind::ReadForMatch { .. } |
                 StatementKind::SetDiscriminant { .. } |
                 StatementKind::StorageLive(_) |
                 StatementKind::StorageDead(_) |
@@ -516,6 +517,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 StatementKind::InlineAsm { .. } |
                 StatementKind::Validate(..) |
                 StatementKind::EndRegion(_) |
+                StatementKind::UserAssertTy { .. } |
                 StatementKind::Nop => {},
             }
         }
@@ -523,6 +525,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         match bb.terminator().kind {
             TerminatorKind::Goto { .. } |
             TerminatorKind::FalseEdges { .. } |
+            TerminatorKind::FalseUnwind { .. } |
             TerminatorKind::SwitchInt { .. } |
             TerminatorKind::Resume |
             TerminatorKind::Return |

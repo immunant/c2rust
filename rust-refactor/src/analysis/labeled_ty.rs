@@ -4,7 +4,7 @@
 //! in the same arena as the underlying `Ty`s.
 use std::fmt;
 use std::marker::PhantomData;
-use arena::DroplessArena;
+use arena::SyncDroplessArena;
 use rustc::ty::{Ty, TypeVariants};
 
 use type_map;
@@ -52,14 +52,14 @@ impl<'tcx, L> LabeledTyS<'tcx, L> {
 
 /// Context for constructing `LabeledTy`s.
 pub struct LabeledTyCtxt<'tcx, L: 'tcx> {
-    arena: &'tcx DroplessArena,
+    arena: &'tcx SyncDroplessArena,
     _marker: PhantomData<L>,
 }
 
 impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
     /// Build a new `LabeledTyCtxt`.  The `arena` must be the same one used by the `TyCtxt` that
     /// built the underlying `Ty`s to be labeled.
-    pub fn new(arena: &'tcx DroplessArena) -> LabeledTyCtxt<'tcx, L> {
+    pub fn new(arena: &'tcx SyncDroplessArena) -> LabeledTyCtxt<'tcx, L> {
         LabeledTyCtxt {
             arena: arena,
             _marker: PhantomData,
@@ -117,8 +117,8 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
                 let args = [self.label(mty.ty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             },
-            TyRef(_, mty) => {
-                let args = [self.label(mty.ty, f)];
+            TyRef(_, mty, _) => {
+                let args = [self.label(mty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             },
             TyFnDef(_, substs) => {
@@ -126,11 +126,11 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
                 self.mk(ty, self.mk_slice(&args), label)
             },
             TyFnPtr(ref sig) => {
-                let args = sig.0.inputs_and_output.iter()
+                let args = sig.skip_binder().inputs_and_output.iter()
                     .map(|ty| self.label(ty, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             },
-            TyTuple(ref elems, _) => {
+            TyTuple(ref elems) => {
                 let args = elems.iter().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             },
@@ -139,6 +139,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
             TyDynamic(..) |
             TyClosure(..) |
             TyGenerator(..) |
+            TyGeneratorWitness(..) |
             TyProjection(..) |
             TyAnon(..) |
             TyParam(..) |

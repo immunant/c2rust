@@ -7,25 +7,25 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::mpsc::{Sender, Receiver};
+use std::sync::mpsc::{Sender, SyncSender, Receiver};
 
 use interact::{ToServer, ToClient};
 
 
 pub enum ToWorker {
     InputMessage(ToServer),
-    NeedFile(PathBuf, Sender<String>),
+    NeedFile(PathBuf, SyncSender<String>),
 }
 
 struct WorkerState {
-    to_client: Sender<ToClient>,
+    to_client: SyncSender<ToClient>,
     to_main: Sender<ToServer>,
 
-    pending_files: HashMap<PathBuf, Sender<String>>,
+    pending_files: HashMap<PathBuf, SyncSender<String>>,
 }
 
 impl WorkerState {
-    fn new(to_client: Sender<ToClient>,
+    fn new(to_client: SyncSender<ToClient>,
            to_main: Sender<ToServer>) -> WorkerState {
         WorkerState {
             to_client: to_client,
@@ -81,7 +81,7 @@ impl WorkerState {
 }
 
 pub fn run_worker(recv: Receiver<ToWorker>,
-                  to_client: Sender<ToClient>,
+                  to_client: SyncSender<ToClient>,
                   to_main: Sender<ToServer>) {
     let mut state = WorkerState::new(to_client, to_main);
     state.run_loop(recv);

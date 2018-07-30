@@ -145,7 +145,7 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                 }
             },
 
-            ExprKind::Closure(_, ref decl, _, _) => {
+            ExprKind::Closure(_, _, ref decl, _, _) => {
                 let def_id = self.hir_map.local_def_id(e.id);
                 if let Some(sig) = self.source.closure_sig(def_id) {
                     self.record_fn_decl(sig, decl);
@@ -309,6 +309,7 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                 }
             },
             ForeignItemKind::Ty => { },
+            ForeignItemKind::Macro (..) => { },
         }
 
         visit::walk_foreign_item(self, i);

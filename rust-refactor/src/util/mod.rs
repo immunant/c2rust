@@ -49,6 +49,7 @@ impl HirDefExt for Def {
             Def::Enum(did) |
             Def::Variant(did) |
             Def::Trait(did) |
+            Def::Existential(did) |
             Def::TyAlias(did) |
             Def::TyForeign(did) |
             Def::AssociatedTy(did) |
@@ -108,6 +109,6 @@ impl<'a> IntoSymbol for &'a String {
 
 impl IntoSymbol for InternedString {
     fn into_symbol(self) -> Symbol {
-        (*self).into_symbol()
+        self.as_symbol()
     }
 }

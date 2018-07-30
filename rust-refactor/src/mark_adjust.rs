@@ -180,7 +180,7 @@ pub fn find_field_uses<T: Visit>(target: &T,
     visit_nodes(target, |e: &Expr| {
         match e.node {
             ExprKind::Field(ref obj, ref ident) => {
-                if ident.node.name != field {
+                if ident.name != field {
                     return;
                 }
 
@@ -266,7 +266,7 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
     // marked module or crate.
     if st.marked(CRATE_NODE_ID, label) {
         for i in &st.krate().module.items {
-            if i.vis == Visibility::Public {
+            if i.vis.node == VisibilityKind::Public {
                 st.add_mark(i.id, label);
             }
         }
@@ -276,7 +276,7 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
         if st.marked(i.id, label) {
             if let ItemKind::Mod(ref m) = i.node {
                 for i in &m.items {
-                    if i.vis == Visibility::Public {
+                    if i.vis.node == VisibilityKind::Public {
                         st.add_mark(i.id, label);
                     }
                 }

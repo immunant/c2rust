@@ -68,7 +68,7 @@ gen_folder_impls! {
             list_item: NestedMetaItem
         ) -> NestedMetaItem { ... }
         fn fold_meta_item(&mut self, meta_item: MetaItem) -> MetaItem { ... }
-        fn fold_foreign_item(&mut self, ni: ForeignItem) -> ForeignItem { ... }
+     //   fn fold_foreign_item(&mut self, ni: ForeignItem) -> ForeignItem { ... }
         fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> { ... }
         fn fold_item_simple(&mut self, i: Item) -> Item { ... }
         fn fold_struct_field(&mut self, sf: StructField) -> StructField { ... }
@@ -105,8 +105,8 @@ gen_folder_impls! {
         ) -> ParenthesizedParameterData { ... }
         fn fold_local(&mut self, l: P<Local>) -> P<Local> { ... }
         fn fold_mac(&mut self, _mac: Mac) -> Mac { ... }
-        fn fold_lifetime(&mut self, l: Lifetime) -> Lifetime { ... }
-        fn fold_lifetime_def(&mut self, l: LifetimeDef) -> LifetimeDef { ... }
+        // fn fold_lifetime(&mut self, l: Lifetime) -> Lifetime { ... }
+        // fn fold_lifetime_def(&mut self, l: LifetimeDef) -> LifetimeDef { ... }
         fn fold_attribute(&mut self, at: Attribute) -> Option<Attribute> { ... }
         fn fold_arg(&mut self, a: Arg) -> Arg { ... }
         fn fold_generics(&mut self, generics: Generics) -> Generics { ... }

@@ -91,7 +91,7 @@ impl<'a> Stream<'a> {
 
     fn name(&mut self) -> PResult<Symbol> {
         match self.token()? {
-            Token::Ident(i) => Ok(i.name),
+            Token::Ident(i, _) => Ok(i.name),
             t => fail!("expected name, but got {:?}", t),
         }
     }
@@ -304,11 +304,14 @@ impl<'a> Stream<'a> {
                     let ts = self.parens_raw()?;
 
                     let mut p = Parser::new(self.sess, ts, None, false, false);
-                    let x = match p.parse_full_stmt(false) {
+                    let x = match p.parse_stmt() {
                         Ok(Some(x)) => x,
                         Ok(None) => fail!("expected stmt"),
                         Err(e) => fail!("error parsing stmt: {}", e.message()),
                     };
+                    if let Token::Semi = p.token {
+                        p.bump();
+                    }
                     p.expect(&Token::Eof)
                         .map_err(|e| format!("error parsing stmt: {}", e.message()))?;
 

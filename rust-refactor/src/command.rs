@@ -37,7 +37,7 @@ use util::IntoSymbol;
 /// multi-command invocations even under non-"inplace" rewrite modes.
 pub struct RefactorState {
     rustc_args: Vec<String>,
-    make_file_loader: Option<Box<Fn() -> Box<FileLoader>>>,
+    make_file_loader: Option<Box<Fn() -> Box<FileLoader+Sync+Send>>>,
     rewrite_handler: Option<Box<FnMut(Rc<FileMap>, &str)>>,
     cmd_reg: Registry,
     marks: HashSet<(NodeId, Symbol)>,
@@ -57,7 +57,7 @@ impl RefactorState {
     }
 
     /// Provide a function that builds a custom file loader for `rustc` driver invocations.
-    pub fn make_file_loader<F: Fn() -> Box<FileLoader> + 'static>(&mut self, f: F) {
+    pub fn make_file_loader<F: Fn() -> Box<FileLoader+Sync+Send> + 'static>(&mut self, f: F) {
         self.make_file_loader = Some(Box::new(f));
     }
 

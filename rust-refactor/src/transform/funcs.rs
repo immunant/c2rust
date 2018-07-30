@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use rustc::hir::def_id::DefId;
 use rustc::ty::TypeVariants;
-use syntax::abi::Abi;
+use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::attr;
 use syntax::codemap::Spanned;
@@ -130,7 +130,7 @@ impl Transform for ToMethod {
                     }
                 } else {
                     match pat_ty.sty {
-                        TypeVariants::TyRef(_, tym) if tym.ty == self_ty => {
+                        TypeVariants::TyRef(_, ty, _) if ty == self_ty => {
                             match arg.ty.node {
                                 TyKind::Rptr(ref lt, ref mty) =>
                                     Some(SelfKind::Region(lt.clone(), mty.mutbl)),
@@ -153,6 +153,10 @@ impl Transform for ToMethod {
             f.decl = f.decl.clone().map(|fd| FnDecl { inputs: inputs, .. fd });
 
             // Rewrite references to the marked argument within the function body.
+
+            // FIXME: rustc changed how locals args are represented, and we
+            // don't have a Def for locals any more, and thus no def_id. We need
+            // to fix this in path_edit.rs
             f.block = fold_resolved_paths(f.block.clone(), cx, |qself, path, def_id| {
                 if def_id == arg_def_id {
                     assert!(qself.is_none());
@@ -413,7 +417,7 @@ impl Transform for WrapExtern {
                         // TODO: match_arg("__i: __t", arg).ident("__i")
                         match arg.pat.node {
                             PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
-                                           Spanned { node: ident, .. },
+                                           ident,
                                            None) => {
                                 mk().ident_expr(ident)
                             },
@@ -511,7 +515,7 @@ impl Transform for WrapApi {
                 let base = match arg.pat.node {
                     // Use the name from the original function, if there is one.  Otherwise, fall
                     // back on `arg0`, `arg1`, ...
-                    PatKind::Ident(_, ref ident, _) => ident.node.name,
+                    PatKind::Ident(_, ref ident, _) => ident.name,
                     _ => format!("arg{}", idx).into_symbol(),
                 };
 

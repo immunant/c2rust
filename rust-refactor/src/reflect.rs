@@ -9,6 +9,7 @@ use syntax::ast::*;
 use syntax::codemap::DUMMY_SP;
 use syntax::ptr::P;
 use syntax::symbol::keywords;
+use rustc::middle::cstore::{ExternCrate, ExternCrateSource};
 
 use ast_manip::make_ast::mk;
 use command::{Registry, DriverCommand};
@@ -44,10 +45,11 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         TyStr => mk().ident_ty("str"),
         TyArray(ty, len) => mk().array_ty(
             reflect_tcx_ty(tcx, ty),
-            mk().lit_expr(mk().int_lit(len.val.to_const_int().unwrap().to_u128().unwrap(), "usize"))),
+            mk().lit_expr(mk().int_lit(len.unwrap_usize(tcx) as u128, "usize"))
+        ),
         TySlice(ty) => mk().slice_ty(reflect_tcx_ty(tcx, ty)),
         TyRawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(reflect_tcx_ty(tcx, mty.ty)),
-        TyRef(_, mty) => mk().set_mutbl(mty.mutbl).ref_ty(reflect_tcx_ty(tcx, mty.ty)),
+        TyRef(_, ty, m) => mk().set_mutbl(m).ref_ty(reflect_tcx_ty(tcx, ty)),
         TyFnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
         TyFnPtr(_) => mk().infer_ty(), // TODO
         TyForeign(_) => mk().infer_ty(), // TODO ???
@@ -55,7 +57,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         TyClosure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
         TyGenerator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
         TyNever => mk().never_ty(),
-        TyTuple(tys, _) => mk().tuple_ty(tys.iter().map(|&ty| reflect_tcx_ty(tcx, ty)).collect()),
+        TyTuple(tys) => mk().tuple_ty(tys.iter().map(|&ty| reflect_tcx_ty(tcx, ty)).collect()),
         TyProjection(_) => mk().infer_ty(), // TODO
         TyAnon(_, _) => mk().infer_ty(), // TODO
         // (Note that, despite the name, `TyAnon` *can* be named - it's `impl SomeTrait`.)
@@ -68,6 +70,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         },
         TyInfer(_) => mk().infer_ty(),
         TyError => mk().infer_ty(), // unsupported
+        TyGeneratorWitness(_) => mk().infer_ty(), // TODO ?
     }
 }
 
@@ -96,9 +99,9 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                     segments.push(mk().path_segment(keywords::CrateRoot.ident()));
                     break;
                 } else {
-                    if let Some(ref ec) = *tcx.extern_crate(id) {
+                    if let Some(ExternCrate { src: ExternCrateSource::Extern(def_id), .. }) = *tcx.extern_crate(id) {
                         // The name of the crate is the path to its `extern crate` item.
-                        id = ec.def_id;
+                        id = def_id;
                         continue;
                     } else {
                         // Write `::crate_name` as the name of the crate.  This is incorrect, since
@@ -118,7 +121,7 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             DefPathData::Impl => {
                 let ty = tcx.type_of(id);
                 let gen = tcx.generics_of(id);
-                let num_params = gen.types.len();
+                let num_params = gen.params.len();
 
                 // Reflect the type.  If we have substs available, apply them to the type first.
                 let ast_ty = if let Some(substs) = opt_substs {
@@ -139,6 +142,7 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                     _ => {
                         qself = Some(QSelf {
                             ty: ast_ty.clone(),
+                            path_span: DUMMY_SP,
                             position: 0,
                         });
                     },
@@ -149,7 +153,7 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 
             DefPathData::ValueNs(name) => {
                 if segments.len() == 0 {
-                    if name.len() > 0 {
+                    if name != "" {
                         segments.push(mk().path_segment(name));
                     }
                 } else {
@@ -168,23 +172,28 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             DefPathData::Module(name) |
             DefPathData::Field(name) |
             DefPathData::GlobalMetaData(name) => {
-                if name.len() > 0 {
+                if name != "" {
                     segments.push(mk().path_segment(name));
                 }
             },
 
             DefPathData::TypeParam(name) => {
-                if name.len() > 0 {
+                if name != "" {
                     segments.push(mk().path_segment(name));
                     break;
                 }
             },
 
             DefPathData::ClosureExpr |
-            DefPathData::StructCtor |
-            DefPathData::Initializer |
-            DefPathData::ImplTrait |
-            DefPathData::Typeof => {},
+            DefPathData::Trait(_) |
+            DefPathData::AssocTypeInTrait(_) |
+            DefPathData::AssocTypeInImpl(_) |
+            DefPathData::AnonConst |
+            DefPathData::UniversalImplTrait |
+            DefPathData::ExistentialImplTrait |
+            DefPathData::StructCtor => {},
+            // Apparently DefPathData::ImplTrait disappeared in the current nightly?
+            // TODO: Add it back when it's back
         }
 
         // Special logic for certain node kinds
@@ -192,7 +201,7 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             DefPathData::ValueNs(_) |
             DefPathData::TypeNs(_) => {
                 let gen = tcx.generics_of(id);
-                let num_params = gen.types.len();
+                let num_params = gen.params.len();
                 if let Some(substs) = opt_substs {
                     assert!(substs.len() >= num_params);
                     let start = substs.len() - num_params;
@@ -265,6 +274,7 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         NodeLocal(_) |
         NodeLifetime(_) |
         NodeTyParam(_) |
+        NodeAnonConst(_) |
         NodeVisibility(_) => false,
     }
 }

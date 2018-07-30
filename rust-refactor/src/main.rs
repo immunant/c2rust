@@ -4,10 +4,14 @@ extern crate getopts;
 extern crate idiomize;
 #[macro_use] extern crate log;
 extern crate syntax;
+extern crate rustc;
+extern crate rustc_data_structures;
 
 use std::collections::HashSet;
 use std::str::FromStr;
 use syntax::ast::NodeId;
+use rustc::ty;
+use rustc_data_structures::sync::Lock;
 
 use idiomize::{
     driver, transform, rewrite, pick_node, interact, command, mark_adjust,
@@ -270,15 +274,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     })
 }
 
-fn main() {
-    env_logger::init().unwrap();
-
-    let args = std::env::args().collect::<Vec<_>>();
-    let opts = match parse_opts(args) {
-        Some(x) => x,
-        None => return,
-    };
-
+fn main_impl(opts: Options) {
     let mut marks = HashSet::new();
     for m in &opts.marks {
         let label = m.label.as_ref().map_or("target", |s| s).into_symbol();
@@ -348,4 +344,20 @@ fn main() {
             }
         }
     }
+}
+
+fn main() {
+    env_logger::init().unwrap();
+
+    let args = std::env::args().collect::<Vec<_>>();
+    let opts = match parse_opts(args) {
+        Some(x) => x,
+        None => return,
+    };
+
+    ty::tls::GCX_PTR.set(&Lock::new(0), || {
+        syntax::with_globals(move || {
+            main_impl(opts);
+        });
+    });
 }

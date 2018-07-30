@@ -5,7 +5,7 @@ use std::cmp;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use arena::DroplessArena;
+use arena::SyncDroplessArena;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast;
@@ -199,7 +199,7 @@ pub fn handle_attrs<'a, 'hir, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
 
         for attr in attrs {
             let meta = match_or!([attr.meta()] Some(x) => x; continue);
-            match &meta.name.as_str() as &str {
+            match &meta.name().as_str() as &str {
                 "ownership_constraints" => {
                     let cset = parse_ownership_constraints(&meta, dcx.ty_arena())
                         .unwrap_or_else(|e| panic!("bad #[ownership_constraints] for {:?}: {}",
@@ -287,7 +287,7 @@ fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
 }
 
 fn parse_ownership_constraints<'tcx>(meta: &ast::MetaItem,
-                                     arena: &'tcx DroplessArena)
+                                     arena: &'tcx SyncDroplessArena)
                                      -> Result<ConstraintSet<'tcx>, &'static str> {
     let args = meta_item_list(meta)?;
 
@@ -312,7 +312,7 @@ fn parse_ownership_constraints<'tcx>(meta: &ast::MetaItem,
 }
 
 fn parse_perm<'tcx>(meta: &ast::MetaItem,
-                    arena: &'tcx DroplessArena)
+                    arena: &'tcx SyncDroplessArena)
                     -> Result<Perm<'tcx>, &'static str> {
     if meta.check_name("min") {
         let args = meta_item_list(meta)?;
@@ -332,7 +332,7 @@ fn parse_perm<'tcx>(meta: &ast::MetaItem,
     } else {
         meta_item_word(meta)?;
 
-        let name = meta.name.as_str();
+        let name = meta.name().as_str();
         match &name as &str {
             "READ" => return Ok(Perm::read()),
             "WRITE" => return Ok(Perm::write()),
@@ -351,7 +351,7 @@ fn parse_perm<'tcx>(meta: &ast::MetaItem,
 fn parse_concrete(meta: &ast::MetaItem) -> Result<ConcretePerm, &'static str> {
     meta_item_word(meta)?;
 
-    let name = meta.name.as_str();
+    let name = meta.name().as_str();
     match &name as &str {
         "READ" => Ok(ConcretePerm::Read),
         "WRITE" => Ok(ConcretePerm::Write),

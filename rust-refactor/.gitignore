@@ -4,5 +4,6 @@ __pycache__/
 *.inc.rs
 /target/
 /*.so
+*.new
 
 !/tests/

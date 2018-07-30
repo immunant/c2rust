@@ -25,7 +25,7 @@ impl PatternSymbol for Path {
         if seg.parameters.is_some() {
             return None;
         }
-        seg.identifier.pattern_symbol()
+        seg.ident.pattern_symbol()
     }
 }
 
@@ -51,7 +51,7 @@ impl PatternSymbol for Pat {
     fn pattern_symbol(&self) -> Option<Symbol> {
         match self.node {
             PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
-                           ref i, None) => i.node.pattern_symbol(),
+                           ref i, None) => i.pattern_symbol(),
             _ => None,
         }
     }
@@ -135,5 +135,5 @@ pub fn extended_span(mut s: Span, attrs: &[Attribute]) -> Span {
 /// Get the name of a macro invocation.
 pub fn macro_name(mac: &Mac) -> Name {
     let p = &mac.node.path;
-    p.segments.last().unwrap().identifier.name
+    p.segments.last().unwrap().ident.name
 }

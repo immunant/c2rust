@@ -1,6 +1,6 @@
 //! Interactive mode, for running `idiomize` as a backend for editor plugins.
 use std::marker::PhantomData;
-use std::sync::mpsc::{Sender, SendError};
+use std::sync::mpsc::{SyncSender, SendError};
 
 mod plain_backend;
 mod vim8_backend;
@@ -102,13 +102,13 @@ pub enum ToClient {
 /// the receiving thread.
 #[derive(Clone, Debug)]
 pub struct WrapSender<T, U, F> where F: Fn(T) -> U {
-    inner: Sender<U>,
+    inner: SyncSender<U>,
     convert: F,
     _marker: PhantomData<T>,
 }
 
 impl<T, U, F> WrapSender<T, U, F> where F: Fn(T) -> U {
-    pub fn new(inner: Sender<U>, convert: F) -> WrapSender<T, U, F> {
+    pub fn new(inner: SyncSender<U>, convert: F) -> WrapSender<T, U, F> {
         WrapSender {
             inner: inner,
             convert: convert,

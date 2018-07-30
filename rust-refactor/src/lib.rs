@@ -1,5 +1,4 @@
 #![feature(
-    i128_type,
     rustc_private,
     trace_macros,
 )]
@@ -16,7 +15,8 @@ extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_metadata;
 extern crate rustc_resolve;
-extern crate rustc_trans;
+extern crate rustc_target;
+extern crate rustc_codegen_utils;
 extern crate syntax;
 extern crate syntax_ext;
 extern crate syntax_pos;
