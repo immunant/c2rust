@@ -41,7 +41,6 @@ class Config:
     ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
     DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
     RREF_DIR = os.path.join(ROOT_DIR, 'rust-refactor')
-    COMPILER_SUBMOD_DIR = os.path.join(RREF_DIR, 'compiler')
     CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
     REMON_SUBMOD_DIR = os.path.join(CROSS_CHECKS_DIR, 'ReMon')
     LIBFAKECHECKS_DIR = os.path.join(CROSS_CHECKS_DIR, "libfakechecks")
@@ -193,55 +192,6 @@ def get_rust_toolchain_libpath(name: str) -> str:
     emsg = "custom rust compiler lib path missing: " + libpath
     assert os.path.isdir(libpath), emsg
     return libpath
-
-
-def download_and_build_custom_rustc(args):
-    """
-    NOTE: we''re not using this function currently
-    since it is faster and easier to pull the prebuilt
-    binaries for the custom rust we need with rustup.
-    """
-    git = get_cmd_or_die('git')
-    rustup = get_cmd_or_die('rustup')
-
-    # check if rustup already lists c2rust custom toolchain
-    # so we can avoid this time consuming step if we're not cleaning.
-    if args.clean_all and have_rust_toolchain(config.CUSTOM_RUST_NAME):
-        rustup['toolchain', 'uninstall', config.CUSTOM_RUST_NAME] & pb.FG
-    elif have_rust_toolchain(config.CUSTOM_RUST_NAME):
-        m = "skipping custom rust toolchain build step; already installed"
-        logging.info(m)
-        return
-
-    assert on_linux(), "FIXME: set target_triple based on host os"
-    target_triple = 'x86_64-unknown-linux-gnu'
-
-    # disable host key checking to avoid prompts during automated builds
-    with pb.local.env(GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"):
-        # recursively update and (optionally) initialize submodules
-        invoke(git, "submodule", "update", "--init", "--recursive",
-               config.COMPILER_SUBMOD_DIR)
-
-    with pb.local.cwd(config.COMPILER_SUBMOD_DIR):
-        # seems that just updating submodule gives us the right version
-        # invoke(git, 'reset', '--hard', CUSTOM_RUST_REV)
-
-        x_py = pb.local['./x.py']
-        if args.clean_all:
-            x_py['clean'] & pb.FG
-
-        if not os.path.isfile("config.toml"):
-            configure = pb.local['./configure']
-            configure & pb.FG
-
-        x_py['build', '-j' + config.NCPUS] & pb.FG
-
-    build_output = os.path.join(config.COMPILER_SUBMOD_DIR,
-                                "build",
-                                target_triple,
-                                "stage2")
-    assert os.path.isdir(build_output)
-    rustup['toolchain', 'link', config.CUSTOM_RUST_NAME, build_output] & pb.FG
 
 
 def on_mac() -> bool:

@@ -14,16 +14,3 @@ indexmap = "1.0.1"
 
 [build-dependencies]
 bindgen="0.37"
-
-# [target.'cfg(NOT_A_PLATFORM)'.dependencies]
-# arena                 = {path = "../rust-refactor/compiler/src/libarena"}
-# rustc                 = {path = "../rust-refactor/compiler/src/librustc"}
-# rustc_data_structures = {path = "../rust-refactor/compiler/src/librustc_data_structures"}
-# rustc_driver          = {path = "../rust-refactor/compiler/src/librustc_driver"}
-# rustc_errors          = {path = "../rust-refactor/compiler/src/librustc_errors"}
-# rustc_metadata        = {path = "../rust-refactor/compiler/src/librustc_metadata"}
-# rustc_resolve         = {path = "../rust-refactor/compiler/src/librustc_resolve"}
-# rustc_trans           = {path = "../rust-refactor/compiler/src/librustc_trans"}
-# syntax                = {path = "../rust-refactor/compiler/src/libsyntax"}
-# syntax_ext            = {path = "../rust-refactor/compiler/src/libsyntax_ext"}
-# syntax_pos            = {path = "../rust-refactor/compiler/src/libsyntax_pos"}
