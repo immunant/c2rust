@@ -247,6 +247,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         prefix_names(&mut t, prefix);
     }
 
+    // `with_globals` sets up a thread-local variable required by the syntax crate.
     with_globals(|| {
         // Identify typedefs that name unnamed types and collapse the two declarations
         // into a single name and declaration, eliminating the typedef altogether.
@@ -360,7 +361,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             t.use_feature("used");
         }
 
-
+        // pass all converted items to the Rust pretty printer
         to_string(|s| {
 
             print_header(s,&t)?;
