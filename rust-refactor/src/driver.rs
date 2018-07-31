@@ -179,21 +179,18 @@ pub fn run_compiler<F, R>(args: &[String],
     let hir_map = hir_map::map_crate(&sess, &cstore, &mut expand_result.hir_forest, &expand_result.defs);
 
     if phase == Phase::Phase2 {
-        let cx = Ctxt::new_phase_2(&sess, &cstore,&hir_map);
+        let cx = Ctxt::new_phase_2(&sess, &cstore, &hir_map);
         return func(krate, cx);
     }
 
     driver::phase_3_run_analysis_passes(
         &*codegen_backend,
         &control,
-        // Cloning hir_map seems kind of ugly, but the alternative is to deref the `TyCtxt` to get
-        // a `GlobalCtxt` and read its `hir` field.  Since `GlobalCtxt` is actually private, this
-        // seems like it would probably stop working at some point.
-        &sess, &cstore, hir_map.clone(), expand_result.analysis, expand_result.resolutions,
+        &sess, &cstore, hir_map, expand_result.analysis, expand_result.resolutions,
         &arenas, &crate_name, &outputs,
         |tcx, _analysis, _incremental_hashes_map, _result| {
             if phase == Phase::Phase3 {
-                let cx = Ctxt::new_phase_3(&sess, &cstore, &hir_map, tcx, &arenas.interner);
+                let cx = Ctxt::new_phase_3(&sess, &cstore, &tcx.hir, tcx, &arenas.interner);
                 return func(krate, cx);
             }
             unreachable!();
