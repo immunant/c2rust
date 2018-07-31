@@ -95,6 +95,9 @@ pub trait DriverCtxtExt<'tcx> {
     fn resolve_expr(&self, e: &Expr) -> DefId;
     fn try_resolve_expr(&self, e: &Expr) -> Option<DefId>;
 
+    fn def_to_hir_id(&self, def: &hir::def::Def) -> Option<hir::HirId>;
+    fn try_resolve_expr_to_hid(&self, e: &Expr) -> Option<hir::HirId>;
+
     /// Get the target `DefId` of a path ty.
     fn resolve_ty(&self, e: &ast::Ty) -> DefId;
     fn try_resolve_ty(&self, e: &ast::Ty) -> Option<DefId>;
@@ -143,6 +146,54 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
             Some(Node::NodeItem(item)) => self.hir_map().local_def_id(item.id),
             _ => self.hir_map().local_def_id(id),
         }
+    }
+
+    fn def_to_hir_id(&self, def: &hir::def::Def) -> Option<hir::HirId> {
+        use rustc::hir::def::Def;
+        match def {
+            Def::Mod(did) |
+            Def::Struct(did) |
+            Def::Union(did) |
+            Def::Enum(did) |
+            Def::Variant(did) |
+            Def::Trait(did) |
+            Def::Existential(did) |
+            Def::TyAlias(did) |
+            Def::TyForeign(did) |
+            Def::AssociatedTy(did) |
+            Def::TyParam(did) |
+            Def::Fn(did) |
+            Def::Const(did) |
+            Def::Static(did, _) |
+            Def::StructCtor(did, _) |
+            Def::VariantCtor(did, _) |
+            Def::Method(did) |
+            Def::AssociatedConst(did) |
+            Def::Macro(did, _) |
+            Def::GlobalAsm(did) |
+            Def::TraitAlias(did) => Some(self.hir_map().local_def_id_to_hir_id(did.to_local())),
+
+            // Local variables stopped having DefIds at some point and switched to NodeId
+            Def::Local(node) |
+            Def::Upvar(node, _, _) |
+            Def::Label(node) => Some(self.hir_map().node_to_hir_id(*node)),
+
+            Def::PrimTy(_) |
+            Def::SelfTy(_, _) |
+            Def::Err => None
+        }
+    }
+
+    fn try_resolve_expr_to_hid(&self, e: &Expr) -> Option<hir::HirId> {
+        let node = match_or!([self.hir_map().find(e.id)] Some(x) => x;
+                             return None);
+        let e = match_or!([node] hir::map::NodeExpr(e) => e;
+                          return None);
+        let qpath = match_or!([e.node] hir::ExprPath(ref q) => q;
+                              return None);
+        let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
+                             return None);
+        self.def_to_hir_id(&path.def)
     }
 
     fn try_resolve_expr(&self, e: &Expr) -> Option<DefId> {

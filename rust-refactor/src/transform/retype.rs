@@ -45,12 +45,7 @@ impl Transform for RetypeArgument {
                         arg.ty = new_ty.clone();
                         mod_fns.entry(cx.node_def_id(fn_id)).or_insert_with(HashSet::new).insert(i);
 
-                        if let Some(def_id) = cx.hir_map().opt_local_def_id(arg.pat.id) {
-                            changed_args.insert(def_id);
-                        } else {
-                            warn!("can't find DefId for arg pattern {:?} (for type {:?})",
-                                  arg.pat, arg.ty);
-                        }
+                        changed_args.insert(cx.hir_map().node_to_hir_id(arg.pat.id));
                     }
                 }
                 decl
@@ -68,8 +63,8 @@ impl Transform for RetypeArgument {
             // rewritten so that we don't end up with a stack overflow.
             let mut rewritten_nodes = HashSet::new();
             fl.block = fold_nodes(fl.block.take(), |e: P<Expr>| {
-                if let Some(def_id) = cx.try_resolve_expr(&e) {
-                    if changed_args.contains(&def_id) && !rewritten_nodes.contains(&e.id) {
+                if let Some(hir_id) = cx.try_resolve_expr_to_hid(&e) {
+                    if changed_args.contains(&hir_id) && !rewritten_nodes.contains(&e.id) {
                         rewritten_nodes.insert(e.id);
                         let mut bnd = Bindings::new();
                         bnd.add_expr("__new", e.clone());
