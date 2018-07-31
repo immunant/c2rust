@@ -2419,18 +2419,7 @@ impl Translation {
             }
 
             CExprKind::Call(_, func, ref args) => {
-                let fn_expr = &self.ast_context.c_exprs[&func];
-                let fn_ty = &self.ast_context.c_types[&fn_expr.kind.get_type().unwrap()];
-                let is_variadic = if let CTypeKind::Pointer(qual_ty) = fn_ty.kind {
-                    if let CTypeKind::Function(_, _, is_variadic, _) = self.ast_context.c_types[&qual_ty.ctype].kind {
-                        is_variadic
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
-
+                let is_variadic = self.fn_expr_is_variadic(func);
                 let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _) =>
                         self.convert_expr(ExprUse::RValue, fexp, is_static, decay_ref)?,
@@ -2446,6 +2435,7 @@ impl Translation {
                 let mut args_new: Vec<P<Expr>> = vec![];
 
                 for arg in args {
+                    // We pass is_variadic to convert_expr because we want to decay refs only when function is variadic
                     let WithStmts { stmts: ss, val } = self.convert_expr(ExprUse::RValue, *arg, is_static, is_variadic)?;
                     stmts.extend(ss);
                     args_new.push(val);
@@ -2576,6 +2566,19 @@ impl Translation {
                     Err(format!("Variable argument lists are not supported (requires --translate-valist)"))
                 }
             }
+        }
+    }
+
+    fn fn_expr_is_variadic(&self, expr_id: CExprId) -> bool {
+        let fn_expr = &self.ast_context.c_exprs[&expr_id];
+        let fn_ty = &self.ast_context.c_types[&fn_expr.kind.get_type().unwrap()];
+        if let CTypeKind::Pointer(qual_ty) = fn_ty.kind {
+            match self.ast_context.c_types[&qual_ty.ctype].kind {
+                CTypeKind::Function(_, _, is_variadic, _) => is_variadic,
+                _ => false,
+            }
+        } else {
+            false
         }
     }
 

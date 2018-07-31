@@ -3,7 +3,7 @@ extern crate libc;
 use pointer_init::rust_entry;
 use pointer_arith::rust_entry2;
 use function_pointers::rust_entry3;
-use ref_decay::{rust_f, rust_bar, rust_foobar, rust_calls_all};
+use ref_decay::{rust_f, rust_bar, rust_bitcast, rust_foobar, rust_calls_all};
 use self::libc::{c_int, c_uint};
 
 #[link(name = "test")]
