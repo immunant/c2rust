@@ -1135,7 +1135,10 @@ impl Translation {
     ) -> Result<ConvertedDecl, String> {
 
         if is_variadic && body.is_some() {
-            return Err(format!("Variadic function implementations not supported"))
+            let message = format!(
+                "Failed to translate {}; variadic function implementations not supported",
+                name);
+            return Err(message);
         }
 
         self.with_scope(|| {
