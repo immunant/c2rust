@@ -15,9 +15,9 @@ unsafe fn get_x_addr(s: &S) -> &u32 {
 }
 
 unsafe fn get_x_addr_mut(s: &mut S) -> &mut u32 {
-    ::std::mem::transmute::<&mut i32, &mut u32>(
-        &mut *::std::mem::transmute::<&mut u32, &mut i32>(&mut s.x),
-    )
+    ::std::mem::transmute::<&mut i32, &mut u32>(&mut *::std::mem::transmute::<&mut u32, &mut i32>(
+        &mut s.x,
+    ))
 }
 
 unsafe fn set_x_2(s: &mut S, x: u32) {

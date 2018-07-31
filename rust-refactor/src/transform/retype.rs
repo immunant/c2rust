@@ -274,9 +274,8 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
         fold_expr_with_context(e, lr_expr::Context::Rvalue, |e, context| {
             match e.node {
                 ExprKind::Path(..) => {
-                    if let Some(&(ref old_ty, ref new_ty)) = cx.try_resolve_expr(&e)
-                            .and_then(|did| cx.hir_map().as_local_node_id(did))
-                            .and_then(|id| changed_defs.get(&id)) {
+                    if let Some(&(ref old_ty, ref new_ty)) = cx.try_resolve_expr_to_hid(&e)
+                            .and_then(|hid| changed_defs.get(&cx.hir_map().hir_to_node_id(hid))) {
                         return transmute(e.clone(), context, new_ty, old_ty);
                     }
                 },
