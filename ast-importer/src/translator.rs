@@ -2419,6 +2419,18 @@ impl Translation {
             }
 
             CExprKind::Call(_, func, ref args) => {
+                let fn_expr = &self.ast_context.c_exprs[&func];
+                let fn_ty = &self.ast_context.c_types[&fn_expr.kind.get_type().unwrap()];
+                let is_variadic = if let CTypeKind::Pointer(qual_ty) = fn_ty.kind {
+                    if let CTypeKind::Function(_, _, is_variadic, _) = self.ast_context.c_types[&qual_ty.ctype].kind {
+                        is_variadic
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
                 let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _) =>
                         self.convert_expr(ExprUse::RValue, fexp, is_static, decay_ref)?,
@@ -2432,8 +2444,9 @@ impl Translation {
                 };
 
                 let mut args_new: Vec<P<Expr>> = vec![];
+
                 for arg in args {
-                    let WithStmts { stmts: ss, val } = self.convert_expr(ExprUse::RValue, *arg, is_static, false)?;
+                    let WithStmts { stmts: ss, val } = self.convert_expr(ExprUse::RValue, *arg, is_static, is_variadic)?;
                     stmts.extend(ss);
                     args_new.push(val);
                 }

@@ -7,7 +7,7 @@ void bar(const int *a) {
 
     f(&arr[0], a);
 }
-void baz(void *a) {}
+void bitcast(void *a) {}
 void foobar(unsigned int *a) {}
 
 void calls_all() {
@@ -16,6 +16,14 @@ void calls_all() {
 
     f(&i, &i);
     bar(&j);
-    baz(&i);
     foobar(&i);
+
+    // Bitcast required; should ref decay or else won't compile.
+    bitcast(&i);
+
+    int *k = &i;
+    int l[2];
+
+    // Variadic functions need references decayed or else it won't compile.
+    sscanf(k, "%u,%u", &l[0], &l[1]);
 }
