@@ -11,6 +11,7 @@ use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
 use util::IntoSymbol;
+use util::HirDefExt;
 
 
 /// Rename items using regex match and replace.
@@ -38,7 +39,7 @@ impl Transform for RenameRegex {
             let name = i.ident.name.as_str();
             let new_name = re.replace(&name, &self.repl as &str);
             if let Cow::Owned(new_name) = new_name {
-                new_idents.insert(cx.node_def_id(i.id), mk().ident(&new_name));
+                new_idents.insert(cx.hir_map().node_to_hir_id(i.id), mk().ident(&new_name));
 
                 SmallVector::one(i.map(|i| {
                     Item {
@@ -53,9 +54,11 @@ impl Transform for RenameRegex {
 
         // (2) Rewrite paths referring to renamed defs
 
-        let krate = fold_resolved_paths(krate, cx, |qself, mut path, def_id| {
-            if let Some(new_ident) = new_idents.get(&def_id) {
-                path.segments.last_mut().unwrap().ident = new_ident.clone();
+        let krate = fold_resolved_paths(krate, cx, |qself, mut path, def| {
+            if let Some(hir_id) = cx.def_to_hir_id(def) {
+                if let Some(new_ident) = new_idents.get(&hir_id) {
+                    path.segments.last_mut().unwrap().ident = new_ident.clone();
+                }
             }
             (qself, path)
         });
@@ -118,11 +121,11 @@ impl Transform for ReplaceItems {
 
         // (2) Rewrite references to `target` items to refer to `repl` instead.
 
-        let krate = fold_resolved_paths(krate, cx, |qself, path, def_id| {
-            if target_ids.contains(&def_id) {
-                (None, cx.def_path(repl_id))
-            } else {
-                (qself, path)
+        let krate = fold_resolved_paths(krate, cx, |qself, path, def| {
+            match def.opt_def_id() {
+                Some(def_id) if target_ids.contains(&def_id) =>
+                    (None, cx.def_path(repl_id)),
+                _ => (qself, path),
             }
         });
 

@@ -11,6 +11,7 @@ use ast_manip::fn_edit::{visit_fns, FnKind};
 use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
+use util::HirDefExt;
 
 
 /// Find this pattern:
@@ -50,10 +51,12 @@ impl Transform for LinkFuncs {
         });
 
         // (3) Adjust references to extern fns to refer to the `#[no_mangle]` definition instead.
-        let krate = fold_resolved_paths(krate, cx, |qself, path, def_id| {
-            if let Some(&symbol) = extern_def_to_symbol.get(&def_id) {
-                if let Some(&real_def_id) = symbol_to_def.get(&symbol) {
-                    return (None, cx.def_path(real_def_id));
+        let krate = fold_resolved_paths(krate, cx, |qself, path, def| {
+            if let Some(def_id) = def.opt_def_id() {
+                if let Some(&symbol) = extern_def_to_symbol.get(&def_id) {
+                    if let Some(&real_def_id) = symbol_to_def.get(&symbol) {
+                        return (None, cx.def_path(real_def_id));
+                    }
                 }
             }
             (qself, path)
@@ -125,8 +128,8 @@ impl Transform for LinkIncompleteTypes {
         });
 
         // (2) Replace references to incomplete types with references to same-named complete types.
-        fold_resolved_paths(krate, cx, |qself, path, def_id| {
-            if let Some(&name) = incomplete_to_name.get(&def_id) {
+        fold_resolved_paths(krate, cx, |qself, path, def| {
+            if let Some(&name) = def.opt_def_id().as_ref().and_then(|x| incomplete_to_name.get(x)) {
                 if let Some(complete_def_ids) = name_to_complete.get(&name) {
                     // Arbitrarily choose the first complete definition, if there's more than one.
                     // A separate transform will canonicalize references to complete types.
@@ -210,8 +213,9 @@ impl Transform for CanonicalizeStructs {
 
         // (4) Rewrite references to removed structs.
 
-        let krate = fold_resolved_paths(krate, cx, |qself, path, def_id| {
-            if let Some(&canon_def_id) = removed_id_map.get(&def_id) {
+        let krate = fold_resolved_paths(krate, cx, |qself, path, def| {
+            if let Some(&canon_def_id) = def.opt_def_id().as_ref()
+                .and_then(|x| removed_id_map.get(&x)) {
                 (None, cx.def_path(canon_def_id))
             } else {
                 (qself, path)

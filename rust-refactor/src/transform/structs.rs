@@ -7,6 +7,7 @@ use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
 use util::IntoSymbol;
+use util::HirDefExt;
 
 
 pub struct AssignToUpdate;
@@ -126,9 +127,11 @@ impl Transform for Rename {
         let target_def_id = target_def_id
             .expect("found no struct to rename");
 
-        let krate = fold_resolved_paths(krate, cx, |qself, mut path, def_id| {
-            if def_id == target_def_id {
-                path.segments.last_mut().unwrap().ident = new_ident;
+        let krate = fold_resolved_paths(krate, cx, |qself, mut path, def| {
+            if let Some(def_id) = def.opt_def_id() {
+                if def_id == target_def_id {
+                    path.segments.last_mut().unwrap().ident = new_ident;
+                }
             }
             (qself, path)
         });

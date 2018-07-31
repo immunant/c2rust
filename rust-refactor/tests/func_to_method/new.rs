@@ -22,9 +22,9 @@ impl S {
 
 fn main() {
     let mut s = S { x: 0 };
-    println!("by_ref: {}", ((&s)).by_ref());
+    println!("by_ref: {}", (&s).by_ref());
     (&mut s).by_mut_ref(1);
-    println!("by_ref_with_lt: {}", ((&s)).by_ref_with_lt());
+    println!("by_ref_with_lt: {}", (&s).by_ref_with_lt());
     println!("by_val: {}", s.by_val());
     println!("static_method: {}", ::S::static_method(100, -100));
 }

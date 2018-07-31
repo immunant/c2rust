@@ -14,6 +14,7 @@ use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
 use util::IntoSymbol;
+use util::HirDefExt;
 
 
 /// Turn free functions into methods in an impl.  
@@ -119,7 +120,7 @@ impl Transform for ToMethod {
 
             let pat_ty = cx.node_type(arg.pat.id);
             let self_ty = cx.def_type(cx.node_def_id(dest.id));
-            let arg_def_id = cx.node_def_id(arg.pat.id);
+            let arg_hir_id = cx.hir_map().node_to_hir_id(arg.pat.id);
 
             // Build the new `self` argument and insert it.
             let self_kind = {
@@ -157,12 +158,16 @@ impl Transform for ToMethod {
             // FIXME: rustc changed how locals args are represented, and we
             // don't have a Def for locals any more, and thus no def_id. We need
             // to fix this in path_edit.rs
-            f.block = fold_resolved_paths(f.block.clone(), cx, |qself, path, def_id| {
-                if def_id == arg_def_id {
-                    assert!(qself.is_none());
-                    (None, mk().path(vec!["self"]))
-                } else {
-                    (qself, path)
+            f.block = fold_resolved_paths(f.block.clone(), cx, |qself, path, def| {
+                match cx.def_to_hir_id(&def) {
+                    Some(hir_id) =>
+                        if hir_id == arg_hir_id {
+                            assert!(qself.is_none());
+                            return (None, mk().path(vec!["self"]));
+                        } else {
+                            (qself, path)
+                        },
+                    None => (qself, path)
                 }
             });
         }
@@ -447,13 +452,15 @@ impl Transform for WrapExtern {
 
         // (3) Rewrite call sites to use the new wrappers.
         let ident_map = fns.iter().map(|f| (f.def_id, f.ident)).collect::<HashMap<_, _>>();
-        let krate = fold_resolved_paths(krate, cx, |qself, path, def_id| {
-            if let Some(ident) = ident_map.get(&def_id) {
-                let mut new_path = dest_path.clone();
-                new_path.segments.push(mk().path_segment(ident));
-                (qself, new_path)
-            } else {
-                (qself, path)
+        let krate = fold_resolved_paths(krate, cx, |qself, path, def| {
+            match def.opt_def_id() {
+                Some(def_id) if ident_map.contains_key(&def_id) => {
+                    let ident = ident_map.get(&def_id).unwrap();
+                    let mut new_path = dest_path.clone();
+                    new_path.segments.push(mk().path_segment(ident));
+                    (qself, new_path)
+                },
+                _ => (qself, path),
             }
         });
 

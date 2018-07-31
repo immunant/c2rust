@@ -10,6 +10,7 @@ use command::{CommandState, Registry};
 use driver;
 use transform::Transform;
 use util::IntoSymbol;
+use util::HirDefExt;
 
 
 /// Add a type variable with the given name (default: `T`) to each `target` item, and replace each
@@ -81,11 +82,11 @@ impl Transform for GeneralizeItems {
         let replacement_ty = replacement_ty
             .expect("must provide a replacement type argument or mark");
 
-        let krate = fold_resolved_paths_with_id(krate, cx, |path_id, qself, mut path, def_id| {
-            if !item_def_ids.contains(&def_id) {
-                // Referenced item wasn't modified.
-                return (qself, path);
-            }
+        let krate = fold_resolved_paths_with_id(krate, cx, |path_id, qself, mut path, def| {
+            match def.opt_def_id() {
+                Some(def_id) if item_def_ids.contains(&def_id) => (),
+                _ => return (qself, path),
+            };
 
             let parent_id = cx.hir_map().get_parent(path_id);
             let arg = if st.marked(parent_id, "target") {

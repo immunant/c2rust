@@ -12,6 +12,7 @@ use transform::Transform;
 use util::IntoSymbol;
 use util::Lone;
 use util::dataflow;
+use util::HirDefExt;
 
 
 pub struct CollectToStruct {
@@ -156,8 +157,10 @@ impl Transform for Localize {
             let fn_def_id = cx.node_def_id(fl.id);
 
             let mut refs = HashSet::new();
-            let block = fold_resolved_paths(fl.block, cx, |qself, path, def_id| {
-                refs.insert(def_id);
+            let block = fold_resolved_paths(fl.block, cx, |qself, path, def| {
+                if let Some(def_id) = def.opt_def_id() {
+                    refs.insert(def_id);
+                }
                 (qself, path)
             });
             fn_refs.insert(fn_def_id, refs);
