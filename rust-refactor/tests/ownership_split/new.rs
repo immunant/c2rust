@@ -20,21 +20,21 @@ struct Tree {
 
 #[ownership_constraints(le(min(WRITE, _1), _0))]
 #[ownership_mono("take", WRITE, MOVE)]
-#[ownership_variant_of("old/8cd878b::get_children[0]")]
+#[ownership_variant_of("::get_children[0]")]
 unsafe fn get_children_take(parent: *mut Tree) -> *mut Forest {
     let mut out = ptr::null_mut();
     get_children_err_take(parent, &mut out);
     out
 }
 #[ownership_mono("mut", WRITE, WRITE)]
-#[ownership_variant_of("old/8cd878b::get_children[0]")]
+#[ownership_variant_of("::get_children[0]")]
 unsafe fn get_children_mut(parent: *mut Tree) -> *mut Forest {
     let mut out = ptr::null_mut();
     get_children_err_mut(parent, &mut out);
     out
 }
 #[ownership_mono("", READ, READ)]
-#[ownership_variant_of("old/8cd878b::get_children[0]")]
+#[ownership_variant_of("::get_children[0]")]
 unsafe fn get_children(parent: *mut Tree) -> *mut Forest {
     let mut out = ptr::null_mut();
     get_children_err(parent, &mut out);
@@ -42,25 +42,25 @@ unsafe fn get_children(parent: *mut Tree) -> *mut Forest {
 }
 #[ownership_constraints(le(WRITE, _1), le(min(WRITE, _2), _0))]
 #[ownership_mono("take", WRITE, WRITE, MOVE)]
-#[ownership_variant_of("old/8cd878b::get_children_err[0]")]
+#[ownership_variant_of("::get_children_err[0]")]
 unsafe fn get_children_err_take(parent: *mut Tree, children_out: *mut *mut Forest) -> i32 {
     *children_out = (*parent).children;
     0
 }
 #[ownership_mono("mut", WRITE, WRITE, WRITE)]
-#[ownership_variant_of("old/8cd878b::get_children_err[0]")]
+#[ownership_variant_of("::get_children_err[0]")]
 unsafe fn get_children_err_mut(parent: *mut Tree, children_out: *mut *mut Forest) -> i32 {
     *children_out = (*parent).children;
     0
 }
 
 #[ownership_mono("", READ, WRITE, READ)]
-#[ownership_variant_of("old/8cd878b::get_children_err[0]")]
+#[ownership_variant_of("::get_children_err[0]")]
 unsafe fn get_children_err(parent: *mut Tree, children_out: *mut *mut Forest) -> i32 {
     *children_out = (*parent).children;
     0
 }
 
 #[ownership_mono("")]
-#[ownership_variant_of("old/8cd878b::main[0]")]
+#[ownership_variant_of("::main[0]")]
 fn main() {}
