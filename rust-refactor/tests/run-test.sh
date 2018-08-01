@@ -10,7 +10,7 @@ elif [ "$unamestr" = 'Darwin' ]; then
    triple='x86_64-apple-darwin'
 fi
 rust_dir=$(rustc --print sysroot)
-rustfmt=$HOME/.cargo/bin/rustfmt
+rustfmt=$rust_dir/bin/rustfmt
 export LD_LIBRARY_PATH=$rust_dir/lib
 # System Integrity Protection on macOS ignores previous export statement
 # so export the library path under another name and set it in the child.
