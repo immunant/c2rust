@@ -57,7 +57,6 @@ features = ["libc-hash"]
 # Template for the crate root lib.rs file
 LIB_RS_TEMPLATE = """\
 #![feature(libc)]
-#![feature(i128_type)]
 #![feature(const_ptr_null)]
 #![feature(offset_to)]
 #![feature(const_ptr_null_mut)]
