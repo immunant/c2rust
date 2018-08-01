@@ -171,7 +171,12 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
             Def::AssociatedConst(did) |
             Def::Macro(did, _) |
             Def::GlobalAsm(did) |
-            Def::TraitAlias(did) => Some(self.hir_map().local_def_id_to_hir_id(did.to_local())),
+            Def::TraitAlias(did) =>
+                if did.is_local() {
+                    Some(self.hir_map().local_def_id_to_hir_id(did.to_local()))
+                } else {
+                    None
+                },
 
             // Local variables stopped having DefIds at some point and switched to NodeId
             Def::Local(node) |
