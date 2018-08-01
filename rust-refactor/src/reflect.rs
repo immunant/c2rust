@@ -3,7 +3,7 @@ use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::map::Node::*;
 use rustc::hir::map::definitions::DefPathData;
-use rustc::ty::{self, TyCtxt};
+use rustc::ty::{self, TyCtxt, GenericParamDefKind};
 use rustc::ty::subst::Subst;
 use syntax::ast::*;
 use syntax::codemap::DUMMY_SP;
@@ -201,7 +201,10 @@ fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             DefPathData::ValueNs(_) |
             DefPathData::TypeNs(_) => {
                 let gen = tcx.generics_of(id);
-                let num_params = gen.params.len();
+                let num_params = gen.params.iter().filter(|x| match x.kind {
+                    GenericParamDefKind::Lifetime{..} => false,
+                    GenericParamDefKind::Type{..} => true,
+                }).count();
                 if let Some(substs) = opt_substs {
                     assert!(substs.len() >= num_params);
                     let start = substs.len() - num_params;
