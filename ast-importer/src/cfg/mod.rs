@@ -537,6 +537,7 @@ impl Cfg<Label, StmtOrDecl> {
                             use_,
                             expr_id,
                             is_static,
+                            true,
                         )?;
 
                         body.extend(stmts.into_iter().map(|s| StmtOrDecl::Stmt(s)));
@@ -1111,7 +1112,7 @@ impl CfgBuilder {
                 stmt_id,
             )),
             CStmtKind::Return(expr) => {
-                let val = match expr.map(|i| translator.convert_expr(ExprUse::RValue, i, false)) {
+                let val = match expr.map(|i| translator.convert_expr(ExprUse::RValue, i, false, true)) {
                     Some(r) => Some(r?),
                     None => None,
                 };
@@ -1311,7 +1312,7 @@ impl CfgBuilder {
                         None => slf.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
                         Some(incr) => {
                           let incr_stmts = translator
-                                  .convert_expr(ExprUse::Unused, incr, false)?
+                                  .convert_expr(ExprUse::Unused, incr, false, true)?
                                   .stmts;
                           let mut incr_wip = slf.new_wip_block(incr_entry);
                           incr_wip.extend(incr_stmts);
@@ -1353,7 +1354,7 @@ impl CfgBuilder {
             ),
 
             CStmtKind::Expr(expr) => {
-                wip.extend(translator.convert_expr(ExprUse::Unused, expr, false)?.stmts);
+                wip.extend(translator.convert_expr(ExprUse::Unused, expr, false, true)?.stmts);
 
                 // If we can tell the expression is going to diverge, there is no falling through to
                 // the next block.
@@ -1440,7 +1441,7 @@ impl CfgBuilder {
                 let body_label = self.fresh_label();
 
                 // Convert the condition
-                let WithStmts { stmts, val } = translator.convert_expr(ExprUse::RValue, scrutinee, false)?;
+                let WithStmts { stmts, val } = translator.convert_expr(ExprUse::RValue, scrutinee, false, true)?;
                 wip.extend(stmts);
 
                 let wip_label = wip.label;
