@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import json
+import errno
 import shutil
 import logging
 import argparse
@@ -197,6 +198,23 @@ def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
             modules=template_modules))
 
 
+def check_main_module(main_module: str, cc_db: TextIO):
+    """
+    check that the main module parameter references a valid
+    translation unit in the compile commands database.
+    TODO: check that the referenced module actually defines a main method.
+    """
+    if main_module:
+        translation_units = [c['file'] for c in cc_db]
+        translation_units = list(map(lambda f: os.path.splitext(f)[0],
+                                     translation_units))
+        if main_module not in translation_units:
+            e = "unknown translation unit: {}\n" \
+                .format(main_module)
+            e += "must be one of: {}\n".format(", ".join(translation_units))
+            die(e, errno.ENOENT)
+
+
 def transpile_files(cc_db: TextIO,
                     filter: str = None,
                     extra_impo_args: List[str] = [],
@@ -215,6 +233,8 @@ def transpile_files(cc_db: TextIO,
     ast_impo = get_cmd_or_die(c.AST_IMPO)
     cc_db_name = cc_db.name
     cc_db = json.load(cc_db)
+
+    check_main_module(main_module_for_build_files, cc_db)
 
     if filter:  # skip commands not matching file filter
         cc_db = [c for c in cc_db if filter in c['file']]
@@ -341,11 +361,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-e', '--emit-build-files',
                         default=False, action='store_true',
                         help='emit Rust build files, i.e., Cargo.toml '
-                             'for a library (or a binary if -m/--main is given)')
+                             'for a library (or a binary if -m/--main '
+                             'is given)')
     parser.add_argument('-m', '--main',
                         default=None, action='store',
                         help='emit Rust build files for a binary using '
-                             'the main method in the specified translation unit')
+                             'the main method in the specified translation '
+                             'unit (implies -e/--emit-build-files)')
     parser.add_argument('-x', '--cross-checks',
                         default=False, action='store_true',
                         help='enable cross-checks')
@@ -358,7 +380,11 @@ def parse_args() -> argparse.Namespace:
                         help='enable (disable) relooper; enabled by '
                              'default')
     c.add_args(parser)
-    return parser.parse_args()
+
+    args = parser.parse_args()
+    # -m/--main implies -e/--emit-build-files
+    args.emit_build_files = True if args.main else args.emit_build_files
+    return args
 
 
 def main():
