@@ -92,16 +92,14 @@ def configure_and_build_llvm(args: str) -> None:
                      "-Wno-dev",
                      "-DCMAKE_C_COMPILER=clang",
                      "-DCMAKE_CXX_COMPILER=clang++",
-                     "-DCMAKE_C_FLAGS=-I{}/include".format(c.CBOR_PREFIX),
-                     "-DCMAKE_CXX_FLAGS=-I{}/include".format(c.CBOR_PREFIX),
-                     "-DCMAKE_EXE_LINKER_FLAGS=-L{}/lib".format(c.CBOR_PREFIX),
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DLLVM_TARGETS_TO_BUILD=X86",
                      "-DLLVM_INCLUDE_UTILS=1",
                      "-DLLVM_BUILD_UTILS=1",
                      "-DBUILD_SHARED_LIBS=1",
-                     "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
+                     "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
+                     "-DTINYCBOR_PREFIX={}".format(c.CBOR_PREFIX)]
             invoke(cmake[cargs])
         else:
             logging.debug("found existing ninja.build, not running cmake")
@@ -127,32 +125,6 @@ def update_cmakelists(filepath):
         with open(filepath, "a+") as handle:
             handle.writelines(c.CMAKELISTS_COMMANDS)
         logging.debug("added commands to %s", filepath)
-
-
-def update_cbor_prefix(makefile):
-    """
-    rewrite prefix variable in tinycbor makefile.
-    """
-    if not os.path.isfile(makefile):
-        die("not found: " + makefile, errno.ENOENT)
-
-    lines = []
-    writeback = False
-    with open(makefile, 'r') as fh:
-        for line in fh.readlines():
-            m = re.match(r'^\s*prefix\s*=\s*([^\s]+)', line)
-            if m:
-                logging.debug("tinycbor prefix: '%s'", m.group(1))
-                prefix = m.group(1)
-                writeback = prefix != c.CBOR_PREFIX
-                lines.append("prefix = " + c.CBOR_PREFIX + os.linesep)
-            else:
-                lines.append(line)
-
-    if writeback:
-        logging.debug("updating tinycbor Makefile")
-        with open(makefile, 'w') as fh:
-            fh.writelines("".join(lines))
 
 
 def build_ast_importer(debug: bool):
@@ -206,63 +178,6 @@ def build_a_bear():
         make["install"] & pb.TEE
 
 
-def install_tinycbor() -> Optional[str]:
-    """
-    download, unpack, build, and install tinycbor.
-    """
-    cc_cmd_db = os.path.join(c.CBOR_SRC, "compile_commands.json")
-
-    def path_to_cc_db():
-        if not os.path.isfile(cc_cmd_db) and not on_mac():
-            die("not found: " + cc_cmd_db)
-        return cc_cmd_db
-
-    # skip recompilation iff:
-    # 1. cbor appears to have been installed,
-    # 2. we have the right archive downloaded (catches version changes), and
-    # 3. we have a compile commands database for sanity testing or
-    #    we're on mac where we can't use bear to generate the database.
-    if os.path.isdir(c.CBOR_PREFIX) and \
-       os.path.isfile(c.CBOR_ARCHIVE) and \
-       (os.path.isfile(cc_cmd_db) or on_mac()):
-        logging.debug("skipping tinycbor installation")
-        return path_to_cc_db()
-
-    # download
-    if not os.path.isfile(c.CBOR_ARCHIVE):
-        curl = get_cmd_or_die("curl")
-        curl['-s', c.CBOR_URL, '-o', c.CBOR_ARCHIVE] & pb.TEE
-
-    # remove any existing build dir since we don't know if
-    # tinycbor was built for the current host environment.
-    if os.path.isdir(c.CBOR_SRC):
-        shutil.rmtree(c.CBOR_SRC, ignore_errors=True)
-
-    # unpack
-    tar = get_cmd_or_die("tar")
-    with pb.local.cwd(c.DEPS_DIR):
-        tar['xf', c.CBOR_ARCHIVE] & pb.TEE
-
-    # update install prefix
-    update_cbor_prefix(os.path.join(c.CBOR_SRC, "Makefile"))
-
-    # make && install
-    # NOTE: we use bear to wrap make invocations such that
-    # we get a .json database of compiler commands that we
-    # can use to test ast-exporter. On macOS, bear requires
-    # system integrity protection to be turned off, so we
-    # only use bear on Ubuntu Linux hosts.
-    with pb.local.cwd(c.CBOR_SRC):
-        make = get_cmd_or_die("make")
-        if not on_mac():
-            bear = get_cmd_or_die(c.BEAR_BIN)
-            make = bear[make]
-        make & pb.TEE  # nopep8
-        make('install')  # & pb.TEE
-
-    return path_to_cc_db()
-
-
 def integrate_ast_exporter():
     """
     link ast-exporter into $LLVM_SRC/tools/clang/tools/extra
@@ -302,10 +217,6 @@ def _parse_args():
     parser.add_argument('-c', '--clean-all', default=False,
                         action='store_true', dest='clean_all',
                         help='clean everything before building')
-    thelp = 'sanity test ast exporter using tinycbor (linux only)'
-    parser.add_argument('-t', '--test', default=False,
-                        action='store_true', dest='sanity_test',
-                        help=thelp)
     parser.add_argument('--with-clang', default=False,
                         action='store_true', dest='with_clang',
                         help='build clang with this tool')
@@ -316,29 +227,6 @@ def _parse_args():
     args = parser.parse_args()
     c.update_args(args)
     return args
-
-
-def test_ast_exporter(cc_db_path: str):
-    """
-    run ast-exporter on tinycbor if on linux. testing is
-    not supported on macOS since bear requires system integrity
-    protection to be disabled.
-    """
-    assert not on_mac(), "sanity testing requires linux host"
-
-    ast_extr = os.path.join(c.LLVM_BIN, "ast-exporter")
-    if not os.path.isfile(ast_extr):
-        die("ast-exporter not found in " + c.LLVM_BIN)
-    ast_extr = get_cmd_or_die(ast_extr)
-
-    include_dirs = get_system_include_dirs()
-
-    with open(cc_db_path, "r") as handle:
-        cc_db = json.load(handle)
-    for cmd in cc_db:
-        exporter_ast_from(ast_extr, cc_db_path, include_dirs, **cmd)
-
-    logging.info("PASS sanity testing")
 
 
 def binary_in_path(binary_name) -> bool:
@@ -396,19 +284,9 @@ def _main():
 
     integrate_ast_exporter()
 
-    cc_db = install_tinycbor()
-
     configure_and_build_llvm(args)
 
-    # NOTE: we're not doing this anymore since it is
-    # faster and takes less space to simply pull the
-    # prebuilt nightly binaries with rustup
-    # download_and_build_custom_rustc(args)
-
     build_ast_importer(args.debug)
-
-    if not on_mac() and args.sanity_test:
-        test_ast_exporter(cc_db)
 
 
 if __name__ == "__main__":
