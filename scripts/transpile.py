@@ -37,14 +37,14 @@ authors = ["C2Rust"]
 version = "0.0.0"
 publish = false
 
-% if crate_type_is_lib:
+% if main_module:
+[[bin]]
+path = "main.rs"
+name = "${main_module}"
+% else:
 [lib]
 path = "lib.rs"
 crate-type = ["staticlib"]
-% else:
-[[bin]]
-path = "main.rs"
-name = "${bin_name}"
 % endif
 
 % if cross_checks:
@@ -91,6 +91,10 @@ extern crate libc;
 % for (module_name, module_path, line_prefix) in modules:
 ${line_prefix}#[path = "${module_path}"] pub mod ${module_name.replace('-', '_')};
 % endfor
+
+% if main_module:
+fn main() { ${main_module}::main() }
+% endif
 """
 
 
@@ -150,7 +154,7 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
 
 
 def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
-                      crate_type_is_lib: bool, cross_checks: bool, cross_check_config: List[str]):
+                      main_module: str, cross_checks: bool, cross_check_config: List[str]):
     build_dir = os.path.join(dest_dir, "c2rust-build")
     shutil.rmtree(build_dir, ignore_errors=True)
     os.mkdir(build_dir)
@@ -165,14 +169,13 @@ def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
         tmpl = mako.template.Template(CARGO_TOML_TEMPLATE)
         cargo_toml.write(tmpl.render(
             crate_name="c2rust-build",
-            crate_type_is_lib=crate_type_is_lib,
-            bin_name="c2rust-exe",
+            main_module=main_module,
             cross_checks=cross_checks,
             plugin_path=plugin_path,
             derive_path=derive_path,
             runtime_path=runtime_path))
 
-    lib_rs_path = os.path.join(build_dir, "lib.rs" if crate_type_is_lib else "main.rs")
+    lib_rs_path = os.path.join(build_dir, "main.rs" if main_module else "lib.rs")
     with open(lib_rs_path, "w") as lib_rs:
         template_modules = []
         for (module, module_exists) in modules:
@@ -188,19 +191,19 @@ def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
 
         tmpl = mako.template.Template(LIB_RS_TEMPLATE)
         lib_rs.write(tmpl.render(
+            main_module=main_module,
             cross_checks=cross_checks,
             plugin_args=plugin_args,
             modules=template_modules))
 
 
 def transpile_files(cc_db: TextIO,
-                    jobs: int,
                     filter: str = None,
                     extra_impo_args: List[str] = [],
                     import_only: bool = False,
                     verbose: bool = False,
-                    emit_build_files_for_lib: bool = True,
-                    emit_build_files_for_bin: bool = False,
+                    emit_build_files: bool = True,
+                    main_module_for_build_files: str = None,
                     cross_checks: bool = False,
                     cross_check_config: List[str] = [],
                     reloop_cfgs: bool = True) -> bool:
@@ -221,7 +224,7 @@ def transpile_files(cc_db: TextIO,
     include_dirs = get_system_include_dirs()
 
     impo_args = ['--translate-entry']
-    if emit_build_files_for_bin or emit_build_files_for_lib:
+    if emit_build_files:
         impo_args.append('--emit-module')
     if cross_checks:
         impo_args.append('--cross-checks')
@@ -277,13 +280,13 @@ def transpile_files(cc_db: TextIO,
     commands = sorted(cc_db, key=lambda cmd: os.path.basename(cmd['file']))
     results = (transpile_single(cmd) for cmd in commands)
 
-    if emit_build_files_for_bin or emit_build_files_for_lib:
+    if emit_build_files:
         modules = [(rust_src, retcode == 0) for (_, retcode, _, _, rust_src) in
                    results if rust_src is not None]
         cc_db_dir = os.path.dirname(cc_db_name)
         write_build_files(cc_db_dir,
                           modules,
-                          emit_build_files_for_lib,
+                          main_module_for_build_files,
                           cross_checks,
                           cross_check_config)
 
@@ -329,21 +332,20 @@ def parse_args() -> argparse.Namespace:
                         help='only process files matching filter')
     parser.add_argument('-v', '--verbose', default=False, dest="verbose",
                         help='enable verbose output')
-    parser.add_argument('-j', '--jobs', type=int, dest="jobs",
-                        default=multiprocessing.cpu_count(),
-                        help='max number of concurrent jobs')
+    # parser.add_argument('-j', '--jobs', type=int, dest="jobs",
+    #                     default=multiprocessing.cpu_count(),
+    #                     help='max number of concurrent jobs')
     parser.add_argument('-a', '--importer-arg', dest="extra_impo_args",
                         default=[], action='append',
                         help='extra arguments for ast-importer')
-    # FIXME: barf if user supplies -e and -b simultaneously.
-    parser.add_argument('-e', '--emit-build-files-for-library',
+    parser.add_argument('-e', '--emit-build-files',
                         default=False, action='store_true',
                         help='emit Rust build files, i.e., Cargo.toml '
-                             'and lib.rs')
-    parser.add_argument('-b', '--emit-build-files-for-binary',
-                        default=False, action='store_true',
-                        help='emit Rust build files, i.e., Cargo.toml '
-                             'and main.rs')
+                             'for a library (or a binary if -m/--main is given)')
+    parser.add_argument('-m', '--main',
+                        default=None, action='store',
+                        help='emit Rust build files for a binary using '
+                             'the main method in the specified translation unit')
     parser.add_argument('-x', '--cross-checks',
                         default=False, action='store_true',
                         help='enable cross-checks')
@@ -366,13 +368,12 @@ def main():
     args = parse_args()
     c.update_args(args)
     transpile_files(args.commands_json,
-                    args.jobs,
                     args.filter,
                     args.extra_impo_args,
                     args.import_only,
                     args.verbose,
-                    args.emit_build_files_for_library,
-                    args.emit_build_files_for_binary,
+                    args.emit_build_files,
+                    args.main,
                     args.cross_checks,
                     args.cross_check_config,
                     args.reloop_cfgs)
