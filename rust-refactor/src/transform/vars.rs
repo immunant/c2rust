@@ -1,7 +1,8 @@
 use std::collections::hash_map::{HashMap, Entry};
 use std::collections::HashSet;
 use std::mem;
-use rustc::hir::def_id::{DefId, LOCAL_CRATE};
+use rustc::hir::def_id::LOCAL_CRATE;
+use rustc::hir::HirId;
 use rustc::ty::TypeVariants;
 use syntax::ast::*;
 use syntax::ptr::P;
@@ -43,12 +44,12 @@ impl Transform for SinkLets {
             old_node_id: NodeId,
         }
 
-        let mut locals: HashMap<DefId, LocalInfo> = HashMap::new();
+        let mut locals: HashMap<HirId, LocalInfo> = HashMap::new();
         visit_nodes(&krate, |l: &Local| {
             if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.node {
                 if l.init.is_none() || is_uninit_call(cx, l.init.as_ref().unwrap()) {
-                    let def_id = cx.node_def_id(l.pat.id);
-                    locals.insert(def_id, LocalInfo {
+                    let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
+                    locals.insert(hir_id, LocalInfo {
                         local: P(Local {
                             // Later on, e're going to copy this `Local` to create the newly
                             // generated bindings.  Afterward, we want to delete the old bindings.
@@ -75,15 +76,15 @@ impl Transform for SinkLets {
         }
 
         struct BlockLocalsVisitor<'a, 'tcx: 'a> {
-            cur: HashMap<DefId, UseKind>,
-            block_locals: HashMap<NodeId, HashMap<DefId, UseKind>>,
+            cur: HashMap<HirId, UseKind>,
+            block_locals: HashMap<NodeId, HashMap<HirId, UseKind>>,
 
             cx: &'a driver::Ctxt<'a, 'tcx>,
-            locals: &'a HashMap<DefId, LocalInfo>,
+            locals: &'a HashMap<HirId, LocalInfo>,
         }
 
         impl<'a, 'tcx> BlockLocalsVisitor<'a, 'tcx> {
-            fn record_use_inside_block(&mut self, id: DefId) {
+            fn record_use_inside_block(&mut self, id: HirId) {
                 match self.cur.entry(id) {
                     Entry::Occupied(e) => { *e.into_mut() = UseKind::Other; },
                     Entry::Vacant(e) => { e.insert(UseKind::InsideOneBlock); },
@@ -93,9 +94,9 @@ impl Transform for SinkLets {
 
         impl<'a, 'tcx, 'ast> Visitor<'ast> for BlockLocalsVisitor<'a, 'tcx> {
             fn visit_expr(&mut self, e: &'ast Expr) {
-                if let Some(def_id) = self.cx.try_resolve_expr(e) {
-                    if self.locals.contains_key(&def_id) {
-                        self.cur.insert(def_id, UseKind::Other);
+                if let Some(hir_id) = self.cx.try_resolve_expr_to_hid(e) {
+                    if self.locals.contains_key(&hir_id) {
+                        self.cur.insert(hir_id, UseKind::Other);
                     }
                 }
                 visit::walk_expr(self, e);
@@ -133,7 +134,7 @@ impl Transform for SinkLets {
 
         // (3) Compute where to place every local.
 
-        // Map from block NodeId to DefIds of locals to place in the block.
+        // Map from block NodeId to HirIds of locals to place in the block.
         let mut local_placement = HashMap::new();
         let mut placed_locals = HashSet::new();
 
@@ -234,12 +235,12 @@ impl Transform for FoldLetAssign {
     fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
         // (1) Find all locals that might be foldable.
 
-        let mut locals: HashMap<DefId, P<Local>> = HashMap::new();
+        let mut locals: HashMap<HirId, P<Local>> = HashMap::new();
         visit_nodes(&krate, |l: &Local| {
             if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.node {
                 if l.init.is_none() || is_uninit_call(cx, l.init.as_ref().unwrap()) {
-                    let def_id = cx.node_def_id(l.pat.id);
-                    locals.insert(def_id, P(l.clone()));
+                    let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
+                    locals.insert(hir_id, P(l.clone()));
                 }
             }
         });
@@ -247,18 +248,18 @@ impl Transform for FoldLetAssign {
         // (2) Compute the set of foldable locals that are used in each statement.
 
         struct StmtLocalsVisitor<'a, 'tcx: 'a> {
-            cur: HashSet<DefId>,
-            stmt_locals: HashMap<NodeId, HashSet<DefId>>,
+            cur: HashSet<HirId>,
+            stmt_locals: HashMap<NodeId, HashSet<HirId>>,
 
             cx: &'a driver::Ctxt<'a, 'tcx>,
-            locals: &'a HashMap<DefId, P<Local>>,
+            locals: &'a HashMap<HirId, P<Local>>,
         }
 
         impl<'a, 'tcx, 'ast> Visitor<'ast> for StmtLocalsVisitor<'a, 'tcx> {
             fn visit_expr(&mut self, e: &'ast Expr) {
-                if let Some(def_id) = self.cx.try_resolve_expr(e) {
-                    if self.locals.contains_key(&def_id) {
-                        self.cur.insert(def_id);
+                if let Some(hir_id) = self.cx.try_resolve_expr_to_hid(e) {
+                    if self.locals.contains_key(&hir_id) {
+                        self.cur.insert(hir_id);
                     }
                 }
                 visit::walk_expr(self, e);
@@ -327,9 +328,9 @@ impl Transform for FoldLetAssign {
                     StmtKind::Semi(ref e) => {
                         match e.node {
                             ExprKind::Assign(ref lhs, ref rhs) => {
-                                if let Some(def_id) = cx.try_resolve_expr(&lhs) {
-                                    if local_pos.contains_key(&def_id) {
-                                        Some((def_id, rhs.clone()))
+                                if let Some(hir_id) = cx.try_resolve_expr_to_hid(&lhs) {
+                                    if local_pos.contains_key(&hir_id) {
+                                        Some((hir_id, rhs.clone()))
                                     } else {
                                         None
                                     }
@@ -342,9 +343,9 @@ impl Transform for FoldLetAssign {
                     },
                     _ => None,
                 };
-                if let Some((def_id, init)) = assign_info {
-                    let local = &locals[&def_id];
-                    let local_mark = local_pos.remove(&def_id).unwrap();
+                if let Some((hir_id, init)) = assign_info {
+                    let local = &locals[&hir_id];
+                    let local_mark = local_pos.remove(&hir_id).unwrap();
                     let l = local.clone().map(|l| {
                         Local {
                             init: Some(init),
@@ -361,10 +362,10 @@ impl Transform for FoldLetAssign {
 
                 // Does it access some locals?
                 if let Some(locals) = stmt_locals.get(&curs.next().id) {
-                    for &def_id in locals {
+                    for &hir_id in locals {
                         // This local is being accessed before its first recognized assignment.
                         // That means we can't fold the `let` with the later assignment.
-                        local_pos.remove(&def_id);
+                        local_pos.remove(&hir_id);
                     }
                 }
 
