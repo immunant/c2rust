@@ -236,8 +236,40 @@ macro_rules! impl_fnopt_hash {
             }
         }
     };
-    ($($arg:ident),*) => {
-        impl_fnopt_hash!(<$($arg),*> + unsafe extern "C");
+    (<$($arg:ident),+, ...> + $($pfx:tt)*) => {
+        impl <Ret, $($arg),+> CrossCheckHash for $($pfx)* fn($($arg),+, ...) -> Ret {
+            #[inline]
+            fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
+                    where HA: CrossCheckHasher, HS: CrossCheckHasher {
+                if depth == 0 {
+                    LEAF_POINTER_HASH
+                } else {
+                    FUNC_POINTER_HASH
+                }
+            }
+        }
+
+        impl <Ret, $($arg),+> CrossCheckHash for Option<$($pfx)* fn($($arg),+, ...) -> Ret> {
+            #[inline]
+            fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
+                    where HA: CrossCheckHasher, HS: CrossCheckHasher {
+                if let &Some(ref func) = self {
+                    // Due to C's decay rules, we don't decrease the depth here,
+                    // since function values can decay to function pointers,
+                    // so they're basically equivalent
+                    (*func).cross_check_hash_depth::<HA, HS>(depth)
+                } else {
+                    NULL_POINTER_HASH
+                }
+            }
+        }
+    };
+    () => {
+        impl_fnopt_hash!(<> + unsafe extern "C");
+    };
+    ($($arg:ident),+) => {
+        impl_fnopt_hash!(<$($arg),+> + unsafe extern "C");
+        impl_fnopt_hash!(<$($arg),+, ...> + unsafe extern "C");
     }
 }
 
