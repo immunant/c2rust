@@ -875,7 +875,7 @@ impl Translation {
             };
 
             let block = mk().block(stmts);
-            Ok(mk().fn_item("main", decl, block))
+            Ok(mk().pub_().fn_item("main", decl, block))
         } else {
             Err(format!("Cannot translate non-function main entry point"))
         }
