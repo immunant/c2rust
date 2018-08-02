@@ -337,7 +337,7 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
         };
         return generic_custom_args(ctx, param_decls, args, arg_build_fn);
     };
-    return build_xcheck(xcfg_scope_function_arg(func_cfg, param->getName()),
+    return build_xcheck(xcfg_scope_function_arg(func_cfg, param->getName(), 1),
                         config::XCHECK_TAG_FUNCTION_ARG, ctx,
                         param_xcheck_default_fn,
                         param_xcheck_custom_args_fn);

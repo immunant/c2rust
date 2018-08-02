@@ -149,7 +149,7 @@ XCheck *xcfg_scope_all_args_xcheck(const ScopeConfig*);
 XCheck *xcfg_scope_ret_xcheck(const ScopeConfig*);
 StringLenPtr xcfg_scope_ahasher(const ScopeConfig*);
 StringLenPtr xcfg_scope_shasher(const ScopeConfig*);
-XCheck *xcfg_scope_function_arg(const ScopeConfig*, StringLenPtr);
+XCheck *xcfg_scope_function_arg(const ScopeConfig*, StringLenPtr, unsigned);
 VecLenPtr<ExtraXCheck> xcfg_scope_function_entry_extra(const ScopeConfig*);
 VecLenPtr<ExtraXCheck> xcfg_scope_function_exit_extra(const ScopeConfig*);
 StringLenPtr xcfg_scope_struct_custom_hash(const ScopeConfig*);

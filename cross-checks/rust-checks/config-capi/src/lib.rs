@@ -302,15 +302,20 @@ pub extern fn xcfg_scope_shasher(scope_config: Option<&xcfg::scopes::ScopeConfig
 
 #[no_mangle]
 pub extern fn xcfg_scope_function_arg<'sc>(scope_config: Option<&'sc xcfg::scopes::ScopeConfig>,
-                                                 arg_name: StringLenPtr)
+                                           arg_name: StringLenPtr, check_all_args: c_uint)
     -> Option<&'sc xcfg::XCheckType> {
-    scope_config.and_then(|sc| match sc.item {
+    let res = scope_config.and_then(|sc| match sc.item {
         xcfg::scopes::ItemConfig::Function(ref f) => {
             let arg_index = xcfg::FieldIndex::Str(String::from(arg_name.to_str()));
             f.args.get(&arg_index)
         }
         _ => None
-    })
+    });
+    if check_all_args == 0 {
+        res
+    } else {
+        res.or(Some(&scope_config.unwrap().inherited.all_args))
+    }
 }
 
 #[no_mangle]
