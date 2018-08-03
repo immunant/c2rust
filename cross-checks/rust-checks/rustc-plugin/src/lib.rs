@@ -342,9 +342,10 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     }
 
     #[cfg(feature="c-hash-functions")]
-    fn build_type_c_hash_function(&mut self, ty_ident: &ast::Ident) -> Option<P<ast::Item>> {
+    fn build_type_c_hash_function(&mut self, ty_ident: &ast::Ident,
+                                  ty_suffix: &str) -> Option<P<ast::Item>> {
         assert!(cfg!(feature="c-hash-functions"));
-        let hash_fn_name = format!("__c2rust_hash_{}", ty_ident);
+        let hash_fn_name = format!("__c2rust_hash_{}_{}", ty_ident, ty_suffix);
         let hash_fn = ast::Ident::from_str(&hash_fn_name);
 
         // Check if function has already been emitted;
@@ -387,7 +388,8 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 let union_hash_impl = self.build_union_hash(&folded_item.ident);
                 self.pending_items.push(union_hash_impl);
                 if cfg!(feature="c-hash-functions") {
-                    let c_hash_func = self.build_type_c_hash_function(&folded_item.ident);
+                    let c_hash_func = self.build_type_c_hash_function(&folded_item.ident,
+                                                                      "struct");
                     self.pending_items.extend(c_hash_func.into_iter());
                 }
                 folded_item
@@ -408,7 +410,8 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     }
 
                     if cfg!(feature="c-hash-functions") {
-                        let c_hash_func = self.build_type_c_hash_function(&folded_item.ident);
+                        let c_hash_func = self.build_type_c_hash_function(&folded_item.ident,
+                                                                          "struct");
                         self.pending_items.extend(c_hash_func.into_iter());
                     }
                 }
@@ -646,7 +649,8 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                 //       * option to disable CrossCheckHash altogether
                 //       * option to use a custom function
                 let ty_name = folded_ni.ident;
-                let hash_fn_name = format!("__c2rust_hash_{}", ty_name);
+                let ty_suffix = &"struct"; // FIXME
+                let hash_fn_name = format!("__c2rust_hash_{}_{}", ty_name, ty_suffix);
                 let hash_fn = ast::Ident::from_str(&hash_fn_name);
                 let hash_impl_item = quote_item!(self.cx,
                     impl ::cross_check_runtime::hash::CrossCheckHash for $ty_name {
