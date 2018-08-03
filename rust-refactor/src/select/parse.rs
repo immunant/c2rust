@@ -13,7 +13,7 @@ use syntax::tokenstream::{TokenTree, TokenStream};
 use syntax_pos::FileName;
 
 use pick_node::NodeKind;
-use remove_paren::remove_paren;
+use ast_manip::remove_paren;
 use select::{SelectOp, Filter, AnyPattern, ItemLikeKind};
 use util::Lone;
 
