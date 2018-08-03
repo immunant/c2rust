@@ -940,7 +940,7 @@ impl Translation {
 
                 let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
 
-                Ok(ConvertedDecl::Item(self.mk_cross_check(mk().span(s).pub_(), vec!["none"])
+                Ok(ConvertedDecl::Item(mk().span(s).pub_()
                     .call_attr("derive", vec!["Copy", "Clone"])
                     .meta_item_attr(AttrStyle::Outer, repr_attr)
                     .struct_item(name, field_entries)))
@@ -964,12 +964,12 @@ impl Translation {
 
                 Ok(if field_syns.is_empty() {
                     // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
-                    ConvertedDecl::Item(self.mk_cross_check(mk().span(s).pub_(), vec!["none"])
+                    ConvertedDecl::Item(mk().span(s).pub_()
                         .call_attr("derive", vec!["Copy", "Clone"])
                         .call_attr("repr", vec!["C"])
                         .struct_item(name, vec![]))
                 } else {
-                    ConvertedDecl::Item(self.mk_cross_check(mk().span(s).pub_(), vec!["none"])
+                    ConvertedDecl::Item(mk().span(s).pub_()
                         .call_attr("derive", vec!["Copy", "Clone"])
                         .call_attr("repr", vec!["C"])
                         .union_item(name, field_syns))
@@ -981,7 +981,7 @@ impl Translation {
             CDeclKind::Enum { integral_type: Some(integral_type), .. } => {
                 let enum_name = &self.type_converter.borrow().resolve_decl_name(decl_id).expect("Enums should already be renamed");
                 let ty = self.convert_type(integral_type.ctype)?;
-                Ok(ConvertedDecl::Item(self.mk_cross_check(mk().span(s).pub_(), vec!["none"])
+                Ok(ConvertedDecl::Item(mk().span(s).pub_()
                     .type_item(enum_name, ty)))
             },
 
