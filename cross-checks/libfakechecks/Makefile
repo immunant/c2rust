@@ -11,6 +11,6 @@ clean:
 	rm -f $(LIB) fakechecks.o
 
 $(LIB): CXXFLAGS += -fPIC -std=c++14
-$(LIB): LDFLAGS += -fPIC -lpthread
+$(LIB): LDFLAGS += -fPIC -pthread
 $(LIB): fakechecks.o
 	$(CXX) -shared $(LDFLAGS) -o $@ $^
