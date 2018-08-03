@@ -289,6 +289,10 @@ impl_fnopt_hash!(A, B, C, D, E, F, G, H, I);
 impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J);
 impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K);
 impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K, L);
+impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K, L, M);
+impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K, L, M, N);
+impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O);
+impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P);
 
 macro_rules! impl_array_hash {
     ($($N:expr)+) => { $(
