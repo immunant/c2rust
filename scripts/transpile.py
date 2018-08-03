@@ -57,7 +57,7 @@ path = "${derive_path}"
 
 [dependencies.cross-check-runtime]
 path = "${runtime_path}"
-features = ["libc-hash"]
+features = ["libc-hash", "fixed-length-array-hash"]
 % endif
 """
 
