@@ -53,43 +53,6 @@ struct FnFolder<F>
     callback: F,
 }
 
-impl<F> FnFolder<F>
-        where F: FnMut(FnLike) -> SmallVec<[FnLike; 1]> {
-    // `Folder::fold_foreign_item` can only return a single `ForeignItem`, so we need a custom
-    // sequence-returning version.  This is called below in `fold_foreign_mod`.
-    fn fold_foreign_item_multi(&mut self, i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
-        match i.node {
-            ForeignItemKind::Fn(..) => {},
-            _ => return fold::noop_fold_foreign_item(i, self),
-        }
-
-        unpack!([i.node] ForeignItemKind::Fn(decl, generics));
-        let vis = i.vis;
-
-        let fl = FnLike {
-            kind: FnKind::Foreign,
-            id: i.id,
-            ident: i.ident,
-            span: i.span,
-            decl: decl,
-            block: None,
-            attrs: i.attrs,
-        };
-        let fls = (self.callback)(fl);
-
-        fls.into_iter().map(|fl| {
-            ForeignItem {
-                id: fl.id,
-                ident: fl.ident,
-                span: fl.span,
-                node: ForeignItemKind::Fn(fl.decl, generics.clone()),
-                attrs: fl.attrs,
-                vis: vis.clone(),
-            }
-        }).flat_map(|i| fold::noop_fold_foreign_item(i, self)).collect()
-    }
-}
-
 impl<F> Folder for FnFolder<F>
         where F: FnMut(FnLike) -> SmallVec<[FnLike; 1]> {
     fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
@@ -211,8 +174,40 @@ impl<F> Folder for FnFolder<F>
     }
 
     fn fold_foreign_mod(&mut self, mut nm: ForeignMod) -> ForeignMod {
-        nm.items = nm.items.move_flat_map(|i| self.fold_foreign_item_multi(i));
+        nm.items = nm.items.move_flat_map(|i| self.fold_foreign_item(i));
         fold::noop_fold_foreign_mod(nm, self)
+    }
+
+    fn fold_foreign_item(&mut self, i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+        match i.node {
+            ForeignItemKind::Fn(..) => {},
+            _ => return fold::noop_fold_foreign_item(i, self),
+        }
+
+        unpack!([i.node] ForeignItemKind::Fn(decl, generics));
+        let vis = i.vis;
+
+        let fl = FnLike {
+            kind: FnKind::Foreign,
+            id: i.id,
+            ident: i.ident,
+            span: i.span,
+            decl: decl,
+            block: None,
+            attrs: i.attrs,
+        };
+        let fls = (self.callback)(fl);
+
+        fls.into_iter().map(|fl| {
+            ForeignItem {
+                id: fl.id,
+                ident: fl.ident,
+                span: fl.span,
+                node: ForeignItemKind::Fn(fl.decl, generics.clone()),
+                attrs: fl.attrs,
+                vis: vis.clone(),
+            }
+        }).flat_map(|i| fold::noop_fold_foreign_item(i, self)).collect()
     }
 }
 

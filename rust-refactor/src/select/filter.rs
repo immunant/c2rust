@@ -431,6 +431,12 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
     }
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
+        // Make sure we visit foreign function args as Arg
+        if let ForeignItemKind::Fn(ref decl, _) = x.node {
+            for arg in &decl.inputs {
+                (self.func)(AnyNode::Arg(arg));
+            }
+        }
         (self.func)(AnyNode::ForeignItem(x));
         visit::walk_foreign_item(self, x);
     }

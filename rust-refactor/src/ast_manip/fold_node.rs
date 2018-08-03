@@ -126,6 +126,14 @@ gen_fold_node_impl! {
     map = (self.callback)(nm);
 }
 
+gen_fold_node_impl! {
+    node = ForeignItem;
+    folder = ForeignItemNodeFolder;
+    fn fold_foreign_item(&mut self, ni: ForeignItem) -> SmallVec<[ForeignItem; 1]>;
+    walk = fold::noop_fold_foreign_item(ni, self);
+    map = ni.move_flat_map(|ni| (self.callback)(ni));
+}
+
 /// Rewrite nodes of the callback's argument type within `target`.  This function performs a
 /// postorder traversal.
 pub fn fold_nodes<N, T, F>(target: T, callback: F) -> <T as Fold>::Result
