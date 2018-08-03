@@ -347,6 +347,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         assert!(cfg!(feature="c-hash-functions"));
         let hash_fn_name = format!("__c2rust_hash_{}_{}", ty_ident, ty_suffix);
         let hash_fn = ast::Ident::from_str(&hash_fn_name);
+        let hash_fn_section = format!(".gnu.linkonce.t.{}", hash_fn_name);
 
         // Check if function has already been emitted;
         // FIXME: should this check be optional (compile-time feature)???
@@ -357,6 +358,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         let (ahasher, shasher) = self.get_hasher_pair();
         Some(quote_item!(self.cx,
             #[no_mangle]
+            #[link_section = $hash_fn_section]
             pub unsafe extern "C" fn $hash_fn(x: *mut $ty_ident, depth: usize) -> u64 {
                 use ::cross_check_runtime::hash::CrossCheckHash;
                 CrossCheckHash::cross_check_hash_depth::<$ahasher, $shasher>(&*x, depth)
