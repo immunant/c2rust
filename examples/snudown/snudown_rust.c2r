@@ -6,7 +6,6 @@
 
     - item: struct
       name: buf
-      disable_xchecks: false
       fields:
         data: disabled # FIXME: hash up to buf.size bytes
 
@@ -46,7 +45,6 @@
 
     - item: struct
       name: buf
-      disable_xchecks: false
       fields:
         data: disabled # FIXME: hash up to buf.size bytes
 
@@ -56,7 +54,6 @@
 
     - item: struct
       name: sd_markdown
-      disable_xchecks: false
       fields:
         # FIXME: hash these fields
         cb: disabled
@@ -66,21 +63,8 @@
 
     - item: struct
       name: buf
-      disable_xchecks: false
       fields:
         data: disabled # FIXME: hash up to buf.size bytes
-
-    - item: struct
-      name: link_ref
-      disable_xchecks: false
-
-    - item: struct
-      name: sd_callbacks
-      disable_xchecks: false
-
-    - item: struct
-      name: mkd_autolink
-      disable_xchecks: false
 
     - item: function
       name: is_ref
@@ -96,10 +80,6 @@
 ../src/stack.rs:
     - item: defaults
       all_args: default
-
-    - item: struct
-      name: stack
-      disable_xchecks: false
 
     - item: function
       name: stack_init
