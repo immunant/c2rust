@@ -36,13 +36,12 @@ RUST_SRC_DIR = os.path.join(RUST_ROOT_DIR, "src")
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    importer_args = ["--translate-entry"]
     num_jobs = multiprocessing.cpu_count()
 
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
     with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json, num_jobs, extra_impo_args=importer_args, filter=args.filter, emit_build_files=False)
+        transpile_files(cc_json, filter=args.filter, emit_build_files=False)
 
     # Create rust/examples directory if it doesn't exist
     mkdir_args = ["-p", RUST_EXAMPLES_DIR]
