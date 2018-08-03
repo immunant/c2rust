@@ -486,21 +486,26 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
     if (ploc.isValid()) {
         file_name = ploc.getFilename();
     }
-    // Check the blacklist first
-    std::pair<std::string_view, std::string_view>
-        blacklist_key{llvm_string_ref_to_sv(file_name), record_name};
-    if (struct_xcheck_blacklist.count(blacklist_key) > 0)
-        return;
 
     unsigned pushed_files = 0; // FIXME: use a scope guard
     auto file_cfg = xcfg_scope_stack_push_file(config_stack, config, file_name);
     if (file_cfg != nullptr)
         pushed_files++;
 
+    std::string blacklist_str;
     auto pre_xcfg_strings = build_xcfg_yaml(record_name, "struct",
                                             record_decl, "fields",
                                             record_decl->fields());
     llvm::SmallVector<config::StringLenPtr, 16> pre_xcfg_slps;
+    // Check the blacklist first
+    std::pair<std::string_view, std::string_view>
+        blacklist_key{llvm_string_ref_to_sv(file_name), record_name};
+    if (struct_xcheck_blacklist.count(blacklist_key) > 0) {
+        blacklist_str =
+            llvm::formatv("{{ name: {0}, item: struct, disable_xchecks: true }",
+                          record_name);
+        pre_xcfg_slps.push_back(config::StringLenPtr{blacklist_str});
+    }
     for (auto &s : pre_xcfg_strings)
         pre_xcfg_slps.push_back(config::StringLenPtr{s});
     auto record_cfg =
