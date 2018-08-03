@@ -108,6 +108,9 @@ def _main():
     if args.clean_all:
         logging.info("cleaning all dependencies and previous built files")
         shutil.rmtree(c.CLANG_XCHECK_PLUGIN_BLD, ignore_errors=True)
+        make = get_cmd_or_die('make')
+        with pb.local.cwd(c.LIBFAKECHECKS_DIR):
+            make('clean')
 
     # prerequisites
     if not have_rust_toolchain(c.CUSTOM_RUST_NAME):

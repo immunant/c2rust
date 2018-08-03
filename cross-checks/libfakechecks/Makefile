@@ -1,7 +1,7 @@
 LIB=libfakechecks.so
-CFLAGS=-O2
-CXXFLAGS=-O2
-LDFLAGS=-O2
+CFLAGS=-O2 -pthread
+CXXFLAGS=-O2 -pthread
+LDFLAGS=-O2 -pthread
 
 .PHONY: all
 
@@ -11,6 +11,6 @@ clean:
 	rm -f $(LIB) fakechecks.o
 
 $(LIB): CXXFLAGS += -fPIC -std=c++14
-$(LIB): LDFLAGS += -fPIC -lpthread
+$(LIB): LDFLAGS += -fPIC
 $(LIB): fakechecks.o
 	$(CXX) -shared $(LDFLAGS) -o $@ $^
