@@ -16,7 +16,7 @@ use syntax::fold;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use std::path::PathBuf;
 
 use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier};
