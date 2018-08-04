@@ -336,7 +336,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     }
 
     #[cfg(not(feature="c-hash-functions"))]
-    fn build_type_c_hash_function(&mut self, _: &ast::Ident) -> Option<P<ast::Item>> {
+    fn build_type_c_hash_function(&mut self, _: &ast::Ident, _: &str) -> Option<P<ast::Item>> {
         assert!(cfg!(feature="c-hash-functions")); // Expected to fail, is intentional
         None
     }
