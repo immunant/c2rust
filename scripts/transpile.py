@@ -98,10 +98,14 @@ extern crate libfakechecks_sys;
 %endif 
 
 % for (module_name, module_path, line_prefix) in modules:
-${line_prefix}#[path = "${module_path}"] pub mod ${module_name.replace('-', '_')};
+<% module_name = module_name.replace('-', '_') %>
+${line_prefix}#[path = "${module_path}"] pub mod ${module_name};
 % endfor
 
 % if main_module:
+% if cross_checks:
+#[cross_check(none)]
+% endif
 fn main() { ${main_module}::main() }
 % endif
 """

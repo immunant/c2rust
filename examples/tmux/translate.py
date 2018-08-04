@@ -193,13 +193,12 @@ def add_mods(path: str):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    importer_args = ["--translate-entry"]
     num_jobs = multiprocessing.cpu_count()
 
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
     with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json, num_jobs, extra_impo_args=importer_args, filter=args.filter, emit_build_files=False, verbose=True)
+        transpile_files(cc_json, filter=args.filter, emit_build_files=False, verbose=True)
 
     # Move and rename tmux.rs to main.rs
     move(TMUX_RS, MAIN_RS)
@@ -216,8 +215,7 @@ if __name__ == "__main__":
     assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)
 
     # Rename files with dashes to underscores, as rust won't
-    # accept deshes.
-    # rust_rs_files = os.path.join(TMUX_REPO, "*.rs")
+    # accept dashes.
     for path in [RUST_SRC_DIR, RUST_COMPAT_DIR]:
         rust_rs_files = local.path(path) // "*.rs"
 

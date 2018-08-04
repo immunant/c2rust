@@ -67,12 +67,15 @@ def main(xcheck: bool, snudown: str):
         bldr.add_entry(snudown, cmd, file)
 
     cmds_json_path = bldr.write_result(os.path.curdir)
+    config_path = os.path.join(snudown, "../snudown_rust.c2r")
     with open(cmds_json_path, "r") as cmds_json:
         transpile.transpile_files(cmds_json,
+                                  filter=None,
                                   extra_impo_args=[],
                                   emit_build_files=True,
+                                  main_module_for_build_files=None,
                                   cross_checks=xcheck,
-                                  cross_check_config=[os.path.join(snudown, "../snudown_rust.c2r")])
+                                  cross_check_config=[config_path])
 
     with pb.local.cwd(os.path.join(snudown, "c2rust-build")):
         cargo = get_cmd_or_die("cargo")
