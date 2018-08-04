@@ -261,12 +261,6 @@ public:
     // instances. Note: we could handle both cases by overriding `VisitFunctionType`
     // instead of the current two-function solution.
     void VisitFunctionProtoType(const FunctionProtoType *T) {
-        auto EPI = T->getExtProtoInfo();
-        static bool firstWarning = true;
-        if(firstWarning && EPI.Variadic) {
-            std::cerr << "Warning: variadic functions are not fully supported.\n";
-            firstWarning = false;
-        }
         DEBUG(dbgs() << "Visit ");
         DEBUG(T->dump());
 
@@ -1029,8 +1023,18 @@ class TranslateASTVisitor final
       bool VisitFunctionDecl(FunctionDecl *FD)
       {              
           // Skip non-canonical decls
-          if(!FD->isCanonicalDecl())
+          if (!FD->isCanonicalDecl())
               return true;
+
+          if (FD->hasBody() && FD->isVariadic()) {
+            //   auto fname = FD->getNameString();
+              auto floc = Context->getFullLoc(FD->getLocStart());
+              if (floc.isValid() && floc.hasManager()) {
+                floc.print(llvm::errs(), floc.getManager());
+                std::cerr << ": warning: variadic functions are not fully supported." 
+                            << std::endl;
+              }
+          }
 
           // Use the parameters from the function declaration
           // the defines the body, if one exists.
