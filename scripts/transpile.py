@@ -58,6 +58,12 @@ path = "${derive_path}"
 [dependencies.cross-check-runtime]
 path = "${runtime_path}"
 features = ["libc-hash", "fixed-length-array-hash"]
+
+%if use_fakechecks:
+[dependencies.libfakechecks-sys]
+path = "${libfakechecks_sys_path}"
+%endif
+
 % endif
 """
 
@@ -87,6 +93,9 @@ LIB_RS_TEMPLATE = """\
 % endif
 
 extern crate libc;
+% if use_fakechecks:
+extern crate libfakechecks_sys;
+%endif 
 
 % for (module_name, module_path, line_prefix) in modules:
 ${line_prefix}#[path = "${module_path}"] pub mod ${module_name.replace('-', '_')};
@@ -154,7 +163,8 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
 
 
 def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
-                      main_module: str, cross_checks: bool, cross_check_config: List[str]):
+                      main_module: str, cross_checks: bool, 
+                      use_fakechecks: bool, cross_check_config: List[str]):
     build_dir = os.path.join(dest_dir, "c2rust-build")
     shutil.rmtree(build_dir, ignore_errors=True)
     os.mkdir(build_dir)
@@ -166,14 +176,18 @@ def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
         plugin_path = os.path.join(rust_checks_path, "rustc-plugin")
         derive_path = os.path.join(rust_checks_path, "derive-macros")
         runtime_path = os.path.join(rust_checks_path, "runtime")
+        libfakechecks_sys_path = os.path.join(rust_checks_path, 
+                                              "backends/libfakechecks-sys")
         tmpl = mako.template.Template(CARGO_TOML_TEMPLATE)
         cargo_toml.write(tmpl.render(
             crate_name="c2rust-build",
             main_module=main_module,
             cross_checks=cross_checks,
+            use_fakechecks=use_fakechecks,
             plugin_path=plugin_path,
             derive_path=derive_path,
-            runtime_path=runtime_path))
+            runtime_path=runtime_path,
+            libfakechecks_sys_path=libfakechecks_sys_path))
 
     lib_rs_path = os.path.join(build_dir, "main.rs" if main_module else "lib.rs")
     with open(lib_rs_path, "w") as lib_rs:
@@ -193,6 +207,7 @@ def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
         lib_rs.write(tmpl.render(
             main_module=main_module,
             cross_checks=cross_checks,
+            use_fakechecks=use_fakechecks,
             plugin_args=plugin_args,
             modules=template_modules))
 
@@ -222,6 +237,7 @@ def transpile_files(cc_db: TextIO,
                     emit_build_files: bool = True,
                     main_module_for_build_files: str = None,
                     cross_checks: bool = False,
+                    use_fakechecks: bool = False,
                     cross_check_config: List[str] = [],
                     reloop_cfgs: bool = True) -> bool:
     """
@@ -307,6 +323,7 @@ def transpile_files(cc_db: TextIO,
                           modules,
                           main_module_for_build_files,
                           cross_checks,
+                          use_fakechecks,
                           cross_check_config)
 
     successes, failures = 0, 0
@@ -370,6 +387,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-x', '--cross-checks',
                         default=False, action='store_true',
                         help='enable cross-checks')
+    parser.add_argument('-u', '--use-fakechecks',
+                        default=False, action='store_true',
+                        help='use log-based cross checking '
+                             '(implies -x/--cross-checks)')
     parser.add_argument('-X', '--cross-check-config',
                         default=[], action='append',
                         help='cross-check configuration file(s)')
@@ -383,6 +404,8 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     # -m/--main implies -e/--emit-build-files
     args.emit_build_files = True if args.main else args.emit_build_files
+    # -u/--use-fakechecks implies -x/--cross-checks
+    args.cross_checks = True if args.use_fakechecks else args.cross_checks
     return args
 
 
@@ -400,6 +423,7 @@ def main():
                     args.emit_build_files,
                     args.main,
                     args.cross_checks,
+                    args.use_fakechecks,
                     args.cross_check_config,
                     args.reloop_cfgs)
 
