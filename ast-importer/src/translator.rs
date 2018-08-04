@@ -1207,7 +1207,11 @@ impl Translation {
 
                 // Only add linkage attributes if the function is `extern`
                 let mk_ = if is_main {
-                    mk()
+                    // Cross-check this function as if it was called `main`
+                    // FIXME: pass in a vector of NestedMetaItem elements,
+                    // but strings have to do for now
+                    self.mk_cross_check(mk(), vec!["entry(djb2=\"main\")",
+                                                   "exit(djb2=\"main\")"])
                 } else if is_extern && !is_inline {
                     mk_linkage(false, new_name, name)
                         .abi("C")
