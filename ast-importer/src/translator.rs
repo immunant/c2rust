@@ -876,7 +876,8 @@ impl Translation {
             };
 
             let block = mk().block(stmts);
-            Ok(mk().pub_().fn_item("main", decl, block))
+            let main_attributes = self.mk_cross_check(mk(), vec!["none"]);
+            Ok(main_attributes.pub_().fn_item("main", decl, block))
         } else {
             Err(format!("Cannot translate non-function main entry point"))
         }
