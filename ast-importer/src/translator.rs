@@ -556,6 +556,12 @@ impl Translation {
         mk().mac_expr(mk().mac(vec![macro_name], macro_msg))
     }
 
+    fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
+        if self.tcfg.cross_checks {
+            mk.call_attr("cross_check", args)
+        } else { mk }
+    }
+
     fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
         use c_ast::UnOp::{AddressOf, Negate};
         use c_ast::CastKind::PointerToIntegral;
