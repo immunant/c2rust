@@ -643,10 +643,10 @@ impl Translation {
 
         let fn_name = self.renamer.borrow_mut().pick_name("run_static_initializers");
         let fn_ty = FunctionRetTy::Ty(mk().tuple_ty(vec![] as Vec<P<Ty>>));
-        let fn_attributes = self.mk_cross_check(mk(), vec!["none"]);
-        let fn_decl = fn_attributes.fn_decl(vec![], fn_ty, false);
+        let fn_decl = mk().fn_decl(vec![], fn_ty, false);
         let fn_block = mk().block(sectioned_static_initializers);
-        let fn_item = mk().unsafe_().abi("C").fn_item(&fn_name, &fn_decl, fn_block);
+        let fn_attributes = self.mk_cross_check(mk(), vec!["none"]);
+        let fn_item = fn_attributes.unsafe_().abi("C").fn_item(&fn_name, &fn_decl, fn_block);
 
         let static_attributes = mk()
             .single_attr("used")
