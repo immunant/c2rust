@@ -1469,16 +1469,19 @@ public:
             cbor_encoder_close_container(&encoder, &array);
         };
         
-        process(NULL, 0);
-        
-        auto needed = cbor_encoder_get_extra_bytes_needed(&encoder);
-        std::vector<uint8_t> buf(needed);
+        // A very large C file (SQLite amalgamation) produces a 18MB CBOR file.
+        // Allocate a conservatively large buffer. On most operating systems,
+        // the kernel just reserves the virtual address space and allocates
+        // physical pages lazily on demand.
+        std::vector<uint8_t> buf(64 * 1024 * 1024);
         
         process(buf.data(), buf.size());
-        
+        auto needed = cbor_encoder_get_extra_bytes_needed(&encoder);
+        assert(needed == size_t(0) && "CBOR output buffer was too small.");
+        auto written = cbor_encoder_get_buffer_size(&encoder, buf.data());
         {   
             std::ofstream out(outfile, out.binary | out.trunc);
-            out.write(reinterpret_cast<char*>(buf.data()), buf.size());
+            out.write(reinterpret_cast<char*>(buf.data()), written);
         }
     }
 };
