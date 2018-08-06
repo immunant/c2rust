@@ -15,6 +15,7 @@ default-members = [
     "derive-macros",
     "runtime",
     "rustc-plugin",
+    "backends/fakechecks-zstd",
     "backends/xcheck-dlsym",
 ]
 exclude = [
