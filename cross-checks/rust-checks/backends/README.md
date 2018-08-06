@@ -11,3 +11,5 @@ must be in `LD_LIBRARY_PATH` at run-time, e.g., when running `cargo run`.
   by loading the dynamic library specified in the `RB_XCHECK_LIB` environment
 variable. This lets us choose at run-time which implementation of `rb_xcheck`
 we want.
+* `fakechecks-zstd` which dumps the cross-checks to a binary file compressed with
+  zstd, which generally compressed the checks by a factor of 200x.
