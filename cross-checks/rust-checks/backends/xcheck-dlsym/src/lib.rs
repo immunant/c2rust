@@ -8,7 +8,7 @@ extern crate libc;
 pub unsafe extern fn rb_xcheck(tag: u8, val: u64) {
     extern crate libc;
     static mut RB_XCHECK_FN: Option<unsafe extern fn(u8, u64)> = None;
-    static RB_XCHECK_INIT: ::std::sync::Once = std::sync::ONCE_INIT;
+    static RB_XCHECK_INIT: std::sync::Once = std::sync::ONCE_INIT;
     RB_XCHECK_INIT.call_once(|| {
         use std::os::unix::ffi::OsStrExt;
         let lib_path = std::env::var_os("RB_XCHECK_LIB")
