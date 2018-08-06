@@ -261,12 +261,6 @@ public:
     // instances. Note: we could handle both cases by overriding `VisitFunctionType`
     // instead of the current two-function solution.
     void VisitFunctionProtoType(const FunctionProtoType *T) {
-        auto EPI = T->getExtProtoInfo();
-        static bool firstWarning = true;
-        if(firstWarning && EPI.Variadic) {
-            std::cerr << "Warning: variadic functions are not fully supported.\n";
-            firstWarning = false;
-        }
         DEBUG(dbgs() << "Visit ");
         DEBUG(T->dump());
 
@@ -1029,8 +1023,18 @@ class TranslateASTVisitor final
       bool VisitFunctionDecl(FunctionDecl *FD)
       {              
           // Skip non-canonical decls
-          if(!FD->isCanonicalDecl())
+          if (!FD->isCanonicalDecl())
               return true;
+
+          if (FD->hasBody() && FD->isVariadic()) {
+            //   auto fname = FD->getNameString();
+              auto floc = Context->getFullLoc(FD->getLocStart());
+              if (floc.isValid() && floc.hasManager()) {
+                floc.print(llvm::errs(), floc.getManager());
+                std::cerr << ": warning: variadic functions are not fully supported." 
+                            << std::endl;
+              }
+          }
 
           // Use the parameters from the function declaration
           // the defines the body, if one exists.
@@ -1469,16 +1473,19 @@ public:
             cbor_encoder_close_container(&encoder, &array);
         };
         
-        process(NULL, 0);
-        
-        auto needed = cbor_encoder_get_extra_bytes_needed(&encoder);
-        std::vector<uint8_t> buf(needed);
+        // A very large C file (SQLite amalgamation) produces a 18MB CBOR file.
+        // Allocate a conservatively large buffer. On most operating systems,
+        // the kernel just reserves the virtual address space and allocates
+        // physical pages lazily on demand.
+        std::vector<uint8_t> buf(64 * 1024 * 1024);
         
         process(buf.data(), buf.size());
-        
+        auto needed = cbor_encoder_get_extra_bytes_needed(&encoder);
+        assert(needed == size_t(0) && "CBOR output buffer was too small.");
+        auto written = cbor_encoder_get_buffer_size(&encoder, buf.data());
         {   
             std::ofstream out(outfile, out.binary | out.trunc);
-            out.write(reinterpret_cast<char*>(buf.data()), buf.size());
+            out.write(reinterpret_cast<char*>(buf.data()), written);
         }
     }
 };
