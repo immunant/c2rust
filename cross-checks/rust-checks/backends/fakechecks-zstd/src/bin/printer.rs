@@ -13,16 +13,14 @@ pub fn main() -> Result<(), std::io::Error> {
         let file = File::open(arg)?;
         let mut reader = zstd::stream::Decoder::new(file)?;
         loop {
-            let mut tag_buf = [0u8; 1];
-            if reader.read_exact(&mut tag_buf).is_err() {
+            let mut buf = [0u8; 9];
+            if reader.read_exact(&mut buf).is_err() {
                 break;
             }
             let mut val_buf = [0u8; 8];
-            if reader.read_exact(&mut val_buf).is_err() {
-                break;
-            }
+            val_buf.copy_from_slice(&buf[1..]);
             let val = u64::from_le(u64::from_bytes(val_buf));
-            writeln!(out, "XCHECK({0}):{1:}/0x{1:08x}", tag_buf[0], val)?;
+            writeln!(out, "XCHECK({0}):{1:}/0x{1:08x}", buf[0], val)?;
         }
     }
     Ok(())
