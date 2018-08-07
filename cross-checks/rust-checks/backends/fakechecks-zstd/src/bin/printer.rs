@@ -3,10 +3,12 @@
 extern crate zstd;
 
 use std::fs::File;
-use std::io::Read;
+use std::io;
+use std::io::{Read, Write};
 use std::env;
 
 pub fn main() -> Result<(), std::io::Error> {
+    let mut out = io::BufWriter::new(io::stdout());
     for arg in env::args() {
         let file = File::open(arg)?;
         let mut reader = zstd::stream::Decoder::new(file)?;
@@ -20,7 +22,7 @@ pub fn main() -> Result<(), std::io::Error> {
                 break;
             }
             let val = u64::from_le(u64::from_bytes(val_buf));
-            println!("XCHECK({0}):{1:}/0x{1:08x}", tag_buf[0], val);
+            writeln!(out, "XCHECK({0}):{1:}/0x{1:08x}", tag_buf[0], val)?;
         }
     }
     Ok(())
