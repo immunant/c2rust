@@ -94,6 +94,7 @@ def configure_and_build_llvm(args: str) -> None:
                      "-DCMAKE_CXX_COMPILER=clang++",
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
+                     "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
                      "-DLLVM_TARGETS_TO_BUILD=X86",
                      "-DLLVM_INCLUDE_UTILS=1",
                      "-DLLVM_BUILD_UTILS=1",
