@@ -335,16 +335,9 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                           union_ident.to_string()))
     }
 
-    #[cfg(not(feature="c-hash-functions"))]
-    fn build_type_c_hash_function(&mut self, _: &ast::Ident, _: &str) -> Option<P<ast::Item>> {
-        assert!(cfg!(feature="c-hash-functions")); // Expected to fail, is intentional
-        None
-    }
-
     #[cfg(feature="c-hash-functions")]
     fn build_type_c_hash_function(&mut self, ty_ident: &ast::Ident,
                                   ty_suffix: &str) -> Option<P<ast::Item>> {
-        assert!(cfg!(feature="c-hash-functions"));
         let hash_fn_name = format!("__c2rust_hash_{}_{}", ty_ident, ty_suffix);
         let hash_fn = ast::Ident::from_str(&hash_fn_name);
         let hash_fn_section = format!(".gnu.linkonce.t.{}", hash_fn_name);
@@ -389,7 +382,8 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             ast::ItemKind::Union(_, _) => {
                 let union_hash_impl = self.build_union_hash(&folded_item.ident);
                 self.pending_items.push(union_hash_impl);
-                if cfg!(feature="c-hash-functions") {
+                #[cfg(feature="c-hash-functions")]
+                {
                     let c_hash_func = self.build_type_c_hash_function(&folded_item.ident,
                                                                       "struct");
                     self.pending_items.extend(c_hash_func.into_iter());
@@ -410,8 +404,8 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                         let xcheck_hash_attr = quote_attr!(self.cx, #[cross_check_hash($attr_args)]);
                         item_attrs.push(xcheck_hash_attr);
                     }
-
-                    if cfg!(feature="c-hash-functions") {
+                    #[cfg(feature="c-hash-functions")]
+                    {
                         let c_hash_func = self.build_type_c_hash_function(&folded_item.ident,
                                                                           "struct");
                         self.pending_items.extend(c_hash_func.into_iter());
