@@ -63,7 +63,7 @@ passed in via command-line flags. This information can be found in an
 automatically generated `compile_commands.json`.
 
 The `compile_commands.json` file can be automatically create using
-either `cmake` or `Bear`.
+either `cmake`, `intercept-build`, or `bear` (Linux only).
 
 #### Generating `compile_commands.json` with `cmake`
 
@@ -74,6 +74,11 @@ configured to be built by cmake. This works on Linux and MacOS.
     $ mkdir build
     $ cd build
     $ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 ..
+
+#### Generating `compile_commands.json` with `intercept-build`
+
+
+
 
 #### Generating `compile_commands.json` with `bear`
 
