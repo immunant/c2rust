@@ -77,8 +77,10 @@ configured to be built by cmake. This works on Linux and MacOS.
 
 #### Generating `compile_commands.json` with `intercept-build`
 
+Intercept build is distributed with clang and recommended for makefile projects on macOS.
 
-
+	$ intercept-build make
+	$ intercept-build xcodebuild
 
 #### Generating `compile_commands.json` with `bear`
 
