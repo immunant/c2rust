@@ -1,0 +1,13 @@
+[package]
+name = "zero-malloc"
+version = "0.1.0"
+authors = ["Andrei Homescu <ah@immunant.com>"]
+description = "Zeroing memory allocation library that intercepts the system malloc()&friends"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+parking_lot = {version = "0.6", features = ["nightly"]}
+spin = "0.4.8"
+
