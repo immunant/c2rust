@@ -7,6 +7,7 @@
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTMutationListener.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaConsumer.h"
 #include "llvm/ADT/TinyPtrVector.h"
@@ -436,6 +437,26 @@ private:
                            const config::ScopeConfig *func_cfg,
                            const DeclMap &param_decls,
                            ASTContext &ctx);
+
+    class ZeroInitVisitor : public RecursiveASTVisitor<ZeroInitVisitor> {
+    public:
+        ZeroInitVisitor() = delete;
+        ZeroInitVisitor(ASTContext &ctx_) : ctx(ctx_) {}
+
+        bool VisitVarDecl(VarDecl *vd) {
+            if (vd->isLocalVarDecl() && vd->hasLocalStorage() &&
+                !vd->isImplicit()    && !vd->hasInit()) {
+                // Zero-initialize each uninitialized local
+                // by setting it to an ImplicitValueInitExpr
+                auto init = new (ctx) ImplicitValueInitExpr(vd->getType());
+                vd->setInit(init);
+            }
+            return true;
+        }
+
+    private:
+        ASTContext &ctx;
+    };
 
 public:
     CrossCheckInserter() = delete;

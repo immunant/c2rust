@@ -396,6 +396,10 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 continue;
             }
 
+            // Zero-initialize all uninitialized locals
+            ZeroInitVisitor ziv{ctx};
+            ziv.TraverseDecl(d);
+
             // Add the function entry-point cross-check
             StmtVec new_body_stmts;
             auto add_body_stmts = [&new_body_stmts] (const TinyStmtVec &stmts) {
