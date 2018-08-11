@@ -48,36 +48,6 @@ src/autolink.c:
     - item: defaults
       all_args: default
 
-    - item: function
-      name: sd_autolink__www
-      args:
-        rewind_p: disabled
-        no_slash: disabled
-
-    - item: function
-      name: sd_autolink__email
-      args:
-        rewind_p: disabled
-        no_slash: disabled
-
-    - item: function
-      name: sd_autolink__url
-      args:
-        rewind_p: disabled
-        no_slash: disabled
-
-    - item: function
-      name: sd_autolink__subreddit
-      args:
-        rewind_p: disabled
-        no_slash: disabled
-
-    - item: function
-      name: sd_autolink__username
-      args:
-        rewind_p: disabled
-        no_slash: disabled
-
 src/buffer.c:
     - item: defaults
       all_args: default
@@ -112,17 +82,6 @@ src/markdown.c:
         cb: disabled
         active_char: disabled
         work_bufs: disabled
-
-    - item: function
-      name: is_ref
-      args:
-        last: disabled # TODO: cross-check this on exit
-
-    - item: function
-      name: parse_table_header
-      args:
-        columns: disabled
-        column_data: disabled
 
 src/stack.c:
     - item: defaults
