@@ -133,7 +133,7 @@ pub unsafe extern fn malloc(size: size_t) -> *mut c_void {
     // Use calloc to allocate zeroed memory
     let mfn = ZA.fn_table().calloc_fn.unwrap();
     let ptr = mfn(1, size);
-    //eprintln!("Malloc:{}@{:p}", size, ptr);
+    #[cfg(feature = "debug-print")] eprintln!("Malloc:{}@{:p}", size, ptr);
     if !ptr.is_null() {
         let ir = ZA.size_map().insert(ptr, size);
         assert!(ir.is_none(), "Address already allocated: {:p}", ptr);
@@ -148,7 +148,7 @@ pub unsafe extern fn free(ptr: *mut c_void) {
     if !ptr.is_null() {
         let rr = ZA.size_map().remove(&ptr);
         assert!(rr.is_some(), "Bad free() address: {:p}", ptr);
-        //eprintln!("Free:{:?}@{:p}", _rr, ptr);
+        #[cfg(feature = "debug-print")] eprintln!("Free:{:?}@{:p}", rr, ptr);
     }
 }
 
@@ -169,7 +169,8 @@ pub unsafe extern fn calloc(nmemb: size_t, size: size_t) -> *mut c_void {
 
     let mfn = ZA.fn_table().calloc_fn.unwrap();
     let ptr = mfn(nmemb, size);
-    //eprintln!("Calloc:{}@{:p}", size, ptr);
+    // FIXME: crashes if enabled
+    //#[cfg(feature = "debug-print")] eprintln!("Calloc:{}@{:p}", size, ptr);
     if !ptr.is_null() {
         let total_size = nmemb.checked_mul(size).unwrap();
         let ir = ZA.size_map().insert(ptr, total_size);
@@ -210,7 +211,8 @@ unsafe fn realloc_internal<F>(ptr: *mut c_void, size: size_t, f: F) -> *mut c_vo
         // Zero out the additional space, if any
         ptr::write_bytes(new_ptr.offset(old_size as isize), 0, size - old_size);
     }
-    //eprintln!("Realloc:{}@{:p}=>{}@{:p}", old_size, ptr, size, new_ptr);
+    #[cfg(feature = "debug-print")] eprintln!("Realloc:{}@{:p}=>{}@{:p}",
+                                              old_size, ptr, size, new_ptr);
     new_ptr
 }
 

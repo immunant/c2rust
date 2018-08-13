@@ -7,6 +7,9 @@ description = "Zeroing memory allocation library that intercepts the system mall
 [lib]
 crate-type = ["dylib"]
 
+[features]
+debug-print = []
+
 [dependencies]
 parking_lot = {version = "0.6", features = ["nightly"]}
 spin = "0.4.8"
