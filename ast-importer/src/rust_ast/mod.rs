@@ -625,6 +625,18 @@ impl Builder {
         })
     }
 
+    pub fn labelled_block_expr<B, L>(self, blk: B, lbl: L) -> P<Expr>
+        where B: Make<P<Block>>, L: Make<Label> {
+        let blk = blk.make(&self);
+        let lbl = lbl.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Block(blk, Some(lbl)),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
     pub fn assign_expr<E1, E2>(self, lhs: E1, rhs: E2) -> P<Expr>
         where E1: Make<P<Expr>>, E2: Make<P<Expr>> {
         let lhs = lhs.make(&self);
@@ -1416,6 +1428,11 @@ impl Builder {
 
     // Misc nodes
 
+    pub fn label<L>(self, lbl: L) -> Label
+        where L: Make<Label> {
+        lbl.make(&self)
+    }
+
     pub fn block<S>(self, stmts: Vec<S>) -> P<Block>
         where S: Make<Stmt> {
         let stmts = stmts.into_iter().map(|s| s.make(&self)).collect();
@@ -1580,6 +1597,19 @@ impl Builder {
         P(Expr {
             id: DUMMY_NODE_ID,
             node: ExprKind::Break(label, None),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
+    pub fn break_expr_value<L,E>(self, label: Option<L>, value: E) -> P<Expr>
+        where L: Make<Label>, E: Make<P<Expr>> {
+        let label = label.map(|l| l.make(&self));
+        let value = value.make(&self);
+
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Break(label, Some(value)),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })

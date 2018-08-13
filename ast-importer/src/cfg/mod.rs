@@ -62,7 +62,7 @@ pub enum Label {
 }
 
 impl Label {
-    fn pretty_print(&self) -> String {
+    pub fn pretty_print(&self) -> String {
         match self {
             &Label::FromC(CStmtId(label_id)) => format!("'c_{}", label_id),
             &Label::Synthetic(syn_id) => format!("'s_{}", syn_id),
@@ -499,7 +499,9 @@ pub enum ImplicitReturnType {
     NoImplicitReturnType,
 
     /// This is for handling statement expressions
-    StmtExpr(ExprUse, CExprId, bool),
+    ///
+    /// TODO: document
+    StmtExpr(ExprUse, CExprId, bool, Label),
 }
 
 /// A complete control-flow graph
@@ -512,11 +514,7 @@ impl Cfg<Label, StmtOrDecl> {
         ret: ImplicitReturnType,
     ) -> Result<(Self, DeclStmtStore), String> {
 
-        let allow_return = match ret {
-            ImplicitReturnType::StmtExpr(_,_,_) => false,
-            _ => true,
-        };
-        let mut cfg_builder = CfgBuilder::new(allow_return);
+        let mut cfg_builder = CfgBuilder::new();
         let entry = *cfg_builder.graph.entries.iter().next().ok_or("from_stmts: expected entry")?;
 
         translator.with_scope(|| -> Result<(), String> {
@@ -525,13 +523,21 @@ impl Cfg<Label, StmtOrDecl> {
 
             if let Some(WipBlock { label: body_label, mut body, defined, live }) = body_stuff {
 
-                let ret_expr: Option<P<Expr>> = match ret {
-                    ImplicitReturnType::Main => Some(mk().lit_expr(mk().int_lit(0, ""))),
-                    ImplicitReturnType::Void => None as Option<P<Expr>>,
-                    ImplicitReturnType::NoImplicitReturnType => Some(
-                        translator.panic("Reached end of non-void function without returning")
-                    ),
-                    ImplicitReturnType::StmtExpr(use_, expr_id, is_static) => {
+                // Add in what to do after control-flow exits the statement
+                match ret {
+                    ImplicitReturnType::Main => {
+                        let ret_expr: Option<P<Expr>> = Some(mk().lit_expr(mk().int_lit(0, "")));
+                        body.push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(ret_expr))));
+                    }
+                    ImplicitReturnType::Void => {
+                        body.push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(None as Option<P<Expr>>))));
+                    },
+                    ImplicitReturnType::NoImplicitReturnType => {
+                        let ret_expr: P<Expr> =
+                            translator.panic("Reached end of non-void function without returning");
+                        body.push(StmtOrDecl::Stmt(mk().semi_stmt(ret_expr)));
+                    },
+                    ImplicitReturnType::StmtExpr(use_, expr_id, is_static, brk_label) => {
                         let WithStmts { mut stmts, val } = translator.convert_expr(
                             use_,
                             expr_id,
@@ -540,10 +546,12 @@ impl Cfg<Label, StmtOrDecl> {
                         )?;
 
                         body.extend(stmts.into_iter().map(|s| StmtOrDecl::Stmt(s)));
-                        Some(val)
+                        body.push(StmtOrDecl::Stmt(mk().semi_stmt(mk().break_expr_value(
+                            Some(brk_label.pretty_print()),
+                            val
+                        ))));
                     }
                 };
-                body.push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(ret_expr))));
 
                 let body_bb = BasicBlock { body, terminator: End, defined, live };
                 cfg_builder.add_block(body_label, body_bb);
@@ -1007,7 +1015,7 @@ impl CfgBuilder {
     }
 
     /// Create a new `CfgBuilder` with a single entry label.
-    fn new(c_return_permitted: bool) -> CfgBuilder {
+    fn new() -> CfgBuilder {
         let entries = vec![Label::Synthetic(0)].into_iter().collect();
 
         CfgBuilder {
@@ -1114,10 +1122,6 @@ impl CfgBuilder {
                 Ok(Some(wip))
             }
 
-            CStmtKind::Return(_) if !self.c_return_permitted => Err(format!(
-                "Return statements (in this case {:?}) are disallowed in this context.",
-                stmt_id,
-            )),
             CStmtKind::Return(expr) => {
                 let val = match expr.map(|i| translator.convert_expr(ExprUse::Used, i, false, DecayRef::Default)) {
                     Some(r) => Some(r?),

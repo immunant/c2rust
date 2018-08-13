@@ -3279,10 +3279,12 @@ impl Translation {
         is_static: bool
     ) -> Result<WithStmts<P<Expr>>, String> {
 
-        fn as_semi_return_stmt(stmt: &ast::Stmt) -> Option<Option<P<ast::Expr>>> {
+        fn as_semi_break_stmt(stmt: &ast::Stmt, lbl: &cfg::Label) -> Option<Option<P<ast::Expr>>> {
             if let ast::Stmt { node: ast::StmtKind::Semi(ref expr), .. } = *stmt {
-                if let ast::Expr { node: ast::ExprKind::Ret(ref ret_val), .. } = **expr {
-                    return Some(ret_val.clone())
+                if let ast::Expr { node: ast::ExprKind::Break(Some(ref blbl), ref ret_val), .. } = **expr {
+                    if *blbl == mk().label(lbl.pretty_print()) {
+                        return Some(ret_val.clone())
+                    }
                 }
             }
             None
@@ -3300,7 +3302,8 @@ impl Translation {
 
                     let mut stmts = match self.ast_context[result_id].kind {
                         CStmtKind::Expr(expr_id) => {
-                            let ret = cfg::ImplicitReturnType::StmtExpr(use_, expr_id, is_static);
+                            let lbl = cfg::Label::FromC(compound_stmt_id);
+                            let ret = cfg::ImplicitReturnType::StmtExpr(use_, expr_id, is_static, lbl);
                             self.convert_function_body(&name, &substmt_ids[0 .. (n-1)], ret)?
                         }
 
@@ -3308,26 +3311,24 @@ impl Translation {
                     };
 
                     if let Some(stmt) = stmts.pop() {
-                        match as_semi_return_stmt(&stmt) {
+                        match as_semi_break_stmt(&stmt, &lbl) {
                             Some(val) => return Ok(WithStmts::new(mk().block_expr({
                                 match val {
                                     None => mk().block(stmts),
                                     Some(val) => WithStmts { stmts, val }.to_block()
                                 }
                             }))),
-                            _ => stmts.push(stmt),
+                            _ => {
+                                self.use_feature("label_break_value");
+                                stmts.push(stmt)
+                            },
                         }
                     }
 
-                    let decl = mk().fn_decl(
-                        vec![] as Vec<ast::Arg>,
-                        ast::FunctionRetTy::Default(DUMMY_SP),
-                        false,
-                    );
-                    let closure_body = mk().block_expr(mk().block(stmts));
-                    let closure = mk().closure_expr(ast::CaptureBy::Ref, ast::Movability::Movable, decl, closure_body);
-                    let closure_call = mk().call_expr(closure, vec![] as Vec<P<ast::Expr>>);
-                    Ok(WithStmts::new(closure_call))
+                    let block_body = mk().block(stmts);
+                    let block: P<Expr> = mk().labelled_block_expr(block_body, lbl.pretty_print());
+
+                    Ok(WithStmts::new(block))
                 } else {
 
                     let mut stmts = vec![];

@@ -25,7 +25,7 @@ pub fn reloop(
     let loop_info = if use_c_loop_info { Some(cfg.loops) } else { None };
     let multiple_info = if use_c_multiple_info { Some(cfg.multiples) } else { None };
     let mut state = RelooperState::new(loop_info, multiple_info);
-    state.relooper(entries, blocks, &mut relooped_with_decls);
+    state.relooper(entries, blocks, &mut relooped_with_decls, false);
 
     // These are declarations we need to lift
     let lift_me = state.lifted;
@@ -116,6 +116,7 @@ impl RelooperState {
         entries: IndexSet<Label>, // current entry points into the CFG
         mut blocks: IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>, // the blocks in the sub-CFG considered
         result: &mut Vec<Structure<StmtOrDecl>>, // the generated structures are appended to this
+        disable_heuristics: bool,
     ) {
         // Find nodes outside the graph pointed to from nodes inside the graph. Note that `ExitTo`
         // is not considered here - only `GoTo`.
@@ -188,7 +189,7 @@ impl RelooperState {
 
                 result.push(Structure::Simple { entries, body, terminator });
 
-                self.relooper(new_entries, blocks, result);
+                self.relooper(new_entries, blocks, result, false);
             } else {
                 let body = vec![];
                 let terminator = Jump(StructureLabel::GoTo(entry));
@@ -213,7 +214,7 @@ impl RelooperState {
                 let branches = absent.into_iter().map(|lbl| (lbl, vec![])).collect();
 
                 let mut then = vec![];
-                self.relooper(present, blocks, &mut then);
+                self.relooper(present, blocks, &mut then, false);
 
                 result.push(Structure::Multiple { entries, branches, then })
             };
@@ -300,6 +301,7 @@ impl RelooperState {
                 }
             }
         }
+        recognized_c_multiple = recognized_c_multiple && !disable_heuristics;
 
 
         if none_branch_to.is_empty() && !recognized_c_multiple {
@@ -371,11 +373,11 @@ impl RelooperState {
 
             let mut body = vec![];
             self.open_scope();
-            self.relooper(entries.clone(), body_blocks, &mut body);
+            self.relooper(entries.clone(), body_blocks, &mut body, false);
             self.close_scope();
 
             result.push(Structure::Loop { entries, body });
-            self.relooper(follow_entries, follow_blocks, result);
+            self.relooper(follow_entries, follow_blocks, result, false);
 
             return;
         }
@@ -438,7 +440,7 @@ impl RelooperState {
 
                 let mut structs: Vec<Structure<StmtOrDecl>> = vec![];
                 self.open_scope();
-                self.relooper(entries, blocks, &mut structs);
+                self.relooper(entries, blocks, &mut structs, false);
                 self.close_scope();
 
                 (lbl, structs)
@@ -454,8 +456,9 @@ impl RelooperState {
             (vec![], all_handlers)
         };
 
+        let disable_heuristics = follow_entries == entries;
         result.push(Structure::Multiple { entries, branches, then });
-        self.relooper(follow_entries, follow_blocks, result);
+        self.relooper(follow_entries, follow_blocks, result, disable_heuristics);
 
         return;
     }
