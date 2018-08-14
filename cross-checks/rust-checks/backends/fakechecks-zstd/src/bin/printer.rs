@@ -9,7 +9,7 @@ use std::io::{Read, Write};
 use std::env;
 
 const BUF_SIZE: usize = 4 * 1024 * 1024; // 4MB buffer
-const MAX_XCHECK_LEN: usize = 50;
+const MAX_XCHECK_LEN: usize = 52;
 
 pub fn main() -> Result<(), std::io::Error> {
     let mut out = String::with_capacity(BUF_SIZE);
@@ -29,7 +29,15 @@ pub fn main() -> Result<(), std::io::Error> {
                 out.clear();
             }
             let old_len = out.len();
-            fmt::write(&mut out, format_args!("XCHECK({0}):{1:}/0x{1:08x}\n", buf[0], val))
+            let tag_name = match buf[0] {
+                0 => "Unk",
+                1 => "Ent",
+                2 => "Exi",
+                3 => "Arg",
+                4 => "Ret",
+                _ => panic!("Unknown cross-check tag: {}", buf[0])
+            };
+            fmt::write(&mut out, format_args!("XCHECK({0}):{1:}/0x{1:08x}\n", tag_name, val))
                 .expect("Error formatting xcheck");
             assert!(out.len() <= old_len + MAX_XCHECK_LEN);
         }
