@@ -3,8 +3,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <array>
 #include <atomic>
 #include <mutex>
+#include <string>
 
 #include <alloca.h>
 #include <pthread.h>
@@ -75,6 +77,9 @@ static FILE *get_fout() {
 
 extern "C"
 void rb_xcheck(uint8_t tag, uint64_t item) {
+    static std::array<const char*, 5> tag_names = {
+       "Unk", "Ent", "Exi", "Arg", "Ret",
+    };
     auto *fout = get_fout();
-    fprintf(fout, "XCHECK(%hhd):%lu/0x%08lx\n", tag, item, item);
+    fprintf(fout, "XCHECK(%s):%lu/0x%08lx\n", tag_names.at(tag), item, item);
 }
