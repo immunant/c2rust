@@ -16,8 +16,11 @@ use syntax::fold;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::{HashSet, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
+
+#[cfg(feature="c-hash-functions")]
+use std::collections::HashSet;
 
 use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier};
 use syntax::ext::quote::rt::{ToTokens, ExtParseUtils};
