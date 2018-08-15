@@ -2805,7 +2805,7 @@ impl Translation {
         mut decay_ref: DecayRef,
     ) -> Result<WithStmts<P<Expr>>, String> {
         // A reference must be decayed if a bitcast is required
-        if kind == CastKind::BitCast {
+        if kind == CastKind::BitCast || kind == CastKind::PointerToIntegral {
             decay_ref = DecayRef::Yes;
         }
 
