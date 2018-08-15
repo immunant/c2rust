@@ -2696,6 +2696,15 @@ impl Translation {
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
+            "__builtin_bzero" => {
+                let ptr_stmts = self.convert_expr(ExprUse::RValue, args[0], is_static, decay_ref)?;
+                let n_stmts = self.convert_expr(ExprUse::RValue, args[1], is_static, decay_ref)?;
+                let write_bytes = mk().path_expr(vec!["", "std", "ptr", "write_bytes"]);
+                let zero = mk().lit_expr(mk().int_lit(0, "u8"));
+                Ok(ptr_stmts.and_then(|ptr| n_stmts.map(|n| {
+                    mk().call_expr(write_bytes, vec![ptr, zero, n])
+                })))
+            }
 
             // If the target does not support data prefetch, the address expression is evaluated if
             // it includes side effects but no other code is generated and GCC does not issue a warning.
