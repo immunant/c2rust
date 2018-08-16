@@ -15,6 +15,7 @@ void bar(const int *a) {
 }
 void bitcast(void *a) {}
 void foobar(unsigned int *a) {}
+void address_cast(unsigned long a) {}
 
 void calls_all() {
     int i = 1;
@@ -37,4 +38,7 @@ void calls_all() {
     int l[2];
     // Variadic functions need references decayed or else it won't compile.
     sscanf(k, "%u,%u", &l[0], &l[1]);
+    
+    unsigned long ul = 0;
+    address_cast((unsigned long)&ul);
 }
