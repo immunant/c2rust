@@ -68,6 +68,10 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
         MultipleInfo { multiples: IndexMap::new() }
     }
 
+    pub fn absorb(&mut self, other: MultipleInfo<Lbl>) {
+        self.multiples.extend(other.multiples);
+    }
+
     /// Rewrite nodes to take into account a node remapping. Note that the remapping is usually
     /// going to be very much _not_ injective - the whole point of remapping is to merge some nodes.
     pub fn rewrite_blocks(&mut self, rewrites: &IndexMap<Lbl, Lbl>) -> () {

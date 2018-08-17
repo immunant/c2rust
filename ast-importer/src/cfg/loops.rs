@@ -127,6 +127,11 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         LoopInfo { node_loops: IndexMap::new(), loops: IndexMap::new() }
     }
 
+    pub fn absorb(&mut self, other: LoopInfo<Lbl>) {
+        self.node_loops.extend(other.node_loops);
+        self.loops.extend(other.loops);
+    }
+
     /// Find the smallest possible loop that contains all of the items
     pub fn tightest_common_loop<E: Iterator<Item=Lbl>>(&self, mut entries: E) -> Option<LoopId> {
         let first = if let Some(f) = entries.next() { f } else { return None };

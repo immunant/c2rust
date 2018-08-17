@@ -10,6 +10,7 @@ pub fn reloop(
     simplify_structures: bool,    // simplify the output structure
     use_c_loop_info: bool,        // use the loop information in the CFG (slower, but better)
     use_c_multiple_info: bool,    // use the multiple information in the CFG (slower, but better)
+    live_in: IndexSet<CDeclId>,    // declarations we assume are live going into this graph
 ) -> (Vec<Stmt>, Vec<Structure<StmtOrComment>>) {
 
     let entries = cfg.entries;
@@ -24,7 +25,7 @@ pub fn reloop(
     let mut relooped_with_decls: Vec<Structure<StmtOrDecl>> = vec![];
     let loop_info = if use_c_loop_info { Some(cfg.loops) } else { None };
     let multiple_info = if use_c_multiple_info { Some(cfg.multiples) } else { None };
-    let mut state = RelooperState::new(loop_info, multiple_info);
+    let mut state = RelooperState::new(loop_info, multiple_info, live_in);
     state.relooper(entries, blocks, &mut relooped_with_decls, false);
 
     // These are declarations we need to lift
@@ -70,9 +71,10 @@ impl RelooperState {
     pub fn new(
         loop_info: Option<LoopInfo<Label>>,
         multiple_info: Option<MultipleInfo<Label>>,
+        live_in: IndexSet<CDeclId>,
     ) -> Self {
         RelooperState {
-            scopes: vec![IndexSet::new()],
+            scopes: vec![live_in],
             lifted: IndexSet::new(),
             loop_info,
             multiple_info,

@@ -1602,14 +1602,14 @@ impl Builder {
         })
     }
 
-    pub fn break_expr_value<L,E>(self, label: Option<L>, value: E) -> P<Expr>
+    pub fn break_expr_value<L,E>(self, label: Option<L>, value: Option<E>) -> P<Expr>
         where L: Make<Label>, E: Make<P<Expr>> {
         let label = label.map(|l| l.make(&self));
-        let value = value.make(&self);
+        let value = value.map(|v| v.make(&self));
 
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Break(label, Some(value)),
+            node: ExprKind::Break(label, value),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })

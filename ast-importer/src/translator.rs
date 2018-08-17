@@ -3,7 +3,6 @@ use syntax::ast::*;
 use syntax::codemap::{DUMMY_SP, Span};
 use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{Token,Nonterminal};
-use std::collections::{HashMap,HashSet};
 use renamer::Renamer;
 use convert_type::TypeConverter;
 use loops::*;
@@ -25,7 +24,7 @@ use with_stmts::WithStmts;
 use rust_ast::traverse::Traversal;
 use std::io;
 use std::path::{self, PathBuf};
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use cfg;
 
@@ -164,7 +163,7 @@ pub struct Translation {
     pub tcfg: TranslationConfig,
 
     // Accumulated outputs
-    pub features: RefCell<HashSet<&'static str>>,
+    pub features: RefCell<IndexSet<&'static str>>,
     pub item_store: RefCell<ItemStore>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
 
@@ -172,7 +171,7 @@ pub struct Translation {
     type_converter: RefCell<TypeConverter>,
     renamer: RefCell<Renamer<CDeclId>>,
     loops: LoopContext,
-    zero_inits: RefCell<HashMap<CDeclId, Result<P<Expr>, String>>>,
+    zero_inits: RefCell<IndexMap<CDeclId, Result<P<Expr>, String>>>,
 
     // Comment support
     pub comment_context: RefCell<CommentContext>, // Incoming comments
@@ -182,7 +181,7 @@ pub struct Translation {
     mod_blocks: RefCell<IndexMap<PathBuf, ItemStore>>,
 
     // Mod names to try to stop collisions from happening
-    mod_names: RefCell<HashMap<String, PathBuf>>,
+    mod_names: RefCell<IndexMap<String, PathBuf>>,
 }
 
 
@@ -323,9 +322,9 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
 // This function is meant to create module names, for modules being created with the
 // `--reorganize-modules` flag. So what is done is, change '.' && '-' to '_', and depending
 // on whether there is a collision or not prepend the prior directory name to the path name.
-// To check for collisions, a HashMap with the path name(key) and the path(value) associated with
+// To check for collisions, a IndexMap with the path name(key) and the path(value) associated with
 // the name. If the path name is in use, but the paths differ there is a collision.
-fn clean_path(mod_names: &RefCell<HashMap<String, PathBuf>>, path: &path::Path) -> String {
+fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: &path::Path) -> String {
     fn path_to_str(path: &path::Path) -> String {
         path.file_name()
             .unwrap()
@@ -400,7 +399,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
     with_globals(|| {
         // Identify typedefs that name unnamed types and collapse the two declarations
         // into a single name and declaration, eliminating the typedef altogether.
-        let mut prenamed_decls: HashSet<CDeclId> = HashSet::new();
+        let mut prenamed_decls: IndexSet<CDeclId> = IndexSet::new();
         for (&decl_id, decl) in &t.ast_context.c_decls {
             if let CDeclKind::Typedef { ref name, typ, .. } = decl.kind {
                 if let Some(subdecl_id) = t.ast_context.resolve_type(typ.ctype).kind.as_underlying_decl() {
@@ -601,7 +600,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
 fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
                   global_item_store: &RefCell<ItemStore>,
-                  mod_names: &RefCell<HashMap<String, PathBuf>>) -> P<Item> {
+                  mod_names: &RefCell<IndexMap<String, PathBuf>>) -> P<Item> {
     let (mut items, foreign_items, uses) = submodule_item_store.drain();
     let file_path_str = file_path.to_str().expect("Found invalid unicode");
     let mod_name = clean_path(mod_names, file_path);
@@ -762,7 +761,7 @@ impl Translation {
         if tcfg.translate_valist { type_converter.translate_valist = true }
 
         Translation {
-            features: RefCell::new(HashSet::new()),
+            features: RefCell::new(IndexSet::new()),
             item_store: RefCell::new(ItemStore::new()),
             type_converter: RefCell::new(type_converter),
             ast_context,
@@ -786,17 +785,17 @@ impl Translation {
                 "drop", "Some", "None", "Ok", "Err",
             ])),
             loops: LoopContext::new(),
-            zero_inits: RefCell::new(HashMap::new()),
+            zero_inits: RefCell::new(IndexMap::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             sectioned_static_initializers: RefCell::new(Vec::new()),
             mod_blocks: RefCell::new(IndexMap::new()),
-            mod_names: RefCell::new(HashMap::new()),
+            mod_names: RefCell::new(IndexMap::new()),
         }
     }
 
     /// Called when translation makes use of a language feature that will require a feature-gate.
-    fn use_feature(&self, feature: &'static str) {
+    pub fn use_feature(&self, feature: &'static str) {
         self.features.borrow_mut().insert(feature);
     }
 
@@ -1600,6 +1599,77 @@ impl Translation {
         })
     }
 
+    pub fn convert_cfg(
+        &self,
+        name: &str,
+        graph: cfg::Cfg<cfg::Label, cfg::StmtOrDecl>,
+        store: cfg::DeclStmtStore,
+        live_in: IndexSet<CDeclId>,
+        cut_out_trailing_ret: bool,
+    ) -> Result<Vec<Stmt>, String> {
+
+        if self.tcfg.dump_function_cfgs {
+            graph
+                .dump_dot_graph(
+                    &self.ast_context, &store,
+                    self.tcfg.dump_cfg_liveness,
+                    self.tcfg.use_c_loop_info,
+                    format!("{}_{}.dot", "cfg", name)
+                )
+                .expect("Failed to write CFG .dot file");
+        }
+        if self.tcfg.json_function_cfgs {
+            graph.dump_json_graph(&store, format!("{}_{}.json", "cfg", name))
+                .expect("Failed to write CFG .json file");
+        }
+
+        let (lifted_stmts, relooped) = cfg::relooper::reloop(
+            graph,
+            store,
+            self.tcfg.simplify_structures,
+            self.tcfg.use_c_loop_info,
+            self.tcfg.use_c_multiple_info,
+            live_in,
+        );
+
+        if self.tcfg.dump_structures {
+            eprintln!("Relooped structures:");
+            for s in &relooped {
+                eprintln!("  {:#?}", s);
+            }
+        }
+
+        let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");
+        let current_block = mk().ident_expr(&current_block_ident);
+        let mut stmts: Vec<Stmt> = lifted_stmts;
+        if cfg::structures::has_multiple(&relooped) {
+
+            if self.tcfg.fail_on_multiple {
+                panic!("Uses of `current_block' are illegal with `--fail-on-multiple'.");
+            }
+
+            let current_block_ty = if self.tcfg.debug_relooper_labels {
+                mk().ref_lt_ty("'static", mk().path_ty(vec!["str"]))
+            } else {
+                mk().path_ty(vec!["u64"])
+            };
+
+
+            let local = mk().local(mk().mutbl().ident_pat(current_block_ident),
+                                   Some(current_block_ty), None as Option<P<Expr>>);
+            stmts.push(mk().local_stmt(P(local)))
+        }
+
+        stmts.extend(cfg::structures::structured_cfg(
+            &relooped,
+            &mut self.comment_store.borrow_mut(),
+            current_block,
+            self.tcfg.debug_relooper_labels,
+            cut_out_trailing_ret,
+        )?);
+        Ok(stmts)
+    }
+
     fn convert_function_body(
         &self,
         name: &str,
@@ -1633,6 +1703,7 @@ impl Translation {
                     self.tcfg.simplify_structures,
                     self.tcfg.use_c_loop_info,
                     self.tcfg.use_c_multiple_info,
+                    IndexSet::new(),
                 );
 
                 if self.tcfg.dump_structures {
@@ -1667,7 +1738,8 @@ impl Translation {
                     &relooped,
                     &mut self.comment_store.borrow_mut(),
                     current_block,
-                    self.tcfg.debug_relooper_labels
+                    self.tcfg.debug_relooper_labels,
+                    true,
                 )?);
                 Ok(stmts)
             } else {
@@ -3299,10 +3371,10 @@ impl Translation {
                 if self.tcfg.reloop_cfgs {
 
                     let name = format!("<stmt-expr_{:?}>", compound_stmt_id);
+                    let lbl = cfg::Label::FromC(compound_stmt_id);
 
                     let mut stmts = match self.ast_context[result_id].kind {
                         CStmtKind::Expr(expr_id) => {
-                            let lbl = cfg::Label::FromC(compound_stmt_id);
                             let ret = cfg::ImplicitReturnType::StmtExpr(use_, expr_id, is_static, lbl);
                             self.convert_function_body(&name, &substmt_ids[0 .. (n-1)], ret)?
                         }
@@ -4613,16 +4685,17 @@ impl Translation {
     /// This predicate checks for control-flow statements under a declaration
     /// that will require relooper to be enabled to be handled.
     fn function_requires_relooper(&self, stmt_ids: &[CStmtId]) -> bool {
-        stmt_ids
-        .iter()
-        .flat_map(|&stmt_id| DFExpr::new(&self.ast_context, stmt_id.into()))
-        .flat_map(SomeId::stmt)
-        .any(|x| {
-            match self.ast_context[x].kind {
-                CStmtKind::Goto(..) | CStmtKind::Label(..) | CStmtKind::Switch{..} => true,
-                _ => false,
-            }
-        })
+        true
+//        stmt_ids
+//        .iter()
+//        .flat_map(|&stmt_id| DFExpr::new(&self.ast_context, stmt_id.into()))
+//        .flat_map(SomeId::stmt)
+//        .any(|x| {
+//            match self.ast_context[x].kind {
+//                CStmtKind::Goto(..) | CStmtKind::Label(..) | CStmtKind::Switch{..} => true,
+//                _ => false,
+//            }
+//        })
     }
 
     fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> P<Expr> {

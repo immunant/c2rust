@@ -9,7 +9,8 @@ pub fn structured_cfg(
     root: &Vec<Structure<StmtOrComment>>,
     comment_store: &mut comment_store::CommentStore,
     current_block: P<Expr>,
-    debug_labels: bool
+    debug_labels: bool,
+    cut_out_trailing_ret: bool,
 ) -> Result<Vec<Stmt>, String> {
 
 
@@ -34,22 +35,24 @@ pub fn structured_cfg(
 
     // If the very last statement in the vector is a `return`, we can either cut it out or replace
     // it with the returned value.
-    match stmts.last().cloned() {
-        Some(Stmt { node: StmtKind::Expr(ref ret), .. }) |
-        Some(Stmt { node: StmtKind::Semi(ref ret), .. }) => {
-            match ret.node {
-                ExprKind::Ret(None) => {
-                    stmts.pop();
+    if cut_out_trailing_ret {
+        match stmts.last().cloned() {
+            Some(Stmt { node: StmtKind::Expr(ref ret), .. }) |
+            Some(Stmt { node: StmtKind::Semi(ref ret), .. }) => {
+                match ret.node {
+                    ExprKind::Ret(None) => {
+                        stmts.pop();
+                    }
+                    // TODO: why does libsyntax print a ';' after this even if it is 'Expr' and not 'Semi'
+                    //                ExprKind::Ret(Some(ref e)) => {
+                    //                    stmts.pop();
+                    //                    stmts.push(mk().expr_stmt(e));
+                    //                }
+                    _ => {}
                 }
-                // TODO: why does libsyntax print a ';' after this even if it is 'Expr' and not 'Semi'
-//                ExprKind::Ret(Some(ref e)) => {
-//                    stmts.pop();
-//                    stmts.push(mk().expr_stmt(e));
-//                }
-                _ => { }
             }
+            _ => {}
         }
-        _ => { }
     }
 
     Ok(stmts)
