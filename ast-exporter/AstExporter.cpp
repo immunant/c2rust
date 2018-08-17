@@ -14,6 +14,7 @@
 #include "clang/AST/TypeVisitor.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/DeclVisitor.h"
+#include "clang/AST/RecordLayout.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Tooling/Tooling.h"
 #include "clang/Basic/Builtins.h"
@@ -368,6 +369,7 @@ class TranslateASTVisitor final
       CborEncoder *encoder;
       std::unordered_map<string, uint64_t> filenames;
       std::set<std::pair<void*, ASTEntryTag>> exportedTags;
+      std::unordered_set<Decl *> warnedFlexibleArrayDecls;
       
       // Returns true when a new entry is added to exportedTags
       bool markForExport(void* ptr, ASTEntryTag tag) {
@@ -1028,12 +1030,7 @@ class TranslateASTVisitor final
 
           if (FD->hasBody() && FD->isVariadic()) {
             //   auto fname = FD->getNameString();
-              auto floc = Context->getFullLoc(FD->getLocStart());
-              if (floc.isValid() && floc.hasManager()) {
-                floc.print(llvm::errs(), floc.getManager());
-                std::cerr << ": warning: variadic functions are not fully supported." 
-                            << std::endl;
-              }
+              PrintWarning("variadic functions are not fully supported.", FD);
           }
 
           // Use the parameters from the function declaration
@@ -1241,8 +1238,16 @@ class TranslateASTVisitor final
       bool VisitFieldDecl(FieldDecl *D)
       {
           // Skip non-canonical decls
-          if(!D->isCanonicalDecl())
+          if (!D->isCanonicalDecl())
               return true;
+
+          // Check to see if the FieldDecl might be a flexible array member,
+          // if it is print a warning message.
+          if (WarnOnFlexibleArrayDecl(D)) {
+              PrintWarning("this may be an unsupported flexible array member with size of 1, "
+                           "omit the size if this field is intended to be a flexible array member.\n"
+                           "See section 6.7.2.1 of the C99 Standard for more details.", D);
+          }
 
           std::vector<void*> childIds;
           auto t = D->getType();
@@ -1351,6 +1356,34 @@ class TranslateASTVisitor final
                            cbor_encode_double(array, lit);
                        });
           return true;
+      }
+
+      bool WarnOnFlexibleArrayDecl(FieldDecl* D) {
+          const ASTRecordLayout &Layout = Context->getASTRecordLayout(D->getParent());
+          unsigned FieldCount = Layout.getFieldCount();
+
+          if (auto CA = dyn_cast_or_null<ConstantArrayType>(D->getType().getTypePtr())) {
+              // If the array has a size of 1, and struct field count is
+              // greater than 1, and if the (struct field count - 1) is equal to the index,
+              // it is most likely a flexible array.
+              if (CA->getSize() == 1 &&
+                  FieldCount > 1 &&
+                  FieldCount - 1 == D->getFieldIndex() &&
+                  !warnedFlexibleArrayDecls.count(D)) {
+                  // Insert the Decl into the set, if it has not been warned about yet.
+                  warnedFlexibleArrayDecls.insert(D);
+                  return true;
+              }
+          }
+          return false;
+      }
+
+      void PrintWarning(std::string Message, Decl* D) {
+          auto floc = Context->getFullLoc(D->getLocStart());
+          if (floc.isValid() && floc.hasManager()) {
+            floc.print(llvm::errs(), floc.getManager());
+            std::cerr << ": warning: " << Message << std::endl;
+          }
       }
 };
 
