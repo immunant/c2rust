@@ -2893,14 +2893,20 @@ impl Translation {
                 let source_ty_ctype_id = self.ast_context[expr].kind.get_type()
                     .ok_or_else(|| format!("bad source expression"))?;
 
+                let source_ty = self.convert_type(source_ty_ctype_id)?;
                 if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
                     // Casts targeting `enum` types...
-                    let source_ty = self.convert_type(source_ty_ctype_id)?;
                     Ok(self.enum_cast(ty.ctype, enum_decl_id, expr, val, source_ty, target_ty))
                 } else {
-                    // Other numeric casts translate to Rust `as` casts
-
-                    Ok(val.map(|x| mk().cast_expr(x, target_ty)))
+                    // Other numeric casts translate to Rust `as` casts,
+                    // unless the cast is to a function pointer then use `transmute`.
+                    Ok(val.map(|x| {
+                        if self.ast_context.is_function_pointer(source_ty_ctype_id) {
+                            transmute_expr(source_ty, target_ty, x)
+                        } else  {
+                            mk().cast_expr(x, target_ty)
+                        }
+                    }))
                 }
             }
 
