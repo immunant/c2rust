@@ -6,10 +6,8 @@ int identity(int i) { return i; }
 // I believe that POSIX mandates that you can do it.
 void *get_identity(void) { return identity; }
 
-void get_address(size_t n) {}
-
 void entry(const unsigned sz, int buffer[const]) {
         typeof(identity) * f = get_identity();
-        get_address((size_t)f);
         buffer[0] = f(10);
+        buffer[1] = (size_t)f;
 }
