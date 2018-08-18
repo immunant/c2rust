@@ -1064,7 +1064,8 @@ class TranslateASTVisitor final
                                  cbor_encode_boolean(array, is_main);
                                  
                                  auto bid = FD->getBuiltinID();
-                                 cbor_encode_boolean(array,                                                    bid && !Context->BuiltinInfo.getHeaderName(bid));
+                                 cbor_encode_boolean(array,
+                                         bid && !Context->BuiltinInfo.getHeaderName(bid));
                              });
           typeEncoder.VisitQualType(functionType);
 
