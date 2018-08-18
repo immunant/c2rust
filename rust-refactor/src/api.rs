@@ -109,17 +109,15 @@ pub trait DriverCtxtExt<'tcx> {
 
 impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
     fn node_type(&self, id: NodeId) -> Ty<'tcx> {
-        let parent = self.hir_map().get_parent(id);
-        let parent_body = self.hir_map().body_owned_by(parent);
-        let tables = self.ty_ctxt().body_tables(parent_body);
+        let parent = self.hir_map().get_parent_did(id);
+        let tables = self.ty_ctxt().typeck_tables_of(parent);
         let hir_id = self.hir_map().node_to_hir_id(id);
         tables.node_id_to_type(hir_id)
     }
 
     fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx> {
-        let parent = self.hir_map().get_parent(id);
-        let parent_body = self.hir_map().body_owned_by(parent);
-        let tables = self.ty_ctxt().body_tables(parent_body);
+        let parent = self.hir_map().get_parent_did(id);
+        let tables = self.ty_ctxt().typeck_tables_of(parent);
         let hir_id = self.hir_map().node_to_hir_id(id);
         if let Some(adj) = tables.adjustments().get(hir_id).and_then(|adjs| adjs.last()) {
             adj.target
