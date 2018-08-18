@@ -131,11 +131,11 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
     }
 
     fn def_path(&self, id: DefId) -> Path {
-        reflect::reflect_path(self.ty_ctxt(), id).1
+        reflect::reflect_def_path(self.ty_ctxt(), id).1
     }
 
     fn def_qpath(&self, id: DefId) -> (Option<QSelf>, Path) {
-        reflect::reflect_path(self.ty_ctxt(), id)
+        reflect::reflect_def_path(self.ty_ctxt(), id)
     }
 
     fn node_def_id(&self, id: NodeId) -> DefId {

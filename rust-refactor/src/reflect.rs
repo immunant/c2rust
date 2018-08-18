@@ -34,11 +34,11 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         TyFloat(fty) => mk().ident_ty(fty.ty_to_string()),
         TyAdt(def, substs) => {
             if infer_args {
-                let (qself, path) = reflect_path(tcx, def.did);
+                let (qself, path) = reflect_def_path(tcx, def.did);
                 mk().qpath_ty(qself, path)
             } else {
                 let substs = substs.types().collect::<Vec<_>>();
-                let (qself, path) = reflect_path_inner(tcx, def.did, Some(&substs));
+                let (qself, path) = reflect_def_path_inner(tcx, def.did, Some(&substs));
                 mk().qpath_ty(qself, path)
             }
         },
@@ -75,15 +75,15 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 }
 
 /// Build a path referring to a specific def.
-pub fn reflect_path(tcx: TyCtxt, id: DefId) -> (Option<QSelf>, Path) {
-    reflect_path_inner(tcx, id, None)
+pub fn reflect_def_path(tcx: TyCtxt, id: DefId) -> (Option<QSelf>, Path) {
+    reflect_def_path_inner(tcx, id, None)
 }
 
 /// Build a path referring to a specific def.
-fn reflect_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
-                                      id: DefId,
-                                      opt_substs: Option<&[ty::Ty<'tcx>]>)
-                                      -> (Option<QSelf>, Path) {
+fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
+                                          id: DefId,
+                                          opt_substs: Option<&[ty::Ty<'tcx>]>)
+                                          -> (Option<QSelf>, Path) {
     let mut segments = Vec::new();
     let mut qself = None;
 
@@ -295,7 +295,7 @@ pub fn register_commands(reg: &mut Registry) {
 
                     let e = if let TypeVariants::TyFnDef(def_id, ref substs) = ty.sty {
                         let substs = substs.types().collect::<Vec<_>>();
-                        let (qself, path) = reflect_path_inner(
+                        let (qself, path) = reflect_def_path_inner(
                             cx.ty_ctxt(), def_id, Some(&substs));
                         mk().qpath_expr(qself, path)
                     } else if let Some(def_id) = cx.try_resolve_expr(&e) {
@@ -305,7 +305,7 @@ pub fn register_commands(reg: &mut Registry) {
                         let hir_id = cx.hir_map().node_to_hir_id(e.id);
                         let substs = tables.node_substs(hir_id);
                         let substs = substs.types().collect::<Vec<_>>();
-                        let (qself, path) = reflect_path_inner(
+                        let (qself, path) = reflect_def_path_inner(
                             cx.ty_ctxt(), def_id, Some(&substs));
                         mk().qpath_expr(qself, path)
                     } else {
