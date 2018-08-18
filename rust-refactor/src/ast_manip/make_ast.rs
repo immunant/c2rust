@@ -1239,7 +1239,7 @@ impl Builder {
     pub fn unit_variant<I,E>(self, name: I, disc: Option<E>) -> Variant
         where I: Make<Ident>, E: Make<P<Expr>> {
         let name = name.make(&self);
-        let disc = disc.map(|d| d.make(&self));
+        disc.map(|d| d.make(&self));
         dummy_spanned(Variant_ {
             ident: name,
             attrs: self.attrs,

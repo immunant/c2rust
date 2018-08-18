@@ -241,7 +241,7 @@ fn print_diff(s1: &str, s2: &str) {
                         r_start: r_line_old - (buf.len() - 1),
                     };
                 },
-                State::Hunk { unchanged_limit, l_start, r_start } => {
+                State::Hunk { l_start, r_start, .. } => {
                     state = State::Hunk {
                         unchanged_limit: 2 * CONTEXT,
                         l_start, r_start,
@@ -255,7 +255,7 @@ fn print_diff(s1: &str, s2: &str) {
         State::Hunk { unchanged_limit, l_start, r_start } => {
             if unchanged_limit < CONTEXT {
                 let end = buf.len() - (CONTEXT - unchanged_limit);
-                let suffix = buf.split_off(end);
+                let _suffix = buf.split_off(end);
             }
             print_hunk(&buf, l_start, r_start);
         }

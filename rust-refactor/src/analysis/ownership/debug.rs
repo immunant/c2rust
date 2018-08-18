@@ -92,7 +92,7 @@ impl<'tcx> fmt::Debug for PrettyLabel<PrintVar<'tcx>> {
 impl<'tcx, L> fmt::Debug for Pretty<'tcx, L> where L: Copy + fmt::Debug, PrettyLabel<L>: fmt::Debug {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.0.ty.sty {
-            TypeVariants::TyRef(_, ty, m) =>
+            TypeVariants::TyRef(_, _, m) =>
                 write!(fmt, "&{}{:?} {:?}",
                        if m == hir::MutImmutable { "" } else { "mut " },
                        PrettyLabel(self.0.label),

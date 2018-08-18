@@ -1,15 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use rustc::hir::def::Def;
-use rustc::hir::def_id::{DefId, LOCAL_CRATE, CRATE_DEF_INDEX};
+use rustc::hir::def_id::{DefId};
 use rustc::ty::{Instance, TyCtxt, TypeVariants, Ty};
-use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
-use syntax::attr;
-use syntax::codemap::Spanned;
-use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::symbol::Symbol;
-use syntax::util::small_vector::SmallVector;
 
 use api::*;
 use command::{CommandState, Registry};
@@ -17,7 +11,6 @@ use driver::{self, Phase};
 use reflect;
 use resolve;
 use transform::Transform;
-use util::IntoSymbol;
 use util::HirDefExt;
 
 
@@ -46,7 +39,7 @@ impl Transform for CanonicalizeExterns {
 
         let mut symbol_map = HashMap::new();
 
-        for (sym, def) in resolve::module_children(tcx, lib.def_id()) {
+        for (_sym, def) in resolve::module_children(tcx, lib.def_id()) {
             let did = def.def_id();
             if is_foreign_symbol(tcx, did) {
                 // Foreign fns can't have region or type params, so empty substs should be fine.
@@ -183,7 +176,7 @@ impl Transform for CanonicalizeExterns {
             if let Some(&old_did) = path_ids.get(&e.id) {
                 // This whole expr was a reference to the old extern `old_did`.  See if we need a
                 // cast around the whole thing.  (This should only be true for statics.)
-                if let Some(&(old_ty, new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Whole)) {
+                if let Some(&(old_ty, _new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Whole)) {
                     // The rewritten expr has type `new_ty`, but its context expects `old_ty`.
                     e = mk().cast_expr(e, reflect::reflect_tcx_ty(tcx, old_ty));
                 }
@@ -203,7 +196,7 @@ impl Transform for CanonicalizeExterns {
 
                 for i in 0 .. arg_count {
                     let k = (old_did, TyLoc::Arg(i));
-                    if let Some(&(old_ty, new_ty)) = ty_replace_map.get(&k) {
+                    if let Some(&(_old_ty, new_ty)) = ty_replace_map.get(&k) {
                         e = e.map(|mut e| {
                             expect!([e.node] ExprKind::Call(_, ref mut args) => {
                                 // The new fn requires `new_ty`, where the old one needed `old_ty`.
@@ -217,7 +210,7 @@ impl Transform for CanonicalizeExterns {
                     }
                 }
 
-                if let Some(&(old_ty, new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Ret)) {
+                if let Some(&(old_ty, _new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Ret)) {
                     // The new fn returns `new_ty`, where the old context requires `old_ty`.
                     e = mk().cast_expr(e, reflect::reflect_tcx_ty(tcx, old_ty));
                     info!("  return - rewrote e = {:?}", e);
