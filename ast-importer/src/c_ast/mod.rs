@@ -891,9 +891,14 @@ impl BinOp {
     }
 }
 
+#[derive(Eq, PartialEq, Debug, Copy, Clone)]
+pub enum IntBase {
+    Dec, Hex, Oct
+}
+
 #[derive(Debug, Clone)]
 pub enum CLiteral {
-    Integer(u64),
+    Integer(u64, IntBase), // value and base
     Character(u64),
     Floating(f64),
     String(Vec<u8>, u8), // Literal bytes and unit byte width
@@ -903,7 +908,7 @@ impl CLiteral {
     /// Determine the truthiness or falsiness of the literal.
     pub fn get_bool(&self) -> bool {
         match *self{
-            CLiteral::Integer(x) => x != 0u64,
+            CLiteral::Integer(x, _) => x != 0u64,
             CLiteral::Character(x) => x != 0u64,
             CLiteral::Floating(x) => x != 0f64,
             _ => true

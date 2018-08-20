@@ -1297,10 +1297,20 @@ class TranslateASTVisitor final
       //
       
       bool VisitIntegerLiteral(IntegerLiteral *IL) {
+          
+          auto& sourceManager = Context->getSourceManager();
+          auto prefix = sourceManager.getCharacterData(IL->getLocation());
+          auto value = IL->getValue().getLimitedValue();
+          
+          auto base = (value == 0 || prefix[0] != '0')       ? 10U
+                    : (prefix[1] == 'x' || prefix[1] == 'X') ? 16U
+                    :                                           8U;
+          
           std::vector<void*> childIds;
           encode_entry(IL, TagIntegerLiteral, childIds,
-                             [IL](CborEncoder *array){
-                                 cbor_encode_uint(array, IL->getValue().getLimitedValue());
+                             [value,base](CborEncoder *array){
+                                 cbor_encode_uint(array, value);
+                                 cbor_encode_uint(array, base);
                              });
           return true;
       }

@@ -875,11 +875,19 @@ impl ConversionContext {
 
                 ASTEntryTag::TagIntegerLiteral if expected_ty & (EXPR | STMT) != 0 => {
                     let value = expect_u64(&node.extras[0]).expect("Expected integer literal value");
+                    let base = expect_u64(&node.extras[1]).expect("Expected integer base value");
+
+                    let base = match base {
+                        8  => IntBase::Oct,
+                        10 => IntBase::Dec,
+                        16 => IntBase::Hex,
+                        _  => panic!("Invalid base: {}", base),
+                    };
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty_old);
 
-                    let integer_literal = CExprKind::Literal(ty, CLiteral::Integer(value));
+                    let integer_literal = CExprKind::Literal(ty, CLiteral::Integer(value, base));
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, integer_literal);
                 }

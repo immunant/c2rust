@@ -504,6 +504,7 @@ fn bool_to_int(val: P<Expr>) -> P<Expr> {
     mk().cast_expr(val, mk().path_ty(vec!["libc","c_int"]))
 }
 
+
 /// This represents all of the ways a C expression can be used in a C program. Making this
 /// distinction is important for:
 ///
@@ -2188,19 +2189,11 @@ impl Translation {
                 Ok(WithStmts::new(val))
             }
 
-            CExprKind::OffsetOf(ty, val) |
-            CExprKind::Literal(ty, CLiteral::Integer(val)) => {
-                let intty = match self.ast_context.resolve_type(ty.ctype).kind {
-                    CTypeKind::Int => LitIntType::Signed(IntTy::I32),
-                    CTypeKind::Long => LitIntType::Signed(IntTy::I64),
-                    CTypeKind::LongLong => LitIntType::Signed(IntTy::I64),
-                    CTypeKind::UInt => LitIntType::Unsigned(UintTy::U32),
-                    CTypeKind::ULong => LitIntType::Unsigned(UintTy::U64),
-                    CTypeKind::ULongLong => LitIntType::Unsigned(UintTy::U64),
-                    _ => LitIntType::Unsuffixed,
-                };
-                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(val.into(), intty))))
-            }
+            CExprKind::OffsetOf(ty, val) =>
+                Ok(WithStmts::new(self.mk_int_lit(ty, val, IntBase::Dec))),
+
+            CExprKind::Literal(ty, CLiteral::Integer(val, base)) =>
+                Ok(WithStmts::new(self.mk_int_lit(ty, val, base))),
 
             CExprKind::Literal(_, CLiteral::Character(val)) => {
                 let expr = match char::from_u32(val as u32) {
@@ -3087,13 +3080,13 @@ impl Translation {
                     _ => panic!(format!("DeclRef {:?} of enum {:?} is not cast", expr, enum_decl)),
                 }),
 
-            CExprKind::Literal(_, CLiteral::Integer(i)) => {
+            CExprKind::Literal(_, CLiteral::Integer(i,_)) => {
                 let new_val = self.enum_for_i64(enum_type, i as i64);
                 return WithStmts { stmts: val.stmts, val: new_val }
             }
 
             CExprKind::Unary(_, c_ast::UnOp::Negate, subexpr_id) => {
-                if let &CExprKind::Literal(_, CLiteral::Integer(i)) = &self.ast_context[subexpr_id].kind {
+                if let &CExprKind::Literal(_, CLiteral::Integer(i,_)) = &self.ast_context[subexpr_id].kind {
                     let new_val = self.enum_for_i64(enum_type, -(i as i64));
                     return WithStmts { stmts: val.stmts, val: new_val }
                 }
@@ -3998,5 +3991,26 @@ impl Translation {
                 _ => false,
             }
         })
+    }
+
+    fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> P<Expr> {
+        // Note that C doesn't have anything smaller than integer literals
+        let (intty,suffix) = match self.ast_context.resolve_type(ty.ctype).kind {
+                CTypeKind::Int => (LitIntType::Signed(IntTy::I32), "i32"),
+                CTypeKind::Long => (LitIntType::Signed(IntTy::I64), "i64"),
+                CTypeKind::LongLong => (LitIntType::Signed(IntTy::I64), "i64"),
+                CTypeKind::UInt => (LitIntType::Unsigned(UintTy::U32), "u32"),
+                CTypeKind::ULong => (LitIntType::Unsigned(UintTy::U64), "u64"),
+                CTypeKind::ULongLong => (LitIntType::Unsigned(UintTy::U64), "u64"),
+                _ => (LitIntType::Unsuffixed, ""),
+            };
+
+        let lit = match base {
+            IntBase::Dec => mk().int_lit(val.into(), intty),
+            IntBase::Hex => mk().float_unsuffixed_lit(format!("0x{:x}{}", val, suffix)),
+            IntBase::Oct => mk().float_unsuffixed_lit(format!("0o{:o}{}", val, suffix)),
+        };
+
+        mk().lit_expr(lit)
     }
 }
