@@ -1544,17 +1544,19 @@ template <class _Tp, size_t _Sz> constexpr size_t size(const _Tp (&)[_Sz]) noexc
 // We augment the command line arguments to ensure that comments are always
 // parsed and string literals are always treated as constant.
 static std::vector<const char *>augment_argv(int argc, char *argv[]) {
-    const char *extras[] = {
-        "-extra-arg=-fparse-all-comments",
-        "-extra-arg=-Wwrite-strings",
-        nullptr, // The value of argv[argc] is guaranteed to be a null pointer.
+    const char * const extras[] = {
+        "-extra-arg=-fparse-all-comments", // always parse comments
+        "-extra-arg=-Wwrite-strings",      // string literals are constant
     };
     
     auto argv_ = std::vector<const char*>();
-    argv_.reserve(argc + size(extras));
+    argv_.reserve(argc + size(extras) + 1);
+    
     auto pusher = std::back_inserter(argv_);
-    std::copy(argv, argv + argc, pusher);
-    std::copy(std::begin(extras), std::end(extras), pusher);
+    std::copy_n(argv, argc, pusher);
+    std::copy_n(extras, size(extras), pusher);
+    *pusher++ = nullptr; // The value of argv[argc] is guaranteed to be a null pointer.
+    
     return argv_;
 }
 
