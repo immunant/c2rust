@@ -34,7 +34,6 @@ pub fn test_compiles() {
 pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
-    let expected_buffer = [10];
 
     unsafe {
         entry(BUFFER_SIZE as u32, buffer.as_mut_ptr());
@@ -42,7 +41,6 @@ pub fn test_buffer() {
     }
 
     assert_eq!(buffer, rust_buffer);
-    assert_eq!(buffer, expected_buffer);
 }
 
 pub fn test_identity() {
