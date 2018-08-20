@@ -1,9 +1,10 @@
+#include <fstream>
+#include <iterator>
 #include <iostream>
-#include <vector>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
-#include <set>
-#include <fstream>
+#include <vector>
 
 #include "llvm/Support/Debug.h"
 // Declares clang::SyntaxOnlyAction.
@@ -1537,9 +1538,35 @@ public:
 // only ones displayed.
 static llvm::cl::OptionCategory MyToolCategory("my-tool options");
 
-int main(int argc, const char **argv) {
-  CommonOptionsParser OptionsParser(argc, argv, MyToolCategory);
-  ClangTool Tool(OptionsParser.getCompilations(),
-                 OptionsParser.getSourcePathList());
-  return Tool.run(newFrontendActionFactory<TranslateAction>().get());
+// Added in C++ 17
+template <class _Tp, size_t _Sz> constexpr size_t size(const _Tp (&)[_Sz]) noexcept { return _Sz; }
+
+// We augment the command line arguments to ensure that comments are always
+// parsed and string literals are always treated as constant.
+static std::vector<const char *>augment_argv(int argc, char *argv[]) {
+    const char *extras[] = {
+        "-extra-arg=-fparse-all-comments",
+        "-extra-arg=-Wwrite-strings",
+        nullptr, // The value of argv[argc] is guaranteed to be a null pointer.
+    };
+    
+    auto argv_ = std::vector<const char*>();
+    argv_.reserve(argc + size(extras));
+    auto pusher = std::back_inserter(argv_);
+    std::copy(argv, argv + argc, pusher);
+    std::copy(std::begin(extras), std::end(extras), pusher);
+    return argv_;
+}
+
+int main(int argc, char *argv[]) {
+    
+    auto argv_ = augment_argv(argc, argv);
+    int argc_ = argv_.size() - 1; // ignore the extra nullptr
+
+    CommonOptionsParser OptionsParser(argc_, argv_.data(), MyToolCategory);
+   
+    ClangTool Tool(OptionsParser.getCompilations(),
+                  OptionsParser.getSourcePathList());
+    
+    return Tool.run(newFrontendActionFactory<TranslateAction>().get());
 }

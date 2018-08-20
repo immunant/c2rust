@@ -294,7 +294,7 @@ class TestDirectory:
         compile_commands = """ \
         [
           {{
-            "arguments": [ "cc", "-Wwrite-strings", "-D_FORTIFY_SOURCE=0", "-c", "{0}" ],
+            "arguments": [ "cc", "-D_FORTIFY_SOURCE=0", "-c", "{0}" ],
             "directory": "{1}",
             "file": "{0}"
           }}
