@@ -5,7 +5,7 @@ authors = ["Eric Mertens <emertens@galois.com>", "Alec Theriault <atheriault@gal
 build = "build.rs"
 
 [dependencies]
-cbor = "0.4.1"
+serde_cbor = "0.9"
 clap = "2.32"
 dtoa = "0.4.2"
 serde = "1.0"

@@ -1,5 +1,5 @@
 #![feature(rustc_private)]
-extern crate cbor;
+extern crate serde_cbor;
 extern crate syntax;
 extern crate syntax_pos;
 extern crate rustc_target;

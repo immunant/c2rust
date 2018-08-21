@@ -1,18 +1,18 @@
 #[macro_use]
 extern crate clap;
-extern crate cbor;
+extern crate serde_cbor;
 extern crate ast_importer;
 
-use std::io::{Error, stdout, Cursor};
+use std::io::{Error, stdout};
 use std::io::prelude::*;
 use std::fs::File;
-use cbor::Decoder;
 use ast_importer::clang_ast::process;
 use ast_importer::c_ast::*;
 use ast_importer::c_ast::Printer;
 use ast_importer::clang_ast::AstContext;
 use ast_importer::translator::{ReplaceMode,TranslationConfig};
 use clap::{Arg, App};
+use serde_cbor::{Value, from_slice};
 
 fn main() {
 
@@ -213,8 +213,7 @@ fn parse_untyped_ast(filename: &str) -> Result<AstContext, Error> {
     let mut buffer = vec![];
     f.read_to_end(&mut buffer)?;
 
-    let mut cursor: Decoder<Cursor<Vec<u8>>> = Decoder::from_bytes(buffer);
-    let items = cursor.items();
+    let items: Value = from_slice(&buffer[..]).unwrap();
 
     match process(items) {
         Ok(cxt) => Ok(cxt),

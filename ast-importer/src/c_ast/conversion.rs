@@ -802,7 +802,7 @@ impl ConversionContext {
                     let cie =
                         expect_u64(&node.extras[0])
                             .map(ConstIntExpr::U)
-                            .unwrap_or_else(|_|
+                            .unwrap_or_else(||
                                 expect_i64(&node.extras[0])
                                     .map(ConstIntExpr::I).expect("Expected constant int expr")
                         );
@@ -1361,7 +1361,7 @@ impl ConversionContext {
                     let value =
                         expect_u64(&node.extras[1])
                             .map(ConstIntExpr::U)
-                            .unwrap_or_else(|_|
+                            .unwrap_or_else(||
                                 expect_i64(&node.extras[1])
                                     .map(ConstIntExpr::I).expect("Expected constant int expr")
                             );

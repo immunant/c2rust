@@ -1,9 +1,6 @@
 use std::collections::HashMap;
-use std::io::Cursor;
-use cbor::Items;
-use cbor::Cbor;
-use cbor::CborBytes;
-use cbor::CborError;
+use serde_cbor::{Value, from_value};
+use serde_cbor::error;
 use std;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
@@ -16,13 +13,13 @@ pub struct AstNode {
     pub line: u64,
     pub column: u64,
     pub type_id: Option<u64>,
-    pub extras: Vec<Cbor>,
+    pub extras: Vec<Value>,
 }
 
 #[derive(Debug,Clone)]
 pub struct TypeNode {
     pub tag: TypeTag,
-    pub extras: Vec<Cbor>,
+    pub extras: Vec<Value>,
 }
 
 #[derive(Debug,Clone)]
@@ -49,82 +46,51 @@ pub struct AstContext {
     pub comments: Vec<CommentNode>,
 }
 
-#[derive(Debug)]
-pub enum DecodeError {
-    DecodeCborError(CborError),
-    TypeMismatch,
+pub fn expect_vec8(val: &Value) -> Option<&Vec<u8>> {
+    val.as_bytes()
 }
 
-pub fn expect_vec8(val: &Cbor) -> Result<&Vec<u8>, DecodeError> {
-    match val {
-        &Cbor::Bytes(CborBytes(ref bytes)) => Ok(bytes),
-        _ => Err(DecodeError::TypeMismatch),
+pub fn expect_array(val: &Value) -> Option<&Vec<Value>> {
+    val.as_array()
+}
+
+pub fn expect_string(val: &Value) -> Option<String> {
+    val.as_string().map(|x| x.to_owned())
+}
+
+pub fn expect_u64(val: &Value) -> Option<u64> {
+    val.as_u64()
+}
+
+pub fn expect_i64(val: &Value) -> Option<i64> {
+    val.as_i64()
+}
+
+pub fn expect_f64(val: &Value) -> Option<f64> {
+    val.as_f64()
+}
+
+pub fn expect_str(val: &Value) -> Option<&str> {
+    val.as_string().map(|x| x.as_str())
+}
+
+pub fn expect_opt_str(val: &Value) -> Option<Option<&str>> {
+    match *val {
+        Value::Null => Some(None),
+        Value::String(ref s) => Some(Some(s)),
+        _ => None,
     }
 }
 
-pub fn expect_array(val: &Cbor) -> Result<&Vec<Cbor>, DecodeError> {
-    match val {
-        &Cbor::Array(ref xs) => Ok(xs),
-        _ => Err(DecodeError::TypeMismatch)
-    }
+pub fn expect_bool(val: &Value) -> Option<bool> {
+    val.as_boolean()
 }
 
-pub fn expect_string(val: &Cbor) -> Result<String, DecodeError> {
-    match val {
-        &Cbor::Unicode(ref xs) => Ok(xs.clone()),
-        _ => Err(DecodeError::TypeMismatch)
-    }
-}
-
-pub fn expect_u64(val: &Cbor) -> Result<u64, DecodeError> {
-    match val {
-        &Cbor::Unsigned(x) => Ok(x.into_u64()),
-        _ => { Err(DecodeError::TypeMismatch) }
-    }
-}
-
-pub fn expect_i64(val: &Cbor) -> Result<i64, DecodeError> {
-    match val {
-        &Cbor::Unsigned(x) => Ok(x.into_u64() as i64),
-        &Cbor::Signed(x) => Ok(x.into_i64()),
-        _ => { Err(DecodeError::TypeMismatch) }
-    }
-}
-
-pub fn expect_f64(val: &Cbor) -> Result<f64, DecodeError> {
-    match val {
-        &Cbor::Float(x) => Ok(x.into_f64()),
-        _ => { Err(DecodeError::TypeMismatch) }
-    }
-}
-
-pub fn expect_str(val: &Cbor) -> Result<&str, DecodeError> {
-    match val {
-        &Cbor::Unicode(ref s) => Ok(s),
-        _ => { Err(DecodeError::TypeMismatch) }
-    }
-}
-
-pub fn expect_opt_str(val: &Cbor) -> Result<Option<&str>, DecodeError> {
-    match val {
-        &Cbor::Null => Ok(None),
-        &Cbor::Unicode(ref s) => Ok(Some(s)),
-        _ => { Err(DecodeError::TypeMismatch) }
-    }
-}
-
-pub fn expect_bool(val: &Cbor) -> Result<bool, DecodeError> {
-    match val {
-        &Cbor::Bool(b) => Ok(b),
-        _ => { Err(DecodeError::TypeMismatch) }
-    }
-}
-
-pub fn expect_opt_u64(val: &Cbor) -> Result<Option<u64>, DecodeError> {
-    match val {
-        &Cbor::Null => Ok(None),
-        &Cbor::Unsigned(x) => Ok(Some(x.into_u64())),
-        _ => { Err(DecodeError::TypeMismatch) }
+pub fn expect_opt_u64(val: &Value) -> Option<Option<u64>> {
+    if let &Value::Null = val {
+        Some(None)
+    } else {
+        val.as_u64().map(Some)
     }
 }
 
@@ -140,63 +106,43 @@ fn import_type_tag(tag: u64) -> TypeTag {
     }
 }
 
-pub fn process(items: Items<Cursor<Vec<u8>>>) -> Result<AstContext, DecodeError> {
+pub fn process(items: Value) -> error::Result<AstContext> {
 
     let mut asts: HashMap<u64, AstNode> = HashMap::new();
     let mut types: HashMap<u64, TypeNode> = HashMap::new();
     let mut comments: Vec<CommentNode> = vec![];
 
-    let mut top_cbors : Vec<Cbor> = vec![];
-    for item in items {
-        top_cbors.push(item.unwrap());
+    let (all_nodes, top_nodes, _filenames, raw_comments):
+        (Vec<Vec<Value>>,
+         Vec<u64>,
+         Vec<String>,
+         Vec<(u64, u64, u64, String)>,
+        ) = from_value(items)?;
+
+    for (fileid, line, column, string) in raw_comments {
+        comments.push(CommentNode{fileid, line, column, string})
     }
 
-    let raw_comments = top_cbors.remove(3);
-    let raw_comments = expect_array(&raw_comments).expect("Bad comment array");
-
-    let filenames = top_cbors.remove(2);
-    let _filenames = expect_array(&filenames).expect("Bad filename array");
-
-    let top_nodes = top_cbors.remove(1);
-    let top_nodes = expect_array(&top_nodes).expect("Bad all nodes array");
-    let top_nodes : Vec<u64> = top_nodes.iter().map(|x| expect_u64(x).expect("top node list must contain node ids")).collect();
-
-    let all_nodes = top_cbors.remove(0);
-    let all_nodes = expect_array(&all_nodes).expect("Bad top nodes array");
-
-
-    for x in raw_comments {
-        let entry = expect_array(x).expect("comment entry should be array");
-        let node = CommentNode {
-            fileid: expect_u64(&entry[0])?,
-            line: expect_u64(&entry[1])?,
-            column: expect_u64(&entry[2])?,
-            string: expect_string(&entry[3])?,
-        };
-        comments.push(node)
-    }
-
-    for x in all_nodes {
-        let entry = expect_array(x).expect("All nodes entry not array");
-        let entry_id = expect_u64(&entry[0])?;
-        let tag = expect_u64(&entry[1])?;
+    for entry in all_nodes {
+        let entry_id = expect_u64(&entry[0]).unwrap();
+        let tag = expect_u64(&entry[1]).unwrap();
 
         if tag < 400 {
 
             let children =
-                expect_array(&entry[2])?
+                expect_array(&entry[2]).unwrap()
                     .iter()
-                    .map(expect_opt_u64)
-                    .collect::<Result<Vec<Option<u64>>,DecodeError>>()?;
+                    .map(|x| expect_opt_u64(x).unwrap())
+                    .collect::<Vec<Option<u64>>>();
 
-            let type_id: Option<u64> = expect_opt_u64(&entry[6])?;
+            let type_id: Option<u64> = expect_opt_u64(&entry[6]).unwrap();
 
             let node = AstNode {
                 tag: import_ast_tag(tag),
                 children,
-                fileid: expect_u64(&entry[3])?,
-                line: expect_u64(&entry[4])?,
-                column: expect_u64(&entry[5])?,
+                fileid: expect_u64(&entry[3]).unwrap(),
+                line: expect_u64(&entry[4]).unwrap(),
+                column: expect_u64(&entry[5]).unwrap(),
                 type_id,
                 extras: entry[7..].to_vec(),
             };

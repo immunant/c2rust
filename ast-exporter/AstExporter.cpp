@@ -1476,38 +1476,41 @@ public:
         {
             cbor_encoder_init(&encoder, buffer, len, 0);
             
+            CborEncoder outer;
+            cbor_encoder_create_array(&encoder, &outer, 4);
+            
             CborEncoder array;
             
-            // Encode all of the reachable AST nodes and types
-            cbor_encoder_create_array(&encoder, &array, CborIndefiniteLength);
+            // 1. Encode all of the reachable AST nodes and types
+            cbor_encoder_create_array(&outer, &array, CborIndefiniteLength);
             TranslateASTVisitor visitor(&Context, &array, &sugared);
             auto translation_unit = Context.getTranslationUnitDecl();
             visitor.TraverseDecl(translation_unit);
-            cbor_encoder_close_container(&encoder, &array);
+            cbor_encoder_close_container(&outer, &array);
             
-            // Track all of the top-level declarations
-            cbor_encoder_create_array(&encoder, &array, CborIndefiniteLength);
+            // 2. Track all of the top-level declarations
+            cbor_encoder_create_array(&outer, &array, CborIndefiniteLength);
             for (auto d : translation_unit->decls()) {
                 if (d->isCanonicalDecl())
                   cbor_encode_uint(&array, reinterpret_cast<std::uintptr_t>(d));
             }
-            cbor_encoder_close_container(&encoder, &array);
+            cbor_encoder_close_container(&outer, &array);
             
-            // Encode all of the visited file names
+            // 3. Encode all of the visited file names
             auto filenames = visitor.getFilenames();
-            cbor_encoder_create_array(&encoder, &array, filenames.size());
+            cbor_encoder_create_array(&outer, &array, filenames.size());
             for (auto &kv : filenames) {
                 auto str = kv.first;
                 cbor_encode_string(&array, str);
             }
-            cbor_encoder_close_container(&encoder, &array);
+            cbor_encoder_close_container(&outer, &array);
             
-            // Emit comments as array of arrays. Each comment is represented as an array
+            // 4. Emit comments as array of arrays. Each comment is represented as an array
             // of source position followed by comment string.
             //
             // Getting all comments will require processing the file with -fparse-all-comments !
             auto comments = Context.getRawCommentList().getComments();
-            cbor_encoder_create_array(&encoder, &array, comments.size());
+            cbor_encoder_create_array(&outer, &array, comments.size());
             for (auto comment : comments) {
                 CborEncoder entry;
                 cbor_encoder_create_array(&array, &entry, 4);
@@ -1515,7 +1518,9 @@ public:
                 cbor_encode_string(&entry, comment->getRawText(Context.getSourceManager()).str());
                 cbor_encoder_close_container(&array, &entry);
             }
-            cbor_encoder_close_container(&encoder, &array);
+            cbor_encoder_close_container(&outer, &array);
+            
+            cbor_encoder_close_container(&encoder, &outer);
         };
         
         // A very large C file (SQLite amalgamation) produces a 18MB CBOR file.
