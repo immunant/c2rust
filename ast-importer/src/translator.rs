@@ -17,6 +17,7 @@ use syntax::print::pprust::*;
 use std::ops::Index;
 use std::cell::RefCell;
 use std::char;
+use std::mem;
 use dtoa;
 use with_stmts::WithStmts;
 use rust_ast::traverse::Traversal;
@@ -2331,13 +2332,34 @@ impl Translation {
                     c_ast::BinOp::And => {
                         let lhs = self.convert_condition(true, lhs, is_static)?;
                         let rhs = self.convert_condition(true, rhs, is_static)?;
-                        Ok(lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::And, x, rhs.to_expr()))))
+                        let mut out = lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::And, x, rhs.to_expr())));
+
+                        if use_ == ExprUse::Unused {
+                            let out_val = mem::replace(
+                                &mut out.val,
+                                self.panic("Binary expression is not supposed to be used"),
+                            );
+                            out.stmts.push(mk().semi_stmt(out_val));
+                        }
+
+                        Ok(out)
+
                     }
 
                     c_ast::BinOp::Or => {
                         let lhs = self.convert_condition(true, lhs, is_static)?;
                         let rhs = self.convert_condition(true, rhs, is_static)?;
-                        Ok(lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::Or, x, rhs.to_expr()))))
+                        let mut out = lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::Or, x, rhs.to_expr())));
+
+                        if use_ == ExprUse::Unused {
+                            let out_val = mem::replace(
+                                &mut out.val,
+                                self.panic("Binary expression is not supposed to be used"),
+                            );
+                            out.stmts.push(mk().semi_stmt(out_val));
+                        }
+
+                        Ok(out)
                     }
 
                     // No sequence-point cases
