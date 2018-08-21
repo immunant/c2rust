@@ -2362,22 +2362,24 @@ impl Translation {
                         let lhs_type = self.ast_context.index(lhs).kind.get_qual_type().ok_or_else(|| format!("bad lhs type"))?;
                         let rhs_type = self.ast_context.index(rhs).kind.get_qual_type().ok_or_else(|| format!("bad rhs type"))?;
 
-                        let WithStmts { val: lhs, stmts: lhs_stmts } = self.convert_expr(ExprUse::RValue, lhs, is_static, decay_ref)?;
-                        let WithStmts { val: rhs, stmts: rhs_stmts } = self.convert_expr(ExprUse::RValue, rhs, is_static, decay_ref)?;
-
                         let mut stmts = vec![];
-                        stmts.extend(lhs_stmts);
-                        stmts.extend(rhs_stmts);
-
-                        let val = self.convert_binary_operator(op, ty, type_id.ctype, lhs_type, rhs_type, lhs, rhs);
 
                         if use_ == ExprUse::Unused {
-                            stmts.push(mk().semi_stmt(val));
+                            stmts.extend(self.convert_expr(ExprUse::Unused, lhs, is_static, decay_ref)?.stmts);
+                            stmts.extend(self.convert_expr(ExprUse::Unused, rhs, is_static, decay_ref)?.stmts);
+
                             Ok(WithStmts {
                                 stmts,
                                 val: self.panic("Binary expression is not supposed to be used"),
                             })
                         } else {
+                            let WithStmts { val: lhs, stmts: lhs_stmts } = self.convert_expr(ExprUse::RValue, lhs, is_static, decay_ref)?;
+                            let WithStmts { val: rhs, stmts: rhs_stmts } = self.convert_expr(ExprUse::RValue, rhs, is_static, decay_ref)?;
+
+                            stmts.extend(lhs_stmts);
+                            stmts.extend(rhs_stmts);
+                            let val = self.convert_binary_operator(op, ty, type_id.ctype, lhs_type, rhs_type, lhs, rhs);
+
                             Ok(WithStmts { stmts, val })
                         }
 
