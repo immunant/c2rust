@@ -2378,7 +2378,16 @@ impl Translation {
 
                         let val = self.convert_binary_operator(op, ty, type_id.ctype, lhs_type, rhs_type, lhs, rhs);
 
-                        Ok(WithStmts { stmts, val })
+                        if use_ == ExprUse::Unused {
+                            stmts.push(mk().semi_stmt(val));
+                            Ok(WithStmts {
+                                stmts,
+                                val: self.panic("Binary expression is not supposed to be used"),
+                            })
+                        } else {
+                            Ok(WithStmts { stmts, val })
+                        }
+
                     }
                 }
             }
