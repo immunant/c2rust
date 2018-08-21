@@ -526,7 +526,7 @@ impl Cfg<Label, StmtOrDecl> {
                     _ => None,
                 }
             }) {
-            c_label_to_goto.get_mut(&target).get_or_insert(&mut IndexSet::new()).insert(x);
+            c_label_to_goto.entry(target).or_insert(IndexSet::new()).insert(x);
         }
 
 
@@ -848,9 +848,9 @@ impl PerStmt {
         }
 
 
+//        println!("labels used: {:?}", self.c_labels_used.keys().cloned().collect::<HashSet<CLabelId>>());
         // Check the subgraph doesn't reference any labels it doesn't contain
-        if self.c_labels_used.keys().cloned().collect::<IndexSet<CLabelId>>()
-            .difference(&self.c_labels_defined).next().is_some() {
+        if self.c_labels_used.keys().cloned().collect::<IndexSet<CLabelId>>() != self.c_labels_defined {
             return false;
         }
 
@@ -880,8 +880,11 @@ impl PerStmt {
             multiples: self.multiple_info,
         };
 
+//        println!("Graph before: {:#?}", graph);
         graph.prune_empty_blocks_mut();
+//        println!("Pruned graph: {:#?}", graph);
         graph.prune_unreachable_blocks_mut();
+//        println!("Reached graph: {:#?}", graph);
 
         (graph, self.decls_seen, self.live_in)
     }
@@ -1500,7 +1503,7 @@ impl CfgBuilder {
             CStmtKind::Goto(label_id) => {
                 let tgt_label = Label::FromC(label_id);
                 self.add_wip_block(wip, Jump(tgt_label));
-                self.last_per_stmt_mut().c_labels_used.get_mut(&label_id).get_or_insert(&mut IndexSet::new()).insert(stmt_id);
+                self.last_per_stmt_mut().c_labels_used.entry(label_id).or_insert(IndexSet::new()).insert(stmt_id);
 
                 Ok(None)
             }
@@ -1667,20 +1670,29 @@ impl CfgBuilder {
 
             // TODO: CFG needs to be simplified before this can be accurate (the `out_wip` might be
             // `Some` but unreachable)
-            let has_fallthrough = out_wip.map(|mut w| {
+            let fallthrough_id: Option<Label> = out_wip.map(|mut w| {
                 w.push_stmt(mk().semi_stmt(mk().break_expr_value(
                     Some(brk_lbl.pretty_print()),
                     None as Option<P<Expr>>,
                 )));
+                let id = w.label;
                 self.add_wip_block(w, GenTerminator::End);
-            }).is_some();
+                id
+            });
 
-            let next_lbl = if has_fallthrough { Some(self.fresh_label()) } else { None };
             let last_per_stmt = self.per_stmt_stack.pop().unwrap();
             let stmt_id = last_per_stmt.stmt_id.unwrap_or(CStmtId(0));
+//            println!("Stmt: {:?} {:#?}", stmt_id, translator.ast_context.index(stmt_id));
 
             // Make a CFG from the PerStmt.
             let (graph, store, live_in) = last_per_stmt.into_cfg();
+            let has_fallthrough: bool = if let Some(fid) = fallthrough_id {
+                graph.nodes.contains_key(&fid)
+            } else {
+                false
+            };
+            let next_lbl = if has_fallthrough { Some(self.fresh_label()) } else { None };
+
 
             // Run relooper
             let mut stmts = translator.convert_cfg(
