@@ -1,9 +1,9 @@
 set(LLVM_LINK_COMPONENTS support)
 
 
-set(TINYCBOR_URL "https://github.com/intel/tinycbor/archive/v0.4.2.tar.gz"
+set(TINYCBOR_URL "https://github.com/intel/tinycbor/archive/v0.5.1.tar.gz"
     CACHE STRING "tinycbor download URL")
-set(TINYCBOR_MD5 "ddb12132886fc6070bc9f886ec68949b" CACHE STRING "tinycbor archive md5 sum")
+set(TINYCBOR_MD5 "7b4fd204441cc24a9c50b3b4b92c97fd" CACHE STRING "tinycbor archive md5 sum")
 set(TINYCBOR_PREFIX "${CMAKE_BINARY_DIR}/tinycbor" CACHE STRING "tinycbor install prefix")
 
 # Get the number of processors to pass to make -j
