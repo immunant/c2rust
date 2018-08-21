@@ -260,7 +260,7 @@ impl<W: Write> Printer<W> {
 
     pub fn print_lit(&mut self, lit: &CLiteral, _context: &TypedAstContext) -> Result<()> {
         match *lit {
-            CLiteral::Integer(i) => self.writer.write_fmt(format_args!("{}", i)),
+            CLiteral::Integer(i,_) => self.writer.write_fmt(format_args!("{}", i)),
             CLiteral::Floating(f) => self.writer.write_fmt(format_args!("{}", f)),
             _ => unimplemented!("Printer::print_lit"),
         }

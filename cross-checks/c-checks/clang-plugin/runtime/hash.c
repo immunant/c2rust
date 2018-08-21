@@ -84,7 +84,21 @@ uint64_t __c2rust_hash_double(double x, size_t depth) {
 #define ANY_UNION_HASH        0x6e6f696e55796e41ULL // "AnyUnion" in ASCII
 
 _Bool __c2rust_pointer_is_invalid(void *p) {
-    return p == NULL;
+    uint8_t pv;
+    _Bool invalid = 0;
+    asm volatile ("   jmp 1f\n\t"
+                  "   .word 2f - 1f\n\t"
+                  "   .ascii \"C2RUST_INVPTR\\0\"\n\t"
+                  "1: movb (%2), %0\n\t"
+                  "   jmp 3f\n\t"
+                  "2: incb %1\n\t"
+                  "3:"
+                  : "=r" (pv), "+r" (invalid)
+                  : "r" (p)
+                  : "cc");
+    // We don't need the result of the load, so discard it
+    (void*) pv;
+    return invalid;
 }
 
 uint64_t __c2rust_hash_invalid_pointer(void *p) {

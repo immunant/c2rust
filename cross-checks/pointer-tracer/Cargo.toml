@@ -1,0 +1,9 @@
+[package]
+name = "pointer-tracer"
+version = "0.1.0"
+authors = ["Andrei Homescu <ah@immunant.com>"]
+
+[dependencies]
+clap = "~2.32.0"
+nix = "0.11.0"
+spawn-ptrace = "0.1.1"
