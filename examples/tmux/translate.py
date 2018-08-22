@@ -47,7 +47,7 @@ FILES_NEEDING_TRAILING_UNDERSCORE = [
     "window.rs",
 ]
 MAIN_MODS = """\
-#![feature(const_slice_as_ptr, offset_to, used)]
+#![feature(const_slice_as_ptr, ptr_wrapping_offset_from, used)]
 extern crate libc;
 
 pub mod alerts;
