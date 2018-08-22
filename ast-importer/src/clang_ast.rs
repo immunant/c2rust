@@ -46,34 +46,6 @@ pub struct AstContext {
     pub comments: Vec<CommentNode>,
 }
 
-pub fn expect_vec8(val: &Value) -> Option<&Vec<u8>> {
-    val.as_bytes()
-}
-
-pub fn expect_array(val: &Value) -> Option<&Vec<Value>> {
-    val.as_array()
-}
-
-pub fn expect_string(val: &Value) -> Option<String> {
-    val.as_string().map(|x| x.to_owned())
-}
-
-pub fn expect_u64(val: &Value) -> Option<u64> {
-    val.as_u64()
-}
-
-pub fn expect_i64(val: &Value) -> Option<i64> {
-    val.as_i64()
-}
-
-pub fn expect_f64(val: &Value) -> Option<f64> {
-    val.as_f64()
-}
-
-pub fn expect_str(val: &Value) -> Option<&str> {
-    val.as_string().map(|x| x.as_str())
-}
-
 pub fn expect_opt_str(val: &Value) -> Option<Option<&str>> {
     match *val {
         Value::Null => Some(None),
@@ -82,15 +54,11 @@ pub fn expect_opt_str(val: &Value) -> Option<Option<&str>> {
     }
 }
 
-pub fn expect_bool(val: &Value) -> Option<bool> {
-    val.as_boolean()
-}
-
 pub fn expect_opt_u64(val: &Value) -> Option<Option<u64>> {
-    if let &Value::Null = val {
-        Some(None)
-    } else {
-        val.as_u64().map(Some)
+    match *val {
+        Value::Null => Some(None),
+        Value::U64(n) => Some(Some(n)),
+        _ => None,
     }
 }
 
@@ -124,13 +92,13 @@ pub fn process(items: Value) -> error::Result<AstContext> {
     }
 
     for entry in all_nodes {
-        let entry_id = expect_u64(&entry[0]).unwrap();
-        let tag = expect_u64(&entry[1]).unwrap();
+        let entry_id = entry[0].as_u64().unwrap();
+        let tag = entry[1].as_u64().unwrap();
 
         if tag < 400 {
 
             let children =
-                expect_array(&entry[2]).unwrap()
+                entry[2].as_array().unwrap()
                     .iter()
                     .map(|x| expect_opt_u64(x).unwrap())
                     .collect::<Vec<Option<u64>>>();
@@ -140,9 +108,9 @@ pub fn process(items: Value) -> error::Result<AstContext> {
             let node = AstNode {
                 tag: import_ast_tag(tag),
                 children,
-                fileid: expect_u64(&entry[3]).unwrap(),
-                line: expect_u64(&entry[4]).unwrap(),
-                column: expect_u64(&entry[5]).unwrap(),
+                fileid: entry[3].as_u64().unwrap(),
+                line: entry[4].as_u64().unwrap(),
+                column: entry[5].as_u64().unwrap(),
                 type_id,
                 extras: entry[7..].to_vec(),
             };
