@@ -621,6 +621,10 @@ impl Translation {
             };
 
             match self.ast_context[expr_id].kind {
+                // Technically we're being conservative here, but it's only the most
+                // contrived array indexing initializers that would be accepted
+                CExprKind::ArraySubscript(_, _, _) => return true,
+
                 CExprKind::Conditional(_, _, _, _) => return true,
                 CExprKind::Unary(typ, Negate, _) => {
                     if self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
@@ -634,8 +638,11 @@ impl Translation {
                         _ => false,
                     };
 
-                    if problematic_op && self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
-                        return true;
+                    if problematic_op {
+                        let k = &self.ast_context.resolve_type(typ.ctype).kind;
+                        if k.is_unsigned_integral_type() || k.is_pointer() {
+                            return true;
+                        }
                     }
                 },
                 CExprKind::Unary(_, AddressOf, expr_id) => {
@@ -1102,32 +1109,48 @@ impl Translation {
                 assert!(is_static, "An extern variable must be static");
 
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
-                let (ty, _, init) = self.convert_variable(initializer, typ, is_static)?;
-
-                // Conservatively assume that some aspect of the initializer is unsafe
-                let mut init = init?;
-                init.stmts.push(mk().expr_stmt(init.val));
-                let init = mk().unsafe_().block(init.stmts);
-                let mut init = mk().block_expr(init);
-
+            
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
                 if is_static && self.static_initializer_is_uncompilable(initializer) {
+                    // Note: We don't pass is_static through here. Extracted initializers
+                    // are run outside of the static initializer.
+                    let (ty, _, init) = self.convert_variable(initializer, typ, false)?;
+
+                    let mut init = init?;
+                    init.stmts.push(mk().expr_stmt(init.val));
+                    let init = mk().block(init.stmts);
+                    let mut init = mk().block_expr(init);
+
                     let comment = String::from("// Initialized in run_static_initializers");
                     // REVIEW: We might want to add the comment to the original span comments
                     s = self.comment_store.borrow_mut().add_comment_lines(vec![comment]);
 
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
-                }
 
-                // Force mutability due to the potential for raw pointers occuring in the type
-                // and because we're assigning to these variables in the external initializer
-                Ok(ConvertedDecl::Item(mk_linkage(false, new_name, ident)
+                    Ok(ConvertedDecl::Item(mk_linkage(false, new_name, ident)
                     .span(s)
                     .pub_()
                     .abi("C")
                     .mutbl()
                     .static_item(new_name, ty, init)))
+                } else {
+                    let (ty, _, init) = self.convert_variable(initializer, typ, is_static)?;
+
+                    let mut init = init?;
+                    init.stmts.push(mk().expr_stmt(init.val));
+                    let init = mk().unsafe_().block(init.stmts);
+                    let mut init = mk().block_expr(init);
+
+                    // Force mutability due to the potential for raw pointers occuring in the type
+                    // and because we're assigning to these variables in the external initializer
+                    Ok(ConvertedDecl::Item(mk_linkage(false, new_name, ident)
+                        .span(s)
+                        .pub_()
+                        .abi("C")
+                        .mutbl()
+                        .static_item(new_name, ty, init)))
+                }
             }
 
             // Static variable (definition here)
