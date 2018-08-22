@@ -3913,20 +3913,15 @@ impl Translation {
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         if let &CTypeKind::Pointer(pointee) = rhs_type {
+            // The wrapping_offset_from method is locked behind a feature gate
+            // and replaces the now deprecated offset_to (opposite argument order)
+            // wrapping_offset_from panics when the pointee is a ZST
+            self.use_feature("ptr_wrapping_offset_from");
 
-            // The offset_to method is locked behind a feature gate
-            self.use_feature("offset_to");
-
-            // offset_to returns None when a pointer
-            // offset_opt := rhs.offset_to(lhs)
-            let offset_opt = mk().method_call_expr(rhs, "offset_to", vec![lhs]);
-            // msg := "bad offset_to"
-            let msg = mk().lit_expr(mk().str_lit("bad offset_to"));
-            // offset := offset_opt.expect(msg)
-            let mut offset = mk().method_call_expr(offset_opt, "expect", vec![msg]);
+            let mut offset = mk().method_call_expr(lhs, "wrapping_offset_from", vec![rhs]);
 
             if let Some(sz) = self.compute_size_of_expr(pointee.ctype) {
-                offset = mk().binary_expr(BinOpKind::Div, offset, cast_int(sz,"isize"))
+                offset = mk().binary_expr(BinOpKind::Div, offset, cast_int(sz, "isize"))
             }
 
             mk().cast_expr(offset, ty)
