@@ -1109,7 +1109,7 @@ impl Translation {
                 assert!(is_static, "An extern variable must be static");
 
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
-            
+
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
                 if is_static && self.static_initializer_is_uncompilable(initializer) {
@@ -3543,16 +3543,16 @@ impl Translation {
             c_ast::UnOp::AddressOf => {
                 let arg_kind = &self.ast_context[arg].kind;
 
-                // C99 6.5.3.2 para 4
-                if let CExprKind::Unary(_, c_ast::UnOp::Deref, target) = arg_kind {
-                    return self.convert_expr(use_, *target, is_static, decay_ref)
-                }
-
-                // An AddrOf DeclRef is safe to not decay if the translator isn't already giving a hard
-                // yes to decaying (ie, BitCasts). So we only convert default to no decay.
-                if let CExprKind::DeclRef(_, _) = arg_kind {
-                    decay_ref.set_default_to_no();
-                }
+                match arg_kind {
+                    // C99 6.5.3.2 para 4
+                    CExprKind::Unary(_, c_ast::UnOp::Deref, target) =>
+                        return self.convert_expr(use_, *target, is_static, decay_ref),
+                    // An AddrOf DeclRef/Member is safe to not decay if the translator isn't already giving a hard
+                    // yes to decaying (ie, BitCasts). So we only convert default to no decay.
+                    CExprKind::DeclRef(_, _) |
+                    CExprKind::Member(_, _, _, _) => decay_ref.set_default_to_no(),
+                    _ => (),
+                };
 
                 // In this translation, there are only pointers to functions and
                 // & becomes a no-op when applied to a function.

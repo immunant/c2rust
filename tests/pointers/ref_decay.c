@@ -6,6 +6,10 @@ typedef struct {
     void *c;
 } ThreeFields;
 
+typedef struct {
+    int i;
+} OneInt;
+
 void f(int *a, const int *b) {}
 void bar(const int *a) {
     int arr[3] = {1,2,3};
@@ -38,7 +42,12 @@ void calls_all() {
     int l[2];
     // Variadic functions need references decayed or else it won't compile.
     sscanf(k, "%u,%u", &l[0], &l[1]);
-    
+
     unsigned long ul = 0;
     address_cast((unsigned long)&ul);
+
+    // Reference to struct field behind a struct ptr should ref decay
+    OneInt *oi;
+
+    int *n = &oi->i;
 }
