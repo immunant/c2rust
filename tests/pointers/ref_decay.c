@@ -46,7 +46,7 @@ void calls_all() {
     unsigned long ul = 0;
     address_cast((unsigned long)&ul);
 
-    // Reference to struct field behind a struct ptr should ref decay
+    // Reference to struct field behind a struct ptr shouldn't ref decay
     OneInt *oi;
 
     int *n = &oi->i;
