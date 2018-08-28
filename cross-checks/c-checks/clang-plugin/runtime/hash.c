@@ -126,7 +126,7 @@ uint64_t __c2rust_hash_anyunion() {
 }
 
 uint64_t __c2rust_hash_void_ptr(void *p, size_t depth) {
-    if (p == NULL)
+    if (__c2rust_pointer_is_invalid(p))
         return NULL_POINTER_HASH;
     if (depth == 0)
         return LEAF_POINTER_HASH;
@@ -134,7 +134,7 @@ uint64_t __c2rust_hash_void_ptr(void *p, size_t depth) {
 }
 
 uint64_t __c2rust_hash_function(void *f, size_t depth) {
-    if (f == NULL)
+    if (f == NULL) // FIXME: use __c2rust_pointer_is_invalid()???
         return NULL_POINTER_HASH;
     if (depth == 0)
         return LEAF_POINTER_HASH;
