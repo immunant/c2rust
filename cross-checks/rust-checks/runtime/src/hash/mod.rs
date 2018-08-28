@@ -318,6 +318,7 @@ impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K, L, M, N);
 impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O);
 impl_fnopt_hash!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P);
 
+#[cfg(feature="fixed-length-array-hash")]
 macro_rules! impl_array_hash {
     ($($N:expr)+) => { $(
         impl<T: CrossCheckHash> CrossCheckHash for [T; $N] {
