@@ -209,7 +209,6 @@ fn try_pointer<'a, T>(p: *const T) -> Option<&'a T> {
 
 // Hash implementation for raw pointers
 impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *const T {
-    #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
         let r = try_pointer(self);
@@ -222,7 +221,6 @@ impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *const T {
 }
 
 impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *mut T {
-    #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
         let r = try_pointer(self);
