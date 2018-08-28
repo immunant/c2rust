@@ -178,12 +178,41 @@ impl<'a, T: ?Sized + CrossCheckHash> CrossCheckHash for &'a mut T {
     }
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn try_pointer<'a, T>(p: *const T) -> Option<&'a T> {
+    if p.is_null() {
+        return None;
+    }
+
+    let _pv: u8;
+    let mut invalid: u8 = 0;
+    unsafe {
+        // Same implementation as clang-plugin/runtime/hash.c
+        asm!("   jmp 1f
+                 .word 2f - 1f
+                 .ascii \"C2RUST_INVPTR\\0\"
+              1: movb ($2), $0
+                 jmp 3f
+              2: incb $1
+              3:"
+             : "=r" (_pv), "+r" (invalid)
+             : "r" (p)
+             : "cc"
+             : "volatile");
+        if invalid == 0 {
+            Some(&*p)
+        } else {
+            None
+        }
+    }
+}
+
 // Hash implementation for raw pointers
 impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *const T {
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
-        let r = unsafe { self.as_ref() };
+        let r = try_pointer(self);
         match (r, depth) {
             (None, _) => NULL_POINTER_HASH,
             (_,    0) => LEAF_POINTER_HASH,
@@ -197,7 +226,7 @@ impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *mut T {
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
-        let r = unsafe { self.as_ref() };
+        let r = try_pointer(self);
         match (r, depth) {
             (None, _) => NULL_POINTER_HASH,
             (_,    0) => LEAF_POINTER_HASH,
