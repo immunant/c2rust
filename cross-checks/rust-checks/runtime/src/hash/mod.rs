@@ -123,7 +123,6 @@ impl_primitive_hash!(f64,   write_f64);
 // Placeholder values for reference/pointers to use when
 // we reach depth == 0 and cannot descend any further
 const LEAF_REFERENCE_VALUE: u32 = 0xDEADBEEFu32;
-const LEAF_POINTER_VALUE: u32 = 0xDEADBEEFu32;
 
 pub const LEAF_ARRAY_HASH:   u64 = 0x797272416661654c_u64; // "LeafArry" in ASCII
 pub const LEAF_RECORD_HASH:  u64 = 0x647263526661654c_u64; // "LeafRcrd" in ASCII
