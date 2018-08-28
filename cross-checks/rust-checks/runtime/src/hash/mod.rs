@@ -179,7 +179,7 @@ impl<'a, T: ?Sized + CrossCheckHash> CrossCheckHash for &'a mut T {
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-fn try_pointer<'a, T>(p: *const T) -> Option<&'a T> {
+fn try_pointer<'a, T: ?Sized>(p: *const T) -> Option<&'a T> {
     if p.is_null() {
         return None;
     }
@@ -211,7 +211,7 @@ fn try_pointer<'a, T>(p: *const T) -> Option<&'a T> {
 impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *const T {
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
-        let r = try_pointer(self);
+        let r = try_pointer(*self);
         match (r, depth) {
             (None, _) => NULL_POINTER_HASH,
             (_,    0) => LEAF_POINTER_HASH,
@@ -223,7 +223,7 @@ impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *const T {
 impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *mut T {
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
             where HA: CrossCheckHasher, HS: CrossCheckHasher {
-        let r = try_pointer(self);
+        let r = try_pointer(*self);
         match (r, depth) {
             (None, _) => NULL_POINTER_HASH,
             (_,    0) => LEAF_POINTER_HASH,
