@@ -216,7 +216,6 @@ impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *const T {
         match (r, depth) {
             (None, _) => NULL_POINTER_HASH,
             (_,    0) => LEAF_POINTER_HASH,
-            // FIXME: even non-NULL pointers may be invalid
             (Some(r), _) => (*r).cross_check_hash_depth::<HA, HS>(depth - 1)
         }
     }
@@ -230,7 +229,6 @@ impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *mut T {
         match (r, depth) {
             (None, _) => NULL_POINTER_HASH,
             (_,    0) => LEAF_POINTER_HASH,
-            // FIXME: even non-NULL pointers may be invalid
             (Some(r), _) => (*r).cross_check_hash_depth::<HA, HS>(depth - 1)
         }
     }
