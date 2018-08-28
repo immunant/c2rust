@@ -490,7 +490,7 @@ def export_ast_from(ast_expo: pb.commands.BaseCommand,
         # log the command in a format that's easy to re-run
         export_cmd = str(ast_expo[args])
         logging.debug("export command:\n %s", export_cmd)
-        ast_expo[args] & pb.TEE  # nopep8
+        ast_expo[args] & pb.FG  # nopep8
         cbor_outfile = filepath + ".cbor"
         assert os.path.isfile(cbor_outfile), "missing: " + cbor_outfile
         return cbor_outfile
