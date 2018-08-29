@@ -63,12 +63,13 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
             },
             Some("extern") => {
                 let id = sub_arg.get_str_ident();
+                let struct_id = &s.ast().ident;
                 quote! {
                     extern {
                         #[no_mangle]
-                        fn #id(_: *const (), _: usize) -> u64;
+                        fn #id(_: *const #struct_id, _: usize) -> u64;
                     }
-                    unsafe { #id(self as *const (), _depth) }
+                    unsafe { #id(self as *const #struct_id, _depth) }
                 }
             },
             Some(ref f) => panic!("unexpected custom_hash_format: {}", f)
