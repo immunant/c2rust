@@ -348,6 +348,8 @@ pub extern fn xcfg_scope_struct_custom_hash(scope_config: Option<&xcfg::scopes::
     }
 }
 
+// TODO: add accessor for custom_hash_format
+
 #[no_mangle]
 pub extern fn xcfg_scope_struct_field_hasher(scope_config: Option<&xcfg::scopes::ScopeConfig>)
     -> StringLenPtr {

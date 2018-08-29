@@ -49,8 +49,30 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
 
     let hash_code = top_args.get("custom_hash").map(|sub_arg| {
         // Hash this value by calling the specified function
-        let id = sub_arg.get_str_ident();
-        quote! { #id::<#ahasher, #shasher>(&self, _depth) }
+        let format = top_args.get("custom_hash_format")
+            .and_then(xcfg::attr::ArgValue::get_str);
+        match format {
+            None |
+            Some("function") => {
+                let id = sub_arg.get_str_ident();
+                quote! { #id::<#ahasher, #shasher>(&self, _depth) }
+            },
+            Some("expression") => {
+                let expr = sub_arg.get_str_tokens();
+                quote! { #expr }
+            },
+            Some("extern") => {
+                let id = sub_arg.get_str_ident();
+                quote! {
+                    extern {
+                        #[no_mangle]
+                        fn #id(_: *const (), _: usize) -> u64;
+                    }
+                    unsafe { #id(self as *const (), _depth) }
+                }
+            },
+            Some(ref f) => panic!("unexpected custom_hash_format: {}", f)
+        }
     }).unwrap_or_else(|| {
         // Hash this value using the default algorithm
         let hasher = top_args.get_ident_arg("field_hasher", ahasher);

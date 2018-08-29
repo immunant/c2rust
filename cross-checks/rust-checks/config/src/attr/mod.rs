@@ -1,4 +1,7 @@
 
+#[cfg(feature="with-quote")]
+extern crate quote;
+
 #[cfg(feature="parse-syn")]
 pub mod syn;
 
@@ -9,7 +12,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 #[cfg(feature="with-quote")]
-use quote::ToTokens;
+use self::quote::ToTokens;
 
 #[derive(Debug)]
 pub enum ArgValue<'a> {
@@ -43,8 +46,8 @@ impl<'a> ArgValue<'a> {
     }
 
     #[cfg(feature="with-quote")]
-    pub fn get_str_tokens(&self) -> quote::Tokens {
-        let mut tokens = quote::Tokens::new();
+    pub fn get_str_tokens(&self) -> self::quote::Tokens {
+        let mut tokens = self::quote::Tokens::new();
         self.get_str_ident().to_tokens(&mut tokens);
         tokens
     }
@@ -65,9 +68,9 @@ impl<'a> ArgList<'a> {
     }
 
     #[cfg(feature="with-quote")]
-    pub fn get_token_arg<D>(&self, arg: &str, default: D) -> quote::Tokens
-            where quote::Tokens: ::std::convert::From<D> {
-        self.0.get(arg).map_or_else(|| quote::Tokens::from(default),
+    pub fn get_token_arg<D>(&self, arg: &str, default: D) -> self::quote::Tokens
+            where self::quote::Tokens: ::std::convert::From<D> {
+        self.0.get(arg).map_or_else(|| self::quote::Tokens::from(default),
                                     ArgValue::get_str_tokens)
     }
 }

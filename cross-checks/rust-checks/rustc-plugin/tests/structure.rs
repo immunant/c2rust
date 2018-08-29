@@ -40,11 +40,18 @@ macro_rules! test_struct {
 }
 
 #[test]
-fn test_custom_hash() {
+fn test_custom_hash_function() {
     fn custom1<XCHA, XCHS>(_a: &TestStruct, _: usize) -> u64 {
         0x12345678
     }
     test_struct!([custom_hash="custom1"]
+                 {}
+                 [(Djb2Hasher, Djb2Hasher, 0x12345678)]);
+}
+
+#[test]
+fn test_custom_hash_expression() {
+    test_struct!([custom_hash="0x12345678", custom_hash_format="expression"]
                  {}
                  [(Djb2Hasher, Djb2Hasher, 0x12345678)]);
 }

@@ -225,6 +225,15 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             let mi = format!("custom_hash=\"{}\"", custom_hash);
             res.push(mi);
         }
+        match struct_config.custom_hash_format.as_ref() {
+            Some(xcfg::CustomHashFormat::Function) =>
+                res.push("custom_hash_format=\"function\"".to_string()),
+            Some(xcfg::CustomHashFormat::Expression) =>
+                res.push("custom_hash_format=\"expression\"".to_string()),
+            Some(xcfg::CustomHashFormat::Extern) =>
+                res.push("custom_hash_format=\"extern\"".to_string()),
+            None => {}
+        }
         res
     }
 
@@ -312,9 +321,30 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
 
     fn build_union_hash(&mut self, union_ident: &ast::Ident) -> P<ast::Item> {
         let custom_hash_opt = &self.config().struct_config().custom_hash;
+        let custom_hash_format = &self.config().struct_config().custom_hash_format;
         let hash_body = if let Some(ref custom_hash) = *custom_hash_opt {
             // User provided a custom hash function, use it
-            self.cx.parse_expr(custom_hash.clone())
+            match custom_hash_format {
+                None |
+                Some(xcfg::CustomHashFormat::Function) => {
+                    let (ahasher, shasher) = self.get_hasher_pair();
+                    let hash_fn = ast::Ident::from_str(custom_hash);
+                    quote_expr!(self.cx, $hash_fn::<$ahasher, $shasher>(&self, _depth))
+                }
+                Some(xcfg::CustomHashFormat::Expression) => {
+                    self.cx.parse_expr(custom_hash.clone())
+                }
+                Some(xcfg::CustomHashFormat::Extern) => {
+                    let hash_fn = ast::Ident::from_str(custom_hash);
+                    quote_expr!(self.cx, {
+                        extern {
+                            #[no_mangle]
+                            fn $hash_fn(_: *const (), _: usize) -> u64;
+                        }
+                        unsafe { $hash_fn(self as *const (), _depth) }
+                    })
+                }
+            }
         } else {
             // TODO: emit warning
             quote_expr!(self.cx, {

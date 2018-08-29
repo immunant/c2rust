@@ -158,6 +158,8 @@ fn parse_struct_attr_config(s: &mut StructConfig, mi: &ast::MetaItem) {
             "shasher"  => s.shasher  = Some(String::from(arg.as_str())),
             "field_hasher" => s.field_hasher = Some(String::from(arg.as_str())),
             "custom_hash"  => s.custom_hash  = Some(String::from(arg.as_str())),
+            "custom_hash_format" => s.custom_hash_format =
+                Some(::CustomHashFormat::from_str(arg.as_str())),
             _ => panic!("unexpected cross_check item: {}", name)
         }
     }

@@ -179,6 +179,25 @@ impl FieldIndex {
     }
 }
 
+#[derive(Deserialize, Debug, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum CustomHashFormat {
+    Function,
+    Expression,
+    Extern,
+}
+
+impl CustomHashFormat {
+    pub fn from_str(s: &str) -> CustomHashFormat {
+        match s {
+            "function"   => CustomHashFormat::Function,
+            "expression" => CustomHashFormat::Expression,
+            "extern"     => CustomHashFormat::Extern,
+            _ => panic!("unexpected custom_hash_format: {}", s)
+        }
+    }
+}
+
 #[derive(Deserialize, Debug, Default, Clone)]
 #[serde(default)]
 pub struct StructConfig {
@@ -196,6 +215,7 @@ pub struct StructConfig {
 
     // Custom hash function to call to hash this structure
     pub custom_hash: Option<String>,
+    pub custom_hash_format: Option<CustomHashFormat>,
 
     pub fields: HashMap<FieldIndex, XCheckType>,
 

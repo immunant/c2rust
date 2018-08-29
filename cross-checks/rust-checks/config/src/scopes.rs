@@ -53,6 +53,7 @@ impl Default for FunctionConfig {
 #[derive(Debug, Default, Clone)]
 pub struct StructConfig {
     pub custom_hash: Option<String>,
+    pub custom_hash_format: Option<super::CustomHashFormat>,
     pub field_hasher: Option<String>,
     pub fields: HashMap<super::FieldIndex, super::XCheckType>,
 }
@@ -243,6 +244,8 @@ impl ScopeConfig {
                 // Structure-specific fields
                 parse_optional_field!(>custom_hash,  self_struc, xcfg_struc, custom_hash,  Some(custom_hash.clone()));
                 parse_optional_field!(>field_hasher, self_struc, xcfg_struc, field_hasher, Some(field_hasher.clone()));
+                parse_optional_field!(>custom_hash_format, self_struc, xcfg_struc,
+                                      custom_hash_format, Some(*custom_hash_format));
                 self_struc.fields.extend(xcfg_struc.fields.clone().into_iter());
                 if let Some(ref nested_items) = xcfg_struc.nested {
                     self.items.get_or_insert_with(Default::default)
