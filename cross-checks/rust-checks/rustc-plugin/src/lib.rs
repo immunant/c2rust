@@ -387,7 +387,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             #[link_section = $hash_fn_section]
             pub unsafe extern "C" fn $hash_fn(x: *mut $ty_ident, depth: usize) -> u64 {
                 use ::cross_check_runtime::hash::CrossCheckHash;
-                CrossCheckHash::cross_check_hash_depth::<$ahasher, $shasher>(&*x, depth)
+                (*x).cross_check_hash_depth::<$ahasher, $shasher>(depth)
             }
         ).expect(&format!("unable to implement C ABI hash function for type '{}'",
                           ty_ident.to_string())))

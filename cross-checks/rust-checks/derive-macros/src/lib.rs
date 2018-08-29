@@ -42,7 +42,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
             // Default implementation
             quote! {
                 use cross_check_runtime::hash::CrossCheckHash;
-                h.write_u64(CrossCheckHash::cross_check_hash_depth::<#ahasher, #shasher>(#f, _depth - 1));
+                h.write_u64(#f.cross_check_hash_depth::<#ahasher, #shasher>(_depth - 1));
             }
         })
     });
