@@ -16,9 +16,10 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/DeclVisitor.h"
 #include "clang/AST/RecordLayout.h"
+#include "clang/Basic/Builtins.h"
+#include "clang/Basic/Diagnostic.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Tooling/Tooling.h"
-#include "clang/Basic/Builtins.h"
 
 #include <tinycbor/cbor.h>
 #include "ast_tags.hpp"
@@ -1247,7 +1248,7 @@ class TranslateASTVisitor final
           // if it is print a warning message.
           if (WarnOnFlexibleArrayDecl(D)) {
               PrintWarning("this may be an unsupported flexible array member with size of 1, "
-                           "omit the size if this field is intended to be a flexible array member.\n"
+                           "omit the size if this field is intended to be a flexible array member. "
                            "See section 6.7.2.1 of the C99 Standard for more details.", D);
           }
 
@@ -1390,12 +1391,13 @@ class TranslateASTVisitor final
           return false;
       }
 
-      void PrintWarning(std::string Message, Decl* D) {
-          auto floc = Context->getFullLoc(D->getLocStart());
-          if (floc.isValid() && floc.hasManager()) {
-            floc.print(llvm::errs(), floc.getManager());
-            std::cerr << ": warning: " << Message << std::endl;
-          }
+      void PrintWarning(std::string Message, Decl *D) {
+          auto &DiagEngine = Context->getDiagnostics();
+          const auto ID = DiagEngine.getCustomDiagID(DiagnosticsEngine::Warning, "%0");
+
+          auto DiagBuilder = DiagEngine.Report(D->getLocation(), ID);
+          DiagBuilder.AddString(Message);
+          DiagBuilder.AddSourceRange(CharSourceRange::getCharRange(D->getSourceRange()));
       }
 };
 

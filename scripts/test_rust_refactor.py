@@ -43,7 +43,7 @@ def run_tests(testcases: List[str]) -> None:
     refactor = '{ip} -r alongside'.format(ip=ipath)
 
     # help plumbum find rust
-    ld_lib_path = get_rust_toolchain_libpath(c.CUSTOM_RUST_NAME)
+    ld_lib_path = get_rust_toolchain_libpath()
     if 'LD_LIBRARY_PATH' in pb.local.env:
         ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 

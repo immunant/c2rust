@@ -1528,7 +1528,7 @@ impl Translation {
 
         let null_pointer_case =
             |negated: bool, ptr: CExprId| -> Result<WithStmts<P<Expr>>, String> {
-                    let val = self.convert_expr(ExprUse::RValue, ptr, is_static, DecayRef::Default)?;
+                    let val = self.convert_expr(ExprUse::RValue, ptr, is_static, DecayRef::Yes)?;
                     let ptr_type = self.ast_context[ptr].kind.get_type().ok_or_else(|| format!("bad pointer type for condition"))?;
                     Ok(val.map(|e| {
                         if self.ast_context.is_function_pointer(ptr_type) {
@@ -1574,7 +1574,11 @@ impl Translation {
             }
 
             _ => {
-                let val = self.convert_expr(ExprUse::RValue, cond_id, is_static, DecayRef::Default)?;
+                // DecayRef could (and probably should) be Default instead of Yes here; however, as noted
+                // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
+                // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
+                // specify Yes for that particular case, given enough analysis.
+                let val = self.convert_expr(ExprUse::RValue, cond_id, is_static, DecayRef::Yes)?;
                 Ok(val.map(|e| self.match_bool(target, ty_id, e)))
             }
         }
