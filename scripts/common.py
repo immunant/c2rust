@@ -176,7 +176,15 @@ def update_or_init_submodule(submodule_path: str):
     logging.debug("updated submodule %s", submodule_path)
 
 
-def get_rust_toolchain_libpath(name: str) -> str:
+def get_rust_toolchain_libpath() -> str:
+    return _get_rust_toolchain_path("lib")
+
+
+def get_rust_toolchain_binpath() -> str:
+    return _get_rust_toolchain_path("bin")
+
+
+def _get_rust_toolchain_path(dirtype: str) -> str:
     """
     returns library path to custom rust libdir
 
@@ -186,8 +194,8 @@ def get_rust_toolchain_libpath(name: str) -> str:
 
     host_triplet = get_host_triplet()
 
-    libpath = ".rustup/toolchains/{}-{}/lib/"
-    libpath = libpath.format(config.CUSTOM_RUST_NAME, host_triplet)
+    libpath = ".rustup/toolchains/{}-{}/{}/"
+    libpath = libpath.format(config.CUSTOM_RUST_NAME, host_triplet, dirtype)
     libpath = os.path.join(pb.local.env['HOME'], libpath)
     emsg = "custom rust compiler lib path missing: " + libpath
     assert os.path.isdir(libpath), emsg

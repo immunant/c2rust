@@ -9,7 +9,6 @@ import errno
 import shutil
 import logging
 import argparse
-import multiprocessing
 from typing import Optional, List, Tuple
 from typing.io import TextIO
 
@@ -282,7 +281,7 @@ def transpile_files(cc_db: TextIO,
                                         include_dirs, **cmd)
         assert os.path.isfile(cbor_file), "missing: " + cbor_file
 
-        ld_lib_path = get_rust_toolchain_libpath(c.CUSTOM_RUST_NAME)
+        ld_lib_path = get_rust_toolchain_libpath()
 
         # don't overwrite existing ld lib path if any...
         if 'LD_LIBRARY_PATH' in pb.local.env:
