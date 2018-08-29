@@ -24,6 +24,7 @@ from common import (
     on_mac,
     get_system_include_dirs,
     export_ast_from,
+    get_rust_toolchain_binpath,
     get_rust_toolchain_libpath,
     setup_logging,
 )
@@ -247,6 +248,8 @@ def transpile_files(cc_db: TextIO,
     run the ast-exporter and ast-importer on all C files
     in a compile commands database.
     """
+    rustfmt = os.path.join(get_rust_toolchain_binpath(), "rustfmt")
+    rustfmt = get_cmd_or_die(rustfmt)
     ast_expo = get_cmd_or_die(c.AST_EXPO)
     ast_impo = get_cmd_or_die(c.AST_IMPO)
     cc_db_name = cc_db.name
@@ -255,7 +258,7 @@ def transpile_files(cc_db: TextIO,
     check_main_module(main_module_for_build_files, cc_db)
 
     if filter:  # skip commands not matching file filter
-        cc_db = [c for c in cc_db if filter in c['file']]
+        cc_db = [cmd for cmd in cc_db if filter in c['file']]
 
     if not on_mac():
         ensure_code_compiled_with_clang(cc_db)
@@ -299,17 +302,19 @@ def transpile_files(cc_db: TextIO,
                 ast_impo[cbor_file, impo_args, extra_impo_args])
             logging.debug("translation command:\n %s", translation_cmd)
             try:
-                retcode, stdout, stderr = ast_impo[cbor_file, impo_args,
-                                                   extra_impo_args].run()
+                retcode, _stdout, _stderr = ast_impo[cbor_file, impo_args,
+                                                     extra_impo_args].run()
 
                 e = "Expected file suffix `.c.cbor`; actual: " + cbor_basename
                 assert cbor_file.endswith(".c.cbor"), e
                 rust_file = cbor_file[:-7] + ".rs"
                 with open(rust_file, "w") as rust_fh:
-                    rust_fh.writelines(stdout)
+                    rust_fh.writelines(_stdout)
                     logging.debug("wrote output rust to %s", rust_file)
 
-                return (file_basename, retcode, stdout, stderr,
+                rustfmt(rust_file)
+
+                return (file_basename, retcode, _stdout, _stderr,
                         os.path.abspath(rust_file))
             except pb.ProcessExecutionError as pee:
                 return (file_basename, pee.retcode, pee.stdout, pee.stderr,
