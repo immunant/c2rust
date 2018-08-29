@@ -149,7 +149,7 @@ struct hasher_jodyhash_t {
 #define JODY_HASH_CONSTANT  0x1f3d5b79UL
 
 unsigned int __c2rust_hasher_jodyhash_size() {
-    return sizeof(struct hasher_jodyhash_t) / sizeof(char);
+    return sizeof(struct hasher_jodyhash_t);
 }
 
 void __c2rust_hasher_jodyhash_init(char *p) {
