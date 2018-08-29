@@ -27,9 +27,9 @@ void calls_all() {
 
     f(&i, &i);
     bar(&j);
-    foobar(&i);
 
     // Bitcast required; should ref decay or else won't compile.
+    foobar(&i);
     bitcast(&i);
 
     // RHS shouldn't decay in k, but decays m due to bitcast
@@ -50,4 +50,9 @@ void calls_all() {
     OneInt *oi;
 
     int *n = &oi->i;
+
+    // This should decay at the moment, because rust doesn't allow
+    // a reference (lhs) to be compared to a ptr (rhs). (but the reverse works)
+    // See https://github.com/rust-lang/rust/issues/53772
+    if (&i == k) {}
 }
