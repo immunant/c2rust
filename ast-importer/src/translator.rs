@@ -1796,7 +1796,7 @@ impl Translation {
                 if has_self_reference {
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
                     let zeroed = self.implicit_default_expr(typ.ctype, is_static)?;
-                    let local_mut = mk().local(pat_mut, Some(ty.clone()), Some(zeroed));
+                    let local_mut = mk().local(pat_mut, Some(ty), Some(zeroed));
 
                     let assign = mk().assign_expr(mk().ident_expr(rust_name), init.val);
 
@@ -1819,7 +1819,14 @@ impl Translation {
 
                     let pat = mk().set_mutbl(mutbl).ident_pat(rust_name.clone());
 
-                    let local = mk().local(pat, Some(ty), Some(init.val.clone()));
+                    // TODO: enable/disable via importer flag
+                    let type_annotation = if true || self.should_assign_type_annotation(typ.ctype, initializer) {
+                        Some(ty)
+                    } else {
+                        None
+                    };
+
+                    let local = mk().local(pat, type_annotation, Some(init.val.clone()));
                     let assign = mk().assign_expr(mk().ident_expr(rust_name), init.val);
 
                     let mut assign_stmts = stmts.clone();
@@ -1876,6 +1883,60 @@ impl Translation {
                     ))
                 }
             },
+        }
+    }
+
+    fn should_assign_type_annotation(&self, ctypeid: CTypeId, initializer: Option<CExprId>) -> bool {
+        let initializer_kind = initializer.map(|expr_id| &self.ast_context[expr_id].kind);
+
+        // If the RHS is a func call, we should be able to skip type annotation
+        // because we get a type from the function return type
+        if let Some(CExprKind::Call(_, _, _)) = initializer_kind {
+            return false;
+        }
+
+        match self.ast_context.resolve_type(ctypeid).kind {
+            CTypeKind::Pointer(CQualTypeId { ctype, .. }) => {
+                match self.ast_context.resolve_type(ctype).kind {
+                    // Fn pointers need to be type annotated if null
+                    CTypeKind::Function(_, _, _, _) => {
+                        if initializer.is_none() {
+                            return true;
+                        }
+
+                        if let Some(CExprKind::ImplicitCast(_, _, CastKind::NullToPointer, _)) = initializer_kind {
+                            return true;
+                        }
+
+                        false
+                    },
+                    _ => {
+                        // Non function null ptrs provide enough information to skip
+                        // type annotations; ie `= 0 as *const MyStruct;`
+                        if initializer.is_none() {
+                            return false;
+                        }
+
+                        if let Some(CExprKind::ImplicitCast(_, _, CastKind::NullToPointer, _)) = initializer_kind {
+                            return false;
+                        }
+
+                        // ref decayed ptrs generally need a type annotation
+                        if let Some(CExprKind::Unary(_, c_ast::UnOp::AddressOf, _)) = initializer_kind {
+                            return true;
+                        }
+
+                        false
+                    },
+                }
+            },
+            CTypeKind::Struct(_) |
+            CTypeKind::Union(_) |
+            CTypeKind::Enum(_) => false,
+            CTypeKind::Function(_, _, _, _) => unreachable!("Can't have a function directly as a type"),
+            CTypeKind::Typedef(_) => unreachable!("Typedef should be expanded though resolve_type"),
+            // TODO: Could be smart about ints, esp when they have a trailing type (ie 0u32)
+            _ => true,
         }
     }
 
