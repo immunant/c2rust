@@ -2860,15 +2860,18 @@ impl Translation {
                 let n = substmt_ids.len();
                 let result_id = substmt_ids[n - 1];
 
-                let expr_id = match self.ast_context[result_id].kind {
-                    CStmtKind::Expr(expr_id) => Ok(expr_id),
-                    ref s => Err(format!("Statement expression didn't end in an expression: {:?}", s)),
-                }?;
-
                 if self.tcfg.reloop_cfgs {
+
                     let name = format!("<stmt-expr_{:?}>", compound_stmt_id);
-                    let ret = cfg::ImplicitReturnType::StmtExpr(use_, expr_id, is_static);
-                    let mut stmts = self.convert_function_body(&name, &substmt_ids[0 .. (n-1)], ret)?;
+
+                    let mut stmts = match self.ast_context[result_id].kind {
+                        CStmtKind::Expr(expr_id) => {
+                            let ret = cfg::ImplicitReturnType::StmtExpr(use_, expr_id, is_static);
+                            self.convert_function_body(&name, &substmt_ids[0 .. (n-1)], ret)?
+                        }
+                            
+                        _ => self.convert_function_body(&name, &substmt_ids, cfg::ImplicitReturnType::Void)?,
+                    };
 
                     if let Some(stmt) = stmts.pop() {
                         match as_semi_return_stmt(&stmt) {
@@ -2899,10 +2902,18 @@ impl Translation {
                         stmts.append(&mut self.convert_stmt(substmt_id)?);
                     }
 
-                    let mut result = self.convert_expr(use_, expr_id, is_static, DecayRef::Default)?;
-                    stmts.append(&mut result.stmts);
-                    Ok(WithStmts { stmts, val: result.val })
+                    match self.ast_context[result_id].kind {
+                        CStmtKind::Expr(expr_id) => {
+                            let mut result = self.convert_expr(use_, expr_id, is_static, DecayRef::Default)?;
+                            stmts.append(&mut result.stmts);
+                            Ok(WithStmts { stmts, val: result.val })
+                        }
 
+                        _ => {
+                            stmts.append(&mut self.convert_stmt(result_id)?);
+                            Ok(WithStmts { stmts, val: self.panic("Void statement expression")})
+                        }
+                    }
                 }
             }
             _ => {
