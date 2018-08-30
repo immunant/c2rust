@@ -1681,67 +1681,7 @@ impl Translation {
         self.with_scope(|| {
             if self.tcfg.reloop_cfgs || self.function_requires_relooper(body_ids) {
                 let (graph, store) = cfg::Cfg::from_stmts(self, body_ids, ret)?;
-
-                if self.tcfg.dump_function_cfgs {
-                    graph
-                        .dump_dot_graph(
-                            &self.ast_context, &store,
-                            self.tcfg.dump_cfg_liveness,
-                            self.tcfg.use_c_loop_info,
-                            format!("{}_{}.dot", "cfg", name)
-                        )
-                        .expect("Failed to write CFG .dot file");
-                }
-                if self.tcfg.json_function_cfgs {
-                    graph.dump_json_graph(&store, format!("{}_{}.json", "cfg", name))
-                        .expect("Failed to write CFG .json file");
-                }
-
-                let (lifted_stmts, relooped) = cfg::relooper::reloop(
-                    graph,
-                    store,
-                    self.tcfg.simplify_structures,
-                    self.tcfg.use_c_loop_info,
-                    self.tcfg.use_c_multiple_info,
-                    IndexSet::new(),
-                );
-
-                if self.tcfg.dump_structures {
-                    eprintln!("Relooped structures:");
-                    for s in &relooped {
-                        eprintln!("  {:#?}", s);
-                    }
-                }
-
-                let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");
-                let current_block = mk().ident_expr(&current_block_ident);
-                let mut stmts: Vec<Stmt> = lifted_stmts;
-                if cfg::structures::has_multiple(&relooped) {
-
-                    if self.tcfg.fail_on_multiple {
-                        panic!("Uses of `current_block' are illegal with `--fail-on-multiple'.");
-                    }
-
-                    let current_block_ty = if self.tcfg.debug_relooper_labels {
-                        mk().ref_lt_ty("'static", mk().path_ty(vec!["str"]))
-                    } else {
-                        mk().path_ty(vec!["u64"])
-                    };
-
-
-                    let local = mk().local(mk().mutbl().ident_pat(current_block_ident),
-                                           Some(current_block_ty), None as Option<P<Expr>>);
-                    stmts.push(mk().local_stmt(P(local)))
-                }
-
-                stmts.extend(cfg::structures::structured_cfg(
-                    &relooped,
-                    &mut self.comment_store.borrow_mut(),
-                    current_block,
-                    self.tcfg.debug_relooper_labels,
-                    true,
-                )?);
-                Ok(stmts)
+                self.convert_cfg(name, graph, store, IndexSet::new(), true)
             } else {
                 let mut res = vec![];
                 for &stmt in body_ids {
