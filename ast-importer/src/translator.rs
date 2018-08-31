@@ -1898,17 +1898,23 @@ impl Translation {
         match self.ast_context.resolve_type(ctypeid).kind {
             CTypeKind::Pointer(CQualTypeId { ctype, .. }) => {
                 match self.ast_context.resolve_type(ctype).kind {
-                    // Fn pointers need to be type annotated if null
                     CTypeKind::Function(_, _, _, _) => {
+                        // Fn pointers need to be type annotated if null
                         if initializer.is_none() {
                             return true;
                         }
 
+                        // None assignments don't prove enough type information unless there are follow-up assignments
                         if let Some(CExprKind::ImplicitCast(_, _, CastKind::NullToPointer, _)) = initializer_kind {
                             return true;
                         }
 
-                        false
+                        // We could set this to false and skip non null fn ptr annotations. This will work
+                        // 99% of the time, however there is a strange case where fn ptr comparisons
+                        // complain PartialEq is not implemented for the type inferred function type,
+                        // but the identical type that is explicitly defined doesn't seem to have that issue
+                        // Probably a rustc bug. See https://github.com/rust-lang/rust/issues/53861
+                        true
                     },
                     _ => {
                         // Non function null ptrs provide enough information to skip
@@ -1917,8 +1923,12 @@ impl Translation {
                             return false;
                         }
 
-                        if let Some(CExprKind::ImplicitCast(_, _, CastKind::NullToPointer, _)) = initializer_kind {
-                            return false;
+                        if let Some(CExprKind::ImplicitCast(_, _, cast_kind, _)) = initializer_kind {
+                            match cast_kind {
+                                CastKind::NullToPointer => return false,
+                                CastKind::ConstCast => return true,
+                                _ => {},
+                            };
                         }
 
                         // ref decayed ptrs generally need a type annotation
@@ -1930,12 +1940,20 @@ impl Translation {
                     },
                 }
             },
+            // For some reason we don't seem to apply type suffixes when 0-initializing
+            // so type annotation is need for 0-init ints and floats at the moment, but
+            // they could be simplified in favor of type suffixes
+            CTypeKind::Bool | CTypeKind::Char | CTypeKind::SChar |
+            CTypeKind::Short | CTypeKind::Int | CTypeKind::Long | CTypeKind::LongLong |
+            CTypeKind::UChar | CTypeKind::UShort | CTypeKind::UInt | CTypeKind::ULong |
+            CTypeKind::ULongLong | CTypeKind::LongDouble | CTypeKind::Int128 |
+            CTypeKind::UInt128 => initializer.is_none(),
+            CTypeKind::Float | CTypeKind::Double => initializer.is_none(),
             CTypeKind::Struct(_) |
             CTypeKind::Union(_) |
             CTypeKind::Enum(_) => false,
             CTypeKind::Function(_, _, _, _) => unreachable!("Can't have a function directly as a type"),
             CTypeKind::Typedef(_) => unreachable!("Typedef should be expanded though resolve_type"),
-            // TODO: Could be smart about ints, esp when they have a trailing type (ie 0u32)
             _ => true,
         }
     }
