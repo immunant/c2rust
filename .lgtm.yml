@@ -12,3 +12,12 @@ extraction:
         - scripts/requirements.txt
       version: 3
       setup_py: false
+  cpp:
+    # prepare:
+    after_prepare:
+      - sudo scripts/provision_deb.sh
+    index:
+      build_command:
+        - scripts/build_translator.py
+  exclude:
+    - dependencies/**
