@@ -5,10 +5,10 @@ path_classifiers:
     - cross-checks/c-checks/clang-plugin/test
     - cross-checks/rust-checks/rustc-plugin/tests
     - cross-checks/rust-checks/derive-macros/tests
-
 extraction:
-  python_setup:
-    requirements_files:
-      - scripts/requirements.txt
-    version: 3
-    setup_py: false
+  python:
+    python_setup:
+      requirements_files:
+        - scripts/requirements.txt
+      version: 3
+      setup_py: false
