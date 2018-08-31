@@ -13,6 +13,7 @@ pub struct AstNode {
     pub line: u64,
     pub column: u64,
     pub type_id: Option<u64>,
+    pub rvalue: bool,
     pub extras: Vec<Value>,
 }
 
@@ -112,7 +113,8 @@ pub fn process(items: Value) -> error::Result<AstContext> {
                 line: entry[4].as_u64().unwrap(),
                 column: entry[5].as_u64().unwrap(),
                 type_id,
-                extras: entry[7..].to_vec(),
+                rvalue: entry[7].as_boolean().unwrap(),
+                extras: entry[8..].to_vec(),
             };
 
             asts.insert(entry_id, node);

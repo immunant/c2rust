@@ -384,6 +384,7 @@ class TranslateASTVisitor final
               ASTEntryTag tag,
               SourceLocation loc,
               const QualType ty,
+              bool rvalue,
               const std::vector<void *> &childIds,
               std::function<void(CborEncoder*)> extra
              )
@@ -393,13 +394,13 @@ class TranslateASTVisitor final
           CborEncoder local, childEnc;
           cbor_encoder_create_array(encoder, &local, CborIndefiniteLength);
           
-          // 1 - Entry ID
+          // 0 - Entry ID
           cbor_encode_uint(&local, uintptr_t(ast));
           
-          // 2 - Entry Tag
+          // 1 - Entry Tag
           cbor_encode_uint(&local, tag);
           
-          // 3 - Entry Children
+          // 2 - Entry Children
           cbor_encoder_create_array(&local, &childEnc, childIds.size());
           for (auto x : childIds) {
               if (x == nullptr) {
@@ -410,15 +411,18 @@ class TranslateASTVisitor final
           }
           cbor_encoder_close_container(&local , &childEnc);
           
-          // 4 - File number
-          // 5 - Line number
-          // 6 - Column number
+          // 3 - File number
+          // 4 - Line number
+          // 5 - Column number
           encodeSourcePos(&local, loc);
 
-          // 7 - Type ID (only for expressions)
+          // 6 - Type ID (only for expressions)
           encode_qualtype(&local, ty);
           
-          // 7 - Extra entries
+          // 7 - Is Rvalue (only for expressions)
+          cbor_encode_boolean(&local, rvalue);
+          
+          // 8.. - Extra entries
           extra(&local);
           
           cbor_encoder_close_container(encoder, &local);
@@ -439,7 +443,7 @@ class TranslateASTVisitor final
        std::function<void(CborEncoder*)> extra = [](CborEncoder*){}
        ) {
           auto ty = ast->getType();
-          encode_entry_raw(ast, tag, ast->getLocStart(), ty, childIds, extra);
+          encode_entry_raw(ast, tag, ast->getLocStart(), ty, ast->isRValue(), childIds, extra);
           typeEncoder.VisitQualType(ty);
       }
 
@@ -450,7 +454,8 @@ class TranslateASTVisitor final
        std::function<void(CborEncoder*)> extra = [](CborEncoder*){}
        ) {
           QualType s = QualType(static_cast<clang::Type*>(nullptr), 0);
-          encode_entry_raw(ast, tag, ast->getLocStart(), s, childIds, extra);
+          auto rvalue = false;
+          encode_entry_raw(ast, tag, ast->getLocStart(), s, rvalue, childIds, extra);
       }
       
       void encode_entry
@@ -460,7 +465,8 @@ class TranslateASTVisitor final
        const QualType T,
        std::function<void(CborEncoder*)> extra = [](CborEncoder*){}
        ) {
-          encode_entry_raw(ast, tag, ast->getLocStart(), T, childIds, extra);
+          auto rvalue = false;
+          encode_entry_raw(ast, tag, ast->getLocStart(), T, rvalue, childIds, extra);
       }
       
       
