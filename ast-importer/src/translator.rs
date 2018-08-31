@@ -92,6 +92,7 @@ pub struct TranslationConfig {
     pub fail_on_error: bool,
     pub replace_unsupported_decls: ReplaceMode,
     pub translate_valist: bool,
+    pub reduce_type_annotations: bool,
 }
 
 pub struct Translation {
@@ -1819,11 +1820,11 @@ impl Translation {
 
                     let pat = mk().set_mutbl(mutbl).ident_pat(rust_name.clone());
 
-                    // TODO: enable/disable via importer flag
-                    let type_annotation = if true || self.should_assign_type_annotation(typ.ctype, initializer) {
-                        Some(ty)
-                    } else {
+                    let type_annotation = if self.tcfg.reduce_type_annotations &&
+                                            !self.should_assign_type_annotation(typ.ctype, initializer) {
                         None
+                    } else {
+                        Some(ty)
                     };
 
                     let local = mk().local(pat, type_annotation, Some(init.val.clone()));
