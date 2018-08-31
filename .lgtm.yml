@@ -1,0 +1,23 @@
+path_classifiers:
+  test:
+    - tests
+    - cross-checks/rust-checks/tests
+    - cross-checks/c-checks/clang-plugin/test
+    - cross-checks/rust-checks/rustc-plugin/tests
+    - cross-checks/rust-checks/derive-macros/tests
+extraction:
+  python:
+    python_setup:
+      requirements_files:
+        - scripts/requirements.txt
+      version: 3
+      setup_py: false
+  cpp:
+    # prepare:
+    after_prepare:
+      - sudo scripts/provision_deb.sh
+    index:
+      build_command:
+        - scripts/build_translator.py
+  exclude:
+    - dependencies/**
