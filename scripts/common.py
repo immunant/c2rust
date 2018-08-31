@@ -47,10 +47,6 @@ class Config:
     LIBCLEVRBUF_DIR = os.path.join(REMON_SUBMOD_DIR, "libclevrbuf")
     EXAMPLES_DIR = os.path.join(ROOT_DIR, 'examples')
 
-    CBOR_URL = "https://codeload.github.com/01org/tinycbor/tar.gz/v0.4.2"
-    CBOR_ARCHIVE = os.path.join(DEPS_DIR, "tinycbor-0.4.2.tar.gz")
-    CBOR_SRC = os.path.basename(CBOR_ARCHIVE).replace(".tar.gz", "")
-    CBOR_SRC = os.path.join(DEPS_DIR, CBOR_SRC)
     CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
     # use an install prefix unique to the host
     CBOR_PREFIX += HOST_SUFFIX
