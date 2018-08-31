@@ -43,4 +43,10 @@ void entry3(const unsigned sz, int buffer[const])
         buffer[i++] = p1 != 0;
         buffer[i++] = p2 == 0;
         buffer[i++] = p2 != 0;
+
+        // These should now use is_some, is_none:
+        int j = p4 == 0;
+        j = 0 == p4;
+        j = p4 != 0;
+        j = 0 != p4;
 }

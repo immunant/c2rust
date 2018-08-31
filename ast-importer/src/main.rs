@@ -126,6 +126,10 @@ fn main() {
              .long("fail-on-error")
              .help("Fail to translate a module when a portion is not able to be translated")
              .takes_value(false))
+        .arg(Arg::with_name("reduce-type-annotations")
+             .long("reduce-type-annotations")
+             .help("Reduces the number of explicit type annotations where it should be safe to do so")
+             .takes_value(false))
         .get_matches();
 
     // Build a TranslationConfig from the command line
@@ -150,6 +154,7 @@ fn main() {
         use_c_loop_info:        !matches.is_present("ignore-c-loop-info"),
         use_c_multiple_info:    !matches.is_present("ignore-c-multiple-info"),
         simplify_structures:    !matches.is_present("no-simplify-structures"),
+        reduce_type_annotations:matches.is_present("reduce-type-annotations"),
         emit_module:            matches.is_present("emit-module"),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
@@ -165,7 +170,7 @@ fn main() {
     let dump_typed_context = matches.is_present("dump-typed-clang-ast");
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
 
-    // Extract the untyped AST from the CBOR file 
+    // Extract the untyped AST from the CBOR file
     let untyped_context = match parse_untyped_ast(file) {
         Err(e) => panic!("{:#?}", e),
         Ok(cxt) => cxt,
