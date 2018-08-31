@@ -506,7 +506,7 @@ def export_ast_from(ast_expo: pb.commands.BaseCommand,
             mesg += signal.Signals(-pee.retcode).name
 
         logging.fatal("command failed: %s", ast_expo[args])
-        die("sanity testing: " + mesg, pee.retcode)
+        die("AST export failed: " + mesg, pee.retcode)
 
 
 def _get_gpg_cmd():
