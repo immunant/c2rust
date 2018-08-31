@@ -5,6 +5,7 @@ set(TINYCBOR_URL "https://github.com/intel/tinycbor/archive/v0.5.1.tar.gz"
     CACHE STRING "tinycbor download URL")
 set(TINYCBOR_MD5 "7b4fd204441cc24a9c50b3b4b92c97fd" CACHE STRING "tinycbor archive md5 sum")
 set(TINYCBOR_PREFIX "${CMAKE_BINARY_DIR}/tinycbor" CACHE STRING "tinycbor install prefix")
+set(TINYCBOR_VERSION_H "${TINYCBOR_PREFIX}/src/tinycbor_build/src/tinycbor-version.h")
 
 # Get the number of processors to pass to make -j
 include(ProcessorCount)
@@ -20,7 +21,9 @@ ExternalProject_Add(tinycbor_build
             URL_HASH MD5=${TINYCBOR_MD5}
             CONFIGURE_COMMAND ""
             BUILD_COMMAND make --quiet prefix=${TINYCBOR_PREFIX} -j${NUM_PROCS}
-            INSTALL_COMMAND make --quiet prefix=${TINYCBOR_PREFIX} install
+            INSTALL_COMMAND make --quiet prefix=${TINYCBOR_PREFIX} install 
+            # work around https://github.com/intel/tinycbor/issues/136
+            TEST_COMMAND cp ${TINYCBOR_VERSION_H} ${TINYCBOR_PREFIX}/include/
             BUILD_IN_SOURCE 1
             BUILD_BYPRODUCTS ${TINYCBOR_PREFIX}/lib/libtinycbor.a
 )
