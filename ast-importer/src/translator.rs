@@ -426,7 +426,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             // no reason to have comments associated with imports so it doesn't need to go through
             // the above comment store process
             for use_item in t.uses.borrow().iter() {
-                s.print_item(&use_item);
+                s.print_item(&use_item)?;
             }
 
             if !foreign_items.is_empty() {
