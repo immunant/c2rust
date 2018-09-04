@@ -103,6 +103,7 @@ pub struct Translation {
 
     // Accumulated outputs
     pub features: RefCell<HashSet<&'static str>>,
+    pub uses: RefCell<Vec<P<Item>>>,
     pub items: RefCell<Vec<P<Item>>>,
     pub foreign_items: Vec<ForeignItem>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
@@ -420,6 +421,14 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
             s.comments().get_or_insert(vec![]).extend(traverser.into_comment_store().into_comments());
 
+            // This could have been merged in with items below; however, it's more idiomatic to have
+            // imports near the top of the file than randomly scattered about. Also, there is probably
+            // no reason to have comments associated with imports so it doesn't need to go through
+            // the above comment store process
+            for use_item in t.uses.borrow().iter() {
+                s.print_item(&use_item);
+            }
+
             if !foreign_items.is_empty() {
                 s.print_item(&mk().abi("C").foreign_items(foreign_items))?
             }
@@ -551,6 +560,7 @@ impl Translation {
 
         Translation {
             features: RefCell::new(HashSet::new()),
+            uses: RefCell::new(Vec::new()),
             items: RefCell::new(vec![]),
             foreign_items: vec![],
             type_converter: RefCell::new(type_converter),
@@ -585,6 +595,11 @@ impl Translation {
     /// Called when translation makes use of a language feature that will require a feature-gate.
     fn use_feature(&self, feature: &'static str) {
         self.features.borrow_mut().insert(feature);
+    }
+
+    /// Called when translation makes use of a use import.
+    fn use_import(&self, use_path: Vec<&str>) {
+        self.uses.borrow_mut().push(mk().use_item(use_path, None as Option<Ident>));
     }
 
     // This node should _never_ show up in the final generated code. This is an easy way to notice
