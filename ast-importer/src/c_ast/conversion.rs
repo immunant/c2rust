@@ -949,7 +949,7 @@ impl ConversionContext {
                     let ty = self.visit_qualified_type(ty_old);
 
 
-                    let unary = CExprKind::Unary(ty, operator, operand);
+                    let unary = CExprKind::Unary(ty, operator, operand, node.rvalue);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, unary);
                 }
@@ -963,7 +963,7 @@ impl ConversionContext {
 
 
                     let kind = parse_cast_kind(node.extras[0].as_string().expect("Expected cast kind"));
-                    let implicit = CExprKind::ImplicitCast(typ, expression, kind, None);
+                    let implicit = CExprKind::ImplicitCast(typ, expression, kind, None, node.rvalue);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, implicit);
                 }
@@ -986,7 +986,7 @@ impl ConversionContext {
                         _ => None,
                     };
 
-                    let implicit = CExprKind::ExplicitCast(typ, expression, kind, opt_field_id);
+                    let implicit = CExprKind::ExplicitCast(typ, expression, kind, opt_field_id, node.rvalue);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, implicit);
                 }
@@ -1026,7 +1026,7 @@ impl ConversionContext {
                         if node.extras[0].as_boolean().expect("is arrow")
                             { MemberKind::Arrow } else { MemberKind::Dot };
 
-                    let member = CExprKind::Member(ty, base, field, member_kind);
+                    let member = CExprKind::Member(ty, base, field, member_kind, node.rvalue);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, member);
                 }
@@ -1093,7 +1093,7 @@ impl ConversionContext {
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty_old);
 
-                    let decl = CExprKind::DeclRef(ty, declaration);
+                    let decl = CExprKind::DeclRef(ty, declaration, node.rvalue);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, decl);
                 }
@@ -1108,7 +1108,7 @@ impl ConversionContext {
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty_old);
 
-                    let subscript = CExprKind::ArraySubscript(ty, lhs, rhs);
+                    let subscript = CExprKind::ArraySubscript(ty, lhs, rhs, node.rvalue);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, subscript);
                 }

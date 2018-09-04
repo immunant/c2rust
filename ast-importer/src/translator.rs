@@ -624,15 +624,15 @@ impl Translation {
             match self.ast_context[expr_id].kind {
                 // Technically we're being conservative here, but it's only the most
                 // contrived array indexing initializers that would be accepted
-                CExprKind::ArraySubscript(_, _, _) => return true,
+                CExprKind::ArraySubscript(..) => return true,
 
-                CExprKind::Conditional(_, _, _, _) => return true,
-                CExprKind::Unary(typ, Negate, _) => {
+                CExprKind::Conditional(..) => return true,
+                CExprKind::Unary(typ, Negate, _, _) => {
                     if self.ast_context.resolve_type(typ.ctype).kind.is_unsigned_integral_type() {
                         return true;
                     }
                 },
-                CExprKind::ImplicitCast(_, _, PointerToIntegral, _) => return true,
+                CExprKind::ImplicitCast(_, _, PointerToIntegral, _, _) => return true,
                 CExprKind::Binary(typ, op, _, _, _, _) => {
                     let problematic_op = match op {
                         Add | Subtract | Multiply | Divide | Modulus => true,
@@ -646,9 +646,9 @@ impl Translation {
                         }
                     }
                 },
-                CExprKind::Unary(_, AddressOf, expr_id) => {
-                    if let CExprKind::Member(_, expr_id, _, _) = self.ast_context[expr_id].kind {
-                        if let CExprKind::DeclRef(_, _) = self.ast_context[expr_id].kind {
+                CExprKind::Unary(_, AddressOf, expr_id, _) => {
+                    if let CExprKind::Member(_, expr_id, _, _, _) = self.ast_context[expr_id].kind {
+                        if let CExprKind::DeclRef(..) = self.ast_context[expr_id].kind {
                             return true;
                         }
                     }
@@ -1570,7 +1570,7 @@ impl Translation {
                 null_pointer_case(target, ptr)
             }
 
-            CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id) => {
+            CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id, _) => {
                 self.convert_condition(!target, subexpr_id, is_static)
             }
 
@@ -1730,7 +1730,7 @@ impl Translation {
             match x {
                 SomeId::Expr(e) => {
                     match self.ast_context[e].kind {
-                        CExprKind::DeclRef(_, d) if d == decl_id => return true,
+                        CExprKind::DeclRef(_, d, _) if d == decl_id => return true,
                         CExprKind::UnaryType(_, _, Some(_), _) => iter.prune(1),
                         _ => {}
                     }
@@ -1906,7 +1906,7 @@ impl Translation {
                         }
 
                         // None assignments don't prove enough type information unless there are follow-up assignments
-                        if let Some(CExprKind::ImplicitCast(_, _, CastKind::NullToPointer, _)) = initializer_kind {
+                        if let Some(CExprKind::ImplicitCast(_, _, CastKind::NullToPointer, _, _)) = initializer_kind {
                             return true;
                         }
 
@@ -1924,7 +1924,7 @@ impl Translation {
                             return false;
                         }
 
-                        if let Some(CExprKind::ImplicitCast(_, _, cast_kind, _)) = initializer_kind {
+                        if let Some(CExprKind::ImplicitCast(_, _, cast_kind, _, _)) = initializer_kind {
                             match cast_kind {
                                 CastKind::NullToPointer => return false,
                                 CastKind::ConstCast => return true,
@@ -1933,7 +1933,7 @@ impl Translation {
                         }
 
                         // ref decayed ptrs generally need a type annotation
-                        if let Some(CExprKind::Unary(_, c_ast::UnOp::AddressOf, _)) = initializer_kind {
+                        if let Some(CExprKind::Unary(_, c_ast::UnOp::AddressOf, _, _)) = initializer_kind {
                             return true;
                         }
 
@@ -2086,14 +2086,14 @@ impl Translation {
             let expr : &CExpr = ast_context.index(expr_id);
             return match expr.kind {
                 // level 0 arms
-                CExprKind::Unary(_type_id, c_ast::UnOp::AddressOf, inner_expr_id) if level == 0  => {
+                CExprKind::Unary(_type_id, c_ast::UnOp::AddressOf, inner_expr_id, _) if level == 0  => {
                     _get_declref_type(ast_context, inner_expr_id, level + 1)
                 }
-                CExprKind::ImplicitCast(_type_id, inner_expr_id, CastKind::FunctionToPointerDecay, _field_id) if level == 0 => {
+                CExprKind::ImplicitCast(_type_id, inner_expr_id, CastKind::FunctionToPointerDecay, _field_id, _) if level == 0 => {
                     _get_declref_type(ast_context, inner_expr_id, level + 1)
                 }
                 // level 1 arms
-                CExprKind::DeclRef(_type_id, decl_id) if level == 1 => {
+                CExprKind::DeclRef(_type_id, decl_id, _) if level == 1 => {
                     let cdecl : &CDecl = ast_context.index(decl_id);
                     match cdecl.kind {
                         CDeclKind::Function { typ, .. } => Ok((None, typ)),
@@ -2263,7 +2263,7 @@ impl Translation {
                 Ok(result.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc","c_ulong"]))))
             }
 
-            CExprKind::DeclRef(qual_ty, decl_id) => {
+            CExprKind::DeclRef(qual_ty, decl_id, _) => {
                 let decl =
                     &self.ast_context.c_decls
                         .get(&decl_id)
@@ -2366,13 +2366,13 @@ impl Translation {
                 }
             }
 
-            CExprKind::ImplicitCast(ty, expr, kind, opt_field_id) =>
+            CExprKind::ImplicitCast(ty, expr, kind, opt_field_id, _) =>
                 self.convert_cast(use_, ty, expr, kind, opt_field_id, false, is_static, decay_ref),
 
-            CExprKind::ExplicitCast(ty, expr, kind, opt_field_id) =>
+            CExprKind::ExplicitCast(ty, expr, kind, opt_field_id, _) =>
                 self.convert_cast(use_, ty, expr, kind, opt_field_id, true, is_static, decay_ref),
 
-            CExprKind::Unary(type_id, op, arg) =>
+            CExprKind::Unary(type_id, op, arg, _) =>
                 self.convert_unary_operator(use_, op, type_id, arg, is_static, decay_ref),
 
             CExprKind::Conditional(_, cond, lhs, rhs) => {
@@ -2517,7 +2517,7 @@ impl Translation {
                 }
             }
 
-            CExprKind::ArraySubscript(_, ref lhs, ref rhs) => {
+            CExprKind::ArraySubscript(_, ref lhs, ref rhs, _) => {
                 let lhs_node = &self.ast_context.index(*lhs).kind;
                 let rhs_node = &self.ast_context.index(*rhs).kind;
 
@@ -2535,7 +2535,7 @@ impl Translation {
 
                 let simple_index_array =
                 match lhs_node {
-                    &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _) => {
+                    &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _, _) => {
                         let arr_type = self.ast_context[arr].kind.get_type().ok_or_else(|| format!("bad arr type"))?;
                         match self.ast_context.resolve_type(arr_type).kind {
                             // These get translated to 0-element arrays, this avoids the bounds check
@@ -2599,10 +2599,10 @@ impl Translation {
             CExprKind::Call(_, func, ref args) => {
                 let is_variadic = self.fn_expr_is_variadic(func);
                 let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
-                    CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _) =>
+                    CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _) =>
                         self.convert_expr(ExprUse::RValue, fexp, is_static, decay_ref)?,
 
-                    CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _) =>
+                    CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) =>
                         return self.convert_builtin(fexp, args, is_static),
 
                     _ =>
@@ -2634,7 +2634,7 @@ impl Translation {
                 }
             }
 
-            CExprKind::Member(_, expr, decl, kind) => {
+            CExprKind::Member(_, expr, decl, kind, _) => {
 
                 if use_ == ExprUse::Unused {
                     self.convert_expr(use_, expr, is_static, decay_ref)
@@ -2646,7 +2646,7 @@ impl Translation {
                             Ok(val.map(|v| mk().field_expr(v, field_name)))
                         }
                         MemberKind::Arrow => {
-                            if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id)
+                            if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id, _)
                             = self.ast_context[expr].kind {
                                 let val = self.convert_expr(use_, subexpr_id, is_static, decay_ref)?;
                                 Ok(val.map(|v| mk().field_expr(v, field_name)))
@@ -2770,7 +2770,7 @@ impl Translation {
 
         let decl_id =
             match self.ast_context[fexp].kind {
-                CExprKind::DeclRef(_, decl_id) => decl_id,
+                CExprKind::DeclRef(_, decl_id, _) => decl_id,
                 _ => return Err(format!("Expected declref when processing builtin")),
             };
 
@@ -3227,7 +3227,7 @@ impl Translation {
             // This is the case of finding a variable which is an `EnumConstant` of the same enum
             // we are casting to. Here, we can just remove the extraneous cast instead of generating
             // a new one.
-            CExprKind::DeclRef(_, decl_id) if variants.contains(&decl_id) =>
+            CExprKind::DeclRef(_, decl_id, _) if variants.contains(&decl_id) =>
                 return val.map(|x| match x.node {
                     ast::ExprKind::Cast(ref e, _) => e.clone(),
                     _ => panic!(format!("DeclRef {:?} of enum {:?} is not cast", expr, enum_decl)),
@@ -3238,7 +3238,7 @@ impl Translation {
                 return WithStmts { stmts: val.stmts, val: new_val }
             }
 
-            CExprKind::Unary(_, c_ast::UnOp::Negate, subexpr_id) => {
+            CExprKind::Unary(_, c_ast::UnOp::Negate, subexpr_id, _) => {
                 if let &CExprKind::Literal(_, CLiteral::Integer(i,_)) = &self.ast_context[subexpr_id].kind {
                     let new_val = self.enum_for_i64(enum_type, -(i as i64));
                     return WithStmts { stmts: val.stmts, val: new_val }
@@ -3642,12 +3642,12 @@ impl Translation {
 
                 match arg_kind {
                     // C99 6.5.3.2 para 4
-                    CExprKind::Unary(_, c_ast::UnOp::Deref, target) =>
+                    CExprKind::Unary(_, c_ast::UnOp::Deref, target, _) =>
                         return self.convert_expr(use_, *target, is_static, decay_ref),
                     // An AddrOf DeclRef/Member is safe to not decay if the translator isn't already giving a hard
                     // yes to decaying (ie, BitCasts). So we only convert default to no decay.
-                    CExprKind::DeclRef(_, _) |
-                    CExprKind::Member(_, _, _, _) => decay_ref.set_default_to_no(),
+                    CExprKind::DeclRef(..) |
+                    CExprKind::Member(..) => decay_ref.set_default_to_no(),
                     _ => (),
                 };
 
@@ -3704,7 +3704,7 @@ impl Translation {
             c_ast::UnOp::PostDecrement => self.convert_post_increment(use_, cqual_type, false, arg),
             c_ast::UnOp::Deref => {
 
-                if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, arg_) = self.ast_context[arg].kind {
+                if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, arg_, _) = self.ast_context[arg].kind {
                     self.convert_expr(ExprUse::RValue, arg_, is_static, decay_ref)
                 } else {
                     self.convert_expr(ExprUse::RValue, arg, is_static, decay_ref)?.result_map(|val: P<Expr>| {
