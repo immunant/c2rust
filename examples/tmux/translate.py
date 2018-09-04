@@ -193,12 +193,15 @@ def add_mods(path: str):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    num_jobs = multiprocessing.cpu_count()
+    importer_args = [
+        "--reduce-type-annotations",
+    ]
 
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
     with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json, filter=args.filter, emit_build_files=False, verbose=True)
+        transpile_files(cc_json, filter=args.filter, emit_build_files=False, verbose=True,
+                        extra_impo_args=importer_args)
 
     # Move and rename tmux.rs to main.rs
     move(TMUX_RS, MAIN_RS)
