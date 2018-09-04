@@ -1570,6 +1570,8 @@ static std::vector<const char *>augment_argv(int argc, char *argv[]) {
     const char * const extras[] = {
         "-extra-arg=-fparse-all-comments", // always parse comments
         "-extra-arg=-Wwrite-strings",      // string literals are constant
+        "-extra-arg=-D_FORTIFY_SOURCE=0",  // we don't want to use checked versions of libc.
+                                           // without this we get calls to __builtin__memcpy_chk, etc.
     };
     
     auto argv_ = std::vector<const char*>();
