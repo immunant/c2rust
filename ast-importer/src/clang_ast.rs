@@ -5,6 +5,16 @@ use std;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum LRValue {
+    LValue, RValue
+}
+
+impl LRValue {
+    pub fn is_lvalue(&self) -> bool { *self == LRValue::LValue }
+    pub fn is_rvalue(&self) -> bool { *self == LRValue::RValue }
+}
+
 #[derive(Debug,Clone)]
 pub struct AstNode {
     pub tag: ASTEntryTag,
@@ -13,7 +23,7 @@ pub struct AstNode {
     pub line: u64,
     pub column: u64,
     pub type_id: Option<u64>,
-    pub rvalue: bool,
+    pub rvalue: LRValue,
     pub extras: Vec<Value>,
 }
 
@@ -113,7 +123,7 @@ pub fn process(items: Value) -> error::Result<AstContext> {
                 line: entry[4].as_u64().unwrap(),
                 column: entry[5].as_u64().unwrap(),
                 type_id,
-                rvalue: entry[7].as_boolean().unwrap(),
+                rvalue: if entry[7].as_boolean().unwrap() { LRValue::RValue } else { LRValue::LValue },
                 extras: entry[8..].to_vec(),
             };
 

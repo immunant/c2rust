@@ -102,7 +102,7 @@ impl<W: Write> Printer<W> {
             }
             Some(&CExprKind::OffsetOf(_, val)) => self.writer.write_fmt(format_args!("{}", val)),
             Some(&CExprKind::Literal(_, ref lit)) => self.print_lit(&lit, context),
-            Some(&CExprKind::Unary(_, op, rhs)) => {
+            Some(&CExprKind::Unary(_, op, rhs, _)) => {
                 if op.is_prefix() {
                     self.print_unop(&op, context)?;
                     self.print_expr(rhs, context)
@@ -118,8 +118,8 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b" ")?;
                 self.print_expr(rhs, context)
             },
-            Some(&CExprKind::ImplicitCast(_, expr, _, _)) => self.print_expr(expr, context),
-            Some(&CExprKind::ExplicitCast(ty, expr, _, _)) => {
+            Some(&CExprKind::ImplicitCast(_, expr, _, _, _)) => self.print_expr(expr, context),
+            Some(&CExprKind::ExplicitCast(ty, expr, _, _, _)) => {
                 self.writer.write_all(b"(")?;
                 self.print_qtype(ty, None, context)?;
                 self.writer.write_all(b") ")?;
@@ -127,7 +127,7 @@ impl<W: Write> Printer<W> {
 
                 Ok(())
             },
-            Some(&CExprKind::DeclRef(_, decl)) => self.print_decl_name(decl, context),
+            Some(&CExprKind::DeclRef(_, decl, _)) => self.print_decl_name(decl, context),
             Some(&CExprKind::Call(_, func, ref args)) => {
                 self.print_expr(func, context)?;
                 self.writer.write_all(b"(")?;
@@ -143,7 +143,7 @@ impl<W: Write> Printer<W> {
 
                 self.writer.write_all(b")")
             },
-            Some(&CExprKind::Member(_, base, member, kind)) => {
+            Some(&CExprKind::Member(_, base, member, kind, _)) => {
                 let operator: &[u8] = match kind {
                     MemberKind::Arrow => b"->".as_ref(),
                     MemberKind::Dot => b".".as_ref(),
@@ -152,7 +152,7 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(operator)?;
                 self.print_decl_name(member, context)
             }
-            Some(&CExprKind::ArraySubscript(_, lhs, rhs)) => {
+            Some(&CExprKind::ArraySubscript(_, lhs, rhs, _)) => {
                 self.print_expr(lhs, context)?;
                 self.writer.write_all(b"[")?;
                 self.print_expr(rhs, context)?;
