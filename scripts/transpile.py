@@ -328,7 +328,7 @@ def transpile_files(cc_db: TextIO,
                         None)
 
     commands = sorted(cc_db, key=lambda cmd: os.path.basename(cmd['file']))
-    results = (transpile_single(cmd) for cmd in commands)
+    results = [transpile_single(cmd) for cmd in commands]
 
     if emit_build_files:
         modules = [(rust_src, retcode == 0) for (_, retcode, _, _, rust_src) in
