@@ -719,6 +719,18 @@ pub enum MemberKind {
 }
 
 impl CExprKind {
+    pub fn lrvalue(&self) -> LRValue {
+        match *self {
+            CExprKind::Unary(_, _, _, lrvalue) |
+            CExprKind::DeclRef(_, _, lrvalue) |
+            CExprKind::ImplicitCast(_, _, _, _, lrvalue) |
+            CExprKind::ExplicitCast(_, _, _, _, lrvalue) |
+            CExprKind::Member(_, _, _, _, lrvalue) |
+            CExprKind::ArraySubscript(_, _, _, lrvalue) => lrvalue,
+            _ => LRValue::RValue, 
+        }
+    }
+
     pub fn get_qual_type(&self) -> Option<CQualTypeId> {
         match *self {
             CExprKind::BadExpr => None,

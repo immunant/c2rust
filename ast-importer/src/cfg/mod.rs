@@ -1112,7 +1112,7 @@ impl CfgBuilder {
                 stmt_id,
             )),
             CStmtKind::Return(expr) => {
-                let val = match expr.map(|i| translator.convert_expr(ExprUse::RValue, i, false, DecayRef::Default)) {
+                let val = match expr.map(|i| translator.convert_expr(ExprUse::Used, i, false, DecayRef::Default)) {
                     Some(r) => Some(r?),
                     None => None,
                 };
@@ -1441,7 +1441,7 @@ impl CfgBuilder {
                 let body_label = self.fresh_label();
 
                 // Convert the condition
-                let WithStmts { stmts, val } = translator.convert_expr(ExprUse::RValue, scrutinee, false, DecayRef::Default)?;
+                let WithStmts { stmts, val } = translator.convert_expr(ExprUse::Used, scrutinee, false, DecayRef::Default)?;
                 wip.extend(stmts);
 
                 let wip_label = wip.label;

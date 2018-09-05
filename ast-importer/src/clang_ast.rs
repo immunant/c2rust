@@ -10,6 +10,11 @@ pub enum LRValue {
     LValue, RValue
 }
 
+impl LRValue {
+    pub fn is_lvalue(&self) -> bool { *self == LRValue::LValue }
+    pub fn is_rvalue(&self) -> bool { *self == LRValue::RValue }
+}
+
 #[derive(Debug,Clone)]
 pub struct AstNode {
     pub tag: ASTEntryTag,
