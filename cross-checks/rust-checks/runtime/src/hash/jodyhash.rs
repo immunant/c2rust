@@ -80,4 +80,26 @@ mod tests {
         h.write_u64(00001337_u64 ^ 0x7878787878787876_u64);
         assert_eq!(h.finish(), 0xaf19d4dba0422cc0_u64);
     }
+
+    // A more complex test for JodyHash
+    // Test case taken from a cross-check failure in libxml2:
+    // hash of xmlError structure differs between C and Rust
+    #[test]
+    fn test_jodyhash_libxml2_xmlerror() {
+        let mut h = JodyHasher::default();
+        h.write_u64(005_u64 ^ 0x7878787878787876_u64); //   domain = 5
+        h.write_u64(068_u64 ^ 0x7878787878787876_u64); //     code = 68
+        h.write_u64(104_u64 ^ 0xc3c3c3c3c3c3c3c2_u64); // *message = 104
+        h.write_u64(002_u64 ^ 0xb4b4b4b4b4b4b4b4_u64); //    level = 2
+        h.write_u64(116_u64 ^ 0xc3c3c3c3c3c3c3c2_u64); //    *file = 116
+        h.write_u64(975_u64 ^ 0x7878787878787876_u64); //     line = 975
+        h.write_u64(0x726174536c6c754e_u64);           //     str1 = NULL
+        h.write_u64(0x726174536c6c754e_u64);           //     str2 = NULL
+        h.write_u64(0x726174536c6c754e_u64);           //     str3 = NULL
+        h.write_u64(000_u64 ^ 0x7878787878787876_u64); //     int1 = 0
+        h.write_u64(002_u64 ^ 0x7878787878787876_u64); //     int2 = 2
+        h.write_u64(0x7261745364696f56_u64);           //     ctxt = void*
+        h.write_u64(0x726174536c6c754e_u64);           //     node = NULL
+        assert_eq!(h.finish(), 0x816be1ca90dc62b0_u64);
+    }
 }
