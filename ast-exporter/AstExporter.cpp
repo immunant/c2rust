@@ -1506,10 +1506,18 @@ public:
             
             // 3. Encode all of the visited file names
             auto filenames = visitor.getFilenames();
-            cbor_encoder_create_array(&outer, &array, filenames.size());
+
+            // Store filenames in order
+            auto filenames_count = filenames.size();
+            
+            auto ordered_filenames = std::vector<string>(filenames_count);
             for (auto &kv : filenames) {
-                auto str = kv.first;
-                cbor_encode_string(&array, str);
+                ordered_filenames[kv.second] = kv.first;
+            }
+            
+            cbor_encoder_create_array(&outer, &array, filenames_count);
+            for (auto &name : ordered_filenames) {
+                cbor_encode_string(&array, name);
             }
             cbor_encoder_close_container(&outer, &array);
             
