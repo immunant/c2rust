@@ -1314,8 +1314,10 @@ impl ConversionContext {
                         })
                         .collect();
 
+                    let filename = node.filename.clone();
+
                     let function_decl =
-                        CDeclKind::Function { is_extern, is_inline, is_implicit, typ, name, parameters, body };
+                        CDeclKind::Function { is_extern, is_inline, is_implicit, typ, name, parameters, body, filename };
 
                     self.add_decl(new_id, located(node, function_decl));
                     self.processed_nodes.insert(new_id, OTHER_DECL);
@@ -1328,7 +1330,9 @@ impl ConversionContext {
                     let typ_old = node.type_id.expect("Expected to find type on typedef declaration");
                     let typ = self.visit_qualified_type(typ_old);
 
-                    let typdef_decl = CDeclKind::Typedef { name, typ, is_implicit };
+                    let filename = node.filename.clone();
+
+                    let typdef_decl = CDeclKind::Typedef { name, typ, is_implicit, filename };
 
                     self.add_decl(new_id, located(node, typdef_decl));
                     self.processed_nodes.insert(new_id, TYPDEF_DECL);
@@ -1349,7 +1353,9 @@ impl ConversionContext {
 
                     let integral_type = node.type_id.map(|x| self.visit_qualified_type(x));
 
-                    let enum_decl = CDeclKind::Enum { name, variants, integral_type };
+                    let filename = node.filename.clone();
+
+                    let enum_decl = CDeclKind::Enum { name, variants, integral_type, filename };
 
                     self.add_decl(new_id, located(node, enum_decl));
                     self.processed_nodes.insert(new_id, ENUM_DECL);
@@ -1362,7 +1368,10 @@ impl ConversionContext {
                         Value::I64(n) => ConstIntExpr::I(n),
                         _ => panic!("Expected constant int expr"),
                     };
-                    let enum_constant_decl = CDeclKind::EnumConstant { name, value };
+
+                    let filename = node.filename.clone();
+
+                    let enum_constant_decl = CDeclKind::EnumConstant { name, value, filename };
 
                     self.add_decl(new_id, located(node, enum_constant_decl));
                     self.processed_nodes.insert(new_id, ENUM_CON);
@@ -1382,7 +1391,9 @@ impl ConversionContext {
                     let typ_id = node.type_id.expect("Expected to find type on variable declaration");
                     let typ = self.visit_qualified_type(typ_id);
 
-                    let variable_decl = CDeclKind::Variable { is_static, is_extern, is_defn, ident, initializer, typ };
+                    let filename = node.filename.clone();
+
+                    let variable_decl = CDeclKind::Variable { is_static, is_extern, is_defn, ident, initializer, typ, filename };
 
                     self.add_decl(new_id, located(node, variable_decl));
                     self.processed_nodes.insert(new_id, VAR_DECL);
@@ -1417,7 +1428,9 @@ impl ConversionContext {
                         }
                     }
 
-                    let record = CDeclKind::Struct { name, fields, is_packed, manual_alignment };
+                    let filename = node.filename.clone();
+
+                    let record = CDeclKind::Struct { name, fields, is_packed, manual_alignment, filename };
 
                     self.add_decl(new_id, located(node, record));
                     self.processed_nodes.insert(new_id, RECORD_DECL);
@@ -1441,7 +1454,9 @@ impl ConversionContext {
                             None
                         };
 
-                    let record = CDeclKind::Union { name, fields };
+                    let filename = node.filename.clone();
+
+                    let record = CDeclKind::Union { name, fields, filename };
 
                     self.add_decl(new_id, located(node, record));
                     self.processed_nodes.insert(new_id, RECORD_DECL);

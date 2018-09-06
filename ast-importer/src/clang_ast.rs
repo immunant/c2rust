@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::path::Path;
+use std::ffi::OsStr;
 use serde_cbor::{Value, from_value};
 use serde_cbor::error;
 use std;
@@ -22,6 +24,7 @@ pub struct AstNode {
     pub fileid: u64,
     pub line: u64,
     pub column: u64,
+    pub filename: String,
     pub type_id: Option<u64>,
     pub rvalue: LRValue,
     pub extras: Vec<Value>,
@@ -91,7 +94,7 @@ pub fn process(items: Value) -> error::Result<AstContext> {
     let mut types: HashMap<u64, TypeNode> = HashMap::new();
     let mut comments: Vec<CommentNode> = vec![];
 
-    let (all_nodes, top_nodes, _filenames, raw_comments):
+    let (all_nodes, top_nodes, filenames, raw_comments):
         (Vec<Vec<Value>>,
          Vec<u64>,
          Vec<String>,
@@ -101,6 +104,7 @@ pub fn process(items: Value) -> error::Result<AstContext> {
     for (fileid, line, column, string) in raw_comments {
         comments.push(CommentNode{fileid, line, column, string})
     }
+
 
     for entry in all_nodes {
         let entry_id = entry[0].as_u64().unwrap();
@@ -115,14 +119,18 @@ pub fn process(items: Value) -> error::Result<AstContext> {
                     .collect::<Vec<Option<u64>>>();
 
             let type_id: Option<u64> = expect_opt_u64(&entry[6]).unwrap();
+            let fileid = entry[3].as_u64().unwrap();
+            let filename = Path::new(&filenames[fileid as usize]).file_name()
+                .and_then(OsStr::to_str).map(str::to_string).expect("Expected a string for a filename");
 
             let node = AstNode {
                 tag: import_ast_tag(tag),
                 children,
-                fileid: entry[3].as_u64().unwrap(),
+                fileid,
                 line: entry[4].as_u64().unwrap(),
                 column: entry[5].as_u64().unwrap(),
                 type_id,
+                filename,
                 rvalue: if entry[7].as_boolean().unwrap() { LRValue::RValue } else { LRValue::LValue },
                 extras: entry[8..].to_vec(),
             };

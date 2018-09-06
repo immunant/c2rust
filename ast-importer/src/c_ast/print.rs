@@ -522,7 +522,7 @@ impl<W: Write> Printer<W> {
                 Ok(())
             },
 
-            Some(&CDeclKind::EnumConstant { ref name, value }) => {
+            Some(&CDeclKind::EnumConstant { ref name, value, .. }) => {
                 self.writer.write_fmt(format_args!("{} = {:?},", name, value))?;
                 if newline {
                     self.writer.write_all(b"\n")?;

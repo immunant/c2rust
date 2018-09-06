@@ -567,6 +567,7 @@ pub enum CDeclKind {
         name: String,
         parameters: Vec<CParamId>,
         body: Option<CStmtId>,
+        filename: String,
     },
 
     // http://clang.llvm.org/doxygen/classclang_1_1VarDecl.html
@@ -577,6 +578,7 @@ pub enum CDeclKind {
         ident: String,
         initializer: Option<CExprId>,
         typ: CQualTypeId,
+        filename: String,
     },
 
     // Enum (http://clang.llvm.org/doxygen/classclang_1_1EnumDecl.html)
@@ -584,11 +586,13 @@ pub enum CDeclKind {
         name: Option<String>,
         variants: Vec<CEnumConstantId>,
         integral_type: Option<CQualTypeId>,
+        filename: String,
     },
 
     EnumConstant {
         name: String,
         value: ConstIntExpr,
+        filename: String,
     },
 
     // Typedef
@@ -596,6 +600,7 @@ pub enum CDeclKind {
         name: String,
         typ: CQualTypeId,
         is_implicit: bool,
+        filename: String,
     },
 
     // Struct
@@ -604,12 +609,14 @@ pub enum CDeclKind {
         fields: Option<Vec<CFieldId>>,
         is_packed: bool,
         manual_alignment: Option<u64>,
+        filename: String,
     },
 
     // Union
     Union {
         name: Option<String>,
         fields: Option<Vec<CFieldId>>,
+        filename: String,
     },
 
     // Field

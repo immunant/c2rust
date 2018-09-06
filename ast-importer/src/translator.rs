@@ -1106,7 +1106,7 @@ impl Translation {
             },
 
             // Extern variable without intializer (definition elsewhere)
-            CDeclKind::Variable { is_extern: true, is_static, is_defn: false, ref ident, initializer, typ } => {
+            CDeclKind::Variable { is_extern: true, is_static, is_defn: false, ref ident, initializer, typ, .. } => {
                 assert!(is_static, "An extern variable must be static");
                 assert!(initializer.is_none(), "An extern variable that isn't a definition can't have an initializer");
 
@@ -1790,7 +1790,7 @@ impl Translation {
         };
 
         match self.ast_context.index(decl_id).kind {
-            CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ } if !is_static && !is_extern => {
+            CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ, .. } if !is_static && !is_extern => {
                 assert!(is_defn, "Only local variable definitions should be extracted");
 
                 let has_self_reference =
