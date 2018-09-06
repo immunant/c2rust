@@ -2983,8 +2983,6 @@ impl Translation {
             stmts.append(&mut val.stmts);
             val.stmts = stmts;
             val
-        } else if self.should_force_lvalue(kind) {
-            self.convert_expr(ExprUse::Used, expr, is_static, decay_ref)?
         } else {
             self.convert_expr(use_, expr, is_static, decay_ref)?
         };
@@ -4220,13 +4218,5 @@ impl Translation {
         };
 
         mk().lit_expr(lit)
-    }
-
-    fn should_force_lvalue(&self, cast_kind: CastKind) -> bool {
-        match cast_kind {
-            CastKind::ArrayToPointerDecay | CastKind::FunctionToPointerDecay |
-            CastKind::LValueToRValue | CastKind::ToVoid => true,
-            _ => false
-        }
     }
 }
