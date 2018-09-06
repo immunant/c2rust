@@ -392,9 +392,11 @@ impl Config {
         self.glob_set.replace(gsb.build().unwrap());
     }
 
-    fn get_file_config(&self, file: &str) -> Option<&FileConfig> {
+    pub fn get_file_items(&self, file: &str) -> Option<&ItemList> {
         match self.root {
-            RootConfig::NameMap(ref m) => m.get(file),
+            RootConfig::NameMap(ref m) => {
+                m.get(file).map(|fc| &fc.0)
+            },
             RootConfig::ExtVector(ref files) => {
                 self.rebuild_glob_set(files);
                 // Pick the file with the highest priority,
@@ -405,13 +407,9 @@ impl Config {
                     .into_iter()
                     .map(|idx| (files[idx].priority, idx))
                     .max()
-                    .map(|(_, idx)| &files[idx].items)
+                    .map(|(_, idx)| &files[idx].items.0)
             }
         }
-    }
-
-    pub fn get_file_items(&self, file: &str) -> Option<&ItemList> {
-        self.get_file_config(file).map(|fc| &fc.0)
     }
 
     pub fn merge(self, other: Self) -> Self {
