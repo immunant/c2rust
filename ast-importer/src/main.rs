@@ -6,6 +6,7 @@ extern crate ast_importer;
 use std::io::{Error, stdout};
 use std::io::prelude::*;
 use std::fs::File;
+use std::path::Path;
 use ast_importer::clang_ast::process;
 use ast_importer::c_ast::*;
 use ast_importer::c_ast::Printer;
@@ -210,7 +211,23 @@ fn main() {
 
     // Perform the translation
 
-    println!("{}", ast_importer::translator::translate(typed_context, tcfg));
+    let translated_string = ast_importer::translator::translate(typed_context, tcfg);
+
+    // with_extension will clear the .cbor; set_extension will change .c to .rs
+    // even if there is no extension for some reason, this will still work
+    let mut rs_path = Path::new(file).with_extension("");
+
+    rs_path.set_extension("rs");
+
+    let mut file = match File::create(rs_path) {
+        Ok(file) => file,
+        Err(e) => panic!("Unable to open file for writing: {}", e),
+    };
+
+    match file.write_all(translated_string.as_bytes()) {
+        Ok(()) => (),
+        Err(e) => panic!("Unable to write translation to file: {}", e),
+    };
 }
 
 fn parse_untyped_ast(filename: &str) -> Result<AstContext, Error> {
