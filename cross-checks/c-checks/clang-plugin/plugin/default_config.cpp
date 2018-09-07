@@ -51,6 +51,84 @@ const char CrossCheckInserter::default_config[] = R"EOF(
           name: "__pthread_cond_s"
           disable_xchecks: true
 
+# Requires a hash function for `__locale_data`
+- file: "/usr/include/**/bits/types/__locale_t.h"
+  priority: -1000000
+  items:
+        - item: struct
+          name: "__locale_struct"
+          disable_xchecks: true
+
+# `sockaddr_storage` contains an array field named `__ss_padding`,
+# which we can't cross-check on the Rust size because of its unusual size
+- file: "/usr/include/**/bits/socket.h"
+  priority: -1000000
+  items:
+        - item: struct
+          name: "sockaddr_storage"
+          fields:
+              __ss_padding: disabled
+
+# Inline functions in the header
+- file: "/usr/include/**/bits/byteswap.h"
+  priority: -1000000
+  items:
+        - item: function
+          name: "__bswap_16"
+          disable_xchecks: true
+
+        - item: function
+          name: "__bswap_32"
+          disable_xchecks: true
+
+        - item: function
+          name: "__bswap_64"
+          disable_xchecks: true
+
+# On some systems, `stat` is an inline function in `sys/stat.h`
+- file: "/usr/include/**/sys/stat.h"
+  priority: -1000000
+  items:
+        - item: function
+          name: "stat"
+          disable_xchecks: true
+
+        - item: function
+          name: "lstat"
+          disable_xchecks: true
+
+        - item: function
+          name: "fstat"
+          disable_xchecks: true
+
+        - item: function
+          name: "fstatat"
+          disable_xchecks: true
+
+        - item: function
+          name: "mknod"
+          disable_xchecks: true
+
+        - item: function
+          name: "mknodat"
+          disable_xchecks: true
+
+        - item: function
+          name: "stat64"
+          disable_xchecks: true
+
+        - item: function
+          name: "lstat64"
+          disable_xchecks: true
+
+        - item: function
+          name: "fstat64"
+          disable_xchecks: true
+
+        - item: function
+          name: "fstatat64"
+          disable_xchecks: true
+
 ...
 )EOF";
 
