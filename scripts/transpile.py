@@ -305,7 +305,7 @@ def transpile_files(cc_db: TextIO,
             try:
                 ast_impo_cmd = ast_impo[cbor_file, impo_args, extra_impo_args]
                 # NOTE: this will log ast-importer output but not in color
-                retcode, rust_output, importer_warnings = ast_impo_cmd.run()
+                retcode, stdout, importer_warnings = ast_impo_cmd.run()
                 if importer_warnings:
                     if verbose:
                         logging.warning(importer_warnings)
@@ -315,13 +315,9 @@ def transpile_files(cc_db: TextIO,
                 e = "Expected file suffix `.c.cbor`; actual: " + cbor_basename
                 assert cbor_file.endswith(".c.cbor"), e
                 rust_file = cbor_file[:-7] + ".rs"
-                with open(rust_file, "w") as rust_fh:
-                    rust_fh.writelines(rust_output)
-                    logging.debug("wrote output rust to %s", rust_file)
-
                 rustfmt(rust_file)
 
-                return (file_basename, retcode, rust_output, importer_warnings,
+                return (file_basename, retcode, stdout, importer_warnings,
                         os.path.abspath(rust_file))
             except pb.ProcessExecutionError as pee:
                 return (file_basename, pee.retcode, pee.stdout, pee.stderr,

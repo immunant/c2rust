@@ -61,7 +61,6 @@ class CborFile:
     def translate(self) -> RustFile:
         c_file_path, _ = os.path.splitext(self.path)
         extensionless_file, _ = os.path.splitext(c_file_path)
-        rust_src = extensionless_file + ".rs"
 
         # help plumbum find rust
         ld_lib_path = get_rust_toolchain_libpath()
@@ -87,9 +86,9 @@ class CborFile:
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
             # log the command in a format that's easy to re-run
             translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
-            translation_cmd += str(ast_importer[args] > rust_src)
+            translation_cmd += str(ast_importer[args])
             logging.debug("translation command:\n %s", translation_cmd)
-            retcode, stdout, stderr = (ast_importer[args] > rust_src).run(
+            retcode, stdout, stderr = (ast_importer[args]).run(
                 retcode=None)
 
         logging.debug("stdout:\n%s", stdout)
