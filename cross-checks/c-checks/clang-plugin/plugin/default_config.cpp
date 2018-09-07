@@ -142,6 +142,18 @@ const char CrossCheckInserter::default_config[] = R"EOF(
           name: "_IO_FILE_complete"
           disable_xchecks: true
 
+# Older glibc versions define these in `/usr/include/bits/libio.h`
+- file: "/usr/include/**/bits/libio.h"
+  priority: -1000000
+  items:
+        - item: struct
+          name: "_IO_FILE"
+          disable_xchecks: true
+
+        - item: struct
+          name: "_IO_FILE_complete"
+          disable_xchecks: true
+
 # Header contains 2 inline functions
 - file: "/usr/include/**/pthread.h"
   priority: -1000000
