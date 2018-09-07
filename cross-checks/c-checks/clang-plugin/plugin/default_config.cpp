@@ -142,6 +142,18 @@ const char CrossCheckInserter::default_config[] = R"EOF(
           name: "_IO_FILE_complete"
           disable_xchecks: true
 
+# Header contains 2 inline functions
+- file: "/usr/include/**/pthread.h"
+  priority: -1000000
+  items:
+        - item: function
+          name: "__pthread_cleanup_routine"
+          disable_xchecks: true
+
+        - item: function
+          name: "pthread_equal"
+          disable_xchecks: true
+
 ...
 )EOF";
 
