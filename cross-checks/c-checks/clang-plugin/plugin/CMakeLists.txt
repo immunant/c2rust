@@ -4,6 +4,7 @@ add_public_tablegen_target(CrossCheckOptionsTableGen)
 
 add_llvm_loadable_module(CrossChecks
     crosschecks.cpp
+    default_config.cpp
     types.cpp
     PLUGIN_TOOL clang)
 

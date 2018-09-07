@@ -167,12 +167,17 @@ struct HashFunction {
     }
 };
 
+class CrossCheckInsertionAction;
+
 class CrossCheckInserter : public SemaConsumer {
 private:
     bool disable_xchecks;
 
     const config::Config *config;
     config::ScopeStack *config_stack;
+
+    static const char default_config[];
+    friend class CrossCheckInsertionAction;
 
     // Regex that matches cross-check annotations
     llvm::Regex xcheck_ann_regex{"^[:space:]*cross_check[:space:]*:(.*)$"};
@@ -357,8 +362,6 @@ private:
                            bool build_it);
 
     using StmtVec = llvm::SmallVector<Stmt*, 16>;
-
-    static std::set<std::pair<std::string_view, std::string_view>> struct_xcheck_blacklist;
 
     // TODO: make it configurable via both a plugin argument
     // and an external configuration item

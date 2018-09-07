@@ -702,6 +702,10 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
         disable_xchecks = true;
     }
 
+    // Parse the default configuration
+    std::string_view default_config_sv{CrossCheckInserter::default_config};
+    config = xcfg_config_parse(config, default_config_sv);
+
     auto config_files = parsed_args.getAllArgValues(OPT_config_files);
     for (auto &config_file : config_files) {
         auto config_data = llvm::MemoryBuffer::getFile(config_file);
