@@ -129,6 +129,19 @@ const char CrossCheckInserter::default_config[] = R"EOF(
           name: "fstatat64"
           disable_xchecks: true
 
+# `FILE*` has too many fields with problems, so we implement the hash function
+# manually in our runtime
+- file: "/usr/include/**/bits/types/struct_FILE.h"
+  priority: -1000000
+  items:
+        - item: struct
+          name: "_IO_FILE"
+          disable_xchecks: true
+
+        - item: struct
+          name: "_IO_FILE_complete"
+          disable_xchecks: true
+
 ...
 )EOF";
 
