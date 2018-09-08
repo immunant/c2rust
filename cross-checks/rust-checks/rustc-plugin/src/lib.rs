@@ -31,6 +31,8 @@ use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
 use syntax::util::small_vector::SmallVector;
 
+mod default_config;
+
 fn djb2_hash(s: &str) -> u32 {
     s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
 }
@@ -797,6 +799,11 @@ impl CrossCheckExpander {
     }
 
     fn parse_config_files(args: &[ast::NestedMetaItem]) -> xcfg::Config {
+        // Parse the hard-coded default configuration, then apply
+        // the items from the files on top of it
+        let dcfg = xcfg::parse_string(&default_config::DEFAULT_CONFIG)
+            .expect("could not parse default config");
+
         // Parse arguments of the form
         // #[plugin(cross_check_plugin(config_file = "..."))]
         let fl = RealFileLoader;
@@ -811,7 +818,7 @@ impl CrossCheckExpander {
             // TODO: use a Reader to read&parse each configuration file
             // without storing its contents in an intermediate String buffer???
             .map(|fd| xcfg::parse_string(&fd).expect("could not parse config file"))
-            .fold(Default::default(), |acc, fc| acc.merge(fc))
+            .fold(dcfg, |acc, fc| acc.merge(fc))
     }
 
     fn parse_djb2_names_files(args: &[ast::NestedMetaItem]) -> Vec<PathBuf> {
