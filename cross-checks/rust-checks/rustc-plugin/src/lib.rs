@@ -91,6 +91,7 @@ impl CrossCheckBuilder for xcfg::XCheckType {
             },
         };
         quote_stmt!(cx, {
+            #[allow(unused_imports)]
             use cross_check_runtime::xcheck::$tag;
             cross_check_iter!($check.into_iter())
         })
@@ -255,6 +256,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     // to hash the value of the identifier
                     let (ahasher, shasher) = self.get_hasher_pair();
                     quote_expr!(self.cx, {
+                        #[allow(unused_imports)]
                         use cross_check_runtime::hash::CrossCheckHash as XCH;
                         let val_ref = &$ident;
                         $pre_hash_stmts
@@ -342,6 +344,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 // to hash the value of the identifier
                 let (ahasher, shasher) = self.get_hasher_pair();
                 quote_expr!(self.cx, {
+                    #[allow(unused_imports)]
                     use cross_check_runtime::hash::CrossCheckHash as XCH;
                     let val_ref = &__c2rust_fn_result;
                     $pre_hash_stmts
@@ -453,6 +456,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             #[no_mangle]
             #[link_section = $hash_fn_section]
             pub unsafe extern "C" fn $hash_fn(x: *mut $ty_ident, depth: usize) -> u64 {
+                #[allow(unused_imports)]
                 use ::cross_check_runtime::hash::CrossCheckHash;
                 (*x).cross_check_hash_depth::<$ahasher, $shasher>(depth)
             }
