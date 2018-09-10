@@ -131,6 +131,11 @@ fn main() {
              .long("reduce-type-annotations")
              .help("Reduces the number of explicit type annotations where it should be safe to do so")
              .takes_value(false))
+        .arg(Arg::with_name("output-file")
+             .long("output")
+             .short("o")
+             .help("Write the output to a specified file")
+             .takes_value(true))
         .get_matches();
 
     // Build a TranslationConfig from the command line
@@ -215,7 +220,11 @@ fn main() {
 
     // with_extension will clear the .cbor; set_extension will change .c to .rs
     // even if there is no extension for some reason, this will still work
-    let mut rs_path = Path::new(file).with_extension("");
+    let mut rs_path = if matches.value_of("output-file").is_none() {
+        Path::new(file).with_extension("")
+    } else {
+        Path::new(matches.value_of("output-file").unwrap()).with_extension("")
+    };
 
     rs_path.set_extension("rs");
 
