@@ -536,7 +536,7 @@ impl Cfg<Label, StmtOrDecl> {
 
         translator.with_scope(|| -> Result<(), String> {
 
-            let body_exit = cfg_builder.convert_stmts_help(translator, stmt_ids, entry)?;
+            let body_exit = cfg_builder.convert_stmts_help(translator, stmt_ids, true, entry)?;
 
             if let Some(body_exit) = body_exit {
                 let mut wip = cfg_builder.new_wip_block(body_exit);
@@ -1197,15 +1197,18 @@ impl CfgBuilder {
         &mut self,
         translator: &Translation,
         stmt_ids: &[CStmtId],     // C statements to translate
+        in_tail: bool,            // Are we in tail position (is there anything to fallthrough to)?
         entry: Label,             // Current WIP block
     ) -> Result<Option<Label>, String> {
         self.with_scope(translator, |slf| -> Result<Option<Label>, String> {
             let mut lbl = Some(entry);
+            let last = stmt_ids.last();
 
             // We feed the optional output label into the entry label of the next block
             for stmt in stmt_ids {
                 let new_label: Label = lbl.unwrap_or(slf.fresh_label());
-                lbl = slf.convert_stmt_help(translator, *stmt, new_label)?;
+                let sub_in_tail = in_tail && Some(stmt) == last;
+                lbl = slf.convert_stmt_help(translator, *stmt, sub_in_tail, new_label)?;
             }
 
             Ok(lbl)
@@ -1229,6 +1232,7 @@ impl CfgBuilder {
         &mut self,
         translator: &Translation,
         stmt_id: CStmtId,         // C statement to translate
+        in_tail: bool,            // Are we in tail position (is there anything to fallthrough to)?
         entry: Label,             // Entry label
     ) -> Result<Option<Label>, String> {
 
@@ -1298,7 +1302,7 @@ impl CfgBuilder {
 
                 // Then case
                 self.open_arm(then_entry);
-                let then_stuff = self.convert_stmt_help(translator, true_variant, then_entry)?;
+                let then_stuff = self.convert_stmt_help(translator, true_variant, in_tail, then_entry)?;
                 if let Some(then_end) = then_stuff {
                     let wip_then = self.new_wip_block(then_end);
                     self.add_wip_block(wip_then, Jump(next_entry));
@@ -1308,7 +1312,7 @@ impl CfgBuilder {
                 // Else case
                 self.open_arm(else_entry);
                 if let Some(false_var) = false_variant {
-                    let else_stuff = self.convert_stmt_help(translator, false_var, else_entry)?;
+                    let else_stuff = self.convert_stmt_help(translator, false_var, in_tail, else_entry)?;
                     if let Some(else_end) = else_stuff {
                         let wip_else = self.new_wip_block(else_end);
                         self.add_wip_block(wip_else, Jump(next_entry));
@@ -1350,7 +1354,7 @@ impl CfgBuilder {
                 self.break_labels.push(next_entry);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_help(translator, body_stmt, body_entry)?;
+                let body_stuff = self.convert_stmt_help(translator, body_stmt, false, body_entry)?;
                 if let Some(body_end) = body_stuff {
                     let wip_body = self.new_wip_block(body_end);
                     self.add_wip_block(wip_body, Jump(cond_entry));
@@ -1380,7 +1384,7 @@ impl CfgBuilder {
                 self.break_labels.push(next_entry);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_help(translator, body_stmt, body_entry)?;
+                let body_stuff = self.convert_stmt_help(translator, body_stmt, false, body_entry)?;
                 if let Some(body_end) = body_stuff {
                     let wip_body = self.new_wip_block(body_end);
                     self.add_wip_block(wip_body, Jump(cond_entry));
@@ -1423,7 +1427,7 @@ impl CfgBuilder {
                     slf.add_wip_block(wip, Jump(init_entry));
                     let init_stuff: Option<Label> = match init {
                         None => Some(init_entry),
-                        Some(init) => slf.convert_stmt_help(translator, init, init_entry)?,
+                        Some(init) => slf.convert_stmt_help(translator, init, false, init_entry)?,
                     };
                     if let Some(init_end) = init_stuff {
                         let wip_init = slf.new_wip_block(init_end);
@@ -1456,7 +1460,7 @@ impl CfgBuilder {
                     slf.break_labels.push(next_label);
                     slf.continue_labels.push(incr_entry);
 
-                    let body_stuff = slf.convert_stmt_help(translator, body, body_entry)?;
+                    let body_stuff = slf.convert_stmt_help(translator, body, false, body_entry)?;
 
                     if let Some(body_end) = body_stuff {
                         let wip_body = slf.new_wip_block(body_end);
@@ -1496,7 +1500,7 @@ impl CfgBuilder {
                 self.last_per_stmt_mut().c_labels_defined.insert(stmt_id);
 
                 // Sub stmt
-                let sub_stmt_next = self.convert_stmt_help(translator, sub_stmt, this_label)?;
+                let sub_stmt_next = self.convert_stmt_help(translator, sub_stmt, in_tail, this_label)?;
                 Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
             }
 
@@ -1514,6 +1518,7 @@ impl CfgBuilder {
                 let next_lbl = self.convert_stmts_help(
                     translator,
                     comp_stmts.as_slice(),
+                    in_tail,
                     comp_entry
                 )?;
 
@@ -1586,7 +1591,7 @@ impl CfgBuilder {
                     .push((mk().lit_pat(branch), this_label));
 
                 // Sub stmt
-                let sub_stmt_next = self.convert_stmt_help(translator, sub_stmt, this_label)?;
+                let sub_stmt_next = self.convert_stmt_help(translator, sub_stmt, in_tail, this_label)?;
                 Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
             }
 
@@ -1603,7 +1608,7 @@ impl CfgBuilder {
                     .get_or_insert(this_label);
 
                 // Sub stmt
-                let sub_stmt_next = self.convert_stmt_help(translator, sub_stmt, this_label)?;
+                let sub_stmt_next = self.convert_stmt_help(translator, sub_stmt, in_tail, this_label)?;
                 Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
             }
 
@@ -1625,7 +1630,7 @@ impl CfgBuilder {
                 self.break_labels.push(next_label);
                 self.switch_expr_cases.push(SwitchCases::default());
 
-                let body_stuff = self.convert_stmt_help(translator, switch_body, body_label)?;
+                let body_stuff = self.convert_stmt_help(translator, switch_body, in_tail, body_label)?;
                 if let Some(body_end) = body_stuff {
                     let body_wip = self.new_wip_block(body_end);
                     self.add_wip_block(body_wip, Jump(next_label));
