@@ -37,7 +37,7 @@ main.rs:
 We can store the cross-check configuration entries in a few places:
  * Externally in separate configuration files.
  * Inline in the source code, attached to the checked functions and structures.
- 
+
 Each approach has advantages and drawbacks.
 Inline configuration entries are simpler to maintain, but do not scale as well to larger codebases or more complex cross-check configuration entries.
 Conversely, external configuration entries are more flexible and can potentially express complex configurations in a cleaner and more elegant way, but can easily get out of sync with their corresponding source code.
@@ -103,9 +103,9 @@ There are several types of cross-check implemented in the compiler:
 `djb2` | `String` | Sets the cross-checked value to the [djb2](http://www.cse.yorku.ca/~oz/hash.html) hash of the given string. This is mainly useful for overriding function entry cross-checks, in case the function names don't match between languages.
 `as_type` | `String` | Perform the default value cross-check, but after casting the value to the given type, e.g., cast it to a `u32` then cross-check it as a `u32`.
 `custom` | `String` | Parses the given string as a C or Rust expression and uses it to compute the cross-checked value. In most cases, the string is inserted verbatim into the cross-check code, e.g., for function argument cross-checks.
- 
+
  Each cross-check is encoded in YAML as either a single word with the type, e.g., `default`, or a single-element associative array mapping the type to its argument, e.g., `{ fixed: 0x1234 }`.
- 
+
 More cross-check types may be added as needed.
 
 ### Custom hash functions for structures
@@ -127,7 +127,7 @@ The function receives the following arguments:
  * The field itself, with generic type `F`. The function may require additional type bounds for `F` to make it compatible with its callers.
  * The maximum hashing depth (explained in **TODO**).
  * The type parameters `XCHA` and `XCHS` bound to the current aggregate and simple value hasher for the current invocation.
- 
+
 This function should not return the hash value of the field. Instead, the function should call the hasher's `write_u64` method directly.
 
 ## Per-file default settings
@@ -188,7 +188,7 @@ The `#[cross_check]` function attribute currently supports the following argumen
  `return` | `XCheckType` | Cross-check to perform on the function return value, same as for external configuration.
  `ahasher` and `shasher` | `String` | Same as for external configuration.
  `entry_extra` and `exit_extra` | Same as for external configuration.
- 
+
 ### Function example
 ```rust
 #[cross_check(yes, entry(djb2="foo"))] // Cross-check this function as "foo"
@@ -196,7 +196,7 @@ fn foo1() {
   #[cross_check(none)]
   fn bar() { ... }
   bar();
-  
+
   #[cross_check(yes, all_args(default), args(a(fixed=0x123)))]
   fn baz(a: u8, b: u16, c: u32) { ... }
   baz(1, 2, 3);
@@ -226,10 +226,10 @@ The `#[cross_check]` attribute can also be attached to structure fields to confi
 struct Foo {
   #[cross_check(none)]
   foo: u64,
-  
+
   #[cross_check(fixed=0x1234)]
   bar: String,
-  
+
   #[cross_check(custom_hash="hash_baz")]
   baz: String,
 }
