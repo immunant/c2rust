@@ -218,15 +218,16 @@ fn main() {
 
     let translated_string = ast_importer::translator::translate(typed_context, tcfg);
 
-    // with_extension will clear the .cbor; set_extension will change .c to .rs
-    // even if there is no extension for some reason, this will still work
-    let mut rs_path = if matches.value_of("output-file").is_none() {
-        Path::new(file).with_extension("")
-    } else {
-        Path::new(matches.value_of("output-file").unwrap()).with_extension("")
-    };
+    let rs_path = if matches.value_of("output-file").is_none() {
+        // with_extension will clear the .cbor; set_extension will change .c to .rs
+        // even if there is no extension for some reason, this will still work
+        let mut path_buf = Path::new(file).with_extension("");
 
-    rs_path.set_extension("rs");
+        path_buf.set_extension("rs");
+        path_buf
+    } else {
+        Path::new(matches.value_of("output-file").unwrap()).to_path_buf()
+    };
 
     let mut file = match File::create(rs_path) {
         Ok(file) => file,

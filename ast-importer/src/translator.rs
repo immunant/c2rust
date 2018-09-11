@@ -44,6 +44,7 @@ impl DecayRef {
         }
     }
 
+    #[inline]
     pub fn is_no(&self) -> bool {
         !self.is_yes()
     }
@@ -597,6 +598,7 @@ impl Translation {
     }
 
     /// Called when translation makes use of a use import.
+    #[allow(dead_code)]
     fn use_import(&self, use_path: Vec<&str>) {
         self.uses.borrow_mut().push(mk().use_item(use_path, None as Option<Ident>));
     }
