@@ -442,7 +442,7 @@ impl StmtOrDecl {
 #[derive(Clone, Debug)]
 pub struct Cfg<Lbl: Ord + Hash, Stmt> {
     /// Entry point in the graph
-    entries: IndexSet<Lbl>,
+    entries: Lbl,
 
     /// Nodes in the graph
     nodes: IndexMap<Lbl, BasicBlock<Lbl,Stmt>>,
@@ -613,19 +613,19 @@ impl<Lbl: Copy + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
     pub fn prune_unreachable_blocks_mut(&mut self) -> () {
         let visited: IndexSet<Lbl> = {
             let mut visited: IndexSet<Lbl> = IndexSet::new();
-            let mut to_visit: Vec<&Lbl> = self.entries.iter().collect();
+            let mut to_visit: Vec<Lbl> = vec![self.entries];
 
             while let Some(lbl) = to_visit.pop() {
-                if visited.contains(lbl) {
+                if visited.contains(&lbl) {
                     continue;
                 }
 
-                let blk = self.nodes.get(lbl).expect(&format!("prune_unreachable_blocks: block not found\n{:?}\n{:?}", lbl, self.nodes.keys().cloned().collect::<Vec<Lbl>>()));
-                visited.insert(*lbl);
+                let blk = self.nodes.get(&lbl).expect(&format!("prune_unreachable_blocks: block not found\n{:?}\n{:?}", lbl, self.nodes.keys().cloned().collect::<Vec<Lbl>>()));
+                visited.insert(lbl);
 
-                for lbl in &blk.terminator.get_labels() {
-                    if !visited.contains(*lbl) {
-                        to_visit.push(lbl);
+                for lbl in blk.terminator.get_labels() {
+                    if !visited.contains(lbl) {
+                        to_visit.push(*lbl);
                     }
                 }
             }
@@ -682,10 +682,7 @@ impl<Lbl: Copy + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
         }
 
         // Apply the remaps to the entries
-        self.entries = self.entries
-            .iter()
-            .map(|entry| *actual_rewrites.get(entry).unwrap_or(entry))
-            .collect();
+        self.entries = *actual_rewrites.get(&self.entries).unwrap_or(&self.entries);
 
         // We keep only the basic blocks that weren't remapped to anything.
         self.nodes.retain(|lbl, _| actual_rewrites.get(lbl).is_none());
@@ -847,10 +844,9 @@ impl PerStmt {
             return false;
         }
 
-
-//        println!("labels used: {:?}", self.c_labels_used.keys().cloned().collect::<HashSet<CLabelId>>());
         // Check the subgraph doesn't reference any labels it doesn't contain
-        if self.c_labels_used.keys().cloned().collect::<IndexSet<CLabelId>>() != self.c_labels_defined {
+        if self.c_labels_used.keys().cloned().collect::<IndexSet<CLabelId>>() !=
+            self.c_labels_defined {
             return false;
         }
 
@@ -874,17 +870,14 @@ impl PerStmt {
 
         // Synthesize a CFG from the current `PerStmt`
         let mut graph = Cfg {
-            entries: vec![self.entry].into_iter().collect(),
+            entries: self.entry,
             nodes: self.nodes,
             loops: self.loop_info,
             multiples: self.multiple_info,
         };
 
-//        println!("Graph before: {:#?}", graph);
         graph.prune_empty_blocks_mut();
-//        println!("Pruned graph: {:#?}", graph);
         graph.prune_unreachable_blocks_mut();
-//        println!("Reached graph: {:#?}", graph);
 
         (graph, self.decls_seen, self.live_in)
     }
@@ -1911,10 +1904,8 @@ impl Cfg<Label,StmtOrDecl> {
         file.write_all(b"  edge [fontname=Courier,fontsize=10.0];\n")?;
 
         // Entry
-        for (i, entry) in self.entries.iter().enumerate() {
-            file.write_fmt(format_args!("  entry{} [shape=plaintext];\n", i))?;
-            file.write_fmt(format_args!("  entry{} -> {};\n", i, entry.debug_print()))?;
-        }
+        file.write_all(b"  entry [shape=plaintext];\n")?;
+        file.write_fmt(format_args!("  entry -> {};\n", self.entries.debug_print()))?;
 
         // Rest of graph
         for (lbl, bb) in self.nodes.iter() {

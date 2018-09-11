@@ -13,7 +13,7 @@ pub fn reloop(
     live_in: IndexSet<CDeclId>,    // declarations we assume are live going into this graph
 ) -> (Vec<Stmt>, Vec<Structure<StmtOrComment>>) {
 
-    let entries = cfg.entries;
+    let entries: IndexSet<Label> = vec![cfg.entries].into_iter().collect();
     let blocks = cfg.nodes
         .into_iter()
         .map(|(lbl, bb)| {
