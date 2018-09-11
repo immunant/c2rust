@@ -16,7 +16,7 @@
 //!
 
 use syntax;
-use syntax::ast::{Arm, Expr, ExprKind, LitIntType, Pat, Stmt, StmtKind};
+use syntax::ast::{Arm, Expr, ExprKind, LitIntType, Pat, Stmt, StmtKind, Lit, LitKind};
 use syntax::ptr::P;
 use syntax::codemap::{DUMMY_SP};
 use c_ast::CLabelId;
@@ -536,7 +536,7 @@ impl Cfg<Label, StmtOrDecl> {
 
         translator.with_scope(|| -> Result<(), String> {
 
-            let body_exit = cfg_builder.convert_stmts_help(translator, stmt_ids, true, entry)?;
+            let body_exit = cfg_builder.convert_stmts_help(translator, stmt_ids, Some(ret), entry)?;
 
             if let Some(body_exit) = body_exit {
                 let mut wip = cfg_builder.new_wip_block(body_exit);
@@ -1197,7 +1197,7 @@ impl CfgBuilder {
         &mut self,
         translator: &Translation,
         stmt_ids: &[CStmtId],     // C statements to translate
-        in_tail: bool,            // Are we in tail position (is there anything to fallthrough to)?
+        in_tail: Option<ImplicitReturnType>,  // Are we in tail position (is there anything to fallthrough to)?
         entry: Label,             // Current WIP block
     ) -> Result<Option<Label>, String> {
         self.with_scope(translator, |slf| -> Result<Option<Label>, String> {
@@ -1207,7 +1207,7 @@ impl CfgBuilder {
             // We feed the optional output label into the entry label of the next block
             for stmt in stmt_ids {
                 let new_label: Label = lbl.unwrap_or(slf.fresh_label());
-                let sub_in_tail = in_tail && Some(stmt) == last;
+                let sub_in_tail = in_tail.filter(|_| Some(stmt) == last);
                 lbl = slf.convert_stmt_help(translator, *stmt, sub_in_tail, new_label)?;
             }
 
@@ -1232,7 +1232,7 @@ impl CfgBuilder {
         &mut self,
         translator: &Translation,
         stmt_id: CStmtId,         // C statement to translate
-        in_tail: bool,            // Are we in tail position (is there anything to fallthrough to)?
+        in_tail: Option<ImplicitReturnType>,  // Are we in tail position (is there anything to fallthrough to)?
         entry: Label,             // Entry label
     ) -> Result<Option<Label>, String> {
 
@@ -1354,7 +1354,7 @@ impl CfgBuilder {
                 self.break_labels.push(next_entry);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_help(translator, body_stmt, false, body_entry)?;
+                let body_stuff = self.convert_stmt_help(translator, body_stmt, None, body_entry)?;
                 if let Some(body_end) = body_stuff {
                     let wip_body = self.new_wip_block(body_end);
                     self.add_wip_block(wip_body, Jump(cond_entry));
@@ -1384,7 +1384,7 @@ impl CfgBuilder {
                 self.break_labels.push(next_entry);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_help(translator, body_stmt, false, body_entry)?;
+                let body_stuff = self.convert_stmt_help(translator, body_stmt, None, body_entry)?;
                 if let Some(body_end) = body_stuff {
                     let wip_body = self.new_wip_block(body_end);
                     self.add_wip_block(wip_body, Jump(cond_entry));
@@ -1427,7 +1427,7 @@ impl CfgBuilder {
                     slf.add_wip_block(wip, Jump(init_entry));
                     let init_stuff: Option<Label> = match init {
                         None => Some(init_entry),
-                        Some(init) => slf.convert_stmt_help(translator, init, false, init_entry)?,
+                        Some(init) => slf.convert_stmt_help(translator, init, None, init_entry)?,
                     };
                     if let Some(init_end) = init_stuff {
                         let wip_init = slf.new_wip_block(init_end);
@@ -1460,7 +1460,7 @@ impl CfgBuilder {
                     slf.break_labels.push(next_label);
                     slf.continue_labels.push(incr_entry);
 
-                    let body_stuff = slf.convert_stmt_help(translator, body, false, body_entry)?;
+                    let body_stuff = slf.convert_stmt_help(translator, body, None, body_entry)?;
 
                     if let Some(body_end) = body_stuff {
                         let wip_body = slf.new_wip_block(body_end);
@@ -1670,16 +1670,66 @@ impl CfgBuilder {
 
 
         if self.per_stmt_stack.last().unwrap().is_contained(&self.c_label_to_goto, self.currently_live.last().unwrap()) {
+
             // Close off the `wip` using a `break` terminator
             let brk_lbl: Label = self.fresh_label();
 
-            // TODO: CFG needs to be simplified before this can be accurate (the `out_wip` might be
-            // `Some` but unreachable)
+
+            let (tail_expr, use_brk_lbl) = match in_tail {
+                Some(ImplicitReturnType::Main) => (
+                    mk().return_expr(Some(mk().lit_expr(mk().int_lit(0, "")))),
+                    false,
+                ),
+
+                Some(ImplicitReturnType::Void) => (
+                    mk().return_expr(None as Option<P<Expr>>),
+                    false,
+                ),
+
+                _ => (
+                    mk().break_expr_value(
+                        Some(brk_lbl.pretty_print()),
+                        None as Option<P<Expr>>,
+                    ),
+                    true,
+                )
+            };
+
+            let is_tail_expr = |other: &P<Expr>| -> bool {
+                match in_tail {
+                    Some(ImplicitReturnType::Main) => {
+                        if let Expr { node: ExprKind::Ret(Some(ref zero)), .. } = **other {
+                            if let Expr { node: ExprKind::Lit(ref lit), .. } = **zero {
+                                if let Expr { node: ExprKind::Lit(ref lit), .. } = **zero {
+                                    if let Lit { node: LitKind::Int(0, LitIntType::Unsuffixed), .. } = **lit {
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                        false
+                    }
+
+                    Some(ImplicitReturnType::Void) => {
+                        if let Expr { node: ExprKind::Ret(None), .. } = **other {
+                            return true;
+                        }
+                        false
+                    },
+
+                    _ => {
+                        if let Expr { node: ExprKind::Break(Some(ref blbl), None), .. } = **other {
+                            if *blbl == mk().label(brk_lbl.pretty_print()) {
+                                return true;
+                            }
+                        }
+                        false
+                    }
+                }
+            };
+
             let fallthrough_id: Option<Label> = out_wip.map(|mut w| {
-                w.push_stmt(mk().semi_stmt(mk().break_expr_value(
-                    Some(brk_lbl.pretty_print()),
-                    None as Option<P<Expr>>,
-                )));
+                w.push_stmt(mk().semi_stmt(tail_expr.clone()));
                 let id = w.label;
                 self.add_wip_block(w, GenTerminator::End);
                 id
@@ -1709,28 +1759,24 @@ impl CfgBuilder {
             )?;
 
 
-            fn is_trailing_break(stmt: &Stmt, lbl: &Label) -> bool {
+            let is_trailing_break = |stmt: &Stmt| -> bool {
                 if let Stmt { node: StmtKind::Semi(ref expr), .. } = *stmt {
-                    if let Expr { node: ExprKind::Break(Some(ref blbl), None), .. } = **expr {
-                        if *blbl == mk().label(lbl.pretty_print()) {
-                            return true;
-                        }
-                    }
+                    return is_tail_expr(expr);
                 }
                 false
-            }
+            };
 
 
             // returns whether we need the labelled block wrap
-            fn rejig_last_stmt(stmt: Stmt, lbl: &Label) -> (bool, Vec<Stmt>) {
-                if is_trailing_break(&stmt, lbl) {
+            let rejig_last_stmt = move |stmt: Stmt| -> (bool, Vec<Stmt>) {
+                if is_trailing_break(&stmt) {
                     (false, vec![])
                 } else {
                     let new_stmt: Option<Stmt> = if let Stmt { node: StmtKind::Expr(ref expr), id, span } = &stmt {
                         if let Expr { node: ExprKind::If(ref cond, ref body, ref els), id: id1, span: span1, ref attrs } = **expr {
                             if let Some(ref els) = els {
                                 if let Expr { node: ExprKind::Block(ref blk, c), id: id2, span: span2, attrs: ref attrs2 } = **els {
-                                    if blk.stmts.len() == 1 && is_trailing_break(&blk.stmts[0], lbl) {
+                                    if blk.stmts.len() == 1 && is_trailing_break(&blk.stmts[0]) {
                                         Some(Stmt {
                                             node: StmtKind::Expr(
                                                 P(Expr {
@@ -1786,14 +1832,14 @@ impl CfgBuilder {
 //                        ..stmt
 //                    }]
 //                }
-            }
+            };
 
 
             if let Some(stmt) = stmts.pop() {
-                let (need_block, new_stmts) = rejig_last_stmt(stmt, &brk_lbl);
+                let (need_block, new_stmts) = rejig_last_stmt(stmt);
                 stmts.extend(new_stmts);
 
-                if has_fallthrough && need_block {
+                if has_fallthrough && need_block && use_brk_lbl {
                     translator.use_feature("label_break_value");
                     let block_body = mk().block(stmts);
                     let block: P<Expr> = mk().labelled_block_expr(block_body, brk_lbl.pretty_print());
