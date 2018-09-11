@@ -407,8 +407,8 @@ impl CommentContext {
         // Group and sort declarations by file and by position
         let mut decls: HashMap<u64, Vec<(SrcLoc, CDeclId)>> = HashMap::new();
         for (decl_id, ref loc_decl) in &ast_context.c_decls {
-            if let Some(loc) = loc_decl.loc {
-                decls.entry(loc.fileid).or_insert(vec![]).push((loc, *decl_id));
+            if let Some(ref loc) = loc_decl.loc {
+                decls.entry(loc.fileid).or_insert(vec![]).push((loc.clone(), *decl_id));
             }
         }
         decls.iter_mut().for_each(|(_, v)| v.sort());
@@ -416,8 +416,8 @@ impl CommentContext {
         // Group and sort statements by file and by position
         let mut stmts: HashMap<u64, Vec<(SrcLoc, CStmtId)>> = HashMap::new();
         for (stmt_id, ref loc_stmt) in &ast_context.c_stmts {
-            if let Some(loc) = loc_stmt.loc {
-                stmts.entry(loc.fileid).or_insert(vec![]).push((loc, *stmt_id));
+            if let Some(ref loc) = loc_stmt.loc {
+                stmts.entry(loc.fileid).or_insert(vec![]).push((loc.clone(), *stmt_id));
             }
         }
         stmts.iter_mut().for_each(|(_, v)| v.sort());
@@ -438,15 +438,15 @@ impl CommentContext {
 
                 // Find the closest declaration and statement
                 let decl_ix = this_file_decls
-                    .binary_search_by_key(&loc.line, |&(l,_)| l.line)
+                    .binary_search_by_key(&loc.line, |&(ref l,_)| l.line)
                     .unwrap_or_else(|x| x);
                 let stmt_ix = this_file_stmts
-                    .binary_search_by_key(&loc.line, |&(l,_)| l.line)
+                    .binary_search_by_key(&loc.line, |&(ref l,_)| l.line)
                     .unwrap_or_else(|x| x);
 
                 // Prefer the one that is higher up (biasing towards declarations if there is a tie)
                 match (this_file_decls.get(decl_ix), this_file_stmts.get(stmt_ix)) {
-                    (Some(&(l1, d)), Some(&(l2, s))) => {
+                    (Some(&(ref l1, d)), Some(&(ref l2, s))) => {
                         if l1 > l2 {
                             stmt_comments_map.entry(s).or_insert(BTreeMap::new()).insert(loc, str);
                         } else {
@@ -535,11 +535,12 @@ impl Index<CStmtId> for TypedAstContext {
 }
 
 /// Represents a position inside a C source file
-#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Clone)]
 pub struct SrcLoc {
     pub fileid: u64,
     pub line: u64,
     pub column: u64,
+    pub file_path: String,
 }
 
 
@@ -567,7 +568,6 @@ pub enum CDeclKind {
         name: String,
         parameters: Vec<CParamId>,
         body: Option<CStmtId>,
-        filename: String,
     },
 
     // http://clang.llvm.org/doxygen/classclang_1_1VarDecl.html
@@ -578,7 +578,6 @@ pub enum CDeclKind {
         ident: String,
         initializer: Option<CExprId>,
         typ: CQualTypeId,
-        filename: String,
     },
 
     // Enum (http://clang.llvm.org/doxygen/classclang_1_1EnumDecl.html)
@@ -586,13 +585,11 @@ pub enum CDeclKind {
         name: Option<String>,
         variants: Vec<CEnumConstantId>,
         integral_type: Option<CQualTypeId>,
-        filename: String,
     },
 
     EnumConstant {
         name: String,
         value: ConstIntExpr,
-        filename: String,
     },
 
     // Typedef
@@ -600,7 +597,6 @@ pub enum CDeclKind {
         name: String,
         typ: CQualTypeId,
         is_implicit: bool,
-        filename: String,
     },
 
     // Struct
@@ -609,14 +605,12 @@ pub enum CDeclKind {
         fields: Option<Vec<CFieldId>>,
         is_packed: bool,
         manual_alignment: Option<u64>,
-        filename: String,
     },
 
     // Union
     Union {
         name: Option<String>,
         fields: Option<Vec<CFieldId>>,
-        filename: String,
     },
 
     // Field
@@ -734,7 +728,7 @@ impl CExprKind {
             CExprKind::ExplicitCast(_, _, _, _, lrvalue) |
             CExprKind::Member(_, _, _, _, lrvalue) |
             CExprKind::ArraySubscript(_, _, _, lrvalue) => lrvalue,
-            _ => LRValue::RValue, 
+            _ => LRValue::RValue,
         }
     }
 

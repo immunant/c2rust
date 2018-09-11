@@ -98,7 +98,7 @@ impl IdMapper {
 /// Transfer location information off of an `AstNode` and onto something that is `Located`
 fn located<T>(node: &AstNode, t: T) -> Located<T> {
     Located {
-        loc: Some(SrcLoc { line: node.line, column: node.column, fileid: node.fileid }),
+        loc: Some(SrcLoc { line: node.line, column: node.column, fileid: node.fileid, file_path: node.file_path.clone() }),
         kind: t
     }
 }
@@ -293,7 +293,9 @@ impl ConversionContext {
                 loc: Some(SrcLoc {
                     line: raw_comment.line,
                     column: raw_comment.column,
-                    fileid: raw_comment.fileid
+                    fileid: raw_comment.fileid,
+                    // Can/Should we get file paths for comments?
+                    file_path: String::new(),
                 }),
                 kind: raw_comment.string.clone(),
             };
@@ -1314,10 +1316,8 @@ impl ConversionContext {
                         })
                         .collect();
 
-                    let filename = node.filename.clone();
-
                     let function_decl =
-                        CDeclKind::Function { is_extern, is_inline, is_implicit, typ, name, parameters, body, filename };
+                        CDeclKind::Function { is_extern, is_inline, is_implicit, typ, name, parameters, body };
 
                     self.add_decl(new_id, located(node, function_decl));
                     self.processed_nodes.insert(new_id, OTHER_DECL);
@@ -1330,9 +1330,7 @@ impl ConversionContext {
                     let typ_old = node.type_id.expect("Expected to find type on typedef declaration");
                     let typ = self.visit_qualified_type(typ_old);
 
-                    let filename = node.filename.clone();
-
-                    let typdef_decl = CDeclKind::Typedef { name, typ, is_implicit, filename };
+                    let typdef_decl = CDeclKind::Typedef { name, typ, is_implicit };
 
                     self.add_decl(new_id, located(node, typdef_decl));
                     self.processed_nodes.insert(new_id, TYPDEF_DECL);
@@ -1353,9 +1351,7 @@ impl ConversionContext {
 
                     let integral_type = node.type_id.map(|x| self.visit_qualified_type(x));
 
-                    let filename = node.filename.clone();
-
-                    let enum_decl = CDeclKind::Enum { name, variants, integral_type, filename };
+                    let enum_decl = CDeclKind::Enum { name, variants, integral_type };
 
                     self.add_decl(new_id, located(node, enum_decl));
                     self.processed_nodes.insert(new_id, ENUM_DECL);
@@ -1369,9 +1365,7 @@ impl ConversionContext {
                         _ => panic!("Expected constant int expr"),
                     };
 
-                    let filename = node.filename.clone();
-
-                    let enum_constant_decl = CDeclKind::EnumConstant { name, value, filename };
+                    let enum_constant_decl = CDeclKind::EnumConstant { name, value };
 
                     self.add_decl(new_id, located(node, enum_constant_decl));
                     self.processed_nodes.insert(new_id, ENUM_CON);
@@ -1391,9 +1385,7 @@ impl ConversionContext {
                     let typ_id = node.type_id.expect("Expected to find type on variable declaration");
                     let typ = self.visit_qualified_type(typ_id);
 
-                    let filename = node.filename.clone();
-
-                    let variable_decl = CDeclKind::Variable { is_static, is_extern, is_defn, ident, initializer, typ, filename };
+                    let variable_decl = CDeclKind::Variable { is_static, is_extern, is_defn, ident, initializer, typ };
 
                     self.add_decl(new_id, located(node, variable_decl));
                     self.processed_nodes.insert(new_id, VAR_DECL);
@@ -1428,9 +1420,7 @@ impl ConversionContext {
                         }
                     }
 
-                    let filename = node.filename.clone();
-
-                    let record = CDeclKind::Struct { name, fields, is_packed, manual_alignment, filename };
+                    let record = CDeclKind::Struct { name, fields, is_packed, manual_alignment };
 
                     self.add_decl(new_id, located(node, record));
                     self.processed_nodes.insert(new_id, RECORD_DECL);
@@ -1454,9 +1444,7 @@ impl ConversionContext {
                             None
                         };
 
-                    let filename = node.filename.clone();
-
-                    let record = CDeclKind::Union { name, fields, filename };
+                    let record = CDeclKind::Union { name, fields };
 
                     self.add_decl(new_id, located(node, record));
                     self.processed_nodes.insert(new_id, RECORD_DECL);
