@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <cstdlib>
+#include <system_error>
 
 #include "llvm/Support/Debug.h"
 // Declares clang::SyntaxOnlyAction.
@@ -41,6 +43,17 @@ namespace {
         auto ptr = str.data();
         auto len = str.size();
         cbor_encode_text_string(encoder, ptr, len);
+    }
+
+    std::string make_realpath(std::string const &path) {
+        if (auto abs_path = realpath(path.c_str(), nullptr)) {
+            auto result = std::string(abs_path);
+            free(abs_path);
+            return result;
+        } else {
+            std::cerr << "make_realpath: File not found: " << path << std::endl;
+            abort();
+        }
     }
 }
     
@@ -496,8 +509,16 @@ class TranslateASTVisitor final
           return true;
       }
       
-      const std::unordered_map<string,uint64_t> &getFilenames() const {
-          return filenames;
+      // Return the filenames as a vector. Indices correspond to file IDs.
+      std::vector<string> getFilenames() const {
+          // Store filenames in order
+          std::vector<string> ordered_filenames(filenames.size());
+
+          for (auto const &kv : filenames) {
+              ordered_filenames[kv.second] = kv.first;
+          }
+
+          return ordered_filenames;
       }
       
       void encodeSourcePos(CborEncoder *enc, SourceLocation loc, bool isVaList = false) {
@@ -1538,11 +1559,12 @@ void TypeEncoder::VisitVariableArrayType(const VariableArrayType *T) {
 }
 
 class TranslateConsumer : public clang::ASTConsumer {
+    Outputs *outputs;
     const std::string outfile;
 
 public:
-    explicit TranslateConsumer(llvm::StringRef InFile) 
-        : outfile(InFile.str().append(".cbor")) { }
+    explicit TranslateConsumer(Outputs *outputs, llvm::StringRef InFile)
+        : outputs(outputs), outfile(InFile.str()) { }
     
     virtual void HandleTranslationUnit(clang::ASTContext &Context) {
   
@@ -1580,17 +1602,8 @@ public:
             
             // 3. Encode all of the visited file names
             auto filenames = visitor.getFilenames();
-
-            // Store filenames in order
-            auto filenames_count = filenames.size();
-            
-            auto ordered_filenames = std::vector<string>(filenames_count);
-            for (auto &kv : filenames) {
-                ordered_filenames[kv.second] = kv.first;
-            }
-            
-            cbor_encoder_create_array(&outer, &array, filenames_count);
-            for (auto &name : ordered_filenames) {
+            cbor_encoder_create_array(&outer, &array, filenames.size());
+            for (auto const &name : filenames) {
                 cbor_encode_string(&array, name);
             }
             cbor_encoder_close_container(&outer, &array);
@@ -1623,19 +1636,22 @@ public:
         auto needed = cbor_encoder_get_extra_bytes_needed(&encoder);
         assert(needed == size_t(0) && "CBOR output buffer was too small.");
         auto written = cbor_encoder_get_buffer_size(&encoder, buf.data());
-        {   
-            std::ofstream out(outfile, out.binary | out.trunc);
-            out.write(reinterpret_cast<char*>(buf.data()), written);
-        }
+        buf.resize(written);
+        buf.shrink_to_fit();
+
+        (*outputs)[make_realpath(outfile)] = std::move(buf);
     }
 };
 
 class TranslateAction : public clang::ASTFrontendAction {
+    Outputs *outputs;
     
 public:
+    TranslateAction(Outputs *outputs) : outputs(outputs) {}
+
   virtual std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
     clang::CompilerInstance &Compiler, llvm::StringRef InFile) {
-    return std::unique_ptr<clang::ASTConsumer>(new TranslateConsumer(InFile));
+    return std::unique_ptr<clang::ASTConsumer>(new TranslateConsumer(outputs, InFile));
   }
 };
 
@@ -1671,15 +1687,38 @@ static std::vector<const char *>augment_argv(int argc, char *argv[]) {
     return argv_;
 }
 
+class MyFrontendActionFactory : public FrontendActionFactory {
+    Outputs *outputs;
+
+public:
+    MyFrontendActionFactory(Outputs *outputs) : outputs(outputs) {}
+
+    clang::FrontendAction *create() override {
+        return new TranslateAction(outputs);
+    }
+};
+
 int main(int argc, char *argv[]) {
     
     auto argv_ = augment_argv(argc, argv);
     int argc_ = argv_.size() - 1; // ignore the extra nullptr
-
     CommonOptionsParser OptionsParser(argc_, argv_.data(), MyToolCategory);
    
     ClangTool Tool(OptionsParser.getCompilations(),
                   OptionsParser.getSourcePathList());
     
-    return Tool.run(newFrontendActionFactory<TranslateAction>().get());
+    Outputs outputs;
+    MyFrontendActionFactory myFrontendActionFactory(&outputs);
+    int res = Tool.run(&myFrontendActionFactory);
+
+    for (auto const &kv : outputs) {
+        auto const &filename = kv.first;
+        auto const &bytes    = kv.second;
+
+        std::ofstream out(filename + ".cbor", out.binary | out.trunc);
+
+        out.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    }
+
+    return res;
 }
