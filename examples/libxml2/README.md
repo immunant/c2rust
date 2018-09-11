@@ -72,3 +72,11 @@ You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one
 * `testdict` prints "dictionary tests succeeded 20000 strings"
 * `testAutomata` takes a file from `test/automata` and produces equivalent output to C run
 * `testURI` waits on input from stdin, needs example input from `test/URI`. See `Makefile.am` and `result/URI/uri.data` for examples
+
+## Working cross-checks
+* `testchar` all cross-checks match
+* `testdict` all cross-checks match
+* `testapi` all cross-checks match (345 million)
+* `runtest` may have an extra `xmlStrlen` cross-check in the Rust version, but
+  all other cross-checks match
+
