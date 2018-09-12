@@ -295,7 +295,7 @@ impl ConversionContext {
                     column: raw_comment.column,
                     fileid: raw_comment.fileid,
                     // Can/Should we get file paths for comments?
-                    file_path: String::new(),
+                    file_path: None,
                 }),
                 kind: raw_comment.string.clone(),
             };

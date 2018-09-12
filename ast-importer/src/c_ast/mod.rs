@@ -2,6 +2,7 @@ use clang_ast::LRValue;
 use std::collections::{HashMap,HashSet,BTreeMap};
 use indexmap::IndexMap;
 use std::ops::Index;
+use std::path::PathBuf;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub struct CTypeId(pub u64);
@@ -540,7 +541,7 @@ pub struct SrcLoc {
     pub fileid: u64,
     pub line: u64,
     pub column: u64,
-    pub file_path: String,
+    pub file_path: Option<PathBuf>,
 }
 
 

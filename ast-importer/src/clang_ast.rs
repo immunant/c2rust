@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use serde_cbor::{Value, from_value};
 use serde_cbor::error;
 use std;
@@ -22,7 +23,7 @@ pub struct AstNode {
     pub fileid: u64,
     pub line: u64,
     pub column: u64,
-    pub file_path: String,
+    pub file_path: Option<PathBuf>,
     pub type_id: Option<u64>,
     pub rvalue: LRValue,
     pub extras: Vec<Value>,
@@ -118,7 +119,11 @@ pub fn process(items: Value) -> error::Result<AstContext> {
 
             let type_id: Option<u64> = expect_opt_u64(&entry[6]).unwrap();
             let fileid = entry[3].as_u64().unwrap();
-            let file_path = file_paths[fileid as usize].clone();
+            let file_path = match file_paths[fileid as usize].as_str() {
+                "" => None,
+                "?" => None,
+                path => Some(Path::new(path).to_path_buf()),
+            };
 
             let node = AstNode {
                 tag: import_ast_tag(tag),
