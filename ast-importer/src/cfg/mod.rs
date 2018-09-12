@@ -1209,14 +1209,10 @@ impl CfgBuilder {
     }
 
 
-    /// Translate a C statement and tack it onto the end of the `WipBlock` passed in. If necessary,
-    /// intermediate basic blocks can be outputted to the control flow graph.
+    /// Translate a C statement, inserting it into the CFG under the label key passed in.
     ///
     /// If the input C statement naturally passes control to the statement that follows it, the
-    /// return should be the new `WipBlock` (and the label by which this WIP block is referred to).
-    ///
-    /// NOTE: This is the workhorse for generating control flow graphs. By passing threading through
-    ///       a WIP block, we can avoid making a lot of small blocks.
+    /// return should be the new label to give to the fallthrough block.
     ///
     /// NOTE: It is important that we finish adding a block to the graph before we start creating
     ///       the next one. Every time a new block is started with `new_wip_block`, we take a
@@ -1224,9 +1220,15 @@ impl CfgBuilder {
     fn convert_stmt_help(
         &mut self,
         translator: &Translation,
-        stmt_id: CStmtId,         // C statement to translate
-        in_tail: Option<ImplicitReturnType>,  // Are we in tail position (is there anything to fallthrough to)?
-        entry: Label,             // Entry label
+
+        // C statement to translate
+        stmt_id: CStmtId,
+
+        // Are we in tail position (does the function end with this statement)?
+        in_tail: Option<ImplicitReturnType>,
+
+        // Entry label
+        entry: Label,
     ) -> Result<Option<Label>, String> {
 
         // Add to the per_stmt_stack
@@ -1654,7 +1656,8 @@ impl CfgBuilder {
                 Ok(Some(wip))
             }
         };
-        let out_wip: Option<WipBlock> = out_wip?;
+        let out_wip: Option<WipBlock> = out_wip?; // Type inference help...
+
         let out_end = self.fresh_label();
         let out_wip: Option<WipBlock> = out_wip.map(|w| {
             self.add_wip_block(w, GenTerminator::Jump(out_end));
@@ -1662,7 +1665,8 @@ impl CfgBuilder {
         });
 
 
-        if self.per_stmt_stack.last().unwrap().is_contained(&self.c_label_to_goto, self.currently_live.last().unwrap()) {
+        // Is the CFG for this statement self contained (so can we reloop it immediately)
+        if translator.tcfg.incremental_relooper && self.per_stmt_stack.last().unwrap().is_contained(&self.c_label_to_goto, self.currently_live.last().unwrap()) {
 
             // Close off the `wip` using a `break` terminator
             let brk_lbl: Label = self.fresh_label();
@@ -1803,28 +1807,6 @@ impl CfgBuilder {
                     };
                     (new_stmt.is_none(), vec![new_stmt.unwrap_or(stmt)])
                 }
-//                    vec![Stmt {
-//                        node: match stmt.node {
-//                            StmtKind::Expr(expr) => StmtKind::Expr(
-//                                P(Expr {
-//                                    node: if let ExprKind::If(ref cond, ref body, ref els) = &expr.node {
-//                                        match &els.map(|e| e.node) {
-//                                            Some(ExprKind::Block(ref blk, _)) if blk.stmts.len() == 1 && is_trailing_break(&blk.stmts[0], lbl) => {
-//                                                ExprKind::If(cond.clone(), body.clone(), None)
-//                                            }
-//                                            _ => expr.node
-//                                        }
-//                                    } else {
-//                                        expr.node
-//                                    },
-//                                    ..*expr
-//                                })
-//                            ),
-//                            s => s,
-//                        },
-//                        ..stmt
-//                    }]
-//                }
             };
 
 

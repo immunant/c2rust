@@ -63,6 +63,10 @@ fn main() {
             .long("reloop-cfgs")
             .help("Translate ALL function bodies using a CFG/Relooper approach")
             .takes_value(false))
+        .arg(Arg::with_name("no-incremental-relooper")
+            .long("no-incremental-relooper")
+            .help("Disable relooping function bodies incrementally")
+            .takes_value(false))
         .arg(Arg::with_name("no-simplify-structures")
             .long("no-simplify-structures")
             .help("Do not run a pass to simplify structures")
@@ -147,6 +151,7 @@ fn main() {
     let tcfg = TranslationConfig {
         fail_on_error:          matches.is_present("fail-on-error"),
         reloop_cfgs:            matches.is_present("reloop-cfgs"),
+        incremental_relooper:   !matches.is_present("no-incremental-relooper"),
         fail_on_multiple:       matches.is_present("fail-on-multiple"),
         dump_function_cfgs:     matches.is_present("dump-function-cfgs"),
         json_function_cfgs:     matches.is_present("json-function-cfgs"),

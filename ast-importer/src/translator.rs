@@ -132,6 +132,7 @@ pub enum ReplaceMode {
 #[derive(Debug)]
 pub struct TranslationConfig {
     pub reloop_cfgs: bool,
+    pub incremental_relooper: bool,
     pub fail_on_multiple: bool,
     pub dump_function_cfgs: bool,
     pub json_function_cfgs: bool,
