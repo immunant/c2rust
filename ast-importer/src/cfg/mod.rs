@@ -1697,10 +1697,8 @@ impl CfgBuilder {
                     Some(ImplicitReturnType::Main) => {
                         if let Expr { node: ExprKind::Ret(Some(ref zero)), .. } = **other {
                             if let Expr { node: ExprKind::Lit(ref lit), .. } = **zero {
-                                if let Expr { node: ExprKind::Lit(ref lit), .. } = **zero {
-                                    if let Lit { node: LitKind::Int(0, LitIntType::Unsuffixed), .. } = **lit {
-                                        return true;
-                                    }
+                                if let Lit { node: LitKind::Int(0, LitIntType::Unsuffixed), .. } = **lit {
+                                    return true;
                                 }
                             }
                         }
@@ -1772,7 +1770,7 @@ impl CfgBuilder {
                     let new_stmt: Option<Stmt> = if let Stmt { node: StmtKind::Expr(ref expr), id, span } = &stmt {
                         if let Expr { node: ExprKind::If(ref cond, ref body, ref els), id: id1, span: span1, ref attrs } = **expr {
                             if let Some(ref els) = els {
-                                if let Expr { node: ExprKind::Block(ref blk, c), id: id2, span: span2, attrs: ref attrs2 } = **els {
+                                if let Expr { node: ExprKind::Block(ref blk, None), .. } = **els {
                                     if blk.stmts.len() == 1 && is_trailing_break(&blk.stmts[0]) {
                                         Some(Stmt {
                                             node: StmtKind::Expr(

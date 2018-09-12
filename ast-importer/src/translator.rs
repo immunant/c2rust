@@ -1,6 +1,6 @@
 use syntax::{with_globals, ast};
 use syntax::ast::*;
-use syntax::codemap::{DUMMY_SP, Span};
+use syntax::codemap::Span;
 use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{Token,Nonterminal};
 use renamer::Renamer;
@@ -4626,17 +4626,16 @@ impl Translation {
     /// This predicate checks for control-flow statements under a declaration
     /// that will require relooper to be enabled to be handled.
     fn function_requires_relooper(&self, stmt_ids: &[CStmtId]) -> bool {
-        true
-//        stmt_ids
-//        .iter()
-//        .flat_map(|&stmt_id| DFExpr::new(&self.ast_context, stmt_id.into()))
-//        .flat_map(SomeId::stmt)
-//        .any(|x| {
-//            match self.ast_context[x].kind {
-//                CStmtKind::Goto(..) | CStmtKind::Label(..) | CStmtKind::Switch{..} => true,
-//                _ => false,
-//            }
-//        })
+        stmt_ids
+        .iter()
+        .flat_map(|&stmt_id| DFExpr::new(&self.ast_context, stmt_id.into()))
+        .flat_map(SomeId::stmt)
+        .any(|x| {
+            match self.ast_context[x].kind {
+                CStmtKind::Goto(..) | CStmtKind::Label(..) | CStmtKind::Switch{..} => true,
+                _ => false,
+            }
+        })
     }
 
     fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> P<Expr> {
