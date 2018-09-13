@@ -23,6 +23,9 @@ use dtoa;
 use with_stmts::WithStmts;
 use rust_ast::traverse::Traversal;
 use std::io;
+use std::path::PathBuf;
+use std::ffi::OsStr;
+use std::mem::swap;
 
 use cfg;
 
@@ -95,6 +98,32 @@ pub struct TranslationConfig {
     pub replace_unsupported_decls: ReplaceMode,
     pub translate_valist: bool,
     pub reduce_type_annotations: bool,
+    pub reorganize_definitions: bool,
+}
+
+#[derive(Debug)]
+struct ItemStore {
+    items: Vec<P<Item>>,
+    foreign_items: Vec<ForeignItem>,
+}
+
+impl ItemStore {
+    fn new() -> Self {
+        ItemStore {
+            items: Vec::new(),
+            foreign_items: Vec::new(),
+        }
+    }
+
+    fn drain(&mut self) -> (Vec<P<Item>>, Vec<ForeignItem>) {
+        let mut items = Vec::new();
+        let mut foreign_items = Vec::new();
+
+        swap(&mut items, &mut self.items);
+        swap(&mut foreign_items, &mut self.foreign_items);
+
+        (items, foreign_items)
+    }
 }
 
 pub struct Translation {
@@ -119,6 +148,9 @@ pub struct Translation {
     // Comment support
     pub comment_context: RefCell<CommentContext>, // Incoming comments
     pub comment_store: RefCell<CommentStore>, // Outgoing comments
+
+    // Mod block defintion reorganization
+    mod_blocks: RefCell<HashMap<PathBuf, ItemStore>>,
 }
 
 
@@ -350,9 +382,43 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 _ => false,
             };
             if needs_export {
+                // Rust 1.29 has iterator flatten which would work here
+                let file_path = match decl.loc.as_ref().map(|loc| &loc.file_path) {
+                    Some(Some(s)) => Some(s),
+                    _ => None,
+                };
+                // REVIEW: Is there a better way to know if this defintion comes from this file
+                // other than checking if the extension is .c? Wouldn't work in the case of no extension
+                let is_this_file = if let Some(file_path) = file_path {
+                    file_path.extension() == Some(OsStr::new("c"))
+                } else {
+                    false
+                };
+
                 match t.convert_decl(true, decl_id) {
-                    Ok(ConvertedDecl::Item(item)) => t.items.borrow_mut().push(item),
-                    Ok(ConvertedDecl::ForeignItem(mut item)) => t.foreign_items.push(item),
+                    Ok(ConvertedDecl::Item(item)) => {
+                        // FIXME: Better check?
+                        if t.tcfg.reorganize_definitions && file_path.is_some() && !is_this_file {
+                            // TODO: add a flag for this, support modules in modules?
+                            let mut mod_blocks = t.mod_blocks.borrow_mut();
+                            let mut mod_block_items = mod_blocks.entry(file_path.unwrap().clone()).or_insert(ItemStore::new());
+
+                            mod_block_items.items.push(item);
+                        } else {
+                            t.items.borrow_mut().push(item)
+                        }
+                    },
+                    Ok(ConvertedDecl::ForeignItem(mut item)) => {
+                        // FIXME: Better check?
+                        if t.tcfg.reorganize_definitions && !is_this_file {
+                            let mut mod_blocks = t.mod_blocks.borrow_mut();
+                            let mut mod_block_items = mod_blocks.entry(file_path.unwrap().clone()).or_insert(ItemStore::new());
+
+                            mod_block_items.foreign_items.push(item);
+                        } else {
+                            t.foreign_items.push(item)
+                        }
+                    },
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
                         let msg = format!("Skipping declaration due to error: {}, kind: {:?}", e, k);
@@ -422,6 +488,30 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 .collect();
 
             s.comments().get_or_insert(vec![]).extend(traverser.into_comment_store().into_comments());
+
+            // TODO: Put this in a function
+            for (file_path, ref mut mod_item_store) in t.mod_blocks.borrow_mut().iter_mut() {
+                // TODO: apply comments?
+
+                let (mut items, foreign_items) = mod_item_store.drain();
+                let file_path_str = file_path.to_str().expect("Found invalid unicode");
+                let mod_name = file_path
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .expect("Found invalid unicode")
+                    .replace('.', "_");
+
+                if !foreign_items.is_empty() {
+                    items.push(mk().abi("C").foreign_items(foreign_items));
+                }
+
+                let mod_item = mk()
+                    .vis("pub")
+                    .call_attr("cfg", vec![format!("source_header = \"{}\"", file_path_str)])
+                    .module(mod_name, items);
+                s.print_item(&mod_item)?;
+            }
 
             // This could have been merged in with items below; however, it's more idiomatic to have
             // imports near the top of the file than randomly scattered about. Also, there is probably
@@ -546,6 +636,7 @@ pub enum ExprUse {
 /// Declarations can be converted into a normal item, or into a foreign item.
 /// Foreign items are called out specially because we'll combine all of them
 /// into a single extern block at the end of translation.
+#[derive(Debug)]
 enum ConvertedDecl {
     ForeignItem(ForeignItem),
     Item(P<Item>),
@@ -589,6 +680,7 @@ impl Translation {
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             sectioned_static_initializers: RefCell::new(Vec::new()),
+            mod_blocks: RefCell::new(HashMap::new()),
         }
     }
 

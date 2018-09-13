@@ -136,6 +136,10 @@ fn main() {
              .short("o")
              .help("Write the output to a specified file")
              .takes_value(true))
+        .arg(Arg::with_name("reorganize-definitions")
+             .long("reorganize-definitions")
+             .help("Output file in such a way that the refactoring tool can deduplicate code")
+             .takes_value(false))
         .get_matches();
 
     // Build a TranslationConfig from the command line
@@ -161,6 +165,7 @@ fn main() {
         use_c_multiple_info:    !matches.is_present("ignore-c-multiple-info"),
         simplify_structures:    !matches.is_present("no-simplify-structures"),
         reduce_type_annotations:matches.is_present("reduce-type-annotations"),
+        reorganize_definitions: matches.is_present("reorganize-definitions"),
         emit_module:            matches.is_present("emit-module"),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
