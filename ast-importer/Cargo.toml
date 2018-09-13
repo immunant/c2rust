@@ -16,3 +16,4 @@ libc = "0.2"
 
 [build-dependencies]
 bindgen="0.37"
+cmake = "0.1"
