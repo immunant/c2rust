@@ -37,6 +37,13 @@ add_dependencies(tinycbor tinycbor_build)
 add_clang_executable(ast-exporter
   AstExporter.cpp
   FloatingLexer.cpp
+  ExportResult.cpp
+  )
+
+add_clang_library(clangAstExporter
+  AstExporter.cpp
+  FloatingLexer.cpp
+  ExportResult.cpp
   )
 
 # PRIVATE was added to make ast-exporter build with LLVM 6.0. Keyword
@@ -50,7 +57,17 @@ target_link_libraries(ast-exporter PRIVATE
   tinycbor
 )
 
+target_link_libraries(clangAstExporter PRIVATE
+  clangAST
+  clangFrontend
+  clangTooling
+  clangBasic
+  clangASTMatchers
+  tinycbor
+)
+
 # ast-exporter will use the same headers that
 # clang does, so they need to be in the same place
 # in the build directory
 add_dependencies(ast-exporter clang-headers)
+add_dependencies(clangAstExporter clang-headers)

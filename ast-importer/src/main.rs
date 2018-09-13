@@ -12,8 +12,10 @@ use ast_importer::c_ast::*;
 use ast_importer::c_ast::Printer;
 use ast_importer::clang_ast::AstContext;
 use ast_importer::translator::{ReplaceMode,TranslationConfig};
+use ast_importer::exporter;
 use clap::{Arg, App};
 use serde_cbor::{Value, from_slice};
+
 
 fn main() {
 
@@ -260,6 +262,8 @@ fn parse_untyped_ast(file_path: &Path) -> Result<AstContext, Error> {
     let mut buffer = vec![];
     f.read_to_end(&mut buffer)?;
 
+    let cbors = exporter::get_ast_cbors(&[filename]);
+    let buffer = cbors.values().next().unwrap();
     let items: Value = from_slice(&buffer[..]).unwrap();
 
     match process(items) {

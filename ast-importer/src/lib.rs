@@ -9,6 +9,7 @@ extern crate serde;
 extern crate serde_json;
 extern crate rustc;
 extern crate rust_ast_builder;
+extern crate libc;
 
 pub mod renamer;
 pub mod clang_ast;
@@ -19,6 +20,7 @@ pub mod c_ast;
 pub mod rust_ast;
 pub mod cfg;
 pub mod with_stmts;
+pub mod exporter;
 
 #[cfg(test)]
 mod tests {

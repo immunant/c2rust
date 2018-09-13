@@ -6,7 +6,6 @@
 #include <unordered_set>
 #include <vector>
 #include <cstdlib>
-#include <system_error>
 
 #include "llvm/Support/Debug.h"
 // Declares clang::SyntaxOnlyAction.
@@ -26,6 +25,7 @@
 #include <tinycbor/cbor.h>
 #include "ast_tags.hpp"
 #include "FloatingLexer.h"
+#include "ExportResult.hpp"
 
 using namespace llvm;
 using namespace clang;
@@ -1664,7 +1664,7 @@ template <class _Tp, size_t _Sz> constexpr size_t size(const _Tp (&)[_Sz]) noexc
 
 // We augment the command line arguments to ensure that comments are always
 // parsed and string literals are always treated as constant.
-static std::vector<const char *>augment_argv(int argc, char *argv[]) {
+static std::vector<const char *>augment_argv(int argc, const char *argv[]) {
     const char * const extras[] = {
         "-extra-arg=-fparse-all-comments", // always parse comments
         "-extra-arg=-Wwrite-strings",      // string literals are constant
@@ -1698,18 +1698,51 @@ public:
     }
 };
 
-int main(int argc, char *argv[]) {
+
+// Marshal the output map into something easy to manipulate in Rust
+ExportResult *make_export_result(const Outputs &outputs) {
+    auto result = new ExportResult;
+    auto n = outputs.size();
+    result->resize(n);
+
+    std::size_t i = 0;
+    for (auto const& kv : outputs) {
+        auto const& name = kv.first;
+        auto const& bytes = kv.second;
+
+        auto name_array = new char[name.size() + 1];
+        strcpy(name_array, name.c_str());
+        result->names[i] = name_array;
+
+        auto byte_array = new uint8_t[bytes.size()];
+        std::copy(std::begin(bytes), std::end(bytes), byte_array);
+        result->bytes[i] = byte_array;
+        result->sizes[i] = bytes.size();
+    }
     
+    return result;
+}
+
+Outputs process(int argc, const char *argv[], int *result)
+{
     auto argv_ = augment_argv(argc, argv);
     int argc_ = argv_.size() - 1; // ignore the extra nullptr
     CommonOptionsParser OptionsParser(argc_, argv_.data(), MyToolCategory);
-   
+
     ClangTool Tool(OptionsParser.getCompilations(),
-                  OptionsParser.getSourcePathList());
-    
+                   OptionsParser.getSourcePathList());
+
     Outputs outputs;
     MyFrontendActionFactory myFrontendActionFactory(&outputs);
-    int res = Tool.run(&myFrontendActionFactory);
+
+    *result = Tool.run(&myFrontendActionFactory);
+
+    return outputs;
+}
+
+int main(int argc, char *argv[]) {
+    int result;
+    auto outputs = process(argc, const_cast<const char **>(argv), &result);
 
     for (auto const &kv : outputs) {
         auto const &filename = kv.first;
@@ -1720,5 +1753,18 @@ int main(int argc, char *argv[]) {
         out.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     }
 
-    return res;
+    return result;
+}
+
+// AST-Extractor as a library interface.
+extern "C" {
+    ExportResult *ast_extractor(int argc, const char *argv[]) {
+        int result;
+        auto outputs = process(argc, argv, &result);
+        return make_export_result(outputs);
+    }
+
+    void drop_export_result(ExportResult *result) {
+        delete result;
+    }
 }
