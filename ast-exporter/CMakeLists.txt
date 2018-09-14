@@ -1,5 +1,6 @@
-set(LLVM_LINK_COMPONENTS support)
+cmake_minimum_required(VERSION 3.11)
 
+set(LLVM_LINK_COMPONENTS support)
 
 set(TINYCBOR_URL "https://github.com/intel/tinycbor/archive/v0.5.1.tar.gz"
     CACHE STRING "tinycbor download URL")
@@ -34,18 +35,22 @@ add_library(tinycbor STATIC IMPORTED)
 set_target_properties(tinycbor PROPERTIES IMPORTED_LOCATION ${TINYCBOR_PREFIX}/lib/libtinycbor.a)
 add_dependencies(tinycbor tinycbor_build)
 
-add_clang_executable(ast-exporter
+find_package(LLVM REQUIRED CONFIG)
+find_package(CLANG REQUIRED CONFIG)
+
+include_directories(${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
+add_definitions(${LLVM_DEFINITIONS} ${CLANG_DEFINITIONS})
+
+# The executable
+add_executable(ast-exporter
   AstExporter.cpp
   FloatingLexer.cpp
   ExportResult.cpp
   )
-
-add_clang_library(clangAstExporter
-  AstExporter.cpp
-  FloatingLexer.cpp
-  ExportResult.cpp
+set_target_properties(ast-exporter PROPERTIES
+  CXX_STANDARD 17
+  CXX_EXTENSIONS ON
   )
-
 # PRIVATE was added to make ast-exporter build with LLVM 6.0. Keyword
 # description: https://cmake.org/pipermail/cmake/2016-May/063400.html
 target_link_libraries(ast-exporter PRIVATE
@@ -57,6 +62,16 @@ target_link_libraries(ast-exporter PRIVATE
   tinycbor
 )
 
+# The library
+add_library(clangAstExporter
+  AstExporter.cpp
+  FloatingLexer.cpp
+  ExportResult.cpp
+  )
+set_target_properties(clangAstExporter PROPERTIES
+  CXX_STANDARD 17
+  CXX_EXTENSIONS ON
+  )
 target_link_libraries(clangAstExporter PRIVATE
   clangAST
   clangFrontend
@@ -66,8 +81,3 @@ target_link_libraries(clangAstExporter PRIVATE
   tinycbor
 )
 
-# ast-exporter will use the same headers that
-# clang does, so they need to be in the same place
-# in the build directory
-add_dependencies(ast-exporter clang-headers)
-add_dependencies(clangAstExporter clang-headers)

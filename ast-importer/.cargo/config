@@ -1,2 +1,0 @@
-[build]
-rustflags = [ "-C", "link-args=-Wl,-rpath,../dependencies/llvm-6.0.1/build/lib" ]

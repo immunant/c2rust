@@ -5,16 +5,11 @@ use std::env;
 use std::path::PathBuf;
 use cmake::Config;
 
-// This build.rs can take a while. Use `cargo build -vv` to more progress
-// output (eg. CMake's).
+// Use `cargo build -vv` to get detailed output on what this script's progress.
 
 fn main() {
-
-    build_ast_exporter(false, 1);
-
-    // Tell cargo to tell rustc to link the system bzip2
-    // shared library.
-    // println!("cargo:rustc-link-lib=bz2");
+    // Build the exporter library and link it (and its dependencies) in
+    build_ast_exporter("/usr/local/opt/llvm/lib");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
@@ -58,43 +53,96 @@ fn main() {
         .write_to_file(out_path.join("cppbindings.rs"))
         .expect("Couldn't write cppbindings!");
 
- //   println!("cargo:rustc-link-search=/Users/emertens/Source/c2rust/c2rust/dependencies/llvm-6.0.1/build.argolis.galois.com/lib");
 }
 
-// Call out to CMake, build the exporter library, and tell cargo where to look for it.
-// Note that `CMAKE_BUILD_TYPE` gets implicitly determined:
-//
-//    * if `opt-level=0`                              then `CMAKE_BUILD_TYPE=Debug`
-//    * if `opt-level={1,2,3}` and not `debug=false`, then `CMAKE_BUILD_TYPE=RelWithDebInfo`
-//
-// TODO: turn LLVM source into a gitsubmodule.
-fn build_ast_exporter(assertions: bool, max_link_jobs: i32) {
 
-    println!("cargo:rerun-if-changed=../dependencies/llvm-6.0.1/src");
 
-    // This takes a while and gives no output. Build progress is outputted to
-    // the `../dependencies/llvm-6.0.1/build/.ninja_log` file.
-    let dst = Config::new("../dependencies/llvm-6.0.1/src")
+/** Call out to CMake, build the exporter library, and tell cargo where to look for it.
+  * Note that `CMAKE_BUILD_TYPE` gets implicitly determined:
+  *
+  *   - if `opt-level=0`                              then `CMAKE_BUILD_TYPE=Debug`
+  *   - if `opt-level={1,2,3}` and not `debug=false`, then `CMAKE_BUILD_TYPE=RelWithDebInfo`
+  */
+fn build_ast_exporter(llvm_lib: &str) {
+
+    // This is where the C++ source lives.
+    println!("cargo:rerun-if-changed=../ast-exporter");
+
+    let dst = Config::new("../ast-exporter")
         .generator("Ninja")
         .no_build_target(true)
-        .out_dir("../dependencies/llvm-6.0.1")
+        .out_dir("../dependencies")
 
         // General CMake variables
         .define("CMAKE_C_COMPILER",   "clang")
         .define("CMAKE_CXX_COMPILER", "clang++")
 
-        // LLVM/Clang variables (see https://llvm.org/docs/CMake.html#llvm-specific-variables)
-        .define("LLVM_ENABLE_ASSERTIONS",  if assertions { "1" } else { "0" })
-        .define("LLVM_TARGETS_TO_BUILD",   "X86")
-        .define("LLVM_INCLUDE_UTILS",      "1")
-        .define("BUILD_SHARED_LIBS",       "1")  // fiddle with this to get static libraries built instead
-        .define("LLVM_PARALLEL_LINK_JOBS", &max_link_jobs.to_string())
+        // Where to find LLVM/Clang CMake files
+        .define("LLVM_DIR",           &format!("{}/cmake/llvm",  llvm_lib))
+        .define("CLANG_DIR",          &format!("{}/cmake/clang", llvm_lib))
 
         // What to build
         .build_arg("clangAstExporter")
         .build();
 
-    // Tell Cargo where to find these libraries
-    println!("cargo:rustc-link-search={}/build/lib", dst.display());
-    println!("cargo:rustc-link-lib={}", "clangAstExporter");
+    let out_dir = dst.display();
+
+
+    /* When you build the 'ast-exporter' executable with CMake, it internally
+     * computes all of the transitive library dependencies and forwards those
+     * to the linker invocation.
+     *
+     * Unfortunately, I haven't found a nice way to get CMake to output those
+     * to that 'build.rs' can pick them up list them here. As a stopgap
+     * solution, I ran CMake on the 'ast-exporter' exporter and intercepted
+     * the 'ld' call to figure out which the libraries we need to link in.
+     */
+
+    // Link against these system libs
+    println!("cargo:rustc-link-lib=z");
+    println!("cargo:rustc-link-lib=curses");
+    println!("cargo:rustc-link-lib=m");
+    println!("cargo:rustc-link-lib=c++");
+
+    // Link against these LLVM/Clang libs
+    println!("cargo:rustc-link-search={}", llvm_lib);
+    for lib in vec![
+      "clangAST",
+      "clangFrontend",
+      "clangTooling",
+      "clangBasic",
+      "clangASTMatchers",
+      "clangFrontend",
+      "clangParse",
+      "LLVMMCParser",
+      "clangSerialization",
+      "clangSema",
+      "clangEdit",
+      "clangAnalysis",
+      "LLVMBitReader",
+      "LLVMProfileData",
+      "clangDriver",
+      "LLVMOption",
+      "clangFormat",
+      "clangToolingCore",
+      "clangAST",
+      "clangRewrite",
+      "clangLex",
+      "clangBasic",
+      "LLVMCore",
+      "LLVMBinaryFormat",
+      "LLVMMC",
+      "LLVMSupport",
+      "LLVMDemangle",
+    ] {
+        println!("cargo:rustc-link-lib=dylib={}", lib);
+    }
+
+    // Link against static TinyCBOR lib
+    println!("cargo:rustc-link-search={}/build/tinycbor/lib", out_dir);
+    println!("cargo:rustc-link-lib=static=tinycbor");
+
+    // Link against 'clangAstExporter'
+    println!("cargo:rustc-link-search={}/build", out_dir);
+    println!("cargo:rustc-link-lib=static={}", "clangAstExporter");
 }

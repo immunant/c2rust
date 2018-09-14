@@ -262,8 +262,6 @@ fn parse_untyped_ast(file_path: &Path) -> Result<AstContext, Error> {
     let mut buffer = vec![];
     f.read_to_end(&mut buffer)?;
 
-    let cbors = exporter::get_ast_cbors(&[filename]);
-    let buffer = cbors.values().next().unwrap();
     let items: Value = from_slice(&buffer[..]).unwrap();
 
     match process(items) {
