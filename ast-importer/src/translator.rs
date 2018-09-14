@@ -489,7 +489,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
             s.comments().get_or_insert(vec![]).extend(traverser.into_comment_store().into_comments());
 
-            // TODO: Put this in a function
+            // TODO: Put this in a function. Though that might not possible unless the function
+            // is defined to be called with partial borrows only
             for (file_path, ref mut mod_item_store) in t.mod_blocks.borrow_mut().iter_mut() {
                 // TODO: apply comments?
 
@@ -502,13 +503,23 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                     .expect("Found invalid unicode")
                     .replace('.', "_");
 
+                for item in items.iter() {
+                    let ident_name = item.ident.name.as_str();
+                    let use_path = vec![mod_name.as_str(), &*ident_name];
+
+                    t.uses.borrow_mut().push(mk().use_item(use_path, None as Option<Ident>));
+                }
+
+                // Liberally grab libc from parent just incase
+                items.push(mk().use_item(vec!["super", "libc"], None as Option<Ident>));
+
                 if !foreign_items.is_empty() {
                     items.push(mk().abi("C").foreign_items(foreign_items));
                 }
 
                 let mod_item = mk()
                     .vis("pub")
-                    .call_attr("cfg", vec![format!("source_header = \"{}\"", file_path_str)])
+                    .call_attr("cfg", vec![format!("not(source_header = \"{}\")", file_path_str)])
                     .module(mod_name, items);
                 s.print_item(&mod_item)?;
             }
