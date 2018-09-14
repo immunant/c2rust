@@ -6,7 +6,7 @@ extern crate ast_importer;
 use std::io::{Error, stdout};
 use std::io::prelude::*;
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use ast_importer::clang_ast::process;
 use ast_importer::c_ast::*;
 use ast_importer::c_ast::Printer;
@@ -143,6 +143,7 @@ fn main() {
         .get_matches();
 
     // Build a TranslationConfig from the command line
+    let file = matches.value_of("INPUT").unwrap();
     let tcfg = TranslationConfig {
         fail_on_error:          matches.is_present("fail-on-error"),
         reloop_cfgs:            matches.is_present("reloop-cfgs"),
@@ -167,6 +168,7 @@ fn main() {
         reduce_type_annotations:matches.is_present("reduce-type-annotations"),
         reorganize_definitions: matches.is_present("reorganize-definitions"),
         emit_module:            matches.is_present("emit-module"),
+        main_file:              Some(PathBuf::from(file).with_extension("")),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
                 Some("panic") => true,
@@ -176,7 +178,7 @@ fn main() {
         },
         replace_unsupported_decls: ReplaceMode::Extern,
     };
-    let file = matches.value_of("INPUT").unwrap();
+
     let dump_untyped_context = matches.is_present("dump-untyped-clang-ast");
     let dump_typed_context = matches.is_present("dump-typed-clang-ast");
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");

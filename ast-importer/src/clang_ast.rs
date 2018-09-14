@@ -119,9 +119,10 @@ pub fn process(items: Value) -> error::Result<AstContext> {
 
             let type_id: Option<u64> = expect_opt_u64(&entry[6]).unwrap();
             let fileid = entry[3].as_u64().unwrap();
+            // FIXME: Not really sure what "?", so maybe just leaving it as unknown should do?
             let file_path = match file_paths[fileid as usize].as_str() {
                 "" => None,
-                "?" => None,
+                "?" => Some(Path::new("unknown_source").to_path_buf()),
                 path => Some(Path::new(path).to_path_buf()),
             };
 

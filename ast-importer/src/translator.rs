@@ -24,7 +24,6 @@ use with_stmts::WithStmts;
 use rust_ast::traverse::Traversal;
 use std::io;
 use std::path::PathBuf;
-use std::ffi::OsStr;
 use std::mem::swap;
 
 use cfg;
@@ -94,6 +93,7 @@ pub struct TranslationConfig {
     pub simplify_structures: bool,
     pub panic_on_translator_failure: bool,
     pub emit_module: bool,
+    pub main_file: Option<PathBuf>,
     pub fail_on_error: bool,
     pub replace_unsupported_decls: ReplaceMode,
     pub translate_valist: bool,
@@ -283,6 +283,11 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
     }
 }
 
+pub fn clean_path(path: PathBuf) -> String {
+    path.file_name().as_ref().unwrap().to_str().as_ref().unwrap()
+        .replace('.', "_")
+}
+
 pub fn translate_failure(tcfg: &TranslationConfig, msg: &str) {
     if tcfg.fail_on_error {
         panic!("{}", msg)
@@ -383,25 +388,23 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             };
             if needs_export {
                 // Rust 1.29 has iterator flatten which would work here
-                let file_path = match decl.loc.as_ref().map(|loc| &loc.file_path) {
+                let decl_file_path = match decl.loc.as_ref().map(|loc| &loc.file_path) {
                     Some(Some(s)) => Some(s),
                     _ => None,
                 };
-                // REVIEW: Is there a better way to know if this defintion comes from this file
-                // other than checking if the extension is .c? Wouldn't work in the case of no extension
-                let is_this_file = if let Some(file_path) = file_path {
-                    file_path.extension() == Some(OsStr::new("c"))
-                } else {
-                    false
-                };
+                let main_file_path = t.tcfg.main_file.as_ref().unwrap();
+
+                let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap().to_path_buf());
+                let main_file_path_str = clean_path(main_file_path.to_path_buf());
 
                 match t.convert_decl(true, decl_id) {
                     Ok(ConvertedDecl::Item(item)) => {
                         // FIXME: Better check?
-                        if t.tcfg.reorganize_definitions && file_path.is_some() && !is_this_file {
+                        // See if main file is the decl file
+                        if t.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
                             // TODO: add a flag for this, support modules in modules?
                             let mut mod_blocks = t.mod_blocks.borrow_mut();
-                            let mut mod_block_items = mod_blocks.entry(file_path.unwrap().clone()).or_insert(ItemStore::new());
+                            let mut mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
 
                             mod_block_items.items.push(item);
                         } else {
@@ -410,9 +413,9 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                     },
                     Ok(ConvertedDecl::ForeignItem(mut item)) => {
                         // FIXME: Better check?
-                        if t.tcfg.reorganize_definitions && !is_this_file {
+                        if t.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
                             let mut mod_blocks = t.mod_blocks.borrow_mut();
-                            let mut mod_block_items = mod_blocks.entry(file_path.unwrap().clone()).or_insert(ItemStore::new());
+                            let mut mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
 
                             mod_block_items.foreign_items.push(item);
                         } else {
@@ -496,12 +499,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
                 let (mut items, foreign_items) = mod_item_store.drain();
                 let file_path_str = file_path.to_str().expect("Found invalid unicode");
-                let mod_name = file_path
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .expect("Found invalid unicode")
-                    .replace('.', "_");
+                let mod_name = clean_path(file_path.to_path_buf());
 
                 for item in items.iter() {
                     let ident_name = item.ident.name.as_str();
