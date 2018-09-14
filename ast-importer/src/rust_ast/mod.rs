@@ -11,6 +11,7 @@ use std::rc::Rc;
 use rustc_target::spec::abi::{lookup, Abi};
 
 pub mod comment_store;
+pub mod item_store;
 pub mod traverse;
 
 /// Conversion of string-like values into interned `Symbol`s.

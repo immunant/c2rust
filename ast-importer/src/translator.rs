@@ -12,6 +12,7 @@ use c_ast::*;
 use clang_ast::LRValue;
 use rust_ast::{mk, Builder};
 use rust_ast::comment_store::CommentStore;
+use rust_ast::item_store::ItemStore;
 use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;
 use syntax::print::pprust::*;
@@ -24,7 +25,6 @@ use with_stmts::WithStmts;
 use rust_ast::traverse::Traversal;
 use std::io;
 use std::path::PathBuf;
-use std::mem::swap;
 
 use cfg;
 
@@ -99,31 +99,6 @@ pub struct TranslationConfig {
     pub translate_valist: bool,
     pub reduce_type_annotations: bool,
     pub reorganize_definitions: bool,
-}
-
-#[derive(Debug)]
-struct ItemStore {
-    items: Vec<P<Item>>,
-    foreign_items: Vec<ForeignItem>,
-}
-
-impl ItemStore {
-    fn new() -> Self {
-        ItemStore {
-            items: Vec::new(),
-            foreign_items: Vec::new(),
-        }
-    }
-
-    fn drain(&mut self) -> (Vec<P<Item>>, Vec<ForeignItem>) {
-        let mut items = Vec::new();
-        let mut foreign_items = Vec::new();
-
-        swap(&mut items, &mut self.items);
-        swap(&mut foreign_items, &mut self.foreign_items);
-
-        (items, foreign_items)
-    }
 }
 
 pub struct Translation {
@@ -283,7 +258,7 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
     }
 }
 
-pub fn clean_path(path: PathBuf) -> String {
+fn clean_path(path: PathBuf) -> String {
     path.file_name().as_ref().unwrap().to_str().as_ref().unwrap()
         .replace('.', "_")
 }
