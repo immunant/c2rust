@@ -111,7 +111,7 @@ pub struct Translation {
     pub features: RefCell<HashSet<&'static str>>,
     pub uses: RefCell<Vec<P<Item>>>,
     pub items: RefCell<Vec<P<Item>>>,
-    pub foreign_items: Vec<ForeignItem>,
+    pub foreign_items: RefCell<Vec<ForeignItem>>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
 
     // Translation state and utilities
@@ -351,8 +351,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             }
         }
 
-        let main_file_path = t.tcfg.main_file.as_ref().cloned().unwrap();
-        let main_file_path_str = clean_path(main_file_path.to_path_buf());
+        let main_file_path = t.tcfg.main_file.as_ref().cloned();
 
         // Export all types
         for (&decl_id, decl) in &t.ast_context.c_decls {
@@ -371,29 +370,12 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                     Some(Some(s)) => Some(s),
                     _ => None,
                 };
-                let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap().to_path_buf());
-
                 match t.convert_decl(true, decl_id) {
                     Ok(ConvertedDecl::Item(item)) => {
-                        if t.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
-                            // TODO: add a flag for this, support modules in modules?
-                            let mut mod_blocks = t.mod_blocks.borrow_mut();
-                            let mut mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
-
-                            mod_block_items.items.push(item);
-                        } else {
-                            t.items.borrow_mut().push(item)
-                        }
+                        t.insert_item(item, decl_file_path, main_file_path.as_ref().cloned());
                     },
                     Ok(ConvertedDecl::ForeignItem(mut item)) => {
-                        if t.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
-                            let mut mod_blocks = t.mod_blocks.borrow_mut();
-                            let mut mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
-
-                            mod_block_items.foreign_items.push(item);
-                        } else {
-                            t.foreign_items.push(item)
-                        }
+                        t.insert_foreign_item(item, decl_file_path, main_file_path.as_ref().cloned());
                     },
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
@@ -418,29 +400,12 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                     Some(Some(s)) => Some(s),
                     _ => None,
                 };
-
-                let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap().to_path_buf());
                 match t.convert_decl(true, *top_id) {
                     Ok(ConvertedDecl::Item(mut item)) => {
-                        if t.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
-                            // TODO: add a flag for this, support modules in modules?
-                            let mut mod_blocks = t.mod_blocks.borrow_mut();
-                            let mut mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
-
-                            mod_block_items.items.push(item);
-                        } else {
-                            t.items.borrow_mut().push(item)
-                        }
+                        t.insert_item(item, decl_file_path, main_file_path.as_ref().cloned());
                     },
                     Ok(ConvertedDecl::ForeignItem(mut item)) => {
-                        if t.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
-                            let mut mod_blocks = t.mod_blocks.borrow_mut();
-                            let mut mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
-
-                            mod_block_items.foreign_items.push(item);
-                        } else {
-                            t.foreign_items.push(item)
-                        }
+                        t.insert_foreign_item(item, decl_file_path, main_file_path.as_ref().cloned());
                     },
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
@@ -481,7 +446,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             // Re-order comments
             let mut traverser = t.comment_store.into_inner().into_comment_traverser();
 
-            let foreign_items: Vec<ForeignItem> = t.foreign_items
+            let foreign_items: Vec<ForeignItem> = t.foreign_items.into_inner()
                 .into_iter()
                 .map(|fi| traverser.traverse_foreign_item(fi))
                 .collect();
@@ -662,7 +627,7 @@ impl Translation {
             features: RefCell::new(HashSet::new()),
             uses: RefCell::new(Vec::new()),
             items: RefCell::new(vec![]),
-            foreign_items: vec![],
+            foreign_items: RefCell::new(vec![]),
             type_converter: RefCell::new(type_converter),
             ast_context,
             tcfg,
@@ -4327,5 +4292,34 @@ impl Translation {
         };
 
         mk().lit_expr(lit)
+    }
+
+    fn insert_item(&self, item: P<Item>, decl_file_path: Option<&PathBuf>, main_file_path: Option<PathBuf>) {
+        let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap().to_path_buf());
+        let main_file_path_str = clean_path(main_file_path.as_ref().unwrap().to_path_buf());
+
+        if self.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
+            // TODO: add a flag for this, support modules in modules?
+            let mut mod_blocks = self.mod_blocks.borrow_mut();
+            let mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
+
+            mod_block_items.items.push(item);
+        } else {
+            self.items.borrow_mut().push(item)
+        }
+    }
+
+    fn insert_foreign_item(&self, item: ForeignItem, decl_file_path: Option<&PathBuf>, main_file_path: Option<PathBuf>) {
+        let decl_file_path_str: String = clean_path(decl_file_path.as_ref().unwrap().to_path_buf());
+        let main_file_path_str: String = clean_path(main_file_path.as_ref().unwrap().to_path_buf());
+
+        if self.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
+            let mut mod_blocks = self.mod_blocks.borrow_mut();
+            let mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
+
+            mod_block_items.foreign_items.push(item);
+        } else {
+            self.foreign_items.borrow_mut().push(item)
+        }
     }
 }
