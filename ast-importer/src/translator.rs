@@ -258,6 +258,7 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
     }
 }
 
+// FIXME: Simplify this function, or at least make it cleaner?
 fn clean_path(path: PathBuf) -> String {
     path.file_name().as_ref().unwrap().to_str().as_ref().unwrap()
         .replace('.', "_")
@@ -350,6 +351,9 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             }
         }
 
+        let main_file_path = t.tcfg.main_file.as_ref().cloned().unwrap();
+        let main_file_path_str = clean_path(main_file_path.to_path_buf());
+
         // Export all types
         for (&decl_id, decl) in &t.ast_context.c_decls {
             let needs_export = match decl.kind {
@@ -367,15 +371,10 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                     Some(Some(s)) => Some(s),
                     _ => None,
                 };
-                let main_file_path = t.tcfg.main_file.as_ref().unwrap();
-
                 let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap().to_path_buf());
-                let main_file_path_str = clean_path(main_file_path.to_path_buf());
 
                 match t.convert_decl(true, decl_id) {
                     Ok(ConvertedDecl::Item(item)) => {
-                        // FIXME: Better check?
-                        // See if main file is the decl file
                         if t.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
                             // TODO: add a flag for this, support modules in modules?
                             let mut mod_blocks = t.mod_blocks.borrow_mut();
@@ -387,7 +386,6 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                         }
                     },
                     Ok(ConvertedDecl::ForeignItem(mut item)) => {
-                        // FIXME: Better check?
                         if t.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
                             let mut mod_blocks = t.mod_blocks.borrow_mut();
                             let mut mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
@@ -414,9 +412,36 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 _ => false,
             };
             if needs_export {
+                let decl_opt = t.ast_context.c_decls.get(top_id);
+                let decl = decl_opt.as_ref().unwrap();
+                let decl_file_path = match decl.loc.as_ref().map(|loc| &loc.file_path) {
+                    Some(Some(s)) => Some(s),
+                    _ => None,
+                };
+
+                let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap().to_path_buf());
                 match t.convert_decl(true, *top_id) {
-                    Ok(ConvertedDecl::Item(mut item)) => t.items.borrow_mut().push(item),
-                    Ok(ConvertedDecl::ForeignItem(mut item)) => t.foreign_items.push(item),
+                    Ok(ConvertedDecl::Item(mut item)) => {
+                        if t.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
+                            // TODO: add a flag for this, support modules in modules?
+                            let mut mod_blocks = t.mod_blocks.borrow_mut();
+                            let mut mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
+
+                            mod_block_items.items.push(item);
+                        } else {
+                            t.items.borrow_mut().push(item)
+                        }
+                    },
+                    Ok(ConvertedDecl::ForeignItem(mut item)) => {
+                        if t.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
+                            let mut mod_blocks = t.mod_blocks.borrow_mut();
+                            let mut mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
+
+                            mod_block_items.foreign_items.push(item);
+                        } else {
+                            t.foreign_items.push(item)
+                        }
+                    },
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
                         let msg = format!("Failed translating declaration due to error: {}, kind: {:?}", e, k);
