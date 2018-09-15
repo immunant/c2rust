@@ -371,12 +371,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                     _ => None,
                 };
                 match t.convert_decl(true, decl_id) {
-                    Ok(ConvertedDecl::Item(item)) => {
-                        t.insert_item(item, decl_file_path, main_file_path.as_ref().cloned());
-                    },
-                    Ok(ConvertedDecl::ForeignItem(mut item)) => {
-                        t.insert_foreign_item(item, decl_file_path, main_file_path.as_ref().cloned());
-                    },
+                    Ok(ConvertedDecl::Item(item)) => t.insert_item(item, decl_file_path, main_file_path.as_ref().cloned()),
+                    Ok(ConvertedDecl::ForeignItem(mut item)) => t.insert_foreign_item(item, decl_file_path, main_file_path.as_ref().cloned()),
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
                         let msg = format!("Skipping declaration due to error: {}, kind: {:?}", e, k);
@@ -401,12 +397,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                     _ => None,
                 };
                 match t.convert_decl(true, *top_id) {
-                    Ok(ConvertedDecl::Item(mut item)) => {
-                        t.insert_item(item, decl_file_path, main_file_path.as_ref().cloned());
-                    },
-                    Ok(ConvertedDecl::ForeignItem(mut item)) => {
-                        t.insert_foreign_item(item, decl_file_path, main_file_path.as_ref().cloned());
-                    },
+                    Ok(ConvertedDecl::Item(mut item)) => t.insert_item(item, decl_file_path, main_file_path.as_ref().cloned()),
+                    Ok(ConvertedDecl::ForeignItem(mut item)) => t.insert_foreign_item(item, decl_file_path, main_file_path.as_ref().cloned()),
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
                         let msg = format!("Failed translating declaration due to error: {}, kind: {:?}", e, k);
