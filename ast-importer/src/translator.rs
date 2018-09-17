@@ -4320,7 +4320,7 @@ impl Translation {
     /// If we're trying to organize item definitions into submodules, add them to a module
     /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
     fn insert_item(&self, item: P<Item>, decl_file_path: Option<&PathBuf>, main_file_path: Option<PathBuf>) {
-        let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap());
+        let decl_file_path_str = clean_path(decl_file_path.as_ref().expect("This decl should have a file path."));
         let main_file_path_str = clean_path(main_file_path.as_ref().unwrap());
 
         if self.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {

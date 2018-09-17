@@ -122,7 +122,7 @@ pub fn process(items: Value) -> error::Result<AstContext> {
             // FIXME: Not really sure what "?", so maybe just leaving it as unknown should do?
             let file_path = match file_paths[fileid as usize].as_str() {
                 "" => None,
-                "?" => Some(Path::new("unknown_source").to_path_buf()),
+                "?" => None,
                 path => Some(Path::new(path).to_path_buf()),
             };
 

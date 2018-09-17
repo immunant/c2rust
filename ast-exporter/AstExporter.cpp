@@ -466,7 +466,7 @@ class TranslateASTVisitor final
        std::function<void(CborEncoder*)> extra = [](CborEncoder*){}
        ) {
           auto rvalue = false;
-          encode_entry_raw(ast, tag, ast->getLocStart(), T, rvalue, childIds, extra);
+          encode_entry_raw(ast, tag, ast->getLocation(), T, rvalue, childIds, extra);
       }
       
       
