@@ -25,6 +25,7 @@ use with_stmts::WithStmts;
 use rust_ast::traverse::Traversal;
 use std::io;
 use std::path::PathBuf;
+use indexmap::IndexMap;
 
 use cfg;
 
@@ -125,7 +126,7 @@ pub struct Translation {
     pub comment_store: RefCell<CommentStore>, // Outgoing comments
 
     // Mod block defintion reorganization
-    mod_blocks: RefCell<HashMap<PathBuf, ItemStore>>,
+    mod_blocks: RefCell<IndexMap<PathBuf, ItemStore>>,
 }
 
 
@@ -646,7 +647,7 @@ impl Translation {
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             sectioned_static_initializers: RefCell::new(Vec::new()),
-            mod_blocks: RefCell::new(HashMap::new()),
+            mod_blocks: RefCell::new(IndexMap::new()),
         }
     }
 
