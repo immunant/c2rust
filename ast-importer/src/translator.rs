@@ -263,10 +263,8 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
 // FIXME: Simplify this function, or at least make it cleaner?
 fn clean_path(path: &path::Path) -> String {
     path.file_name()
-        .as_ref()
         .unwrap()
         .to_str()
-        .as_ref()
         .unwrap()
         .replace('.', "_")
 }
@@ -456,8 +454,6 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
             s.comments().get_or_insert(vec![]).extend(traverser.into_comment_store().into_comments());
 
-            // TODO: Put this in a function. Though that might not possible unless the function
-            // is defined to be called with partial borrows only
             for (file_path, ref mut mod_item_store) in t.mod_blocks.borrow_mut().iter_mut() {
                 // TODO: apply comments?
 
@@ -486,7 +482,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
     })
 }
 
-fn print_submodule(s: &mut State, submodule_item_store: &mut ItemStore, file_path: &path::Path, mut global_uses: RefMut<Vec<P<Item>>>) -> io::Result<()> {
+fn print_submodule(s: &mut State, submodule_item_store: &mut ItemStore, file_path: &path::Path,
+                   mut global_uses: RefMut<Vec<P<Item>>>) -> io::Result<()> {
     // FIXME: submodule contents aren't deterministic
     let (mut items, foreign_items) = submodule_item_store.drain();
     let file_path_str = file_path.to_str().expect("Found invalid unicode");
