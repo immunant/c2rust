@@ -24,8 +24,9 @@ use dtoa;
 use with_stmts::WithStmts;
 use rust_ast::traverse::Traversal;
 use std::io;
-use std::path::PathBuf;
+use std::path::{self, PathBuf};
 use indexmap::IndexMap;
+use std::cell::RefMut;
 
 use cfg;
 
@@ -260,8 +261,13 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
 }
 
 // FIXME: Simplify this function, or at least make it cleaner?
-fn clean_path(path: PathBuf) -> String {
-    path.file_name().as_ref().unwrap().to_str().as_ref().unwrap()
+fn clean_path(path: &path::Path) -> String {
+    path.file_name()
+        .as_ref()
+        .unwrap()
+        .to_str()
+        .as_ref()
+        .unwrap()
         .replace('.', "_")
 }
 
@@ -455,29 +461,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             for (file_path, ref mut mod_item_store) in t.mod_blocks.borrow_mut().iter_mut() {
                 // TODO: apply comments?
 
-                let (mut items, foreign_items) = mod_item_store.drain();
-                let file_path_str = file_path.to_str().expect("Found invalid unicode");
-                let mod_name = clean_path(file_path.to_path_buf());
-
-                for item in items.iter() {
-                    let ident_name = item.ident.name.as_str();
-                    let use_path = vec![mod_name.as_str(), &*ident_name];
-
-                    t.uses.borrow_mut().push(mk().use_item(use_path, None as Option<Ident>));
-                }
-
-                // Liberally grab libc from parent just incase
-                items.push(mk().use_item(vec!["super", "libc"], None as Option<Ident>));
-
-                if !foreign_items.is_empty() {
-                    items.push(mk().abi("C").foreign_items(foreign_items));
-                }
-
-                let mod_item = mk()
-                    .vis("pub")
-                    .call_attr("cfg", vec![format!("not(source_header = \"{}\")", file_path_str)])
-                    .module(mod_name, items);
-                s.print_item(&mod_item)?;
+                print_submodule(s, mod_item_store, file_path, t.uses.borrow_mut())?;
             }
 
             // This could have been merged in with items below; however, it's more idiomatic to have
@@ -500,6 +484,34 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             Ok(())
         })
     })
+}
+
+fn print_submodule(s: &mut State, submodule_item_store: &mut ItemStore, file_path: &path::Path, mut global_uses: RefMut<Vec<P<Item>>>) -> io::Result<()> {
+    // FIXME: submodule contents aren't deterministic
+    let (mut items, foreign_items) = submodule_item_store.drain();
+    let file_path_str = file_path.to_str().expect("Found invalid unicode");
+    let mod_name = clean_path(file_path);
+
+    for item in items.iter() {
+        let ident_name = item.ident.name.as_str();
+        let use_path = vec![mod_name.as_str(), &*ident_name];
+
+        global_uses.push(mk().use_item(use_path, None as Option<Ident>));
+    }
+
+    // Liberally grab libc from parent just incase
+    items.push(mk().use_item(vec!["super", "libc"], None as Option<Ident>));
+
+    if !foreign_items.is_empty() {
+        items.push(mk().abi("C").foreign_items(foreign_items));
+    }
+
+    let mod_item = mk()
+        .vis("pub")
+        .call_attr("cfg", vec![format!("not(source_header = \"{}\")", file_path_str)])
+        .module(mod_name, items);
+
+    s.print_item(&mod_item)
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations
@@ -4288,8 +4300,8 @@ impl Translation {
     }
 
     fn insert_item(&self, item: P<Item>, decl_file_path: Option<&PathBuf>, main_file_path: Option<PathBuf>) {
-        let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap().to_path_buf());
-        let main_file_path_str = clean_path(main_file_path.as_ref().unwrap().to_path_buf());
+        let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap());
+        let main_file_path_str = clean_path(main_file_path.as_ref().unwrap());
 
         if self.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
             // TODO: add a flag for this, support modules in modules?
@@ -4303,8 +4315,8 @@ impl Translation {
     }
 
     fn insert_foreign_item(&self, item: ForeignItem, decl_file_path: Option<&PathBuf>, main_file_path: Option<PathBuf>) {
-        let decl_file_path_str: String = clean_path(decl_file_path.as_ref().unwrap().to_path_buf());
-        let main_file_path_str: String = clean_path(main_file_path.as_ref().unwrap().to_path_buf());
+        let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap());
+        let main_file_path_str = clean_path(main_file_path.as_ref().unwrap());
 
         if self.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
