@@ -1,4 +1,4 @@
-use syntax::ast::*;
+use syntax::ast::{Item, ForeignItem};
 use syntax::ptr::P;
 use std::mem::swap;
 

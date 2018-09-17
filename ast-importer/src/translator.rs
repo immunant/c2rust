@@ -489,8 +489,16 @@ fn print_submodule(s: &mut State, submodule_item_store: &mut ItemStore, file_pat
     let file_path_str = file_path.to_str().expect("Found invalid unicode");
     let mod_name = clean_path(file_path);
 
+    // REVIEW: Should we join global imports? ie use foo::{bar, baz};
     for item in items.iter() {
         let ident_name = item.ident.name.as_str();
+        let use_path = vec![mod_name.as_str(), &*ident_name];
+
+        global_uses.push(mk().use_item(use_path, None as Option<Ident>));
+    }
+
+    for foreign_item in foreign_items.iter() {
+        let ident_name = foreign_item.ident.name.as_str();
         let use_path = vec![mod_name.as_str(), &*ident_name];
 
         global_uses.push(mk().use_item(use_path, None as Option<Ident>));
@@ -1180,10 +1188,16 @@ impl Translation {
 
                 let new_name = self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, _) = self.convert_variable(None, typ, is_static)?;
-
+                // When putting extern statics into submodules, they need to be public to be accessible
+                let visibility = if self.tcfg.reorganize_definitions {
+                    "pub"
+                } else {
+                    ""
+                };
                 let extern_item = mk_linkage(true, &new_name, ident)
                     .span(s)
                     .set_mutbl(mutbl)
+                    .vis(visibility)
                     .foreign_static(&new_name, ty);
 
                 Ok(ConvertedDecl::ForeignItem(extern_item))
@@ -1372,8 +1386,15 @@ impl Translation {
             } else {
                 // Translating an extern function declaration
 
+                // When putting extern fns into submodules, they need to be public to be accessible
+                let visibility = if self.tcfg.reorganize_definitions {
+                    "pub"
+                } else {
+                    ""
+                };
                 let function_decl = mk_linkage(true, new_name, name)
                     .span(span)
+                    .vis(visibility)
                     .foreign_fn(new_name, decl);
 
                 Ok(ConvertedDecl::ForeignItem(function_decl))
@@ -4296,12 +4317,13 @@ impl Translation {
         mk().lit_expr(lit)
     }
 
+    /// If we're trying to organize item definitions into submodules, add them to a module
+    /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
     fn insert_item(&self, item: P<Item>, decl_file_path: Option<&PathBuf>, main_file_path: Option<PathBuf>) {
         let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap());
         let main_file_path_str = clean_path(main_file_path.as_ref().unwrap());
 
         if self.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
-            // TODO: add a flag for this, support modules in modules?
             let mut mod_blocks = self.mod_blocks.borrow_mut();
             let mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
 
@@ -4311,6 +4333,8 @@ impl Translation {
         }
     }
 
+    /// If we're trying to organize foreign item definitions into submodules, add them to a module
+    /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
     fn insert_foreign_item(&self, item: ForeignItem, decl_file_path: Option<&PathBuf>, main_file_path: Option<PathBuf>) {
         let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap());
         let main_file_path_str = clean_path(main_file_path.as_ref().unwrap());
