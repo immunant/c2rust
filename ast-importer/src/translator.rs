@@ -448,7 +448,15 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
             // Re-order comments
             let mut traverser = t.comment_store.into_inner().into_comment_traverser();
+            let mut mod_items: Vec<P<Item>> = Vec::new();
 
+            for (file_path, ref mut mod_item_store) in t.mod_blocks.borrow_mut().iter_mut() {
+                mod_items.push(make_submodule(mod_item_store, file_path, t.uses.borrow_mut()));
+            }
+
+            mod_items = mod_items.into_iter()
+                .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
+                .collect();
             let foreign_items: Vec<ForeignItem> = t.foreign_items.into_inner()
                 .into_iter()
                 .map(|fi| traverser.traverse_foreign_item(fi))
@@ -460,10 +468,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
             s.comments().get_or_insert(vec![]).extend(traverser.into_comment_store().into_comments());
 
-            for (file_path, ref mut mod_item_store) in t.mod_blocks.borrow_mut().iter_mut() {
-                // TODO: apply comments?
-
-                print_submodule(s, mod_item_store, file_path, t.uses.borrow_mut())?;
+            for mod_item in mod_items {
+                s.print_item(&*mod_item)?;
             }
 
             // This could have been merged in with items below; however, it's more idiomatic to have
@@ -488,8 +494,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
     })
 }
 
-fn print_submodule(s: &mut State, submodule_item_store: &mut ItemStore, file_path: &path::Path,
-                   mut global_uses: RefMut<Vec<P<Item>>>) -> io::Result<()> {
+fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
+                   mut global_uses: RefMut<Vec<P<Item>>>) -> P<Item> {
     // FIXME: submodule contents aren't deterministic
     let (mut items, foreign_items, uses) = submodule_item_store.drain();
     let file_path_str = file_path.to_str().expect("Found invalid unicode");
@@ -518,12 +524,9 @@ fn print_submodule(s: &mut State, submodule_item_store: &mut ItemStore, file_pat
         items.push(mk().abi("C").foreign_items(foreign_items));
     }
 
-    let mod_item = mk()
-        .vis("pub")
-        .call_attr("cfg", vec![format!("not(source_header = \"{}\")", file_path_str)])
-        .module(mod_name, items);
-
-    s.print_item(&mod_item)
+    mk().vis("pub")
+    .call_attr("cfg", vec![format!("not(source_header = \"{}\")", file_path_str)])
+    .module(mod_name, items)
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations
