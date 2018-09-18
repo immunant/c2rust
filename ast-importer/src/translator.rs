@@ -356,8 +356,6 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             }
         }
 
-        let main_file_path = t.tcfg.main_file.as_ref().cloned();
-
         // Export all types
         for (&decl_id, decl) in &t.ast_context.c_decls {
             let needs_export = match decl.kind {
@@ -375,9 +373,11 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                     Some(Some(s)) => Some(s),
                     _ => None,
                 };
+                let main_file_path = t.tcfg.main_file.as_ref();
+
                 match t.convert_decl(true, decl_id) {
-                    Ok(ConvertedDecl::Item(item)) => t.insert_item(item, decl_file_path, main_file_path.as_ref().cloned()),
-                    Ok(ConvertedDecl::ForeignItem(mut item)) => t.insert_foreign_item(item, decl_file_path, main_file_path.as_ref().cloned()),
+                    Ok(ConvertedDecl::Item(item)) => t.insert_item(item, decl_file_path, main_file_path),
+                    Ok(ConvertedDecl::ForeignItem(item)) => t.insert_foreign_item(item, decl_file_path, main_file_path),
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
                         let msg = format!("Skipping declaration due to error: {}, kind: {:?}", e, k);
@@ -401,9 +401,11 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                     Some(Some(s)) => Some(s),
                     _ => None,
                 };
+                let main_file_path = t.tcfg.main_file.as_ref();
+
                 match t.convert_decl(true, *top_id) {
-                    Ok(ConvertedDecl::Item(mut item)) => t.insert_item(item, decl_file_path, main_file_path.as_ref().cloned()),
-                    Ok(ConvertedDecl::ForeignItem(mut item)) => t.insert_foreign_item(item, decl_file_path, main_file_path.as_ref().cloned()),
+                    Ok(ConvertedDecl::Item(item)) => t.insert_item(item, decl_file_path, main_file_path),
+                    Ok(ConvertedDecl::ForeignItem(item)) => t.insert_foreign_item(item, decl_file_path, main_file_path),
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
                         let msg = format!("Failed translating declaration due to error: {}, kind: {:?}", e, k);
@@ -4319,9 +4321,9 @@ impl Translation {
 
     /// If we're trying to organize item definitions into submodules, add them to a module
     /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
-    fn insert_item(&self, item: P<Item>, decl_file_path: Option<&PathBuf>, main_file_path: Option<PathBuf>) {
-        let decl_file_path_str = clean_path(decl_file_path.as_ref().expect("This decl should have a file path."));
-        let main_file_path_str = clean_path(main_file_path.as_ref().unwrap());
+    fn insert_item(&self, item: P<Item>, decl_file_path: Option<&PathBuf>, main_file_path: Option<&PathBuf>) {
+        let decl_file_path_str = clean_path(decl_file_path.expect("This decl should have a file path."));
+        let main_file_path_str = clean_path(main_file_path.unwrap());
 
         if self.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
@@ -4335,9 +4337,9 @@ impl Translation {
 
     /// If we're trying to organize foreign item definitions into submodules, add them to a module
     /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
-    fn insert_foreign_item(&self, item: ForeignItem, decl_file_path: Option<&PathBuf>, main_file_path: Option<PathBuf>) {
-        let decl_file_path_str = clean_path(decl_file_path.as_ref().unwrap());
-        let main_file_path_str = clean_path(main_file_path.as_ref().unwrap());
+    fn insert_foreign_item(&self, item: ForeignItem, decl_file_path: Option<&PathBuf>, main_file_path: Option<&PathBuf>) {
+        let decl_file_path_str = clean_path(decl_file_path.unwrap());
+        let main_file_path_str = clean_path(main_file_path.unwrap());
 
         if self.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
