@@ -375,6 +375,10 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 };
                 let main_file_path = t.tcfg.main_file.as_ref();
 
+                if t.tcfg.reorganize_definitions && decl_file_path != main_file_path {
+                    t.generate_submodule_imports(decl_id, decl_file_path);
+                }
+
                 match t.convert_decl(true, decl_id) {
                     Ok(ConvertedDecl::Item(item)) => t.insert_item(item, decl_file_path, main_file_path),
                     Ok(ConvertedDecl::ForeignItem(item)) => t.insert_foreign_item(item, decl_file_path, main_file_path),
@@ -487,7 +491,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 fn print_submodule(s: &mut State, submodule_item_store: &mut ItemStore, file_path: &path::Path,
                    mut global_uses: RefMut<Vec<P<Item>>>) -> io::Result<()> {
     // FIXME: submodule contents aren't deterministic
-    let (mut items, foreign_items) = submodule_item_store.drain();
+    let (mut items, foreign_items, uses) = submodule_item_store.drain();
     let file_path_str = file_path.to_str().expect("Found invalid unicode");
     let mod_name = clean_path(file_path);
 
@@ -506,8 +510,9 @@ fn print_submodule(s: &mut State, submodule_item_store: &mut ItemStore, file_pat
         global_uses.push(mk().use_item(use_path, None as Option<Ident>));
     }
 
-    // Liberally grab libc from parent just incase
-    items.push(mk().use_item(vec!["super", "libc"], None as Option<Ident>));
+    for use_item in uses {
+        items.push(use_item);
+    }
 
     if !foreign_items.is_empty() {
         items.push(mk().abi("C").foreign_items(foreign_items));
@@ -4348,6 +4353,82 @@ impl Translation {
             mod_block_items.foreign_items.push(item);
         } else {
             self.foreign_items.borrow_mut().push(item)
+        }
+    }
+
+    fn generate_submodule_imports(&self, decl_id: CDeclId, decl_file_path: Option<&PathBuf>) {
+        use self::CTypeKind::*;
+
+        let decl_file_path = decl_file_path.unwrap();
+        let decl = self.ast_context.c_decls.get(&decl_id).unwrap();
+        let mut sumbodule_items = self.mod_blocks.borrow_mut();
+        let item_store = sumbodule_items.entry(decl_file_path.to_path_buf()).or_insert(ItemStore::new());
+
+        fn use_super_libc(store: &mut ItemStore) {
+            let item_use = mk().use_item(vec!["super", "libc"], None as Option<Ident>);
+
+            store.uses.insert(item_use);
+        }
+
+        match decl.kind {
+            CDeclKind::Struct { ref fields, .. } => {
+                if let Some(field_ids) = fields {
+                    for field_id in field_ids {
+                        match self.ast_context.c_decls[field_id].kind {
+                            CDeclKind::Field { typ, .. } => {
+                                match self.ast_context[typ.ctype].kind {
+                                    Char | SChar | Short | UShort | Int | UInt |
+                                    Long | ULong | LongLong | ULongLong => use_super_libc(item_store),
+                                    Pointer(CQualTypeId { ctype, .. }) => {
+                                        // REVIEW: Do you need to resolve type for nested pointers?
+                                        match self.ast_context[ctype].kind {
+                                            Void | Char | SChar | Short | UShort | Int | UInt|
+                                            Long | ULong | LongLong | ULongLong => use_super_libc(item_store),
+                                            // REVIEW: Not sure what this one is
+                                            Elaborated { .. } => {},
+                                            Typedef(decl_id) => {
+                                                let decl = &self.ast_context.c_decls[&decl_id];
+                                                let ident_name = decl.kind.get_name().unwrap();
+                                                let decl_loc = &decl.loc.as_ref().unwrap();
+                                                let file_path = decl_loc.file_path.as_ref().unwrap();
+                                                let file_name = clean_path(&file_path);
+                                                let item_use = mk().use_item(vec!["super", &file_name, ident_name], None as Option<Ident>);
+
+                                                item_store.uses.insert(item_use);
+                                            },
+                                            ref e => unimplemented!("pointee: {:?}", e),
+                                        }
+                                    },
+                                    Typedef(decl_id) => {
+                                        let decl = &self.ast_context.c_decls[&decl_id];
+                                        let ident_name = decl.kind.get_name().unwrap();
+                                        let decl_loc = &decl.loc.as_ref().unwrap();
+                                        let file_path = decl_loc.file_path.as_ref().unwrap();
+                                        let file_name = clean_path(&file_path);
+                                        let item_use = mk().use_item(vec!["super", &file_name, ident_name], None as Option<Ident>);
+
+                                        item_store.uses.insert(item_use);
+                                    },
+                                    ConstantArray { .. } => {},
+                                    ref e => unimplemented!("{:?}", e),
+                                }
+                            },
+                            _ => unreachable!("Found something in a struct other than a field"),
+                        }
+                    }
+                }
+            },
+            CDeclKind::Typedef { typ, .. } => {
+                match self.ast_context[typ.ctype].kind {
+                    Char | SChar | Short | UShort | Int | UInt |
+                    Long | ULong | LongLong | ULongLong => use_super_libc(item_store),
+                    _ => {},
+                }
+            },
+            CDeclKind::EnumConstant { .. } => {},
+            // REVIEW: Enums can only be integer types? So libc is likely always required?
+            CDeclKind::Enum { .. } => use_super_libc(item_store),
+            _ => {},
         }
     }
 }
