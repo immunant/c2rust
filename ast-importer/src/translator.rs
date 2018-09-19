@@ -4364,8 +4364,6 @@ impl Translation {
     }
 
     fn generate_submodule_imports(&self, decl_id: CDeclId, decl_file_path: Option<&PathBuf>) {
-        use self::CTypeKind::*;
-
         let decl_file_path = decl_file_path.unwrap();
         let decl = self.ast_context.c_decls.get(&decl_id).unwrap();
         let mut sumbodule_items = self.mod_blocks.borrow_mut();
@@ -4377,7 +4375,32 @@ impl Translation {
             store.uses.insert(item_use);
         }
 
-        // REVIEW: This might be simplified recursively
+        fn match_type_kind(context: &TypedAstContext, type_kind: &CTypeKind, store: &mut ItemStore) {
+            use self::CTypeKind::*;
+
+            match type_kind {
+                Void | Char | SChar | Short | UShort | Int | UInt |
+                Long | ULong | LongLong | ULongLong => use_super_libc(store),
+                ConstantArray(typ, _) => match_type_kind(context, &context[*typ].kind, store),
+                // REVIEW: Not sure what this one is
+                Elaborated(ctype) => {},
+                // Elaborated(ctype) => unimplemented!("pointee: {:?}", self.ast_context[ctype]),
+                Typedef(decl_id) => {
+                    let decl = &context.c_decls[decl_id];
+                    let ident_name = decl.kind.get_name().unwrap();
+                    let decl_loc = &decl.loc.as_ref().unwrap();
+                    let file_path = decl_loc.file_path.as_ref().unwrap();
+                    let file_name = clean_path(&file_path);
+                    let item_use = mk().use_item(vec!["super", &file_name, ident_name], None as Option<Ident>);
+
+                    store.uses.insert(item_use);
+                },
+                Pointer(CQualTypeId { ctype, .. }) => match_type_kind(context, &context[*ctype].kind, store),
+                Function { .. } => {}, // FIXME
+                IncompleteArray { .. } => {}, // FIXME
+                ref e => unimplemented!("pointee: {:?}", e),
+            }
+        }
 
         match decl.kind {
             CDeclKind::Struct { ref fields, .. } => {
@@ -4385,92 +4408,21 @@ impl Translation {
 
                 for field_id in field_ids.iter() {
                     match self.ast_context.c_decls[field_id].kind {
-                        CDeclKind::Field { typ, .. } => {
-                            match self.ast_context[typ.ctype].kind {
-                                Char | SChar | Short | UShort | Int | UInt |
-                                Long | ULong | LongLong | ULongLong => use_super_libc(item_store),
-                                Pointer(CQualTypeId { ctype, .. }) => {
-                                    // REVIEW: Do you need to resolve type for nested pointers?
-                                    match self.ast_context[ctype].kind {
-                                        Void | Char | SChar | Short | UShort | Int | UInt |
-                                        Long | ULong | LongLong | ULongLong => use_super_libc(item_store),
-                                        // REVIEW: Not sure what this one is
-                                        Elaborated(ctype) => {},
-                                        // Elaborated(ctype) => unimplemented!("pointee: {:?}", self.ast_context[ctype]),
-                                        Typedef(decl_id) => {
-                                            let decl = &self.ast_context.c_decls[&decl_id];
-                                            let ident_name = decl.kind.get_name().unwrap();
-                                            let decl_loc = &decl.loc.as_ref().unwrap();
-                                            let file_path = decl_loc.file_path.as_ref().unwrap();
-                                            let file_name = clean_path(&file_path);
-                                            let item_use = mk().use_item(vec!["super", &file_name, ident_name], None as Option<Ident>);
-
-                                            item_store.uses.insert(item_use);
-                                        },
-                                        ref e => unimplemented!("pointee: {:?}", e),
-                                    }
-                                },
-                                Typedef(decl_id) => {
-                                    let decl = &self.ast_context.c_decls[&decl_id];
-                                    let ident_name = decl.kind.get_name().unwrap();
-                                    let decl_loc = &decl.loc.as_ref().unwrap();
-                                    let file_path = decl_loc.file_path.as_ref().unwrap();
-                                    let file_name = clean_path(&file_path);
-                                    let item_use = mk().use_item(vec!["super", &file_name, ident_name], None as Option<Ident>);
-
-                                    item_store.uses.insert(item_use);
-                                },
-                                ConstantArray(typ, _) => {
-                                    match self.ast_context[typ].kind {
-                                        Void | Char | SChar | Short | UShort | Int | UInt |
-                                        Long | ULong | LongLong | ULongLong => use_super_libc(item_store),
-                                        _ => {},
-                                    }
-                                },
-                                ref e => unimplemented!("{:?}", e),
-                            }
-                        },
+                        CDeclKind::Field { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store),
                         _ => unreachable!("Found something in a struct other than a field"),
                     }
                 }
             },
-            CDeclKind::Typedef { typ, .. } => {
-                match self.ast_context[typ.ctype].kind {
-                    Char | SChar | Short | UShort | Int | UInt |
-                    Long | ULong | LongLong | ULongLong => use_super_libc(item_store),
-                    _ => {},
-                }
-            },
+            CDeclKind::Typedef { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store),
             CDeclKind::EnumConstant { .. } => {},
             // REVIEW: Enums can only be integer types? So libc is likely always required?
             CDeclKind::Enum { .. } => use_super_libc(item_store),
-            CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } => {
-                match self.ast_context[typ.ctype].kind {
-                    Void | Char | SChar | Short | UShort | Int | UInt |
-                    Long | ULong | LongLong | ULongLong => use_super_libc(item_store),
-                    ConstantArray(typ, _) => {
-                        match self.ast_context[typ].kind {
-                            Void | Char | SChar | Short | UShort | Int | UInt |
-                            Long | ULong | LongLong | ULongLong => use_super_libc(item_store),
-                            _ => {},
-                        }
-                    },
-                    _ => {},
-                }
-            },
-            CDeclKind::Function { is_extern: true, typ, .. } => {
-                match self.ast_context[typ].kind {
-                    Void | Char | SChar | Short | UShort | Int | UInt |
-                    Long | ULong | LongLong | ULongLong => use_super_libc(item_store),
-                    ConstantArray(typ, _) => {
-                        match self.ast_context[typ].kind {
-                            Void | Char | SChar | Short | UShort | Int | UInt |
-                            Long | ULong | LongLong | ULongLong => use_super_libc(item_store),
-                            _ => {},
-                        }
-                    },
-                    _ => {},
-                }
+            CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store),
+            CDeclKind::Function { is_extern: true, typ, ref parameters, .. } => {
+                // Return type
+                match_type_kind(&self.ast_context, &self.ast_context[typ].kind, item_store);
+
+                // Params
             },
             ref e => unimplemented!("{:?}", e),
         }
