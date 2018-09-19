@@ -104,7 +104,6 @@ pub fn process(items: Value) -> error::Result<AstContext> {
         comments.push(CommentNode{fileid, line, column, string})
     }
 
-
     for entry in all_nodes {
         let entry_id = entry[0].as_u64().unwrap();
         let tag = entry[1].as_u64().unwrap();
