@@ -4375,30 +4375,36 @@ impl Translation {
             store.uses.insert(item_use);
         }
 
-        fn match_type_kind(context: &TypedAstContext, type_kind: &CTypeKind, store: &mut ItemStore) {
+        fn match_type_kind(context: &TypedAstContext, type_kind: &CTypeKind, store: &mut ItemStore, decl_file_path: &path::Path) {
             use self::CTypeKind::*;
 
             match type_kind {
                 Void | Char | SChar | Short | UShort | Int | UInt |
                 Long | ULong | LongLong | ULongLong => use_super_libc(store),
-                ConstantArray(typ, _) => match_type_kind(context, &context[*typ].kind, store),
-                // REVIEW: Not sure what this one is
-                Elaborated(ctype) => {},
-                // Elaborated(ctype) => unimplemented!("pointee: {:?}", self.ast_context[ctype]),
-                Typedef(decl_id) => {
+                ConstantArray(ctype, _) |
+                Elaborated(ctype) |
+                Pointer(CQualTypeId { ctype, .. }) => match_type_kind(context, &context[*ctype].kind, store, decl_file_path),
+                Typedef(decl_id) |
+                Struct(decl_id) => {
                     let decl = &context.c_decls[decl_id];
-                    let ident_name = decl.kind.get_name().unwrap();
                     let decl_loc = &decl.loc.as_ref().unwrap();
+
+                    // If the definition lives in the same header, there is no need to import it
+                    // in fact, this would be a hard rust error
+                    if decl_loc.file_path.as_ref().unwrap() == decl_file_path {
+                        return;
+                    }
+
+                    let ident_name = decl.kind.get_name().unwrap();
                     let file_path = decl_loc.file_path.as_ref().unwrap();
                     let file_name = clean_path(&file_path);
                     let item_use = mk().use_item(vec!["super", &file_name, ident_name], None as Option<Ident>);
 
                     store.uses.insert(item_use);
                 },
-                Pointer(CQualTypeId { ctype, .. }) => match_type_kind(context, &context[*ctype].kind, store),
                 Function { .. } => {}, // FIXME
                 IncompleteArray { .. } => {}, // FIXME
-                ref e => unimplemented!("pointee: {:?}", e),
+                ref e => unimplemented!("{:?}", e),
             }
         }
 
@@ -4408,21 +4414,27 @@ impl Translation {
 
                 for field_id in field_ids.iter() {
                     match self.ast_context.c_decls[field_id].kind {
-                        CDeclKind::Field { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store),
+                        CDeclKind::Field { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path),
                         _ => unreachable!("Found something in a struct other than a field"),
                     }
                 }
             },
-            CDeclKind::Typedef { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store),
             CDeclKind::EnumConstant { .. } => {},
             // REVIEW: Enums can only be integer types? So libc is likely always required?
             CDeclKind::Enum { .. } => use_super_libc(item_store),
-            CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store),
+            CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } |
+            CDeclKind::Typedef { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path),
             CDeclKind::Function { is_extern: true, typ, ref parameters, .. } => {
                 // Return type
-                match_type_kind(&self.ast_context, &self.ast_context[typ].kind, item_store);
+                match_type_kind(&self.ast_context, &self.ast_context[typ].kind, item_store, decl_file_path);
 
                 // Params
+                for param_id in parameters {
+                    match self.ast_context.c_decls[param_id].kind {
+                        CDeclKind::Variable { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path),
+                        _ => unreachable!("Found something other than a variable as a function param"),
+                    }
+                }
             },
             ref e => unimplemented!("{:?}", e),
         }
