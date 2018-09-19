@@ -4334,10 +4334,7 @@ impl Translation {
     /// If we're trying to organize item definitions into submodules, add them to a module
     /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
     fn insert_item(&self, item: P<Item>, decl_file_path: Option<&PathBuf>, main_file_path: Option<&PathBuf>) {
-        let decl_file_path_str = clean_path(decl_file_path.expect("This decl should have a file path."));
-        let main_file_path_str = clean_path(main_file_path.unwrap());
-
-        if self.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
+        if self.tcfg.reorganize_definitions && decl_file_path.unwrap() != main_file_path.unwrap() {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
             let mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
 
@@ -4350,10 +4347,7 @@ impl Translation {
     /// If we're trying to organize foreign item definitions into submodules, add them to a module
     /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
     fn insert_foreign_item(&self, item: ForeignItem, decl_file_path: Option<&PathBuf>, main_file_path: Option<&PathBuf>) {
-        let decl_file_path_str = clean_path(decl_file_path.unwrap());
-        let main_file_path_str = clean_path(main_file_path.unwrap());
-
-        if self.tcfg.reorganize_definitions && !decl_file_path_str.contains(main_file_path_str.as_str()) {
+        if self.tcfg.reorganize_definitions && decl_file_path.unwrap() != main_file_path.unwrap() {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
             let mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
 

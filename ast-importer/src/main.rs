@@ -5,7 +5,7 @@ extern crate ast_importer;
 
 use std::io::{Error, stdout};
 use std::io::prelude::*;
-use std::fs::File;
+use std::fs::{File, canonicalize};
 use std::path::{Path, PathBuf};
 use ast_importer::clang_ast::process;
 use ast_importer::c_ast::*;
@@ -168,7 +168,8 @@ fn main() {
         reduce_type_annotations:matches.is_present("reduce-type-annotations"),
         reorganize_definitions: matches.is_present("reorganize-definitions"),
         emit_module:            matches.is_present("emit-module"),
-        main_file:              Some(PathBuf::from(file).with_extension("")),
+        main_file:              Some(canonicalize(PathBuf::from(file))
+                                     .unwrap().with_extension("")),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
                 Some("panic") => true,

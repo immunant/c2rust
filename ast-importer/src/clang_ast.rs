@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::fs::canonicalize;
 use serde_cbor::{Value, from_value};
 use serde_cbor::error;
 use std;
@@ -122,7 +123,7 @@ pub fn process(items: Value) -> error::Result<AstContext> {
             let file_path = match file_paths[fileid as usize].as_str() {
                 "" => None,
                 "?" => None,
-                path => Some(Path::new(path).to_path_buf()),
+                path => Some(canonicalize(PathBuf::from(path)).unwrap()),
             };
 
             let node = AstNode {
