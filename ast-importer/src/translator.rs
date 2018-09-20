@@ -4374,7 +4374,10 @@ impl Translation {
 
             match type_kind {
                 Void | Char | SChar | Short | UShort | Int | UInt |
-                Long | ULong | LongLong | ULongLong => use_super_libc(store),
+                Long | ULong | LongLong | ULongLong | Int128 | UInt128 |
+                Half | Float | Double | LongDouble => use_super_libc(store),
+                // Bool uses the bool type, so no dependency on libc
+                Bool => {},
                 ConstantArray(ctype, _) |
                 Elaborated(ctype) |
                 Pointer(CQualTypeId { ctype, .. }) => match_type_kind(context, &context[*ctype].kind, store, decl_file_path),
@@ -4396,14 +4399,15 @@ impl Translation {
 
                     store.uses.insert(item_use);
                 },
-                Function { .. } => {}, // FIXME
+                Function(_ret, ref _params, _is_var, _is_noreturn) => {}, // FIXME
                 IncompleteArray { .. } => {}, // FIXME
                 ref e => unimplemented!("{:?}", e),
             }
         }
 
         match decl.kind {
-            CDeclKind::Struct { ref fields, .. } => {
+            CDeclKind::Struct { ref fields, .. } |
+            CDeclKind::Union { ref fields, .. } => {
                 let field_ids = fields.as_ref().map(|vec| vec.as_slice()).unwrap_or(&[]);
 
                 for field_id in field_ids.iter() {

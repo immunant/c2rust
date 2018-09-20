@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::fs::canonicalize;
 use serde_cbor::{Value, from_value};
 use serde_cbor::error;
@@ -119,11 +119,10 @@ pub fn process(items: Value) -> error::Result<AstContext> {
 
             let type_id: Option<u64> = expect_opt_u64(&entry[6]).unwrap();
             let fileid = entry[3].as_u64().unwrap();
-            // FIXME: Not really sure what "?", so maybe just leaving it as unknown should do?
             let file_path = match file_paths[fileid as usize].as_str() {
                 "" => None,
                 "?" => None,
-                path => Some(canonicalize(PathBuf::from(path)).unwrap()),
+                path => Some(canonicalize(Path::new(path)).expect("Could not canonicalize file")),
             };
 
             let node = AstNode {
