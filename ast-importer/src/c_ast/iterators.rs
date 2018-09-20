@@ -34,23 +34,6 @@ macro_rules! intos {
     ( $( $x:expr ),* ) => { vec![ $( $x.into(), )* ] };
 }
 
-pub struct DFExpr<'context> {
-    context: &'context TypedAstContext,
-    stack: Vec<SomeId>,
-}
-
-impl<'context> DFExpr<'context> {
-    pub fn new(context: &'context TypedAstContext, start: SomeId) -> Self {
-        DFExpr {
-            context, stack: vec![start]
-        }
-    }
-    pub fn prune(&mut self, n: usize) {
-        let new_len = self.stack.len() - n;
-        self.stack.truncate(new_len)
-    }
-}
-
 fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
     use c_ast::CExprKind::*;
     match *kind {
@@ -77,13 +60,48 @@ fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
     }
 }
 
+fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
+    use c_ast::CExprKind::*;
+    match *kind {
+        BadExpr => vec![],
+        DesignatedInitExpr(..) => vec![], // the relevant information will be found in the semantic initializer
+        ShuffleVector(..) | ConvertVector(..) => vec![],
+        OffsetOf(..) | Literal(..) | ImplicitValueInit(..) => vec![],
+        DeclRef(..) => vec![], // don't follow references back!
+        Unary(_ty, _op, subexpr, _) => intos![subexpr],
+        UnaryType(_ty, _op, opt_expr_id, qty) => {
+            let mut res = intos![qty.ctype];
+            if let Some(expr_id) = opt_expr_id { res.push(expr_id.into()); }
+            res
+        }
+        Binary(_ty, _op, lhs, rhs, _, _) => intos![lhs, rhs],
+        Call(_, f, ref args) => {
+            let mut res = intos![f];
+            for &a in args { res.push(a.into()) }
+            res
+        }
+        ArraySubscript(_, l, r, _) => intos![l,r],
+        Conditional(_, c, t, e) => intos![c,t,e],
+        BinaryConditional(_, c, t) => intos![c,t],
+        InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
+        ImplicitCast(_, e, _, _, _) |
+        Member(_, e, _, _, _) | CompoundLiteral(_, e) | Predefined(_, e) | VAArg(_,e) => intos![e],
+        // Normally we don't step into the result type annotation field, because it's not really
+        // part of the expression.  But for `ExplicitCast`, the result type is actually the cast's
+        // target type as written by the user.
+        ExplicitCast(qty, e, _, _, _) => intos![qty.ctype, e],
+        Statements(_, s) => vec![s.into()],
+    }
+}
+
 fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
     use c_ast::CDeclKind::*;
     match *kind {
-        Function { ref parameters, body, .. } => {
-            let i1 = parameters.iter().map(|&x|x.into());
-            let i2 = body.iter().map(|&x|x.into());
-            i1.chain(i2).collect()
+        Function { typ, ref parameters, body, .. } => {
+            let mut res = intos![typ];
+            res.extend(parameters.iter().map(|&x| -> SomeId { x.into() }));
+            res.extend(body.iter().map(|&x| -> SomeId { x.into() }));
+            res
         }
         Variable { typ, initializer, .. } => {
             let mut res = intos![typ.ctype];
@@ -208,6 +226,33 @@ fn immediate_children(context: &TypedAstContext, s_or_e: SomeId) -> Vec<SomeId> 
     }
 }
 
+fn immediate_children_all_types(context: &TypedAstContext, s_or_e: SomeId) -> Vec<SomeId> {
+    match s_or_e {
+        SomeId::Stmt(stmt_id) => immediate_stmt_children(&context[stmt_id].kind),
+        SomeId::Expr(expr_id) => immediate_expr_children_all_types(&context[expr_id].kind),
+        SomeId::Decl(decl_id) => immediate_decl_children(&context[decl_id].kind),
+        SomeId::Type(type_id) => immediate_type_children(&context[type_id].kind),
+    }
+}
+
+
+pub struct DFExpr<'context> {
+    context: &'context TypedAstContext,
+    stack: Vec<SomeId>,
+}
+
+impl<'context> DFExpr<'context> {
+    pub fn new(context: &'context TypedAstContext, start: SomeId) -> Self {
+        DFExpr {
+            context, stack: vec![start]
+        }
+    }
+    pub fn prune(&mut self, n: usize) {
+        let new_len = self.stack.len() - n;
+        self.stack.truncate(new_len)
+    }
+}
+
 impl<'context> Iterator for DFExpr<'context> {
     type Item = SomeId;
     fn next(&mut self) -> Option<Self::Item> {
@@ -217,6 +262,45 @@ impl<'context> Iterator for DFExpr<'context> {
         if let Some(i) = result {
             // Compute list of immediate children
             let children = immediate_children(self.context, i);
+            // Add children in reverse order since we visit the end of the stack first
+            self.stack.extend(children.into_iter().rev())
+        }
+
+        result
+    }
+}
+
+
+/// Depth-first traversal of all AST nodes.  After visiting each node, iteration proceeds to nodes
+/// that are "contained in" that node.  For example, after visiting a `CExprKind::Binary`, it will
+/// visit the LHS and RHS expression nodes, but it will not visit the LHS, RHS, and result type
+/// nodes that are also referenced from the `Binary` expression.
+pub struct DFNodes<'context> {
+    context: &'context TypedAstContext,
+    stack: Vec<SomeId>,
+}
+
+impl<'context> DFNodes<'context> {
+    pub fn new(context: &'context TypedAstContext, start: SomeId) -> Self {
+        DFNodes {
+            context, stack: vec![start]
+        }
+    }
+    pub fn prune(&mut self, n: usize) {
+        let new_len = self.stack.len() - n;
+        self.stack.truncate(new_len)
+    }
+}
+
+impl<'context> Iterator for DFNodes<'context> {
+    type Item = SomeId;
+    fn next(&mut self) -> Option<Self::Item> {
+
+        let result = self.stack.pop();
+
+        if let Some(i) = result {
+            // Compute list of immediate children
+            let children = immediate_children_all_types(self.context, i);
             // Add children in reverse order since we visit the end of the stack first
             self.stack.extend(children.into_iter().rev())
         }
