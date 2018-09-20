@@ -412,7 +412,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 }
 
                 match t.convert_decl(true, *top_id) {
-                    Ok(ConvertedDecl::Item(item)) => t.insert_item(item, decl_file_path, main_file_path),
+                    Ok(ConvertedDecl::Item(mut item)) => t.items.borrow_mut().push(item),
                     Ok(ConvertedDecl::ForeignItem(item)) => t.insert_foreign_item(item, decl_file_path, main_file_path),
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
