@@ -2863,6 +2863,12 @@ impl Translation {
                 self.convert_expr(ExprUse::Unused, args[0], is_static, decay_ref)
             }
 
+            // Should be safe to always return 0 here.  "A return of 0 does not indicate that the
+            // value is *not* a constant, but merely that GCC cannot prove it is a constant with
+            // the specified value of the -O option. "
+            "__builtin_constant_p" =>
+                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(0, "")))),
+
             "__builtin_va_start" =>
                 Err(format!("va_start not supported - currently va_list and va_arg are supported")),
             "__builtin_va_copy" =>
