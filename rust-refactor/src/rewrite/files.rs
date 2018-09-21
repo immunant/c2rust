@@ -1,8 +1,9 @@
 //! Code for applying `TextRewrite`s to the actual source files.
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::Write;
 use std::rc::Rc;
+use diff;
 use syntax::codemap::{CodeMap, FileMap};
 use syntax_pos::{BytePos, FileName};
 
@@ -18,6 +19,8 @@ pub enum RewriteMode {
     Alongside,
     /// Print the new text to the console instead of saving it.
     Print,
+    /// Print the diff between the old and new versions.
+    PrintDiff,
 }
 
 /// Apply a sequence of rewrites to the source code, handling the results as specified by `mode`.
@@ -51,6 +54,15 @@ pub fn rewrite_mode_callback(mode: RewriteMode,
         },
         RewriteMode::Print => {
             println!(" ==== {:?} ====\n{}\n =========", filename, s);
+        },
+        RewriteMode::PrintDiff => {
+            let old_s = fm.src.as_ref()
+                .unwrap_or_else(|| panic!("source of file {} is not available",
+                                          filename.display()));
+            println!();
+            println!("--- old/{}", filename.display());
+            println!("+++ new/{}", filename.display());
+            print_diff(old_s, s);
         },
     }
 }
@@ -146,4 +158,156 @@ fn emit_chunk<F: FnMut(&str)>(cm: &CodeMap,
     let src = lo.fm.src.as_ref()
         .unwrap_or_else(|| panic!("source of file {} is not available", lo.fm.name));
     callback(&src[lo.pos.0 as usize .. hi.pos.0 as usize]);
+}
+
+
+/// Print a unified diff between lines of `s1` and lines of `s2`.
+fn print_diff(s1: &str, s2: &str) {
+    enum State {
+        /// We're not in a hunk, just keeping `buf` populated with `CONTEXT` lines of history.
+        History,
+        /// We're inside a hunk containing at least one changed line.
+        Hunk {
+            /// Number of unchanged lines we need to see to end this hunk.
+            unchanged_limit: usize,
+            l_start: usize,
+            r_start: usize,
+        },
+    }
+
+    const CONTEXT: usize = 3;
+
+    let mut buf = VecDeque::new();
+    let mut state = State::History;
+
+    let mut l_line = 1;
+    let mut r_line = 1;
+
+    for r in diff::lines(s1, s2) {
+        let changed = match r {
+            diff::Result::Both(l, r) => l != r,
+            _ => true,
+        };
+
+        // We need to update l/r_line before we move `r`, but after we move it, we may need access
+        // to the old l/r_line values to initialize state.l/r_start.
+        let (l_line_old, r_line_old) = (l_line, r_line);
+
+        match r {
+            diff::Result::Left(..) => {
+                l_line += 1;
+            },
+            diff::Result::Right(..) => {
+                r_line += 1;
+            },
+            diff::Result::Both(..) => {
+                l_line += 1;
+                r_line += 1;
+            },
+        }
+
+        buf.push_back(r);
+
+        if !changed {
+            match state {
+                State::History => {
+                    while buf.len() > CONTEXT {
+                        buf.pop_front();
+                    }
+                },
+                State::Hunk { unchanged_limit, l_start, r_start } => {
+                    if unchanged_limit == 1 {
+                        // End of the hunk
+                        let end = buf.len() - CONTEXT;
+                        let suffix = buf.split_off(end);
+                        print_hunk(&buf, l_start, r_start);
+                        buf = suffix;
+                        state = State::History;
+                    } else {
+                        state = State::Hunk {
+                            unchanged_limit: unchanged_limit - 1,
+                            l_start, r_start,
+                        };
+                    }
+                },
+            }
+        } else {
+            match state {
+                State::History => {
+                    state = State::Hunk {
+                        unchanged_limit: 2 * CONTEXT,
+                        // Adjust start lines for context already stored in `buf`.
+                        l_start: l_line_old - (buf.len() - 1),
+                        r_start: r_line_old - (buf.len() - 1),
+                    };
+                },
+                State::Hunk { unchanged_limit, l_start, r_start } => {
+                    state = State::Hunk {
+                        unchanged_limit: 2 * CONTEXT,
+                        l_start, r_start,
+                    };
+                },
+            }
+        }
+    }
+
+    match state {
+        State::Hunk { unchanged_limit, l_start, r_start } => {
+            if unchanged_limit < CONTEXT {
+                let end = buf.len() - (CONTEXT - unchanged_limit);
+                let suffix = buf.split_off(end);
+            }
+            print_hunk(&buf, l_start, r_start);
+        }
+        _ => {},
+    }
+}
+
+/// Print a single diff hunk, starting at line `l_start` in the left file and `r_start` in the
+/// right file.
+fn print_hunk(buf: &VecDeque<diff::Result<&str>>,
+              l_start: usize,
+              r_start: usize) {
+    let l_size = buf.iter().filter(|r| match r {
+        diff::Result::Right(_) => false,
+        _ => true,
+    }).count();
+
+    let r_size = buf.iter().filter(|r| match r {
+        diff::Result::Left(_) => false,
+        _ => true,
+    }).count();
+
+    println!("@@ -{},{} +{},{} @@", l_start, l_size, r_start, r_size);
+
+    // Print all "left" lines immediately.  Keep all "right" lines and print them just before the
+    // next unchanged line.  This way we get the usual output, with separate old and new blocks:
+    //   unchanged
+    //  -old1
+    //  -old2
+    //  +new1
+    //  +new2
+    //   unchanged
+    let mut right_buf = Vec::new();
+    for r in buf {
+        match r {
+            diff::Result::Left(s) => {
+                println!("-{}", s);
+            },
+            diff::Result::Right(s) => {
+                right_buf.push(s);
+            },
+            diff::Result::Both(s1, s2) => {
+                if s1 != s2 {
+                    println!("-{}", s1);
+                    right_buf.push(s2);
+                } else {
+                    for s in right_buf.drain(..) {
+                        println!("+{}", s);
+                    }
+                    println!(" {}", s1);
+                }
+            },
+        }
+    }
 }

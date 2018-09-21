@@ -132,6 +132,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
             "inplace" => rewrite::files::RewriteMode::InPlace,
             "alongside" => rewrite::files::RewriteMode::Alongside,
             "print" => rewrite::files::RewriteMode::Print,
+            "diff" => rewrite::files::RewriteMode::PrintDiff,
             _ => {
                 info!("Unknown rewrite mode: {}", mode_str);
                 return None;
