@@ -1,4 +1,0 @@
-version=3
-opts=uversionmangle=s/(\d)[_\.\-\+]?((RC|rc|pre|dev|beta|alpha|b|a)\d*)$/$1~$2/,dversionmangle=s/\+(debian|dfsg|ds|deb)\d*$// \
-https://s3.amazonaws.com/json-c_releases/releases/index.html .*/json-c-(\d.*)\.(?:tgz|tbz2|txz|tar\.(?:gz|bz2|xz))
-# Bart Martens <bartm@debian.org>  Sat, 22 Dec 2012 13:01:18 +0000

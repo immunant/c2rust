@@ -1,2 +1,0 @@
-#!/usr/bin/dh-exec
-usr/lib/${DEB_HOST_MULTIARCH}/libjson-c.so.3* lib/${DEB_HOST_MULTIARCH}/
