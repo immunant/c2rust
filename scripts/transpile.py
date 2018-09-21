@@ -245,7 +245,8 @@ def transpile_files(cc_db: TextIO,
                     cross_checks: bool = False,
                     use_fakechecks: bool = False,
                     cross_check_config: List[str] = [],
-                    reloop_cfgs: bool = True) -> bool:
+                    reloop_cfgs: bool = True,
+                    reorganize_definitions: bool = False) -> bool:
     """
     run the ast-exporter and ast-importer on all C files
     in a compile commands database.
@@ -288,6 +289,8 @@ def transpile_files(cc_db: TextIO,
             impo_args.append(ccc)
     if reloop_cfgs:
         impo_args.append('--reloop-cfgs')
+    if reorganize_definitions:
+        impo_args.append('--reorganize-definitions')
 
     def transpile_single(cmd) -> Tuple[str, int, str, str, str]:
 
@@ -423,6 +426,10 @@ def parse_args() -> argparse.Namespace:
                         action=NegateAction,
                         help='enable (disable) relooper; enabled by '
                              'default')
+    parser.add_argument('-r', '--reorganize-definitions',
+                        default=False, action='store_true',
+                        help='Reorganize definitions, then use the '
+                             'refactor tool to eliminate duplication')
     c.add_args(parser)
 
     args = parser.parse_args()
@@ -449,7 +456,8 @@ def main():
                     args.cross_checks,
                     args.use_fakechecks,
                     args.cross_check_config,
-                    args.reloop_cfgs)
+                    args.reloop_cfgs,
+                    args.reorganize_definitions)
 
     logging.info("success")
 

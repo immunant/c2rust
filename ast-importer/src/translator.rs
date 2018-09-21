@@ -128,6 +128,9 @@ pub struct Translation {
 
     // Mod block defintion reorganization
     mod_blocks: RefCell<IndexMap<PathBuf, ItemStore>>,
+
+    // Mod names to try to stop collisions from happening
+    mod_names: RefCell<HashSet<String>>,
 }
 
 
@@ -508,14 +511,14 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
     // REVIEW: Should we join global imports? ie use foo::{bar, baz};
     for item in items.iter() {
         let ident_name = item.ident.name.as_str();
-        let use_path = vec![mod_name.as_str(), &*ident_name];
+        let use_path = vec!["self", mod_name.as_str(), &*ident_name];
 
         global_uses.push(mk().use_item(use_path, None as Option<Ident>));
     }
 
     for foreign_item in foreign_items.iter() {
         let ident_name = foreign_item.ident.name.as_str();
-        let use_path = vec![mod_name.as_str(), &*ident_name];
+        let use_path = vec!["self", mod_name.as_str(), &*ident_name];
 
         global_uses.push(mk().use_item(use_path, None as Option<Ident>));
     }
@@ -679,6 +682,7 @@ impl Translation {
             comment_store: RefCell::new(CommentStore::new()),
             sectioned_static_initializers: RefCell::new(Vec::new()),
             mod_blocks: RefCell::new(IndexMap::new()),
+            mod_names: RefCell::new(HashSet::new()),
         }
     }
 
@@ -4373,7 +4377,7 @@ impl Translation {
             use self::CTypeKind::*;
 
             match type_kind {
-                Void | Char | SChar | Short | UShort | Int | UInt |
+                Void | Char | SChar | UChar | Short | UShort | Int | UInt |
                 Long | ULong | LongLong | ULongLong | Int128 | UInt128 |
                 Half | Float | Double | LongDouble => use_super_libc(store),
                 // Bool uses the bool type, so no dependency on libc
@@ -4401,6 +4405,7 @@ impl Translation {
                 },
                 Function(_ret, ref _params, _is_var, _is_noreturn) => {}, // FIXME
                 IncompleteArray { .. } => {}, // FIXME
+                Paren { .. } => {}, // FIXME
                 ref e => unimplemented!("{:?}", e),
             }
         }
