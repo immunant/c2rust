@@ -1580,6 +1580,10 @@ static std::vector<const char *>augment_argv(int argc, char *argv[]) {
         "-extra-arg=-Wwrite-strings",      // string literals are constant
         "-extra-arg=-D_FORTIFY_SOURCE=0",  // we don't want to use checked versions of libc.
                                            // without this we get calls to __builtin__memcpy_chk, etc.
+
+        // Also #define C2RUST, so examples can conditionally omit C code that
+        // needs special handling in the Rust version (e.g., varargs functions)
+        "-extra-arg=-DC2RUST=1",
     };
     
     auto argv_ = std::vector<const char*>();
