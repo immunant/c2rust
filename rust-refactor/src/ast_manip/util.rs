@@ -1,6 +1,6 @@
 //! Miscellaneous utility functions.
 use syntax::ast::*;
-use syntax::codemap::{CodeMap, Span};
+use syntax::codemap::{CodeMap, Span, DUMMY_SP};
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
 
@@ -124,7 +124,7 @@ pub fn extended_span(mut s: Span, attrs: &[Attribute]) -> Span {
     // Extend `s` backward to cover all the attrs
     for attr in attrs {
         // Not sure these checks are exactly right, but it seems to work for now.
-        if attr.span.ctxt() == s.ctxt() && attr.span.lo() < s.lo() {
+        if attr.span != DUMMY_SP && attr.span.ctxt() == s.ctxt() && attr.span.lo() < s.lo() {
             s = s.with_lo(attr.span.lo());
         }
     }
