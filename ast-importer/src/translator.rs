@@ -4396,7 +4396,8 @@ impl Translation {
         }
 
         fn match_type_kind(context: &TypedAstContext, type_kind: &CTypeKind, store: &mut ItemStore,
-                           decl_file_path: &path::Path, mod_names: RefMut<HashMap<String, PathBuf>>) {
+                           decl_file_path: &path::Path, mod_names: RefMut<HashMap<String, PathBuf>>,
+                           type_converter: RefMut<TypeConverter>) {
             use self::CTypeKind::*;
 
             match type_kind {
@@ -4407,8 +4408,9 @@ impl Translation {
                 Bool => {},
                 ConstantArray(ctype, _) |
                 Elaborated(ctype) |
-                Pointer(CQualTypeId { ctype, .. }) => match_type_kind(context, &context[*ctype].kind, store, decl_file_path, mod_names),
+                Pointer(CQualTypeId { ctype, .. }) => match_type_kind(context, &context[*ctype].kind, store, decl_file_path, mod_names, type_converter),
                 Typedef(decl_id) |
+                Union(decl_id) |
                 Struct(decl_id) => {
                     let decl = &context.c_decls[decl_id];
                     let decl_loc = &decl.loc.as_ref().unwrap();
@@ -4419,10 +4421,10 @@ impl Translation {
                         return;
                     }
 
-                    let ident_name = decl.kind.get_name().unwrap();
+                    let ident_name = type_converter.resolve_decl_name(*decl_id).unwrap();
                     let file_path = decl_loc.file_path.as_ref().unwrap();
                     let file_name = clean_path(mod_names, &file_path);
-                    let item_use = mk().use_item(vec!["super", &file_name, ident_name], None as Option<Ident>);
+                    let item_use = mk().use_item(vec!["super", &file_name, &ident_name], None as Option<Ident>);
 
                     store.uses.insert(item_use);
                 },
@@ -4441,7 +4443,7 @@ impl Translation {
                 for field_id in field_ids.iter() {
                     match self.ast_context.c_decls[field_id].kind {
                         CDeclKind::Field { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path,
-                                                                        self.mod_names.borrow_mut()),
+                                                                        self.mod_names.borrow_mut(), self.type_converter.borrow_mut()),
                         _ => unreachable!("Found something in a struct other than a field"),
                     }
                 }
@@ -4451,17 +4453,17 @@ impl Translation {
             CDeclKind::Enum { .. } => use_super_libc(item_store),
             CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } |
             CDeclKind::Typedef { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path,
-                                                              self.mod_names.borrow_mut()),
+                                                              self.mod_names.borrow_mut(), self.type_converter.borrow_mut()),
             CDeclKind::Function { is_extern: true, typ, ref parameters, .. } => {
                 // Return type
                 match_type_kind(&self.ast_context, &self.ast_context[typ].kind, item_store, decl_file_path,
-                                self.mod_names.borrow_mut());
+                                self.mod_names.borrow_mut(), self.type_converter.borrow_mut());
 
                 // Params
                 for param_id in parameters {
                     match self.ast_context.c_decls[param_id].kind {
                         CDeclKind::Variable { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path,
-                                                                           self.mod_names.borrow_mut()),
+                                                                           self.mod_names.borrow_mut(), self.type_converter.borrow_mut()),
                         _ => unreachable!("Found something other than a variable as a function param"),
                     }
                 }
