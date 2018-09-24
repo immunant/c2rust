@@ -47,6 +47,7 @@ int main()
 #else
 	// Just fake it up, so the output matches.
 	printf("obj.to_string(with thread format)=%s\n", "T0.52X");
+	printf("obj.to_string(long thread format)=%s\n", "Ttttttttttttt0.52xxxxxxxxxxxxxxxxxxX");
 	printf("obj.to_string(back to global format)=%s\n", "x0.524y");
 #endif
 	if (json_c_set_serialization_double_format(NULL, JSON_C_OPTION_GLOBAL) < 0)
