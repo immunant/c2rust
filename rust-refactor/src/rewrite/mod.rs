@@ -49,6 +49,7 @@ use syntax::visit::{self, Visitor};
 
 use ast_manip::Visit;
 
+mod cleanup;
 mod impls;
 pub mod files;
 

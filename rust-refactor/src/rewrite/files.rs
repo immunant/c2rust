@@ -8,6 +8,7 @@ use syntax::codemap::{CodeMap, FileMap};
 use syntax_pos::{BytePos, FileName};
 
 use rewrite::{TextRewrite, TextAdjust};
+use rewrite::cleanup::cleanup_rewrites;
 
 
 /// Enum for specifying what to do with the updated source file contents.
@@ -79,10 +80,10 @@ pub fn rewrite_files_with<F>(cm: &CodeMap, rewrites: &[TextRewrite], mut callbac
         by_file.entry(ptr).or_insert_with(|| (Vec::new(), fm)).0.push(rw.clone());
     }
 
-    for (_, (mut rewrites, fm)) in by_file {
+    for (_, (rewrites, fm)) in by_file {
         let mut buf = String::new();
-        rewrites.sort_by_key(|rw| rw.old_span.lo().0);
-        rewrite_range(cm, fm.start_pos, fm.end_pos, &mut rewrites, &mut |s| buf.push_str(s));
+        let rewrites = cleanup_rewrites(cm, rewrites);
+        rewrite_range(cm, fm.start_pos, fm.end_pos, &rewrites, &mut |s| buf.push_str(s));
         callback(fm, &buf);
     }
 }
@@ -114,7 +115,7 @@ fn print_rewrites(rws: &[TextRewrite]) {
 fn rewrite_range(cm: &CodeMap,
                  start: BytePos,
                  end: BytePos,
-                 rewrites: &mut [TextRewrite],
+                 rewrites: &[TextRewrite],
                  callback: &mut FnMut(&str)) {
     let mut cur = start;
 
@@ -131,8 +132,7 @@ fn rewrite_range(cm: &CodeMap,
         if rw.rewrites.len() == 0 {
             emit_chunk(cm, rw.new_span.lo(), rw.new_span.hi(), |s| callback(s));
         } else {
-            rw.rewrites.sort_by_key(|rw| rw.old_span.lo().0);
-            rewrite_range(cm, rw.new_span.lo(), rw.new_span.hi(), &mut rw.rewrites, callback);
+            rewrite_range(cm, rw.new_span.lo(), rw.new_span.hi(), &rw.rewrites, callback);
         }
 
         match rw.adjust {
