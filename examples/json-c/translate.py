@@ -32,6 +32,8 @@ REFACTORINGS = [
             path(::linkhash::lh_table) ||
             path(::printbuf::printbuf)
         );''') + [';', 'canonicalize_structs'],
+
+    ['link_funcs'],
 ]
 
 
