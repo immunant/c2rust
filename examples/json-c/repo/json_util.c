@@ -63,6 +63,7 @@
 
 static int _json_object_to_fd(int fd, struct json_object *obj, int flags, const char *filename);
 
+#ifndef C2RUST      // In rust/src/last_err.c
 static char _last_err[256] = "";
 
 const char *json_util_get_last_err()
@@ -80,6 +81,10 @@ void _json_c_set_last_err(const char *err_fmt, ...)
 	(void)vsnprintf(_last_err, sizeof(_last_err), err_fmt, ap);
 	va_end(ap);
 }
+#else
+const char *json_util_get_last_err();
+void _json_c_set_last_err(const char *err_fmt, ...);
+#endif
 
 struct json_object* json_object_from_fd(int fd)
 {

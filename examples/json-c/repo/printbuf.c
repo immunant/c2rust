@@ -112,6 +112,7 @@ int printbuf_memset(struct printbuf *pb, int offset, int charvalue, int len)
 	return 0;
 }
 
+#ifndef C2RUST      // In rust/src/sprintbuf.c
 int sprintbuf(struct printbuf *p, const char *msg, ...)
 {
   va_list ap;
@@ -139,6 +140,7 @@ int sprintbuf(struct printbuf *p, const char *msg, ...)
     return size;
   }
 }
+#endif
 
 void printbuf_reset(struct printbuf *p)
 {
