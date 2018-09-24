@@ -1,0 +1,55 @@
+rustc = rustc
+cc = gcc
+ld = gcc
+ar = ar
+
+rule build_obj
+    command = $cc -c $in -o $out -fPIC -MMD -MF $out.d
+    depfile = $out.d
+
+rule build_ar
+    command = $ar cr $out $in
+
+rule link
+    # Build with crate-type `dylib` instead of `cdylib`.  `cdylib` is the right
+    # thing in theory, but rustc restricts the exported symbols in cdylibs to
+    # only those that are exported by the Rust crate.  rustc doesn't know about
+    # the symbols in $clib, so they don't get exported and the .so doesn't
+    # work.
+    #
+    # -Wl,--whole-archive ensures that everything from $clib gets included in
+    # the final .so, even the ones that aren't used by other parts of the
+    # library.
+    command = $rustc $in --emit link,dep-info --out-dir=$out_dir $
+        --crate-type dylib --crate-name $crate_name $
+        -C link-arg=-Wl,-soname=$soname $
+        -C link-arg=-Wl,--whole-archive $
+        -C link-arg=$clib $
+        -C link-arg=-Wl,--no-whole-archive
+    depfile = $out_dir/$crate_name.d
+
+rule copy
+    command = cp $in $out
+
+
+# Put .ninja_* files in build/, where they'll be ignored.
+builddir = build
+
+build build/lib/json_pointer_f.o: build_obj src/json_pointer_f.c
+build build/lib/last_err.o: build_obj src/last_err.c
+build build/lib/sprintbuf.o: build_obj src/sprintbuf.c
+
+build build/lib/cfuncs.a: build_ar $
+        build/lib/json_pointer_f.o $
+        build/lib/last_err.o $
+        build/lib/sprintbuf.o
+
+build build/libjson_c.so: link src/lib.rs | build/lib/cfuncs.a
+    out_dir = build
+    crate_name = json_c
+    soname = libjson-c.so.4
+    clib = build/lib/cfuncs.a
+
+build libjson-c.so.4.0.0: copy build/libjson_c.so
+
+default libjson-c.so.4.0.0
