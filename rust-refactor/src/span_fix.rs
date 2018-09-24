@@ -151,6 +151,29 @@ impl Folder for FixMacros {
         SmallVector::one(s)
     }
 
+    fn fold_item(&mut self, mut i: P<Item>) -> SmallVector<P<Item>> {
+        let was_in_macro = self.in_macro;
+        self.in_macro = i.span.ctxt() != SyntaxContext::empty();
+
+        let old_span = i.span;
+        // Clear all macro spans in the node and its children.
+        i = fold::noop_fold_item(i, self).lone();
+
+        if !was_in_macro && self.in_macro {
+            // This is the topmost node in a macro expansion.  Set its span to the span of the
+            // macro invocation.
+
+            i = i.map(|i| Item {
+                span: invocation_span(old_span),
+                .. i
+            });
+        }
+
+        self.in_macro = was_in_macro;
+
+        SmallVector::one(i)
+    }
+
     // TODO: Eventually we should extend this to work on the remaining node types where macros can
     // appear (Pat, Ty, and the Item-likes).
 
