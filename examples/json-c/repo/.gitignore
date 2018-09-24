@@ -109,3 +109,9 @@
 /include
 /libjson-c.a
 /libjson-c.so
+
+# c2rust-specific patterns
+*.c.cbor
+/rust/build/
+/rust/src/*.rs
+/rust/libjson-c.so.*
