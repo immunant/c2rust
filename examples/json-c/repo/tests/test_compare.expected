@@ -1,0 +1,13 @@
+JSON integer comparision is correct
+JSON same object comparision is correct
+JSON same integer comparision is correct
+Comparing equal strings is correct
+Comparing different strings is correct
+Comparing equal doubles is correct
+Comparing different doubles is correct
+Comparing equal arrays is correct
+Comparing arrays of different len is correct
+Comparing different arrays is correct
+Comparing different arrays (one empty) is correct
+Comparing JSON object with different key order is correct
+Comparing different objects is correct

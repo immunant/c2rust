@@ -1,0 +1,32 @@
+language: cpp
+
+compiler:
+  - gcc
+  - clang
+
+addons:
+  apt:
+    packages:
+      - cppcheck
+
+os:
+  - linux
+  - osx
+
+before_install:
+  - echo $LANG
+  - echo $LC_ALL
+  - set -e
+
+install:
+  - sh autogen.sh
+
+before_script:
+  - ./configure
+
+script:
+  - make
+
+after_success:
+  - make check
+  - if type cppcheck &> /dev/null ; then cppcheck --error-exitcode=1 --quiet *.h *.c tests/ ; fi

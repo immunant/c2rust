@@ -1,0 +1,31 @@
+In general:
+For minor changes to a function, copy the existing formatting.
+When changing the style, commit that separately from other changes.
+For new code and major changes to a function, switch to the official json-c style.
+
+Official json-c style:
+Aim for readability, not strict conformance to fixed style rules.
+These rules are not comprehensive.  Look to existing code for guidelines.
+Indentation is tab based, with continuations of long lines starting with tabs then spaces for alignment.
+Try to line up components of continuation lines with corresponding part of the line above (i.e. "indent -lp" effect), but avoid excessive identation tha causes extra line wraps. 
+ e.g. (T=tab, S=space):
+TTTTsome_long_func_call(arg1, arg2,
+TTTTSSSSSSSSSSSSSSSSSSSarg3, arg4);
+TTTTsome_reallly_really_long_func_name(arg1,
+TTTTTarg2, arg3, arg4);
+There should be a space between "if"/"while" and the following parenthesis.
+"case" lines are indented at the same level as the "switch" statement.
+Commas are followed by a single space.
+Include spaces around most non-unary, non-postfix operators, "=", "==', "&", "||", etc...
+Function calls have no space between the name and the parenthesis.
+Curly braces go on their own line.
+Curly braces may be omitted.
+
+Naming:
+Words within function and variable names are separated with underscores.  Avoid camel case.
+Prefer longer, more descriptive names, but not excessively so.  No single letter variable names.
+
+Other:
+Variables should be defined for the smallest scope needed.
+Functions should be defined static when possible.
+When possible, avoid exposing internals in the public API.
