@@ -14,7 +14,7 @@ use rustc_metadata::cstore::CStore;
 use rustc_resolve::MakeGlobMap;
 use rustc_codegen_utils::link;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
-use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ItemKind};
+use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind};
 use syntax::codemap::CodeMap;
 use syntax::codemap::{FileLoader, RealFileLoader};
 use syntax::parse;
@@ -292,5 +292,20 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
             }
         }
         Err(db) => emit_and_panic(db, "impl items"),
+    }
+}
+
+pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
+    // TODO: rustc no longer exposes a method for parsing ForeignItems. `parse_item` is a hacky
+    // workaround that may cause suboptimal error messages.
+    let mut p = make_parser(sess, "<foreign_item>", &format!("extern {{ {} }}", src));
+    match p.parse_item() {
+        Ok(item) => {
+            match item.expect("expected to find an item").into_inner().node {
+                ItemKind::ForeignMod(fm) => fm.items,
+                _ => panic!("expected to find a foreignmod item"),
+            }
+        }
+        Err(db) => emit_and_panic(db, "foreign items"),
     }
 }

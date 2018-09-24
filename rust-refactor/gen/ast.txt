@@ -90,6 +90,7 @@ struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs }
 struct MethodSig { unsafety, constness, abi, decl }
 
 struct ForeignMod { abi, items }
+#[rewrite_splice] #[rewrite_seq_item]
 struct ForeignItem { ident, #[match=ignore] attrs, node, id, span, vis }
 enum ForeignItemKind {
     Fn(decl, generics),

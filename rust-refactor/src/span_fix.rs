@@ -207,6 +207,17 @@ impl Folder for FixAttrs {
         fold::noop_fold_item(i, self)
     }
 
+    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVector<ForeignItem> {
+        let new_span = extended_span(fi.span, &fi.attrs);
+        let fi =
+            if new_span != fi.span {
+                ForeignItem { span: new_span, ..fi }
+            } else {
+                fi
+            };
+        fold::noop_fold_foreign_item(fi, self)
+    }
+
     fn fold_mac(&mut self, mac: Mac) -> Mac {
         fold::noop_fold_mac(mac, self)
     }
