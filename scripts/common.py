@@ -95,6 +95,9 @@ add_subdirectory(ast-exporter)
     # output of `rustup run $CUSTOM_RUST_NAME -- rustc --version`
     CUSTOM_RUST_RUSTC_VERSION = "rustc 1.28.0-nightly (f28c7aef7 2018-06-19)"
 
+    RREF_BIN = os.path.join(RREF_DIR,
+            'target.{suffix}/release/idiomize'.format(suffix=HOST_SUFFIX))
+
     def __init__(self):
         self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER) 
                                   for s in Config.LLVM_ARCHIVE_URLS]

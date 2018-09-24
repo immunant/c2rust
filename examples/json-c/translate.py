@@ -8,7 +8,57 @@ from plumbum import local
 JSON_C_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'repo'))
 
 sys.path.append(os.path.join(JSON_C_DIR, '../../../scripts'))
+from common import *
 import transpile
+
+
+# List of rust-refactor commands to run.
+
+def mk_select(script, mark='target'):
+    return ['select', mark, script]
+
+REFACTORINGS = [
+    ['link_incomplete_types'],
+
+    mk_select(r'''
+        crate;
+        desc(
+            path(::arraylist::array_list) ||
+            path(::json_object::json_object) ||
+            path(::json_object_iterator::json_object_iterator) ||
+            path(::json_tokener::json_tokener) ||
+            path(::json_tokener::srec) ||
+            path(::linkhash::lh_entry) ||
+            path(::linkhash::lh_table) ||
+            path(::printbuf::printbuf)
+        );''') + [';', 'canonicalize_structs'],
+]
+
+
+
+
+idiomize = get_cmd_or_die(config.RREF_BIN)
+
+def run_idiomize(args, mode='inplace'):
+    full_args = ['-r', mode] + args + [
+            '--', 'src/lib.rs', '--crate-type=dylib',
+            '--crate-name=json_c',
+            '-L{rust_libdir}/rustlib/{triple}/lib/'.format(
+                rust_libdir=get_rust_toolchain_libpath(),
+                triple=get_host_triplet())]
+
+    ld_lib_path = get_rust_toolchain_libpath()
+
+    # don't overwrite existing ld lib path if any...
+    if 'LD_LIBRARY_PATH' in local.env:
+        ld_lib_path += ':' + local.env['LD_LIBRARY_PATH']
+
+    # import ast
+    with local.env(RUST_BACKTRACE='1',
+                   LD_LIBRARY_PATH=ld_lib_path):
+        with local.cwd(os.path.join(JSON_C_DIR, 'rust')):
+            idiomize[full_args]()
+
 
 def main():
     os.chdir(JSON_C_DIR)
@@ -62,6 +112,11 @@ def main():
     # string literals in places where the type can't be inferred.
     sed['-i', '-e', r'/errno_str:/s/&\[\([0-9]\+\),/\&[\1i8,/',
             'rust/src/strerror_override.rs']()
+
+
+    for refactor_args in REFACTORINGS:
+        print('REFACTOR: %r' % (refactor_args,))
+        run_idiomize(refactor_args)
 
 
 if __name__ == '__main__':
