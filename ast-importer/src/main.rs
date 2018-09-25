@@ -143,7 +143,7 @@ fn main() {
         .get_matches();
 
     // Build a TranslationConfig from the command line
-    let file = matches.value_of("INPUT").unwrap();
+    let file = canonicalize(Path::new(matches.value_of("INPUT").unwrap())).unwrap();
     let tcfg = TranslationConfig {
         fail_on_error:          matches.is_present("fail-on-error"),
         reloop_cfgs:            matches.is_present("reloop-cfgs"),
@@ -168,8 +168,7 @@ fn main() {
         reduce_type_annotations:matches.is_present("reduce-type-annotations"),
         reorganize_definitions: matches.is_present("reorganize-definitions"),
         emit_module:            matches.is_present("emit-module"),
-        main_file:              Some(canonicalize(Path::new(file))
-                                     .unwrap().with_extension("")),
+        main_file:              Some(file.with_extension("")),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
                 Some("panic") => true,
@@ -185,7 +184,7 @@ fn main() {
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
 
     // Extract the untyped AST from the CBOR file
-    let untyped_context = match parse_untyped_ast(file) {
+    let untyped_context = match parse_untyped_ast(&file) {
         Err(e) => panic!("{:#?}", e),
         Ok(cxt) => cxt,
     };
@@ -231,7 +230,7 @@ fn main() {
     } else {
         // with_extension will clear the .cbor; set_extension will change .c to .rs
         // even if there is no extension for some reason, this will still work
-        let mut path_buf = Path::new(file).with_extension("");
+        let mut path_buf = file.with_extension("");
 
         path_buf.set_extension("rs");
         path_buf
@@ -248,17 +247,16 @@ fn main() {
     };
 }
 
-fn parse_untyped_ast(filename: &str) -> Result<AstContext, Error> {
-    let mut f = File::open(filename)?;
+fn parse_untyped_ast(file_path: &Path) -> Result<AstContext, Error> {
+    let mut f = File::open(file_path)?;
     let mut buffer = vec![];
     f.read_to_end(&mut buffer)?;
 
     let items: Value = from_slice(&buffer[..]).unwrap();
+    let file_dir = file_path.parent().expect("File somehow had no parent");
 
-    match process(items) {
+    match process(items, file_dir) {
         Ok(cxt) => Ok(cxt),
         Err(e) => panic!("{:#?}", e),
     }
 }
-
-

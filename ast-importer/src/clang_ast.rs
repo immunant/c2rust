@@ -88,7 +88,7 @@ fn import_type_tag(tag: u64) -> TypeTag {
     }
 }
 
-pub fn process(items: Value) -> error::Result<AstContext> {
+pub fn process(items: Value, main_dir: &Path) -> error::Result<AstContext> {
 
     let mut asts: HashMap<u64, AstNode> = HashMap::new();
     let mut types: HashMap<u64, TypeNode> = HashMap::new();
@@ -122,7 +122,9 @@ pub fn process(items: Value) -> error::Result<AstContext> {
             let file_path = match file_paths[fileid as usize].as_str() {
                 "" => None,
                 "?" => None,
-                path => Some(canonicalize(Path::new(path)).expect("Could not canonicalize file")),
+                // Relative paths must be relative to the file we're translating, not necessarily cwd
+                path if Path::new(path).is_relative() => Some(canonicalize(Path::join(main_dir, path)).unwrap()),
+                path => Some(Path::new(path).to_path_buf()),
             };
 
             let node = AstNode {
