@@ -486,16 +486,20 @@ class TranslateASTVisitor final
       
       void encodeSourcePos(CborEncoder *enc, SourceLocation loc) {
           auto& manager = Context->getSourceManager();
+
+          // A check to see if the Source Location is a Macro
+          if (manager.isMacroArgExpansion(loc) || manager.isMacroBodyExpansion(loc))
+              loc = manager.getFileLoc(loc);
+
           auto line = manager.getPresumedLineNumber(loc);
           auto col  = manager.getPresumedColumnNumber(loc);
           auto fileid = manager.getFileID(loc);
           auto entry = manager.getFileEntryForID(fileid);
           
           auto filename = string("?");
-          if (entry) {
+          if (entry)
               filename = entry->getName().str();
-          }
-          
+
           auto pair = filenames.insert(std::make_pair(filename, filenames.size()));
           
           cbor_encode_uint(enc, pair.first->second);
