@@ -478,8 +478,12 @@ impl Transform for WrapExtern {
 pub struct WrapApi;
 
 impl Transform for WrapApi {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
-        fold_nodes(krate, |i: P<Item>| {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        // Map from original function HirId to new function name
+        let mut wrapper_map = HashMap::new();
+
+        // Add wrapper functions
+        let krate = fold_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return SmallVector::one(i);
             }
@@ -491,6 +495,7 @@ impl Transform for WrapApi {
             let (decl, old_abi) = expect!([i.node]
                 ItemKind::Fn(ref decl, _, _, abi, _, _) => (decl.clone(), abi));
 
+            // Get the exported symbol name of the function
             let symbol =
                 if let Some(sym) = attr::first_attr_value_str_by_name(&i.attrs, "export_name") {
                     sym
@@ -501,6 +506,7 @@ impl Transform for WrapApi {
                     return SmallVector::one(i);
                 };
 
+            // Remove export-related attrs from the original function, and set it to Abi::Rust.
             let i = i.map(|mut i| {
                 i.attrs.retain(|attr| {
                     attr.path != "no_mangle" &&
@@ -545,7 +551,8 @@ impl Transform for WrapApi {
                 name
             }).collect::<Vec<_>>();
 
-            // Generate the wrapper.
+            // Generate the wrapper.  It gets an `#[export_name]`  attr and the original function's
+            // old ABI.
             let wrapper_decl = decl.clone().map(|decl| {
                 let new_inputs = decl.inputs.iter().zip(arg_names.iter()).map(|(arg, &name)| {
                     mk().arg(&arg.ty, mk().ident_pat(name))
@@ -558,10 +565,11 @@ impl Transform for WrapApi {
 
             let wrapper_args = arg_names.iter().map(|&name| mk().ident_expr(name)).collect();
 
+            let wrapper_name = format!("{}_wrapper", symbol.as_str());
             let wrapper =
                 mk().vis(i.vis.clone()).unsafe_().abi(old_abi)
                         .str_attr("export_name", symbol).fn_item(
-                    format!("{}_wrapper", symbol.as_str()),
+                    &wrapper_name,
                     wrapper_decl,
                     mk().block(vec![
                         mk().expr_stmt(mk().call_expr(
@@ -571,11 +579,41 @@ impl Transform for WrapApi {
                     ])
                 );
 
+
+            let item_hir_id = cx.hir_map().node_to_hir_id(i.id);
+            wrapper_map.insert(item_hir_id, wrapper_name);
+
             let mut v = SmallVector::new();
             v.push(i);
             v.push(wrapper);
             v
-        })
+        });
+
+        // Now ne need to find places where the old function was used as a function pointer.  We do
+        // this by looking for uses outside a call expr's callee position.  If we find any of
+        // these, we edit them to refer to the wrapper, which has the same type (specifically, the
+        // same ABI) as the old function.
+        let mut callees = HashSet::new();
+        visit_nodes(&krate, |e: &Expr| {
+            if let ExprKind::Call(ref callee, _) = e.node {
+                callees.insert(callee.id);
+            }
+        });
+
+        let krate = fold_resolved_paths_with_id(krate, cx, |id, q, p, d| {
+            if callees.contains(&id) || q.is_some() {
+                return (q, p);
+            }
+            let hir_id = match_or!([cx.def_to_hir_id(d)] Some(x) => x; return (q, p));
+            let name = match_or!([wrapper_map.get(&hir_id)] Some(x) => x; return (q, p));
+
+            let mut new_path = p.clone();
+            new_path.segments.pop();
+            new_path.segments.push(mk().path_segment(name));
+            (q, new_path)
+        });
+
+        krate
     }
 
     fn min_phase(&self) -> Phase {

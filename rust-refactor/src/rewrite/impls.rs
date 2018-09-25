@@ -378,6 +378,7 @@ impl<A: SeqItem, B: SeqItem, C: SeqItem> SeqItem for (A, B, C) {}
 
 
 // Custom SeqItem impls
+
 impl SeqItem for Attribute {
     fn supported() -> bool { true }
 
@@ -419,8 +420,6 @@ impl SeqItem for Attribute {
 
 
 // Custom Rewrite impls
-
-
 
 struct FnHeaderSpans {
     vis: Span,
