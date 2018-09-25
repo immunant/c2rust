@@ -266,11 +266,11 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
 fn clean_path(mut mod_names: RefMut<HashMap<String, PathBuf>> , path: &path::Path) -> String {
     fn path_to_str(path: &path::Path) -> String {
         path.file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .replace('.', "_")
-                .replace('-', "_")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .replace('.', "_")
+            .replace('-', "_")
     }
 
     let mut file_path: String = path_to_str(path);

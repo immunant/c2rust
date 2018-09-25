@@ -253,9 +253,8 @@ fn parse_untyped_ast(file_path: &Path) -> Result<AstContext, Error> {
     f.read_to_end(&mut buffer)?;
 
     let items: Value = from_slice(&buffer[..]).unwrap();
-    let file_dir = file_path.parent().expect("File somehow had no parent");
 
-    match process(items, file_dir) {
+    match process(items) {
         Ok(cxt) => Ok(cxt),
         Err(e) => panic!("{:#?}", e),
     }

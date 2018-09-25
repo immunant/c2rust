@@ -498,7 +498,7 @@ class TranslateASTVisitor final
           
           auto filename = string("?");
           if (entry)
-              filename = entry->getName().str();
+              filename = entry->tryGetRealPathName().str();
 
           auto pair = filenames.insert(std::make_pair(filename, filenames.size()));
           

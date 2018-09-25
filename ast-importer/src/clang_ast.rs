@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::fs::canonicalize;
 use serde_cbor::{Value, from_value};
 use serde_cbor::error;
 use std;
@@ -88,7 +87,7 @@ fn import_type_tag(tag: u64) -> TypeTag {
     }
 }
 
-pub fn process(items: Value, main_dir: &Path) -> error::Result<AstContext> {
+pub fn process(items: Value) -> error::Result<AstContext> {
 
     let mut asts: HashMap<u64, AstNode> = HashMap::new();
     let mut types: HashMap<u64, TypeNode> = HashMap::new();
@@ -122,8 +121,6 @@ pub fn process(items: Value, main_dir: &Path) -> error::Result<AstContext> {
             let file_path = match file_paths[fileid as usize].as_str() {
                 "" => None,
                 "?" => None,
-                // Relative paths must be relative to the file we're translating, not necessarily cwd
-                path if Path::new(path).is_relative() => Some(canonicalize(Path::join(main_dir, path)).unwrap()),
                 path => Some(Path::new(path).to_path_buf()),
             };
 
