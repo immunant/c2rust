@@ -48,6 +48,9 @@ pub fn cleanup_rewrites(cm: &CodeMap, rws: Vec<TextRewrite>) -> Vec<TextRewrite>
 
         if new_rws.last().map_or(true, |prev| prev.old_span.hi().0 <= rw.old_span.lo().0) {
             // This rewrite doesn't overlap the previous rewrite, so we can keep it.
+            //
+            // Note this covers the case of multiple insertions at the same point (rewriting at
+            // 10..10 and then 10..10 again, for example).
             new_rws.push(rw);
             continue;
         }

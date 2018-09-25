@@ -10,11 +10,15 @@ use syntax::ast::*;
 use rustc_target::spec::abi::Abi;
 use syntax::codemap::{Span, Spanned, DUMMY_SP};
 use syntax::ext::hygiene::SyntaxContext;
+use syntax::parse::{self, PResult};
+use syntax::parse::parser::Parser;
+use syntax::parse::token::Token;
 use syntax::print::pprust;
 use syntax::ptr::P;
+use syntax::symbol::keywords;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::parser::{self, AssocOp, Fixity};
-use syntax_pos::FileName;
+use syntax_pos::{FileName, BytePos};
 
 use driver;
 use ast_manip::{GetNodeId, GetSpan};
@@ -371,6 +375,256 @@ impl<T: SeqItem> SeqItem for Spanned<T> {}
 impl<T: SeqItem> SeqItem for Option<T> {}
 impl<A: SeqItem, B: SeqItem> SeqItem for (A, B) {}
 impl<A: SeqItem, B: SeqItem, C: SeqItem> SeqItem for (A, B, C) {}
+
+
+// Custom SeqItem impls
+impl SeqItem for Attribute {
+    fn supported() -> bool { true }
+
+    fn get_span(&self) -> Span {
+        self.span
+    }
+
+    fn get_id(&self) -> NodeId {
+        // This is a hack.  Attributes don't actually have their own NodeIds.  But hopefully their
+        // AttrIds are at least unique within a given `Item`...
+        NodeId::new(self.id.0)
+    }
+
+    fn splice_recycled_span(new: &Self, old_span: Span, mut rcx: RewriteCtxtRef) {
+        // Mostly copied from the `Splice` default implementation.  We don't want to `impl Splice
+        // for Attribute` because `Attribute`s don't have real NodeIds, and `Splice` is complex
+        // enough that that could conceivably cause a problem somewhere.
+        let printed = pprust::attr_to_string(new);
+        let reparsed = driver::run_parser(rcx.session(), &printed, |p| {
+            p.parse_attribute(false)
+        });
+
+        if old_span.lo() != old_span.hi() {
+            info!("REWRITE (ATTR) {}", describe(rcx.session(), old_span));
+            info!("   INTO (ATTR) {}", describe(rcx.session(), reparsed.span()));
+        } else {
+            info!("INSERT AT (ATTR) {}", describe(rcx.session(), old_span));
+            info!("     TEXT (ATTR) {}", describe(rcx.session(), reparsed.span()));
+        }
+
+        let mut rewrites = Vec::new();
+        let old_fs = rcx.replace_fresh_start(new.span);
+        Rewrite::rewrite_fresh(new, &reparsed, rcx.with_rewrites(&mut rewrites));
+        rcx.replace_fresh_start(old_fs);
+
+        rcx.record(old_span, reparsed.span(), rewrites, TextAdjust::None);
+    }
+}
+
+
+// Custom Rewrite impls
+
+
+
+struct FnHeaderSpans {
+    vis: Span,
+    constness: Span,
+    unsafety: Span,
+    abi: Span,
+    ident: Span,
+}
+
+fn start_point(sp: Span) -> Span {
+    sp.with_hi(sp.lo())
+}
+
+fn span_empty(sp: Span) -> bool {
+    sp.lo() == sp.hi()
+}
+
+fn find_fn_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, FnHeaderSpans> {
+    // Skip over any attributes that were included in the token stream.
+    loop {
+        if matches!([p.token] Token::DocComment(..)) {
+            p.bump();
+        } else if matches!([p.token] Token::Pound) {
+            // I don't think we should ever see inner attributes inside `item.tokens`, but allow
+            // them just in case.
+            p.parse_attribute(true)?;
+        } else {
+            break;
+        }
+    }
+
+    let spanned_vis = p.parse_visibility(false)?;
+    let vis = if spanned_vis.node != VisibilityKind::Inherited {
+        spanned_vis.span
+    } else {
+        // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
+        // before the next token.
+        start_point(p.span)
+    };
+
+    let constness = if p.eat_keyword(keywords::Const) {
+        p.prev_span
+    } else {
+        start_point(p.span)
+    };
+
+    let unsafety = if p.eat_keyword(keywords::Unsafe) {
+        p.prev_span
+    } else {
+        start_point(p.span)
+    };
+
+    let abi = if p.eat_keyword(keywords::Extern) {
+        let extern_span = p.prev_span;
+        if matches!([p.token] Token::Literal(..)) {
+            // Just assume it's a valid abi string token.  If it wasn't, these tokens wouldn't have
+            // parsed as an item to begin with.
+            p.bump();
+            extern_span.to(p.prev_span)
+        } else {
+            // Implicitly `extern "C"`.
+            extern_span
+        }
+    } else {
+        start_point(p.span)
+    };
+
+    p.expect(&Token::Ident(keywords::Fn.ident(), false))?;
+
+    p.parse_ident()?;
+    let ident = p.prev_span;
+
+    Ok(FnHeaderSpans { vis, constness, unsafety, abi, ident })
+}
+
+/// Record a rewrite of a qualifier, such as `unsafe`.  We make two assumptions:
+///  1. If `old_span` is empty, then it is placed at the start of the next token after the place
+///     the new qualifier should go.
+///  2. If `new_span` is non-empty, then it is followed by a space.
+fn record_qualifier_rewrite(old_span: Span, new_span: Span, mut rcx: RewriteCtxtRef) {
+    let src_span = if span_empty(old_span) && !span_empty(new_span) {
+        // We are inserting some text where there was none before.  We need to extend
+        // the source span by one, picking up the trailing space, so that there will be
+        // a space between the inserted text and the following token.
+        new_span.with_hi(new_span.hi() + BytePos(1))
+    } else {
+        new_span
+    };
+
+    if span_empty(old_span) {
+        info!("INSERT (QUAL) {}", describe(rcx.session(), old_span));
+        info!("    AT (QUAL) {}", describe(rcx.session(), src_span));
+    } else if span_empty(new_span) {
+        info!("DELETE (QUAL) {}", describe(rcx.session(), old_span));
+    } else {
+        info!("REWRITE (QUAL) {}", describe(rcx.session(), old_span));
+        info!("   INTO (QUAL) {}", describe(rcx.session(), src_span));
+    }
+
+    rcx.record(old_span, src_span, vec![], TextAdjust::None);
+}
+
+fn recover_item_rewrite_recycled(new: &Item, old: &Item, mut rcx: RewriteCtxtRef) -> bool {
+    let &Item { ident: ref ident1, attrs: ref attrs1, id: ref id1, node: ref node1,
+                vis: ref vis1, span: ref span1, tokens: ref tokens1 } = new;
+    let &Item { ident: ref ident2, attrs: ref attrs2, id: ref id2, node: ref node2,
+                vis: ref vis2, span: ref span2, tokens: ref tokens2 } = old;
+
+    // We can't do anything without tokens to parse.  (This is not quite true - we could
+    // pretty-print and reparse `old`.  But that's a pain, so just require tokens instead.)
+    if tokens2.is_none() {
+        return true;
+    }
+
+    match (node1, node2) {
+        (&ItemKind::Fn(ref decl1, ref unsafety1, ref constness1, ref abi1, ref generics1, ref block1),
+         &ItemKind::Fn(ref decl2, ref unsafety2, ref constness2, ref abi2, ref generics2, ref block2)) => {
+            // First, try rewriting all the things we don't have special handling for.  If any of
+            // these fails, bail out.
+            let fail =
+                Rewrite::rewrite_recycled(attrs1, attrs2, rcx.borrow()) ||
+                Rewrite::rewrite_recycled(id1, id2, rcx.borrow()) ||
+                Rewrite::rewrite_recycled(span1, span2, rcx.borrow()) ||
+                Rewrite::rewrite_recycled(decl1, decl2, rcx.borrow()) ||
+                Rewrite::rewrite_recycled(generics1, generics2, rcx.borrow()) ||
+                Rewrite::rewrite_recycled(block1, block2, rcx.borrow());
+            if fail {
+                return true;
+            }
+
+            // Now try to splice changes to vis, constness, unsafety, abi, and ident.  We use the
+            // parser to find spans for all the old stuff.
+            //
+            // We could recover from parse errors by bailing on the rewrite (returning `true`), but
+            // it's easier to just panic.
+            let src1 = <Item as Splice>::to_string(new);
+            let spans1 = driver::run_parser(rcx.session(), &src1, find_fn_header_spans);
+
+            let tts2 = tokens2.as_ref().unwrap().trees().collect::<Vec<_>>();
+            let spans2 = driver::run_parser_tts(rcx.session(), tts2, find_fn_header_spans);
+
+
+            // The first four go in a specific order.  If multiple qualifiers are added (for
+            // example, both `unsafe` and `extern`), we need to add them in the right order.
+
+            if vis1.node != vis2.node {
+                record_qualifier_rewrite(spans2.vis, spans1.vis, rcx.borrow());
+            }
+
+            if constness1.node != constness2.node {
+                record_qualifier_rewrite(spans2.constness, spans1.constness, rcx.borrow());
+            }
+
+            if unsafety1 != unsafety2 {
+                record_qualifier_rewrite(spans2.unsafety, spans1.unsafety, rcx.borrow());
+            }
+
+            if abi1 != abi2 {
+                record_qualifier_rewrite(spans2.abi, spans1.abi, rcx.borrow());
+            }
+
+            if ident1 != ident2 {
+                record_qualifier_rewrite(spans2.ident, spans1.ident, rcx.borrow());
+            }
+
+            false
+        },
+
+        (_, _) => true,
+    }
+}
+
+impl Rewrite for Item {
+    fn rewrite_recycled(&self, old: &Self, mut rcx: RewriteCtxtRef) -> bool {
+        // Try the default strategy first.  If it fails (returns `true`), then fall back on custom
+        // recovery strategies.
+        let mark = rcx.mark();
+        let need_rewrite = default_item_rewrite_recycled(self, old, rcx.borrow());
+        if !need_rewrite {
+            return false;
+        } else {
+            rcx.rewind(mark);
+        }
+
+        let mark = rcx.mark();
+        let need_rewrite = recover_item_rewrite_recycled(self, old, rcx.borrow());
+        if !need_rewrite {
+            return false;
+        } else {
+            rcx.rewind(mark);
+        }
+
+        // Last strategy, which never fails.
+        <Item as Splice>::splice_recycled(self, old, rcx);
+        false
+    }
+
+    fn rewrite_fresh(&self, reparsed: &Self, mut rcx: RewriteCtxtRef) {
+        if <Item as Splice>::splice_fresh(self, reparsed, rcx.borrow()) {
+            return;
+        }
+        default_item_rewrite_fresh(self, reparsed, rcx)
+    }
+}
 
 
 // Generic Rewrite impls

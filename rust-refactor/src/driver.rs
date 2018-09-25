@@ -17,9 +17,10 @@ use rustc_codegen_utils::codegen_backend::CodegenBackend;
 use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind};
 use syntax::codemap::CodeMap;
 use syntax::codemap::{FileLoader, RealFileLoader};
-use syntax::parse;
+use syntax::parse::{self, PResult};
 use syntax::parse::parser::Parser;
 use syntax::ptr::P;
+use syntax::tokenstream::TokenTree;
 use syntax_pos::FileName;
 use arena::SyncDroplessArena;
 
@@ -307,5 +308,24 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
             }
         }
         Err(db) => emit_and_panic(db, "foreign items"),
+    }
+}
+
+
+pub fn run_parser<F, R>(sess: &Session, src: &str, f: F) -> R
+        where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
+    let mut p = make_parser(sess, "<src>", src);
+    match f(&mut p) {
+        Ok(x) => x,
+        Err(db) => emit_and_panic(db, "src"),
+    }
+}
+
+pub fn run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> R
+        where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
+    let mut p = parse::new_parser_from_tts(&sess.parse_sess, tts);
+    match f(&mut p) {
+        Ok(x) => x,
+        Err(db) => emit_and_panic(db, "tts"),
     }
 }
