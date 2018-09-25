@@ -270,6 +270,7 @@ fn clean_path(mut mod_names: RefMut<HashMap<String, PathBuf>> , path: &path::Pat
                 .to_str()
                 .unwrap()
                 .replace('.', "_")
+                .replace('-', "_")
     }
 
     let mut file_path: String = path_to_str(path);
@@ -4406,9 +4407,11 @@ impl Translation {
                 Half | Float | Double | LongDouble => use_super_libc(store),
                 // Bool uses the bool type, so no dependency on libc
                 Bool => {},
+                Decayed(ctype) |
                 ConstantArray(ctype, _) |
                 Elaborated(ctype) |
                 Pointer(CQualTypeId { ctype, .. }) => match_type_kind(context, &context[*ctype].kind, store, decl_file_path, mod_names, type_converter),
+                Enum(decl_id) |
                 Typedef(decl_id) |
                 Union(decl_id) |
                 Struct(decl_id) => {
