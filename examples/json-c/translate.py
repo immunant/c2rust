@@ -34,6 +34,8 @@ REFACTORINGS = [
         );''') + [';', 'canonicalize_structs'],
 
     ['link_funcs'],
+
+    mk_select('crate; desc(fn && pub);') + [';', 'wrap_api'],
 ]
 
 
