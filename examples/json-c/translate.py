@@ -36,6 +36,11 @@ REFACTORINGS = [
     ['link_funcs'],
 
     mk_select('crate; desc(fn && pub);') + [';', 'wrap_api'],
+
+    # Omit locale functions because the `libc`'s versions are unusable.
+    # (`libc::locale_t` is defined incorrectly.)
+    mk_select('crate; desc(foreign_item && fn && !name(".*locale.*"));') +
+        [';', 'canonicalize_externs', 'libc'],
 ]
 
 
