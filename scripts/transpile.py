@@ -96,7 +96,7 @@ LIB_RS_TEMPLATE = """\
 extern crate libc;
 % if use_fakechecks:
 extern crate libfakechecks_sys;
-%endif 
+%endif
 
 % for (module_name, module_path, line_prefix) in modules:
 <% module_name = module_name.replace('-', '_') %>
@@ -168,7 +168,7 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
 
 
 def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
-                      main_module: str, cross_checks: bool, 
+                      main_module: str, cross_checks: bool,
                       use_fakechecks: bool, cross_check_config: List[str]):
     build_dir = os.path.join(dest_dir, "c2rust-build")
     shutil.rmtree(build_dir, ignore_errors=True)
@@ -181,7 +181,7 @@ def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
         plugin_path = os.path.join(rust_checks_path, "rustc-plugin")
         derive_path = os.path.join(rust_checks_path, "derive-macros")
         runtime_path = os.path.join(rust_checks_path, "runtime")
-        libfakechecks_sys_path = os.path.join(rust_checks_path, 
+        libfakechecks_sys_path = os.path.join(rust_checks_path,
                                               "backends/libfakechecks-sys")
         tmpl = mako.template.Template(CARGO_TOML_TEMPLATE)
         cargo_toml.write(tmpl.render(
@@ -261,7 +261,7 @@ def transpile_files(cc_db: TextIO,
     check_main_module(main_module_for_build_files, cc_db)
 
     if filter:  # skip commands not matching file filter
-        cc_db = [cmd for cmd in cc_db if filter in c['file']]
+        cc_db = [cmd for cmd in cc_db if filter in cmd['file']]
 
     if not on_mac():
         ensure_code_compiled_with_clang(cc_db)
