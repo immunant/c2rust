@@ -62,6 +62,9 @@ and this preamble to your `lib.rs` or `main.rs`:
 
 You may also add `#![plugin(cross_check_plugin(...))]` to pass additional arguments to the cross-checking plugin.
 
+### Cross-check configuration
+Cross-checks can be customized at a fine granularity using [cross-check configuration files or inline attributes](cross-check-config.md).
+
 ## Running cross-checked programs
 ### Offline mode
 We currently provide a few offline cross-checking backend libraries:
@@ -75,7 +78,7 @@ Before running the C and Rust binaries, you may need to load in one of these lib
 haven't linked against it and passed in its path using `-rpath` (this is fairly easy to do for a C build, but 
 more complicated when using Cargo for Rust code), like this:
 ```Bash
-  $ env LD_PRELOAD=$C2RUST/cross-checks/libfakechecks/libfakechecks.so ./program
+  $ env LD_PRELOAD=$C2RUST/cross-checks/libfakechecks/libfakechecks.so ./a.out
 ```
 
 Running each program version with cross-checks enabled will print a list of cross-check results either to standard output
