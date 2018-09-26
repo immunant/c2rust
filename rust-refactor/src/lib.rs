@@ -40,6 +40,7 @@ pub mod api;
 pub mod contains_mark;
 pub mod reflect;
 pub mod type_map;
+pub mod resolve;
 
 pub mod matcher;
 
