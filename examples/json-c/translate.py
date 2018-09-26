@@ -41,6 +41,13 @@ REFACTORINGS = [
     # (`libc::locale_t` is defined incorrectly.)
     mk_select('crate; desc(foreign_item && fn && !name(".*locale.*"));') +
         [';', 'canonicalize_externs', 'libc'],
+
+    mk_select(r'crate; desc(foreign_item && fn && name("__isnan(l|f)?"));') +
+        [';', 'mark_uses', 'target',
+            ';', 'rewrite_expr', 'marked!(__e)(__f)', '__f.is_nan() as i32'],
+    mk_select(r'crate; desc(foreign_item && fn && name("__isinf(l|f)?"));') +
+        [';', 'mark_uses', 'target',
+            ';', 'rewrite_expr', 'marked!(__e)(__f)', '__f.is_infinite() as i32'],
 ]
 
 
