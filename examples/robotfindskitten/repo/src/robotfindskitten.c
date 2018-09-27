@@ -37,8 +37,6 @@ static char* ver = VERSION;
 
 #include <signal.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <time.h>
 
 /*The messages go in a separate file because they are collectively
   huge, and you might want to modify them. It would be nice to load
@@ -549,7 +547,7 @@ void initialize_screen()
 
 }
 
-int main(int argc, char **argv)
+int main(int argc, char *argv[])
 {
   /*
    *Do general start-of-program stuff.

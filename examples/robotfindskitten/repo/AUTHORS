@@ -1,0 +1,14 @@
+I (leonardr@segfault.org) wrote this program.
+
+Pete Peterson (pedro@zork.net) supplied about [many] non-kitten messages.
+
+Frederick Lee (phaethon@csua.ucla.edu) showed me how to get my beloved
+IBM character set under Linux.
+
+Some ncurses initialization code stolen from "Writing Programs with
+NCURSES", by Eric S. Raymond and Zeyd M. Ben-Halim. I don't know if
+there's an official URL, but it's only a Google search away.
+
+Nick Moffitt (nick@zork.net) and George Moffitt (zen@zork.net)
+refactored the code and added new key commands as well as non-kitten
+messages.
