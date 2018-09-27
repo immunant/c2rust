@@ -1,5 +1,5 @@
 fn main() {
-    let here = ::std::path::PathBuf::from(::std::env::("CARGO_MANIFEST_DIR")).unwrap());
+    let here = ::std::path::PathBuf::from(::std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let cross_checks_path = here.parent()
         .and_then(|x| x.parent())
         .and_then(|x| x.parent())
