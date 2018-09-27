@@ -23,8 +23,8 @@ then run clang (or pass it to the build system) with the following options:
   * `-Xclang -plugin-arg-crosschecks -Xclang <...>` for every additional option to pass to the plugin
   * `-ffunction-sections` may be required to correctly deduplicate some linkonce functions inserted by the plugin
   
-Note that every option passed to clang requires a `-Xclang` prefix before every actual option, 
-so that the compiler driver passes it to its backend correctly.
+Note that every option passed to clang requires a `-Xclang` prefix before the actual option, 
+so that the compiler driver passes it to the clang backend correctly.
 We provide a `cc_wrapper.sh` script in the plugin source code directory that inserts these automatically,
 as well as several project-specific scripts in directories under `examples/`.
 
