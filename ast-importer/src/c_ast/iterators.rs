@@ -65,7 +65,8 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
     match *kind {
         BadExpr => vec![],
         DesignatedInitExpr(..) => vec![], // the relevant information will be found in the semantic initializer
-        ShuffleVector(..) | ConvertVector(..) => vec![],
+        ShuffleVector(..)  => vec![],
+        ConvertVector(qty) => intos![qty.ctype],
         OffsetOf(..) | Literal(..) | ImplicitValueInit(..) => vec![],
         DeclRef(..) => vec![], // don't follow references back!
         Unary(_ty, _op, subexpr, _) => intos![subexpr],
@@ -85,11 +86,12 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
         BinaryConditional(_, c, t) => intos![c,t],
         InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
         ImplicitCast(_, e, _, _, _) |
-        Member(_, e, _, _, _) | CompoundLiteral(_, e) | Predefined(_, e) | VAArg(_,e) => intos![e],
+        Member(_, e, _, _, _) | Predefined(_, e) => intos![e],
         // Normally we don't step into the result type annotation field, because it's not really
         // part of the expression.  But for `ExplicitCast`, the result type is actually the cast's
-        // target type as written by the user.
-        ExplicitCast(qty, e, _, _, _) => intos![qty.ctype, e],
+        // target type as written by the user.  The other expr kinds here work similarly.
+        ExplicitCast(qty, e, _, _, _) | CompoundLiteral(qty, e) |
+        VAArg(qty, e) => intos![qty.ctype, e],
         Statements(_, s) => vec![s.into()],
     }
 }
@@ -108,8 +110,11 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
             for x in initializer { res.push(x.into()) }
             res
         }
-        Enum { ref variants, .. } =>
-            variants.iter().map(|&x| x.into()).collect(),
+        Enum { ref variants, integral_type, .. } => {
+            let mut res: Vec<SomeId> = variants.iter().map(|&x| x.into()).collect();
+            if let Some(qty) = integral_type { res.push(qty.ctype.into()); }
+            res
+        }
         EnumConstant { .. } => vec![],
         Typedef { typ, .. } => intos![typ.ctype],
         Struct { ref fields, .. } =>
