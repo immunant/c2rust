@@ -37,6 +37,8 @@ static char* ver = VERSION;
 
 #include <signal.h>
 #include <stdlib.h>
+#include <time.h>
+#include <unistd.h>
 
 /*The messages go in a separate file because they are collectively
   huge, and you might want to modify them. It would be nice to load
