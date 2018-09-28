@@ -26,7 +26,6 @@ use rust_ast::traverse::Traversal;
 use std::io;
 use std::path::{self, PathBuf};
 use indexmap::IndexMap;
-use std::cell::RefMut;
 
 use cfg;
 
@@ -263,7 +262,7 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
     }
 }
 
-fn clean_path(mut mod_names: RefMut<HashMap<String, PathBuf>> , path: &path::Path) -> String {
+fn clean_path(mod_names: &RefCell<HashMap<String, PathBuf>>, path: &path::Path) -> String {
     fn path_to_str(path: &path::Path) -> String {
         path.file_name()
             .unwrap()
@@ -274,6 +273,7 @@ fn clean_path(mut mod_names: RefMut<HashMap<String, PathBuf>> , path: &path::Pat
     }
 
     let mut file_path: String = path_to_str(path);
+    let mut mod_names = mod_names.borrow_mut();
     if !mod_names.contains_key(&file_path.clone()) {
         mod_names.insert(file_path.clone(), path.to_path_buf());
     } else {
@@ -480,7 +480,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             let mut mod_items: Vec<P<Item>> = Vec::new();
 
             for (file_path, ref mut mod_item_store) in t.mod_blocks.borrow_mut().iter_mut() {
-                mod_items.push(make_submodule(mod_item_store, file_path, t.uses.borrow_mut(), t.mod_names.borrow_mut()));
+                mod_items.push(make_submodule(mod_item_store, file_path, &t.uses, &t.mod_names));
             }
 
             mod_items = mod_items.into_iter()
@@ -524,8 +524,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 }
 
 fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
-                   mut global_uses: RefMut<Vec<P<Item>>>,
-                   mod_names: RefMut<HashMap<String, PathBuf>>) -> P<Item> {
+                   global_uses: &RefCell<Vec<P<Item>>>,
+                   mod_names: &RefCell<HashMap<String, PathBuf>>) -> P<Item> {
     // FIXME: submodule contents aren't deterministic
     let (mut items, foreign_items, uses) = submodule_item_store.drain();
     let file_path_str = file_path.to_str().expect("Found invalid unicode");
@@ -536,14 +536,14 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
         let ident_name = item.ident.name.as_str();
         let use_path = vec!["self", mod_name.as_str(), &*ident_name];
 
-        global_uses.push(mk().use_item(use_path, None as Option<Ident>));
+        global_uses.borrow_mut().push(mk().use_item(use_path, None as Option<Ident>));
     }
 
     for foreign_item in foreign_items.iter() {
         let ident_name = foreign_item.ident.name.as_str();
         let use_path = vec!["self", mod_name.as_str(), &*ident_name];
 
-        global_uses.push(mk().use_item(use_path, None as Option<Ident>));
+        global_uses.borrow_mut().push(mk().use_item(use_path, None as Option<Ident>));
     }
 
     for use_item in uses {
@@ -4397,8 +4397,8 @@ impl Translation {
         }
 
         fn match_type_kind(context: &TypedAstContext, type_kind: &CTypeKind, store: &mut ItemStore,
-                           decl_file_path: &path::Path, mod_names: RefMut<HashMap<String, PathBuf>>,
-                           type_converter: RefMut<TypeConverter>) {
+                           decl_file_path: &path::Path, mod_names: &RefCell<HashMap<String, PathBuf>>,
+                           type_converter: &RefCell<TypeConverter>) {
             use self::CTypeKind::*;
 
             match type_kind {
@@ -4424,14 +4424,29 @@ impl Translation {
                         return;
                     }
 
-                    let ident_name = type_converter.resolve_decl_name(*decl_id).unwrap();
+                    let ident_name = type_converter.borrow().resolve_decl_name(*decl_id).unwrap();
                     let file_path = decl_loc.file_path.as_ref().unwrap();
                     let file_name = clean_path(mod_names, &file_path);
                     let item_use = mk().use_item(vec!["super", &file_name, &ident_name], None as Option<Ident>);
 
                     store.uses.insert(item_use);
                 },
-                Function(_ret, ref _params, _is_var, _is_noreturn) => {}, // FIXME
+                Function(CQualTypeId { ctype, .. }, ref params, _is_var, _is_noreturn) => {
+                    // Return Type
+                    // Rust doesn't use void for return type, so skip
+                    if context[*ctype].kind != Void {
+                        let type_kind = &context[*ctype].kind;
+
+                        match_type_kind(context, &type_kind, store, decl_file_path, mod_names, type_converter);
+                    }
+
+                    // Params
+                    for param_id in params {
+                        let type_kind = &context.c_types[&param_id.ctype].kind;
+
+                        match_type_kind(&context, type_kind, store, decl_file_path, mod_names, type_converter);
+                    }
+                },
                 IncompleteArray { .. } => {}, // FIXME
                 Paren { .. } => {}, // FIXME
                 ref e => unimplemented!("{:?}", e),
@@ -4446,7 +4461,7 @@ impl Translation {
                 for field_id in field_ids.iter() {
                     match self.ast_context.c_decls[field_id].kind {
                         CDeclKind::Field { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path,
-                                                                        self.mod_names.borrow_mut(), self.type_converter.borrow_mut()),
+                                                                        &self.mod_names, &self.type_converter),
                         _ => unreachable!("Found something in a struct other than a field"),
                     }
                 }
@@ -4455,22 +4470,12 @@ impl Translation {
             // REVIEW: Enums can only be integer types? So libc is likely always required?
             CDeclKind::Enum { .. } => use_super_libc(item_store),
             CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } |
-            CDeclKind::Typedef { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path,
-                                                              self.mod_names.borrow_mut(), self.type_converter.borrow_mut()),
-            CDeclKind::Function { is_extern: true, typ, ref parameters, .. } => {
-                // Return type
+            CDeclKind::Typedef { typ, .. } =>
+                match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path,
+                                &self.mod_names, &self.type_converter),
+            CDeclKind::Function { is_extern: true, typ, .. } =>
                 match_type_kind(&self.ast_context, &self.ast_context[typ].kind, item_store, decl_file_path,
-                                self.mod_names.borrow_mut(), self.type_converter.borrow_mut());
-
-                // Params
-                for param_id in parameters {
-                    match self.ast_context.c_decls[param_id].kind {
-                        CDeclKind::Variable { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path,
-                                                                           self.mod_names.borrow_mut(), self.type_converter.borrow_mut()),
-                        _ => unreachable!("Found something other than a variable as a function param"),
-                    }
-                }
-            },
+                                &self.mod_names, &self.type_converter),
             ref e => unimplemented!("{:?}", e),
         }
     }
