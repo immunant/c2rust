@@ -45,6 +45,7 @@ pub mod resolve;
 pub mod matcher;
 
 pub mod driver;
+pub mod recheck;
 
 pub mod command;
 pub mod interact;
