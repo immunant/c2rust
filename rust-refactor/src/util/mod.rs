@@ -2,6 +2,7 @@
 use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
 use syntax::symbol::Symbol;
+use syntax::symbol::keywords::Keyword;
 use syntax::util::small_vector::SmallVector;
 use syntax::symbol::InternedString;
 
@@ -110,5 +111,11 @@ impl<'a> IntoSymbol for &'a String {
 impl IntoSymbol for InternedString {
     fn into_symbol(self) -> Symbol {
         self.as_symbol()
+    }
+}
+
+impl IntoSymbol for Keyword {
+    fn into_symbol(self) -> Symbol {
+        self.name()
     }
 }
