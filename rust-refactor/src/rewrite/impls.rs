@@ -758,14 +758,20 @@ impl<T: Rewrite+SeqItem> Rewrite for [T] {
                         // There's an item on the right corresponding to nothing on the left.
                         // Insert the item before the current item on the left, rewriting
                         // recursively.
+                        let before = if i > 0 { old[i - 1].get_span() } else { DUMMY_SP };
+                        let after = if i < old.len() { old[i].get_span() } else { DUMMY_SP };
+
                         let old_span =
-                            if i > 0 {
-                                let s = old[i - 1].get_span();
-                                s.with_lo(s.hi())
+                            if before != DUMMY_SP {
+                                before.with_lo(before.hi())
+                            } else if after != DUMMY_SP {
+                                after.with_hi(after.lo())
                             } else {
-                                let s = old[0].get_span();
-                                s.with_hi(s.lo())
+                                warn!("can't insert new node between two DUMMY_SP nodes");
+                                return true;
                             };
+
+                        info!("insert new item at {}", describe(rcx.session(), old_span));
                         SeqItem::splice_recycled_span(&self[j], old_span, rcx.borrow());
                         j += 1;
                     },
