@@ -4407,7 +4407,9 @@ impl Translation {
                 Half | Float | Double | LongDouble => use_super_libc(store),
                 // Bool uses the bool type, so no dependency on libc
                 Bool => {},
+                Paren(ctype) |
                 Decayed(ctype) |
+                IncompleteArray(ctype) |
                 ConstantArray(ctype, _) |
                 Elaborated(ctype) |
                 Pointer(CQualTypeId { ctype, .. }) => match_type_kind(context, &context[*ctype].kind, store, decl_file_path, mod_names, type_converter),
@@ -4431,24 +4433,22 @@ impl Translation {
 
                     store.uses.insert(item_use);
                 },
-                Function(CQualTypeId { ctype, .. }, ref params, _is_var, _is_noreturn) => {
+                Function(CQualTypeId { ctype, .. }, ref params, ..) => {
                     // Return Type
-                    // Rust doesn't use void for return type, so skip
-                    if context[*ctype].kind != Void {
-                        let type_kind = &context[*ctype].kind;
+                    let type_kind = &context[*ctype].kind;
 
-                        match_type_kind(context, &type_kind, store, decl_file_path, mod_names, type_converter);
+                    // Rust doesn't use void for return type, so skip
+                    if *type_kind != Void {
+                        match_type_kind(context, type_kind, store, decl_file_path, mod_names, type_converter);
                     }
 
-                    // Params
+                    // Param Types
                     for param_id in params {
                         let type_kind = &context.c_types[&param_id.ctype].kind;
 
                         match_type_kind(&context, type_kind, store, decl_file_path, mod_names, type_converter);
                     }
                 },
-                IncompleteArray { .. } => {}, // FIXME
-                Paren { .. } => {}, // FIXME
                 ref e => unimplemented!("{:?}", e),
             }
         }
