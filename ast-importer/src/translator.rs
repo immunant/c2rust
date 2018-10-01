@@ -25,7 +25,7 @@ use with_stmts::WithStmts;
 use rust_ast::traverse::Traversal;
 use std::io;
 use std::path::{self, PathBuf};
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use cfg;
 
@@ -110,7 +110,7 @@ pub struct Translation {
 
     // Accumulated outputs
     pub features: RefCell<HashSet<&'static str>>,
-    pub uses: RefCell<Vec<P<Item>>>,
+    pub uses: RefCell<IndexSet<P<Item>>>,
     pub items: RefCell<Vec<P<Item>>>,
     pub foreign_items: RefCell<Vec<ForeignItem>>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
@@ -524,8 +524,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 }
 
 fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
-                   global_uses: &RefCell<Vec<P<Item>>>,
-                   mod_names: &RefCell<HashMap<String, PathBuf>>) -> P<Item> {
+                  global_uses: &RefCell<IndexSet<P<Item>>>,
+                  mod_names: &RefCell<HashMap<String, PathBuf>>) -> P<Item> {
     // FIXME: submodule contents aren't deterministic
     let (mut items, foreign_items, uses) = submodule_item_store.drain();
     let file_path_str = file_path.to_str().expect("Found invalid unicode");
@@ -536,14 +536,14 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
         let ident_name = item.ident.name.as_str();
         let use_path = vec!["self", mod_name.as_str(), &*ident_name];
 
-        global_uses.borrow_mut().push(mk().use_item(use_path, None as Option<Ident>));
+        global_uses.borrow_mut().insert(mk().use_item(use_path, None as Option<Ident>));
     }
 
     for foreign_item in foreign_items.iter() {
         let ident_name = foreign_item.ident.name.as_str();
         let use_path = vec!["self", mod_name.as_str(), &*ident_name];
 
-        global_uses.borrow_mut().push(mk().use_item(use_path, None as Option<Ident>));
+        global_uses.borrow_mut().insert(mk().use_item(use_path, None as Option<Ident>));
     }
 
     for use_item in uses {
@@ -675,7 +675,7 @@ impl Translation {
 
         Translation {
             features: RefCell::new(HashSet::new()),
-            uses: RefCell::new(Vec::new()),
+            uses: RefCell::new(IndexSet::new()),
             items: RefCell::new(vec![]),
             foreign_items: RefCell::new(vec![]),
             type_converter: RefCell::new(type_converter),
@@ -717,7 +717,7 @@ impl Translation {
     /// Called when translation makes use of a use import.
     #[allow(dead_code)]
     fn use_import(&self, use_path: Vec<&str>) {
-        self.uses.borrow_mut().push(mk().use_item(use_path, None as Option<Ident>));
+        self.uses.borrow_mut().insert(mk().use_item(use_path, None as Option<Ident>));
     }
 
     // This node should _never_ show up in the final generated code. This is an easy way to notice
