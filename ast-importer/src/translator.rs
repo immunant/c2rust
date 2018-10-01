@@ -4384,82 +4384,75 @@ impl Translation {
         }
     }
 
+    fn match_type_kind(&self, ctype: CTypeId, store: &mut ItemStore, decl_file_path: &path::Path) {
+        use self::CTypeKind::*;
+
+        match self.ast_context[ctype].kind {
+            Void | Char | SChar | UChar | Short | UShort | Int | UInt |
+            Long | ULong | LongLong | ULongLong | Int128 | UInt128 |
+            Half | Float | Double | LongDouble => {
+                let item_use = mk().use_item(vec!["super", "libc"], None as Option<Ident>);
+
+                store.uses.insert(item_use);
+            },
+            // Bool uses the bool type, so no dependency on libc
+            Bool => {},
+            Paren(ctype) |
+            Decayed(ctype) |
+            IncompleteArray(ctype) |
+            ConstantArray(ctype, _) |
+            Elaborated(ctype) |
+            Pointer(CQualTypeId { ctype, .. }) => self.match_type_kind(ctype, store, decl_file_path),
+            Enum(decl_id) |
+            Typedef(decl_id) |
+            Union(decl_id) |
+            Struct(decl_id) => {
+                let decl = &self.ast_context.c_decls[&decl_id];
+                let decl_loc = &decl.loc.as_ref().unwrap();
+
+                // If the definition lives in the same header, there is no need to import it
+                // in fact, this would be a hard rust error
+                if decl_loc.file_path.as_ref().unwrap() == decl_file_path {
+                    return;
+                }
+
+                let ident_name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+
+                // Either the decl lives in the parent module, or else in a sibling submodule
+                let item_use = if decl_loc.file_path == self.tcfg.main_file {
+                    mk().use_item(vec!["super", &ident_name], None as Option<Ident>)
+                } else {
+                    let file_path = decl_loc.file_path.as_ref().unwrap();
+                    let file_name = clean_path(&self.mod_names, &file_path);
+
+                    mk().use_item(vec!["super", &file_name, &ident_name], None as Option<Ident>)
+                };
+
+                store.uses.insert(item_use);
+            },
+            Function(CQualTypeId { ctype, .. }, ref params, ..) => {
+                // Return Type
+                let type_kind = &self.ast_context[ctype].kind;
+
+                // Rust doesn't use void for return type, so skip
+                if *type_kind != Void {
+                    self.match_type_kind(ctype, store, decl_file_path);
+                }
+
+                // Param Types
+                for param_id in params {
+                    self.match_type_kind(param_id.ctype, store, decl_file_path);
+                }
+            },
+            ref e => unimplemented!("{:?}", e),
+        }
+    }
+
     fn generate_submodule_imports(&self, decl_id: CDeclId, decl_file_path: Option<&PathBuf>) {
         let decl_file_path = decl_file_path.expect("There should be a decl file path");
         let decl = self.ast_context.c_decls.get(&decl_id).unwrap();
         let mut sumbodule_items = self.mod_blocks.borrow_mut();
         let item_store = sumbodule_items.entry(decl_file_path.to_path_buf()).or_insert(ItemStore::new());
-
-        fn use_super_libc(store: &mut ItemStore) {
-            let item_use = mk().use_item(vec!["super", "libc"], None as Option<Ident>);
-
-            store.uses.insert(item_use);
-        }
-
-        fn match_type_kind(context: &TypedAstContext, type_kind: &CTypeKind, store: &mut ItemStore,
-                           decl_file_path: &path::Path, mod_names: &RefCell<HashMap<String, PathBuf>>,
-                           type_converter: &RefCell<TypeConverter>, tcfg: &TranslationConfig) {
-            use self::CTypeKind::*;
-
-            match type_kind {
-                Void | Char | SChar | UChar | Short | UShort | Int | UInt |
-                Long | ULong | LongLong | ULongLong | Int128 | UInt128 |
-                Half | Float | Double | LongDouble => use_super_libc(store),
-                // Bool uses the bool type, so no dependency on libc
-                Bool => {},
-                Paren(ctype) |
-                Decayed(ctype) |
-                IncompleteArray(ctype) |
-                ConstantArray(ctype, _) |
-                Elaborated(ctype) |
-                Pointer(CQualTypeId { ctype, .. }) =>
-                    match_type_kind(context, &context[*ctype].kind, store, decl_file_path, mod_names, type_converter, tcfg),
-                Enum(decl_id) |
-                Typedef(decl_id) |
-                Union(decl_id) |
-                Struct(decl_id) => {
-                    let decl = &context.c_decls[decl_id];
-                    let decl_loc = &decl.loc.as_ref().unwrap();
-
-                    // If the definition lives in the same header, there is no need to import it
-                    // in fact, this would be a hard rust error
-                    if decl_loc.file_path.as_ref().unwrap() == decl_file_path {
-                        return;
-                    }
-
-                    let ident_name = type_converter.borrow().resolve_decl_name(*decl_id).unwrap();
-
-                    // Either the decl lives in the parent module, or else in a sibling submodule
-                    let item_use = if decl_loc.file_path == tcfg.main_file {
-                        mk().use_item(vec!["super", &ident_name], None as Option<Ident>)
-                    } else {
-                        let file_path = decl_loc.file_path.as_ref().unwrap();
-                        let file_name = clean_path(mod_names, &file_path);
-
-                        mk().use_item(vec!["super", &file_name, &ident_name], None as Option<Ident>)
-                    };
-
-                    store.uses.insert(item_use);
-                },
-                Function(CQualTypeId { ctype, .. }, ref params, ..) => {
-                    // Return Type
-                    let type_kind = &context[*ctype].kind;
-
-                    // Rust doesn't use void for return type, so skip
-                    if *type_kind != Void {
-                        match_type_kind(context, type_kind, store, decl_file_path, mod_names, type_converter, tcfg);
-                    }
-
-                    // Param Types
-                    for param_id in params {
-                        let type_kind = &context.c_types[&param_id.ctype].kind;
-
-                        match_type_kind(&context, type_kind, store, decl_file_path, mod_names, type_converter, tcfg);
-                    }
-                },
-                ref e => unimplemented!("{:?}", e),
-            }
-        }
 
         match decl.kind {
             CDeclKind::Struct { ref fields, .. } |
@@ -4468,22 +4461,21 @@ impl Translation {
 
                 for field_id in field_ids.iter() {
                     match self.ast_context.c_decls[field_id].kind {
-                        CDeclKind::Field { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path,
-                                                                        &self.mod_names, &self.type_converter, &self.tcfg),
+                        CDeclKind::Field { typ, .. } => self.match_type_kind(typ.ctype, item_store, decl_file_path),
                         _ => unreachable!("Found something in a struct other than a field"),
                     }
                 }
             },
             CDeclKind::EnumConstant { .. } => {},
             // REVIEW: Enums can only be integer types? So libc is likely always required?
-            CDeclKind::Enum { .. } => use_super_libc(item_store),
+            CDeclKind::Enum { .. } => {
+                let item_use = mk().use_item(vec!["super", "libc"], None as Option<Ident>);
+
+                item_store.uses.insert(item_use);
+            },
             CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } |
-            CDeclKind::Typedef { typ, .. } =>
-                match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path,
-                                &self.mod_names, &self.type_converter, &self.tcfg),
-            CDeclKind::Function { is_extern: true, typ, .. } =>
-                match_type_kind(&self.ast_context, &self.ast_context[typ].kind, item_store, decl_file_path,
-                                &self.mod_names, &self.type_converter, &self.tcfg),
+            CDeclKind::Typedef { typ, .. } => self.match_type_kind(typ.ctype, item_store, decl_file_path),
+            CDeclKind::Function { is_extern: true, typ, .. } => self.match_type_kind(typ, item_store, decl_file_path),
             ref e => unimplemented!("{:?}", e),
         }
     }
