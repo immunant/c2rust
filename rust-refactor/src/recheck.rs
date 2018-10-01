@@ -137,9 +137,11 @@ fn remove_injected_std(mut krate: Crate) -> Crate {
 
     krate.module.items = krate.module.items.into_iter()
         .filter(|i| {
-            let injected =
-                matches!([i.node] ItemKind::ExternCrate(None)) &&
-                remove_names.contains(&i.ident.name);
+            let injected = match i.node {
+                ItemKind::ExternCrate(_) => remove_names.contains(&i.ident.name),
+                ItemKind::Use(_) => i.ident.name == "", // prelude import
+                _ => false,
+            };
             !injected
         }).collect();
     krate
