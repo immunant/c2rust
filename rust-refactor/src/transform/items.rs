@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
 use syntax::ast::*;
+use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::util::small_vector::SmallVector;
@@ -155,6 +156,71 @@ impl Transform for ReplaceItems {
 }
 
 
+/// Set visibility of all marked items, foreign items, and inherent-impl items.
+///
+/// Doesn't handle struct field visibility for now.
+pub struct SetVisibility {
+    vis_str: String,
+}
+
+impl Transform for SetVisibility {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let vis = driver::run_parser(cx.session(), &self.vis_str,
+                                     |p| p.parse_visibility(false));
+
+        struct SetVisFolder<'a> {
+            st: &'a CommandState,
+            vis: Visibility,
+
+            /// `true` when the closest enclosing item is a trait impl (not an inherent impl).
+            /// This matters for the ImplItem case because trait impl items don't have visibility.
+            in_trait_impl: bool,
+        }
+
+        impl<'a> Folder for SetVisFolder<'a> {
+            fn fold_item(&mut self, mut i: P<Item>) -> SmallVector<P<Item>> {
+                if self.st.marked(i.id, "target") && i.vis != self.vis {
+                    i = i.map(|mut i| {
+                        i.vis = self.vis.clone();
+                        i
+                    });
+                }
+
+                let was_in_trait_impl = self.in_trait_impl;
+                self.in_trait_impl = matches!([i.node]
+                        ItemKind::Impl(_, _, _, _, Some(_), _, _));
+                let r = fold::noop_fold_item(i, self);
+                self.in_trait_impl = was_in_trait_impl;
+
+                r
+            }
+
+            fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVector<ImplItem> {
+                if self.in_trait_impl {
+                    return fold::noop_fold_impl_item(i, self);
+                }
+
+                if self.st.marked(i.id, "target") {
+                    i.vis = self.vis.clone();
+                }
+                fold::noop_fold_impl_item(i, self)
+            }
+
+            fn fold_foreign_item(&mut self, mut i: ForeignItem) -> SmallVector<ForeignItem> {
+                if self.st.marked(i.id, "target") {
+                    i.vis = self.vis.clone();
+                }
+                fold::noop_fold_foreign_item(i, self)
+            }
+
+            // Trait items have no visibility.
+        }
+
+        krate.fold(&mut SetVisFolder { st, vis, in_trait_impl: false })
+    }
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -165,5 +231,9 @@ pub fn register_commands(reg: &mut Registry) {
     }));
 
     reg.register("replace_items", |_args| mk(ReplaceItems));
+
+    reg.register("set_visibility", |args| mk(SetVisibility {
+        vis_str: args[0].clone(),
+    }));
 }
 

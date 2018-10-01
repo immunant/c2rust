@@ -1,0 +1,345 @@
+This is robotfindskitten.info, produced by makeinfo version 4.8 from
+robotfindskitten.texi.
+
+INFO-DIR-SECTION Games
+   This file documents the `robotfindskitten' Zen simulation.
+
+   Copyright (C) 1997, 1999, 2000 Leonard Richardson.
+
+   Permission is granted to make and distribute verbatim copies of this
+manual provided the copyright notice and this permission notice are
+preserved on all copies.
+
+   Permission is granted to copy and distribute modified versions of
+this manual under the conditions for verbatim copying, provided that
+the entire resulting derived work is distributed under the terms of a
+permission notice identical to this one.
+
+   Permission is granted to copy and distribute translations of this
+manual into another language, under the above conditions for modified
+versions, except that this permission notice may be stated in a
+translation approved by the Foundation.
+
+
+File: robotfindskitten.info,  Node: Top,  Next: The Niceties,  Up: (dir)
+
+   This file documents the `robotfindskitten' Zen simulation.
+
+* Menu:
+
+* The Niceties::		Introduction and history.
+* The Documentation::		Overview of robotfindskitten.
+* A Word of Warning::		Helpful word of warning.
+* Another Word of Warning::	Another helpful word of warning.
+* Yet Another Word of Warning::
+				They just keep coming.
+* Technical Information for Hard-Core Geeks::
+				Hack Hack.
+* Join the Bludgeoning robotfindskitten Community!::
+				Stand proud.
+* A Final Thought::		Chapter and Verse.
+* Index::			Contents of tables.
+
+
+File: robotfindskitten.info,  Node: The Niceties,  Next: The Documentation,  Prev: Top,  Up: Top
+
+1 The Niceties
+**************
+
+Hi there. This is the documentation file for robotfindskitten, winner
+(by default) of the first Nerth Pork webzine robotfindskitten contest.
+The object of the contest was to create a work of art whose title
+and/or theme was "robotfindskitten". I chose to write this program,
+which is a Zen simulation. That's what Nerth Pork editor Pete Peterson
+calls it, and that's really the best way to describe it, even though
+"Zen simulation" sounds kinda pretentious.  Anyway, let's dispense with
+the niceties and get on with the documentation.
+
+
+File: robotfindskitten.info,  Node: The Documentation,  Next: The Parts of the Simulation,  Prev: The Niceties,  Up: Top
+
+2 The Documentation
+*******************
+
+In this simulation, you play the part of robot. Your task is to
+complete the simulation by finding kitten, as is your destiny, and
+indeed your wont.  You (robot) are represented by the # character, and
+you move around with the arrow keys (Nethack, EMACS, or otherwise)
+touching things.  If the thing you touch is kitten, you get a cute
+little animation (which was cuter in the DOS version) and the simulation
+ends. Otherwise, you get a brief description of what it is you touched.
+So far, there are 201 non-kitten objects in the simulation, thus the
+subversion number 201. Future versions will have more objects and thus
+higher subversion numbers.
+
+* Menu:
+
+* The Parts of the Simulation::		A rundown.
+* Controls::				How to find kitten.
+
+
+File: robotfindskitten.info,  Node: The Parts of the Simulation,  Next: Controls,  Prev: The Documentation,  Up: The Documentation
+
+2.1 The Parts of the Simulation
+===============================
+
+The first part of the simulation is the command line used to invoke it.
+It is here where you can control the number of non-kitten objects on
+the screen in any one instance of the simulation. To exercise this
+control, simply enter a number between 0 and 201 inclusive on the
+command line. For instance, to play with 32 objects on the screen, you
+would invoke the program with the command `robotfindskitten 32' (or,
+more likely, `./robotfindskitten 32'). The default is twenty non-kitten
+objects.
+
+   The second part of the simulation is the title screen. It should be
+fairly self-explanatory.
+
+   The third part of the simulation is the actual simulation itself. The
+long line near the top of the screen separates the screen into the
+field of play and the status bar. The status bar displays messages and
+item descriptions.  Just so you don't wonder what that line is.
+
+   The fourth part of the simulation... there isn't one. It's not a very
+complicated simulation.
+
+
+File: robotfindskitten.info,  Node: Controls,  Next: A Word of Warning,  Prev: The Parts of the Simulation,  Up: The Documentation
+
+2.2 Controls
+============
+
+  1. To move robot, use the arrow keys. Diagonals now work! Nethack
+     arrow keys (including diagonals) now work! Now that's innovation!
+     EMACS keys work, too.
+
+  2. To touch an object, make a move as if you were trying to occupy
+     the square currently occupied by the object you want to touch.
+     Sorry if that seemed obvious, but you never know. I don't want to
+     be accused of writing incomplete documentation.
+
+  3. If you want to end the program for whatever reason, just hit
+     Escape, or terminate the program by hitting control-C.
+
+
+File: robotfindskitten.info,  Node: A Word of Warning,  Next: Another Word of Warning,  Prev: Controls,  Up: Top
+
+3 A Word of Warning
+*******************
+
+Danger!
+
+
+File: robotfindskitten.info,  Node: Another Word of Warning,  Next: Yet Another Word of Warning,  Prev: A Word of Warning,  Up: Top
+
+4 Another Word of Warning
+*************************
+
+The characters you see on the screen are not guaranteed to correspond
+in shape or color to what the descriptions say they are. In fact,
+they're pretty much guaranteed not to. If there was any consistency,
+it'd be pretty easy to spot kitten every time, now wouldn't it?
+
+
+File: robotfindskitten.info,  Node: Yet Another Word of Warning,  Next: Technical Information for Hard-Core Geeks,  Prev: Another Word of Warning,  Up: Top
+
+5 Yet Another Word of Warning
+*****************************
+
+This is a BETA release of robotfindskitten. I've never had it crash,
+but it might do weird things. Let me know.
+
+
+File: robotfindskitten.info,  Node: Technical Information for Hard-Core Geeks,  Next: Join the Bludgeoning robotfindskitten Community!,  Prev: Yet Another Word of Warning,  Up: Top
+
+6 Technical Information for Hard-Core Geeks
+*******************************************
+
+The original robotfindskitten (the one that won the contest) was
+written using Borland Turbo C++ 3.0 for DOS in 1997. I ported it to
+(rewrote it for, more like) Linux over Independance Day, 1999. It now
+uses the ncurses library. Version 1600003 is written for ncurses 5.0,
+which is what I have on my Mandrake system. It's good that you're a
+hard-core geek like me. I can speak frankly to you, knowing that
+non-coders won't read this section, or will be scared off by all that
+jargon in the first few sentences. Our plan is nearly complete, and we
+are poised to take our rightful places as rulers of this planet.
+Already we control the technology of the sheeplike masses. We merely
+await the command from Geek Central, and Earth will be ours! AH HA HA
+HA HA HA! Uh-oh, that evil laughing looks kind of conspicuous in a doc
+file. I better put in some more technical info. If you want to write
+your own ncurses game, you can use the framework provided by
+robotfindskitten or the more flexible framework provided by the sequel
+(also on my software page). Now, let us part with the secret geek
+handshake!
+
+
+File: robotfindskitten.info,  Node: Join the Bludgeoning robotfindskitten Community!,  Next: A Final Thought,  Prev: Technical Information for Hard-Core Geeks,  Up: Top
+
+7 Join the Bludgeoning robotfindskitten Community!
+**************************************************
+
+I want robotfindskitten to be the most comprehensive Zen simulation on
+the market. But for that to happen, I need your help. Please, send in
+any descriptions of objects you would like to see in robotfindskitten
+to <leonardr@ucla.edu>. Heck, you could even tell me to put you in the
+program!  I'm certainly not above that sort of thing. Pete Peterson set
+a great example by providing over 30 objects for everone's
+kitten-finding enjoyment. Also, be sure to tell me how you like
+robotfindskitten.
+
+   In addition, as of November 2000, robotfindskitten has a project on
+Sourceforge!  Simply visit `http://sourceforge.net/projects/rfk' and
+have a look at our bug tracking system, bickering flame war mailing
+lists, and haphazardly-branched CVS trees!
+
+
+File: robotfindskitten.info,  Node: A Final Thought,  Next: Index,  Prev: Join the Bludgeoning robotfindskitten Community!,  Up: Top
+
+Appendix A A Final Thought
+**************************
+
+     Day and night I feverishly worked upon the machine, creating both
+     a soul which could desire its goal, and a body with which it could
+     realize it. Many who saw my creation called it an abomination, and
+     denied me grant money. But they could not dissuade me from my
+     impossible task. It was a spectre that tormented me always, a
+     ghost I had to give a form and a life, lest it consume me from the
+     inside. And when at last my task was done, when the grey box on
+     wheels was complete and when it, as well as I, knew what had to be
+     done, I felt deep sympathy for the machine. For I had not
+     destroyed the phantom, but merely exorcized it into another body.
+     The robot knew not why this task had to be performed, for I could
+     not imbue it with knowledge I did not myself posess. And at the
+     same time, I felt a sweeping sense of relief sweep over me, that
+     somehow, the dream that had driven me for my entire life had come
+     one step closer to fruition.
+
+     As I vocally activated the robot, I realized that it was following
+     my instructions, but not out of any desire to obey me. Had I
+     remained silent, it would have performed exactly the same
+     operations. We were two beings controlled by the same force now.
+     And yet, seeking vainly to hold some illusion of control over the
+     machine I thought I had created, I gave my final command.
+
+     `GO!' I told the box as it began to roll out of my workshop into
+     the frozen desert beyond. `FIND KITTEN!'
+
+   -The Book of Found Kittens, pages 43-4, author unknown
+
+
+File: robotfindskitten.info,  Node: Index,  Prev: A Final Thought,  Up: Top
+
+Concept Index
+*************
+
+ [index ]
+* Menu:
+
+* abomination:                           A Final Thought.      (line  6)
+* Bad People of the Future:              Technical Information for Hard-Core Geeks.
+                                                               (line  6)
+* beta:                                  Yet Another Word of Warning.
+                                                               (line  6)
+* bickering:                             Join the Bludgeoning robotfindskitten Community!.
+                                                               (line 15)
+* bludgeon:                              Join the Bludgeoning robotfindskitten Community!.
+                                                               (line  6)
+* Book of Found Kittens:                 A Final Thought.      (line 32)
+* Borland:                               Technical Information for Hard-Core Geeks.
+                                                               (line  6)
+* clue-by-four:                          Join the Bludgeoning robotfindskitten Community!.
+                                                               (line  6)
+* community:                             Join the Bludgeoning robotfindskitten Community!.
+                                                               (line  6)
+* consistency:                           Another Word of Warning.
+                                                               (line  6)
+* contributing:                          Join the Bludgeoning robotfindskitten Community!.
+                                                               (line  6)
+* controls:                              Controls.             (line  6)
+* customized objects:                    Join the Bludgeoning robotfindskitten Community!.
+                                                               (line  6)
+* Danger!:                               A Word of Warning.    (line  6)
+* destiny:                               The Documentation.    (line  6)
+* DOS:                                   Technical Information for Hard-Core Geeks.
+                                                               (line  6)
+* EMACS <1>:                             Controls.             (line  6)
+* EMACS:                                 The Documentation.    (line  6)
+* ending the simulation prematurely:     Controls.             (line 15)
+* find kitten:                           A Final Thought.      (line 29)
+* foolish NSF grants:                    A Final Thought.      (line  6)
+* geek handshake:                        Technical Information for Hard-Core Geeks.
+                                                               (line  6)
+* Gort, Klaatu Verada Nikto:             A Final Thought.      (line 22)
+* hippy commune:                         Join the Bludgeoning robotfindskitten Community!.
+                                                               (line  6)
+* Independence Day:                      Technical Information for Hard-Core Geeks.
+                                                               (line  6)
+* Isn't it fun reading through the index?: Technical Information for Hard-Core Geeks.
+                                                               (line  6)
+* kitten:                                The Documentation.    (line  6)
+* movement:                              Controls.             (line  6)
+* ncurses 5.0:                           Technical Information for Hard-Core Geeks.
+                                                               (line  6)
+* Nerth Pork:                            The Niceties.         (line  6)
+* Nethack <1>:                           Controls.             (line  6)
+* Nethack:                               The Documentation.    (line  6)
+* non-debian distribution of GNU/Linux:  Technical Information for Hard-Core Geeks.
+                                                               (line  6)
+* non-kitten objects:                    The Parts of the Simulation.
+                                                               (line  6)
+* original version:                      Technical Information for Hard-Core Geeks.
+                                                               (line  6)
+* Peter Peterson II <1>:                 Join the Bludgeoning robotfindskitten Community!.
+                                                               (line  6)
+* Peter Peterson II:                     The Niceties.         (line  6)
+* Peterson, Pete <1>:                    Join the Bludgeoning robotfindskitten Community!.
+                                                               (line  6)
+* Peterson, Pete:                        The Niceties.         (line  6)
+* riboflavin <1>:                        Technical Information for Hard-Core Geeks.
+                                                               (line  6)
+* riboflavin:                            The Documentation.    (line  6)
+* robot:                                 The Documentation.    (line  6)
+* sheeplike masses:                      Technical Information for Hard-Core Geeks.
+                                                               (line  6)
+* simulation, Zen:                       The Niceties.         (line  6)
+* soul:                                  A Final Thought.      (line  6)
+* sourceforge:                           Join the Bludgeoning robotfindskitten Community!.
+                                                               (line 15)
+* spot kitten every time:                Another Word of Warning.
+                                                               (line  6)
+* subversion:                            The Documentation.    (line  6)
+* title screen:                          The Parts of the Simulation.
+                                                               (line 15)
+* touch:                                 Controls.             (line 10)
+* Turbo C++ 3.0:                         Technical Information for Hard-Core Geeks.
+                                                               (line  6)
+* warning <1>:                           Yet Another Word of Warning.
+                                                               (line  6)
+* warning <2>:                           Another Word of Warning.
+                                                               (line  6)
+* warning:                               A Word of Warning.    (line  6)
+* weird things:                          Yet Another Word of Warning.
+                                                               (line  6)
+* your tax dollars at work:              A Final Thought.      (line  6)
+* Zen simulation <1>:                    Join the Bludgeoning robotfindskitten Community!.
+                                                               (line  6)
+* Zen simulation:                        The Niceties.         (line  6)
+
+
+
+Tag Table:
+Node: Top894
+Node: The Niceties1511
+Node: The Documentation2178
+Node: The Parts of the Simulation3082
+Node: Controls4248
+Node: A Word of Warning4965
+Node: Another Word of Warning5131
+Node: Yet Another Word of Warning5589
+Node: Technical Information for Hard-Core Geeks5922
+Node: Join the Bludgeoning robotfindskitten Community!7296
+Node: A Final Thought8319
+Node: Index10104
+
+End Tag Table

@@ -1,0 +1,30 @@
+Nov 30 2007 Ryan Finnie <ryan@finnie.org>
+	* Fixed NKI message wrapping on small terminals (Debian bug #199680)
+	* Converted robotfindskitten.c from CRLF to LF.  Take that, CP/M!
+
+Nov 27 2007 Ryan Finnie <ryan@finnie.org>
+	* Updated the autoconf/automake system
+	* Added a manpage (originally written by CrackMonkey)
+	* Removed Debian-specific infrastructure
+	* A few small doc changes
+
+	[Time Passes]
+
+Dec 11 2000 CrackMonkey <monkeymaster@crackmonkey.org>
+	* Fixed screen redraw.
+	* Added more NKIs.
+Dec 6 2000 Shazdeh <zen@emgnulation.org>
+	* ^L now redraws the screen (I hope).
+Dec 5 2000 Shazdeh <zen@emgnulation.org>
+	* Made it possible to exit the game by pressing Q.
+	* Made Nethack movement controls case-insensitive.
+	* Added EMACS movement controls.
+Nov 30 2000 Shazdeh <zen@emgnulation.org>
+	* fixed data-loss problem with getch()
+	* replaced wacko magic numbers with system-defined constants
+	* added support for NetHack movement keys
+	* fixed curses initialization to not echo or buffer
+Nov 21 2000 CrackMonkey <monkeymaster@crackmonkey.org>
+	* autoconf'd up the package from crummy.com 
+	* translated the robotfindskitten.documentation file to texinfo.
+	* set up http://sourceforge.net/projects/rfk

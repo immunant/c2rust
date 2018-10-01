@@ -1,0 +1,313 @@
+\input texinfo @c -*-texinfo-*-
+@c %**start of header
+@setfilename robotfindskitten.info
+@settitle robotfindskitten
+@finalout
+@setchapternewpage odd
+@dircategory Games
+@c %**end of header
+
+
+@ifinfo
+This file documents the @code{robotfindskitten} Zen simulation.
+
+Copyright (C) 1997, 1999, 2000 Leonard Richardson.
+
+Permission is granted to make and distribute verbatim copies of
+this manual provided the copyright notice and this permission notice
+are preserved on all copies.
+
+@ignore
+Permission is granted to process this file through TeX and print the
+results, provided the printed document carries copying permission
+notice identical to this one except for the removal of this paragraph
+(this paragraph not being relevant to the printed manual).
+
+@end ignore
+Permission is granted to copy and distribute modified versions of this
+manual under the conditions for verbatim copying, provided that the entire
+resulting derived work is distributed under the terms of a permission
+notice identical to this one.
+
+Permission is granted to copy and distribute translations of this manual
+into another language, under the above conditions for modified versions,
+except that this permission notice may be stated in a translation approved
+by the Foundation.
+@end ifinfo
+
+@titlepage
+@title robotfindskitten v1.7320508.406
+@subtitle Leonard: In Bakersfield they have an art gallery in the mall.
+@subtitle Al: That's where they belong.
+@author by Leonard Richardson 
+@email{leonardr@@segfault.org}
+My site: @url{http://www.crummy.com/}
+My software: @url{http://www.crummy.com/devel/}
+
+============================================================================
+
+@page
+@vskip 0pt plus 1filll
+Copyright @copyright{} 1997, 1999, 2000 Leonard Richardson.
+
+Permission is granted to make and distribute verbatim copies of
+this manual provided the copyright notice and this permission notice
+are preserved on all copies.
+
+Permission is granted to copy and distribute modified versions of this
+manual under the conditions for verbatim copying, provided that the entire
+resulting derived work is distributed under the terms of a permission
+notice identical to this one.
+
+Permission is granted to copy and distribute translations of this manual
+into another language, under the above conditions for modified versions,
+except that this permission notice may be stated in a translation approved
+by the Foundation.
+@end titlepage
+
+@node Top, The Niceties, , (dir)
+
+@ifinfo
+This file documents the @code{robotfindskitten} Zen simulation.
+@end ifinfo
+
+@menu
+* The Niceties::		Introduction and history.
+* The Documentation::		Overview of robotfindskitten.
+* A Word of Warning::		Helpful word of warning.
+* Another Word of Warning::	Another helpful word of warning.
+* Yet Another Word of Warning::
+				They just keep coming.
+* Technical Information for Hard-Core Geeks::		
+				Hack Hack.
+* Join the Bludgeoning robotfindskitten Community!::	
+				Stand proud.
+* A Final Thought::		Chapter and Verse.
+* Index::			Contents of tables.
+@end menu
+
+
+@node The Niceties, The Documentation, Top, Top
+@chapter The Niceties 
+
+@cindex Nerth Pork
+@cindex Peter Peterson II
+@cindex Peterson, Pete
+@cindex simulation, Zen
+@cindex Zen simulation
+
+Hi there. This is the documentation file for robotfindskitten, winner
+(by default) of the first Nerth Pork webzine robotfindskitten
+contest. The object of the contest was to create a work of art whose
+title and/or theme was "robotfindskitten". I chose to write this
+program, which is a Zen simulation. That's what Nerth Pork editor Pete
+Peterson calls it, and that's really the best way to describe it, even
+though "Zen simulation" sounds kinda pretentious.  Anyway, let's
+dispense with the niceties and get on with the documentation.
+
+@node The Documentation, The Parts of the Simulation, The Niceties, Top
+@chapter The Documentation
+
+@cindex robot
+@cindex kitten
+@cindex riboflavin
+@cindex subversion
+@cindex destiny
+@cindex Nethack
+@cindex EMACS
+
+In this simulation, you play the part of robot. Your task is to
+complete the simulation by finding kitten, as is your destiny, and
+indeed your wont.  You (robot) are represented by the # character, and
+you move around with the arrow keys (Nethack, EMACS, or otherwise) touching
+things.  If the thing you touch is kitten, you get a cute little
+animation (which was cuter in the DOS version) and the simulation
+ends. Otherwise, you get a brief description of what it is you
+touched. So far, there are 201 non-kitten objects in the simulation,
+thus the subversion number 201. Future versions will have more objects
+and thus higher subversion numbers.
+
+@menu
+* The Parts of the Simulation::		A rundown.
+* Controls::				How to find kitten.
+@end menu
+
+@node The Parts of the Simulation, Controls, The Documentation, The Documentation
+@section The Parts of the Simulation
+
+@cindex non-kitten objects
+
+The first part of the simulation is the command line used to invoke
+it. It is here where you can control the number of non-kitten objects
+on the screen in any one instance of the simulation. To exercise this
+control, simply enter a number between 0 and 201 inclusive on the
+command line. For instance, to play with 32 objects on the screen, you
+would invoke the program with the command @command{robotfindskitten 32} (or,
+more likely, @command{./robotfindskitten 32}). The default is twenty
+non-kitten objects.
+
+@cindex title screen
+The second part of the simulation is the title screen. It should be
+fairly self-explanatory.
+
+The third part of the simulation is the actual simulation itself. The
+long line near the top of the screen separates the screen into the
+field of play and the status bar. The status bar displays messages and
+item descriptions.  Just so you don't wonder what that line is.
+
+The fourth part of the simulation... there isn't one. It's not a very
+complicated simulation.
+
+@node Controls, A Word of Warning, The Parts of the Simulation, The Documentation
+@section Controls
+
+@cindex movement
+@cindex controls
+@cindex Nethack
+@cindex EMACS
+@enumerate
+@item
+To move robot, use the arrow keys. Diagonals now work! Nethack arrow keys (including diagonals) now work! Now that's innovation! EMACS keys work, too.
+
+@cindex touch
+@item
+To touch an object, make a move as if you were trying to occupy the square
+currently occupied by the object you want to touch. Sorry if that seemed
+obvious, but you never know. I don't want to be accused of writing incomplete
+documentation.
+
+@cindex ending the simulation prematurely
+@item
+If you want to end the program for whatever reason, just hit Escape, or
+terminate the program by hitting control-C.
+@end enumerate
+
+@node A Word of Warning, Another Word of Warning, Controls, Top
+@chapter A Word of Warning
+@cindex Danger!
+@cindex warning
+Danger!
+
+@node Another Word of Warning, Yet Another Word of Warning, A Word of Warning, Top
+@chapter Another Word of Warning
+@cindex consistency
+@cindex spot kitten every time
+@cindex warning
+The characters you see on the screen are not guaranteed to correspond
+in shape or color to what the descriptions say they are. In fact,
+they're pretty much guaranteed not to. If there was any consistency,
+it'd be pretty easy to spot kitten every time, now wouldn't it?
+
+@node Yet Another Word of Warning, Technical Information for Hard-Core Geeks, Another Word of Warning, Top
+@chapter Yet Another Word of Warning
+@cindex beta
+@cindex warning
+@cindex weird things
+This is a BETA release of robotfindskitten. I've never had it crash,
+but it might do weird things. Let me know.
+
+@node Technical Information for Hard-Core Geeks, Join the Bludgeoning robotfindskitten Community!, Yet Another Word of Warning, Top
+@chapter Technical Information for Hard-Core Geeks
+@cindex original version
+@cindex DOS
+@cindex Turbo C++ 3.0
+@cindex Independence Day
+@cindex ncurses 5.0
+@cindex non-debian distribution of GNU/Linux
+@cindex geek handshake
+@cindex sheeplike masses
+@cindex Borland
+@cindex riboflavin
+@cindex Bad People of the Future
+@cindex Isn't it fun reading through the index?
+The original robotfindskitten (the one that won the contest) was
+written using Borland Turbo C++ 3.0 for DOS in 1997. I ported it to
+(rewrote it for, more like) Linux over Independance Day, 1999. It now
+uses the ncurses library. Version 1600003 is written for ncurses 5.0,
+which is what I have on my Mandrake system. It's good that you're a
+hard-core geek like me. I can speak frankly to you, knowing that
+non-coders won't read this section, or will be scared off by all that
+jargon in the first few sentences. Our plan is nearly complete, and we
+are poised to take our rightful places as rulers of this
+planet. Already we control the technology of the sheeplike masses. We
+merely await the command from Geek Central, and Earth will be ours! AH
+HA HA HA HA HA! Uh-oh, that evil laughing looks kind of conspicuous in
+a doc file. I better put in some more technical info. If you want to
+write your own ncurses game, you can use the framework provided by
+robotfindskitten or the more flexible framework provided by the sequel
+(also on my software page). Now, let us part with the secret geek
+handshake!
+
+@node Join the Bludgeoning robotfindskitten Community!, A Final Thought, Technical Information for Hard-Core Geeks, Top
+@chapter Join the Bludgeoning robotfindskitten Community!
+@cindex bludgeon
+@cindex clue-by-four
+@cindex community
+@cindex hippy commune
+@cindex Zen simulation
+@cindex Peterson, Pete
+@cindex Peter Peterson II
+@cindex customized objects
+@cindex contributing
+I want robotfindskitten to be the most comprehensive Zen simulation on
+the market. But for that to happen, I need your help. Please, send in
+any descriptions of objects you would like to see in robotfindskitten
+to @email{leonardr@@ucla.edu}. Heck, you could even tell me to put you in the
+program!  I'm certainly not above that sort of thing. Pete Peterson
+set a great example by providing over 30 objects for everone's
+kitten-finding enjoyment. Also, be sure to tell me how you like
+robotfindskitten.
+
+@cindex bickering
+@cindex sourceforge
+In addition, as of November 2000, robotfindskitten has a project on
+Sourceforge!  Simply visit @url{http://sourceforge.net/projects/rfk} and have a
+look at our bug tracking system, bickering flame war mailing lists, and
+haphazardly-branched CVS trees!
+
+@node A Final Thought, Index, Join the Bludgeoning robotfindskitten Community!, Top
+@appendix A Final Thought
+
+@cindex abomination
+@cindex soul
+@cindex foolish NSF grants
+@cindex your tax dollars at work
+@quotation
+Day and night I feverishly worked upon the machine, creating both a soul which
+could desire its goal, and a body with which it could realize it. Many who saw
+my creation called it an abomination, and denied me grant money. But they could
+not dissuade me from my impossible task. It was a spectre that tormented me
+always, a ghost I had to give a form and a life, lest it consume me from the
+inside. And when at last my task was done, when the grey box on wheels was
+complete and when it, as well as I, knew what had to be done, I felt deep
+sympathy for the machine. For I had not destroyed the phantom, but merely
+exorcized it into another body. The robot knew not why this task had to be
+performed, for I could not imbue it with knowledge I did not myself posess. And
+at the same time, I felt a sweeping sense of relief sweep over me, that
+somehow, the dream that had driven me for my entire life had come one step
+closer to fruition.
+
+@cindex Gort, Klaatu Verada Nikto
+As I vocally activated the robot, I realized that it was following my
+instructions, but not out of any desire to obey me. Had I remained silent, it
+would have performed exactly the same operations. We were two beings controlled
+by the same force now. And yet, seeking vainly to hold some illusion of control
+over the machine I thought I had created, I gave my final command.
+
+@cindex find kitten
+`GO!' I told the box as it began to roll out of my workshop into the frozen
+desert beyond. `FIND KITTEN!'
+@end quotation
+
+@cindex Book of Found Kittens
+       --The Book of Found Kittens, pages 43-4, author unknown
+
+
+@node Index, , A Final Thought, Top
+@unnumbered Concept Index
+
+@printindex cp
+
+@contents
+
+@bye

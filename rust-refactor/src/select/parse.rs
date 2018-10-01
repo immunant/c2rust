@@ -247,10 +247,13 @@ impl<'a> Stream<'a> {
                         Lit::StrRaw(s, _) => s,
                         l => fail!("expected string literal, but got {:?}", l),
                     };
-                    let r = match Regex::new(&s.as_str()) {
+                    // First, make sure `s` parses as a regex on its own
+                    let _ = match Regex::new(&s.as_str()) {
                         Ok(r) => r,
                         Err(e) => fail!("invalid regex: {}", e),
                     };
+                    // Then, add ^ ... $ so the regex has to match the entire item name
+                    let r = Regex::new(&format!("^{}$", s.as_str())).unwrap();
                     Ok(Filter::Name(r))
                 },
 

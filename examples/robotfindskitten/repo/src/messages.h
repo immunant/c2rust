@@ -6,10 +6,10 @@
   should reflect MESSAGES. */
 
 /* Watch out for fenceposts.*/
-#define MESSAGES 406
+#define MESSAGES (sizeof messages / sizeof (char*))
 
 
-static char* messages[406] =
+static char* messages[] =
 {
   "\"I pity the fool who mistakes me for kitten!\", sez Mr. T.",
   "That's just an old tin can.",

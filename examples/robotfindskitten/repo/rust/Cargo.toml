@@ -1,0 +1,11 @@
+[package]
+name = "robotfindskitten"
+version = "0.1.0"
+authors = ["Stuart Pernsteiner <spernsteiner@galois.com>"]
+links = "ncurses"
+
+[[bin]]
+name = "robotfindskitten"
+path = "src/robotfindskitten.rs"
+
+[dependencies]
