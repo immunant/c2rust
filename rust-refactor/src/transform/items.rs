@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
 use syntax::ast::*;
+use syntax::codemap::DUMMY_SP;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
@@ -13,6 +14,7 @@ use driver::{self, Phase};
 use transform::Transform;
 use util::IntoSymbol;
 use util::HirDefExt;
+use util::Lone;
 
 
 /// Rename items using regex match and replace.
@@ -221,6 +223,127 @@ impl Transform for SetVisibility {
 }
 
 
+pub struct CreateItem {
+    header: String,
+    pos: String,
+    mark: Symbol,
+}
+
+impl Transform for CreateItem {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let mark = self.mark;
+
+        let inside = match &self.pos as &str {
+            "inside" => true,
+            "after" => false,
+            _ => panic!("expected position to be 'inside' or 'after'"),
+        };
+
+        let items = driver::parse_items(cx.session(), &format!("{}", self.header));
+        assert!(items.len() == 1, "expected a single item");
+        let item = items.lone();
+
+
+        struct CreateFolder<'a> {
+            st: &'a CommandState,
+            mark: Symbol,
+            inside: bool,
+            item: P<Item>,
+        }
+
+        impl<'a> CreateFolder<'a> {
+            fn handle_mod(&mut self, parent_id: NodeId, m: Mod, skip_dummy: bool) -> Mod {
+                let mut items = Vec::with_capacity(m.items.len());
+
+                // When true, insert before the next item that satisfies `skip_dummy`
+                let mut insert_inside = self.inside && self.st.marked(parent_id, self.mark);
+
+                for i in m.items {
+                    if insert_inside {
+                        // Special case for `inside` mode with the Crate marked.  We want to insert
+                        // after the injected std and prelude items, because inserting before an
+                        // item with `DUMMY_SP` confuses sequence rewriting.
+                        if !skip_dummy || i.span != DUMMY_SP {
+                            items.push(self.item.clone());
+                            insert_inside = false;
+                        }
+                    }
+
+                    let insert = !self.inside && self.st.marked(i.id, self.mark);
+                    items.push(i);
+                    if insert {
+                        items.push(self.item.clone());
+                    }
+                }
+
+                if insert_inside {
+                    // There were no acceptable items, so add it at the end.
+                    items.push(self.item.clone());
+                }
+
+                Mod { items, ..m }
+            }
+        }
+
+        impl<'a> Folder for CreateFolder<'a> {
+            fn fold_crate(&mut self, c: Crate) -> Crate {
+                let c = Crate {
+                    module: self.handle_mod(CRATE_NODE_ID, c.module, true),
+                    ..c
+                };
+
+                // We do this instead of noop_fold_module, because noop_fold_crate makes up a dummy
+                // Item for the crate, causing us to try and insert into c.module a second time.
+                // (We don't just omit fold_crate and rely on this dummy item because the dummy
+                // item has DUMMY_NODE_ID instead of CRATE_NODE_ID.)
+                Crate {
+                    module: fold::noop_fold_mod(c.module, self),
+                    ..c
+                }
+            }
+
+            fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+                let i = if !matches!([i.node] ItemKind::Mod(..)) {
+                    i
+                } else {
+                    i.map(|i| {
+                        unpack!([i.node] ItemKind::Mod(m));
+                        Item {
+                            node: ItemKind::Mod(self.handle_mod(i.id, m, false)),
+                            .. i
+                        }
+                    })
+                };
+                fold::noop_fold_item(i, self)
+            }
+
+            fn fold_block(&mut self, b: P<Block>) -> P<Block> {
+                let b = b.map(|b| {
+                    let mut stmts = Vec::with_capacity(b.stmts.len());
+
+                    if self.inside && self.st.marked(b.id, self.mark) {
+                        stmts.push(mk().item_stmt(&self.item));
+                    }
+
+                    for s in b.stmts {
+                        let insert = !self.inside && self.st.marked(s.id, self.mark);
+                        stmts.push(s);
+                        if insert {
+                            stmts.push(mk().item_stmt(&self.item));
+                        }
+                    }
+
+                    Block { stmts, .. b }
+                });
+                fold::noop_fold_block(b, self)
+            }
+        }
+
+        krate.fold(&mut CreateFolder { st, mark, inside, item })
+    }
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -234,6 +357,13 @@ pub fn register_commands(reg: &mut Registry) {
 
     reg.register("set_visibility", |args| mk(SetVisibility {
         vis_str: args[0].clone(),
+    }));
+
+    reg.register("create_item", |args| mk(CreateItem {
+        header: args[0].clone(),
+        pos: args[1].clone(),
+        mark: args.get(2).map(|s| (s as &str).into_symbol())
+            .unwrap_or_else(|| "target".into_symbol()),
     }));
 }
 
