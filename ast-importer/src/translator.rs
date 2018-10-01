@@ -4398,7 +4398,7 @@ impl Translation {
 
         fn match_type_kind(context: &TypedAstContext, type_kind: &CTypeKind, store: &mut ItemStore,
                            decl_file_path: &path::Path, mod_names: &RefCell<HashMap<String, PathBuf>>,
-                           type_converter: &RefCell<TypeConverter>) {
+                           type_converter: &RefCell<TypeConverter>, tcfg: &TranslationConfig) {
             use self::CTypeKind::*;
 
             match type_kind {
@@ -4412,7 +4412,8 @@ impl Translation {
                 IncompleteArray(ctype) |
                 ConstantArray(ctype, _) |
                 Elaborated(ctype) |
-                Pointer(CQualTypeId { ctype, .. }) => match_type_kind(context, &context[*ctype].kind, store, decl_file_path, mod_names, type_converter),
+                Pointer(CQualTypeId { ctype, .. }) =>
+                    match_type_kind(context, &context[*ctype].kind, store, decl_file_path, mod_names, type_converter, tcfg),
                 Enum(decl_id) |
                 Typedef(decl_id) |
                 Union(decl_id) |
@@ -4427,9 +4428,16 @@ impl Translation {
                     }
 
                     let ident_name = type_converter.borrow().resolve_decl_name(*decl_id).unwrap();
-                    let file_path = decl_loc.file_path.as_ref().unwrap();
-                    let file_name = clean_path(mod_names, &file_path);
-                    let item_use = mk().use_item(vec!["super", &file_name, &ident_name], None as Option<Ident>);
+
+                    // Either the decl lives in the parent module, or else in a sibling submodule
+                    let item_use = if decl_loc.file_path == tcfg.main_file {
+                        mk().use_item(vec!["super", &ident_name], None as Option<Ident>)
+                    } else {
+                        let file_path = decl_loc.file_path.as_ref().unwrap();
+                        let file_name = clean_path(mod_names, &file_path);
+
+                        mk().use_item(vec!["super", &file_name, &ident_name], None as Option<Ident>)
+                    };
 
                     store.uses.insert(item_use);
                 },
@@ -4439,14 +4447,14 @@ impl Translation {
 
                     // Rust doesn't use void for return type, so skip
                     if *type_kind != Void {
-                        match_type_kind(context, type_kind, store, decl_file_path, mod_names, type_converter);
+                        match_type_kind(context, type_kind, store, decl_file_path, mod_names, type_converter, tcfg);
                     }
 
                     // Param Types
                     for param_id in params {
                         let type_kind = &context.c_types[&param_id.ctype].kind;
 
-                        match_type_kind(&context, type_kind, store, decl_file_path, mod_names, type_converter);
+                        match_type_kind(&context, type_kind, store, decl_file_path, mod_names, type_converter, tcfg);
                     }
                 },
                 ref e => unimplemented!("{:?}", e),
@@ -4461,7 +4469,7 @@ impl Translation {
                 for field_id in field_ids.iter() {
                     match self.ast_context.c_decls[field_id].kind {
                         CDeclKind::Field { typ, .. } => match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path,
-                                                                        &self.mod_names, &self.type_converter),
+                                                                        &self.mod_names, &self.type_converter, &self.tcfg),
                         _ => unreachable!("Found something in a struct other than a field"),
                     }
                 }
@@ -4472,10 +4480,10 @@ impl Translation {
             CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } |
             CDeclKind::Typedef { typ, .. } =>
                 match_type_kind(&self.ast_context, &self.ast_context[typ.ctype].kind, item_store, decl_file_path,
-                                &self.mod_names, &self.type_converter),
+                                &self.mod_names, &self.type_converter, &self.tcfg),
             CDeclKind::Function { is_extern: true, typ, .. } =>
                 match_type_kind(&self.ast_context, &self.ast_context[typ].kind, item_store, decl_file_path,
-                                &self.mod_names, &self.type_converter),
+                                &self.mod_names, &self.type_converter, &self.tcfg),
             ref e => unimplemented!("{:?}", e),
         }
     }
