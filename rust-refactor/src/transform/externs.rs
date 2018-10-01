@@ -44,6 +44,9 @@ impl Transform for CanonicalizeExterns {
             if is_foreign_symbol(tcx, did) {
                 // Foreign fns can't have region or type params, so empty substs should be fine.
                 let inst = Instance::new(did, tcx.intern_substs(&[]));
+                // Get the actual linker symbol for this extern item, considering both the item's
+                // name and its attributes.  This is distinct from the `ast::symbol::Symbol`
+                // produced by `module_children`, which is simply the name of the item.
                 let sym = tcx.symbol_name(inst).name.as_symbol();
                 symbol_map.insert(sym, did);
             }
