@@ -96,6 +96,16 @@ trait Splice: Rewrite+'static {
     /// Perform a switch from recycled mode to fresh mode.  The source text for `old` will be
     /// replaced with pretty-printed code for `new`.
     fn splice_recycled(new: &Self, old: &Self, rcx: RewriteCtxtRef) {
+        if old.span() == DUMMY_SP {
+            // If we got here, it means rewriting failed somewhere inside macro-generated code, and
+            // outside any chunks of AST that the macro copied out of its arguments (those chunks
+            // would have non-dummy spans, and would be spliced in already).  We give up on this
+            // part of the rewrite when this happens, because rewriting inside the RHS of a
+            // macro_rules! macro would be very difficult, and for procedural macros it's just
+            // impossible.
+            warn!("can't splice in fresh text for a DUMMY_SP node");
+            return;
+        }
         Splice::splice_recycled_span(new, old.span(), rcx);
     }
 
