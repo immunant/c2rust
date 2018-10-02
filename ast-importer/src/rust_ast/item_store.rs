@@ -1,7 +1,8 @@
 use indexmap::{IndexMap, IndexSet};
-use syntax::ast::{Item, ForeignItem};
+use rust_ast::mk;
+use syntax::ast::{Attribute, Item, ForeignItem};
 use syntax::ptr::P;
-use c_ast::Attribute;
+
 use std::mem::swap;
 
 #[derive(Debug)]
@@ -11,7 +12,7 @@ pub struct MultiImport {
 }
 
 impl MultiImport {
-    pub fn new() -> Self {
+    fn new() -> Self {
         MultiImport {
             attrs: None,
             leaves: IndexSet::new(),
@@ -19,7 +20,36 @@ impl MultiImport {
     }
 }
 
-pub type PathedMultiImports = IndexMap<Vec<String>, MultiImport>;
+#[derive(Debug)]
+pub struct PathedMultiImports(IndexMap<Vec<String>, MultiImport>);
+
+impl PathedMultiImports {
+    pub fn new() -> Self {
+        PathedMultiImports(IndexMap::new())
+    }
+
+    pub fn get_mut(&mut self, path: Vec<String>) -> &mut MultiImport {
+        self.0.entry(path).or_insert(MultiImport::new())
+    }
+
+    pub fn into_items(self) -> Vec<P<Item>> {
+        // TODO: Apply attributes
+
+        self.0
+            .into_iter()
+            .map(|(path, imports)| mk().use_multiple_item(path, imports.leaves.iter().collect()))
+            .collect()
+    }
+
+    pub fn to_items(&self) -> Vec<P<Item>> {
+        // TODO: Apply attributes
+
+        self.0
+            .iter()
+            .map(|(path, imports)| mk().use_multiple_item(path.clone(), imports.leaves.iter().cloned().collect()))
+            .collect()
+    }
+}
 
 // REVIEW: We might be able to use ItemStore in the Translation struct
 // as a replacement for the uses, items, and foreign items fields

@@ -12,7 +12,7 @@ use c_ast::*;
 use clang_ast::LRValue;
 use rust_ast::{mk, Builder};
 use rust_ast::comment_store::CommentStore;
-use rust_ast::item_store::{MultiImport, PathedMultiImports, ItemStore};
+use rust_ast::item_store::{PathedMultiImports, ItemStore};
 use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;
 use syntax::print::pprust::*;
@@ -25,7 +25,7 @@ use with_stmts::WithStmts;
 use rust_ast::traverse::Traversal;
 use std::io;
 use std::path::{self, PathBuf};
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 
 use cfg;
 
@@ -110,7 +110,7 @@ pub struct Translation {
 
     // Accumulated outputs
     pub features: RefCell<HashSet<&'static str>>,
-    pub uses: RefCell<IndexSet<P<Item>>>,
+    pub uses: RefCell<PathedMultiImports>,
     pub items: RefCell<Vec<P<Item>>>,
     pub foreign_items: RefCell<Vec<ForeignItem>>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
@@ -505,7 +505,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             // imports near the top of the file than randomly scattered about. Also, there is probably
             // no reason to have comments associated with imports so it doesn't need to go through
             // the above comment store process
-            for use_item in t.uses.borrow().iter() {
+            for use_item in t.uses.borrow().to_items() {
                 s.print_item(&use_item)?;
             }
 
@@ -524,7 +524,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 }
 
 fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
-                  global_uses: &RefCell<IndexSet<P<Item>>>,
+                  global_uses: &RefCell<PathedMultiImports>,
                   mod_names: &RefCell<HashMap<String, PathBuf>>) -> P<Item> {
     // FIXME: submodule contents aren't deterministic
     let (mut items, foreign_items, uses) = submodule_item_store.drain();
@@ -534,20 +534,26 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
     // REVIEW: Should we join global imports? ie use foo::{bar, baz};
     for item in items.iter() {
         let ident_name = item.ident.name.as_str();
-        let use_path = vec!["self", mod_name.as_str(), &*ident_name];
+        let use_path = vec!["self".into(), mod_name.clone()];
 
-        global_uses.borrow_mut().insert(mk().use_item(use_path, None as Option<Ident>));
+       global_uses.borrow_mut()
+            .get_mut(use_path)
+            .leaves
+            .insert(ident_name.to_string());
     }
 
     for foreign_item in foreign_items.iter() {
         let ident_name = foreign_item.ident.name.as_str();
-        let use_path = vec!["self", mod_name.as_str(), &*ident_name];
+        let use_path = vec!["self".into(), mod_name.clone()];
 
-        global_uses.borrow_mut().insert(mk().use_item(use_path, None as Option<Ident>));
+        global_uses.borrow_mut()
+            .get_mut(use_path)
+            .leaves
+            .insert(ident_name.to_string());
     }
 
-    for (path, imports) in uses {
-        items.push(mk().use_multiple_item(path, imports.leaves.iter().cloned().collect()));
+    for item in uses.into_items() {
+        items.push(item);
     }
 
     if !foreign_items.is_empty() {
@@ -675,7 +681,7 @@ impl Translation {
 
         Translation {
             features: RefCell::new(HashSet::new()),
-            uses: RefCell::new(IndexSet::new()),
+            uses: RefCell::new(PathedMultiImports::new()),
             items: RefCell::new(vec![]),
             foreign_items: RefCell::new(vec![]),
             type_converter: RefCell::new(type_converter),
@@ -712,12 +718,6 @@ impl Translation {
     /// Called when translation makes use of a language feature that will require a feature-gate.
     fn use_feature(&self, feature: &'static str) {
         self.features.borrow_mut().insert(feature);
-    }
-
-    /// Called when translation makes use of a use import.
-    #[allow(dead_code)]
-    fn use_import(&self, use_path: Vec<&str>) {
-        self.uses.borrow_mut().insert(mk().use_item(use_path, None as Option<Ident>));
     }
 
     // This node should _never_ show up in the final generated code. This is an easy way to notice
@@ -4392,8 +4392,7 @@ impl Translation {
             Long | ULong | LongLong | ULongLong | Int128 | UInt128 |
             Half | Float | Double | LongDouble => {
                 store.uses
-                    .entry(vec!["super".into()])
-                    .or_insert(MultiImport::new())
+                    .get_mut(vec!["super".into()])
                     .leaves
                     .insert("libc".into());
             },
@@ -4423,8 +4422,7 @@ impl Translation {
                 // Either the decl lives in the parent module, or else in a sibling submodule
                 if decl_loc.file_path == self.tcfg.main_file {
                     store.uses
-                        .entry(vec!["super".into()])
-                        .or_insert(MultiImport::new())
+                        .get_mut(vec!["super".into()])
                         .leaves
                         .insert(ident_name);
                 } else {
@@ -4432,8 +4430,7 @@ impl Translation {
                     let file_name = clean_path(&self.mod_names, &file_path);
 
                     store.uses
-                        .entry(vec!["super".into(), file_name])
-                        .or_insert(MultiImport::new())
+                        .get_mut(vec!["super".into(), file_name])
                         .leaves
                         .insert(ident_name);
                 }
@@ -4478,8 +4475,7 @@ impl Translation {
             // REVIEW: Enums can only be integer types? So libc is likely always required?
             CDeclKind::Enum { .. } => {
                 item_store.uses
-                    .entry(vec!["super".into()])
-                    .or_insert(MultiImport::new())
+                    .get_mut(vec!["super".into()])
                     .leaves
                     .insert("libc".into());
             }
