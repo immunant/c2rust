@@ -201,7 +201,7 @@ if __name__ == "__main__":
 
     with open(COMPILE_COMMANDS, 'r') as cc_json:
         transpile_files(cc_json, filter=args.filter, emit_build_files=False, verbose=True,
-                        extra_impo_args=importer_args)
+                        extra_impo_args=importer_args, reorganize_definitions=True)
 
     # Move and rename tmux.rs to main.rs
     move(TMUX_RS, MAIN_RS)
