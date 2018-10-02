@@ -40,6 +40,18 @@ fn describe(sess: &Session, span: Span) -> String {
     }
 }
 
+/// Checks if a span has corresponding source text that we can rewrite (or use as source text to
+/// rewrite something else).  Rewriting macro bodies would be very complicated, so we just declare
+/// all macro-generated code to be non-rewritable.
+///
+/// Note that this does not require the source text to exist in a real (non-virtual) file - there
+/// just has to be text somewhere in the `CodeMap`.
+fn is_rewritable(sp: Span) -> bool {
+    sp != DUMMY_SP &&
+    // If it has a non-default SyntaxContext, it was generated as part of a macro expansion.
+    sp.ctxt() == SyntaxContext::empty()
+}
+
 
 /// Trait for types that are "splice points", where the output mode can switch from recycled to
 /// fresh or back.
@@ -96,14 +108,14 @@ trait Splice: Rewrite+'static {
     /// Perform a switch from recycled mode to fresh mode.  The source text for `old` will be
     /// replaced with pretty-printed code for `new`.
     fn splice_recycled(new: &Self, old: &Self, rcx: RewriteCtxtRef) {
-        if old.span() == DUMMY_SP {
+        if !is_rewritable(old.span()) {
             // If we got here, it means rewriting failed somewhere inside macro-generated code, and
             // outside any chunks of AST that the macro copied out of its arguments (those chunks
             // would have non-dummy spans, and would be spliced in already).  We give up on this
             // part of the rewrite when this happens, because rewriting inside the RHS of a
             // macro_rules! macro would be very difficult, and for procedural macros it's just
             // impossible.
-            warn!("can't splice in fresh text for a DUMMY_SP node");
+            warn!("can't splice in fresh text for a non-rewritable node");
             return;
         }
         Splice::splice_recycled_span(new, old.span(), rcx);
@@ -134,7 +146,7 @@ trait Splice: Rewrite+'static {
         };
 
 
-        if old.span() == DUMMY_SP {
+        if !is_rewritable(old.span()) {
             return false;
         }
 
@@ -772,12 +784,12 @@ impl<T: Rewrite+SeqItem> Rewrite for [T] {
                         let after = if i < old.len() { old[i].get_span() } else { DUMMY_SP };
 
                         let old_span =
-                            if before != DUMMY_SP {
+                            if is_rewritable(before) {
                                 before.with_lo(before.hi())
-                            } else if after != DUMMY_SP {
+                            } else if is_rewritable(after) {
                                 after.with_hi(after.lo())
                             } else {
-                                warn!("can't insert new node between two DUMMY_SP nodes");
+                                warn!("can't insert new node between two non-rewritable nodes");
                                 return true;
                             };
 
