@@ -193,7 +193,8 @@ def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
             runtime_path=runtime_path,
             libfakechecks_sys_path=libfakechecks_sys_path))
 
-    lib_rs_path = os.path.join(build_dir, "main.rs" if main_module else "lib.rs")
+    lib_rs_path = "main.rs" if main_module else "lib.rs"
+    lib_rs_path = os.path.join(build_dir, lib_rs_path)
     with open(lib_rs_path, "w") as lib_rs:
         template_modules = []
         for (module, module_exists) in modules:
@@ -263,7 +264,18 @@ def transpile_files(cc_db: TextIO,
     if not on_mac():
         ensure_code_compiled_with_clang(cc_db)
 
-    # TODO: if we're on macOS an don't have `/usr/include`, emit warning.
+    # MacOS Mojave does not have `/usr/include` even if the command line
+    # tools are installed. The fix is to run the developer package:
+    # `macOS_SDK_headers_for_macOS_10.14.pkg` in
+    # `/Library/Developer/CommandLineTools/Packages`.
+    # Source https://forums.developer.apple.com/thread/104296
+    if on_mac() and not os.path.isdir('/usr/include'):
+        emsg = ("directory /usr/include not found. "
+                "Please install the following package: "
+                "/Library/Developer/CommandLineTools/Packages/"
+                "macOS_SDK_headers_for_macOS_10.14.pkg "
+                "or the equivalent version on your host.")
+        die(emsg, errno.ENOENT)
 
     impo_args = ['--translate-entry']
     if emit_build_files:
