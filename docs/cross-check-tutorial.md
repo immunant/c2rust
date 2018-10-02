@@ -64,7 +64,9 @@ Cross-checks can be customized at a fine granularity using [cross-check configur
 
 ## Running cross-checked programs
 ### Offline mode
-We currently provide a few offline cross-checking backend libraries:
+When cross-checking in offline mode, all variants are executed independentely on the same inputs, and their cross-checks are written to either standard output or log files.
+After running all the variants, divergence can be detected by manually comparing the logs for mismatches.
+There are several backend libraries that support different types of logging outputs:
   * `libfakechecks` outputs a list of the cross-checks linearly to either standard output or a file 
   (specified using the `FAKECHECKS_OUTPUT_FILE` environment variable)
   * `fakechecks-zstd` library from `cross-checks/rust-checks/backends` (can also be used with the clang plugin) 
@@ -78,8 +80,7 @@ more complicated when using Cargo for Rust code), like this:
 $ env LD_PRELOAD=$C2RUST/cross-checks/libfakechecks/libfakechecks.so ./a.out
 ```
 
-Running each variant with cross-checks enabled will print a list of cross-check results to either standard output
-or the specified file. A simple `diff` or `cmp` command will show differences in traces, if any.
+Running each variant with cross-checks enabled will print a list of cross-check results to the specified output. A simple `diff` or `cmp` command will show differences in cross-checks, if any.
 
 ### Online (MVEE) mode
 TODO: describe MVEE setup

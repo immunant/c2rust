@@ -25,7 +25,7 @@ use syntax::tokenstream::TokenTree;
 use syntax_pos::FileName;
 use arena::SyncDroplessArena;
 
-use remove_paren::remove_paren;
+use ast_manip::remove_paren;
 use span_fix;
 use util::Lone;
 

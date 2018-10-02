@@ -109,7 +109,7 @@ impl<'a, 'tcx> Folder for ResolveCrateFolder<'a, 'tcx> {
 
 struct ResetNodeIdFolder;
 impl Folder for ResetNodeIdFolder {
-    fn new_id(&mut self, i: NodeId) -> NodeId { DUMMY_NODE_ID }
+    fn new_id(&mut self, _i: NodeId) -> NodeId { DUMMY_NODE_ID }
 }
 
 

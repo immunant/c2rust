@@ -263,7 +263,8 @@ def transpile_files(cc_db: TextIO,
 
     if not on_mac():
         ensure_code_compiled_with_clang(cc_db)
-    include_dirs = get_system_include_dirs()
+
+    # TODO: if we're on macOS an don't have `/usr/include`, emit warning.
 
     impo_args = ['--translate-entry']
     if emit_build_files:
@@ -281,8 +282,7 @@ def transpile_files(cc_db: TextIO,
         if import_only:
             cbor_file = os.path.join(cmd['directory'], cmd['file'] + ".cbor")
         else:
-            cbor_file = export_ast_from(ast_expo, cc_db_name,
-                                        include_dirs, **cmd)
+            cbor_file = export_ast_from(ast_expo, cc_db_name, **cmd)
         assert os.path.isfile(cbor_file), "missing: " + cbor_file
 
         ld_lib_path = get_rust_toolchain_libpath()

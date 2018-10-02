@@ -1,4 +1,4 @@
-use rustc::hir::{Item_, Mod, ForeignMod};
+use rustc::hir::{Mod, ForeignMod};
 use rustc::hir::def::Def;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE, CRATE_DEF_INDEX};
 use rustc::hir::map::Node;
@@ -77,7 +77,7 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Def)> {
                 module_children(tcx, krate_did)
             },
 
-            ItemUse(ref path, kind) => {
+            ItemUse(ref path, _kind) => {
                 let target_did = path.def.def_id();
                 module_children(tcx, target_did)
             },

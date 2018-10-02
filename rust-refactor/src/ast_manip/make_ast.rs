@@ -1239,12 +1239,12 @@ impl Builder {
     pub fn unit_variant<I,E>(self, name: I, disc: Option<E>) -> Variant
         where I: Make<Ident>, E: Make<P<Expr>> {
         let name = name.make(&self);
-        let disc = disc.map(|d| d.make(&self));
+        let disc = disc.map(|d| AnonConst { id: DUMMY_NODE_ID, value: d.make(&self) });
         dummy_spanned(Variant_ {
             ident: name,
             attrs: self.attrs,
             data: VariantData::Unit(DUMMY_NODE_ID),
-            disr_expr: None,
+            disr_expr: disc,
         })
     }
 

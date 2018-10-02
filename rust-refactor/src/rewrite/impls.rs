@@ -10,7 +10,7 @@ use syntax::ast::*;
 use rustc_target::spec::abi::Abi;
 use syntax::codemap::{Span, Spanned, DUMMY_SP};
 use syntax::ext::hygiene::SyntaxContext;
-use syntax::parse::{self, PResult};
+use syntax::parse::PResult;
 use syntax::parse::parser::Parser;
 use syntax::parse::token::Token;
 use syntax::print::pprust;
@@ -534,7 +534,7 @@ fn record_qualifier_rewrite(old_span: Span, new_span: Span, mut rcx: RewriteCtxt
 
 fn recover_item_rewrite_recycled(new: &Item, old: &Item, mut rcx: RewriteCtxtRef) -> bool {
     let &Item { ident: ref ident1, attrs: ref attrs1, id: ref id1, node: ref node1,
-                vis: ref vis1, span: ref span1, tokens: ref tokens1 } = new;
+                vis: ref vis1, span: ref span1, tokens: ref _tokens1 } = new;
     let &Item { ident: ref ident2, attrs: ref attrs2, id: ref id2, node: ref node2,
                 vis: ref vis2, span: ref span2, tokens: ref tokens2 } = old;
 
