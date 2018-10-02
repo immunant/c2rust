@@ -23,7 +23,6 @@ from common import (
     get_cmd_or_die,
     on_mac,
     invoke,
-    get_system_include_dirs,
     export_ast_from,
     get_rust_toolchain_binpath,
     get_rust_toolchain_libpath,
