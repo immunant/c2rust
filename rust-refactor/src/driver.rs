@@ -58,7 +58,7 @@ pub struct Ctxt<'a, 'tcx: 'a> {
 /// Compiler phase selection.  Later phases have more analysis results available, but are less
 /// robust against broken code.  (For example, phase 3 provides typechecking results, but can't be
 /// used on code that doesn't typecheck.)
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Phase {
     /// Phase 1: Runs on the source code immediately after parsing, before macro expansion.
     Phase1,
@@ -185,7 +185,35 @@ impl Phase1Bits {
             control, krate,
         }
     }
+
+    /// Set up the compiler using a previously-created session, repeating phase 1 (input parsing).
+    pub fn from_session_reparse(old_session: &Session) -> Phase1Bits {
+        let (session, cstore, codegen_backend) = rebuild_session(old_session);
+
+        let in_path = old_session.local_crate_source_file.clone();
+        let input = Input::File(in_path.unwrap());
+
+        let control = CompileController::basic();
+
+        // Start of `compile_input` code
+        let krate = driver::phase_1_parse_input(&control, &session, &input).unwrap();
+
+        Phase1Bits {
+            session, cstore, codegen_backend,
+
+            input,
+            output: None,
+            out_dir: None,
+
+            control, krate,
+        }
+    }
+
+    pub fn into_crate(self) -> Crate {
+        self.krate
+    }
 }
+
 
 pub fn run_compiler_to_phase1(args: &[String],
                               file_loader: Option<Box<FileLoader+Sync+Send>>) -> Phase1Bits {
@@ -286,6 +314,21 @@ pub fn run_compiler<F, R>(args: &[String],
         where F: FnOnce(Crate, Ctxt) -> R {
     let bits = run_compiler_to_phase1(args, file_loader);
     run_compiler_from_phase1(bits, phase, func)
+}
+
+pub fn build_session_from_args(args: &[String],
+                               file_loader: Option<Box<FileLoader+Sync+Send>>) -> Session {
+    let matches = rustc_driver::handle_options(args)
+        .expect("rustc arg parsing failed");
+    let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
+
+    assert!(matches.free.len() == 1,
+           "expected exactly one input file");
+    let in_path = Some(Path::new(&matches.free[0]).to_owned());
+    let input = Input::File(in_path.as_ref().unwrap().clone());
+
+    let (session, cstore, codegen_backend) = build_session(sopts, in_path, file_loader);
+    session
 }
 
 fn build_session(sopts: Options,

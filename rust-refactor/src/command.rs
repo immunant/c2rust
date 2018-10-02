@@ -4,117 +4,407 @@ use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::mem;
-use syntax::ast::{NodeId, Crate, Mod};
+use rustc::session::Session;
+use syntax::ast::{NodeId, Crate, Mod, DUMMY_NODE_ID};
 use syntax::codemap::DUMMY_SP;
 use syntax::codemap::FileLoader;
 use syntax::codemap::FileMap;
+use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use driver::{self, Phase};
+use ast_manip::ListNodeIds;
+use driver::{self, Phase, Phase1Bits};
+use recheck::{self, PrepareRecheckInfo};
 use rewrite;
 use rewrite::files;
 use span_fix;
 use util::IntoSymbol;
 
 
+#[derive(Clone, Debug)]
+enum CrateState {
+    None,
+    /// The crate has not yet been macro-expanded.
+    Unexpanded(Crate),
+    /// The crate has been macro-expanded.  Note that crates prepared for rechecking are still
+    /// considered expanded - `prepare_recheck` can't actually reverse macro expansion.
+    Expanded(Crate),
+}
+
+impl CrateState {
+    pub fn is_none(&self) -> bool {
+        match *self {
+            CrateState::None => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_unexpanded(&self) -> bool {
+        match *self {
+            CrateState::Unexpanded(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_expanded(&self) -> bool {
+        match *self {
+            CrateState::Expanded(..) => true,
+            _ => false,
+        }
+    }
+}
+
+
+/// A possible state of the refactoring engine.  (I'd call this enum "State", as in "state
+/// machine", but that word is already heavily overloaded.)
+///
+/// For the most part, any state can transition to any other state by one means or another.  The
+/// exception is that there are no transitions between `Unexpanded` and `Expanded` in either
+/// direction, because we can't unexpand a crate, and we also don't know how to do rewriting when a
+/// crate is transformed before expansion.  (Note that `Unexpanded` means the crate is unexpanded
+/// *and* a transformation has been applied, as opposed to `Loaded` where it's unexpanded but has
+/// never been transformed.)
+///
+/// See individual `RefactorState` method docs for the possible state transitions.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Mode {
+    /// The crate has not been loaded from disk yet.  `krate` and `orig_krate` are both `None`.
+    Unloaded,
+    /// The crate has been loaded, but nothing has been done with it yet.  `krate` is `Some` and
+    /// contains an unexpanded AST.
+    Loaded,
+    /// The crate has been transformed in unexpanded (Phase1) mode.  `krate` contains the current
+    /// AST, and `orig_crate` contains the original unexpanded AST that was loaded from disk.
+    Unexpanded,
+    /// The crate has been transformed in expanded (Phase2+) mode.  `krate` contains the current
+    /// AST, and `orig_crate` contains the expanded version of the original crate as it was loaded
+    /// from disk.
+    Expanded,
+}
+
+
 /// Stores the overall state of the refactoring process, which can be read and updated by
 /// `Command`s.
-///
-/// TODO: The current design has a few issues.  Specifically:
-///
-///  1. The `Crate` is regenerated from the filesystem contents for each command, so running
-///     multiple transform commands will fail if the rewriting mode is not (effectively) "inplace".
-///  2. Running a transform command requires discarding all the marks, because parsing the
-///     transformed code will assign NodeIds differently.
-///  3. There's no actual tracking of the relationship between the marks and the `Crate` (which,
-///     again, depends on the on-disk source code state).
-///
-/// I think these could be addressed by keeping the expanded `Crate` as part of the refactor state.
-/// Run `Phase1` once and keep the results, rerunning only `Phase2` and `Phase3` when analysis
-/// results are needed.  Explicitly run renumbering when the `Crate` is changed (so that NodeIds
-/// will remain unique), and update the marks to compensate for the changes.  And if the `Crate` is
-/// kept in-memory, then we can delay rewriting until the very end, producing good results for
-/// multi-command invocations even under non-"inplace" rewrite modes.
 pub struct RefactorState {
-    rustc_args: Vec<String>,
-    make_file_loader: Option<Box<Fn() -> Box<FileLoader+Sync+Send>>>,
     rewrite_handler: Option<Box<FnMut(Rc<FileMap>, &str)>>,
     cmd_reg: Registry,
+    session: Session,
+
+    mode: Mode,
+
+    /// The current crate AST.  This is used as the "new" AST when rewriting.
+    krate: Option<Crate>,
+
+    /// Info collected during the last compiler run, which allows us to prepare `krate` for
+    /// rechecking.
+    recheck_info: Option<PrepareRecheckInfo>,
+
+    /// The original crate AST.  This is used as the "old" AST when rewriting.
+    orig_krate: Option<Crate>,
+
+    /// Mapping from `krate` NodeIds to `disk_krate` NodeIds
+    node_id_map: HashMap<NodeId, NodeId>,
+
+    /// Current marks.  The `NodeId`s here refer to nodes in `krate`.
     marks: HashSet<(NodeId, Symbol)>,
 }
 
 impl RefactorState {
-    pub fn new(rustc_args: Vec<String>,
+    pub fn new(session: Session,
                cmd_reg: Registry,
+               rewrite_handler: Option<Box<FnMut(Rc<FileMap>, &str)>>,
                marks: HashSet<(NodeId, Symbol)>) -> RefactorState {
         RefactorState {
-            rustc_args: rustc_args,
-            make_file_loader: None,
-            rewrite_handler: None,
-            cmd_reg: cmd_reg,
+            rewrite_handler,
+            cmd_reg,
+            session,
+
+            mode: Mode::Unloaded,
+
+            krate: None,
+            recheck_info: None,
+            orig_krate: None,
+
+            node_id_map: HashMap::new(),
+
             marks: marks,
         }
     }
 
-    /// Provide a function that builds a custom file loader for `rustc` driver invocations.
-    pub fn make_file_loader<F: Fn() -> Box<FileLoader+Sync+Send> + 'static>(&mut self, f: F) {
-        self.make_file_loader = Some(Box::new(f));
+    pub fn from_rustc_args(rustc_args: &[String],
+                           cmd_reg: Registry,
+                           rewrite_handler: Option<Box<FnMut(Rc<FileMap>, &str)>>,
+                           file_loader: Option<Box<FileLoader+Sync+Send>>,
+                           marks: HashSet<(NodeId, Symbol)>) -> RefactorState {
+        let session = driver::build_session_from_args(rustc_args, file_loader);
+        Self::new(session, cmd_reg, rewrite_handler, marks)
     }
 
-    /// Provide a callback for handling rewritten file contents.
-    pub fn rewrite_handler<F: FnMut(Rc<FileMap>, &str) + 'static>(&mut self, f: F) {
-        self.rewrite_handler = Some(Box::new(f));
+
+    fn load_crate_inner(&self) -> Crate {
+        let bits = Phase1Bits::from_session_reparse(&self.session);
+        let krate = bits.into_crate();
+        span_fix::fix_spans(&self.session, krate)
     }
 
-    /// Run the compiler driver to the given phase, and pass the command and driver state to the
-    /// provided callback.
-    pub fn with_context_at_phase<F, R>(&mut self, phase: Phase, f: F) -> R
-            where F: FnOnce(&CommandState, &driver::Ctxt) -> R{
-        let marks = &mut self.marks;
-        let mut rewrite_handler = self.rewrite_handler.as_mut();
+    /// Load the crate from disk.  Transitions to `Loaded`, regardless of current mode.
+    pub fn load_crate(&mut self) {
+        // Discard any existing krate, and proceed to `Loaded` regardless of current mode.
+        self.mode = Mode::Loaded;
+        self.krate = Some(self.load_crate_inner());
+        self.recheck_info = None;
+        self.orig_krate = None;
 
-        let file_loader = self.make_file_loader.as_ref().map(|f| f());
-        driver::run_compiler(&self.rustc_args, file_loader, phase, |krate, cx| {
-            let krate = span_fix::fix_spans(cx.session(), krate);
+        self.node_id_map = HashMap::new();
+        self.marks = HashSet::new();
+    }
 
-            let cmd_state = CommandState::new(krate.clone(),
-                                              marks.clone());
+    /// Save the crate to disk by applying any pending rewrites.  Transitions to `Unloaded`, mainly
+    /// so we don't have to deal with questions of how to keep `orig_krate` in sync with disk while
+    /// also being usable for rewriting from `krate`.
+    pub fn save_crate(&mut self) {
+        if self.mode == Mode::Unloaded || self.mode == Mode::Loaded {
+            // No rewrites need to be made.
+            self.mode = Mode::Unloaded;
+            self.krate = None;
+            return;
+        }
 
-            let r = f(&cmd_state, &cx);
+        {
+            let old = self.orig_krate.take().unwrap();
+            let new = self.krate.take().unwrap();
+            let node_id_map = mem::replace(&mut self.node_id_map, HashMap::new());
 
-            if cmd_state.marks_changed() {
-                *marks = cmd_state.marks().clone();
+            let rws = rewrite::rewrite(&self.session, &old, &new, node_id_map);
+            if rws.len() == 0 {
+                info!("(no files to rewrite)");
+            } else {
+                if let Some(ref mut handler) = self.rewrite_handler {
+                    files::rewrite_files_with(self.session.codemap(),
+                                              &rws,
+                                              |fm, s| handler(fm, s));
+                }
+            }
+        }
+
+        // We already cleared `krate`, `orig_krate`, and `node_id_map`.
+        self.mode = Mode::Unloaded;
+        self.recheck_info = None;
+        self.marks = HashSet::new();
+    }
+
+    pub fn transform_crate<F, R>(&mut self, phase: Phase, f: F) -> R
+            where F: FnOnce(&CommandState, &driver::Ctxt) -> R {
+        if self.mode == Mode::Unloaded {
+            self.load_crate();
+        }
+
+        let target_mode = match self.mode {
+            Mode::Unloaded => unreachable!(),
+            Mode::Loaded => {
+                if phase == Phase::Phase1 {
+                    Mode::Unexpanded
+                } else {
+                    Mode::Expanded
+                }
+            },
+            Mode::Unexpanded => {
+                assert!(phase == Phase::Phase1,
+                        "can't expand a transformed crate - \
+                         run `commit` between phase1 and phase2+ commands");
+                Mode::Unexpanded
+            },
+            Mode::Expanded => {
+                if phase == Phase::Phase1 {
+                    warn!("running a phase1 command on an expanded crate");
+                }
+                Mode::Expanded
+            },
+        };
+
+        match target_mode {
+            Mode::Unexpanded => self.transform_crate_unexpanded(phase, f),
+            Mode::Expanded => self.transform_crate_expanded(phase, f),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn transform_crate_expanded<F, R>(&mut self, phase: Phase, f: F) -> R
+            where F: FnOnce(&CommandState, &driver::Ctxt) -> R {
+        let first_transform = self.mode == Mode::Loaded;
+        self.mode = Mode::Expanded;
+
+        let mut krate = self.krate.take().unwrap();
+        // Used only when `first_transform` is set.
+        let mut old_ids = Vec::new();
+
+        if !first_transform {
+            // We're re-analyzing an already-expanded crate.  Run `prepare`.
+            let info = self.recheck_info.as_ref().unwrap();
+            old_ids = krate.list_node_ids();
+            krate = recheck::prepare_recheck_with_info(info, krate);
+        }
+
+        let mut marks = mem::replace(&mut self.marks, HashSet::new());
+
+        let bits = Phase1Bits::from_session_and_crate(&self.session, krate);
+        driver::run_compiler_from_phase1(bits, phase, |krate, cx| {
+            if first_transform {
+                // Set `orig_krate` to the newly-expanded `krate`.
+                self.orig_krate = Some(krate.clone());
             }
 
-            if cmd_state.krate_changed() {
-                let rws = rewrite::rewrite(cx.session(), &krate, &cmd_state.krate());
-                if rws.len() == 0 {
-                    info!("(no files to rewrite)");
-                } else {
-                    if let Some(ref mut handler) = rewrite_handler {
-                        files::rewrite_files_with(cx.session().codemap(),
-                                                  &rws,
-                                                  |fm, s| handler(fm, s));
+            let new_ids = krate.list_node_ids();
+
+            if first_transform {
+                // Map each new node to itself.  `rewrite` interprets absence from the map as
+                // "newly inserted", not as "kept same NodeId".
+                self.node_id_map = new_ids.iter()
+                    .filter(|&&x| x != DUMMY_NODE_ID)
+                    .map(|&x| (x, x))
+                    .collect();
+            } else {
+                // Expansion renumbers all NodeIds.  Transfer information from the old numbering to
+                // the new one.
+
+                // Convert mark NodeIds.  Note this needs to handle the case of a marked node being
+                // copied to 2+ different locations in the new AST.
+                let mut mark_map = HashMap::new();
+                for &(id, label) in &marks {
+                    mark_map.entry(id).or_insert_with(Vec::new).push(label);
+                }
+                let mut new_marks = HashSet::with_capacity(marks.len());
+                for (&old, &new) in old_ids.iter().zip(new_ids.iter()) {
+                    if let Some(labels) = mark_map.get(&old) {
+                        for &label in labels {
+                            new_marks.insert((new, label));
+                        }
                     }
                 }
+                marks = new_marks;
 
-                *marks = HashSet::new();
+                // Compose `self.node_id_map` with the mapping from each entry in `old_ids` to
+                // the corresponding entry in `new_ids`.  (We don't actually construct the
+                // second mapping explicitly.)
+                let mut updated_id_map = HashMap::new();
+                for (&old, &new) in old_ids.iter().zip(new_ids.iter()) {
+                    if new == DUMMY_NODE_ID || old == DUMMY_NODE_ID {
+                        continue;
+                    }
+                    // [new -> old] + [old -> older] = [new -> older]
+                    if let Some(&older) = self.node_id_map.get(&old) {
+                        updated_id_map.insert(new, older);
+                    }
+                }
+                self.node_id_map = updated_id_map;
             }
+
+            // Run the transform
+            let cmd_state = CommandState::new(krate, marks);
+            let r = f(&cmd_state, &cx);
+
+            // Update internal state
+            let changed = cmd_state.krate_changed();
+            if cmd_state.krate_changed() || first_transform {
+                let info = recheck::collect_prepare_recheck_info(&cx, &cmd_state.krate());
+                self.recheck_info = Some(info);
+            }
+            let (new_krate, new_marks) = cmd_state.into_inner();
+            self.krate = Some(new_krate);
+            self.marks = new_marks;
 
             r
         })
     }
 
-    /// Run the compiler driver to `Phase3`, and pass the command and driver state to the provided
-    /// callback.
-    pub fn with_context<F, R>(&mut self, f: F) -> R
+    pub fn transform_crate_unexpanded<F, R>(&mut self, phase: Phase, f: F) -> R
             where F: FnOnce(&CommandState, &driver::Ctxt) -> R {
-        self.with_context_at_phase(Phase::Phase3, f)
+        warn!("transform_crate(phase1) is unfinished and probably doesn't work (see comments)");
+        let first_transform = self.mode == Mode::Loaded;
+        self.mode = Mode::Unexpanded;
+
+        let krate = self.krate.take().unwrap();
+        // Used only when `first_transform` is set.
+        let old_ids = krate.list_node_ids();
+
+        let mut marks = mem::replace(&mut self.marks, HashSet::new());
+
+        let bits = Phase1Bits::from_session_and_crate(&self.session, krate);
+        driver::run_compiler_from_phase1(bits, phase, |krate, cx| {
+            // TODO: Need to assign NodeIds at this point.  Otherwise rewrite will get confused
+            // because they are all DUMMY_NODE_ID.
+
+            if first_transform {
+                // Set `orig_krate` only after renumbering, so that `rewrite` will have non-DUMMY
+                // NodeIds to work with.
+                self.orig_krate = Some(krate.clone());
+            }
+
+            let new_ids = krate.list_node_ids();
+
+            if first_transform {
+                self.node_id_map = new_ids.iter()
+                    .filter(|&&x| x != DUMMY_NODE_ID)
+                    .map(|&x| (x, x))
+                    .collect();
+            } else {
+                // We just renumbered all NodeIds.  Transfer information from the old numbering to
+                // the new one.
+
+                // Convert mark NodeIds.  Note this needs to handle the case of a marked node being
+                // copied to 2+ different locations in the new AST.
+                let mut mark_map = HashMap::new();
+                for &(id, label) in &marks {
+                    mark_map.entry(id).or_insert_with(Vec::new).push(label);
+                }
+                let mut new_marks = HashSet::with_capacity(marks.len());
+                for (&old, &new) in old_ids.iter().zip(new_ids.iter()) {
+                    if let Some(labels) = mark_map.get(&old) {
+                        for &label in labels {
+                            new_marks.insert((new, label));
+                        }
+                    }
+                }
+                marks = new_marks;
+
+                // Compose `self.node_id_map` with the mapping from each entry in `old_ids` to
+                // the corresponding entry in `new_ids`.  (We don't actually construct the
+                // second mapping explicitly.)
+                let mut updated_id_map = HashMap::new();
+                for (&old, &new) in old_ids.iter().zip(new_ids.iter()) {
+                    if new == DUMMY_NODE_ID || old == DUMMY_NODE_ID {
+                        continue;
+                    }
+                    // [new -> old] + [old -> older] = [new -> older]
+                    if let Some(&older) = self.node_id_map.get(&old) {
+                        updated_id_map.insert(new, older);
+                    }
+                }
+                self.node_id_map = updated_id_map;
+            }
+
+            // Run the transform
+            let cmd_state = CommandState::new(krate, marks);
+            let r = f(&cmd_state, &cx);
+
+            // Update internal state
+            let (new_krate, new_marks) = cmd_state.into_inner();
+            self.krate = Some(new_krate);
+            self.marks = new_marks;
+
+            r
+        })
     }
+
+    pub fn clear_marks(&mut self) {
+        self.marks.clear()
+    }
+
 
     /// Invoke a registered command with the given command name and arguments.
     pub fn run<S: AsRef<str>>(&mut self, cmd: &str, args: &[S]) {
         let args = args.iter().map(|s| s.as_ref().to_owned()).collect::<Vec<_>>();
+        info!("running command: {} {:?}", cmd, args);
 
         let mut cmd = self.cmd_reg.get_command(cmd, &args);
         cmd.run(self);
@@ -235,6 +525,12 @@ impl CommandState {
 
         new
     }
+
+
+    pub fn into_inner(self) -> (Crate, HashSet<(NodeId, Symbol)>) {
+        (self.krate.into_inner(),
+         self.marks.into_inner())
+    }
 }
 
 
@@ -300,6 +596,15 @@ impl<F> DriverCommand<F>
 impl<F> Command for DriverCommand<F>
         where F: FnMut(&CommandState, &driver::Ctxt) {
     fn run(&mut self, state: &mut RefactorState) {
-        state.with_context_at_phase(self.phase, |st, cx| (self.func)(st, cx));
+        state.transform_crate(self.phase, |st, cx| (self.func)(st, cx));
     }
+}
+
+
+pub fn register_commands(reg: &mut Registry) {
+    reg.register("commit", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
+        rs.save_crate();
+        rs.load_crate();
+        rs.clear_marks();
+    })));
 }

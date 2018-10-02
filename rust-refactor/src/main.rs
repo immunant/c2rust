@@ -323,6 +323,7 @@ fn main_impl(opts: Options) {
     select::register_commands(&mut cmd_reg);
     analysis::register_commands(&mut cmd_reg);
     reflect::register_commands(&mut cmd_reg);
+    command::register_commands(&mut cmd_reg);
 
     plugin::load_plugins(&opts.plugin_dirs, &opts.plugins, &mut cmd_reg);
 
@@ -331,11 +332,15 @@ fn main_impl(opts: Options) {
                                    opts.rustc_args,
                                    cmd_reg);
     } else {
-        let mut state = command::RefactorState::new(opts.rustc_args, cmd_reg, marks);
         let rewrite_mode = opts.rewrite_mode;
-        state.rewrite_handler(move |fm, s| {
+        let rw_handler = Box::new(move |fm, s: &str| {
             rewrite::files::rewrite_mode_callback(rewrite_mode, fm, s);
         });
+
+        let mut state = command::RefactorState::from_rustc_args(
+            &opts.rustc_args, cmd_reg, Some(rw_handler), None, marks);
+
+        state.load_crate();
 
         for cmd in opts.commands.clone() {
             if &cmd.name == "interact" {
@@ -344,6 +349,8 @@ fn main_impl(opts: Options) {
                 state.run(&cmd.name, &cmd.args);
             }
         }
+
+        state.save_crate();
     }
 }
 

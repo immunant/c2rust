@@ -202,7 +202,9 @@ pub fn rewrite_seq<T, R>(old: &[R],
     // We diff the sequences of `NodeId`s to match up nodes on the left and the right.  This works
     // because the old AST has `NodeId`s assigned properly.  (The new AST might not, but in that
     // case we will properly detect a change.)
-    let new_ids = new.iter().map(|x| ast(x).seq_item_id()).collect::<Vec<_>>();
+    //
+    // Note we map the new IDs to corresponding old IDs, to account for NodeId renumbering.
+    let new_ids = new.iter().map(|x| rcx.new_to_old_id(ast(x).seq_item_id())).collect::<Vec<_>>();
     let old_ids = old.iter().map(|x| ast(x).seq_item_id()).collect::<Vec<_>>();
 
     let mut i = 0;
@@ -289,7 +291,7 @@ pub fn rewrite_seq_comma_sep<T, R>(old: &[R],
         x.ast_deref()
     }
 
-    let new_ids = new.iter().map(|x| ast(x).seq_item_id()).collect::<Vec<_>>();
+    let new_ids = new.iter().map(|x| rcx.new_to_old_id(ast(x).seq_item_id())).collect::<Vec<_>>();
     let old_ids = old.iter().map(|x| ast(x).seq_item_id()).collect::<Vec<_>>();
 
     let mut i = 0;

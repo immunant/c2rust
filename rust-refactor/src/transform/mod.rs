@@ -26,7 +26,7 @@ pub struct TransformCommand<T: Transform>(pub T);
 
 impl<T: Transform> Command for TransformCommand<T> {
     fn run(&mut self, state: &mut RefactorState) {
-        state.with_context_at_phase(self.0.min_phase(), |st, cx| {
+        state.transform_crate(self.0.min_phase(), |st, cx| {
             st.map_krate(|krate| {
                 self.0.transform(krate, st, cx)
             });
