@@ -232,6 +232,11 @@ fn main() {
         // even if there is no extension for some reason, this will still work
         let mut path_buf = file.with_extension("");
 
+        // When an output file name is not explictly specified, we should convert files
+        // with dashes to underscores, as they are not allowed in rust file names.
+        let file_name = path_buf.file_name().unwrap().to_str().unwrap().replace('-', "_");
+
+        path_buf.set_file_name(file_name);
         path_buf.set_extension("rs");
         path_buf
     };

@@ -218,15 +218,6 @@ if __name__ == "__main__":
 
     assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)
 
-    # Rename files with dashes to underscores, as rust won't
-    # accept dashes.
-    for path in [RUST_SRC_DIR, RUST_COMPAT_DIR]:
-        rust_rs_files = local.path(path) // "*.rs"
-
-        retcode, _, _ = rename_("s/-/_/g", "-f", rust_rs_files)
-
-        assert retcode != 1, "Could not rename translated rs files:\n{}".format(stderr)
-
     # Some tmux files have the same file names as structs, so we also have to append
     # an underscore to the filename so that rust doesn't get confused
     files_needing_trailing_underscore = [os.path.join(RUST_SRC_DIR, file) for file in FILES_NEEDING_TRAILING_UNDERSCORE]

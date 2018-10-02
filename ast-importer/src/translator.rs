@@ -526,17 +526,15 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
                   global_uses: &RefCell<PathedMultiImports>,
                   mod_names: &RefCell<HashMap<String, PathBuf>>) -> P<Item> {
-    // FIXME: submodule contents aren't deterministic
     let (mut items, foreign_items, uses) = submodule_item_store.drain();
     let file_path_str = file_path.to_str().expect("Found invalid unicode");
     let mod_name = clean_path(mod_names, file_path);
 
-    // REVIEW: Should we join global imports? ie use foo::{bar, baz};
     for item in items.iter() {
         let ident_name = item.ident.name.as_str();
         let use_path = vec!["self".into(), mod_name.clone()];
 
-       global_uses.borrow_mut()
+        global_uses.borrow_mut()
             .get_mut(use_path)
             .leaves
             .insert(ident_name.to_string());

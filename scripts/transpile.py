@@ -330,6 +330,10 @@ def transpile_files(cc_db: TextIO,
                 e = "Expected file suffix `.c.cbor`; actual: " + cbor_basename
                 assert cbor_file.endswith(".c.cbor"), e
                 rust_file = cbor_file[:-7] + ".rs"
+                path, file_name = os.path.split(rust_file)
+                file_name = file_name.replace('-', '_')
+                rust_file = os.path.join(path, file_name)
+
                 rustfmt(rust_file)
 
                 return (file_basename, retcode, stdout, importer_warnings,
