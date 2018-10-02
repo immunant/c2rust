@@ -320,7 +320,7 @@ flag ImplPolarity;
 flag IsAuto;
 flag Unsafety;
 flag Abi;
-flag Mutability;
+#[match=eq] flag Mutability;
 enum RangeEnd {
     Included(syntax),
     Excluded,
