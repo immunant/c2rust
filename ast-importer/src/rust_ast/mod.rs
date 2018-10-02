@@ -1343,6 +1343,24 @@ impl Builder {
                    ItemKind::Use(P(use_tree)))
     }
 
+    pub fn use_multiple_item<Pa, I>(self, path: Pa, inner: Vec<I>) -> P<Item>
+        where Pa: Make<Path>, I: Make<Ident>,
+    {
+        let path = path.make(&self);
+        let inner_trees = inner.into_iter().map(|i| (UseTree {
+            span: DUMMY_SP,
+            prefix: Path::from_ident(i.make(&self)),
+            kind: UseTreeKind::Simple(None, DUMMY_NODE_ID, DUMMY_NODE_ID)
+        }, DUMMY_NODE_ID)).collect();
+        let use_tree = UseTree {
+            span: DUMMY_SP,
+            prefix: path,
+            kind: UseTreeKind::Nested(inner_trees),
+        };
+        Self::item(keywords::Invalid.ident(), self.attrs, self.vis, self.span,
+                   ItemKind::Use(P(use_tree)))
+    }
+
     pub fn foreign_items(self, items: Vec<ForeignItem>) -> P<Item>
     {
         let fgn_mod = ForeignMod { abi: self.abi, items };
@@ -1477,7 +1495,7 @@ impl Builder {
 
     pub fn meta_item<I,K>(self, path: I, kind: K) -> MetaItem
         where I: Make<Path>, K: Make<MetaItemKind> {
-        
+
         let path = path.make(&self);
         let kind = kind.make(&self);
         MetaItem {

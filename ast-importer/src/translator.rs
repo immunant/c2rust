@@ -12,7 +12,7 @@ use c_ast::*;
 use clang_ast::LRValue;
 use rust_ast::{mk, Builder};
 use rust_ast::comment_store::CommentStore;
-use rust_ast::item_store::ItemStore;
+use rust_ast::item_store::{MultiImport, PathedMultiImports, ItemStore};
 use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;
 use syntax::print::pprust::*;
@@ -546,8 +546,8 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
         global_uses.borrow_mut().insert(mk().use_item(use_path, None as Option<Ident>));
     }
 
-    for use_item in uses {
-        items.push(use_item);
+    for (path, imports) in uses {
+        items.push(mk().use_multiple_item(path, imports.leaves.iter().cloned().collect()));
     }
 
     if !foreign_items.is_empty() {
@@ -4391,9 +4391,11 @@ impl Translation {
             Void | Char | SChar | UChar | Short | UShort | Int | UInt |
             Long | ULong | LongLong | ULongLong | Int128 | UInt128 |
             Half | Float | Double | LongDouble => {
-                let item_use = mk().use_item(vec!["super", "libc"], None as Option<Ident>);
-
-                store.uses.insert(item_use);
+                store.uses
+                    .entry(vec!["super".into()])
+                    .or_insert(MultiImport::new())
+                    .leaves
+                    .insert("libc".into());
             },
             // Bool uses the bool type, so no dependency on libc
             Bool => {},
@@ -4419,16 +4421,22 @@ impl Translation {
                 let ident_name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 // Either the decl lives in the parent module, or else in a sibling submodule
-                let item_use = if decl_loc.file_path == self.tcfg.main_file {
-                    mk().use_item(vec!["super", &ident_name], None as Option<Ident>)
+                if decl_loc.file_path == self.tcfg.main_file {
+                    store.uses
+                        .entry(vec!["super".into()])
+                        .or_insert(MultiImport::new())
+                        .leaves
+                        .insert(ident_name);
                 } else {
                     let file_path = decl_loc.file_path.as_ref().unwrap();
                     let file_name = clean_path(&self.mod_names, &file_path);
 
-                    mk().use_item(vec!["super", &file_name, &ident_name], None as Option<Ident>)
-                };
-
-                store.uses.insert(item_use);
+                    store.uses
+                        .entry(vec!["super".into(), file_name])
+                        .or_insert(MultiImport::new())
+                        .leaves
+                        .insert(ident_name);
+                }
             },
             Function(CQualTypeId { ctype, .. }, ref params, ..) => {
                 // Return Type
@@ -4469,10 +4477,12 @@ impl Translation {
             CDeclKind::EnumConstant { .. } => {},
             // REVIEW: Enums can only be integer types? So libc is likely always required?
             CDeclKind::Enum { .. } => {
-                let item_use = mk().use_item(vec!["super", "libc"], None as Option<Ident>);
-
-                item_store.uses.insert(item_use);
-            },
+                item_store.uses
+                    .entry(vec!["super".into()])
+                    .or_insert(MultiImport::new())
+                    .leaves
+                    .insert("libc".into());
+            }
             CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } |
             CDeclKind::Typedef { typ, .. } => self.match_type_kind(typ.ctype, item_store, decl_file_path),
             CDeclKind::Function { is_extern: true, typ, .. } => self.match_type_kind(typ, item_store, decl_file_path),
