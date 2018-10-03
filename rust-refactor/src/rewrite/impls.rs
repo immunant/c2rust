@@ -517,6 +517,65 @@ fn find_fn_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, FnHeaderSpans> {
     Ok(FnHeaderSpans { vis, constness, unsafety, abi, ident })
 }
 
+struct ItemHeaderSpans {
+    vis: Span,
+    ident: Span,
+}
+
+/// Generic parsing function for item headers of the form "<vis> <struct/enum/etc> <ident>".
+fn find_item_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, ItemHeaderSpans> {
+    // Skip over any attributes that were included in the token stream.
+    loop {
+        if matches!([p.token] Token::DocComment(..)) {
+            p.bump();
+        } else if matches!([p.token] Token::Pound) {
+            // I don't think we should ever see inner attributes inside `item.tokens`, but allow
+            // them just in case.
+            p.parse_attribute(true)?;
+        } else {
+            break;
+        }
+    }
+
+    let spanned_vis = p.parse_visibility(false)?;
+    let vis = if spanned_vis.node != VisibilityKind::Inherited {
+        spanned_vis.span
+    } else {
+        // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
+        // before the next token.
+        start_point(p.span)
+    };
+
+    let kws = &[
+        keywords::Static,
+        keywords::Const,
+        keywords::Fn,
+        keywords::Mod,
+        keywords::Type,
+        keywords::Enum,
+        keywords::Struct,
+        keywords::Union,
+        keywords::Trait,
+    ];
+
+    for (i, &kw) in kws.iter().enumerate() {
+        if i < kws.len() - 1 {
+            if p.eat_keyword(kw) {
+                break;
+            }
+        } else {
+            // Use `expect` for the last one so we produce a parse error on "none of the above".
+            p.expect(&Token::Ident(kw.ident(), false))?;
+            break;
+        }
+    }
+
+    p.parse_ident()?;
+    let ident = p.prev_span;
+
+    Ok(ItemHeaderSpans { vis, ident })
+}
+
 /// Record a rewrite of a qualifier, such as `unsafe`.  We make two assumptions:
 ///  1. If `old_span` is empty, then it is placed at the start of the next token after the place
 ///     the new qualifier should go.
@@ -610,7 +669,42 @@ fn recover_item_rewrite_recycled(new: &Item, old: &Item, mut rcx: RewriteCtxtRef
             false
         },
 
-        (_, _) => true,
+        (_, _) => {
+            // Generic case, for items of the form "<vis> <struct/enum/etc> <ident>".
+            let fail =
+                Rewrite::rewrite_recycled(attrs1, attrs2, rcx.borrow()) ||
+                Rewrite::rewrite_recycled(id1, id2, rcx.borrow()) ||
+                Rewrite::rewrite_recycled(node1, node2, rcx.borrow()) ||
+                Rewrite::rewrite_recycled(span1, span2, rcx.borrow());
+            if fail {
+                return true;
+            }
+
+            let src1 = <Item as Splice>::to_string(new);
+            let spans1 = match driver::try_run_parser(rcx.session(), &src1,
+                                                      find_item_header_spans) {
+                Some(x) => x,
+                None => return true,
+            };
+
+            let tts2 = tokens2.as_ref().unwrap().trees().collect::<Vec<_>>();
+            let spans2 = match driver::try_run_parser_tts(rcx.session(), tts2,
+                                                          find_item_header_spans) {
+                Some(x) => x,
+                None => return true,
+            };
+
+
+            if vis1.node != vis2.node {
+                record_qualifier_rewrite(spans2.vis, spans1.vis, rcx.borrow());
+            }
+
+            if ident1 != ident2 {
+                record_qualifier_rewrite(spans2.ident, spans1.ident, rcx.borrow());
+            }
+
+            false
+        },
     }
 }
 
