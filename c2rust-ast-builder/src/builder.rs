@@ -1509,17 +1509,6 @@ impl Builder {
                           self.generics, self.span, self.id, kind)
     }
 
-    pub fn module<I, T>(self, name: I, items: T, span: Span) -> P<Item>
-        where I: Make<Ident>, T: Make<Vec<P<Item>>> {
-        let name = name.make(&self);
-        let items = items.make(&self);
-        let module = Mod {
-            inner: span,
-            items: items,
-        };
-        Self::item(name, self.attrs, self.vis, self.span, ItemKind::Mod(module))
-    }
-
     // Foreign Items
 
     fn foreign_item(name: Ident, attrs: Vec<Attribute>, vis: Visibility,

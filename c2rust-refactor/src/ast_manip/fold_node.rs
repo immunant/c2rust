@@ -134,6 +134,14 @@ gen_fold_node_impl! {
     map = ni.move_flat_map(|ni| (self.callback)(ni));
 }
 
+gen_fold_node_impl! {
+    node = Mod;
+    folder = ModNodeFolder;
+    fn fold_mod(&mut self, m: Mod) -> Mod;
+    walk = fold::noop_fold_mod(m, self);
+    map = (self.callback)(m);
+}
+
 /// Rewrite nodes of the callback's argument type within `target`.  This function performs a
 /// postorder traversal.
 pub fn fold_nodes<N, T, F>(target: T, callback: F) -> <T as Fold>::Result

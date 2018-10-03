@@ -1,0 +1,6 @@
+[package]
+name = "reorganize_modules"
+version = "0.1.0"
+authors = ["miguelsaldivar <miguel.saldivar22@hotmail.com>"]
+
+[dependencies]
