@@ -10,7 +10,7 @@
 
 use rustc::session::Session;
 use syntax::ast::*;
-use syntax::codemap::{Span, DUMMY_SP, CodeMap};
+use syntax::codemap::{Span, CodeMap};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
@@ -88,8 +88,15 @@ impl<'a> Folder for FixFormat<'a> {
 
 
 /// Folder for fixing up spans of macro expansions.  When we enter a particular macro expansion, we
-/// set the span of the topmost node in the expansion to the span of the macro invocation.  Then we
-/// set all other spans inside that macro invocation to `DUMMY_SP`.
+/// set the span of the topmost node in the expansion to the span of the macro invocation.
+///
+/// Note that this span adjustment discards the `SyntaxContext` for the topmost node in each macro
+/// expansion.  In general, discarding `SyntaxContext`s is a bad idea - resolution relies on them
+/// to interpret `$crate`, feature gate checking consults them to determine where unstable features
+/// are allowed, and there are likely others.  Here, we are hoping that the "important" spans are
+/// in some subtree of the macro expansion, not the very top-level node.  For `$crate`, this is
+/// certainly the case (a macro can't expand to a lone `Ident`), and in practice, feature gate /
+/// `#[allow_internal_unstable]` checks seem to work that way as well.
 struct FixMacros {
     in_macro: bool,
 }
@@ -176,14 +183,6 @@ impl Folder for FixMacros {
 
     // TODO: Eventually we should extend this to work on the remaining node types where macros can
     // appear (Pat, Ty, and the Item-likes).
-
-    fn new_span(&mut self, sp: Span) -> Span {
-        if sp.ctxt() != SyntaxContext::empty() {
-            DUMMY_SP
-        } else {
-            sp
-        }
-    }
 
     fn fold_mac(&mut self, mac: Mac) -> Mac {
         fold::noop_fold_mac(mac, self)

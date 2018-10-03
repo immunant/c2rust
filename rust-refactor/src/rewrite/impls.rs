@@ -40,6 +40,18 @@ fn describe(sess: &Session, span: Span) -> String {
     }
 }
 
+/// Checks if a span has corresponding source text that we can rewrite (or use as source text to
+/// rewrite something else).  Rewriting macro bodies would be very complicated, so we just declare
+/// all macro-generated code to be non-rewritable.
+///
+/// Note that this does not require the source text to exist in a real (non-virtual) file - there
+/// just has to be text somewhere in the `CodeMap`.
+fn is_rewritable(sp: Span) -> bool {
+    sp != DUMMY_SP &&
+    // If it has a non-default SyntaxContext, it was generated as part of a macro expansion.
+    sp.ctxt() == SyntaxContext::empty()
+}
+
 
 /// Trait for types that are "splice points", where the output mode can switch from recycled to
 /// fresh or back.
@@ -96,14 +108,14 @@ trait Splice: Rewrite+'static {
     /// Perform a switch from recycled mode to fresh mode.  The source text for `old` will be
     /// replaced with pretty-printed code for `new`.
     fn splice_recycled(new: &Self, old: &Self, rcx: RewriteCtxtRef) {
-        if old.span() == DUMMY_SP {
+        if !is_rewritable(old.span()) {
             // If we got here, it means rewriting failed somewhere inside macro-generated code, and
             // outside any chunks of AST that the macro copied out of its arguments (those chunks
             // would have non-dummy spans, and would be spliced in already).  We give up on this
             // part of the rewrite when this happens, because rewriting inside the RHS of a
             // macro_rules! macro would be very difficult, and for procedural macros it's just
             // impossible.
-            warn!("can't splice in fresh text for a DUMMY_SP node");
+            warn!("can't splice in fresh text for a non-rewritable node");
             return;
         }
         Splice::splice_recycled_span(new, old.span(), rcx);
@@ -134,7 +146,7 @@ trait Splice: Rewrite+'static {
         };
 
 
-        if old.span() == DUMMY_SP {
+        if !is_rewritable(old.span()) {
             return false;
         }
 
@@ -505,6 +517,65 @@ fn find_fn_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, FnHeaderSpans> {
     Ok(FnHeaderSpans { vis, constness, unsafety, abi, ident })
 }
 
+struct ItemHeaderSpans {
+    vis: Span,
+    ident: Span,
+}
+
+/// Generic parsing function for item headers of the form "<vis> <struct/enum/etc> <ident>".
+fn find_item_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, ItemHeaderSpans> {
+    // Skip over any attributes that were included in the token stream.
+    loop {
+        if matches!([p.token] Token::DocComment(..)) {
+            p.bump();
+        } else if matches!([p.token] Token::Pound) {
+            // I don't think we should ever see inner attributes inside `item.tokens`, but allow
+            // them just in case.
+            p.parse_attribute(true)?;
+        } else {
+            break;
+        }
+    }
+
+    let spanned_vis = p.parse_visibility(false)?;
+    let vis = if spanned_vis.node != VisibilityKind::Inherited {
+        spanned_vis.span
+    } else {
+        // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
+        // before the next token.
+        start_point(p.span)
+    };
+
+    let kws = &[
+        keywords::Static,
+        keywords::Const,
+        keywords::Fn,
+        keywords::Mod,
+        keywords::Type,
+        keywords::Enum,
+        keywords::Struct,
+        keywords::Union,
+        keywords::Trait,
+    ];
+
+    for (i, &kw) in kws.iter().enumerate() {
+        if i < kws.len() - 1 {
+            if p.eat_keyword(kw) {
+                break;
+            }
+        } else {
+            // Use `expect` for the last one so we produce a parse error on "none of the above".
+            p.expect(&Token::Ident(kw.ident(), false))?;
+            break;
+        }
+    }
+
+    p.parse_ident()?;
+    let ident = p.prev_span;
+
+    Ok(ItemHeaderSpans { vis, ident })
+}
+
 /// Record a rewrite of a qualifier, such as `unsafe`.  We make two assumptions:
 ///  1. If `old_span` is empty, then it is placed at the start of the next token after the place
 ///     the new qualifier should go.
@@ -598,7 +669,42 @@ fn recover_item_rewrite_recycled(new: &Item, old: &Item, mut rcx: RewriteCtxtRef
             false
         },
 
-        (_, _) => true,
+        (_, _) => {
+            // Generic case, for items of the form "<vis> <struct/enum/etc> <ident>".
+            let fail =
+                Rewrite::rewrite_recycled(attrs1, attrs2, rcx.borrow()) ||
+                Rewrite::rewrite_recycled(id1, id2, rcx.borrow()) ||
+                Rewrite::rewrite_recycled(node1, node2, rcx.borrow()) ||
+                Rewrite::rewrite_recycled(span1, span2, rcx.borrow());
+            if fail {
+                return true;
+            }
+
+            let src1 = <Item as Splice>::to_string(new);
+            let spans1 = match driver::try_run_parser(rcx.session(), &src1,
+                                                      find_item_header_spans) {
+                Some(x) => x,
+                None => return true,
+            };
+
+            let tts2 = tokens2.as_ref().unwrap().trees().collect::<Vec<_>>();
+            let spans2 = match driver::try_run_parser_tts(rcx.session(), tts2,
+                                                          find_item_header_spans) {
+                Some(x) => x,
+                None => return true,
+            };
+
+
+            if vis1.node != vis2.node {
+                record_qualifier_rewrite(spans2.vis, spans1.vis, rcx.borrow());
+            }
+
+            if ident1 != ident2 {
+                record_qualifier_rewrite(spans2.ident, spans1.ident, rcx.borrow());
+            }
+
+            false
+        },
     }
 }
 
@@ -772,12 +878,12 @@ impl<T: Rewrite+SeqItem> Rewrite for [T] {
                         let after = if i < old.len() { old[i].get_span() } else { DUMMY_SP };
 
                         let old_span =
-                            if before != DUMMY_SP {
+                            if is_rewritable(before) {
                                 before.with_lo(before.hi())
-                            } else if after != DUMMY_SP {
+                            } else if is_rewritable(after) {
                                 after.with_hi(after.lo())
                             } else {
-                                warn!("can't insert new node between two DUMMY_SP nodes");
+                                warn!("can't insert new node between two non-rewritable nodes");
                                 return true;
                             };
 

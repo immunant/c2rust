@@ -122,12 +122,6 @@ class CFile:
         # run the exporter
         args = [self.path]
 
-        # NOTE: it doesn't seem necessary to specify system include
-        # directories and in fact it may cause problems on macOS.
-        # make sure we can locate system include files
-        # sys_incl_dirs = get_system_include_dirs()
-        # args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
-
         # log the command in a format that's easy to re-run
         logging.debug("export command:\n %s", str(ast_exporter[args]))
         retcode, stdout, stderr = ast_exporter[args].run(retcode=None)

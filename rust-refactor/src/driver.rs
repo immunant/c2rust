@@ -446,3 +446,27 @@ pub fn run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> R
         Err(db) => emit_and_panic(db, "tts"),
     }
 }
+
+pub fn try_run_parser<F, R>(sess: &Session, src: &str, f: F) -> Option<R>
+        where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
+    let mut p = make_parser(sess, "<src>", src);
+    match f(&mut p) {
+        Ok(x) => Some(x),
+        Err(mut db) => {
+            db.cancel();
+            None
+        },
+    }
+}
+
+pub fn try_run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> Option<R>
+        where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
+    let mut p = parse::new_parser_from_tts(&sess.parse_sess, tts);
+    match f(&mut p) {
+        Ok(x) => Some(x),
+        Err(mut db) => {
+            db.cancel();
+            None
+        },
+    }
+}
