@@ -418,22 +418,40 @@ impl Transform for WrapExtern {
 
                 for f in &fns {
                     let func_path = cx.def_path(cx.node_def_id(f.id));
-                    let arg_exprs = f.decl.inputs.iter().map(|arg| {
+                    let arg_names = f.decl.inputs.iter().enumerate().map(|(idx, arg)| {
                         // TODO: match_arg("__i: __t", arg).ident("__i")
                         match arg.pat.node {
                             PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
                                            ident,
                                            None) => {
-                                mk().ident_expr(ident)
+                                ident
                             },
-                            _ => panic!("bad pattern in {:?}: {:?}", f.ident, arg.pat),
+                            _ => {
+                                mk().ident(format!("arg{}", idx))
+                            },
                         }
-                    }).collect();
+                    }).collect::<Vec<_>>();
+                    let wrapper_args = f.decl.inputs.iter()
+                        .zip(arg_names.iter())
+                        .map(|(old, name)| {
+                            Arg {
+                                pat: mk().ident_pat(name.clone()),
+                                ..old.clone()
+                            }
+                        }).collect::<Vec<_>>();
+                    let arg_exprs = arg_names.iter().map(|name| {
+                        mk().ident_expr(name)
+                    }).collect::<Vec<_>>();
+                    let decl = P(FnDecl {
+                        inputs: wrapper_args,
+                        output: f.decl.output.clone(),
+                        variadic: false,
+                    });
                     let body = mk().block(vec![
                             mk().expr_stmt(mk().call_expr(
                                     mk().path_expr(func_path),
                                     arg_exprs))]);
-                    m.items.push(mk().pub_().unsafe_().fn_item(&f.ident, &f.decl, body));
+                    m.items.push(mk().pub_().unsafe_().fn_item(&f.ident, decl, body));
 
                 }
 
