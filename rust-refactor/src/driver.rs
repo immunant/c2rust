@@ -15,7 +15,7 @@ use rustc_metadata::cstore::CStore;
 use rustc_resolve::MakeGlobMap;
 use rustc_codegen_utils::link;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
-use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind, Arg};
+use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind, Block, Arg};
 use syntax::ast::DUMMY_NODE_ID;
 use syntax::codemap::CodeMap;
 use syntax::codemap::{FileLoader, RealFileLoader};
@@ -429,6 +429,14 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
             }
         }
         Err(db) => emit_and_panic(db, "foreign items"),
+    }
+}
+
+pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
+    let mut p = make_parser(sess, "<block>", src);
+    match p.parse_block() {
+        Ok(block) => remove_paren(block),
+        Err(db) => emit_and_panic(db, "block"),
     }
 }
 

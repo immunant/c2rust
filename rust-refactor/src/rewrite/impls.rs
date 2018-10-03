@@ -349,6 +349,29 @@ impl Splice for ForeignItem {
     }
 }
 
+impl Splice for Block {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn id(&self) -> NodeId {
+        self.id
+    }
+
+    fn to_string(&self) -> String {
+        pprust::block_to_string(self)
+    }
+
+    type Parsed = P<Block>;
+    fn parse(sess: &Session, src: &str) -> Self::Parsed {
+        driver::parse_block(sess, src)
+    }
+
+    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
+        rcx.old_blocks()
+    }
+}
+
 impl Splice for Arg {
     fn span(&self) -> Span {
         self.pat.span.to(self.ty.span)

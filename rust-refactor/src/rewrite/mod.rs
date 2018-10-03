@@ -41,7 +41,7 @@ use std::collections::HashMap;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use rustc::session::Session;
-use syntax::ast::{Expr, ExprKind, Pat, Ty, Stmt, Item, ForeignItem};
+use syntax::ast::{Expr, ExprKind, Pat, Ty, Stmt, Item, ForeignItem, Block};
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
 use syntax::codemap::{Span, DUMMY_SP};
 use syntax::util::parser;
@@ -118,6 +118,7 @@ struct OldNodes<'s> {
     stmts: NodeTable<'s, Stmt>,
     items: NodeTable<'s, Item>,
     foreign_items: NodeTable<'s, ForeignItem>,
+    blocks: NodeTable<'s, Block>,
 }
 
 impl<'s> OldNodes<'s> {
@@ -129,6 +130,7 @@ impl<'s> OldNodes<'s> {
             stmts: NodeTable::new(),
             items: NodeTable::new(),
             foreign_items: NodeTable::new(),
+            blocks: NodeTable::new(),
         }
     }
 }
@@ -172,6 +174,11 @@ impl<'s> Visitor<'s> for OldNodesVisitor<'s> {
     fn visit_foreign_item(&mut self, x: &'s ForeignItem) {
         self.map.foreign_items.insert(x.id, x);
         visit::walk_foreign_item(self, x);
+    }
+
+    fn visit_block(&mut self, x: &'s Block) {
+        self.map.blocks.insert(x.id, x);
+        visit::walk_block(self, x);
     }
 }
 
@@ -243,6 +250,10 @@ impl<'s> RewriteCtxt<'s> {
 
     pub fn old_foreign_items(&mut self) -> &mut NodeTable<'s, ForeignItem> {
         &mut self.old_nodes.foreign_items
+    }
+
+    pub fn old_blocks(&mut self) -> &mut NodeTable<'s, Block> {
+        &mut self.old_nodes.blocks
     }
 
     pub fn fresh_start(&self) -> Span {
