@@ -207,11 +207,14 @@ public:
     void VisitRecordType(const RecordType *T);
 
     void VisitVectorType(const clang::VectorType *T) {
-        auto t = T->desugar();
+        auto t = T->getElementType();
         auto qt = encodeQualType(t);
-        encodeType(T, TagVectorType, [qt](CborEncoder *local){
+
+        encodeType(T, TagVectorType, [T,qt](CborEncoder *local) {
             cbor_encode_uint(local, qt);
+            cbor_encode_uint(local, T->getNumElements());
         });
+
         VisitQualType(t);
     }
     
