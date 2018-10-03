@@ -18,6 +18,15 @@ def mk_select(script, mark='target'):
     return ['select', mark, script]
 
 REFACTORINGS = [
+        ['wrapping_arith_to_normal'],
+        ['struct_assign_to_update'],
+        ['struct_merge_updates'],
+        mk_select('crate; child(static);') +
+            [';', 'static_collect_to_struct', 'State', 'S'],
+        mk_select('crate; desc(fn && !name("main"));') + [';', 'set_visibility', ''],
+        mk_select('crate; child(static && name("S"));') + [';'] +
+            mk_select('crate; desc(fn && !name("main"));', mark='user') + [';'] +
+            ['static_to_local_ref'],
 ]
 
 
