@@ -170,6 +170,7 @@ enum TyParamBound {
 struct PolyTraitRef { trait_ref, span, bound_generic_params }
 
 struct FnDecl { inputs, output, variadic }
+#[rewrite_splice]
 struct Arg { ty, pat, id }
 enum FunctionRetTy {
     Default(sp),

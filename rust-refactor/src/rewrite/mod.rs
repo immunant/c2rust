@@ -48,6 +48,7 @@ use syntax::util::parser;
 use syntax::visit::{self, Visitor};
 
 use ast_manip::Visit;
+use driver;
 
 mod cleanup;
 mod impls;
@@ -193,6 +194,7 @@ pub enum ExprPrec {
 pub struct RewriteCtxt<'s> {
     sess: &'s Session,
     old_nodes: OldNodes<'s>,
+    text_span_cache: HashMap<String, Span>,
 
     /// The span of the new AST the last time we entered "fresh" mode.  This lets us avoid infinite
     /// recursion - see comment in `splice_fresh`.
@@ -208,6 +210,7 @@ impl<'s> RewriteCtxt<'s> {
         RewriteCtxt {
             sess: sess,
             old_nodes: old_nodes,
+            text_span_cache: HashMap::new(),
 
             fresh_start: DUMMY_SP,
             expr_prec: ExprPrec::Normal(parser::PREC_RESET),
@@ -265,6 +268,16 @@ impl<'s> RewriteCtxt<'s> {
             rewrites: rewrites,
             cx: self,
         }
+    }
+
+    pub fn text_span(&mut self, s: &str) -> Span {
+        if let Some(&sp) = self.text_span_cache.get(s) {
+            return sp;
+        }
+
+        let sp = driver::make_span_for_text(self.sess.codemap(), s);
+        self.text_span_cache.insert(s.to_owned(), sp);
+        sp
     }
 }
 
@@ -324,6 +337,13 @@ impl<'s, 'a> RewriteCtxtRef<'s, 'a> {
             rewrites: rewrites,
             adjust: adjust,
         });
+    }
+
+    pub fn record_text(&mut self,
+                       old_span: Span,
+                       text: &str) {
+        let new_span = self.text_span(text);
+        self.record(old_span, new_span, Vec::new(), TextAdjust::None);
     }
 }
 
