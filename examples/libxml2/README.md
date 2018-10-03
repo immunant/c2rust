@@ -78,4 +78,7 @@ You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one
 * `testdict` all cross-checks match
 * `testapi` all cross-checks match (345 million)
 * `runtest` all cross-checks match
+* `testlimits` all cross-checks match, but requires `-fno-builtin` as a
+  compiler argument
+
 
