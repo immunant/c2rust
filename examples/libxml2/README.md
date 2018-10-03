@@ -77,6 +77,5 @@ You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one
 * `testchar` all cross-checks match
 * `testdict` all cross-checks match
 * `testapi` all cross-checks match (345 million)
-* `runtest` may have an extra `xmlStrlen` cross-check in the Rust version, but
-  all other cross-checks match
+* `runtest` all cross-checks match
 
