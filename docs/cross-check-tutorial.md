@@ -83,7 +83,36 @@ $ env LD_PRELOAD=$C2RUST/cross-checks/libfakechecks/libfakechecks.so ./a.out
 Running each variant with cross-checks enabled will print a list of cross-check results to the specified output. A simple `diff` or `cmp` command will show differences in cross-checks, if any.
 
 ### Online (MVEE) mode
-TODO: describe MVEE setup
+The other execution mode for cross-checks is the online mode, where a monitor program (the MVEE) runs all variants in parallel with exactly the same inputs (by intercepting input system calls like `read` and replicating their return values) and cross-checks all the output system calls and instrumentation points inserted by our plugins. This approach has several advantages over offline mode:
+  * Input operations are fully replicated, including those from stateful resources like sockets; only the master variant performs each actual operation, and each other variant only gets a copy of the data.
+  * Outputs are cross-checked but not duplicated, so each output operation is only executed by the master variant; the others are only cross-checked for matching outputs. For example, only the master variant opens and writes to output files.
+  * The lock-step MVEE automatically eliminates most sources of non-determinism, like threading and non-deterministic syscalls, e.g., reading from `/dev/urandom` (see the Troubleshooting section below for more details)
+
+However, the main disadvantage of this approach is that some applications may not run correctly under the MVEE, due to either incomplete support from the MVEE or fundamental MVEE limitations. In such cases, we recommend using offline mode instead.
+
+To run your application inside our MVEE, first build it following the instructions in its [README](https://github.com/stijn-volckaert/ReMon/blob/master/README.md). After building it successfully, write an MVEE configuration file for your application (there is a [sample file](https://github.com/stijn-volckaert/ReMon/blob/master/MVEE/bin/Release/MVEE.ini) in the MVEE directory, and a few others in our [examples](../examples) directory), then run the MVEE:
+```Bash
+$ ./MVEE/bin/Release/MVEE -f <path/to/MVEE_config.ini> -N<number of variants> -- <variant arguments>
+```
+
+The `MVEE.ini` configuration file is fairly self-explanatory, but there are a few notable settings that are important:
+  * `xchecks_initially_enabled` disables system call replication and cross-checks up to the first function cross-check (usually for the `main` function), and should be `false` by default for cross-language checks. This is because the Rust runtime performs a few additional system calls that C code does not, and the MVEE would terminate with divergence if cross-checks were enabled.
+  * `relaxed_mman_checks` and `unsynced_brk` disable MVEE cross-checks on the `mmap` family of calls and `brk`, respectively, and should both be set to `true` if the Rust code performs significantly different memory allocations.
+  * both the global and per-variant `env` variable contain the environment variables to pass to the variants, and should at least contain a `LD_LIBRARY_PATH` entry for the `libclevrbuf.so` library, and a `LD_PRELOAD` entry for the zeroing allocator `libzero_malloc.so`, like this:
+```JSON
+{
+  "variant": {
+    "global": {
+      "exec": {
+        "env": [
+          "LD_LIBRARY_PATH=../../../cross-checks/ReMon/libclevrbuf",
+          "LD_PRELOAD=../../../cross-checks/zero-malloc/target/release/libzero_malloc.so"
+        ]
+      }
+    }
+  }
+}
+```
 
 ## Troubleshooting
 In case you run into any issues while building or running the variants, please refer to this section for possible fixes.
