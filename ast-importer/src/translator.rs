@@ -12,7 +12,7 @@ use c_ast::*;
 use clang_ast::LRValue;
 use rust_ast::{mk, Builder};
 use rust_ast::comment_store::CommentStore;
-use rust_ast::item_store::{PathedMultiImports, ItemStore};
+use rust_ast::item_store::ItemStore;
 use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;
 use syntax::print::pprust::*;
@@ -110,9 +110,7 @@ pub struct Translation {
 
     // Accumulated outputs
     pub features: RefCell<HashSet<&'static str>>,
-    pub uses: RefCell<PathedMultiImports>,
-    pub items: RefCell<Vec<P<Item>>>,
-    pub foreign_items: RefCell<Vec<ForeignItem>>,
+    pub item_store: RefCell<ItemStore>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
 
     // Translation state and utilities
@@ -442,7 +440,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 }
 
                 match t.convert_decl(true, *top_id) {
-                    Ok(ConvertedDecl::Item(mut item)) => t.items.borrow_mut().push(item),
+                    Ok(ConvertedDecl::Item(mut item)) => t.item_store.borrow_mut().items.push(item),
                     Ok(ConvertedDecl::ForeignItem(item)) => t.insert_foreign_item(item, decl_file_path, main_file_path),
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
@@ -456,7 +454,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         // Add the main entry point
         if let Some(main_id) = t.ast_context.c_main {
             match t.convert_main(main_id) {
-                Ok(item) => t.items.borrow_mut().push(item),
+                Ok(item) => t.item_store.borrow_mut().items.push(item),
                 Err(e) => {
                     let msg = format!("Failed translating main declaration due to error: {}", e);
                     translate_failure(&t.tcfg, &msg)
@@ -467,8 +465,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         // Initialize global statics when necessary
         if !t.sectioned_static_initializers.borrow().is_empty() {
             let (initializer_fn, initializer_static) = t.generate_global_static_init();
-            let mut items = t.items.borrow_mut();
-
+            let items = &mut t.item_store.borrow_mut().items;
 
             items.push(initializer_fn);
             items.push(initializer_static);
@@ -484,18 +481,22 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             let mut traverser = t.comment_store.into_inner().into_comment_traverser();
             let mut mod_items: Vec<P<Item>> = Vec::new();
 
+            // Header Reorganization: Submodule Item Stores
             for (file_path, ref mut mod_item_store) in t.mod_blocks.borrow_mut().iter_mut() {
-                mod_items.push(make_submodule(mod_item_store, file_path, &t.uses, &t.mod_names));
+                mod_items.push(make_submodule(mod_item_store, file_path, &t.item_store, &t.mod_names));
             }
+
+            // Global Item Store
+            let (items, foreign_items, uses) = t.item_store.borrow_mut().drain();
 
             mod_items = mod_items.into_iter()
                 .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
                 .collect();
-            let foreign_items: Vec<ForeignItem> = t.foreign_items.into_inner()
+            let foreign_items: Vec<ForeignItem> = foreign_items
                 .into_iter()
                 .map(|fi| traverser.traverse_foreign_item(fi))
                 .collect();
-            let items: Vec<P<Item>> = t.items.into_inner()
+            let items: Vec<P<Item>> = items
                 .into_iter()
                 .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
                 .collect();
@@ -510,7 +511,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             // imports near the top of the file than randomly scattered about. Also, there is probably
             // no reason to have comments associated with imports so it doesn't need to go through
             // the above comment store process
-            for use_item in t.uses.borrow().to_items() {
+            for use_item in uses.into_items() {
                 s.print_item(&use_item)?;
             }
 
@@ -529,17 +530,19 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 }
 
 fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
-                  global_uses: &RefCell<PathedMultiImports>,
+                  global_item_store: &RefCell<ItemStore>,
                   mod_names: &RefCell<HashMap<String, PathBuf>>) -> P<Item> {
     let (mut items, foreign_items, uses) = submodule_item_store.drain();
     let file_path_str = file_path.to_str().expect("Found invalid unicode");
     let mod_name = clean_path(mod_names, file_path);
+    let mut global_item_store = global_item_store.borrow_mut();
 
     for item in items.iter() {
         let ident_name = item.ident.name.as_str();
         let use_path = vec!["self".into(), mod_name.clone()];
 
-        global_uses.borrow_mut()
+        global_item_store
+            .uses
             .get_mut(use_path)
             .leaves
             .insert(ident_name.to_string());
@@ -549,7 +552,8 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
         let ident_name = foreign_item.ident.name.as_str();
         let use_path = vec!["self".into(), mod_name.clone()];
 
-        global_uses.borrow_mut()
+        global_item_store
+            .uses
             .get_mut(use_path)
             .leaves
             .insert(ident_name.to_string());
@@ -684,9 +688,7 @@ impl Translation {
 
         Translation {
             features: RefCell::new(HashSet::new()),
-            uses: RefCell::new(PathedMultiImports::new()),
-            items: RefCell::new(vec![]),
-            foreign_items: RefCell::new(vec![]),
+            item_store: RefCell::new(ItemStore::new()),
             type_converter: RefCell::new(type_converter),
             ast_context,
             tcfg,
@@ -1914,7 +1916,7 @@ impl Translation {
                     let mut init = mk().block_expr(init);
 
                     self.add_static_initializer_to_section(&ident2, typ, &mut init)?;
-                    self.items.borrow_mut().push(static_item);
+                    self.item_store.borrow_mut().items.push(static_item);
 
                     return Ok(cfg::DeclStmtInfo::new(Vec::new(), Vec::new(), Vec::new()));
                 }
@@ -4370,7 +4372,7 @@ impl Translation {
 
             mod_block_items.items.push(item);
         } else {
-            self.items.borrow_mut().push(item)
+            self.item_store.borrow_mut().items.push(item)
         }
     }
 
@@ -4383,7 +4385,7 @@ impl Translation {
 
             mod_block_items.foreign_items.push(item);
         } else {
-            self.foreign_items.borrow_mut().push(item)
+            self.item_store.borrow_mut().foreign_items.push(item)
         }
     }
 

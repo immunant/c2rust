@@ -40,19 +40,7 @@ impl PathedMultiImports {
             .map(|(path, imports)| mk().use_multiple_item(path, imports.leaves.iter().collect()))
             .collect()
     }
-
-    pub fn to_items(&self) -> Vec<P<Item>> {
-        // TODO: Apply attributes
-
-        self.0
-            .iter()
-            .map(|(path, imports)| mk().use_multiple_item(path.clone(), imports.leaves.iter().cloned().collect()))
-            .collect()
-    }
 }
-
-// REVIEW: We might be able to use ItemStore in the Translation struct
-// as a replacement for the uses, items, and foreign items fields
 
 #[derive(Debug)]
 pub struct ItemStore {
