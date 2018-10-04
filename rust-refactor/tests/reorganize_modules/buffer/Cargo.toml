@@ -1,0 +1,10 @@
+[package]
+name = "c2rust-build"
+authors = ["C2Rust"]
+version = "0.0.0"
+publish = false
+
+[[bin]]
+path = "main.rs"
+name = "test"
+
