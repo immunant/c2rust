@@ -3024,6 +3024,50 @@ impl Translation {
                 Ok(WithStmts { stmts, val })
             }
 
+            "__builtin_add_overflow" | "__builtin_sadd_overflow" |
+            "__builtin_saddl_overflow" | "__builtin_saddll_overflow" |
+            "__builtin_uadd_overflow" | "__builtin_uaddl_overflow" |
+            "__builtin_uaddll_overflow" => {
+
+                let mut a = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
+                let mut b = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
+                let mut c = self.convert_expr(ExprUse::Used, args[2], is_static, decay_ref)?;
+
+                let overflowing_add = mk().method_call_expr(a.val, "overflowing_add", vec![b.val]);
+                let sum_name = self.renamer.borrow_mut().fresh();
+                let over_name = self.renamer.borrow_mut().fresh();
+                let overflow_let = mk().local_stmt(P(
+                    mk().local(
+                        mk().tuple_pat(vec![
+                            mk().ident_pat(&sum_name),
+                            mk().ident_pat(over_name.clone())]),
+                        None as Option<P<Ty>>,
+                        Some(overflowing_add)
+                    )));
+
+                let out_assign = mk().assign_expr(
+                    mk().unary_expr(ast::UnOp::Deref, c.val),
+                    mk().ident_expr(&sum_name)
+                );
+
+                let mut stmts = a.stmts;
+                stmts.append(&mut b.stmts);
+                stmts.append(&mut c.stmts);
+                stmts.push(overflow_let);
+                stmts.push(mk().expr_stmt(out_assign));
+
+
+                let val = match use_ {
+                    ExprUse::Used => mk().ident_expr(over_name),
+                    ExprUse::Unused => {
+                        stmts.push(mk().expr_stmt(mk().ident_expr(over_name)));
+                        self.panic("__builtin_add_overflow not used")
+                    }
+                };
+
+                Ok(WithStmts{ stmts, val })
+            }
+
             // Should be safe to always return 0 here.  "A return of 0 does not indicate that the
             // value is *not* a constant, but merely that GCC cannot prove it is a constant with
             // the specified value of the -O option. "
