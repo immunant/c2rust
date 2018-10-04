@@ -262,6 +262,11 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
     }
 }
 
+// This function is meant to create module names, for modules being created with the
+// `--reorganize-modules` flag. So what is done is, change '.' && '-' to '_', and depending
+// on whether there is a collision or not prepend the prior directory name to the path name.
+// To check for collisions, a HashMap with the path name(key) and the path(value) associated with
+// the name. If the path name is in use, but the paths differ there is a collision.
 fn clean_path(mod_names: &RefCell<HashMap<String, PathBuf>>, path: &path::Path) -> String {
     fn path_to_str(path: &path::Path) -> String {
         path.file_name()
