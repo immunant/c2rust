@@ -98,7 +98,9 @@ $ ./MVEE/bin/Release/MVEE -f <path/to/MVEE_config.ini> -N<number of variants> --
 The `MVEE.ini` configuration file is fairly self-explanatory, but there are a few notable settings that are important:
   * `xchecks_initially_enabled` disables system call replication and cross-checks up to the first function cross-check (usually for the `main` function), and should be `false` by default for cross-language checks. This is because the Rust runtime performs a few additional system calls that C code does not, and the MVEE would terminate with divergence if cross-checks were enabled.
   * `relaxed_mman_checks` and `unsynced_brk` disable MVEE cross-checks on the `mmap` family of calls and `brk`, respectively, and should both be set to `true` if the Rust code performs significantly different memory allocations.
-  * both the global and per-variant `env` variable contain the environment variables to pass to the variants, and should at least contain a `LD_LIBRARY_PATH` entry for the `libclevrbuf.so` library, and a `LD_PRELOAD` entry for the zeroing allocator `libzero_malloc.so`, like this:
+  * `path` specifies the path to the variant's executable, and should be specified separately per variant (ReMon also supports running multiple variants for the same binary, but with different command line arguments; this is not used by C2Rust cross-checks). All variants should be files in the same directory, otherwise the MVEE will abort with a divergence inside the ELF loader.
+  * `argv` specifies the arguments to pass to each variant (can be configured per-variant or globally for all variants).
+  * `env` specifies the environment variables to pass to the variants, and should at least contain a `LD_LIBRARY_PATH` entry for the `libclevrbuf.so` library, and a `LD_PRELOAD` entry for the zeroing allocator `libzero_malloc.so`, like this:
 ```JSON
 {
   "variant": {
