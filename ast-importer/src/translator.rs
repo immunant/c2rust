@@ -3028,44 +3028,21 @@ impl Translation {
             "__builtin_saddl_overflow" | "__builtin_saddll_overflow" |
             "__builtin_uadd_overflow" | "__builtin_uaddl_overflow" |
             "__builtin_uaddll_overflow" => {
+                self.convert_overflow_arith("overflowing_add", args, is_static, decay_ref)
+            }
 
-                let mut a = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-                let mut b = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
-                let mut c = self.convert_expr(ExprUse::Used, args[2], is_static, decay_ref)?;
+            "__builtin_sub_overflow" | "__builtin_ssub_overflow" |
+            "__builtin_ssubl_overflow" | "__builtin_ssubll_overflow" |
+            "__builtin_usub_overflow" | "__builtin_usubl_overflow" |
+            "__builtin_usubll_overflow" => {
+                self.convert_overflow_arith("overflowing_sub", args, is_static, decay_ref)
+            }
 
-                let overflowing_add = mk().method_call_expr(a.val, "overflowing_add", vec![b.val]);
-                let sum_name = self.renamer.borrow_mut().fresh();
-                let over_name = self.renamer.borrow_mut().fresh();
-                let overflow_let = mk().local_stmt(P(
-                    mk().local(
-                        mk().tuple_pat(vec![
-                            mk().ident_pat(&sum_name),
-                            mk().ident_pat(over_name.clone())]),
-                        None as Option<P<Ty>>,
-                        Some(overflowing_add)
-                    )));
-
-                let out_assign = mk().assign_expr(
-                    mk().unary_expr(ast::UnOp::Deref, c.val),
-                    mk().ident_expr(&sum_name)
-                );
-
-                let mut stmts = a.stmts;
-                stmts.append(&mut b.stmts);
-                stmts.append(&mut c.stmts);
-                stmts.push(overflow_let);
-                stmts.push(mk().expr_stmt(out_assign));
-
-
-                let val = match use_ {
-                    ExprUse::Used => mk().ident_expr(over_name),
-                    ExprUse::Unused => {
-                        stmts.push(mk().expr_stmt(mk().ident_expr(over_name)));
-                        self.panic("__builtin_add_overflow not used")
-                    }
-                };
-
-                Ok(WithStmts{ stmts, val })
+            "__builtin_mul_overflow" | "__builtin_smul_overflow" |
+            "__builtin_smull_overflow" | "__builtin_smulll_overflow" |
+            "__builtin_umul_overflow" | "__builtin_umull_overflow" |
+            "__builtin_umulll_overflow" => {
+                self.convert_overflow_arith("overflowing_mul", args, is_static, decay_ref)
             }
 
             // Should be safe to always return 0 here.  "A return of 0 does not indicate that the
@@ -3083,6 +3060,45 @@ impl Translation {
 
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
+    }
+
+    // This translation logic handles converting code that uses
+    // https://gcc.gnu.org/onlinedocs/gcc/Integer-Overflow-Builtins.html
+    fn convert_overflow_arith(
+        &self,
+        method_name: &str,
+        args: &[CExprId],
+        is_static: bool,
+        decay_ref: DecayRef
+    ) -> Result<WithStmts<P<Expr>>, String> {
+        let a = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
+        let mut b = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
+        let mut c = self.convert_expr(ExprUse::Used, args[2], is_static, decay_ref)?;
+
+        let overflowing = mk().method_call_expr(a.val, method_name, vec![b.val]);
+        let sum_name = self.renamer.borrow_mut().fresh();
+        let over_name = self.renamer.borrow_mut().fresh();
+        let overflow_let = mk().local_stmt(P(
+            mk().local(
+                mk().tuple_pat(vec![
+                    mk().ident_pat(&sum_name),
+                    mk().ident_pat(over_name.clone())]),
+                None as Option<P<Ty>>,
+                Some(overflowing)
+            )));
+
+        let out_assign = mk().assign_expr(
+            mk().unary_expr(ast::UnOp::Deref, c.val),
+            mk().ident_expr(&sum_name)
+        );
+
+        let mut stmts = a.stmts;
+        stmts.append(&mut b.stmts);
+        stmts.append(&mut c.stmts);
+        stmts.push(overflow_let);
+        stmts.push(mk().expr_stmt(out_assign));
+
+        Ok(WithStmts{ stmts, val: mk().ident_expr(over_name) })
     }
 
     fn convert_statement_expression(
