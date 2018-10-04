@@ -282,7 +282,13 @@ impl Splice for Stmt {
     }
 
     fn to_string(&self) -> String {
-        pprust::stmt_to_string(self)
+        // pprust::stmt_to_string appends a semicolon to Expr kind statements,
+        // not just to Semi kind statements. We want to differentiate these
+        // nodes.
+        match self.node {
+            StmtKind::Expr(ref expr) => pprust::expr_to_string(expr),
+            _ => pprust::stmt_to_string(self),
+        }
     }
 
     type Parsed = SelfDeref<Stmt>;
