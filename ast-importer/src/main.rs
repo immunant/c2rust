@@ -5,8 +5,8 @@ extern crate ast_importer;
 
 use std::io::{Error, stdout};
 use std::io::prelude::*;
-use std::fs::File;
-use std::path::Path;
+use std::fs::{File, canonicalize};
+use std::path::{Path, PathBuf};
 use ast_importer::clang_ast::process;
 use ast_importer::c_ast::*;
 use ast_importer::c_ast::Printer;
@@ -136,9 +136,14 @@ fn main() {
              .short("o")
              .help("Write the output to a specified file")
              .takes_value(true))
+        .arg(Arg::with_name("reorganize-definitions")
+             .long("reorganize-definitions")
+             .help("Output file in such a way that the refactoring tool can deduplicate code")
+             .takes_value(false))
         .get_matches();
 
     // Build a TranslationConfig from the command line
+    let cbor_path = canonicalize(Path::new(matches.value_of("INPUT").unwrap())).unwrap();
     let tcfg = TranslationConfig {
         fail_on_error:          matches.is_present("fail-on-error"),
         reloop_cfgs:            matches.is_present("reloop-cfgs"),
@@ -161,7 +166,9 @@ fn main() {
         use_c_multiple_info:    !matches.is_present("ignore-c-multiple-info"),
         simplify_structures:    !matches.is_present("no-simplify-structures"),
         reduce_type_annotations:matches.is_present("reduce-type-annotations"),
+        reorganize_definitions: matches.is_present("reorganize-definitions"),
         emit_module:            matches.is_present("emit-module"),
+        main_file:              Some(cbor_path.with_extension("")),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
                 Some("panic") => true,
@@ -171,13 +178,13 @@ fn main() {
         },
         replace_unsupported_decls: ReplaceMode::Extern,
     };
-    let file = matches.value_of("INPUT").unwrap();
+
     let dump_untyped_context = matches.is_present("dump-untyped-clang-ast");
     let dump_typed_context = matches.is_present("dump-typed-clang-ast");
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
 
     // Extract the untyped AST from the CBOR file
-    let untyped_context = match parse_untyped_ast(file) {
+    let untyped_context = match parse_untyped_ast(&cbor_path) {
         Err(e) => panic!("{:#?}", e),
         Ok(cxt) => cxt,
     };
@@ -217,19 +224,9 @@ fn main() {
     // Perform the translation
 
     let translated_string = ast_importer::translator::translate(typed_context, tcfg);
+    let output_path = get_output_path(&cbor_path, matches.value_of("output-file"));
 
-    let rs_path = if let Some(output_file) = matches.value_of("output-file") {
-        Path::new(output_file).to_path_buf()
-    } else {
-        // with_extension will clear the .cbor; set_extension will change .c to .rs
-        // even if there is no extension for some reason, this will still work
-        let mut path_buf = Path::new(file).with_extension("");
-
-        path_buf.set_extension("rs");
-        path_buf
-    };
-
-    let mut file = match File::create(rs_path) {
+    let mut file = match File::create(output_path) {
         Ok(file) => file,
         Err(e) => panic!("Unable to open file for writing: {}", e),
     };
@@ -240,8 +237,26 @@ fn main() {
     };
 }
 
-fn parse_untyped_ast(filename: &str) -> Result<AstContext, Error> {
-    let mut f = File::open(filename)?;
+fn get_output_path(input_file: &Path, specified_path: Option<&str>) -> PathBuf {
+    if let Some(output_file) = specified_path {
+        return Path::new(output_file).to_path_buf();
+    }
+
+    // with_extension will clear the .cbor; set_extension will change .c to .rs
+    // even if there is no extension for some reason, this will still work
+    let mut path_buf = input_file.with_extension("");
+
+    // When an output file name is not explictly specified, we should convert files
+    // with dashes to underscores, as they are not allowed in rust file names.
+    let file_name = path_buf.file_name().unwrap().to_str().unwrap().replace('-', "_");
+
+    path_buf.set_file_name(file_name);
+    path_buf.set_extension("rs");
+    path_buf
+}
+
+fn parse_untyped_ast(file_path: &Path) -> Result<AstContext, Error> {
+    let mut f = File::open(file_path)?;
     let mut buffer = vec![];
     f.read_to_end(&mut buffer)?;
 
@@ -252,5 +267,3 @@ fn parse_untyped_ast(filename: &str) -> Result<AstContext, Error> {
         Err(e) => panic!("{:#?}", e),
     }
 }
-
-

@@ -957,7 +957,7 @@ impl Qualifiers {
 }
 
 /// Qualified type
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct CQualTypeId {
     pub qualifiers: Qualifiers,
     pub ctype: CTypeId,
@@ -972,7 +972,7 @@ pub struct CQualTypeId {
 /// Represents a type in C (6.2.5 Types)
 ///
 /// Reflects the types in <http://clang.llvm.org/doxygen/classclang_1_1Type.html>
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CTypeKind {
     /* Builtin types:
      * <https://github.com/llvm-mirror/clang/blob/master/include/clang/AST/BuiltinTypes.def> */
@@ -1065,7 +1065,7 @@ pub enum Designator {
     Field(CFieldId),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Attribute {
     NoReturn,
     NotNull,
