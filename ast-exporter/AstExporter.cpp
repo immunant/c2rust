@@ -388,6 +388,7 @@ class TranslateASTVisitor final
               SourceLocation loc,
               const QualType ty,
               bool rvalue,
+              bool isVaList,
               const std::vector<void *> &childIds,
               std::function<void(CborEncoder*)> extra
              )
@@ -417,7 +418,7 @@ class TranslateASTVisitor final
           // 3 - File number
           // 4 - Line number
           // 5 - Column number
-          encodeSourcePos(&local, loc);
+          encodeSourcePos(&local, loc, isVaList);
 
           // 6 - Type ID (only for expressions)
           encode_qualtype(&local, ty);
@@ -446,7 +447,8 @@ class TranslateASTVisitor final
        std::function<void(CborEncoder*)> extra = [](CborEncoder*){}
        ) {
           auto ty = ast->getType();
-          encode_entry_raw(ast, tag, ast->getLocStart(), ty, ast->isRValue(), childIds, extra);
+          auto isVaList = false;
+          encode_entry_raw(ast, tag, ast->getLocStart(), ty, ast->isRValue(), isVaList, childIds, extra);
           typeEncoder.VisitQualType(ty);
       }
 
@@ -458,7 +460,8 @@ class TranslateASTVisitor final
        ) {
           QualType s = QualType(static_cast<clang::Type*>(nullptr), 0);
           auto rvalue = false;
-          encode_entry_raw(ast, tag, ast->getLocStart(), s, rvalue, childIds, extra);
+          auto isVaList = false;
+          encode_entry_raw(ast, tag, ast->getLocStart(), s, rvalue, isVaList, childIds, extra);
       }
       
       void encode_entry
@@ -469,7 +472,7 @@ class TranslateASTVisitor final
        std::function<void(CborEncoder*)> extra = [](CborEncoder*){}
        ) {
           auto rvalue = false;
-          encode_entry_raw(ast, tag, ast->getLocStart(), T, rvalue, childIds, extra);
+          encode_entry_raw(ast, tag, ast->getLocation(), T, rvalue, isVaList(ast, T), childIds, extra);
       }
       
       
@@ -487,20 +490,27 @@ class TranslateASTVisitor final
           return filenames;
       }
       
-      void encodeSourcePos(CborEncoder *enc, SourceLocation loc) {
+      void encodeSourcePos(CborEncoder *enc, SourceLocation loc, bool isVaList = false) {
           auto& manager = Context->getSourceManager();
+
+          // A check to see if the Source Location is a Macro
+          if (manager.isMacroArgExpansion(loc) || manager.isMacroBodyExpansion(loc))
+              loc = manager.getFileLoc(loc);
+
           auto line = manager.getPresumedLineNumber(loc);
           auto col  = manager.getPresumedColumnNumber(loc);
           auto fileid = manager.getFileID(loc);
           auto entry = manager.getFileEntryForID(fileid);
-          
+
           auto filename = string("?");
-          if (entry) {
-              filename = entry->getName().str();
-          }
-          
+          if (entry)
+              filename = entry->tryGetRealPathName().str();
+
+          if (filename == "?" && isVaList)
+              filename = "vararg";
+
           auto pair = filenames.insert(std::make_pair(filename, filenames.size()));
-          
+
           cbor_encode_uint(enc, pair.first->second);
           cbor_encode_uint(enc, line);
           cbor_encode_uint(enc, col);
@@ -1397,6 +1407,36 @@ class TranslateASTVisitor final
                   return true;
               }
           }
+          return false;
+      }
+
+      // Inspired by a lambda function within `clang/lib/Sema/SemaType.cpp`
+      bool isVaList(Decl *D, QualType T) {
+          if (auto *RD = dyn_cast<RecordDecl>(D))
+              if (auto *name = RD->getIdentifier())
+                  if(name->isStr("__va_list_tag"))
+                      return true;
+
+          if (T.isNull())
+              return false;
+
+          if (auto *TD = T->getAs<TypedefType>()) {
+              auto *builtinVaList = Context->getBuiltinVaListDecl();
+              do {
+                  if (TD->getDecl() == builtinVaList)
+                      return true;
+                  if (auto *name = TD->getDecl()->getIdentifier())
+                      if (name->isStr("va_list"))
+                          return true;
+                  TD = TD->desugar()->getAs<TypedefType>();
+              } while (TD);
+          }
+
+          if (auto *RT = T->getPointeeOrArrayElementType()->getAs<RecordType>())
+              if (auto *name = RT->getDecl()->getIdentifier())
+                  if (name->isStr("__va_list_tag"))
+                      return true;
+
           return false;
       }
 
