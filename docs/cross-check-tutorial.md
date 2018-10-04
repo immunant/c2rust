@@ -247,4 +247,4 @@ As of the writing of this document, we have no automatic way to detect when the 
 
 ### Compiler builtins and optimizations
 In some cases, clang and rustc may optimize the generated code differently in ways that produce divergence.
-For example, clang (more specifically, a LLVM optimization pass enabled by clang) converts single-argument `printf` calls to direct calls to `puts`. For example, clang converts `printf("Hello world!\n");` to `puts("Hello world!")`. The two functions have different internal implementations and make different syscalls (mainly the `write` syscall), so this optimization causes divergence. We recommend compiling all C code with the `-fno-builtin` argument to prevent this.
+For example, clang (more specifically, a LLVM optimization pass enabled by clang) converts single-argument `printf` calls to direct calls to `puts`. For example, clang converts `printf("Hello world!\n");` to `puts("Hello world!");`. The two functions have different internal implementations and make different syscalls (mainly the `write` syscall), so this optimization causes divergence. We recommend compiling all C code with the `-fno-builtin` argument to prevent this.
