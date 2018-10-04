@@ -66,7 +66,9 @@ fn main() {
 fn build_ast_exporter(llvm_lib: &str) {
 
     // This is where the C++ source lives.
+    // Note that `rerun-if-changed` does not recursively check directories!
     println!("cargo:rerun-if-changed=../ast-exporter");
+    println!("cargo:rerun-if-changed=../ast-exporter/*");
 
     let dst = Config::new("../ast-exporter")
         .generator("Ninja")
@@ -132,7 +134,7 @@ fn build_ast_exporter(llvm_lib: &str) {
       "LLVMSupport",
       "LLVMDemangle",
     ] {
-        println!("cargo:rustc-link-lib=dylib={}", lib);
+        println!("cargo:rustc-link-lib={}", lib);
     }
 
     // Link against static TinyCBOR lib
