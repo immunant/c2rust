@@ -18,7 +18,6 @@ use serde_cbor::{Value, from_slice};
 
 
 fn main() {
-
     let matches = App::new("AST Importer")
         .version("0.1.0")
         .author(crate_authors!())
@@ -145,7 +144,7 @@ fn main() {
         .get_matches();
 
     // Build a TranslationConfig from the command line
-    let cbor_path = canonicalize(Path::new(matches.value_of("INPUT").unwrap())).unwrap();
+    let c_path = canonicalize(Path::new(matches.value_of("INPUT").unwrap())).unwrap();
     let tcfg = TranslationConfig {
         fail_on_error:          matches.is_present("fail-on-error"),
         reloop_cfgs:            matches.is_present("reloop-cfgs"),
@@ -170,7 +169,7 @@ fn main() {
         reduce_type_annotations:matches.is_present("reduce-type-annotations"),
         reorganize_definitions: matches.is_present("reorganize-definitions"),
         emit_module:            matches.is_present("emit-module"),
-        main_file:              Some(cbor_path.with_extension("")),
+        main_file:              Some(c_path.with_extension("")),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
                 Some("panic") => true,
@@ -186,7 +185,7 @@ fn main() {
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
 
     // Extract the untyped AST from the CBOR file
-    let untyped_context = match parse_untyped_ast(&cbor_path) {
+    let untyped_context = match parse_untyped_ast(&c_path) {
         Err(e) => panic!("{:#?}", e),
         Ok(cxt) => cxt,
     };
@@ -226,7 +225,7 @@ fn main() {
     // Perform the translation
 
     let translated_string = ast_importer::translator::translate(typed_context, tcfg);
-    let output_path = get_output_path(&cbor_path, matches.value_of("output-file"));
+    let output_path = get_output_path(&c_path, matches.value_of("output-file"));
 
     let mut file = match File::create(output_path) {
         Ok(file) => file,
@@ -258,10 +257,9 @@ fn get_output_path(input_file: &Path, specified_path: Option<&str>) -> PathBuf {
 }
 
 fn parse_untyped_ast(file_path: &Path) -> Result<AstContext, Error> {
-    let mut f = File::open(file_path)?;
-    let mut buffer = vec![];
-    f.read_to_end(&mut buffer)?;
 
+    let cbors = exporter::get_ast_cbors(&[file_path.to_str().unwrap()]);
+    let buffer = cbors.values().next().unwrap();
     let items: Value = from_slice(&buffer[..]).unwrap();
 
     match process(items) {

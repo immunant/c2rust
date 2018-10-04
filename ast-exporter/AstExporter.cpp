@@ -26,6 +26,7 @@
 #include "ast_tags.hpp"
 #include "FloatingLexer.h"
 #include "ExportResult.hpp"
+#include "AstExporter.hpp"
 
 using namespace llvm;
 using namespace clang;
@@ -1738,22 +1739,6 @@ Outputs process(int argc, const char *argv[], int *result)
     *result = Tool.run(&myFrontendActionFactory);
 
     return outputs;
-}
-
-int main(int argc, char *argv[]) {
-    int result;
-    auto outputs = process(argc, const_cast<const char **>(argv), &result);
-
-    for (auto const &kv : outputs) {
-        auto const &filename = kv.first;
-        auto const &bytes    = kv.second;
-
-        std::ofstream out(filename + ".cbor", out.binary | out.trunc);
-
-        out.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-    }
-
-    return result;
 }
 
 // AST-Extractor as a library interface.

@@ -46,6 +46,7 @@ add_executable(ast-exporter
   AstExporter.cpp
   FloatingLexer.cpp
   ExportResult.cpp
+  Main.cpp
   )
 set_target_properties(ast-exporter PROPERTIES
   CXX_STANDARD 17
