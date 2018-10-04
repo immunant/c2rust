@@ -64,7 +64,7 @@ target_link_libraries(ast-exporter PRIVATE
 )
 
 # The library
-add_library(clangAstExporter
+add_library(clangAstExporter MODULE
   AstExporter.cpp
   FloatingLexer.cpp
   ExportResult.cpp
