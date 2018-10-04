@@ -2619,7 +2619,7 @@ impl Translation {
                         self.convert_expr(ExprUse::Used, fexp, is_static, decay_ref)?,
 
                     CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) =>
-                        return self.convert_builtin(fexp, args, is_static),
+                        return self.convert_builtin(fexp, args, use_, is_static),
 
                     _ =>
                         self.convert_expr(ExprUse::Used, func, is_static, decay_ref)?
@@ -2781,6 +2781,7 @@ impl Translation {
         &self,
         fexp: CExprId,
         args: &[CExprId],
+        use_: ExprUse,
         is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, String> {
 
@@ -2861,6 +2862,31 @@ impl Translation {
             // void __builtin_prefetch (const void *addr, ...);
             "__builtin_prefetch" => {
                 self.convert_expr(ExprUse::Unused, args[0], is_static, decay_ref)
+            }
+
+            // This built-in is translated directly to memcpy as defined in the libc crate
+            "__builtin_memcpy" => {
+                let memcpy = mk().path_expr(vec!["","libc","memcpy"]);
+                let mut dst = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
+                let mut src = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
+                let mut len = self.convert_expr(ExprUse::Used, args[2], is_static, decay_ref)?;
+                let size_t = mk().path_ty(vec!["libc","size_t"]);
+                let len1 = mk().cast_expr(len.val, size_t);
+                let memcpy_expr = mk().call_expr(memcpy, vec![dst.val, src.val, len1]);
+                
+                let mut stmts = dst.stmts;
+                stmts.append(&mut src.stmts);
+                stmts.append(&mut len.stmts);
+                
+                let val = match use_ {
+                    ExprUse::Used => memcpy_expr,
+                    ExprUse::Unused => {
+                        stmts.push(mk().semi_stmt(memcpy_expr));
+                        self.panic("__builtin_memcpy not used")
+                    }
+                };
+
+                Ok(WithStmts { stmts, val })
             }
 
             // Should be safe to always return 0 here.  "A return of 0 does not indicate that the
