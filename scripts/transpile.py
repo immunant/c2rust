@@ -96,7 +96,7 @@ LIB_RS_TEMPLATE = """\
 extern crate libc;
 % if use_fakechecks:
 extern crate libfakechecks_sys;
-%endif 
+%endif
 
 % for (module_name, module_path, line_prefix) in modules:
 <% module_name = module_name.replace('-', '_') %>
@@ -168,7 +168,7 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
 
 
 def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
-                      main_module: str, cross_checks: bool, 
+                      main_module: str, cross_checks: bool,
                       use_fakechecks: bool, cross_check_config: List[str]):
     build_dir = os.path.join(dest_dir, "c2rust-build")
     shutil.rmtree(build_dir, ignore_errors=True)
@@ -181,7 +181,7 @@ def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
         plugin_path = os.path.join(rust_checks_path, "rustc-plugin")
         derive_path = os.path.join(rust_checks_path, "derive-macros")
         runtime_path = os.path.join(rust_checks_path, "runtime")
-        libfakechecks_sys_path = os.path.join(rust_checks_path, 
+        libfakechecks_sys_path = os.path.join(rust_checks_path,
                                               "backends/libfakechecks-sys")
         tmpl = mako.template.Template(CARGO_TOML_TEMPLATE)
         cargo_toml.write(tmpl.render(
@@ -245,7 +245,8 @@ def transpile_files(cc_db: TextIO,
                     cross_checks: bool = False,
                     use_fakechecks: bool = False,
                     cross_check_config: List[str] = [],
-                    reloop_cfgs: bool = True) -> bool:
+                    reloop_cfgs: bool = True,
+                    reorganize_definitions: bool = False) -> bool:
     """
     run the ast-exporter and ast-importer on all C files
     in a compile commands database.
@@ -260,7 +261,7 @@ def transpile_files(cc_db: TextIO,
     check_main_module(main_module_for_build_files, cc_db)
 
     if filter:  # skip commands not matching file filter
-        cc_db = [cmd for cmd in cc_db if filter in c['file']]
+        cc_db = [cmd for cmd in cc_db if filter in cmd['file']]
 
     if not on_mac():
         ensure_code_compiled_with_clang(cc_db)
@@ -288,6 +289,8 @@ def transpile_files(cc_db: TextIO,
             impo_args.append(ccc)
     if reloop_cfgs:
         impo_args.append('--reloop-cfgs')
+    if reorganize_definitions:
+        impo_args.append('--reorganize-definitions')
 
     def transpile_single(cmd) -> Tuple[str, int, str, str, str]:
 
@@ -327,6 +330,10 @@ def transpile_files(cc_db: TextIO,
                 e = "Expected file suffix `.c.cbor`; actual: " + cbor_basename
                 assert cbor_file.endswith(".c.cbor"), e
                 rust_file = cbor_file[:-7] + ".rs"
+                path, file_name = os.path.split(rust_file)
+                file_name = file_name.replace('-', '_')
+                rust_file = os.path.join(path, file_name)
+
                 rustfmt(rust_file)
 
                 return (file_basename, retcode, stdout, importer_warnings,
@@ -423,6 +430,10 @@ def parse_args() -> argparse.Namespace:
                         action=NegateAction,
                         help='enable (disable) relooper; enabled by '
                              'default')
+    parser.add_argument('-r', '--reorganize-definitions',
+                        default=False, action='store_true',
+                        help='Reorganize definitions, then use the '
+                             'refactor tool to eliminate duplication')
     c.add_args(parser)
 
     args = parser.parse_args()
@@ -449,7 +460,8 @@ def main():
                     args.cross_checks,
                     args.use_fakechecks,
                     args.cross_check_config,
-                    args.reloop_cfgs)
+                    args.reloop_cfgs,
+                    args.reorganize_definitions)
 
     logging.info("success")
 

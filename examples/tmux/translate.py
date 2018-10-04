@@ -48,6 +48,7 @@ FILES_NEEDING_TRAILING_UNDERSCORE = [
 ]
 MAIN_MODS = """\
 #![feature(const_slice_as_ptr, ptr_wrapping_offset_from, used)]
+#![allow(unused_imports)]
 extern crate libc;
 
 pub mod alerts;
@@ -201,7 +202,7 @@ if __name__ == "__main__":
 
     with open(COMPILE_COMMANDS, 'r') as cc_json:
         transpile_files(cc_json, filter=args.filter, emit_build_files=False, verbose=True,
-                        extra_impo_args=importer_args)
+                        extra_impo_args=importer_args, reorganize_definitions=True)
 
     # Move and rename tmux.rs to main.rs
     move(TMUX_RS, MAIN_RS)
@@ -216,15 +217,6 @@ if __name__ == "__main__":
     retcode, _, _ = move(plumbum_compat_rs_glob, RUST_COMPAT_DIR)
 
     assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)
-
-    # Rename files with dashes to underscores, as rust won't
-    # accept dashes.
-    for path in [RUST_SRC_DIR, RUST_COMPAT_DIR]:
-        rust_rs_files = local.path(path) // "*.rs"
-
-        retcode, _, _ = rename_("s/-/_/g", "-f", rust_rs_files)
-
-        assert retcode != 1, "Could not rename translated rs files:\n{}".format(stderr)
 
     # Some tmux files have the same file names as structs, so we also have to append
     # an underscore to the filename so that rust doesn't get confused

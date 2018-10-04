@@ -12,6 +12,7 @@ use c_ast::*;
 use clang_ast::LRValue;
 use rust_ast::{mk, Builder};
 use rust_ast::comment_store::CommentStore;
+use rust_ast::item_store::{PathedMultiImports, ItemStore};
 use c_ast::iterators::{DFExpr, SomeId};
 use syntax::ptr::*;
 use syntax::print::pprust::*;
@@ -23,6 +24,8 @@ use dtoa;
 use with_stmts::WithStmts;
 use rust_ast::traverse::Traversal;
 use std::io;
+use std::path::{self, PathBuf};
+use indexmap::IndexMap;
 
 use cfg;
 
@@ -91,10 +94,12 @@ pub struct TranslationConfig {
     pub simplify_structures: bool,
     pub panic_on_translator_failure: bool,
     pub emit_module: bool,
+    pub main_file: Option<PathBuf>,
     pub fail_on_error: bool,
     pub replace_unsupported_decls: ReplaceMode,
     pub translate_valist: bool,
     pub reduce_type_annotations: bool,
+    pub reorganize_definitions: bool,
 }
 
 pub struct Translation {
@@ -105,9 +110,9 @@ pub struct Translation {
 
     // Accumulated outputs
     pub features: RefCell<HashSet<&'static str>>,
-    pub uses: RefCell<Vec<P<Item>>>,
+    pub uses: RefCell<PathedMultiImports>,
     pub items: RefCell<Vec<P<Item>>>,
-    pub foreign_items: Vec<ForeignItem>,
+    pub foreign_items: RefCell<Vec<ForeignItem>>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
 
     // Translation state and utilities
@@ -119,6 +124,12 @@ pub struct Translation {
     // Comment support
     pub comment_context: RefCell<CommentContext>, // Incoming comments
     pub comment_store: RefCell<CommentStore>, // Outgoing comments
+
+    // Mod block defintion reorganization
+    mod_blocks: RefCell<IndexMap<PathBuf, ItemStore>>,
+
+    // Mod names to try to stop collisions from happening
+    mod_names: RefCell<HashMap<String, PathBuf>>,
 }
 
 
@@ -251,6 +262,43 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
     }
 }
 
+// This function is meant to create module names, for modules being created with the
+// `--reorganize-modules` flag. So what is done is, change '.' && '-' to '_', and depending
+// on whether there is a collision or not prepend the prior directory name to the path name.
+// To check for collisions, a HashMap with the path name(key) and the path(value) associated with
+// the name. If the path name is in use, but the paths differ there is a collision.
+fn clean_path(mod_names: &RefCell<HashMap<String, PathBuf>>, path: &path::Path) -> String {
+    fn path_to_str(path: &path::Path) -> String {
+        path.file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .replace('.', "_")
+            .replace('-', "_")
+    }
+
+    let mut file_path: String = path_to_str(path);
+    let mut mod_names = mod_names.borrow_mut();
+    if !mod_names.contains_key(&file_path.clone()) {
+        mod_names.insert(file_path.clone(), path.to_path_buf());
+    } else {
+        let mod_path = mod_names.get(&file_path.clone()).unwrap();
+        // A collision in the module names has occured.
+        // Ex: types.h can be included from
+        // /usr/include/bits and /usr/include/sys
+        if mod_path != path {
+            let path_copy = path.to_path_buf();
+            let split_path: Vec<PathBuf> = path_copy.parent().unwrap()
+                .iter().map(|os| PathBuf::from(os)).collect();
+
+            let mut to_prepend = path_to_str(split_path.last().unwrap());
+            to_prepend.push('_');
+            file_path.insert_str(0, &to_prepend);
+        }
+    }
+    file_path
+}
+
 pub fn translate_failure(tcfg: &TranslationConfig, msg: &str) {
     if tcfg.fail_on_error {
         panic!("{}", msg)
@@ -350,9 +398,20 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 _ => false,
             };
             if needs_export {
+                // Rust 1.29 has iterator flatten which would work here
+                let decl_file_path = match decl.loc.as_ref().map(|loc| &loc.file_path) {
+                    Some(Some(s)) => Some(s),
+                    _ => None,
+                };
+                let main_file_path = t.tcfg.main_file.as_ref();
+
+                if t.tcfg.reorganize_definitions && decl_file_path != main_file_path {
+                    t.generate_submodule_imports(decl_id, decl_file_path);
+                }
+
                 match t.convert_decl(true, decl_id) {
-                    Ok(ConvertedDecl::Item(item)) => t.items.borrow_mut().push(item),
-                    Ok(ConvertedDecl::ForeignItem(mut item)) => t.foreign_items.push(item),
+                    Ok(ConvertedDecl::Item(item)) => t.insert_item(item, decl_file_path, main_file_path),
+                    Ok(ConvertedDecl::ForeignItem(item)) => t.insert_foreign_item(item, decl_file_path, main_file_path),
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
                         let msg = format!("Skipping declaration due to error: {}, kind: {:?}", e, k);
@@ -370,9 +429,21 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 _ => false,
             };
             if needs_export {
+                let decl_opt = t.ast_context.c_decls.get(top_id);
+                let decl = decl_opt.as_ref().unwrap();
+                let decl_file_path = match decl.loc.as_ref().map(|loc| &loc.file_path) {
+                    Some(Some(s)) => Some(s),
+                    _ => None,
+                };
+                let main_file_path = t.tcfg.main_file.as_ref();
+
+                if t.tcfg.reorganize_definitions && decl_file_path != main_file_path {
+                    t.generate_submodule_imports(*top_id, decl_file_path);
+                }
+
                 match t.convert_decl(true, *top_id) {
                     Ok(ConvertedDecl::Item(mut item)) => t.items.borrow_mut().push(item),
-                    Ok(ConvertedDecl::ForeignItem(mut item)) => t.foreign_items.push(item),
+                    Ok(ConvertedDecl::ForeignItem(item)) => t.insert_foreign_item(item, decl_file_path, main_file_path),
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
                         let msg = format!("Failed translating declaration due to error: {}, kind: {:?}", e, k);
@@ -411,8 +482,16 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
             // Re-order comments
             let mut traverser = t.comment_store.into_inner().into_comment_traverser();
+            let mut mod_items: Vec<P<Item>> = Vec::new();
 
-            let foreign_items: Vec<ForeignItem> = t.foreign_items
+            for (file_path, ref mut mod_item_store) in t.mod_blocks.borrow_mut().iter_mut() {
+                mod_items.push(make_submodule(mod_item_store, file_path, &t.uses, &t.mod_names));
+            }
+
+            mod_items = mod_items.into_iter()
+                .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
+                .collect();
+            let foreign_items: Vec<ForeignItem> = t.foreign_items.into_inner()
                 .into_iter()
                 .map(|fi| traverser.traverse_foreign_item(fi))
                 .collect();
@@ -423,11 +502,15 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
             s.comments().get_or_insert(vec![]).extend(traverser.into_comment_store().into_comments());
 
+            for mod_item in mod_items {
+                s.print_item(&*mod_item)?;
+            }
+
             // This could have been merged in with items below; however, it's more idiomatic to have
             // imports near the top of the file than randomly scattered about. Also, there is probably
             // no reason to have comments associated with imports so it doesn't need to go through
             // the above comment store process
-            for use_item in t.uses.borrow().iter() {
+            for use_item in t.uses.borrow().to_items() {
                 s.print_item(&use_item)?;
             }
 
@@ -443,6 +526,46 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             Ok(())
         })
     })
+}
+
+fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
+                  global_uses: &RefCell<PathedMultiImports>,
+                  mod_names: &RefCell<HashMap<String, PathBuf>>) -> P<Item> {
+    let (mut items, foreign_items, uses) = submodule_item_store.drain();
+    let file_path_str = file_path.to_str().expect("Found invalid unicode");
+    let mod_name = clean_path(mod_names, file_path);
+
+    for item in items.iter() {
+        let ident_name = item.ident.name.as_str();
+        let use_path = vec!["self".into(), mod_name.clone()];
+
+        global_uses.borrow_mut()
+            .get_mut(use_path)
+            .leaves
+            .insert(ident_name.to_string());
+    }
+
+    for foreign_item in foreign_items.iter() {
+        let ident_name = foreign_item.ident.name.as_str();
+        let use_path = vec!["self".into(), mod_name.clone()];
+
+        global_uses.borrow_mut()
+            .get_mut(use_path)
+            .leaves
+            .insert(ident_name.to_string());
+    }
+
+    for item in uses.into_items() {
+        items.push(item);
+    }
+
+    if !foreign_items.is_empty() {
+        items.push(mk().abi("C").foreign_items(foreign_items));
+    }
+
+    mk().vis("pub")
+        .call_attr("cfg", vec![format!("not(source_header = \"{}\")", file_path_str)])
+        .module(mod_name, items)
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations
@@ -546,6 +669,7 @@ pub enum ExprUse {
 /// Declarations can be converted into a normal item, or into a foreign item.
 /// Foreign items are called out specially because we'll combine all of them
 /// into a single extern block at the end of translation.
+#[derive(Debug)]
 enum ConvertedDecl {
     ForeignItem(ForeignItem),
     Item(P<Item>),
@@ -560,9 +684,9 @@ impl Translation {
 
         Translation {
             features: RefCell::new(HashSet::new()),
-            uses: RefCell::new(Vec::new()),
+            uses: RefCell::new(PathedMultiImports::new()),
             items: RefCell::new(vec![]),
-            foreign_items: vec![],
+            foreign_items: RefCell::new(vec![]),
             type_converter: RefCell::new(type_converter),
             ast_context,
             tcfg,
@@ -589,18 +713,14 @@ impl Translation {
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             sectioned_static_initializers: RefCell::new(Vec::new()),
+            mod_blocks: RefCell::new(IndexMap::new()),
+            mod_names: RefCell::new(HashMap::new()),
         }
     }
 
     /// Called when translation makes use of a language feature that will require a feature-gate.
     fn use_feature(&self, feature: &'static str) {
         self.features.borrow_mut().insert(feature);
-    }
-
-    /// Called when translation makes use of a use import.
-    #[allow(dead_code)]
-    fn use_import(&self, use_path: Vec<&str>) {
-        self.uses.borrow_mut().push(mk().use_item(use_path, None as Option<Ident>));
     }
 
     // This node should _never_ show up in the final generated code. This is an easy way to notice
@@ -1022,7 +1142,7 @@ impl Translation {
                         CDeclKind::Field { ref name, typ } => {
                             let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
                             let typ = self.convert_type(typ.ctype)?;
-                            field_syns.push(mk().span(s).struct_field(name, typ))
+                            field_syns.push(mk().span(s).pub_().struct_field(name, typ))
                         }
                         _ => return Err(format!("Found non-field in record field list")),
                     }
@@ -1112,10 +1232,16 @@ impl Translation {
 
                 let new_name = self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, _) = self.convert_variable(None, typ, is_static)?;
-
+                // When putting extern statics into submodules, they need to be public to be accessible
+                let visibility = if self.tcfg.reorganize_definitions {
+                    "pub"
+                } else {
+                    ""
+                };
                 let extern_item = mk_linkage(true, &new_name, ident)
                     .span(s)
                     .set_mutbl(mutbl)
+                    .vis(visibility)
                     .foreign_static(&new_name, ty);
 
                 Ok(ConvertedDecl::ForeignItem(extern_item))
@@ -1304,8 +1430,15 @@ impl Translation {
             } else {
                 // Translating an extern function declaration
 
+                // When putting extern fns into submodules, they need to be public to be accessible
+                let visibility = if self.tcfg.reorganize_definitions {
+                    "pub"
+                } else {
+                    ""
+                };
                 let function_decl = mk_linkage(true, new_name, name)
                     .span(span)
+                    .vis(visibility)
                     .foreign_fn(new_name, decl);
 
                 Ok(ConvertedDecl::ForeignItem(function_decl))
@@ -4226,5 +4359,133 @@ impl Translation {
         };
 
         mk().lit_expr(lit)
+    }
+
+    /// If we're trying to organize item definitions into submodules, add them to a module
+    /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
+    fn insert_item(&self, item: P<Item>, decl_file_path: Option<&PathBuf>, main_file_path: Option<&PathBuf>) {
+        if self.tcfg.reorganize_definitions && decl_file_path.expect("There should be a decl file path.") != main_file_path.unwrap() {
+            let mut mod_blocks = self.mod_blocks.borrow_mut();
+            let mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
+
+            mod_block_items.items.push(item);
+        } else {
+            self.items.borrow_mut().push(item)
+        }
+    }
+
+    /// If we're trying to organize foreign item definitions into submodules, add them to a module
+    /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
+    fn insert_foreign_item(&self, item: ForeignItem, decl_file_path: Option<&PathBuf>, main_file_path: Option<&PathBuf>) {
+        if self.tcfg.reorganize_definitions && decl_file_path.unwrap() != main_file_path.unwrap() {
+            let mut mod_blocks = self.mod_blocks.borrow_mut();
+            let mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
+
+            mod_block_items.foreign_items.push(item);
+        } else {
+            self.foreign_items.borrow_mut().push(item)
+        }
+    }
+
+    fn match_type_kind(&self, ctype: CTypeId, store: &mut ItemStore, decl_file_path: &path::Path) {
+        use self::CTypeKind::*;
+
+        match self.ast_context[ctype].kind {
+            Void | Char | SChar | UChar | Short | UShort | Int | UInt |
+            Long | ULong | LongLong | ULongLong | Int128 | UInt128 |
+            Half | Float | Double | LongDouble => {
+                store.uses
+                    .get_mut(vec!["super".into()])
+                    .leaves
+                    .insert("libc".into());
+            },
+            // Bool uses the bool type, so no dependency on libc
+            Bool => {},
+            Paren(ctype) |
+            Decayed(ctype) |
+            IncompleteArray(ctype) |
+            ConstantArray(ctype, _) |
+            Elaborated(ctype) |
+            Pointer(CQualTypeId { ctype, .. }) => self.match_type_kind(ctype, store, decl_file_path),
+            Enum(decl_id) |
+            Typedef(decl_id) |
+            Union(decl_id) |
+            Struct(decl_id) => {
+                let decl = &self.ast_context.c_decls[&decl_id];
+                let decl_loc = &decl.loc.as_ref().unwrap();
+
+                // If the definition lives in the same header, there is no need to import it
+                // in fact, this would be a hard rust error
+                if decl_loc.file_path.as_ref().unwrap() == decl_file_path {
+                    return;
+                }
+
+                let ident_name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+
+                // Either the decl lives in the parent module, or else in a sibling submodule
+                if decl_loc.file_path == self.tcfg.main_file {
+                    store.uses
+                        .get_mut(vec!["super".into()])
+                        .leaves
+                        .insert(ident_name);
+                } else {
+                    let file_path = decl_loc.file_path.as_ref().unwrap();
+                    let file_name = clean_path(&self.mod_names, &file_path);
+
+                    store.uses
+                        .get_mut(vec!["super".into(), file_name])
+                        .leaves
+                        .insert(ident_name);
+                }
+            },
+            Function(CQualTypeId { ctype, .. }, ref params, ..) => {
+                // Return Type
+                let type_kind = &self.ast_context[ctype].kind;
+
+                // Rust doesn't use void for return type, so skip
+                if *type_kind != Void {
+                    self.match_type_kind(ctype, store, decl_file_path);
+                }
+
+                // Param Types
+                for param_id in params {
+                    self.match_type_kind(param_id.ctype, store, decl_file_path);
+                }
+            },
+            ref e => unimplemented!("{:?}", e),
+        }
+    }
+
+    fn generate_submodule_imports(&self, decl_id: CDeclId, decl_file_path: Option<&PathBuf>) {
+        let decl_file_path = decl_file_path.expect("There should be a decl file path");
+        let decl = self.ast_context.c_decls.get(&decl_id).unwrap();
+        let mut sumbodule_items = self.mod_blocks.borrow_mut();
+        let item_store = sumbodule_items.entry(decl_file_path.to_path_buf()).or_insert(ItemStore::new());
+
+        match decl.kind {
+            CDeclKind::Struct { ref fields, .. } |
+            CDeclKind::Union { ref fields, .. } => {
+                let field_ids = fields.as_ref().map(|vec| vec.as_slice()).unwrap_or(&[]);
+
+                for field_id in field_ids.iter() {
+                    match self.ast_context.c_decls[field_id].kind {
+                        CDeclKind::Field { typ, .. } => self.match_type_kind(typ.ctype, item_store, decl_file_path),
+                        _ => unreachable!("Found something in a struct other than a field"),
+                    }
+                }
+            },
+            CDeclKind::EnumConstant { .. } => {},
+            // REVIEW: Enums can only be integer types? So libc is likely always required?
+            CDeclKind::Enum { .. } => {
+                item_store.uses
+                    .get_mut(vec!["super".into()])
+                    .leaves
+                    .insert("libc".into());
+            }
+            CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } |
+            CDeclKind::Typedef { typ, .. } => self.match_type_kind(typ.ctype, item_store, decl_file_path),
+            CDeclKind::Function { is_extern: true, typ, .. } => self.match_type_kind(typ, item_store, decl_file_path),
+            ref e => unimplemented!("{:?}", e),
+        }
     }
 }
