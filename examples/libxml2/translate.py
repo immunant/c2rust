@@ -69,8 +69,10 @@ if __name__ == "__main__":
         cross_check_configs.append(CROSS_CHECK_CONFIG_YAML)
     test_sources = set("%s.c" % test for test in TESTS)
     with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json, filter=args.filter,
-                        filter_cb=lambda f: f not in test_sources,
+        transpile_files(cc_json,
+                        filter=lambda f: (args.filter is None or
+                                          args.filter in f) and
+                                         f not in test_sources,
                         emit_build_files=False,
                         emit_modules=True,
                         cross_checks=args.cross_checks,
@@ -78,8 +80,10 @@ if __name__ == "__main__":
 
     # Build the tests separately as full crates
     with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json, filter=args.filter,
-                        filter_cb=lambda f: f in test_sources,
+        transpile_files(cc_json,
+                        filter=lambda f: (args.filter is None or
+                                          args.filter in f) and
+                                         f in test_sources,
                         emit_build_files=False,
                         emit_modules=False,
                         cross_checks=args.cross_checks,

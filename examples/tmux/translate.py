@@ -201,7 +201,9 @@ if __name__ == "__main__":
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
     with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json, filter=args.filter, emit_build_files=False, verbose=True,
+        transpile_files(cc_json, filter=lambda f: args.filter is None or
+                                                  args.filter in f,
+                        emit_build_files=False, verbose=True,
                         extra_impo_args=importer_args, reorganize_definitions=True)
 
     # Move and rename tmux.rs to main.rs

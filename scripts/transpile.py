@@ -250,8 +250,7 @@ def check_main_module(main_module: str, cc_db: TextIO):
 
 
 def transpile_files(cc_db: TextIO,
-                    filter: str = None,
-                    filter_cb: Optional[Callable[[str], bool]] = None,
+                    filter: Optional[Callable[[str], bool]] = None,
                     extra_impo_args: List[str] = [],
                     import_only: bool = False,
                     verbose: bool = False,
@@ -277,9 +276,7 @@ def transpile_files(cc_db: TextIO,
     check_main_module(main_module_for_build_files, cc_db)
 
     if filter:  # skip commands not matching file filter
-        cc_db = [cmd for cmd in cc_db if filter in cmd['file']]
-    if filter_cb:
-        cc_db = [cmd for cmd in cc_db if filter_cb(cmd['file'])]
+        cc_db = [cmd for cmd in cc_db if filter(cmd['file'])]
 
     if not on_mac():
         ensure_code_compiled_with_clang(cc_db)
