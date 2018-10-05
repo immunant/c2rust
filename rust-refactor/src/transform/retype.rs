@@ -111,6 +111,71 @@ impl Transform for RetypeArgument {
 }
 
 
+/// Change function return types.  All `target` fns will have their return types changed to
+/// `new_ty`.  Return/output expressions inside the function will be converted with `wrap`, and
+/// calls to the function will be converted with `unwrap`.
+pub struct RetypeReturn {
+    pub new_ty: String,
+    pub wrap: String,
+    pub unwrap: String,
+}
+
+impl Transform for RetypeReturn {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        // (1) Change argument types and rewrite function bodies.
+
+        let new_ty = parse_ty(cx.session(), &self.new_ty);
+        let wrap = parse_expr(cx.session(), &self.wrap);
+        let unwrap = parse_expr(cx.session(), &self.unwrap);
+
+        // Modified functions, by DefId.
+        let mut mod_fns: HashSet<DefId> = HashSet::new();
+
+        let krate = fold_fns(krate, |mut fl| {
+            if !st.marked(fl.id, "target") {
+                return fl;
+            }
+
+            // Change the return type annotation
+            fl.decl = fl.decl.map(|mut decl| {
+                decl.output = FunctionRetTy::Ty(new_ty.clone());
+                decl
+            });
+
+            // Rewrite output expressions using `wrap`.
+            fl.block = fl.block.map(|b| fold_output_exprs(b, true, |e| {
+                let mut bnd = Bindings::new();
+                bnd.add_expr("__old", e.clone());
+                return wrap.clone().subst(st, cx, &bnd);
+            }));
+
+            mod_fns.insert(cx.node_def_id(fl.id));
+            fl
+        });
+
+        // (2) Rewrite callsites of modified functions.
+
+        // We don't need any protection against infinite recursion here, because it doesn't make
+        // sense for `unwrap` to call the function whose args we're changing.
+        let krate = fold_nodes(krate, |e: P<Expr>| {
+            let callee = match_or!([cx.opt_callee(&e)] Some(x) => x; return e);
+            if !mod_fns.contains(&callee) {
+                return e;
+            }
+            let mut bnd = Bindings::new();
+            bnd.add_expr("__new", e);
+            unwrap.clone().subst(st, cx, &bnd)
+        });
+
+        krate
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
+
 /// Rewrite types in the crate to types that are transmute-compatible with the original.
 /// Automatically inserts `transmute` calls as needed to make the types line up after rewriting.
 ///
@@ -401,6 +466,12 @@ pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
     reg.register("retype_argument", |args| mk(RetypeArgument {
+        new_ty: args[0].clone(),
+        wrap: args[1].clone(),
+        unwrap: args[2].clone(),
+    }));
+
+    reg.register("retype_return", |args| mk(RetypeReturn {
         new_ty: args[0].clone(),
         wrap: args[1].clone(),
         unwrap: args[2].clone(),

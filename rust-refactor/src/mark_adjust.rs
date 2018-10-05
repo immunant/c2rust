@@ -248,6 +248,35 @@ pub fn find_arg_uses_command(st: &CommandState, cx: &driver::Ctxt, arg_idx: usiz
 }
 
 
+pub fn find_callers<T: Visit>(target: &T,
+                              st: &CommandState,
+                              cx: &driver::Ctxt,
+                              label: &str) {
+    let label = label.into_symbol();
+
+    let old_ids = st.marks().iter().filter(|&&(_, l)| l == label)
+        .map(|&(id, _)| id).collect::<Vec<_>>();
+
+    visit_nodes(target, |e: &Expr| {
+        if let Some(def_id) = cx.opt_callee(e) {
+            if let Some(node_id) = cx.hir_map().as_local_node_id(def_id) {
+                if st.marked(node_id, label) {
+                    st.add_mark(e.id, label);
+                }
+            }
+        }
+    });
+
+    for id in old_ids {
+        st.remove_mark(id, label);
+    }
+}
+
+pub fn find_callers_command(st: &CommandState, cx: &driver::Ctxt, label: &str) {
+    find_callers(&*st.krate(), st, cx, label);
+}
+
+
 pub fn rename_marks(st: &CommandState, old: Symbol, new: Symbol) {
     let mut marks = st.marks_mut();
     let nodes = marks.iter().filter(|&&(_, label)| label == old)
@@ -318,6 +347,13 @@ pub fn register_commands(reg: &mut Registry) {
         let label = args[1].clone();
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             find_arg_uses_command(st, cx, arg_idx, &label);
+        }))
+    });
+
+    reg.register("mark_callers", |args| {
+        let label = args[0].clone();
+        Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
+            find_callers_command(st, cx, &label);
         }))
     });
 
