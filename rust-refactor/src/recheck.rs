@@ -18,7 +18,7 @@ use rustc::middle::cstore::CrateStore;
 use rustc_metadata::cstore::CStore;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::fold::Folder;
+use syntax::fold::{self, Folder};
 use syntax::symbol::keywords;
 use syntax_pos::hygiene::{Mark, MarkKind};
 
@@ -104,12 +104,20 @@ impl<'a, 'tcx> Folder for ResolveCrateFolder<'a, 'tcx> {
         p.segments = new_segs;
         p
     }
+
+    fn fold_mac(&mut self, mac: Mac) -> Mac {
+        fold::noop_fold_mac(mac, self)
+    }
 }
 
 
 struct ResetNodeIdFolder;
 impl Folder for ResetNodeIdFolder {
     fn new_id(&mut self, _i: NodeId) -> NodeId { DUMMY_NODE_ID }
+
+    fn fold_mac(&mut self, mac: Mac) -> Mac {
+        fold::noop_fold_mac(mac, self)
+    }
 }
 
 

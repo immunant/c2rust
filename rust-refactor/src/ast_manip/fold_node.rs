@@ -35,6 +35,10 @@ macro_rules! gen_fold_node_impl {
                 let $arg = $walk;
                 $map
             }
+
+            fn fold_mac(&mut self, mac: Mac) -> Mac {
+                fold::noop_fold_mac(mac, self)
+            }
         }
 
         impl FoldNode for $Node {

@@ -69,6 +69,10 @@ impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
               x.id, self.span_desc(x.span), pprust::item_to_string(x));
         syntax::visit::walk_item(self, x);
     }
+
+    fn visit_mac(&mut self, mac: &'a Mac) {
+        syntax::visit::walk_mac(self, mac);
+    }
 }
 
 /// Print the spans of all major nodes in `x`.
