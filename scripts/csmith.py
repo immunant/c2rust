@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""This script automates the process of generating C test files using
+the csmith tool. The script will generate a fresh test case, compile it
+using a C compiler, translate the C file to Rust, compile the Rust file,
+execute both resulting drivers and compare their outputs.
+"""
 
 import subprocess
 import os
-import json
 import logging
-import argparse
+from shutil import copyfile
 import tempfile
 import transpile
-from shutil import copyfile
 import common
 
-csmith_home = "/usr/local/opt/csmith/include/csmith-2.3.0/runtime"
-csmith_cmd = ["csmith", "--no-bitfields", "--no-builtins"]
-c_compiler = "clang"
-rust_compiler = "rustc"
-csmith_timeout = 5 # seconds to wait for C compiled executable to run
+CSMITH_HOME = "/usr/local/opt/csmith/include/csmith-2.3.0/runtime"
+CSMITH_CMD = ["csmith", "--no-bitfields", "--no-builtins"]
+C_COMPILER = "clang"
+RUST_COMPILER = "rustc"
+CSMITH_TIMEOUT = 5 # seconds to wait for C compiled executable to run
 
 def create_compile_commands(dirname, output_c_name):
     """Create a compile commands file suitable for compiling the given csmith source file."""
@@ -23,17 +26,17 @@ def create_compile_commands(dirname, output_c_name):
     compile_commands_settings = [{
         'directory': dirname,
         'arguments':
-            [c_compiler,
+            [C_COMPILER,
              "-D_FORTIFY_SOURCE=0",
              "-isystem", "/usr/include",
-             "-I", csmith_home,
+             "-I", CSMITH_HOME,
              output_c_name],
-        'file': output_c_name }]
+        'file': output_c_name}]
 
     compile_commands_name = os.path.join(dirname, 'compile_commands.json')
-    with open(compile_commands_name, 'w') as file:
-        file.write(common.json_pp_obj(compile_commands_settings))
-    
+    with open(compile_commands_name, 'w') as filename:
+        filename.write(common.json_pp_obj(compile_commands_settings))
+
     return compile_commands_name
 
 def generate_c_source(output_c_name):
@@ -41,9 +44,11 @@ def generate_c_source(output_c_name):
 
     with open(output_c_name, 'w') as output_c:
         logging.info("Generating C source file with csmith")
-        subprocess.run(csmith_cmd, stdout=output_c, check=True)
+        subprocess.run(CSMITH_CMD, stdout=output_c, check=True)
 
 def transpile_file(dirname, output_c_name):
+    """Translate the given C file to Rust."""
+
     compile_commands_name = create_compile_commands(dirname, output_c_name)
     with open(compile_commands_name) as compile_commands:
         transpile.transpile_files(
@@ -54,14 +59,14 @@ def transpile_file(dirname, output_c_name):
             False, # verbose
             False, # emit_build_files
         )
-                        
+
 def compile_c_file(output_c_name, output_c_exe_name):
     """Compile the given C source file to produce the given executable."""
 
     logging.info("Compiling C source file with clang")
     compile_cmd = [
-        c_compiler,
-        "-I", csmith_home,
+        C_COMPILER,
+        "-I", CSMITH_HOME,
         "-o", output_c_exe_name,
         output_c_name]
     subprocess.run(
@@ -78,16 +83,16 @@ def execute_c_driver(output_c_exe_name):
         output_c_exe_name,
         capture_output=True,
         check=True,
-        timeout=csmith_timeout)
+        timeout=CSMITH_TIMEOUT)
     expected_output = exec_c_result.stdout
     logging.info("Execution finished: %s", expected_output)
     return expected_output
 
-def compile_rust_file(dirname, output_c_name, output_rs_name, output_rs_exec_name):
+def compile_rust_file(output_c_name, output_rs_name, output_rs_exec_name):
     """Compile the given Rust source file."""
 
     logging.info("Compiling translated Rust")
-    compile_rust_cmd = [rust_compiler, '-Awarnings', output_rs_name, '-o', output_rs_exec_name]
+    compile_rust_cmd = [RUST_COMPILER, '-Awarnings', output_rs_name, '-o', output_rs_exec_name]
     try:
         subprocess.run(compile_rust_cmd, check=True)
     except:
@@ -106,6 +111,7 @@ def execute_rust_driver(output_rs_exec_name):
     return actual_output
 
 def main():
+    """Generate a new csmith test case and compare its execution to the translated Rust version."""
     common.setup_logging()
 
     with tempfile.TemporaryDirectory('_c2rust_csmith') as dirname:
@@ -119,13 +125,13 @@ def main():
         logging.info("Using temporary directory: %s", dirname)
 
         # Generate and run C version
-        generate_c_source(output_c_name)  
+        generate_c_source(output_c_name)
         compile_c_file(output_c_name, output_c_exe_name)
         expected_output = execute_c_driver(output_c_exe_name)
 
         # Generate and run Rust version
         transpile_file(dirname, output_c_name)
-        compile_rust_file(dirname, output_c_name, output_rs_name, output_rs_exec_name)
+        compile_rust_file(output_c_name, output_rs_name, output_rs_exec_name)
         actual_output = execute_rust_driver(output_rs_exec_name)
 
         if expected_output == actual_output:
