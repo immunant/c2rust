@@ -15,7 +15,10 @@ use rustc_metadata::cstore::CStore;
 use rustc_resolve::MakeGlobMap;
 use rustc_codegen_utils::link;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
-use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind, Block, Arg};
+use syntax::ast::{
+    Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind, Block, Arg, BlockCheckMode,
+    UnsafeSource,
+};
 use syntax::ast::DUMMY_NODE_ID;
 use syntax::codemap::CodeMap;
 use syntax::codemap::{FileLoader, RealFileLoader};
@@ -24,6 +27,7 @@ use syntax::parse::{self, PResult};
 use syntax::parse::token::Token;
 use syntax::parse::parser::Parser;
 use syntax::ptr::P;
+use syntax::symbol::keywords;
 use syntax::tokenstream::TokenTree;
 use syntax_pos::FileName;
 use syntax_pos::Span;
@@ -434,8 +438,18 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
 
 pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
     let mut p = make_parser(sess, "<block>", src);
+
+    let rules = if p.eat_keyword(keywords::Unsafe) {
+        BlockCheckMode::Unsafe(UnsafeSource::UserProvided)
+    } else {
+        BlockCheckMode::Default
+    };
+
     match p.parse_block() {
-        Ok(block) => remove_paren(block),
+        Ok(block) => {
+            let block = remove_paren(block);
+            block.map(|b| Block { rules, ..b })
+        },
         Err(db) => emit_and_panic(db, "block"),
     }
 }
