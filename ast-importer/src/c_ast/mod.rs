@@ -755,7 +755,7 @@ impl UnOp {
 }
 
 /// Represents a binary operator in C (6.5.5 Multiplicative operators - 6.5.14 Logical OR operator)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinOp {
     Multiply,         // *
     Divide,           // /

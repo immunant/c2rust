@@ -2393,7 +2393,7 @@ impl Translation {
     /// In the case that `use_` is `ExprUse::Unused`, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
-    pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool, decay_ref: DecayRef) -> Result<WithStmts<P<Expr>>, String> {
+    pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool, mut decay_ref: DecayRef) -> Result<WithStmts<P<Expr>>, String> {
         match self.ast_context[expr_id].kind {
             CExprKind::DesignatedInitExpr(..) => Err(format!("Unexpected designated init expr")),
             CExprKind::BadExpr => Err(format!("convert_expr: expression kind not supported")),
@@ -2647,6 +2647,14 @@ impl Translation {
                     },
 
                     _ => {
+                        // Comparing references to pointers isn't consistently supported by rust
+                        // and so we need to decay references to pointers to do so. See
+                        // https://github.com/rust-lang/rust/issues/53772. This might be removable
+                        // once the above issue is resolved.
+                        if op == c_ast::BinOp::EqualEqual || op == c_ast::BinOp::NotEqual {
+                            decay_ref = DecayRef::Yes;
+                        }
+
                         let ty = self.convert_type(type_id.ctype)?;
 
                         let lhs_type = self.ast_context.index(lhs).kind.get_qual_type().ok_or_else(|| format!("bad lhs type"))?;
