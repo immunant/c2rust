@@ -410,6 +410,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 match t.convert_decl(true, decl_id) {
                     Ok(ConvertedDecl::Item(item)) => t.insert_item(item, decl_file_path, main_file_path),
                     Ok(ConvertedDecl::ForeignItem(item)) => t.insert_foreign_item(item, decl_file_path, main_file_path),
+                    Ok(ConvertedDecl::NoItem) => {},
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
                         let msg = format!("Skipping declaration due to error: {}, kind: {:?}", e, k);
@@ -442,6 +443,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 match t.convert_decl(true, *top_id) {
                     Ok(ConvertedDecl::Item(mut item)) => t.item_store.borrow_mut().items.push(item),
                     Ok(ConvertedDecl::ForeignItem(item)) => t.insert_foreign_item(item, decl_file_path, main_file_path),
+                    Ok(ConvertedDecl::NoItem) => {},
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
                         let msg = format!("Failed translating declaration due to error: {}, kind: {:?}", e, k);
@@ -544,8 +546,7 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
         global_item_store
             .uses
             .get_mut(use_path)
-            .leaves
-            .insert(ident_name.to_string());
+            .insert(&*ident_name);
     }
 
     for foreign_item in foreign_items.iter() {
@@ -555,8 +556,7 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
         global_item_store
             .uses
             .get_mut(use_path)
-            .leaves
-            .insert(ident_name.to_string());
+            .insert(&*ident_name);
     }
 
     for item in uses.into_items() {
@@ -683,6 +683,8 @@ pub enum ExprUse {
 enum ConvertedDecl {
     ForeignItem(ForeignItem),
     Item(P<Item>),
+    #[allow(dead_code)]
+    NoItem,
 }
 
 impl Translation {
@@ -769,6 +771,7 @@ impl Translation {
                 // Technically we're being conservative here, but it's only the most
                 // contrived array indexing initializers that would be accepted
                 CExprKind::ArraySubscript(..) => return true,
+                CExprKind::Member(..) => return true,
 
                 CExprKind::Conditional(..) => return true,
                 CExprKind::Unary(typ, Negate, _, _) => {
@@ -1924,7 +1927,7 @@ impl Translation {
                     self.add_static_initializer_to_section(&ident2, typ, &mut init)?;
                     self.item_store.borrow_mut().items.push(static_item);
 
-                    return Ok(cfg::DeclStmtInfo::new(Vec::new(), Vec::new(), Vec::new()));
+                    return Ok(cfg::DeclStmtInfo::empty());
                 }
             },
             _ => {},
@@ -2032,6 +2035,7 @@ impl Translation {
                     let item = match self.convert_decl(false, decl_id)? {
                         ConvertedDecl::Item(item) => item,
                         ConvertedDecl::ForeignItem(item) => mk().abi("C").foreign_items(vec![item]),
+                        ConvertedDecl::NoItem => return Ok(cfg::DeclStmtInfo::empty()),
                     };
 
                     Ok(cfg::DeclStmtInfo::new(
@@ -2389,7 +2393,7 @@ impl Translation {
     /// In the case that `use_` is `ExprUse::Unused`, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
-    pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool, decay_ref: DecayRef) -> Result<WithStmts<P<Expr>>, String> {
+    pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool, mut decay_ref: DecayRef) -> Result<WithStmts<P<Expr>>, String> {
         match self.ast_context[expr_id].kind {
             CExprKind::DesignatedInitExpr(..) => Err(format!("Unexpected designated init expr")),
             CExprKind::BadExpr => Err(format!("convert_expr: expression kind not supported")),
@@ -2643,6 +2647,14 @@ impl Translation {
                     },
 
                     _ => {
+                        // Comparing references to pointers isn't consistently supported by rust
+                        // and so we need to decay references to pointers to do so. See
+                        // https://github.com/rust-lang/rust/issues/53772. This might be removable
+                        // once the above issue is resolved.
+                        if op == c_ast::BinOp::EqualEqual || op == c_ast::BinOp::NotEqual {
+                            decay_ref = DecayRef::Yes;
+                        }
+
                         let ty = self.convert_type(type_id.ctype)?;
 
                         let lhs_type = self.ast_context.index(lhs).kind.get_qual_type().ok_or_else(|| format!("bad lhs type"))?;
@@ -2758,7 +2770,6 @@ impl Translation {
                 let WithStmts { mut stmts, val: func } = match self.ast_context.index(func).kind {
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _) =>
                         self.convert_expr(ExprUse::Used, fexp, is_static, decay_ref)?,
-
                     CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) =>
                         return self.convert_builtin(fexp, args, use_, is_static),
 
@@ -3014,11 +3025,11 @@ impl Translation {
                 let size_t = mk().path_ty(vec!["libc","size_t"]);
                 let len1 = mk().cast_expr(len.val, size_t);
                 let memcpy_expr = mk().call_expr(memcpy, vec![dst.val, src.val, len1]);
-                
+
                 let mut stmts = dst.stmts;
                 stmts.append(&mut src.stmts);
                 stmts.append(&mut len.stmts);
-                
+
                 let val = match use_ {
                     ExprUse::Used => memcpy_expr,
                     ExprUse::Unused => {
@@ -4490,8 +4501,7 @@ impl Translation {
             Half | Float | Double | LongDouble => {
                 store.uses
                     .get_mut(vec!["super".into()])
-                    .leaves
-                    .insert("libc".into());
+                    .insert("libc");
             },
             // Bool uses the bool type, so no dependency on libc
             Bool => {},
@@ -4520,7 +4530,6 @@ impl Translation {
                 if decl_loc.file_path == self.tcfg.main_file {
                     store.uses
                         .get_mut(vec!["super".into()])
-                        .leaves
                         .insert(ident_name);
                 } else {
                     let file_path = decl_loc.file_path.as_ref().unwrap();
@@ -4528,7 +4537,6 @@ impl Translation {
 
                     store.uses
                         .get_mut(vec!["super".into(), file_name])
-                        .leaves
                         .insert(ident_name);
                 }
             },
@@ -4573,8 +4581,7 @@ impl Translation {
             CDeclKind::Enum { .. } => {
                 item_store.uses
                     .get_mut(vec!["super".into()])
-                    .leaves
-                    .insert("libc".into());
+                    .insert("libc");
             }
             CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } |
             CDeclKind::Typedef { typ, .. } => self.match_type_kind(typ.ctype, item_store, decl_file_path),
