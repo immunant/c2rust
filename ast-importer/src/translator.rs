@@ -763,6 +763,7 @@ impl Translation {
                 // Technically we're being conservative here, but it's only the most
                 // contrived array indexing initializers that would be accepted
                 CExprKind::ArraySubscript(..) => return true,
+                CExprKind::Member(..) => return true,
 
                 CExprKind::Conditional(..) => return true,
                 CExprKind::Unary(typ, Negate, _, _) => {
