@@ -139,6 +139,8 @@ pub struct CommandState {
 
     krate_changed: Cell<bool>,
     marks_changed: Cell<bool>,
+
+    next_node_id: Cell<u32>,
 }
 
 impl CommandState {
@@ -150,6 +152,11 @@ impl CommandState {
 
             krate_changed: Cell::new(false),
             marks_changed: Cell::new(false),
+
+            // Start at an unreasonably large value which no real AST will ever collide with.  It's
+            // okay to generate the same IDs in different commands because we renumber nodes at the
+            // start of every command.
+            next_node_id: Cell::new(0x8000_0000),
         }
     }
 
@@ -205,6 +212,28 @@ impl CommandState {
 
     pub fn marks_changed(&self) -> bool {
         self.marks_changed.get()
+    }
+
+
+    /// Generate a fresh NodeId.
+    pub fn next_node_id(&self) -> NodeId {
+        let id = NodeId::from_u32(self.next_node_id.get());
+        self.next_node_id.set(self.next_node_id.get() + 1);
+        id
+    }
+
+    /// Transfer marks on `old` to a fresh NodeId, and return that fresh NodeId.
+    pub fn transfer_marks(&self, old: NodeId) -> NodeId {
+        let new = self.next_node_id();
+
+        let mut marks = self.marks_mut();
+        let labels = marks.iter().filter(|x| x.0 == old).map(|x| x.1).collect::<Vec<_>>();
+        for label in labels {
+            marks.remove(&(old, label));
+            marks.insert((new, label));
+        }
+
+        new
     }
 }
 
