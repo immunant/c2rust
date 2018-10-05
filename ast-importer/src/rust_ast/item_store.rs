@@ -1,14 +1,15 @@
 use indexmap::{IndexMap, IndexSet};
-use rust_ast::mk;
-use syntax::ast::{Attribute, Item, ForeignItem};
+use rust_ast::{mk, Builder};
+use syntax::ast::{Item, ForeignItem};
 use syntax::ptr::P;
 
+use std::borrow::Cow;
 use std::mem::swap;
 
 #[derive(Debug)]
 pub struct MultiImport {
-    pub attrs: Option<Attribute>,
-    pub leaves: IndexSet<String>,
+    attrs: Option<Builder>,
+    leaves: IndexSet<String>,
 }
 
 impl MultiImport {
@@ -17,6 +18,21 @@ impl MultiImport {
             attrs: None,
             leaves: IndexSet::new(),
         }
+    }
+
+    pub fn insert<'a, S>(&mut self, leaf: S)
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        self.leaves.insert(leaf.into().into_owned());
+    }
+
+    pub fn insert_with_attr<'a, S>(&mut self, leaf: S, attrs: Builder)
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        self.insert(leaf);
+        self.attrs = Some(attrs);
     }
 }
 
@@ -33,11 +49,15 @@ impl PathedMultiImports {
     }
 
     pub fn into_items(self) -> Vec<P<Item>> {
-        // TODO: Apply attributes
+        fn build_items((path, imports): (Vec<String>, MultiImport)) -> P<Item> {
+            imports.attrs
+                .unwrap_or_else(|| mk())
+                .use_multiple_item(path, imports.leaves.iter().collect())
+        }
 
         self.0
             .into_iter()
-            .map(|(path, imports)| mk().use_multiple_item(path, imports.leaves.iter().collect()))
+            .map(build_items)
             .collect()
     }
 }
