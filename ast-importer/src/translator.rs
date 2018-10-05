@@ -691,7 +691,6 @@ pub enum ExprUse {
 enum ConvertedDecl {
     ForeignItem(ForeignItem),
     Item(P<Item>),
-    #[allow(dead_code)]
     NoItem,
 }
 
@@ -1207,6 +1206,83 @@ impl Translation {
             CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body, .. } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
+                match new_name.as_str() {
+                    "_mm_unpacklo_epi8" | "_mm_unpackhi_epi8" | "_mm_setzero_si128" | "_mm_unpackhi_pd" |
+                    "_mm_unpackhi_epi32" | "_mm_unpackhi_epi16" | "_mm_unpacklo_epi64" | "_mm_cmplt_epi32" |
+                    "_mm_loadu_si128" | "_mm_castsi128_pd" | "_mm_castsi128_ps" | "_mm_castps_si128" |
+                    "_mm_castps_pd" | "_mm_castpd_si128" | "_mm_castpd_ps" | "_mm_storeu_si128" |
+                    "_mm_store_si128" | "_mm_load_si128" | "_mm_cmplt_epi16" | "_mm_cmplt_epi8" |
+                    "_mm_xor_si128" | "_mm_or_si128" | "_mm_andnot_si128" | "_mm_and_si128" |
+                    "_mm_sub_epi64" | "_mm_sub_epi32" | "_mm_sub_epi16" | "_mm_sub_epi8" | "_mm_mullo_epi16" |
+                    "_mm_add_epi64" | "_mm_add_epi32" | "_mm_add_epi16" | "_mm_add_epi8" | "_mm_storeu_pd" |
+                    "_mm_store_pd1" | "_mm_store_pd" | "_mm_set_pd1" | "_mm_loadu_pd" | "_mm_load_pd" |
+                    "_mm_xor_pd" | "_mm_or_pd" | "_mm_andnot_pd" | "_mm_and_pd" | "_mm_div_pd" | "_mm_mul_pd" |
+                    "_mm_sub_pd" | "_mm_add_pd" | "_mm_store_ps1" | "_mm_store_ps" | "_mm_storeu_ps" |
+                    "_mm_set_ps1" | "_mm_loadu_ps" | "_mm_load_ps" | "_mm_cvt_pi2ps" | "_mm_cvt_si2ss" |
+                    "_mm_cvtt_ps2pi" | "_mm_cvtt_ss2si" | "_mm_cvt_ps2pi" | "_mm_cvt_ss2si" | "_mm_xor_ps" |
+                    "_mm_or_ps" | "_mm_andnot_ps" | "_mm_and_ps" | "_mm_div_ps" | "_mm_mul_ps" | "_mm_sub_ps" |
+                    "_mm_add_ps" | "_mm_setr_pi8" | "_mm_setr_pi16" | "_mm_setr_pi32" | "_mm_set1_pi8" |
+                    "_mm_set1_pi16" | "_mm_set1_pi32" | "_mm_cvtm64_si64" | "_mm_cvtsi64_m64" |
+
+                    "_mm_cvtsi32_si64" | "_mm_cvtsi64_si32" | "_mm_packs_pi16" | "_mm_packs_pi32" |
+                    "_mm_packs_pu16" | "_mm_unpackhi_pi8" | "_mm_unpackhi_pi16" | "_mm_unpackhi_pi32" |
+                    "_mm_unpacklo_pi8" | "_mm_unpacklo_pi16" | "_mm_unpacklo_pi32" | "_mm_add_pi8" |
+                    "_mm_add_pi16" | "_mm_add_pi32" | "_mm_adds_pi8" | "_mm_adds_pi16" | "_mm_adds_pu8" |
+                    "_mm_movemask_pd" | "_mm_movemask_epi8" | "_mm_packus_epi16" | "_mm_packs_epi32" |
+                    "_mm_packs_epi16" | "_mm_stream_si64" | "_mm_stream_si32" | "_mm_stream_si128" |
+                    "_mm_stream_pd" | "_mm_maskmoveu_si128" | "_mm_cvtsd_si64" | "_mm_cvttsd_si64" |
+                    "_mm_cvtepi32_ps" | "_mm_cvtps_epi32" | "_mm_cvttps_epi32" | "_mm_srl_epi64" |
+                    "_mm_srli_epi64" | "_mm_srl_epi32" | "_mm_srli_epi32" | "_mm_srl_epi16" |
+                    "_mm_srli_epi16" | "_mm_sra_epi32" | "_mm_srai_epi32" | "_mm_sra_epi16" |
+                    "_mm_srai_epi16" | "_mm_sll_epi64" | "_mm_slli_epi64" | "_mm_sll_epi32" |
+                    "_mm_slli_epi32" | "_mm_sll_epi16" | "_mm_slli_epi16" | "_mm_subs_epu16" |
+                    "_mm_subs_epu8" | "_mm_subs_epi16" | "_mm_subs_epi8" | "_mm_sub_si64" |
+                    "_mm_sad_epu8" | "_mm_mul_epu32" | "_mm_mul_su32" | "_mm_mulhi_epu16" |
+                    "_mm_mulhi_epi16" | "_mm_min_epu8" | "_mm_min_epi16" | "_mm_max_epu8" |
+                    "_mm_max_epi16" | "_mm_madd_epi16" | "_mm_adds_epu16" | "_mm_adds_epu8" |
+                    "_mm_adds_epi16" | "_mm_adds_epi8" | "_mm_add_si64" | "_mm_cvtpi32_pd" |
+                    "_mm_cvttpd_pi32" | "_mm_cvtpd_pi32" | "_mm_cvttsd_si32" | "_mm_cvttpd_epi32" |
+                    "_mm_cvtsd_ss" | "_mm_adds_pu16" | "_mm_sub_pi8" | "_mm_sub_pi16" | "_mm_sub_pi32" |
+                    "_mm_subs_pi8" | "_mm_subs_pi16" | "_mm_subs_pu8" | "_mm_subs_pu16" |
+                    "_mm_madd_pi16" | "_mm_mulhi_pi16" | "_mm_mullo_pi16" | "_mm_sll_pi16" |
+                    "_mm_slli_pi16" | "_mm_sll_pi32" | "_mm_slli_pi32" | "_mm_sll_si64" |
+                    "_mm_slli_si64" | "_mm_sra_pi16" | "_mm_srai_pi16" | "_mm_sra_pi32" |
+                    "_mm_srai_pi32" | "_mm_srl_pi16" | "_mm_srli_pi16" | "_mm_srl_pi32" |
+                    "_mm_srli_pi32" | "_mm_srl_si64" | "_mm_srli_si64" | "_mm_and_si64" |
+                    "_mm_andnot_si64" | "_mm_or_si64" | "_mm_xor_si64" | "_mm_cmpeq_pi8" |
+                    "_mm_cmpeq_pi16" | "_mm_cmpeq_pi32" | "_mm_cmpgt_pi8" | "_mm_cmpgt_pi16" |
+                    "_mm_cmpgt_pi32" | "_mm_sqrt_ss" | "_mm_sqrt_ps" | "_mm_rcp_ss" |
+                    "_mm_rcp_ps" | "_mm_rsqrt_ss" | "_mm_rsqrt_ps" | "_mm_min_ss" | "_mm_min_ps" |
+                    "_mm_max_ss" | "_mm_max_ps" | "_mm_cmpeq_ss" | "_mm_cmpeq_ps" | "_mm_cmplt_ss" |
+                    "_mm_cmplt_ps" | "_mm_cmple_ss" | "_mm_cmple_ps" | "_mm_cmpgt_ps" | "_mm_cmpge_ps" |
+                    "_mm_cmpneq_ss" | "_mm_cmpneq_ps" | "_mm_cmpnlt_ss" | "_mm_cmpnlt_ps" |
+                    "_mm_cmpnle_ss" | "_mm_cmpnle_ps" | "_mm_cmpngt_ps" | "_mm_cmpnge_ps" |
+                    "_mm_cmpord_ss" | "_mm_cmpord_ps" | "_mm_cmpunord_ss" | "_mm_cmpunord_ps" |
+                    "_mm_comieq_ss" | "_mm_comilt_ss" | "_mm_comile_ss" | "_mm_comige_ss" |
+                    "_mm_comineq_ss" | "_mm_ucomieq_ss" | "_mm_ucomilt_ss" | "_mm_ucomile_ss" |
+                    "_mm_ucomigt_ss" | "_mm_ucomige_ss" | "_mm_ucomineq_ss" | "_mm_cvtss_si32" |
+                    "_mm_cvtss_si64" | "_mm_cvtps_pi32" | "_mm_cvttss_si32" | "_mm_cvttss_si64" |
+                    "_mm_cvttps_pi32" | "_mm_undefined_ps" | "_mm_storeh_pi" |
+                    "_mm_storel_pi" | "_mm_store_ss" | "_mm_store1_ps" | "_mm_storer_ps" |
+                    "_mm_unpacklo_pd" | "_mm_move_epi64" | "_mm_unpacklo_epi32"
+
+                    => {
+                        let mut item_store = self.item_store.borrow_mut();
+
+                        let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]);
+                        let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]);
+
+                        item_store.uses
+                            .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
+                            .insert_with_attr(new_name, x86_attr);
+                        item_store.uses
+                            .get_mut(vec!["std".into(), "arch".into(), "x86_64".into()])
+                            .insert_with_attr(new_name, x86_64_attr);
+
+                        return Ok(ConvertedDecl::NoItem);
+                    },
+                    _ => {},
+                }
 
                 let (ret, is_var): (Option<CQualTypeId>, bool) = match self.ast_context.resolve_type(typ).kind {
                     CTypeKind::Function(ret, _, is_var, is_noreturn) => (if is_noreturn { None } else { Some(ret) }, is_var),
@@ -1240,8 +1316,34 @@ impl Translation {
             CDeclKind::Typedef { ref typ, .. } => {
                 let new_name = &self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
-                let ty = self.convert_type(typ.ctype)?;
-                Ok(ConvertedDecl::Item(mk().span(s).pub_().type_item(new_name, ty)))
+                match new_name.as_str() {
+                    // Supported SIMD typedefs:
+                    "__m128i" | "__m128" | "__m128d" | "__m64" | "__m256" | "__m256d" | "__m256i" => {
+                        let mut item_store = self.item_store.borrow_mut();
+
+                        let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]);
+                        let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]);
+
+                        item_store.uses
+                            .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
+                            .insert_with_attr(new_name, x86_attr);
+                        item_store.uses
+                            .get_mut(vec!["std".into(), "arch".into(), "x86_64".into()])
+                            .insert_with_attr(new_name, x86_64_attr);
+
+                        Ok(ConvertedDecl::NoItem)
+                    },
+                    // REVIEW: Can we convert these __v* types?
+                    "__v1di" | "__v2si" | "__v4hi" | "__v8qi" | "__v4si" | "__v4sf" | "__v4su" |
+                    "__v2df" | "__v2di" | "__v8hi" | "__v16qi" | "__v2du" | "__v8hu" | "__v16qu" |
+                    "__v16qs" | "__v8su" => {
+                        Ok(ConvertedDecl::NoItem)
+                    },
+                    _ => {
+                        let ty = self.convert_type(typ.ctype)?;
+                        Ok(ConvertedDecl::Item(mk().span(s).pub_().type_item(new_name, ty)))
+                    }
+                }
             },
 
             // Extern variable without intializer (definition elsewhere)
