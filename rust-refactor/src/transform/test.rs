@@ -1,6 +1,9 @@
 //! Transformation passes used for testing parts of the system.
 
-use syntax::ast::Crate;
+use std::collections::{HashSet, HashMap};
+use std::str::FromStr;
+use syntax::ast::{Crate, Ty};
+use syntax::ptr::P;
 
 use api::*;
 use command::{CommandState, Registry};
@@ -42,6 +45,55 @@ impl Transform for ReplaceStmts {
 }
 
 
+pub struct InsertRemoveArgs {
+    insert_idxs: HashMap<usize, usize>,
+    remove_idxs: HashSet<usize>,
+}
+
+impl Transform for InsertRemoveArgs {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+        let krate = fold_fns(krate, |mut fl| {
+            if !st.marked(fl.id, "target") {
+                return fl;
+            }
+
+            let mut counter = 0;
+            let mut mk_arg = || {
+                let arg = mk().arg(mk().tuple_ty::<P<Ty>>(vec![]),
+                                   mk().ident_pat(&format!("new_arg{}", counter)));
+                counter += 1;
+                arg
+            };
+
+            fl.decl = fl.decl.clone().map(|mut decl| {
+                let mut new_args = Vec::new();
+                let old_arg_count = decl.inputs.len();
+                for (i, arg) in decl.inputs.into_iter().enumerate() {
+                    for _ in 0 .. self.insert_idxs.get(&i).cloned().unwrap_or(0) {
+                        new_args.push(mk_arg());
+                    }
+
+                    if !self.remove_idxs.contains(&i) {
+                        new_args.push(arg);
+                    }
+                }
+
+                for _ in 0 .. self.insert_idxs.get(&old_arg_count).cloned().unwrap_or(0) {
+                    new_args.push(mk_arg());
+                }
+
+                decl.inputs = new_args;
+                decl
+            });
+
+            fl
+        });
+
+        krate
+    }
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -49,4 +101,28 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("test_f_plus_one", |_args| mk(FPlusOne));
     reg.register("test_replace_stmts", |args| mk(
             ReplaceStmts(args[0].clone(), args[1].clone())));
+
+    reg.register("test_insert_remove_args", |args| {
+        let mut insert_idxs = HashMap::new();
+        let mut remove_idxs = HashSet::new();
+
+        for part in args[0].split(",") {
+            if part == "" {
+                continue;
+            }
+            let idx = usize::from_str(part).unwrap();
+            *insert_idxs.entry(idx).or_insert(0) += 1;
+        }
+
+        for part in args[1].split(",") {
+            if part == "" {
+                continue;
+            }
+            let idx = usize::from_str(part).unwrap();
+            remove_idxs.insert(idx);
+        }
+
+        mk(InsertRemoveArgs { insert_idxs, remove_idxs })
+    });
+
 }

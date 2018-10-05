@@ -143,7 +143,7 @@ In case the MVEE does not support a specific application and you need to run it 
 
 To verify that non-determinism truly is the cause of divergence, we recommend running each separate variant multiple times and cross-checking it against itself. If non-determinism really is the problem, each run will produce different cross-checks.
 
-A note on ASLR and pointers: while our cross-checkers currently check pointers by dereference, and not by address, which makes the checks insensitive to ASLR, manually casting pointers to integers poses problems.
+A note on ASLR and pointers: our cross-checkers currently check pointers by dereference instead of by address, thereby making the checks insensitive to ASLR. However, manually casting pointers to integers poses problems because integers cannot be dereferenced.
 Integers are cross-checked by value regardless of their source, and their values will differ across runs when they originate from pointers with ASLR enabled.
 
 ### Uninitialized memory

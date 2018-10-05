@@ -9,7 +9,7 @@ import errno
 import shutil
 import logging
 import argparse
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Optional, Callable
 from typing.io import TextIO
 
 import mako.template
@@ -91,6 +91,9 @@ LIB_RS_TEMPLATE = """\
 
 #[macro_use] extern crate cross_check_derive;
 #[macro_use] extern crate cross_check_runtime;
+
+#[global_allocator]
+static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
 % endif
 
 extern crate libc;
@@ -171,51 +174,62 @@ def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
                       main_module: str, cross_checks: bool,
                       use_fakechecks: bool, cross_check_config: List[str]):
     build_dir = os.path.join(dest_dir, "c2rust-build")
-    shutil.rmtree(build_dir, ignore_errors=True)
-    os.mkdir(build_dir)
+
+    # don't remove existing project files; they may have user edits
+    # shutil.rmtree(build_dir, ignore_errors=True)
+    if not os.path.exists(build_dir):
+        os.mkdir(build_dir)
 
     cargo_toml_path = os.path.join(build_dir, "Cargo.toml")
-    with open(cargo_toml_path, "w") as cargo_toml:
-        # TODO: allow clients to change the name of the library
-        rust_checks_path = os.path.join(c.CROSS_CHECKS_DIR, "rust-checks")
-        plugin_path = os.path.join(rust_checks_path, "rustc-plugin")
-        derive_path = os.path.join(rust_checks_path, "derive-macros")
-        runtime_path = os.path.join(rust_checks_path, "runtime")
-        libfakechecks_sys_path = os.path.join(rust_checks_path,
-                                              "backends/libfakechecks-sys")
-        tmpl = mako.template.Template(CARGO_TOML_TEMPLATE)
-        cargo_toml.write(tmpl.render(
-            crate_name="c2rust-build",
-            main_module=main_module,
-            cross_checks=cross_checks,
-            use_fakechecks=use_fakechecks,
-            plugin_path=plugin_path,
-            derive_path=derive_path,
-            runtime_path=runtime_path,
-            libfakechecks_sys_path=libfakechecks_sys_path))
+    if not os.path.exists(cargo_toml_path):
+        with open(cargo_toml_path, "w") as cargo_toml:
+            # TODO: allow clients to change the name of the library
+            rust_checks_path = os.path.join(c.CROSS_CHECKS_DIR, "rust-checks")
+            plugin_path = os.path.join(rust_checks_path, "rustc-plugin")
+            derive_path = os.path.join(rust_checks_path, "derive-macros")
+            runtime_path = os.path.join(rust_checks_path, "runtime")
+            libfakechecks_sys_path = os.path.join(rust_checks_path,
+                                                "backends/libfakechecks-sys")
+            tmpl = mako.template.Template(CARGO_TOML_TEMPLATE)
+            cargo_toml.write(tmpl.render(
+                crate_name="c2rust-build",
+                main_module=main_module,
+                cross_checks=cross_checks,
+                use_fakechecks=use_fakechecks,
+                plugin_path=plugin_path,
+                derive_path=derive_path,
+                runtime_path=runtime_path,
+                libfakechecks_sys_path=libfakechecks_sys_path))
+    else:
+        logging.warning("Skipping %s; file exists.", cargo_toml_path)
 
     lib_rs_path = "main.rs" if main_module else "lib.rs"
     lib_rs_path = os.path.join(build_dir, lib_rs_path)
-    with open(lib_rs_path, "w") as lib_rs:
-        template_modules = []
-        for (module, module_exists) in modules:
-            module_name, _ = os.path.splitext(os.path.basename(module))
-            module_relpath = os.path.relpath(module, build_dir)
-            line_prefix = '' if module_exists else '#FAILED: '
-            template_modules.append((module_name, module_relpath, line_prefix))
+    if not os.path.exists(lib_rs_path):
+        with open(lib_rs_path, "w") as lib_rs:
+            template_modules = []
+            for (module, module_exists) in modules:
+                module_name, _ = os.path.splitext(os.path.basename(module))
+                module_relpath = os.path.relpath(module, build_dir)
+                line_prefix = '' if module_exists else '#FAILED: '
+                template_modules.append((module_name,
+                                         module_relpath,
+                                         line_prefix))
 
-        config_files = ('config_file = "{config_file}"'.format(
-            config_file=os.path.relpath(ccc, build_dir))
-            for ccc in cross_check_config)
-        plugin_args = ", ".join(config_files)
+            config_files = ('config_file = "{config_file}"'.format(
+                config_file=os.path.relpath(ccc, build_dir))
+                for ccc in cross_check_config)
+            plugin_args = ", ".join(config_files)
 
-        tmpl = mako.template.Template(LIB_RS_TEMPLATE)
-        lib_rs.write(tmpl.render(
-            main_module=main_module,
-            cross_checks=cross_checks,
-            use_fakechecks=use_fakechecks,
-            plugin_args=plugin_args,
-            modules=template_modules))
+            tmpl = mako.template.Template(LIB_RS_TEMPLATE)
+            lib_rs.write(tmpl.render(
+                main_module=main_module,
+                cross_checks=cross_checks,
+                use_fakechecks=use_fakechecks,
+                plugin_args=plugin_args,
+                modules=template_modules))
+    else:
+        logging.warning("Skipping %s; file exists.", lib_rs_path)
 
 
 def check_main_module(main_module: str, cc_db: TextIO):
@@ -237,10 +251,12 @@ def check_main_module(main_module: str, cc_db: TextIO):
 
 def transpile_files(cc_db: TextIO,
                     filter: str = None,
+                    filter_cb: Optional[Callable[[str], bool]] = None,
                     extra_impo_args: List[str] = [],
                     import_only: bool = False,
                     verbose: bool = False,
                     emit_build_files: bool = True,
+                    emit_modules: bool = False,
                     main_module_for_build_files: str = None,
                     cross_checks: bool = False,
                     use_fakechecks: bool = False,
@@ -262,6 +278,8 @@ def transpile_files(cc_db: TextIO,
 
     if filter:  # skip commands not matching file filter
         cc_db = [cmd for cmd in cc_db if filter in cmd['file']]
+    if filter_cb:
+        cc_db = [cmd for cmd in cc_db if filter_cb(cmd['file'])]
 
     if not on_mac():
         ensure_code_compiled_with_clang(cc_db)
@@ -280,7 +298,7 @@ def transpile_files(cc_db: TextIO,
         die(emsg, errno.ENOENT)
 
     impo_args = ['--translate-entry']
-    if emit_build_files:
+    if emit_build_files or emit_modules:
         impo_args.append('--emit-module')
     if cross_checks:
         impo_args.append('--cross-checks')

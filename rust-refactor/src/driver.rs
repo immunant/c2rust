@@ -15,14 +15,18 @@ use rustc_metadata::cstore::CStore;
 use rustc_resolve::MakeGlobMap;
 use rustc_codegen_utils::link;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
-use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind};
+use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind, Block, Arg};
+use syntax::ast::DUMMY_NODE_ID;
 use syntax::codemap::CodeMap;
 use syntax::codemap::{FileLoader, RealFileLoader};
+use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::{self, PResult};
+use syntax::parse::token::Token;
 use syntax::parse::parser::Parser;
 use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
 use syntax_pos::FileName;
+use syntax_pos::Span;
 use arena::SyncDroplessArena;
 
 use ast_manip::remove_paren;
@@ -428,6 +432,30 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
     }
 }
 
+pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
+    let mut p = make_parser(sess, "<block>", src);
+    match p.parse_block() {
+        Ok(block) => remove_paren(block),
+        Err(db) => emit_and_panic(db, "block"),
+    }
+}
+
+fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Arg> {
+    // `parse_arg` is private, so we make do with `parse_pat` + `parse_ty`.
+    let pat = p.parse_pat()?;
+    p.expect(&Token::Colon)?;
+    let ty = p.parse_ty()?;
+    Ok(Arg { pat, ty, id: DUMMY_NODE_ID })
+}
+
+pub fn parse_arg(sess: &Session, src: &str) -> Arg {
+    let mut p = make_parser(sess, "<arg>", src);
+    match parse_arg_inner(&mut p) {
+        Ok(arg) => remove_paren(arg),
+        Err(db) => emit_and_panic(db, "arg"),
+    }
+}
+
 
 pub fn run_parser<F, R>(sess: &Session, src: &str, f: F) -> R
         where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
@@ -469,4 +497,13 @@ pub fn try_run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> Op
             None
         },
     }
+}
+
+
+/// Create a span whose text is `s`.  Note this is somewhat expensive, as it adds a new dummy file
+/// to the `CodeMap` on every call.
+pub fn make_span_for_text(cm: &CodeMap, s: &str) -> Span {
+    let fm = cm.new_filemap(FileName::Custom("<text>".to_string()), s.to_string());
+    fm.next_line(fm.start_pos);
+    Span::new(fm.start_pos, fm.end_pos, SyntaxContext::empty())
 }

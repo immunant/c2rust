@@ -78,7 +78,17 @@ You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one
 * `testdict` all cross-checks match
 * `testapi` all cross-checks match (345 million)
 * `runtest` all cross-checks match
-* `testlimits` all cross-checks match, but requires `-fno-builtin` as a
-  compiler argument
-
+* `testlimits` all cross-checks match, but requires `-fno-builtin` as a compiler argument
+* `testSAX` works
+* `testHTML` works
+* `testRegexp` works
+* `testModule` requires `testdso.so`, doesn't work yet
+* `testAutomata` works
+* `testSchemas` works on all files from `test/schemas`
+* `testRelax` works on all files from `test/relaxng`
+* `testURI` works
+* `testC14N` works
+* `testXPath` works on files under `test/XPath/expr` and `test/xmlid`
+* `testThreads` deadlocks, still investigating
+* `xmlllint` does not compile
 

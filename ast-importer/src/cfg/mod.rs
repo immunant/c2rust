@@ -777,6 +777,14 @@ impl DeclStmtInfo {
             decl_and_assign: Some(decl_and_assign),
         }
     }
+
+    pub fn empty() -> Self {
+        DeclStmtInfo {
+            decl: Some(Vec::new()),
+            assign: Some(Vec::new()),
+            decl_and_assign: Some(Vec::new()),
+        }
+    }
 }
 
 impl DeclStmtStore {
