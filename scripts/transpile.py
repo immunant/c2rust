@@ -9,7 +9,7 @@ import errno
 import shutil
 import logging
 import argparse
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Optional, Callable
 from typing.io import TextIO
 
 import mako.template
@@ -248,10 +248,12 @@ def check_main_module(main_module: str, cc_db: TextIO):
 
 def transpile_files(cc_db: TextIO,
                     filter: str = None,
+                    filter_cb: Optional[Callable[[str], bool]] = None,
                     extra_impo_args: List[str] = [],
                     import_only: bool = False,
                     verbose: bool = False,
                     emit_build_files: bool = True,
+                    emit_modules: bool = False,
                     main_module_for_build_files: str = None,
                     cross_checks: bool = False,
                     use_fakechecks: bool = False,
@@ -273,6 +275,8 @@ def transpile_files(cc_db: TextIO,
 
     if filter:  # skip commands not matching file filter
         cc_db = [cmd for cmd in cc_db if filter in cmd['file']]
+    if filter_cb:
+        cc_db = [cmd for cmd in cc_db if filter_cb(cmd['file'])]
 
     if not on_mac():
         ensure_code_compiled_with_clang(cc_db)
@@ -291,7 +295,7 @@ def transpile_files(cc_db: TextIO,
         die(emsg, errno.ENOENT)
 
     impo_args = ['--translate-entry']
-    if emit_build_files:
+    if emit_build_files or emit_modules:
         impo_args.append('--emit-module')
     if cross_checks:
         impo_args.append('--cross-checks')
