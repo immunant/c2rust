@@ -139,7 +139,7 @@ fn remove_injected_std(mut krate: Crate) -> Crate {
         .filter(|i| {
             let injected = match i.node {
                 ItemKind::ExternCrate(_) => remove_names.contains(&i.ident.name),
-                ItemKind::Use(_) => i.ident.name == "", // prelude import
+                ItemKind::Use(_) => attr::contains_name(&i.attrs, "prelude_import"),
                 _ => false,
             };
             !injected
