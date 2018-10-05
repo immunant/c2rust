@@ -26,6 +26,7 @@ fn main() {
     process_ast("get_span", &out_dir.join("get_span_gen.inc.rs"));
     process_ast("get_node_id", &out_dir.join("get_node_id_gen.inc.rs"));
     process_ast("lr_expr", &out_dir.join("lr_expr_gen.inc.rs"));
+    process_ast("list_node_ids", &out_dir.join("list_node_ids_gen.inc.rs"));
 
     process_ast("rewrite_rewrite", &out_dir.join("rewrite_rewrite_gen.inc.rs"));
     process_ast("rewrite_recursive", &out_dir.join("rewrite_recursive_gen.inc.rs"));

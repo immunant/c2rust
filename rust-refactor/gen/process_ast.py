@@ -224,6 +224,9 @@ if __name__ == '__main__':
     elif mode == 'lr_expr':
         import lr_expr
         text = lr_expr.generate(decls)
+    elif mode == 'list_node_ids':
+        import list_node_ids
+        text = list_node_ids.generate(decls)
     elif mode == 'rewrite_rewrite':
         import rewrite
         text = rewrite.generate_rewrite_impls(decls)
