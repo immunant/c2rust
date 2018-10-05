@@ -481,7 +481,7 @@ impl SeqItem for Attribute {
         // enough that that could conceivably cause a problem somewhere.
         let printed = pprust::attr_to_string(new);
         let reparsed = driver::run_parser(rcx.session(), &printed, |p| {
-            p.parse_attribute(false)
+            p.parse_attribute(true)
         });
 
         if old_span.lo() != old_span.hi() {
