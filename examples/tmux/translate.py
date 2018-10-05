@@ -15,7 +15,7 @@ import re
 desc = 'transpile files in compiler_commands.json.'
 parser = argparse.ArgumentParser(description="Translates tmux into the repo/rust/src directory")
 parser.add_argument('-f', '--filter',
-                    default=None,
+                    default="",
                     help='Filters translated files')
 
 config = Config()
@@ -201,8 +201,7 @@ if __name__ == "__main__":
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
     with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json, filter=lambda f: args.filter is None or
-                                                  args.filter in f,
+        transpile_files(cc_json, filter=lambda f: args.filter in f,
                         emit_build_files=False, verbose=True,
                         extra_impo_args=importer_args, reorganize_definitions=True)
 

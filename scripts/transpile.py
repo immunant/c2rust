@@ -466,7 +466,7 @@ def main():
     args = parse_args()
     c.update_args(args)
     transpile_files(args.commands_json,
-                    args.filter,
+                    lambda f: args.filter in f,
                     args.extra_impo_args,
                     args.import_only,
                     args.verbose,

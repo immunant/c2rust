@@ -13,7 +13,7 @@ import os
 desc = 'transpile files in compiler_commands.json.'
 parser = argparse.ArgumentParser(description="Translates libxml2 into the repo/rust/src directory")
 parser.add_argument('-f', '--filter',
-                    default=None,
+                    default="",
                     help='Filters translated files')
 # parser.add_argument('-o', '--only',
 #                     default=False, action='store_true',
@@ -70,9 +70,7 @@ if __name__ == "__main__":
     test_sources = set("%s.c" % test for test in TESTS)
     with open(COMPILE_COMMANDS, 'r') as cc_json:
         transpile_files(cc_json,
-                        filter=lambda f: (args.filter is None or
-                                          args.filter in f) and
-                                         f not in test_sources,
+                        filter=lambda f: f not in test_sources and args.filter in f,
                         emit_build_files=False,
                         emit_modules=True,
                         cross_checks=args.cross_checks,
@@ -81,9 +79,7 @@ if __name__ == "__main__":
     # Build the tests separately as full crates
     with open(COMPILE_COMMANDS, 'r') as cc_json:
         transpile_files(cc_json,
-                        filter=lambda f: (args.filter is None or
-                                          args.filter in f) and
-                                         f in test_sources,
+                        filter=lambda f: f in test_sources and args.filter in f,
                         emit_build_files=False,
                         emit_modules=False,
                         cross_checks=args.cross_checks,
