@@ -358,9 +358,12 @@ struct AnonConst {
 #[match=eq] flag Name;
 #[match=eq] flag SyntaxContext;
 
-#[equiv_mode=ignore] flag Span;
-#[equiv_mode=ignore] flag NodeId;
-#[equiv_mode=ignore] flag AttrId;
+#[equiv_mode=ignore] #[rewrite=ignore]
+flag Span;
+#[equiv_mode=ignore] #[rewrite=ignore]
+flag NodeId;
+#[equiv_mode=ignore] #[rewrite=ignore]
+flag AttrId;
 
 flag usize;
 #[match=eq] flag bool;
