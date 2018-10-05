@@ -277,14 +277,18 @@ pub fn find_callers_command(st: &CommandState, cx: &driver::Ctxt, label: &str) {
 }
 
 
-pub fn rename_marks(st: &CommandState, old: Symbol, new: Symbol) {
+pub fn copy_marks(st: &CommandState, old: Symbol, new: Symbol) {
     let mut marks = st.marks_mut();
     let nodes = marks.iter().filter(|&&(_, label)| label == old)
         .map(|&(id, _)| id).collect::<Vec<_>>();
     for id in nodes {
-        marks.remove(&(id, old));
         marks.insert((id, new));
     }
+}
+
+pub fn delete_marks(st: &CommandState, old: Symbol) {
+    let mut marks = st.marks_mut();
+    marks.retain(|&(_, label)| label != old);
 }
 
 
@@ -357,11 +361,27 @@ pub fn register_commands(reg: &mut Registry) {
         }))
     });
 
+    reg.register("copy_marks", |args| {
+        let old = (&args[0]).into_symbol();
+        let new = (&args[1]).into_symbol();
+        Box::new(DriverCommand::new(Phase::Phase2, move |st, _cx| {
+            copy_marks(st, old, new);
+        }))
+    });
+
+    reg.register("delete_marks", |args| {
+        let old = (&args[0]).into_symbol();
+        Box::new(DriverCommand::new(Phase::Phase2, move |st, _cx| {
+            delete_marks(st, old);
+        }))
+    });
+
     reg.register("rename_marks", |args| {
         let old = (&args[0]).into_symbol();
         let new = (&args[1]).into_symbol();
         Box::new(DriverCommand::new(Phase::Phase2, move |st, _cx| {
-            rename_marks(st, old, new);
+            copy_marks(st, old, new);
+            delete_marks(st, old);
         }))
     });
 
