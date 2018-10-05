@@ -633,6 +633,12 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
                 .extern_crate_item("cross_check_derive", None))?;
             s.print_item(&mk().single_attr("macro_use")
                 .extern_crate_item("cross_check_runtime", None))?;
+            // When cross-checking, always use the system allocator
+            let sys_alloc_path = vec!["", "std", "alloc", "System"];
+            s.print_item(&mk().single_attr("global_allocator")
+                .static_item("C2RUST_ALLOC",
+                             mk().path_ty(sys_alloc_path.clone()),
+                             mk().path_expr(sys_alloc_path)))?;
         }
     }
     Ok(())

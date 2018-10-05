@@ -91,6 +91,9 @@ LIB_RS_TEMPLATE = """\
 
 #[macro_use] extern crate cross_check_derive;
 #[macro_use] extern crate cross_check_runtime;
+
+#[global_allocator]
+static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
 % endif
 
 extern crate libc;
