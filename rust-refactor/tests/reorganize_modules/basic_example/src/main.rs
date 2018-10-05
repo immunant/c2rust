@@ -34,6 +34,13 @@ pub mod test_h {
     }
 }
 
+
+#[cfg(not(source_header = "/usr/include/x86_64-linux-gnu/bits/types.h"))]
+pub mod types_h {
+    pub type __ssize_t = libc::c_long;
+    use super::libc;
+}
+
 use foo_h::foo_point;
 use test_h::test_point;
 

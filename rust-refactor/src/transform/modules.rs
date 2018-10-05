@@ -51,7 +51,7 @@ impl Transform for ReorganizeModules {
             }
         });
 
-        let krate = match_modules(krate, modules.clone(), &mut mod_names);
+        let krate = match_modules(krate, modules.clone(), &mut mod_names, cx.session());
 
         let krate = fold_nodes(krate, |pi: P<Item>| {
             // Remove the module, if it has the specific attribute
@@ -73,16 +73,16 @@ impl Transform for ReorganizeModules {
                 unpack!([i.node.clone()] ItemKind::Mod(m));
                 let mut m = m;
                 let mod_name = i.ident.into_string();
-                let modinfo = mod_names.get(&mod_name);
+                let modinfos = mod_names.get(&mod_name);
 
-                if modinfo.is_none() {
-                    return i;
+                if let Some(modinfo_vec) = modinfos {
+                    for modinfo in modinfo_vec {
+                        for item in &modinfo.items {
+                            m.items.push(item.clone());
+                        }
+                    }
                 }
 
-                let modinfo_items = &modinfo.unwrap().items;
-                for item in modinfo_items {
-                    m.items.push(item.clone());
-                }
 
                 Item {
                     node: ItemKind::Mod(m),
@@ -91,15 +91,19 @@ impl Transform for ReorganizeModules {
             }))
         });
 
-        // Change path segments of `old modules` to the to match the `new modules`.
-        // Ex:
-        // use foo_h::some_struct; -> use foo::some_struct;
+        let mut new_names = HashMap::new();
 
         // Iterate through mod_names and gather the `old module` identifier's,
         // use that as the key. Use the `new module` name as the value.
-        let new_names = mod_names.iter().map(|(new_mod, old_mod)| (old_mod.ident.into_string(), new_mod))
-            .collect::<HashMap<_, _>>();
+        for (new_mod_name, old_mods) in mod_names.iter() {
+            for old_mod in old_mods.iter() {
+                new_names.insert(old_mod.ident.into_string(), new_mod_name);
+            }
+        }
 
+        // Change path segments of `old modules` to the to match the `new modules`.
+        // Ex:
+        // use foo_h::some_struct; -> use foo::some_struct;
         let krate = fold_nodes(krate, |mut p: Path| {
             for segment in &mut p.segments {
                 let path_name = segment.ident.into_string();
@@ -134,18 +138,19 @@ pub fn find_index(module_items: Vec<P<Item>>) -> usize {
 
 // If a module already has an item, that is in the ModInfo item list,
 // delete that value from the ModInfo list. We do not want to reprint that value.
-pub fn clean_module_items(krate: Crate, mod_names: &mut HashMap<String, ModInfo>) -> Crate {
+pub fn clean_module_items(krate: Crate, mod_names: &mut HashMap<String, Vec<ModInfo>>) -> Crate {
     let mut k = krate;
-    for (_, module_to_move) in mod_names.into_iter() {
+    for (_, modules_to_move) in mod_names.into_iter() {
         k = fold_nodes(k, |pi: P<Item>| {
-            module_to_move.items.retain(|pitem| {
-                let item = pitem.clone().into_inner();
-                if item.node.ast_equiv(&pi.node) {
-                    return false;
-                }
-                true
-            });
-
+            for module in modules_to_move.iter_mut() {
+                module.items.retain(|pitem| {
+                    let item = pitem.clone().into_inner();
+                    if item.node.ast_equiv(&pi.node) {
+                        return false;
+                    }
+                    true
+                });
+            }
             SmallVector::one(pi)
         });
     }
@@ -156,18 +161,25 @@ pub fn clean_module_items(krate: Crate, mod_names: &mut HashMap<String, ModInfo>
 // We should match possible modules together:
 // test.rs should get the content of module test_h.
 // So the hashmap should be something like "Test" => ModInfo { ..., "test_h"}
-pub fn match_modules(krate: Crate, modules: Vec<ModInfo>, mod_names: &mut HashMap<String, ModInfo>) -> Crate {
+pub fn match_modules(krate: Crate, modules: Vec<ModInfo>, mod_names: &mut HashMap<String, Vec<ModInfo>>,
+                     sess: &Session) -> Crate {
     let krate = fold_nodes(krate, |pi: P<Item>| {
         match pi.node {
             ItemKind::Mod(_) => {
                 if !is_from_source_header(&pi.attrs) {
                     let mut mod_name = pi.ident.into_string();
+                    let mut temp_vec = Vec::new();
                     for module in &modules {
                         let mod_info_name = module.ident.into_string();
-                        if mod_info_name.contains(&mod_name) && !mod_name.is_empty() {
-                            mod_names.insert(mod_name.clone(), module.clone());
+                        if mod_name.is_empty() {
+                            mod_name = get_source_file(sess);
+                        }
+
+                        if mod_info_name.contains(&mod_name) {
+                            temp_vec.push(module.clone());
                         }
                     }
+                    mod_names.insert(mod_name.clone(), temp_vec.clone());
                 }
             },
             _ => {}
