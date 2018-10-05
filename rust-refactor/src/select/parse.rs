@@ -403,6 +403,13 @@ impl<'a> Stream<'a> {
                 SelectOp::Crate
             },
 
+            "item" => {
+                let mut inner = self.parens()?;
+                let path = inner.path()?;
+                inner.last()?;
+                SelectOp::Item(path)
+            },
+
             "child" => {
                 let mut inner = self.parens()?;
                 let filter = inner.filter()?;

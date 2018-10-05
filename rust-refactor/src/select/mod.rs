@@ -7,6 +7,7 @@
 
 use std::collections::HashSet;
 use regex::Regex;
+use rustc::hir::def_id::LocalDefId;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
@@ -15,6 +16,7 @@ use command::CommandState;
 use command::{Registry, DriverCommand};
 use driver::{self, Phase};
 use pick_node::NodeKind;
+use resolve;
 use util::IntoSymbol;
 
 pub use self::filter::ItemLikeKind;
@@ -41,6 +43,9 @@ pub enum SelectOp {
 
     /// `crate`: Select the crate root.
     Crate,
+
+    /// `item(p)`: Select the item with the path `p`.
+    Item(Path),
 
     /// `child(f)`: Replace the current selection with the set of all nodes that are direct
     /// children of selected nodes and that match filter `f`.  
@@ -142,6 +147,14 @@ pub fn run_select<S: IntoSymbol>(st: &CommandState,
                 sel.insert(CRATE_NODE_ID);
             },
 
+            SelectOp::Item(ref path) => {
+                let segs = path.segments.iter().map(|seg| seg.ident).collect::<Vec<_>>();
+                let def = resolve::resolve_absolute(cx.ty_ctxt(), &segs);
+                let ldid = LocalDefId::from_def_id(def.def_id());
+                let node_id = cx.hir_map().local_def_id_to_node_id(ldid);
+                sel.insert(node_id);
+            },
+
             SelectOp::ChildMatch(ref filt) => {
                 sel = visitor::matching_children(st, cx, &st.krate(), sel, filt);
             },
@@ -170,6 +183,16 @@ pub fn register_commands(reg: &mut Registry) {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             let ops = parse::parse(cx.session(), &ops_str);
             eprintln!("running select: {:?} -> {}", ops, label);
+            run_select(st, cx, &ops, label);
+        }))
+    });
+
+    reg.register("select_phase2", |args| {
+        let label = (&args[0]).into_symbol();
+        let ops_str = args[1].clone();
+        Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
+            let ops = parse::parse(cx.session(), &ops_str);
+            eprintln!("running select (phase2): {:?} -> {}", ops, label);
             run_select(st, cx, &ops, label);
         }))
     });
