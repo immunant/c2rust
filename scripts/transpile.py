@@ -465,18 +465,18 @@ def main():
 
     args = parse_args()
     c.update_args(args)
-    transpile_files(args.commands_json,
-                    lambda f: args.filter in f,
-                    args.extra_impo_args,
-                    args.import_only,
-                    args.verbose,
-                    args.emit_build_files,
-                    args.main,
-                    args.cross_checks,
-                    args.use_fakechecks,
-                    args.cross_check_config,
-                    args.reloop_cfgs,
-                    args.reorganize_definitions)
+    transpile_files(cc_db=args.commands_json,
+                    filter=lambda f: args.filter in f,
+                    extra_impo_args=args.extra_impo_args,
+                    import_only=args.import_only,
+                    verbose=args.verbose,
+                    emit_build_files=args.emit_build_files,
+                    main_module_for_build_files=args.main,
+                    cross_checks=args.cross_checks,
+                    use_fakechecks=args.use_fakechecks,
+                    cross_check_config=args.cross_check_config,
+                    reloop_cfgs=args.reloop_cfgs,
+                    reorganize_definitions=args.reorganize_definitions)
 
     logging.info("success")
 
