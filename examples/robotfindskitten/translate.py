@@ -27,6 +27,42 @@ REFACTORINGS = [
         mk_select('crate; child(static && name("S"));') + [';'] +
             mk_select('crate; desc(fn && !name("main"));', mark='user') + [';'] +
             ['static_to_local_ref'],
+
+        mk_select('crate; desc(foreign_mod);') +
+            [';', 'create_item', 'mod ncurses {}', 'after'],
+
+        mk_select('crate; desc(mod && name("ncurses"));') +
+            [';', 'create_item', r'''
+                macro_rules! printw {
+                    ($($args:tt)*) => {
+                        ::printw(b"%s\0" as *const u8 as *const libc::c_char,
+                                 ::std::ffi::CString::new(format!($($args)*))
+                                    .unwrap().as_ptr())
+                    };
+                }
+                ''', 'after'],
+
+        mk_select('item(printw);', mark='printw') + [';'] +
+
+            ['copy_marks', 'printw', 'fmt_arg', ';'] +
+            ['mark_arg_uses', '0', 'fmt_arg', ';'] +
+
+            mk_select('marked(fmt_arg); desc(expr && !match_expr(__e as __t));',
+                mark='fmt_str') + [';'] +
+
+            ['copy_marks', 'printw', 'calls', ';'] +
+            ['mark_callers', 'calls', ';'] +
+
+            ['print_marks', ';'] +
+
+            ['rename_marks', 'fmt_arg', 'target', ';'] +
+            ['convert_format_string', ';'] +
+            ['delete_marks', 'target', ';'] +
+
+            ['print_marks', ';'] +
+            ['rename_marks', 'calls', 'target', ';'] +
+            ['func_to_macro', 'printw', ';'] +
+            [],
 ]
 
 
