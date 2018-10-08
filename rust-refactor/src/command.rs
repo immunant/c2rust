@@ -143,8 +143,7 @@ impl RefactorState {
 
     fn load_crate_inner(&self) -> Crate {
         let bits = Phase1Bits::from_session_reparse(&self.session);
-        let krate = bits.into_crate();
-        span_fix::fix_spans(&self.session, krate)
+        bits.into_crate()
     }
 
     /// Load the crate from disk.  Transitions to `Loaded`, regardless of current mode.
@@ -249,6 +248,8 @@ impl RefactorState {
 
         let bits = Phase1Bits::from_session_and_crate(&self.session, krate);
         driver::run_compiler_from_phase1(bits, phase, |krate, cx| {
+            let krate = span_fix::fix_spans(&self.session, krate);
+
             if first_transform {
                 // Set `orig_krate` to the newly-expanded `krate`.
                 self.orig_krate = Some(krate.clone());
