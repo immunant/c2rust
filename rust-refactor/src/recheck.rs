@@ -213,3 +213,9 @@ pub fn prepare_recheck_with_info(info: &PrepareRecheckInfo, krate: Crate) -> Cra
              mark_info: &info.mark_info,
          })
 }
+
+pub fn resolve_crate_with_info(info: &PrepareRecheckInfo, krate: Crate) -> Crate {
+    krate.fold(&mut ResolveCrateFolder {
+             mark_info: &info.mark_info,
+         })
+}

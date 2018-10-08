@@ -173,6 +173,14 @@ impl RefactorState {
             let old = self.orig_krate.take().unwrap();
             let new = self.krate.take().unwrap();
             let node_id_map = mem::replace(&mut self.node_id_map, HashMap::new());
+            let recheck_info = self.recheck_info.take().unwrap();
+
+            // Resolve `$crate`/`{{root}}` in paths.  Printing and reparsing these paths doesn't
+            // work - `$crate` prints as `::std`, which reparses as `{{root}}::std`, which isn't
+            // the same length as the original, and rewriting gets confused.  Resolving these to
+            // absolute paths avoids this problem, and should only affects code inside macro
+            // expansions, which we are hopefully replacing with recycled text anyway.
+            let new = recheck::resolve_crate_with_info(&recheck_info, new);
 
             let rws = rewrite::rewrite(&self.session, &old, &new, node_id_map);
             if rws.len() == 0 {
@@ -186,9 +194,8 @@ impl RefactorState {
             }
         }
 
-        // We already cleared `krate`, `orig_krate`, and `node_id_map`.
+        // We already cleared most of the fields in the block above.
         self.mode = Mode::Unloaded;
-        self.recheck_info = None;
         self.marks = HashSet::new();
     }
 
