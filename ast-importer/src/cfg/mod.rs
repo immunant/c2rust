@@ -32,7 +32,7 @@ use std::hash::Hasher;
 use std::hash::Hash;
 use std::collections::BTreeSet;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use serde::ser::{Serialize, Serializer, SerializeStruct, SerializeStructVariant, SerializeTupleVariant};
 use serde_json;
@@ -107,7 +107,7 @@ impl StructureLabel<StmtOrDecl> {
     /// variants with either a declaration with initializer or only an initializer.
     fn place_decls(
         self,
-        lift_me: &HashSet<CDeclId>,
+        lift_me: &IndexSet<CDeclId>,
         store: &mut DeclStmtStore,
     ) -> StructureLabel<StmtOrComment> {
         match self {
@@ -158,7 +158,7 @@ impl Structure<StmtOrDecl> {
 
     /// Produce a new `Structure` from the existing one by replacing all `StmtOrDecl::Decl`
     /// variants with either a declaration with initializer or only an initializer.
-    fn place_decls(self, lift_me: &HashSet<CDeclId>, store: &mut DeclStmtStore) -> Structure<StmtOrComment> {
+    fn place_decls(self, lift_me: &IndexSet<CDeclId>, store: &mut DeclStmtStore) -> Structure<StmtOrComment> {
         match self {
             Structure::Simple { entries, body, terminator } => {
                 let mut body = body
@@ -351,7 +351,7 @@ impl GenTerminator<StructureLabel<StmtOrDecl>> {
     /// variants with either a declaration with initializer or only an initializer.
     fn place_decls(
         self,
-        lift_me: &HashSet<CDeclId>,
+        lift_me: &IndexSet<CDeclId>,
         store: &mut DeclStmtStore
     ) -> GenTerminator<StructureLabel<StmtOrComment>> {
         match self {
@@ -424,7 +424,7 @@ impl StmtOrDecl {
 
     /// Produce a `Stmt` by replacing `StmtOrDecl::Decl`  variants with either a declaration with
     /// initializer or only an initializer.
-    fn place_decls(self, lift_me: &HashSet<CDeclId>, store: &mut DeclStmtStore) -> Vec<StmtOrComment> {
+    fn place_decls(self, lift_me: &IndexSet<CDeclId>, store: &mut DeclStmtStore) -> Vec<StmtOrComment> {
         match self {
             StmtOrDecl::Stmt(s) => vec![StmtOrComment::Stmt(s)],
             StmtOrDecl::Comment(c) => vec![StmtOrComment::Comment(c)],

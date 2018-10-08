@@ -2,6 +2,7 @@
 //! simplifying the latter.
 
 use super::*;
+use indexmap::IndexSet;
 
 /// Convert the CFG into a sequence of structures
 pub fn reloop(
@@ -28,7 +29,7 @@ pub fn reloop(
     state.relooper(entries, blocks, &mut relooped_with_decls);
 
     // These are declarations we need to lift
-    let lift_me: HashSet<CDeclId> = state.lifted;
+    let lift_me = state.lifted;
 
     // These are the statements that emerge from these lifts
     let lifted_stmts: Vec<Stmt> = lift_me
@@ -56,7 +57,7 @@ struct RelooperState {
     scopes: Vec<HashSet<CDeclId>>,
 
     /// Declarations that will have to be lifted to the top of the output
-    lifted: HashSet<CDeclId>,
+    lifted: IndexSet<CDeclId>,
 
     /// Information about loops
     loop_info: Option<LoopInfo<Label>>,
@@ -73,7 +74,7 @@ impl RelooperState {
     ) -> Self {
         RelooperState {
             scopes: vec![HashSet::new()],
-            lifted: HashSet::new(),
+            lifted: IndexSet::new(),
             loop_info,
             multiple_info,
         }
