@@ -39,12 +39,12 @@ def create_compile_commands(dirname, output_c_name):
 
     return compile_commands_name
 
-def generate_c_source(output_c_name):
+def generate_c_source(dirname, output_c_name):
     """Generate a C source file using csmith."""
 
     with open(output_c_name, 'w') as output_c:
         logging.info("Generating C source file with csmith")
-        subprocess.run(CSMITH_CMD, stdout=output_c, check=True)
+        subprocess.run(CSMITH_CMD, cwd=dirname, stdout=output_c, check=True)
 
 def transpile_file(dirname, output_c_name):
     """Translate the given C file to Rust."""
@@ -75,16 +75,16 @@ def compile_c_file(output_c_name, output_c_exe_name):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL)
 
-def execute_c_driver(output_c_exe_name):
+def execute_driver(exe_name):
     """Execute the given executable and return its stdout output."""
 
-    logging.info("Executing csmith driver")
-    exec_c_result = subprocess.run(
-        output_c_exe_name,
+    logging.info("Executing: %s", exe_name)
+    exec_result = subprocess.run(
+        exe_name,
         capture_output=True,
         check=True,
         timeout=CSMITH_TIMEOUT)
-    expected_output = exec_c_result.stdout
+    expected_output = exec_result.stdout
     logging.info("Execution finished: %s", expected_output)
     return expected_output
 
@@ -101,15 +101,6 @@ def compile_rust_file(output_c_name, output_rs_name, output_rs_exec_name):
         copyfile(output_rs_name, 'output.rs')
         raise
 
-def execute_rust_driver(output_rs_exec_name):
-    """Given the filename of the Rust executable, execute it and record its stdout output."""
-
-    logging.info("Executing csmith rust driver")
-    exec_rs_result = subprocess.run(output_rs_exec_name, capture_output=True, check=True)
-    actual_output = exec_rs_result.stdout
-    logging.info("Execution finished: %s", actual_output)
-    return actual_output
-
 def main():
     """Generate a new csmith test case and compare its execution to the translated Rust version."""
     common.setup_logging()
@@ -125,14 +116,14 @@ def main():
         logging.info("Using temporary directory: %s", dirname)
 
         # Generate and run C version
-        generate_c_source(output_c_name)
+        generate_c_source(dirname, output_c_name)
         compile_c_file(output_c_name, output_c_exe_name)
-        expected_output = execute_c_driver(output_c_exe_name)
+        expected_output = execute_driver(output_c_exe_name)
 
         # Generate and run Rust version
         transpile_file(dirname, output_c_name)
         compile_rust_file(output_c_name, output_rs_name, output_rs_exec_name)
-        actual_output = execute_rust_driver(output_rs_exec_name)
+        actual_output = execute_driver(output_rs_exec_name)
 
         if expected_output == actual_output:
             logging.info("Match")
