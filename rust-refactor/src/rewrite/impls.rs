@@ -8,6 +8,7 @@ use rustc::session::Session;
 use syntax::ast::*;
 // use syntax::abi::Abi;
 use rustc_target::spec::abi::Abi;
+use syntax::attr;
 use syntax::codemap::{Span, Spanned, DUMMY_SP};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::PResult;
@@ -481,7 +482,19 @@ impl SeqItem for Attribute {
         // enough that that could conceivably cause a problem somewhere.
         let printed = pprust::attr_to_string(new);
         let reparsed = driver::run_parser(rcx.session(), &printed, |p| {
-            p.parse_attribute(true)
+            match p.token {
+                // `parse_attribute` doesn't handle inner or outer doc comments.
+                Token::DocComment(s) => {
+                    assert!(printed.ends_with('\n'));
+                    // Expand the `span` to include the trailing \n.  Otherwise multiple spliced
+                    // doc comments will run together into a single line.
+                    let span = p.span.with_hi(p.span.hi() + BytePos(1));
+                    let attr = attr::mk_sugared_doc_attr(attr::mk_attr_id(), s, span);
+                    p.bump();
+                    return Ok(attr);
+                },
+                _ => p.parse_attribute(true),
+            }
         });
 
         if old_span.lo() != old_span.hi() {
