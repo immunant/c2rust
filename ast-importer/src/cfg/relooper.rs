@@ -2,7 +2,6 @@
 //! simplifying the latter.
 
 use super::*;
-use indexmap::IndexSet;
 
 /// Convert the CFG into a sequence of structures
 pub fn reloop(
@@ -54,7 +53,7 @@ pub fn reloop(
 /// declarations were supposed to be in scope before they were declared.
 struct RelooperState {
     /// scopes of declarations seen so far
-    scopes: Vec<HashSet<CDeclId>>,
+    scopes: Vec<IndexSet<CDeclId>>,
 
     /// Declarations that will have to be lifted to the top of the output
     lifted: IndexSet<CDeclId>,
@@ -73,7 +72,7 @@ impl RelooperState {
         multiple_info: Option<MultipleInfo<Label>>,
     ) -> Self {
         RelooperState {
-            scopes: vec![HashSet::new()],
+            scopes: vec![IndexSet::new()],
             lifted: IndexSet::new(),
             loop_info,
             multiple_info,
@@ -81,7 +80,7 @@ impl RelooperState {
     }
 
     pub fn open_scope(&mut self) {
-        self.scopes.push(HashSet::new());
+        self.scopes.push(IndexSet::new());
     }
 
     pub fn close_scope(&mut self) {
@@ -114,13 +113,13 @@ impl RelooperState {
     /// TODO: perhaps manually perform TCO?
     fn relooper(
         &mut self,
-        entries: HashSet<Label>, // current entry points into the CFG
-        mut blocks: HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>, // the blocks in the sub-CFG considered
+        entries: IndexSet<Label>, // current entry points into the CFG
+        mut blocks: IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>, // the blocks in the sub-CFG considered
         result: &mut Vec<Structure<StmtOrDecl>>, // the generated structures are appended to this
     ) {
         // Find nodes outside the graph pointed to from nodes inside the graph. Note that `ExitTo`
         // is not considered here - only `GoTo`.
-        fn out_edges<T>(blocks: &HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, T>>) -> HashSet<Label> {
+        fn out_edges<T>(blocks: &IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, T>>) -> IndexSet<Label> {
             blocks
                 .iter()
                 .flat_map(|(_, bb)| bb.successors())
@@ -129,30 +128,30 @@ impl RelooperState {
         }
 
         // Transforms `{1: {'a', 'b'}, 2: {'b'}}` into `{'a': {1}, 'b': {1,2}}`.
-        fn flip_edges(map: HashMap<Label, HashSet<Label>>) -> HashMap<Label, HashSet<Label>> {
-            let mut flipped_map: HashMap<Label, HashSet<Label>> = HashMap::new();
+        fn flip_edges(map: IndexMap<Label, IndexSet<Label>>) -> IndexMap<Label, IndexSet<Label>> {
+            let mut flipped_map: IndexMap<Label, IndexSet<Label>> = IndexMap::new();
             for (lbl, vals) in map {
                 for val in vals {
-                    flipped_map.entry(val).or_insert(HashSet::new()).insert(lbl);
+                    flipped_map.entry(val).or_insert(IndexSet::new()).insert(lbl);
                 }
             }
             flipped_map
         }
 
-        type StructuredBlocks = HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>;
+        type StructuredBlocks = IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>;
 
         // Find all labels reachable via a `GoTo` from the current set of blocks
-        let reachable_labels: HashSet<Label> = blocks
+        let reachable_labels: IndexSet<Label> = blocks
             .iter()
             .flat_map(|(_, bb)| bb.successors())
             .collect();
 
         // Split the entry labels into those that some basic block may goto versus those that none can
         // goto.
-        let (some_branch_to, none_branch_to): (HashSet<Label>, HashSet<Label>) = entries
+        let (some_branch_to, none_branch_to): (IndexSet<Label>, IndexSet<Label>) = entries
             .iter()
             .cloned()
-            .partition(|entry| reachable_labels.contains(&entry));
+            .partition(|entry| reachable_labels.contains(entry));
 
 
         // --------------------------------------
@@ -204,10 +203,10 @@ impl RelooperState {
         // Skipping to blocks placed later
 
         // Split the entry labels into those that are in the current blocks, and those that aren't
-        let (present, absent): (HashSet<Label>, HashSet<Label>) = entries
+        let (present, absent): (IndexSet<Label>, IndexSet<Label>) = entries
             .iter()
             .cloned()
-            .partition(|entry| blocks.contains_key(&entry));
+            .partition(|entry| blocks.contains_key(entry));
 
         if !absent.is_empty() {
             if !present.is_empty() {
@@ -228,21 +227,21 @@ impl RelooperState {
 
 
         // DFS transitive closure
-        fn transitive_closure<V: Copy + Hash + Eq>(adjacency_list: &HashMap<V, HashSet<V>>) -> HashMap<V, HashSet<V>> {
-            let mut edges: HashSet<(V, V)> = HashSet::new();
+        fn transitive_closure<V: Copy + Hash + Eq>(adjacency_list: &IndexMap<V, IndexSet<V>>) -> IndexMap<V, IndexSet<V>> {
+            let mut edges: IndexSet<(V, V)> = IndexSet::new();
             let mut to_visit: Vec<(V, V)> = adjacency_list.keys().map(|v| (*v,*v)).collect();
 
             while let Some((s,v)) = to_visit.pop() {
-                for i in adjacency_list.get(&v).unwrap_or(&HashSet::new()) {
+                for i in adjacency_list.get(&v).unwrap_or(&IndexSet::new()) {
                     if edges.insert((s,*i)) {
                         to_visit.push((s, *i));
                     }
                 }
             }
 
-            let mut closure: HashMap<V, HashSet<V>> = HashMap::new();
+            let mut closure: IndexMap<V, IndexSet<V>> = IndexMap::new();
             for (f,t) in edges {
-                closure.entry(f).or_insert(HashSet::new()).insert(t);
+                closure.entry(f).or_insert(IndexSet::new()).insert(t);
             }
 
             closure
@@ -250,7 +249,7 @@ impl RelooperState {
 
         // This information is necessary for both the `Loop` and `Multiple` cases
         let (predecessor_map, strict_reachable_from) = {
-            let mut successor_map: HashMap<Label, HashSet<Label>> = blocks
+            let mut successor_map: IndexMap<Label, IndexSet<Label>> = blocks
                 .iter()
                 .map(|(lbl, bb)| (*lbl, bb.successors()))
                 .collect();
@@ -273,7 +272,7 @@ impl RelooperState {
 
                 for (entry, content) in arms {
                     let mut to_visit: Vec<Label> = vec![*entry];
-                    let mut visited: HashSet<Label> = HashSet::new();
+                    let mut visited: IndexSet<Label> = IndexSet::new();
 
                     while let Some(lbl) = to_visit.pop() {
                         // Stop at things you've already seen or the join block
@@ -304,7 +303,7 @@ impl RelooperState {
 
 
         if none_branch_to.is_empty() && !recognized_c_multiple {
-            let new_returns: HashSet<Label> = strict_reachable_from
+            let new_returns: IndexSet<Label> = strict_reachable_from
                 .iter()
                 .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl))
                 .flat_map(|(_, ref reachable)| reachable.iter())
@@ -325,7 +324,7 @@ impl RelooperState {
                 if let Some(loop_id) = loop_info.tightest_common_loop(must_be_in_loop) {
 
                     // Construct the target group of labels
-                    let mut desired_body: HashSet<Label> = loop_info.get_loop_contents(loop_id).clone();
+                    let mut desired_body: IndexSet<Label> = loop_info.get_loop_contents(loop_id).clone();
                     desired_body.retain(|l| !entries.contains(l));
                     desired_body.retain(|l| !new_returns.contains(l));
 
@@ -386,20 +385,20 @@ impl RelooperState {
         // Multiple
 
         // Like `strict_reachable_from`, but entries also reach themselves
-        let mut reachable_from: HashMap<Label, HashSet<Label>> = strict_reachable_from;
+        let mut reachable_from: IndexMap<Label, IndexSet<Label>> = strict_reachable_from;
         for entry in &entries {
-            reachable_from.entry(*entry).or_insert(HashSet::new()).insert(*entry);
+            reachable_from.entry(*entry).or_insert(IndexSet::new()).insert(*entry);
         }
 
         // Blocks that are reached by only one label
-        let singly_reached: HashMap<Label, HashSet<Label>> = flip_edges(reachable_from
+        let singly_reached: IndexMap<Label, IndexSet<Label>> = flip_edges(reachable_from
             .into_iter()
-            .map(|(lbl, reachable)| (lbl, &reachable & &entries))
+            .map(|(lbl, reachable)| (lbl, &reachable & &entries.clone()))
             .filter(|&(_, ref reachable)| reachable.len() == 1)
             .collect()
         );
 
-        let handled_entries: HashMap<Label, StructuredBlocks> = singly_reached
+        let handled_entries: IndexMap<Label, StructuredBlocks> = singly_reached
             .into_iter()
             .map(|(lbl, within)| {
                 let val = blocks
@@ -411,13 +410,13 @@ impl RelooperState {
             })
             .collect();
 
-        let unhandled_entries: HashSet<Label> = entries
+        let unhandled_entries: IndexSet<Label> = entries
             .iter()
-            .filter(|e| !handled_entries.contains_key(e))
+            .filter(|e| !handled_entries.contains_key(*e))
             .cloned()
             .collect();
 
-        let mut handled_blocks: StructuredBlocks = HashMap::new();
+        let mut handled_blocks: StructuredBlocks = IndexMap::new();
         for (_, map) in &handled_entries {
             for (k, v) in map {
                 handled_blocks.entry(*k).or_insert(v.clone());
@@ -430,12 +429,12 @@ impl RelooperState {
             .filter(|&(lbl, _)| !handled_blocks.contains_key(&lbl))
             .collect();
 
-        let follow_entries: HashSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
+        let follow_entries: IndexSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
 
         let mut all_handlers: IndexMap<Label, Vec<Structure<StmtOrDecl>>> = handled_entries
             .into_iter()
             .map(|(lbl, blocks)| {
-                let entries: HashSet<Label> = vec![lbl].into_iter().collect();
+                let entries = indexset![lbl];
 
                 let mut structs: Vec<Structure<StmtOrDecl>> = vec![];
                 self.open_scope();
@@ -446,7 +445,7 @@ impl RelooperState {
             })
             .collect();
 
-        let handler_keys: HashSet<Label> = all_handlers.keys().cloned().collect();
+        let handler_keys: IndexSet<Label> = all_handlers.keys().cloned().collect();
         let (then, branches) = if handler_keys == entries {
             let a_key = *all_handlers.keys().next().expect("no handlers found");
             let last_handler = all_handlers.remove(&a_key).expect("just got this key");
@@ -499,8 +498,8 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                 let terminator: GenTerminator<StructureLabel<Stmt>> = if let &Switch { ref expr, ref cases } = terminator {
 
                     // Here, we group patterns by the label they go to.
-                    let mut merged_goto: HashMap<Label, Vec<P<Pat>>> = HashMap::new();
-                    let mut merged_exit: HashMap<Label, Vec<P<Pat>>> = HashMap::new();
+                    let mut merged_goto: IndexMap<Label, Vec<P<Pat>>> = IndexMap::new();
+                    let mut merged_exit: IndexMap<Label, Vec<P<Pat>>> = IndexMap::new();
 
                     for &(ref pats, ref lbl) in cases {
                         match lbl {
@@ -541,7 +540,7 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                         let rewrite = |t: &StructureLabel<Stmt>| {
                             match t {
                                 &StructureLabel::GoTo(ref to) => {
-                                    let entries: HashSet<_> = vec![*to].into_iter().collect();
+                                    let entries: IndexSet<_> = vec![*to].into_iter().collect();
                                     let body: Vec<Stmt> = vec![];
                                     let terminator = Jump(StructureLabel::GoTo(*to));
                                     let first_structure = Structure::Simple { entries, body, terminator };

@@ -17,16 +17,17 @@
 //!
 
 use super::*;
+use indexmap::{IndexMap, IndexSet};
 
 
 /// Modifies the `body_blocks`, `follow_blocks`, and `follow_entries` to try to get all of the
 /// `desired_body` labels into the body. If it is not possible to do this, returns `false` (and the
 /// mutable references passed in cannot be used).
 pub fn match_loop_body(
-    mut desired_body: HashSet<Label>,
-    body_blocks: &mut HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
-    follow_blocks: &mut HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
-    follow_entries: &mut HashSet<Label>,
+    mut desired_body: IndexSet<Label>,
+    body_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
+    follow_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
+    follow_entries: &mut IndexSet<Label>,
 ) -> bool {
 
     // Keep moving `follow_entries` that are also in `desired_body` into the loop's `body_blocks`
@@ -62,10 +63,10 @@ pub fn match_loop_body(
 ///
 /// This always succeeds.
 pub fn heuristic_loop_body(
-    predecessor_map: &HashMap<Label, HashSet<Label>>,
-    body_blocks: &mut HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
-    follow_blocks: &mut HashMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
-    follow_entries: &mut HashSet<Label>,
+    predecessor_map: &IndexMap<Label, IndexSet<Label>>,
+    body_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
+    follow_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
+    follow_entries: &mut IndexSet<Label>,
 ) -> () {
     if follow_entries.len() > 1 {
         for follow_entry in follow_entries.clone().iter() {
@@ -115,15 +116,15 @@ impl LoopId {
 #[derive(Clone,Debug)]
 pub struct LoopInfo<Lbl: Hash + Eq> {
     /// Given a node, find the tightest enclosing loop
-    node_loops: HashMap<Lbl, LoopId>,
+    node_loops: IndexMap<Lbl, LoopId>,
 
     /// Given a loop, find all the nodes in it, along with the next tighest loop around it.
-    loops: HashMap<LoopId, (HashSet<Lbl>, Option<LoopId>)>,
+    loops: IndexMap<LoopId, (IndexSet<Lbl>, Option<LoopId>)>,
 }
 
 impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
     pub fn new() -> Self {
-        LoopInfo { node_loops: HashMap::new(), loops: HashMap::new() }
+        LoopInfo { node_loops: IndexMap::new(), loops: IndexMap::new() }
     }
 
     /// Find the smallest possible loop that contains all of the items
@@ -147,7 +148,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
     }
 
     /// Filter out any nodes which need to be pruned from the entire CFG due to being unreachable.
-    pub fn filter_unreachable(&mut self, reachable: &HashSet<Lbl>) -> () {
+    pub fn filter_unreachable(&mut self, reachable: &IndexSet<Lbl>) -> () {
         self.node_loops.retain(|lbl, _| reachable.contains(lbl));
         for (_, &mut (ref mut set, _)) in self.loops.iter_mut() {
             set.retain(|lbl| reachable.contains(lbl));
@@ -156,7 +157,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
 
     /// Rewrite nodes to take into account a node remapping. Note that the remapping is usually
     /// going to be very much _not_ injective - the whole point of remapping is to merge some nodes.
-    pub fn rewrite_blocks(&mut self, rewrites: &HashMap<Lbl, Lbl>) -> () {
+    pub fn rewrite_blocks(&mut self, rewrites: &IndexMap<Lbl, Lbl>) -> () {
         self.node_loops.retain(|lbl, _| rewrites.get(lbl).is_none());
         for (_, &mut (ref mut set, _)) in self.loops.iter_mut() {
             set.retain(|lbl| rewrites.get(lbl).is_none());
@@ -164,7 +165,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
     }
 
     /// Add in information about a new loop
-    pub fn add_loop(&mut self, id: LoopId, contents: HashSet<Lbl>, outer_id: Option<LoopId>) -> () {
+    pub fn add_loop(&mut self, id: LoopId, contents: IndexSet<Lbl>, outer_id: Option<LoopId>) -> () {
         for elem in &contents {
             if !self.node_loops.contains_key(elem) {
                 self.node_loops.insert(elem.clone(), id);
@@ -185,7 +186,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         loop_ids
     }
 
-    pub fn get_loop_contents<'a>(&'a self, id: LoopId) -> &'a HashSet<Lbl> {
+    pub fn get_loop_contents<'a>(&'a self, id: LoopId) -> &'a IndexSet<Lbl> {
         &self.loops
             .get(&id)
             .expect(&format!("There is no loop with id {:?}", id))
