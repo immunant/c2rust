@@ -29,6 +29,52 @@ use indexmap::IndexMap;
 
 use cfg;
 
+/// As of rustc 1.29, rust is known to be missing some SIMD functions.
+/// See https://github.com/rust-lang-nursery/stdsimd/issues/579
+static MISSING_SIMD_FUNCTIONS: [&str; 36] = [
+    "_mm_and_si64",
+    "_mm_andnot_si64",
+    "_mm_cmpeq_pi16",
+    "_mm_cmpeq_pi32",
+    "_mm_cmpeq_pi8",
+    "_mm_cvtm64_si64",
+    "_mm_cvtph_ps",
+    "_mm_cvtsi32_si64",
+    "_mm_cvtsi64_m64",
+    "_mm_cvtsi64_si32",
+    "_mm_empty",
+    "_mm_free",
+    "_mm_loadu_si64",
+    "_mm_madd_pi16",
+    "_mm_malloc",
+    "_mm_mulhi_pi16",
+    "_mm_mulhrs_pi16",
+    "_mm_or_si64",
+    "_mm_packs_pu16",
+    "_mm_sll_pi16",
+    "_mm_sll_pi32",
+    "_mm_sll_si64",
+    "_mm_slli_pi16",
+    "_mm_slli_pi32",
+    "_mm_slli_si64",
+    "_mm_sra_pi16",
+    "_mm_sra_pi32",
+    "_mm_srai_pi16",
+    "_mm_srai_pi32",
+    "_mm_srl_pi16",
+    "_mm_srl_pi32",
+    "_mm_srl_si64",
+    "_mm_srli_pi16",
+    "_mm_srli_pi32",
+    "_mm_srli_si64",
+    "_mm_xor_si64",
+];
+
+static SIMD_X86_64_ONLY: [&str; 2] = [
+    "_mm_cvtsi128_si64",
+    "_mm_cvtsi128_si64x",
+];
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum DecayRef {
     Yes,
@@ -1206,55 +1252,9 @@ impl Translation {
             CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body, .. } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
-                // There are similarly names fns for most of these,
-                // ie _mm_madd_epi16 exists for __m128i, but _mm_madd_pi16 for __m64 MIA
-                // TODO: Turn these into global statics
-                let missing_fn_names = [
-                    "_mm_empty",
-                    "_mm_free",
-                    "_mm_malloc",
-                    "_mm_xor_si64",
-                    "_mm_or_si64",
-                    "_mm_andnot_si64",
-                    "_mm_cmpeq_pi8",
-                    "_mm_loadu_si64",
-                    "_mm_cvtph_ps",
-                    "_mm_packs_pu16",
-                    "_mm_cvtsi32_si64",
-                    "_mm_cvtsi64_si32",
-                    "_mm_cvtsi64_m64",
-                    "_mm_cvtm64_si64",
-                    "_mm_madd_pi16",
-                    "_mm_mulhrs_pi16",
-                    "_mm_sll_pi16",
-                    "_mm_slli_pi16",
-                    "_mm_sll_pi32",
-                    "_mm_slli_pi32",
-                    "_mm_sll_si64",
-                    "_mm_slli_si64",
-                    "_mm_sra_pi16",
-                    "_mm_srai_pi16",
-                    "_mm_sra_pi32",
-                    "_mm_srai_pi32",
-                    "_mm_srli_pi16",
-                    "_mm_srl_pi32",
-                    "_mm_srli_pi32",
-                    "_mm_srl_si64",
-                    "_mm_srli_si64",
-                    "_mm_and_si64",
-                    "_mm_cmpeq_pi16",
-                    "_mm_cmpeq_pi32",
-                    "_mm_srl_pi16",
-                    "_mm_mulhi_pi16",
-                ];
-
-                let x86_64_only = [
-                    "_mm_cvtsi128_si64",
-                ];
-
-                // REVIEW: Does the linear lookup matter much? Should use hashset?
-                // REVIEW: A subset are x86_64 and possibly x86 only
-                if new_name.starts_with("_mm_") && !missing_fn_names.contains(&new_name.as_str()) {
+                // REVIEW: This will do a linear lookup against all SIMD fns. Could use a lazy static hashset
+                // REVIEW: Should this instead throw an error message?
+                if new_name.starts_with("_mm_") && !MISSING_SIMD_FUNCTIONS.contains(&new_name.as_str()) {
                     let mut item_store = self.item_store.borrow_mut();
 
                     let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]);
@@ -1264,9 +1264,13 @@ impl Translation {
                     // bits that are behind a feature gate.
                     self.features.borrow_mut().insert("stdsimd");
 
-                    item_store.uses
-                        .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
-                        .insert_with_attr(new_name, x86_attr);
+                    // REVIEW: Also a linear lookup
+                    if !SIMD_X86_64_ONLY.contains(&new_name.as_str()) {
+                        item_store.uses
+                            .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
+                            .insert_with_attr(new_name, x86_attr);
+                    }
+
                     item_store.uses
                         .get_mut(vec!["std".into(), "arch".into(), "x86_64".into()])
                         .insert_with_attr(new_name, x86_64_attr);
