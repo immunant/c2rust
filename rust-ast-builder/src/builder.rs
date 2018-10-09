@@ -486,6 +486,15 @@ impl Builder {
         path.make(&self)
     }
 
+    pub fn abs_path<Pa>(self, path: Pa) -> Path
+        where Pa: Make<Path> {
+        let mut p = path.make(&self);
+        if !p.segments.get(0).map_or(false, |s| s.ident.name == keywords::CrateRoot.name()) {
+            p.segments.insert(0, keywords::CrateRoot.ident().make(&self));
+        }
+        p
+    }
+
     pub fn anon_const<E>(self, expr: E) -> AnonConst
         where E: Make<P<Expr>> {
         AnonConst {

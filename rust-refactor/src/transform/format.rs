@@ -154,7 +154,8 @@ impl CastType {
                 // CStr::from_ptr(e as *const i8).to_str().unwrap()
                 let e = mk().cast_expr(e, mk().ptr_ty(mk().ident_ty("i8")));
                 let cs = mk().call_expr(
-                    mk().path_expr(vec!["CStr", "from_ptr"]), vec![e]);
+                    mk().path_expr(mk().abs_path(vec!["std", "ffi", "CStr", "from_ptr"])),
+                    vec![e]);
                 let s = mk().method_call_expr(cs, "to_str", Vec::<P<Expr>>::new());
                 mk().method_call_expr(s, "unwrap", Vec::<P<Expr>>::new())
             },
