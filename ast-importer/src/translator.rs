@@ -1306,39 +1306,12 @@ impl Translation {
             CDeclKind::Typedef { ref typ, .. } => {
                 let new_name = &self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
-                match new_name.as_str() {
-                    // Supported SIMD typedefs:
-                    "__m128i" | "__m128" | "__m128d" | "__m64" | "__m256" | "__m256d" | "__m256i" => {
-                        // __m64 is still behind a feature gate
-                        if new_name == "__m64" {
-                            self.features.borrow_mut().insert("stdsimd");
-                        }
-
-                        let mut item_store = self.item_store.borrow_mut();
-
-                        let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]);
-                        let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]);
-
-                        item_store.uses
-                            .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
-                            .insert_with_attr(new_name, x86_attr);
-                        item_store.uses
-                            .get_mut(vec!["std".into(), "arch".into(), "x86_64".into()])
-                            .insert_with_attr(new_name, x86_64_attr);
-
-                        Ok(ConvertedDecl::NoItem)
-                    },
-                    // REVIEW: Can we convert these __v* types?
-                    "__v1di" | "__v2si" | "__v4hi" | "__v8qi" | "__v4si" | "__v4sf" | "__v4su" |
-                    "__v2df" | "__v2di" | "__v8hi" | "__v16qi" | "__v2du" | "__v8hu" | "__v16qu" |
-                    "__v16qs" | "__v8su" => {
-                        Ok(ConvertedDecl::NoItem)
-                    },
-                    _ => {
-                        let ty = self.convert_type(typ.ctype)?;
-                        Ok(ConvertedDecl::Item(mk().span(s).pub_().type_item(new_name, ty)))
-                    }
+                if self.import_simd_typedefs(new_name) {
+                    return Ok(ConvertedDecl::NoItem);
                 }
+
+                let ty = self.convert_type(typ.ctype)?;
+                Ok(ConvertedDecl::Item(mk().span(s).pub_().type_item(new_name, ty)))
             },
 
             // Extern variable without intializer (definition elsewhere)
@@ -1441,6 +1414,38 @@ impl Translation {
             CDeclKind::Variable { .. } => Err(format!("This should be handled in 'convert_decl_stmt'")),
 
             //ref k => Err(format!("Translation not implemented for {:?}", k)),
+        }
+    }
+
+    fn import_simd_typedefs(&self, name: &str) -> bool {
+        match name {
+            // Public API SIMD typedefs:
+            "__m128i" | "__m128" | "__m128d" | "__m64" | "__m256" | "__m256d" | "__m256i" => {
+                // __m64 is still behind a feature gate
+                if name == "__m64" {
+                    self.features.borrow_mut().insert("stdsimd");
+                }
+
+                let mut item_store = self.item_store.borrow_mut();
+
+                let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]);
+                let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]);
+
+                item_store.uses
+                    .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
+                    .insert_with_attr(name, x86_attr);
+                item_store.uses
+                    .get_mut(vec!["std".into(), "arch".into(), "x86_64".into()])
+                    .insert_with_attr(name, x86_64_attr);
+
+                true
+            },
+            // These seem to be C internal types only, and shouldn't need any explicit support.
+            // See https://internals.rust-lang.org/t/getting-explicit-simd-on-stable-rust/4380/115
+            "__v1di" | "__v2si" | "__v4hi" | "__v8qi" | "__v4si" | "__v4sf" | "__v4su" |
+            "__v2df" | "__v2di" | "__v8hi" | "__v16qi" | "__v2du" | "__v8hu" | "__v16qu" |
+            "__v16qs" | "__v8su" => true,
+            _ => false,
         }
     }
 
