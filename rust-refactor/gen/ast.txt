@@ -19,7 +19,12 @@
 // attributes and their effects.
 
 
-struct Crate { module, attrs, span }
+struct Crate {
+    module,
+    #[seq_rewrite_outer_span='calc_outer_span(&self.attrs, self.span.shrink_to_lo())']
+    attrs,
+    span,
+}
 struct Mod { inner, items }
 
 
@@ -309,7 +314,7 @@ flag AsmDialect;
 flag RangeLimits;
 
 
-#[no_node_id] #[rewrite_seq_item=custom]
+#[no_node_id] #[rewrite_splice] #[rewrite_seq_item=custom]
 struct Attribute { id, style, path, tokens, is_sugared_doc, span }
 flag AttrStyle;
 

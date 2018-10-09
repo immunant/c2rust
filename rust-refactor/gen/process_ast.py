@@ -12,7 +12,8 @@ TOKEN_RE = re.compile(r'''
             flag
         ) |
         (?P<symbol> [{}()\[\],;#=] ) |
-        (?P<ident> [a-zA-Z_0-9]* )
+        (?P<ident> [a-zA-Z_0-9]+ ) |
+        (?P<litstr> '[^']*' )
         ''', re.VERBOSE)
 
 SPACE_RE = re.compile(r'(\s|//[^\n]*)*')
@@ -20,6 +21,7 @@ SPACE_RE = re.compile(r'(\s|//[^\n]*)*')
 Keyword = namedtuple('Keyword', ('text'))
 Symbol = namedtuple('Symbol', ('text'))
 Ident = namedtuple('Ident', ('text'))
+LitStr = namedtuple('LitStr', ('text'))
 EOF = namedtuple('EOF', ())
 
 def tokenize(s):
@@ -41,6 +43,8 @@ def tokenize(s):
             tokens.append(Symbol(m.group('symbol')))
         elif m.group('ident'):
             tokens.append(Ident(m.group('ident')))
+        elif m.group('litstr'):
+            tokens.append(LitStr(m.group('litstr').strip("'")))
         else:
             assert False
         i = m.end()
@@ -127,7 +131,7 @@ class Parser:
             key = self.take_ident()
             if self.peek_symbol() == '=':
                 self.take()
-                value = self.take_ident()
+                value = self.take_type((Ident, LitStr))
             else:
                 value = ''
             self.take_symbol_from(']')

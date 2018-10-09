@@ -32,6 +32,25 @@ Attributes:
   success, in both `rewrite_recycled` and `rewrite_fresh`.
 
 
+- `#[seq_rewrite]`: On a field, use sequence rewriting to handle changes in
+  this field.  This only makes sense on fields of type `&[T]` (or equivalent),
+  where `T` has a complete `SeqItem` impl (see `#[rewrite_seq_item]`).
+
+- `#[seq_rewrite_outer_span=expr]`: On a field, when invoking sequence
+  rewriting for this field, use the provided expression to compute the "outer
+  span" for the sequence.  The outer span should cover the entire sequence; if
+  the sequence is empty, it should be an empty span at the location where new
+  items should be inserted.  The outer span is used to handle insertions at the
+  beginning or end of a sequence and to handle insertion into a
+  previously-empty sequence.
+
+  In `expr`, `self.foo` is replaced with the local variable containing the
+  value of field `foo`, and otherwise the expression is pasted into the output
+  code unchanged.
+
+  Implies `#[seq_rewrite]`.
+
+
 - `#[prec_contains_expr]`: When entering a child of this node type, by default
   set expr precedence to `RESET` (don't parenthesize).  The expr precedence can
   be overridden using other `prec` attributes on specific fields.
@@ -59,6 +78,7 @@ Attributes:
 '''
 
 from datetime import datetime
+import re
 from textwrap import indent, dedent
 
 from ast import *
@@ -105,6 +125,15 @@ def field_prec_expr(f, first):
     ctor = f.attrs.get('prec_special', 'Normal')
     return 'ExprPrec::%s(%s)' % (ctor, prec_val)
 
+SELF_FIELD_RE = re.compile(r'\bself.([a-zA-Z0-9_]+)\b')
+def rewrite_field_expr(expr, fmt):
+    def repl(m):
+        # If `self.foo` has type `T`, then the local variable `foo1` has type
+        # `&T`.  We add a deref to correct for this.
+        var_name = fmt % m.group(1)
+        return '(*%s)' % var_name
+    return SELF_FIELD_RE.sub(repl, expr)
+
 @linewise
 def do_recycled_match(se, target1, target2):
     contains_expr = 'prec_contains_expr' in se.attrs
@@ -116,6 +145,27 @@ def do_recycled_match(se, target1, target2):
         for f in v.fields:
             if f.attrs.get('rewrite') == 'ignore':
                 continue
+
+            seq_rewrite_mode = f.attrs.get('seq_rewrite')
+            if seq_rewrite_mode is None and 'seq_rewrite_outer_span' in f.attrs:
+                seq_rewrite_mode = ''   # enabled, default mode
+
+            if seq_rewrite_mode is None:
+                mk_rewrite = lambda old, new: \
+                        'Rewrite::rewrite_recycled({old}, {new}, rcx.borrow())'.format(
+                                old=old, new=new)
+            else:
+                outer_span_expr = f.attrs.get('seq_rewrite_outer_span')
+                if outer_span_expr is not None:
+                    # Replace `self.foo` with `foo2`, since we want the *old*
+                    # outer span.
+                    outer_span_expr = rewrite_field_expr(outer_span_expr, '%s2')
+                else:
+                    outer_span_expr = 'DUMMY_SP'
+                mk_rewrite = lambda old, new: \
+                        'rewrite_seq({old}, {new}, {outer}, rcx.borrow())'.format(
+                                old=old, new=new, outer=outer_span_expr)
+
             yield '    ({'
 
             if 'prec_first' in f.attrs:
@@ -124,16 +174,16 @@ def do_recycled_match(se, target1, target2):
                 yield '      let fail = Rewrite::rewrite_recycled(&%s1[0], &%s2[0], ' \
                         'rcx.borrow());' % (f.name, f.name)
                 yield '      rcx.replace_expr_prec(%s);' % field_prec_expr(f, False)
-                yield '      let fail = fail || Rewrite::rewrite_recycled(&%s1[1..], &%s2[1..], ' \
-                        'rcx.borrow());' % (f.name, f.name)
+                rewrite_expr = mk_rewrite('&%s1[1..]' % f.name, '&%s2[1..]' % f.name)
+                yield '      let fail = fail || %s;' % rewrite_expr
                 yield '      rcx.replace_expr_prec(old);'
                 yield '      fail'
             else:
                 if contains_expr:
                     yield '      let old = rcx.replace_expr_prec(%s);' % \
                             field_prec_expr(f, False)
-                yield '      let fail = Rewrite::rewrite_recycled(%s1, %s2, rcx.borrow());' % \
-                        (f.name, f.name)
+                rewrite_expr = mk_rewrite('%s1' % f.name, '%s2' % f.name)
+                yield '      let fail = %s;' % rewrite_expr
                 if contains_expr:
                     yield '      rcx.replace_expr_prec(old);'
                 yield '      fail'
