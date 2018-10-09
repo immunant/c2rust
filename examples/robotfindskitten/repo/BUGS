@@ -1,0 +1,42 @@
+Current bugs:
+-------------
+When you hit the escape key, it takes about a second to register. Why?
+
+	From the getch man page (Shazdeh <zen@emgnulation.org>):
+-- 
+       Use of the escape key by a programmer for a single charac-
+       ter function is discouraged, as it will cause a	delay  of
+       up to one second while the keypad code looks for a follow-
+       ing function-key sequence.
+--
+	Also, you can now use Q to exit the simulation.
+
+ncurses doesn't cooperate with characters less than '!'. It displays
+them as, eg ^A for what should by rights be a little smiley
+face. draw.h uses the A_ALTCHARSET flag. It doesn't work.
+
+Occasionally, there are redraw errors.  Any ncurses gurus out there who can
+clear this up?
+
+	There's a chance that when I fixed the problem with noecho, it
+	fixed this as well, but it hasn't been tested.
+			- Shazdeh <zen@emgnulation.org>
+
+Possible Improvements:
+----------------------
+The code generally needs to be cleaned up.
+
+Although the code should compile on anything that has ncurses, the
+special character set used probably won't be handled correctly on
+anything but Linux/Intel. Have an option to stick to standard ASCII.
+[currently robotfindskitten is only standard ASCII.]
+
+
+I think the list of messages should be in a text file which is read in
+at runtime, so that people can easily change the messages.
+
+The screen array is bigger than it needs to be. It probably shouldn't
+be an array at all, actually, since at most 1/8 of the entries are
+full. It should be a hash or something.
+
+

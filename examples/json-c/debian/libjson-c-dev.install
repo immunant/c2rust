@@ -1,5 +1,0 @@
-#usr/lib/*/libjson-c.so
-json_object_iterator.h /usr/include/json-c/
-usr/include/json-c/*
-usr/lib/*/libjson-c.a
-usr/lib/*/pkgconfig/json-c.pc

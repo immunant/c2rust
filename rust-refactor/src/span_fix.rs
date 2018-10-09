@@ -10,7 +10,7 @@
 
 use rustc::session::Session;
 use syntax::ast::*;
-use syntax::codemap::{Span, DUMMY_SP, CodeMap};
+use syntax::codemap::{Span, CodeMap};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
@@ -88,8 +88,15 @@ impl<'a> Folder for FixFormat<'a> {
 
 
 /// Folder for fixing up spans of macro expansions.  When we enter a particular macro expansion, we
-/// set the span of the topmost node in the expansion to the span of the macro invocation.  Then we
-/// set all other spans inside that macro invocation to `DUMMY_SP`.
+/// set the span of the topmost node in the expansion to the span of the macro invocation.
+///
+/// Note that this span adjustment discards the `SyntaxContext` for the topmost node in each macro
+/// expansion.  In general, discarding `SyntaxContext`s is a bad idea - resolution relies on them
+/// to interpret `$crate`, feature gate checking consults them to determine where unstable features
+/// are allowed, and there are likely others.  Here, we are hoping that the "important" spans are
+/// in some subtree of the macro expansion, not the very top-level node.  For `$crate`, this is
+/// certainly the case (a macro can't expand to a lone `Ident`), and in practice, feature gate /
+/// `#[allow_internal_unstable]` checks seem to work that way as well.
 struct FixMacros {
     in_macro: bool,
 }
@@ -151,16 +158,31 @@ impl Folder for FixMacros {
         SmallVector::one(s)
     }
 
+    fn fold_item(&mut self, mut i: P<Item>) -> SmallVector<P<Item>> {
+        let was_in_macro = self.in_macro;
+        self.in_macro = i.span.ctxt() != SyntaxContext::empty();
+
+        let old_span = i.span;
+        // Clear all macro spans in the node and its children.
+        i = fold::noop_fold_item(i, self).lone();
+
+        if !was_in_macro && self.in_macro {
+            // This is the topmost node in a macro expansion.  Set its span to the span of the
+            // macro invocation.
+
+            i = i.map(|i| Item {
+                span: invocation_span(old_span),
+                .. i
+            });
+        }
+
+        self.in_macro = was_in_macro;
+
+        SmallVector::one(i)
+    }
+
     // TODO: Eventually we should extend this to work on the remaining node types where macros can
     // appear (Pat, Ty, and the Item-likes).
-
-    fn new_span(&mut self, sp: Span) -> Span {
-        if sp.ctxt() != SyntaxContext::empty() {
-            DUMMY_SP
-        } else {
-            sp
-        }
-    }
 
     fn fold_mac(&mut self, mac: Mac) -> Mac {
         fold::noop_fold_mac(mac, self)
@@ -182,6 +204,17 @@ impl Folder for FixAttrs {
                 i
             };
         fold::noop_fold_item(i, self)
+    }
+
+    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVector<ForeignItem> {
+        let new_span = extended_span(fi.span, &fi.attrs);
+        let fi =
+            if new_span != fi.span {
+                ForeignItem { span: new_span, ..fi }
+            } else {
+                fi
+            };
+        fold::noop_fold_foreign_item(fi, self)
     }
 
     fn fold_mac(&mut self, mac: Mac) -> Mac {

@@ -12,6 +12,12 @@ const BUF_SIZE: usize = 4 * 1024 * 1024; // 4MB buffer
 const MAX_XCHECK_LEN: usize = 52;
 
 pub fn main() -> Result<(), std::io::Error> {
+    let tag_names = ["Unk", "Ent", "Exi", "Arg", "Ret"]
+        .into_iter()
+        .map(ToString::to_string)
+        .chain((5..256).map(|n| n.to_string()))
+        .collect::<Vec<_>>();
+
     let mut out = String::with_capacity(BUF_SIZE);
     for arg in env::args() {
         let file = File::open(arg)?;
@@ -29,14 +35,7 @@ pub fn main() -> Result<(), std::io::Error> {
                 out.clear();
             }
             let old_len = out.len();
-            let tag_name = match buf[0] {
-                0 => "Unk",
-                1 => "Ent",
-                2 => "Exi",
-                3 => "Arg",
-                4 => "Ret",
-                _ => panic!("Unknown cross-check tag: {}", buf[0])
-            };
+            let tag_name = &tag_names[buf[0] as usize];
             fmt::write(&mut out, format_args!("XCHECK({0}):{1:}/0x{1:08x}\n", tag_name, val))
                 .expect("Error formatting xcheck");
             assert!(out.len() <= old_len + MAX_XCHECK_LEN);

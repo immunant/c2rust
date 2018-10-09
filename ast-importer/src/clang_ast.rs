@@ -1,9 +1,20 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use serde_cbor::{Value, from_value};
 use serde_cbor::error;
 use std;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum LRValue {
+    LValue, RValue
+}
+
+impl LRValue {
+    pub fn is_lvalue(&self) -> bool { *self == LRValue::LValue }
+    pub fn is_rvalue(&self) -> bool { *self == LRValue::RValue }
+}
 
 #[derive(Debug,Clone)]
 pub struct AstNode {
@@ -12,7 +23,9 @@ pub struct AstNode {
     pub fileid: u64,
     pub line: u64,
     pub column: u64,
+    pub file_path: Option<PathBuf>,
     pub type_id: Option<u64>,
+    pub rvalue: LRValue,
     pub extras: Vec<Value>,
 }
 
@@ -80,7 +93,7 @@ pub fn process(items: Value) -> error::Result<AstContext> {
     let mut types: HashMap<u64, TypeNode> = HashMap::new();
     let mut comments: Vec<CommentNode> = vec![];
 
-    let (all_nodes, top_nodes, _filenames, raw_comments):
+    let (all_nodes, top_nodes, file_paths, raw_comments):
         (Vec<Vec<Value>>,
          Vec<u64>,
          Vec<String>,
@@ -104,15 +117,23 @@ pub fn process(items: Value) -> error::Result<AstContext> {
                     .collect::<Vec<Option<u64>>>();
 
             let type_id: Option<u64> = expect_opt_u64(&entry[6]).unwrap();
+            let fileid = entry[3].as_u64().unwrap();
+            let file_path = match file_paths[fileid as usize].as_str() {
+                "" => None,
+                "?" => None,
+                path => Some(Path::new(path).to_path_buf()),
+            };
 
             let node = AstNode {
                 tag: import_ast_tag(tag),
                 children,
-                fileid: entry[3].as_u64().unwrap(),
+                fileid,
                 line: entry[4].as_u64().unwrap(),
                 column: entry[5].as_u64().unwrap(),
                 type_id,
-                extras: entry[7..].to_vec(),
+                file_path,
+                rvalue: if entry[7].as_boolean().unwrap() { LRValue::RValue } else { LRValue::LValue },
+                extras: entry[8..].to_vec(),
             };
 
             asts.insert(entry_id, node);

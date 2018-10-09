@@ -2,7 +2,7 @@ use api::*;
 use ast_manip::lr_expr::*;
 use command::{CommandState, Registry};
 use driver::{self, Phase, parse_impl_items};
-use reflect::reflect_path;
+use reflect::reflect_def_path;
 use rustc::hir::def_id::DefId;
 use rustc::ty::TypeVariants;
 use std::collections::HashSet;
@@ -103,7 +103,7 @@ impl Transform for Ionize {
             match ty0.sty {
                 TypeVariants::TyAdt(ref adt, _) if targets.contains(&adt.did) => {
 
-                    let (_qself, mut path) = reflect_path(cx.ty_ctxt(), adt.did);
+                    let (_qself, mut path) = reflect_def_path(cx.ty_ctxt(), adt.did);
                     path.segments.push(mk().path_segment(field));
                     let mut bnd1 = bnd.clone();
                     bnd1.add_expr("__con", mk().path_expr(path));

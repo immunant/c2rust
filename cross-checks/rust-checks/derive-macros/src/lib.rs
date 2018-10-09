@@ -41,6 +41,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         }).unwrap_or_else(|| {
             // Default implementation
             quote! {
+                #[allow(unused_imports)]
                 use cross_check_runtime::hash::CrossCheckHash;
                 h.write_u64(#f.cross_check_hash_depth::<#ahasher, #shasher>(_depth - 1));
             }
@@ -92,7 +93,8 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         fn cross_check_hash_depth<__XCHA, __XCHS>(&self, _depth: usize) -> u64
                 where __XCHA: ::cross_check_runtime::hash::CrossCheckHasher,
                       __XCHS: ::cross_check_runtime::hash::CrossCheckHasher {
-            #[allow(unused_imports)] use std::hash::Hasher;
+            #[allow(unused_imports)]
+            use std::hash::Hasher;
             #hash_code
         }
     })

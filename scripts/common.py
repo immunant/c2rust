@@ -95,6 +95,9 @@ add_subdirectory(ast-exporter)
     # output of `rustup run $CUSTOM_RUST_NAME -- rustc --version`
     CUSTOM_RUST_RUSTC_VERSION = "rustc 1.28.0-nightly (f28c7aef7 2018-06-19)"
 
+    RREF_BIN = os.path.join(RREF_DIR,
+            'target.{suffix}/release/idiomize'.format(suffix=HOST_SUFFIX))
+
     def __init__(self):
         self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER) 
                                   for s in Config.LLVM_ARCHIVE_URLS]
@@ -444,30 +447,14 @@ def get_ninja_build_type(ninja_build_file):
         die("missing content in ninja.build: " + ninja_build_file)
 
 
-def get_system_include_dirs() -> List[str]:
-    """
-    note: assumes code was compiled with clang installed locally.
-    """
-    cc = get_cmd_or_die("clang")
-    cmd = cc["-E", "-Wp,-v", "-"]
-    _, _, stderr = cmd.run()
-    dirs = stderr.split(os.linesep)
-    # skip non-directory lines
-    dirs = [l.strip() for l in dirs if len(l) and l[0] == ' ']
-    # remove framework directory markers
-    return [d.replace(" (framework directory)", "") for d in dirs]
-
-
 def export_ast_from(ast_expo: pb.commands.BaseCommand,
                     cc_db_path: str,
-                    sys_incl_dirs: List[str],
                     **kwargs) -> str:
     """
     run ast-exporter for a single compiler invocation.
 
     :param ast_expo: command object representing ast-exporter
     :param cc_db_path: path/to/compile_commands.json
-    :param sys_incl_dirs: list of system include directories
     :return: path to generated cbor file.
     """
     # keys = ['arguments', 'directory', 'file']
@@ -485,9 +472,6 @@ def export_ast_from(ast_expo: pb.commands.BaseCommand,
         cc_db_dir = os.path.dirname(cc_db_path)
         args = ["-p", cc_db_dir, filepath]
         # this is required to locate system libraries
-
-        # TODO: do we need this on Mac???
-        # args += ["-extra-arg=-I" + i for i in sys_incl_dirs]
 
         # run ast-exporter
         logging.info("exporting ast from %s", os.path.basename(filename))

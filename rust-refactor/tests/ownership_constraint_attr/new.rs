@@ -14,6 +14,7 @@ struct RefCounted {
 }
 
 #[a]
+// make sure the old attr gets removed
 #[b]
 #[ownership_constraints(le(MOVE, _1))]
 #[ownership_mono("", READ, MOVE)]

@@ -20,9 +20,12 @@ export RUST_BACKTRACE=1
 # PL: I  removed the plugin-related arguments since its not clear that
 # they are necessary to correctly run the regression test suite.
 # export refactor='../../target/debug/idiomize -P ../.. -p plugin_stub -r alongside'
-export refactor='../../target/debug/idiomize  -r alongside'
+export idiomize_bin='../../target/debug/idiomize'
+export refactor="$idiomize_bin  -r alongside"
 export rustflags="-L $rust_dir/lib/rustlib/$triple/lib"
 
 ( cd $1; ./run.sh; )
-$rustfmt $1/old.new
+if ! [ -f $1/no-rustfmt ]; then
+    $rustfmt $1/old.new
+fi
 diff -wB $1/new.rs $1/old.new

@@ -9,7 +9,7 @@ import errno
 import shutil
 import logging
 import argparse
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Optional, Callable
 from typing.io import TextIO
 
 import mako.template
@@ -23,7 +23,6 @@ from common import (
     get_cmd_or_die,
     on_mac,
     invoke,
-    get_system_include_dirs,
     export_ast_from,
     get_rust_toolchain_binpath,
     get_rust_toolchain_libpath,
@@ -76,6 +75,7 @@ LIB_RS_TEMPLATE = """\
 #![feature(const_ptr_null_mut)]
 #![feature(extern_types)]
 #![feature(asm)]
+#![feature(ptr_wrapping_offset_from)]
 
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
@@ -91,12 +91,15 @@ LIB_RS_TEMPLATE = """\
 
 #[macro_use] extern crate cross_check_derive;
 #[macro_use] extern crate cross_check_runtime;
+
+#[global_allocator]
+static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
 % endif
 
 extern crate libc;
 % if use_fakechecks:
 extern crate libfakechecks_sys;
-%endif 
+%endif
 
 % for (module_name, module_path, line_prefix) in modules:
 <% module_name = module_name.replace('-', '_') %>
@@ -168,53 +171,65 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
 
 
 def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
-                      main_module: str, cross_checks: bool, 
+                      main_module: str, cross_checks: bool,
                       use_fakechecks: bool, cross_check_config: List[str]):
     build_dir = os.path.join(dest_dir, "c2rust-build")
-    shutil.rmtree(build_dir, ignore_errors=True)
-    os.mkdir(build_dir)
+
+    # don't remove existing project files; they may have user edits
+    # shutil.rmtree(build_dir, ignore_errors=True)
+    if not os.path.exists(build_dir):
+        os.mkdir(build_dir)
 
     cargo_toml_path = os.path.join(build_dir, "Cargo.toml")
-    with open(cargo_toml_path, "w") as cargo_toml:
-        # TODO: allow clients to change the name of the library
-        rust_checks_path = os.path.join(c.CROSS_CHECKS_DIR, "rust-checks")
-        plugin_path = os.path.join(rust_checks_path, "rustc-plugin")
-        derive_path = os.path.join(rust_checks_path, "derive-macros")
-        runtime_path = os.path.join(rust_checks_path, "runtime")
-        libfakechecks_sys_path = os.path.join(rust_checks_path, 
-                                              "backends/libfakechecks-sys")
-        tmpl = mako.template.Template(CARGO_TOML_TEMPLATE)
-        cargo_toml.write(tmpl.render(
-            crate_name="c2rust-build",
-            main_module=main_module,
-            cross_checks=cross_checks,
-            use_fakechecks=use_fakechecks,
-            plugin_path=plugin_path,
-            derive_path=derive_path,
-            runtime_path=runtime_path,
-            libfakechecks_sys_path=libfakechecks_sys_path))
+    if not os.path.exists(cargo_toml_path):
+        with open(cargo_toml_path, "w") as cargo_toml:
+            # TODO: allow clients to change the name of the library
+            rust_checks_path = os.path.join(c.CROSS_CHECKS_DIR, "rust-checks")
+            plugin_path = os.path.join(rust_checks_path, "rustc-plugin")
+            derive_path = os.path.join(rust_checks_path, "derive-macros")
+            runtime_path = os.path.join(rust_checks_path, "runtime")
+            libfakechecks_sys_path = os.path.join(rust_checks_path,
+                                                "backends/libfakechecks-sys")
+            tmpl = mako.template.Template(CARGO_TOML_TEMPLATE)
+            cargo_toml.write(tmpl.render(
+                crate_name="c2rust-build",
+                main_module=main_module,
+                cross_checks=cross_checks,
+                use_fakechecks=use_fakechecks,
+                plugin_path=plugin_path,
+                derive_path=derive_path,
+                runtime_path=runtime_path,
+                libfakechecks_sys_path=libfakechecks_sys_path))
+    else:
+        logging.warning("Skipping %s; file exists.", cargo_toml_path)
 
-    lib_rs_path = os.path.join(build_dir, "main.rs" if main_module else "lib.rs")
-    with open(lib_rs_path, "w") as lib_rs:
-        template_modules = []
-        for (module, module_exists) in modules:
-            module_name, _ = os.path.splitext(os.path.basename(module))
-            module_relpath = os.path.relpath(module, build_dir)
-            line_prefix = '' if module_exists else '#FAILED: '
-            template_modules.append((module_name, module_relpath, line_prefix))
+    lib_rs_path = "main.rs" if main_module else "lib.rs"
+    lib_rs_path = os.path.join(build_dir, lib_rs_path)
+    if not os.path.exists(lib_rs_path):
+        with open(lib_rs_path, "w") as lib_rs:
+            template_modules = []
+            for (module, module_exists) in modules:
+                module_name, _ = os.path.splitext(os.path.basename(module))
+                module_relpath = os.path.relpath(module, build_dir)
+                line_prefix = '' if module_exists else '#FAILED: '
+                template_modules.append((module_name,
+                                         module_relpath,
+                                         line_prefix))
 
-        config_files = ('config_file = "{config_file}"'.format(
-            config_file=os.path.relpath(ccc, build_dir))
-            for ccc in cross_check_config)
-        plugin_args = ", ".join(config_files)
+            config_files = ('config_file = "{config_file}"'.format(
+                config_file=os.path.relpath(ccc, build_dir))
+                for ccc in cross_check_config)
+            plugin_args = ", ".join(config_files)
 
-        tmpl = mako.template.Template(LIB_RS_TEMPLATE)
-        lib_rs.write(tmpl.render(
-            main_module=main_module,
-            cross_checks=cross_checks,
-            use_fakechecks=use_fakechecks,
-            plugin_args=plugin_args,
-            modules=template_modules))
+            tmpl = mako.template.Template(LIB_RS_TEMPLATE)
+            lib_rs.write(tmpl.render(
+                main_module=main_module,
+                cross_checks=cross_checks,
+                use_fakechecks=use_fakechecks,
+                plugin_args=plugin_args,
+                modules=template_modules))
+    else:
+        logging.warning("Skipping %s; file exists.", lib_rs_path)
 
 
 def check_main_module(main_module: str, cc_db: TextIO):
@@ -235,16 +250,18 @@ def check_main_module(main_module: str, cc_db: TextIO):
 
 
 def transpile_files(cc_db: TextIO,
-                    filter: str = None,
+                    filter: Optional[Callable[[str], bool]] = None,
                     extra_impo_args: List[str] = [],
                     import_only: bool = False,
                     verbose: bool = False,
                     emit_build_files: bool = True,
+                    emit_modules: bool = False,
                     main_module_for_build_files: str = None,
                     cross_checks: bool = False,
                     use_fakechecks: bool = False,
                     cross_check_config: List[str] = [],
-                    reloop_cfgs: bool = True) -> bool:
+                    reloop_cfgs: bool = True,
+                    reorganize_definitions: bool = False) -> bool:
     """
     run the ast-exporter and ast-importer on all C files
     in a compile commands database.
@@ -259,14 +276,26 @@ def transpile_files(cc_db: TextIO,
     check_main_module(main_module_for_build_files, cc_db)
 
     if filter:  # skip commands not matching file filter
-        cc_db = [cmd for cmd in cc_db if filter in c['file']]
+        cc_db = [cmd for cmd in cc_db if filter(cmd['file'])]
 
     if not on_mac():
         ensure_code_compiled_with_clang(cc_db)
-    include_dirs = get_system_include_dirs()
+
+    # MacOS Mojave does not have `/usr/include` even if the command line
+    # tools are installed. The fix is to run the developer package:
+    # `macOS_SDK_headers_for_macOS_10.14.pkg` in
+    # `/Library/Developer/CommandLineTools/Packages`.
+    # Source https://forums.developer.apple.com/thread/104296
+    if on_mac() and not os.path.isdir('/usr/include'):
+        emsg = ("directory /usr/include not found. "
+                "Please install the following package: "
+                "/Library/Developer/CommandLineTools/Packages/"
+                "macOS_SDK_headers_for_macOS_10.14.pkg "
+                "or the equivalent version on your host.")
+        die(emsg, errno.ENOENT)
 
     impo_args = ['--translate-entry']
-    if emit_build_files:
+    if emit_build_files or emit_modules:
         impo_args.append('--emit-module')
     if cross_checks:
         impo_args.append('--cross-checks')
@@ -275,14 +304,15 @@ def transpile_files(cc_db: TextIO,
             impo_args.append(ccc)
     if reloop_cfgs:
         impo_args.append('--reloop-cfgs')
+    if reorganize_definitions:
+        impo_args.append('--reorganize-definitions')
 
     def transpile_single(cmd) -> Tuple[str, int, str, str, str]:
 
         if import_only:
             cbor_file = os.path.join(cmd['directory'], cmd['file'] + ".cbor")
         else:
-            cbor_file = export_ast_from(ast_expo, cc_db_name,
-                                        include_dirs, **cmd)
+            cbor_file = export_ast_from(ast_expo, cc_db_name, **cmd)
         assert os.path.isfile(cbor_file), "missing: " + cbor_file
 
         ld_lib_path = get_rust_toolchain_libpath()
@@ -305,7 +335,7 @@ def transpile_files(cc_db: TextIO,
             try:
                 ast_impo_cmd = ast_impo[cbor_file, impo_args, extra_impo_args]
                 # NOTE: this will log ast-importer output but not in color
-                retcode, rust_output, importer_warnings = ast_impo_cmd.run()
+                retcode, stdout, importer_warnings = ast_impo_cmd.run()
                 if importer_warnings:
                     if verbose:
                         logging.warning(importer_warnings)
@@ -315,20 +345,20 @@ def transpile_files(cc_db: TextIO,
                 e = "Expected file suffix `.c.cbor`; actual: " + cbor_basename
                 assert cbor_file.endswith(".c.cbor"), e
                 rust_file = cbor_file[:-7] + ".rs"
-                with open(rust_file, "w") as rust_fh:
-                    rust_fh.writelines(rust_output)
-                    logging.debug("wrote output rust to %s", rust_file)
+                path, file_name = os.path.split(rust_file)
+                file_name = file_name.replace('-', '_')
+                rust_file = os.path.join(path, file_name)
 
                 rustfmt(rust_file)
 
-                return (file_basename, retcode, rust_output, importer_warnings,
+                return (file_basename, retcode, stdout, importer_warnings,
                         os.path.abspath(rust_file))
             except pb.ProcessExecutionError as pee:
                 return (file_basename, pee.retcode, pee.stdout, pee.stderr,
                         None)
 
     commands = sorted(cc_db, key=lambda cmd: os.path.basename(cmd['file']))
-    results = (transpile_single(cmd) for cmd in commands)
+    results = [transpile_single(cmd) for cmd in commands]
 
     if emit_build_files:
         modules = [(rust_src, retcode == 0) for (_, retcode, _, _, rust_src) in
@@ -415,6 +445,10 @@ def parse_args() -> argparse.Namespace:
                         action=NegateAction,
                         help='enable (disable) relooper; enabled by '
                              'default')
+    parser.add_argument('-r', '--reorganize-definitions',
+                        default=False, action='store_true',
+                        help='Reorganize definitions, then use the '
+                             'refactor tool to eliminate duplication')
     c.add_args(parser)
 
     args = parser.parse_args()
@@ -431,17 +465,18 @@ def main():
 
     args = parse_args()
     c.update_args(args)
-    transpile_files(args.commands_json,
-                    args.filter,
-                    args.extra_impo_args,
-                    args.import_only,
-                    args.verbose,
-                    args.emit_build_files,
-                    args.main,
-                    args.cross_checks,
-                    args.use_fakechecks,
-                    args.cross_check_config,
-                    args.reloop_cfgs)
+    transpile_files(cc_db=args.commands_json,
+                    filter=lambda f: args.filter in f,
+                    extra_impo_args=args.extra_impo_args,
+                    import_only=args.import_only,
+                    verbose=args.verbose,
+                    emit_build_files=args.emit_build_files,
+                    main_module_for_build_files=args.main,
+                    cross_checks=args.cross_checks,
+                    use_fakechecks=args.use_fakechecks,
+                    cross_check_config=args.cross_check_config,
+                    reloop_cfgs=args.reloop_cfgs,
+                    reorganize_definitions=args.reorganize_definitions)
 
     logging.info("success")
 

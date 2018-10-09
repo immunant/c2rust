@@ -98,7 +98,7 @@ impl IdMapper {
 /// Transfer location information off of an `AstNode` and onto something that is `Located`
 fn located<T>(node: &AstNode, t: T) -> Located<T> {
     Located {
-        loc: Some(SrcLoc { line: node.line, column: node.column, fileid: node.fileid }),
+        loc: Some(SrcLoc { line: node.line, column: node.column, fileid: node.fileid, file_path: node.file_path.clone() }),
         kind: t
     }
 }
@@ -293,7 +293,9 @@ impl ConversionContext {
                 loc: Some(SrcLoc {
                     line: raw_comment.line,
                     column: raw_comment.column,
-                    fileid: raw_comment.fileid
+                    fileid: raw_comment.fileid,
+                    // Can/Should we get file paths for comments?
+                    file_path: None,
                 }),
                 kind: raw_comment.string.clone(),
             };
@@ -949,7 +951,7 @@ impl ConversionContext {
                     let ty = self.visit_qualified_type(ty_old);
 
 
-                    let unary = CExprKind::Unary(ty, operator, operand);
+                    let unary = CExprKind::Unary(ty, operator, operand, node.rvalue);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, unary);
                 }
@@ -963,7 +965,7 @@ impl ConversionContext {
 
 
                     let kind = parse_cast_kind(node.extras[0].as_string().expect("Expected cast kind"));
-                    let implicit = CExprKind::ImplicitCast(typ, expression, kind, None);
+                    let implicit = CExprKind::ImplicitCast(typ, expression, kind, None, node.rvalue);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, implicit);
                 }
@@ -986,7 +988,7 @@ impl ConversionContext {
                         _ => None,
                     };
 
-                    let implicit = CExprKind::ExplicitCast(typ, expression, kind, opt_field_id);
+                    let implicit = CExprKind::ExplicitCast(typ, expression, kind, opt_field_id, node.rvalue);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, implicit);
                 }
@@ -1026,7 +1028,7 @@ impl ConversionContext {
                         if node.extras[0].as_boolean().expect("is arrow")
                             { MemberKind::Arrow } else { MemberKind::Dot };
 
-                    let member = CExprKind::Member(ty, base, field, member_kind);
+                    let member = CExprKind::Member(ty, base, field, member_kind, node.rvalue);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, member);
                 }
@@ -1093,7 +1095,7 @@ impl ConversionContext {
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty_old);
 
-                    let decl = CExprKind::DeclRef(ty, declaration);
+                    let decl = CExprKind::DeclRef(ty, declaration, node.rvalue);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, decl);
                 }
@@ -1108,7 +1110,7 @@ impl ConversionContext {
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty_old);
 
-                    let subscript = CExprKind::ArraySubscript(ty, lhs, rhs);
+                    let subscript = CExprKind::ArraySubscript(ty, lhs, rhs, node.rvalue);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, subscript);
                 }
@@ -1362,6 +1364,7 @@ impl ConversionContext {
                         Value::I64(n) => ConstIntExpr::I(n),
                         _ => panic!("Expected constant int expr"),
                     };
+
                     let enum_constant_decl = CDeclKind::EnumConstant { name, value };
 
                     self.add_decl(new_id, located(node, enum_constant_decl));

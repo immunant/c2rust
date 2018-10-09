@@ -15,7 +15,7 @@ import re
 desc = 'transpile files in compiler_commands.json.'
 parser = argparse.ArgumentParser(description="Translates tmux into the repo/rust/src directory")
 parser.add_argument('-f', '--filter',
-                    default=None,
+                    default="",
                     help='Filters translated files')
 
 config = Config()
@@ -48,6 +48,7 @@ FILES_NEEDING_TRAILING_UNDERSCORE = [
 ]
 MAIN_MODS = """\
 #![feature(const_slice_as_ptr, ptr_wrapping_offset_from, used)]
+#![allow(unused_imports)]
 extern crate libc;
 
 pub mod alerts;
@@ -193,12 +194,16 @@ def add_mods(path: str):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    num_jobs = multiprocessing.cpu_count()
+    importer_args = [
+        "--reduce-type-annotations",
+    ]
 
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
     with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json, filter=args.filter, emit_build_files=False, verbose=True)
+        transpile_files(cc_json, filter=lambda f: args.filter in f,
+                        emit_build_files=False, verbose=True,
+                        extra_impo_args=importer_args, reorganize_definitions=True)
 
     # Move and rename tmux.rs to main.rs
     move(TMUX_RS, MAIN_RS)
@@ -213,15 +218,6 @@ if __name__ == "__main__":
     retcode, _, _ = move(plumbum_compat_rs_glob, RUST_COMPAT_DIR)
 
     assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)
-
-    # Rename files with dashes to underscores, as rust won't
-    # accept dashes.
-    for path in [RUST_SRC_DIR, RUST_COMPAT_DIR]:
-        rust_rs_files = local.path(path) // "*.rs"
-
-        retcode, _, _ = rename_("s/-/_/g", "-f", rust_rs_files)
-
-        assert retcode != 1, "Could not rename translated rs files:\n{}".format(stderr)
 
     # Some tmux files have the same file names as structs, so we also have to append
     # an underscore to the filename so that rust doesn't get confused

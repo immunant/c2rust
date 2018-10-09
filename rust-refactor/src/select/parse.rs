@@ -13,7 +13,7 @@ use syntax::tokenstream::{TokenTree, TokenStream};
 use syntax_pos::FileName;
 
 use pick_node::NodeKind;
-use remove_paren::remove_paren;
+use ast_manip::remove_paren;
 use select::{SelectOp, Filter, AnyPattern, ItemLikeKind};
 use util::Lone;
 
@@ -247,10 +247,13 @@ impl<'a> Stream<'a> {
                         Lit::StrRaw(s, _) => s,
                         l => fail!("expected string literal, but got {:?}", l),
                     };
-                    let r = match Regex::new(&s.as_str()) {
+                    // First, make sure `s` parses as a regex on its own
+                    let _ = match Regex::new(&s.as_str()) {
                         Ok(r) => r,
                         Err(e) => fail!("invalid regex: {}", e),
                     };
+                    // Then, add ^ ... $ so the regex has to match the entire item name
+                    let r = Regex::new(&format!("^{}$", s.as_str())).unwrap();
                     Ok(Filter::Name(r))
                 },
 
@@ -398,6 +401,13 @@ impl<'a> Stream<'a> {
 
             "crate" => {
                 SelectOp::Crate
+            },
+
+            "item" => {
+                let mut inner = self.parens()?;
+                let path = inner.path()?;
+                inner.last()?;
+                SelectOp::Item(path)
             },
 
             "child" => {

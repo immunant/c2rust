@@ -81,5 +81,9 @@ void rb_xcheck(uint8_t tag, uint64_t item) {
        "Unk", "Ent", "Exi", "Arg", "Ret",
     };
     auto *fout = get_fout();
-    fprintf(fout, "XCHECK(%s):%lu/0x%08lx\n", tag_names.at(tag), item, item);
+    if (tag < tag_names.size()) {
+        fprintf(fout, "XCHECK(%s):%lu/0x%08lx\n", tag_names[tag], item, item);
+    } else {
+        fprintf(fout, "XCHECK(%hhu):%lu/0x%08lx\n", tag, item, item);
+    }
 }

@@ -1,0 +1,39 @@
+version: '{branch}.{build}'
+os: Windows Server 2012 R2
+
+configuration:
+- Debug
+- Release
+platform: x64
+environment:
+  matrix:
+  - PlatformToolset: v140
+  - PlatformToolset: v120
+  - PlatformToolset: Windows7.1SDK
+
+build_script:
+- cmake .
+- >
+  msbuild "json-c.vcxproj" /m /verbosity:normal
+  /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
+  /p:PlatformToolset=%PlatformToolset% /p:OutDir=lib\
+
+after_build:
+- md include\json-c
+- copy json.h include\json-c\*
+- copy debug.h include\json-c\*
+- copy linkhash.h include\json-c\*
+- copy arraylist.h include\json-c\*
+- copy json_util.h include\json-c\*
+- copy json_object.h include\json-c\*
+- copy json_tokener.h include\json-c\*
+- copy json_object_iterator.h include\json-c\*
+- copy json_c_version.h include\json-c\*
+- copy json_inttypes.h include\json-c\*
+- copy include\json_config.h include\json-c\*
+- copy json_object_private.h include\json-c\*
+- 7z a json-c.lib.zip lib\json-c.dll include\json-c\*.h
+
+artifacts:
+- path: json-c.lib.zip
+  name: json-c.lib.zip

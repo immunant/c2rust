@@ -1,6 +1,8 @@
+use clang_ast::LRValue;
 use std::collections::{HashMap,HashSet,BTreeMap};
 use indexmap::IndexMap;
 use std::ops::Index;
+use std::path::PathBuf;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub struct CTypeId(pub u64);
@@ -76,11 +78,11 @@ impl TypedAstContext {
 
     pub fn is_null_expr(&self, expr_id: CExprId) -> bool {
         match self[expr_id].kind {
-            CExprKind::ExplicitCast(_, _, CastKind::NullToPointer, _) |
-            CExprKind::ImplicitCast(_, _, CastKind::NullToPointer, _) => true,
+            CExprKind::ExplicitCast(_, _, CastKind::NullToPointer, _, _) |
+            CExprKind::ImplicitCast(_, _, CastKind::NullToPointer, _, _) => true,
 
-            CExprKind::ExplicitCast(ty, e, CastKind::BitCast, _) |
-            CExprKind::ImplicitCast(ty, e, CastKind::BitCast, _) =>
+            CExprKind::ExplicitCast(ty, e, CastKind::BitCast, _, _) |
+            CExprKind::ImplicitCast(ty, e, CastKind::BitCast, _, _) =>
                 self.resolve_type(ty.ctype).kind.is_pointer() && self.is_null_expr(e),
 
             _ => false,
@@ -144,10 +146,10 @@ impl TypedAstContext {
             CExprKind::ShuffleVector(..) |
             CExprKind::ConvertVector(..) |
             CExprKind::Call(_, _, _) |
-            CExprKind::Unary(_, UnOp::PreIncrement, _) |
-            CExprKind::Unary(_, UnOp::PostIncrement, _) |
-            CExprKind::Unary(_, UnOp::PreDecrement, _) |
-            CExprKind::Unary(_, UnOp::PostDecrement, _) |
+            CExprKind::Unary(_, UnOp::PreIncrement, _, _) |
+            CExprKind::Unary(_, UnOp::PostIncrement, _, _) |
+            CExprKind::Unary(_, UnOp::PreDecrement, _, _) |
+            CExprKind::Unary(_, UnOp::PostDecrement, _, _) |
             CExprKind::Binary(_, BinOp::Assign, _, _, _, _) |
             CExprKind::InitList { .. } |
             CExprKind::ImplicitValueInit { .. } |
@@ -155,22 +157,22 @@ impl TypedAstContext {
             CExprKind::Statements(..) => false, // TODO: more precision
 
             CExprKind::Literal(_, _) |
-            CExprKind::DeclRef(_, _) |
+            CExprKind::DeclRef(_, _, _) |
             CExprKind::UnaryType(_, _, _, _) |
             CExprKind::OffsetOf(..) => true,
 
             CExprKind::DesignatedInitExpr(_,_,e) |
-            CExprKind::ImplicitCast(_, e, _, _) |
-            CExprKind::ExplicitCast(_, e, _, _) |
-            CExprKind::Member(_, e, _, _) |
+            CExprKind::ImplicitCast(_, e, _, _, _) |
+            CExprKind::ExplicitCast(_, e, _, _, _) |
+            CExprKind::Member(_, e, _, _, _) |
             CExprKind::CompoundLiteral(_, e) |
             CExprKind::VAArg(_, e) |
-            CExprKind::Unary(_, _, e) => self.is_expr_pure(e),
+            CExprKind::Unary(_, _, e, _) => self.is_expr_pure(e),
 
             CExprKind::Binary(_, op, _, _, _, _) if op.underlying_assignment().is_some() => false,
             CExprKind::Binary(_, _, lhs, rhs, _, _) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
 
-            CExprKind::ArraySubscript(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+            CExprKind::ArraySubscript(_, lhs, rhs, _) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
             CExprKind::Conditional(_, c, lhs, rhs) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
             CExprKind::BinaryConditional(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
         }
@@ -201,191 +203,99 @@ impl TypedAstContext {
 
 
     pub fn prune_unused_decls(&mut self) {
-        // Set of declarations that should be preserved
-        let mut live: HashSet<CDeclId> = HashSet::new();
+        use self::iterators::{SomeId, DFNodes};
+        // Starting from a set of root declarations, walk each one to find declarations it
+        // dependens on.  Then walk each of those, recursively.
 
-        // Vector of types that need to be visited which can cause declarations to be live
-        let mut type_queue: Vec<CTypeId> = vec![];
+        // Declarations we still need to walk.  Everything in here is also in `used`.
+        let mut to_walk: Vec<CDeclId> = Vec::new();
+        // Declarations accessible from a root.
+        let mut used: HashSet<CDeclId> = HashSet::new();
 
-        // All variable and function definitions are considered live
-        for (&decl_id, decl) in &self.c_decls {
+        // Mark all the roots as used.  Roots are all top-level functions and variables that might
+        // be visible from another compilation unit.
+        for &decl_id in &self.c_decls_top {
+            let decl = self.index(decl_id);
             match decl.kind {
-                CDeclKind::Function { typ, body: Some(_), .. } => {
-                    live.insert(decl_id);
-                    type_queue.push(typ); // references the return type
-                }
-                CDeclKind::Variable { is_defn: true, .. } => { live.insert(decl_id); }
-                _ => {}
-            }
-        }
-
-        for stmt in self.c_stmts.values() {
-            if let CStmtKind::Decls(ref decl_ids) = stmt.kind {
-                live.extend(decl_ids);
-                for decl_id in decl_ids {
-                    match self.c_decls[decl_id].kind {
-                        CDeclKind::Typedef { typ, .. } => type_queue.push(typ.ctype),
-                        CDeclKind::Enum { ref variants, .. } => live.extend(variants),
-                        CDeclKind::Struct { fields: Some(ref arr), .. } => {
-                            live.extend(arr);
-                            for &field_id in arr {
-                                if let CDeclKind::Field { typ, .. } = self[field_id].kind {
-                                    type_queue.push(typ.ctype)
-                                }
-                            }
-                        }
-                        CDeclKind::Union { fields: Some(ref arr), .. } => {
-                            for &field_id in arr {
-                                live.insert(field_id);
-                                if let CDeclKind::Field { typ, .. } = self[field_id].kind {
-                                    type_queue.push(typ.ctype)
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-
-        // All expressions are considered live (this is an overapproximation if an otherwise
-        // unused function declaration uses a VLA and that VLA's size expression mentions
-        // some definitions.
-        for expr in self.c_exprs.values() {
-            if let Some(t) = expr.kind.get_type() {
-                type_queue.push(t);
-            }
-
-            match expr.kind {
-                // Could mention external functions, variables, and enum constants
-                CExprKind::DeclRef(_, decl_id) => {
-                    live.insert(decl_id);
-                    // This declref could refer to an enum constant, so we want to keep the enum
-                    // declaration for that constant live
-                    if let Some(&parent_id) = self.parents.get(&decl_id) {
-                        if live.insert(parent_id) {
-                            if let CDeclKind::Enum { ref variants, .. } = self[parent_id].kind {
-                                live.extend(variants);
-                            }
-                        }
-                    }
-                }
-                CExprKind::UnaryType(_, _, _, type_id) => { type_queue.push(type_id.ctype); }
-                _ => {}
-            }
-        }
-
-        // Track all the variables associated with pruned function prototypes for removal
-        let mut bad_variables: HashSet<CDeclId> = HashSet::new();
-
-        self.c_decls.retain(|&decl_id, decl| {
-            if live.contains(&decl_id) { return true; }
-            match &decl.kind {
-                &CDeclKind::Function { body: None, ref parameters, .. } => {
-                    bad_variables.extend(parameters);
-                    false
+                CDeclKind::Function { body: Some(_), is_extern: true, is_inline: false, .. } => {
+                    to_walk.push(decl_id);
+                    used.insert(decl_id);
                 },
-                _ => true,
-            }
-        });
-
-        // Clean up all of the variables associated with the removed function prototypes
-        for decl_id in bad_variables {
-            self.c_decls.remove(&decl_id);
-        }
-
-        // Check variables after unused function declarations are removed so that their parameters
-        // don't keep extra types alive
-        for (decl_id, decl) in &self.c_decls {
-            if let CDeclKind::Variable { typ, .. } = decl.kind {
-                live.insert(*decl_id);
-                type_queue.push(typ.ctype);
+                CDeclKind::Variable { is_defn: true, is_extern: true, .. } => {
+                    to_walk.push(decl_id);
+                    used.insert(decl_id);
+                },
+                _ => {},
             }
         }
 
-        // Recursively traverse the set of types that were reachable above marking all of the
-        // transitively reachable declarations as live
-        let mut types_visited: HashSet<CTypeId> = HashSet::new();
-        while let Some(type_id) = type_queue.pop() {
-            if !types_visited.insert(type_id) { continue }
-
-            match self.c_types[&type_id].kind {
-                // Leaf nodes
-                CTypeKind::Void | CTypeKind::Bool | CTypeKind::Char | CTypeKind::SChar |
-                CTypeKind::Short | CTypeKind::Int | CTypeKind::Long | CTypeKind::LongLong |
-                CTypeKind::UChar | CTypeKind::UShort | CTypeKind::UInt | CTypeKind::ULong |
-                CTypeKind::ULongLong | CTypeKind::Float | CTypeKind::Double |
-                CTypeKind::LongDouble | CTypeKind::Int128 | CTypeKind::UInt128 |
-                CTypeKind::TypeOfExpr(_) | CTypeKind::BuiltinFn | CTypeKind::Half => {}
-
-                // Types with CTypeId fields
-                CTypeKind::Complex(type_id) | CTypeKind::Paren(type_id) |
-                CTypeKind::ConstantArray(type_id, _) | CTypeKind::Elaborated(type_id) |
-                CTypeKind::TypeOf(type_id) | CTypeKind::Decayed(type_id) |
-                CTypeKind::IncompleteArray(type_id) | CTypeKind::VariableArray(type_id, _) =>
-                    type_queue.push(type_id),
-
-                // Types with CQualtypeId fields
-                CTypeKind::Pointer(qtype_id) | CTypeKind::Attributed(qtype_id, _) |
-                CTypeKind::BlockPointer(qtype_id) | CTypeKind::Vector(qtype_id) =>
-                    type_queue.push(qtype_id.ctype),
-
-                CTypeKind::Function(qtype_id, ref qtype_ids, _, _) => {
-                    type_queue.push(qtype_id.ctype);
-                    type_queue.extend(qtype_ids.iter().map(|x| x.ctype));
-                }
-
-                CTypeKind::Typedef(decl_id) => {
-                    if live.insert(decl_id) {
-                        if let CDeclKind::Typedef { typ, .. } = self[decl_id].kind {
-                            type_queue.push(typ.ctype);
-                        }
-                    }
-                }
-
-                CTypeKind::Struct(decl_id) => {
-                    if live.insert(decl_id) {
-                        if let CDeclKind::Struct { fields: Some(ref arr), .. } = self[decl_id].kind {
-                            live.extend(arr);
-                            for &field_id in arr {
-                                if let CDeclKind::Field { typ, .. } = self[field_id].kind {
-                                    type_queue.push(typ.ctype)
+        while let Some(enclosing_decl_id) = to_walk.pop() {
+            for some_id in DFNodes::new(self, SomeId::Decl(enclosing_decl_id)) {
+                match some_id {
+                    SomeId::Type(type_id) => {
+                        match self.c_types[&type_id].kind {
+                            // This is a reference to a previously declared type.  If we look
+                            // through it we should(?) get something that looks like a declaration,
+                            // which we can mark as used.
+                            CTypeKind::Elaborated(decl_type_id) => {
+                                let decl_id = self.c_types[&decl_type_id].kind
+                                    .as_decl_or_typedef()
+                                    .expect("target of CTypeKind::Elaborated isn't a decl?");
+                                if used.insert(decl_id) {
+                                    to_walk.push(decl_id);
                                 }
-                            }
-                        }
-                    }
-                }
+                            },
 
-                CTypeKind::Union(decl_id) => {
-                    if live.insert(decl_id) {
-                        if let CDeclKind::Union { fields: Some(ref arr), .. } = self[decl_id].kind {
-                            live.extend(arr);
-                            for &field_id in arr {
-                                if let CDeclKind::Field { typ, .. } = self[field_id].kind {
-                                    type_queue.push(typ.ctype)
+                            // For everything else (including `Struct` etc.), DFNodes will walk the
+                            // corresponding declaration.
+                            _ => {},
+                        }
+                    },
+
+                    SomeId::Expr(expr_id) => {
+                        match self.c_exprs[&expr_id].kind {
+                            CExprKind::DeclRef(_, decl_id, _) => {
+                                if used.insert(decl_id) {
+                                    to_walk.push(decl_id);
                                 }
-                            }
-                        }
-                    }
-                }
+                            },
 
-                CTypeKind::Enum(decl_id) => {
-                    if live.insert(decl_id) {
-                        if let CDeclKind::Enum { variants: ref arr, .. } = self[decl_id].kind {
-                            live.extend(arr);
+                            _ => {},
                         }
-                    }
+                    },
+
+                    SomeId::Decl(decl_id) => {
+                        if used.insert(decl_id) {
+                            to_walk.push(decl_id);
+                        }
+
+                        match self.c_decls[&decl_id].kind {
+                            CDeclKind::EnumConstant { .. } => {
+                                // Special case for enums.  The enum constant is used, so the whole
+                                // enum is also used.
+                                let parent_id = self.parents[&decl_id];
+                                if used.insert(parent_id) {
+                                    to_walk.push(parent_id);
+                                }
+                            },
+                            _ => {},
+                        }
+                    },
+
+                    // Stmts can include decls, but we'll see the DeclId itself in a later
+                    // iteration.
+                    SomeId::Stmt(_) => {},
                 }
             }
         }
 
         // Prune any declaration that isn't considered live
         self.c_decls.retain(|&decl_id, _decl|
-            live.contains(&decl_id)
+            used.contains(&decl_id)
         );
 
         // Prune top declarations that are not considered live
-        self.c_decls_top.retain(|x| live.contains(x));
+        self.c_decls_top.retain(|x| used.contains(x));
     }
 }
 
@@ -406,8 +316,8 @@ impl CommentContext {
         // Group and sort declarations by file and by position
         let mut decls: HashMap<u64, Vec<(SrcLoc, CDeclId)>> = HashMap::new();
         for (decl_id, ref loc_decl) in &ast_context.c_decls {
-            if let Some(loc) = loc_decl.loc {
-                decls.entry(loc.fileid).or_insert(vec![]).push((loc, *decl_id));
+            if let Some(ref loc) = loc_decl.loc {
+                decls.entry(loc.fileid).or_insert(vec![]).push((loc.clone(), *decl_id));
             }
         }
         decls.iter_mut().for_each(|(_, v)| v.sort());
@@ -415,8 +325,8 @@ impl CommentContext {
         // Group and sort statements by file and by position
         let mut stmts: HashMap<u64, Vec<(SrcLoc, CStmtId)>> = HashMap::new();
         for (stmt_id, ref loc_stmt) in &ast_context.c_stmts {
-            if let Some(loc) = loc_stmt.loc {
-                stmts.entry(loc.fileid).or_insert(vec![]).push((loc, *stmt_id));
+            if let Some(ref loc) = loc_stmt.loc {
+                stmts.entry(loc.fileid).or_insert(vec![]).push((loc.clone(), *stmt_id));
             }
         }
         stmts.iter_mut().for_each(|(_, v)| v.sort());
@@ -437,15 +347,15 @@ impl CommentContext {
 
                 // Find the closest declaration and statement
                 let decl_ix = this_file_decls
-                    .binary_search_by_key(&loc.line, |&(l,_)| l.line)
+                    .binary_search_by_key(&loc.line, |&(ref l,_)| l.line)
                     .unwrap_or_else(|x| x);
                 let stmt_ix = this_file_stmts
-                    .binary_search_by_key(&loc.line, |&(l,_)| l.line)
+                    .binary_search_by_key(&loc.line, |&(ref l,_)| l.line)
                     .unwrap_or_else(|x| x);
 
                 // Prefer the one that is higher up (biasing towards declarations if there is a tie)
                 match (this_file_decls.get(decl_ix), this_file_stmts.get(stmt_ix)) {
-                    (Some(&(l1, d)), Some(&(l2, s))) => {
+                    (Some(&(ref l1, d)), Some(&(ref l2, s))) => {
                         if l1 > l2 {
                             stmt_comments_map.entry(s).or_insert(BTreeMap::new()).insert(loc, str);
                         } else {
@@ -534,11 +444,12 @@ impl Index<CStmtId> for TypedAstContext {
 }
 
 /// Represents a position inside a C source file
-#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Clone)]
 pub struct SrcLoc {
     pub fileid: u64,
     pub line: u64,
     pub column: u64,
+    pub file_path: Option<PathBuf>,
 }
 
 
@@ -647,7 +558,7 @@ pub enum CExprKind {
     Literal(CQualTypeId, CLiteral),
 
     // Unary operator.
-    Unary(CQualTypeId, UnOp, CExprId),
+    Unary(CQualTypeId, UnOp, CExprId, LRValue),
 
     // Unary type operator.
     UnaryType(CQualTypeId, UnTypeOp, Option<CExprId>, CQualTypeId),
@@ -659,23 +570,23 @@ pub enum CExprKind {
     Binary(CQualTypeId, BinOp, CExprId, CExprId, Option<CQualTypeId>, Option<CQualTypeId>),
 
     // Implicit cast
-    ImplicitCast(CQualTypeId, CExprId, CastKind, Option<CFieldId>),
+    ImplicitCast(CQualTypeId, CExprId, CastKind, Option<CFieldId>, LRValue),
 
     // Explicit cast
-    ExplicitCast(CQualTypeId, CExprId, CastKind, Option<CFieldId>),
+    ExplicitCast(CQualTypeId, CExprId, CastKind, Option<CFieldId>, LRValue),
 
     // Reference to a decl (a variable, for instance)
     // TODO: consider enforcing what types of declarations are allowed here
-    DeclRef(CQualTypeId, CDeclId),
+    DeclRef(CQualTypeId, CDeclId, LRValue),
 
     // Function call
     Call(CQualTypeId, CExprId, Vec<CExprId>),
 
     // Member access
-    Member(CQualTypeId, CExprId, CDeclId, MemberKind),
+    Member(CQualTypeId, CExprId, CDeclId, MemberKind, LRValue),
 
     // Array subscript access
-    ArraySubscript(CQualTypeId, CExprId, CExprId),
+    ArraySubscript(CQualTypeId, CExprId, CExprId, LRValue),
 
     // Ternary conditional operator
     Conditional(CQualTypeId, CExprId, CExprId, CExprId),
@@ -718,20 +629,32 @@ pub enum MemberKind {
 }
 
 impl CExprKind {
+    pub fn lrvalue(&self) -> LRValue {
+        match *self {
+            CExprKind::Unary(_, _, _, lrvalue) |
+            CExprKind::DeclRef(_, _, lrvalue) |
+            CExprKind::ImplicitCast(_, _, _, _, lrvalue) |
+            CExprKind::ExplicitCast(_, _, _, _, lrvalue) |
+            CExprKind::Member(_, _, _, _, lrvalue) |
+            CExprKind::ArraySubscript(_, _, _, lrvalue) => lrvalue,
+            _ => LRValue::RValue,
+        }
+    }
+
     pub fn get_qual_type(&self) -> Option<CQualTypeId> {
         match *self {
             CExprKind::BadExpr => None,
             CExprKind::Literal(ty, _) |
             CExprKind::OffsetOf(ty, _) |
-            CExprKind::Unary(ty, _, _) |
+            CExprKind::Unary(ty, _, _, _) |
             CExprKind::UnaryType(ty, _, _, _) |
             CExprKind::Binary(ty, _, _, _, _, _) |
-            CExprKind::ImplicitCast(ty, _, _, _) |
-            CExprKind::ExplicitCast(ty, _, _, _) |
-            CExprKind::DeclRef(ty, _) |
+            CExprKind::ImplicitCast(ty, _, _, _, _) |
+            CExprKind::ExplicitCast(ty, _, _, _, _) |
+            CExprKind::DeclRef(ty, _, _) |
             CExprKind::Call(ty, _, _) |
-            CExprKind::Member(ty, _, _, _) |
-            CExprKind::ArraySubscript(ty, _, _) |
+            CExprKind::Member(ty, _, _, _, _) |
+            CExprKind::ArraySubscript(ty, _, _, _) |
             CExprKind::Conditional(ty, _, _, _) |
             CExprKind::BinaryConditional(ty, _, _) |
             CExprKind::InitList(ty, _, _, _) |
@@ -832,7 +755,7 @@ impl UnOp {
 }
 
 /// Represents a binary operator in C (6.5.5 Multiplicative operators - 6.5.14 Logical OR operator)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinOp {
     Multiply,         // *
     Divide,           // /
@@ -1034,7 +957,7 @@ impl Qualifiers {
 }
 
 /// Qualified type
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct CQualTypeId {
     pub qualifiers: Qualifiers,
     pub ctype: CTypeId,
@@ -1049,7 +972,7 @@ pub struct CQualTypeId {
 /// Represents a type in C (6.2.5 Types)
 ///
 /// Reflects the types in <http://clang.llvm.org/doxygen/classclang_1_1Type.html>
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CTypeKind {
     /* Builtin types:
      * <https://github.com/llvm-mirror/clang/blob/master/include/clang/AST/BuiltinTypes.def> */
@@ -1142,7 +1065,7 @@ pub enum Designator {
     Field(CFieldId),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Attribute {
     NoReturn,
     NotNull,
@@ -1213,6 +1136,16 @@ impl CTypeKind {
 
     pub fn as_underlying_decl(&self) -> Option<CDeclId> {
         match *self {
+            CTypeKind::Struct(decl_id) |
+            CTypeKind::Union(decl_id) |
+            CTypeKind::Enum(decl_id) => Some(decl_id),
+            _ => None
+        }
+    }
+
+    pub fn as_decl_or_typedef(&self) -> Option<CDeclId> {
+        match *self {
+            CTypeKind::Typedef(decl_id) |
             CTypeKind::Struct(decl_id) |
             CTypeKind::Union(decl_id) |
             CTypeKind::Enum(decl_id) => Some(decl_id),

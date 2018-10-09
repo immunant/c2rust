@@ -21,6 +21,13 @@ void bitcast(void *a) {}
 void foobar(unsigned int *a) {}
 void address_cast(unsigned long a) {}
 
+int cmp_ref(int a, int **b) {
+    // This should reference decay &a until
+    // https://github.com/rust-lang/rust/issues/53772 is resolved
+    // otherwise this would be a compilation error for &mut a != *b
+    return &a != *b;
+}
+
 void calls_all() {
     int i = 1;
     const int j = 2;
@@ -55,4 +62,6 @@ void calls_all() {
     // a reference (lhs) to be compared to a ptr (rhs). (but the reverse works)
     // See https://github.com/rust-lang/rust/issues/53772
     if (&i == k) {}
+
+    cmp_ref(i, &n);
 }

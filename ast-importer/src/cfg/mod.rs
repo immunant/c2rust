@@ -19,7 +19,6 @@ use syntax;
 use syntax::ast::{Arm, Expr, ExprKind, LitIntType, Pat, Stmt, StmtKind};
 use syntax::ptr::P;
 use syntax::codemap::{DUMMY_SP};
-use std::collections::{HashSet, HashMap};
 use c_ast::CLabelId;
 use std::ops::Index;
 use syntax::print::pprust;
@@ -32,7 +31,7 @@ use std::hash::Hasher;
 use std::hash::Hash;
 use std::collections::BTreeSet;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use serde::ser::{Serialize, Serializer, SerializeStruct, SerializeStructVariant, SerializeTupleVariant};
 use serde_json;
@@ -107,7 +106,7 @@ impl StructureLabel<StmtOrDecl> {
     /// variants with either a declaration with initializer or only an initializer.
     fn place_decls(
         self,
-        lift_me: &HashSet<CDeclId>,
+        lift_me: &IndexSet<CDeclId>,
         store: &mut DeclStmtStore,
     ) -> StructureLabel<StmtOrComment> {
         match self {
@@ -127,25 +126,25 @@ impl StructureLabel<StmtOrDecl> {
 pub enum Structure<Stmt> {
     /// Series of statements and what to do after
     Simple {
-        entries: HashSet<Label>,
+        entries: IndexSet<Label>,
         body: Vec<Stmt>,
         terminator: GenTerminator<StructureLabel<Stmt>>,
     },
     /// Looping constructs
     Loop {
-        entries: HashSet<Label>,
+        entries: IndexSet<Label>,
         body: Vec<Structure<Stmt>>,
     },
     /// Branching constructs
     Multiple {
-        entries: HashSet<Label>,
+        entries: IndexSet<Label>,
         branches: IndexMap<Label, Vec<Structure<Stmt>>>,
         then: Vec<Structure<Stmt>>,
     }
 }
 
 impl<S> Structure<S> {
-    fn get_entries(&self) -> &HashSet<Label> {
+    fn get_entries(&self) -> &IndexSet<Label> {
         match self {
             &Structure::Simple { ref entries, .. } => entries,
             &Structure::Loop { ref entries, .. } => entries,
@@ -158,7 +157,7 @@ impl Structure<StmtOrDecl> {
 
     /// Produce a new `Structure` from the existing one by replacing all `StmtOrDecl::Decl`
     /// variants with either a declaration with initializer or only an initializer.
-    fn place_decls(self, lift_me: &HashSet<CDeclId>, store: &mut DeclStmtStore) -> Structure<StmtOrComment> {
+    fn place_decls(self, lift_me: &IndexSet<CDeclId>, store: &mut DeclStmtStore) -> Structure<StmtOrComment> {
         match self {
             Structure::Simple { entries, body, terminator } => {
                 let mut body = body
@@ -196,10 +195,10 @@ pub struct BasicBlock<L,S> {
     terminator: GenTerminator<L>,
 
     /// Variables live at the beginning of this block
-    live: HashSet<CDeclId>,
+    live: IndexSet<CDeclId>,
 
     /// Variables defined in this block
-    defined: HashSet<CDeclId>,
+    defined: IndexSet<CDeclId>,
 }
 
 impl<L: Clone, S1> BasicBlock<L, S1> {
@@ -227,7 +226,7 @@ impl<L: Serialize, St: Serialize> Serialize for BasicBlock<L, St> {
 
 impl<L,S> BasicBlock<L,S> {
     fn new(terminator: GenTerminator<L>) -> Self {
-        BasicBlock { body: vec![], terminator, live: HashSet::new(), defined: HashSet::new() }
+        BasicBlock { body: vec![], terminator, live: IndexSet::new(), defined: IndexSet::new() }
     }
 
     fn new_jump(target: L) -> Self {
@@ -238,7 +237,7 @@ impl<L,S> BasicBlock<L,S> {
 impl<S1,S2> BasicBlock<StructureLabel<S1>,S2> {
 
     /// Get all of the `GoTo` targets of a structure basic block
-    fn successors(&self) -> HashSet<Label> {
+    fn successors(&self) -> IndexSet<Label> {
         self.terminator
             .get_labels()
             .iter()
@@ -351,7 +350,7 @@ impl GenTerminator<StructureLabel<StmtOrDecl>> {
     /// variants with either a declaration with initializer or only an initializer.
     fn place_decls(
         self,
-        lift_me: &HashSet<CDeclId>,
+        lift_me: &IndexSet<CDeclId>,
         store: &mut DeclStmtStore
     ) -> GenTerminator<StructureLabel<StmtOrComment>> {
         match self {
@@ -424,7 +423,7 @@ impl StmtOrDecl {
 
     /// Produce a `Stmt` by replacing `StmtOrDecl::Decl`  variants with either a declaration with
     /// initializer or only an initializer.
-    fn place_decls(self, lift_me: &HashSet<CDeclId>, store: &mut DeclStmtStore) -> Vec<StmtOrComment> {
+    fn place_decls(self, lift_me: &IndexSet<CDeclId>, store: &mut DeclStmtStore) -> Vec<StmtOrComment> {
         match self {
             StmtOrDecl::Stmt(s) => vec![StmtOrComment::Stmt(s)],
             StmtOrDecl::Comment(c) => vec![StmtOrComment::Comment(c)],
@@ -442,10 +441,10 @@ impl StmtOrDecl {
 #[derive(Clone, Debug)]
 pub struct Cfg<Lbl: Ord + Hash, Stmt> {
     /// Entry point in the graph
-    entries: HashSet<Lbl>,
+    entries: IndexSet<Lbl>,
 
     /// Nodes in the graph
-    nodes: HashMap<Lbl, BasicBlock<Lbl,Stmt>>,
+    nodes: IndexMap<Lbl, BasicBlock<Lbl,Stmt>>,
 
     /// Loops in the graph
     loops: LoopInfo<Lbl>,
@@ -578,8 +577,8 @@ impl<Lbl: Copy + Ord + Hash, Stmt> Cfg<Lbl, Stmt> {
 
     /// Removes blocks that cannot be reached from the CFG
     pub fn prune_unreachable_blocks_mut(&mut self) -> () {
-        let visited: HashSet<Lbl> = {
-            let mut visited: HashSet<Lbl> = HashSet::new();
+        let visited: IndexSet<Lbl> = {
+            let mut visited: IndexSet<Lbl> = IndexSet::new();
             let mut to_visit: Vec<&Lbl> = self.entries.iter().collect();
 
             while let Some(lbl) = to_visit.pop() {
@@ -591,7 +590,7 @@ impl<Lbl: Copy + Ord + Hash, Stmt> Cfg<Lbl, Stmt> {
                 visited.insert(*lbl);
 
                 for lbl in &blk.terminator.get_labels() {
-                    if !visited.contains(lbl) {
+                    if !visited.contains(*lbl) {
                         to_visit.push(lbl);
                     }
                 }
@@ -611,18 +610,18 @@ impl<Lbl: Copy + Ord + Hash, Stmt> Cfg<Lbl, Stmt> {
 
         // Keys are labels corresponding to empty basic blocks with a jump terminator, values are
         // the labels they jump to (and can hopefully be replaced by).
-        let mut proposed_rewrites: HashMap<Lbl, Lbl> = self.nodes
+        let mut proposed_rewrites: IndexMap<Lbl, Lbl> = self.nodes
             .iter()
             .filter_map(|(lbl, bb)| Cfg::empty_bb(bb).map(|tgt| (*lbl, tgt)))
             .collect();
 
         // Rewrites to actually apply. Keys are labels to basic blocks that were remapped into the
         // basic block corresponding to the value.
-        let mut actual_rewrites: HashMap<Lbl, Lbl> = HashMap::new();
+        let mut actual_rewrites: IndexMap<Lbl, Lbl> = IndexMap::new();
 
         while let Some((from, to)) = proposed_rewrites.iter().map(|(f,t)| (*f,*t)).next() {
             proposed_rewrites.remove(&from);
-            let mut from_any: HashSet<Lbl> = vec![from].into_iter().collect();
+            let mut from_any: IndexSet<Lbl> = indexset![from];
 
             // Try to apply more rewrites from `proposed_rewrites`
             let mut to_intermediate: Lbl = to;
@@ -690,7 +689,7 @@ struct CfgBuilder {
 
     /// Variables in scope right before the current statement. The wrapping `Vec` witnesses the
     /// notion of scope: later elements in the vector are always supersets of earlier elements.
-    currently_live: Vec<HashSet<CDeclId>>,
+    currently_live: Vec<IndexSet<CDeclId>>,
     /// Information about all of the C declarations we have seen so far.
     decls_seen: DeclStmtStore,
 
@@ -718,9 +717,9 @@ struct CfgBuilder {
     // Information for filtering out invalid CFGs
 
     /// Information about all of the C labels we have seen defined so far
-    c_labels_defined: HashSet<CLabelId>,
+    c_labels_defined: IndexSet<CLabelId>,
     /// Information about all of the C labels we have seen used so far
-    c_labels_used: HashSet<CLabelId>,
+    c_labels_used: IndexSet<CLabelId>,
     /// Are we allowed to translate `return` statements here?
     c_return_permitted: bool,
 
@@ -744,7 +743,7 @@ struct CfgBuilder {
 /// choosing what to do until later.
 #[derive(Clone, Debug)]
 pub struct DeclStmtStore {
-    store: HashMap<CDeclId, DeclStmtInfo>
+    store: IndexMap<CDeclId, DeclStmtInfo>
 }
 
 /// This contains the information one needs to convert a C declaration in all the possible ways:
@@ -777,12 +776,20 @@ impl DeclStmtInfo {
             decl_and_assign: Some(decl_and_assign),
         }
     }
+
+    pub fn empty() -> Self {
+        DeclStmtInfo {
+            decl: Some(Vec::new()),
+            assign: Some(Vec::new()),
+            decl_and_assign: Some(Vec::new()),
+        }
+    }
 }
 
 impl DeclStmtStore {
 
     pub fn new() -> Self {
-        DeclStmtStore { store: HashMap::new() }
+        DeclStmtStore { store: IndexMap::new() }
     }
 
     /// Extract _just_ the Rust statements for a declaration (without initialization). Used when you
@@ -854,10 +861,10 @@ struct WipBlock {
     body: Vec<StmtOrDecl>,
 
     /// Variables defined so far in this WIP.
-    defined: HashSet<CDeclId>,
+    defined: IndexSet<CDeclId>,
 
     /// Variables live in this WIP.
-    live: HashSet<CDeclId>,
+    live: IndexSet<CDeclId>,
 }
 
 impl Extend<Stmt> for WipBlock {
@@ -943,7 +950,7 @@ impl CfgBuilder {
     }
 
     /// Close an arm
-    fn close_arm(&mut self) -> (Label, HashSet<Label>) {
+    fn close_arm(&mut self) -> (Label, IndexSet<Label>) {
         let (arm_start, arm_contents) = self.multiples.pop().expect("No arm to close.");
 
         // Add the arm contents to the outer arm (if there is one)
@@ -970,7 +977,7 @@ impl CfgBuilder {
         b
     }
 
-    fn current_variables(&self) -> HashSet<CDeclId> {
+    fn current_variables(&self) -> IndexSet<CDeclId> {
         self.currently_live
             .last()
             .expect("Found no live currently live scope")
@@ -982,7 +989,7 @@ impl CfgBuilder {
         WipBlock {
             label: new_label,
             body: vec![],
-            defined: HashSet::new(),
+            defined: IndexSet::new(),
             live: self.current_variables(),
         }
     }
@@ -1006,7 +1013,7 @@ impl CfgBuilder {
         CfgBuilder {
             graph: Cfg {
                 entries,
-                nodes: HashMap::new(),
+                nodes: IndexMap::new(),
                 loops: LoopInfo::new(),
                 multiples: MultipleInfo::new(),
             },
@@ -1018,14 +1025,14 @@ impl CfgBuilder {
             continue_labels: vec![],
             switch_expr_cases: vec![],
 
-            currently_live: vec![HashSet::new()],
+            currently_live: vec![IndexSet::new()],
             decls_seen: DeclStmtStore::new(),
 
             loops: vec![],
             multiples: vec![],
 
-            c_labels_defined: HashSet::new(),
-            c_labels_used: HashSet::new(),
+            c_labels_defined: IndexSet::new(),
+            c_labels_used: IndexSet::new(),
             c_return_permitted,
         }
     }
@@ -1112,7 +1119,7 @@ impl CfgBuilder {
                 stmt_id,
             )),
             CStmtKind::Return(expr) => {
-                let val = match expr.map(|i| translator.convert_expr(ExprUse::RValue, i, false, DecayRef::Default)) {
+                let val = match expr.map(|i| translator.convert_expr(ExprUse::Used, i, false, DecayRef::Default)) {
                     Some(r) => Some(r?),
                     None => None,
                 };
@@ -1441,7 +1448,7 @@ impl CfgBuilder {
                 let body_label = self.fresh_label();
 
                 // Convert the condition
-                let WithStmts { stmts, val } = translator.convert_expr(ExprUse::RValue, scrutinee, false, DecayRef::Default)?;
+                let WithStmts { stmts, val } = translator.convert_expr(ExprUse::Used, scrutinee, false, DecayRef::Default)?;
                 wip.extend(stmts);
 
                 let wip_label = wip.label;

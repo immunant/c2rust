@@ -23,6 +23,10 @@ Attributes:
   sequences of this node type.  This only works for types supporting
   `GetNodeId` and `GetSpan`.
 
+- `#[rewrite_seq_item=custom]`: Omit the node type's `SeqItem` impl entirely.
+  (Normally every type gets at least a stub impl.) This option allows providing
+  a custom `SeqItem` impl in `impls.rs`.
+
 - `#[rewrite=ignore]`: On a type, ignore nodes of this type; on a field, ignore
   the contents of this field.  Perform no side effects and always return
   success, in both `rewrite_recycled` and `rewrite_fresh`.
@@ -141,7 +145,7 @@ def do_recycled_match(se, target1, target2):
     yield '}'
 
 @linewise
-def do_recycled_body(d):
+def do_recycled_body(d, slf='self'):
     mode = d.attrs.get('rewrite')
     if mode is None:
         if isinstance(d, (Struct, Enum)):
@@ -160,9 +164,9 @@ def do_recycled_body(d):
     if mode == 'ignore':
         yield '  false'
     elif mode == 'eq':
-        yield '  self != old'
-    elif mode == 'compare':
-        yield indent(do_recycled_match(d, 'self', 'old'), '  ')
+        yield '  %s != old' % slf
+    elif mode in ('compare', 'custom'):
+        yield indent(do_recycled_match(d, slf, 'old'), '  ')
     yield ';'
 
     # Maybe recover, then return the final result
@@ -170,7 +174,7 @@ def do_recycled_body(d):
     if splice:
         # Drop any rewrites pushed before the failure, then recover.
         yield '  rcx.rewind(mark);'
-        yield '  <%s as Splice>::splice_recycled(self, old, rcx);' % d.name
+        yield '  <%s as Splice>::splice_recycled(%s, old, rcx);' % (d.name, slf)
         yield '  false'
     else:
         yield '  true'
@@ -218,29 +222,41 @@ def do_fresh_match(se, target1, target2):
     yield '}'
 
 @linewise
-def do_fresh_body(d):
+def do_fresh_body(d, slf='self'):
     splice = 'rewrite_splice' in d.attrs
 
     if splice:
         # We only need the mark if we might recover.
-        yield 'if <%s as Splice>::splice_fresh(self, reparsed, rcx.borrow()) {' % d.name
+        yield 'if <%s as Splice>::splice_fresh(%s, reparsed, rcx.borrow()) {' % (d.name, slf)
         yield '  return;'
         yield '}'
 
     if isinstance(d, (Struct, Enum)):
-        yield do_fresh_match(d, 'self', 'reparsed')
+        yield do_fresh_match(d, slf, 'reparsed')
 
 @linewise
 def do_impl(d):
-    yield '#[allow(unused)]'
-    yield 'impl Rewrite for %s {' % d.name
-    yield '  fn rewrite_recycled(&self, old: &Self, mut rcx: RewriteCtxtRef) -> bool {'
-    yield indent(do_recycled_body(d), '    ')
-    yield '  }'
-    yield '  fn rewrite_fresh(&self, reparsed: &Self, mut rcx: RewriteCtxtRef) {'
-    yield indent(do_fresh_body(d), '    ')
-    yield '  }'
-    yield '}'
+    if d.attrs.get('rewrite') != 'custom':
+        yield '#[allow(unused)]'
+        yield 'impl Rewrite for %s {' % d.name
+        yield '  fn rewrite_recycled(&self, old: &Self, mut rcx: RewriteCtxtRef) -> bool {'
+        yield indent(do_recycled_body(d), '    ')
+        yield '  }'
+        yield '  fn rewrite_fresh(&self, reparsed: &Self, mut rcx: RewriteCtxtRef) {'
+        yield indent(do_fresh_body(d), '    ')
+        yield '  }'
+        yield '}'
+    else:
+        yield '#[allow(unused)]'
+        yield 'fn default_%s_rewrite_recycled(new: &%s, old: &%s, mut rcx: RewriteCtxtRef) -> bool {' % (
+                snake(d.name), d.name, d.name)
+        yield indent(do_recycled_body(d, slf='new'), '  ')
+        yield '}'
+        yield '#[allow(unused)]'
+        yield 'fn default_%s_rewrite_fresh(new: &%s, reparsed: &%s, mut rcx: RewriteCtxtRef) {' % (
+                snake(d.name), d.name, d.name)
+        yield indent(do_fresh_body(d, slf='new'), '  ')
+        yield '}'
 
 @linewise
 def do_full_seq_item_impl(d):
@@ -274,7 +290,9 @@ def generate(decls):
 
     for d in decls:
         yield do_impl(d)
-        if 'rewrite_seq_item' in d.attrs:
+        if d.attrs.get('rewrite_seq_item') == 'custom':
+            pass
+        elif 'rewrite_seq_item' in d.attrs:
             yield do_full_seq_item_impl(d)
         else:
             yield do_stub_seq_item_impl(d)

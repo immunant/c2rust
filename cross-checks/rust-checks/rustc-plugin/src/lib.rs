@@ -6,25 +6,24 @@ extern crate syntax;
 #[macro_use]
 extern crate matches;
 
+extern crate serde;
+extern crate serde_yaml;
+
 extern crate cross_check_config as xcfg;
 
-mod util;
-
 use rustc_plugin::Registry;
-use syntax::ast;
-use syntax::fold;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
+use std::fs;
 use std::path::PathBuf;
 
-#[cfg(feature="c-hash-functions")]
-use std::collections::HashSet;
-
+use syntax::ast;
 use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier};
 use syntax::ext::quote::rt::{ToTokens, ExtParseUtils};
 use syntax::codemap::{Span, FileLoader, RealFileLoader};
+use syntax::fold;
 use syntax::fold::Folder;
 use syntax::symbol::Symbol;
 use syntax::print::pprust;
@@ -32,7 +31,72 @@ use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
 use syntax::util::small_vector::SmallVector;
 
-use util::CrossCheckBuilder;
+mod default_config;
+
+fn djb2_hash(s: &str) -> u32 {
+    s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
+}
+
+trait CrossCheckBuilder {
+    fn build_ident_xcheck(&self, cx: &ExtCtxt, exp: &CrossCheckExpander,
+                          tag_str: &str, ident: &ast::Ident) -> Option<ast::Stmt>;
+    fn build_xcheck<F>(&self, cx: &ExtCtxt, exp: &CrossCheckExpander,
+                       tag_str: &str, val_ref_str: &str, f: F) -> Option<ast::Stmt>
+        where F: FnOnce(ast::Ident, Vec<ast::Stmt>) -> P<ast::Expr>;
+}
+
+impl CrossCheckBuilder for xcfg::XCheckType {
+    fn build_ident_xcheck(&self, cx: &ExtCtxt, exp: &CrossCheckExpander,
+                          tag_str: &str, ident: &ast::Ident) -> Option<ast::Stmt> {
+        self.build_xcheck(cx, exp, tag_str, &"$INVALID$", |tag, pre_hash_stmts| {
+            assert!(pre_hash_stmts.is_empty());
+            let name = &*ident.name.as_str();
+            let id = djb2_hash(name) as u64;
+            exp.insert_djb2_name(id as u32, String::from(name));
+            quote_expr!(cx, Some(($tag, $id)))
+        })
+    }
+
+    // Allow clients to specify the id or name manually, like this:
+    // #[cross_check(name = "foo")]
+    // #[cross_check(id = 0x12345678)]
+    fn build_xcheck<F>(&self, cx: &ExtCtxt, exp: &CrossCheckExpander,
+                       tag_str: &str, val_ref_str: &str, f: F) -> Option<ast::Stmt>
+            where F: FnOnce(ast::Ident, Vec<ast::Stmt>) -> P<ast::Expr> {
+        let tag = ast::Ident::from_str(tag_str);
+        let check = match *self {
+            xcfg::XCheckType::Default => f(tag, vec![]),
+            xcfg::XCheckType::AsType(ref ty_str) => {
+                let val_ref_ident = ast::Ident::from_str(val_ref_str);
+                let ty = cx.parse_tts(ty_str.clone());
+                let val_cast   = quote_stmt!(cx, let __c2rust_cast_val = *$val_ref_ident as $ty);
+                let val_update = quote_stmt!(cx, let $val_ref_ident = &__c2rust_cast_val);
+                let stmts = val_cast.into_iter().chain(val_update.into_iter())
+                    .collect::<Vec<_>>();
+                f(tag, stmts)
+            },
+
+            xcfg::XCheckType::None |
+            xcfg::XCheckType::Disabled => quote_expr!(cx, None),
+            xcfg::XCheckType::Fixed(id) => quote_expr!(cx, Some(($tag, $id))),
+            xcfg::XCheckType::Djb2(ref s) => {
+                let id = djb2_hash(s) as u64;
+                exp.insert_djb2_name(id as u32, s.clone());
+                quote_expr!(cx, Some(($tag, $id)))
+            },
+            xcfg::XCheckType::Custom(ref s) => {
+                // TODO: allow the custom expr to return an Option???
+                let custom_expr = cx.parse_expr(s.clone());
+                quote_expr!(cx, Some(($tag, $custom_expr)))
+            },
+        };
+        quote_stmt!(cx, {
+            #[allow(unused_imports)]
+            use cross_check_runtime::xcheck::$tag;
+            cross_check_iter!($check.into_iter())
+        })
+    }
+}
 
 trait AstItemScope {
     fn push_ast_item(&mut self, item: &ast::Item,
@@ -185,12 +249,14 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 let arg_xcheck_cfg = self.config().function_config()
                     .args.get(&arg_idx)
                     .unwrap_or(&self.config().inherited.all_args);
-                arg_xcheck_cfg.build_xcheck(self.cx, "FUNCTION_ARG_TAG", "val_ref",
+                arg_xcheck_cfg.build_xcheck(self.cx, self.expander,
+                                            "FUNCTION_ARG_TAG", "val_ref",
                                             |tag, pre_hash_stmts| {
                     // By default, we use cross_check_hash
                     // to hash the value of the identifier
                     let (ahasher, shasher) = self.get_hasher_pair();
                     quote_expr!(self.cx, {
+                        #[allow(unused_imports)]
                         use cross_check_runtime::hash::CrossCheckHash as XCH;
                         let val_ref = &$ident;
                         $pre_hash_stmts
@@ -261,20 +327,24 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             // TODO: only add the checks to C abi functions???
             let ref cfg = self.config();
             let entry_xcheck = cfg.inherited.entry
-                .build_ident_xcheck(self.cx, "FUNCTION_ENTRY_TAG", fn_ident);
+                .build_ident_xcheck(self.cx, self.expander,
+                                    "FUNCTION_ENTRY_TAG", fn_ident);
             let exit_xcheck = cfg.inherited.exit
-                .build_ident_xcheck(self.cx, "FUNCTION_EXIT_TAG", fn_ident);
+                .build_ident_xcheck(self.cx, self.expander,
+                                    "FUNCTION_EXIT_TAG", fn_ident);
             // Insert cross-checks for function arguments
             let arg_xchecks = fn_decl.inputs.iter()
                 .flat_map(|ref arg| self.build_arg_xcheck(arg))
                 .collect::<Vec<ast::Stmt>>();
             let result_xcheck = cfg.inherited.ret
-                .build_xcheck(self.cx, "FUNCTION_RETURN_TAG", "val_ref",
+                .build_xcheck(self.cx, self.expander,
+                              "FUNCTION_RETURN_TAG", "val_ref",
                               |tag, pre_hash_stmts| {
                 // By default, we use cross_check_hash
                 // to hash the value of the identifier
                 let (ahasher, shasher) = self.get_hasher_pair();
                 quote_expr!(self.cx, {
+                    #[allow(unused_imports)]
                     use cross_check_runtime::hash::CrossCheckHash as XCH;
                     let val_ref = &__c2rust_fn_result;
                     $pre_hash_stmts
@@ -386,6 +456,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             #[no_mangle]
             #[link_section = $hash_fn_section]
             pub unsafe extern "C" fn $hash_fn(x: *mut $ty_ident, depth: usize) -> u64 {
+                #[allow(unused_imports)]
                 use ::cross_check_runtime::hash::CrossCheckHash;
                 (*x).cross_check_hash_depth::<$ahasher, $shasher>(depth)
             }
@@ -713,6 +784,10 @@ struct CrossCheckExpander {
     external_config: xcfg::Config,
     macro_scopes: RefCell<HashMap<Span, xcfg::scopes::ScopeConfig>>,
 
+    // Reverse mapping from djb2 hashes of names to the originals
+    djb2_names: RefCell<HashMap<u32, HashSet<String>>>,
+    djb2_names_files: Vec<PathBuf>,
+
     // List of already emitted C ABI hash functions,
     // used to prevent the emission of duplicates
     #[cfg(feature="c-hash-functions")]
@@ -721,13 +796,18 @@ struct CrossCheckExpander {
 
 impl CrossCheckExpander {
     fn new(args: &[ast::NestedMetaItem]) -> CrossCheckExpander {
-        CrossCheckExpander {
-            external_config: CrossCheckExpander::parse_config_files(args),
-            ..Default::default()
-        }
+        let mut exp = Self::default();
+        exp.external_config = Self::parse_config_files(args);
+        exp.djb2_names_files = Self::parse_djb2_names_files(args);
+        exp
     }
 
     fn parse_config_files(args: &[ast::NestedMetaItem]) -> xcfg::Config {
+        // Parse the hard-coded default configuration, then apply
+        // the items from the files on top of it
+        let dcfg = xcfg::parse_string(&default_config::DEFAULT_CONFIG)
+            .expect("could not parse default config");
+
         // Parse arguments of the form
         // #[plugin(cross_check_plugin(config_file = "..."))]
         let fl = RealFileLoader;
@@ -742,7 +822,18 @@ impl CrossCheckExpander {
             // TODO: use a Reader to read&parse each configuration file
             // without storing its contents in an intermediate String buffer???
             .map(|fd| xcfg::parse_string(&fd).expect("could not parse config file"))
-            .fold(Default::default(), |acc, fc| acc.merge(fc))
+            .fold(dcfg, |acc, fc| acc.merge(fc))
+    }
+
+    fn parse_djb2_names_files(args: &[ast::NestedMetaItem]) -> Vec<PathBuf> {
+        let fl = RealFileLoader;
+        args.iter()
+            .filter(|nmi| nmi.check_name("djb2_names_file"))
+            .map(|mi| mi.value_str().expect("invalid string for config_file"))
+            .map(|fsym| PathBuf::from(&*fsym.as_str()))
+            .map(|fp| fl.abs_path(&fp)
+                        .expect(&format!("invalid path to djb2 names file: {:?}", fp)))
+            .collect()
     }
 
     fn insert_macro_scope(&self, sp: Span, config: xcfg::scopes::ScopeConfig) {
@@ -756,6 +847,31 @@ impl CrossCheckExpander {
                 self.find_span_scope(ei.call_site)
             })
         })
+    }
+
+    fn insert_djb2_name(&self, djb2: u32, name: String) {
+        self.djb2_names.borrow_mut()
+            .entry(djb2)
+            .or_default()
+            .insert(name);
+    }
+
+    fn write_djb2_names(&mut self) {
+        let djb2_names = &*self.djb2_names.borrow();
+        for fp in &self.djb2_names_files {
+            // TODO: should probably read the existing file,
+            // and merge our names into the existing contents
+            let mut f = fs::File::create(fp)
+                .expect(&format!("could not create djb2 names file: {:?}", fp));
+            serde_yaml::to_writer(f, djb2_names)
+                .expect(&format!("could not write YAML to djb2 names file: {:?}", fp));
+        }
+    }
+}
+
+impl Drop for CrossCheckExpander {
+    fn drop(&mut self) {
+        self.write_djb2_names()
     }
 }
 
@@ -810,7 +926,6 @@ impl MultiItemModifier for CrossCheckExpander {
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
     let ecc = CrossCheckExpander::new(reg.args());
-    // TODO: parse args
     reg.register_syntax_extension(
         Symbol::intern("cross_check"),
         SyntaxExtension::MultiModifier(Box::new(ecc)));

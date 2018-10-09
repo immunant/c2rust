@@ -103,31 +103,39 @@ pub struct LinkIncompleteTypes;
 
 impl Transform for LinkIncompleteTypes {
     fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        // (1) Find complete and incomplete type definitions, and index them by name.  The concept
-        // of "incomplete types" doesn't exist in Rust, but Corrode translates incomplete C types
-        // as zero-variant enums.
+        // (1) Find complete type definitions, and index them by name.
         let mut name_to_complete = HashMap::new();
         let mut incomplete_to_name = HashMap::new();
 
         visit_nodes(&krate, |i: &Item| {
             let complete = match i.node {
-                ItemKind::Struct(..) => Some(true),
-                ItemKind::Union(..) => Some(true),
-                ItemKind::Enum(ref ed, _) => Some(ed.variants.len() > 0),
-                _ => None,
+                ItemKind::Struct(..) => true,
+                ItemKind::Union(..) => true,
+                ItemKind::Enum(..) => true,
+                ItemKind::Ty(..) => true,
+                _ => false,
             };
 
-            if let Some(complete) = complete {
+            if complete {
                 let def_id = cx.node_def_id(i.id);
-                if complete {
-                    name_to_complete.entry(i.ident.name).or_insert_with(Vec::new).push(def_id);
-                } else {
-                    incomplete_to_name.insert(def_id, i.ident.name);
-                }
+                name_to_complete.entry(i.ident.name).or_insert_with(Vec::new).push(def_id);
             }
         });
 
-        // (2) Replace references to incomplete types with references to same-named complete types.
+        // (2) Find incomplete type definitions (extern types), and index them by name.
+        visit_nodes(&krate, |i: &ForeignItem| {
+            let incomplete = match i.node {
+                ForeignItemKind::Ty => true,
+                _ => false,
+            };
+
+            if incomplete {
+                let def_id = cx.node_def_id(i.id);
+                incomplete_to_name.insert(def_id, i.ident.name);
+            }
+        });
+
+        // (3) Replace references to incomplete types with references to same-named complete types.
         fold_resolved_paths(krate, cx, |qself, path, def| {
             if let Some(&name) = def.opt_def_id().as_ref().and_then(|x| incomplete_to_name.get(x)) {
                 if let Some(complete_def_ids) = name_to_complete.get(&name) {

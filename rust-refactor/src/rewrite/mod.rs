@@ -41,14 +41,16 @@ use std::collections::HashMap;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use rustc::session::Session;
-use syntax::ast::{Expr, ExprKind, Pat, Ty, Stmt, Item};
+use syntax::ast::{Expr, ExprKind, Pat, Ty, Stmt, Item, ForeignItem, Block};
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
 use syntax::codemap::{Span, DUMMY_SP};
 use syntax::util::parser;
 use syntax::visit::{self, Visitor};
 
 use ast_manip::Visit;
+use driver;
 
+mod cleanup;
 mod impls;
 pub mod files;
 
@@ -115,6 +117,8 @@ struct OldNodes<'s> {
     tys: NodeTable<'s, Ty>,
     stmts: NodeTable<'s, Stmt>,
     items: NodeTable<'s, Item>,
+    foreign_items: NodeTable<'s, ForeignItem>,
+    blocks: NodeTable<'s, Block>,
 }
 
 impl<'s> OldNodes<'s> {
@@ -125,6 +129,8 @@ impl<'s> OldNodes<'s> {
             tys: NodeTable::new(),
             stmts: NodeTable::new(),
             items: NodeTable::new(),
+            foreign_items: NodeTable::new(),
+            blocks: NodeTable::new(),
         }
     }
 }
@@ -164,6 +170,16 @@ impl<'s> Visitor<'s> for OldNodesVisitor<'s> {
         self.map.items.insert(x.id, x);
         visit::walk_item(self, x);
     }
+
+    fn visit_foreign_item(&mut self, x: &'s ForeignItem) {
+        self.map.foreign_items.insert(x.id, x);
+        visit::walk_foreign_item(self, x);
+    }
+
+    fn visit_block(&mut self, x: &'s Block) {
+        self.map.blocks.insert(x.id, x);
+        visit::walk_block(self, x);
+    }
 }
 
 
@@ -185,6 +201,7 @@ pub enum ExprPrec {
 pub struct RewriteCtxt<'s> {
     sess: &'s Session,
     old_nodes: OldNodes<'s>,
+    text_span_cache: HashMap<String, Span>,
 
     /// The span of the new AST the last time we entered "fresh" mode.  This lets us avoid infinite
     /// recursion - see comment in `splice_fresh`.
@@ -200,6 +217,7 @@ impl<'s> RewriteCtxt<'s> {
         RewriteCtxt {
             sess: sess,
             old_nodes: old_nodes,
+            text_span_cache: HashMap::new(),
 
             fresh_start: DUMMY_SP,
             expr_prec: ExprPrec::Normal(parser::PREC_RESET),
@@ -230,6 +248,14 @@ impl<'s> RewriteCtxt<'s> {
         &mut self.old_nodes.items
     }
 
+    pub fn old_foreign_items(&mut self) -> &mut NodeTable<'s, ForeignItem> {
+        &mut self.old_nodes.foreign_items
+    }
+
+    pub fn old_blocks(&mut self) -> &mut NodeTable<'s, Block> {
+        &mut self.old_nodes.blocks
+    }
+
     pub fn fresh_start(&self) -> Span {
         self.fresh_start
     }
@@ -253,6 +279,16 @@ impl<'s> RewriteCtxt<'s> {
             rewrites: rewrites,
             cx: self,
         }
+    }
+
+    pub fn text_span(&mut self, s: &str) -> Span {
+        if let Some(&sp) = self.text_span_cache.get(s) {
+            return sp;
+        }
+
+        let sp = driver::make_span_for_text(self.sess.codemap(), s);
+        self.text_span_cache.insert(s.to_owned(), sp);
+        sp
     }
 }
 
@@ -312,6 +348,13 @@ impl<'s, 'a> RewriteCtxtRef<'s, 'a> {
             rewrites: rewrites,
             adjust: adjust,
         });
+    }
+
+    pub fn record_text(&mut self,
+                       old_span: Span,
+                       text: &str) {
+        let new_span = self.text_span(text);
+        self.record(old_span, new_span, Vec::new(), TextAdjust::None);
     }
 }
 

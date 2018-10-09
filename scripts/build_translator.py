@@ -22,7 +22,6 @@ from common import (
     install_sig,
     ensure_dir,
     on_mac,
-    get_system_include_dirs,
     setup_logging,
     have_rust_toolchain,
     ensure_clang_version,

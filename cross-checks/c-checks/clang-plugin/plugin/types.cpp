@@ -14,28 +14,6 @@ namespace crosschecks {
 
 using namespace std::literals;
 
-// Ugly hack: a few structures in system headers contain unions
-// or anonymous structures, which we can't handle (yet),
-// so we maintain a hard-coded blacklist
-std::set<std::pair<std::string_view, std::string_view>>
-CrossCheckInserter::struct_xcheck_blacklist = {
-    // Regular header paths
-    { "/usr/include/bits/_G_config.h"sv,            "_G_fpos_t"sv        },
-    { "/usr/include/bits/_G_config.h"sv,            "_G_fpos64_t"sv      },
-    { "/usr/include/bits/types/__fpos_t.h"sv,       "_G_fpos_t"sv        },
-    { "/usr/include/bits/types/__fpos64_t.h"sv,     "_G_fpos64_t"sv      },
-    { "/usr/include/bits/types/__mbstate_t.h"sv,    "__mbstate_t"sv      },
-    { "/usr/include/bits/thread-shared-types.h"sv,  "__pthread_cond_s"sv },
-    // Ubuntu header paths
-    { "/usr/include/x86_64-linux-gnu/bits/_G_config.h"sv,           "_G_fpos_t"sv   },
-    { "/usr/include/x86_64-linux-gnu/bits/_G_config.h"sv,           "_G_fpos64_t"sv },
-    { "/usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h"sv,      "_G_fpos_t"sv        },
-    { "/usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h"sv,    "_G_fpos64_t"sv      },
-    { "/usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h"sv,   "__mbstate_t"sv },
-    { "/usr/include/x86_64-linux-gnu/bits/thread-shared-types.h"sv, "__pthread_cond_s"sv},
-
-};
-
 const HashFunction
 CrossCheckInserter::get_type_hash_function(QualType ty, llvm::StringRef candidate_name,
                                            ASTContext &ctx, bool build_it) {
@@ -500,20 +478,10 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
     if (file_cfg != nullptr)
         pushed_files++;
 
-    std::string blacklist_str;
     auto pre_xcfg_strings = build_xcfg_yaml(record_name, "struct",
                                             record_decl, "fields",
                                             record_decl->fields());
     llvm::SmallVector<config::StringLenPtr, 16> pre_xcfg_slps;
-    // Check the blacklist first
-    std::pair<std::string_view, std::string_view>
-        blacklist_key{llvm_string_ref_to_sv(file_name), record_name};
-    if (struct_xcheck_blacklist.count(blacklist_key) > 0) {
-        blacklist_str =
-            llvm::formatv("{{ name: {0}, item: struct, disable_xchecks: true }",
-                          record_name);
-        pre_xcfg_slps.push_back(config::StringLenPtr{blacklist_str});
-    }
     for (auto &s : pre_xcfg_strings)
         pre_xcfg_slps.push_back(config::StringLenPtr{s});
     auto record_cfg =

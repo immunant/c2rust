@@ -47,29 +47,30 @@
 //!
 
 use super::*;
+use indexmap::{IndexMap, IndexSet};
 
 
 /// Information about branching in a CFG.
 #[derive(Clone,Debug)]
 pub struct MultipleInfo<Lbl: Hash + Ord> {
     /// TODO: document me
-    multiples: HashMap<
+    multiples: IndexMap<
         BTreeSet<Lbl>,                    // an entry set (a `BTreeSet` because it satisfies `Hash`)
         (
             Lbl,                          // label where the entries join back up
-            HashMap<Lbl, HashSet<Lbl>>,   // for each entry, what labels to expect until join label
+            IndexMap<Lbl, IndexSet<Lbl>>,   // for each entry, what labels to expect until join label
         ),
     >,
 }
 
 impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
     pub fn new() -> Self {
-        MultipleInfo { multiples: HashMap::new() }
+        MultipleInfo { multiples: IndexMap::new() }
     }
 
     /// Rewrite nodes to take into account a node remapping. Note that the remapping is usually
     /// going to be very much _not_ injective - the whole point of remapping is to merge some nodes.
-    pub fn rewrite_blocks(&mut self, rewrites: &HashMap<Lbl, Lbl>) -> () {
+    pub fn rewrite_blocks(&mut self, rewrites: &IndexMap<Lbl, Lbl>) -> () {
         self.multiples = self.multiples
             .iter()
             .filter_map(|(entries, &(ref join_lbl, ref arms))| {
@@ -78,11 +79,11 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
                     .map(|lbl| rewrites.get(lbl).unwrap_or(lbl).clone())
                     .collect();
                 let join_lbl: Lbl = rewrites.get(join_lbl).unwrap_or(join_lbl).clone();
-                let arms: HashMap<Lbl, HashSet<Lbl>> = arms
+                let arms: IndexMap<Lbl, IndexSet<Lbl>> = arms
                     .iter()
                     .map(|(arm_lbl, arm_body)| {
                         let arm_lbl: Lbl = rewrites.get(arm_lbl).unwrap_or(arm_lbl).clone();
-                        let arm_body: HashSet<Lbl> = arm_body
+                        let arm_body: IndexSet<Lbl> = arm_body
                             .iter()
                             .map(|lbl| rewrites.get(lbl).unwrap_or(lbl).clone())
                             .collect();
@@ -99,9 +100,9 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
     }
 
     /// Add in information about a new multiple
-    pub fn add_multiple(&mut self, join: Lbl, arms: Vec<(Lbl, HashSet<Lbl>)>) -> () {
+    pub fn add_multiple(&mut self, join: Lbl, arms: Vec<(Lbl, IndexSet<Lbl>)>) -> () {
         let entry_set: BTreeSet<Lbl> = arms.iter().map(|&(ref l,_)| l.clone()).collect();
-        let arm_map: HashMap<Lbl, HashSet<Lbl>> = arms.into_iter().collect();
+        let arm_map: IndexMap<Lbl, IndexSet<Lbl>> = arms.into_iter().collect();
 
         if arm_map.len() > 1 {
             self.multiples.insert(entry_set, (join, arm_map));
@@ -110,7 +111,7 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
 
     pub fn get_multiple<'a>(
         &'a self, entries: &BTreeSet<Lbl>
-    ) -> Option<&'a (Lbl, HashMap<Lbl, HashSet<Lbl>>)> {
+    ) -> Option<&'a (Lbl, IndexMap<Lbl, IndexSet<Lbl>>)> {
         self.multiples.get(entries)
     }
 }

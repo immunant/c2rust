@@ -31,7 +31,6 @@ pub mod rewrite;
 
 pub mod analysis;
 
-pub mod remove_paren;
 pub mod span_fix;
 pub mod pick_node;
 
@@ -40,10 +39,12 @@ pub mod api;
 pub mod contains_mark;
 pub mod reflect;
 pub mod type_map;
+pub mod resolve;
 
 pub mod matcher;
 
 pub mod driver;
+pub mod recheck;
 
 pub mod command;
 pub mod interact;

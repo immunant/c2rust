@@ -1,6 +1,7 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
 //! `rustc_driver::driver::compile_input`.
 
+use std::mem::{self, ManuallyDrop};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use rustc::hir::map as hir_map;
@@ -14,16 +15,25 @@ use rustc_metadata::cstore::CStore;
 use rustc_resolve::MakeGlobMap;
 use rustc_codegen_utils::link;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
-use syntax::ast::{Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ItemKind};
+use syntax::ast::{
+    Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind, Block, Arg, BlockCheckMode,
+    UnsafeSource,
+};
+use syntax::ast::DUMMY_NODE_ID;
 use syntax::codemap::CodeMap;
 use syntax::codemap::{FileLoader, RealFileLoader};
-use syntax::parse;
+use syntax::ext::hygiene::SyntaxContext;
+use syntax::parse::{self, PResult};
+use syntax::parse::token::Token;
 use syntax::parse::parser::Parser;
 use syntax::ptr::P;
+use syntax::symbol::keywords;
+use syntax::tokenstream::TokenTree;
 use syntax_pos::FileName;
+use syntax_pos::Span;
 use arena::SyncDroplessArena;
 
-use remove_paren::remove_paren;
+use ast_manip::remove_paren;
 use span_fix;
 use util::Lone;
 
@@ -118,21 +128,71 @@ impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
 }
 
 
-/// Run the compiler with some command line `args`.  Stops compiling and invokes the callback
-/// `func` after the indicated `phase`.
-///
-/// `file_loader` can be `None` to read source code from the file system.  Otherwise, the provided
-/// loader will be used within the compiler.  For example, editor integration uses a custom file
-/// loader to provide the compiler with buffer contents for currently open files.
-pub fn run_compiler<F, R>(args: &[String],
-                          file_loader: Option<Box<FileLoader+Sync+Send>>,
-                          phase: Phase,
-                          func: F) -> R
-        where F: FnOnce(Crate, Ctxt) -> R {
+
+
+/// Various driver bits that we have lying around at the end of `phase_1_parse_input`.  This is
+/// everything we need to (re-)run the compiler from phase 1 onward.
+pub struct Phase1Bits {
+    session: Session,
+    cstore: CStore,
+    codegen_backend: Box<CodegenBackend>,
+    input: Input,
+    output: Option<PathBuf>,
+    out_dir: Option<PathBuf>,
+    control: CompileController<'static>,
+    krate: Crate,
+}
+
+impl Phase1Bits {
+    /// Set up the compiler again, using a previously-constructed `Session`.
+    ///
+    /// A `Crate` is mostly self-contained, but its `Span`s are really indexes into external
+    /// tables.  So if you actually plan to run the compiler after calling `reset()`, the new
+    /// `krate` passed here should satisfy a few properties:
+    ///
+    ///  1. The crate must have been parsed under the same `CodeMap` used by `session`.  Spans'
+    ///     `hi` and `lo` byte positions are indices into the `CodeMap` used for parsing, so
+    ///     transferring those spans to a different `CodeMap` produces nonsensical results.
+    ///
+    ///  2. The crate must not contain any paths starting with `$crate` from a non-empty
+    ///     `SyntaxCtxt`.  These types of paths appear during macro expansion, and can only be
+    ///     resolved using tables populated by the macro expander.
+    ///
+    ///  3. All `NodeId`s in the crate must be DUMMY_NODE_ID.
+    ///
+    ///  4. The crate must not contain automatically-injected `extern crate` declarations.  The
+    ///     compilation process will inject new copies of these, and then fail due to the name
+    ///     collision.
+    ///
+    /// A crate that has only been compiled to `Phase1` already satisfies points 2-4.  If you want
+    /// to re-compile a crate from `Phase2` or later, use `recheck::prepare_recheck` to fix things
+    /// up first.
+    pub fn from_session_and_crate(old_session: &Session, krate: Crate) -> Phase1Bits {
+        let (session, cstore, codegen_backend) = rebuild_session(old_session);
+
+        let in_path = old_session.local_crate_source_file.clone();
+        let input = Input::File(in_path.unwrap());
+
+        let control = CompileController::basic();
+
+        Phase1Bits {
+            session, cstore, codegen_backend,
+
+            input,
+            output: None,
+            out_dir: None,
+
+            control, krate,
+        }
+    }
+}
+
+pub fn run_compiler_to_phase1(args: &[String],
+                              file_loader: Option<Box<FileLoader+Sync+Send>>) -> Phase1Bits {
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
     let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
-    let outdir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
+    let out_dir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
     let output = matches.opt_str("o").map(|o| PathBuf::from(&o));
 
     assert!(matches.free.len() == 1,
@@ -140,7 +200,7 @@ pub fn run_compiler<F, R>(args: &[String],
     let in_path = Some(Path::new(&matches.free[0]).to_owned());
     let input = Input::File(in_path.as_ref().unwrap().clone());
 
-    let (sess, cstore, codegen_backend) = build_session(sopts, in_path, file_loader);
+    let (session, cstore, codegen_backend) = build_session(sopts, in_path, file_loader);
 
     // It might seem tempting to set up a custom CompileController and invoke `compile_input` here,
     // in order to avoid duplicating a bunch of `compile_input`'s logic.  Unfortunately, that
@@ -154,7 +214,23 @@ pub fn run_compiler<F, R>(args: &[String],
     let control = CompileController::basic();
 
     // Start of `compile_input` code
-    let krate = driver::phase_1_parse_input(&control, &sess, &input).unwrap();
+    let krate = driver::phase_1_parse_input(&control, &session, &input).unwrap();
+
+    Phase1Bits {
+        session, cstore, codegen_backend,
+        input, output, out_dir,
+        control, krate,
+    }
+}
+
+pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
+                                      phase: Phase,
+                                      func: F) -> R
+        where F: FnOnce(Crate, Ctxt) -> R {
+    let Phase1Bits {
+        session, cstore, codegen_backend, input, output, out_dir, control, krate,
+    } = bits;
+
     // Leave parens in place until after expansion, unless we're stopping at phase 1.  But
     // immediately fix up the attr spans, since during expansion, any `derive` attrs will be
     // removed.
@@ -162,39 +238,54 @@ pub fn run_compiler<F, R>(args: &[String],
 
     if phase == Phase::Phase1 {
         let krate = remove_paren(krate);
-        let cx = Ctxt::new_phase_1(&sess, &cstore);
+        let cx = Ctxt::new_phase_1(&session, &cstore);
         return func(krate, cx);
     }
 
-    let outputs = build_output_filenames(&input, &outdir, &output, &krate.attrs, &sess);
-    let crate_name = link::find_crate_name(Some(&sess), &krate.attrs, &input);
+    let outputs = build_output_filenames(&input, &out_dir, &output, &krate.attrs, &session);
+    let crate_name = link::find_crate_name(Some(&session), &krate.attrs, &input);
     let mut expand_result = driver::phase_2_configure_and_expand(
-        &sess, &cstore, krate, /*registry*/ None, &crate_name,
+        &session, &cstore, krate, /*registry*/ None, &crate_name,
         /*addl_plugins*/ None, MakeGlobMap::No, |_| Ok(())).unwrap();
     let krate = expand_result.expanded_crate;
     let krate = remove_paren(krate);
 
     let arenas = AllArenas::new();
 
-    let hir_map = hir_map::map_crate(&sess, &cstore, &mut expand_result.hir_forest, &expand_result.defs);
+    let hir_map = hir_map::map_crate(&session, &cstore, &mut expand_result.hir_forest, &expand_result.defs);
 
     if phase == Phase::Phase2 {
-        let cx = Ctxt::new_phase_2(&sess, &cstore, &hir_map);
+        let cx = Ctxt::new_phase_2(&session, &cstore, &hir_map);
         return func(krate, cx);
     }
 
     driver::phase_3_run_analysis_passes(
         &*codegen_backend,
         &control,
-        &sess, &cstore, hir_map, expand_result.analysis, expand_result.resolutions,
+        &session, &cstore, hir_map, expand_result.analysis, expand_result.resolutions,
         &arenas, &crate_name, &outputs,
         |tcx, _analysis, _incremental_hashes_map, _result| {
             if phase == Phase::Phase3 {
-                let cx = Ctxt::new_phase_3(&sess, &cstore, &tcx.hir, tcx, &arenas.interner);
+                let cx = Ctxt::new_phase_3(&session, &cstore, &tcx.hir, tcx, &arenas.interner);
                 return func(krate, cx);
             }
             unreachable!();
         }).unwrap()
+}
+
+/// Run the compiler with some command line `args`.  Stops compiling and invokes the callback
+/// `func` after the indicated `phase`.
+///
+/// `file_loader` can be `None` to read source code from the file system.  Otherwise, the provided
+/// loader will be used within the compiler.  For example, editor integration uses a custom file
+/// loader to provide the compiler with buffer contents for currently open files.
+pub fn run_compiler<F, R>(args: &[String],
+                          file_loader: Option<Box<FileLoader+Sync+Send>>,
+                          phase: Phase,
+                          func: F) -> R
+        where F: FnOnce(Crate, Ctxt) -> R {
+    let bits = run_compiler_to_phase1(args, file_loader);
+    run_compiler_from_phase1(bits, phase, func)
 }
 
 fn build_session(sopts: Options,
@@ -203,10 +294,15 @@ fn build_session(sopts: Options,
     // Corresponds roughly to `run_compiler`.
     let descriptions = rustc_driver::diagnostics_registry();
     let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
+    // Note: `codemap` is expected to be an `Lrc<CodeMap>`, which is an alias for `Rc<CodeMap>`.
+    // If this ever changes, we'll need a new trick to obtain the `CodeMap` in `rebuild_session`.
     let codemap = Rc::new(CodeMap::with_file_loader(file_loader, sopts.file_path_mapping()));
     // Put a dummy file at the beginning of the codemap, so that no real `Span` will accidentally
     // collide with `DUMMY_SP` (which is `0 .. 0`).
-    codemap.new_filemap(FileName::Custom("<dummy>".to_string()), "".to_string());
+    {
+        let fm = codemap.new_filemap(FileName::Custom("<dummy>".to_string()), " ".to_string());
+        fm.next_line(fm.start_pos);
+    }
 
     let emitter_dest = None;
 
@@ -218,6 +314,36 @@ fn build_session(sopts: Options,
     let cstore = CStore::new(codegen_backend.metadata_loader());
 
     (sess, cstore, codegen_backend)
+}
+
+/// Build a new session from an existing one.  This uses the same `CodeMap`, so spans will be
+/// compatible across both sessions.
+fn rebuild_session(old_session: &Session) -> (Session, CStore, Box<CodegenBackend>) {
+    let descriptions = rustc_driver::diagnostics_registry();
+
+    // We happen to know that the `&CodeMap` we get from `old_session.codemap()` is inside an `Rc`
+    // pointer, so we can clone that `Rc` with a little unsafe code.
+    let codemap = unsafe {
+        let temp_rc = ManuallyDrop::new(Rc::from_raw(old_session.codemap()));
+        let codemap = (*temp_rc).clone();
+        mem::forget(temp_rc);
+        codemap
+    };
+
+    let emitter_dest = None;
+
+    let session = session::build_session_with_codemap(
+        old_session.opts.clone(),
+        old_session.local_crate_source_file.clone(),
+        descriptions,
+        codemap,
+        emitter_dest,
+    );
+
+    let codegen_backend = rustc_driver::get_codegen_backend(&session);
+    let cstore = CStore::new(codegen_backend.metadata_loader());
+
+    (session, cstore, codegen_backend)
 }
 
 
@@ -293,4 +419,105 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
         }
         Err(db) => emit_and_panic(db, "impl items"),
     }
+}
+
+pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
+    // TODO: rustc no longer exposes a method for parsing ForeignItems. `parse_item` is a hacky
+    // workaround that may cause suboptimal error messages.
+    let mut p = make_parser(sess, "<foreign_item>", &format!("extern {{ {} }}", src));
+    match p.parse_item() {
+        Ok(item) => {
+            match item.expect("expected to find an item").into_inner().node {
+                ItemKind::ForeignMod(fm) => fm.items,
+                _ => panic!("expected to find a foreignmod item"),
+            }
+        }
+        Err(db) => emit_and_panic(db, "foreign items"),
+    }
+}
+
+pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
+    let mut p = make_parser(sess, "<block>", src);
+
+    let rules = if p.eat_keyword(keywords::Unsafe) {
+        BlockCheckMode::Unsafe(UnsafeSource::UserProvided)
+    } else {
+        BlockCheckMode::Default
+    };
+
+    match p.parse_block() {
+        Ok(block) => {
+            let block = remove_paren(block);
+            block.map(|b| Block { rules, ..b })
+        },
+        Err(db) => emit_and_panic(db, "block"),
+    }
+}
+
+fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Arg> {
+    // `parse_arg` is private, so we make do with `parse_pat` + `parse_ty`.
+    let pat = p.parse_pat()?;
+    p.expect(&Token::Colon)?;
+    let ty = p.parse_ty()?;
+    Ok(Arg { pat, ty, id: DUMMY_NODE_ID })
+}
+
+pub fn parse_arg(sess: &Session, src: &str) -> Arg {
+    let mut p = make_parser(sess, "<arg>", src);
+    match parse_arg_inner(&mut p) {
+        Ok(arg) => remove_paren(arg),
+        Err(db) => emit_and_panic(db, "arg"),
+    }
+}
+
+
+pub fn run_parser<F, R>(sess: &Session, src: &str, f: F) -> R
+        where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
+    let mut p = make_parser(sess, "<src>", src);
+    match f(&mut p) {
+        Ok(x) => x,
+        Err(db) => emit_and_panic(db, "src"),
+    }
+}
+
+pub fn run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> R
+        where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
+    let mut p = parse::new_parser_from_tts(&sess.parse_sess, tts);
+    match f(&mut p) {
+        Ok(x) => x,
+        Err(db) => emit_and_panic(db, "tts"),
+    }
+}
+
+pub fn try_run_parser<F, R>(sess: &Session, src: &str, f: F) -> Option<R>
+        where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
+    let mut p = make_parser(sess, "<src>", src);
+    match f(&mut p) {
+        Ok(x) => Some(x),
+        Err(mut db) => {
+            db.cancel();
+            None
+        },
+    }
+}
+
+pub fn try_run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> Option<R>
+        where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
+    let mut p = parse::new_parser_from_tts(&sess.parse_sess, tts);
+    match f(&mut p) {
+        Ok(x) => Some(x),
+        Err(mut db) => {
+            db.cancel();
+            None
+        },
+    }
+}
+
+
+/// Create a span whose text is `s`.  Note this is somewhat expensive, as it adds a new dummy file
+/// to the `CodeMap` on every call.
+pub fn make_span_for_text(cm: &CodeMap, s: &str) -> Span {
+    let fm = cm.new_filemap(FileName::Custom("<text>".to_string()), s.to_string());
+    fm.next_line(fm.start_pos);
+    Span::new(fm.start_pos, fm.end_pos, SyntaxContext::empty())
 }

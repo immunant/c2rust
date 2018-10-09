@@ -140,7 +140,7 @@ def test_json_c(args: argparse.Namespace) -> bool:
         die("missing " + cc_db_file, errno.ENOENT)
 
     with open(cc_db_file) as cc_db:
-        transpile_files(cc_db, args.jobs, None, False, args.verbose)
+        transpile_files(cc_db, verbose=args.verbose)
 
 
 def test_lua(args: argparse.Namespace) -> bool:
@@ -171,7 +171,7 @@ def test_lua(args: argparse.Namespace) -> bool:
         die("missing " + cc_db_file, errno.ENOENT)
 
     with open(cc_db_file) as cc_db:
-        return transpile_files(cc_db, args.jobs, None, False, args.verbose)
+        return transpile_files(cc_db, verbose=args.verbose)
 
 
 def test_ruby(args: argparse.Namespace) -> bool:
@@ -197,7 +197,7 @@ def test_ruby(args: argparse.Namespace) -> bool:
         die("missing " + cc_db_file, errno.ENOENT)
 
     with open(cc_db_file) as cc_db:
-        return transpile_files(cc_db, args.jobs, None, False, args.verbose)
+        return transpile_files(cc_db, verbose=args.verbose)
 
 
 def parse_args() -> argparse.Namespace:

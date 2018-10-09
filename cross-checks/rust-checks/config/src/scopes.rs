@@ -116,23 +116,24 @@ impl ScopeConfig {
             return None;
         }
         let file_items = external_config.get_file_items(file_name);
-        file_items.map(|file_items| {
-            let mut new_config = ScopeConfig {
-                file_name: Some(Rc::new(String::from(file_name))),
-                items: Some(super::NamedItemList::new(file_items)),
-                inherited: Rc::clone(&self.inherited),
-                item: ItemConfig::FileDefaults,
-            };
-            for item in file_items.items().iter() {
-                match **item {
-                    super::ItemConfig::Defaults(_) => {
-                        new_config.parse_xcfg_config(item);
-                    }
-                    _ => (),
+        if file_items.items().is_empty() {
+            return None;
+        }
+        let mut new_config = ScopeConfig {
+            file_name: Some(Rc::new(String::from(file_name))),
+            items: Some(super::NamedItemList::new(&file_items)),
+            inherited: Rc::clone(&self.inherited),
+            item: ItemConfig::FileDefaults,
+        };
+        for item in file_items.items().into_iter() {
+            match **item {
+                super::ItemConfig::Defaults(_) => {
+                    new_config.parse_xcfg_config(item);
                 }
+                _ => (),
             }
-            new_config
-        })
+        }
+        Some(new_config)
     }
 
     pub fn new_item(&self, item: ItemKind, file_name: &str) -> Self {
@@ -160,11 +161,12 @@ impl ScopeConfig {
             .unwrap_or(false)
     }
 
-    fn get_item_xcfg(&self, item: &str) -> Option<&super::ItemConfig> {
+    fn get_item_configs(&self, item: &str) -> &[Rc<super::ItemConfig>] {
         self.items
             .as_ref()
             .and_then(|nil| nil.name_map.get(item))
-            .map(|x| &**x)
+            .map(|items| &items[..])
+            .unwrap_or_default()
     }
 
     // Getters for various options
@@ -307,7 +309,7 @@ impl ScopeStack {
             for xcfg in pre_xcfg {
                 new_config.parse_xcfg_config(&xcfg);
             }
-            if let Some(ref xcfg) = old_config.get_item_xcfg(item_name) {
+            for xcfg in old_config.get_item_configs(item_name) {
                 new_config.parse_xcfg_config(xcfg);
             };
             for xcfg in post_xcfg {

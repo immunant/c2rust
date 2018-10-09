@@ -207,11 +207,14 @@ public:
     void VisitRecordType(const RecordType *T);
 
     void VisitVectorType(const clang::VectorType *T) {
-        auto t = T->desugar();
+        auto t = T->getElementType();
         auto qt = encodeQualType(t);
-        encodeType(T, TagVectorType, [qt](CborEncoder *local){
+
+        encodeType(T, TagVectorType, [T,qt](CborEncoder *local) {
             cbor_encode_uint(local, qt);
+            cbor_encode_uint(local, T->getNumElements());
         });
+
         VisitQualType(t);
     }
     
@@ -384,6 +387,8 @@ class TranslateASTVisitor final
               ASTEntryTag tag,
               SourceLocation loc,
               const QualType ty,
+              bool rvalue,
+              bool isVaList,
               const std::vector<void *> &childIds,
               std::function<void(CborEncoder*)> extra
              )
@@ -393,13 +398,13 @@ class TranslateASTVisitor final
           CborEncoder local, childEnc;
           cbor_encoder_create_array(encoder, &local, CborIndefiniteLength);
           
-          // 1 - Entry ID
+          // 0 - Entry ID
           cbor_encode_uint(&local, uintptr_t(ast));
           
-          // 2 - Entry Tag
+          // 1 - Entry Tag
           cbor_encode_uint(&local, tag);
           
-          // 3 - Entry Children
+          // 2 - Entry Children
           cbor_encoder_create_array(&local, &childEnc, childIds.size());
           for (auto x : childIds) {
               if (x == nullptr) {
@@ -410,15 +415,18 @@ class TranslateASTVisitor final
           }
           cbor_encoder_close_container(&local , &childEnc);
           
-          // 4 - File number
-          // 5 - Line number
-          // 6 - Column number
-          encodeSourcePos(&local, loc);
+          // 3 - File number
+          // 4 - Line number
+          // 5 - Column number
+          encodeSourcePos(&local, loc, isVaList);
 
-          // 7 - Type ID (only for expressions)
+          // 6 - Type ID (only for expressions)
           encode_qualtype(&local, ty);
           
-          // 7 - Extra entries
+          // 7 - Is Rvalue (only for expressions)
+          cbor_encode_boolean(&local, rvalue);
+          
+          // 8.. - Extra entries
           extra(&local);
           
           cbor_encoder_close_container(encoder, &local);
@@ -439,7 +447,8 @@ class TranslateASTVisitor final
        std::function<void(CborEncoder*)> extra = [](CborEncoder*){}
        ) {
           auto ty = ast->getType();
-          encode_entry_raw(ast, tag, ast->getLocStart(), ty, childIds, extra);
+          auto isVaList = false;
+          encode_entry_raw(ast, tag, ast->getLocStart(), ty, ast->isRValue(), isVaList, childIds, extra);
           typeEncoder.VisitQualType(ty);
       }
 
@@ -450,7 +459,9 @@ class TranslateASTVisitor final
        std::function<void(CborEncoder*)> extra = [](CborEncoder*){}
        ) {
           QualType s = QualType(static_cast<clang::Type*>(nullptr), 0);
-          encode_entry_raw(ast, tag, ast->getLocStart(), s, childIds, extra);
+          auto rvalue = false;
+          auto isVaList = false;
+          encode_entry_raw(ast, tag, ast->getLocStart(), s, rvalue, isVaList, childIds, extra);
       }
       
       void encode_entry
@@ -460,7 +471,8 @@ class TranslateASTVisitor final
        const QualType T,
        std::function<void(CborEncoder*)> extra = [](CborEncoder*){}
        ) {
-          encode_entry_raw(ast, tag, ast->getLocStart(), T, childIds, extra);
+          auto rvalue = false;
+          encode_entry_raw(ast, tag, ast->getLocation(), T, rvalue, isVaList(ast, T), childIds, extra);
       }
       
       
@@ -478,20 +490,27 @@ class TranslateASTVisitor final
           return filenames;
       }
       
-      void encodeSourcePos(CborEncoder *enc, SourceLocation loc) {
+      void encodeSourcePos(CborEncoder *enc, SourceLocation loc, bool isVaList = false) {
           auto& manager = Context->getSourceManager();
+
+          // A check to see if the Source Location is a Macro
+          if (manager.isMacroArgExpansion(loc) || manager.isMacroBodyExpansion(loc))
+              loc = manager.getFileLoc(loc);
+
           auto line = manager.getPresumedLineNumber(loc);
           auto col  = manager.getPresumedColumnNumber(loc);
           auto fileid = manager.getFileID(loc);
           auto entry = manager.getFileEntryForID(fileid);
-          
+
           auto filename = string("?");
-          if (entry) {
-              filename = entry->getName().str();
-          }
-          
+          if (entry)
+              filename = entry->tryGetRealPathName().str();
+
+          if (filename == "?" && isVaList)
+              filename = "vararg";
+
           auto pair = filenames.insert(std::make_pair(filename, filenames.size()));
-          
+
           cbor_encode_uint(enc, pair.first->second);
           cbor_encode_uint(enc, line);
           cbor_encode_uint(enc, col);
@@ -1391,6 +1410,36 @@ class TranslateASTVisitor final
           return false;
       }
 
+      // Inspired by a lambda function within `clang/lib/Sema/SemaType.cpp`
+      bool isVaList(Decl *D, QualType T) {
+          if (auto *RD = dyn_cast<RecordDecl>(D))
+              if (auto *name = RD->getIdentifier())
+                  if(name->isStr("__va_list_tag"))
+                      return true;
+
+          if (T.isNull())
+              return false;
+
+          if (auto *TD = T->getAs<TypedefType>()) {
+              auto *builtinVaList = Context->getBuiltinVaListDecl();
+              do {
+                  if (TD->getDecl() == builtinVaList)
+                      return true;
+                  if (auto *name = TD->getDecl()->getIdentifier())
+                      if (name->isStr("va_list"))
+                          return true;
+                  TD = TD->desugar()->getAs<TypedefType>();
+              } while (TD);
+          }
+
+          if (auto *RT = T->getPointeeOrArrayElementType()->getAs<RecordType>())
+              if (auto *name = RT->getDecl()->getIdentifier())
+                  if (name->isStr("__va_list_tag"))
+                      return true;
+
+          return false;
+      }
+
       void PrintWarning(std::string Message, Decl *D) {
           auto &DiagEngine = Context->getDiagnostics();
           const auto ID = DiagEngine.getCustomDiagID(DiagnosticsEngine::Warning, "%0");
@@ -1500,10 +1549,18 @@ public:
             
             // 3. Encode all of the visited file names
             auto filenames = visitor.getFilenames();
-            cbor_encoder_create_array(&outer, &array, filenames.size());
+
+            // Store filenames in order
+            auto filenames_count = filenames.size();
+            
+            auto ordered_filenames = std::vector<string>(filenames_count);
             for (auto &kv : filenames) {
-                auto str = kv.first;
-                cbor_encode_string(&array, str);
+                ordered_filenames[kv.second] = kv.first;
+            }
+            
+            cbor_encoder_create_array(&outer, &array, filenames_count);
+            for (auto &name : ordered_filenames) {
+                cbor_encode_string(&array, name);
             }
             cbor_encoder_close_container(&outer, &array);
             
@@ -1564,6 +1621,12 @@ static std::vector<const char *>augment_argv(int argc, char *argv[]) {
     const char * const extras[] = {
         "-extra-arg=-fparse-all-comments", // always parse comments
         "-extra-arg=-Wwrite-strings",      // string literals are constant
+        "-extra-arg=-D_FORTIFY_SOURCE=0",  // we don't want to use checked versions of libc.
+                                           // without this we get calls to __builtin__memcpy_chk, etc.
+
+        // Also #define C2RUST, so examples can conditionally omit C code that
+        // needs special handling in the Rust version (e.g., varargs functions)
+        "-extra-arg=-DC2RUST=1",
     };
     
     auto argv_ = std::vector<const char*>();

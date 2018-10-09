@@ -38,6 +38,10 @@ macro_rules! gen_visit_node_impl {
                 ($slf.callback)($arg);
                 $walk;
             }
+
+            fn visit_mac(&mut self, mac: &'ast Mac) {
+                visit::walk_mac(self, mac);
+            }
         }
 
         struct $NodeVisitorPost<F>
@@ -50,6 +54,10 @@ macro_rules! gen_visit_node_impl {
             fn $visit_thing(&mut $slf, $arg: &'ast $ArgTy, $($args: $ArgTys,)*) {
                 $walk;
                 ($slf.callback)($arg);
+            }
+
+            fn visit_mac(&mut self, mac: &'ast Mac) {
+                visit::walk_mac(self, mac);
             }
         }
 

@@ -23,7 +23,10 @@ struct Crate { module, attrs, span }
 struct Mod { inner, items }
 
 
-#[rewrite_splice] #[rewrite_seq_item] #[extend_span]
+// `Item` does implement `Splice`, but we also have some special recovery cases to check before
+// splicing the entire `Item`.  We omit the `#[rewrite_splice]` attr so the default implementation
+// doesn't do splicing and then always return `false`.
+#[rewrite=custom] #[rewrite_seq_item] #[extend_span]
 struct Item { ident, #[match=ignore] attrs, id, node, vis, span,
               #[match=ignore] #[rewrite=ignore] tokens }
 enum ItemKind {
@@ -90,6 +93,7 @@ struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs }
 struct MethodSig { unsafety, constness, abi, decl }
 
 struct ForeignMod { abi, items }
+#[rewrite_splice] #[rewrite_seq_item]
 struct ForeignItem { ident, #[match=ignore] attrs, node, id, span, vis }
 enum ForeignItemKind {
     Fn(decl, generics),
@@ -166,6 +170,7 @@ enum TyParamBound {
 struct PolyTraitRef { trait_ref, span, bound_generic_params }
 
 struct FnDecl { inputs, output, variadic }
+#[rewrite_splice]
 struct Arg { ty, pat, id }
 enum FunctionRetTy {
     Default(sp),
@@ -249,7 +254,7 @@ flag UnOp;
 flag BinOpKind;
 struct Field { ident, expr, span, is_shorthand, attrs }
 struct Arm { attrs, pats, guard, body }
-#[match=custom]
+#[match=custom] #[rewrite_splice]
 struct Block { stmts, id, rules, span, recovered }
 
 
@@ -304,7 +309,7 @@ flag AsmDialect;
 flag RangeLimits;
 
 
-#[no_node_id]
+#[no_node_id] #[rewrite_seq_item=custom]
 struct Attribute { id, style, path, tokens, is_sugared_doc, span }
 flag AttrStyle;
 
@@ -353,9 +358,12 @@ struct AnonConst {
 #[match=eq] flag Name;
 #[match=eq] flag SyntaxContext;
 
-#[equiv_mode=ignore] flag Span;
-#[equiv_mode=ignore] flag NodeId;
-#[equiv_mode=ignore] flag AttrId;
+#[equiv_mode=ignore] #[rewrite=ignore]
+flag Span;
+#[equiv_mode=ignore] #[rewrite=ignore]
+flag NodeId;
+#[equiv_mode=ignore] #[rewrite=ignore]
+flag AttrId;
 
 flag usize;
 #[match=eq] flag bool;

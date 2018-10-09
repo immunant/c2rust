@@ -141,6 +141,15 @@ uint64_t __c2rust_hash_function(void *f, size_t depth) {
     return FUNC_POINTER_HASH;
 }
 
+// Hash functions for system structures
+uint64_t __c2rust_hash__IO_FILE_struct(void *x, size_t depth) {
+    return 0x72617453454c4946ULL; // "FILEStar"
+}
+
+uint64_t __c2rust_hash__IO_FILE_complete_struct(void *x, size_t depth) {
+    return 0x72617453454c4946ULL; // "FILEStar"
+}
+
 // JodyHasher implementation
 struct hasher_jodyhash_t {
     uint64_t state;

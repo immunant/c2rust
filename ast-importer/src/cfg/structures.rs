@@ -15,9 +15,9 @@ pub fn structured_cfg(
 
     let ast: StructuredAST<P<Expr>, P<Pat>, Label, StmtOrComment> = structured_cfg_help(
         vec![],
-        &HashSet::new(),
+        &IndexSet::new(),
         root,
-        &mut HashSet::new(),
+        &mut IndexSet::new(),
     )?;
 
     let s = StructureState {
@@ -168,13 +168,13 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 ///
 /// TODO: move this into `structured_cfg`?
 fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=StmtOrComment>>(
-    exits: Vec<(Label, HashMap<Label, (HashSet<Label>, ExitStyle)>)>,
-    next: &HashSet<Label>,
+    exits: Vec<(Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>)>,
+    next: &IndexSet<Label>,
     root: &Vec<Structure<StmtOrComment>>,
-    used_loop_labels: &mut HashSet<Label>,
+    used_loop_labels: &mut IndexSet<Label>,
 ) -> Result<S, String> {
 
-    let mut next: &HashSet<Label> = next;
+    let mut next: &IndexSet<Label> = next;
     let mut rest: S = S::empty();
 
     for structure in root.iter().rev() {
@@ -187,7 +187,7 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
                     new_rest = S::mk_append(new_rest, S::mk_singleton(s));
                 }
 
-                let insert_goto = |to: Label, target: &HashSet<Label>| -> S {
+                let insert_goto = |to: Label, target: &IndexSet<Label>| -> S {
                     if target.len() == 1 { S::empty() } else { S::mk_goto(to) }
                 };
 
@@ -279,7 +279,7 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
                 let label = entries.iter().next()
                     .ok_or(format!("The loop {:?} has no entry", structure))?;
 
-                let mut these_exits = HashMap::new();
+                let mut these_exits = IndexMap::new();
                 these_exits.extend(entries
                     .iter()
                     .map(|e| (*e, (entries.clone(), ExitStyle::Continue)))
