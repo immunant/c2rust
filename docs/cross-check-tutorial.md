@@ -11,6 +11,20 @@ Our cross-checking implementation modifies the source code of the program at com
 The C2Rust cross-checkers currently instrument function entry and exit points, function return values, 
 and function call arguments (currently experimental and disabled by default, but can be enabled per argument, function or file).
 
+### Example
+To illustrate how cross-checking works, let us take the following code snippet:
+```C
+int foo() {
+    return 1;
+}
+```
+Calling the `foo` function will cause the following cross-check events to be emitted:
+```
+XCHECK(Ent):193491849/0x0b887389
+XCHECK(Exi):193491849/0x0b887389
+XCHECK(Ret):8680820740569200759/0x7878787878787877
+```
+
 ## Building code with cross-checks
 C2Rust contains one cross-checking implementation per language, in the form of a compiler plugin in both cases.
 We provide a clang plugin for C code, and a rustc plugin for Rust code.
