@@ -31,6 +31,7 @@ REFACTORINGS = [
         mk_select('crate; desc(foreign_mod);') +
             [';', 'create_item', 'mod ncurses {}', 'after'],
 
+
         mk_select('crate; desc(mod && name("ncurses"));') +
             [';', 'create_item', r'''
                 macro_rules! printw {
@@ -62,6 +63,41 @@ REFACTORINGS = [
             ['print_marks', ';'] +
             ['rename_marks', 'calls', 'target', ';'] +
             ['func_to_macro', 'printw', ';'] +
+            [],
+
+
+        mk_select('crate; desc(name("printw"));') +
+            [';', 'create_item', r'''
+                macro_rules! mvprintw {
+                    ($y:expr, $x:expr, $($args:tt)*) => {
+                        ::mvprintw($y, $x, b"%s\0" as *const u8 as *const libc::c_char,
+                                 ::std::ffi::CString::new(format!($($args)*))
+                                    .unwrap().as_ptr())
+                    };
+                }
+                ''', 'after'],
+
+        mk_select('item(mvprintw);', mark='mvprintw') + [';'] +
+
+            ['copy_marks', 'mvprintw', 'fmt_arg', ';'] +
+            ['print_marks', ';', 'print_spans', ';'] +
+            ['mark_arg_uses', '2', 'fmt_arg', ';'] +
+
+            mk_select('marked(fmt_arg); desc(expr && !match_expr(__e as __t));',
+                mark='fmt_str') + [';'] +
+
+            ['copy_marks', 'mvprintw', 'calls', ';'] +
+            ['mark_callers', 'calls', ';'] +
+
+            ['print_marks', ';'] +
+
+            ['rename_marks', 'fmt_arg', 'target', ';'] +
+            ['convert_format_string', ';'] +
+            ['delete_marks', 'target', ';'] +
+
+            ['print_marks', ';'] +
+            ['rename_marks', 'calls', 'target', ';'] +
+            ['func_to_macro', 'mvprintw', ';'] +
             [],
 ]
 
