@@ -1457,7 +1457,7 @@ impl Translation {
             // See https://internals.rust-lang.org/t/getting-explicit-simd-on-stable-rust/4380/115
             "__v1di" | "__v2si" | "__v4hi" | "__v8qi" | "__v4si" | "__v4sf" | "__v4su" |
             "__v2df" | "__v2di" | "__v8hi" | "__v16qi" | "__v2du" | "__v8hu" | "__v16qu" |
-            "__v16qs" | "__v8su" => true,
+            "__v16qs" | "__v8su" | "__v16hu" => true,
             _ => false,
         }
     }
