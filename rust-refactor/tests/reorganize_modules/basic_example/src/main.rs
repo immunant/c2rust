@@ -5,32 +5,35 @@
 #![allow(mutable_transmutes)]
 #![allow(unused_mut)]
 
+#![feature(libc)]
+extern crate libc;
+
 mod foo;
 mod test;
 
 #[cfg(not(source_header = "/some/path/foo.h"))]
 pub mod foo_h {
     pub struct foo_struct {
-        pub a: i32,
-        pub b: i32,
+        pub foo_struct_a: i32,
+        pub foo_struct_b: i32,
     }
 
     pub struct foo_point {
-        pub x: i32,
-        pub y: i32,
+        pub point_x: i32,
+        pub point_y: i32,
     }
 }
 
-#[cfg(not(source_header = "/some/path/foo.h"))]
+#[cfg(not(source_header = "/some/path/test.h"))]
 pub mod test_h {
     pub struct test_struct {
-        pub a: i32,
-        pub b: i32,
+        pub test_struct_a: i32,
+        pub test_struct_b: i32,
     }
 
     pub struct test_point {
-        pub x: i32,
-        pub y: i32,
+        pub point_x: i32,
+        pub point_y: i32,
     }
 }
 
@@ -45,6 +48,6 @@ use foo_h::foo_point;
 use test_h::test_point;
 
 fn main() {
-    let f_point: foo_point = foo_point {x: 1, y: 2};
-    let t_point: test_point = test_point {x: 1, y: 2};
+    let f_point: foo_point = foo_point {point_x: 1, point_y: 2};
+    let t_point: test_point = test_point {point_x: 1, point_y: 2};
 }

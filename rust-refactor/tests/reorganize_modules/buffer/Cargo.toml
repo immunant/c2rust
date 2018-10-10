@@ -5,6 +5,6 @@ version = "0.0.0"
 publish = false
 
 [[bin]]
-path = "main.rs"
+path = "src/main.rs"
 name = "test"
 

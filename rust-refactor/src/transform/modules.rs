@@ -1,69 +1,48 @@
 use std::collections::HashMap;
-use rustc::hir::def_id::DefId;
 use rustc::session::Session;
 use syntax::ast::*;
 use syntax::tokenstream::*;
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
-use syntax::codemap::{Span, DUMMY_SP};
+use syntax::codemap::DUMMY_SP;
 use transform::Transform;
 
 use api::*;
+use ast_manip::AstEquiv;
 use command::{CommandState, Registry};
 use driver::{self, Phase};
-use util::{IntoIdent, IntoString};
+use util::{IntoString, IntoIdent};
 
 pub struct ReorganizeModules;
 
-#[derive(Clone, Debug)]
-pub struct ModInfo {
-    pub id: NodeId,
-    pub def_id: DefId,
-    pub ident: Ident,
-    pub items: Vec<P<Item>>,
-    pub attrs: Vec<Attribute>,
-    pub span: Span,
-    pub consumed: bool,
-}
-
 impl Transform for ReorganizeModules {
     fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        let mut modules = Vec::new();
-        let mut mod_names = HashMap::new();
+        let mut mod_map = HashMap::new();
 
-        // Push the modules into a vec
+        // Match the modules, using a mapping like:
+        // NodeId -> NodeId
+        // The key is the id of the old item to be moved, and the value is the NodeId of the module
+        // the item will be moved to.
         visit_nodes(&krate, |i: &Item| {
             match i.node {
                 ItemKind::Mod(ref m) => {
-                    if is_from_source_header(&i.attrs) {
-                        modules.push(ModInfo {
-                            id: i.id,
-                            def_id: cx.node_def_id(i.id),
-                            ident: i.ident.clone(),
-                            items: m.items.clone(),
-                            attrs: i.attrs.clone(),
-                            span: m.inner,
-                            consumed: false,
-                        });
+                    if has_source_header(&i.attrs) {
+                        for item in m.items.iter() {
+                            match_modules(&krate, &item.id, i.ident.into_string(), &mut mod_map, cx.session());
+                        }
                     }
                 },
                 _ => {},
             }
         });
 
-        let krate = match_modules(krate, modules.clone(), &mut mod_names, cx.session());
-
-        let krate = fold_nodes(krate, |pi: P<Item>| {
-            // Remove the module, if it has the specific attribute
-            if is_from_source_header(&pi.attrs) {
-                return SmallVector::new();
-            }
-            SmallVector::one(pi)
-        });
-
-        let krate = clean_module_items(krate, &mut mod_names);
+        // `dest_mod_map`:
+        // NodeId -> vec<NodeId>
+        // The mapping is the destination module's `NodeId` to the items needing to be added to it.
+        let dest_mod_map = clean_module_items(&krate, &mod_map, cx);
 
         // This is where the `old module` items get moved into the `new modules`
+        let crate_copy = krate.clone();
         let krate = fold_nodes(krate, |pi: P<Item>| {
             if !matches!([pi.node] ItemKind::Mod(..)) {
                 return SmallVector::one(pi);
@@ -72,17 +51,17 @@ impl Transform for ReorganizeModules {
             SmallVector::one(pi.map(|i| {
                 unpack!([i.node.clone()] ItemKind::Mod(m));
                 let mut m = m;
-                let mod_name = i.ident.into_string();
-                let modinfos = mod_names.get(&mod_name);
 
-                if let Some(modinfo_vec) = modinfos {
-                    for modinfo in modinfo_vec {
-                        for item in &modinfo.items {
-                            m.items.push(item.clone());
+                let new_items_option = dest_mod_map.get(&i.id.as_u32());
+                if let Some(new_item_ids) =  new_items_option {
+                    for new_item_id in new_item_ids.iter() {
+                        let new_item_option = find_item(&crate_copy, new_item_id);
+
+                        if let Some(new_item) = new_item_option {
+                            m.items.push(P(new_item.clone()));
                         }
                     }
                 }
-
 
                 Item {
                     node: ItemKind::Mod(m),
@@ -92,29 +71,35 @@ impl Transform for ReorganizeModules {
         });
 
         let mut new_names = HashMap::new();
+        for (old_item_id, dest_mod_id) in mod_map.iter() {
+            let old_module = get_module(&krate, cx, &old_item_id).unwrap();
+            let old_module_id = get_id(&krate, &old_module).unwrap();
+            let old_item = find_item(&krate, &old_module_id.as_u32()).unwrap();
+            let dest_item = find_item(&krate, &dest_mod_id).unwrap();
 
-        // Iterate through mod_names and gather the `old module` identifier's,
-        // use that as the key. Use the `new module` name as the value.
-        for (new_mod_name, old_mods) in mod_names.iter() {
-            for old_mod in old_mods.iter() {
-                new_names.insert(old_mod.ident.into_string(), new_mod_name);
-            }
+            new_names.insert(old_item.ident.into_string(), dest_item.ident.into_string());
         }
 
-        // Change path segments of `old modules` to the to match the `new modules`.
-        // Ex:
-        // use foo_h::some_struct; -> use foo::some_struct;
         let krate = fold_nodes(krate, |mut p: Path| {
             for segment in &mut p.segments {
                 let path_name = segment.ident.into_string();
-                if let Some(new_path) = new_names.get(&path_name) {
-                    segment.ident = new_path.to_string().into_ident();
+                if let Some(new_path_segment) = new_names.get(&path_name) {
+                    segment.ident = new_path_segment.to_string().into_ident();
                 }
             }
             p
         });
 
         // print_module_info(modules);
+
+        // This will remove all the translated up modules.
+        let krate = fold_nodes(krate, |pi: P<Item>| {
+            // Remove the module, if it has the specific attribute
+            if has_source_header(&pi.attrs) {
+                return SmallVector::new();
+            }
+            SmallVector::one(pi)
+        });
 
         krate
     }
@@ -136,57 +121,127 @@ pub fn find_index(module_items: Vec<P<Item>>) -> usize {
     module_items.len()
 }
 
-// If a module already has an item, that is in the ModInfo item list,
-// delete that value from the ModInfo list. We do not want to reprint that value.
-pub fn clean_module_items(krate: Crate, mod_names: &mut HashMap<String, Vec<ModInfo>>) -> Crate {
-    let mut k = krate;
-    for (_, modules_to_move) in mod_names.into_iter() {
-        k = fold_nodes(k, |pi: P<Item>| {
-            for module in modules_to_move.iter_mut() {
-                module.items.retain(|pitem| {
-                    let item = pitem.clone().into_inner();
-                    if item.node.ast_equiv(&pi.node) {
-                        return false;
-                    }
-                    true
-                });
-            }
-            SmallVector::one(pi)
-        });
-    }
-    let krate = k;
-    krate
-}
-
 // We should match possible modules together:
 // test.rs should get the content of module test_h.
 // So the hashmap should be something like "Test" => ModInfo { ..., "test_h"}
-pub fn match_modules(krate: Crate, modules: Vec<ModInfo>, mod_names: &mut HashMap<String, Vec<ModInfo>>,
-                     sess: &Session) -> Crate {
-    let krate = fold_nodes(krate, |pi: P<Item>| {
-        match pi.node {
+pub fn match_modules(krate: &Crate, old_mod_item_id: &NodeId, old_mod_name: String,
+                     mod_map: &mut HashMap<u32, u32>, sess: &Session) {
+    visit_nodes(krate, |i: &Item| {
+        match i.node {
             ItemKind::Mod(_) => {
-                if !is_from_source_header(&pi.attrs) {
-                    let mut mod_name = pi.ident.into_string();
-                    let mut temp_vec = Vec::new();
-                    for module in &modules {
-                        let mod_info_name = module.ident.into_string();
-                        if mod_name.is_empty() {
-                            mod_name = get_source_file(sess);
-                        }
+                if !has_source_header(&i.attrs) {
+                    let mut dest_mod_name = i.ident.into_string();
 
-                        if mod_info_name.contains(&mod_name) {
-                            temp_vec.push(module.clone());
-                        }
+                    // The main crate module is an empty string,
+                    // so just give it it's original name
+                    if dest_mod_name.is_empty() {
+                        dest_mod_name = get_source_file(sess);
                     }
-                    mod_names.insert(mod_name.clone(), temp_vec.clone());
+
+                    // TODO: This is a simple naive heuristic,
+                    // and should be improved upon.
+                    if old_mod_name.contains(&dest_mod_name) {
+                        mod_map.insert(old_mod_item_id.as_u32(), i.id.as_u32());
+                    }
                 }
             },
             _ => {}
         }
-        SmallVector::one(pi)
     });
-    krate
+
+}
+
+// `clean_module_items` should iterate through mod_map, and if the Node has a similar `Item` within
+// the destination module do not insert it into to the vector of NodeId's.
+pub fn clean_module_items(krate: &Crate, mod_map: &HashMap<u32, u32>, _cx: &driver::Ctxt) -> HashMap<u32, Vec<u32>> {
+    let mut dest_items_map = HashMap::new();
+
+
+    for(old_item_id, dest_mod_id) in mod_map {
+        let mut dest_vec = Vec::new();
+
+        let old_item_option = find_item(krate, old_item_id);
+        let dest_mod_option = find_item(krate, dest_mod_id);
+
+        if dest_mod_option.is_some() && old_item_option.is_some() {
+            let dest_mod_ = dest_mod_option.unwrap();
+            let old_item = old_item_option.unwrap();
+
+            unpack!([dest_mod_.node.clone()] ItemKind::Mod(dest_mod));
+
+            // if the Module alrady has the item, no need to insert it.
+            // '''
+            // // dest_mod
+            // Mod {
+            //    pub struct some_struct {
+            //      pub a: i32,
+            //    }
+            // }
+            //
+            // //item
+            // pub struct some_struct {
+            //    pub a: i32
+            // } // should not be inserted
+            // '''
+            let mut is_match = false;
+            for dest_item in dest_mod.items.iter() {
+                if dest_item.node.ast_equiv(&old_item.node) {
+                    is_match = true;
+                }
+            }
+
+            if !is_match {
+                dest_vec.push(old_item.id.as_u32());
+            }
+
+        }
+
+        if !dest_items_map.contains_key(dest_mod_id) {
+            dest_items_map.insert(*dest_mod_id, dest_vec);
+        } else {
+            if let Some(v) = dest_items_map.get_mut(dest_mod_id) {
+                v.append(&mut dest_vec);
+            }
+        }
+    }
+    remove_duplicates(krate, &mut dest_items_map);
+    dest_items_map
+}
+
+// Remove any items that are duplicated throughout the process.
+pub fn remove_duplicates(krate: &Crate, mod_map: &mut HashMap<u32, Vec<u32>>) {
+    let mut cloned_map = mod_map.clone();
+
+    for (dest_mod_id, possible_duplicate_items_ids) in mod_map.iter_mut() {
+        possible_duplicate_items_ids.retain(|item_id| {
+            let cloned_item_ids = cloned_map.get_mut(&dest_mod_id).unwrap();
+
+            let mut result = true;
+            let mut id_to_remove: Option<u32> = None;
+            for cloned_item_id in cloned_item_ids.iter() {
+                // Make sure we aren't comparing the same items
+                if *item_id != *cloned_item_id {
+                    let item_a = find_item(krate, &item_id).unwrap();
+                    let item_b = find_item(krate, &cloned_item_id).unwrap();
+
+                    // There tends to be some flakyness around the `ast_equiv`,
+                    // specifically when structs have corresponding fields.
+                    // TODO: Fix ast_equiv, `Token` and `Symbol` seem to be the culprits.
+                    if item_a.node.ast_equiv(&item_b.node) {
+                        result = false;
+                        id_to_remove = Some(item_id.clone());
+                    }
+                }
+            }
+            if let Some(id) = id_to_remove {
+                let index = cloned_item_ids.iter().position(|&i| i == id).unwrap();
+                // Remove the item that is deemed as a duplicate.
+                cloned_item_ids.remove(index);
+            }
+
+            result
+        });
+    }
 }
 
 /*
@@ -223,7 +278,7 @@ pub fn get_source_file(sess: &Session) -> String {
 // What this function is looking for is the ident, 'source_header'.
 // Every translated file, that were translated with the correct option, should have:
 // `#[cfg(not(source_header = "/some/path"))]`
-pub fn is_from_source_header(attrs: &Vec<Attribute>) -> bool {
+pub fn has_source_header(attrs: &Vec<Attribute>) -> bool {
 
     // Recurse down the `TokenTree` till the `Token` is reached,
     // if the token contains an Ident with `source_tree`, this should be a translated
@@ -258,6 +313,62 @@ pub fn is_from_source_header(attrs: &Vec<Attribute>) -> bool {
         });
     }
     is_source_header
+}
+
+// Iterate through the crate, and look for the specified Node
+// from the NodeId
+pub fn find_item(krate: &Crate, id: &u32) -> Option<Item> {
+
+    let mut some_i = Vec::new();
+    visit_nodes(krate, |i: &Item| {
+        if i.id == NodeId::from_u32(*id) {
+            some_i.push(i.clone());
+        }
+    });
+
+    if some_i.len() > 0 {
+        let i = some_i.first().unwrap();
+        return Some(i.clone());
+    }
+    None
+}
+
+// Get the `parent` module of the item.
+pub fn get_module(krate: &Crate, cx: &driver::Ctxt, id: &u32) -> Option<Mod> {
+    let parent_id = cx.hir_map().get_module_parent(NodeId::from_u32(*id));
+    let item_id = cx.hir_map().as_local_node_id(parent_id).unwrap();
+
+    let item_option = find_item(krate, &item_id.as_u32());
+
+    if let Some(item) = item_option {
+        if matches!([item.node.clone()] ItemKind::Mod(_)) {
+            unpack!([item.node.clone()] ItemKind::Mod(m));
+            return Some(m);
+        }
+        return None;
+    }
+    None
+}
+
+// Get the Id of a module, it may be benificial to do this with
+// all `ItemKind`'s, as seeing that they do not include the NodeId
+pub fn get_id(krate: &Crate, module: &Mod) -> Option<NodeId> {
+    let mut node = NodeId::new(0);
+    visit_nodes(krate, |i: &Item| {
+        match i.node {
+            ItemKind::Mod(ref m) => {
+                if m.ast_equiv(module) {
+                    node = i.id.clone();
+                }
+            },
+            _ => {}
+        }
+    });
+
+    if node.as_u32() > 0 {
+        return Some(node);
+    }
+    None
 }
 
 pub fn register_commands(reg: &mut Registry) {
