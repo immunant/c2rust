@@ -70,9 +70,18 @@ static MISSING_SIMD_FUNCTIONS: [&str; 36] = [
     "_mm_xor_si64",
 ];
 
-static SIMD_X86_64_ONLY: [&str; 2] = [
+static SIMD_X86_64_ONLY: [&str; 11] = [
+    "_mm_cvtsd_si64",
     "_mm_cvtsi128_si64",
     "_mm_cvtsi128_si64x",
+    "_mm_cvtsi64_sd",
+    "_mm_cvtsi64_si128",
+    "_mm_cvtsi64_ss",
+    "_mm_cvtss_si64",
+    "_mm_cvttsd_si64",
+    "_mm_cvttsd_si64x",
+    "_mm_cvttss_si64",
+    "_mm_stream_si64",
 ];
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -1310,7 +1319,7 @@ impl Translation {
             CDeclKind::Typedef { ref typ, .. } => {
                 let new_name = &self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
-                if self.import_simd_typedefs(new_name) {
+                if self.import_simd_typedef(new_name) {
                     return Ok(ConvertedDecl::NoItem);
                 }
 
@@ -1421,7 +1430,7 @@ impl Translation {
         }
     }
 
-    fn import_simd_typedefs(&self, name: &str) -> bool {
+    fn import_simd_typedef(&self, name: &str) -> bool {
         match name {
             // Public API SIMD typedefs:
             "__m128i" | "__m128" | "__m128d" | "__m64" | "__m256" | "__m256d" | "__m256i" => {
