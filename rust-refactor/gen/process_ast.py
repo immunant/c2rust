@@ -206,15 +206,15 @@ if __name__ == '__main__':
 
     mode, out_file = sys.argv[1:]
 
-    if mode == 'ast_equiv':
+    if mode == 'ast_deref':
+        import ast_deref
+        text = ast_deref.generate(decls)
+    elif mode == 'ast_equiv':
         import ast_equiv
         text = ast_equiv.generate(decls)
     elif mode == 'matcher':
         import matcher
         text = matcher.generate(decls)
-    elif mode == 'rewrite':
-        import rewrite
-        text = rewrite.generate(decls)
     elif mode == 'get_span':
         import get_span
         text = get_span.generate(decls)
@@ -224,6 +224,21 @@ if __name__ == '__main__':
     elif mode == 'lr_expr':
         import lr_expr
         text = lr_expr.generate(decls)
+    elif mode == 'rewrite_rewrite':
+        import rewrite
+        text = rewrite.generate_rewrite_impls(decls)
+    elif mode == 'rewrite_recursive':
+        import rewrite
+        text = rewrite.generate_recursive_impls(decls)
+    elif mode == 'rewrite_recover_children':
+        import rewrite
+        text = rewrite.generate_recover_children_impls(decls)
+    elif mode == 'rewrite_seq_item':
+        import rewrite
+        text = rewrite.generate_seq_item_impls(decls)
+    elif mode == 'rewrite_maybe_rewrite_seq':
+        import rewrite
+        text = rewrite.generate_maybe_rewrite_seq_impls(decls)
     else:
         raise ValueError('unknown mode: %r' % mode)
 

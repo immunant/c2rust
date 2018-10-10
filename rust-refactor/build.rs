@@ -20,12 +20,21 @@ fn main() {
     let out_dir_str = env::var("OUT_DIR").unwrap();
     let out_dir = Path::new(&out_dir_str);
 
+    process_ast("ast_deref", &out_dir.join("ast_deref_gen.inc.rs"));
     process_ast("ast_equiv", &out_dir.join("ast_equiv_gen.inc.rs"));
     process_ast("matcher", &out_dir.join("matcher_impls_gen.inc.rs"));
-    process_ast("rewrite", &out_dir.join("rewrite_impls_gen.inc.rs"));
     process_ast("get_span", &out_dir.join("get_span_gen.inc.rs"));
     process_ast("get_node_id", &out_dir.join("get_node_id_gen.inc.rs"));
     process_ast("lr_expr", &out_dir.join("lr_expr_gen.inc.rs"));
+
+    process_ast("rewrite_rewrite", &out_dir.join("rewrite_rewrite_gen.inc.rs"));
+    process_ast("rewrite_recursive", &out_dir.join("rewrite_recursive_gen.inc.rs"));
+    process_ast("rewrite_recover_children",
+                &out_dir.join("rewrite_recover_children_gen.inc.rs"));
+    process_ast("rewrite_seq_item",
+                &out_dir.join("rewrite_seq_item_gen.inc.rs"));
+    process_ast("rewrite_maybe_rewrite_seq",
+                &out_dir.join("rewrite_maybe_rewrite_seq_gen.inc.rs"));
 
     println!("cargo:rerun-if-changed=gen/");
     for entry in fs::read_dir(&"gen").unwrap() {
