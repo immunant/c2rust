@@ -1261,29 +1261,7 @@ impl Translation {
             CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body, .. } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
-                // REVIEW: This will do a linear lookup against all SIMD fns. Could use a lazy static hashset
-                // REVIEW: Should this instead throw an error message?
-                if new_name.starts_with("_mm_") && !MISSING_SIMD_FUNCTIONS.contains(&new_name.as_str()) {
-                    let mut item_store = self.item_store.borrow_mut();
-
-                    let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]);
-                    let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]);
-
-                    // The majority of x86/64 SIMD is stable, however there are still some
-                    // bits that are behind a feature gate.
-                    self.features.borrow_mut().insert("stdsimd");
-
-                    // REVIEW: Also a linear lookup
-                    if !SIMD_X86_64_ONLY.contains(&new_name.as_str()) {
-                        item_store.uses
-                            .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
-                            .insert_with_attr(new_name, x86_attr);
-                    }
-
-                    item_store.uses
-                        .get_mut(vec!["std".into(), "arch".into(), "x86_64".into()])
-                        .insert_with_attr(new_name, x86_64_attr);
-
+                if self.import_simd_function(new_name) {
                     return Ok(ConvertedDecl::NoItem);
                 }
 
@@ -1460,6 +1438,36 @@ impl Translation {
             "__v16qs" | "__v8su" | "__v16hu" => true,
             _ => false,
         }
+    }
+
+    fn import_simd_function(&self, name: &str) -> bool {
+        // REVIEW: This will do a linear lookup against all SIMD fns. Could use a lazy static hashset
+        // REVIEW: Should this instead throw an error message?
+        if name.starts_with("_mm_") && !MISSING_SIMD_FUNCTIONS.contains(&name) {
+            let mut item_store = self.item_store.borrow_mut();
+
+            let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]);
+            let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]);
+
+            // The majority of x86/64 SIMD is stable, however there are still some
+            // bits that are behind a feature gate.
+            self.features.borrow_mut().insert("stdsimd");
+
+            // REVIEW: Also a linear lookup
+            if !SIMD_X86_64_ONLY.contains(&name) {
+                item_store.uses
+                    .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
+                    .insert_with_attr(name, x86_attr);
+            }
+
+            item_store.uses
+                .get_mut(vec!["std".into(), "arch".into(), "x86_64".into()])
+                .insert_with_attr(name, x86_64_attr);
+
+            return true;
+        }
+
+        false
     }
 
     fn convert_function(
