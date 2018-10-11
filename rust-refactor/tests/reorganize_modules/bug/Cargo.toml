@@ -1,0 +1,6 @@
+[package]
+name = "bug"
+version = "0.1.0"
+authors = ["miguelsaldivar <miguel.saldivar22@hotmail.com>"]
+
+[dependencies]
