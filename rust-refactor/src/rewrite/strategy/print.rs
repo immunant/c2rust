@@ -9,7 +9,6 @@
 //! pretty-printer output, since it likely has nicer formatting, comments, etc.  So there is some
 //! logic in this module for "recovering" from needing to use this strategy by splicing old AST
 //! text back into the new AST's pretty printer output.
-use std::ops::Deref;
 use std::rc::Rc;
 use rustc::session::Session;
 use rustc_target::spec::abi::Abi;
@@ -20,14 +19,14 @@ use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::token::Token;
 use syntax::print::pprust;
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenStream, ThinTokenStream, TokenTree};
+use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::parser;
 
-use ast_manip::{GetSpan, GetNodeId, AstDeref};
+use ast_manip::{GetNodeId, AstDeref};
 use ast_manip::util::extended_span;
 use driver;
 use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, TextAdjust, ExprPrec, NodeTable};
-use rewrite::base::{is_rewritable, describe, rewrite_seq};
+use rewrite::base::{is_rewritable, describe};
 use rewrite::base::{binop_left_prec, binop_right_prec};
 use util::Lone;
 

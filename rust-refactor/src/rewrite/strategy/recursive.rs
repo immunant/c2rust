@@ -1,7 +1,4 @@
 use syntax::ast::*;
-use syntax::codemap::SyntaxContext;
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
-use rustc_target::spec::abi::Abi;
 use syntax::util::parser;
 
 use rewrite::{RewriteCtxtRef, Rewrite, ExprPrec};

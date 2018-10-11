@@ -23,11 +23,9 @@ use syntax::ptr::P;
 use diff;
 use syntax::codemap::{Spanned, DUMMY_SP};
 use syntax::util::parser::{AssocOp, Fixity};
-use syntax::tokenstream::TokenTree;
 use rustc::session::Session;
 
 use ast_manip::{GetSpan, AstDeref};
-use ast_manip::util::extended_span;
 
 use super::strategy;
 use super::{RewriteCtxtRef, TextAdjust, SeqItemId};
@@ -95,7 +93,7 @@ impl<A: Rewrite, B: Rewrite, C: Rewrite> Rewrite for (A, B, C) {
 }
 
 impl<T: MaybeRewriteSeq> Rewrite for [T] {
-    fn rewrite(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {
+    fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
         MaybeRewriteSeq::maybe_rewrite_seq(old, new, DUMMY_SP, rcx)
     }
 }
@@ -147,10 +145,10 @@ impl<T: SeqItem> SeqItem for P<T> {
 /// `SeqItem`, `maybe_rewrite_seq` dispatches to `rewrite_seq`; on other types, it dispatches to
 /// `rewrite_seq_unsupported`.  The only purpose of this trait is to let `impl Rewrite for [T]`
 /// call one of those two functions depending on whether the type `T` implements `SeqItem`.
-trait MaybeRewriteSeq: Rewrite + Sized {
-    fn maybe_rewrite_seq(old: &[Self], new: &[Self], outer_span: Span,
+pub trait MaybeRewriteSeq: Rewrite + Sized {
+    fn maybe_rewrite_seq(old: &[Self], new: &[Self], _outer_span: Span,
                          rcx: RewriteCtxtRef) -> bool {
-        rewrite_seq_unsupported(old, new, outer_span, rcx)
+        rewrite_seq_unsupported(old, new, rcx)
     }
 }
 
@@ -163,7 +161,6 @@ impl<A: Rewrite, B: Rewrite> MaybeRewriteSeq for (A, B) {}
 /// Fallback case for `rewrite_seq` on unsupported types.
 pub fn rewrite_seq_unsupported<T: Rewrite>(old: &[T],
                                            new: &[T],
-                                           outer_span: Span,
                                            mut rcx: RewriteCtxtRef) -> bool {
     if old.len() != new.len() {
         // Give up - hope to recover at a higher level

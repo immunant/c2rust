@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use syntax::ast::*;
 use syntax::codemap::{Span, Spanned, SyntaxContext};
 use syntax::ptr::P;
