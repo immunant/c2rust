@@ -1,5 +1,7 @@
 #[cfg(not(source_header = "/some/path/foo.h"))]
 pub mod foo_h {
+    #[derive(Copy, Clone)]
+    #[repr(C)]
     pub struct foo_struct {
         pub foo_struct_a: i32,
         pub foo_struct_b: i32,
@@ -37,4 +39,11 @@ pub mod another_test_h {
         pub what_test_a: i32,
         pub what_test_b: i32,
     }
+}
+
+use self::foo_h::foo_point;
+
+fn foo_function() {
+    let f = foo_point{point_x: 1, point_y: 2};
+    println!("{:#?}", f.point_x);
 }

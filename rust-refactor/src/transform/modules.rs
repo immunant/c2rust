@@ -75,12 +75,23 @@ impl Transform for ReorganizeModules {
             let old_module = get_module(&krate, cx, &old_item_id).unwrap();
             let old_module_id = get_id(&krate, &old_module).unwrap();
             let old_item = find_item(&krate, &old_module_id.as_u32()).unwrap();
+
             let dest_item = find_item(&krate, &dest_mod_id).unwrap();
 
             new_names.insert(old_item.ident.into_string(), dest_item.ident.into_string());
         }
 
+        // We need to truncate the path from being `use self::some_h::foo;`,
+        // to be `use some_h::foo;`
         let krate = fold_nodes(krate, |mut p: Path| {
+            // remove self from segment
+            p.segments.retain(|s|{
+                let mut result = true;
+                if s.ident.into_string() == "self" {
+                    result = false;
+                }
+                result
+            });
             for segment in &mut p.segments {
                 let path_name = segment.ident.into_string();
                 if let Some(new_path_segment) = new_names.get(&path_name) {

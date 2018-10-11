@@ -44,10 +44,13 @@ pub mod types_h {
     use super::libc;
 }
 
-use foo_h::foo_point;
-use test_h::test_point;
+use self::foo_h::foo_point;
+use self::test_h::test_point;
 
 fn main() {
     let f_point: foo_point = foo_point {point_x: 1, point_y: 2};
+    println!("{}", f_point.point_x);
+
     let t_point: test_point = test_point {point_x: 1, point_y: 2};
+    println!("{}", t_point.point_x);
 }
