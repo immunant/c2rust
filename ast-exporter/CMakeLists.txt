@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.11)
 
-set(LLVM_LINK_COMPONENTS support)
 
+#################################################
+# TinyCBOR                                      #
+#################################################
 set(TINYCBOR_URL "https://github.com/intel/tinycbor/archive/v0.5.1.tar.gz"
     CACHE STRING "tinycbor download URL")
 set(TINYCBOR_MD5 "7b4fd204441cc24a9c50b3b4b92c97fd" CACHE STRING "tinycbor archive md5 sum")
@@ -35,11 +37,22 @@ add_library(tinycbor STATIC IMPORTED)
 set_target_properties(tinycbor PROPERTIES IMPORTED_LOCATION ${TINYCBOR_PREFIX}/lib/libtinycbor.a)
 add_dependencies(tinycbor tinycbor_build)
 
+
+#################################################
+# LLVM/Clang                                    #
+#################################################
 find_package(LLVM REQUIRED CONFIG)
 find_package(CLANG REQUIRED CONFIG)
 
 include_directories(${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS} ${CLANG_DEFINITIONS})
+
+set(LLVM_LINK_COMPONENTS support)
+
+
+#################################################
+# AST Exporter                                  #
+#################################################
 
 # The executable
 add_executable(ast-exporter

@@ -2,14 +2,32 @@ extern crate bindgen;
 extern crate cmake;
 
 use std::env;
+use std::process::Command;
 use std::path::PathBuf;
 use cmake::Config;
 
 // Use `cargo build -vv` to get detailed output on what this script's progress.
 
 fn main() {
+
+    // Find where the (already built) LLVM lib dir is
+    let llvm_lib_dir: String = env::var("LLVM_LIB_DIR").ok().or_else(|| {
+        let output = Command::new("llvm-config")
+                        .arg("--libdir")
+                        .output();
+
+        output.ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    }).expect(
+"
+Couldn't find LLVM lib dir. Try setting the `LLVM_LIB_DIR` environment
+variable or make sure `llvm-config` is on $PATH then re-build. For example:
+
+  $ export LLVM_LIB_DIR=/usr/local/opt/llvm/lib
+"
+    );
+
     // Build the exporter library and link it (and its dependencies) in
-    build_ast_exporter("/usr/local/opt/llvm/lib");
+    build_ast_exporter(&llvm_lib_dir);
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
@@ -98,6 +116,8 @@ fn build_ast_exporter(llvm_lib: &str) {
      * to that 'build.rs' can pick them up list them here. As a stopgap
      * solution, I ran CMake on the 'ast-exporter' exporter and intercepted
      * the 'ld' call to figure out which the libraries we need to link in.
+     *
+     * TODO: find a better way to do this!!!
      */
 
     // Link against these system libs
