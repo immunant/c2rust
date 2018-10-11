@@ -24,7 +24,7 @@ use syntax_pos::{FileName, BytePos};
 use driver;
 use ast_manip::{GetNodeId, GetSpan};
 use ast_manip::util::extended_span;
-use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, ExprPrec, NodeTable, TextAdjust};
+use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, ExprPrec, NodeTable, TextAdjust, SeqItemId};
 use util::Lone;
 
 
@@ -413,7 +413,7 @@ pub trait SeqItem {
     fn supported() -> bool { false }
 
     fn get_span(&self) -> Span { unimplemented!() }
-    fn get_id(&self) -> NodeId { unimplemented!() }
+    fn seq_item_id(&self) -> SeqItemId { unimplemented!() }
 
     fn splice_recycled_span(_new: &Self, _old_span: Span, _rcx: RewriteCtxtRef) {
         unimplemented!()
@@ -428,8 +428,8 @@ impl<T: SeqItem> SeqItem for P<T> {
         <T as SeqItem>::get_span(self)
     }
 
-    fn get_id(&self) -> NodeId {
-        <T as SeqItem>::get_id(self)
+    fn seq_item_id(&self) -> SeqItemId {
+        <T as SeqItem>::seq_item_id(self)
     }
 
     fn splice_recycled_span(new: &Self, old_span: Span, rcx: RewriteCtxtRef) {
@@ -445,8 +445,8 @@ impl<T: SeqItem> SeqItem for Rc<T> {
         <T as SeqItem>::get_span(self)
     }
 
-    fn get_id(&self) -> NodeId {
-        <T as SeqItem>::get_id(self)
+    fn seq_item_id(&self) -> SeqItemId {
+        <T as SeqItem>::seq_item_id(self)
     }
 
     fn splice_recycled_span(new: &Self, old_span: Span, rcx: RewriteCtxtRef) {
@@ -470,10 +470,10 @@ impl SeqItem for Attribute {
         self.span
     }
 
-    fn get_id(&self) -> NodeId {
+    fn seq_item_id(&self) -> SeqItemId {
         // This is a hack.  Attributes don't actually have their own NodeIds.  But hopefully their
         // AttrIds are at least unique within a given `Item`...
-        NodeId::new(self.id.0)
+        SeqItemId::Attr(self.id)
     }
 
     fn splice_recycled_span(new: &Self, old_span: Span, mut rcx: RewriteCtxtRef) {
@@ -481,6 +481,10 @@ impl SeqItem for Attribute {
         // for Attribute` because `Attribute`s don't have real NodeIds, and `Splice` is complex
         // enough that that could conceivably cause a problem somewhere.
         let printed = pprust::attr_to_string(new);
+        if let Some(sym) = new.value_str() {
+            info!("** attr **: printed = {:?}", printed);
+            info!("             symbol = {:?}", &sym.as_str() as &str);
+        }
         let reparsed = driver::run_parser(rcx.session(), &printed, |p| {
             match p.token {
                 // `parse_attribute` doesn't handle inner or outer doc comments.
@@ -1104,8 +1108,8 @@ impl<T: Rewrite+SeqItem> Rewrite for [T] {
             // We diff the sequences of `NodeId`s to match up nodes on the left and the right.
             // This works because the old AST has `NodeId`s assigned properly.  (The new AST might
             // not, but in that case we will properly detect a change.)
-            let new_ids = self.iter().map(|x| x.get_id()).collect::<Vec<_>>();
-            let old_ids = old.iter().map(|x| x.get_id()).collect::<Vec<_>>();
+            let new_ids = self.iter().map(|x| x.seq_item_id()).collect::<Vec<_>>();
+            let old_ids = old.iter().map(|x| x.seq_item_id()).collect::<Vec<_>>();
 
             let mut i = 0;
             let mut j = 0;

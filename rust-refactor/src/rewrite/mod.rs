@@ -43,6 +43,7 @@ use std::ops::{Deref, DerefMut};
 use rustc::session::Session;
 use syntax::ast::{Expr, ExprKind, Pat, Ty, Stmt, Item, ForeignItem, Block};
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
+use syntax::ast::AttrId;
 use syntax::codemap::{Span, DUMMY_SP};
 use syntax::util::parser;
 use syntax::visit::{self, Visitor};
@@ -108,6 +109,15 @@ impl<'s, T: ?Sized> NodeTable<'s, T> {
     pub fn get(&self, id: NodeId) -> Option<&'s T> {
         self.nodes.get(&id).map(|&x| x)
     }
+}
+
+
+/// Common ID type for nodes and `Attribute`s.  Both are sequence items, but `Attribute`s have
+/// their own custom ID type for some reason.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SeqItemId {
+    Node(NodeId),
+    Attr(AttrId),
 }
 
 
