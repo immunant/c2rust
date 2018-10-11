@@ -1261,7 +1261,7 @@ impl Translation {
             CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body, .. } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
-                if self.import_simd_function(new_name) {
+                if self.import_simd_function(new_name)? {
                     return Ok(ConvertedDecl::NoItem);
                 }
 
@@ -1435,39 +1435,43 @@ impl Translation {
             // See https://internals.rust-lang.org/t/getting-explicit-simd-on-stable-rust/4380/115
             "__v1di" | "__v2si" | "__v4hi" | "__v8qi" | "__v4si" | "__v4sf" | "__v4su" |
             "__v2df" | "__v2di" | "__v8hi" | "__v16qi" | "__v2du" | "__v8hu" | "__v16qu" |
-            "__v16qs" | "__v8su" | "__v16hu" => true,
+            "__v16qs" | "__v8su" | "__v16hu" | "__mm_loadh_pi_v2f32" | "__mm_loadl_pi_v2f32" => true,
             _ => false,
         }
     }
 
-    fn import_simd_function(&self, name: &str) -> bool {
-        // REVIEW: This will do a linear lookup against all SIMD fns. Could use a lazy static hashset
-        // REVIEW: Should this instead throw an error message?
-        if name.starts_with("_mm_") && !MISSING_SIMD_FUNCTIONS.contains(&name) {
-            let mut item_store = self.item_store.borrow_mut();
-
-            let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]);
-            let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]);
+    fn import_simd_function(&self, name: &str) -> Result<bool, String> {
+        if name.starts_with("_mm_") {
+            // REVIEW: This will do a linear lookup against all SIMD fns. Could use a lazy static hashset
+            if MISSING_SIMD_FUNCTIONS.contains(&name) {
+                return Err(format!("SIMD function {} doesn't currently have a rust counterpart", name));
+            }
 
             // The majority of x86/64 SIMD is stable, however there are still some
             // bits that are behind a feature gate.
             self.features.borrow_mut().insert("stdsimd");
 
+            let mut item_store = self.item_store.borrow_mut();
+
             // REVIEW: Also a linear lookup
             if !SIMD_X86_64_ONLY.contains(&name) {
+                let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]);
+
                 item_store.uses
                     .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
                     .insert_with_attr(name, x86_attr);
             }
 
+            let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]);
+
             item_store.uses
                 .get_mut(vec!["std".into(), "arch".into(), "x86_64".into()])
                 .insert_with_attr(name, x86_64_attr);
 
-            return true;
+            return Ok(true);
         }
 
-        false
+        Ok(false)
     }
 
     fn convert_function(
