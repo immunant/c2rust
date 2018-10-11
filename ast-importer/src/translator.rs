@@ -305,6 +305,11 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
     for (&decl_id, ref mut decl) in &mut translation.ast_context.c_decls {
         match decl.kind {
             CDeclKind::Function { ref mut name, ref body, .. } if body.is_some() => {
+                // SIMD types are imported and do not need to be renamed
+                if name.starts_with("_mm_") {
+                    continue;
+                }
+
                 name.insert_str(0, &prefix);
 
                 translation.renamer.borrow_mut().insert(decl_id, &name);
