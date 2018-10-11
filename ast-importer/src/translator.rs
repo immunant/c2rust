@@ -345,9 +345,17 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             if let CDeclKind::Typedef { ref name, typ, .. } = decl.kind {
                 if let Some(subdecl_id) = t.ast_context.resolve_type(typ.ctype).kind.as_underlying_decl() {
                     let is_unnamed = match t.ast_context[subdecl_id].kind {
-                        CDeclKind::Struct { name: None, .. } => true,
-                        CDeclKind::Union { name: None, .. } => true,
+                        CDeclKind::Struct { name: None, .. } |
+                        CDeclKind::Union { name: None, .. } |
                         CDeclKind::Enum { name: None, .. } => true,
+
+                        // Detect case where typedef and struct share the same name.
+                        // In this case the purpose of the typedef was simply to eliminate
+                        // the need for the 'struct' tag when refering to the type name.
+                        CDeclKind::Struct { name: Some(ref target_name), ..} |
+                        CDeclKind::Union { name: Some(ref target_name), .. } |
+                        CDeclKind::Enum { name: Some(ref target_name), .. } => name == target_name,
+
                         _ => false,
                     };
 
