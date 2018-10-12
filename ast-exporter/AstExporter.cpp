@@ -381,6 +381,11 @@ class TranslateASTVisitor final
           return exportedTags.emplace(ptr,tag).second;
       }
       
+      bool isExported(void* ptr, ASTEntryTag tag) {
+          auto search = exportedTags.find(std::make_pair(ptr,tag));
+          return search != std::end(exportedTags);
+      }
+      
       // Template required because Decl and Stmt don't share a common base class
       void encode_entry_raw
              (void *ast,
@@ -1001,12 +1006,25 @@ class TranslateASTVisitor final
       }
       
       bool VisitDeclRefExpr(DeclRefExpr *DRE) {
+          
+          // This avoids an infinite recursive loop that can be caused by the
+          // TraverseDecl below.
+          if (isExported(DRE, TagDeclRefExpr)) return true;
+          
           DEBUG(dbgs() << "Visiting ");
           DEBUG(DRE->dumpColor());
           DEBUG(DRE->getDecl()->getType()->dump());
           DEBUG(DRE->getType()->dump());
-          std::vector<void*> childIds = { DRE->getDecl()->getCanonicalDecl() };
+          
+          auto decl = DRE->getDecl()->getCanonicalDecl();
+          
+          std::vector<void*> childIds { decl };
           encode_entry(DRE, TagDeclRefExpr, childIds);
+          
+          // Uses of undeclared declarations might never be traversed if we don't
+          // manually traverse them from this point.
+          TraverseDecl(decl);
+          
           return true;
       }
       
