@@ -626,8 +626,9 @@ impl ConversionContext {
                     let elt = ty_node.extras[0].as_u64()
                         .expect("Vector child not found");
                     let elt_new = self.visit_qualified_type(elt);
+                    let count = ty_node.extras[1].as_u64().expect("count");
 
-                    let vector_ty = CTypeKind::Vector(elt_new);
+                    let vector_ty = CTypeKind::Vector(elt_new, count as usize);
                     self.add_type(new_id, not_located(vector_ty));
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }

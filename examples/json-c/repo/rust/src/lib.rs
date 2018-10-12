@@ -19,3 +19,5 @@ pub mod linkhash;
 pub mod printbuf;
 pub mod random_seed;
 pub mod strerror_override;
+
+mod c_funcs;
