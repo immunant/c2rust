@@ -1424,8 +1424,8 @@ impl Translation {
 
                 let mut item_store = self.item_store.borrow_mut();
 
-                let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]);
-                let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]);
+                let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
+                let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]).pub_();
 
                 item_store.uses
                     .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
@@ -1460,14 +1460,14 @@ impl Translation {
 
             // REVIEW: Also a linear lookup
             if !SIMD_X86_64_ONLY.contains(&name) {
-                let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]);
+                let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
 
                 item_store.uses
                     .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
                     .insert_with_attr(name, x86_attr);
             }
 
-            let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]);
+            let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]).pub_();
 
             item_store.uses
                 .get_mut(vec!["std".into(), "arch".into(), "x86_64".into()])
@@ -3786,12 +3786,12 @@ impl Translation {
                 (CTypeKind::LongLong, 2) => "_mm_setzero_si128",
                 (CTypeKind::LongLong, 4) => "_mm256_setzero_si256",
                 (CTypeKind::LongLong, 1) => {
-                    // __m64 is still unstable as of 1.29
+                    // __m64 is still unstable as of rust 1.29
                     self.features.borrow_mut().insert("stdsimd");
 
                     "_mm_setzero_si64"
                 },
-                _ => return Err(format!("Unsupported vector default initializer")),
+                (kind, len) => return Err(format!("Unsupported vector default initializer: {:?} x {}", kind, len)),
             };
 
             self.import_simd_function(fn_name).expect("None of these fns should be unsupported in rust");
@@ -4716,6 +4716,23 @@ impl Translation {
                     self.match_type_kind(param_id.ctype, store, decl_file_path);
                 }
             },
+            Vector(CQualTypeId { ctype, .. }, len) => {
+                // Since vector imports are global, we can find the correct type name in the parent scope
+                let type_name = match (&self.ast_context[ctype].kind, len) {
+                    (CTypeKind::Float, 4) => "__m128",
+                    (CTypeKind::Float, 8) => "__m256",
+                    (CTypeKind::Double, 2) => "__m128d",
+                    (CTypeKind::Double, 4) => "__m256d",
+                    (CTypeKind::LongLong, 2) => "__m128i",
+                    (CTypeKind::LongLong, 4) => "__m256i",
+                    (CTypeKind::LongLong, 1) => "__m64",
+                    (kind, len) => unimplemented!("Unknown vector type: {:?} x {}", kind, len),
+                };
+
+                store.uses
+                    .get_mut(vec!["super".into()])
+                    .insert_with_attr(type_name, mk().pub_());
+            },
             ref e => unimplemented!("{:?}", e),
         }
     }
@@ -4748,6 +4765,11 @@ impl Translation {
             CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } |
             CDeclKind::Typedef { typ, .. } => self.match_type_kind(typ.ctype, item_store, decl_file_path),
             CDeclKind::Function { is_extern: true, typ, .. } => self.match_type_kind(typ, item_store, decl_file_path),
+            CDeclKind::Function { .. } => {
+                // TODO: We may need to explicitly skip SIMD functions here when getting types for
+                // a fn definition in a header since SIMD headers define functions but we're using imports
+                // rather than translating the original definition
+            },
             ref e => unimplemented!("{:?}", e),
         }
     }
