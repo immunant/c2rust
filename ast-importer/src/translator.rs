@@ -306,7 +306,7 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
         match decl.kind {
             CDeclKind::Function { ref mut name, ref body, .. } if body.is_some() => {
                 // SIMD types are imported and do not need to be renamed
-                if name.starts_with("_mm_") {
+                if name.starts_with("_mm") {
                     continue;
                 }
 
@@ -1446,7 +1446,7 @@ impl Translation {
     }
 
     fn import_simd_function(&self, name: &str) -> Result<bool, String> {
-        if name.starts_with("_mm_") {
+        if name.starts_with("_mm") {
             // REVIEW: This will do a linear lookup against all SIMD fns. Could use a lazy static hashset
             if MISSING_SIMD_FUNCTIONS.contains(&name) {
                 return Err(format!("SIMD function {} doesn't currently have a rust counterpart", name));
@@ -3775,6 +3775,28 @@ impl Translation {
             let from_elem = mk().path_expr(vec!["", "std", "vec", "from_elem"]);
             let alloc = mk().call_expr(from_elem, vec![val, count]);
             Ok(alloc)
+        } else if let &CTypeKind::Vector(CQualTypeId { ctype, .. }, len) = resolved_ty {
+            // NOTE: This is only for x86/_64, and so support for other architectures
+            // might need some sort of disambiguation to be exported
+            let fn_name = match (&self.ast_context[ctype].kind, len) {
+                (CTypeKind::Float, 4) => "_mm_setzero_ps",
+                (CTypeKind::Float, 8) => "_mm256_setzero_ps",
+                (CTypeKind::Double, 2) => "_mm_setzero_pd",
+                (CTypeKind::Double, 4) => "_mm256_setzero_pd",
+                (CTypeKind::LongLong, 2) => "_mm_setzero_si128",
+                (CTypeKind::LongLong, 4) => "_mm256_setzero_si256",
+                (CTypeKind::LongLong, 1) => {
+                    // __m64 is still unstable as of 1.29
+                    self.features.borrow_mut().insert("stdsimd");
+
+                    "_mm_setzero_si64"
+                },
+                _ => return Err(format!("Unsupported vector default initializer")),
+            };
+
+            self.import_simd_function(fn_name).expect("None of these fns should be unsupported in rust");
+
+            Ok(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>))
         } else {
             Err(format!("Unsupported default initializer: {:?}", resolved_ty))
         }

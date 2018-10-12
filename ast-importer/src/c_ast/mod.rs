@@ -1053,7 +1053,7 @@ pub enum CTypeKind {
 
     BlockPointer(CQualTypeId),
 
-    Vector(CQualTypeId),
+    Vector(CQualTypeId, usize),
 
     Half,
 }

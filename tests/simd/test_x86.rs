@@ -1,6 +1,6 @@
 extern crate libc;
 
-use x86::rust_unpack_128_2x128;
+use x86::{rust_unpack_128_2x128, rust_zero_init_all};
 
 #[cfg(target_arch = "x86")]
 use std::arch::x86::{__m128i, _mm_setzero_si128, _mm_set_epi32};
@@ -43,5 +43,11 @@ pub fn test_unpack_128_2x128() {
         assert_eq!(r6, c6);
         assert_eq!(r7, c7);
         assert_eq!(r8, c8);
+    }
+}
+
+pub fn test_zero_initializers() {
+    unsafe {
+        rust_zero_init_all();
     }
 }

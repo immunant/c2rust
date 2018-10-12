@@ -201,7 +201,7 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
         Void | Bool | Short | Int | Long | LongLong | UShort | UInt | ULong | ULongLong | SChar |
         UChar | Char | Double | LongDouble | Float | Int128 | UInt128 | BuiltinFn | Half => vec![],
 
-        Pointer(qtype) | Attributed(qtype, _) | BlockPointer(qtype) | Vector(qtype) =>
+        Pointer(qtype) | Attributed(qtype, _) | BlockPointer(qtype) | Vector(qtype, _) =>
             intos![qtype.ctype],
 
         Decayed(ctype) | Paren(ctype) | TypeOf(ctype) | Complex(ctype) |
