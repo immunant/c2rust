@@ -20,7 +20,7 @@ pub use self::ast_deref::AstDeref;
 pub use self::ast_equiv::AstEquiv;
 pub use self::fold::Fold;
 pub use self::fold_node::{FoldNode, fold_nodes};
-pub use self::get_node_id::GetNodeId;
+pub use self::get_node_id::{GetNodeId, MaybeGetNodeId};
 pub use self::get_span::GetSpan;
 pub use self::list_node_ids::ListNodeIds;
 pub use self::number_nodes::number_nodes;

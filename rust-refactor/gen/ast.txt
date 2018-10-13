@@ -25,11 +25,11 @@ struct Crate {
     attrs,
     span,
 }
-struct Mod { inner, items }
+struct Mod { inner, #[mac_table_seq] items }
 
 
 #[rewrite_print_recover] #[rewrite_seq_item] #[rewrite_extra_strategies=item_header]
-#[extend_span]
+#[nonterminal] #[extend_span]
 struct Item { ident, #[match=ignore] attrs, id, node, vis, span,
               #[match=ignore] #[rewrite_ignore] tokens }
 enum ItemKind {
@@ -46,8 +46,8 @@ enum ItemKind {
     Enum(def, generics),
     Struct(vd, generics),
     Union(vd, generics),
-    Trait(is_auto, unsafety, generics, bounds, items),
-    Impl(unsafety, polarity, generics, defaultness, trait_ref, ty, items),
+    Trait(is_auto, unsafety, generics, bounds, #[mac_table_seq] items),
+    Impl(unsafety, polarity, generics, defaultness, trait_ref, ty, #[mac_table_seq] items),
     Mac(mac),
     MacroDef(tts),
     TraitAlias(generics,bounds),
@@ -61,7 +61,7 @@ enum UseTreeKind {
 
 struct UseTree { kind, prefix, span }
 
-#[extend_span]
+#[nonterminal] #[extend_span]
 struct TraitItem { id, ident, #[match=ignore] attrs, generics, node, span,
                    #[match=ignore] #[rewrite_ignore] tokens }
 enum TraitItemKind {
@@ -71,7 +71,7 @@ enum TraitItemKind {
     Macro(mac),
 }
 
-#[extend_span]
+#[nonterminal] #[extend_span]
 struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, generics, node, span,
                   #[match=ignore] #[rewrite_ignore] tokens }
 enum ImplItemKind {
@@ -95,8 +95,8 @@ struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs }
 
 struct MethodSig { unsafety, constness, abi, decl }
 
-struct ForeignMod { abi, items }
-#[rewrite_print_recover] #[rewrite_seq_item]
+struct ForeignMod { abi, #[mac_table_seq] items }
+#[rewrite_print_recover] #[rewrite_seq_item] #[nonterminal]
 struct ForeignItem { ident, #[match=ignore] attrs, node, id, span, vis }
 enum ForeignItemKind {
     Fn(decl, generics),
@@ -106,9 +106,11 @@ enum ForeignItemKind {
 }
 
 
+#[nonterminal]
 struct Generics { params, where_clause, span }
 struct TyParam { attrs, ident, id, bounds, default }
 struct LifetimeDef { attrs, lifetime, bounds }
+#[nonterminal]
 struct WhereClause { id, predicates, span }
 enum WherePredicate {
     BoundPredicate(pred),
@@ -135,7 +137,7 @@ enum VisibilityKind {
 
 flag CrateSugar;
 
-#[match=custom] #[rewrite_print_recover]
+#[match=custom] #[rewrite_print_recover] #[mac_table_record] #[nonterminal]
 struct Ty { id, node, span }
 struct MutTy {ty, mutbl}
 enum TyKind {
@@ -153,7 +155,7 @@ enum TyKind {
     Typeof(expr),
     Infer,
     ImplicitSelf,
-    Mac(mac),
+    #[mac_table_record] Mac(mac),
     Err,
 }
 
@@ -184,7 +186,7 @@ enum FunctionRetTy {
 struct TypeBinding { id, ident, ty, span }
 
 
-#[match=custom] #[rewrite_print_recover] #[rewrite_seq_item]
+#[match=custom] #[rewrite_print_recover] #[rewrite_seq_item] #[nonterminal]
 struct Stmt { id, node, span }
 #[no_debug]
 enum StmtKind {
@@ -198,7 +200,7 @@ enum StmtKind {
 struct Local { pat, ty, init, id, span, #[match=ignore] attrs }
 
 
-#[match=custom] #[rewrite_print_recover] #[extend_span]
+#[match=custom] #[rewrite_print_recover] #[extend_span] #[mac_table_record] #[nonterminal]
 struct Expr { id, node, span, #[match=ignore] attrs }
 #[prec_contains_expr]
 enum ExprKind {
@@ -238,7 +240,7 @@ enum ExprKind {
     Continue(label),
     Ret(#[prec=JUMP] expr),
     InlineAsm(asm),
-    Mac(mac),
+    #[mac_table_record] Mac(mac),
     Struct(path, fields, base),
     Repeat(item, count),
     Paren(expr),
@@ -257,11 +259,11 @@ flag UnOp;
 flag BinOpKind;
 struct Field { ident, expr, span, is_shorthand, attrs }
 struct Arm { attrs, pats, guard, body }
-#[match=custom] #[rewrite_print_recover]
-struct Block { stmts, id, rules, span, recovered }
+#[match=custom] #[rewrite_print_recover] #[nonterminal]
+struct Block { #[mac_table_seq] stmts, id, rules, span, recovered }
 
 
-#[match=custom]
+#[match=custom] #[mac_table_record] #[nonterminal]
 struct Pat { id, node, span }
 enum PatKind {
     Wild,
@@ -276,7 +278,7 @@ enum PatKind {
     Range(lo, hi, end),
     Slice(start, mid, end),
     Paren(pat),
-    Mac(mac),
+    #[mac_table_record] Mac(mac),
 }
 
 struct FieldPat { ident, pat, is_shorthand, attrs }
@@ -317,7 +319,7 @@ struct Attribute { id, style, path, tokens, is_sugared_doc, span }
 flag AttrStyle;
 
 
-#[match=custom]
+#[match=custom] #[nonterminal]
 struct Path { span, segments }
 struct PathSegment { ident, parameters }
 enum PathParameters {

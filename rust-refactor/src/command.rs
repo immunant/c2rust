@@ -253,9 +253,11 @@ impl RefactorState {
 
         let mut marks = mem::replace(&mut self.marks, HashSet::new());
 
+        let unexpanded = krate.clone();
         let bits = Phase1Bits::from_session_and_crate(&self.session, krate);
         driver::run_compiler_from_phase1(bits, phase, |krate, cx| {
-            let krate = span_fix::fix_spans(&self.session, krate);
+            let expanded = krate.clone();
+            //let krate = span_fix::fix_spans(&self.session, krate);
 
             if first_transform {
                 // Set `orig_krate` to the newly-expanded `krate`.
@@ -311,6 +313,8 @@ impl RefactorState {
             let cmd_state = CommandState::new(krate, marks);
             let r = f(&cmd_state, &cx);
 
+            ::collapse::test(&unexpanded, &expanded, &cmd_state.krate(), cx.session());
+
             // Update internal state
             let changed = cmd_state.krate_changed();
             if cmd_state.krate_changed() || first_transform {
@@ -337,6 +341,7 @@ impl RefactorState {
 
         let mut marks = mem::replace(&mut self.marks, HashSet::new());
 
+        let unexpanded = krate.clone();
         let bits = Phase1Bits::from_session_and_crate(&self.session, krate);
         driver::run_compiler_from_phase1(bits, phase, |krate, cx| {
             // TODO: Need to assign NodeIds at this point.  Otherwise rewrite will get confused
