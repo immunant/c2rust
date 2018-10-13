@@ -2,16 +2,19 @@ use std::collections::HashMap;
 use rustc::session::Session;
 use syntax::ast::*;
 use syntax::tokenstream::*;
+use syntax::parse::token::Token::Literal;
+use syntax::parse::token::Lit::Str_;
 use syntax::ptr::P;
 use syntax::util::small_vector::SmallVector;
-use syntax::codemap::DUMMY_SP;
+use syntax::codemap::{DUMMY_SP, dummy_spanned};
+use syntax::ast::DUMMY_NODE_ID;
 use transform::Transform;
 
 use api::*;
 use ast_manip::AstEquiv;
 use command::{CommandState, Registry};
 use driver::{self, Phase};
-use util::{IntoString, IntoIdent};
+use util::{IntoSymbol, IntoString, IntoIdent};
 
 pub struct ReorganizeModules;
 
@@ -26,6 +29,14 @@ impl Transform for ReorganizeModules {
         visit_nodes(&krate, |i: &Item| {
             match i.node {
                 ItemKind::Mod(ref m) => {
+                    // All C standard library headers are going to be put into this arbitrary
+                    // NodeId location.
+                    if is_std(&i.attrs) {
+                        for item in m.items.iter() {
+                            mod_map.insert(item.id.as_u32(), DUMMY_NODE_ID.as_u32());
+                        }
+                    }
+
                     if has_source_header(&i.attrs) {
                         for item in m.items.iter() {
                             match_modules(&krate, &item.id, i.ident.into_string(), &mut mod_map, cx.session());
@@ -70,6 +81,27 @@ impl Transform for ReorganizeModules {
             }))
         });
 
+        // insert a new module for the C standard headers
+        let krate = fold_nodes(krate, |mut c: Crate| {
+            let c_std_items_option = dest_mod_map.get(&DUMMY_NODE_ID.as_u32());
+            if let Some(c_std_items) = c_std_items_option {
+                let items: Vec<P<Item>> = c_std_items.iter().map(|id| P(find_item(&crate_copy, id).unwrap())).collect();
+                let new_mod = Mod {inner: DUMMY_SP, items};
+
+                let new_item = Item {
+                    ident: Ident::new("stdlib".into_symbol(), DUMMY_SP),
+                    attrs: Vec::new(),
+                    id: DUMMY_NODE_ID,
+                    node: ItemKind::Mod(new_mod),
+                    vis: dummy_spanned(VisibilityKind::Public),
+                    span: DUMMY_SP,
+                    tokens: None
+                };
+                c.module.items.push(P(new_item));
+            }
+            c
+        });
+
         let mut new_names = HashMap::new();
         for (old_item_id, dest_mod_id) in mod_map.iter() {
             let old_module = get_module(&krate, cx, &old_item_id).unwrap();
@@ -85,13 +117,15 @@ impl Transform for ReorganizeModules {
         // to be `use some_h::foo;`
         let krate = fold_nodes(krate, |mut p: Path| {
             // remove self from segment
-            p.segments.retain(|s|{
-                let mut result = true;
-                if s.ident.into_string() == "self" {
-                    result = false;
-                }
-                result
-            });
+            if p.segments.len() > 1 {
+                p.segments.retain(|s|{
+                    let mut result = true;
+                    if s.ident.into_string() == "super" || s.ident.into_string() == "self" {
+                        result = false;
+                    }
+                    result
+                });
+            }
             for segment in &mut p.segments {
                 let path_name = segment.ident.into_string();
                 if let Some(new_path_segment) = new_names.get(&path_name) {
@@ -101,12 +135,10 @@ impl Transform for ReorganizeModules {
             p
         });
 
-        // print_module_info(modules);
-
         // This will remove all the translated up modules.
         let krate = fold_nodes(krate, |pi: P<Item>| {
             // Remove the module, if it has the specific attribute
-            if has_source_header(&pi.attrs) {
+            if has_source_header(&pi.attrs) || is_std(&pi.attrs) {
                 return SmallVector::new();
             }
             SmallVector::one(pi)
@@ -205,6 +237,10 @@ pub fn clean_module_items(krate: &Crate, mod_map: &HashMap<u32, u32>, _cx: &driv
                 dest_vec.push(old_item.id.as_u32());
             }
 
+        } else if dest_mod_option.is_none() && old_item_option.is_some() {
+            // This is for DUMMY_NODE_ID's
+            let old_item = old_item_option.unwrap();
+            dest_vec.push(old_item.id.as_u32());
         }
 
         if !dest_items_map.contains_key(dest_mod_id) {
@@ -324,6 +360,49 @@ pub fn has_source_header(attrs: &Vec<Attribute>) -> bool {
         });
     }
     is_source_header
+}
+
+pub fn is_std(attrs: &Vec<Attribute>) -> bool {
+    // Recurse down the `TokenTree` till the `Token` is reached,
+    // if the token contains an Ident with `source_tree`, this should be a translated
+    // `old module` then.
+    fn parse_token_tree(tree: &TokenTree, is_std: &mut bool) {
+        match tree {
+            TokenTree::Delimited(_, delimited) => {
+                let stream = delimited.stream();
+                stream.map(|tree| {
+                    parse_token_tree(&tree, is_std);
+                    tree
+                });
+            },
+            TokenTree::Token(_, token) => {
+                match token {
+                   Literal(lit, _) => {
+                       match lit {
+                           Str_(name) => {
+                               let path = name.into_string();
+                               if path.contains("/usr/include") {
+                                   *is_std = true;
+                               }
+                           },
+                           _ => {}
+                       }
+                   },
+                   _ => {}
+                }
+            }
+        }
+    }
+
+    let mut is_std = false;
+    for attr in attrs {
+        let tokens = attr.tokens.clone();
+        tokens.map(|tree| {
+            parse_token_tree(&tree, &mut is_std);
+            tree
+        });
+    }
+    is_std
 }
 
 // Iterate through the crate, and look for the specified Node
