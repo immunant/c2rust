@@ -142,6 +142,7 @@ pub fn collect_macro_invocations<'ast>(unexpanded: &'ast Crate,
 struct Ctxt<'a> {
     table: MacTable<'a>,
     next_id: u32,
+    matched_node_ids: Vec<(NodeId, NodeId)>,
 }
 
 impl<'a> Ctxt<'a> {
@@ -152,6 +153,7 @@ impl<'a> Ctxt<'a> {
                 invoc_map: HashMap::new(),
             },
             next_id: 0,
+            matched_node_ids: Vec::new(),
         }
     }
 
@@ -167,6 +169,12 @@ impl<'a> Ctxt<'a> {
                             expanded: MacNodeRef<'a>) {
         self.table.map.insert(expanded.id(), MacInfo { id: invoc_id, mac, expanded });
         self.table.invoc_map.insert(invoc_id, mac);
+    }
+
+    fn record_node_id_match(&mut self,
+                            old: NodeId,
+                            new: NodeId) {
+        self.matched_node_ids.push((old, new));
     }
 }
 
@@ -290,6 +298,15 @@ impl<T: CollectMacros> CollectMacros for Vec<T> {
 impl<T: CollectMacros> CollectMacros for ThinVec<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         <[T] as CollectMacros>::collect_macros(old, new, cx)
+    }
+}
+
+// Custom impl for NodeIds.  We want to match up NodeIds between the unexpanded and expanded ASTs.
+// This is not really part of MacTable construction, but we happen to also want NodeId matching
+// every time we want a MacTable, and the two operations follow the same recursion scheme.
+impl CollectMacros for NodeId {
+    fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
+        cx.record_node_id_match(*old, *new);
     }
 }
 

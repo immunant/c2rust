@@ -3,9 +3,9 @@ collapser's `MacTable`.  This is a basic recursive traversal on two ASTs
 (unexpanded and expanded), with a few special behaviors:
 
  * When the unexpanded AST is `Mac`, we call `record_one_macro` with the
- unexpanded `Mac` node and the corresponding expanded node's `NodeId`.  This
- check happens at nodes marked `#[mac_table_record]`, which should be the node
- with the ID (`Expr`, not `ExprKind`) and should implement `MaybeMac`.
+   unexpanded `Mac` node and the corresponding expanded node's `NodeId`.  This
+   check happens at nodes marked `#[mac_table_record]`, which should be the
+   node with the ID (`Expr`, not `ExprKind`) and should implement `MaybeMac`.
 
  * On fields with the `#[mac_table_seq]` attribute, we call the helper function
    `collect_macros_seq` instead of the normal `collect_macros`, which handles
@@ -16,6 +16,18 @@ expands to exactly one node.  Macros that can expand to multiple nodes need to
 be handled by `#[mac_table_seq]` instead.  Leaving off `#[mac_table_record]`
 for these nodes means we get a visible error if we forget the sequence
 handling.
+
+
+Attributes:
+
+- `#[mac_table_record]`: Check for and record macros at each node of this type.
+
+- `#[mac_table_seq]`: On a field, use `collect_macros_seq` to handle macros
+  within the unexpanded sequence that produce multiple items in the expanded
+  sequence.
+
+- `#[mac_table_custom]`: Don't generate an impl for this type - a custom one
+  will be provided elsewhere.
 '''
 
 from datetime import datetime
@@ -69,4 +81,5 @@ def generate(decls):
     yield ''
 
     for d in decls:
-        yield do_collect_macros_impl(d)
+        if 'mac_table_custom' not in d.attrs:
+            yield do_collect_macros_impl(d)

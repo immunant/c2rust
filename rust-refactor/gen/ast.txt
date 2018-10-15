@@ -365,7 +365,7 @@ struct AnonConst {
 
 #[equiv_mode=ignore] #[rewrite_ignore]
 flag Span;
-#[equiv_mode=ignore] #[rewrite_ignore] #[list_node_ids=custom]
+#[equiv_mode=ignore] #[rewrite_ignore] #[list_node_ids=custom] #[mac_table_custom]
 flag NodeId;
 #[equiv_mode=ignore] #[rewrite_ignore]
 flag AttrId;
