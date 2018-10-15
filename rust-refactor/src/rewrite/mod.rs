@@ -59,9 +59,7 @@ use std::collections::HashMap;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use rustc::session::Session;
-use syntax::ast::{Expr, ExprKind, Pat, Ty, Stmt, Item, ForeignItem, Block};
-use syntax::ast::{NodeId, DUMMY_NODE_ID};
-use syntax::ast::AttrId;
+use syntax::ast::*;
 use syntax::codemap::{Span, DUMMY_SP};
 use syntax::util::parser;
 use syntax::visit::{self, Visitor};
@@ -223,6 +221,10 @@ impl<'s> Visitor<'s> for OldNodesVisitor<'s> {
     fn visit_block(&mut self, x: &'s Block) {
         self.map.blocks.insert(x.id, x);
         visit::walk_block(self, x);
+    }
+
+    fn visit_mac(&mut self, mac: &'s Mac) {
+        visit::walk_mac(self, mac);
     }
 }
 

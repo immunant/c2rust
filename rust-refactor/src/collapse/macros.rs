@@ -10,6 +10,7 @@ use syntax::util::small_vector::SmallVector;
 use syntax::visit::{self, Visitor};
 
 use super::mac_table::{MacTable, InvocId};
+use super::node_map::nt_id;
 use super::nt_match::{self, NtMatch};
 
 use ast_manip::{Fold, Visit};
@@ -116,7 +117,8 @@ fn spans_overlap(sp1: Span, sp2: Span) -> bool {
     sp1.lo() < sp2.hi() && sp2.lo() < sp1.hi()
 }
 
-fn token_rewrite_map(vec: Vec<RewriteItem>) -> BTreeMap<BytePos, RewriteItem> {
+fn token_rewrite_map(vec: Vec<RewriteItem>,
+                     matched_ids: &mut Vec<(NodeId, NodeId)>) -> BTreeMap<BytePos, RewriteItem> {
     // Map from `span.lo()` to the full RewriteItem.  Invariant: all spans in `map` are
     // nonoverlapping and nonempty.  This means we can check if a new span overlaps any old span by
     // examining only the entries just before and just after the new span's `lo()` position.
@@ -139,6 +141,9 @@ fn token_rewrite_map(vec: Vec<RewriteItem>) -> BTreeMap<BytePos, RewriteItem> {
             if item.span == after.span && AstEquiv::ast_equiv(&item.nt, &after.nt) {
                 // Both rewrites replace the same old tokens with the same new AST, so we can just
                 // drop the second one.
+                if let (Some(item_id), Some(after_id)) = (nt_id(&item.nt), nt_id(&after.nt)) {
+                    matched_ids.push((item_id, after_id));
+                }
                 continue;
             } else if spans_overlap(item.span, after.span) {
                 warn!("macro rewrite at {:?} overlaps rewrite at {:?}", item.span, after.span);
@@ -146,6 +151,9 @@ fn token_rewrite_map(vec: Vec<RewriteItem>) -> BTreeMap<BytePos, RewriteItem> {
             }
         }
 
+        if let Some(id) = nt_id(&item.nt) {
+            matched_ids.push((id, id));
+        }
         map.insert(key, item);
     }
 
@@ -193,8 +201,10 @@ fn rewrite_tokens(invoc_id: InvocId,
 }
 
 fn convert_token_rewrites(rewrite_vec: Vec<RewriteItem>,
-                          mac_table: &MacTable) -> HashMap<InvocId, ThinTokenStream> {
-    let mut rewrite_map = token_rewrite_map(rewrite_vec);
+                          mac_table: &MacTable,
+                          matched_ids: &mut Vec<(NodeId, NodeId)>)
+                          -> HashMap<InvocId, ThinTokenStream> {
+    let mut rewrite_map = token_rewrite_map(rewrite_vec, matched_ids);
     info!("rewrite map:");
     for (k,v) in &rewrite_map {
         info!("  {:?}: {:?}", k, v);
@@ -213,6 +223,7 @@ fn convert_token_rewrites(rewrite_vec: Vec<RewriteItem>,
 struct ReplaceTokens<'a> {
     mac_table: &'a MacTable<'a>,
     new_tokens: HashMap<InvocId, ThinTokenStream>,
+    matched_ids: &'a mut Vec<(NodeId, NodeId)>,
 }
 
 impl<'a> Folder for ReplaceTokens<'a> {
@@ -272,20 +283,33 @@ impl<'a> Folder for ReplaceTokens<'a> {
               mac.node.path, ::syntax::print::pprust::tokens_to_string(mac.node.tts.clone().into()));
         fold::noop_fold_mac(mac, self)
     }
+
+    fn new_id(&mut self, i: NodeId) -> NodeId {
+        self.matched_ids.push((i, i));
+        i
+    }
 }
 
 
 pub fn collapse_macros(krate: Crate,
-                       mac_table: &MacTable) -> Crate {
+                       mac_table: &MacTable) -> (Crate, Vec<(NodeId, NodeId)>) {
     let mut collapse_macros = CollapseMacros {
         mac_table,
         seen_invocs: HashSet::new(),
         token_rewrites: Vec::new(),
     };
     let krate = krate.fold(&mut collapse_macros);
-    let new_tokens = convert_token_rewrites(collapse_macros.token_rewrites, mac_table);
+
+    let mut matched_ids = Vec::new();
+    let new_tokens = convert_token_rewrites(
+        collapse_macros.token_rewrites, mac_table, &mut matched_ids);
     for (k, v) in &new_tokens {
-        info!("new tokens for {:?} = {:?}", k, ::syntax::print::pprust::tokens_to_string(v.clone().into()));
+        info!("new tokens for {:?} = {:?}", k,
+              ::syntax::print::pprust::tokens_to_string(v.clone().into()));
     }
-    krate.fold(&mut ReplaceTokens { mac_table, new_tokens })
+
+    let krate = krate.fold(&mut ReplaceTokens {
+        mac_table, new_tokens, matched_ids: &mut matched_ids });
+
+    (krate, matched_ids)
 }

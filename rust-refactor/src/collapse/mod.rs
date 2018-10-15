@@ -1,6 +1,12 @@
 mod mac_table;
 mod macros;
+mod node_map;
 mod nt_match;
+
+
+pub use self::mac_table::{MacTable, MacInfo, collect_macro_invocations};
+pub use self::node_map::match_nonterminal_ids;
+pub use self::macros::collapse_macros;
 
 
 use syntax::ast::Crate;
@@ -14,7 +20,7 @@ pub fn test(unexpanded: &Crate,
     info!(" ** expanded spans:");
     ::print_spans::print_spans(expanded, sess.codemap());
 
-    let mac_table = mac_table::collect_macro_invocations(unexpanded, expanded);
+    let (mac_table, matched_ids) = mac_table::collect_macro_invocations(unexpanded, expanded);
     {
         info!("mac_table: collected {} invocations", mac_table.map.len());
         let mut mac_table = mac_table.map.iter().map(|(k, v)| (*k, v.clone())).collect::<Vec<_>>();
@@ -26,7 +32,7 @@ pub fn test(unexpanded: &Crate,
         }
     }
 
-    let collapsed = macros::collapse_macros(rewritten.clone(), &mac_table);
+    let (collapsed, matched_ids) = macros::collapse_macros(rewritten.clone(), &mac_table);
     info!("collapsed crate =====\n{}\n ===== end collapsed crate",
           ::syntax::print::pprust::to_string(|s| s.print_mod(&collapsed.module, &collapsed.attrs)));
 }

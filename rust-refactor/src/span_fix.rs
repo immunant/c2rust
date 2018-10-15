@@ -280,6 +280,31 @@ impl Folder for FixDerivedImpls {
 }
 
 
+pub fn fix_format<T: Fold>(sess: &Session, node: T) -> <T as Fold>::Result {
+    let mut fix_format = FixFormat {
+        sess: sess,
+        codemap: sess.codemap(),
+        current_expansion: None,
+    };
+    node.fold(&mut fix_format)
+}
+
+pub fn fix_macros<T: Fold>(node: T) -> <T as Fold>::Result {
+    let mut fix_macros = FixMacros {
+        in_macro: false,
+    };
+    node.fold(&mut fix_macros)
+}
+
+pub fn fix_derived_impls<T: Fold>(node: T) -> <T as Fold>::Result {
+    // `#[derive]`-generated items are the exception to our normal macro handling.  We want to
+    // treat the entire item as non-rewritable / macro-generated.  `FixDerivedImpls` reverses the
+    // work of FixMacros, setting the item's span to one with a non-empty SyntaxContext, and also
+    // updates some internal spans that for some reason get set by `rustc` to match the invocation
+    // span.
+    node.fold(&mut FixDerivedImpls { stack: Vec::new() })
+}
+
 pub fn fix_attr_spans<T: Fold>(node: T) -> <T as Fold>::Result {
     node.fold(&mut FixAttrs)
 }

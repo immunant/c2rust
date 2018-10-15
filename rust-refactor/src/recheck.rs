@@ -157,8 +157,12 @@ impl Folder for ResetNodeIdFolder {
     }
 }
 
+pub fn reset_node_ids(krate: Crate) -> Crate {
+    krate.fold(&mut ResetNodeIdFolder)
+}
 
-fn remove_injected_std(mut krate: Crate) -> Crate {
+
+pub fn remove_injected_std(mut krate: Crate) -> Crate {
     let mut remove_names = HashSet::new();
     // Mirrors the logic in syntax::std_inject
     if attr::contains_name(&krate.attrs, "no_core") {

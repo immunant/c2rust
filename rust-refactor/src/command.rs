@@ -12,75 +12,15 @@ use syntax::codemap::FileMap;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use ast_manip::ListNodeIds;
+use ast_manip::{ListNodeIds, number_nodes};
+use collapse;
 use driver::{self, Phase, Phase1Bits};
+use node_map::NodeMap;
 use recheck::{self, PrepareRecheckInfo};
 use rewrite;
 use rewrite::files;
 use span_fix;
 use util::IntoSymbol;
-
-
-#[derive(Clone, Debug)]
-enum CrateState {
-    None,
-    /// The crate has not yet been macro-expanded.
-    Unexpanded(Crate),
-    /// The crate has been macro-expanded.  Note that crates prepared for rechecking are still
-    /// considered expanded - `prepare_recheck` can't actually reverse macro expansion.
-    Expanded(Crate),
-}
-
-impl CrateState {
-    pub fn is_none(&self) -> bool {
-        match *self {
-            CrateState::None => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_unexpanded(&self) -> bool {
-        match *self {
-            CrateState::Unexpanded(..) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_expanded(&self) -> bool {
-        match *self {
-            CrateState::Expanded(..) => true,
-            _ => false,
-        }
-    }
-}
-
-
-/// A possible state of the refactoring engine.  (I'd call this enum "State", as in "state
-/// machine", but that word is already heavily overloaded.)
-///
-/// For the most part, any state can transition to any other state by one means or another.  The
-/// exception is that there are no transitions between `Unexpanded` and `Expanded` in either
-/// direction, because we can't unexpand a crate, and we also don't know how to do rewriting when a
-/// crate is transformed before expansion.  (Note that `Unexpanded` means the crate is unexpanded
-/// *and* a transformation has been applied, as opposed to `Loaded` where it's unexpanded but has
-/// never been transformed.)
-///
-/// See individual `RefactorState` method docs for the possible state transitions.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Mode {
-    /// The crate has not been loaded from disk yet.  `krate` and `orig_krate` are both `None`.
-    Unloaded,
-    /// The crate has been loaded, but nothing has been done with it yet.  `krate` is `Some` and
-    /// contains an unexpanded AST.
-    Loaded,
-    /// The crate has been transformed in unexpanded (Phase1) mode.  `krate` contains the current
-    /// AST, and `orig_crate` contains the original unexpanded AST that was loaded from disk.
-    Unexpanded,
-    /// The crate has been transformed in expanded (Phase2+) mode.  `krate` contains the current
-    /// AST, and `orig_crate` contains the expanded version of the original crate as it was loaded
-    /// from disk.
-    Expanded,
-}
 
 
 /// Stores the overall state of the refactoring process, which can be read and updated by
@@ -90,20 +30,17 @@ pub struct RefactorState {
     cmd_reg: Registry,
     session: Session,
 
-    mode: Mode,
-
-    /// The current crate AST.  This is used as the "new" AST when rewriting.
+    /// The current crate AST.  This is used as the "new" AST when rewriting.  This is always
+    /// "unexpanded" - meaning either actually unexpanded, or expanded and then subsequently
+    /// macro-collapsed.
     krate: Option<Crate>,
 
-    /// Info collected during the last compiler run, which allows us to prepare `krate` for
-    /// rechecking.
-    recheck_info: Option<PrepareRecheckInfo>,
-
-    /// The original crate AST.  This is used as the "old" AST when rewriting.
+    /// The original crate AST.  This is used as the "old" AST when rewriting.  This is always an
+    /// unexpanded AST.
     orig_krate: Option<Crate>,
 
-    /// Mapping from `krate` NodeIds to `disk_krate` NodeIds
-    node_id_map: HashMap<NodeId, NodeId>,
+    /// Mapping from `krate` IDs to `disk_krate` IDs
+    node_map: NodeMap,
 
     /// Current marks.  The `NodeId`s here refer to nodes in `krate`.
     marks: HashSet<(NodeId, Symbol)>,
@@ -119,13 +56,10 @@ impl RefactorState {
             cmd_reg,
             session,
 
-            mode: Mode::Unloaded,
-
             krate: None,
-            recheck_info: None,
             orig_krate: None,
 
-            node_id_map: HashMap::new(),
+            node_map: NodeMap::new(),
 
             marks: marks,
         }
@@ -149,12 +83,13 @@ impl RefactorState {
     /// Load the crate from disk.  Transitions to `Loaded`, regardless of current mode.
     pub fn load_crate(&mut self) {
         // Discard any existing krate, and proceed to `Loaded` regardless of current mode.
-        self.mode = Mode::Loaded;
-        self.krate = Some(self.load_crate_inner());
-        self.recheck_info = None;
-        self.orig_krate = None;
+        let krate = self.load_crate_inner();
+        let krate = number_nodes(krate);
+        self.orig_krate = Some(krate.clone());
+        self.krate = Some(krate);
 
-        self.node_id_map = HashMap::new();
+        self.node_map = NodeMap::new();
+        self.node_map.init(self.krate.list_node_ids().into_iter());
         self.marks = HashSet::new();
     }
 
@@ -162,25 +97,11 @@ impl RefactorState {
     /// so we don't have to deal with questions of how to keep `orig_krate` in sync with disk while
     /// also being usable for rewriting from `krate`.
     pub fn save_crate(&mut self) {
-        if self.mode == Mode::Unloaded || self.mode == Mode::Loaded {
-            // No rewrites need to be made.
-            self.mode = Mode::Unloaded;
-            self.krate = None;
-            return;
-        }
-
         {
             let old = self.orig_krate.take().unwrap();
             let new = self.krate.take().unwrap();
-            let node_id_map = mem::replace(&mut self.node_id_map, HashMap::new());
-            let recheck_info = self.recheck_info.take().unwrap();
-
-            // Resolve `$crate`/`{{root}}` in paths.  Printing and reparsing these paths doesn't
-            // work - `$crate` prints as `::std`, which reparses as `{{root}}::std`, which isn't
-            // the same length as the original, and rewriting gets confused.  Resolving these to
-            // absolute paths avoids this problem, and should only affects code inside macro
-            // expansions, which we are hopefully replacing with recycled text anyway.
-            let new = recheck::resolve_crate_with_info(&recheck_info, new);
+            let node_map = mem::replace(&mut self.node_map, NodeMap::new());
+            let node_id_map = node_map.into_inner();
 
             let rws = rewrite::rewrite(&self.session, &old, &new, node_id_map);
             if rws.len() == 0 {
@@ -195,214 +116,44 @@ impl RefactorState {
         }
 
         // We already cleared most of the fields in the block above.
-        self.mode = Mode::Unloaded;
         self.marks = HashSet::new();
     }
 
     pub fn transform_crate<F, R>(&mut self, phase: Phase, f: F) -> R
             where F: FnOnce(&CommandState, &driver::Ctxt) -> R {
-        if self.mode == Mode::Unloaded {
-            self.load_crate();
-        }
-
-        let target_mode = match self.mode {
-            Mode::Unloaded => unreachable!(),
-            Mode::Loaded => {
-                if phase == Phase::Phase1 {
-                    Mode::Unexpanded
-                } else {
-                    Mode::Expanded
-                }
-            },
-            Mode::Unexpanded => {
-                assert!(phase == Phase::Phase1,
-                        "can't expand a transformed crate - \
-                         run `commit` between phase1 and phase2+ commands");
-                Mode::Unexpanded
-            },
-            Mode::Expanded => {
-                if phase == Phase::Phase1 {
-                    warn!("running a phase1 command on an expanded crate");
-                }
-                Mode::Expanded
-            },
-        };
-
-        match target_mode {
-            Mode::Unexpanded => self.transform_crate_unexpanded(phase, f),
-            Mode::Expanded => self.transform_crate_expanded(phase, f),
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn transform_crate_expanded<F, R>(&mut self, phase: Phase, f: F) -> R
-            where F: FnOnce(&CommandState, &driver::Ctxt) -> R {
-        let first_transform = self.mode == Mode::Loaded;
-        self.mode = Mode::Expanded;
-
         let mut krate = self.krate.take().unwrap();
-        // Used only when `first_transform` is set.
-        let mut old_ids = Vec::new();
-
-        if !first_transform {
-            // We're re-analyzing an already-expanded crate.  Run `prepare`.
-            let info = self.recheck_info.as_ref().unwrap();
-            old_ids = krate.list_node_ids();
-            krate = recheck::prepare_recheck_with_info(info, krate);
-        }
-
         let mut marks = mem::replace(&mut self.marks, HashSet::new());
 
         let unexpanded = krate.clone();
+        let krate = recheck::reset_node_ids(krate);
         let bits = Phase1Bits::from_session_and_crate(&self.session, krate);
         driver::run_compiler_from_phase1(bits, phase, |krate, cx| {
+            let krate = span_fix::fix_format(cx.session(), krate);
+            //let krate = span_fix::fix_derived_impls(sess, krate);
+            //let krate = span_fix::fix_attr_spans(sess, krate);
             let expanded = krate.clone();
-            //let krate = span_fix::fix_spans(&self.session, krate);
 
-            if first_transform {
-                // Set `orig_krate` to the newly-expanded `krate`.
-                self.orig_krate = Some(krate.clone());
-            }
-
-            let new_ids = krate.list_node_ids();
-
-            if first_transform {
-                // Map each new node to itself.  `rewrite` interprets absence from the map as
-                // "newly inserted", not as "kept same NodeId".
-                self.node_id_map = new_ids.iter()
-                    .filter(|&&x| x != DUMMY_NODE_ID)
-                    .map(|&x| (x, x))
-                    .collect();
-            } else {
-                // Expansion renumbers all NodeIds.  Transfer information from the old numbering to
-                // the new one.
-
-                // Convert mark NodeIds.  Note this needs to handle the case of a marked node being
-                // copied to 2+ different locations in the new AST.
-                let mut mark_map = HashMap::new();
-                for &(id, label) in &marks {
-                    mark_map.entry(id).or_insert_with(Vec::new).push(label);
-                }
-                let mut new_marks = HashSet::with_capacity(marks.len());
-                for (&old, &new) in old_ids.iter().zip(new_ids.iter()) {
-                    if let Some(labels) = mark_map.get(&old) {
-                        for &label in labels {
-                            new_marks.insert((new, label));
-                        }
-                    }
-                }
-                marks = new_marks;
-
-                // Compose `self.node_id_map` with the mapping from each entry in `old_ids` to
-                // the corresponding entry in `new_ids`.  (We don't actually construct the
-                // second mapping explicitly.)
-                let mut updated_id_map = HashMap::new();
-                for (&old, &new) in old_ids.iter().zip(new_ids.iter()) {
-                    if new == DUMMY_NODE_ID || old == DUMMY_NODE_ID {
-                        continue;
-                    }
-                    // [new -> old] + [old -> older] = [new -> older]
-                    if let Some(&older) = self.node_id_map.get(&old) {
-                        updated_id_map.insert(new, older);
-                    }
-                }
-                self.node_id_map = updated_id_map;
-            }
+            let (mac_table, matched_ids) =
+                collapse::collect_macro_invocations(&unexpanded, &expanded);
+            self.node_map.add_edges(&matched_ids);
+            collapse::match_nonterminal_ids(&mut self.node_map, &mac_table);
+                self.node_map.commit();
 
             // Run the transform
+            // TODO: transfer marks
             let cmd_state = CommandState::new(krate, marks);
             let r = f(&cmd_state, &cx);
-
-            ::collapse::test(&unexpanded, &expanded, &cmd_state.krate(), cx.session());
 
             // Update internal state
             let changed = cmd_state.krate_changed();
-            if cmd_state.krate_changed() || first_transform {
-                let info = recheck::collect_prepare_recheck_info(&cx, &cmd_state.krate());
-                self.recheck_info = Some(info);
-            }
             let (new_krate, new_marks) = cmd_state.into_inner();
+
+            let (new_krate, matched_ids) = collapse::collapse_macros(new_krate, &mac_table);
+            self.node_map.add_edges(&matched_ids);
+            self.node_map.commit();
             self.krate = Some(new_krate);
-            self.marks = new_marks;
 
-            r
-        })
-    }
-
-    pub fn transform_crate_unexpanded<F, R>(&mut self, phase: Phase, f: F) -> R
-            where F: FnOnce(&CommandState, &driver::Ctxt) -> R {
-        warn!("transform_crate(phase1) is unfinished and probably doesn't work (see comments)");
-        let first_transform = self.mode == Mode::Loaded;
-        self.mode = Mode::Unexpanded;
-
-        let krate = self.krate.take().unwrap();
-        // Used only when `first_transform` is set.
-        let old_ids = krate.list_node_ids();
-
-        let mut marks = mem::replace(&mut self.marks, HashSet::new());
-
-        let unexpanded = krate.clone();
-        let bits = Phase1Bits::from_session_and_crate(&self.session, krate);
-        driver::run_compiler_from_phase1(bits, phase, |krate, cx| {
-            // TODO: Need to assign NodeIds at this point.  Otherwise rewrite will get confused
-            // because they are all DUMMY_NODE_ID.
-
-            if first_transform {
-                // Set `orig_krate` only after renumbering, so that `rewrite` will have non-DUMMY
-                // NodeIds to work with.
-                self.orig_krate = Some(krate.clone());
-            }
-
-            let new_ids = krate.list_node_ids();
-
-            if first_transform {
-                self.node_id_map = new_ids.iter()
-                    .filter(|&&x| x != DUMMY_NODE_ID)
-                    .map(|&x| (x, x))
-                    .collect();
-            } else {
-                // We just renumbered all NodeIds.  Transfer information from the old numbering to
-                // the new one.
-
-                // Convert mark NodeIds.  Note this needs to handle the case of a marked node being
-                // copied to 2+ different locations in the new AST.
-                let mut mark_map = HashMap::new();
-                for &(id, label) in &marks {
-                    mark_map.entry(id).or_insert_with(Vec::new).push(label);
-                }
-                let mut new_marks = HashSet::with_capacity(marks.len());
-                for (&old, &new) in old_ids.iter().zip(new_ids.iter()) {
-                    if let Some(labels) = mark_map.get(&old) {
-                        for &label in labels {
-                            new_marks.insert((new, label));
-                        }
-                    }
-                }
-                marks = new_marks;
-
-                // Compose `self.node_id_map` with the mapping from each entry in `old_ids` to
-                // the corresponding entry in `new_ids`.  (We don't actually construct the
-                // second mapping explicitly.)
-                let mut updated_id_map = HashMap::new();
-                for (&old, &new) in old_ids.iter().zip(new_ids.iter()) {
-                    if new == DUMMY_NODE_ID || old == DUMMY_NODE_ID {
-                        continue;
-                    }
-                    // [new -> old] + [old -> older] = [new -> older]
-                    if let Some(&older) = self.node_id_map.get(&old) {
-                        updated_id_map.insert(new, older);
-                    }
-                }
-                self.node_id_map = updated_id_map;
-            }
-
-            // Run the transform
-            let cmd_state = CommandState::new(krate, marks);
-            let r = f(&cmd_state, &cx);
-
-            // Update internal state
-            let (new_krate, new_marks) = cmd_state.into_inner();
-            self.krate = Some(new_krate);
+            // TODO: transfer marks
             self.marks = new_marks;
 
             r

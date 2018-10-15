@@ -9,8 +9,10 @@ use rustc_target::spec::abi::Abi;
 use std::rc::Rc;
 use syntax::ptr::P;
 use syntax::codemap::Spanned;
+use syntax::visit::{self, Visitor};
 
 use ast_manip::{GetNodeId, GetSpan};
+use ast_manip::Visit;
 
 
 #[derive(Clone, Copy, Debug)]
@@ -97,6 +99,21 @@ impl<T: AsMacNodeRef> AsMacNodeRef for P<T> {
     }
 }
 
+impl<'a> Visit for MacNodeRef<'a> {
+    fn visit<'b, V: Visitor<'b>>(&'b self, v: &mut V) {
+        match *self {
+            MacNodeRef::Expr(x) => v.visit_expr(x),
+            MacNodeRef::Pat(x) => v.visit_pat(x),
+            MacNodeRef::Ty(x) => v.visit_ty(x),
+            MacNodeRef::Item(x) => v.visit_item(x),
+            MacNodeRef::ImplItem(x) => v.visit_impl_item(x),
+            MacNodeRef::TraitItem(x) => v.visit_trait_item(x),
+            MacNodeRef::ForeignItem(x) => v.visit_foreign_item(x),
+            MacNodeRef::Stmt(x) => v.visit_stmt(x),
+        }
+    }
+}
+
 
 /// Unique identifier of a macro invocation.  We can't use `NodeId`s for this because `Mac` nodes
 /// exist only in the unexpanded AST, where all IDs are DUMMY, and we can't use `Mark`s because we
@@ -126,16 +143,21 @@ impl<'ast> MacTable<'ast> {
     pub fn get_invoc(&self, id: InvocId) -> Option<&'ast Mac> {
         self.invoc_map.get(&id).cloned()
     }
+
+    pub fn invocations<'a>(&'a self) -> impl Iterator<Item=&'a MacInfo<'ast>> + 'a {
+        self.map.values()
+    }
 }
 
 pub fn collect_macro_invocations<'ast>(unexpanded: &'ast Crate,
-                                       expanded: &'ast Crate) -> MacTable<'ast> {
+                                       expanded: &'ast Crate)
+                                       -> (MacTable<'ast>, Vec<(NodeId, NodeId)>) {
     let mut ctxt = Ctxt::new();
     // FIXME properly detect injected prelude
     CollectMacros::collect_macros(&unexpanded.module.items as &[_], 
                                   &expanded.module.items[2..],
                                   &mut ctxt);
-    ctxt.table
+    (ctxt.table, ctxt.matched_node_ids)
 }
 
 
@@ -194,6 +216,7 @@ fn root_callsite_span(sp: Span) -> Span {
 
 fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'a>)
         where T: CollectMacros + MaybeMac + GetSpan + AsMacNodeRef {
+    // TODO: make sure this can handle #[automatically_derived] impls
     let mut j = 0;
 
     for (i, old) in old_seq.iter().enumerate() {
