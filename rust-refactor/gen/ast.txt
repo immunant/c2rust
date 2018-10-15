@@ -373,3 +373,50 @@ flag usize;
 #[match=eq] flag u128;
 #[match=eq] flag u8;
 #[match=eq] flag char;
+
+
+enum Nonterminal {
+    NtItem(i),
+    NtBlock(b),
+    NtStmt(s),
+    NtPat(p),
+    NtExpr(y),
+    NtTy(t),
+    NtIdent(i, raw),
+    NtLifetime(ident),
+    NtLiteral(expr),
+    NtMeta(m),
+    NtPath(p),
+    NtVis(v),
+    NtTT(tt),
+    NtArm(a),
+    NtImplItem(ii),
+    NtTraitItem(ti),
+    NtForeignItem(fi),
+    NtGenerics(g),
+    NtWhereClause(wc),
+    NtArg(a),
+}
+
+enum TokenTree {
+    Token(sp, t),
+    Delimited(sp, d),
+}
+
+struct Delimited {
+    delim, tts
+}
+
+flag DelimToken;
+flag Token;
+
+struct MetaItem { ident, node, span }
+enum MetaItemKind {
+    Word,
+    List(l),
+    NameValue(lit),
+}
+enum NestedMetaItemKind {
+    MetaItem(mi),
+    Literal(lit),
+}

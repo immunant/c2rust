@@ -16,10 +16,10 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::codemap::{Span, Spanned, BytePos, FileName};
 use syntax::ext::hygiene::SyntaxContext;
-use syntax::parse::token::Token;
+use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::print::pprust;
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 use syntax::util::parser;
 
 use ast_manip::{GetNodeId, AstDeref};

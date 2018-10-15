@@ -3,8 +3,9 @@ use syntax::ast::*;
 use rustc_target::spec::abi::Abi;
 use syntax::codemap::{Span, Spanned};
 use syntax::ext::hygiene::SyntaxContext;
+use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 
 pub trait ListNodeIds {
     fn list_node_ids(&self) -> Vec<NodeId> {

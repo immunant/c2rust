@@ -1,4 +1,6 @@
 use syntax::ast::*;
+use syntax::parse::token::Nonterminal;
+use syntax::tokenstream::{TokenTree, Delimited};
 use syntax::util::parser;
 
 use rewrite::{RewriteCtxtRef, Rewrite, ExprPrec};

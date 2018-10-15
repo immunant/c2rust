@@ -15,7 +15,8 @@
 //! `[T]` implementation.
 use syntax::ast::*;
 use syntax::codemap::{Span, SyntaxContext};
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
+use syntax::parse::token::{Token, DelimToken, Nonterminal};
+use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 use rustc_target::spec::abi::Abi;
 
 use std::rc::Rc;
