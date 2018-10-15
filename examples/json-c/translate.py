@@ -48,6 +48,9 @@ REFACTORINGS = [
     mk_select(r'crate; desc(foreign_item && fn && name("__isinf(l|f)?"));') +
         [';', 'mark_uses', 'target',
             ';', 'rewrite_expr', 'marked!(__e)(__f)', '__f.is_infinite() as i32'],
+
+    mk_select('crate; child(mod && !name("c_funcs")); desc(foreign_item);') +
+        [';', 'canonicalize_externs', 'c_funcs'],
 ]
 
 

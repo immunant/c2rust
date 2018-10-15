@@ -19,16 +19,19 @@
 // attributes and their effects.
 
 
-struct Crate { module, attrs, span }
+struct Crate {
+    module,
+    #[seq_rewrite_outer_span='calc_outer_span(&self.attrs, self.span.shrink_to_lo())']
+    attrs,
+    span,
+}
 struct Mod { inner, items }
 
 
-// `Item` does implement `Splice`, but we also have some special recovery cases to check before
-// splicing the entire `Item`.  We omit the `#[rewrite_splice]` attr so the default implementation
-// doesn't do splicing and then always return `false`.
-#[rewrite=custom] #[rewrite_seq_item] #[extend_span]
+#[rewrite_print_recover] #[rewrite_seq_item] #[rewrite_extra_strategies=item_header]
+#[extend_span]
 struct Item { ident, #[match=ignore] attrs, id, node, vis, span,
-              #[match=ignore] #[rewrite=ignore] tokens }
+              #[match=ignore] #[rewrite_ignore] tokens }
 enum ItemKind {
     ExternCrate(name),
     Use(vp),
@@ -60,7 +63,7 @@ struct UseTree { kind, prefix, span }
 
 #[extend_span]
 struct TraitItem { id, ident, #[match=ignore] attrs, generics, node, span,
-                   #[match=ignore] #[rewrite=ignore] tokens }
+                   #[match=ignore] #[rewrite_ignore] tokens }
 enum TraitItemKind {
     Const(ty, init),
     Method(sig, body),
@@ -70,7 +73,7 @@ enum TraitItemKind {
 
 #[extend_span]
 struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, generics, node, span,
-                  #[match=ignore] #[rewrite=ignore] tokens }
+                  #[match=ignore] #[rewrite_ignore] tokens }
 enum ImplItemKind {
     Const(ty, init),
     Method(sig, body),
@@ -93,7 +96,7 @@ struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs }
 struct MethodSig { unsafety, constness, abi, decl }
 
 struct ForeignMod { abi, items }
-#[rewrite_splice] #[rewrite_seq_item]
+#[rewrite_print_recover] #[rewrite_seq_item]
 struct ForeignItem { ident, #[match=ignore] attrs, node, id, span, vis }
 enum ForeignItemKind {
     Fn(decl, generics),
@@ -132,7 +135,7 @@ enum VisibilityKind {
 
 flag CrateSugar;
 
-#[match=custom] #[rewrite_splice]
+#[match=custom] #[rewrite_print_recover]
 struct Ty { id, node, span }
 struct MutTy {ty, mutbl}
 enum TyKind {
@@ -170,7 +173,7 @@ enum TyParamBound {
 struct PolyTraitRef { trait_ref, span, bound_generic_params }
 
 struct FnDecl { inputs, output, variadic }
-#[rewrite_splice]
+#[rewrite_print]
 struct Arg { ty, pat, id }
 enum FunctionRetTy {
     Default(sp),
@@ -181,7 +184,7 @@ enum FunctionRetTy {
 struct TypeBinding { id, ident, ty, span }
 
 
-#[match=custom] #[rewrite_splice] #[rewrite_seq_item]
+#[match=custom] #[rewrite_print_recover] #[rewrite_seq_item]
 struct Stmt { id, node, span }
 #[no_debug]
 enum StmtKind {
@@ -195,7 +198,7 @@ enum StmtKind {
 struct Local { pat, ty, init, id, span, #[match=ignore] attrs }
 
 
-#[match=custom] #[rewrite_splice] #[extend_span]
+#[match=custom] #[rewrite_print_recover] #[extend_span]
 struct Expr { id, node, span, #[match=ignore] attrs }
 #[prec_contains_expr]
 enum ExprKind {
@@ -254,7 +257,7 @@ flag UnOp;
 flag BinOpKind;
 struct Field { ident, expr, span, is_shorthand, attrs }
 struct Arm { attrs, pats, guard, body }
-#[match=custom] #[rewrite_splice]
+#[match=custom] #[rewrite_print_recover]
 struct Block { stmts, id, rules, span, recovered }
 
 
@@ -309,7 +312,7 @@ flag AsmDialect;
 flag RangeLimits;
 
 
-#[no_node_id] #[rewrite_seq_item=custom]
+#[no_node_id] #[rewrite_print] #[rewrite_custom=SeqItem]
 struct Attribute { id, style, path, tokens, is_sugared_doc, span }
 flag AttrStyle;
 
@@ -358,11 +361,11 @@ struct AnonConst {
 #[match=eq] flag Name;
 #[match=eq] flag SyntaxContext;
 
-#[equiv_mode=ignore] #[rewrite=ignore]
+#[equiv_mode=ignore] #[rewrite_ignore]
 flag Span;
-#[equiv_mode=ignore] #[rewrite=ignore]
+#[equiv_mode=ignore] #[rewrite_ignore]
 flag NodeId;
-#[equiv_mode=ignore] #[rewrite=ignore]
+#[equiv_mode=ignore] #[rewrite_ignore]
 flag AttrId;
 
 flag usize;

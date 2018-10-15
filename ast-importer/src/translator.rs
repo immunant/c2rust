@@ -29,6 +29,61 @@ use indexmap::IndexMap;
 
 use cfg;
 
+/// As of rustc 1.29, rust is known to be missing some SIMD functions.
+/// See https://github.com/rust-lang-nursery/stdsimd/issues/579
+static MISSING_SIMD_FUNCTIONS: [&str; 36] = [
+    "_mm_and_si64",
+    "_mm_andnot_si64",
+    "_mm_cmpeq_pi16",
+    "_mm_cmpeq_pi32",
+    "_mm_cmpeq_pi8",
+    "_mm_cvtm64_si64",
+    "_mm_cvtph_ps",
+    "_mm_cvtsi32_si64",
+    "_mm_cvtsi64_m64",
+    "_mm_cvtsi64_si32",
+    "_mm_empty",
+    "_mm_free",
+    "_mm_loadu_si64",
+    "_mm_madd_pi16",
+    "_mm_malloc",
+    "_mm_mulhi_pi16",
+    "_mm_mulhrs_pi16",
+    "_mm_or_si64",
+    "_mm_packs_pu16",
+    "_mm_sll_pi16",
+    "_mm_sll_pi32",
+    "_mm_sll_si64",
+    "_mm_slli_pi16",
+    "_mm_slli_pi32",
+    "_mm_slli_si64",
+    "_mm_sra_pi16",
+    "_mm_sra_pi32",
+    "_mm_srai_pi16",
+    "_mm_srai_pi32",
+    "_mm_srl_pi16",
+    "_mm_srl_pi32",
+    "_mm_srl_si64",
+    "_mm_srli_pi16",
+    "_mm_srli_pi32",
+    "_mm_srli_si64",
+    "_mm_xor_si64",
+];
+
+static SIMD_X86_64_ONLY: [&str; 11] = [
+    "_mm_cvtsd_si64",
+    "_mm_cvtsi128_si64",
+    "_mm_cvtsi128_si64x",
+    "_mm_cvtsi64_sd",
+    "_mm_cvtsi64_si128",
+    "_mm_cvtsi64_ss",
+    "_mm_cvtss_si64",
+    "_mm_cvttsd_si64",
+    "_mm_cvttsd_si64x",
+    "_mm_cvttss_si64",
+    "_mm_stream_si64",
+];
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum DecayRef {
     Yes,
@@ -250,6 +305,11 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
     for (&decl_id, ref mut decl) in &mut translation.ast_context.c_decls {
         match decl.kind {
             CDeclKind::Function { ref mut name, ref body, .. } if body.is_some() => {
+                // SIMD types are imported and do not need to be renamed
+                if name.starts_with("_mm") {
+                    continue;
+                }
+
                 name.insert_str(0, &prefix);
 
                 translation.renamer.borrow_mut().insert(decl_id, &name);
@@ -345,9 +405,17 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             if let CDeclKind::Typedef { ref name, typ, .. } = decl.kind {
                 if let Some(subdecl_id) = t.ast_context.resolve_type(typ.ctype).kind.as_underlying_decl() {
                     let is_unnamed = match t.ast_context[subdecl_id].kind {
-                        CDeclKind::Struct { name: None, .. } => true,
-                        CDeclKind::Union { name: None, .. } => true,
+                        CDeclKind::Struct { name: None, .. } |
+                        CDeclKind::Union { name: None, .. } |
                         CDeclKind::Enum { name: None, .. } => true,
+
+                        // Detect case where typedef and struct share the same name.
+                        // In this case the purpose of the typedef was simply to eliminate
+                        // the need for the 'struct' tag when refering to the type name.
+                        CDeclKind::Struct { name: Some(ref target_name), ..} |
+                        CDeclKind::Union { name: Some(ref target_name), .. } |
+                        CDeclKind::Enum { name: Some(ref target_name), .. } => name == target_name,
+
                         _ => false,
                     };
 
@@ -683,7 +751,6 @@ pub enum ExprUse {
 enum ConvertedDecl {
     ForeignItem(ForeignItem),
     Item(P<Item>),
-    #[allow(dead_code)]
     NoItem,
 }
 
@@ -1199,6 +1266,9 @@ impl Translation {
             CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body, .. } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
+                if self.import_simd_function(new_name)? {
+                    return Ok(ConvertedDecl::NoItem);
+                }
 
                 let (ret, is_var): (Option<CQualTypeId>, bool) = match self.ast_context.resolve_type(typ).kind {
                     CTypeKind::Function(ret, _, is_var, is_noreturn) => (if is_noreturn { None } else { Some(ret) }, is_var),
@@ -1231,6 +1301,10 @@ impl Translation {
 
             CDeclKind::Typedef { ref typ, .. } => {
                 let new_name = &self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+
+                if self.import_simd_typedef(new_name) {
+                    return Ok(ConvertedDecl::NoItem);
+                }
 
                 let ty = self.convert_type(typ.ctype)?;
                 Ok(ConvertedDecl::Item(mk().span(s).pub_().type_item(new_name, ty)))
@@ -1337,6 +1411,72 @@ impl Translation {
 
             //ref k => Err(format!("Translation not implemented for {:?}", k)),
         }
+    }
+
+    fn import_simd_typedef(&self, name: &str) -> bool {
+        match name {
+            // Public API SIMD typedefs:
+            "__m128i" | "__m128" | "__m128d" | "__m64" | "__m256" | "__m256d" | "__m256i" => {
+                // __m64 is still behind a feature gate
+                if name == "__m64" {
+                    self.features.borrow_mut().insert("stdsimd");
+                }
+
+                let mut item_store = self.item_store.borrow_mut();
+
+                let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
+                let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]).pub_();
+
+                item_store.uses
+                    .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
+                    .insert_with_attr(name, x86_attr);
+                item_store.uses
+                    .get_mut(vec!["std".into(), "arch".into(), "x86_64".into()])
+                    .insert_with_attr(name, x86_64_attr);
+
+                true
+            },
+            // These seem to be C internal types only, and shouldn't need any explicit support.
+            // See https://internals.rust-lang.org/t/getting-explicit-simd-on-stable-rust/4380/115
+            "__v1di" | "__v2si" | "__v4hi" | "__v8qi" | "__v4si" | "__v4sf" | "__v4su" |
+            "__v2df" | "__v2di" | "__v8hi" | "__v16qi" | "__v2du" | "__v8hu" | "__v16qu" |
+            "__v16qs" | "__v8su" | "__v16hu" | "__mm_loadh_pi_v2f32" | "__mm_loadl_pi_v2f32" => true,
+            _ => false,
+        }
+    }
+
+    fn import_simd_function(&self, name: &str) -> Result<bool, String> {
+        if name.starts_with("_mm") {
+            // REVIEW: This will do a linear lookup against all SIMD fns. Could use a lazy static hashset
+            if MISSING_SIMD_FUNCTIONS.contains(&name) {
+                return Err(format!("SIMD function {} doesn't currently have a rust counterpart", name));
+            }
+
+            // The majority of x86/64 SIMD is stable, however there are still some
+            // bits that are behind a feature gate.
+            self.features.borrow_mut().insert("stdsimd");
+
+            let mut item_store = self.item_store.borrow_mut();
+
+            // REVIEW: Also a linear lookup
+            if !SIMD_X86_64_ONLY.contains(&name) {
+                let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
+
+                item_store.uses
+                    .get_mut(vec!["std".into(), "arch".into(), "x86".into()])
+                    .insert_with_attr(name, x86_attr);
+            }
+
+            let x86_64_attr = mk().call_attr("cfg", vec!["target_arch = \"x86_64\""]).pub_();
+
+            item_store.uses
+                .get_mut(vec!["std".into(), "arch".into(), "x86_64".into()])
+                .insert_with_attr(name, x86_64_attr);
+
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 
     fn convert_function(
@@ -3635,6 +3775,28 @@ impl Translation {
             let from_elem = mk().path_expr(vec!["", "std", "vec", "from_elem"]);
             let alloc = mk().call_expr(from_elem, vec![val, count]);
             Ok(alloc)
+        } else if let &CTypeKind::Vector(CQualTypeId { ctype, .. }, len) = resolved_ty {
+            // NOTE: This is only for x86/_64, and so support for other architectures
+            // might need some sort of disambiguation to be exported
+            let fn_name = match (&self.ast_context[ctype].kind, len) {
+                (CTypeKind::Float, 4) => "_mm_setzero_ps",
+                (CTypeKind::Float, 8) => "_mm256_setzero_ps",
+                (CTypeKind::Double, 2) => "_mm_setzero_pd",
+                (CTypeKind::Double, 4) => "_mm256_setzero_pd",
+                (CTypeKind::LongLong, 2) => "_mm_setzero_si128",
+                (CTypeKind::LongLong, 4) => "_mm256_setzero_si256",
+                (CTypeKind::LongLong, 1) => {
+                    // __m64 is still unstable as of rust 1.29
+                    self.features.borrow_mut().insert("stdsimd");
+
+                    "_mm_setzero_si64"
+                },
+                (kind, len) => return Err(format!("Unsupported vector default initializer: {:?} x {}", kind, len)),
+            };
+
+            self.import_simd_function(fn_name).expect("None of these fns should be unsupported in rust");
+
+            Ok(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>))
         } else {
             Err(format!("Unsupported default initializer: {:?}", resolved_ty))
         }
@@ -4554,6 +4716,23 @@ impl Translation {
                     self.match_type_kind(param_id.ctype, store, decl_file_path);
                 }
             },
+            Vector(CQualTypeId { ctype, .. }, len) => {
+                // Since vector imports are global, we can find the correct type name in the parent scope
+                let type_name = match (&self.ast_context[ctype].kind, len) {
+                    (CTypeKind::Float, 4) => "__m128",
+                    (CTypeKind::Float, 8) => "__m256",
+                    (CTypeKind::Double, 2) => "__m128d",
+                    (CTypeKind::Double, 4) => "__m256d",
+                    (CTypeKind::LongLong, 2) => "__m128i",
+                    (CTypeKind::LongLong, 4) => "__m256i",
+                    (CTypeKind::LongLong, 1) => "__m64",
+                    (kind, len) => unimplemented!("Unknown vector type: {:?} x {}", kind, len),
+                };
+
+                store.uses
+                    .get_mut(vec!["super".into()])
+                    .insert_with_attr(type_name, mk().pub_());
+            },
             ref e => unimplemented!("{:?}", e),
         }
     }
@@ -4586,6 +4765,11 @@ impl Translation {
             CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } |
             CDeclKind::Typedef { typ, .. } => self.match_type_kind(typ.ctype, item_store, decl_file_path),
             CDeclKind::Function { is_extern: true, typ, .. } => self.match_type_kind(typ, item_store, decl_file_path),
+            CDeclKind::Function { .. } => {
+                // TODO: We may need to explicitly skip SIMD functions here when getting types for
+                // a fn definition in a header since SIMD headers define functions but we're using imports
+                // rather than translating the original definition
+            },
             ref e => unimplemented!("{:?}", e),
         }
     }

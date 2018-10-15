@@ -13,3 +13,8 @@ def variants_paths(se):
         return [(se, se.name)]
     else:
         raise TypeError('expected Struct or Enum')
+
+def has_field(s, name):
+    if not isinstance(s, Struct):
+        return False
+    return any(f.name == name for f in s.fields)
