@@ -1,11 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeMap};
 use syntax::ast::*;
-use syntax::codemap::Span;
+use syntax::codemap::{Span, BytePos};
 use syntax::codemap::hygiene::SyntaxContext;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::parse::token::{Token, Nonterminal};
-use syntax::tokenstream::{TokenStream, ThinTokenStream, TokenTree};
+use syntax::tokenstream::{self, TokenStream, ThinTokenStream, TokenTree, Delimited};
 use syntax::util::small_vector::SmallVector;
 use syntax::visit::{self, Visitor};
 
@@ -14,7 +14,16 @@ use super::nt_match::{self, NtMatch};
 
 use ast_manip::{Fold, Visit};
 use ast_manip::make_ast::mk;
+use ast_manip::AstEquiv;
 
+
+
+#[derive(Clone, Debug)]
+struct RewriteItem {
+    invoc_id: InvocId,
+    span: Span,
+    nt: Nonterminal,
+}
 
 
 struct CollapseMacros<'a> {
@@ -25,18 +34,18 @@ struct CollapseMacros<'a> {
     /// the rest get discarded.
     seen_invocs: HashSet<InvocId>,
 
-    token_rewrites: Vec<(InvocId, Span, Nonterminal)>,
+    token_rewrites: Vec<RewriteItem>,
 }
 
 impl<'a> CollapseMacros<'a> {
     fn collect_token_rewrites<T: NtMatch + ::std::fmt::Debug>(&mut self, invoc_id: InvocId, old: &T, new: &T) {
         info!("(invoc {:?}) record nts for {:?} -> {:?}", invoc_id, old, new);
-        for (sp, nt) in nt_match::match_nonterminals(old, new) {
+        for (span, nt) in nt_match::match_nonterminals(old, new) {
             info!("  got {} at {:?}",
                   ::syntax::print::pprust::token_to_string(
                       &Token::interpolated(nt.clone())),
-                      sp);
-            self.token_rewrites.push((invoc_id, sp, nt));
+                      span);
+            self.token_rewrites.push(RewriteItem { invoc_id, span, nt });
         }
     }
 }
@@ -86,9 +95,16 @@ impl<'a> Folder for CollapseMacros<'a> {
             let old = mac.expanded.as_stmt()
                 .expect("replaced a node with one of a different type?");
             self.collect_token_rewrites(mac.id, old, &s as &Stmt);
-            let new_s = mk().id(s.id).mac_stmt(mac.mac);
-            info!("collapse: {:?} -> {:?}", s, new_s);
-            SmallVector::one(new_s)
+
+            if !self.seen_invocs.contains(&mac.id) {
+                self.seen_invocs.insert(mac.id);
+                let new_s = mk().id(s.id).mac_stmt(mac.mac);
+                info!("collapse: {:?} -> {:?}", s, new_s);
+                SmallVector::one(new_s)
+            } else {
+                info!("collapse (duplicate): {:?} -> /**/", s);
+                SmallVector::new()
+            }
         } else {
             fold::noop_fold_stmt(s, self)
         }
@@ -96,40 +112,101 @@ impl<'a> Folder for CollapseMacros<'a> {
 }
 
 
-fn convert_token_rewrites(rewrite_vec: Vec<(InvocId, Span, Nonterminal)>,
-                          mac_table: &MacTable) -> HashMap<InvocId, ThinTokenStream> {
-    let mut new_tokens: HashMap<InvocId, TokenStream> = HashMap::new();
+fn spans_overlap(sp1: Span, sp2: Span) -> bool {
+    sp1.lo() < sp2.hi() && sp2.lo() < sp1.hi()
+}
 
-    for (id, sp, nt) in rewrite_vec {
-        let ts = new_tokens.entry(id)
-            .or_insert_with(|| {
-                mac_table.get_invoc(id)
-                    .expect("recorded token rewrites for nonexistent invocation?")
-                    .node.tts.clone().into()
-            });
+fn token_rewrite_map(vec: Vec<RewriteItem>) -> BTreeMap<BytePos, RewriteItem> {
+    // Map from `span.lo()` to the full RewriteItem.  Invariant: all spans in `map` are
+    // nonoverlapping and nonempty.  This means we can check if a new span overlaps any old span by
+    // examining only the entries just before and just after the new span's `lo()` position.
+    let mut map: BTreeMap<BytePos, RewriteItem> = BTreeMap::new();
 
-        let mut started = false;
-        let mut ended = false;
-        let mut nt = Some(nt);
-        *ts = ts.trees().filter_map(|tt| {
-            let tt_span = tt.span();
-            let mut r = Some(tt);
-            if !started && tt_span.lo() == sp.lo() {
-                started = true;
+    for item in vec {
+        if item.span.lo() == item.span.hi() {
+            warn!("macro rewrite has empty span {:?}", item.span);
+            continue;
+        }
+
+        let key = item.span.lo();
+        if let Some((_, before)) = map.range(..key).next_back() {
+            if spans_overlap(item.span, before.span) {
+                warn!("macro rewrite at {:?} overlaps rewrite at {:?}", item.span, before.span);
+                continue;
             }
-            if started && !ended {
-                r = None;
+        }
+        if let Some((_, after)) = map.range(key..).next() {
+            if item.span == after.span && AstEquiv::ast_equiv(&item.nt, &after.nt) {
+                // Both rewrites replace the same old tokens with the same new AST, so we can just
+                // drop the second one.
+                continue;
+            } else if spans_overlap(item.span, after.span) {
+                warn!("macro rewrite at {:?} overlaps rewrite at {:?}", item.span, after.span);
+                continue;
             }
-            if started && !ended && tt_span.hi() == sp.hi() {
-                ended = true;
-                let nt = nt.take().expect("duplicate spans in tokenstream?");
-                r = Some(TokenTree::Token(sp, Token::interpolated(nt)));
-            }
-            r
-        }).collect::<TokenStream>();
+        }
+
+        map.insert(key, item);
     }
 
-    new_tokens.into_iter().map(|(k, v)| (k, v.into())).collect()
+    map
+}
+
+fn rewrite_tokens(invoc_id: InvocId,
+                  tts: tokenstream::Cursor,
+                  rewrites: &mut BTreeMap<BytePos, RewriteItem>) -> TokenStream {
+    let mut new_tts = Vec::new();
+    let mut ignore_until = None;
+
+    for tt in tts {
+        if let Some(end) = ignore_until {
+            if tt.span().lo() >= end {
+                // Previous ignore is now over.
+                ignore_until = None;
+            } else {
+                continue;
+            }
+        }
+
+        if let Some(item) = rewrites.remove(&tt.span().lo()) {
+            assert!(item.invoc_id == invoc_id);
+            new_tts.push(TokenTree::Token(item.span, Token::interpolated(item.nt)));
+            ignore_until = Some(item.span.hi());
+            continue;
+        }
+
+        match tt {
+            TokenTree::Token(sp, t) => {
+                new_tts.push(TokenTree::Token(sp, t));
+            },
+            TokenTree::Delimited(sp, d) => {
+                let d_tts: TokenStream = d.tts.into();
+                new_tts.push(TokenTree::Delimited(sp, Delimited {
+                    tts: rewrite_tokens(invoc_id, d_tts.into_trees(), rewrites).into(),
+                    ..d
+                }));
+            },
+        }
+    }
+
+    new_tts.into_iter().collect()
+}
+
+fn convert_token_rewrites(rewrite_vec: Vec<RewriteItem>,
+                          mac_table: &MacTable) -> HashMap<InvocId, ThinTokenStream> {
+    let mut rewrite_map = token_rewrite_map(rewrite_vec);
+    info!("rewrite map:");
+    for (k,v) in &rewrite_map {
+        info!("  {:?}: {:?}", k, v);
+    }
+    let invoc_ids = rewrite_map.values().map(|r| r.invoc_id).collect::<HashSet<_>>();
+    invoc_ids.into_iter().map(|invoc_id| {
+        let old_tts: TokenStream = mac_table.get_invoc(invoc_id)
+            .expect("recorded token rewrites for nonexistent invocation?")
+            .node.tts.clone().into();
+        let new_tts = rewrite_tokens(invoc_id, old_tts.into_trees(), &mut rewrite_map);
+        (invoc_id, new_tts.into())
+    }).collect()
 }
 
 
