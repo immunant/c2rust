@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet, BTreeMap};
 use syntax::ast::*;
+use syntax::attr;
 use syntax::codemap::{Span, BytePos};
 use syntax::codemap::hygiene::SyntaxContext;
 use syntax::fold::{self, Folder};
@@ -9,7 +10,7 @@ use syntax::tokenstream::{self, TokenStream, ThinTokenStream, TokenTree, Delimit
 use syntax::util::small_vector::SmallVector;
 use syntax::visit::{self, Visitor};
 
-use super::mac_table::{MacTable, InvocId};
+use super::mac_table::{MacTable, InvocId, InvocKind};
 use super::node_map::nt_id;
 use super::nt_match::{self, NtMatch};
 
@@ -53,63 +54,133 @@ impl<'a> CollapseMacros<'a> {
 
 impl<'a> Folder for CollapseMacros<'a> {
     fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
-        if let Some(mac) = self.mac_table.get(e.id) {
-            let old = mac.expanded.as_expr()
-                .expect("replaced a node with one of a different type?");
-            self.collect_token_rewrites(mac.id, old, &e as &Expr);
-            let new_e = mk().id(e.id).mac_expr(mac.mac);
-            info!("collapse: {:?} -> {:?}", e, new_e);
-            new_e
-        } else {
-            e.map(|e| fold::noop_fold_expr(e, self))
+        if let Some(info) = self.mac_table.get(e.id) {
+            if let InvocKind::Mac(mac) = info.invoc {
+                let old = info.expanded.as_expr()
+                    .expect("replaced a node with one of a different type?");
+                self.collect_token_rewrites(info.id, old, &e as &Expr);
+                let new_e = mk().id(e.id).mac_expr(mac);
+                info!("collapse: {:?} -> {:?}", e, new_e);
+                return new_e;
+            } else {
+                warn!("bad macro kind for expr: {:?}", info.invoc);
+            }
         }
+        e.map(|e| fold::noop_fold_expr(e, self))
     }
 
     fn fold_pat(&mut self, p: P<Pat>) -> P<Pat> {
-        if let Some(mac) = self.mac_table.get(p.id) {
-            let old = mac.expanded.as_pat()
-                .expect("replaced a node with one of a different type?");
-            self.collect_token_rewrites(mac.id, old, &p as &Pat);
-            let new_p = mk().id(p.id).mac_pat(mac.mac);
-            info!("collapse: {:?} -> {:?}", p, new_p);
-            new_p
-        } else {
-            fold::noop_fold_pat(p, self)
+        if let Some(info) = self.mac_table.get(p.id) {
+            if let InvocKind::Mac(mac) = info.invoc {
+                let old = info.expanded.as_pat()
+                    .expect("replaced a node with one of a different type?");
+                self.collect_token_rewrites(info.id, old, &p as &Pat);
+                let new_p = mk().id(p.id).mac_pat(mac);
+                info!("collapse: {:?} -> {:?}", p, new_p);
+                return new_p;
+            } else {
+                warn!("bad macro kind for pat: {:?}", info.invoc);
+            }
         }
+        fold::noop_fold_pat(p, self)
     }
 
     fn fold_ty(&mut self, t: P<Ty>) -> P<Ty> {
-        if let Some(mac) = self.mac_table.get(t.id) {
-            let old = mac.expanded.as_ty()
-                .expect("replaced a node with one of a different type?");
-            self.collect_token_rewrites(mac.id, old, &t as &Ty);
-            let new_t = mk().id(t.id).mac_ty(mac.mac);
-            info!("collapse: {:?} -> {:?}", t, new_t);
-            new_t
-        } else {
-            fold::noop_fold_ty(t, self)
+        if let Some(info) = self.mac_table.get(t.id) {
+            if let InvocKind::Mac(mac) = info.invoc {
+                let old = info.expanded.as_ty()
+                    .expect("replaced a node with one of a different type?");
+                self.collect_token_rewrites(info.id, old, &t as &Ty);
+                let new_t = mk().id(t.id).mac_ty(mac);
+                info!("collapse: {:?} -> {:?}", t, new_t);
+                return new_t;
+            } else {
+                warn!("bad macro kind for ty: {:?}", info.invoc);
+            }
         }
+        fold::noop_fold_ty(t, self)
     }
 
     fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
-        if let Some(mac) = self.mac_table.get(s.id) {
-            let old = mac.expanded.as_stmt()
-                .expect("replaced a node with one of a different type?");
-            self.collect_token_rewrites(mac.id, old, &s as &Stmt);
+        if let Some(info) = self.mac_table.get(s.id) {
+            if let InvocKind::Mac(mac) = info.invoc {
+                let old = info.expanded.as_stmt()
+                    .expect("replaced a node with one of a different type?");
+                self.collect_token_rewrites(info.id, old, &s as &Stmt);
 
-            if !self.seen_invocs.contains(&mac.id) {
-                self.seen_invocs.insert(mac.id);
-                let new_s = mk().id(s.id).mac_stmt(mac.mac);
-                info!("collapse: {:?} -> {:?}", s, new_s);
-                SmallVector::one(new_s)
+                if !self.seen_invocs.contains(&info.id) {
+                    self.seen_invocs.insert(info.id);
+                    let new_s = mk().id(s.id).mac_stmt(mac);
+                    info!("collapse: {:?} -> {:?}", s, new_s);
+                    return SmallVector::one(new_s);
+                } else {
+                    info!("collapse (duplicate): {:?} -> /**/", s);
+                    return SmallVector::new();
+                }
             } else {
-                info!("collapse (duplicate): {:?} -> /**/", s);
-                SmallVector::new()
+                warn!("bad macro kind for stmt: {:?}", info.invoc);
             }
-        } else {
-            fold::noop_fold_stmt(s, self)
+        }
+        fold::noop_fold_stmt(s, self)
+    }
+
+    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+        if let Some(info) = self.mac_table.get(i.id) {
+            match info.invoc {
+                InvocKind::Mac(mac) => {
+                    let old = info.expanded.as_item()
+                        .expect("replaced a node with one of a different type?");
+                    self.collect_token_rewrites(info.id, old, &i as &Item);
+
+                    if !self.seen_invocs.contains(&info.id) {
+                        self.seen_invocs.insert(info.id);
+                        let new_i = mk().id(i.id).mac_item(mac);
+                        info!("collapse: {:?} -> {:?}", i, new_i);
+                        return SmallVector::one(new_i);
+                    } else {
+                        info!("collapse (duplicate): {:?} -> /**/", i);
+                        return SmallVector::new();
+                    }
+                },
+                InvocKind::ItemAttr(it) => {
+                    if !self.seen_invocs.contains(&info.id) {
+                        self.seen_invocs.insert(info.id);
+                        info!("ItemAttr: return original: {:?}", i);
+                        let i = i.map(|i| restore_attrs(i, it));
+                        return SmallVector::one(i);
+                    } else {
+                        info!("ItemAttr: drop (generated): {:?} -> /**/", i);
+                        return SmallVector::new();
+                    }
+                },
+            }
+        }
+        fold::noop_fold_item(i, self)
+    }
+}
+
+fn restore_attrs(mut new: Item, old: &Item) -> Item {
+    // If the original item had a `#[derive]` attr, transfer it to the new one.
+    // TODO: handle multiple instances of `#[derive]`
+    // TODO: try to keep attrs in the same order
+    if let Some(attr) = attr::find_by_name(&old.attrs, "derive") {
+        if !attr::contains_name(&new.attrs, "derive") {
+            new.attrs.push(attr.clone());
         }
     }
+
+    if let Some(attr) = attr::find_by_name(&old.attrs, "cfg") {
+        if !attr::contains_name(&new.attrs, "cfg") {
+            new.attrs.push(attr.clone());
+        }
+    }
+
+    // Remove #[rustc_copy_clone_marker], if it's present
+    new.attrs.retain(|attr| {
+        !attr.check_name("rustc_copy_clone_marker")
+    });
+
+    new
 }
 
 
@@ -210,12 +281,16 @@ fn convert_token_rewrites(rewrite_vec: Vec<RewriteItem>,
         info!("  {:?}: {:?}", k, v);
     }
     let invoc_ids = rewrite_map.values().map(|r| r.invoc_id).collect::<HashSet<_>>();
-    invoc_ids.into_iter().map(|invoc_id| {
-        let old_tts: TokenStream = mac_table.get_invoc(invoc_id)
-            .expect("recorded token rewrites for nonexistent invocation?")
-            .node.tts.clone().into();
-        let new_tts = rewrite_tokens(invoc_id, old_tts.into_trees(), &mut rewrite_map);
-        (invoc_id, new_tts.into())
+    invoc_ids.into_iter().filter_map(|invoc_id| {
+        let invoc = mac_table.get_invoc(invoc_id)
+            .expect("recorded token rewrites for nonexistent invocation?");
+        if let InvocKind::Mac(mac) = invoc {
+            let old_tts: TokenStream = mac.node.tts.clone().into();
+            let new_tts = rewrite_tokens(invoc_id, old_tts.into_trees(), &mut rewrite_map);
+            Some((invoc_id, new_tts.into()))
+        } else {
+            None
+        }
     }).collect()
 }
 

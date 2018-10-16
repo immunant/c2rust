@@ -9,7 +9,7 @@ use syntax::visit::{self, Visitor};
 use ast_manip::{AstEquiv, Visit};
 use node_map::NodeMap;
 
-use super::mac_table::MacTable;
+use super::mac_table::{MacTable, InvocKind};
 
 
 /// Match up IDs of pre-expansion `Nonterminal` tokens with post-expansion AST nodes.  Matching is
@@ -17,7 +17,10 @@ use super::mac_table::MacTable;
 /// match multiple new IDs to a single old ID.
 pub fn match_nonterminal_ids(node_map: &mut NodeMap, mac_table: &MacTable) {
     for info in mac_table.invocations() {
-        let mac = info.mac;
+        let mac = match info.invoc {
+            InvocKind::Mac(mac) => mac,
+            _ => continue,
+        };
 
         // Find all nonterminals in the macro's input tokens.
         let mut span_map = HashMap::new();

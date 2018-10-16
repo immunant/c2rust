@@ -5,7 +5,7 @@ collapser's `MacTable`.  This is a basic recursive traversal on two ASTs
  * When the unexpanded AST is `Mac`, we call `record_one_macro` with the
    unexpanded `Mac` node and the corresponding expanded node's `NodeId`.  This
    check happens at nodes marked `#[mac_table_record]`, which should be the
-   node with the ID (`Expr`, not `ExprKind`) and should implement `MaybeMac`.
+   node with the ID (`Expr`, not `ExprKind`) and should implement `MaybeInvoc`.
 
  * On fields with the `#[mac_table_seq]` attribute, we call the helper function
    `collect_macros_seq` instead of the normal `collect_macros`, which handles
@@ -59,10 +59,10 @@ def do_collect_macros_body(se, target1, target2):
 
 
     if 'mac_table_record' in se.attrs:
-        yield 'if let Some(mac) = MaybeMac::as_mac(%s) {' % target1
-        yield '  assert!(MaybeMac::as_mac(%s).is_none(),' % target2
-        yield '    "impossible: found Mac in expanded AST");'
-        yield '  record_one_macro(mac, MacNodeRef::%s(new), cx);' % se.name
+        yield 'if let Some(invoc) = MaybeInvoc::as_invoc(%s) {' % target1
+        yield '  assert!(MaybeInvoc::as_invoc(%s).is_none(),' % target2
+        yield '    "impossible: found macro invocation in expanded AST");'
+        yield '  record_one_macro(invoc, MacNodeRef::%s(new), cx);' % se.name
         yield '}'
 
 @linewise

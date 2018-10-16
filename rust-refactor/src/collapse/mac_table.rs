@@ -7,8 +7,9 @@ use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 use rustc_target::spec::abi::Abi;
 
 use std::rc::Rc;
-use syntax::ptr::P;
+use syntax::attr;
 use syntax::codemap::Spanned;
+use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
 use ast_manip::{GetNodeId, GetSpan};
@@ -121,9 +122,15 @@ impl<'a> Visit for MacNodeRef<'a> {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct InvocId(pub u32);
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum InvocKind<'ast> {
+    Mac(&'ast Mac),
+    ItemAttr(&'ast Item),
+}
+
 pub struct MacInfo<'ast> {
     pub id: InvocId,
-    pub mac: &'ast Mac,
+    pub invoc: InvocKind<'ast>,
     pub expanded: MacNodeRef<'ast>,
 }
 
@@ -132,7 +139,7 @@ pub struct MacTable<'ast> {
     /// same invocation, when a macro produces multiple items/stmts.
     pub map: HashMap<NodeId, MacInfo<'ast>>,
 
-    pub invoc_map: HashMap<InvocId, &'ast Mac>,
+    pub invoc_map: HashMap<InvocId, InvocKind<'ast>>,
 }
 
 impl<'ast> MacTable<'ast> {
@@ -140,7 +147,7 @@ impl<'ast> MacTable<'ast> {
         self.map.get(&id)
     }
 
-    pub fn get_invoc(&self, id: InvocId) -> Option<&'ast Mac> {
+    pub fn get_invoc(&self, id: InvocId) -> Option<InvocKind<'ast>> {
         self.invoc_map.get(&id).cloned()
     }
 
@@ -153,10 +160,13 @@ pub fn collect_macro_invocations<'ast>(unexpanded: &'ast Crate,
                                        expanded: &'ast Crate)
                                        -> (MacTable<'ast>, Vec<(NodeId, NodeId)>) {
     let mut ctxt = Ctxt::new();
-    // FIXME properly detect injected prelude
-    CollectMacros::collect_macros(&unexpanded.module.items as &[_], 
-                                  &expanded.module.items[2..],
-                                  &mut ctxt);
+    // Because `expanded` hasn't been transformed since it was macro expanded, we know that the
+    // first `inj_count` items are the injected prelude and crate imports.
+    let (crate_names, has_prelude) = super::injected_items(unexpanded);
+    let inj_count = crate_names.len() + if has_prelude { 1 } else { 0 };
+    collect_macros_seq(&unexpanded.module.items[..], 
+                       &expanded.module.items[inj_count..],
+                       &mut ctxt);
     (ctxt.table, ctxt.matched_node_ids)
 }
 
@@ -187,10 +197,11 @@ impl<'a> Ctxt<'a> {
 
     fn record_macro_with_id(&mut self,
                             invoc_id: InvocId,
-                            mac: &'a Mac,
+                            invoc_kind: InvocKind<'a>,
                             expanded: MacNodeRef<'a>) {
-        self.table.map.insert(expanded.id(), MacInfo { id: invoc_id, mac, expanded });
-        self.table.invoc_map.insert(invoc_id, mac);
+        self.table.map.insert(
+            expanded.id(), MacInfo { id: invoc_id, invoc: invoc_kind, expanded });
+        self.table.invoc_map.insert(invoc_id, invoc_kind);
     }
 
     fn record_node_id_match(&mut self,
@@ -200,9 +211,9 @@ impl<'a> Ctxt<'a> {
     }
 }
 
-fn record_one_macro<'a>(mac: &'a Mac, expanded: MacNodeRef<'a>, cx: &mut Ctxt<'a>) {
+fn record_one_macro<'a>(invoc_kind: InvocKind<'a>, expanded: MacNodeRef<'a>, cx: &mut Ctxt<'a>) {
     let invoc_id = cx.next_id();
-    cx.record_macro_with_id(invoc_id, mac, expanded);
+    cx.record_macro_with_id(invoc_id, invoc_kind, expanded);
 }
 
 fn root_callsite_span(sp: Span) -> Span {
@@ -214,15 +225,20 @@ fn root_callsite_span(sp: Span) -> Span {
     }
 }
 
+fn is_macro_generated(sp: Span) -> bool {
+    sp.source_callsite() != sp
+}
+
 fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'a>)
-        where T: CollectMacros + MaybeMac + GetSpan + AsMacNodeRef {
-    // TODO: make sure this can handle #[automatically_derived] impls
+        where T: CollectMacros + MaybeInvoc + GetSpan + AsMacNodeRef {
     let mut j = 0;
 
     for (i, old) in old_seq.iter().enumerate() {
-        if let Some(mac) = old.as_mac() {
+        if let Some(invoc) = old.as_invoc() {
             let invoc_id = cx.next_id();
+            info!("got invoc {:?} at i {}, j {} - assign id {:?}", invoc, i, j, invoc_id);
 
+            let start_j = j;
             while j < new_seq.len() {
                 let new = &new_seq[j];
 
@@ -234,13 +250,21 @@ fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'
                     break;
                 }
 
-                // The node came from `mac`, so consume and record the node.
-                cx.record_macro_with_id(invoc_id, mac, new.as_mac_node_ref());
+                // The node came from `invoc`, so consume and record the node.
+                cx.record_macro_with_id(invoc_id, invoc, new.as_mac_node_ref());
                 j += 1;
             }
+            info!("  collected {} entries for {:?}", j - start_j, invoc_id);
         } else {
+            // For now, any time we see a node with a macro-generated span that wasn't eaten up by
+            // the macro handling above, we assume it was created by a compiler plugin (such as
+            // prelude injection or `#[derive]`), and ignore it.
+            while j < new_seq.len() && is_macro_generated(new_seq[j].get_span()) {
+                j += 1;
+            }
             assert!(j < new_seq.len(),
                     "impossible: ran out of items in expanded sequence");
+            info!("handle {}, {}; span {:?}", i, j, new_seq[j].get_span());
             CollectMacros::collect_macros(old, &new_seq[j], cx);
             j += 1;
         }
@@ -306,7 +330,8 @@ impl<A: CollectMacros, B: CollectMacros, C: CollectMacros> CollectMacros for (A,
 
 impl<T: CollectMacros> CollectMacros for [T] {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
-        for (old_item, new_item) in old.iter().zip(new.iter()) {
+        for (i,(old_item, new_item)) in old.iter().zip(new.iter()).enumerate() {
+            info!("start {}", i);
             <T as CollectMacros>::collect_macros(old_item, new_item, cx);
         }
     }
@@ -334,85 +359,91 @@ impl CollectMacros for NodeId {
 }
 
 
-trait MaybeMac {
-    fn as_mac(&self) -> Option<&Mac>;
+trait MaybeInvoc {
+    fn as_invoc(&self) -> Option<InvocKind>;
 }
 
-impl MaybeMac for Expr {
-    fn as_mac(&self) -> Option<&Mac> {
+impl MaybeInvoc for Expr {
+    fn as_invoc(&self) -> Option<InvocKind> {
         match self.node {
-            ExprKind::Mac(ref mac) => Some(mac),
+            ExprKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
     }
 }
 
-impl MaybeMac for Pat {
-    fn as_mac(&self) -> Option<&Mac> {
+impl MaybeInvoc for Pat {
+    fn as_invoc(&self) -> Option<InvocKind> {
         match self.node {
-            PatKind::Mac(ref mac) => Some(mac),
+            PatKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
     }
 }
 
-impl MaybeMac for Ty {
-    fn as_mac(&self) -> Option<&Mac> {
+impl MaybeInvoc for Ty {
+    fn as_invoc(&self) -> Option<InvocKind> {
         match self.node {
-            TyKind::Mac(ref mac) => Some(mac),
+            TyKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
     }
 }
 
-impl MaybeMac for Item {
-    fn as_mac(&self) -> Option<&Mac> {
+impl MaybeInvoc for Item {
+    fn as_invoc(&self) -> Option<InvocKind> {
         match self.node {
-            ItemKind::Mac(ref mac) => Some(mac),
+            ItemKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
+            _ => {
+                if attr::contains_name(&self.attrs, "derive") {
+                    Some(InvocKind::ItemAttr(self))
+                } else {
+                    None
+                }
+            },
+        }
+    }
+}
+
+impl MaybeInvoc for ImplItem {
+    fn as_invoc(&self) -> Option<InvocKind> {
+        match self.node {
+            ImplItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
     }
 }
 
-impl MaybeMac for ImplItem {
-    fn as_mac(&self) -> Option<&Mac> {
+impl MaybeInvoc for TraitItem {
+    fn as_invoc(&self) -> Option<InvocKind> {
         match self.node {
-            ImplItemKind::Macro(ref mac) => Some(mac),
+            TraitItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
     }
 }
 
-impl MaybeMac for TraitItem {
-    fn as_mac(&self) -> Option<&Mac> {
+impl MaybeInvoc for ForeignItem {
+    fn as_invoc(&self) -> Option<InvocKind> {
         match self.node {
-            TraitItemKind::Macro(ref mac) => Some(mac),
+            ForeignItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
     }
 }
 
-impl MaybeMac for ForeignItem {
-    fn as_mac(&self) -> Option<&Mac> {
+impl MaybeInvoc for Stmt {
+    fn as_invoc(&self) -> Option<InvocKind> {
         match self.node {
-            ForeignItemKind::Macro(ref mac) => Some(mac),
+            StmtKind::Mac(ref mac) => Some(InvocKind::Mac(&mac.0)),
             _ => None,
         }
     }
 }
 
-impl MaybeMac for Stmt {
-    fn as_mac(&self) -> Option<&Mac> {
-        match self.node {
-            StmtKind::Mac(ref mac) => Some(&mac.0),
-            _ => None,
-        }
-    }
-}
-
-impl<T: MaybeMac> MaybeMac for P<T> {
-    fn as_mac(&self) -> Option<&Mac> {
-        <T as MaybeMac>::as_mac(self)
+impl<T: MaybeInvoc> MaybeInvoc for P<T> {
+    fn as_invoc(&self) -> Option<InvocKind> {
+        <T as MaybeInvoc>::as_invoc(self)
     }
 }
 
