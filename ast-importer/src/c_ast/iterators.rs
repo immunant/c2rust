@@ -65,7 +65,7 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
     match *kind {
         BadExpr => vec![],
         DesignatedInitExpr(..) => vec![], // the relevant information will be found in the semantic initializer
-        ShuffleVector(..)  => vec![],
+        ShuffleVector(qty) |
         ConvertVector(qty) => intos![qty.ctype],
         OffsetOf(..) | Literal(..) | ImplicitValueInit(..) => vec![],
         DeclRef(..) => vec![], // don't follow references back!
