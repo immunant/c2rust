@@ -2997,8 +2997,19 @@ impl Translation {
                             x.val
                         } else  {
                             let mut vals: Vec<P<Expr>> = vec![];
-                            for v in ids {
-                                let mut x = self.convert_expr(ExprUse::Used, *v, is_static, decay_ref)?;
+                            for &v in ids {
+                                let mut x = self.convert_expr(ExprUse::Used, v, is_static, decay_ref)?;
+
+                                // Array literals require all of their elements to be the correct type; they
+                                // will not use implicit casts to change mut to const. This becomes a problem
+                                // when an array literal is used in a position where there is no type information
+                                // available to force its type to the correct const or mut variation. To avoid
+                                // this issue we manually insert the otherwise elided casts in this particular context.
+                                if let CExprKind::ImplicitCast(ty, _, CastKind::ConstCast, _, _) = self.ast_context[v].kind {
+                                    let t = self.convert_type(ty.ctype)?;
+                                    x.val = mk().cast_expr(x.val, t)
+                                }
+
                                 stmts.append(&mut x.stmts);
                                 vals.push(x.val);
                             }
