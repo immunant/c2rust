@@ -138,11 +138,13 @@ impl RefactorState {
             info!("new ast **********");
             ::print_spans::print_spans(&expanded, self.session.codemap());
             info!("end of asts **********");
+            info!("old marks: {:?}", marks);
             let (mac_table, matched_ids) =
                 collapse::collect_macro_invocations(&unexpanded, &expanded);
             self.node_map.add_edges(&matched_ids);
             collapse::match_nonterminal_ids(&mut self.node_map, &mac_table);
             let marks = self.node_map.transfer_marks(&marks);
+            info!("expanded marks: {:?}", marks);
             self.node_map.commit();
 
             // Run the transform
@@ -152,11 +154,19 @@ impl RefactorState {
             // Update internal state
             let changed = cmd_state.krate_changed();
             let (new_krate, new_marks) = cmd_state.into_inner();
+            info!("transformed ast **********");
+            ::print_spans::print_spans(&new_krate, self.session.codemap());
+            info!("new marks: {:?}", new_marks);
 
             let (new_krate, matched_ids) = collapse::collapse_macros(new_krate, &mac_table);
             self.node_map.add_edges(&matched_ids);
+            info!("collapse_macros - matched_ids: {:?}", matched_ids);
             let new_krate = collapse::collapse_injected(new_krate);
             let new_marks = self.node_map.transfer_marks(&new_marks);
+            info!("collapsed marks: {:?}", new_marks);
+            info!("collapsed ast **********");
+            ::print_spans::print_spans(&new_krate, self.session.codemap());
+            info!("end of transformed asts **********");
             self.node_map.commit();
             self.krate = Some(new_krate);
 

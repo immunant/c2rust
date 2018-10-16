@@ -6,7 +6,7 @@ use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::visit::{self, Visitor};
 
-use ast_manip::{AstEquiv, Visit};
+use ast_manip::{AstEquiv, Visit, ListNodeIds};
 use node_map::NodeMap;
 
 use super::mac_table::{MacTable, InvocKind};
@@ -102,8 +102,10 @@ macro_rules! define_nt_use_visitor {
                     match nt {
                         Nonterminal::$NtThing(ref y) => {
                             if AstEquiv::ast_equiv(x, y) {
-                                self.matched_ids.push((x.id, y.id));
-                                // Don't look for more IDs inside a substituted node.
+                                self.matched_ids.extend(
+                                    x.list_node_ids().into_iter().zip(
+                                        y.list_node_ids().into_iter()));
+                                // No need to continue looking for IDs inside this node.
                                 return;
                             }
                         },

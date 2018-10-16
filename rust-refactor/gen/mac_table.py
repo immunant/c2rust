@@ -62,7 +62,8 @@ def do_collect_macros_body(se, target1, target2):
         yield 'if let Some(invoc) = MaybeInvoc::as_invoc(%s) {' % target1
         yield '  assert!(MaybeInvoc::as_invoc(%s).is_none(),' % target2
         yield '    "impossible: found macro invocation in expanded AST");'
-        yield '  record_one_macro(invoc, MacNodeRef::%s(new), cx);' % se.name
+        yield '  record_one_macro(%s.id, invoc, MacNodeRef::%s(new), cx);' % \
+                (target1, se.name)
         yield '}'
 
 @linewise

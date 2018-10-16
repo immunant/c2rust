@@ -136,10 +136,8 @@ impl MappableId for NodeId {
 }
 
 impl MappableId for AttrId {
-    fn map_id(self, rcx: &RewriteCtxt) -> Self {
-        // TODO - we don't track AttrId renumbering yet
-        //rcx.attr_id_map.get(&self).map_or(AttrId(-1_isize as usize), |&x| x)
-        AttrId(-1_isize as usize)
+    fn map_id(self, _rcx: &RewriteCtxt) -> Self {
+        self
     }
 }
 

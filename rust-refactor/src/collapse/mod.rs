@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use syntax::attr;
 use syntax::ast::*;
+use syntax::codemap::Span;
 use util::IntoSymbol;
 
 mod mac_table;
@@ -57,6 +58,15 @@ pub fn collapse_injected(mut krate: Crate) -> Crate {
     }).collect();
     krate.module.items = new_items;
     krate
+}
+
+fn root_callsite_span(sp: Span) -> Span {
+    let callsite = sp.source_callsite();
+    if callsite == sp {
+        sp
+    } else {
+        root_callsite_span(callsite)
+    }
 }
 
 

@@ -15,6 +15,8 @@ use syntax::visit::{self, Visitor};
 use ast_manip::{GetNodeId, GetSpan};
 use ast_manip::Visit;
 
+use super::root_callsite_span;
+
 
 #[derive(Clone, Copy, Debug)]
 pub enum MacNodeRef<'a> {
@@ -211,18 +213,13 @@ impl<'a> Ctxt<'a> {
     }
 }
 
-fn record_one_macro<'a>(invoc_kind: InvocKind<'a>, expanded: MacNodeRef<'a>, cx: &mut Ctxt<'a>) {
+fn record_one_macro<'a>(old_id: NodeId,
+                        invoc_kind: InvocKind<'a>,
+                        expanded: MacNodeRef<'a>,
+                        cx: &mut Ctxt<'a>) {
     let invoc_id = cx.next_id();
     cx.record_macro_with_id(invoc_id, invoc_kind, expanded);
-}
-
-fn root_callsite_span(sp: Span) -> Span {
-    let callsite = sp.source_callsite();
-    if callsite == sp {
-        sp
-    } else {
-        root_callsite_span(callsite)
-    }
+    cx.record_node_id_match(old_id, expanded.id());
 }
 
 fn is_macro_generated(sp: Span) -> bool {
@@ -230,7 +227,7 @@ fn is_macro_generated(sp: Span) -> bool {
 }
 
 fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'a>)
-        where T: CollectMacros + MaybeInvoc + GetSpan + AsMacNodeRef {
+        where T: CollectMacros + MaybeInvoc + GetNodeId + GetSpan + AsMacNodeRef {
     let mut j = 0;
 
     for (i, old) in old_seq.iter().enumerate() {
@@ -252,6 +249,7 @@ fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'
 
                 // The node came from `invoc`, so consume and record the node.
                 cx.record_macro_with_id(invoc_id, invoc, new.as_mac_node_ref());
+                cx.record_node_id_match(old.get_node_id(), new.get_node_id());
                 j += 1;
             }
             info!("  collected {} entries for {:?}", j - start_j, invoc_id);

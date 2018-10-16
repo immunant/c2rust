@@ -212,6 +212,7 @@ pub fn rewrite_seq<T, R>(old: &[R],
     let mut j = 0;
 
     for step in diff::slice(&old_ids, &new_ids) {
+        info!("diff step: {:?}", step);
         match step {
             diff::Result::Left(_) => {
                 // There's an item on the left corresponding to nothing on the right.

@@ -13,8 +13,9 @@ use syntax::visit::{self, Visitor};
 use super::mac_table::{MacTable, InvocId, InvocKind};
 use super::node_map::nt_id;
 use super::nt_match::{self, NtMatch};
+use super::root_callsite_span;
 
-use ast_manip::{Fold, Visit};
+use ast_manip::{Fold, Visit, ListNodeIds};
 use ast_manip::make_ast::mk;
 use ast_manip::AstEquiv;
 
@@ -37,6 +38,8 @@ struct CollapseMacros<'a> {
     seen_invocs: HashSet<InvocId>,
 
     token_rewrites: Vec<RewriteItem>,
+
+    matched_ids: &'a mut Vec<(NodeId, NodeId)>,
 }
 
 impl<'a> CollapseMacros<'a> {
@@ -50,6 +53,10 @@ impl<'a> CollapseMacros<'a> {
             self.token_rewrites.push(RewriteItem { invoc_id, span, nt });
         }
     }
+
+    fn record_matched_ids(&mut self, old: NodeId, new: NodeId) {
+        self.matched_ids.push((old, new));
+    }
 }
 
 impl<'a> Folder for CollapseMacros<'a> {
@@ -59,8 +66,9 @@ impl<'a> Folder for CollapseMacros<'a> {
                 let old = info.expanded.as_expr()
                     .expect("replaced a node with one of a different type?");
                 self.collect_token_rewrites(info.id, old, &e as &Expr);
-                let new_e = mk().id(e.id).mac_expr(mac);
+                let new_e = mk().id(e.id).span(root_callsite_span(e.span)).mac_expr(mac);
                 info!("collapse: {:?} -> {:?}", e, new_e);
+                self.record_matched_ids(e.id, new_e.id);
                 return new_e;
             } else {
                 warn!("bad macro kind for expr: {:?}", info.invoc);
@@ -75,8 +83,9 @@ impl<'a> Folder for CollapseMacros<'a> {
                 let old = info.expanded.as_pat()
                     .expect("replaced a node with one of a different type?");
                 self.collect_token_rewrites(info.id, old, &p as &Pat);
-                let new_p = mk().id(p.id).mac_pat(mac);
+                let new_p = mk().id(p.id).span(root_callsite_span(p.span)).mac_pat(mac);
                 info!("collapse: {:?} -> {:?}", p, new_p);
+                self.record_matched_ids(p.id, new_p.id);
                 return new_p;
             } else {
                 warn!("bad macro kind for pat: {:?}", info.invoc);
@@ -91,8 +100,9 @@ impl<'a> Folder for CollapseMacros<'a> {
                 let old = info.expanded.as_ty()
                     .expect("replaced a node with one of a different type?");
                 self.collect_token_rewrites(info.id, old, &t as &Ty);
-                let new_t = mk().id(t.id).mac_ty(mac);
+                let new_t = mk().id(t.id).span(root_callsite_span(t.span)).mac_ty(mac);
                 info!("collapse: {:?} -> {:?}", t, new_t);
+                self.record_matched_ids(t.id, new_t.id);
                 return new_t;
             } else {
                 warn!("bad macro kind for ty: {:?}", info.invoc);
@@ -110,8 +120,10 @@ impl<'a> Folder for CollapseMacros<'a> {
 
                 if !self.seen_invocs.contains(&info.id) {
                     self.seen_invocs.insert(info.id);
-                    let new_s = mk().id(s.id).mac_stmt(mac);
+                    let new_s = mk().id(s.id).span(root_callsite_span(s.span)).mac_stmt(mac);
+                    self.record_matched_ids(s.id, new_s.id);
                     info!("collapse: {:?} -> {:?}", s, new_s);
+                    info!("  id collapse: {:?} -> {:?}", s.id, new_s.id);
                     return SmallVector::one(new_s);
                 } else {
                     info!("collapse (duplicate): {:?} -> /**/", s);
@@ -134,8 +146,9 @@ impl<'a> Folder for CollapseMacros<'a> {
 
                     if !self.seen_invocs.contains(&info.id) {
                         self.seen_invocs.insert(info.id);
-                        let new_i = mk().id(i.id).mac_item(mac);
+                        let new_i = mk().id(i.id).span(root_callsite_span(i.span)).mac_item(mac);
                         info!("collapse: {:?} -> {:?}", i, new_i);
+                        self.record_matched_ids(i.id, new_i.id);
                         return SmallVector::one(new_i);
                     } else {
                         info!("collapse (duplicate): {:?} -> /**/", i);
@@ -147,6 +160,7 @@ impl<'a> Folder for CollapseMacros<'a> {
                         self.seen_invocs.insert(info.id);
                         info!("ItemAttr: return original: {:?}", i);
                         let i = i.map(|i| restore_attrs(i, it));
+                        self.record_matched_ids(i.id, i.id);
                         return SmallVector::one(i);
                     } else {
                         info!("ItemAttr: drop (generated): {:?} -> /**/", i);
@@ -156,6 +170,10 @@ impl<'a> Folder for CollapseMacros<'a> {
             }
         }
         fold::noop_fold_item(i, self)
+    }
+
+    fn fold_mac(&mut self, mac: Mac) -> Mac {
+        fold::noop_fold_mac(mac, self)
     }
 }
 
@@ -212,9 +230,8 @@ fn token_rewrite_map(vec: Vec<RewriteItem>,
             if item.span == after.span && AstEquiv::ast_equiv(&item.nt, &after.nt) {
                 // Both rewrites replace the same old tokens with the same new AST, so we can just
                 // drop the second one.
-                if let (Some(item_id), Some(after_id)) = (nt_id(&item.nt), nt_id(&after.nt)) {
-                    matched_ids.push((item_id, after_id));
-                }
+                matched_ids.extend(item.nt.list_node_ids().into_iter()
+                                       .zip(after.nt.list_node_ids().into_iter()));
                 continue;
             } else if spans_overlap(item.span, after.span) {
                 warn!("macro rewrite at {:?} overlaps rewrite at {:?}", item.span, after.span);
@@ -222,9 +239,7 @@ fn token_rewrite_map(vec: Vec<RewriteItem>,
             }
         }
 
-        if let Some(id) = nt_id(&item.nt) {
-            matched_ids.push((id, id));
-        }
+        matched_ids.extend(item.nt.list_node_ids().into_iter().map(|x| (x, x)));
         map.insert(key, item);
     }
 
@@ -305,6 +320,8 @@ impl<'a> Folder for ReplaceTokens<'a> {
     fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
         if let Some(invoc_id) = self.mac_table.get(e.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
+                // NB: Don't walk, so we never run `self.new_id` on `e.id`.  matched_ids entries
+                // for macro invocations get handled by the CollapseMacros pass.
                 return e.map(|mut e| {
                     expect!([e.node] ExprKind::Mac(ref mut mac) => mac.node.tts = new_tts);
                     e
@@ -366,24 +383,30 @@ impl<'a> Folder for ReplaceTokens<'a> {
 }
 
 
-pub fn collapse_macros(krate: Crate,
+pub fn collapse_macros(mut krate: Crate,
                        mac_table: &MacTable) -> (Crate, Vec<(NodeId, NodeId)>) {
-    let mut collapse_macros = CollapseMacros {
-        mac_table,
-        seen_invocs: HashSet::new(),
-        token_rewrites: Vec::new(),
-    };
-    let krate = krate.fold(&mut collapse_macros);
-
     let mut matched_ids = Vec::new();
+
+    let token_rewrites: Vec<RewriteItem>;
+    {
+        let mut collapse_macros = CollapseMacros {
+            mac_table,
+            seen_invocs: HashSet::new(),
+            token_rewrites: Vec::new(),
+            matched_ids: &mut matched_ids,
+        };
+        krate = krate.fold(&mut collapse_macros);
+        token_rewrites = collapse_macros.token_rewrites;
+    }
+
     let new_tokens = convert_token_rewrites(
-        collapse_macros.token_rewrites, mac_table, &mut matched_ids);
+        token_rewrites, mac_table, &mut matched_ids);
     for (k, v) in &new_tokens {
         info!("new tokens for {:?} = {:?}", k,
               ::syntax::print::pprust::tokens_to_string(v.clone().into()));
     }
 
-    let krate = krate.fold(&mut ReplaceTokens {
+    krate = krate.fold(&mut ReplaceTokens {
         mac_table, new_tokens, matched_ids: &mut matched_ids });
 
     (krate, matched_ids)
