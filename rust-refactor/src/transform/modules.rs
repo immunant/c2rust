@@ -156,7 +156,7 @@ impl Transform for ReorganizeModules {
             SmallVector::one(pi)
         });
 
-        let mod_fn_names = get_module_fn_ident(&krate);
+        let mod_fn_names = get_module_ids(&krate);
 
         let krate = purge_extern_items(krate);
 
@@ -170,22 +170,22 @@ impl Transform for ReorganizeModules {
 }
 
 // Returns module name and a list of all the fn names within it.
-pub fn get_module_fn_ident(krate: &Crate) -> HashMap<String, HashSet<String>> {
+pub fn get_module_ids(krate: &Crate) -> HashMap<u32, Vec<u32>> {
     let mut ret_map = HashMap::new();
     visit_nodes(krate, |i: &Item| match i.node {
         ItemKind::Mod(ref m) => {
             let m_items = m.items.clone();
 
-            let mut set = HashSet::new();
+            let mut ids = Vec::new();
             for item in m_items.iter() {
                 match item.node {
                     ItemKind::Fn(..) => {
-                        set.insert(item.ident.into_string());
+                        ids.push(item.id.as_u32());
                     }
                     _ => {}
                 }
             }
-            ret_map.insert(i.ident.into_string(), set);
+            ret_map.insert(i.id.as_u32(), ids);
         }
         _ => {}
     });
@@ -240,6 +240,7 @@ pub fn purge_extern_items(krate: Crate) -> Crate {
         });
         fm
     });
+
     krate
 }
 
@@ -475,7 +476,7 @@ pub fn is_std(attrs: &Vec<Attribute>) -> bool {
                 Literal(lit, _) => match lit {
                     Str_(name) => {
                         let path = name.into_string();
-                        if path.contains("/usr/include") {
+                        if path.contains("/usr/include") || path.contains("stddef") {
                             *is_std = true;
                         }
                     }
