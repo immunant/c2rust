@@ -172,6 +172,78 @@ impl<'a> Folder for CollapseMacros<'a> {
         fold::noop_fold_item(i, self)
     }
 
+    fn fold_impl_item(&mut self, ii: ImplItem) -> SmallVector<ImplItem> {
+        if let Some(info) = self.mac_table.get(ii.id) {
+            if let InvocKind::Mac(mac) = info.invoc {
+                let old = info.expanded.as_impl_item()
+                    .expect("replaced a node with one of a different type?");
+                self.collect_token_rewrites(info.id, old, &ii as &ImplItem);
+
+                if !self.seen_invocs.contains(&info.id) {
+                    self.seen_invocs.insert(info.id);
+                    let new_ii = mk().id(ii.id).span(root_callsite_span(ii.span))
+                        .mac_impl_item(mac);
+                    self.record_matched_ids(ii.id, new_ii.id);
+                    return SmallVector::one(new_ii);
+                } else {
+                    info!("collapse (duplicate): {:?} -> /**/", ii);
+                    return SmallVector::new();
+                }
+            } else {
+                warn!("bad macro kind for impl item: {:?}", info.invoc);
+            }
+        }
+        fold::noop_fold_impl_item(ii, self)
+    }
+
+    fn fold_trait_item(&mut self, ti: TraitItem) -> SmallVector<TraitItem> {
+        if let Some(info) = self.mac_table.get(ti.id) {
+            if let InvocKind::Mac(mac) = info.invoc {
+                let old = info.expanded.as_trait_item()
+                    .expect("replaced a node with one of a different type?");
+                self.collect_token_rewrites(info.id, old, &ti as &TraitItem);
+
+                if !self.seen_invocs.contains(&info.id) {
+                    self.seen_invocs.insert(info.id);
+                    let new_ti = mk().id(ti.id).span(root_callsite_span(ti.span))
+                        .mac_trait_item(mac);
+                    self.record_matched_ids(ti.id, new_ti.id);
+                    return SmallVector::one(new_ti);
+                } else {
+                    info!("collapse (duplicate): {:?} -> /**/", ti);
+                    return SmallVector::new();
+                }
+            } else {
+                warn!("bad macro kind for trait item: {:?}", info.invoc);
+            }
+        }
+        fold::noop_fold_trait_item(ti, self)
+    }
+
+    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVector<ForeignItem> {
+        if let Some(info) = self.mac_table.get(fi.id) {
+            if let InvocKind::Mac(mac) = info.invoc {
+                let old = info.expanded.as_foreign_item()
+                    .expect("replaced a node with one of a different type?");
+                self.collect_token_rewrites(info.id, old, &fi as &ForeignItem);
+
+                if !self.seen_invocs.contains(&info.id) {
+                    self.seen_invocs.insert(info.id);
+                    let new_fi = mk().id(fi.id).span(root_callsite_span(fi.span))
+                        .mac_foreign_item(mac);
+                    self.record_matched_ids(fi.id, new_fi.id);
+                    return SmallVector::one(new_fi);
+                } else {
+                    info!("collapse (duplicate): {:?} -> /**/", fi);
+                    return SmallVector::new();
+                }
+            } else {
+                warn!("bad macro kind for trait item: {:?}", info.invoc);
+            }
+        }
+        fold::noop_fold_foreign_item(fi, self)
+    }
+
     fn fold_mac(&mut self, mac: Mac) -> Mac {
         fold::noop_fold_mac(mac, self)
     }
@@ -368,6 +440,51 @@ impl<'a> Folder for ReplaceTokens<'a> {
             }
         }
         fold::noop_fold_stmt(s, self)
+    }
+
+    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+        if let Some(invoc_id) = self.mac_table.get(i.id).map(|m| m.id) {
+            if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
+                return SmallVector::one(i.map(|mut i| {
+                    expect!([i.node] ItemKind::Mac(ref mut mac) => mac.node.tts = new_tts);
+                    i
+                }));
+            }
+        }
+        fold::noop_fold_item(i, self)
+    }
+
+    fn fold_impl_item(&mut self, ii: ImplItem) -> SmallVector<ImplItem> {
+        if let Some(invoc_id) = self.mac_table.get(ii.id).map(|m| m.id) {
+            if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
+                let mut ii = ii;
+                expect!([ii.node] ImplItemKind::Macro(ref mut mac) => mac.node.tts = new_tts);
+                return SmallVector::one(ii);
+            }
+        }
+        fold::noop_fold_impl_item(ii, self)
+    }
+
+    fn fold_trait_item(&mut self, ti: TraitItem) -> SmallVector<TraitItem> {
+        if let Some(invoc_id) = self.mac_table.get(ti.id).map(|m| m.id) {
+            if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
+                let mut ti = ti;
+                expect!([ti.node] TraitItemKind::Macro(ref mut mac) => mac.node.tts = new_tts);
+                return SmallVector::one(ti);
+            }
+        }
+        fold::noop_fold_trait_item(ti, self)
+    }
+
+    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVector<ForeignItem> {
+        if let Some(invoc_id) = self.mac_table.get(fi.id).map(|m| m.id) {
+            if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
+                let mut fi = fi;
+                expect!([fi.node] ForeignItemKind::Macro(ref mut mac) => mac.node.tts = new_tts);
+                return SmallVector::one(fi);
+            }
+        }
+        fold::noop_fold_foreign_item(fi, self)
     }
 
     fn fold_mac(&mut self, mac: Mac) -> Mac {
