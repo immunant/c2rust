@@ -1440,6 +1440,9 @@ impl Translation {
             // See https://internals.rust-lang.org/t/getting-explicit-simd-on-stable-rust/4380/115
             "__v1di" | "__v2si" | "__v4hi" | "__v8qi" | "__v4si" | "__v4sf" | "__v4su" |
             "__v2df" | "__v2di" | "__v8hi" | "__v16qi" | "__v2du" | "__v8hu" | "__v16qu" |
+            "__v4df" | "__v8sf" | "__v4di" | "__v8si" | "__v16hi" | "__v32qi" | "__v4du" |
+            "__v8di_aligned" | "__v8df_aligned" | "__v16sf_aligned" | "__v8sf_aligned" |
+            "__v4df_aligned" | "__v4di_aligned" |
             "__v16qs" | "__v8su" | "__v16hu" | "__mm_loadh_pi_v2f32" | "__mm_loadl_pi_v2f32" => true,
             _ => false,
         }
@@ -4726,6 +4729,9 @@ impl Translation {
                     (CTypeKind::LongLong, 2) => "__m128i",
                     (CTypeKind::LongLong, 4) => "__m256i",
                     (CTypeKind::LongLong, 1) => "__m64",
+                    (CTypeKind::Int, 4) => "__m128i",
+                    (CTypeKind::Short, 8) => "__m128i",
+                    (CTypeKind::Int, 2) => "__m64",
                     (kind, len) => unimplemented!("Unknown vector type: {:?} x {}", kind, len),
                 };
 
@@ -4770,6 +4776,7 @@ impl Translation {
                 // a fn definition in a header since SIMD headers define functions but we're using imports
                 // rather than translating the original definition
             },
+            CDeclKind::Variable { is_static: true, is_extern: false, .. } => {},
             ref e => unimplemented!("{:?}", e),
         }
     }
