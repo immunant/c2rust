@@ -1,40 +1,22 @@
-#[cfg(not(source_header = "/some/path/foo.h"))]
-pub mod foo_h {
-    pub struct foo_struct {
-        pub foo_struct_a: i32,
-        pub foo_struct_b: i32,
-    }
+use libc;
 
-    pub struct foo_point {
-        pub point_x: i32,
-        pub point_y: i32,
+#[cfg(not(source_header = "/usr/include/stdio.h"))]
+pub mod stdio_h {
+    use super::libc;
+    extern "C" {
+        #[no_mangle]
+        pub fn printf(_: *const libc::c_char, ...) -> libc::c_int;
     }
 }
 
-#[cfg(not(source_header = "/some/path/another_foo.h"))]
-pub mod another_foo_h {
-    pub struct what {
-        pub foo_h_a: i32,
-    }
+use self::stdio_h::printf;
+unsafe fn main_0() -> libc::c_int {
+    printf(
+        b"\n  \x1b[32m\xe2\x9c\x93 \x1b[90mok\x1b[0m\n\n\x00" as *const u8 as *const libc::c_char,
+    );
+    return 0i32;
 }
 
-#[cfg(not(source_header = "/some/path/test.h"))]
-pub mod test_h {
-    pub struct test_struct {
-        pub test_struct_a: i32,
-        pub test_struct_b: i32,
-    }
-
-    pub struct test_point {
-        pub point_x: i32,
-        pub point_y: i32,
-    }
-}
-
-#[cfg(not(source_header = "/some/path/another_test.h"))]
-pub mod another_test_h {
-    pub struct what_test {
-        pub what_test_a: i32,
-        pub what_test_b: i32,
-    }
+pub fn main() {
+    unsafe { ::std::process::exit(main_0() as i32) }
 }
