@@ -284,7 +284,8 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
         return func(krate, cx);
     }
 
-    driver::phase_3_run_analysis_passes(
+    let mut result = None;
+    let _ = driver::phase_3_run_analysis_passes(
         &*codegen_backend,
         &control,
         &session, &cstore, hir_map, expand_result.analysis, expand_result.resolutions,
@@ -292,10 +293,12 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
         |tcx, _analysis, _incremental_hashes_map, _result| {
             if phase == Phase::Phase3 {
                 let cx = Ctxt::new_phase_3(&session, &cstore, &tcx.hir, tcx, &arenas.interner);
-                return func(krate, cx);
+                result = Some(func(krate, cx));
+                return;
             }
             unreachable!();
-        }).unwrap()
+        });
+    result.unwrap()
 }
 
 /// Run the compiler with some command line `args`.  Stops compiling and invokes the callback
