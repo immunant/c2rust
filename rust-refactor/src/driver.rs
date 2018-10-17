@@ -259,13 +259,11 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
         session, cstore, codegen_backend, input, output, out_dir, control, krate,
     } = bits;
 
-    // Leave parens in place until after expansion, unless we're stopping at phase 1.  But
-    // immediately fix up the attr spans, since during expansion, any `derive` attrs will be
+    // Immediately fix up the attr spans, since during expansion, any `derive` attrs will be
     // removed.
     let krate = span_fix::fix_attr_spans(krate);
 
     if phase == Phase::Phase1 {
-        let krate = remove_paren(krate);
         let cx = Ctxt::new_phase_1(&session, &cstore);
         return func(krate, cx);
     }
@@ -276,7 +274,6 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
         &session, &cstore, krate, /*registry*/ None, &crate_name,
         /*addl_plugins*/ None, MakeGlobMap::No, |_| Ok(())).unwrap();
     let krate = expand_result.expanded_crate;
-    let krate = remove_paren(krate);
 
     let arenas = AllArenas::new();
 

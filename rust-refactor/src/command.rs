@@ -12,7 +12,7 @@ use syntax::codemap::FileMap;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use ast_manip::{ListNodeIds, number_nodes};
+use ast_manip::{ListNodeIds, number_nodes, remove_paren};
 use collapse;
 use driver::{self, Phase, Phase1Bits};
 use node_map::NodeMap;
@@ -84,6 +84,7 @@ impl RefactorState {
     pub fn load_crate(&mut self) {
         // Discard any existing krate, and proceed to `Loaded` regardless of current mode.
         let krate = self.load_crate_inner();
+        let krate = remove_paren(krate);
         let krate = number_nodes(krate);
         self.orig_krate = Some(krate.clone());
         self.krate = Some(krate);
