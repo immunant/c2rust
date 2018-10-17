@@ -405,7 +405,7 @@ impl Builder {
 
         let params = params.make(&self);
         ParenthesizedParameterData {
-            span: DUMMY_SP,
+            span: self.span,
             inputs: params,
             output: None,
         }
@@ -416,7 +416,7 @@ impl Builder {
 
         let params = params.make(&self);
         AngleBracketedParameterData {
-            span: DUMMY_SP,
+            span: self.span,
             lifetimes: vec![],
             types: params,
             bindings: vec![],
@@ -441,7 +441,10 @@ impl Builder {
     }
 
     pub fn spanned<T, U: Make<T>>(self, x: U) -> Spanned<T> {
-        dummy_spanned(x.make(&self))
+        Spanned {
+            node: x.make(&self),
+            span: self.span,
+        }
     }
 
 
@@ -455,7 +458,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Array(args),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -467,7 +470,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Call(func, args),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -486,7 +489,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::MethodCall(seg, all_args),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -496,7 +499,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Tup(exprs),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -517,7 +520,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Binary(op_, lhs, rhs),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -529,7 +532,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Unary(op, a),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -540,7 +543,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Lit(lit),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -557,7 +560,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Cast(e, t),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -569,7 +572,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Type(e, t),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -580,7 +583,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Block(blk, None),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -592,7 +595,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Assign(lhs, rhs),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -605,7 +608,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::AssignOp(op, lhs, rhs),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -617,7 +620,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Index(lhs, rhs),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -633,7 +636,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Path(qself, path),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -647,7 +650,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Repeat(expr, n),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -658,7 +661,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Paren(e),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -675,7 +678,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::AddrOf(self.mutbl, e),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -686,7 +689,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Mac(mac),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -697,7 +700,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Struct(path, fields, None),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -710,7 +713,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Struct(path, fields, base),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -722,7 +725,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Field(val, field),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -735,7 +738,7 @@ impl Builder {
         Field {
             ident,
             expr: expr,
-            span: DUMMY_SP,
+            span: self.span,
             is_shorthand: false,
             attrs: self.attrs.into(),
         }
@@ -748,7 +751,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Match(cond, arms),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -773,7 +776,7 @@ impl Builder {
     pub fn bytestr_lit(self, s: Vec<u8>) -> P<Lit> {
         P(Lit {
             node: LitKind::ByteStr(Rc::new(s)),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -782,21 +785,21 @@ impl Builder {
         let s = s.into_symbol();
         P(Lit {
             node: LitKind::Str(s, StrStyle::Cooked),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
     pub fn byte_lit(self, b: u8) -> P<Lit> {
         P(Lit {
             node: LitKind::Byte(b),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
     pub fn char_lit(self, c: char) -> P<Lit> {
         P(Lit {
             node: LitKind::Char(c),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -805,7 +808,7 @@ impl Builder {
         let ty = ty.make(&self);
         P(Lit {
             node: LitKind::Int(i, ty),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -815,7 +818,7 @@ impl Builder {
         let ty = ty.make(&self);
         P(Lit {
             node: LitKind::Float(s, ty),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -824,14 +827,14 @@ impl Builder {
         let s = s.into_symbol();
         P(Lit {
             node: LitKind::FloatUnsuffixed(s),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
     pub fn bool_lit(self, b: bool) -> P<Lit> {
         P(Lit {
             node: LitKind::Bool(b),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -855,7 +858,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::If(cond, then_case, else_case),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -869,7 +872,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::While(cond, body, label),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -882,7 +885,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Loop(body, label),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -897,7 +900,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::ForLoop(pat, expr, body, label),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -911,7 +914,7 @@ impl Builder {
         P(Pat {
             id: self.id,
             node: PatKind::Ident(BindingMode::ByValue(self.mutbl), name, None),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -920,7 +923,7 @@ impl Builder {
         P(Pat {
             id: self.id,
             node: PatKind::Tuple(pats, None),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -930,7 +933,7 @@ impl Builder {
         P(Pat {
             id: self.id,
             node: PatKind::Path(qself, path),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -938,7 +941,7 @@ impl Builder {
         P(Pat {
             id: self.id,
             node: PatKind::Wild,
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -948,7 +951,7 @@ impl Builder {
         P(Pat {
             id: self.id,
             node: PatKind::Lit(lit),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -958,7 +961,7 @@ impl Builder {
         P(Pat {
             id: self.id,
             node: PatKind::Mac(mac),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -968,7 +971,7 @@ impl Builder {
         P(Pat {
             id: self.id,
             node: PatKind::Ident(BindingMode::ByRef(self.mutbl), name, None),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -990,7 +993,7 @@ impl Builder {
         P(Ty {
             id: self.id,
             node: TyKind::BareFn(P(barefn)),
-            span: DUMMY_SP,
+            span: self.span,
         })
 
     }
@@ -1002,7 +1005,7 @@ impl Builder {
         P(Ty {
             id: self.id,
             node: TyKind::Array(ty, len),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -1012,7 +1015,7 @@ impl Builder {
         P(Ty {
             id: self.id,
             node: TyKind::Slice(ty),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -1022,7 +1025,7 @@ impl Builder {
         P(Ty {
             id: self.id,
             node: TyKind::Ptr(MutTy { ty: ty, mutbl: self.mutbl }),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -1032,7 +1035,7 @@ impl Builder {
         P(Ty {
             id: self.id,
             node: TyKind::Rptr(None, MutTy { ty: ty, mutbl: self.mutbl }),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -1043,7 +1046,7 @@ impl Builder {
         P(Ty {
             id: self.id,
             node: TyKind::Rptr(Some(lt), MutTy { ty: ty, mutbl: self.mutbl }),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -1051,7 +1054,7 @@ impl Builder {
         P(Ty {
             id: self.id,
             node: TyKind::Never,
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -1061,7 +1064,7 @@ impl Builder {
         P(Ty {
             id: self.id,
             node: TyKind::Tup(elem_tys),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -1076,7 +1079,7 @@ impl Builder {
         P(Ty {
             id: self.id,
             node: TyKind::Path(qself, path),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -1089,7 +1092,7 @@ impl Builder {
         P(Ty {
             id: self.id,
             node: TyKind::Infer,
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -1099,7 +1102,7 @@ impl Builder {
         P(Ty {
             id: self.id,
             node: TyKind::Mac(mac),
-            span: DUMMY_SP,
+            span: self.span,
         })
     }
 
@@ -1156,7 +1159,7 @@ impl Builder {
                     MacStmtStyle::Semicolon,
                     ThinVec::new(),
                     ))),
-            span: DUMMY_SP,
+            span: self.span,
         }
     }
 
@@ -1230,7 +1233,7 @@ impl Builder {
         let ident = ident.make(&self);
         let ty = ty.make(&self);
         StructField {
-            span: DUMMY_SP,
+            span: self.span,
             ident: Some(ident),
             vis: self.vis,
             id: self.id,
@@ -1258,7 +1261,7 @@ impl Builder {
         where T: Make<P<Ty>> {
         let ty = ty.make(&self);
         StructField {
-            span: DUMMY_SP,
+            span: self.span,
             ident: None,
             vis: self.vis,
             id: self.id,
@@ -1286,24 +1289,30 @@ impl Builder {
     pub fn variant<I>(self, name: I, dat: VariantData) -> Variant
         where I: Make<Ident> {
         let name = name.make(&self);
-        dummy_spanned(Variant_ {
-            ident: name,
-            attrs: self.attrs,
-            data: dat,
-            disr_expr: None,
-        })
+        Spanned {
+            node: Variant_ {
+                ident: name,
+                attrs: self.attrs,
+                data: dat,
+                disr_expr: None,
+            },
+            span: self.span,
+        }
     }
 
     pub fn unit_variant<I,E>(self, name: I, disc: Option<E>) -> Variant
         where I: Make<Ident>, E: Make<P<Expr>> {
         let name = name.make(&self);
         let disc = disc.map(|d| AnonConst { id: DUMMY_NODE_ID, value: d.make(&self) });
-        dummy_spanned(Variant_ {
-            ident: name,
-            attrs: self.attrs,
-            data: VariantData::Unit(self.id),
-            disr_expr: disc,
-        })
+        Spanned {
+            node: Variant_ {
+                ident: name,
+                attrs: self.attrs,
+                data: VariantData::Unit(self.id),
+                disr_expr: disc,
+            },
+            span: self.span,
+        }
     }
 
     pub fn impl_item<T>(self, ty: T, items: Vec<ImplItem>) -> P<Item>
@@ -1448,7 +1457,7 @@ impl Builder {
                 Unsafety::Unsafe => BlockCheckMode::Unsafe(UnsafeSource::UserProvided),
                 Unsafety::Normal => BlockCheckMode::Default,
             },
-            span: DUMMY_SP,
+            span: self.span,
             recovered: false,
         })
     }
@@ -1487,7 +1496,7 @@ impl Builder {
         Ty {
             id: self.id,
             node,
-            span: DUMMY_SP,
+            span: self.span,
         }
     }
 
@@ -1502,7 +1511,7 @@ impl Builder {
             path,
             tokens,
             is_sugared_doc: false,
-            span: DUMMY_SP,
+            span: self.span,
         }
     }
 
@@ -1510,11 +1519,14 @@ impl Builder {
         where Pa: Make<Path>, Ts: Make<ThinTokenStream> {
         let path = path.make(&self);
         let tts = tts.make(&self);
-        dummy_spanned(Mac_ {
-            path: path,
-            delim: delim,
-            tts: tts,
-        })
+        Spanned {
+            node: Mac_ {
+                path: path,
+                delim: delim,
+                tts: tts,
+            },
+            span: self.span,
+        }
     }
 
     pub fn local<V, T, E>(self, pat: V, ty: Option<T>, init: Option<E>) -> Local
@@ -1527,7 +1539,7 @@ impl Builder {
             ty,
             init,
             id: self.id,
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         }
     }
@@ -1538,7 +1550,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Ret(val),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -1550,7 +1562,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Continue(label),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -1562,7 +1574,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Break(label, None),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
@@ -1575,7 +1587,7 @@ impl Builder {
         P(Expr {
             id: self.id,
             node: ExprKind::Closure(capture, mov, decl, body, DUMMY_SP),
-            span: DUMMY_SP,
+            span: self.span,
             attrs: self.attrs.into(),
         })
     }
