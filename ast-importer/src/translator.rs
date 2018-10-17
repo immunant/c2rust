@@ -816,6 +816,29 @@ impl Translation {
         } else { mk }
     }
 
+    fn static_initializer_is_unsafe(&self, expr_id: Option<CExprId>) -> bool {
+        let expr_id = match expr_id {
+            Some(expr_id) => expr_id,
+            None => return false,
+        };
+
+        let iter = DFExpr::new(&self.ast_context, expr_id.into());
+
+        for i in iter {
+            let expr_id = match i {
+                SomeId::Expr(expr_id) => expr_id,
+                _ => unreachable!("Found static initializer type other than expr"),
+            };
+
+            match self.ast_context[expr_id].kind {
+                CExprKind::DeclRef(_, _, LRValue::LValue) => return true,
+                _ => {},
+            }
+        }
+
+        false
+    }
+
     fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
         use c_ast::UnOp::{AddressOf, Negate};
         use c_ast::CastKind::PointerToIntegral;
@@ -1365,10 +1388,15 @@ impl Translation {
                 } else {
                     let (ty, _, init) = self.convert_variable(initializer, typ, is_static)?;
 
-                    let mut init = init?;
-                    init.stmts.push(mk().expr_stmt(init.val));
-                    let init = mk().unsafe_().block(init.stmts);
-                    let mut init = mk().block_expr(init);
+                    let init = if self.static_initializer_is_unsafe(initializer) {
+                        let mut init = init?;
+                        init.stmts.push(mk().expr_stmt(init.val));
+                        let init = mk().unsafe_().block(init.stmts);
+
+                        mk().block_expr(init)
+                    } else {
+                        init?.val
+                    };
 
                     // Force mutability due to the potential for raw pointers occuring in the type
                     // and because we're assigning to these variables in the external initializer
@@ -1386,11 +1414,15 @@ impl Translation {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, _, init) = self.convert_variable(initializer, typ, true)?;
 
-                // Conservatively assume that some aspect of the initializer is unsafe
-                let mut init = init?;
-                init.stmts.push(mk().expr_stmt(init.val));
-                let init = mk().unsafe_().block(init.stmts);
-                let mut init = mk().block_expr(init);
+                let mut init = if self.static_initializer_is_unsafe(initializer) {
+                    let mut init = init?;
+                    init.stmts.push(mk().expr_stmt(init.val));
+                    let init = mk().unsafe_().block(init.stmts);
+
+                    mk().block_expr(init)
+                } else {
+                    init?.val
+                };
 
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
