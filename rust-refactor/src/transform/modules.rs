@@ -75,29 +75,27 @@ impl Transform for ReorganizeModules {
 
         // This is where the `old module` items get moved into the `new modules`
         let crate_copy = krate.clone();
-        let krate = fold_nodes(krate, |pi: P<Item>| {
-            match pi.node.clone() {
-                ItemKind::Mod(ref m) => {
-                    return SmallVector::one(pi.map(|i| {
-                        let mut m = m.clone();
+        let krate = fold_nodes(krate, |pi: P<Item>| match pi.node.clone() {
+            ItemKind::Mod(ref m) => {
+                return SmallVector::one(pi.map(|i| {
+                    let mut m = m.clone();
 
-                        if let Some(new_item_ids) = new_module_decls.get(&i.id.as_u32()) {
-                            for new_item_id in new_item_ids.iter() {
-                                if let Some(new_item) = find_item(&crate_copy, new_item_id) {
-                                    m.items.push(P(new_item.clone()));
-                                }
+                    if let Some(new_item_ids) = new_module_decls.get(&i.id.as_u32()) {
+                        for new_item_id in new_item_ids.iter() {
+                            if let Some(new_item) = find_item(&crate_copy, new_item_id) {
+                                m.items.push(P(new_item.clone()));
                             }
                         }
+                    }
 
-                        Item {
-                            node: ItemKind::Mod(m),
-                            ..i
-                        }
-                    }));
-                }
-                _ => {
-                    return SmallVector::one(pi);
-                }
+                    Item {
+                        node: ItemKind::Mod(m),
+                        ..i
+                    }
+                }));
+            }
+            _ => {
+                return SmallVector::one(pi);
             }
         });
 
@@ -222,6 +220,54 @@ fn purge_duplicates(krate: Crate) -> Crate {
             result
         });
         fm
+    });
+
+    // TODO: Since we move the content of an module out into a destination module,
+    // that destination module may contain a `use` statement that allowed the use of the `to move`
+    // module item. If this is the case the use statement needs to be removed.
+    //
+    // ```
+    // pub mod buffer {
+    //     use buffer::buffer_t;
+    //     ...
+    //     pub struct buffer_t; // moved from mod buffer_h
+    // }
+    // ```
+    let krate = fold_nodes(krate, |pi: P<Item>| match pi.node.clone() {
+        ItemKind::Mod(ref m) => {
+            return SmallVector::one(pi.map(|item| {
+                let mut m = m.clone();
+                let cloned_items = m.items.clone();
+                m.items.retain(|i| {
+                    let mut result = true;
+                    match i.node {
+                        ItemKind::Use(ref usetree) => {
+                            for cloned_item in cloned_items.iter() {
+                                match cloned_item.node {
+                                    ItemKind::Ty(..) | ItemKind::Fn(..) | ItemKind::Struct(..) => {
+                                        let item_declaration = cloned_item.ident.into_string();
+                                        let path_segments = usetree.prefix.segments.clone();
+                                        if path_segments.iter().any(|s| s.ident.into_string() == item_declaration) {
+                                            result = false;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                    result
+                });
+                Item {
+                    node: ItemKind::Mod(m),
+                    ..item
+                }
+            }));
+        }
+        _ => {
+            return SmallVector::one(pi);
+        }
     });
 
     krate
@@ -476,8 +522,7 @@ fn get_module(krate: &Crate, cx: &driver::Ctxt, id: &u32) -> Option<Mod> {
     let parent_id = cx.hir_map().get_module_parent(NodeId::from_u32(*id));
     let item_id = cx.hir_map().as_local_node_id(parent_id).unwrap();
 
-    let item_option = find_item(krate, &item_id.as_u32());
-    if let Some(item) = item_option {
+    if let Some(item) = find_item(krate, &item_id.as_u32()) {
         if matches!([item.node.clone()] ItemKind::Mod(_)) {
             unpack!([item.node.clone()] ItemKind::Mod(m));
             return Some(m);
