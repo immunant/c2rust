@@ -54,30 +54,12 @@ fn nt_span(nt: &Nonterminal) -> Option<Span> {
     })
 }
 
-/// Get the NodeId of the inner node of a nonterminal token.  Note we only need to handle
-/// nonterminal kinds that have both spans and NodeIds.
-pub fn nt_id(nt: &Nonterminal) -> Option<NodeId> {
-    use syntax::parse::token::Nonterminal::*;
-    Some(match nt {
-        NtItem(ref i) => i.id,
-        NtBlock(ref b) => b.id,
-        NtStmt(ref s) => s.id,
-        NtPat(ref p) => p.id,
-        NtExpr(ref e) => e.id,
-        NtTy(ref t) => t.id,
-        NtImplItem(ref ii) => ii.id,
-        NtTraitItem(ref ti) => ti.id,
-        NtForeignItem(ref fi) => fi.id,
-        _ => return None,
-    })
-}
-
 fn collect_nonterminals(ts: TokenStream, span_map: &mut HashMap<Span, Nonterminal>) {
     for tt in ts.into_trees() {
         match tt {
             TokenTree::Token(_, Token::Interpolated(nt_tts)) => {
                 let nt = &nt_tts.0;
-                if let (Some(span), Some(id)) = (nt_span(nt), nt_id(nt)) {
+                if let Some(span) = nt_span(nt) {
                     span_map.insert(span, nt.clone());
                 }
             },

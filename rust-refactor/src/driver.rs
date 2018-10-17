@@ -322,9 +322,8 @@ pub fn build_session_from_args(args: &[String],
     assert!(matches.free.len() == 1,
            "expected exactly one input file");
     let in_path = Some(Path::new(&matches.free[0]).to_owned());
-    let input = Input::File(in_path.as_ref().unwrap().clone());
 
-    let (session, cstore, codegen_backend) = build_session(sopts, in_path, file_loader);
+    let (session, _cstore, _codegen_backend) = build_session(sopts, in_path, file_loader);
     session
 }
 

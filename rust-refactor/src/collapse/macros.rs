@@ -2,20 +2,17 @@ use std::collections::{HashMap, HashSet, BTreeMap};
 use syntax::ast::*;
 use syntax::attr;
 use syntax::codemap::{Span, BytePos};
-use syntax::codemap::hygiene::SyntaxContext;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::{self, TokenStream, ThinTokenStream, TokenTree, Delimited};
 use syntax::util::small_vector::SmallVector;
-use syntax::visit::{self, Visitor};
 
 use super::mac_table::{MacTable, InvocId, InvocKind};
-use super::node_map::nt_id;
 use super::nt_match::{self, NtMatch};
 use super::root_callsite_span;
 
-use ast_manip::{Fold, Visit, ListNodeIds};
+use ast_manip::{Fold, ListNodeIds};
 use ast_manip::make_ast::mk;
 use ast_manip::AstEquiv;
 

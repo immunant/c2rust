@@ -13,9 +13,7 @@
 
 use std::collections::{HashSet, HashMap};
 use rustc::hir::def_id::{LOCAL_CRATE, CrateNum};
-use rustc::hir::map as hir_map;
 use rustc::middle::cstore::CrateStore;
-use rustc_metadata::cstore::CStore;
 use syntax::ast::*;
 use syntax::attr;
 use syntax::fold::{self, Folder};
@@ -84,7 +82,7 @@ fn collect_resolve_crate_info(cx: &driver::Ctxt,
                               krate: &Crate) -> HashMap<Mark, (CrateNum, Symbol)> {
     let mut marks = HashSet::new();
     visit_nodes(krate, |p: &Path| {
-        let (prefix, opt_mark) = find_crate_prefix(p);
+        let (_prefix, opt_mark) = find_crate_prefix(p);
         if let Some(mark) = opt_mark {
             marks.insert(mark);
         }

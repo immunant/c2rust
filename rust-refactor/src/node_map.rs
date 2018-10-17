@@ -1,16 +1,10 @@
 //! Mappings between old and new `NodeId`s.  Also has some support for `AttrId`s.
-use std::cmp;
 use std::collections::{HashMap, HashSet, BTreeSet};
 use std::collections::hash_map::Entry;
-use std::fmt::Debug;
-use std::hash::Hash;
 use std::mem;
 use std::ops::Bound::Included;
 use syntax::ast::{NodeId, AttrId, DUMMY_NODE_ID};
 use syntax::codemap::symbol::Symbol;
-use syntax::visit::{self, Visitor};
-
-use ast_manip::Visit;
 
 
 pub const DUMMY_ATTR_ID: AttrId = AttrId(!0);
@@ -77,7 +71,7 @@ impl NodeMap {
 
 
     /// Initialize by mapping every `NodeId` in `nodes` to itself.
-    pub fn init<I: Iterator<Item=NodeId>>(&mut self, mut nodes: I) {
+    pub fn init<I: Iterator<Item=NodeId>>(&mut self, nodes: I) {
         for id in nodes {
             if id == DUMMY_NODE_ID {
                 continue;

@@ -5,18 +5,17 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::mem;
 use rustc::session::Session;
-use syntax::ast::{NodeId, Crate, Mod, DUMMY_NODE_ID};
+use syntax::ast::{NodeId, Crate, Mod};
 use syntax::codemap::DUMMY_SP;
 use syntax::codemap::FileLoader;
 use syntax::codemap::FileMap;
-use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
 use ast_manip::{ListNodeIds, number_nodes, remove_paren};
 use collapse;
 use driver::{self, Phase, Phase1Bits};
 use node_map::NodeMap;
-use recheck::{self, PrepareRecheckInfo};
+use recheck;
 use rewrite;
 use rewrite::files;
 use span_fix;
@@ -122,8 +121,8 @@ impl RefactorState {
 
     pub fn transform_crate<F, R>(&mut self, phase: Phase, f: F) -> R
             where F: FnOnce(&CommandState, &driver::Ctxt) -> R {
-        let mut krate = self.krate.take().unwrap();
-        let mut marks = mem::replace(&mut self.marks, HashSet::new());
+        let krate = self.krate.take().unwrap();
+        let marks = mem::replace(&mut self.marks, HashSet::new());
 
         let unexpanded = krate.clone();
         let krate = recheck::reset_node_ids(krate);
@@ -149,7 +148,6 @@ impl RefactorState {
             let cmd_state = CommandState::new(krate, marks);
             let r = f(&cmd_state, &cx);
 
-            let changed = cmd_state.krate_changed();
             let (new_krate, new_marks) = cmd_state.into_inner();
 
             // Collapse macros + update node_map.  The cfg_attr step requires the updated node_map

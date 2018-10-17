@@ -10,7 +10,7 @@ use std::rc::Rc;
 use syntax::attr;
 use syntax::codemap::Spanned;
 use syntax::ptr::P;
-use syntax::visit::{self, Visitor};
+use syntax::visit::Visitor;
 
 use ast_manip::{GetNodeId, GetSpan};
 use ast_manip::Visit;
@@ -231,13 +231,12 @@ fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'
         where T: CollectMacros + MaybeInvoc + GetNodeId + GetSpan + AsMacNodeRef {
     let mut j = 0;
 
-    for (i, old) in old_seq.iter().enumerate() {
+    for old in old_seq {
         if let Some(invoc) = old.as_invoc() {
             let invoc_id = cx.next_id();
             trace!("new {:?} from macro {:?} at {:?}",
                   invoc_id, old.get_node_id(), old.get_span());
 
-            let start_j = j;
             while j < new_seq.len() {
                 let new = &new_seq[j];
 
@@ -327,7 +326,7 @@ impl<A: CollectMacros, B: CollectMacros, C: CollectMacros> CollectMacros for (A,
 
 impl<T: CollectMacros> CollectMacros for [T] {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
-        for (i,(old_item, new_item)) in old.iter().zip(new.iter()).enumerate() {
+        for (old_item, new_item) in old.iter().zip(new.iter()) {
             <T as CollectMacros>::collect_macros(old_item, new_item, cx);
         }
     }

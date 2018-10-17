@@ -32,7 +32,6 @@ use super::MarkInfo;
 
 
 struct InteractState {
-    to_worker: SyncSender<ToWorker>,
     to_client: SyncSender<ToClient>,
     buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
 
@@ -69,7 +68,7 @@ impl InteractState {
         let state = RefactorState::from_rustc_args(
             &rustc_args, registry, Some(Box::new(rw_handler)), Some(file_loader), HashSet::new());
 
-        InteractState { to_worker, to_client, buffers_available, state }
+        InteractState { to_client, buffers_available, state }
     }
 
     fn run_loop(&mut self,
