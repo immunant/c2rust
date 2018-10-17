@@ -26,7 +26,7 @@ impl Transform for ReorganizeModules {
         // NodeId -> NodeId
         // The key is the id of the old item to be moved, and the value is the NodeId of the module
         // the item will be moved to.
-        let std_lib_id = st.next_node_id();
+        let stdlib_id = st.next_node_id();
         visit_nodes(&krate, |i: &Item| {
             match i.node {
                 // TODO: Move this into it's own function which accepts an Item and returns an
@@ -38,7 +38,7 @@ impl Transform for ReorganizeModules {
                         for item in m.items.iter() {
                             // TODO: Don't use a DUMMY_NODE_ID, instead create a new node id.
                             // There should be a method for this.
-                            decl_destination_mod.insert(item.id, std_lib_id);
+                            decl_destination_mod.insert(item.id, stdlib_id);
                         }
                     }
 
@@ -101,32 +101,8 @@ impl Transform for ReorganizeModules {
 
         // insert a new module for the C standard headers
         // TODO: Instead of folding, just create a new Crate struct and extend the vector?
-        let krate = fold_nodes(krate, |mut c: Crate| {
-            let c_std_items_option = new_module_decls.get(&std_lib_id);
-            if let Some(c_std_items) = c_std_items_option {
-                let items: Vec<P<Item>> = c_std_items
-                    .iter()
-                    .map(|id| P(find_item(&crate_copy, id).unwrap()))
-                    .collect();
 
-                let new_mod = Mod {
-                    inner: DUMMY_SP,
-                    items,
-                };
-
-                let new_item = Item {
-                    ident: Ident::new("stdlib".into_symbol(), DUMMY_SP),
-                    attrs: Vec::new(),
-                    id: std_lib_id,
-                    node: ItemKind::Mod(new_mod),
-                    vis: dummy_spanned(VisibilityKind::Public),
-                    span: DUMMY_SP,
-                    tokens: None,
-                };
-                c.module.items.push(P(new_item));
-            }
-            c
-        });
+        let krate = extend_krate(krate, &new_module_decls, &stdlib_id);
 
         let mut new_names = HashMap::new();
         for (old_item_id, dest_mod_id) in decl_destination_mod.iter() {
@@ -168,6 +144,40 @@ impl Transform for ReorganizeModules {
     fn min_phase(&self) -> Phase {
         Phase::Phase3
     }
+}
+
+fn extend_krate(krate: Crate, new_module_decls: &HashMap<NodeId, Vec<NodeId>>, stdlib_id: &NodeId) -> Crate {
+    if let Some(c_std_items) = new_module_decls.get(&stdlib_id) {
+        let items: Vec<P<Item>> = c_std_items
+            .iter()
+            .map(|id| P(find_item(&krate, id).unwrap()))
+            .collect();
+
+        let stdlib_mod = Mod {
+            inner: DUMMY_SP,
+            items,
+        };
+
+        let new_item = Item {
+            ident: Ident::new("stdlib".into_symbol(), DUMMY_SP),
+            attrs: Vec::new(),
+            id: *stdlib_id,
+            node: ItemKind::Mod(stdlib_mod),
+            vis: dummy_spanned(VisibilityKind::Public),
+            span: DUMMY_SP,
+            tokens: None,
+        };
+
+        let mut krate_mod = krate.module.clone();
+
+        krate_mod.items.push(P(new_item));
+        return Crate {
+            module: krate_mod,
+            ..krate
+        }
+    }
+
+    krate
 }
 
 fn purge_duplicates(krate: Crate) -> Crate {
