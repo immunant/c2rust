@@ -134,28 +134,38 @@ impl RefactorState {
             //let krate = span_fix::fix_attr_spans(sess, krate);
             let expanded = krate.clone();
 
+            // Collect info + update node_map, then transfer and commit
             let (mac_table, matched_ids) =
                 collapse::collect_macro_invocations(&unexpanded, &expanded);
             self.node_map.add_edges(&matched_ids);
+            let cfg_attr_info = collapse::collect_cfg_attrs(&unexpanded);
             collapse::match_nonterminal_ids(&mut self.node_map, &mac_table);
+
             let marks = self.node_map.transfer_marks(&marks);
+            let cfg_attr_info = self.node_map.transfer_map(cfg_attr_info);
             self.node_map.commit();
 
             // Run the transform
             let cmd_state = CommandState::new(krate, marks);
             let r = f(&cmd_state, &cx);
 
-            // Update internal state
             let changed = cmd_state.krate_changed();
             let (new_krate, new_marks) = cmd_state.into_inner();
 
+            // Collapse macros + update node_map.  The cfg_attr step requires the updated node_map
+            // TODO: we should be able to skip some of these steps if `!cmd_state.krate_changed()`
+            let new_krate = collapse::collapse_injected(new_krate);
             let (new_krate, matched_ids) = collapse::collapse_macros(new_krate, &mac_table);
             self.node_map.add_edges(&matched_ids);
-            let new_krate = collapse::collapse_injected(new_krate);
+
+            let cfg_attr_info = self.node_map.transfer_map(cfg_attr_info);
+            let new_krate = collapse::restore_cfg_attrs(new_krate, cfg_attr_info);
+
             let new_marks = self.node_map.transfer_marks(&new_marks);
             self.node_map.commit();
-            self.krate = Some(new_krate);
 
+            // Write back new crate and marks
+            self.krate = Some(new_krate);
             self.marks = new_marks;
 
             r

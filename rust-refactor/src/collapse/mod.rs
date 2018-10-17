@@ -4,12 +4,14 @@ use syntax::ast::*;
 use syntax::codemap::Span;
 use util::IntoSymbol;
 
+mod cfg_attr;
 mod mac_table;
 mod macros;
 mod node_map;
 mod nt_match;
 
 
+pub use self::cfg_attr::{collect_cfg_attrs, restore_cfg_attrs};
 pub use self::mac_table::{MacTable, MacInfo, collect_macro_invocations};
 pub use self::node_map::match_nonterminal_ids;
 pub use self::macros::collapse_macros;

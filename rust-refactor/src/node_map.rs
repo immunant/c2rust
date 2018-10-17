@@ -105,4 +105,29 @@ impl NodeMap {
         }
         new_marks
     }
+
+    /// Update keys of an arbitrary `HashMap` to account for the pending (not committed) NodeId
+    /// changes.
+    pub fn transfer_map<V: Clone>(&self, map: HashMap<NodeId, V>) -> HashMap<NodeId, V> {
+        let mut new_map = HashMap::with_capacity(map.len());
+        for (old_id, v) in map {
+            let lo = (old_id, NodeId::from_u32(0));
+            let hi = (old_id, NodeId::from_u32(!0));
+
+            let mut new_ids = self.pending_edges.range((Included(&lo), Included(&hi)))
+                .map(|&(_, new_id)| new_id)
+                .peekable();
+
+            // Avoid a clone if there's zero or one new IDs.
+            while let Some(new_id) = new_ids.next() {
+                if new_ids.peek().is_none() {
+                    new_map.insert(new_id, v);
+                    break;
+                } else {
+                    new_map.insert(new_id, v.clone());
+                }
+            }
+        }
+        new_map
+    }
 }
