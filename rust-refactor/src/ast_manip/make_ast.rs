@@ -952,6 +952,16 @@ impl Builder {
         })
     }
 
+    pub fn mac_pat<M>(self, mac: M) -> P<Pat>
+        where M: Make<Mac> {
+        let mac = mac.make(&self);
+        P(Pat {
+            id: self.id,
+            node: PatKind::Mac(mac),
+            span: DUMMY_SP,
+        })
+    }
+
     pub fn ident_ref_pat<I>(self, name: I) -> P<Pat>
         where I: Make<Ident> {
         let name = name.make(&self);
@@ -1083,6 +1093,16 @@ impl Builder {
         })
     }
 
+    pub fn mac_ty<M>(self, mac: M) -> P<Ty>
+        where M: Make<Mac> {
+        let mac = mac.make(&self);
+        P(Ty {
+            id: self.id,
+            node: TyKind::Mac(mac),
+            span: DUMMY_SP,
+        })
+    }
+
 
     // Stmts
 
@@ -1116,13 +1136,27 @@ impl Builder {
         }
     }
 
-    pub fn item_stmt<I>(self, item: I)  -> Stmt
+    pub fn item_stmt<I>(self, item: I) -> Stmt
         where I: Make<P<Item>> {
         let item = item.make(&self);
         Stmt {
             id: self.id,
             node: StmtKind::Item(item),
             span: self.span,
+        }
+    }
+
+    pub fn mac_stmt<M>(self, mac: M) -> Stmt
+        where M: Make<Mac> {
+        let mac = mac.make(&self);
+        Stmt {
+            id: self.id,
+            node: StmtKind::Mac(P((
+                    mac,
+                    MacStmtStyle::Semicolon,
+                    ThinVec::new(),
+                    ))),
+            span: DUMMY_SP,
         }
     }
 
@@ -1241,6 +1275,14 @@ impl Builder {
         Self::item(name, self.attrs, self.vis, self.span, self.id, kind)
     }
 
+    pub fn mac_item<M>(self, mac: M) -> P<Item>
+        where M: Make<Mac> {
+        let mac = mac.make(&self);
+        let kind = ItemKind::Mac(mac);
+        Self::item(keywords::Invalid.ident(), self.attrs, self.vis, self.span, self.id, kind)
+    }
+
+
     pub fn variant<I>(self, name: I, dat: VariantData) -> Variant
         where I: Make<Ident> {
         let name = name.make(&self);
@@ -1313,6 +1355,40 @@ impl Builder {
     }
 
 
+    // Impl Items
+
+    /// Called `impl_item_` because `impl_item` is already used for "Item, of ItemKind::Impl".
+    fn impl_item_(ident: Ident, attrs: Vec<Attribute>, vis: Visibility, defaultness: Defaultness,
+                  generics: Generics, span: Span, id: NodeId, node: ImplItemKind) -> ImplItem {
+        ImplItem { id, ident, vis, defaultness, attrs, generics, node, span, tokens: None }
+    }
+
+    pub fn mac_impl_item<M>(self, mac: M) -> ImplItem
+        where M: Make<Mac> {
+        let mac = mac.make(&self);
+        let kind = ImplItemKind::Macro(mac);
+        Self::impl_item_(keywords::Invalid.ident(), self.attrs, self.vis, Defaultness::Final,
+                         self.generics, self.span, self.id, kind)
+    }
+
+
+    // Trait Items
+
+    /// Called `trait_item_` because `trait_item` is already used for "Item, of ItemKind::Trait".
+    fn trait_item_(ident: Ident, attrs: Vec<Attribute>, generics: Generics,
+                   span: Span, id: NodeId, node: TraitItemKind) -> TraitItem {
+        TraitItem { id, ident, attrs, generics, node, span, tokens: None }
+    }
+
+    pub fn mac_trait_item<M>(self, mac: M) -> TraitItem
+        where M: Make<Mac> {
+        let mac = mac.make(&self);
+        let kind = TraitItemKind::Macro(mac);
+        Self::trait_item_(keywords::Invalid.ident(), self.attrs,
+                          self.generics, self.span, self.id, kind)
+    }
+
+
     // Foreign Items
 
     fn foreign_item(name: Ident, attrs: Vec<Attribute>, vis: Visibility,
@@ -1349,6 +1425,14 @@ impl Builder {
         let name = name.make(&self);
         Self::foreign_item(name, self.attrs, self.vis, self.span, self.id,
                            ForeignItemKind::Ty)
+    }
+
+    pub fn mac_foreign_item<M>(self, mac: M) -> ForeignItem
+            where M: Make<Mac> {
+        let mac = mac.make(&self);
+        let kind = ForeignItemKind::Macro(mac);
+        Self::foreign_item(keywords::Invalid.ident(), self.attrs, self.vis,
+                           self.span, self.id, kind)
     }
 
 
