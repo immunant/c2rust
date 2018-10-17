@@ -212,7 +212,6 @@ pub fn rewrite_seq<T, R>(old: &[R],
     let mut j = 0;
 
     for step in diff::slice(&old_ids, &new_ids) {
-        info!("diff step: {:?}", step);
         match step {
             diff::Result::Left(_) => {
                 // There's an item on the left corresponding to nothing on the right.
@@ -242,7 +241,6 @@ pub fn rewrite_seq<T, R>(old: &[R],
                         return true;
                     };
 
-                info!("insert new item at {}", describe(rcx.session(), old_span));
                 let ok = strategy::print::rewrite_at(old_span, ast(&new[j]), rcx.borrow());
                 if !ok {
                     return false;
@@ -331,7 +329,6 @@ pub fn rewrite_seq_comma_sep<T, R>(old: &[R],
                         return false;
                     };
 
-                info!("insert new item at {}", describe(rcx.session(), old_span));
                 if !comma_before {
                     rcx.record_text(old_span, ", ");
                 }

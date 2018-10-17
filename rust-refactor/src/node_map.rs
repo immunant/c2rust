@@ -41,14 +41,14 @@ impl NodeMap {
 
     pub fn commit(&mut self) {
         let mut new_id_map = HashMap::new();
-        info!("committing edges");
+        debug!("committing edges");
         for (id2, id3) in mem::replace(&mut self.pending_edges, BTreeSet::new()) {
             if id2 == DUMMY_NODE_ID || id3 == DUMMY_NODE_ID {
                 continue;
             }
 
             if let Some(&id1) = self.id_map.get(&id2) {
-                info!("  {:?} -> {:?} -> {:?}", id3, id2, id1);
+                debug!("  {:?} -> {:?} -> {:?}", id3, id2, id1);
                 match new_id_map.entry(id3) {
                     Entry::Vacant(e) => {
                         e.insert(id1);
@@ -68,7 +68,7 @@ impl NodeMap {
                     },
                 }
             } else {
-                info!("  {:?} -> {:?} -> NOT FOUND", id3, id2);
+                debug!("  {:?} -> {:?} -> NOT FOUND", id3, id2);
             }
         }
 

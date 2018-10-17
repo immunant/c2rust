@@ -291,24 +291,24 @@ def do_rewrite_impl(d):
     yield 'impl Rewrite for %s {' % d.name
     yield '  fn rewrite(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {'
     if has_field(d, 'id'):
-        yield '    info!("{:?}: rewrite: begin (%s)", new.id);' % d.name
+        yield '    trace!("{:?}: rewrite: begin (%s)", new.id);' % d.name
     for strat in get_rewrite_strategies(d):
         yield '    let mark = rcx.mark();'
         if has_field(d, 'id'):
-            yield '    info!("{:?}: rewrite: try %s", new.id);' % strat
+            yield '    trace!("{:?}: rewrite: try %s", new.id);' % strat
         yield '    let ok = strategy::%s::rewrite(old, new, rcx.borrow());' % strat
         yield '    if ok {'
         if has_field(d, 'id'):
-            yield '      info!("{:?}: rewrite: %s succeeded", new.id);' % strat
+            yield '      trace!("{:?}: rewrite: %s succeeded", new.id);' % strat
         yield '      return true;'
         yield '    } else {'
         if has_field(d, 'id'):
-            yield '      info!("{:?}: rewrite: %s FAILED", new.id);' % strat
+            yield '      trace!("{:?}: rewrite: %s FAILED", new.id);' % strat
         yield '      rcx.rewind(mark);'
         yield '    }'
         yield ''
     if has_field(d, 'id'):
-        yield '    info!("{:?}: rewrite: ran out of strategies!", new.id);'
+        yield '    trace!("{:?}: rewrite: ran out of strategies!", new.id);'
     yield '    false'
     yield '  }'
     yield '}'
@@ -517,7 +517,7 @@ def do_maybe_rewrite_seq_impl(d):
             yield '                       new: &[Self],'
             yield '                       outer_span: Span,'
             yield '                       rcx: RewriteCtxtRef) -> bool {'
-            yield '    info!("try sequence rewriting for %s");' % d.name
+            yield '    trace!("try sequence rewriting for %s");' % d.name
             yield '    rewrite_seq(old, new, outer_span, rcx)'
             yield '  }'
         yield '}'

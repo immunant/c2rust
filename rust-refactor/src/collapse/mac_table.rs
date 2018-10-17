@@ -218,6 +218,7 @@ fn record_one_macro<'a>(old_id: NodeId,
                         expanded: MacNodeRef<'a>,
                         cx: &mut Ctxt<'a>) {
     let invoc_id = cx.next_id();
+    trace!("new {:?} from macro {:?} - collect matching {:?}", invoc_id, old_id, expanded.id());
     cx.record_macro_with_id(invoc_id, invoc_kind, expanded);
     cx.record_node_id_match(old_id, expanded.id());
 }
@@ -233,26 +234,25 @@ fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'
     for (i, old) in old_seq.iter().enumerate() {
         if let Some(invoc) = old.as_invoc() {
             let invoc_id = cx.next_id();
-            info!("got invoc {:?} at i {}, j {} - assign id {:?}", invoc, i, j, invoc_id);
+            trace!("new {:?} from macro {:?} at {:?}",
+                  invoc_id, old.get_node_id(), old.get_span());
 
             let start_j = j;
             while j < new_seq.len() {
                 let new = &new_seq[j];
-
-                info!("checking item {} - is {:?} inside {:?}?", j,
-                      root_callsite_span(new.get_span()), old.get_span());
 
                 if !old.get_span().contains(root_callsite_span(new.get_span())) {
                     // Reached a node that didn't come from this macro.
                     break;
                 }
 
+                trace!("  collect {:?} at {:?}", new.get_node_id(), new.get_span());
+
                 // The node came from `invoc`, so consume and record the node.
                 cx.record_macro_with_id(invoc_id, invoc, new.as_mac_node_ref());
                 cx.record_node_id_match(old.get_node_id(), new.get_node_id());
                 j += 1;
             }
-            info!("  collected {} entries for {:?}", j - start_j, invoc_id);
         } else {
             // For now, any time we see a node with a macro-generated span that wasn't eaten up by
             // the macro handling above, we assume it was created by a compiler plugin (such as
@@ -262,7 +262,6 @@ fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'
             }
             assert!(j < new_seq.len(),
                     "impossible: ran out of items in expanded sequence");
-            info!("handle {}, {}; span {:?}", i, j, new_seq[j].get_span());
             CollectMacros::collect_macros(old, &new_seq[j], cx);
             j += 1;
         }
@@ -329,7 +328,6 @@ impl<A: CollectMacros, B: CollectMacros, C: CollectMacros> CollectMacros for (A,
 impl<T: CollectMacros> CollectMacros for [T] {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         for (i,(old_item, new_item)) in old.iter().zip(new.iter()).enumerate() {
-            info!("start {}", i);
             <T as CollectMacros>::collect_macros(old_item, new_item, cx);
         }
     }

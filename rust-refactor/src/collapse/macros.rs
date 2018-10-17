@@ -44,12 +44,12 @@ struct CollapseMacros<'a> {
 
 impl<'a> CollapseMacros<'a> {
     fn collect_token_rewrites<T: NtMatch + ::std::fmt::Debug>(&mut self, invoc_id: InvocId, old: &T, new: &T) {
-        info!("(invoc {:?}) record nts for {:?} -> {:?}", invoc_id, old, new);
+        trace!("(invoc {:?}) record nts for {:?} -> {:?}", invoc_id, old, new);
         for (span, nt) in nt_match::match_nonterminals(old, new) {
-            info!("  got {} at {:?}",
-                  ::syntax::print::pprust::token_to_string(
-                      &Token::interpolated(nt.clone())),
-                      span);
+            trace!("  got {} at {:?}",
+                   ::syntax::print::pprust::token_to_string(
+                       &Token::interpolated(nt.clone())),
+                       span);
             self.token_rewrites.push(RewriteItem { invoc_id, span, nt });
         }
     }
@@ -67,7 +67,7 @@ impl<'a> Folder for CollapseMacros<'a> {
                     .expect("replaced a node with one of a different type?");
                 self.collect_token_rewrites(info.id, old, &e as &Expr);
                 let new_e = mk().id(e.id).span(root_callsite_span(e.span)).mac_expr(mac);
-                info!("collapse: {:?} -> {:?}", e, new_e);
+                trace!("collapse: {:?} -> {:?}", e, new_e);
                 self.record_matched_ids(e.id, new_e.id);
                 return new_e;
             } else {
@@ -84,7 +84,7 @@ impl<'a> Folder for CollapseMacros<'a> {
                     .expect("replaced a node with one of a different type?");
                 self.collect_token_rewrites(info.id, old, &p as &Pat);
                 let new_p = mk().id(p.id).span(root_callsite_span(p.span)).mac_pat(mac);
-                info!("collapse: {:?} -> {:?}", p, new_p);
+                trace!("collapse: {:?} -> {:?}", p, new_p);
                 self.record_matched_ids(p.id, new_p.id);
                 return new_p;
             } else {
@@ -101,7 +101,7 @@ impl<'a> Folder for CollapseMacros<'a> {
                     .expect("replaced a node with one of a different type?");
                 self.collect_token_rewrites(info.id, old, &t as &Ty);
                 let new_t = mk().id(t.id).span(root_callsite_span(t.span)).mac_ty(mac);
-                info!("collapse: {:?} -> {:?}", t, new_t);
+                trace!("collapse: {:?} -> {:?}", t, new_t);
                 self.record_matched_ids(t.id, new_t.id);
                 return new_t;
             } else {
@@ -122,11 +122,10 @@ impl<'a> Folder for CollapseMacros<'a> {
                     self.seen_invocs.insert(info.id);
                     let new_s = mk().id(s.id).span(root_callsite_span(s.span)).mac_stmt(mac);
                     self.record_matched_ids(s.id, new_s.id);
-                    info!("collapse: {:?} -> {:?}", s, new_s);
-                    info!("  id collapse: {:?} -> {:?}", s.id, new_s.id);
+                    trace!("collapse: {:?} -> {:?}", s, new_s);
                     return SmallVector::one(new_s);
                 } else {
-                    info!("collapse (duplicate): {:?} -> /**/", s);
+                    trace!("collapse (duplicate): {:?} -> /**/", s);
                     return SmallVector::new();
                 }
             } else {
@@ -147,23 +146,23 @@ impl<'a> Folder for CollapseMacros<'a> {
                     if !self.seen_invocs.contains(&info.id) {
                         self.seen_invocs.insert(info.id);
                         let new_i = mk().id(i.id).span(root_callsite_span(i.span)).mac_item(mac);
-                        info!("collapse: {:?} -> {:?}", i, new_i);
+                        trace!("collapse: {:?} -> {:?}", i, new_i);
                         self.record_matched_ids(i.id, new_i.id);
                         return SmallVector::one(new_i);
                     } else {
-                        info!("collapse (duplicate): {:?} -> /**/", i);
+                        trace!("collapse (duplicate): {:?} -> /**/", i);
                         return SmallVector::new();
                     }
                 },
                 InvocKind::ItemAttr(it) => {
                     if !self.seen_invocs.contains(&info.id) {
                         self.seen_invocs.insert(info.id);
-                        info!("ItemAttr: return original: {:?}", i);
+                        trace!("ItemAttr: return original: {:?}", i);
                         let i = i.map(|i| restore_attrs(i, it));
                         self.record_matched_ids(i.id, i.id);
                         return SmallVector::one(i);
                     } else {
-                        info!("ItemAttr: drop (generated): {:?} -> /**/", i);
+                        trace!("ItemAttr: drop (generated): {:?} -> /**/", i);
                         return SmallVector::new();
                     }
                 },
@@ -183,10 +182,11 @@ impl<'a> Folder for CollapseMacros<'a> {
                     self.seen_invocs.insert(info.id);
                     let new_ii = mk().id(ii.id).span(root_callsite_span(ii.span))
                         .mac_impl_item(mac);
+                    trace!("collapse: {:?} -> {:?}", ii, new_ii);
                     self.record_matched_ids(ii.id, new_ii.id);
                     return SmallVector::one(new_ii);
                 } else {
-                    info!("collapse (duplicate): {:?} -> /**/", ii);
+                    trace!("collapse (duplicate): {:?} -> /**/", ii);
                     return SmallVector::new();
                 }
             } else {
@@ -207,10 +207,11 @@ impl<'a> Folder for CollapseMacros<'a> {
                     self.seen_invocs.insert(info.id);
                     let new_ti = mk().id(ti.id).span(root_callsite_span(ti.span))
                         .mac_trait_item(mac);
+                    trace!("collapse: {:?} -> {:?}", ti, new_ti);
                     self.record_matched_ids(ti.id, new_ti.id);
                     return SmallVector::one(new_ti);
                 } else {
-                    info!("collapse (duplicate): {:?} -> /**/", ti);
+                    trace!("collapse (duplicate): {:?} -> /**/", ti);
                     return SmallVector::new();
                 }
             } else {
@@ -231,10 +232,11 @@ impl<'a> Folder for CollapseMacros<'a> {
                     self.seen_invocs.insert(info.id);
                     let new_fi = mk().id(fi.id).span(root_callsite_span(fi.span))
                         .mac_foreign_item(mac);
+                    trace!("collapse: {:?} -> {:?}", fi, new_fi);
                     self.record_matched_ids(fi.id, new_fi.id);
                     return SmallVector::one(new_fi);
                 } else {
-                    info!("collapse (duplicate): {:?} -> /**/", fi);
+                    trace!("collapse (duplicate): {:?} -> /**/", fi);
                     return SmallVector::new();
                 }
             } else {
@@ -363,10 +365,6 @@ fn convert_token_rewrites(rewrite_vec: Vec<RewriteItem>,
                           matched_ids: &mut Vec<(NodeId, NodeId)>)
                           -> HashMap<InvocId, ThinTokenStream> {
     let mut rewrite_map = token_rewrite_map(rewrite_vec, matched_ids);
-    info!("rewrite map:");
-    for (k,v) in &rewrite_map {
-        info!("  {:?}: {:?}", k, v);
-    }
     let invoc_ids = rewrite_map.values().map(|r| r.invoc_id).collect::<HashSet<_>>();
     invoc_ids.into_iter().filter_map(|invoc_id| {
         let invoc = mac_table.get_invoc(invoc_id)
@@ -488,8 +486,6 @@ impl<'a> Folder for ReplaceTokens<'a> {
     }
 
     fn fold_mac(&mut self, mac: Mac) -> Mac {
-        info!("encountered mac: {:?} {}",
-              mac.node.path, ::syntax::print::pprust::tokens_to_string(mac.node.tts.clone().into()));
         fold::noop_fold_mac(mac, self)
     }
 
@@ -519,7 +515,7 @@ pub fn collapse_macros(mut krate: Crate,
     let new_tokens = convert_token_rewrites(
         token_rewrites, mac_table, &mut matched_ids);
     for (k, v) in &new_tokens {
-        info!("new tokens for {:?} = {:?}", k,
+        debug!("new tokens for {:?} = {:?}", k,
               ::syntax::print::pprust::tokens_to_string(v.clone().into()));
     }
 
