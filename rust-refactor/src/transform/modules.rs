@@ -19,21 +19,26 @@ use util::{IntoIdent, IntoString, IntoSymbol};
 pub struct ReorganizeModules;
 
 impl Transform for ReorganizeModules {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let mut decl_destination_mod = HashMap::new();
 
         // Match the modules, using a mapping like:
         // NodeId -> NodeId
         // The key is the id of the old item to be moved, and the value is the NodeId of the module
         // the item will be moved to.
+        let std_lib_id = st.next_node_id();
         visit_nodes(&krate, |i: &Item| {
             match i.node {
+                // TODO: Move this into it's own function which accepts an Item and returns an
+                // Optional decl_destination_mod
                 ItemKind::Mod(ref m) => {
                     // All C standard library headers are going to be put into this arbitrary
                     // NodeId location.
                     if is_std(&i.attrs) {
                         for item in m.items.iter() {
-                            decl_destination_mod.insert(item.id.as_u32(), DUMMY_NODE_ID.as_u32());
+                            // TODO: Don't use a DUMMY_NODE_ID, instead create a new node id.
+                            // There should be a method for this.
+                            decl_destination_mod.insert(item.id.as_u32(), std_lib_id.as_u32());
                         }
                     }
 
@@ -53,7 +58,7 @@ impl Transform for ReorganizeModules {
             }
         });
 
-        // Clean paths
+        // Cleanse the paths of the super or self prefix.
         let krate = fold_nodes(krate, |mut p: Path| {
             if p.segments.len() > 1 {
                 p.segments.retain(|s| {
@@ -71,35 +76,35 @@ impl Transform for ReorganizeModules {
         // This is where the `old module` items get moved into the `new modules`
         let crate_copy = krate.clone();
         let krate = fold_nodes(krate, |pi: P<Item>| {
-            if !matches!([pi.node] ItemKind::Mod(..)) {
-                return SmallVector::one(pi);
-            }
+            match pi.node.clone() {
+                ItemKind::Mod(ref m) => {
+                    return SmallVector::one(pi.map(|i| {
+                        let mut m = m.clone();
 
-            SmallVector::one(pi.map(|i| {
-                unpack!([i.node.clone()] ItemKind::Mod(m));
-                let mut m = m;
-
-                let new_items_option = new_module_decls.get(&i.id.as_u32());
-                if let Some(new_item_ids) = new_items_option {
-                    for new_item_id in new_item_ids.iter() {
-                        let new_item_option = find_item(&crate_copy, new_item_id);
-
-                        if let Some(new_item) = new_item_option {
-                            m.items.push(P(new_item.clone()));
+                        if let Some(new_item_ids) = new_module_decls.get(&i.id.as_u32()) {
+                            for new_item_id in new_item_ids.iter() {
+                                if let Some(new_item) = find_item(&crate_copy, new_item_id) {
+                                    m.items.push(P(new_item.clone()));
+                                }
+                            }
                         }
-                    }
-                }
 
-                Item {
-                    node: ItemKind::Mod(m),
-                    ..i
+                        Item {
+                            node: ItemKind::Mod(m),
+                            ..i
+                        }
+                    }));
                 }
-            }))
+                _ => {
+                    return SmallVector::one(pi);
+                }
+            }
         });
 
         // insert a new module for the C standard headers
+        // TODO: Instead of folding, just create a new Crate struct and extend the vector?
         let krate = fold_nodes(krate, |mut c: Crate| {
-            let c_std_items_option = new_module_decls.get(&DUMMY_NODE_ID.as_u32());
+            let c_std_items_option = new_module_decls.get(&std_lib_id.as_u32());
             if let Some(c_std_items) = c_std_items_option {
                 let items: Vec<P<Item>> = c_std_items
                     .iter()
@@ -114,7 +119,7 @@ impl Transform for ReorganizeModules {
                 let new_item = Item {
                     ident: Ident::new("stdlib".into_symbol(), DUMMY_SP),
                     attrs: Vec::new(),
-                    id: DUMMY_NODE_ID,
+                    id: std_lib_id,
                     node: ItemKind::Mod(new_mod),
                     vis: dummy_spanned(VisibilityKind::Public),
                     span: DUMMY_SP,
