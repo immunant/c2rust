@@ -27,6 +27,7 @@ impl Transform for ReorganizeModules {
         // The key is the id of the old item to be moved, and the value is the NodeId of the module
         // the item will be moved to.
         let stdlib_id = st.next_node_id();
+        let mut new_names = HashMap::new();
         visit_nodes(&krate, |i: &Item| {
             match i.node {
                 // TODO: Move this into it's own function which accepts an Item and returns an
@@ -40,6 +41,7 @@ impl Transform for ReorganizeModules {
                             // There should be a method for this.
                             decl_destination_mod.insert(item.id, stdlib_id);
                         }
+                        new_names.insert(i.ident.into_string(), "stdlib".to_string());
                     }
 
                     if has_source_header(&i.attrs) {
@@ -49,6 +51,7 @@ impl Transform for ReorganizeModules {
                                 &item.id,
                                 i.ident.into_string(),
                                 &mut decl_destination_mod,
+                                &mut new_names,
                                 cx.session(),
                             );
                         }
@@ -104,16 +107,6 @@ impl Transform for ReorganizeModules {
 
         let krate = extend_krate(krate, &new_module_decls, &stdlib_id);
 
-        let mut new_names = HashMap::new();
-        for (old_item_id, dest_mod_id) in decl_destination_mod.iter() {
-            let old_module = get_module(&krate, cx, &old_item_id).unwrap();
-            let old_module_id = get_id(&krate, &old_module).unwrap();
-            let old_item = find_item(&krate, &old_module_id).unwrap();
-
-            let dest_item = find_item(&krate, &dest_mod_id).unwrap();
-
-            new_names.insert(old_item.ident.into_string(), dest_item.ident.into_string());
-        }
 
         // We need to truncate the path from being `use self::some_h::foo;`,
         // to be `use some_h::foo;`
@@ -291,6 +284,7 @@ fn match_modules(
     old_mod_item_id: &NodeId,
     old_mod_name: String,
     decl_destination_mod: &mut HashMap<NodeId, NodeId>,
+    new_names: &mut HashMap<String, String>,
     sess: &Session,
 ) {
     visit_nodes(krate, |i: &Item| {
@@ -309,6 +303,7 @@ fn match_modules(
                     // and should be improved upon.
                     if old_mod_name.contains(&dest_mod_name) {
                         decl_destination_mod.insert(*old_mod_item_id, i.id);
+                        new_names.insert(old_mod_name.clone(), dest_mod_name);
                     }
                 }
             }
