@@ -1,10 +1,10 @@
 use rustc::session::Session;
 use std::collections::{HashMap, HashSet};
-use syntax::ast::DUMMY_NODE_ID;
 use syntax::ast::*;
 use syntax::codemap::{dummy_spanned, DUMMY_SP};
 use syntax::parse::token::Lit::Str_;
 use syntax::parse::token::Token::Literal;
+use syntax::symbol::keywords;
 use syntax::ptr::P;
 use syntax::tokenstream::*;
 use syntax::util::small_vector::SmallVector;
@@ -14,7 +14,7 @@ use api::*;
 use ast_manip::AstEquiv;
 use command::{CommandState, Registry};
 use driver::{self, Phase};
-use util::{IntoIdent, IntoString, IntoSymbol};
+use util::{IntoSymbol};
 
 pub struct ReorganizeModules;
 
@@ -27,7 +27,7 @@ impl Transform for ReorganizeModules {
         let krate = fold_nodes(krate, |mut p: Path| {
             if p.segments.len() > 1 {
                 p.segments.retain(|s| {
-                    !(s.ident.into_string() == "super" || s.ident.into_string() == "self")
+                    !(s.ident.name == keywords::Super.name() || s.ident.name == keywords::SelfValue.name())
                 });
             }
             p
@@ -51,7 +51,7 @@ impl Transform for ReorganizeModules {
                         for item in m.items.iter() {
                             decl_destination_mod.insert(item.id, stdlib_id);
                         }
-                        new_names.insert(i.ident.into_string(), "stdlib".to_string());
+                        new_names.insert(i.ident, Ident::from_str("stdlib"));
                     }
 
                     if has_source_header(&i.attrs) {
@@ -59,7 +59,7 @@ impl Transform for ReorganizeModules {
                             match_modules(
                                 &krate,
                                 &item.id,
-                                i.ident.into_string(),
+                                &i.ident,
                                 &mut decl_destination_mod,
                                 &mut new_names,
                                 cx.session(),
@@ -75,10 +75,9 @@ impl Transform for ReorganizeModules {
         // `new_module_decls`:
         // NodeId -> vec<NodeId>
         // The mapping is the destination module's `NodeId` to the items needing to be added to it.
-        let new_module_decls = clean_module_items(&krate, &decl_destination_mod, &item_map, &cx);
+        let new_module_decls = clean_module_items(&decl_destination_mod, &item_map);
 
         // This is where the `old module` items get moved into the `new modules`
-        let crate_copy = krate.clone();
         let krate = fold_nodes(krate, |pi: P<Item>| match pi.node.clone() {
             ItemKind::Mod(ref m) => {
                 return SmallVector::one(pi.map(|i| {
@@ -110,9 +109,8 @@ impl Transform for ReorganizeModules {
         // to be `use some_h::foo;`
         let krate = fold_nodes(krate, |mut p: Path| {
             for segment in &mut p.segments {
-                let path_name = segment.ident.into_string();
-                if let Some(new_path_segment) = new_names.get(&path_name) {
-                    segment.ident = new_path_segment.to_string().into_ident();
+                if let Some(new_path_segment) = new_names.get(&segment.ident) {
+                    segment.ident = *new_path_segment;
                 }
             }
             p
@@ -185,7 +183,7 @@ fn purge_duplicates(krate: Crate) -> Crate {
                 return SmallVector::one(pi.clone().map(|i| {
                     let mut m = m.clone();
 
-                    if pi.ident.into_string() == "stdlib" {
+                    if pi.ident == Ident::from_str("stdlib") {
                         return i;
                     }
 
@@ -217,10 +215,10 @@ fn purge_duplicates(krate: Crate) -> Crate {
         fm.items.retain(|item| {
             let mut result = true;
 
-            if seen_item.contains(&item.ident.into_string()) {
+            if seen_item.contains(&item.ident) {
                 result = false;
             } else {
-                seen_item.insert(item.ident.into_string());
+                seen_item.insert(item.ident);
             }
             result
         });
@@ -250,11 +248,10 @@ fn purge_duplicates(krate: Crate) -> Crate {
                             for cloned_item in cloned_items.iter() {
                                 match cloned_item.node {
                                     ItemKind::Ty(..) | ItemKind::Fn(..) | ItemKind::Struct(..) => {
-                                        let item_declaration = cloned_item.ident.into_string();
-                                        let path_segments = usetree.prefix.segments.clone();
-                                        if path_segments
+                                        let item_declaration = cloned_item.ident;
+                                        if usetree.prefix.segments
                                             .iter()
-                                            .any(|s| s.ident.into_string() == item_declaration)
+                                            .any(|s| s.ident == item_declaration)
                                         {
                                             result = false;
                                         }
@@ -287,26 +284,26 @@ fn purge_duplicates(krate: Crate) -> Crate {
 fn match_modules(
     krate: &Crate,
     old_mod_item_id: &NodeId,
-    old_mod_name: String,
+    old_mod_name: &Ident,
     decl_destination_mod: &mut HashMap<NodeId, NodeId>,
-    new_names: &mut HashMap<String, String>,
+    new_names: &mut HashMap<Ident, Ident>,
     sess: &Session,
 ) {
     visit_nodes(krate, |i: &Item| {
         match i.node {
             ItemKind::Mod(_) => {
                 if !has_source_header(&i.attrs) {
-                    let mut dest_mod_name = i.ident.into_string();
+                    let mut dest_mod_name = i.ident.clone();
 
                     // The main crate module is an empty string,
                     // so just give it it's original name
-                    if dest_mod_name.is_empty() {
-                        dest_mod_name = get_source_file(sess);
+                    if dest_mod_name.as_str().is_empty() {
+                        dest_mod_name = Ident::from_str(&get_source_file(sess));
                     }
 
                     // TODO: This is a simple naive heuristic,
                     // and should be improved upon.
-                    if old_mod_name.contains(&dest_mod_name) {
+                    if old_mod_name.as_str().contains(&*dest_mod_name.as_str()) {
                         decl_destination_mod.insert(*old_mod_item_id, i.id);
                         new_names.insert(old_mod_name.clone(), dest_mod_name);
                     }
@@ -320,10 +317,8 @@ fn match_modules(
 // `clean_module_items` should iterate through decl_destination_mod, and if the Node has a similar `Item` within
 // the destination module do not insert it into to the vector of NodeId's.
 fn clean_module_items(
-    krate: &Crate,
     decl_destination_mod: &HashMap<NodeId, NodeId>,
     item_map: &HashMap<NodeId, Item>,
-    cx: &driver::Ctxt,
 ) -> HashMap<NodeId, Vec<NodeId>> {
     let mut dest_items_map = HashMap::new();
 
@@ -380,16 +375,14 @@ fn clean_module_items(
             }
         }
     }
-    remove_duplicates(krate, &mut dest_items_map, &item_map, cx);
+    remove_duplicates(&mut dest_items_map, &item_map);
     dest_items_map
 }
 
 // Remove any items that are duplicated throughout the process.
 fn remove_duplicates(
-    krate: &Crate,
     decl_destination_mod: &mut HashMap<NodeId, Vec<NodeId>>,
     item_map: &HashMap<NodeId, Item>,
-    cx: &driver::Ctxt,
 ) {
     let mut cloned_map = decl_destination_mod.clone();
 
@@ -450,8 +443,7 @@ fn has_source_header(attrs: &Vec<Attribute>) -> bool {
             TokenTree::Token(_, token) => {
                 if token.is_ident() {
                     let (ident, _) = token.ident().unwrap();
-                    let name = ident.into_string();
-                    if name.contains("source_header") {
+                    if ident.as_str().contains("source_header") {
                         *is_source_header = true;
                     }
                 }
@@ -486,8 +478,7 @@ fn is_std(attrs: &Vec<Attribute>) -> bool {
             TokenTree::Token(_, token) => match token {
                 Literal(lit, _) => match lit {
                     Str_(name) => {
-                        let path = name.into_string();
-                        if path.contains("/usr/include") || path.contains("stddef") {
+                        if name.as_str().contains("/usr/include") || name.as_str().contains("stddef") {
                             *is_std = true;
                         }
                     }
