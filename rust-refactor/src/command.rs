@@ -170,6 +170,31 @@ impl RefactorState {
         })
     }
 
+    pub fn run_typeck_loop<F>(&mut self, mut func: F) -> Result<(), &'static str>
+            where F: FnMut(Crate, &CommandState, &driver::Ctxt) -> TypeckLoopResult {
+        let func = &mut func;
+
+        let mut result = None;
+        while result.is_none() {
+            self.transform_crate(Phase::Phase3, |st, cx| {
+                st.map_krate(|krate| {
+                    match func(krate, st, cx) {
+                        TypeckLoopResult::Iterate(krate) => krate,
+                        TypeckLoopResult::Err(e, krate) => {
+                            result = Some(Err(e));
+                            krate
+                        },
+                        TypeckLoopResult::Finished(krate) => {
+                            result = Some(Ok(()));
+                            krate
+                        },
+                    }
+                });
+            });
+        }
+        result.unwrap()
+    }
+
     pub fn clear_marks(&mut self) {
         self.marks.clear()
     }
@@ -192,6 +217,12 @@ impl RefactorState {
     pub fn marks_mut(&mut self) -> &mut HashSet<(NodeId, Symbol)> {
         &mut self.marks
     }
+}
+
+pub enum TypeckLoopResult {
+    Iterate(Crate),
+    Err(&'static str, Crate),
+    Finished(Crate),
 }
 
 
