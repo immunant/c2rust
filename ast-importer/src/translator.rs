@@ -3390,46 +3390,6 @@ impl Translation {
         match kind {
             CastKind::BitCast => {
                 val.result_map(|x| {
-                    // TODO: Detect cast from mutable to constant pointer to same type
-
-                    // Special cases
-                    if let Ok((source_quals, source_ty_id)) = self.get_declref_type(expr) {
-                        let source_ty = self.convert_type(source_ty_id)?;
-                        let target_ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
-                        if let &CTypeKind::Pointer(qual_type_id) = target_ty_kind {
-                            let target_ty = self.convert_type(qual_type_id.ctype)?;
-
-                            /*
-                            // Detect a quirk where the bitcast is superfluous.
-                            // See this issue: https://github.com/GaloisInc/C2Rust/issues/32
-                            if target_ty == *source_ty {
-                                // Don't skip the cast if we're going from const to mutable
-                                if source_quals.map_or(true, |x| !x.is_const) || ty.qualifiers.is_const {
-                                    return Ok(x)
-                                }
-                            } */
-
-                            let quals_agree = if let Some(sq) = source_quals {
-                                sq == qual_type_id.qualifiers
-                            } else { false };
-                            // Detect bitcasts from array-of-T to slice-of-T
-                            /*
-                            if let TyKind::Slice(ref tgt_elem_ty) = target_ty.node {
-                                if let TyKind::Array(ref src_elem_ty, _) = source_ty.node {
-                                    if tgt_elem_ty == src_elem_ty {
-                                        if quals_agree {
-                                            return Ok(x)
-                                        } else {
-                                            // FIXME: handle mismatched qualifiers
-                                            panic!("Cannot handle mismatched qualifiers yet.")
-                                        }
-                                    }
-                                }
-                            }
-                            */
-                        }
-                    }
-
                     let source_ty_id = self.ast_context[expr].kind.get_type().ok_or_else(|| format!("bad source type"))?;
 
                     if self.ast_context.is_function_pointer(ty.ctype) ||
