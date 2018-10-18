@@ -927,7 +927,7 @@ impl Translation {
         let sectioned_static_initializers = self.sectioned_static_initializers.replace(Vec::new());
 
         let fn_name = self.renamer.borrow_mut().pick_name("run_static_initializers");
-        let fn_ty = FunctionRetTy::Ty(mk().tuple_ty(vec![] as Vec<P<Ty>>));
+        let fn_ty = FunctionRetTy::Default(DUMMY_SP);
         let fn_decl = mk().fn_decl(vec![], fn_ty, false);
         let fn_block = mk().block(sectioned_static_initializers);
         let fn_attributes = self.mk_cross_check(mk(), vec!["none"]);
@@ -956,7 +956,7 @@ impl Translation {
 
             let decl = mk().fn_decl(
                 vec![],
-                FunctionRetTy::Ty(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
+                FunctionRetTy::Default(DUMMY_SP),
                 false
             );
 
@@ -1563,7 +1563,15 @@ impl Translation {
                 Some(return_type) => self.convert_type(return_type.ctype)?,
                 None => mk().never_ty(),
             };
-            let ret = FunctionRetTy::Ty(ret);
+            let is_void_ret = return_type.map(|qty| self.ast_context[qty.ctype].kind == CTypeKind::Void).unwrap_or(false);
+
+            // If a return type is void, we should instead omit the unit type return,
+            // -> (), to be more idiomatic
+            let ret = if is_void_ret {
+                FunctionRetTy::Default(DUMMY_SP)
+            } else {
+                FunctionRetTy::Ty(ret)
+            };
 
             let decl = mk().fn_decl(args, ret, is_variadic);
 
