@@ -151,17 +151,15 @@ impl<'a> Folder for CollapseMacros<'a> {
                         return SmallVector::new();
                     }
                 },
-                InvocKind::ItemAttr(it) => {
-                    if !self.seen_invocs.contains(&info.id) {
-                        self.seen_invocs.insert(info.id);
-                        trace!("ItemAttr: return original: {:?}", i);
-                        let i = i.map(|i| restore_attrs(i, it));
-                        self.record_matched_ids(i.id, i.id);
-                        return SmallVector::one(i);
-                    } else {
-                        trace!("ItemAttr: drop (generated): {:?} -> /**/", i);
-                        return SmallVector::new();
-                    }
+                InvocKind::ItemAttr(orig_i) => {
+                    trace!("ItemAttr: return original: {:?}", i);
+                    let i = i.map(|i| restore_attrs(i, orig_i));
+                    self.record_matched_ids(i.id, i.id);
+                    return SmallVector::one(i);
+                },
+                InvocKind::Derive(_parent_invoc_id) => {
+                    trace!("ItemAttr: drop (generated): {:?} -> /**/", i);
+                    return SmallVector::new();
                 },
             }
         }

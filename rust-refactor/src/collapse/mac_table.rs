@@ -128,6 +128,9 @@ pub struct InvocId(pub u32);
 pub enum InvocKind<'ast> {
     Mac(&'ast Mac),
     ItemAttr(&'ast Item),
+    /// This is the generated item part of a `#[derive]`'s output.  The `InvocId` points to the
+    /// originating `ItemAttr`.
+    Derive(InvocId),
 }
 
 pub struct MacInfo<'ast> {
@@ -248,7 +251,13 @@ fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'
                 trace!("  collect {:?} at {:?}", new.get_node_id(), new.get_span());
 
                 // The node came from `invoc`, so consume and record the node.
-                cx.record_macro_with_id(invoc_id, invoc, new.as_mac_node_ref());
+                if let Some(child_invoc) = get_child_invoc(
+                        invoc, invoc_id, new.as_mac_node_ref()) {
+                    let child_invoc_id = cx.next_id();
+                    cx.record_macro_with_id(child_invoc_id, child_invoc, new.as_mac_node_ref());
+                } else {
+                    cx.record_macro_with_id(invoc_id, invoc, new.as_mac_node_ref());
+                }
                 cx.record_node_id_match(old.get_node_id(), new.get_node_id());
                 j += 1;
             }
@@ -268,6 +277,22 @@ fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'
 
     assert!(j == new_seq.len(),
             "impossible: too many items in expanded sequence");
+}
+
+fn get_child_invoc<'a>(invoc: InvocKind<'a>,
+                       id: InvocId,
+                       new: MacNodeRef<'a>) -> Option<InvocKind<'a>> {
+    match invoc {
+        InvocKind::ItemAttr(..) => {
+            if let MacNodeRef::Item(i) = new {
+                if attr::contains_name(&i.attrs, "automatically_derived") {
+                    return Some(InvocKind::Derive(id));
+                }
+            }
+        },
+        _ => {},
+    }
+    None
 }
 
 
