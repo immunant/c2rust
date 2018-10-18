@@ -59,9 +59,7 @@ use std::collections::HashMap;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use rustc::session::Session;
-use syntax::ast::{Expr, ExprKind, Pat, Ty, Stmt, Item, ForeignItem, Block};
-use syntax::ast::{NodeId, DUMMY_NODE_ID};
-use syntax::ast::AttrId;
+use syntax::ast::*;
 use syntax::codemap::{Span, DUMMY_SP};
 use syntax::util::parser;
 use syntax::visit::{self, Visitor};
@@ -125,6 +123,31 @@ impl<'s, T: ?Sized> NodeTable<'s, T> {
 pub enum SeqItemId {
     Node(NodeId),
     Attr(AttrId),
+}
+
+trait MappableId {
+    fn map_id(self, rcx: &RewriteCtxt) -> Self;
+}
+
+impl MappableId for NodeId {
+    fn map_id(self, rcx: &RewriteCtxt) -> Self {
+        rcx.node_id_map.get(&self).map_or(DUMMY_NODE_ID, |&x| x)
+    }
+}
+
+impl MappableId for AttrId {
+    fn map_id(self, _rcx: &RewriteCtxt) -> Self {
+        self
+    }
+}
+
+impl MappableId for SeqItemId {
+    fn map_id(self, rcx: &RewriteCtxt) -> Self {
+        match self {
+            SeqItemId::Node(id) => SeqItemId::Node(id.map_id(rcx)),
+            SeqItemId::Attr(id) => SeqItemId::Attr(id.map_id(rcx)),
+        }
+    }
 }
 
 
@@ -197,6 +220,10 @@ impl<'s> Visitor<'s> for OldNodesVisitor<'s> {
         self.map.blocks.insert(x.id, x);
         visit::walk_block(self, x);
     }
+
+    fn visit_mac(&mut self, mac: &'s Mac) {
+        visit::walk_mac(self, mac);
+    }
 }
 
 
@@ -227,17 +254,29 @@ pub struct RewriteCtxt<'s> {
     /// Precedence of the current expression context.  If we splice in an expression of lower
     /// precedence, it will be parenthesized.
     expr_prec: ExprPrec,
+
+    /// Mapping from NodeIds in the new AST to corresponding NodeIds in the old AST.  This has two
+    /// purposes.  (1) If `node_id_map[new_node.id] == old_node.id`, then `new_node` and `old_node`
+    /// are considered "the same node" for sequence rewriting purposes.  This affects the
+    /// rewriter's decisions about where to insert/delete sequence elements, as opposed to
+    /// rewriting the old node to the new one.  (2) When the rewriter is in "fresh" mode and
+    /// looking for recycled text to splice in, it checks `old_nodes` for a node whose ID is
+    /// `node_id_map[new_node.id]`.
+    node_id_map: HashMap<NodeId, NodeId>,
 }
 
 impl<'s> RewriteCtxt<'s> {
-    fn new(sess: &'s Session, old_nodes: OldNodes<'s>) -> RewriteCtxt<'s> {
+    fn new(sess: &'s Session,
+           old_nodes: OldNodes<'s>,
+           node_id_map: HashMap<NodeId, NodeId>) -> RewriteCtxt<'s> {
         RewriteCtxt {
-            sess: sess,
-            old_nodes: old_nodes,
+            sess,
+            old_nodes,
             text_span_cache: HashMap::new(),
 
             fresh_start: DUMMY_SP,
             expr_prec: ExprPrec::Normal(parser::PREC_RESET),
+            node_id_map,
         }
     }
 
@@ -287,6 +326,10 @@ impl<'s> RewriteCtxt<'s> {
 
     pub fn replace_expr_prec(&mut self, prec: ExprPrec) -> ExprPrec {
         mem::replace(&mut self.expr_prec, prec)
+    }
+
+    fn new_to_old_id<Id: MappableId>(&self, id: Id) -> Id {
+        id.map_id(self)
     }
 
     pub fn with_rewrites<'b>(&'b mut self,
@@ -376,11 +419,14 @@ impl<'s, 'a> RewriteCtxtRef<'s, 'a> {
 }
 
 
-pub fn rewrite<T: Rewrite+Visit>(sess: &Session, old: &T, new: &T) -> Vec<TextRewrite> {
+pub fn rewrite<T: Rewrite+Visit>(sess: &Session,
+                                 old: &T,
+                                 new: &T,
+                                 node_id_map: HashMap<NodeId, NodeId>) -> Vec<TextRewrite> {
     let mut v = OldNodesVisitor { map: OldNodes::new() };
     old.visit(&mut v);
 
-    let mut rcx = RewriteCtxt::new(sess, v.map);
+    let mut rcx = RewriteCtxt::new(sess, v.map, node_id_map);
     let mut rewrites = Vec::new();
     let ok = Rewrite::rewrite(old, new, rcx.with_rewrites(&mut rewrites));
     assert!(ok, "rewriting did not complete");

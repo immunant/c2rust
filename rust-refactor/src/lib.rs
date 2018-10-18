@@ -45,6 +45,8 @@ pub mod matcher;
 
 pub mod driver;
 pub mod recheck;
+pub mod collapse;
+pub mod node_map;
 
 pub mod command;
 pub mod interact;

@@ -5,8 +5,9 @@ use syntax::ast::*;
 use rustc_target::spec::abi::Abi;
 use syntax::codemap::{Span, Spanned};
 use syntax::ext::hygiene::SyntaxContext;
+use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 
 use ast_manip::util::macro_name;
 use matcher::{self, TryMatch, MatchCtxt};

@@ -5,8 +5,9 @@ use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::codemap::{Span, Spanned};
 use syntax::ext::hygiene::SyntaxContext;
+use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 
 /// Trait for checking equivalence of AST nodes.  This is similar to `PartialEq`, but less strict,
 /// as it ignores some fields that have no bearing on the semantics of the AST (particularly

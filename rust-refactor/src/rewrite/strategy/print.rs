@@ -16,10 +16,10 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::codemap::{Span, Spanned, BytePos, FileName};
 use syntax::ext::hygiene::SyntaxContext;
-use syntax::parse::token::Token;
+use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::print::pprust;
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 use syntax::util::parser;
 
 use ast_manip::{GetNodeId, AstDeref};
@@ -471,8 +471,9 @@ fn recover<'s, T>(reparsed: &T, new: &T, mut rcx: RewriteCtxtRef<'s, '_>) -> boo
         return false;
     }
 
-    // Find a node with ID matching `new.id`.
-    let old = match <T as Recover>::node_table(&mut rcx).get(new.get_node_id()) {
+    // Find a node with ID matching `new.id`, after accounting for renumbering of NodeIds.
+    let old_id = rcx.new_to_old_id(new.get_node_id());
+    let old = match <T as Recover>::node_table(&mut rcx).get(old_id) {
         Some(x) => x,
         None => {
             return false;
