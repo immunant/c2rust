@@ -118,9 +118,7 @@ impl<'a> Visit for MacNodeRef<'a> {
 }
 
 
-/// Unique identifier of a macro invocation.  We can't use `NodeId`s for this because `Mac` nodes
-/// exist only in the unexpanded AST, where all IDs are DUMMY, and we can't use `Mark`s because we
-/// have no way to obtain the mark for a macro that expands to one of its arguments unmodified.
+/// Unique identifier of a macro invocation.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct InvocId(pub u32);
 
@@ -169,7 +167,7 @@ pub fn collect_macro_invocations<'ast>(unexpanded: &'ast Crate,
     // first `inj_count` items are the injected prelude and crate imports.
     let (crate_names, has_prelude) = super::injected_items(unexpanded);
     let inj_count = crate_names.len() + if has_prelude { 1 } else { 0 };
-    collect_macros_seq(&unexpanded.module.items[..], 
+    collect_macros_seq(&unexpanded.module.items[..],
                        &expanded.module.items[inj_count..],
                        &mut ctxt);
     (ctxt.table, ctxt.matched_node_ids)
@@ -214,16 +212,16 @@ impl<'a> Ctxt<'a> {
                             new: NodeId) {
         self.matched_node_ids.push((old, new));
     }
-}
 
-fn record_one_macro<'a>(old_id: NodeId,
+    fn record_one_macro(&mut self,
+                        old_id: NodeId,
                         invoc_kind: InvocKind<'a>,
-                        expanded: MacNodeRef<'a>,
-                        cx: &mut Ctxt<'a>) {
-    let invoc_id = cx.next_id();
-    trace!("new {:?} from macro {:?} - collect matching {:?}", invoc_id, old_id, expanded.id());
-    cx.record_macro_with_id(invoc_id, invoc_kind, expanded);
-    cx.record_node_id_match(old_id, expanded.id());
+                        expanded: MacNodeRef<'a>) {
+        let invoc_id = self.next_id();
+        trace!("new {:?} from macro {:?} - collect matching {:?}", invoc_id, old_id, expanded.id());
+        self.record_macro_with_id(invoc_id, invoc_kind, expanded);
+        self.record_node_id_match(old_id, expanded.id());
+    }
 }
 
 fn is_macro_generated(sp: Span) -> bool {
