@@ -1,6 +1,6 @@
 use syntax::{with_globals, ast};
 use syntax::ast::*;
-use syntax::codemap::{DUMMY_SP, Span};
+use syntax_pos::{DUMMY_SP, Span};
 use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{Token,Nonterminal};
 use std::collections::{HashMap,HashSet};
@@ -3399,19 +3399,21 @@ impl Translation {
                         if let &CTypeKind::Pointer(qual_type_id) = target_ty_kind {
                             let target_ty = self.convert_type(qual_type_id.ctype)?;
 
+                            /*
                             // Detect a quirk where the bitcast is superfluous.
                             // See this issue: https://github.com/GaloisInc/C2Rust/issues/32
-                            if target_ty == source_ty {
+                            if target_ty == *source_ty {
                                 // Don't skip the cast if we're going from const to mutable
                                 if source_quals.map_or(true, |x| !x.is_const) || ty.qualifiers.is_const {
                                     return Ok(x)
                                 }
-                            }
+                            } */
 
                             let quals_agree = if let Some(sq) = source_quals {
                                 sq == qual_type_id.qualifiers
                             } else { false };
                             // Detect bitcasts from array-of-T to slice-of-T
+                            /*
                             if let TyKind::Slice(ref tgt_elem_ty) = target_ty.node {
                                 if let TyKind::Array(ref src_elem_ty, _) = source_ty.node {
                                     if tgt_elem_ty == src_elem_ty {
@@ -3424,6 +3426,7 @@ impl Translation {
                                     }
                                 }
                             }
+                            */
                         }
                     }
 

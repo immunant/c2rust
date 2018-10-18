@@ -18,7 +18,7 @@
 use syntax;
 use syntax::ast::{Arm, Expr, ExprKind, LitIntType, Pat, Stmt, StmtKind};
 use syntax::ptr::P;
-use syntax::codemap::{DUMMY_SP};
+use syntax_pos::DUMMY_SP;
 use c_ast::CLabelId;
 use std::ops::Index;
 use syntax::print::pprust;

@@ -91,9 +91,9 @@ add_subdirectory(ast-exporter)
 """.format(prefix=CBOR_PREFIX)  # nopep8
     CC_DB_JSON = "compile_commands.json"
 
-    CUSTOM_RUST_NAME = 'nightly-2018-06-20'
+    CUSTOM_RUST_NAME = 'nightly-2018-10-18'
     # output of `rustup run $CUSTOM_RUST_NAME -- rustc --version`
-    CUSTOM_RUST_RUSTC_VERSION = "rustc 1.28.0-nightly (f28c7aef7 2018-06-19)"
+    CUSTOM_RUST_RUSTC_VERSION = "rustc 1.31.0-nightly (1dceaddfb 2018-10-17)"
 
     RREF_BIN = os.path.join(RREF_DIR,
             'target.{suffix}/release/idiomize'.format(suffix=HOST_SUFFIX))
