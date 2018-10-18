@@ -6,12 +6,14 @@ use std::fs;
 use std::io;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, SyncSender, Receiver};
 use std::thread;
 use syntax::ast::*;
 use syntax::codemap::{FileLoader, RealFileLoader};
-use syntax::codemap::Span;
+use syntax::codemap::{FileMap, Span};
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 use syntax_pos::FileName;
@@ -30,9 +32,8 @@ use super::MarkInfo;
 
 
 struct InteractState {
-    to_worker: SyncSender<ToWorker>,
     to_client: SyncSender<ToClient>,
-    buffers_available: HashSet<PathBuf>,
+    buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
 
     state: RefactorState,
 }
@@ -42,10 +43,9 @@ impl InteractState {
            registry: command::Registry,
            to_worker: SyncSender<ToWorker>,
            to_client: SyncSender<ToClient>) -> InteractState {
-        let mut state = RefactorState::new(rustc_args, registry, HashSet::new());
 
         let to_client2 = to_client.clone();
-        state.rewrite_handler(move |fm, s| {
+        let rw_handler = move |fm: Rc<FileMap>, s: &str| {
             info!("got new text for {:?}", fm.name);
             let filename = match &fm.name {
                 &FileName::Real(ref pathbuf) => pathbuf.to_str().unwrap().to_owned(),
@@ -56,15 +56,19 @@ impl InteractState {
                 file: filename,
                 content: s.to_owned(),
             }).unwrap();
+        };
+
+        let buffers_available = Arc::new(Mutex::new(HashSet::new()));
+
+        let file_loader = Box::new(InteractiveFileLoader {
+            buffers_available: buffers_available.clone(),
+            to_worker: to_worker.clone(),
         });
 
-        InteractState {
-            to_worker: to_worker,
-            to_client: to_client,
-            buffers_available: HashSet::new(),
+        let state = RefactorState::from_rustc_args(
+            &rustc_args, registry, Some(Box::new(rw_handler)), Some(file_loader), HashSet::new());
 
-            state: state,
-        }
+        InteractState { to_client, buffers_available, state }
     }
 
     fn run_loop(&mut self,
@@ -85,18 +89,9 @@ impl InteractState {
         }
     }
 
-    fn make_file_loader(&self) -> Box<InteractiveFileLoader> {
-        Box::new(InteractiveFileLoader {
-            buffers_available: self.buffers_available.clone(),
-            to_worker: self.to_worker.clone(),
-        })
-    }
-
     fn run_compiler<F, R>(&mut self, phase: driver::Phase, func: F) -> R
             where F: FnOnce(&Crate, &driver::Ctxt) -> R {
-        let file_loader = self.make_file_loader();
-        self.state.make_file_loader(move || file_loader.clone());
-        self.state.with_context_at_phase(phase, |st, cx| {
+        self.state.transform_crate(phase, |st, cx| {
             func(&st.krate(), cx)
         })
     }
@@ -170,7 +165,7 @@ impl InteractState {
             },
 
             GetMarkList => {
-                let msg = self.state.with_context_at_phase(driver::Phase::Phase2, |st, cx| {
+                let msg = self.state.transform_crate(driver::Phase::Phase2, |st, cx| {
                     let infos = collect_mark_infos(&st.marks(), &st.krate(), &cx);
                     MarkList { infos: infos }
                 });
@@ -178,16 +173,17 @@ impl InteractState {
             },
 
             SetBuffersAvailable { files } => {
-                self.buffers_available = files.into_iter()
+                let mut buffers = self.buffers_available.lock().unwrap();
+                *buffers = files.into_iter()
                     .filter_map(|x| fs::canonicalize(&x).ok())
                     .collect();
             },
 
             RunCommand { name, args } => {
                 info!("running command {} with args {:?}", name, args);
-                let file_loader = self.make_file_loader();
-                self.state.make_file_loader(move || file_loader.clone());
+                self.state.load_crate();
                 self.state.run(&name, &args);
+                self.state.save_crate();
             },
 
             // Other messages are handled by the worker thread
@@ -264,7 +260,7 @@ pub fn interact_command(args: &[String],
 
 #[derive(Clone)]
 struct InteractiveFileLoader {
-    buffers_available: HashSet<PathBuf>,
+    buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
     to_worker: SyncSender<ToWorker>,
 }
 
@@ -280,7 +276,11 @@ impl FileLoader for InteractiveFileLoader {
     fn read_file(&self, path: &Path) -> io::Result<String> {
         let canon = fs::canonicalize(path)?;
 
-        if self.buffers_available.contains(&canon) {
+        let available = {
+            self.buffers_available.lock().unwrap().contains(&canon)
+        };
+
+        if available {
             let (send, recv) = mpsc::sync_channel(1);
             self.to_worker.send(ToWorker::NeedFile(canon, send)).unwrap();
             Ok(recv.recv().unwrap())

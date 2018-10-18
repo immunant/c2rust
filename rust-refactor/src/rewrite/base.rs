@@ -15,7 +15,8 @@
 //! `[T]` implementation.
 use syntax::ast::*;
 use syntax::codemap::{Span, SyntaxContext};
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
+use syntax::parse::token::{Token, DelimToken, Nonterminal};
+use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 use rustc_target::spec::abi::Abi;
 
 use std::rc::Rc;
@@ -202,7 +203,9 @@ pub fn rewrite_seq<T, R>(old: &[R],
     // We diff the sequences of `NodeId`s to match up nodes on the left and the right.  This works
     // because the old AST has `NodeId`s assigned properly.  (The new AST might not, but in that
     // case we will properly detect a change.)
-    let new_ids = new.iter().map(|x| ast(x).seq_item_id()).collect::<Vec<_>>();
+    //
+    // Note we map the new IDs to corresponding old IDs, to account for NodeId renumbering.
+    let new_ids = new.iter().map(|x| rcx.new_to_old_id(ast(x).seq_item_id())).collect::<Vec<_>>();
     let old_ids = old.iter().map(|x| ast(x).seq_item_id()).collect::<Vec<_>>();
 
     let mut i = 0;
@@ -238,7 +241,6 @@ pub fn rewrite_seq<T, R>(old: &[R],
                         return true;
                     };
 
-                info!("insert new item at {}", describe(rcx.session(), old_span));
                 let ok = strategy::print::rewrite_at(old_span, ast(&new[j]), rcx.borrow());
                 if !ok {
                     return false;
@@ -289,7 +291,7 @@ pub fn rewrite_seq_comma_sep<T, R>(old: &[R],
         x.ast_deref()
     }
 
-    let new_ids = new.iter().map(|x| ast(x).seq_item_id()).collect::<Vec<_>>();
+    let new_ids = new.iter().map(|x| rcx.new_to_old_id(ast(x).seq_item_id())).collect::<Vec<_>>();
     let old_ids = old.iter().map(|x| ast(x).seq_item_id()).collect::<Vec<_>>();
 
     let mut i = 0;
@@ -327,7 +329,6 @@ pub fn rewrite_seq_comma_sep<T, R>(old: &[R],
                         return false;
                     };
 
-                info!("insert new item at {}", describe(rcx.session(), old_span));
                 if !comma_before {
                     rcx.record_text(old_span, ", ");
                 }

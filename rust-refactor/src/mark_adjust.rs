@@ -10,7 +10,7 @@ use syntax::visit::{self, Visitor};
 use api::DriverCtxtExt;
 use ast_manip::{Visit, visit_nodes};
 use command::CommandState;
-use command::{Registry, DriverCommand};
+use command::{Registry, DriverCommand, RefactorState, FuncCommand};
 use driver::{self, Phase};
 use util::HirDefExt;
 use util::IntoSymbol;
@@ -391,4 +391,8 @@ pub fn register_commands(reg: &mut Registry) {
             mark_pub_in_mod(st, &label);
         }))
     });
+
+    reg.register("clear_marks", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
+        rs.clear_marks();
+    })));
 }

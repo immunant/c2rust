@@ -24,10 +24,19 @@ from util import *
 
 @linewise
 def do_impl(s, field_name):
-    yield 'impl GetNodeId for %s {' % s.name
-    yield '  fn get_node_id(&self) -> NodeId {'
-    yield '    self.%s' % field_name
-    yield '  }'
+    if field_name is not None:
+        yield 'impl GetNodeId for %s {' % s.name
+        yield '  fn get_node_id(&self) -> NodeId {'
+        yield '    self.%s' % field_name
+        yield '  }'
+        yield '}'
+
+    yield 'impl MaybeGetNodeId for %s {' % s.name
+    if field_name is not None:
+        yield '  fn supported() -> bool { true }'
+        yield '  fn get_node_id(&self) -> NodeId {'
+        yield '    <Self as GetNodeId>::get_node_id(self)'
+        yield '  }'
     yield '}'
 
 def find_id_field(s):
@@ -57,8 +66,8 @@ def generate(decls):
     yield ''
 
     for d in decls:
-        if not isinstance(d, Struct):
-            continue
-        field_name = find_id_field(d)
-        if field_name is not None:
-            yield do_impl(d, field_name)
+        if isinstance(d, Struct):
+            field_name = find_id_field(d)
+        else:
+            field_name = None
+        yield do_impl(d, field_name)

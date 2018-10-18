@@ -224,6 +224,9 @@ if __name__ == '__main__':
     elif mode == 'lr_expr':
         import lr_expr
         text = lr_expr.generate(decls)
+    elif mode == 'list_node_ids':
+        import list_node_ids
+        text = list_node_ids.generate(decls)
     elif mode == 'rewrite_rewrite':
         import rewrite
         text = rewrite.generate_rewrite_impls(decls)
@@ -239,6 +242,12 @@ if __name__ == '__main__':
     elif mode == 'rewrite_maybe_rewrite_seq':
         import rewrite
         text = rewrite.generate_maybe_rewrite_seq_impls(decls)
+    elif mode == 'mac_table':
+        import mac_table
+        text = mac_table.generate(decls)
+    elif mode == 'nt_match':
+        import nt_match
+        text = nt_match.generate(decls)
     else:
         raise ValueError('unknown mode: %r' % mode)
 
