@@ -1044,13 +1044,15 @@ class TranslateASTVisitor final
       }
  
       bool VisitShuffleVectorExpr(ShuffleVectorExpr *E) {
-          std::vector<void*> childIds;
+          auto children = E->children();
+          std::vector<void*> childIds(std::begin(children), std::end(children));
           encode_entry(E, TagShuffleVectorExpr, childIds);
           return true;
       }
       
       bool VisitConvertVectorExpr(ConvertVectorExpr *E) {
-          std::vector<void*> childIds;
+          auto children = E->children();
+          std::vector<void*> childIds(std::begin(children), std::end(children));
           encode_entry(E, TagConvertVectorExpr, childIds);
           return true;
       }

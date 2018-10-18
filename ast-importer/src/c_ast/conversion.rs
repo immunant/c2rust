@@ -142,6 +142,7 @@ fn parse_cast_kind(kind: &str) -> CastKind {
         "IntegralComplexToFloatingComplex" => CastKind::IntegralComplexToFloatingComplex,
         "BuiltinFnToFnPtr" => CastKind::BuiltinFnToFnPtr,
         "ConstCast" => CastKind::ConstCast,
+        "VectorSplat" => CastKind::VectorSplat,
         k => panic!("Unsupported implicit cast: {}", k),
     }
 }
@@ -1267,20 +1268,36 @@ impl ConversionContext {
 
                 ASTEntryTag::TagShuffleVectorExpr => {
 
+                    let kids: Vec<CExprId> = node.children
+                        .iter()
+                        .map(|id| {
+                            let child_id = id.expect("Missing shuffle argument");
+                            self.visit_expr(child_id)
+                        })
+                        .collect();
+
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty_old);
 
-                    let e = CExprKind::ShuffleVector(ty);
+                    let e = CExprKind::ShuffleVector(ty, kids);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
                 }
 
                 ASTEntryTag::TagConvertVectorExpr => {
 
+                    let kids: Vec<CExprId> = node.children
+                        .iter()
+                        .map(|id| {
+                            let child_id = id.expect("Missing convert argument");
+                            self.visit_expr(child_id)
+                        })
+                        .collect();
+
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty_old);
 
-                    let e = CExprKind::ConvertVector(ty);
+                    let e = CExprKind::ConvertVector(ty, kids);
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
                 }

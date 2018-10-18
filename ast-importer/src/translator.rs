@@ -3573,6 +3573,9 @@ impl Translation {
             CastKind::IntegralComplexCast | CastKind::IntegralComplexToFloatingComplex |
             CastKind::IntegralComplexToBoolean =>
                 Err(format!("TODO casts with complex numbers not supported")),
+
+            CastKind::VectorSplat =>
+                Err(format!("TODO vector splat casts not supported")),
         }
     }
 

@@ -613,8 +613,8 @@ pub enum CExprKind {
     VAArg(CQualTypeId, CExprId),
 
     // Unsupported vector operations,
-    ShuffleVector(CQualTypeId),
-    ConvertVector(CQualTypeId),
+    ShuffleVector(CQualTypeId, Vec<CExprId>),
+    ConvertVector(CQualTypeId, Vec<CExprId>),
 
     // From syntactic form of initializer list expressions
     DesignatedInitExpr(CQualTypeId, Vec<Designator>, CExprId),
@@ -663,8 +663,8 @@ impl CExprKind {
             CExprKind::Predefined(ty, _) |
             CExprKind::Statements(ty, _) |
             CExprKind::VAArg(ty, _) |
-            CExprKind::ShuffleVector(ty) |
-            CExprKind::ConvertVector(ty) |
+            CExprKind::ShuffleVector(ty, _) |
+            CExprKind::ConvertVector(ty, _) |
             CExprKind::DesignatedInitExpr(ty,_,_) => Some(ty),
         }
     }
@@ -714,6 +714,7 @@ pub enum CastKind {
     IntegralComplexToFloatingComplex,
     BuiltinFnToFnPtr,
     ConstCast,
+    VectorSplat,
 }
 
 /// Represents a unary operator in C (6.5.3 Unary operators) and GNU C extensions
