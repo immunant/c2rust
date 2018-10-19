@@ -111,10 +111,10 @@ gen_visit_impls! {
         //    path_span: Span, 
         //    path_segment: &'ast PathSegment
         //) { ... }
-        //fn visit_path_parameters(
+        //fn visit_generic_args(
         //    &mut self, 
         //    path_span: Span, 
-        //    path_parameters: &'ast PathParameters
+        //    generic_args: &'ast GenericArgs
         //) { ... }
         fn visit_assoc_type_binding(&mut self, type_binding: &'ast TypeBinding) { ... }
         fn visit_attribute(&mut self, _attr: &'ast Attribute) { ... }

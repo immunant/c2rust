@@ -182,14 +182,14 @@ impl Make<TokenTree> for Token {
     }
 }
 
-impl Make<PathParameters> for AngleBracketedParameterData {
-    fn make(self, _mk: &Builder) -> PathParameters {
+impl Make<GenericArgs> for AngleBracketedArgs {
+    fn make(self, _mk: &Builder) -> GenericArgs {
         AngleBracketed(self)
     }
 }
 
-impl Make<PathParameters> for ParenthesizedParameterData {
-    fn make(self, _mk: &Builder) -> PathParameters {
+impl Make<GenericArgs> for ParenthesisedArgs {
+    fn make(self, _mk: &Builder) -> GenericArgs {
         Parenthesized(self)
     }
 }
@@ -391,7 +391,7 @@ impl Builder {
     // Path segments with parameters
 
     pub fn path_segment_with_params<I,P>(self, identifier: I, parameters: P) -> PathSegment
-        where I: Make<Ident>, P: Make<PathParameters> {
+        where I: Make<Ident>, P: Make<GenericArgs> {
         let identifier = identifier.make(&self);
         let parameters = parameters.make(&self);
         PathSegment {
@@ -400,22 +400,22 @@ impl Builder {
         }
     }
 
-    pub fn parenthesized_param_types<Ps>(self, params: Ps) -> ParenthesizedParameterData
+    pub fn parenthesized_param_types<Ps>(self, params: Ps) -> ParenthesisedArgs
         where Ps: Make<Vec<P<Ty>>> {
 
         let params = params.make(&self);
-        ParenthesizedParameterData {
+        ParenthesisedArgs {
             span: self.span,
             inputs: params,
             output: None,
         }
     }
 
-    pub fn angle_bracketed_param_types<Ps>(self, params: Ps) -> AngleBracketedParameterData
+    pub fn angle_bracketed_param_types<Ps>(self, params: Ps) -> AngleBracketedArgs
         where Ps: Make<Vec<P<Ty>>> {
 
         let params = params.make(&self);
-        AngleBracketedParameterData {
+        AngleBracketedArgs {
             span: self.span,
             lifetimes: vec![],
             types: params,

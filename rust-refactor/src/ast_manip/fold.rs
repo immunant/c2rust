@@ -94,15 +94,15 @@ gen_folder_impls! {
         fn fold_ident(&mut self, i: Ident) -> Ident { ... }
         fn fold_usize(&mut self, i: usize) -> usize { ... }
         fn fold_path(&mut self, p: Path) -> Path { ... }
-        fn fold_path_parameters(&mut self, p: PathParameters) -> PathParameters { ... }
+        fn fold_generic_args(&mut self, p: GenericArgs) -> GenericArgs { ... }
         fn fold_angle_bracketed_parameter_data(
             &mut self, 
-            p: AngleBracketedParameterData
-        ) -> AngleBracketedParameterData { ... }
+            p: AngleBracketedArgs
+        ) -> AngleBracketedArgs { ... }
         fn fold_parenthesized_parameter_data(
             &mut self, 
-            p: ParenthesizedParameterData
-        ) -> ParenthesizedParameterData { ... }
+            p: ParenthesisedArgs
+        ) -> ParenthesisedArgs { ... }
         fn fold_local(&mut self, l: P<Local>) -> P<Local> { ... }
         fn fold_mac(&mut self, _mac: Mac) -> Mac { ... }
         // fn fold_lifetime(&mut self, l: Lifetime) -> Lifetime { ... }

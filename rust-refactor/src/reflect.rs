@@ -204,7 +204,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 if let Some(substs) = opt_substs {
                     assert!(substs.len() >= num_params);
                     let start = substs.len() - num_params;
-                    let mut abpd = AngleBracketedParameterData {
+                    let mut abpd = AngleBracketedArgs {
                         span: DUMMY_SP,
                         lifetimes: Vec::new(),
                         types: Vec::new(),

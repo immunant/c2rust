@@ -99,21 +99,21 @@ impl Transform for GeneralizeItems {
                 if let Some(ref mut params) = seg.parameters {
                     *params = params.clone().map(|mut params| {
                         match params {
-                            PathParameters::AngleBracketed(ref mut abpd) =>
+                            GenericArgs::AngleBracketed(ref mut abpd) =>
                                 abpd.types.push(arg),
-                            PathParameters::Parenthesized(..) =>
+                            GenericArgs::Parenthesized(..) =>
                                 panic!("expected angle bracketed params, but found parenthesized"),
                         }
                         params
                     });
                 } else {
-                    let abpd = AngleBracketedParameterData {
+                    let abpd = AngleBracketedArgs {
                         span: DUMMY_SP,
                         lifetimes: vec![],
                         types: vec![arg],
                         bindings: vec![],
                     };
-                    seg.parameters = Some(P(PathParameters::AngleBracketed(abpd)));
+                    seg.parameters = Some(P(GenericArgs::AngleBracketed(abpd)));
                 }
             }
 
