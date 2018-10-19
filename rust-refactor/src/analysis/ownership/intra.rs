@@ -2,7 +2,7 @@
 
 use rustc::hir::def_id::DefId;
 use rustc::mir::*;
-use rustc::ty::{Ty, TypeVariants};
+use rustc::ty::{Ty, TyKind};
 use rustc_data_structures::indexed_vec::{IndexVec, Idx};
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -14,7 +14,7 @@ use super::context::{Ctxt, Instantiation};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Label<'tcx> {
-    /// Most `TypeVariants` get no constructor.
+    /// Most `TyKind` get no constructor.
     None,
 
     /// Pointers and references get a permission annotation.
@@ -183,14 +183,14 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 ref mut next_inst_var, ref mut insts, .. } = *self;
         ilcx.label(ty, &mut |ty| {
             match ty.sty {
-                TypeVariants::TyRef(_, _, _) |
-                TypeVariants::TyRawPtr(_) => {
+                TyKind::TyRef(_, _, _) |
+                TyKind::TyRawPtr(_) => {
                     let v = Var(*next_local_var);
                     *next_local_var += 1;
                     Label::Ptr(Perm::LocalVar(v))
                 },
 
-                TypeVariants::TyFnDef(def_id, _) => {
+                TyKind::TyFnDef(def_id, _) => {
                     let (func, var) = cx.variant_summ(def_id);
                     let num_vars = func.num_sig_vars;
 
@@ -265,12 +265,12 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
     fn field_lty(&mut self, base_ty: ITy<'tcx>, v: usize, f: Field) -> ITy<'tcx> {
         match base_ty.ty.sty {
-            TypeVariants::TyAdt(adt, _substs) => {
+            TyKind::TyAdt(adt, _substs) => {
                 let field_def = &adt.variants[v].fields[f.index()];
                 let poly_ty = self.static_ty(field_def.did);
                 self.ilcx.subst(poly_ty, &base_ty.args)
             },
-            TypeVariants::TyTuple(_tys_) => base_ty.args[f.index()],
+            TyKind::TyTuple(_tys_) => base_ty.args[f.index()],
             _ => unimplemented!(),
         }
     }
@@ -454,7 +454,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
     fn ty_fn_sig(&mut self, ty: ITy<'tcx>) -> IFnSig<'tcx> {
         match ty.ty.sty {
-            TypeVariants::TyFnDef(did, _substs) => {
+            TyKind::TyFnDef(did, _substs) => {
                 let idx = expect!([ty.label] Label::FnDef(idx) => idx);
                 let var_base = self.insts[idx].first_inst_var;
 
@@ -480,14 +480,14 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 }
             },
 
-            TypeVariants::TyFnPtr(_) => {
+            TyKind::TyFnPtr(_) => {
                 FnSig {
                     inputs: &ty.args[.. ty.args.len() - 1],
                     output: ty.args[ty.args.len() - 1],
                 }
             },
 
-            TypeVariants::TyClosure(_, _) => unimplemented!(),
+            TyKind::TyClosure(_, _) => unimplemented!(),
 
             _ => panic!("expected FnDef, FnPtr, or Closure"),
         }

@@ -1,11 +1,11 @@
 use std::rc::Rc;
-use syntax::ast::*;
 use rustc_target::spec::abi::Abi;
-use syntax::codemap::{Span, Spanned};
-use syntax::ext::hygiene::SyntaxContext;
+use syntax::ast::*;
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
+use syntax::source_map::{Span, Spanned};
 use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
+use syntax_pos::hygiene::SyntaxContext;
 
 pub trait ListNodeIds {
     fn list_node_ids(&self) -> Vec<NodeId> {

@@ -1,11 +1,11 @@
 //! `Fold` trait for AST types that can be folded over.
 use syntax::ast::*;
-use syntax::codemap::Span;
 use syntax::fold::Folder;
 use syntax::ptr::P;
 use syntax::parse::token::{Token, Nonterminal};
+use syntax::source_map::Span;
 use syntax::tokenstream::{TokenTree, TokenStream};
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 
 
@@ -68,16 +68,16 @@ gen_folder_impls! {
             list_item: NestedMetaItem
         ) -> NestedMetaItem { ... }
         fn fold_meta_item(&mut self, meta_item: MetaItem) -> MetaItem { ... }
-        fn fold_foreign_item(&mut self, ni: ForeignItem) -> SmallVector<ForeignItem> { ... }
-        fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> { ... }
+        fn fold_foreign_item(&mut self, ni: ForeignItem) -> SmallVec<[ForeignItem; 1]> { ... }
+        fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> { ... }
         fn fold_item_simple(&mut self, i: Item) -> Item { ... }
         fn fold_struct_field(&mut self, sf: StructField) -> StructField { ... }
         fn fold_item_kind(&mut self, i: ItemKind) -> ItemKind { ... }
-        fn fold_trait_item(&mut self, i: TraitItem) -> SmallVector<TraitItem> { ... }
-        fn fold_impl_item(&mut self, i: ImplItem) -> SmallVector<ImplItem> { ... }
+        fn fold_trait_item(&mut self, i: TraitItem) -> SmallVec<[TraitItem; 1]> { ... }
+        fn fold_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> { ... }
         fn fold_fn_decl(&mut self, d: P<FnDecl>) -> P<FnDecl> { ... }
         fn fold_block(&mut self, b: P<Block>) -> P<Block> { ... }
-        fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> { ... }
+        fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> { ... }
         fn fold_arm(&mut self, a: Arm) -> Arm { ... }
         fn fold_pat(&mut self, p: P<Pat>) -> P<Pat> { ... }
         fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> { ... }

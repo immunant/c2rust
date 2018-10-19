@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 use syntax::ast::*;
-use syntax::codemap::DUMMY_SP;
+use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 use api::*;
 use command::{CommandState, Registry};

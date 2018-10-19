@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use rustc::hir::def_id::DefId;
-use rustc::ty::TypeVariants;
+use rustc::ty::TyKind;
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::codemap::Spanned;
+use syntax::source_map::Spanned;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 use api::*;
 use command::{CommandState, Registry};
@@ -131,7 +131,7 @@ impl Transform for ToMethod {
                     }
                 } else {
                     match pat_ty.sty {
-                        TypeVariants::TyRef(_, ty, _) if ty == self_ty => {
+                        TyKind::TyRef(_, ty, _) if ty == self_ty => {
                             match arg.ty.node {
                                 TyKind::Rptr(ref lt, ref mty) =>
                                     Some(SelfKind::Region(lt.clone(), mty.mutbl)),
@@ -312,7 +312,7 @@ struct SinkUnsafeFolder<'a> {
 }
 
 impl<'a> Folder for SinkUnsafeFolder<'a> {
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let i = if self.st.marked(i.id, "target") {
             i.map(|mut i| {
                 match i.node {
@@ -331,7 +331,7 @@ impl<'a> Folder for SinkUnsafeFolder<'a> {
         fold::noop_fold_item(i, self)
     }
 
-    fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVector<ImplItem> {
+    fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
         if self.st.marked(i.id, "target") {
             match i.node {
                 ImplItemKind::Method(MethodSig { ref mut unsafety, .. }, ref mut block) => {

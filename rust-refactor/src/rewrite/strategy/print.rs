@@ -14,7 +14,7 @@ use rustc::session::Session;
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::codemap::{Span, Spanned, BytePos, FileName};
+use syntax::source_map::{Span, Spanned, BytePos, FileName};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::print::pprust;

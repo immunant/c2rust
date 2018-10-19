@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::Write;
 use std::rc::Rc;
 use diff;
-use syntax::codemap::{CodeMap, FileMap};
+use syntax::source_map::{SourceMap, SourceFile};
 use syntax_pos::{BytePos, FileName};
 
 use rewrite::{TextRewrite, TextAdjust};
@@ -25,7 +25,7 @@ pub enum RewriteMode {
 }
 
 /// Apply a sequence of rewrites to the source code, handling the results as specified by `mode`.
-pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite], mode: RewriteMode) {
+pub fn rewrite_files(cm: &SourceMap, rewrites: &[TextRewrite], mode: RewriteMode) {
     rewrite_files_with(cm, rewrites, |fm, s| {
         rewrite_mode_callback(mode, fm, s);
     });
@@ -33,7 +33,7 @@ pub fn rewrite_files(cm: &CodeMap, rewrites: &[TextRewrite], mode: RewriteMode) 
 
 /// Implementation of the provided rewrite modes, for use in a `rewrite_files_with` callback.
 pub fn rewrite_mode_callback(mode: RewriteMode,
-                             fm: Rc<FileMap>,
+                             fm: Rc<SourceFile>,
                              s: &str) {
     let filename = match fm.name {
         FileName::Macros(_) => return,
@@ -69,14 +69,14 @@ pub fn rewrite_mode_callback(mode: RewriteMode,
 }
 
 /// Apply a sequence of rewrites to the source code, handling the results by passing the new text
-/// to `callback` along with the `FileMap` describing the original source file.
-pub fn rewrite_files_with<F>(cm: &CodeMap, rewrites: &[TextRewrite], mut callback: F)
-        where F: FnMut(Rc<FileMap>, &str) {
+/// to `callback` along with the `SourceFile` describing the original source file.
+pub fn rewrite_files_with<F>(cm: &SourceMap, rewrites: &[TextRewrite], mut callback: F)
+        where F: FnMut(Rc<SourceFile>, &str) {
     let mut by_file = HashMap::new();
 
     for rw in rewrites {
         let fm = cm.lookup_byte_offset(rw.old_span.lo()).fm;
-        let ptr = (&fm as &FileMap) as *const _;
+        let ptr = (&fm as &SourceFile) as *const _;
         by_file.entry(ptr).or_insert_with(|| (Vec::new(), fm)).0.push(rw.clone());
     }
 
@@ -112,7 +112,7 @@ fn print_rewrites(rws: &[TextRewrite]) {
 ///
 /// All rewrites must be in order, and must lie between `start` and `end`.  Otherwise a panic may
 /// occur.
-fn rewrite_range(cm: &CodeMap,
+fn rewrite_range(cm: &SourceMap,
                  start: BytePos,
                  end: BytePos,
                  rewrites: &[TextRewrite],
@@ -149,7 +149,7 @@ fn rewrite_range(cm: &CodeMap,
 }
 
 /// Runs `callback` on the source text between `lo` and `hi`.
-fn emit_chunk<F: FnMut(&str)>(cm: &CodeMap,
+fn emit_chunk<F: FnMut(&str)>(cm: &SourceMap,
                               lo: BytePos,
                               hi: BytePos,
                               mut callback: F) {

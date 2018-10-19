@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, SyncSender, Receiver};
 use std::thread;
 use syntax::ast::*;
-use syntax::codemap::{FileLoader, RealFileLoader};
-use syntax::codemap::{FileMap, Span};
+use syntax::source_map::{FileLoader, RealFileLoader};
+use syntax::source_map::{SourceFile, Span};
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 use syntax_pos::FileName;
@@ -45,7 +45,7 @@ impl InteractState {
            to_client: SyncSender<ToClient>) -> InteractState {
 
         let to_client2 = to_client.clone();
-        let rw_handler = move |fm: Rc<FileMap>, s: &str| {
+        let rw_handler = move |fm: Rc<SourceFile>, s: &str| {
             info!("got new text for {:?}", fm.name);
             let filename = match &fm.name {
                 &FileName::Real(ref pathbuf) => pathbuf.to_str().unwrap().to_owned(),

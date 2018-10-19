@@ -11,7 +11,7 @@
 //!
 //! Aside from the special handling of qualifiers, this strategy works the same as `recursive`.
 use syntax::ast::*;
-use syntax::codemap::{Span, BytePos};
+use syntax::source_map::{Span, BytePos};
 use syntax::parse::PResult;
 use syntax::parse::parser::Parser;
 use syntax::parse::token::{Token, DelimToken};

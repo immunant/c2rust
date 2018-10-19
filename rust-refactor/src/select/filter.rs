@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::codemap::Span;
+use syntax::source_map::Span;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 

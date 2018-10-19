@@ -43,7 +43,7 @@ use syntax::parse::token::Token;
 use syntax::ptr::P;
 use syntax::tokenstream::ThinTokenStream;
 use syntax::util::move_map::MoveMap;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 use api::DriverCtxtExt;
 use ast_manip::{Fold, GetNodeId};

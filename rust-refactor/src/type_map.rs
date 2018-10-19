@@ -33,7 +33,7 @@ pub trait Signature<T>: Debug {
 }
 
 pub trait Type: Copy + Debug {
-    fn sty(&self) -> &ty::TypeVariants;
+    fn sty(&self) -> &ty::TyKind;
     fn num_args(&self) -> usize;
     fn arg(&self, idx: usize) -> Self;
 }
@@ -53,7 +53,7 @@ impl<'a, 'tcx, S, F> TypeMapVisitor<'a, 'tcx, S, F>
     /// (The structures may not match if the `ast::Ty` refers to a type alias which has been
     /// expanded, for example - then `ast_ty` looks like `Alias` while `ty` is `Foo<Bar, Baz>`.)
     fn record_ty(&mut self, ty: S::Type, ast_ty: &Ty) {
-        use rustc::ty::TypeVariants::*;
+        use rustc::ty::TyKind::*;
 
         (self.callback)(&mut self.source, ast_ty, ty);
 

@@ -1,14 +1,13 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
+use std::rc::Rc;
 use rustc::hir;
 use rustc_target::spec::abi::Abi;
-// use syntax::abi::Abi;
 use syntax::ast::*;
-use syntax::codemap::{DUMMY_SP, Spanned, Span, dummy_spanned};
 use syntax::parse::token::{self, Token, DelimToken};
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder, ThinTokenStream};
+use syntax::source_map::{DUMMY_SP, Spanned, Span, dummy_spanned};
 use syntax::symbol::keywords;
-use std::rc::Rc;
+use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder, ThinTokenStream};
 
 use util::IntoSymbol;
 

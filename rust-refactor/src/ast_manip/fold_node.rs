@@ -2,7 +2,7 @@
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 use syntax::util::move_map::MoveMap;
 
 use ast_manip::Fold;

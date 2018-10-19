@@ -6,9 +6,9 @@ use std::rc::Rc;
 use std::mem;
 use rustc::session::Session;
 use syntax::ast::{NodeId, Crate, Mod};
-use syntax::codemap::DUMMY_SP;
-use syntax::codemap::FileLoader;
-use syntax::codemap::FileMap;
+use syntax::source_map::DUMMY_SP;
+use syntax::source_map::FileLoader;
+use syntax::source_map::SourceFile;
 use syntax::symbol::Symbol;
 
 use ast_manip::{ListNodeIds, number_nodes, reset_node_ids, remove_paren};
@@ -24,7 +24,7 @@ use util::IntoSymbol;
 /// Stores the overall state of the refactoring process, which can be read and updated by
 /// `Command`s.
 pub struct RefactorState {
-    rewrite_handler: Option<Box<FnMut(Rc<FileMap>, &str)>>,
+    rewrite_handler: Option<Box<FnMut(Rc<SourceFile>, &str)>>,
     cmd_reg: Registry,
     session: Session,
 
@@ -47,7 +47,7 @@ pub struct RefactorState {
 impl RefactorState {
     pub fn new(session: Session,
                cmd_reg: Registry,
-               rewrite_handler: Option<Box<FnMut(Rc<FileMap>, &str)>>,
+               rewrite_handler: Option<Box<FnMut(Rc<SourceFile>, &str)>>,
                marks: HashSet<(NodeId, Symbol)>) -> RefactorState {
         RefactorState {
             rewrite_handler,
@@ -65,7 +65,7 @@ impl RefactorState {
 
     pub fn from_rustc_args(rustc_args: &[String],
                            cmd_reg: Registry,
-                           rewrite_handler: Option<Box<FnMut(Rc<FileMap>, &str)>>,
+                           rewrite_handler: Option<Box<FnMut(Rc<SourceFile>, &str)>>,
                            file_loader: Option<Box<FileLoader+Sync+Send>>,
                            marks: HashSet<(NodeId, Symbol)>) -> RefactorState {
         let session = driver::build_session_from_args(rustc_args, file_loader);

@@ -1,6 +1,6 @@
 use syntax::ast::*;
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 use api::*;
 use command::{CommandState, Registry};

@@ -14,7 +14,7 @@
 //! specialized function, such as `rewrite_seq_comma_sep`) to get better results than the generic
 //! `[T]` implementation.
 use syntax::ast::*;
-use syntax::codemap::{Span, SyntaxContext};
+use syntax::source_map::{Span, SyntaxContext};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 use rustc_target::spec::abi::Abi;
@@ -22,7 +22,7 @@ use rustc_target::spec::abi::Abi;
 use std::rc::Rc;
 use syntax::ptr::P;
 use diff;
-use syntax::codemap::{Spanned, DUMMY_SP};
+use syntax::source_map::{Spanned, DUMMY_SP};
 use syntax::util::parser::{AssocOp, Fixity};
 use rustc::session::Session;
 
@@ -35,7 +35,7 @@ use super::strategy::print;
 
 pub trait Rewrite {
     /// Given an old AST, a new AST, and text corresponding to the old AST, transform the text into
-    /// text corresponding to the new AST.  `rcx` tracks the old text (in the form of a `CodeMap`)
+    /// text corresponding to the new AST.  `rcx` tracks the old text (in the form of a `SourceMap`)
     /// and the rewrites.  Returns `true` if rewriting succeeded, `false` otherwise.
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool;
 }
@@ -396,7 +396,7 @@ pub fn binop_right_prec(op: &BinOp) -> i8 {
 /// all macro-generated code to be non-rewritable.
 ///
 /// Note that this does not require the source text to exist in a real (non-virtual) file - there
-/// just has to be text somewhere in the `CodeMap`.
+/// just has to be text somewhere in the `SourceMap`.
 pub fn is_rewritable(sp: Span) -> bool {
     sp != DUMMY_SP &&
     // If it has a non-default SyntaxContext, it was generated as part of a macro expansion.

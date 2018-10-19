@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use syntax::ast::*;
-use syntax::codemap::{Span, Spanned, SyntaxContext};
+use syntax::source_map::{Span, Spanned, SyntaxContext};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 use rustc_target::spec::abi::Abi;

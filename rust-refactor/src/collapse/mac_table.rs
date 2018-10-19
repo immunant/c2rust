@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
 use syntax::ast::*;
-use syntax::codemap::{Span, SyntaxContext};
+use syntax::source_map::{Span, SyntaxContext};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 use rustc_target::spec::abi::Abi;
 
 use std::rc::Rc;
 use syntax::attr;
-use syntax::codemap::Spanned;
+use syntax::source_map::Spanned;
 use syntax::ptr::P;
 use syntax::visit::Visitor;
 

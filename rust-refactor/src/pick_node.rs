@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 use syntax::ast::*;
-use syntax::codemap::{Span, BytePos};
+use syntax::source_map::{Span, BytePos};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::visit::{self, Visitor, FnKind};
 use syntax_pos::FileName;
@@ -230,7 +230,7 @@ impl FromStr for NodeKind {
     }
 }
 
-/// Select an AST node by its `BytePos` in the `CodeMap`.  Only nodes of the specified `kind` will
+/// Select an AST node by its `BytePos` in the `SourceMap`.  Only nodes of the specified `kind` will
 /// be selected.
 pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo> {
     let mut v = PickVisitor {
@@ -275,7 +275,7 @@ pub fn pick_node_at_loc(krate: &Crate,
     }
 
     // TODO: This math is probably off when the line contains multibyte characters.  The
-    // information to properly handle multibyte chars should be accessible through the `FileMap`.
+    // information to properly handle multibyte chars should be accessible through the `SourceFile`.
     let pos = lo + BytePos(col);
 
     pick_node(krate, kind, pos)

@@ -3,7 +3,7 @@ use std::rc::Rc;
 use syntax::ast::*;
 // use syntax::abi::Abi;
 use rustc_target::spec::abi::Abi;
-use syntax::codemap::{Span, Spanned};
+use syntax::source_map::{Span, Spanned};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;

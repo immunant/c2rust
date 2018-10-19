@@ -2,10 +2,11 @@
 use std::rc::Rc;
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
-use syntax::codemap::{Span, Spanned, SyntaxContext};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
-use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 use syntax::ptr::P;
+use syntax::source_map::{Span, Spanned};
+use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
+use syntax_pos::hygiene::SyntaxContext;
 
 
 /// Trait for obtaining the `NodeId` of a generic AST node.

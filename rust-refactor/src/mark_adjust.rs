@@ -2,7 +2,7 @@
 use std::str::FromStr;
 use rustc::hir;
 use rustc::hir::def::Def;
-use rustc::ty::TypeVariants;
+use rustc::ty::TyKind;
 use syntax::ast::*;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
@@ -186,7 +186,7 @@ pub fn find_field_uses<T: Visit>(target: &T,
 
                 // Use the adjusted type to catch field accesses through autoderef.
                 let ty = cx.adjusted_node_type(obj.id);
-                let def = match_or!([ty.sty] TypeVariants::TyAdt(def, _) => def; return);
+                let def = match_or!([ty.sty] TyKind::TyAdt(def, _) => def; return);
                 if let Some(id) = cx.hir_map().as_local_node_id(def.did) {
                     if st.marked(id, label) {
                         st.add_mark(e.id, label);

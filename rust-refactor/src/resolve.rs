@@ -8,7 +8,7 @@ use syntax_pos::symbol::Symbol;
 
 
 fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Def)>) {
-    use rustc::hir::Item_::*;
+    use rustc::hir::ItemKind::*;
 
     for &iid in &m.item_ids {
         let node = tcx.hir.get(iid.id);
@@ -53,7 +53,7 @@ fn push_hir_foreign_mod_children(tcx: TyCtxt, fm: &ForeignMod, children: &mut Ve
 
 /// List the names and `Def`s of all children of the indicated module.
 pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Def)> {
-    use rustc::hir::Item_::*;
+    use rustc::hir::ItemKind::*;
 
     if did.krate == LOCAL_CRATE {
         if did.index == CRATE_DEF_INDEX {

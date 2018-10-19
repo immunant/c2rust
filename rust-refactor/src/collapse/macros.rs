@@ -1,12 +1,12 @@
 use std::collections::{HashMap, HashSet, BTreeMap};
 use syntax::ast::*;
 use syntax::attr;
-use syntax::codemap::{Span, BytePos};
+use syntax::source_map::{Span, BytePos};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::{self, TokenStream, ThinTokenStream, TokenTree, Delimited};
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 use super::mac_table::{MacTable, InvocId, InvocKind};
 use super::nt_match::{self, NtMatch};
@@ -108,7 +108,7 @@ impl<'a> Folder for CollapseMacros<'a> {
         fold::noop_fold_ty(t, self)
     }
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(info) = self.mac_table.get(s.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_stmt()
@@ -132,7 +132,7 @@ impl<'a> Folder for CollapseMacros<'a> {
         fold::noop_fold_stmt(s, self)
     }
 
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         if let Some(info) = self.mac_table.get(i.id) {
             match info.invoc {
                 InvocKind::Mac(mac) => {
@@ -166,7 +166,7 @@ impl<'a> Folder for CollapseMacros<'a> {
         fold::noop_fold_item(i, self)
     }
 
-    fn fold_impl_item(&mut self, ii: ImplItem) -> SmallVector<ImplItem> {
+    fn fold_impl_item(&mut self, ii: ImplItem) -> SmallVec<[ImplItem; 1]> {
         if let Some(info) = self.mac_table.get(ii.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_impl_item()
@@ -191,7 +191,7 @@ impl<'a> Folder for CollapseMacros<'a> {
         fold::noop_fold_impl_item(ii, self)
     }
 
-    fn fold_trait_item(&mut self, ti: TraitItem) -> SmallVector<TraitItem> {
+    fn fold_trait_item(&mut self, ti: TraitItem) -> SmallVec<[TraitItem; 1]> {
         if let Some(info) = self.mac_table.get(ti.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_trait_item()
@@ -216,7 +216,7 @@ impl<'a> Folder for CollapseMacros<'a> {
         fold::noop_fold_trait_item(ti, self)
     }
 
-    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVector<ForeignItem> {
+    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         if let Some(info) = self.mac_table.get(fi.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_foreign_item()
@@ -420,7 +420,7 @@ impl<'a> Folder for ReplaceTokens<'a> {
         fold::noop_fold_ty(t, self)
     }
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(invoc_id) = self.mac_table.get(s.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut s = s;
@@ -435,7 +435,7 @@ impl<'a> Folder for ReplaceTokens<'a> {
         fold::noop_fold_stmt(s, self)
     }
 
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         if let Some(invoc_id) = self.mac_table.get(i.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 return SmallVector::one(i.map(|mut i| {
@@ -447,7 +447,7 @@ impl<'a> Folder for ReplaceTokens<'a> {
         fold::noop_fold_item(i, self)
     }
 
-    fn fold_impl_item(&mut self, ii: ImplItem) -> SmallVector<ImplItem> {
+    fn fold_impl_item(&mut self, ii: ImplItem) -> SmallVec<[ImplItem; 1]> {
         if let Some(invoc_id) = self.mac_table.get(ii.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut ii = ii;
@@ -458,7 +458,7 @@ impl<'a> Folder for ReplaceTokens<'a> {
         fold::noop_fold_impl_item(ii, self)
     }
 
-    fn fold_trait_item(&mut self, ti: TraitItem) -> SmallVector<TraitItem> {
+    fn fold_trait_item(&mut self, ti: TraitItem) -> SmallVec<[TraitItem; 1]> {
         if let Some(invoc_id) = self.mac_table.get(ti.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut ti = ti;
@@ -469,7 +469,7 @@ impl<'a> Folder for ReplaceTokens<'a> {
         fold::noop_fold_trait_item(ti, self)
     }
 
-    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVector<ForeignItem> {
+    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         if let Some(invoc_id) = self.mac_table.get(fi.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut fi = fi;

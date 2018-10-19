@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use syntax::attr;
 use syntax::ast::*;
-use syntax::codemap::Span;
+use syntax::source_map::Span;
 use util::IntoSymbol;
 
 mod cfg_attr;

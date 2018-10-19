@@ -60,7 +60,7 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use rustc::session::Session;
 use syntax::ast::*;
-use syntax::codemap::{Span, DUMMY_SP};
+use syntax::source_map::{Span, DUMMY_SP};
 use syntax::util::parser;
 use syntax::visit::{self, Visitor};
 

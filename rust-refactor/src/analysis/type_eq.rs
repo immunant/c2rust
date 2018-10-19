@@ -51,7 +51,7 @@ use rustc::ty::adjustment::Adjust;
 use rustc_target::spec::abi::Abi;
 use syntax::ast;
 use syntax::ast::NodeId;
-use syntax::codemap::Span;
+use syntax::source_map::Span;
 use syntax::symbol::Symbol;
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -476,7 +476,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     // Helpers for extracting information from function types.
 
     fn fn_num_inputs(&self, lty: LTy<'tcx>) -> usize {
-        use rustc::ty::TypeVariants::*;
+        use rustc::ty::TyKind::*;
         match lty.ty.sty {
             TyFnDef(id, _) => self.def_sig(id).inputs.len(),
             TyFnPtr(_) => lty.args.len() - 1,
@@ -488,7 +488,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
 
     /// Get the input types out of a `FnPtr` or `FnDef` `LTy`.
     fn fn_input(&self, lty: LTy<'tcx>, idx: usize) -> LTy<'tcx> {
-        use rustc::ty::TypeVariants::*;
+        use rustc::ty::TyKind::*;
         match lty.ty.sty {
             TyFnDef(id, _) => {
                 // For a `TyFnDef`, retrieve the `LFnSig` for the given `DefId` and apply the
@@ -507,7 +507,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
 
     /// Get the output type out of a `FnPtr` or `FnDef` `LTy`.
     fn fn_output(&self, lty: LTy<'tcx>) -> LTy<'tcx> {
-        use rustc::ty::TypeVariants::*;
+        use rustc::ty::TyKind::*;
         match lty.ty.sty {
             TyFnDef(id, _) => {
                 let sig = self.def_sig(id);
@@ -522,7 +522,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     }
 
     fn fn_is_variadic(&self, lty: LTy<'tcx>) -> bool {
-        use rustc::ty::TypeVariants::*;
+        use rustc::ty::TyKind::*;
         match lty.ty.sty {
             TyFnDef(id, _) => {
                 self.def_sig(id).variadic
@@ -556,7 +556,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     /// substitution, using the type arguments from `struct_ty`.
     fn field_lty(&self, struct_ty: LTy<'tcx>, name: Symbol) -> LTy<'tcx> {
         let adt = match struct_ty.ty.sty {
-            ty::TypeVariants::TyAdt(ref adt, _) => adt,
+            ty::TyKind::TyAdt(ref adt, _) => adt,
             _ => panic!("field_lty: not a struct ty: {:?}", struct_ty),
         };
         let variant = adt.non_enum_variant();
@@ -610,7 +610,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
                 let func_lty = self.expr_lty(func);
 
                 fn is_closure(ty: ty::Ty) -> bool {
-                    if let ty::TypeVariants::TyClosure(..) = ty.sty {
+                    if let ty::TyKind::TyClosure(..) = ty.sty {
                         true
                     } else {
                         false

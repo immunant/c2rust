@@ -1,15 +1,14 @@
 //! `fold_expr_with_context` function, for rewriting exprs with knowledge of their contexts (rvalue
 //! / lvalue / mut lvalue).
 use std::rc::Rc;
-use syntax::ast::*;
-// use syntax::abi::Abi;
 use rustc_target::spec::abi::Abi;
-use syntax::codemap::{Span, Spanned};
-use syntax::ext::hygiene::SyntaxContext;
+use syntax::ast::*;
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
+use syntax::source_map::{Span, Spanned};
 use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
 use syntax::util::move_map::MoveMap;
+use syntax_pos::hygiene::SyntaxContext;
 
 
 // TODO: Check for autoborrow adjustments.  Some method receivers are actually Lvalue / LvalueMut

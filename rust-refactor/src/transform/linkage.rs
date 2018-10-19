@@ -4,7 +4,7 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 use api::*;
 use ast_manip::fn_edit::{visit_fns, FnKind};

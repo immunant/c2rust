@@ -7,11 +7,11 @@
 //!    bogus spans and reset them.
 
 use rustc::session::Session;
+use smallvec::SmallVec;
 use syntax::ast::*;
-use syntax::codemap::{Span, CodeMap};
+use syntax::source_map::{Span, SourceMap};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
 use syntax_pos::FileName;
 
 use ast_manip::{AstEquiv, Fold};
@@ -24,7 +24,7 @@ use driver;
 /// `Expr`s copied from the macro arguments.
 struct FixFormat<'a> {
     sess: &'a Session,
-    codemap: &'a CodeMap,
+    codemap: &'a SourceMap,
     current_expansion: Option<Span>,
 }
 
@@ -88,7 +88,7 @@ impl<'a> Folder for FixFormat<'a> {
 struct FixAttrs;
 
 impl Folder for FixAttrs {
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let new_span = extended_span(i.span, &i.attrs);
         let i =
             if new_span != i.span {
@@ -99,7 +99,7 @@ impl Folder for FixAttrs {
         fold::noop_fold_item(i, self)
     }
 
-    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVector<ForeignItem> {
+    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         let new_span = extended_span(fi.span, &fi.attrs);
         let fi =
             if new_span != fi.span {

@@ -1,6 +1,6 @@
 //! Miscellaneous utility functions.
 use syntax::ast::*;
-use syntax::codemap::{CodeMap, Span, DUMMY_SP};
+use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
 
@@ -105,7 +105,7 @@ impl PatternSymbol for TraitItem {
 
 /// Get the text of a span, and pass it to a callback.  Returns `false` if the span text isn't
 /// available.
-pub fn with_span_text<F: FnOnce(&str)>(cm: &CodeMap, span: Span, callback: F) -> bool {
+pub fn with_span_text<F: FnOnce(&str)>(cm: &SourceMap, span: Span, callback: F) -> bool {
     let lo = cm.lookup_byte_offset(span.lo());
     let hi = cm.lookup_byte_offset(span.hi());
     let file_src = match lo.fm.src.as_ref() {

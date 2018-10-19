@@ -4,13 +4,13 @@ use command::{CommandState, Registry};
 use driver::{self, Phase, parse_impl_items};
 use reflect::reflect_def_path;
 use rustc::hir::def_id::DefId;
-use rustc::ty::TypeVariants;
+use rustc::ty::TyKind;
 use std::collections::HashSet;
 use std::fmt::Display;
 use syntax::ast::*;
 use syntax::fold::Folder;
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 use transform::Transform;
 
 pub struct Ionize {
@@ -101,7 +101,7 @@ impl Transform for Ionize {
 
             let ty0 = cx.adjusted_node_type(val.id);
             match ty0.sty {
-                TypeVariants::TyAdt(ref adt, _) if targets.contains(&adt.did) => {
+                TyKind::TyAdt(ref adt, _) if targets.contains(&adt.did) => {
 
                     let (_qself, mut path) = reflect_def_path(cx.ty_ctxt(), adt.did);
                     path.segments.push(mk().path_segment(field));

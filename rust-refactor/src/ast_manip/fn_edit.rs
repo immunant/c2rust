@@ -1,11 +1,11 @@
 //! Helpers for rewriting all `fn` itemlikes, regardless of item kind.
+use smallvec::SmallVec;
 use syntax::ast::*;
-use syntax::codemap::Span;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::move_map::MoveMap;
-use syntax::util::small_vector::SmallVector;
 use syntax::visit::{self, Visitor};
+use syntax_pos::Span;
 
 use ast_manip::{Fold, Visit, GetNodeId, GetSpan};
 
@@ -49,15 +49,15 @@ impl GetSpan for FnLike {
 
 /// Folder for rewriting `fn`s using a `FnLike` callback.
 struct FnFolder<F>
-        where F: FnMut(FnLike) -> SmallVector<FnLike> {
+        where F: FnMut(FnLike) -> SmallVec<[FnLike; 1]> {
     callback: F,
 }
 
 impl<F> FnFolder<F>
-        where F: FnMut(FnLike) -> SmallVector<FnLike> {
+        where F: FnMut(FnLike) -> SmallVec<[FnLike; 1]> {
     // `Folder::fold_foreign_item` can only return a single `ForeignItem`, so we need a custom
     // sequence-returning version.  This is called below in `fold_foreign_mod`.
-    fn fold_foreign_item_multi(&mut self, i: ForeignItem) -> SmallVector<ForeignItem> {
+    fn fold_foreign_item_multi(&mut self, i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         match i.node {
             ForeignItemKind::Fn(..) => {},
             _ => return fold::noop_fold_foreign_item(i, self),
@@ -91,8 +91,8 @@ impl<F> FnFolder<F>
 }
 
 impl<F> Folder for FnFolder<F>
-        where F: FnMut(FnLike) -> SmallVector<FnLike> {
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+        where F: FnMut(FnLike) -> SmallVec<[FnLike; 1]> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         match i.node {
             ItemKind::Fn(..) => {},
             _ => return fold::noop_fold_item(i, self),
@@ -129,7 +129,7 @@ impl<F> Folder for FnFolder<F>
         }).flat_map(|i| fold::noop_fold_item(i, self)).collect()
     }
 
-    fn fold_impl_item(&mut self, i: ImplItem) -> SmallVector<ImplItem> {
+    fn fold_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
         match i.node {
             ImplItemKind::Method(..) => {},
             _ => return fold::noop_fold_impl_item(i, self),
@@ -174,7 +174,7 @@ impl<F> Folder for FnFolder<F>
         }).flat_map(|i| fold::noop_fold_impl_item(i, self)).collect()
     }
 
-    fn fold_trait_item(&mut self, i: TraitItem) -> SmallVector<TraitItem> {
+    fn fold_trait_item(&mut self, i: TraitItem) -> SmallVec<[TraitItem; 1]> {
         match i.node {
             TraitItemKind::Method(..) => {},
             _ => return fold::noop_fold_trait_item(i, self),
@@ -232,7 +232,7 @@ pub fn fold_fns<T, F>(target: T, mut callback: F) -> <T as Fold>::Result
 /// `FnLike`s.
 pub fn fold_fns_multi<T, F>(target: T, callback: F) -> <T as Fold>::Result
         where T: Fold,
-              F: FnMut(FnLike) -> SmallVector<FnLike> {
+              F: FnMut(FnLike) -> SmallVec<[FnLike; 1]> {
     let mut f = FnFolder {
         callback: callback,
     };

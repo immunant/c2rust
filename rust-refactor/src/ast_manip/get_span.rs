@@ -1,7 +1,7 @@
 //! `GetSpan` trait for obtaining the `Span` of a generic AST node.
 use syntax::ast::*;
-use syntax::codemap::{Span, Spanned};
 use syntax::ptr::P;
+use syntax::source_map::{Span, Spanned};
 
 use ast_manip::util::extended_span;
 

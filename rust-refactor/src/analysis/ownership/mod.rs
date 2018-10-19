@@ -23,7 +23,7 @@ use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::ty::TyCtxt;
 use rustc_data_structures::indexed_vec::{IndexVec, Idx};
-use syntax::codemap::Span;
+use syntax::source_map::Span;
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use command::CommandState;

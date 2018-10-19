@@ -5,7 +5,7 @@
 use std::fmt;
 use std::marker::PhantomData;
 use arena::SyncDroplessArena;
-use rustc::ty::{Ty, TypeVariants};
+use rustc::ty::{Ty, TyKind};
 
 use type_map;
 
@@ -17,14 +17,14 @@ use type_map;
 ///
 /// Labeled types have to mimic the tree structure of the underlying `Ty`, so that each type
 /// constructor in the tree can have its own label.  But maintaining a custom copy of
-/// `TypeVariants` would be annoying, so instead, we let labeled types form arbitrary trees, and
+/// `TyKind` would be annoying, so instead, we let labeled types form arbitrary trees, and
 /// make the `LabeledTyCtxt` responsible for making those trees match the `Ty`'s structure.
 #[derive(Clone, PartialEq, Eq)]
 pub struct LabeledTyS<'tcx, L: 'tcx> {
     /// The underlying type.
     pub ty: Ty<'tcx>,
     /// The arguments of this type constructor.  The number and meaning of these arguments depends
-    /// on which type constructor this is (specifically, which `TypeVariants` variant is used for
+    /// on which type constructor this is (specifically, which `TyKind` variant is used for
     /// `self.ty.sty`).
     pub args: &'tcx [LabeledTy<'tcx, L>],
     /// The label for the current type constructor.
@@ -88,7 +88,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
     /// Label a `Ty` using a callback.  The callback runs at every type constructor to produce a
     /// label for that node in the tree.
     pub fn label<F: FnMut(Ty<'tcx>) -> L>(&self, ty: Ty<'tcx>, f: &mut F) -> LabeledTy<'tcx, L> {
-        use rustc::ty::TypeVariants::*;
+        use rustc::ty::TyKind::*;
         let label = f(ty);
         match ty.sty {
             // Types with no arguments
@@ -170,7 +170,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
                  lty: LabeledTy<'tcx, L>,
                  substs: &[LabeledTy<'tcx, L>]) -> LabeledTy<'tcx, L> {
         match lty.ty.sty {
-            TypeVariants::TyParam(ref tp) => {
+            TyKind::TyParam(ref tp) => {
                 substs[tp.idx as usize]
             },
             _ => self.mk(lty.ty, self.subst_slice(lty.args, substs), lty.label.clone()),
@@ -204,7 +204,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
 
 
 impl<'tcx, L: fmt::Debug> type_map::Type for LabeledTy<'tcx, L> {
-    fn sty(&self) -> &TypeVariants {
+    fn sty(&self) -> &TyKind {
         &self.ty.sty
     }
 

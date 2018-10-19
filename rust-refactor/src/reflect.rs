@@ -6,7 +6,7 @@ use rustc::hir::map::definitions::DefPathData;
 use rustc::ty::{self, TyCtxt, GenericParamDefKind};
 use rustc::ty::subst::Subst;
 use syntax::ast::*;
-use syntax::codemap::DUMMY_SP;
+use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
 use syntax::symbol::keywords;
 use rustc::middle::cstore::{ExternCrate, ExternCrateSource};
@@ -25,7 +25,7 @@ pub fn reflect_tcx_ty<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                                         ty: ty::Ty<'tcx>,
                                         infer_args: bool) -> P<Ty> {
-    use rustc::ty::TypeVariants::*;
+    use rustc::ty::TyKind::*;
     match ty.sty {
         TyBool => mk().ident_ty("bool"),
         TyChar => mk().ident_ty("char"),
@@ -288,12 +288,12 @@ pub fn register_commands(reg: &mut Registry) {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             st.map_krate(|krate| {
                 use api::*;
-                use rustc::ty::TypeVariants;
+                use rustc::ty::TyKind;
 
                 let krate = fold_nodes(krate, |e: P<Expr>| {
                     let ty = cx.node_type(e.id);
 
-                    let e = if let TypeVariants::TyFnDef(def_id, ref substs) = ty.sty {
+                    let e = if let TyKind::TyFnDef(def_id, ref substs) = ty.sty {
                         let substs = substs.types().collect::<Vec<_>>();
                         let (qself, path) = reflect_def_path_inner(
                             cx.ty_ctxt(), def_id, Some(&substs));

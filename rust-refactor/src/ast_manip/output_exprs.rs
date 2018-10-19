@@ -1,8 +1,8 @@
 //! `fold_output_exprs` function, for visiting return-value expressions.
+use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
 use syntax::util::move_map::MoveMap;
 
 use ast_manip::Fold;
@@ -28,7 +28,7 @@ impl<F: FnMut(P<Expr>) -> P<Expr>> OutputFolder<F> {
 }
 
 impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for OutputFolder<F> {
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         // The expr within the fn is always trailing
         match i.node {
             ItemKind::Fn(..) =>
@@ -37,7 +37,7 @@ impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for OutputFolder<F> {
         }
     }
 
-    fn fold_impl_item(&mut self, i: ImplItem) -> SmallVector<ImplItem> {
+    fn fold_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
         match i.node {
             ImplItemKind::Method(..) =>
                 self.with_trailing(true, |f| fold::noop_fold_impl_item(i, f)),
@@ -45,7 +45,7 @@ impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for OutputFolder<F> {
         }
     }
 
-    fn fold_trait_item(&mut self, i: TraitItem) -> SmallVector<TraitItem> {
+    fn fold_trait_item(&mut self, i: TraitItem) -> SmallVec<[TraitItem; 1]> {
         match i.node {
             TraitItemKind::Method(..) =>
                 self.with_trailing(true, |f| fold::noop_fold_trait_item(i, f)),
@@ -76,7 +76,7 @@ impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for OutputFolder<F> {
         })
     }
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         match s.node {
             StmtKind::Expr(..) => fold::noop_fold_stmt(s, self),
             _ => self.with_trailing(false, |f| fold::noop_fold_stmt(s, f)),

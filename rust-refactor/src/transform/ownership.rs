@@ -6,13 +6,13 @@ use rustc::hir;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast::*;
-use syntax::codemap::DUMMY_SP;
+use syntax::source_map::DUMMY_SP;
 use syntax::fold::{self, Folder};
 use syntax::parse::token::{self, Token, DelimToken};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream, Delimited};
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 use analysis::labeled_ty::LabeledTyCtxt;
 use analysis::ownership::{self, ConcretePerm, Var, PTy};
@@ -104,7 +104,7 @@ fn do_annotate(st: &CommandState,
     }
 
     impl<'a, 'tcx> Folder for AnnotateFolder<'a, 'tcx> {
-        fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+        fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
             if !self.st.marked(i.id, self.label) {
                 return fold::noop_fold_item(i, self);
             }
@@ -133,7 +133,7 @@ fn do_annotate(st: &CommandState,
             }), self)
         }
 
-        fn fold_impl_item(&mut self, i: ImplItem) -> SmallVector<ImplItem> {
+        fn fold_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
             if !self.st.marked(i.id, self.label) {
                 return fold::noop_fold_impl_item(i, self);
             }

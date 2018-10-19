@@ -1,9 +1,9 @@
 //! Miscellaneous utility functions.
 use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
+use smallvec::{SmallVec, Array};
 use syntax::symbol::Symbol;
 use syntax::symbol::keywords::Keyword;
-use syntax::util::small_vector::SmallVector;
 use syntax::symbol::InternedString;
 
 pub mod cursor;
@@ -28,7 +28,7 @@ impl<T> Lone<T> for Vec<T> {
     }
 }
 
-impl<T> Lone<T> for SmallVector<T> {
+impl<T: Array> Lone<T> for SmallVec<T> {
     fn lone(mut self) -> T {
         assert!(self.len() == 1);
         self.pop().unwrap()
