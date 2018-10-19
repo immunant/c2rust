@@ -202,7 +202,7 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                 }
             },
 
-            ItemKind::Fn(ref decl, _, _, _, _, _) => {
+            ItemKind::Fn(ref decl, _, _, _) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {
                     self.record_fn_decl(sig, decl);
                 }

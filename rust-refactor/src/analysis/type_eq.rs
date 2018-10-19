@@ -226,7 +226,7 @@ impl<'a, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'a, 'hir> {
         let body_id = match item.node {
             ItemKind::Static(_, _, body_id) => body_id,
             ItemKind::Const(_, body_id) => body_id,
-            ItemKind::Fn(_, _, _, _, _, body_id) => body_id,
+            ItemKind::Fn(_, _, _, body_id) => body_id,
             _ => return,
         };
         self.handle_body(body_id);

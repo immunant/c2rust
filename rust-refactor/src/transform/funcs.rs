@@ -4,7 +4,6 @@ use rustc::ty::TyKind;
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::source_map::Spanned;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use smallvec::SmallVec;
@@ -53,9 +52,7 @@ impl Transform for ToMethod {
             item: P<Item>,
 
             decl: P<FnDecl>,
-            unsafety: Unsafety,
-            constness: Spanned<Constness>,
-            abi: Abi,
+            header: FnHeader,
             generics: Generics,
             block: P<Block>,
 
@@ -81,10 +78,10 @@ impl Transform for ToMethod {
             }) {
                 let i = curs.remove();
                 unpack!([i.node.clone()]
-                        ItemKind::Fn(decl, unsafety, constness, abi, generics, block));
+                        ItemKind::Fn(decl, header, generics, block));
                 fns.push(FnInfo {
                     item: i,
-                    decl, unsafety, constness, abi, generics, block,
+                    decl, header, generics, block,
                     arg_idx,
                 });
             }
@@ -189,9 +186,7 @@ impl Transform for ToMethod {
                 let fns = fns.take().unwrap();
                 items.extend(fns.into_iter().map(|f| {
                     let sig = MethodSig {
-                        unsafety: f.unsafety,
-                        constness: f.constness,
-                        abi: f.abi,
+                        header: f.header,
                         decl: f.decl,
                     };
                     ImplItem {
@@ -316,8 +311,8 @@ impl<'a> Folder for SinkUnsafeFolder<'a> {
         let i = if self.st.marked(i.id, "target") {
             i.map(|mut i| {
                 match i.node {
-                    ItemKind::Fn(_, ref mut unsafety, _, _, _, ref mut block) => {
-                        sink_unsafe(unsafety, block);
+                    ItemKind::Fn(_, ref mut header, _, ref mut block) => {
+                        sink_unsafe(&mut header.unsafety, block);
                     },
                     _ => {},
                 }
@@ -511,7 +506,7 @@ impl Transform for WrapApi {
             }
 
             let (decl, old_abi) = expect!([i.node]
-                ItemKind::Fn(ref decl, _, _, abi, _, _) => (decl.clone(), abi));
+                ItemKind::Fn(ref decl, ref header, _, _) => (decl.clone(), header.abi));
 
             // Get the exported symbol name of the function
             let symbol =
@@ -532,7 +527,7 @@ impl Transform for WrapApi {
                 });
 
                 match i.node {
-                    ItemKind::Fn(_, _, _, ref mut abi, _, _) => *abi = Abi::Rust,
+                    ItemKind::Fn(_, ref mut header, _, _) => header.abi = Abi::Rust,
                     _ => unreachable!(),
                 }
 

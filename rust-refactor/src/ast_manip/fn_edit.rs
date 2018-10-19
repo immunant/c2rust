@@ -99,7 +99,7 @@ impl<F> Folder for FnFolder<F>
         }
 
         let i = i.into_inner();
-        unpack!([i.node] ItemKind::Fn(decl, unsafety, constness, abi, generics, block));
+        unpack!([i.node] ItemKind::Fn(decl, header, generics, block));
         let vis = i.vis;
 
         let fl = FnLike {
@@ -119,7 +119,7 @@ impl<F> Folder for FnFolder<F>
                 id: fl.id,
                 ident: fl.ident,
                 span: fl.span,
-                node: ItemKind::Fn(fl.decl, unsafety, constness, abi, generics.clone(), block),
+                node: ItemKind::Fn(fl.decl, header.clone(), generics.clone(), block),
                 attrs: fl.attrs,
                 vis: vis.clone(),
                 // Don't keep the old tokens.  The callback could have made arbitrary changes to
@@ -139,7 +139,7 @@ impl<F> Folder for FnFolder<F>
         let vis = i.vis;
         let defaultness = i.defaultness;
         let generics = i.generics;
-        let MethodSig { unsafety, constness, abi, decl } = sig;
+        let MethodSig { header, decl } = sig;
 
         let fl = FnLike {
             kind: FnKind::ImplMethod,
@@ -154,9 +154,7 @@ impl<F> Folder for FnFolder<F>
 
         fls.into_iter().map(|fl| {
             let sig = MethodSig {
-                unsafety: unsafety,
-                constness: constness,
-                abi: abi,
+                header: header.clone(),
                 decl: fl.decl,
             };
             let block = fl.block.expect("can't remove Block from ImplItemKind::Method");
@@ -181,7 +179,7 @@ impl<F> Folder for FnFolder<F>
         }
 
         unpack!([i.node] TraitItemKind::Method(sig, block));
-        let MethodSig { unsafety, constness, abi, decl } = sig;
+        let MethodSig { header, decl } = sig;
         let generics = i.generics;
 
         let fl = FnLike {
@@ -197,9 +195,7 @@ impl<F> Folder for FnFolder<F>
 
         fls.into_iter().map(|fl| {
             let sig = MethodSig {
-                unsafety: unsafety,
-                constness: constness,
-                abi: abi,
+                header: header.clone(),
                 decl: fl.decl,
             };
             TraitItem {
@@ -256,7 +252,7 @@ impl<'ast, F> Visitor<'ast> for FnVisitor<F>
         }
 
         let (decl, block) = expect!([i.node]
-                                    ItemKind::Fn(ref decl, _, _, _, _, ref block) =>
+                                    ItemKind::Fn(ref decl, _, _, ref block) =>
                                         (decl.clone(), block.clone()));
 
         (self.callback)(FnLike {

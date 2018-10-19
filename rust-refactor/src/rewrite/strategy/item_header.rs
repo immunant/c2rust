@@ -278,8 +278,8 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
     }
 
     match (node1, node2) {
-        (&ItemKind::Fn(ref decl1, ref unsafety1, ref constness1, ref abi1, ref generics1, ref block1),
-         &ItemKind::Fn(ref decl2, ref unsafety2, ref constness2, ref abi2, ref generics2, ref block2)) => {
+        (&ItemKind::Fn(ref decl1, ref header1, ref generics1, ref block1),
+         &ItemKind::Fn(ref decl2, ref header2, ref generics2, ref block2)) => {
 
             let FnDecl { inputs: inputs1, output: output1, variadic: variadic1 } = decl1 as &_;
             let FnDecl { inputs: inputs2, output: output2, variadic: variadic2 } = decl2 as &_;
@@ -327,15 +327,15 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
                 record_qualifier_rewrite(spans1.vis, spans2.vis, rcx.borrow());
             }
 
-            if constness1.node != constness2.node {
+            if header1.constness.node != header2.constness.node {
                 record_qualifier_rewrite(spans1.constness, spans2.constness, rcx.borrow());
             }
 
-            if unsafety1 != unsafety2 {
+            if header1.unsafety != header2.unsafety {
                 record_qualifier_rewrite(spans1.unsafety, spans2.unsafety, rcx.borrow());
             }
 
-            if abi1 != abi2 {
+            if header1.abi != header2.abi {
                 record_qualifier_rewrite(spans1.abi, spans2.abi, rcx.borrow());
             }
 

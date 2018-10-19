@@ -201,7 +201,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
             let i = if matches!([i.node] ItemKind::Fn(..)) {
                 i.map(|mut i| {
                     let mut fd = expect!([i.node]
-                                         ItemKind::Fn(ref fd, _, _ ,_ ,_ ,_) =>
+                                         ItemKind::Fn(ref fd, _, _, _) =>
                                          fd.clone().into_inner());
 
                     for (j, arg) in fd.inputs.iter_mut().enumerate() {
@@ -234,7 +234,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
                     }
 
                     match i.node {
-                        ItemKind::Fn(ref mut fd_ptr, _, _, _, _, _) => {
+                        ItemKind::Fn(ref mut fd_ptr, _, _, _) => {
                             *fd_ptr = P(fd);
                         },
                         _ => panic!("expected ItemKind::Fn"),
