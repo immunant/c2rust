@@ -52,7 +52,7 @@ impl HirDefExt for Def {
             Def::Trait(did) |
             Def::Existential(did) |
             Def::TyAlias(did) |
-            Def::Foreign(did) |
+            Def::ForeignTy(did) |
             Def::AssociatedTy(did) |
             Def::TyParam(did) |
             Def::Fn(did) |
@@ -63,7 +63,6 @@ impl HirDefExt for Def {
             Def::Method(did) |
             Def::AssociatedConst(did) |
             Def::Macro(did, _) |
-            Def::GlobalAsm(did) |
             Def::TraitAlias(did) => Some(did),
 
             // Local variables stopped having DefIds at some point and switched to NodeId

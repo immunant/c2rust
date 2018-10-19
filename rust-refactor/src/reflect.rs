@@ -1,7 +1,7 @@
 //! Functions for building AST representations of higher-level values.
 use rustc::hir;
+use rustc::hir::Node;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
-use rustc::hir::Node::*;
 use rustc::hir::map::definitions::DefPathData;
 use rustc::ty::{self, TyCtxt, GenericParamDefKind};
 use rustc::ty::subst::Subst;
@@ -166,7 +166,6 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 
             DefPathData::TypeNs(name) |
             DefPathData::MacroDef(name) |
-            DefPathData::LifetimeDef(name) |
             DefPathData::EnumVariant(name) |
             DefPathData::Module(name) |
             DefPathData::Field(name) |
@@ -188,8 +187,6 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             DefPathData::AssocTypeInTrait(_) |
             DefPathData::AssocTypeInImpl(_) |
             DefPathData::AnonConst |
-            DefPathData::UniversalImplTrait |
-            DefPathData::ExistentialImplTrait |
             DefPathData::StructCtor => {},
             // Apparently DefPathData::ImplTrait disappeared in the current nightly?
             // TODO: Add it back when it's back
@@ -257,27 +254,27 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         None => return false,
     };
     match node {
-        NodeItem(_) |
-        NodeForeignItem(_) |
-        NodeTraitItem(_) |
-        NodeImplItem(_) |
-        NodeVariant(_) |
-        NodeField(_) |
-        NodeStructCtor(_) => true,
+        Node::Item(_) |
+        Node::ForeignItem(_) |
+        Node::TraitItem(_) |
+        Node::ImplItem(_) |
+        Node::Variant(_) |
+        Node::Field(_) |
+        Node::StructCtor(_) => true,
 
-        NodeMacroDef(_) | // TODO: Is this right?
-        NodeExpr(_) |
-        NodeStmt(_) |
-        NodeTy(_) |
-        NodeTraitRef(_) |
-        NodeBinding(_) |
-        NodePat(_) |
-        NodeBlock(_) |
-        NodeLocal(_) |
-        NodeLifetime(_) |
-        NodeTyParam(_) |
-        NodeAnonConst(_) |
-        NodeVisibility(_) => false,
+        Node::MacroDef(_) | // TODO: Is this right?
+        Node::Expr(_) |
+        Node::Stmt(_) |
+        Node::Ty(_) |
+        Node::TraitRef(_) |
+        Node::Binding(_) |
+        Node::Pat(_) |
+        Node::Block(_) |
+        Node::Local(_) |
+        Node::Lifetime(_) |
+        Node::TyParam(_) |
+        Node::AnonConst(_) |
+        Node::Visibility(_) => false,
     }
 }
 

@@ -68,10 +68,10 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
             let node = match_or!([self.cx.hir_map().find(node_id)] Some(x) => x;
                                  continue);
             let node_name = match node {
-                Node::NodeItem(i) => i.name,
-                Node::NodeForeignItem(i) => i.name,
-                Node::NodeTraitItem(i) => i.name,
-                Node::NodeImplItem(i) => i.name,
+                Node::Item(i) => i.name,
+                Node::ForeignItem(i) => i.name,
+                Node::TraitItem(i) => i.name,
+                Node::ImplItem(i) => i.name,
                 _ => continue,
             };
             if node_name != name {

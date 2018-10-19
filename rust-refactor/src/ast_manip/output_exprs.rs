@@ -111,11 +111,11 @@ impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for OutputFolder<F> {
 
                 ExprKind::Block(b, lbl) => ExprKind::Block(self.fold_block(b), lbl),
 
-                ExprKind::Catch(_) => {
-                    // Explicitly unimplemented.  Depending on whether `catch` winds up
+                ExprKind::Try(_) => {
+                    // Explicitly unimplemented.  Depending on whether `try` winds up
                     // auto-wrapping its "return" value in `Ok`, we may need to treat the trailing
                     // expr of a `catch` specially.
-                    panic!("output_exprs: ExprKind::Catch is not supported")
+                    panic!("output_exprs: ExprKind::Try is not supported")
                 },
 
                 ExprKind::Ret(None) => ExprKind::Ret(None),

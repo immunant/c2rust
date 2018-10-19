@@ -20,6 +20,7 @@ use std::u32;
 
 use arena::SyncDroplessArena;
 use rustc::hir;
+use rustc::hir::Node;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::ty::TyCtxt;
 use rustc_data_structures::indexed_vec::{IndexVec, Idx};
@@ -135,27 +136,25 @@ impl<'tcx, L: fmt::Debug> type_map::Signature<LabeledTy<'tcx, L>> for FnSig<'tcx
 /// Check if a definition is a `fn` item of some sort.  Note that this does not return true on
 /// closures.
 fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
-    use rustc::hir::Node::*;
-
     let n = match hir_map.get_if_local(def_id) {
         None => return false,
         Some(n) => n,
     };
 
     match n {
-        NodeItem(i) => match i.node {
-            hir::ItemFn(..) => true,
+        Node::Item(i) => match i.node {
+            hir::ItemKind::Fn(..) => true,
             _ => false,
         },
-        NodeForeignItem(i) => match i.node {
-            hir::ForeignItemFn(..) => true,
+        Node::ForeignItem(i) => match i.node {
+            hir::ForeignItemKind::Fn(..) => true,
             _ => false,
         },
-        NodeTraitItem(i) => match i.node {
+        Node::TraitItem(i) => match i.node {
             hir::TraitItemKind::Method(..) => true,
             _ => false,
         },
-        NodeImplItem(i) => match i.node {
+        Node::ImplItem(i) => match i.node {
             hir::ImplItemKind::Method(..) => true,
             _ => false,
         },

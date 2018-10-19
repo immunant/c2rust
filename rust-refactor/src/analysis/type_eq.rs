@@ -44,7 +44,6 @@ use rustc::hir::*;
 use rustc::hir::def_id::DefId;
 use rustc::hir::intravisit::{self, Visitor, NestedVisitorMap};
 use rustc::hir::itemlikevisit::ItemLikeVisitor;
-use rustc::hir::Node::*;
 use rustc::ty::{self, TyCtxt, TypeckTables};
 use rustc::ty::adjustment::Adjust;
 // use syntax::abi::Abi;
@@ -225,9 +224,9 @@ impl<'a, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'a, 'hir> {
 
     fn visit_item(&mut self, item: &'hir Item) {
         let body_id = match item.node {
-            ItemStatic(_, _, body_id) => body_id,
-            ItemConst(_, body_id) => body_id,
-            ItemFn(_, _, _, _, _, body_id) => body_id,
+            ItemKind::Static(_, _, body_id) => body_id,
+            ItemKind::Const(_, body_id) => body_id,
+            ItemKind::Fn(_, _, _, _, _, body_id) => body_id,
             _ => return,
         };
         self.handle_body(body_id);
@@ -438,7 +437,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
 
     fn compute_def_lty(&self, id: DefId) -> LTy<'tcx> {
         match self.hir_map.get_if_local(id) {
-            Some(NodeBinding(p)) => {
+            Some(Node::Binding(p)) => {
                 return self.pat_lty(p);
             },
             _ => {},
@@ -576,6 +575,8 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
     }
 
     fn visit_expr(&mut self, e: &'hir Expr) {
+        use rustc::hir::BinOpKind::*;
+
         let rty = match self.opt_unadjusted_expr_lty(e) {
             Some(x) => x,
             None => {
@@ -596,17 +597,17 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
         // explicit.)
 
         match e.node {
-            ExprBox(ref e) => {
+            ExprKind::Box(ref e) => {
                 self.ltt.unify(rty.args[0], self.expr_lty(e));
             },
 
-            ExprArray(ref es) => {
+            ExprKind::Array(ref es) => {
                 for e in es {
                     self.ltt.unify(rty.args[0], self.expr_lty(e));
                 }
             },
 
-            ExprCall(ref func, ref args) => {
+            ExprKind::Call(ref func, ref args) => {
                 let func_lty = self.expr_lty(func);
 
                 fn is_closure(ty: ty::Ty) -> bool {
@@ -631,7 +632,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
                 self.ltt.unify(rty, self.fn_output(func_lty));
             },
 
-            ExprMethodCall(_, _, ref args) => {
+            ExprKind::MethodCall(_, _, ref args) => {
                 let sig = self.method_sig(e);
                 for (i, arg) in args.iter().enumerate() {
                     self.ltt.unify(sig.inputs[i], self.expr_lty(arg));
@@ -639,33 +640,33 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
                 self.ltt.unify(rty, sig.output);
             },
 
-            ExprTup(ref es) => {
+            ExprKind::Tup(ref es) => {
                 for (expected, e) in rty.args.iter().zip(es.iter()) {
                     self.ltt.unify(expected, self.expr_lty(e));
                 }
             },
 
-            ExprBinary(ref op, ref a, ref b) => {
+            ExprKind::Binary(ref op, ref a, ref b) => {
                 match op.node {
-                    BiAdd | BiSub | BiMul | BiDiv | BiRem |
-                    BiBitXor | BiBitAnd | BiBitOr |
-                    BiShl | BiShr => {
+                    Add | Sub | Mul | Div | Rem |
+                    BitXor | BitAnd | BitOr |
+                    Shl | Shr => {
                         self.ltt.unify(rty, self.expr_lty(a));
                         self.ltt.unify(rty, self.expr_lty(b));
                     },
-                    BiAnd | BiOr => {
+                    And | Or => {
                         self.ltt.unify(rty, self.prim_lty("bool"));
                         self.ltt.unify(self.expr_lty(a), self.prim_lty("bool"));
                         self.ltt.unify(self.expr_lty(b), self.prim_lty("bool"));
                     },
-                    BiEq | BiLt | BiLe | BiNe | BiGe | BiGt => {
+                    Eq | Lt | Le | Ne | Ge | Gt => {
                         self.ltt.unify(rty, self.prim_lty("bool"));
                         self.ltt.unify(self.expr_lty(a), self.expr_lty(b));
                     },
                 }
             },
 
-            ExprUnary(op, ref a) => {
+            ExprKind::Unary(op, ref a) => {
                 match op {
                     UnDeref => self.ltt.unify(rty, self.expr_lty(a).args[0]),
                     UnNot => self.ltt.unify(rty, self.expr_lty(a)),
@@ -673,55 +674,55 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
                 }
             },
 
-            ExprLit(..) => {},  // Nothing to unify
+            ExprKind::Lit(..) => {},  // Nothing to unify
 
-            ExprCast(_, ref ty) => {
+            ExprKind::Cast(_, ref ty) => {
                 self.ltt.unify(rty, self.ty_lty(ty));
                 // Ignore the expr type, since it has no connection to `rty`.
             },
 
-            ExprType(ref e, ref ty) => {
+            ExprKind::Type(ref e, ref ty) => {
                 self.ltt.unify(rty, self.expr_lty(e));
                 self.ltt.unify(rty, self.ty_lty(ty));
             },
 
-            ExprIf(ref cond, ref e_true, ref e_false) => {
+            ExprKind::If(ref cond, ref e_true, ref e_false) => {
                 self.ltt.unify(self.prim_lty("bool"), self.expr_lty(cond));
                 self.ltt.unify(rty, self.expr_lty(e_true));
                 self.ltt.unify(rty, e_false.as_ref().map_or_else(|| self.prim_lty("()"),
                                                                  |e| self.expr_lty(e)));
             },
 
-            ExprWhile(ref cond, ref body, _) => {
+            ExprKind::While(ref cond, ref body, _) => {
                 self.ltt.unify(self.prim_lty("bool"), self.expr_lty(cond));
                 self.ltt.unify(self.prim_lty("()"), self.block_lty(body));
                 self.ltt.unify(rty, self.prim_lty("()"));
             },
 
-            ExprLoop(..) => {}, // TODO
+            ExprKind::Loop(..) => {}, // TODO
 
-            ExprMatch(..) => {}, // TODO
+            ExprKind::Match(..) => {}, // TODO
 
-            ExprClosure(..) => {}, // TODO
+            ExprKind::Closure(..) => {}, // TODO
 
-            ExprBlock(ref b, _) => {
+            ExprKind::Block(ref b, _) => {
                 self.ltt.unify(rty, self.block_lty(b));
             },
 
-            ExprAssign(ref lhs, ref rhs) => {
+            ExprKind::Assign(ref lhs, ref rhs) => {
                 self.ltt.unify(self.expr_lty(lhs), self.expr_lty(rhs));
                 self.ltt.unify(rty, self.prim_lty("()"));
             },
 
-            ExprAssignOp(..) => {}, // TODO
+            ExprKind::AssignOp(..) => {}, // TODO
 
-            ExprField(ref e, ref field) => { // TODO: tuples
+            ExprKind::Field(ref e, ref field) => { // TODO: tuples
                 self.ltt.unify(rty, self.field_lty(self.expr_lty(e), field.name));
             },
 
-            ExprIndex(ref _arr, ref _idx) => {}, // TODO
+            ExprKind::Index(ref _arr, ref _idx) => {}, // TODO
 
-            ExprPath(ref path) => {
+            ExprKind::Path(ref path) => {
                 // TODO: many more subcases need handling here
                 match *path {
                     QPath::Resolved(_, ref path) => {
@@ -733,30 +734,30 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
                 }
             },
 
-            ExprAddrOf(_, ref e) => {
+            ExprKind::AddrOf(_, ref e) => {
                 self.ltt.unify(rty.args[0], self.expr_lty(e));
             },
 
             // break/continue/return all have type `!`, which unifies with everything.
-            ExprBreak(ref _dest, ref _result) => {
-                // TODO: handle result == Some(x) case (unify the target `ExprLoop`'s type with the
+            ExprKind::Break(ref _dest, ref _result) => {
+                // TODO: handle result == Some(x) case (unify the target `ExprKind::Loop`'s type with the
                 // result expression type)
             },
 
-            ExprAgain(_) => {},
+            ExprKind::Continue(_) => {},
 
-            ExprRet(ref _result) => {
+            ExprKind::Ret(ref _result) => {
                 // TODO: handle result == Some(x) case (unify the result type with the current
                 // function's return type)
             },
 
-            ExprYield(ref _result) => {
+            ExprKind::Yield(ref _result) => {
                 // TODO: handle result == Some(x) case
             },
 
-            ExprInlineAsm(..) => {},
+            ExprKind::InlineAsm(..) => {},
 
-            ExprStruct(_, ref fields, ref base) => {
+            ExprKind::Struct(_, ref fields, ref base) => {
                 for field in fields {
                     self.ltt.unify(self.field_lty(rty, field.ident.name),
                                    self.expr_lty(&field.expr));
@@ -767,7 +768,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
                 }
             },
 
-            ExprRepeat(ref e, _) => {
+            ExprKind::Repeat(ref e, _) => {
                 self.ltt.unify(rty.args[0], self.expr_lty(e));
             },
         }
@@ -923,7 +924,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
     fn visit_foreign_item(&mut self, i: &'hir ForeignItem) {
         let def_id = self.hir_map.local_def_id(i.id);
         match i.node {
-            ForeignItemFn(ref decl, _, _) => {
+            ForeignItemKind::Fn(ref decl, _, _) => {
                 let sig = self.def_sig(def_id);
 
                 for (i, ast_ty) in decl.inputs.iter().enumerate() {
@@ -938,18 +939,18 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
                 self.ltt.unify(out_lty, sig.output);
             },
 
-            ForeignItemStatic(ref ty, _) => {
+            ForeignItemKind::Static(ref ty, _) => {
                 self.ltt.unify(self.ty_lty(ty), self.def_lty(def_id));
             },
 
-            ForeignItemType => { },
+            ForeignItemKind::Type => { },
         }
 
         intravisit::walk_foreign_item(self, i);
     }
 
     // TODO: handle const and non-foreign static items.  These should be similar to the
-    // `ForeignItemStatic` case.
+    // `ForeignItemKind::Static` case.
 }
 
 

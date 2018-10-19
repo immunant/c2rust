@@ -329,10 +329,10 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         let node = match_or!([self.cx.hir_map().get_if_local(def_id)] Some(x) => x;
                              return Err(Error::DefMismatch));
         let node_name = match node {
-            Node::NodeItem(i) => i.name,
-            Node::NodeForeignItem(i) => i.name,
-            Node::NodeTraitItem(i) => i.name,
-            Node::NodeImplItem(i) => i.name,
+            Node::Item(i) => i.name,
+            Node::ForeignItem(i) => i.name,
+            Node::TraitItem(i) => i.name,
+            Node::ImplItem(i) => i.name,
             _ => panic!("expected item-like"),
         };
         if node_name != name {

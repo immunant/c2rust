@@ -508,7 +508,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                     eprintln!("    {:?}: {:?}", lv, lv_ty);
                     eprintln!("    ^-- {:?}: {:?}", rv, rv_ty);
                 },
-                StatementKind::ReadForMatch { .. } |
+                StatementKind::FakeRead(..) |
                 StatementKind::SetDiscriminant { .. } |
                 StatementKind::StorageLive(_) |
                 StatementKind::StorageDead(_) |
@@ -517,7 +517,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 StatementKind::InlineAsm { .. } |
                 StatementKind::Validate(..) |
                 StatementKind::EndRegion(_) |
-                StatementKind::UserAssertTy { .. } |
+                StatementKind::AscribeUserType(..) |
                 StatementKind::Nop => {},
             }
         }
