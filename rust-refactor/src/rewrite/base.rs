@@ -405,7 +405,7 @@ pub fn is_rewritable(sp: Span) -> bool {
 }
 
 pub fn describe(sess: &Session, span: Span) -> String {
-    let cm = sess.codemap();
+    let cm = sess.source_map();
     let lo = cm.lookup_byte_offset(span.lo());
     let hi = cm.lookup_byte_offset(span.hi());
     let src = &lo.fm.src.as_ref().unwrap()[lo.pos.0 as usize .. hi.pos.0 as usize];

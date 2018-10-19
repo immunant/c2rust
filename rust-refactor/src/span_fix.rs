@@ -24,7 +24,7 @@ use driver;
 /// `Expr`s copied from the macro arguments.
 struct FixFormat<'a> {
     sess: &'a Session,
-    codemap: &'a SourceMap,
+    source_map: &'a SourceMap,
     current_expansion: Option<Span>,
 }
 
@@ -33,7 +33,7 @@ impl<'a> Folder for FixFormat<'a> {
         let old_ce = self.current_expansion;
         if self.current_expansion.is_none() {
             // Check if this is the top of a `format!` expansion.
-            let lo = self.codemap.lookup_byte_offset(e.span.lo());
+            let lo = self.source_map.lookup_byte_offset(e.span.lo());
             if let &FileName::Macros(_) = &lo.fm.name {
                 self.current_expansion = Some(e.span)
             }
@@ -54,7 +54,7 @@ impl<'a> Folder for FixFormat<'a> {
                 // argument.  The inner `format!` essentially gets treated as if it were part of
                 // the outer one.  Not a big problem at the moment, but it is a little odd.
                 let mut parsed = None;
-                with_span_text(self.codemap, e.span, |s| {
+                with_span_text(self.source_map, e.span, |s| {
                     parsed = Some(driver::parse_expr(self.sess, s));
                 });
                 if let Some(parsed) = parsed {
@@ -119,7 +119,7 @@ impl Folder for FixAttrs {
 pub fn fix_format<T: Fold>(sess: &Session, node: T) -> <T as Fold>::Result {
     let mut fix_format = FixFormat {
         sess: sess,
-        codemap: sess.codemap(),
+        source_map: sess.source_map(),
         current_expansion: None,
     };
     node.fold(&mut fix_format)

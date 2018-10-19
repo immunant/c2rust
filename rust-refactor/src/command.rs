@@ -107,7 +107,7 @@ impl RefactorState {
                 info!("(no files to rewrite)");
             } else {
                 if let Some(ref mut handler) = self.rewrite_handler {
-                    files::rewrite_files_with(self.session.codemap(),
+                    files::rewrite_files_with(self.session.source_map(),
                                               &rws,
                                               |fm, s| handler(fm, s));
                 }

@@ -98,7 +98,7 @@ pub fn print_one_span<T: Visit>(id: usize, root: &T, cm: &SourceMap, msg: &str) 
 pub fn register_commands(reg: &mut Registry) {
     reg.register("print_spans", |_args| {
         Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
-            print_spans(&st.krate() as &Crate, cx.session().codemap());
+            print_spans(&st.krate() as &Crate, cx.session().source_map());
         }))
     });
 }

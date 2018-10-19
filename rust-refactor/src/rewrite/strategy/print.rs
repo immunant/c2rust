@@ -486,7 +486,7 @@ fn recover<'s, T>(reparsed: &T, new: &T, mut rcx: RewriteCtxtRef<'s, '_>) -> boo
         return false;
     }
 
-    let fm = rcx.session().codemap().lookup_byte_offset(old.splice_span().lo()).fm;
+    let fm = rcx.session().source_map().lookup_byte_offset(old.splice_span().lo()).fm;
     if let FileName::Macros(..) = fm.name {
         return false;
     }

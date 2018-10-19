@@ -107,7 +107,7 @@ fn print_rewrites(rws: &[TextRewrite]) {
     }
 }
 
-/// Apply a sequence of rewrites to the source text between codemap positions `start` and `end`.
+/// Apply a sequence of rewrites to the source text between source_map positions `start` and `end`.
 /// Runs `callback` on each contiguous block of text in the rewritten version.
 ///
 /// All rewrites must be in order, and must lie between `start` and `end`.  Otherwise a panic may

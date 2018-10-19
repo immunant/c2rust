@@ -336,20 +336,20 @@ fn build_session(sopts: Options,
     // Corresponds roughly to `run_compiler`.
     let descriptions = rustc_driver::diagnostics_registry();
     let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
-    // Note: `codemap` is expected to be an `Lrc<SourceMap>`, which is an alias for `Rc<SourceMap>`.
+    // Note: `source_map` is expected to be an `Lrc<SourceMap>`, which is an alias for `Rc<SourceMap>`.
     // If this ever changes, we'll need a new trick to obtain the `SourceMap` in `rebuild_session`.
-    let codemap = Rc::new(SourceMap::with_file_loader(file_loader, sopts.file_path_mapping()));
-    // Put a dummy file at the beginning of the codemap, so that no real `Span` will accidentally
+    let source_map = Rc::new(SourceMap::with_file_loader(file_loader, sopts.file_path_mapping()));
+    // Put a dummy file at the beginning of the source_map, so that no real `Span` will accidentally
     // collide with `DUMMY_SP` (which is `0 .. 0`).
     {
-        let fm = codemap.new_filemap(FileName::Custom("<dummy>".to_string()), " ".to_string());
+        let fm = source_map.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
         fm.next_line(fm.start_pos);
     }
 
     let emitter_dest = None;
 
-    let sess = session::build_session_with_codemap(
-        sopts, in_path, descriptions, codemap, emitter_dest
+    let sess = session::build_session_with_source_map(
+        sopts, in_path, descriptions, source_map, emitter_dest
     );
 
     let codegen_backend = rustc_driver::get_codegen_backend(&sess);
@@ -363,22 +363,22 @@ fn build_session(sopts: Options,
 fn rebuild_session(old_session: &Session) -> (Session, CStore, Box<CodegenBackend>) {
     let descriptions = rustc_driver::diagnostics_registry();
 
-    // We happen to know that the `&SourceMap` we get from `old_session.codemap()` is inside an `Rc`
+    // We happen to know that the `&SourceMap` we get from `old_session.source_map()` is inside an `Rc`
     // pointer, so we can clone that `Rc` with a little unsafe code.
-    let codemap = unsafe {
-        let temp_rc = ManuallyDrop::new(Rc::from_raw(old_session.codemap()));
-        let codemap = (*temp_rc).clone();
+    let source_map = unsafe {
+        let temp_rc = ManuallyDrop::new(Rc::from_raw(old_session.source_map()));
+        let source_map = (*temp_rc).clone();
         mem::forget(temp_rc);
-        codemap
+        source_map
     };
 
     let emitter_dest = None;
 
-    let session = session::build_session_with_codemap(
+    let session = session::build_session_with_source_map(
         old_session.opts.clone(),
         old_session.local_crate_source_file.clone(),
         descriptions,
-        codemap,
+        source_map,
         emitter_dest,
     );
 
@@ -559,7 +559,7 @@ pub fn try_run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> Op
 /// Create a span whose text is `s`.  Note this is somewhat expensive, as it adds a new dummy file
 /// to the `SourceMap` on every call.
 pub fn make_span_for_text(cm: &SourceMap, s: &str) -> Span {
-    let fm = cm.new_filemap(FileName::Custom("<text>".to_string()), s.to_string());
+    let fm = cm.new_source_file(FileName::Custom("<text>".to_string()), s.to_string());
     fm.next_line(fm.start_pos);
     Span::new(fm.start_pos, fm.end_pos, SyntaxContext::empty())
 }

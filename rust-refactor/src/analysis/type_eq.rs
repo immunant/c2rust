@@ -401,7 +401,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
         self.nodes.get(&e.hir_id)
             .or_else(|| self.unadjusted_nodes.get(&e.hir_id))
             .unwrap_or_else(|| panic!("expr_lty: no lty for {:?} @ {:?}",
-                                      e, self.tcx.sess.codemap().span_to_string(e.span)))
+                                      e, self.tcx.sess.source_map().span_to_string(e.span)))
     }
 
     fn opt_unadjusted_expr_lty(&self, e: &Expr) -> Option<LTy<'tcx>> {
@@ -418,13 +418,13 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     fn pat_lty(&self, p: &Pat) -> LTy<'tcx> {
         self.unadjusted_nodes.get(&p.hir_id)
             .unwrap_or_else(|| panic!("pat_lty: no lty for {:?} @ {:?}",
-                                      p, self.tcx.sess.codemap().span_to_string(p.span)))
+                                      p, self.tcx.sess.source_map().span_to_string(p.span)))
     }
 
     fn ty_lty(&self, t: &Ty) -> LTy<'tcx> {
         self.ty_nodes.get(&t.id)
             .unwrap_or_else(|| panic!("ty_lty: no lty for {:?} @ {:?}",
-                                      t, self.tcx.sess.codemap().span_to_string(t.span)))
+                                      t, self.tcx.sess.source_map().span_to_string(t.span)))
     }
 
     fn prim_lty(&self, name: &'static str) -> LTy<'tcx> {
