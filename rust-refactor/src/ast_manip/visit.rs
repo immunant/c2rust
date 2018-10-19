@@ -54,10 +54,12 @@ gen_visit_impls! {
         fn visit_stmt(&mut self, s: &'ast Stmt) { ... }
         fn visit_arm(&mut self, a: &'ast Arm) { ... }
         fn visit_pat(&mut self, p: &'ast Pat) { ... }
+        fn visit_anon_const(&mut self, c: &'ast AnonConst) { ... }
         fn visit_expr(&mut self, ex: &'ast Expr) { ... }
         // This is a second visit method for `Expr`
         //fn visit_expr_post(&mut self, _ex: &'ast Expr) { ... }
         fn visit_ty(&mut self, t: &'ast Ty) { ... }
+        fn visit_generic_param(&mut self, param: &'ast GenericParam) { ... }
         fn visit_generics(&mut self, g: &'ast Generics) { ... }
         fn visit_where_predicate(&mut self, p: &'ast WherePredicate) { ... }
         //fn visit_fn(
@@ -70,7 +72,7 @@ gen_visit_impls! {
         fn visit_trait_item(&mut self, ti: &'ast TraitItem) { ... }
         fn visit_impl_item(&mut self, ii: &'ast ImplItem) { ... }
         fn visit_trait_ref(&mut self, t: &'ast TraitRef) { ... }
-        fn visit_ty_param_bound(&mut self, bounds: &'ast TyParamBound) { ... }
+        fn visit_param_bound(&mut self, bounds: &'ast GenericBound) { ... }
         //fn visit_poly_trait_ref(
         //    &mut self, 
         //    t: &'ast PolyTraitRef, 
@@ -98,14 +100,12 @@ gen_visit_impls! {
         //    g: &'ast Generics, 
         //    item_id: NodeId
         //) { ... }
+        fn visit_label(&mut self, label: &'ast Label) { ... }
         fn visit_lifetime(&mut self, lifetime: &'ast Lifetime) { ... }
-        fn visit_mac(&mut self, _mac: &'ast Mac) { ... }
+        fn visit_mac(&mut self, mac: &'ast Mac) { ... }
+        //fn visit_mac_def(&mut self, _mac: &'ast MacroDef, _id: NodeId) { ... }
         //fn visit_path(&mut self, path: &'ast Path, _id: NodeId) { ... }
-        //fn visit_path_list_item(
-        //    &mut self, 
-        //    prefix: &'ast Path, 
-        //    item: &'ast PathListItem
-        //) { ... }
+        //fn visit_use_tree(&mut self, use_tree: &'ast UseTree, id: NodeId, _nested: bool) { ... }
         //fn visit_path_segment(
         //    &mut self, 
         //    path_span: Span, 
@@ -116,8 +116,12 @@ gen_visit_impls! {
         //    path_span: Span, 
         //    generic_args: &'ast GenericArgs
         //) { ... }
+        fn visit_generic_arg(&mut self, generic_arg: &'ast GenericArg) { ... }
         fn visit_assoc_type_binding(&mut self, type_binding: &'ast TypeBinding) { ... }
         fn visit_attribute(&mut self, _attr: &'ast Attribute) { ... }
+        //fn visit_tt(&mut self, tt: TokenTree) { ... }
+        //fn visit_tts(&mut self, tts: TokenStream) { ... }
+        //fn visit_token(&mut self, _t: Token) { ... }
         fn visit_vis(&mut self, vis: &'ast Visibility) { ... }
         fn visit_fn_ret_ty(&mut self, ret_ty: &'ast FunctionRetTy) { ... }
     }
