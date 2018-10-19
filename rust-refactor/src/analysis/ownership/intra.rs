@@ -24,7 +24,7 @@ enum Label<'tcx> {
     /// which can be arbitrary.
     Ptr(Perm<'tcx>),
 
-    /// `TyFnDef` ought to be labeled with something like an extra set of `Substs`, but for
+    /// `FnDef` ought to be labeled with something like an extra set of `Substs`, but for
     /// permissions instead of type/lifetimes.  However, every one of those `Substs` would simply
     /// consist of a list of sequentially numbered `InstVar`s.  So instead we store an index into
     /// the `insts` table, which can be used to reconstruct the permission arguments, and also
@@ -183,14 +183,14 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 ref mut next_inst_var, ref mut insts, .. } = *self;
         ilcx.label(ty, &mut |ty| {
             match ty.sty {
-                TyKind::TyRef(_, _, _) |
-                TyKind::TyRawPtr(_) => {
+                TyKind::Ref(_, _, _) |
+                TyKind::RawPtr(_) => {
                     let v = Var(*next_local_var);
                     *next_local_var += 1;
                     Label::Ptr(Perm::LocalVar(v))
                 },
 
-                TyKind::TyFnDef(def_id, _) => {
+                TyKind::FnDef(def_id, _) => {
                     let (func, var) = cx.variant_summ(def_id);
                     let num_vars = func.num_sig_vars;
 
@@ -265,12 +265,12 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
     fn field_lty(&mut self, base_ty: ITy<'tcx>, v: usize, f: Field) -> ITy<'tcx> {
         match base_ty.ty.sty {
-            TyKind::TyAdt(adt, _substs) => {
+            TyKind::Adt(adt, _substs) => {
                 let field_def = &adt.variants[v].fields[f.index()];
                 let poly_ty = self.static_ty(field_def.did);
                 self.ilcx.subst(poly_ty, &base_ty.args)
             },
-            TyKind::TyTuple(_tys_) => base_ty.args[f.index()],
+            TyKind::Tuple(_tys_) => base_ty.args[f.index()],
             _ => unimplemented!(),
         }
     }
@@ -431,7 +431,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
             let inst1 = &self.insts[idx1];
             let inst2 = &self.insts[idx2];
             assert!(inst1.callee == inst2.callee,
-                    "impossible - tried to unify unequal TyFnDefs ({:?} != {:?})",
+                    "impossible - tried to unify unequal FnDefs ({:?} != {:?})",
                     inst1.callee, inst2.callee);
 
             if inst1.first_inst_var == inst2.first_inst_var {
@@ -454,7 +454,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
     fn ty_fn_sig(&mut self, ty: ITy<'tcx>) -> IFnSig<'tcx> {
         match ty.ty.sty {
-            TyKind::TyFnDef(did, _substs) => {
+            TyKind::FnDef(did, _substs) => {
                 let idx = expect!([ty.label] Label::FnDef(idx) => idx);
                 let var_base = self.insts[idx].first_inst_var;
 
@@ -466,7 +466,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                         Some(PermVar::Sig(v)) => Label::Ptr(Perm::InstVar(Var(var_base + v.0))),
                         Some(_) => panic!("found non-Sig PermVar in sig"),
                         None => Label::None,
-                        // There's no way to write a TyFnDef type in a function signature, so it's
+                        // There's no way to write a FnDef type in a function signature, so it's
                         // reasonable to have no cases output `Label::FnDef`.
                     }
                 };
@@ -480,14 +480,14 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 }
             },
 
-            TyKind::TyFnPtr(_) => {
+            TyKind::FnPtr(_) => {
                 FnSig {
                     inputs: &ty.args[.. ty.args.len() - 1],
                     output: ty.args[ty.args.len() - 1],
                 }
             },
 
-            TyKind::TyClosure(_, _) => unimplemented!(),
+            TyKind::Closure(_, _) => unimplemented!(),
 
             _ => panic!("expected FnDef, FnPtr, or Closure"),
         }

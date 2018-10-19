@@ -27,12 +27,12 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                                         infer_args: bool) -> P<Ty> {
     use rustc::ty::TyKind::*;
     match ty.sty {
-        TyBool => mk().ident_ty("bool"),
-        TyChar => mk().ident_ty("char"),
-        TyInt(ity) => mk().ident_ty(ity.ty_to_string()),
-        TyUint(uty) => mk().ident_ty(uty.ty_to_string()),
-        TyFloat(fty) => mk().ident_ty(fty.ty_to_string()),
-        TyAdt(def, substs) => {
+        Bool => mk().ident_ty("bool"),
+        Char => mk().ident_ty("char"),
+        Int(ity) => mk().ident_ty(ity.ty_to_string()),
+        Uint(uty) => mk().ident_ty(uty.ty_to_string()),
+        Float(fty) => mk().ident_ty(fty.ty_to_string()),
+        Adt(def, substs) => {
             if infer_args {
                 let (qself, path) = reflect_def_path(tcx, def.did);
                 mk().qpath_ty(qself, path)
@@ -42,35 +42,34 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 mk().qpath_ty(qself, path)
             }
         },
-        TyStr => mk().ident_ty("str"),
-        TyArray(ty, len) => mk().array_ty(
+        Str => mk().ident_ty("str"),
+        Array(ty, len) => mk().array_ty(
             reflect_tcx_ty(tcx, ty),
             mk().lit_expr(mk().int_lit(len.unwrap_usize(tcx) as u128, "usize"))
         ),
-        TySlice(ty) => mk().slice_ty(reflect_tcx_ty(tcx, ty)),
-        TyRawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(reflect_tcx_ty(tcx, mty.ty)),
-        TyRef(_, ty, m) => mk().set_mutbl(m).ref_ty(reflect_tcx_ty(tcx, ty)),
-        TyFnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
-        TyFnPtr(_) => mk().infer_ty(), // TODO
-        TyForeign(_) => mk().infer_ty(), // TODO ???
-        TyDynamic(_, _) => mk().infer_ty(), // TODO
-        TyClosure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
-        TyGenerator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
-        TyNever => mk().never_ty(),
-        TyTuple(tys) => mk().tuple_ty(tys.iter().map(|&ty| reflect_tcx_ty(tcx, ty)).collect()),
-        TyProjection(_) => mk().infer_ty(), // TODO
-        TyAnon(_, _) => mk().infer_ty(), // TODO
+        Slice(ty) => mk().slice_ty(reflect_tcx_ty(tcx, ty)),
+        RawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(reflect_tcx_ty(tcx, mty.ty)),
+        Ref(_, ty, m) => mk().set_mutbl(m).ref_ty(reflect_tcx_ty(tcx, ty)),
+        FnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
+        FnPtr(_) => mk().infer_ty(), // TODO
+        Foreign(_) => mk().infer_ty(), // TODO ???
+        Dynamic(_, _) => mk().infer_ty(), // TODO
+        Closure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
+        Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
+        Never => mk().never_ty(),
+        Tuple(tys) => mk().tuple_ty(tys.iter().map(|&ty| reflect_tcx_ty(tcx, ty)).collect()),
+        Projection(_) => mk().infer_ty(), // TODO
         // (Note that, despite the name, `TyAnon` *can* be named - it's `impl SomeTrait`.)
-        TyParam(param) => {
+        Param(param) => {
             if infer_args {
                 mk().infer_ty()
             } else {
                 mk().ident_ty(param.name)
             }
         },
-        TyInfer(_) => mk().infer_ty(),
-        TyError => mk().infer_ty(), // unsupported
-        TyGeneratorWitness(_) => mk().infer_ty(), // TODO ?
+        Infer(_) => mk().infer_ty(),
+        Error => mk().infer_ty(), // unsupported
+        GeneratorWitness(_) => mk().infer_ty(), // TODO ?
     }
 }
 
@@ -293,7 +292,7 @@ pub fn register_commands(reg: &mut Registry) {
                 let krate = fold_nodes(krate, |e: P<Expr>| {
                     let ty = cx.node_type(e.id);
 
-                    let e = if let TyKind::TyFnDef(def_id, ref substs) = ty.sty {
+                    let e = if let TyKind::FnDef(def_id, ref substs) = ty.sty {
                         let substs = substs.types().collect::<Vec<_>>();
                         let (qself, path) = reflect_def_path_inner(
                             cx.ty_ctxt(), def_id, Some(&substs));

@@ -390,11 +390,11 @@ impl Transform for UninitToDefault {
             let init = l.init.as_ref().unwrap().clone();
             let ty = cx.node_type(init.id);
             let new_init_lit = match ty.sty {
-                TyKind::TyBool => mk().bool_lit(false),
-                TyKind::TyChar => mk().char_lit('\0'),
-                TyKind::TyInt(ity) => mk().int_lit(0, ity),
-                TyKind::TyUint(uty) => mk().int_lit(0, uty),
-                TyKind::TyFloat(fty) => mk().float_lit("0", fty),
+                TyKind::Bool => mk().bool_lit(false),
+                TyKind::Char => mk().char_lit('\0'),
+                TyKind::Int(ity) => mk().int_lit(0, ity),
+                TyKind::Uint(uty) => mk().int_lit(0, uty),
+                TyKind::Float(fty) => mk().float_lit("0", fty),
                 _ => return l,
             };
             l.map(|l| {

@@ -52,7 +52,7 @@ impl HirDefExt for Def {
             Def::Trait(did) |
             Def::Existential(did) |
             Def::TyAlias(did) |
-            Def::TyForeign(did) |
+            Def::Foreign(did) |
             Def::AssociatedTy(did) |
             Def::TyParam(did) |
             Def::Fn(did) |

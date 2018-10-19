@@ -478,9 +478,9 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     fn fn_num_inputs(&self, lty: LTy<'tcx>) -> usize {
         use rustc::ty::TyKind::*;
         match lty.ty.sty {
-            TyFnDef(id, _) => self.def_sig(id).inputs.len(),
-            TyFnPtr(_) => lty.args.len() - 1,
-            // TODO: Handle TyClosure.  This should be similar to TyFnDef, but the substs are a bit
+            FnDef(id, _) => self.def_sig(id).inputs.len(),
+            FnPtr(_) => lty.args.len() - 1,
+            // TODO: Handle Closure.  This should be similar to FnDef, but the substs are a bit
             // more complicated.
             _ => panic!("fn_num_inputs: not a fn type"),
         }
@@ -490,17 +490,17 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     fn fn_input(&self, lty: LTy<'tcx>, idx: usize) -> LTy<'tcx> {
         use rustc::ty::TyKind::*;
         match lty.ty.sty {
-            TyFnDef(id, _) => {
-                // For a `TyFnDef`, retrieve the `LFnSig` for the given `DefId` and apply the
+            FnDef(id, _) => {
+                // For a `FnDef`, retrieve the `LFnSig` for the given `DefId` and apply the
                 // labeled substs recorded in `LTy.args`.
                 let sig = self.def_sig(id);
                 self.ltt.subst(sig.inputs[idx], &lty.args)
             },
-            TyFnPtr(_) => {
-                // For a `TyFnPtr`, `lty.args` records the labeled input and output types.
+            FnPtr(_) => {
+                // For a `FnPtr`, `lty.args` records the labeled input and output types.
                 &lty.args[idx]
             },
-            // TODO: TyClosure
+            // TODO: Closure
             _ => panic!("fn_input: not a fn type"),
         }
     }
@@ -509,14 +509,14 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     fn fn_output(&self, lty: LTy<'tcx>) -> LTy<'tcx> {
         use rustc::ty::TyKind::*;
         match lty.ty.sty {
-            TyFnDef(id, _) => {
+            FnDef(id, _) => {
                 let sig = self.def_sig(id);
                 self.ltt.subst(sig.output, &lty.args)
             },
-            TyFnPtr(_) => {
+            FnPtr(_) => {
                 &lty.args[lty.args.len() - 1]
             },
-            // TODO: TyClosure
+            // TODO: Closure
             _ => panic!("fn_output: not a fn type"),
         }
     }
@@ -524,13 +524,13 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     fn fn_is_variadic(&self, lty: LTy<'tcx>) -> bool {
         use rustc::ty::TyKind::*;
         match lty.ty.sty {
-            TyFnDef(id, _) => {
+            FnDef(id, _) => {
                 self.def_sig(id).variadic
             },
-            TyFnPtr(ty_sig) => {
+            FnPtr(ty_sig) => {
                 ty_sig.skip_binder().variadic
             },
-            // TODO: TyClosure
+            // TODO: Closure
             _ => panic!("fn_is_variadic: not a fn type"),
         }
     }
@@ -556,7 +556,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     /// substitution, using the type arguments from `struct_ty`.
     fn field_lty(&self, struct_ty: LTy<'tcx>, name: Symbol) -> LTy<'tcx> {
         let adt = match struct_ty.ty.sty {
-            ty::TyKind::TyAdt(ref adt, _) => adt,
+            ty::TyKind::Adt(ref adt, _) => adt,
             _ => panic!("field_lty: not a struct ty: {:?}", struct_ty),
         };
         let variant = adt.non_enum_variant();
@@ -610,7 +610,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
                 let func_lty = self.expr_lty(func);
 
                 fn is_closure(ty: ty::Ty) -> bool {
-                    if let ty::TyKind::TyClosure(..) = ty.sty {
+                    if let ty::TyKind::Closure(..) = ty.sty {
                         true
                     } else {
                         false

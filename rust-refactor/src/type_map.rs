@@ -58,23 +58,23 @@ impl<'a, 'tcx, S, F> TypeMapVisitor<'a, 'tcx, S, F>
         (self.callback)(&mut self.source, ast_ty, ty);
 
         match (&ast_ty.node, ty.sty()) {
-            (&TyKind::Slice(ref elem), &TySlice(..)) => 
+            (&TyKind::Slice(ref elem), &Slice(..)) => 
                 self.record_ty(ty.arg(0), elem),
-            (&TyKind::Array(ref elem, _), &TyArray(..)) => 
+            (&TyKind::Array(ref elem, _), &Array(..)) => 
                 self.record_ty(ty.arg(0), elem),
-            (&TyKind::Ptr(ref mty), &TyRawPtr(..)) =>
+            (&TyKind::Ptr(ref mty), &RawPtr(..)) =>
                 self.record_ty(ty.arg(0), &mty.ty),
-            (&TyKind::Rptr(_, ref mty), &TyRef(..)) =>
+            (&TyKind::Rptr(_, ref mty), &Ref(..)) =>
                 self.record_ty(ty.arg(0), &mty.ty),
-            (&TyKind::BareFn(ref fn_ty), &TyFnPtr(..)) => {
+            (&TyKind::BareFn(ref fn_ty), &FnPtr(..)) => {
                 assert!(ty.num_args() == fn_ty.decl.inputs.len() + 1);
                 for (i, arg) in fn_ty.decl.inputs.iter().enumerate() {
                     self.record_ty(ty.arg(i), &arg.ty);
                 }
                 self.record_function_ret_ty(ty.arg(fn_ty.decl.inputs.len()), &fn_ty.decl.output);
             },
-            (&TyKind::Never, &TyNever) => {},
-            (&TyKind::Tup(ref elems), &TyTuple(..)) => {
+            (&TyKind::Never, &Never) => {},
+            (&TyKind::Tup(ref elems), &Tuple(..)) => {
                 for (i, ast_ty) in elems.iter().enumerate() {
                     self.record_ty(ty.arg(i), ast_ty);
                 }
@@ -84,8 +84,7 @@ impl<'a, 'tcx, S, F> TypeMapVisitor<'a, 'tcx, S, F>
                 // expanding type aliases.  So this case gets special handling.
                 self.record_path_ty(ty, qself.as_ref(), path);
             },
-            (&TyKind::TraitObject(..), &TyDynamic(..)) => {}, // TODO
-            (&TyKind::ImplTrait(..), &TyAnon(..)) => {}, // TODO
+            (&TyKind::TraitObject(..), &Dynamic(..)) => {}, // TODO
             // `Paren` should never appear, but just in case...
             (&TyKind::Paren(ref ast_ty), _) => self.record_ty(ty, ast_ty),
             // No case for TyTypeof - it can't be written in source programs currently
@@ -154,8 +153,8 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
 
             ExprKind::Path(ref _qself, ref _path) => {
                 // TODO: Handle `ast::Ty`s appearing inside path segments' `parameters` field.
-                // In cases where `parameters` is `Some`, the expr type should be `TyAdt`,
-                // `TyFnDef`, or some other type with `substs`.  The `parameters` correspond to the
+                // In cases where `parameters` is `Some`, the expr type should be `Adt`,
+                // `FnDef`, or some other type with `substs`.  The `parameters` correspond to the
                 // `substs`, though the specific relationship is non-obvious.  The easy case is a
                 // path expr `T::<Foo>::f::<Bar>` with substs `[Foo, Bar]`.  The harder cases are
                 // those where some of the types are omitted - `T::<Foo>::f`, `T::f::<Bar>`, and

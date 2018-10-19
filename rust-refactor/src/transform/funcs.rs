@@ -131,7 +131,7 @@ impl Transform for ToMethod {
                     }
                 } else {
                     match pat_ty.sty {
-                        TyKind::TyRef(_, ty, _) if ty == self_ty => {
+                        TyKind::Ref(_, ty, _) if ty == self_ty => {
                             match arg.ty.node {
                                 TyKind::Rptr(ref lt, ref mty) =>
                                     Some(SelfKind::Region(lt.clone(), mty.mutbl)),

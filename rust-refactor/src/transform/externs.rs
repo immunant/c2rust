@@ -98,7 +98,7 @@ impl Transform for CanonicalizeExterns {
             let old_ty = cx.def_type(old_did);
             let new_ty = cx.def_type(new_did);
 
-            if !matches!([old_ty.sty] TyKind::TyFnDef(..)) {
+            if !matches!([old_ty.sty] TyKind::FnDef(..)) {
                 // Non-fn items are easy to handle.
                 if old_ty != new_ty {
                     ty_replace_map.insert((old_did, TyLoc::Whole), (old_ty, new_ty));

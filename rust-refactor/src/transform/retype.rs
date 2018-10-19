@@ -348,7 +348,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
                 ExprKind::Field(ref obj, ref name) => {
                     let ty = cx.adjusted_node_type(obj.id);
                     match ty.sty {
-                        TyKind::TyAdt(adt, _) => {
+                        TyKind::Adt(adt, _) => {
                             let did = adt.non_enum_variant().fields
                               .iter()
                               .find(|f| f.ident == *name)
