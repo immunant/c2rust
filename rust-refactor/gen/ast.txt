@@ -108,18 +108,17 @@ enum ForeignItemKind {
 
 #[nonterminal]
 struct Generics { params, where_clause, span }
-struct TyParam { attrs, ident, id, bounds, default }
-struct LifetimeDef { attrs, lifetime, bounds }
+struct GenericParam { id, ident, attrs, bounds, kind }
+enum GenericParamKind {
+    Lifetime,
+    Type { default },
+}
 #[nonterminal]
 struct WhereClause { id, predicates, span }
 enum WherePredicate {
     BoundPredicate(pred),
     RegionPredicate(pred),
     EqPredicate(pred),
-}
-enum GenericParam {
-    Lifetime(lifetime),
-    Type(typaram),
 }
 
 struct WhereBoundPredicate { span, bounded_ty, bounds, bound_generic_params }
@@ -167,9 +166,9 @@ flag FloatTy;
 
 struct BareFnTy { unsafety, abi, decl, generic_params }
 struct Lifetime { id, ident }
-enum TyParamBound {
-    TraitTyParamBound(poly, module),
-    RegionTyParamBound(lt),
+enum GenericBound {
+    Trait(poly_trait_ref, modifier),
+    Outlives(lt),
 }
 
 struct PolyTraitRef { trait_ref, span, bound_generic_params }
@@ -322,13 +321,13 @@ flag AttrStyle;
 #[match=custom] #[nonterminal]
 struct Path { span, segments }
 struct PathSegment { ident, parameters }
-enum PathParameters {
+enum GenericArgs {
     AngleBracketed(abpd),
     Parenthesized(ppd),
 }
 
-struct AngleBracketedParameterData { span, lifetimes, types, bindings }
-struct ParenthesizedParameterData { span, inputs, output }
+struct AngleBracketedArgs { span, lifetimes, types, bindings }
+struct ParenthesisedArgs { span, inputs, output }
 struct QSelf { ty, path_span, position }
 
 
