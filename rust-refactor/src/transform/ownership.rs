@@ -298,20 +298,20 @@ fn do_split_variants(st: &CommandState,
         // distinguish the different copies - their bodies have identical spans and `NodeId`s.
         let krate = fold_fns_multi(krate, |fl| {
             if !st.marked(fl.id, label) {
-                return SmallVector::one(fl);
+                return smallvec![fl];
             }
             eprintln!("looking at {:?}", fl.ident);
 
             let def_id = match_or!([cx.hir_map().opt_local_def_id(fl.id)]
-                                   Some(x) => x; return SmallVector::one(fl));
+                                   Some(x) => x; return smallvec![fl]);
             if !ana.variants.contains_key(&def_id) {
-                return SmallVector::one(fl);
+                return smallvec![fl];
             }
             let (fr, vr) = ana.fn_results(def_id);
 
             if fr.variants.is_some() {
                 // Func has already been split.  No work to do at this point.
-                return SmallVector::one(fl);
+                return smallvec![fl];
             }
 
             let path_str = cx.ty_ctxt().def_path(def_id).to_string_no_crate();
@@ -320,7 +320,7 @@ fn do_split_variants(st: &CommandState,
             // For consistency, we run the split logic even for funcs with only one mono.  This way
             // the "1 variant, N monos" case is handled here, and the "N variants, N monos" case is
             // handled below.
-            let mut fls = SmallVector::with_capacity(fr.num_monos);
+            let mut fls = SmallVec::with_capacity(fr.num_monos);
             for mono_idx in 0 .. fr.num_monos {
                 let mr = &ana.monos[&(vr.func_id, mono_idx)];
                 let mut fl = fl.clone();

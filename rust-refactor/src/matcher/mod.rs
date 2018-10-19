@@ -489,7 +489,7 @@ gen_pattern_impl! {
     pattern = Stmt;
     folder = StmtPatternFolder;
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt>;
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]>;
     walk = fold::noop_fold_stmt(s, self);
     map(match_one) = s.move_map(match_one);
 }

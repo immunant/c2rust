@@ -35,7 +35,7 @@ impl Transform for RenameRegex {
         let krate = fold_nodes(krate, |i: P<Item>| {
             if let Some(label) = self.filter {
                 if !st.marked(i.id, label) {
-                    return SmallVector::one(i);
+                    return smallvec![i];
                 }
             }
 
@@ -44,14 +44,14 @@ impl Transform for RenameRegex {
             if let Cow::Owned(new_name) = new_name {
                 new_idents.insert(cx.hir_map().node_to_hir_id(i.id), mk().ident(&new_name));
 
-                SmallVector::one(i.map(|i| {
+                smallvec![i.map(|i| {
                     Item {
                         ident: mk().ident(&new_name),
                         .. i
                     }
-                }))
+                })]
             } else {
-                SmallVector::one(i)
+                smallvec![i]
             }
         });
 
@@ -95,9 +95,9 @@ impl Transform for ReplaceItems {
 
             if st.marked(i.id, "target") {
                 target_ids.insert(cx.node_def_id(i.id));
-                SmallVector::new()
+                smallvec![]
             } else {
-                SmallVector::one(i)
+                smallvec![i]
             }
         });
 
@@ -114,9 +114,9 @@ impl Transform for ReplaceItems {
 
             if st.marked(i.id, "target") {
                 target_ids.insert(cx.node_def_id(i.id));
-                SmallVector::new()
+                smallvec![]
             } else {
-                SmallVector::one(i)
+                smallvec![i]
             }
         });
 
@@ -143,10 +143,10 @@ impl Transform for ReplaceItems {
 
             if let Some(def_id) = opt_def_id {
                 if target_ids.contains(&def_id) {
-                    return SmallVector::new();
+                    return smallvec![];
                 }
             }
-            SmallVector::one(i)
+            smallvec![i]
         });
 
         krate

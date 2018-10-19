@@ -10,7 +10,6 @@ use std::fmt::Display;
 use syntax::ast::*;
 use syntax::fold::Folder;
 use syntax::ptr::P;
-use smallvec::SmallVec;
 use transform::Transform;
 
 pub struct Ionize {
@@ -142,7 +141,7 @@ impl Transform for Ionize {
         let krate = fold_nodes(krate, |i: P<Item>| {
             match cx.hir_map().opt_local_def_id(i.id) {
                 Some(ref def_id) if targets.contains(def_id) => {}
-                _ => return SmallVector::one(i)
+                _ => return smallvec![i]
             }
 
             if let ItemKind::Union(VariantData::Struct(ref fields, _), _) = i.node {
@@ -170,7 +169,7 @@ impl Transform for Ionize {
                 let enum_ = mk().enum_item(i.ident, enum_variants);
 
 
-                SmallVector::many(vec![impl_, enum_])
+                smallvec![impl_, enum_]
             } else {
                 panic!("ionize: Marked target not a union")
             }

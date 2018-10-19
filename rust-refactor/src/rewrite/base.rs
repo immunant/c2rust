@@ -13,11 +13,12 @@
 //! Rewrite strategies for specific types can call directly into `rewrite_seq` (or an even more
 //! specialized function, such as `rewrite_seq_comma_sep`) to get better results than the generic
 //! `[T]` implementation.
+use rustc_target::spec::abi::Abi;
+use syntax::ThinVec;
 use syntax::ast::*;
 use syntax::source_map::{Span, SyntaxContext};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
-use rustc_target::spec::abi::Abi;
 
 use std::rc::Rc;
 use syntax::ptr::P;

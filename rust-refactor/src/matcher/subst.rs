@@ -183,10 +183,10 @@ impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
 
     fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(stmt) = s.pattern_symbol().and_then(|sym| self.bindings.get_stmt(sym)) {
-            SmallVector::one(stmt.clone())
+            smallvec![stmt.clone()]
         } else if let Some(stmts) = s.pattern_symbol()
                 .and_then(|sym| self.bindings.get_multi_stmt(sym)) {
-            SmallVector::many(stmts.clone())
+            SmallVec::from_vec(stmts.clone())
         } else {
             fold::noop_fold_stmt(s, self)
         }
@@ -194,7 +194,7 @@ impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
 
     fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         if let Some(item) = i.pattern_symbol().and_then(|sym| self.bindings.get_item(sym)) {
-            SmallVector::one(item.clone())
+            smallvec![item.clone()]
         } else {
             fold::noop_fold_item(i, self)
         }

@@ -1,8 +1,8 @@
 //! `TryMatch` impls, to support the `matcher` module.
 use std::rc::Rc;
-use syntax::ast::*;
-// use syntax::abi::Abi;
 use rustc_target::spec::abi::Abi;
+use syntax::ThinVec;
+use syntax::ast::*;
 use syntax::source_map::{Span, Spanned};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::token::{Token, DelimToken, Nonterminal};

@@ -1,6 +1,5 @@
 use syntax::ast::*;
 use syntax::ptr::P;
-use smallvec::SmallVec;
 
 use api::*;
 use command::{CommandState, Registry};
@@ -104,20 +103,20 @@ impl Transform for Rename {
         // Find the struct definition and rename it.
         let krate = fold_nodes(krate, |i: P<Item>| {
             if target_def_id.is_some() || !st.marked(i.id, "target") {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
             // Make sure this is actually a struct declaration, and not, say, the target
             // declaration's containing module.
-            match_or!([struct_item_id(&i)] Some(x) => x; return SmallVector::one(i));
+            match_or!([struct_item_id(&i)] Some(x) => x; return smallvec![i]);
             target_def_id = Some(cx.node_def_id(i.id));
 
-            SmallVector::one(i.map(|i| {
+            smallvec![i.map(|i| {
                 Item {
                     ident: new_ident.clone(),
                     .. i
                 }
-            }))
+            })]
         });
 
         // Find uses of the struct and rewrite them.  We need to check everywhere a Path may

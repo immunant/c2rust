@@ -2,6 +2,7 @@
 use std::rc::Rc;
 use rustc::hir;
 use rustc_target::spec::abi::Abi;
+use syntax::ThinVec;
 use syntax::ast::*;
 use syntax::parse::token::{self, Token, DelimToken};
 use syntax::ptr::P;

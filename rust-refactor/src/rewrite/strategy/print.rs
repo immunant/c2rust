@@ -12,6 +12,7 @@
 use std::rc::Rc;
 use rustc::session::Session;
 use rustc_target::spec::abi::Abi;
+use syntax::ThinVec;
 use syntax::ast::*;
 use syntax::attr;
 use syntax::source_map::{Span, Spanned, BytePos, FileName};

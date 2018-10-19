@@ -3,7 +3,6 @@ use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use smallvec::SmallVec;
 
 use api::*;
 use command::{CommandState, Registry};
@@ -55,10 +54,10 @@ impl Transform for GeneralizeItems {
         let mut item_def_ids = HashSet::new();
         let krate = fold_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
             item_def_ids.insert(cx.node_def_id(i.id));
-            SmallVector::one(i.map(|mut i| {
+            smallvec![i.map(|mut i| {
                 {
                     let gen = match i.node {
                         ItemKind::Fn(_, _, _, _, ref mut gen, _) => gen,
@@ -72,7 +71,7 @@ impl Transform for GeneralizeItems {
                     gen.params.push(GenericParam::Type(mk().ty_param(self.ty_var_name)));
                 }
                 i
-            }))
+            })]
         });
 
         // (3) Rewrite references to each item, replacing `X` with `X<ty1>`.  If the reference to

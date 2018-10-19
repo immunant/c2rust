@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use rustc_target::spec::abi::Abi;
+use syntax::ThinVec;
 use syntax::ast::*;
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;

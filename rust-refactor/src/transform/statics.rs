@@ -3,7 +3,6 @@ use rustc::hir::def_id::DefId;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use smallvec::SmallVec;
 
 use api::*;
 use command::{CommandState, Registry};
@@ -123,7 +122,7 @@ impl Transform for Localize {
 
         let krate = fold_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
             match i.node {
@@ -141,7 +140,7 @@ impl Transform for Localize {
                 _ => {},
             }
 
-            SmallVector::one(i)
+            smallvec![i]
         });
 
 

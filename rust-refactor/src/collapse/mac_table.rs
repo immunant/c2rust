@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use syntax::ThinVec;
 use syntax::ast::*;
 use syntax::source_map::{Span, SyntaxContext};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};

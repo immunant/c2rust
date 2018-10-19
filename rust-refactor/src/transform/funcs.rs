@@ -30,14 +30,14 @@ impl Transform for ToMethod {
             // We're looking for an inherent impl (no `TraitRef`) marked with a cursor.
             if !st.marked(i.id, "dest") ||
                !matches!([i.node] ItemKind::Impl(_, _, _, _, None, _, _)) {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
             if dest.is_none() {
                 dest = Some(i.clone());
             }
 
-            SmallVector::one(i)
+            smallvec![i]
         });
 
         if dest.is_none() {
@@ -179,10 +179,10 @@ impl Transform for ToMethod {
 
         let krate = fold_nodes(krate, |i: P<Item>| {
             if i.id != dest.id || fns.is_none() {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
-            SmallVector::one(i.map(|i| {
+            smallvec![i.map(|i| {
                 unpack!([i.node] ItemKind::Impl(
                         unsafety, polarity, generics, defaultness, trait_ref, ty, items));
                 let mut items = items;
@@ -211,7 +211,7 @@ impl Transform for ToMethod {
                               unsafety, polarity, generics, defaultness, trait_ref, ty, items),
                     .. i
                 }
-            }))
+            })]
         });
 
 
@@ -403,16 +403,16 @@ impl Transform for WrapExtern {
         let mut dest_path = None;
         let krate = fold_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "dest") {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
             if dest_path.is_some() {
                 info!("warning: found multiple \"dest\" marks");
-                return SmallVector::one(i);
+                return smallvec![i];
             }
             dest_path = Some(cx.def_path(cx.node_def_id(i.id)));
 
-            SmallVector::one(i.map(|i| {
+            smallvec![i.map(|i| {
                 unpack!([i.node] ItemKind::Mod(m));
                 let mut m = m;
 
@@ -459,7 +459,7 @@ impl Transform for WrapExtern {
                     node: ItemKind::Mod(m),
                     .. i
                 }
-            }))
+            })]
         });
 
         if dest_path.is_none() {
@@ -503,11 +503,11 @@ impl Transform for WrapApi {
         // Add wrapper functions
         let krate = fold_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
             if !matches!([i.node] ItemKind::Fn(..)) {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
             let (decl, old_abi) = expect!([i.node]
@@ -521,7 +521,7 @@ impl Transform for WrapApi {
                     i.ident.name
                 } else {
                     warn!("marked function `{:?}` does not have a stable symbol", i.ident.name);
-                    return SmallVector::one(i);
+                    return smallvec![i];
                 };
 
             // Remove export-related attrs from the original function, and set it to Abi::Rust.
@@ -601,7 +601,7 @@ impl Transform for WrapApi {
             let item_hir_id = cx.hir_map().node_to_hir_id(i.id);
             wrapper_map.insert(item_hir_id, wrapper_name);
 
-            let mut v = SmallVector::new();
+            let mut v = smallvec![];
             v.push(i);
             v.push(wrapper);
             v

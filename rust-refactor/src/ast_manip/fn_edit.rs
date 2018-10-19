@@ -225,7 +225,7 @@ impl<F> Folder for FnFolder<F>
 pub fn fold_fns<T, F>(target: T, mut callback: F) -> <T as Fold>::Result
         where T: Fold,
               F: FnMut(FnLike) -> FnLike {
-    fold_fns_multi(target, |fl| SmallVector::one(callback(fl)))
+    fold_fns_multi(target, |fl| smallvec![callback(fl)])
 }
 
 /// Similar to `fold_fns`, but allows transforming each `FnLike` into a sequence of zero or more
