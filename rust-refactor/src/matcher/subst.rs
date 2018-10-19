@@ -70,8 +70,8 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
             let node_name = match node {
                 Node::Item(i) => i.name,
                 Node::ForeignItem(i) => i.name,
-                Node::TraitItem(i) => i.name,
-                Node::ImplItem(i) => i.name,
+                Node::TraitItem(i) => i.ident.name,
+                Node::ImplItem(i) => i.ident.name,
                 _ => continue,
             };
             if node_name != name {

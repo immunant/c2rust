@@ -128,7 +128,7 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
 
         match x.node {
             TyKind::Path(_, _) => {
-                expect!([hir.node] hir::TyPath(ref hp) => {
+                expect!([hir.node] hir::TyKind::Path(ref hp) => {
                     info!("looking at TyPath {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });

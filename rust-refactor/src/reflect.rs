@@ -272,7 +272,6 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         Node::Block(_) |
         Node::Local(_) |
         Node::Lifetime(_) |
-        Node::TyParam(_) |
         Node::AnonConst(_) |
         Node::Visibility(_) => false,
     }
