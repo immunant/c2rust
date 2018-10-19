@@ -1,7 +1,7 @@
 use rustc::hir::{Mod, ForeignMod};
 use rustc::hir::def::Def;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE, CRATE_DEF_INDEX};
-use rustc::hir::map::Node;
+use rustc::hir::Node;
 use rustc::ty::TyCtxt;
 use syntax::ast::Ident;
 use syntax_pos::symbol::Symbol;

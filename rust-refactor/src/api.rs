@@ -2,7 +2,7 @@
 //! implementation modules.
 use rustc::hir;
 use rustc::hir::def_id::DefId;
-use rustc::hir::map::Node;
+use rustc::hir::Node;
 use rustc::ty::Ty;
 use syntax::ast;    // Can't glob-import because `Ty` already refers to `rustc::ty::Ty`.
 use syntax::ast::{NodeId, DUMMY_NODE_ID};

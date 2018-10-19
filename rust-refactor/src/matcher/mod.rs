@@ -33,7 +33,7 @@ use std::collections::hash_map::HashMap;
 use std::cmp;
 use std::result;
 use rustc::hir::def_id::DefId;
-use rustc::hir::map::Node;
+use rustc::hir::Node;
 use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Block};
 use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};

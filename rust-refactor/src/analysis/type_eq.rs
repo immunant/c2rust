@@ -44,7 +44,7 @@ use rustc::hir::*;
 use rustc::hir::def_id::DefId;
 use rustc::hir::intravisit::{self, Visitor, NestedVisitorMap};
 use rustc::hir::itemlikevisit::ItemLikeVisitor;
-use rustc::hir::map::Node::*;
+use rustc::hir::Node::*;
 use rustc::ty::{self, TyCtxt, TypeckTables};
 use rustc::ty::adjustment::Adjust;
 // use syntax::abi::Abi;

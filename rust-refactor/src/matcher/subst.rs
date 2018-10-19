@@ -27,7 +27,7 @@
 //!    that `def!` pattern will be used instead.  (This provides an easy way to take advantage of
 //!    surrounding `use` items to produce more convenient paths.)
 
-use rustc::hir::map::Node;
+use rustc::hir::Node;
 use rustc::hir::def_id::DefId;
 use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item, ImplItem};
 use syntax::ast::Mac;

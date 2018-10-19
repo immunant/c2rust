@@ -1,7 +1,7 @@
 //! Functions for building AST representations of higher-level values.
 use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
-use rustc::hir::map::Node::*;
+use rustc::hir::Node::*;
 use rustc::hir::map::definitions::DefPathData;
 use rustc::ty::{self, TyCtxt, GenericParamDefKind};
 use rustc::ty::subst::Subst;

@@ -135,7 +135,7 @@ impl<'tcx, L: fmt::Debug> type_map::Signature<LabeledTy<'tcx, L>> for FnSig<'tcx
 /// Check if a definition is a `fn` item of some sort.  Note that this does not return true on
 /// closures.
 fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
-    use rustc::hir::map::Node::*;
+    use rustc::hir::Node::*;
 
     let n = match hir_map.get_if_local(def_id) {
         None => return false,
