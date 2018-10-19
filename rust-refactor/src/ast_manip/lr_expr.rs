@@ -7,7 +7,7 @@ use syntax::ast::*;
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
-use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
 use syntax::util::move_map::MoveMap;
 use syntax_pos::hygiene::SyntaxContext;
 

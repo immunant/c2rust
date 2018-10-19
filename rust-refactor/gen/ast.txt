@@ -25,7 +25,7 @@ struct Crate {
     attrs,
     span,
 }
-struct Mod { inner, #[mac_table_seq] items }
+struct Mod { inner, #[mac_table_seq] items, inline }
 
 
 #[rewrite_print_recover] #[rewrite_seq_item] #[rewrite_extra_strategies=item_header]
@@ -37,8 +37,7 @@ enum ItemKind {
     Use(vp),
     Static(ty, mutbl, init),
     Const(ty, init),
-    Fn(decl, unsafety, constness, abi,
-       generics, block),
+    Fn(decl, header, generics, block),
     Mod(module),
     ForeignMod(fm),
     GlobalAsm(asm),
@@ -93,7 +92,7 @@ enum VariantData {
 
 struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs }
 
-struct MethodSig { unsafety, constness, abi, decl }
+struct MethodSig { header, decl }
 
 struct ForeignMod { abi, #[mac_table_seq] items }
 #[rewrite_print_recover] #[rewrite_seq_item] #[nonterminal]
@@ -134,7 +133,10 @@ enum VisibilityKind {
     Inherited,
 }
 
-flag CrateSugar;
+enum CrateSugar {
+    PubCrate,
+    JustCrate,
+}
 
 #[match=custom] #[rewrite_print_recover] #[mac_table_record] #[nonterminal]
 struct Ty { id, node, span }
@@ -149,7 +151,7 @@ enum TyKind {
     Tup(tys),
     Path(qself, path),
     TraitObject(bounds, trait_object_syntax),
-    ImplTrait(bounds),
+    ImplTrait(id, bounds),
     Paren(ty),
     Typeof(expr),
     Infer,
@@ -174,6 +176,7 @@ enum GenericBound {
 struct PolyTraitRef { trait_ref, span, bound_generic_params }
 
 struct FnDecl { inputs, output, variadic }
+struct FnHeader { unsafety, asyncness, constness, abi }
 #[rewrite_print]
 struct Arg { ty, pat, id }
 enum FunctionRetTy {
@@ -221,9 +224,10 @@ enum ExprKind {
     ForLoop(pat, #[prec_special=Cond] iter, body, label),
     Loop(body, label),
     Match(#[prec_special=Cond] target, arms),
-    Closure(cap, mov, decl, body, span),
+    Closure(cap, is_async, mov, decl, body, span),
     Block(body, label),
-    Catch(body),
+    Async(cap, id, block),
+    TryBlock(body),
     Assign(#[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
     AssignOp(op, #[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
     Field(#[lr_propagate] #[prec=POSTFIX] expr, ident),
@@ -247,17 +251,27 @@ enum ExprKind {
     Yield(#[prec=JUMP] expr),
 }
 
+enum IsAsync {
+    Async { closure_id, return_impl_trait_id },
+    NotAsync,
+}
 enum Movability {
     Static,
     Movable,
 }
 
-#[match=eq]
-flag UnOp;
+enum UnOp {
+    Deref,
+    Not,
+    Neg,
+}
 #[match=eq]
 flag BinOpKind;
 struct Field { ident, expr, span, is_shorthand, attrs }
 struct Arm { attrs, pats, guard, body }
+enum Guard {
+    If(expr),
+}
 #[match=custom] #[rewrite_print_recover] #[nonterminal]
 struct Block { #[mac_table_seq] stmts, id, rules, span, recovered }
 
@@ -303,11 +317,24 @@ flag IsAuto;
 flag Unsafety;
 flag Abi;
 flag Mutability;
-flag RangeEnd;
+enum RangeEnd {
+    Included(syntax),
+    Excluded,
+}
+enum RangeSyntax {
+    DotDotDot,
+    DotDotEq,
+}
 flag BindingMode;
 flag CaptureBy;
-// Distinguish `{ ... }` from `unsafe { ... }`.
-#[match=eq] flag BlockCheckMode;
+enum BlockCheckMode {
+    Default,
+    Unsafe(source),
+}
+enum UnsafeSource {
+    CompilerGenerated,
+    UserProvided,
+}
 flag StrStyle;
 flag AsmDialect;
 flag RangeLimits;
@@ -320,14 +347,17 @@ flag AttrStyle;
 
 #[match=custom] #[nonterminal]
 struct Path { span, segments }
-struct PathSegment { ident, parameters }
+struct PathSegment { ident, args }
 enum GenericArgs {
     AngleBracketed(abpd),
     Parenthesized(ppd),
 }
-
-struct AngleBracketedArgs { span, lifetimes, types, bindings }
+struct AngleBracketedArgs { span, args, bindings }
 struct ParenthesisedArgs { span, inputs, output }
+enum GenericArg {
+    Lifetime(lt),
+    Type(ty),
+}
 struct QSelf { ty, path_span, position }
 
 
@@ -407,6 +437,8 @@ enum TokenTree {
 struct Delimited {
     delim, tts
 }
+
+struct DelimSpan { open, close }
 
 flag DelimToken;
 flag Token;
