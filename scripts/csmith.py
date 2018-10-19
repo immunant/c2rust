@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """This script automates the process of generating C test files using
-the csmith tool. The script will generate a fresh test case, compile it
-using a C compiler, translate the C file to Rust, compile the Rust file,
-execute both resulting drivers and compare their outputs.
+the csmith tool.
+
+The script will:
+* generate a fresh C source file
+* compile the C source
+* execute the C executable
+* translate the C source to Rust source
+* compile the Rust source
+* execute the Rust executable
+* check that the C and Rust executables produced the same output
 """
 
 import subprocess
@@ -14,11 +21,21 @@ import tempfile
 import transpile
 import common
 
-CSMITH_HOME = "/usr/local/opt/csmith/include/csmith-2.3.0/runtime"
+DEFAULT_CSMITH_HOME = "/usr/local/opt/csmith/include/csmith-2.3.0/runtime"
+CSMITH_HOME = os.environ.get("CSMITH_HOME", DEFAULT_CSMITH_HOME)
 CSMITH_CMD = ["csmith", "--no-bitfields", "--no-builtins"]
 C_COMPILER = "clang"
 RUST_COMPILER = "rustc"
 CSMITH_TIMEOUT = 5 # seconds to wait for C compiled executable to run
+
+def validate_csmith_home():
+    """Check that csmith.h can be found in CSMITH_HOME."""
+    csmith_header = os.path.join(CSMITH_HOME, 'csmith.h')
+    if not os.access(csmith_header, os.R_OK):
+        print('Unable to access csmith header: %s' % csmith_header)
+        print('Please set the CSMITH_HOME environment variable to the '
+              'directory containing this header.')
+        exit(1)
 
 def create_compile_commands(dirname, output_c_name):
     """Create a compile commands file suitable for compiling the given csmith source file."""
@@ -27,8 +44,6 @@ def create_compile_commands(dirname, output_c_name):
         'directory': dirname,
         'arguments':
             [C_COMPILER,
-             "-D_FORTIFY_SOURCE=0",
-             "-isystem", "/usr/include",
              "-I", CSMITH_HOME,
              output_c_name],
         'file': output_c_name}]
@@ -103,6 +118,9 @@ def compile_rust_file(output_c_name, output_rs_name, output_rs_exec_name):
 
 def main():
     """Generate a new csmith test case and compare its execution to the translated Rust version."""
+
+    validate_csmith_home()
+
     common.setup_logging()
 
     with tempfile.TemporaryDirectory('_c2rust_csmith') as dirname:
