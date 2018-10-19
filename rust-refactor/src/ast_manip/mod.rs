@@ -23,7 +23,7 @@ pub use self::fold_node::{FoldNode, fold_nodes};
 pub use self::get_node_id::{GetNodeId, MaybeGetNodeId};
 pub use self::get_span::GetSpan;
 pub use self::list_node_ids::ListNodeIds;
-pub use self::number_nodes::number_nodes;
+pub use self::number_nodes::{number_nodes, reset_node_ids};
 pub use self::output_exprs::fold_output_exprs;
 pub use self::seq_edit::{fold_blocks, fold_modules};
 pub use self::visit::Visit;

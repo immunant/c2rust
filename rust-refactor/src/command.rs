@@ -11,11 +11,10 @@ use syntax::codemap::FileLoader;
 use syntax::codemap::FileMap;
 use syntax::symbol::Symbol;
 
-use ast_manip::{ListNodeIds, number_nodes, remove_paren};
+use ast_manip::{ListNodeIds, number_nodes, reset_node_ids, remove_paren};
 use collapse;
 use driver::{self, Phase, Phase1Bits};
 use node_map::NodeMap;
-use recheck;
 use rewrite;
 use rewrite::files;
 use span_fix;
@@ -125,12 +124,10 @@ impl RefactorState {
         let marks = mem::replace(&mut self.marks, HashSet::new());
 
         let unexpanded = krate.clone();
-        let krate = recheck::reset_node_ids(krate);
+        let krate = reset_node_ids(krate);
         let bits = Phase1Bits::from_session_and_crate(&self.session, krate);
         driver::run_compiler_from_phase1(bits, phase, |krate, cx| {
             let krate = span_fix::fix_format(cx.session(), krate);
-            //let krate = span_fix::fix_derived_impls(sess, krate);
-            //let krate = span_fix::fix_attr_spans(sess, krate);
             let expanded = krate.clone();
 
             // Collect info + update node_map, then transfer and commit
@@ -170,6 +167,31 @@ impl RefactorState {
         })
     }
 
+    pub fn run_typeck_loop<F>(&mut self, mut func: F) -> Result<(), &'static str>
+            where F: FnMut(Crate, &CommandState, &driver::Ctxt) -> TypeckLoopResult {
+        let func = &mut func;
+
+        let mut result = None;
+        while result.is_none() {
+            self.transform_crate(Phase::Phase3, |st, cx| {
+                st.map_krate(|krate| {
+                    match func(krate, st, cx) {
+                        TypeckLoopResult::Iterate(krate) => krate,
+                        TypeckLoopResult::Err(e, krate) => {
+                            result = Some(Err(e));
+                            krate
+                        },
+                        TypeckLoopResult::Finished(krate) => {
+                            result = Some(Ok(()));
+                            krate
+                        },
+                    }
+                });
+            });
+        }
+        result.unwrap()
+    }
+
     pub fn clear_marks(&mut self) {
         self.marks.clear()
     }
@@ -192,6 +214,12 @@ impl RefactorState {
     pub fn marks_mut(&mut self) -> &mut HashSet<(NodeId, Symbol)> {
         &mut self.marks
     }
+}
+
+pub enum TypeckLoopResult {
+    Iterate(Crate),
+    Err(&'static str, Crate),
+    Finished(Crate),
 }
 
 

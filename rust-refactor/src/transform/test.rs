@@ -6,7 +6,7 @@ use syntax::ast::{Crate, Ty};
 use syntax::ptr::P;
 
 use api::*;
-use command::{CommandState, Registry};
+use command::{RefactorState, CommandState, Command, Registry, TypeckLoopResult};
 use driver;
 use transform::Transform;
 
@@ -94,6 +94,25 @@ impl Transform for InsertRemoveArgs {
 }
 
 
+/// Command for testing basic `run_typeck_loop` functionality.
+pub struct TestTypeckLoop;
+
+impl Command for TestTypeckLoop {
+    fn run(&mut self, state: &mut RefactorState) {
+        let mut i = 3;
+        state.run_typeck_loop(|krate, _st, _cx| {
+            i -= 1;
+            info!("ran typeck loop iteration {}", i);
+            if i == 0 {
+                TypeckLoopResult::Finished(krate)
+            } else {
+                TypeckLoopResult::Iterate(krate)
+            }
+        }).unwrap();
+    }
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -125,4 +144,5 @@ pub fn register_commands(reg: &mut Registry) {
         mk(InsertRemoveArgs { insert_idxs, remove_idxs })
     });
 
+    reg.register("test_typeck_loop", |_| Box::new(TestTypeckLoop));
 }
