@@ -63,7 +63,7 @@ macro_rules! define_binding_values {
             $add_thing:ident, $try_add_thing:ident,
             $thing:ident, $get_thing:ident; )*) => {
         /// An AST fragment, of any of the supported node types.
-        #[derive(Clone, PartialEq, Eq, Debug)]
+        #[derive(Clone, Debug)]
         enum Value {
             $( $Thing($Repr), )*
         }

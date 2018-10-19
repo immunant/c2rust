@@ -123,7 +123,7 @@ impl<'a> Visit for MacNodeRef<'a> {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct InvocId(pub u32);
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum InvocKind<'ast> {
     Mac(&'ast Mac),
     ItemAttr(&'ast Item),

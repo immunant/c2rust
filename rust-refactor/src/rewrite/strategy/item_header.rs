@@ -18,6 +18,7 @@ use syntax::parse::token::{Token, DelimToken};
 use syntax::symbol::keywords;
 use syntax::tokenstream::{TokenStream, ThinTokenStream, TokenTree};
 
+use ast_manip::AstEquiv;
 use driver;
 use rewrite::{Rewrite, RewriteCtxtRef, TextAdjust};
 use rewrite::base::{describe, rewrite_seq_comma_sep};
@@ -54,7 +55,7 @@ fn find_fn_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, FnHeaderSpans> {
     }
 
     let spanned_vis = p.parse_visibility(false)?;
-    let vis = if spanned_vis.node != VisibilityKind::Inherited {
+    let vis = if !spanned_vis.node.ast_equiv(&VisibilityKind::Inherited) {
         spanned_vis.span
     } else {
         // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
@@ -118,7 +119,7 @@ fn find_item_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, ItemHeaderSpans
     }
 
     let spanned_vis = p.parse_visibility(false)?;
-    let vis = if spanned_vis.node != VisibilityKind::Inherited {
+    let vis = if !spanned_vis.node.ast_equiv(&VisibilityKind::Inherited) {
         spanned_vis.span
     } else {
         // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
@@ -162,12 +163,8 @@ fn find_fn_header_arg_list(ts: TokenStream,
     ts.trees().filter_map(|tt| {
         match tt {
             TokenTree::Delimited(sp, ref d)
-                    if d.delim == DelimToken::Paren && sp.lo() >= generics_span.hi() => {
-                let inner_lo = sp.lo() + BytePos(d.delim.len() as u32);
-                let inner_hi = sp.hi() - BytePos(d.delim.len() as u32);
-                let inner_span = Span::new(inner_lo, inner_hi, sp.ctxt());
-                Some((d.tts.clone(), inner_span))
-            },
+                    if d.delim == DelimToken::Paren && sp.open.lo() >= generics_span.hi() =>
+                Some((d.tts.clone(), sp.open.between(sp.close))),
             _ => None,
         }
     }).next()
@@ -323,7 +320,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             // The first four go in a specific order.  If multiple qualifiers are added (for
             // example, both `unsafe` and `extern`), we need to add them in the right order.
 
-            if vis1.node != vis2.node {
+            if vis1.node.ast_equiv(&vis2.node) {
                 record_qualifier_rewrite(spans1.vis, spans2.vis, rcx.borrow());
             }
 
@@ -373,7 +370,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             };
 
 
-            if vis1.node != vis2.node {
+            if vis1.node.ast_equiv(&vis2.node) {
                 record_qualifier_rewrite(spans1.vis, spans2.vis, rcx.borrow());
             }
 

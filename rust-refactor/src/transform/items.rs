@@ -181,7 +181,7 @@ impl Transform for SetVisibility {
 
         impl<'a> Folder for SetVisFolder<'a> {
             fn fold_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-                if self.st.marked(i.id, "target") && i.vis != self.vis {
+                if self.st.marked(i.id, "target") && !i.vis.ast_equiv(&self.vis) {
                     i = i.map(|mut i| {
                         i.vis = self.vis.clone();
                         i

@@ -299,7 +299,7 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
     // marked module or crate.
     if st.marked(CRATE_NODE_ID, label) {
         for i in &st.krate().module.items {
-            if i.vis.node == VisibilityKind::Public {
+            if let VisibilityKind::Public = i.vis.node {
                 st.add_mark(i.id, label);
             }
         }
@@ -309,7 +309,7 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
         if st.marked(i.id, label) {
             if let ItemKind::Mod(ref m) = i.node {
                 for i in &m.items {
-                    if i.vis.node == VisibilityKind::Public {
+                    if let VisibilityKind::Public = i.vis.node {
                         st.add_mark(i.id, label);
                     }
                 }

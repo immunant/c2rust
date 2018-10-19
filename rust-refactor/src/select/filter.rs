@@ -14,7 +14,7 @@ use reflect;
 use select::{Filter, AnyPattern};
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum AnyNode<'ast> {
     Item(&'ast Item),
     TraitItem(&'ast TraitItem),
@@ -214,7 +214,8 @@ pub fn matches_filter(st: &CommandState,
     match *filter {
         Filter::Kind(k) => k.contains(node.kind()),
         Filter::ItemKind(k) => node.itemlike_kind().map_or(false, |nk| nk == k),
-        Filter::Public => node.vis().map_or(false, |v| v.node == VisibilityKind::Public),
+        Filter::Public => node.vis()
+            .map_or(false, |v| matches!([v.node] VisibilityKind::Public)),
         Filter::Name(ref re) => node.name().map_or(false, |n| re.is_match(&n.as_str())),
         Filter::PathPrefix(drop_segs, ref expect_path) => {
             if !reflect::can_reflect_path(cx.hir_map(), node.id()) {
