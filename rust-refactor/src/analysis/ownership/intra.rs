@@ -334,7 +334,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                         }
                         (tuple_ty, Perm::move_())
                     },
-                    AggregateKind::Adt(adt, disr, _substs, union_variant) => {
+                    AggregateKind::Adt(adt, disr, _substs, _annot, union_variant) => {
                         let adt_ty = self.local_ty(ty);
 
                         if let Some(union_variant) = union_variant {

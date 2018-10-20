@@ -204,16 +204,11 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 if let Some(substs) = opt_substs {
                     assert!(substs.len() >= num_params);
                     let start = substs.len() - num_params;
-                    let mut abpd = AngleBracketedArgs {
-                        span: DUMMY_SP,
-                        lifetimes: Vec::new(),
-                        types: Vec::new(),
-                        bindings: Vec::new(),
-                    };
-                    for &ty in &substs[start..] {
-                        abpd.types.push(reflect_tcx_ty(tcx, ty));
-                    }
-                    segments.last_mut().unwrap().parameters = abpd.into();
+                    let tys = substs[start..].iter()
+                        .map(|ty| reflect_tcx_ty(tcx, ty))
+                        .collect::<Vec<_>>();
+                    let abpd = mk().angle_bracketed_args(tys);
+                    segments.last_mut().unwrap().args = abpd.into();
                     opt_substs = Some(&substs[..start]);
                 }
             },

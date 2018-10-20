@@ -341,10 +341,7 @@ fn build_session(sopts: Options,
     let source_map = Rc::new(SourceMap::with_file_loader(file_loader, sopts.file_path_mapping()));
     // Put a dummy file at the beginning of the source_map, so that no real `Span` will accidentally
     // collide with `DUMMY_SP` (which is `0 .. 0`).
-    {
-        let fm = source_map.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
-        fm.next_line(fm.start_pos);
-    }
+    source_map.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
 
     let emitter_dest = None;
 
@@ -560,6 +557,5 @@ pub fn try_run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> Op
 /// to the `SourceMap` on every call.
 pub fn make_span_for_text(cm: &SourceMap, s: &str) -> Span {
     let fm = cm.new_source_file(FileName::Custom("<text>".to_string()), s.to_string());
-    fm.next_line(fm.start_pos);
     Span::new(fm.start_pos, fm.end_pos, SyntaxContext::empty())
 }

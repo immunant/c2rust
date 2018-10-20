@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use syntax::ast::*;
-use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
@@ -96,24 +95,19 @@ impl Transform for GeneralizeItems {
 
             {
                 let seg = path.segments.last_mut().unwrap();
-                if let Some(ref mut params) = seg.parameters {
-                    *params = params.clone().map(|mut params| {
-                        match params {
+                if let Some(ref mut args) = seg.args {
+                    *args = args.clone().map(|mut args| {
+                        match args {
                             GenericArgs::AngleBracketed(ref mut abpd) =>
-                                abpd.types.push(arg),
+                                abpd.args.push(mk().generic_arg(arg)),
                             GenericArgs::Parenthesized(..) =>
                                 panic!("expected angle bracketed params, but found parenthesized"),
                         }
-                        params
+                        args
                     });
                 } else {
-                    let abpd = AngleBracketedArgs {
-                        span: DUMMY_SP,
-                        lifetimes: vec![],
-                        types: vec![arg],
-                        bindings: vec![],
-                    };
-                    seg.parameters = Some(P(GenericArgs::AngleBracketed(abpd)));
+                    let abpd = mk().angle_bracketed_args(vec![arg]);
+                    seg.args = Some(P(GenericArgs::AngleBracketed(abpd)));
                 }
             }
 

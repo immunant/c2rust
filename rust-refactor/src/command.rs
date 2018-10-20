@@ -267,6 +267,7 @@ impl CommandState {
             module: Mod {
                 inner: DUMMY_SP,
                 items: Vec::new(),
+                inline: true,
             },
             attrs: Vec::new(),
             span: DUMMY_SP,

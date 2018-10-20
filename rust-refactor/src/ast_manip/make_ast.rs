@@ -434,6 +434,11 @@ impl Builder {
         }
     }
 
+    pub fn generic_arg<A>(self, arg: A) -> GenericArg
+            where A: Make<GenericArg> {
+        arg.make(&self)
+    }
+
     // Simple nodes
 
     pub fn ident<I>(self, name: I) -> Ident

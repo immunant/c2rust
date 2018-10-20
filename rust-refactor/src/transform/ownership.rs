@@ -11,7 +11,7 @@ use syntax::fold::{self, Folder};
 use syntax::parse::token::{self, Token, DelimToken};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::tokenstream::{TokenTree, TokenStream, Delimited};
+use syntax::tokenstream::{TokenTree, TokenStream, Delimited, DelimSpan};
 use smallvec::SmallVec;
 
 use analysis::labeled_ty::LabeledTyCtxt;
@@ -251,7 +251,7 @@ fn token(t: Token) -> TokenTree {
 }
 
 fn parens(ts: Vec<TokenTree>) -> TokenTree {
-    TokenTree::Delimited(DUMMY_SP, Delimited {
+    TokenTree::Delimited(DelimSpan::dummy(), Delimited {
         delim: DelimToken::Paren,
         tts: ts.into_iter().collect::<TokenStream>().into(),
     })

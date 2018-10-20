@@ -353,7 +353,7 @@ fn prim_tys<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
     let mut map = HashMap::new();
 
     map.insert("bool", ltt.label(tcx.mk_bool()));
-    map.insert("()", ltt.label(tcx.mk_nil()));
+    map.insert("()", ltt.label(tcx.mk_unit()));
     map.insert("usize", ltt.label(tcx.mk_mach_uint(ast::UintTy::Usize)));
 
     map

@@ -22,7 +22,7 @@ impl PatternSymbol for Path {
             return None;
         }
         let seg = &self.segments[0];
-        if seg.parameters.is_some() {
+        if seg.args.is_some() {
             return None;
         }
         seg.ident.pattern_symbol()

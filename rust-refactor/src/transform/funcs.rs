@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use rustc::hir::def_id::DefId;
 use rustc::ty::TyKind;
 use rustc_target::spec::abi::Abi;
+use syntax::ast;
 use syntax::ast::*;
 use syntax::attr;
 use syntax::fold::{self, Folder};
@@ -130,7 +131,7 @@ impl Transform for ToMethod {
                     match pat_ty.sty {
                         TyKind::Ref(_, ty, _) if ty == self_ty => {
                             match arg.ty.node {
-                                TyKind::Rptr(ref lt, ref mty) =>
+                                ast::TyKind::Rptr(ref lt, ref mty) =>
                                     Some(SelfKind::Region(lt.clone(), mty.mutbl)),
                                 _ => None,
                             }
@@ -329,8 +330,8 @@ impl<'a> Folder for SinkUnsafeFolder<'a> {
     fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
         if self.st.marked(i.id, "target") {
             match i.node {
-                ImplItemKind::Method(MethodSig { ref mut unsafety, .. }, ref mut block) => {
-                    sink_unsafe(unsafety, block);
+                ImplItemKind::Method(MethodSig { ref mut header, .. }, ref mut block) => {
+                    sink_unsafe(&mut header.unsafety, block);
                 },
                 _ => {},
             }

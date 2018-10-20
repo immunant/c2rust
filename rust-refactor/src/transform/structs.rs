@@ -1,3 +1,4 @@
+use rustc::ty;
 use syntax::ast::*;
 use syntax::ptr::P;
 
@@ -19,9 +20,9 @@ impl Transform for AssignToUpdate {
         fold_match(st, cx, pat, krate, |orig, mut bnd| {
             let x = bnd.expr("__x").clone();
 
-            let struct_def_id = match cx.node_type(x.id).ty_to_def_id() {
-                Some(x) => x,
-                None => return orig,
+            let struct_def_id = match cx.node_type(x.id).sty {
+                ty::TyKind::Adt(ref def, _) => def.did,
+                _ => return orig,
             };
             let struct_path = cx.def_path(struct_def_id);
 

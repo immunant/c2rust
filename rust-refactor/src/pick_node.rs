@@ -265,7 +265,7 @@ pub fn pick_node_at_loc(krate: &Crate,
         },
     };
 
-    if line == 0 || line as usize - 1 >= fm.lines.borrow().len() {
+    if line == 0 || line as usize - 1 >= fm.lines.len() {
         panic!("line {} is outside the bounds of {}", line, file);
     };
     let (lo, hi) = fm.line_bounds(line as usize - 1);
