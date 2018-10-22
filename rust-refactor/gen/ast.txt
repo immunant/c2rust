@@ -42,6 +42,7 @@ enum ItemKind {
     ForeignMod(fm),
     GlobalAsm(asm),
     Ty(ty, generics),
+    Existential(bounds, generics),
     Enum(def, generics),
     Struct(vd, generics),
     Union(vd, generics),
@@ -77,6 +78,7 @@ enum ImplItemKind {
     Const(ty, init),
     Method(sig, body),
     Type(ty),
+    Existential(bounds),
     Macro(mac),
 }
 

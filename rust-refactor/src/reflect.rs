@@ -42,6 +42,10 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 mk().qpath_ty(qself, path)
             }
         },
+        Foreign(did) => {
+            let (qself, path) = reflect_def_path_inner(tcx, did, None);
+            mk().qpath_ty(qself, path)
+        },
         Str => mk().ident_ty("str"),
         Array(ty, len) => mk().array_ty(
             reflect_tcx_ty(tcx, ty),
@@ -51,15 +55,16 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         RawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(reflect_tcx_ty(tcx, mty.ty)),
         Ref(_, ty, m) => mk().set_mutbl(m).ref_ty(reflect_tcx_ty(tcx, ty)),
         FnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
-        FnPtr(_) => mk().infer_ty(), // TODO
-        Foreign(_) => mk().infer_ty(), // TODO ???
-        Dynamic(_, _) => mk().infer_ty(), // TODO
+        FnPtr(_) => mk().infer_ty(), // TODO (fn(...) -> ...)
+        Dynamic(_, _) => mk().infer_ty(), // TODO (dyn Trait)
         Closure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
         Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
+        GeneratorWitness(_) => mk().infer_ty(), // unsupported (type cannot be named)
         Never => mk().never_ty(),
         Tuple(tys) => mk().tuple_ty(tys.iter().map(|&ty| reflect_tcx_ty(tcx, ty)).collect()),
-        Projection(_) => mk().infer_ty(), // TODO
-        // (Note that, despite the name, `TyAnon` *can* be named - it's `impl SomeTrait`.)
+        Projection(..) => mk().infer_ty(), // TODO
+        UnnormalizedProjection(..) => mk().infer_ty(), // TODO
+        Opaque(..) => mk().infer_ty(), // TODO (impl Trait)
         Param(param) => {
             if infer_args {
                 mk().infer_ty()
@@ -69,7 +74,6 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         },
         Infer(_) => mk().infer_ty(),
         Error => mk().infer_ty(), // unsupported
-        GeneratorWitness(_) => mk().infer_ty(), // TODO ?
     }
 }
 
@@ -165,9 +169,9 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             },
 
             DefPathData::TypeNs(name) |
+            DefPathData::Module(name) |
             DefPathData::MacroDef(name) |
             DefPathData::EnumVariant(name) |
-            DefPathData::Module(name) |
             DefPathData::Field(name) |
             DefPathData::GlobalMetaData(name) => {
                 if name != "" {
@@ -182,14 +186,15 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 }
             },
 
-            DefPathData::ClosureExpr |
             DefPathData::Trait(_) |
             DefPathData::AssocTypeInTrait(_) |
             DefPathData::AssocTypeInImpl(_) |
+            DefPathData::AssocExistentialInImpl(_) |
+            DefPathData::ClosureExpr |
+            DefPathData::LifetimeParam(_) |
+            DefPathData::StructCtor |
             DefPathData::AnonConst |
-            DefPathData::StructCtor => {},
-            // Apparently DefPathData::ImplTrait disappeared in the current nightly?
-            // TODO: Add it back when it's back
+            DefPathData::ImplTrait => {},
         }
 
         // Special logic for certain node kinds
@@ -255,20 +260,22 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         Node::ImplItem(_) |
         Node::Variant(_) |
         Node::Field(_) |
-        Node::StructCtor(_) => true,
+        Node::Binding(_) |
+        Node::Local(_) |
+        Node::MacroDef(_) |
+        Node::StructCtor(_) |
+        Node::GenericParam(_) => true,
 
-        Node::MacroDef(_) | // TODO: Is this right?
+        Node::AnonConst(_) |
         Node::Expr(_) |
         Node::Stmt(_) |
         Node::Ty(_) |
         Node::TraitRef(_) |
-        Node::Binding(_) |
         Node::Pat(_) |
         Node::Block(_) |
-        Node::Local(_) |
         Node::Lifetime(_) |
-        Node::AnonConst(_) |
-        Node::Visibility(_) => false,
+        Node::Visibility(_) |
+        Node::Crate => false,
     }
 }
 

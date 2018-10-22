@@ -118,14 +118,15 @@ pub enum ItemLikeKind {
     ForeignMod,
     GlobalAsm,
     Ty,
+    Existential,
     Enum,
     Struct,
     Union,
     Trait,
+    TraitAlias,
     Impl,
     Mac,
     MacroDef,
-    TraitAlias,
 }
 
 impl FromStr for ItemLikeKind {
@@ -142,10 +143,12 @@ impl FromStr for ItemLikeKind {
             "foreign_mod" => Ok(ItemLikeKind::ForeignMod),
             "global_asm" => Ok(ItemLikeKind::GlobalAsm),
             "ty" => Ok(ItemLikeKind::Ty),
+            "existential" => Ok(ItemLikeKind::Existential),
             "enum" => Ok(ItemLikeKind::Enum),
             "struct" => Ok(ItemLikeKind::Struct),
             "union" => Ok(ItemLikeKind::Union),
             "trait" => Ok(ItemLikeKind::Trait),
+            "trait_alias" => Ok(ItemLikeKind::TraitAlias),
             "impl" => Ok(ItemLikeKind::Impl),
             "mac" => Ok(ItemLikeKind::Mac),
             "macro_def" => Ok(ItemLikeKind::MacroDef),
@@ -167,14 +170,15 @@ impl ItemLikeKind {
             ItemKind::ForeignMod(..) => ItemLikeKind::ForeignMod,
             ItemKind::GlobalAsm(..) => ItemLikeKind::GlobalAsm,
             ItemKind::Ty(..) => ItemLikeKind::Ty,
+            ItemKind::Existential(..) => ItemLikeKind::Existential,
             ItemKind::Enum(..) => ItemLikeKind::Enum,
             ItemKind::Struct(..) => ItemLikeKind::Struct,
             ItemKind::Union(..) => ItemLikeKind::Union,
             ItemKind::Trait(..) => ItemLikeKind::Trait,
+            ItemKind::TraitAlias(..) => ItemLikeKind::TraitAlias,
             ItemKind::Impl(..) => ItemLikeKind::Impl,
             ItemKind::Mac(..) => ItemLikeKind::Mac,
             ItemKind::MacroDef(..) => ItemLikeKind::MacroDef,
-            ItemKind::TraitAlias(..) => ItemLikeKind::TraitAlias,
         }
     }
 
@@ -192,6 +196,7 @@ impl ItemLikeKind {
             ImplItemKind::Const(..) => ItemLikeKind::Const,
             ImplItemKind::Method(..) => ItemLikeKind::Fn,
             ImplItemKind::Type(..) => ItemLikeKind::Ty,
+            ImplItemKind::Existential(..) => ItemLikeKind::Existential,
             ImplItemKind::Macro(..) => ItemLikeKind::Mac,
         }
     }

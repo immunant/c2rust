@@ -2,8 +2,9 @@
 
 use rustc::hir::def_id::DefId;
 use rustc::mir::*;
+use rustc::mir::tcx::PlaceTy;
 use rustc::ty::{Ty, TyKind};
-use rustc_data_structures::indexed_vec::{IndexVec, Idx};
+use rustc_data_structures::indexed_vec::IndexVec;
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
@@ -233,6 +234,13 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
             Place::Local(l) => (self.local_var_ty(l), Perm::move_(), None),
 
             Place::Static(ref s) => (self.static_ty(s.def_id), Perm::move_(), None),
+
+            Place::Promoted(ref _p) => {
+                // TODO: test this
+                let pty = lv.ty(self.mir, self.cx.tcx);
+                let ty = expect!([pty] PlaceTy::Ty { ty } => ty);
+                (self.local_ty(ty), Perm::read(), None)
+            },
 
             Place::Projection(ref p) => {
                 let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&p.base);

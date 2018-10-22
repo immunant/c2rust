@@ -159,12 +159,14 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
             Def::TyAlias(did) |
             Def::ForeignTy(did) |
             Def::AssociatedTy(did) |
+            Def::AssociatedExistential(did) |
             Def::TyParam(did) |
             Def::Fn(did) |
             Def::Const(did) |
             Def::Static(did, _) |
             Def::StructCtor(did, _) |
             Def::VariantCtor(did, _) |
+            Def::SelfCtor(did) |
             Def::Method(did) |
             Def::AssociatedConst(did) |
             Def::Macro(did, _) |
@@ -182,6 +184,8 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
 
             Def::PrimTy(_) |
             Def::SelfTy(_, _) |
+            Def::ToolMod |
+            Def::NonMacroAttr(_) |
             Def::Err => None
         }
     }

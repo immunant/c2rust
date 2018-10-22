@@ -98,6 +98,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
             Uint(_) |
             Float(_) |
             Str |
+            Foreign(_) |
             Never => self.mk(ty, &[], label),
 
             // Types with arguments
@@ -141,9 +142,10 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
             Generator(..) |
             GeneratorWitness(..) |
             Projection(..) |
+            UnnormalizedProjection(..) |
+            Opaque(..) |
             Param(..) |
             Infer(..) |
-            Foreign(..) |
             Error => self.mk(ty, &[], label),
         }
     }

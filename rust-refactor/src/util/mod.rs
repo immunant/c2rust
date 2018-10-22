@@ -53,25 +53,28 @@ impl HirDefExt for Def {
             Def::Existential(did) |
             Def::TyAlias(did) |
             Def::ForeignTy(did) |
+            Def::TraitAlias(did) |
             Def::AssociatedTy(did) |
+            Def::AssociatedExistential(did) |
             Def::TyParam(did) |
             Def::Fn(did) |
             Def::Const(did) |
             Def::Static(did, _) |
             Def::StructCtor(did, _) |
             Def::VariantCtor(did, _) |
+            Def::SelfCtor(did) |
             Def::Method(did) |
             Def::AssociatedConst(did) |
-            Def::Macro(did, _) |
-            Def::TraitAlias(did) => Some(did),
+            Def::Macro(did, _) => Some(did),
 
             // Local variables stopped having DefIds at some point and switched to NodeId
-            Def::Local(_) |
-            Def::Upvar(_, _, _) |
-
             Def::PrimTy(_) |
             Def::SelfTy(_, _) |
+            Def::ToolMod |
+            Def::Local(_) |
+            Def::Upvar(_, _, _) |
             Def::Label(_) |
+            Def::NonMacroAttr(_) |
             Def::Err => None
         }
     }
