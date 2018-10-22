@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use rustc::hir::def_id::DefId;
-use rustc::ty::TypeVariants;
+use rustc::ty::TyKind;
 use rustc_target::spec::abi::Abi;
+use syntax::ast;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::codemap::Spanned;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 use api::*;
 use command::{CommandState, Registry};
@@ -30,14 +30,14 @@ impl Transform for ToMethod {
             // We're looking for an inherent impl (no `TraitRef`) marked with a cursor.
             if !st.marked(i.id, "dest") ||
                !matches!([i.node] ItemKind::Impl(_, _, _, _, None, _, _)) {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
             if dest.is_none() {
                 dest = Some(i.clone());
             }
 
-            SmallVector::one(i)
+            smallvec![i]
         });
 
         if dest.is_none() {
@@ -53,9 +53,7 @@ impl Transform for ToMethod {
             item: P<Item>,
 
             decl: P<FnDecl>,
-            unsafety: Unsafety,
-            constness: Spanned<Constness>,
-            abi: Abi,
+            header: FnHeader,
             generics: Generics,
             block: P<Block>,
 
@@ -81,10 +79,10 @@ impl Transform for ToMethod {
             }) {
                 let i = curs.remove();
                 unpack!([i.node.clone()]
-                        ItemKind::Fn(decl, unsafety, constness, abi, generics, block));
+                        ItemKind::Fn(decl, header, generics, block));
                 fns.push(FnInfo {
                     item: i,
-                    decl, unsafety, constness, abi, generics, block,
+                    decl, header, generics, block,
                     arg_idx,
                 });
             }
@@ -131,9 +129,9 @@ impl Transform for ToMethod {
                     }
                 } else {
                     match pat_ty.sty {
-                        TypeVariants::TyRef(_, ty, _) if ty == self_ty => {
+                        TyKind::Ref(_, ty, _) if ty == self_ty => {
                             match arg.ty.node {
-                                TyKind::Rptr(ref lt, ref mty) =>
+                                ast::TyKind::Rptr(ref lt, ref mty) =>
                                     Some(SelfKind::Region(lt.clone(), mty.mutbl)),
                                 _ => None,
                             }
@@ -179,19 +177,17 @@ impl Transform for ToMethod {
 
         let krate = fold_nodes(krate, |i: P<Item>| {
             if i.id != dest.id || fns.is_none() {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
-            SmallVector::one(i.map(|i| {
+            smallvec![i.map(|i| {
                 unpack!([i.node] ItemKind::Impl(
                         unsafety, polarity, generics, defaultness, trait_ref, ty, items));
                 let mut items = items;
                 let fns = fns.take().unwrap();
                 items.extend(fns.into_iter().map(|f| {
                     let sig = MethodSig {
-                        unsafety: f.unsafety,
-                        constness: f.constness,
-                        abi: f.abi,
+                        header: f.header,
                         decl: f.decl,
                     };
                     ImplItem {
@@ -211,7 +207,7 @@ impl Transform for ToMethod {
                               unsafety, polarity, generics, defaultness, trait_ref, ty, items),
                     .. i
                 }
-            }))
+            })]
         });
 
 
@@ -312,12 +308,12 @@ struct SinkUnsafeFolder<'a> {
 }
 
 impl<'a> Folder for SinkUnsafeFolder<'a> {
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let i = if self.st.marked(i.id, "target") {
             i.map(|mut i| {
                 match i.node {
-                    ItemKind::Fn(_, ref mut unsafety, _, _, _, ref mut block) => {
-                        sink_unsafe(unsafety, block);
+                    ItemKind::Fn(_, ref mut header, _, ref mut block) => {
+                        sink_unsafe(&mut header.unsafety, block);
                     },
                     _ => {},
                 }
@@ -331,11 +327,11 @@ impl<'a> Folder for SinkUnsafeFolder<'a> {
         fold::noop_fold_item(i, self)
     }
 
-    fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVector<ImplItem> {
+    fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
         if self.st.marked(i.id, "target") {
             match i.node {
-                ImplItemKind::Method(MethodSig { ref mut unsafety, .. }, ref mut block) => {
-                    sink_unsafe(unsafety, block);
+                ImplItemKind::Method(MethodSig { ref mut header, .. }, ref mut block) => {
+                    sink_unsafe(&mut header.unsafety, block);
                 },
                 _ => {},
             }
@@ -403,16 +399,16 @@ impl Transform for WrapExtern {
         let mut dest_path = None;
         let krate = fold_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "dest") {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
             if dest_path.is_some() {
                 info!("warning: found multiple \"dest\" marks");
-                return SmallVector::one(i);
+                return smallvec![i];
             }
             dest_path = Some(cx.def_path(cx.node_def_id(i.id)));
 
-            SmallVector::one(i.map(|i| {
+            smallvec![i.map(|i| {
                 unpack!([i.node] ItemKind::Mod(m));
                 let mut m = m;
 
@@ -459,7 +455,7 @@ impl Transform for WrapExtern {
                     node: ItemKind::Mod(m),
                     .. i
                 }
-            }))
+            })]
         });
 
         if dest_path.is_none() {
@@ -503,15 +499,15 @@ impl Transform for WrapApi {
         // Add wrapper functions
         let krate = fold_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
             if !matches!([i.node] ItemKind::Fn(..)) {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
             let (decl, old_abi) = expect!([i.node]
-                ItemKind::Fn(ref decl, _, _, abi, _, _) => (decl.clone(), abi));
+                ItemKind::Fn(ref decl, ref header, _, _) => (decl.clone(), header.abi));
 
             // Get the exported symbol name of the function
             let symbol =
@@ -521,7 +517,7 @@ impl Transform for WrapApi {
                     i.ident.name
                 } else {
                     warn!("marked function `{:?}` does not have a stable symbol", i.ident.name);
-                    return SmallVector::one(i);
+                    return smallvec![i];
                 };
 
             // Remove export-related attrs from the original function, and set it to Abi::Rust.
@@ -532,7 +528,7 @@ impl Transform for WrapApi {
                 });
 
                 match i.node {
-                    ItemKind::Fn(_, _, _, ref mut abi, _, _) => *abi = Abi::Rust,
+                    ItemKind::Fn(_, ref mut header, _, _) => header.abi = Abi::Rust,
                     _ => unreachable!(),
                 }
 
@@ -601,7 +597,7 @@ impl Transform for WrapApi {
             let item_hir_id = cx.hir_map().node_to_hir_id(i.id);
             wrapper_map.insert(item_hir_id, wrapper_name);
 
-            let mut v = SmallVector::new();
+            let mut v = smallvec![];
             v.push(i);
             v.push(wrapper);
             v

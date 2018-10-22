@@ -60,7 +60,7 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use rustc::session::Session;
 use syntax::ast::*;
-use syntax::codemap::{Span, DUMMY_SP};
+use syntax::source_map::{Span, DUMMY_SP};
 use syntax::util::parser;
 use syntax::visit::{self, Visitor};
 
@@ -346,7 +346,7 @@ impl<'s> RewriteCtxt<'s> {
             return sp;
         }
 
-        let sp = driver::make_span_for_text(self.sess.codemap(), s);
+        let sp = driver::make_span_for_text(self.sess.source_map(), s);
         self.text_span_cache.insert(s.to_owned(), sp);
         sp
     }

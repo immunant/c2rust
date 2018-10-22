@@ -2,7 +2,7 @@
 //! implementation modules.
 use rustc::hir;
 use rustc::hir::def_id::DefId;
-use rustc::hir::map::Node;
+use rustc::hir::Node;
 use rustc::ty::Ty;
 use syntax::ast;    // Can't glob-import because `Ty` already refers to `rustc::ty::Ty`.
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
@@ -140,8 +140,8 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
 
     fn node_def_id(&self, id: NodeId) -> DefId {
         match self.hir_map().find(id) {
-            Some(Node::NodeBinding(_)) => self.node_def_id(self.hir_map().get_parent_node(id)),
-            Some(Node::NodeItem(item)) => self.hir_map().local_def_id(item.id),
+            Some(Node::Binding(_)) => self.node_def_id(self.hir_map().get_parent_node(id)),
+            Some(Node::Item(item)) => self.hir_map().local_def_id(item.id),
             _ => self.hir_map().local_def_id(id),
         }
     }
@@ -157,18 +157,19 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
             Def::Trait(did) |
             Def::Existential(did) |
             Def::TyAlias(did) |
-            Def::TyForeign(did) |
+            Def::ForeignTy(did) |
             Def::AssociatedTy(did) |
+            Def::AssociatedExistential(did) |
             Def::TyParam(did) |
             Def::Fn(did) |
             Def::Const(did) |
             Def::Static(did, _) |
             Def::StructCtor(did, _) |
             Def::VariantCtor(did, _) |
+            Def::SelfCtor(did) |
             Def::Method(did) |
             Def::AssociatedConst(did) |
             Def::Macro(did, _) |
-            Def::GlobalAsm(did) |
             Def::TraitAlias(did) =>
                 if did.is_local() {
                     Some(self.hir_map().local_def_id_to_hir_id(did.to_local()))
@@ -183,6 +184,8 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
 
             Def::PrimTy(_) |
             Def::SelfTy(_, _) |
+            Def::ToolMod |
+            Def::NonMacroAttr(_) |
             Def::Err => None
         }
     }
@@ -190,9 +193,9 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
     fn try_resolve_expr_to_hid(&self, e: &Expr) -> Option<hir::HirId> {
         let node = match_or!([self.hir_map().find(e.id)] Some(x) => x;
                              return None);
-        let e = match_or!([node] hir::map::NodeExpr(e) => e;
+        let e = match_or!([node] hir::Node::Expr(e) => e;
                           return None);
-        let qpath = match_or!([e.node] hir::ExprPath(ref q) => q;
+        let qpath = match_or!([e.node] hir::ExprKind::Path(ref q) => q;
                               return None);
         let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
                              return None);
@@ -202,9 +205,9 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
     fn try_resolve_expr(&self, e: &Expr) -> Option<DefId> {
         let node = match_or!([self.hir_map().find(e.id)] Some(x) => x;
                              return None);
-        let e = match_or!([node] hir::map::NodeExpr(e) => e;
+        let e = match_or!([node] hir::Node::Expr(e) => e;
                           return None);
-        let qpath = match_or!([e.node] hir::ExprPath(ref q) => q;
+        let qpath = match_or!([e.node] hir::ExprKind::Path(ref q) => q;
                               return None);
         let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
                              return None);
@@ -219,9 +222,9 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
     fn try_resolve_ty(&self, t: &ast::Ty) -> Option<DefId> {
         let node = match_or!([self.hir_map().find(t.id)] Some(x) => x;
                              return None);
-        let t = match_or!([node] hir::map::NodeTy(t) => t;
+        let t = match_or!([node] hir::Node::Ty(t) => t;
                           return None);
-        let qpath = match_or!([t.node] hir::TyPath(ref q) => q;
+        let qpath = match_or!([t.node] hir::TyKind::Path(ref q) => q;
                               return None);
         let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
                              return None);

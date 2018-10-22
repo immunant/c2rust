@@ -3,7 +3,7 @@
 use std::fmt;
 
 use rustc::hir;
-use rustc::ty::TypeVariants;
+use rustc::ty::TyKind;
 use rustc_data_structures::indexed_vec::Idx;
 
 use analysis::labeled_ty::LabeledTy;
@@ -92,12 +92,12 @@ impl<'tcx> fmt::Debug for PrettyLabel<PrintVar<'tcx>> {
 impl<'tcx, L> fmt::Debug for Pretty<'tcx, L> where L: Copy + fmt::Debug, PrettyLabel<L>: fmt::Debug {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.0.ty.sty {
-            TypeVariants::TyRef(_, _, m) =>
+            TyKind::Ref(_, _, m) =>
                 write!(fmt, "&{}{:?} {:?}",
                        if m == hir::MutImmutable { "" } else { "mut " },
                        PrettyLabel(self.0.label),
                        Pretty(self.0.args[0])),
-            TypeVariants::TyRawPtr(mty) =>
+            TyKind::RawPtr(mty) =>
                 write!(fmt, "*{} {:?} {:?}",
                        if mty.mutbl == hir::MutImmutable { "const" } else { "mut" },
                        PrettyLabel(self.0.label),

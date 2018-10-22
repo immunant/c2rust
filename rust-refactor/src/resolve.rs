@@ -1,25 +1,25 @@
 use rustc::hir::{Mod, ForeignMod};
 use rustc::hir::def::Def;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE, CRATE_DEF_INDEX};
-use rustc::hir::map::Node;
+use rustc::hir::Node;
 use rustc::ty::TyCtxt;
 use syntax::ast::Ident;
 use syntax_pos::symbol::Symbol;
 
 
 fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Def)>) {
-    use rustc::hir::Item_::*;
+    use rustc::hir::ItemKind::*;
 
     for &iid in &m.item_ids {
         let node = tcx.hir.get(iid.id);
-        let item = expect!([node] Node::NodeItem(i) => i);
+        let item = expect!([node] Node::Item(i) => i);
 
         match item.node {
-            ItemForeignMod(ref fm) => {
+            ForeignMod(ref fm) => {
                 push_hir_foreign_mod_children(tcx, fm, children);
             },
 
-            ItemExternCrate(..) => {
+            ExternCrate(..) => {
                 let item_did = tcx.hir.local_def_id(item.id);
                 let krate = tcx.extern_mod_stmt_cnum(item_did)
                     .expect("no cnum available for `extern crate`");
@@ -30,7 +30,7 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Def)>
                 children.push((item.name, krate_def));
             },
 
-            // We could do something clever for `ItemUse`, but it would be a little tricky in the
+            // We could do something clever for `Use`, but it would be a little tricky in the
             // case where the `use` resolves to an extern crate's item.  For now we just use the
             // default logic, which omits the `use` (there is no `Def::Use` variant).
 
@@ -53,7 +53,7 @@ fn push_hir_foreign_mod_children(tcx: TyCtxt, fm: &ForeignMod, children: &mut Ve
 
 /// List the names and `Def`s of all children of the indicated module.
 pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Def)> {
-    use rustc::hir::Item_::*;
+    use rustc::hir::ItemKind::*;
 
     if did.krate == LOCAL_CRATE {
         if did.index == CRATE_DEF_INDEX {
@@ -67,28 +67,28 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Def)> {
 
         let node = tcx.hir.get_if_local(did)
             .expect("definition not present in HIR map");
-        let item = expect!([node] Node::NodeItem(i) => i);
+        let item = expect!([node] Node::Item(i) => i);
 
         match item.node {
-            ItemExternCrate(..) => {
+            ExternCrate(..) => {
                 let krate = tcx.extern_mod_stmt_cnum(did)
                     .expect("no cnum available for `extern crate`");
                 let krate_did = DefId { krate, index: CRATE_DEF_INDEX };
                 module_children(tcx, krate_did)
             },
 
-            ItemUse(ref path, _kind) => {
+            Use(ref path, _kind) => {
                 let target_did = path.def.def_id();
                 module_children(tcx, target_did)
             },
 
-            ItemMod(ref m) => {
+            Mod(ref m) => {
                 let mut children = Vec::with_capacity(m.item_ids.len());
                 push_hir_mod_children(tcx, m, &mut children);
                 children
             },
 
-            ItemForeignMod(ref fm) => {
+            ForeignMod(ref fm) => {
                 let mut children = Vec::with_capacity(fm.items.len());
                 push_hir_foreign_mod_children(tcx, fm, &mut children);
                 children

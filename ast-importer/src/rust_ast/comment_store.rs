@@ -23,9 +23,8 @@
 //!   let updated_cmmt_store = trav.into_comment_store();
 //! ```
 
-use syntax_pos::BytePos;
+use syntax_pos::{BytePos, DUMMY_SP, Span};
 use syntax_pos::hygiene::SyntaxContext;
-use syntax::codemap::{DUMMY_SP, Span};
 use syntax::parse::lexer::comments;
 use std::collections::BTreeMap;
 use syntax::ast::*;

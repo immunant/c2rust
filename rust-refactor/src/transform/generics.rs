@@ -1,9 +1,7 @@
 use std::collections::HashSet;
 use syntax::ast::*;
-use syntax::codemap::DUMMY_SP;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::util::small_vector::SmallVector;
 
 use api::*;
 use command::{CommandState, Registry};
@@ -55,13 +53,13 @@ impl Transform for GeneralizeItems {
         let mut item_def_ids = HashSet::new();
         let krate = fold_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
             item_def_ids.insert(cx.node_def_id(i.id));
-            SmallVector::one(i.map(|mut i| {
+            smallvec![i.map(|mut i| {
                 {
                     let gen = match i.node {
-                        ItemKind::Fn(_, _, _, _, ref mut gen, _) => gen,
+                        ItemKind::Fn(_, _, ref mut gen, _) => gen,
                         ItemKind::Enum(_, ref mut gen) => gen,
                         ItemKind::Struct(_, ref mut gen) => gen,
                         ItemKind::Union(_, ref mut gen) => gen,
@@ -69,10 +67,10 @@ impl Transform for GeneralizeItems {
                         ItemKind::Impl(_, _, _, ref mut gen, _, _, _) => gen,
                         _ => panic!("item has no room for generics"),
                     };
-                    gen.params.push(GenericParam::Type(mk().ty_param(self.ty_var_name)));
+                    gen.params.push(mk().ty_param(self.ty_var_name));
                 }
                 i
-            }))
+            })]
         });
 
         // (3) Rewrite references to each item, replacing `X` with `X<ty1>`.  If the reference to
@@ -97,24 +95,19 @@ impl Transform for GeneralizeItems {
 
             {
                 let seg = path.segments.last_mut().unwrap();
-                if let Some(ref mut params) = seg.parameters {
-                    *params = params.clone().map(|mut params| {
-                        match params {
-                            PathParameters::AngleBracketed(ref mut abpd) =>
-                                abpd.types.push(arg),
-                            PathParameters::Parenthesized(..) =>
+                if let Some(ref mut args) = seg.args {
+                    *args = args.clone().map(|mut args| {
+                        match args {
+                            GenericArgs::AngleBracketed(ref mut abpd) =>
+                                abpd.args.push(mk().generic_arg(arg)),
+                            GenericArgs::Parenthesized(..) =>
                                 panic!("expected angle bracketed params, but found parenthesized"),
                         }
-                        params
+                        args
                     });
                 } else {
-                    let abpd = AngleBracketedParameterData {
-                        span: DUMMY_SP,
-                        lifetimes: vec![],
-                        types: vec![arg],
-                        bindings: vec![],
-                    };
-                    seg.parameters = Some(P(PathParameters::AngleBracketed(abpd)));
+                    let abpd = mk().angle_bracketed_args(vec![arg]);
+                    seg.args = Some(P(GenericArgs::AngleBracketed(abpd)));
                 }
             }
 

@@ -24,9 +24,9 @@ use std::collections::hash_map::{self, HashMap, Entry};
 
 use arena::SyncDroplessArena;
 use rustc::hir::def_id::DefId;
-use rustc::ty::{Ty, TyCtxt, TypeVariants};
+use rustc::ty::{Ty, TyCtxt, TyKind};
 use rustc_data_structures::indexed_vec::IndexVec;
-use syntax::codemap::Span;
+use syntax::source_map::Span;
 
 use analysis::labeled_ty::LabeledTyCtxt;
 
@@ -137,8 +137,8 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
             Entry::Vacant(e) => {
                 *e.insert(self.lcx.label(self.tcx.type_of(did), &mut |ty| {
                     match ty.sty {
-                        TypeVariants::TyRef(_, _, _) |
-                        TypeVariants::TyRawPtr(_) => {
+                        TyKind::Ref(_, _, _) |
+                        TyKind::RawPtr(_) => {
                             let v = assign.push(ConcretePerm::Read);
                             Some(PermVar::Static(v))
                         },
@@ -166,8 +166,8 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
                 let l_sig = {
                     let mut f = |ty: Ty<'tcx>| {
                         match ty.sty {
-                            TypeVariants::TyRef(_, _, _) |
-                            TypeVariants::TyRawPtr(_) => {
+                            TyKind::Ref(_, _, _) |
+                            TyKind::RawPtr(_) => {
                                 let v = Var(counter);
                                 counter += 1;
                                 Some(PermVar::Sig(v))

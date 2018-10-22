@@ -33,7 +33,7 @@ use std::collections::hash_map::HashMap;
 use std::cmp;
 use std::result;
 use rustc::hir::def_id::DefId;
-use rustc::hir::map::Node;
+use rustc::hir::Node;
 use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Block};
 use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};
@@ -43,7 +43,7 @@ use syntax::parse::token::Token;
 use syntax::ptr::P;
 use syntax::tokenstream::ThinTokenStream;
 use syntax::util::move_map::MoveMap;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 use api::DriverCtxtExt;
 use ast_manip::{Fold, GetNodeId};
@@ -329,10 +329,10 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         let node = match_or!([self.cx.hir_map().get_if_local(def_id)] Some(x) => x;
                              return Err(Error::DefMismatch));
         let node_name = match node {
-            Node::NodeItem(i) => i.name,
-            Node::NodeForeignItem(i) => i.name,
-            Node::NodeTraitItem(i) => i.name,
-            Node::NodeImplItem(i) => i.name,
+            Node::Item(i) => i.name,
+            Node::ForeignItem(i) => i.name,
+            Node::TraitItem(i) => i.ident.name,
+            Node::ImplItem(i) => i.ident.name,
             _ => panic!("expected item-like"),
         };
         if node_name != name {
@@ -489,7 +489,7 @@ gen_pattern_impl! {
     pattern = Stmt;
     folder = StmtPatternFolder;
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt>;
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]>;
     walk = fold::noop_fold_stmt(s, self);
     map(match_one) = s.move_map(match_one);
 }

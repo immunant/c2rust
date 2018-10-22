@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use rustc::hir::def_id::DefId;
-use rustc::ty::TypeVariants;
+use rustc::ty::TyKind;
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 use api::*;
 use command::{CommandState, Registry};
@@ -197,11 +197,11 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
 
     impl<F> Folder for ChangeTypeFolder<F>
             where F: FnMut(&P<Ty>) -> Option<P<Ty>> {
-        fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+        fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
             let i = if matches!([i.node] ItemKind::Fn(..)) {
                 i.map(|mut i| {
                     let mut fd = expect!([i.node]
-                                         ItemKind::Fn(ref fd, _, _ ,_ ,_ ,_) =>
+                                         ItemKind::Fn(ref fd, _, _, _) =>
                                          fd.clone().into_inner());
 
                     for (j, arg) in fd.inputs.iter_mut().enumerate() {
@@ -234,7 +234,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
                     }
 
                     match i.node {
-                        ItemKind::Fn(ref mut fd_ptr, _, _, _, _, _) => {
+                        ItemKind::Fn(ref mut fd_ptr, _, _, _) => {
                             *fd_ptr = P(fd);
                         },
                         _ => panic!("expected ItemKind::Fn"),
@@ -348,7 +348,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
                 ExprKind::Field(ref obj, ref name) => {
                     let ty = cx.adjusted_node_type(obj.id);
                     match ty.sty {
-                        TypeVariants::TyAdt(adt, _) => {
+                        TyKind::Adt(adt, _) => {
                             let did = adt.non_enum_variant().fields
                               .iter()
                               .find(|f| f.ident == *name)

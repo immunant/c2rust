@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 use syntax::ast::*;
-use syntax::codemap::{Span, BytePos};
+use syntax::source_map::{Span, BytePos};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::visit::{self, Visitor, FnKind};
 use syntax_pos::FileName;
@@ -230,7 +230,7 @@ impl FromStr for NodeKind {
     }
 }
 
-/// Select an AST node by its `BytePos` in the `CodeMap`.  Only nodes of the specified `kind` will
+/// Select an AST node by its `BytePos` in the `SourceMap`.  Only nodes of the specified `kind` will
 /// be selected.
 pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo> {
     let mut v = PickVisitor {
@@ -257,14 +257,15 @@ pub fn pick_node_at_loc(krate: &Crate,
                         file: &str,
                         line: u32,
                         col: u32) -> Option<NodeInfo> {
-    let fm = match cx.session().codemap().get_filemap(&FileName::Real(PathBuf::from(file))) {
+    let fm = match cx.session().source_map().get_source_file(
+            &FileName::Real(PathBuf::from(file))) {
         Some(x) => x,
         None => {
             panic!("target position lies in nonexistent file {:?}", file);
         },
     };
 
-    if line == 0 || line as usize - 1 >= fm.lines.borrow().len() {
+    if line == 0 || line as usize - 1 >= fm.lines.len() {
         panic!("line {} is outside the bounds of {}", line, file);
     };
     let (lo, hi) = fm.line_bounds(line as usize - 1);
@@ -275,7 +276,7 @@ pub fn pick_node_at_loc(krate: &Crate,
     }
 
     // TODO: This math is probably off when the line contains multibyte characters.  The
-    // information to properly handle multibyte chars should be accessible through the `FileMap`.
+    // information to properly handle multibyte chars should be accessible through the `SourceFile`.
     let pos = lo + BytePos(col);
 
     pick_node(krate, kind, pos)
@@ -291,8 +292,8 @@ pub fn pick_node_command(krate: &Crate, cx: &driver::Ctxt, args: &[String]) {
     let result = pick_node_at_loc(krate, cx, kind, file, line, col);
 
     if let Some(ref result) = result {
-        let lo_loc = cx.session().codemap().lookup_char_pos(result.span.lo());
-        let hi_loc = cx.session().codemap().lookup_char_pos(result.span.hi() - BytePos(1));
+        let lo_loc = cx.session().source_map().lookup_char_pos(result.span.lo());
+        let hi_loc = cx.session().source_map().lookup_char_pos(result.span.hi() - BytePos(1));
         info!("{{ \
             found: true, \
             node_id: {}, \

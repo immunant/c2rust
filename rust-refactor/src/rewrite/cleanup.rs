@@ -1,4 +1,4 @@
-use syntax::codemap::{CodeMap, Span, DUMMY_SP};
+use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 
 use rewrite::TextRewrite;
 
@@ -7,7 +7,7 @@ fn empty_span(sp: Span) -> bool {
     sp.lo() == sp.hi()
 }
 
-fn equal_span_text(cm: &CodeMap, sp1: Span, sp2: Span) -> bool {
+fn equal_span_text(cm: &SourceMap, sp1: Span, sp2: Span) -> bool {
     if sp1 == sp2 {
         return true;
     }
@@ -28,7 +28,7 @@ fn equal_span_text(cm: &CodeMap, sp1: Span, sp2: Span) -> bool {
 
 /// Clean up a list of rewrites, sorting them and trying to remove all overlapping rewrites without
 /// affecting the meaning of the rewrite list.
-pub fn cleanup_rewrites(cm: &CodeMap, rws: Vec<TextRewrite>) -> Vec<TextRewrite> {
+pub fn cleanup_rewrites(cm: &SourceMap, rws: Vec<TextRewrite>) -> Vec<TextRewrite> {
     let mut rws = rws;
     // Sort by start position ascending, then by end position descending.  This way, in case of a
     // pair of overlapping rewrites with the same start position, we see the longest one first.

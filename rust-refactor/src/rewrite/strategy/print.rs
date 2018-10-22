@@ -12,14 +12,15 @@
 use std::rc::Rc;
 use rustc::session::Session;
 use rustc_target::spec::abi::Abi;
+use syntax::ThinVec;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::codemap::{Span, Spanned, BytePos, FileName};
+use syntax::source_map::{Span, Spanned, BytePos, FileName};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::print::pprust;
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
 use syntax::util::parser;
 
 use ast_manip::{GetNodeId, AstDeref};
@@ -485,7 +486,7 @@ fn recover<'s, T>(reparsed: &T, new: &T, mut rcx: RewriteCtxtRef<'s, '_>) -> boo
         return false;
     }
 
-    let fm = rcx.session().codemap().lookup_byte_offset(old.splice_span().lo()).fm;
+    let fm = rcx.session().source_map().lookup_byte_offset(old.splice_span().lo()).fm;
     if let FileName::Macros(..) = fm.name {
         return false;
     }

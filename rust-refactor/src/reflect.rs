@@ -1,12 +1,12 @@
 //! Functions for building AST representations of higher-level values.
 use rustc::hir;
+use rustc::hir::Node;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
-use rustc::hir::map::Node::*;
 use rustc::hir::map::definitions::DefPathData;
 use rustc::ty::{self, TyCtxt, GenericParamDefKind};
 use rustc::ty::subst::Subst;
 use syntax::ast::*;
-use syntax::codemap::DUMMY_SP;
+use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
 use syntax::symbol::keywords;
 use rustc::middle::cstore::{ExternCrate, ExternCrateSource};
@@ -25,14 +25,14 @@ pub fn reflect_tcx_ty<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
 fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                                         ty: ty::Ty<'tcx>,
                                         infer_args: bool) -> P<Ty> {
-    use rustc::ty::TypeVariants::*;
+    use rustc::ty::TyKind::*;
     match ty.sty {
-        TyBool => mk().ident_ty("bool"),
-        TyChar => mk().ident_ty("char"),
-        TyInt(ity) => mk().ident_ty(ity.ty_to_string()),
-        TyUint(uty) => mk().ident_ty(uty.ty_to_string()),
-        TyFloat(fty) => mk().ident_ty(fty.ty_to_string()),
-        TyAdt(def, substs) => {
+        Bool => mk().ident_ty("bool"),
+        Char => mk().ident_ty("char"),
+        Int(ity) => mk().ident_ty(ity.ty_to_string()),
+        Uint(uty) => mk().ident_ty(uty.ty_to_string()),
+        Float(fty) => mk().ident_ty(fty.ty_to_string()),
+        Adt(def, substs) => {
             if infer_args {
                 let (qself, path) = reflect_def_path(tcx, def.did);
                 mk().qpath_ty(qself, path)
@@ -42,35 +42,38 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 mk().qpath_ty(qself, path)
             }
         },
-        TyStr => mk().ident_ty("str"),
-        TyArray(ty, len) => mk().array_ty(
+        Foreign(did) => {
+            let (qself, path) = reflect_def_path_inner(tcx, did, None);
+            mk().qpath_ty(qself, path)
+        },
+        Str => mk().ident_ty("str"),
+        Array(ty, len) => mk().array_ty(
             reflect_tcx_ty(tcx, ty),
             mk().lit_expr(mk().int_lit(len.unwrap_usize(tcx) as u128, "usize"))
         ),
-        TySlice(ty) => mk().slice_ty(reflect_tcx_ty(tcx, ty)),
-        TyRawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(reflect_tcx_ty(tcx, mty.ty)),
-        TyRef(_, ty, m) => mk().set_mutbl(m).ref_ty(reflect_tcx_ty(tcx, ty)),
-        TyFnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
-        TyFnPtr(_) => mk().infer_ty(), // TODO
-        TyForeign(_) => mk().infer_ty(), // TODO ???
-        TyDynamic(_, _) => mk().infer_ty(), // TODO
-        TyClosure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
-        TyGenerator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
-        TyNever => mk().never_ty(),
-        TyTuple(tys) => mk().tuple_ty(tys.iter().map(|&ty| reflect_tcx_ty(tcx, ty)).collect()),
-        TyProjection(_) => mk().infer_ty(), // TODO
-        TyAnon(_, _) => mk().infer_ty(), // TODO
-        // (Note that, despite the name, `TyAnon` *can* be named - it's `impl SomeTrait`.)
-        TyParam(param) => {
+        Slice(ty) => mk().slice_ty(reflect_tcx_ty(tcx, ty)),
+        RawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(reflect_tcx_ty(tcx, mty.ty)),
+        Ref(_, ty, m) => mk().set_mutbl(m).ref_ty(reflect_tcx_ty(tcx, ty)),
+        FnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
+        FnPtr(_) => mk().infer_ty(), // TODO (fn(...) -> ...)
+        Dynamic(_, _) => mk().infer_ty(), // TODO (dyn Trait)
+        Closure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
+        Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
+        GeneratorWitness(_) => mk().infer_ty(), // unsupported (type cannot be named)
+        Never => mk().never_ty(),
+        Tuple(tys) => mk().tuple_ty(tys.iter().map(|&ty| reflect_tcx_ty(tcx, ty)).collect()),
+        Projection(..) => mk().infer_ty(), // TODO
+        UnnormalizedProjection(..) => mk().infer_ty(), // TODO
+        Opaque(..) => mk().infer_ty(), // TODO (impl Trait)
+        Param(param) => {
             if infer_args {
                 mk().infer_ty()
             } else {
                 mk().ident_ty(param.name)
             }
         },
-        TyInfer(_) => mk().infer_ty(),
-        TyError => mk().infer_ty(), // unsupported
-        TyGeneratorWitness(_) => mk().infer_ty(), // TODO ?
+        Infer(_) => mk().infer_ty(),
+        Error => mk().infer_ty(), // unsupported
     }
 }
 
@@ -166,10 +169,9 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             },
 
             DefPathData::TypeNs(name) |
-            DefPathData::MacroDef(name) |
-            DefPathData::LifetimeDef(name) |
-            DefPathData::EnumVariant(name) |
             DefPathData::Module(name) |
+            DefPathData::MacroDef(name) |
+            DefPathData::EnumVariant(name) |
             DefPathData::Field(name) |
             DefPathData::GlobalMetaData(name) => {
                 if name != "" {
@@ -184,16 +186,15 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 }
             },
 
-            DefPathData::ClosureExpr |
             DefPathData::Trait(_) |
             DefPathData::AssocTypeInTrait(_) |
             DefPathData::AssocTypeInImpl(_) |
+            DefPathData::AssocExistentialInImpl(_) |
+            DefPathData::ClosureExpr |
+            DefPathData::LifetimeParam(_) |
+            DefPathData::StructCtor |
             DefPathData::AnonConst |
-            DefPathData::UniversalImplTrait |
-            DefPathData::ExistentialImplTrait |
-            DefPathData::StructCtor => {},
-            // Apparently DefPathData::ImplTrait disappeared in the current nightly?
-            // TODO: Add it back when it's back
+            DefPathData::ImplTrait => {},
         }
 
         // Special logic for certain node kinds
@@ -208,16 +209,11 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 if let Some(substs) = opt_substs {
                     assert!(substs.len() >= num_params);
                     let start = substs.len() - num_params;
-                    let mut abpd = AngleBracketedParameterData {
-                        span: DUMMY_SP,
-                        lifetimes: Vec::new(),
-                        types: Vec::new(),
-                        bindings: Vec::new(),
-                    };
-                    for &ty in &substs[start..] {
-                        abpd.types.push(reflect_tcx_ty(tcx, ty));
-                    }
-                    segments.last_mut().unwrap().parameters = abpd.into();
+                    let tys = substs[start..].iter()
+                        .map(|ty| reflect_tcx_ty(tcx, ty))
+                        .collect::<Vec<_>>();
+                    let abpd = mk().angle_bracketed_args(tys);
+                    segments.last_mut().unwrap().args = abpd.into();
                     opt_substs = Some(&substs[..start]);
                 }
             },
@@ -258,27 +254,28 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         None => return false,
     };
     match node {
-        NodeItem(_) |
-        NodeForeignItem(_) |
-        NodeTraitItem(_) |
-        NodeImplItem(_) |
-        NodeVariant(_) |
-        NodeField(_) |
-        NodeStructCtor(_) => true,
+        Node::Item(_) |
+        Node::ForeignItem(_) |
+        Node::TraitItem(_) |
+        Node::ImplItem(_) |
+        Node::Variant(_) |
+        Node::Field(_) |
+        Node::Binding(_) |
+        Node::Local(_) |
+        Node::MacroDef(_) |
+        Node::StructCtor(_) |
+        Node::GenericParam(_) => true,
 
-        NodeMacroDef(_) | // TODO: Is this right?
-        NodeExpr(_) |
-        NodeStmt(_) |
-        NodeTy(_) |
-        NodeTraitRef(_) |
-        NodeBinding(_) |
-        NodePat(_) |
-        NodeBlock(_) |
-        NodeLocal(_) |
-        NodeLifetime(_) |
-        NodeTyParam(_) |
-        NodeAnonConst(_) |
-        NodeVisibility(_) => false,
+        Node::AnonConst(_) |
+        Node::Expr(_) |
+        Node::Stmt(_) |
+        Node::Ty(_) |
+        Node::TraitRef(_) |
+        Node::Pat(_) |
+        Node::Block(_) |
+        Node::Lifetime(_) |
+        Node::Visibility(_) |
+        Node::Crate => false,
     }
 }
 
@@ -288,12 +285,12 @@ pub fn register_commands(reg: &mut Registry) {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             st.map_krate(|krate| {
                 use api::*;
-                use rustc::ty::TypeVariants;
+                use rustc::ty::TyKind;
 
                 let krate = fold_nodes(krate, |e: P<Expr>| {
                     let ty = cx.node_type(e.id);
 
-                    let e = if let TypeVariants::TyFnDef(def_id, ref substs) = ty.sty {
+                    let e = if let TyKind::FnDef(def_id, ref substs) = ty.sty {
                         let substs = substs.types().collect::<Vec<_>>();
                         let (qself, path) = reflect_def_path_inner(
                             cx.ty_ctxt(), def_id, Some(&substs));

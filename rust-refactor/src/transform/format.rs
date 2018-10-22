@@ -3,7 +3,7 @@ use std::str;
 use std::str::FromStr;
 use rustc::session::Session;
 use syntax::ast::*;
-use syntax::codemap::DUMMY_SP;
+use syntax::source_map::DUMMY_SP;
 use syntax::ext::base::{ExtCtxt, Resolver, DummyResolver};
 use syntax::ext::expand::ExpansionConfig;
 use syntax::ext::quote::rt::ToTokens;

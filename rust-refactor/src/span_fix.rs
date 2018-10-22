@@ -7,11 +7,11 @@
 //!    bogus spans and reset them.
 
 use rustc::session::Session;
+use smallvec::SmallVec;
 use syntax::ast::*;
-use syntax::codemap::{Span, CodeMap};
+use syntax::source_map::{Span, SourceMap};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
 use syntax_pos::FileName;
 
 use ast_manip::{AstEquiv, Fold};
@@ -24,7 +24,7 @@ use driver;
 /// `Expr`s copied from the macro arguments.
 struct FixFormat<'a> {
     sess: &'a Session,
-    codemap: &'a CodeMap,
+    source_map: &'a SourceMap,
     current_expansion: Option<Span>,
 }
 
@@ -33,7 +33,7 @@ impl<'a> Folder for FixFormat<'a> {
         let old_ce = self.current_expansion;
         if self.current_expansion.is_none() {
             // Check if this is the top of a `format!` expansion.
-            let lo = self.codemap.lookup_byte_offset(e.span.lo());
+            let lo = self.source_map.lookup_byte_offset(e.span.lo());
             if let &FileName::Macros(_) = &lo.fm.name {
                 self.current_expansion = Some(e.span)
             }
@@ -54,7 +54,7 @@ impl<'a> Folder for FixFormat<'a> {
                 // argument.  The inner `format!` essentially gets treated as if it were part of
                 // the outer one.  Not a big problem at the moment, but it is a little odd.
                 let mut parsed = None;
-                with_span_text(self.codemap, e.span, |s| {
+                with_span_text(self.source_map, e.span, |s| {
                     parsed = Some(driver::parse_expr(self.sess, s));
                 });
                 if let Some(parsed) = parsed {
@@ -88,7 +88,7 @@ impl<'a> Folder for FixFormat<'a> {
 struct FixAttrs;
 
 impl Folder for FixAttrs {
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let new_span = extended_span(i.span, &i.attrs);
         let i =
             if new_span != i.span {
@@ -99,7 +99,7 @@ impl Folder for FixAttrs {
         fold::noop_fold_item(i, self)
     }
 
-    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVector<ForeignItem> {
+    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         let new_span = extended_span(fi.span, &fi.attrs);
         let fi =
             if new_span != fi.span {
@@ -119,7 +119,7 @@ impl Folder for FixAttrs {
 pub fn fix_format<T: Fold>(sess: &Session, node: T) -> <T as Fold>::Result {
     let mut fix_format = FixFormat {
         sess: sess,
-        codemap: sess.codemap(),
+        source_map: sess.source_map(),
         current_expansion: None,
     };
     node.fold(&mut fix_format)

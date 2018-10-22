@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 use syntax::ast::*;
-use syntax::codemap::Span;
+use syntax::source_map::Span;
 use syntax::visit::{self, Visitor, FnKind};
 
 use command::CommandState;

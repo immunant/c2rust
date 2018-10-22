@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
+use syntax::ThinVec;
 use syntax::ast::*;
-use syntax::codemap::{Span, SyntaxContext};
+use syntax::source_map::{Span, SyntaxContext};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
-use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
 use rustc_target::spec::abi::Abi;
 
 use std::rc::Rc;
 use syntax::attr;
-use syntax::codemap::Spanned;
+use syntax::source_map::Spanned;
 use syntax::ptr::P;
 use syntax::visit::Visitor;
 
@@ -122,7 +123,7 @@ impl<'a> Visit for MacNodeRef<'a> {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct InvocId(pub u32);
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum InvocKind<'ast> {
     Mac(&'ast Mac),
     ItemAttr(&'ast Item),

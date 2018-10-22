@@ -81,7 +81,7 @@ unsafe fn get_children_err(parent: *mut Tree, children_out: *mut *mut Forest) ->
     0
 }
 
-#[ownership_constraints(le(min(WRITE, _1), _0))]
+#[ownership_constraints(le(min(_1, WRITE), _0))]
 #[ownership_mono("take", WRITE, MOVE)]
 #[ownership_mono("mut", WRITE, WRITE)]
 #[ownership_mono("", READ, READ)]

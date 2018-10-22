@@ -1,7 +1,7 @@
 //! `NodeMap` support for macro expansion/collapsing.
 use std::collections::HashMap;
 use syntax::ast::*;
-use syntax::codemap::Span;
+use syntax::source_map::Span;
 use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::visit::{self, Visitor};

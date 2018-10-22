@@ -2,11 +2,11 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
 use syntax::ast::*;
-use syntax::codemap::DUMMY_SP;
+use syntax::source_map::DUMMY_SP;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 use api::*;
 use command::{CommandState, Registry};
@@ -35,7 +35,7 @@ impl Transform for RenameRegex {
         let krate = fold_nodes(krate, |i: P<Item>| {
             if let Some(label) = self.filter {
                 if !st.marked(i.id, label) {
-                    return SmallVector::one(i);
+                    return smallvec![i];
                 }
             }
 
@@ -44,14 +44,14 @@ impl Transform for RenameRegex {
             if let Cow::Owned(new_name) = new_name {
                 new_idents.insert(cx.hir_map().node_to_hir_id(i.id), mk().ident(&new_name));
 
-                SmallVector::one(i.map(|i| {
+                smallvec![i.map(|i| {
                     Item {
                         ident: mk().ident(&new_name),
                         .. i
                     }
-                }))
+                })]
             } else {
-                SmallVector::one(i)
+                smallvec![i]
             }
         });
 
@@ -95,9 +95,9 @@ impl Transform for ReplaceItems {
 
             if st.marked(i.id, "target") {
                 target_ids.insert(cx.node_def_id(i.id));
-                SmallVector::new()
+                smallvec![]
             } else {
-                SmallVector::one(i)
+                smallvec![i]
             }
         });
 
@@ -114,9 +114,9 @@ impl Transform for ReplaceItems {
 
             if st.marked(i.id, "target") {
                 target_ids.insert(cx.node_def_id(i.id));
-                SmallVector::new()
+                smallvec![]
             } else {
-                SmallVector::one(i)
+                smallvec![i]
             }
         });
 
@@ -143,10 +143,10 @@ impl Transform for ReplaceItems {
 
             if let Some(def_id) = opt_def_id {
                 if target_ids.contains(&def_id) {
-                    return SmallVector::new();
+                    return smallvec![];
                 }
             }
-            SmallVector::one(i)
+            smallvec![i]
         });
 
         krate
@@ -180,8 +180,8 @@ impl Transform for SetVisibility {
         }
 
         impl<'a> Folder for SetVisFolder<'a> {
-            fn fold_item(&mut self, mut i: P<Item>) -> SmallVector<P<Item>> {
-                if self.st.marked(i.id, "target") && i.vis != self.vis {
+            fn fold_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+                if self.st.marked(i.id, "target") && !i.vis.ast_equiv(&self.vis) {
                     i = i.map(|mut i| {
                         i.vis = self.vis.clone();
                         i
@@ -197,7 +197,7 @@ impl Transform for SetVisibility {
                 r
             }
 
-            fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVector<ImplItem> {
+            fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
                 if self.in_trait_impl {
                     return fold::noop_fold_impl_item(i, self);
                 }
@@ -208,7 +208,7 @@ impl Transform for SetVisibility {
                 fold::noop_fold_impl_item(i, self)
             }
 
-            fn fold_foreign_item(&mut self, mut i: ForeignItem) -> SmallVector<ForeignItem> {
+            fn fold_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
                 if self.st.marked(i.id, "target") {
                     i.vis = self.vis.clone();
                 }
@@ -302,7 +302,7 @@ impl Transform for CreateItem {
                 }
             }
 
-            fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+            fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 let i = if !matches!([i.node] ItemKind::Mod(..)) {
                     i
                 } else {

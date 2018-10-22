@@ -1,9 +1,9 @@
 //! Miscellaneous utility functions.
 use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
+use smallvec::SmallVec;
 use syntax::symbol::Symbol;
 use syntax::symbol::keywords::Keyword;
-use syntax::util::small_vector::SmallVector;
 use syntax::symbol::InternedString;
 
 pub mod cursor;
@@ -28,7 +28,7 @@ impl<T> Lone<T> for Vec<T> {
     }
 }
 
-impl<T> Lone<T> for SmallVector<T> {
+impl<T> Lone<T> for SmallVec<[T; 1]> {
     fn lone(mut self) -> T {
         assert!(self.len() == 1);
         self.pop().unwrap()
@@ -52,27 +52,29 @@ impl HirDefExt for Def {
             Def::Trait(did) |
             Def::Existential(did) |
             Def::TyAlias(did) |
-            Def::TyForeign(did) |
+            Def::ForeignTy(did) |
+            Def::TraitAlias(did) |
             Def::AssociatedTy(did) |
+            Def::AssociatedExistential(did) |
             Def::TyParam(did) |
             Def::Fn(did) |
             Def::Const(did) |
             Def::Static(did, _) |
             Def::StructCtor(did, _) |
             Def::VariantCtor(did, _) |
+            Def::SelfCtor(did) |
             Def::Method(did) |
             Def::AssociatedConst(did) |
-            Def::Macro(did, _) |
-            Def::GlobalAsm(did) |
-            Def::TraitAlias(did) => Some(did),
+            Def::Macro(did, _) => Some(did),
 
             // Local variables stopped having DefIds at some point and switched to NodeId
-            Def::Local(_) |
-            Def::Upvar(_, _, _) |
-
             Def::PrimTy(_) |
             Def::SelfTy(_, _) |
+            Def::ToolMod |
+            Def::Local(_) |
+            Def::Upvar(_, _, _) |
             Def::Label(_) |
+            Def::NonMacroAttr(_) |
             Def::Err => None
         }
     }

@@ -6,13 +6,13 @@ use rustc::hir;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast::*;
-use syntax::codemap::DUMMY_SP;
+use syntax::source_map::DUMMY_SP;
 use syntax::fold::{self, Folder};
 use syntax::parse::token::{self, Token, DelimToken};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::tokenstream::{TokenTree, TokenStream, Delimited};
-use syntax::util::small_vector::SmallVector;
+use syntax::tokenstream::{TokenTree, TokenStream, Delimited, DelimSpan};
+use smallvec::SmallVec;
 
 use analysis::labeled_ty::LabeledTyCtxt;
 use analysis::ownership::{self, ConcretePerm, Var, PTy};
@@ -104,7 +104,7 @@ fn do_annotate(st: &CommandState,
     }
 
     impl<'a, 'tcx> Folder for AnnotateFolder<'a, 'tcx> {
-        fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+        fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
             if !self.st.marked(i.id, self.label) {
                 return fold::noop_fold_item(i, self);
             }
@@ -133,7 +133,7 @@ fn do_annotate(st: &CommandState,
             }), self)
         }
 
-        fn fold_impl_item(&mut self, i: ImplItem) -> SmallVector<ImplItem> {
+        fn fold_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
             if !self.st.marked(i.id, self.label) {
                 return fold::noop_fold_impl_item(i, self);
             }
@@ -251,7 +251,7 @@ fn token(t: Token) -> TokenTree {
 }
 
 fn parens(ts: Vec<TokenTree>) -> TokenTree {
-    TokenTree::Delimited(DUMMY_SP, Delimited {
+    TokenTree::Delimited(DelimSpan::dummy(), Delimited {
         delim: DelimToken::Paren,
         tts: ts.into_iter().collect::<TokenStream>().into(),
     })
@@ -298,20 +298,20 @@ fn do_split_variants(st: &CommandState,
         // distinguish the different copies - their bodies have identical spans and `NodeId`s.
         let krate = fold_fns_multi(krate, |fl| {
             if !st.marked(fl.id, label) {
-                return SmallVector::one(fl);
+                return smallvec![fl];
             }
             eprintln!("looking at {:?}", fl.ident);
 
             let def_id = match_or!([cx.hir_map().opt_local_def_id(fl.id)]
-                                   Some(x) => x; return SmallVector::one(fl));
+                                   Some(x) => x; return smallvec![fl]);
             if !ana.variants.contains_key(&def_id) {
-                return SmallVector::one(fl);
+                return smallvec![fl];
             }
             let (fr, vr) = ana.fn_results(def_id);
 
             if fr.variants.is_some() {
                 // Func has already been split.  No work to do at this point.
-                return SmallVector::one(fl);
+                return smallvec![fl];
             }
 
             let path_str = cx.ty_ctxt().def_path(def_id).to_string_no_crate();
@@ -320,7 +320,7 @@ fn do_split_variants(st: &CommandState,
             // For consistency, we run the split logic even for funcs with only one mono.  This way
             // the "1 variant, N monos" case is handled here, and the "N variants, N monos" case is
             // handled below.
-            let mut fls = SmallVector::with_capacity(fr.num_monos);
+            let mut fls = SmallVec::with_capacity(fr.num_monos);
             for mono_idx in 0 .. fr.num_monos {
                 let mr = &ana.monos[&(vr.func_id, mono_idx)];
                 let mut fl = fl.clone();

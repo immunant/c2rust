@@ -1,7 +1,8 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
 use syntax::ast::*;
 use syntax_pos::symbol::Symbol;
-use syntax::codemap::{DUMMY_SP, dummy_spanned, Span};
+use syntax_pos::{DUMMY_SP, Span};
+use syntax::source_map::dummy_spanned;
 use syntax::parse::token::{self, Token, DelimToken};
 use syntax::attr::{mk_attr_inner};
 use syntax::ptr::P;
@@ -183,11 +184,10 @@ impl<I: Make<Ident>> Make<PathSegment> for I {
     fn make(self, mk: &Builder) -> PathSegment {
         PathSegment {
             ident: self.make(mk),
-            parameters: None,
+            args: None,
         }
     }
 }
-
 
 impl<S: Make<PathSegment>> Make<Path> for Vec<S> {
     fn make(self, mk: &Builder) -> Path {
@@ -217,15 +217,27 @@ impl Make<TokenTree> for Token {
     }
 }
 
-impl Make<PathParameters> for AngleBracketedParameterData {
-    fn make(self, _mk: &Builder) -> PathParameters {
+impl Make<GenericArgs> for AngleBracketedArgs {
+    fn make(self, _mk: &Builder) -> GenericArgs {
         AngleBracketed(self)
     }
 }
 
-impl Make<PathParameters> for ParenthesizedParameterData {
-    fn make(self, _mk: &Builder) -> PathParameters {
+impl Make<GenericArgs> for ParenthesisedArgs {
+    fn make(self, _mk: &Builder) -> GenericArgs {
         Parenthesized(self)
+    }
+}
+
+impl Make<GenericArg> for P<Ty> {
+    fn make(self, _mk: &Builder) -> GenericArg {
+        GenericArg::Type(self)
+    }
+}
+
+impl Make<GenericArg> for Lifetime {
+    fn make(self, _mk: &Builder) -> GenericArg {
+        GenericArg::Lifetime(self)
     }
 }
 
@@ -429,34 +441,32 @@ impl Builder {
     // Path segments with parameters
 
     pub fn path_segment_with_params<I,P>(self, identifier: I, parameters: P) -> PathSegment
-        where I: Make<Ident>, P: Make<PathParameters> {
+        where I: Make<Ident>, P: Make<GenericArgs> {
         let identifier = identifier.make(&self);
         let parameters = parameters.make(&self);
         PathSegment {
             ident: identifier,
-            parameters: Some(P(parameters)),
+            args: Some(P(parameters)),
         }
     }
 
-    pub fn parenthesized_param_types<Ps>(self, params: Ps) -> ParenthesizedParameterData
+    pub fn parenthesized_param_types<Ps>(self, params: Ps) -> ParenthesisedArgs
         where Ps: Make<Vec<P<Ty>>> {
 
         let params = params.make(&self);
-        ParenthesizedParameterData {
+        ParenthesisedArgs {
             span: DUMMY_SP,
             inputs: params,
             output: None,
         }
     }
 
-    pub fn angle_bracketed_param_types<Ps>(self, params: Ps) -> AngleBracketedParameterData
-        where Ps: Make<Vec<P<Ty>>> {
+    pub fn angle_bracketed_param_types<A: Make<GenericArg>>(self, params: Vec<A>) -> AngleBracketedArgs {
 
-        let params = params.make(&self);
-        AngleBracketedParameterData {
+        let params = params.into_iter().map(|x| x.make(&self)).collect();
+        AngleBracketedArgs {
             span: DUMMY_SP,
-            lifetimes: vec![],
-            types: params,
+            args: params,
             bindings: vec![],
         }
     }
@@ -802,7 +812,7 @@ impl Builder {
         Arm {
             attrs: self.attrs.into(),
             pats: pats,
-            guard,
+            guard: guard.map(Guard::If),
             body,
         }
 
@@ -1204,11 +1214,15 @@ impl Builder {
         let name = name.make(&self);
         let decl = decl.make(&self);
         let block = block.make(&self);
+        let header = FnHeader {
+            unsafety: self.unsafety,
+            asyncness: IsAsync::NotAsync,
+            constness: dummy_spanned(self.constness),
+            abi: self.abi,
+        };
         Self::item(name, self.attrs, self.vis, self.span,
                    ItemKind::Fn(decl,
-                                self.unsafety,
-                                dummy_spanned(self.constness),
-                                self.abi,
+                                header,
                                 self.generics,
                                 block))
     }
@@ -1375,6 +1389,7 @@ impl Builder {
         let module = Mod {
             inner: DUMMY_SP,
             items: items,
+            inline: true,
         };
         Self::item(name, self.attrs, self.vis, self.span, ItemKind::Mod(module))
     }
@@ -1450,15 +1465,17 @@ impl Builder {
         Arg::from_self(eself, ident)
     }
 
-    pub fn ty_param<I>(self, ident: I) -> TyParam
+    pub fn ty_param<I>(self, ident: I) -> GenericParam
         where I: Make<Ident> {
         let ident = ident.make(&self);
-        TyParam {
+        GenericParam {
             attrs: self.attrs.into(),
             ident: ident,
             id: DUMMY_NODE_ID,
             bounds: vec![],
-            default: None,
+            kind: GenericParamKind::Type {
+                default: None
+            },
         }
     }
 
@@ -1592,7 +1609,7 @@ impl Builder {
         let body = body.make(&self);
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Closure(capture, mov, decl, body, DUMMY_SP),
+            node: ExprKind::Closure(capture, IsAsync::NotAsync, mov, decl, body, DUMMY_SP),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })

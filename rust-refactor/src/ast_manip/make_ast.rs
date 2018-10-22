@@ -1,14 +1,14 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
+use std::rc::Rc;
 use rustc::hir;
 use rustc_target::spec::abi::Abi;
-// use syntax::abi::Abi;
+use syntax::ThinVec;
 use syntax::ast::*;
-use syntax::codemap::{DUMMY_SP, Spanned, Span, dummy_spanned};
 use syntax::parse::token::{self, Token, DelimToken};
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder, ThinTokenStream};
+use syntax::source_map::{DUMMY_SP, Spanned, Span, dummy_spanned};
 use syntax::symbol::keywords;
-use std::rc::Rc;
+use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder, ThinTokenStream};
 
 use util::IntoSymbol;
 
@@ -148,7 +148,7 @@ impl<I: Make<Ident>> Make<PathSegment> for I {
     fn make(self, mk: &Builder) -> PathSegment {
         PathSegment {
             ident: self.make(mk),
-            parameters: None,
+            args: None,
         }
     }
 }
@@ -182,15 +182,27 @@ impl Make<TokenTree> for Token {
     }
 }
 
-impl Make<PathParameters> for AngleBracketedParameterData {
-    fn make(self, _mk: &Builder) -> PathParameters {
+impl Make<GenericArgs> for AngleBracketedArgs {
+    fn make(self, _mk: &Builder) -> GenericArgs {
         AngleBracketed(self)
     }
 }
 
-impl Make<PathParameters> for ParenthesizedParameterData {
-    fn make(self, _mk: &Builder) -> PathParameters {
+impl Make<GenericArgs> for ParenthesisedArgs {
+    fn make(self, _mk: &Builder) -> GenericArgs {
         Parenthesized(self)
+    }
+}
+
+impl Make<GenericArg> for P<Ty> {
+    fn make(self, _mk: &Builder) -> GenericArg {
+        GenericArg::Type(self)
+    }
+}
+
+impl Make<GenericArg> for Lifetime {
+    fn make(self, _mk: &Builder) -> GenericArg {
+        GenericArg::Lifetime(self)
     }
 }
 
@@ -390,37 +402,41 @@ impl Builder {
 
     // Path segments with parameters
 
-    pub fn path_segment_with_params<I,P>(self, identifier: I, parameters: P) -> PathSegment
-        where I: Make<Ident>, P: Make<PathParameters> {
+    pub fn path_segment_with_args<I,P>(self, identifier: I, args: P) -> PathSegment
+        where I: Make<Ident>, P: Make<GenericArgs> {
         let identifier = identifier.make(&self);
-        let parameters = parameters.make(&self);
+        let args = args.make(&self);
         PathSegment {
             ident: identifier,
-            parameters: Some(P(parameters)),
+            args: Some(P(args)),
         }
     }
 
-    pub fn parenthesized_param_types<Ps>(self, params: Ps) -> ParenthesizedParameterData
-        where Ps: Make<Vec<P<Ty>>> {
+    pub fn parenthesized_args<Ts>(self, tys: Ts) -> ParenthesisedArgs
+        where Ts: Make<Vec<P<Ty>>> {
 
-        let params = params.make(&self);
-        ParenthesizedParameterData {
+        let tys = tys.make(&self);
+        ParenthesisedArgs {
             span: self.span,
-            inputs: params,
+            inputs: tys,
             output: None,
         }
     }
 
-    pub fn angle_bracketed_param_types<Ps>(self, params: Ps) -> AngleBracketedParameterData
-        where Ps: Make<Vec<P<Ty>>> {
+    pub fn angle_bracketed_args<A>(self, args: Vec<A>) -> AngleBracketedArgs
+        where A: Make<GenericArg> {
 
-        let params = params.make(&self);
-        AngleBracketedParameterData {
+        let args = args.into_iter().map(|arg| arg.make(&self)).collect();
+        AngleBracketedArgs {
             span: self.span,
-            lifetimes: vec![],
-            types: params,
+            args: args,
             bindings: vec![],
         }
+    }
+
+    pub fn generic_arg<A>(self, arg: A) -> GenericArg
+            where A: Make<GenericArg> {
+        arg.make(&self)
     }
 
     // Simple nodes
@@ -759,7 +775,7 @@ impl Builder {
     pub fn arm<Pa, E>(self, pats: Vec<Pa>, guard: Option<E>, body: E) -> Arm
         where E: Make<P<Expr>>, Pa: Make<P<Pat>> {
         let pats = pats.into_iter().map(|pat| pat.make(&self)).collect();
-        let guard = guard.map(|g| g.make(&self));
+        let guard = guard.map(|g| Guard::If(g.make(&self)));
         let body = body.make(&self);
         Arm {
             attrs: self.attrs.into(),
@@ -1202,11 +1218,15 @@ impl Builder {
         let name = name.make(&self);
         let decl = decl.make(&self);
         let block = block.make(&self);
+        let header = FnHeader {
+            unsafety: self.unsafety,
+            asyncness: IsAsync::NotAsync,
+            constness: dummy_spanned(self.constness),
+            abi: self.abi,
+        };
         Self::item(name, self.attrs, self.vis, self.span, self.id,
                    ItemKind::Fn(decl,
-                                self.unsafety,
-                                dummy_spanned(self.constness),
-                                self.abi,
+                                header,
                                 self.generics,
                                 block))
     }
@@ -1480,15 +1500,15 @@ impl Builder {
         Arg::from_self(eself, ident)
     }
 
-    pub fn ty_param<I>(self, ident: I) -> TyParam
+    pub fn ty_param<I>(self, ident: I) -> GenericParam
         where I: Make<Ident> {
         let ident = ident.make(&self);
-        TyParam {
+        GenericParam {
             attrs: self.attrs.into(),
             ident: ident,
             id: self.id,
             bounds: vec![],
-            default: None,
+            kind: GenericParamKind::Type { default: None },
         }
     }
 
@@ -1586,7 +1606,7 @@ impl Builder {
         let body = body.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Closure(capture, mov, decl, body, DUMMY_SP),
+            node: ExprKind::Closure(capture, IsAsync::NotAsync, mov, decl, body, DUMMY_SP),
             span: self.span,
             attrs: self.attrs.into(),
         })
