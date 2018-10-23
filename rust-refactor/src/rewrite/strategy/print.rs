@@ -339,6 +339,12 @@ pub trait RecoverChildren {
     /// Try to `recover` the node itself (if this node type implements `Recover`), then try to
     /// `recover_children`.
     fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef);
+
+    /// Attempt "restricted recovery" of the node itself, then try to `recover_children`.
+    /// Restricted recovery succeeds only if the recovered AST has a different span than the old
+    /// AST (otherwise we would get stuck in an infinite loop, replacing the old AST and old text
+    /// with identical copies of themselves).
+    fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef);
 }
 
 impl<T: RecoverChildren> RecoverChildren for P<T> {
@@ -348,6 +354,10 @@ impl<T: RecoverChildren> RecoverChildren for P<T> {
 
     fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         <T as RecoverChildren>::recover_node_and_children(reparsed, new, rcx)
+    }
+
+    fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <T as RecoverChildren>::recover_node_restricted(old_span, reparsed, new, rcx)
     }
 }
 
@@ -359,6 +369,10 @@ impl<T: RecoverChildren> RecoverChildren for Rc<T> {
     fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         <T as RecoverChildren>::recover_node_and_children(reparsed, new, rcx)
     }
+
+    fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <T as RecoverChildren>::recover_node_restricted(old_span, reparsed, new, rcx)
+    }
 }
 
 impl<T: RecoverChildren> RecoverChildren for Spanned<T> {
@@ -368,6 +382,10 @@ impl<T: RecoverChildren> RecoverChildren for Spanned<T> {
 
     fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         <T as RecoverChildren>::recover_node_and_children(&reparsed.node, &new.node, rcx)
+    }
+
+    fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <T as RecoverChildren>::recover_node_restricted(old_span, &reparsed.node, &new.node, rcx)
     }
 }
 
@@ -391,6 +409,11 @@ impl<T: RecoverChildren> RecoverChildren for Option<T> {
             (_, _) => {},
         }
     }
+
+    fn recover_node_restricted(_old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        // This type never implements `Recover`, so just call `recover_children`.
+        RecoverChildren::recover_children(reparsed, new, rcx);
+    }
 }
 
 impl<A: RecoverChildren, B: RecoverChildren> RecoverChildren for (A, B) {
@@ -402,6 +425,11 @@ impl<A: RecoverChildren, B: RecoverChildren> RecoverChildren for (A, B) {
     fn recover_node_and_children(reparsed: &Self, new: &Self, mut rcx: RewriteCtxtRef) {
         <A as RecoverChildren>::recover_node_and_children(&reparsed.0, &new.0, rcx.borrow());
         <B as RecoverChildren>::recover_node_and_children(&reparsed.1, &new.1, rcx.borrow());
+    }
+
+    fn recover_node_restricted(_old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        // This type never implements `Recover`, so just call `recover_children`.
+        RecoverChildren::recover_children(reparsed, new, rcx);
     }
 }
 
@@ -416,6 +444,11 @@ impl<A: RecoverChildren, B: RecoverChildren, C: RecoverChildren> RecoverChildren
         <A as RecoverChildren>::recover_node_and_children(&reparsed.0, &new.0, rcx.borrow());
         <B as RecoverChildren>::recover_node_and_children(&reparsed.1, &new.1, rcx.borrow());
         <C as RecoverChildren>::recover_node_and_children(&reparsed.2, &new.2, rcx.borrow());
+    }
+
+    fn recover_node_restricted(_old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        // This type never implements `Recover`, so just call `recover_children`.
+        RecoverChildren::recover_children(reparsed, new, rcx);
     }
 }
 
@@ -435,6 +468,11 @@ impl<T: RecoverChildren> RecoverChildren for [T] {
             RecoverChildren::recover_node_and_children(&reparsed[i], &new[i], rcx.borrow());
         }
     }
+
+    fn recover_node_restricted(_old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        // This type never implements `Recover`, so just call `recover_children`.
+        RecoverChildren::recover_children(reparsed, new, rcx);
+    }
 }
 
 impl<T: RecoverChildren> RecoverChildren for Vec<T> {
@@ -445,6 +483,10 @@ impl<T: RecoverChildren> RecoverChildren for Vec<T> {
     fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         <[T] as RecoverChildren>::recover_node_and_children(&reparsed, &new, rcx)
     }
+
+    fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <[T] as RecoverChildren>::recover_node_restricted(old_span, &reparsed, &new, rcx)
+    }
 }
 
 impl<T: RecoverChildren> RecoverChildren for ThinVec<T> {
@@ -454,6 +496,10 @@ impl<T: RecoverChildren> RecoverChildren for ThinVec<T> {
 
     fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         <[T] as RecoverChildren>::recover_node_and_children(&reparsed, &new, rcx)
+    }
+
+    fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <[T] as RecoverChildren>::recover_node_restricted(old_span, &reparsed, &new, rcx)
     }
 }
 
@@ -472,7 +518,10 @@ include!(concat!(env!("OUT_DIR"), "/rewrite_recover_children_gen.inc.rs"));
 ///
 /// Returns `true` if all steps succeed.  Returns `false` if it fails to find an old node or if
 /// it fails to rewrite the old node to match `new`.
-fn recover<'s, T>(reparsed: &T, new: &T, mut rcx: RewriteCtxtRef<'s, '_>) -> bool
+fn recover<'s, T>(maybe_restricted_span: Option<Span>,
+                  reparsed: &T,
+                  new: &T,
+                  mut rcx: RewriteCtxtRef<'s, '_>) -> bool
         where T: GetNodeId + Recover + Rewrite + Splice + 's {
     // Find a node with ID matching `new.id`, after accounting for renumbering of NodeIds.
     let old_id = rcx.new_to_old_id(new.get_node_id());
@@ -483,7 +532,6 @@ fn recover<'s, T>(reparsed: &T, new: &T, mut rcx: RewriteCtxtRef<'s, '_>) -> boo
         },
     };
 
-
     if !is_rewritable(old.splice_span()) {
         return false;
     }
@@ -491,6 +539,16 @@ fn recover<'s, T>(reparsed: &T, new: &T, mut rcx: RewriteCtxtRef<'s, '_>) -> boo
     let fm = rcx.session().source_map().lookup_byte_offset(old.splice_span().lo()).fm;
     if let FileName::Macros(..) = fm.name {
         return false;
+    }
+
+    // If `maybe_restricted_span` is set, then we can only proceed if `old.splice_span() !=
+    // restricted_span`.  What's really going on here is that `restricted_span` is the `old_span`
+    // of the enclosing `rewrite_at`, and we need to avoid infinitely recursing through
+    // `rewrite_at` and `recover` on the same node.
+    if let Some(restricted_span) = maybe_restricted_span {
+        if old.splice_span() == restricted_span {
+            return false;
+        }
     }
 
     info!("REVERT {}", describe(rcx.session(), reparsed.splice_span()));
@@ -540,7 +598,12 @@ pub fn rewrite_at<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
     }
 
     let mut rewrites = Vec::new();
-    RecoverChildren::recover_children(reparsed, new, rcx.with_rewrites(&mut rewrites));
+    // Try recovery, starting in "restricted mode" to avoid infinite recursion.  The guarantee of
+    // `recover_node_restricted` is that if it calls into `Rewrite::rewrite(old2, new2, ...)`, then
+    // `old2.splice_span() != old_span`, so we won't end up back here in `rewrite_at` with
+    // identical arguments.
+    RecoverChildren::recover_node_restricted(
+        old_span, reparsed, new, rcx.with_rewrites(&mut rewrites));
 
     let adj = new.get_adjustment(&rcx);
     rcx.record(old_span, reparsed.splice_span(), rewrites, adj);

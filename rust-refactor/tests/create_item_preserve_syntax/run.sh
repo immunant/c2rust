@@ -6,6 +6,6 @@ if [ `uname` = 'Darwin' ]; then
 fi
 
 $refactor \
-    select dest 'crate; desc(mod && name("test"));' \; \
-    create_item 'fn f() { /* syntax preserved */ }' inside dest \
+    select dest 'crate; desc(fn && name("before"));' \; \
+    create_item 'fn f() { /* syntax preserved */ }' after dest \
     -- old.rs $rustflags
