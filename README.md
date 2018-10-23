@@ -126,18 +126,23 @@ source files mentioned in the previously generated
 
 ## Refactoring
 
-The refactoring tool, idiomize, has different passes to idiomize translated Rust code. Some of the passes are run on idividual files and some on an entire Cargo build directory. More detailed information on the tool can be found [here](rust-refactor).
+The refactoring tool, idiomize, has different passes to idiomize translated Rust code.
+Some of the passes are run on idividual files and some on an entire Cargo build directory.
+More detailed information on the tool can be found [here](rust-refactor).
 
 ## Cross Checking
 
-Cross checking consists of plugins for both Rust and Clang. These plugins allow you to use one of a couple different backends to compare runs of your C and Rust executables. More information on the tool can be found [here](cross-checks).
+Cross checking consists of plugins for both Rust and Clang. These plugins allow you to use
+one of a couple different backends to compare runs of your C and Rust executables. This helps
+you ensure that any idiomization of your Rust code still produces equivalent functionality
+to the original C. More information on the tool can be found [here](cross-checks).
 
 ## FAQ
 
 > Are there release binaries? Can I install c2rust with Cargo?
 
-We are currently looking into combining the `ast-extractor` and `ast-importer` steps so that
-release binaries and/or a `cargo install c2rust` installation might be possible.
+We are currently looking into combining the `ast-extractor` and `ast-importer` translator
+components so that release binaries and/or a `cargo install c2rust` installation might be possible.
 
 > I translated code on platform X but it didn't work correctly on platform Y
 
