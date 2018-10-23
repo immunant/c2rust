@@ -20,14 +20,14 @@
 use rustc::session::Session;
 use std::collections::{HashMap, HashSet};
 use syntax::ast::*;
-use syntax::codemap::{dummy_spanned, DUMMY_SP};
-use syntax::codemap::symbol::Symbol;
+use syntax::source_map::{dummy_spanned, DUMMY_SP};
+use syntax::source_map::symbol::Symbol;
 use syntax::parse::token::Lit::Str_;
 use syntax::parse::token::Token::Literal;
 use syntax::symbol::keywords;
+use smallvec::SmallVec;
 use syntax::ptr::P;
 use syntax::tokenstream::*;
-use syntax::util::small_vector::SmallVector;
 use syntax::visit::{self, Visitor};
 use transform::Transform;
 
@@ -35,7 +35,6 @@ use api::*;
 use ast_manip::AstEquiv;
 use command::{CommandState, Registry};
 use driver::{self, Phase};
-use util::{IntoSymbol};
 
 pub struct ReorganizeModules;
 
@@ -239,27 +238,33 @@ impl Transform for ReorganizeModules {
         let mut new_module_decls = mod_info.clean_module_items();
 
         // This is where the `old module` items get moved into the `new modules`
-        let krate = fold_nodes(krate, |pi: P<Item>| match pi.node.clone() {
-            ItemKind::Mod(ref m) => {
-                return SmallVector::one(pi.map(|i| {
-                    let mut m = m.clone();
+        let krate = fold_nodes(krate, |pi: P<Item>| {
+            let mut v = smallvec![];
+            match pi.node.clone() {
+                ItemKind::Mod(ref m) => {
+                    let i = pi.map(|i| {
+                        let mut m = m.clone();
 
-                    if let Some(new_item_ids) = new_module_decls.remove(&i.id) {
-                        for new_item_id in new_item_ids.iter() {
-                            if let Some(new_item) = mod_info.item_map.get(new_item_id) {
-                                m.items.push(P(new_item.clone()));
+                        if let Some(new_item_ids) = new_module_decls.remove(&i.id) {
+                            for new_item_id in new_item_ids.iter() {
+                                if let Some(new_item) = mod_info.item_map.get(new_item_id) {
+                                    m.items.push(P(new_item.clone()));
+                                }
                             }
                         }
-                    }
 
-                    Item {
-                        node: ItemKind::Mod(m),
-                        ..i
-                    }
-                }));
-            }
-            _ => {
-                return SmallVector::one(pi);
+                        Item {
+                            node: ItemKind::Mod(m),
+                            ..i
+                        }
+                    });
+                    v.push(i);
+                    return v;
+                }
+                _ => {
+                    v.push(pi);
+                    return v;
+                }
             }
         });
 
@@ -282,13 +287,15 @@ impl Transform for ReorganizeModules {
         let krate = fold_nodes(krate, |pi: P<Item>| {
             // Remove the module, if it has the specific attribute
             if has_source_header(&pi.attrs) || is_std(&pi.attrs) {
-                return SmallVector::new();
+                return SmallVec::new();
             }
             mod_info.item_map.insert(pi.id, pi.clone().into_inner());
-            SmallVector::one(pi)
+            let mut v = smallvec![];
+            v.push(pi);
+            v
         });
 
-        // let krate = purge_duplicates(krate, &mod_info);
+        let krate = purge_duplicates(krate, &mod_info);
 
         krate
     }
@@ -319,10 +326,11 @@ fn extend_crate(
         let new_mod = Mod {
             inner: DUMMY_SP,
             items,
+            inline: false
         };
 
         let ident = inverse_map.get(dest_mod_id).unwrap();
-        let sym = Symbol::from_ident(*ident);
+        let sym = Symbol::intern(&ident.as_str());
 
         let new_item = Item {
             ident: Ident::new(sym, DUMMY_SP),
@@ -349,9 +357,10 @@ fn extend_crate(
 fn purge_duplicates(krate: Crate, mod_info: &ModuleInformation) -> Crate {
     let mut deleted_items = HashSet::new();
     let krate = fold_nodes(krate, |pi: P<Item>| {
+        let mut v = smallvec![];
         match pi.node.clone() {
             ItemKind::ForeignMod(ref fm) => {
-                return SmallVector::one(pi.clone().map(|i| {
+                let i = pi.clone().map(|i| {
                     let mut fm = fm.clone();
 
                     fm.items.retain(|foreign_item| {
@@ -399,10 +408,14 @@ fn purge_duplicates(krate: Crate, mod_info: &ModuleInformation) -> Crate {
                         node: ItemKind::ForeignMod(fm),
                         ..i
                     }
-                }));
+                });
+
+                v.push(i);
+                return v;
             }
             _ => {
-                return SmallVector::one(pi);
+                v.push(pi);
+                return v;
             }
         }
     });
@@ -418,42 +431,48 @@ fn purge_duplicates(krate: Crate, mod_info: &ModuleInformation) -> Crate {
     //     pub struct buffer_t; // moved from mod buffer_h
     // }
     // ```
-    let krate = fold_nodes(krate, |pi: P<Item>| match pi.node.clone() {
-        ItemKind::Mod(ref m) => {
-            return SmallVector::one(pi.map(|item| {
-                let mut m = m.clone();
-                let cloned_items = m.items.clone();
-                m.items.retain(|i| {
-                    let mut result = true;
-                    match i.node {
-                        ItemKind::Use(ref usetree) => {
-                            for cloned_item in cloned_items.iter() {
-                                match cloned_item.node {
-                                    ItemKind::Ty(..) | ItemKind::Fn(..) | ItemKind::Struct(..) => {
-                                        let item_declaration = cloned_item.ident;
-                                        if usetree.prefix.segments
-                                            .iter()
-                                            .any(|s| s.ident == item_declaration)
-                                        {
-                                            result = false;
+    let krate = fold_nodes(krate, |pi: P<Item>| {
+        let mut v = smallvec![];
+        match pi.node.clone() {
+            ItemKind::Mod(ref m) => {
+                let i = pi.map(|item| {
+                    let mut m = m.clone();
+                    let cloned_items = m.items.clone();
+                    m.items.retain(|i| {
+                        let mut result = true;
+                        match i.node {
+                            ItemKind::Use(ref usetree) => {
+                                for cloned_item in cloned_items.iter() {
+                                    match cloned_item.node {
+                                        ItemKind::Ty(..) | ItemKind::Fn(..) | ItemKind::Struct(..) => {
+                                            let item_declaration = cloned_item.ident;
+                                            if usetree.prefix.segments
+                                                .iter()
+                                                .any(|s| s.ident == item_declaration)
+                                            {
+                                                result = false;
+                                            }
                                         }
+                                        _ => {}
                                     }
-                                    _ => {}
                                 }
                             }
+                            _ => {}
                         }
-                        _ => {}
+                        result
+                    });
+                    Item {
+                        node: ItemKind::Mod(m),
+                        ..item
                     }
-                    result
                 });
-                Item {
-                    node: ItemKind::Mod(m),
-                    ..item
-                }
-            }));
-        }
-        _ => {
-            return SmallVector::one(pi);
+                v.push(i);
+                return v;
+            }
+            _ => {
+                v.push(pi);
+                return v;
+            }
         }
     });
 
