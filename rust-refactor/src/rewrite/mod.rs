@@ -62,9 +62,9 @@ use rustc::session::Session;
 use syntax::ast::*;
 use syntax::source_map::{Span, DUMMY_SP};
 use syntax::util::parser;
-use syntax::visit::{self, Visitor};
 
 use ast_manip::Visit;
+use ast_manip::ast_map::{AstMap, map_ast};
 use driver;
 
 mod cleanup;
@@ -88,32 +88,6 @@ pub struct TextRewrite {
     pub new_span: Span,
     pub rewrites: Vec<TextRewrite>,
     pub adjust: TextAdjust,
-}
-
-
-/// A table of references to AST nodes of some type, indexed by NodeId.
-pub struct NodeTable<'s, T: ?Sized+'s> {
-    nodes: HashMap<NodeId, &'s T>,
-}
-
-impl<'s, T: ?Sized> NodeTable<'s, T> {
-    pub fn new() -> NodeTable<'s, T> {
-        NodeTable {
-            nodes: HashMap::new(),
-        }
-    }
-
-    pub fn insert(&mut self, id: NodeId, node: &'s T) {
-        if id == DUMMY_NODE_ID {
-            return;
-        }
-        assert!(!self.nodes.contains_key(&id));
-        self.nodes.insert(id, node);
-    }
-
-    pub fn get(&self, id: NodeId) -> Option<&'s T> {
-        self.nodes.get(&id).map(|&x| x)
-    }
 }
 
 
@@ -151,82 +125,6 @@ impl MappableId for SeqItemId {
 }
 
 
-struct OldNodes<'s> {
-    exprs: NodeTable<'s, Expr>,
-    pats: NodeTable<'s, Pat>,
-    tys: NodeTable<'s, Ty>,
-    stmts: NodeTable<'s, Stmt>,
-    items: NodeTable<'s, Item>,
-    foreign_items: NodeTable<'s, ForeignItem>,
-    blocks: NodeTable<'s, Block>,
-}
-
-impl<'s> OldNodes<'s> {
-    fn new() -> OldNodes<'s> {
-        OldNodes {
-            exprs: NodeTable::new(),
-            pats: NodeTable::new(),
-            tys: NodeTable::new(),
-            stmts: NodeTable::new(),
-            items: NodeTable::new(),
-            foreign_items: NodeTable::new(),
-            blocks: NodeTable::new(),
-        }
-    }
-}
-
-
-struct OldNodesVisitor<'s> {
-    map: OldNodes<'s>,
-}
-
-impl<'s> Visitor<'s> for OldNodesVisitor<'s> {
-    fn visit_expr(&mut self, x: &'s Expr) {
-        if let ExprKind::Paren(_) = x.node {
-            // Ignore.  `Paren` nodes cause problems because they have the same NodeId as the inner
-            // expression.
-        } else {
-            self.map.exprs.insert(x.id, x);
-        }
-        visit::walk_expr(self, x);
-    }
-
-    fn visit_pat(&mut self, x: &'s Pat) {
-        self.map.pats.insert(x.id, x);
-        visit::walk_pat(self, x);
-    }
-
-    fn visit_ty(&mut self, x: &'s Ty) {
-        self.map.tys.insert(x.id, x);
-        visit::walk_ty(self, x);
-    }
-
-    fn visit_stmt(&mut self, x: &'s Stmt) {
-        self.map.stmts.insert(x.id, x);
-        visit::walk_stmt(self, x);
-    }
-
-    fn visit_item(&mut self, x: &'s Item) {
-        self.map.items.insert(x.id, x);
-        visit::walk_item(self, x);
-    }
-
-    fn visit_foreign_item(&mut self, x: &'s ForeignItem) {
-        self.map.foreign_items.insert(x.id, x);
-        visit::walk_foreign_item(self, x);
-    }
-
-    fn visit_block(&mut self, x: &'s Block) {
-        self.map.blocks.insert(x.id, x);
-        visit::walk_block(self, x);
-    }
-
-    fn visit_mac(&mut self, mac: &'s Mac) {
-        visit::walk_mac(self, mac);
-    }
-}
-
-
 /// Precedence information about the context surrounding an expression.  Used to determine whether
 /// an expr needs to be parenthesized.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -244,7 +142,7 @@ pub enum ExprPrec {
 
 pub struct RewriteCtxt<'s> {
     sess: &'s Session,
-    old_nodes: OldNodes<'s>,
+    old_nodes: AstMap<'s>,
     text_span_cache: HashMap<String, Span>,
 
     /// The span of the new AST the last time we entered "fresh" mode.  This lets us avoid infinite
@@ -267,7 +165,7 @@ pub struct RewriteCtxt<'s> {
 
 impl<'s> RewriteCtxt<'s> {
     fn new(sess: &'s Session,
-           old_nodes: OldNodes<'s>,
+           old_nodes: AstMap<'s>,
            node_id_map: HashMap<NodeId, NodeId>) -> RewriteCtxt<'s> {
         RewriteCtxt {
             sess,
@@ -284,32 +182,8 @@ impl<'s> RewriteCtxt<'s> {
         self.sess
     }
 
-    pub fn old_exprs(&mut self) -> &mut NodeTable<'s, Expr> {
-        &mut self.old_nodes.exprs
-    }
-
-    pub fn old_pats(&mut self) -> &mut NodeTable<'s, Pat> {
-        &mut self.old_nodes.pats
-    }
-
-    pub fn old_tys(&mut self) -> &mut NodeTable<'s, Ty> {
-        &mut self.old_nodes.tys
-    }
-
-    pub fn old_stmts(&mut self) -> &mut NodeTable<'s, Stmt> {
-        &mut self.old_nodes.stmts
-    }
-
-    pub fn old_items(&mut self) -> &mut NodeTable<'s, Item> {
-        &mut self.old_nodes.items
-    }
-
-    pub fn old_foreign_items(&mut self) -> &mut NodeTable<'s, ForeignItem> {
-        &mut self.old_nodes.foreign_items
-    }
-
-    pub fn old_blocks(&mut self) -> &mut NodeTable<'s, Block> {
-        &mut self.old_nodes.blocks
+    pub fn old_nodes(&self) -> &AstMap<'s> {
+        &self.old_nodes
     }
 
     pub fn fresh_start(&self) -> Span {
@@ -419,14 +293,16 @@ impl<'s, 'a> RewriteCtxtRef<'s, 'a> {
 }
 
 
-pub fn rewrite<T: Rewrite+Visit>(sess: &Session,
-                                 old: &T,
-                                 new: &T,
-                                 node_id_map: HashMap<NodeId, NodeId>) -> Vec<TextRewrite> {
-    let mut v = OldNodesVisitor { map: OldNodes::new() };
-    old.visit(&mut v);
+pub fn rewrite<'s, T: Rewrite+Visit>(sess: &Session,
+                                     old: &'s T,
+                                     new: &T,
+                                     node_id_map: HashMap<NodeId, NodeId>,
+                                     map_extra_ast: impl FnOnce(&mut AstMap<'s>))
+                                     -> Vec<TextRewrite> {
+    let mut map = map_ast(old);
+    map_extra_ast(&mut map);
 
-    let mut rcx = RewriteCtxt::new(sess, v.map, node_id_map);
+    let mut rcx = RewriteCtxt::new(sess, map, node_id_map);
     let mut rewrites = Vec::new();
     let ok = Rewrite::rewrite(old, new, rcx.with_rewrites(&mut rewrites));
     assert!(ok, "rewriting did not complete");

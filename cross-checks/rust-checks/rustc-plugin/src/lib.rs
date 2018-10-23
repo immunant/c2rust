@@ -3,11 +3,14 @@
 extern crate rustc_plugin;
 extern crate syntax;
 
-#[macro_use]
+// Unused: #[macro_use]
 extern crate matches;
 
 extern crate serde;
 extern crate serde_yaml;
+
+#[macro_use]
+extern crate smallvec;
 
 extern crate cross_check_config as xcfg;
 
@@ -19,17 +22,18 @@ use std::collections::{HashSet, HashMap};
 use std::fs;
 use std::path::PathBuf;
 
+use smallvec::SmallVec;
+
 use syntax::ast;
 use syntax::ext::base::{SyntaxExtension, ExtCtxt, Annotatable, MultiItemModifier};
 use syntax::ext::quote::rt::{ToTokens, ExtParseUtils};
-use syntax::codemap::{Span, FileLoader, RealFileLoader};
+use syntax::source_map::{Span, FileLoader, RealFileLoader};
 use syntax::fold;
-use syntax::fold::Folder;
+use syntax::fold::{Folder, ExpectOne};
 use syntax::symbol::Symbol;
 use syntax::print::pprust;
 use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
-use syntax::util::small_vector::SmallVector;
 
 mod default_config;
 
@@ -126,7 +130,7 @@ impl AstItemScope for xcfg::scopes::ScopeStack {
             ast::ItemKind::Mod(ref m) => (m.inner,   None, None),
             _                         => (item.span, None, None)
         };
-        let file_name = cx.codemap().span_to_filename(span);
+        let file_name = cx.source_map().span_to_filename(span);
         let file_name = file_name.to_string();
 
         // Check if there are any file-level defaults, and if so, apply them
@@ -467,14 +471,12 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
         let folded_item = fold::noop_fold_item_simple(item, self);
         match folded_item.node {
-            ast::ItemKind::Fn(fn_decl, unsafety, constness, abi, generics, block) => {
+            ast::ItemKind::Fn(fn_decl, header, generics, block) => {
                 let checked_block = self.build_function_xchecks(
                     &folded_item.ident, &*fn_decl, block);
                 let checked_fn = ast::ItemKind::Fn(
                     fn_decl,
-                    unsafety,
-                    constness,
-                    abi,
+                    header,
                     generics,
                     checked_block);
                 // Build and return the replacement function item
@@ -560,7 +562,7 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
         }
     }
 
-    fn fold_impl_item(&mut self, item: ast::ImplItem) -> SmallVector<ast::ImplItem> {
+    fn fold_impl_item(&mut self, item: ast::ImplItem) -> SmallVec<[ast::ImplItem; 1]> {
         match item.node {
             ast::ImplItemKind::Method(sig, body) => {
                 // FIXME: this is a bit hacky: we forcibly build a fake
@@ -573,17 +575,14 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                     vis:    item.vis,
                     span:   item.span,
                     tokens: item.tokens,
-                    node: ast::ItemKind::Fn(sig.decl, sig.unsafety,
-                                            sig.constness, sig.abi,
+                    node: ast::ItemKind::Fn(sig.decl, sig.header,
                                             item.generics, body)
                 };
                 let folded_fake_item = self.fold_item_simple(fake_item);
                 let (folded_sig, folded_generics, folded_body) = match folded_fake_item.node {
-                    ast::ItemKind::Fn(decl, unsafety, constness, abi, generics, body) => {
+                    ast::ItemKind::Fn(decl, header, generics, body) => {
                         let sig = ast::MethodSig {
-                            unsafety: unsafety,
-                            constness: constness,
-                            abi: abi,
+                            header: header,
                             decl: decl
                         };
                         // TODO: call noop_fold_method_sig on sig???
@@ -591,7 +590,7 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                     }
                     n @ _ => panic!("unexpected folded item node: {:?}", n)
                 };
-                SmallVector::one(ast::ImplItem {
+                smallvec![ast::ImplItem {
                     ident:  folded_fake_item.ident,
                     attrs:  folded_fake_item.attrs,
                     id:     folded_fake_item.id,
@@ -601,13 +600,13 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                     defaultness: item.defaultness,
                     generics: folded_generics,
                     node: ast::ImplItemKind::Method(folded_sig, folded_body)
-                })
+                }]
             }
             _ => fold::noop_fold_impl_item(item, self)
         }
     }
 
-    fn fold_stmt(&mut self, s: ast::Stmt) -> SmallVector<ast::Stmt> {
+    fn fold_stmt(&mut self, s: ast::Stmt) -> SmallVec<[ast::Stmt; 1]> {
        if cfg!(feature = "expand-macros") {
            if let ast::StmtKind::Mac(_) = s.node {
                return self.cx.expander().fold_stmt(s)
@@ -709,7 +708,7 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
     }
 
     // Fold functions that handle macro expansion
-    fn fold_item(&mut self, item: P<ast::Item>) -> SmallVector<P<ast::Item>> {
+    fn fold_item(&mut self, item: P<ast::Item>) -> SmallVec<[P<ast::Item>; 1]> {
         if cfg!(feature = "expand-macros") {
             if let ast::ItemKind::Mac(_) = item.node {
                 return self.cx.expander().fold_item(item)
@@ -738,7 +737,7 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
 
     // TODO: fold_block???
 
-    fn fold_foreign_item(&mut self, ni: ast::ForeignItem) -> SmallVector<ast::ForeignItem> {
+    fn fold_foreign_item(&mut self, ni: ast::ForeignItem) -> SmallVec<[ast::ForeignItem; 1]> {
         let folded_items = fold::noop_fold_foreign_item(ni, self);
         folded_items.into_iter().map(|folded_ni| {
             if let ast::ForeignItemKind::Ty = folded_ni.node {

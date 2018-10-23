@@ -239,7 +239,7 @@ impl Transform for CreateItem {
             _ => panic!("expected position to be 'inside' or 'after'"),
         };
 
-        let items = driver::parse_items(cx.session(), &format!("{}", self.header));
+        let items = st.parse_items(cx, &format!("{}", self.header));
         assert!(items.len() == 1, "expected a single item");
         let item = items.lone();
 

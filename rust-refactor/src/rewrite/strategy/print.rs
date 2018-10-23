@@ -24,9 +24,10 @@ use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinToke
 use syntax::util::parser;
 
 use ast_manip::{GetNodeId, AstDeref};
+use ast_manip::ast_map::NodeTable;
 use ast_manip::util::extended_span;
 use driver;
-use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, TextAdjust, ExprPrec, NodeTable};
+use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, TextAdjust, ExprPrec};
 use rewrite::base::{is_rewritable, describe};
 use rewrite::base::{binop_left_prec, binop_right_prec};
 use util::Lone;
@@ -269,48 +270,48 @@ impl Splice for Attribute {
 /// Node types for which we can recover an old AST that has associated text.
 pub trait Recover {
     /// Obtain from the `RewriteCtxt` the table of old nodes of this type.
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self>;
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self>;
 }
 
 impl Recover for Expr {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_exprs()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().exprs
     }
 }
 
 impl Recover for Pat {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_pats()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().pats
     }
 }
 
 impl Recover for Ty {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_tys()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().tys
     }
 }
 
 impl Recover for Stmt {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_stmts()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().stmts
     }
 }
 
 impl Recover for Item {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_items()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().items
     }
 }
 
 impl Recover for ForeignItem {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_foreign_items()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().foreign_items
     }
 }
 
 impl Recover for Block {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_blocks()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().blocks
     }
 }
 
@@ -462,16 +463,6 @@ include!(concat!(env!("OUT_DIR"), "/rewrite_recover_children_gen.inc.rs"));
 /// it fails to rewrite the old node to match `new`.
 fn recover<'s, T>(reparsed: &T, new: &T, mut rcx: RewriteCtxtRef<'s, '_>) -> bool
         where T: GetNodeId + Recover + Rewrite + Splice + 's {
-    // Don't try to replace the entire fresh subtree with old text.   This breaks an infinite
-    // recursion when a non-splice-point child differs between the old and new ASTs.  In such a
-    // situation, `splice_recycled` wants to replace the old text with newly printed text
-    // (because `old != new`), but `splice_fresh` wants to replace the printed text with the
-    // old text (because `new` still has a source span covering the old text).  It's always
-    // safe to use printed text instead of old text, so we bail out here if we detect this.
-    if new.splice_span() == rcx.fresh_start() {
-        return false;
-    }
-
     // Find a node with ID matching `new.id`, after accounting for renumbering of NodeIds.
     let old_id = rcx.new_to_old_id(new.get_node_id());
     let old = match <T as Recover>::node_table(&mut rcx).get(old_id) {
@@ -538,9 +529,7 @@ pub fn rewrite_at<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
     }
 
     let mut rewrites = Vec::new();
-    let old_fs = rcx.replace_fresh_start(new.splice_span());
-    RecoverChildren::recover_node_and_children(reparsed, new, rcx.with_rewrites(&mut rewrites));
-    rcx.replace_fresh_start(old_fs);
+    RecoverChildren::recover_children(reparsed, new, rcx.with_rewrites(&mut rewrites));
 
     let adj = new.get_adjustment(&rcx);
     rcx.record(old_span, reparsed.splice_span(), rewrites, adj);

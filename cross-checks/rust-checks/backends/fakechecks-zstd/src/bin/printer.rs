@@ -29,7 +29,7 @@ pub fn main() -> Result<(), std::io::Error> {
             }
             let mut val_buf = [0u8; 8];
             val_buf.copy_from_slice(&buf[1..]);
-            let val = u64::from_le(u64::from_bytes(val_buf));
+            let val = u64::from_le_bytes(val_buf);
             if out.len() >= BUF_SIZE - MAX_XCHECK_LEN {
                 io::stdout().write_all(out.as_bytes())?;
                 out.clear();
