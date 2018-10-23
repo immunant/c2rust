@@ -296,9 +296,11 @@ impl<'s, 'a> RewriteCtxtRef<'s, 'a> {
 pub fn rewrite<'s, T: Rewrite+Visit>(sess: &Session,
                                      old: &'s T,
                                      new: &T,
-                                     node_id_map: HashMap<NodeId, NodeId>)
+                                     node_id_map: HashMap<NodeId, NodeId>,
+                                     map_extra_ast: impl FnOnce(&mut AstMap<'s>))
                                      -> Vec<TextRewrite> {
-    let map = map_ast(old);
+    let mut map = map_ast(old);
+    map_extra_ast(&mut map);
 
     let mut rcx = RewriteCtxt::new(sess, map, node_id_map);
     let mut rewrites = Vec::new();

@@ -463,16 +463,6 @@ include!(concat!(env!("OUT_DIR"), "/rewrite_recover_children_gen.inc.rs"));
 /// it fails to rewrite the old node to match `new`.
 fn recover<'s, T>(reparsed: &T, new: &T, mut rcx: RewriteCtxtRef<'s, '_>) -> bool
         where T: GetNodeId + Recover + Rewrite + Splice + 's {
-    // Don't try to replace the entire fresh subtree with old text.   This breaks an infinite
-    // recursion when a non-splice-point child differs between the old and new ASTs.  In such a
-    // situation, `splice_recycled` wants to replace the old text with newly printed text
-    // (because `old != new`), but `splice_fresh` wants to replace the printed text with the
-    // old text (because `new` still has a source span covering the old text).  It's always
-    // safe to use printed text instead of old text, so we bail out here if we detect this.
-    if new.splice_span() == rcx.fresh_start() {
-        return false;
-    }
-
     // Find a node with ID matching `new.id`, after accounting for renumbering of NodeIds.
     let old_id = rcx.new_to_old_id(new.get_node_id());
     let old = match <T as Recover>::node_table(&mut rcx).get(old_id) {
@@ -539,9 +529,7 @@ pub fn rewrite_at<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
     }
 
     let mut rewrites = Vec::new();
-    let old_fs = rcx.replace_fresh_start(new.splice_span());
-    RecoverChildren::recover_node_and_children(reparsed, new, rcx.with_rewrites(&mut rewrites));
-    rcx.replace_fresh_start(old_fs);
+    RecoverChildren::recover_children(reparsed, new, rcx.with_rewrites(&mut rewrites));
 
     let adj = new.get_adjustment(&rcx);
     rcx.record(old_span, reparsed.splice_span(), rewrites, adj);
