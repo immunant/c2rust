@@ -1298,6 +1298,23 @@ impl Builder {
         Self::item(name, self.attrs, self.vis, self.span, self.id, kind)
     }
 
+    pub fn mod_item<I>(self, name: I, m: Mod) -> P<Item>
+            where I: Make<Ident> {
+        let name = name.make(&self);
+        let kind = ItemKind::Mod(m);
+        Self::item(name, self.attrs, self.vis, self.span, self.id, kind)
+    }
+
+    pub fn mod_<I>(self, items: Vec<I>) -> Mod
+            where I: Make<P<Item>> {
+        let items = items.into_iter().map(|i| i.make(&self)).collect();
+        Mod {
+            inner: self.span,
+            items,
+            inline: true,
+        }
+    }
+
     pub fn mac_item<M>(self, mac: M) -> P<Item>
         where M: Make<Mac> {
         let mac = mac.make(&self);
