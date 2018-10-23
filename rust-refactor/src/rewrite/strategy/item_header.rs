@@ -202,9 +202,6 @@ fn rewrite_arg_list_with_tokens(old: &[Arg],
                                 args_tokens: TokenStream,
                                 args_span: Span,
                                 rcx: RewriteCtxtRef) -> bool {
-    info!("old arg list = {:?}", old);
-    info!("new arg list = {:?}", new);
-
     // Find commas that separate arguments.  This is harder than it should be because type
     // argument lists (`<...>`) aren't `Delimited` like parens etc.  So instead of just looking for
     // commas at top level, we have to find commas that aren't included in any argument span.
@@ -320,7 +317,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             // The first four go in a specific order.  If multiple qualifiers are added (for
             // example, both `unsafe` and `extern`), we need to add them in the right order.
 
-            if vis1.node.ast_equiv(&vis2.node) {
+            if !vis1.node.ast_equiv(&vis2.node) {
                 record_qualifier_rewrite(spans1.vis, spans2.vis, rcx.borrow());
             }
 
@@ -370,7 +367,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             };
 
 
-            if vis1.node.ast_equiv(&vis2.node) {
+            if !vis1.node.ast_equiv(&vis2.node) {
                 record_qualifier_rewrite(spans1.vis, spans2.vis, rcx.borrow());
             }
 
