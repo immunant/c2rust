@@ -464,11 +464,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 _ => false,
             };
             if needs_export {
-                // Rust 1.29 has iterator flatten which would work here
-                let decl_file_path = match decl.loc.as_ref().map(|loc| &loc.file_path) {
-                    Some(Some(s)) => Some(s),
-                    _ => None,
-                };
+                let decl_file_path = decl.loc.as_ref().map(|loc| &loc.file_path).into_iter().flatten().next();
                 let main_file_path = t.tcfg.main_file.as_ref();
 
                 if t.tcfg.reorganize_definitions && decl_file_path != main_file_path {
