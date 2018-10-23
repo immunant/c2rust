@@ -24,9 +24,10 @@ use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinToke
 use syntax::util::parser;
 
 use ast_manip::{GetNodeId, AstDeref};
+use ast_manip::ast_map::NodeTable;
 use ast_manip::util::extended_span;
 use driver;
-use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, TextAdjust, ExprPrec, NodeTable};
+use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, TextAdjust, ExprPrec};
 use rewrite::base::{is_rewritable, describe};
 use rewrite::base::{binop_left_prec, binop_right_prec};
 use util::Lone;
@@ -269,48 +270,48 @@ impl Splice for Attribute {
 /// Node types for which we can recover an old AST that has associated text.
 pub trait Recover {
     /// Obtain from the `RewriteCtxt` the table of old nodes of this type.
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self>;
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self>;
 }
 
 impl Recover for Expr {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_exprs()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().exprs
     }
 }
 
 impl Recover for Pat {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_pats()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().pats
     }
 }
 
 impl Recover for Ty {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_tys()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().tys
     }
 }
 
 impl Recover for Stmt {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_stmts()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().stmts
     }
 }
 
 impl Recover for Item {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_items()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().items
     }
 }
 
 impl Recover for ForeignItem {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_foreign_items()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().foreign_items
     }
 }
 
 impl Recover for Block {
-    fn node_table<'a, 's>(rcx: &'a mut RewriteCtxt<'s>) -> &'a mut NodeTable<'s, Self> {
-        rcx.old_blocks()
+    fn node_table<'a, 's>(rcx: &'a RewriteCtxt<'s>) -> &'a NodeTable<'s, Self> {
+        &rcx.old_nodes().blocks
     }
 }
 

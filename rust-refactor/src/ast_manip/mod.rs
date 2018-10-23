@@ -31,6 +31,7 @@ pub use self::visit_node::{VisitNode, visit_nodes, visit_nodes_post};
 pub use self::remove_paren::remove_paren;
 
 // Modules with more complex APIs are left as `pub`.
+pub mod ast_map;
 pub mod fn_edit;
 pub mod lr_expr;
 pub mod make_ast;
