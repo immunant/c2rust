@@ -1,5 +1,27 @@
 # C2Rust
 
+[![Build Status](https://travis-ci.org/immunant/c2rust.svg?branch=master)](https://travis-ci.org/immunant/c2rust)
+
+## Why should you migrate your C code to Rust?
+
+Rust is well known to be able to enforce many memory safety properties that C cannot. C2Rust's goal is to
+automate much of the migration process from C to Rust, and to provide assistance where it cannot be automated.
+
+A common complaint we hear goes something like this:
+
+> I translated my C code, but the output is just as unsafe and not very idiomatic!
+
+Although we do strive to improve translated code quality as much as possible, the goal of the translator
+is ultimately to produce a 1-1 translation into Rust. Therefore, the resulting output will never be
+completely idiomatic.
+
+Fortunately, the C2Rust project does not solely consist of a translator. There are two other major
+components: a refactoring tool & cross checking plugin. These two tools can be used side by side to
+incrementally idiomize and validate that your Rust code functions just like the original C, respectively.
+
+In the end you should have safer, more idiomatic, Rust code. However, this process cannot be
+completely automated and sometimes requires a user's input.
+
 ## Translation
 
 The `ast-exporter` extracts from a C file the abstract syntax tree and type information produced by
@@ -101,6 +123,26 @@ source files mentioned in the previously generated
 `compile_commands.json`.
 
     $ scripts/transpile.py ./compile_commands.json
+
+## Refactoring
+
+The refactoring tool, idiomize, has different passes to idiomize translated Rust code. Some of the passes are run on idividual files and some on an entire Cargo build directory. More detailed information on the tool can be found [here](rust-refactor).
+
+## Cross Checking
+
+Cross checking consists of plugins for both Rust and Clang. These plugins allow you to use one of a couple different backends to compare runs of your C and Rust executables. More information on the tool can be found [here](cross-checks).
+
+## FAQ
+
+> Are there release binaries? Can I install c2rust with Cargo?
+
+We are currently looking into combining the `ast-extractor` and `ast-importer` steps so that
+release binaries and/or a `cargo install c2rust` installation might be possible.
+
+> I translated code on platform X but it didn't work correctly on platform Y
+
+We do not support cross compiling raw translated code. However, in the future, it may be possible
+for the refactoring tool to ease some of these pains.
 
 ## Acknowledgements and Licensing
 
