@@ -28,7 +28,7 @@ int cmp_ref(int a, int **b) {
     return &a != *b;
 }
 
-void calls_all() {
+void calls_all(void) {
     int i = 1;
     const int j = 2;
 

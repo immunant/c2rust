@@ -8,7 +8,7 @@ void unpack_128_2x128(__m128i data, __m128i* data_lo, __m128i* data_hi)
     *data_hi = _mm_unpackhi_epi8 (data, _mm_setzero_si128());
 }
 
-void zero_init_all() {
+void zero_init_all(void) {
     __m128 a;
     __m256 b;
     __m128d c;

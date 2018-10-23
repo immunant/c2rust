@@ -2,7 +2,7 @@
 
 typedef unsigned long* ulp;
 
-ulp foo() {
+ulp foo(void) {
     return NULL;
 }
 

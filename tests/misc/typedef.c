@@ -10,7 +10,7 @@ int identity(int x) { return x; }
 
 // The qualifiers should still be extracted from typedefs when needed (for example at binding
 // sites)
-int entry()
+int entry(void)
 {
     my_int x = 1;                            // 'mut x: my_int'
     my_int const y = 1;                      // 'y: my_int'
