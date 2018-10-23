@@ -103,7 +103,18 @@ impl PrintParse for Stmt {
 
 impl PrintParse for Item {
     fn to_string(&self) -> String {
-        pprust::item_to_string(self)
+        match self.node {
+            ItemKind::Mod(ref m) if !m.inline => {
+                // Special case: non-inline `Mod` items print as `mod foo;`, which parses back as a
+                // module with no children.  We force all mods to be inline for printing.
+                let mut tmp = self.clone();
+                expect!([tmp.node] ItemKind::Mod(ref mut m) => m.inline = true);
+                warn!("printing non-inline module {:?} as inline for rewriting purposes",
+                      self.ident);
+                pprust::item_to_string(&tmp)
+            },
+            _ => pprust::item_to_string(self),
+        }
     }
 
     type Parsed = P<Item>;

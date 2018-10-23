@@ -25,7 +25,9 @@ struct Crate {
     attrs,
     span,
 }
-struct Mod { inner, #[mac_table_seq] items, inline }
+// Ignore inline because we flip it from false to true when printing (see
+// `<Item as PrintParse>::to_string`).
+struct Mod { inner, #[mac_table_seq] items, #[rewrite_ignore] inline }
 
 
 #[rewrite_print_recover] #[rewrite_seq_item] #[rewrite_extra_strategies=item_header]
