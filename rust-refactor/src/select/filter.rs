@@ -68,6 +68,28 @@ impl<'ast> AnyNode<'ast> {
         }
     }
 
+    pub fn mutbl(&self) -> Option<Mutability> {
+        match *self {
+            AnyNode::Item(i) => match i.node {
+                ItemKind::Static(_, mutbl, _) => Some(mutbl),
+                _ => None,
+            },
+            AnyNode::ForeignItem(fi) => match fi.node {
+                ForeignItemKind::Static(_, is_mut) =>
+                    Some(if is_mut { Mutability::Mutable } else { Mutability::Immutable }),
+                _ => None,
+            },
+            AnyNode::Pat(p) => match p.node {
+                PatKind::Ident(mode, _, _) => match mode {
+                    BindingMode::ByRef(mutbl) => Some(mutbl),
+                    BindingMode::ByValue(mutbl) => Some(mutbl),
+                },
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     pub fn name(&self) -> Option<Symbol> {
         match *self {
             AnyNode::Item(i) => Some(i.ident.name),
@@ -221,6 +243,8 @@ pub fn matches_filter(st: &CommandState,
         Filter::ItemKind(k) => node.itemlike_kind().map_or(false, |nk| nk == k),
         Filter::Public => node.vis()
             .map_or(false, |v| matches!([v.node] VisibilityKind::Public)),
+        Filter::Mutable => node.mutbl()
+            .map_or(false, |m| m == Mutability::Mutable),
         Filter::Name(ref re) => node.name().map_or(false, |n| re.is_match(&n.as_str())),
         Filter::PathPrefix(drop_segs, ref expect_path) => {
             if !reflect::can_reflect_path(cx.hir_map(), node.id()) {

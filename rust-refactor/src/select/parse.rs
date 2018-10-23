@@ -237,6 +237,10 @@ impl<'a> Stream<'a> {
                     Ok(Filter::Public)
                 },
 
+                "mut" => {
+                    Ok(Filter::Mutable)
+                },
+
                 "name" => {
                     let mut inner = self.parens()?;
                     let lit = inner.lit()?;

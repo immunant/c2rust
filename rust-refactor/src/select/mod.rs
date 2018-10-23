@@ -71,6 +71,9 @@ pub enum Filter {
     ItemKind(ItemLikeKind),
     /// `pub`: The node's visibility is set to "public".  This implies the node must be item-like.
     Public,
+    /// `mut`: The node's mutability is set to "mutable".  This applies to statics, extern statics,
+    /// and ident patterns.
+    Mutable,
     /// `name(re)`: The node's name matches regular expression `re`.
     Name(Regex),
     /// `path_prefix(n, p)`: The prefix of the node's path, obtained by removing the last `n`
