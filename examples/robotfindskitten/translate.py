@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import sys
 from plumbum.cmd import mv, mkdir, rename, sed, rustc, cargo, rm
 from plumbum import local
@@ -14,40 +15,51 @@ import transpile
 
 # List of rust-refactor commands to run.
 
-def mk_select(script, mark='target'):
-    return ['select', mark, script]
-
 REFACTORINGS = [
-        ['wrapping_arith_to_normal'],
-        ['struct_assign_to_update'],
-        ['struct_merge_updates'],
+        'wrapping_arith_to_normal',
+        'struct_assign_to_update',
+        'struct_merge_updates',
 
-        mk_select('item(messages); mark(array); desc(match_ty(*mut __t));') + [';'] +
-            ['rewrite_expr', '__e as marked!(*mut __t)', '__e', ';'] +
-            ['rewrite_ty', 'marked!(*mut __t)', '*const __t', ';'] +
-            ['rewrite_expr', 'def!(messages, array)[__e]',
-                'def!(messages, array)[__e] as *mut libc::c_char'],
+        '''
+            select target 'item(messages); mark(array); desc(match_ty(*mut __t));' ;
+            rewrite_expr '__e as marked!(*mut __t)' '__e' ;
+            rewrite_ty 'marked!(*mut __t)' '*const __t' ;
+            rewrite_expr 'def!(messages, array)[__e]'
+                'def!(messages, array)[__e] as *mut libc::c_char'
+        ''',
 
         # We can't make these immutable until we remove all raw pointers from
         # their types.  *const and *mut are not `Sync`, which is required for
         # all immutable statics.  (Presumably anything goes for mutable
         # statics, since they're unsafe to access anyway.)
-        #mk_select('crate; child(static && name("ver|messages"));') + [';'] +
-        #    ['set_mutability', 'imm'],
+        #'''
+        #    select target 'crate; child(static && name("ver|messages"));' ;
+        #    set_mutability imm
+        #''',
 
-        mk_select('crate; child(static && mut);') +
-            [';', 'static_collect_to_struct', 'State', 'S'],
-        mk_select('crate; desc(fn && !name("main"));') + [';', 'set_visibility', ''],
-        mk_select('crate; child(static && name("S"));') + [';'] +
-            mk_select('crate; desc(fn && !name("main"));', mark='user') + [';'] +
-            ['static_to_local_ref'],
+        '''
+            select target 'crate; child(static && mut);' ;
+            static_collect_to_struct State S
+        ''',
+        '''
+            select target 'crate; desc(fn && !name("main"));' ;
+            set_visibility ''
+        ''',
+        '''
+            select target 'crate; child(static && name("S"));' ;
+            select user 'crate; desc(fn && !name("main"));' mark='user' ;
+            static_to_local_ref
+        ''',
 
-        mk_select('crate; desc(foreign_mod);') +
-            [';', 'create_item', 'mod ncurses {}', 'after'],
+        '''
+            select target 'crate; desc(foreign_mod);' ;
+            create_item 'mod ncurses {}' after
+        ''',
 
 
-        mk_select('crate; desc(mod && name("ncurses"));') +
-            [';', 'create_item', r'''
+        r'''
+            select target 'crate; desc(mod && name("ncurses"));' ;
+            create_item '
                 macro_rules! printw {
                     ($($args:tt)*) => {
                         ::printw(b"%s\0" as *const u8 as *const libc::c_char,
@@ -55,30 +67,31 @@ REFACTORINGS = [
                                     .unwrap().as_ptr())
                     };
                 }
-                ''', 'after'],
+            ' after
+        ''',
+        '''
+            select printw 'item(printw);' ;
 
-        mk_select('item(printw);', mark='printw') + [';'] +
+            copy_marks printw fmt_arg ;
+            mark_arg_uses 0 fmt_arg ;
 
-            ['copy_marks', 'printw', 'fmt_arg', ';'] +
-            ['mark_arg_uses', '0', 'fmt_arg', ';'] +
+            select fmt_str 'marked(fmt_arg); desc(expr && !match_expr(__e as __t));' ;
 
-            mk_select('marked(fmt_arg); desc(expr && !match_expr(__e as __t));',
-                mark='fmt_str') + [';'] +
+            copy_marks printw calls ;
+            mark_callers calls ;
 
-            ['copy_marks', 'printw', 'calls', ';'] +
-            ['mark_callers', 'calls', ';'] +
+            rename_marks fmt_arg target ;
+            convert_format_string ;
+            delete_marks target ;
 
-            ['rename_marks', 'fmt_arg', 'target', ';'] +
-            ['convert_format_string', ';'] +
-            ['delete_marks', 'target', ';'] +
-
-            ['rename_marks', 'calls', 'target', ';'] +
-            ['func_to_macro', 'printw', ';'] +
-            [],
+            rename_marks calls target ;
+            func_to_macro printw ;
+        ''',
 
 
-        mk_select('crate; desc(name("printw"));') +
-            [';', 'create_item', r'''
+        r'''
+            select target 'crate; desc(item && name("printw"));' ;
+            create_item '
                 macro_rules! mvprintw {
                     ($y:expr, $x:expr, $($args:tt)*) => {
                         ::mvprintw($y, $x, b"%s\0" as *const u8 as *const libc::c_char,
@@ -86,45 +99,45 @@ REFACTORINGS = [
                                     .unwrap().as_ptr())
                     };
                 }
-                ''', 'after'],
+            ' after
+        ''',
+        '''
+            select mvprintw 'item(mvprintw);' ;
 
-        mk_select('item(mvprintw);', mark='mvprintw') + [';'] +
+            copy_marks mvprintw fmt_arg ;
+            mark_arg_uses 2 fmt_arg ;
 
-            ['copy_marks', 'mvprintw', 'fmt_arg', ';'] +
-            ['mark_arg_uses', '2', 'fmt_arg', ';'] +
+            select fmt_str 'marked(fmt_arg); desc(expr && !match_expr(__e as __t));' ;
 
-            mk_select('marked(fmt_arg); desc(expr && !match_expr(__e as __t));',
-                mark='fmt_str') + [';'] +
+            copy_marks mvprintw calls ;
+            mark_callers calls ;
 
-            ['copy_marks', 'mvprintw', 'calls', ';'] +
-            ['mark_callers', 'calls', ';'] +
+            rename_marks fmt_arg target ;
+            convert_format_string ;
+            delete_marks target ;
 
-            ['rename_marks', 'fmt_arg', 'target', ';'] +
-            ['convert_format_string', ';'] +
-            ['delete_marks', 'target', ';'] +
+            rename_marks calls target ;
+            func_to_macro mvprintw ;
+        ''',
 
-            ['rename_marks', 'calls', 'target', ';'] +
-            ['func_to_macro', 'mvprintw', ';'] +
-            [],
+        '''
+            select printf 'item(printf);' ;
 
-        mk_select('item(printf);', mark='printf') + [';'] +
+            copy_marks printf fmt_arg ;
+            mark_arg_uses 0 fmt_arg ;
 
-            ['copy_marks', 'printf', 'fmt_arg', ';'] +
-            ['mark_arg_uses', '0', 'fmt_arg', ';'] +
+            select fmt_str 'marked(fmt_arg); desc(expr && !match_expr(__e as __t));' ;
 
-            mk_select('marked(fmt_arg); desc(expr && !match_expr(__e as __t));',
-                mark='fmt_str') + [';'] +
+            copy_marks printf calls ;
+            mark_callers calls ;
 
-            ['copy_marks', 'printf', 'calls', ';'] +
-            ['mark_callers', 'calls', ';'] +
+            rename_marks fmt_arg target ;
+            convert_format_string ;
+            delete_marks target ;
 
-            ['rename_marks', 'fmt_arg', 'target', ';'] +
-            ['convert_format_string', ';'] +
-            ['delete_marks', 'target', ';'] +
-
-            ['rename_marks', 'calls', 'target', ';'] +
-            ['func_to_macro', 'print', ';'] +
-            [],
+            rename_marks calls target ;
+            func_to_macro print ;
+        ''',
 ]
 
 
@@ -173,7 +186,8 @@ def main():
 
 
     # Refactor
-    for refactor_args in REFACTORINGS:
+    for refactor_str in REFACTORINGS:
+        refactor_args = shlex.split(refactor_str)
         print('REFACTOR: %r' % (refactor_args,))
         run_idiomize(refactor_args)
 
