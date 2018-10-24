@@ -2,14 +2,18 @@
 //! / lvalue / mut lvalue).
 use std::rc::Rc;
 use rustc_target::spec::abi::Abi;
+use smallvec::SmallVec;
 use syntax::ThinVec;
 use syntax::ast::*;
+use syntax::fold::{self, Folder};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
 use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
 use syntax::util::move_map::MoveMap;
 use syntax_pos::hygiene::SyntaxContext;
+
+use ast_manip::Fold;
 
 
 // TODO: Check for autoborrow adjustments.  Some method receivers are actually Lvalue / LvalueMut
@@ -151,37 +155,91 @@ pub enum Context {
     LvalueMut,
 }
 
+
+struct Rewrites<F: FnMut(P<Expr>, Context) -> P<Expr>> {
+    callback: F,
+}
+
+impl<F> LRRewrites for Rewrites<F>
+        where F: FnMut(P<Expr>, Context) -> P<Expr> {
+    fn fold_rvalue(&mut self, e: Expr) -> Expr {
+        (self.callback)(P(e), Context::Rvalue).into_inner()
+    }
+
+    fn fold_lvalue(&mut self, e: Expr) -> Expr {
+        (self.callback)(P(e), Context::Lvalue).into_inner()
+    }
+
+    fn fold_lvalue_mut(&mut self, e: Expr) -> Expr {
+        (self.callback)(P(e), Context::LvalueMut).into_inner()
+    }
+}
+
 /// Perform a bottom-up rewrite of an `Expr`, indicating at each step whether the expr is in an
 /// rvalue, (immutable) lvalue, or mutable lvalue context.
 ///
 /// `start` is the context of the outermost expression `e`.
 pub fn fold_expr_with_context<F>(e: P<Expr>, start: Context, callback: F) -> P<Expr>
         where F: FnMut(P<Expr>, Context) -> P<Expr> {
-    
-    struct Rewrites<F: FnMut(P<Expr>, Context) -> P<Expr>> {
-        callback: F,
-    }
-
-    impl<F> LRRewrites for Rewrites<F>
-            where F: FnMut(P<Expr>, Context) -> P<Expr> {
-        fn fold_rvalue(&mut self, e: Expr) -> Expr {
-            (self.callback)(P(e), Context::Rvalue).into_inner()
-        }
-
-        fn fold_lvalue(&mut self, e: Expr) -> Expr {
-            (self.callback)(P(e), Context::Lvalue).into_inner()
-        }
-
-        fn fold_lvalue_mut(&mut self, e: Expr) -> Expr {
-            (self.callback)(P(e), Context::LvalueMut).into_inner()
-        }
-    }
-
     let mut lr = Rewrites { callback: callback };
-
     match start {
         Context::Rvalue => e.fold_rvalue(&mut lr),
         Context::Lvalue => e.fold_lvalue(&mut lr),
         Context::LvalueMut => e.fold_lvalue_mut(&mut lr),
     }
+}
+
+
+// Folder for rewriting exprs that aren't children of other exprs.
+struct TopExprFolder<F> {
+    callback: F,
+    in_expr: bool,
+}
+
+impl<F> TopExprFolder<F> {
+    fn in_expr<G: FnOnce(&mut Self) -> R, R>(&mut self, in_expr: bool, callback: G) -> R {
+        let old_in_expr = self.in_expr;
+        self.in_expr = in_expr;
+        let r = callback(self);
+        self.in_expr = old_in_expr;
+        r
+    }
+}
+
+impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for TopExprFolder<F> {
+    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
+        let e = self.in_expr(true, |this| e.map(|e| fold::noop_fold_expr(e, this)));
+        if !self.in_expr {
+            (self.callback)(e)
+        } else {
+            e
+        }
+    }
+
+
+    // Clear the `in_expr` flag upon entry to a non-expr node that may contain exprs.
+    fn fold_ty(&mut self, ty: P<Ty>) -> P<Ty> {
+        self.in_expr(false, |this| fold::noop_fold_ty(ty, this))
+    }
+
+    fn fold_pat(&mut self, p: P<Pat>) -> P<Pat> {
+        self.in_expr(false, |this| fold::noop_fold_pat(p, this))
+    }
+
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
+        self.in_expr(false, |this| fold::noop_fold_stmt(s, this))
+    }
+}
+
+fn fold_top_exprs<T, F>(x: T, callback: F) -> <T as Fold>::Result
+        where T: Fold, F: FnMut(P<Expr>) -> P<Expr> {
+    let mut f = TopExprFolder { callback: callback, in_expr: false };
+    x.fold(&mut f)
+}
+
+pub fn fold_exprs_with_context<T, F>(x: T, mut callback: F) -> <T as Fold>::Result
+        where T: Fold, F: FnMut(P<Expr>, Context) -> P<Expr> {
+    fold_top_exprs(x, |e| {
+        fold_expr_with_context(e, Context::Rvalue, |e, ctx| callback(e, ctx))
+    })
 }

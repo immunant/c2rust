@@ -4,10 +4,12 @@ use rustc::hir::def_id::DefId;
 use rustc::ty::TyKind;
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
+use syntax::print::pprust;
 use syntax::ptr::P;
 use smallvec::SmallVec;
 
 use api::*;
+use ast_manip::lr_expr::{self, fold_exprs_with_context};
 use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
@@ -165,6 +167,135 @@ impl Transform for RetypeReturn {
             let mut bnd = Bindings::new();
             bnd.add_expr("__new", e);
             unwrap.clone().subst(st, cx, &bnd)
+        });
+
+        krate
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
+
+/// Change the types of marked statics to `new_ty`.  Uses `conv_rval`, `conv_lval`, and
+/// `conv_lval_mut` to adapt uses of marked statics so that the program remains well-typed.  Each
+/// `conv` expression is an expr template that adapts an expression `__new` of type `new_ty` to an
+/// rvalue, (immutable) lvalue, or mutable lvalue expression of the static's original type.  As a
+/// special case, values assigned into the static (including its initial value) are handled using
+/// the `rev_conv_assign` template, which should adapt an expression `__old` of the static's
+/// original type to `new_ty`.
+///
+/// `conv_lval_mut` can be omitted if the static is not mutable (or is never accessed mutably).
+/// `rev_conv_assign` can be omitted if the static is not mutable or if it is acceptable to handle
+/// assignments by assigning into `conv_lval_mut` (i.e., transforming `s = e` into
+/// `conv_lval_mut(s) = e` instead of `s = rev_conv_assign(e)`).
+pub struct RetypeStatic {
+    pub new_ty: String,
+    pub rev_conv_assign: String,
+    pub conv_rval: String,
+    pub conv_lval: String,
+    pub conv_lval_mut: Option<String>,
+}
+
+impl Transform for RetypeStatic {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        // (1) Change the types of marked statics, and update their initializer expressions.
+
+        let new_ty = parse_ty(cx.session(), &self.new_ty);
+        let rev_conv_assign = st.parse_expr(cx, &self.rev_conv_assign);
+        let conv_rval = st.parse_expr(cx, &self.conv_rval);
+        let conv_lval = st.parse_expr(cx, &self.conv_lval);
+        let conv_lval_mut = self.conv_lval_mut.as_ref().map(|src| st.parse_expr(cx, src));
+
+        // Modified statics, by DefId.
+        let mut mod_statics: HashSet<DefId> = HashSet::new();
+
+        let krate = fold_nodes(krate, |i: P<Item>| {
+            if !st.marked(i.id, "target") {
+                return smallvec![i];
+            }
+
+            smallvec![i.map(|mut i| {
+                match i.node {
+                    ItemKind::Static(ref mut ty, _, ref mut init) => {
+                        *ty = new_ty.clone();
+                        let mut bnd = Bindings::new();
+                        bnd.add_expr("__old", init.clone());
+                        *init = rev_conv_assign.clone().subst(st, cx, &bnd);
+                        mod_statics.insert(cx.node_def_id(i.id));
+                    },
+                    _ => {},
+                }
+                i
+            })]
+        });
+
+        let krate = fold_nodes(krate, |mut fi: ForeignItem| {
+            if !st.marked(fi.id, "target") {
+                return smallvec![fi];
+            }
+
+            match fi.node {
+                ForeignItemKind::Static(ref mut ty, _) => {
+                    *ty = new_ty.clone();
+                    mod_statics.insert(cx.node_def_id(fi.id));
+                },
+                _ => {},
+            }
+            smallvec![fi]
+        });
+
+        // (2) Handle assignments into modified statics.  This is its own step because it's hard to
+        // do inside `fold_exprs_with_context`.
+
+        // Track IDs of exprs that were handled by this step, so the next step doesn't try to do
+        // its own thing with them.  Note we assume the input AST is properly numbered.
+        let mut handled_ids: HashSet<NodeId> = HashSet::new();
+
+        let krate = fold_nodes(krate, |e: P<Expr>| {
+            if !matches!([e.node] ExprKind::Assign(..), ExprKind::AssignOp(..)) {
+                return e;
+            }
+
+            e.map(|mut e| {
+                match e.node {
+                    ExprKind::Assign(ref lhs, ref mut rhs) |
+                    ExprKind::AssignOp(_, ref lhs, ref mut rhs) => {
+                        if cx.try_resolve_expr(lhs)
+                             .map_or(false, |did| mod_statics.contains(&did)) {
+                            let mut bnd = Bindings::new();
+                            bnd.add_expr("__old", rhs.clone());
+                            *rhs = rev_conv_assign.clone().subst(st, cx, &bnd);
+                            handled_ids.insert(lhs.id);
+                        }
+                    },
+                    _ => {},
+                }
+                e
+            })
+        });
+
+        // (3) Rewrite use sites of modified statics.
+
+        let krate = fold_exprs_with_context(krate, |e, ectx| {
+            if !matches!([e.node] ExprKind::Path(..)) ||
+               handled_ids.contains(&e.id) ||
+               !cx.try_resolve_expr(&e).map_or(false, |did| mod_statics.contains(&did)) {
+                return e;
+            }
+
+            let mut bnd = Bindings::new();
+            bnd.add_expr("__new", e.clone());
+            match ectx {
+                lr_expr::Context::Rvalue => conv_rval.clone().subst(st, cx, &bnd),
+                lr_expr::Context::Lvalue => conv_lval.clone().subst(st, cx, &bnd),
+                lr_expr::Context::LvalueMut =>
+                    conv_lval_mut.clone().unwrap_or_else(
+                        || panic!("need conv_lval_mut to handle LvalueMut expression `{}`",
+                                  pprust::expr_to_string(&e)))
+                        .subst(st, cx, &bnd),
+            }
         });
 
         krate
@@ -475,6 +606,14 @@ pub fn register_commands(reg: &mut Registry) {
         new_ty: args[0].clone(),
         wrap: args[1].clone(),
         unwrap: args[2].clone(),
+    }));
+
+    reg.register("retype_static", |args| mk(RetypeStatic {
+        new_ty: args[0].clone(),
+        rev_conv_assign: args[1].clone(),
+        conv_rval: args[2].clone(),
+        conv_lval: args[3].clone(),
+        conv_lval_mut: args.get(4).cloned(),
     }));
 
     reg.register("bitcast_retype", |args| mk(BitcastRetype {
