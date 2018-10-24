@@ -138,6 +138,50 @@ REFACTORINGS = [
             rename_marks calls target ;
             func_to_macro print ;
         ''',
+
+
+        # retype ver + messages
+
+        # Change type of `ver`
+        '''
+            select target 'item(ver); mark(parent); child(match_ty(*mut libc::c_char));' ;
+            rewrite_ty 'marked!(*mut libc::c_char)' "&'static str" ;
+            delete_marks target ;
+        '''
+        # Remove casts from `ver` initializer
+        '''
+            select target 'marked(parent); desc(match_expr(__e as __t));' ;
+            rewrite_expr 'marked!(__e as __t)' '__e' ;
+            delete_marks target ;
+        '''
+        # Convert `ver` initializer from b"..." to "...".
+        # Note we can't remove the null terminator yet because we're still
+        # using CStr when doing the actual printing.
+        '''
+            select target 'marked(parent); child(expr);' ;
+            bytestr_to_str ;
+            delete_marks target ;
+        '''
+        # Fix up uses of `ver`
+        '''
+            type_fix_rules '*, &str, *const __t => __old.as_ptr()' ;
+        ''',
+
+        '''
+            select target 'item(messages); mark(parent);
+                child(ty); desc(match_ty(*const libc::c_char));' ;
+            rewrite_ty 'marked!(*const libc::c_char)' "&'static str" ;
+            delete_marks target ;
+            select target 'marked(parent); desc(match_expr(__e as __t));' ;
+            rewrite_expr 'marked!(__e as __t)' '__e' ;
+            delete_marks target ;
+            select target 'marked(parent); desc(expr);' ;
+            bytestr_to_str ;
+            delete_marks target ;
+            type_fix_rules
+                '*, &str, *const __t => __old.as_ptr()'
+                '*, &str, *mut __t => __old.as_ptr() as *mut __t' ;
+        ''',
 ]
 
 
