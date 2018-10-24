@@ -166,7 +166,7 @@ impl RefactorState {
         let krate = reset_node_ids(krate);
         let bits = Phase1Bits::from_session_and_crate(&self.session, krate);
         driver::run_compiler_from_phase1(bits, phase, |krate, cx| {
-            let krate = span_fix::fix_format(cx.session(), krate);
+            let krate = span_fix::fix_format(krate);
             let expanded = krate.clone();
 
             // Collect info + update node_map, then transfer and commit

@@ -6,74 +6,80 @@
 //!    reference to `std::fmt::Display::fmt` used to format `x`.  We'd like to detect all of these
 //!    bogus spans and reset them.
 
-use rustc::session::Session;
+use std::mem;
 use smallvec::SmallVec;
 use syntax::ast::*;
-use syntax::source_map::{Span, SourceMap};
+use syntax::source_map::{Span, DUMMY_SP};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax_pos::FileName;
+use syntax_pos::hygiene::SyntaxContext;
 
-use ast_manip::{AstEquiv, Fold};
-use ast_manip::util::{with_span_text, extended_span};
-use driver;
+use ast_manip::Fold;
+use ast_manip::util::extended_span;
 
 
-/// Folder for fixing expansions of `format!` and related macros.  It remembers the span in use on
-/// entry to the macro expansion, and applies that same span to all nodes inside, except for
-/// `Expr`s copied from the macro arguments.
-struct FixFormat<'a> {
-    sess: &'a Session,
-    source_map: &'a SourceMap,
-    current_expansion: Option<Span>,
+/// Folder for fixing expansions of `format!`.  `format!(..., foo)` generates an expression `&foo`,
+/// and gives it the same span as `foo` itself (notably, *not* a macro generated span), which
+/// causes problems for us later on.  This folder detects nodes like `&foo` and gives them a
+/// macro-generated span to fix the problem.
+struct FixFormat {
+    /// The span of the most recent ancestor `Expr`.
+    parent_span: Span,
+    /// Are we currently inside (the macro-generated part of) a `format!` invocation?
+    in_format: bool,
 }
 
-impl<'a> Folder for FixFormat<'a> {
-    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
-        let old_ce = self.current_expansion;
-        if self.current_expansion.is_none() {
-            // Check if this is the top of a `format!` expansion.
-            let lo = self.source_map.lookup_byte_offset(e.span.lo());
-            if let &FileName::Macros(_) = &lo.fm.name {
-                self.current_expansion = Some(e.span)
-            }
-        } else {
-            // Check if we are exiting the current expansion, traversing into a copy of a macro
-            // argument expression.
-            let current_expansion = self.current_expansion.unwrap();
-            if e.span.ctxt() != current_expansion.ctxt() &&
-               e.span.ctxt() == current_expansion.source_callsite().ctxt() {
-                // The current node at least *claims* to be a macro argument.  But `format!`
-                // applies the argument's span to all kinds of random nodes, so we have to
-                // validate the span info by parsing the indicated text and comparing `e` to
-                // the resulting `Expr`.
-
-                // TODO: Behavior is a litte weird if the argument is another `format!()`.  In
-                // something like `format!("{}", format!("{}", 12345))`, we set `current_expansion`
-                // on entry to the outer `format!`, and don't clear it until we get to the `12345`
-                // argument.  The inner `format!` essentially gets treated as if it were part of
-                // the outer one.  Not a big problem at the moment, but it is a little odd.
-                let mut parsed = None;
-                with_span_text(self.source_map, e.span, |s| {
-                    parsed = Some(driver::parse_expr(self.sess, s));
-                });
-                if let Some(parsed) = parsed {
-                    if parsed.ast_equiv(&e) {
-                        self.current_expansion = None;
-                    }
-                }
-            }
-        }
-        let result = e.map(|e| fold::noop_fold_expr(e, self));
-        self.current_expansion = old_ce;
-        result
+impl FixFormat {
+    fn descend<F, R>(&mut self, in_format: bool, cur_span: Span, f: F) -> R
+            where F: FnOnce(&mut Self) -> R {
+        let old_in_format = mem::replace(&mut self.in_format, in_format);
+        let old_parent_span = mem::replace(&mut self.parent_span, cur_span);
+        let r = f(self);
+        self.in_format = old_in_format;
+        self.parent_span = old_parent_span;
+        r
     }
 
-    fn new_span(&mut self, sp: Span) -> Span {
-        if let Some(span) = self.current_expansion {
-            span
+    /// Check if we should set `in_format` when descending into this expr.  Note that this doesn't
+    /// need to fire for *every* `format!`-generated expr - it just needs to fire somewhere above
+    /// the spliced-in arguments (`foo`).
+    fn is_format_entry(&self, e: &Expr) -> bool {
+        // We're looking for the `match` that `format!` uses for unpacking its arguments.  We
+        // recognize it by its span: it's macro-generated, but the "macro definition" actually
+        // points to the format string, which lies inside the macro invocation itself.
+
+        if !matches!([e.node] ExprKind::Match(..)) {
+            return false;
+        }
+
+        if e.span.ctxt() == SyntaxContext::empty() {
+            return false;
+        }
+
+        e.span.source_callsite().contains(e.span)
+    }
+}
+
+impl Folder for FixFormat {
+    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
+        if self.in_format &&
+           e.span.ctxt() == SyntaxContext::empty() &&
+           matches!([e.node] ExprKind::AddrOf(..)) {
+            trace!("EXITING format! at {:?}", e);
+            // Current node is the `&foo`.  We need to change its span.  On recursing into `foo`,
+            // we are no longer inside a `format!` invocation.
+            let new_span = self.parent_span;
+            self.descend(false, e.span, |this| e.map(|e| {
+                let mut e = fold::noop_fold_expr(e, this);
+                e.span = new_span;
+                e
+            }))
+        } else if !self.in_format && self.is_format_entry(&e) {
+            trace!("ENTERING format! at {:?}", e);
+            self.descend(true, e.span, |this| e.map(|e| fold::noop_fold_expr(e, this)))
         } else {
-            sp
+            let in_format = self.in_format;
+            self.descend(in_format, e.span, |this| e.map(|e| fold::noop_fold_expr(e, this)))
         }
     }
 
@@ -116,11 +122,10 @@ impl Folder for FixAttrs {
 }
 
 
-pub fn fix_format<T: Fold>(sess: &Session, node: T) -> <T as Fold>::Result {
+pub fn fix_format<T: Fold>(node: T) -> <T as Fold>::Result {
     let mut fix_format = FixFormat {
-        sess: sess,
-        source_map: sess.source_map(),
-        current_expansion: None,
+        parent_span: DUMMY_SP,
+        in_format: false,
     };
     node.fold(&mut fix_format)
 }
