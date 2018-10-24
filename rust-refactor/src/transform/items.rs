@@ -9,6 +9,7 @@ use syntax::symbol::Symbol;
 use smallvec::SmallVec;
 
 use api::*;
+use ast_manip::make_ast::{mk, Make};
 use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
@@ -223,6 +224,51 @@ impl Transform for SetVisibility {
 }
 
 
+/// Set mutability of all marked statics and extern statics.
+pub struct SetMutability {
+    mut_str: String,
+}
+
+impl Transform for SetMutability {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+        let mutbl = <&str as Make<Mutability>>::make(&self.mut_str, &mk());
+
+        struct SetMutFolder<'a> {
+            st: &'a CommandState,
+            mutbl: Mutability,
+        }
+
+        impl<'a> Folder for SetMutFolder<'a> {
+            fn fold_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+                if self.st.marked(i.id, "target") {
+                    i = i.map(|mut i| {
+                        match i.node {
+                            ItemKind::Static(_, ref mut mutbl, _) => *mutbl = self.mutbl,
+                            _ => {},
+                        }
+                        i
+                    });
+                }
+                fold::noop_fold_item(i, self)
+            }
+
+            fn fold_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+                if self.st.marked(i.id, "target") {
+                    match i.node {
+                        ForeignItemKind::Static(_, ref mut is_mutbl) =>
+                            *is_mutbl = self.mutbl == Mutability::Mutable,
+                        _ => {},
+                    }
+                }
+                fold::noop_fold_foreign_item(i, self)
+            }
+        }
+
+        krate.fold(&mut SetMutFolder { st, mutbl })
+    }
+}
+
+
 pub struct CreateItem {
     header: String,
     pos: String,
@@ -357,6 +403,10 @@ pub fn register_commands(reg: &mut Registry) {
 
     reg.register("set_visibility", |args| mk(SetVisibility {
         vis_str: args[0].clone(),
+    }));
+
+    reg.register("set_mutability", |args| mk(SetMutability {
+        mut_str: args[0].clone(),
     }));
 
     reg.register("create_item", |args| mk(CreateItem {
