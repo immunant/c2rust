@@ -21,7 +21,21 @@ REFACTORINGS = [
         ['wrapping_arith_to_normal'],
         ['struct_assign_to_update'],
         ['struct_merge_updates'],
-        mk_select('crate; child(static);') +
+
+        mk_select('item(messages); mark(array); desc(match_ty(*mut __t));') + [';'] +
+            ['rewrite_expr', '__e as marked!(*mut __t)', '__e', ';'] +
+            ['rewrite_ty', 'marked!(*mut __t)', '*const __t', ';'] +
+            ['rewrite_expr', 'def!(messages, array)[__e]',
+                'def!(messages, array)[__e] as *mut libc::c_char'],
+
+        # We can't make these immutable until we remove all raw pointers from
+        # their types.  *const and *mut are not `Sync`, which is required for
+        # all immutable statics.  (Presumably anything goes for mutable
+        # statics, since they're unsafe to access anyway.)
+        #mk_select('crate; child(static && name("ver|messages"));') + [';'] +
+        #    ['set_mutability', 'imm'],
+
+        mk_select('crate; child(static && mut);') +
             [';', 'static_collect_to_struct', 'State', 'S'],
         mk_select('crate; desc(fn && !name("main"));') + [';', 'set_visibility', ''],
         mk_select('crate; child(static && name("S"));') + [';'] +
@@ -54,13 +68,10 @@ REFACTORINGS = [
             ['copy_marks', 'printw', 'calls', ';'] +
             ['mark_callers', 'calls', ';'] +
 
-            ['print_marks', ';'] +
-
             ['rename_marks', 'fmt_arg', 'target', ';'] +
             ['convert_format_string', ';'] +
             ['delete_marks', 'target', ';'] +
 
-            ['print_marks', ';'] +
             ['rename_marks', 'calls', 'target', ';'] +
             ['func_to_macro', 'printw', ';'] +
             [],
@@ -80,7 +91,6 @@ REFACTORINGS = [
         mk_select('item(mvprintw);', mark='mvprintw') + [';'] +
 
             ['copy_marks', 'mvprintw', 'fmt_arg', ';'] +
-            ['print_marks', ';', 'print_spans', ';'] +
             ['mark_arg_uses', '2', 'fmt_arg', ';'] +
 
             mk_select('marked(fmt_arg); desc(expr && !match_expr(__e as __t));',
@@ -89,15 +99,31 @@ REFACTORINGS = [
             ['copy_marks', 'mvprintw', 'calls', ';'] +
             ['mark_callers', 'calls', ';'] +
 
-            ['print_marks', ';'] +
+            ['rename_marks', 'fmt_arg', 'target', ';'] +
+            ['convert_format_string', ';'] +
+            ['delete_marks', 'target', ';'] +
+
+            ['rename_marks', 'calls', 'target', ';'] +
+            ['func_to_macro', 'mvprintw', ';'] +
+            [],
+
+        mk_select('item(printf);', mark='printf') + [';'] +
+
+            ['copy_marks', 'printf', 'fmt_arg', ';'] +
+            ['mark_arg_uses', '0', 'fmt_arg', ';'] +
+
+            mk_select('marked(fmt_arg); desc(expr && !match_expr(__e as __t));',
+                mark='fmt_str') + [';'] +
+
+            ['copy_marks', 'printf', 'calls', ';'] +
+            ['mark_callers', 'calls', ';'] +
 
             ['rename_marks', 'fmt_arg', 'target', ';'] +
             ['convert_format_string', ';'] +
             ['delete_marks', 'target', ';'] +
 
-            ['print_marks', ';'] +
             ['rename_marks', 'calls', 'target', ';'] +
-            ['func_to_macro', 'mvprintw', ';'] +
+            ['func_to_macro', 'print', ';'] +
             [],
 ]
 
