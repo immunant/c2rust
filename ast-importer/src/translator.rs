@@ -2583,7 +2583,86 @@ impl Translation {
         match self.ast_context[expr_id].kind {
             CExprKind::DesignatedInitExpr(..) => Err(format!("Unexpected designated init expr")),
             CExprKind::BadExpr => Err(format!("convert_expr: expression kind not supported")),
-            CExprKind::ShuffleVector(..) => Err(format!("shuffle vector not supported")),
+            CExprKind::ShuffleVector(_, ref child_expr_ids) => {
+                use c_ast::BinOp::{Add, BitAnd, ShiftRight};
+
+                if child_expr_ids.len() != 6 {
+                    return Err("Unsupported shuffle vector without six input params".into());
+                };
+
+                // TODO: May need to handle implicit casts of input vectors..?
+
+                let first_expr_id = child_expr_ids[0];
+                let second_expr_id = child_expr_ids[1];
+                let first_expr = &self.ast_context.c_exprs[&first_expr_id].kind;
+                let second_expr = &self.ast_context.c_exprs[&second_expr_id].kind;
+                let first_vector = match first_expr {
+                    CExprKind::ExplicitCast(CQualTypeId { ctype, .. }, _, _, _, _) => {
+                        &self.ast_context.resolve_type(*ctype).kind
+                    },
+                    _ => unreachable!("Found cast other than explicit cast"),
+                };
+                let second_vector = match second_expr {
+                    CExprKind::ExplicitCast(CQualTypeId { ctype, .. }, _, _, _, _) => {
+                        &self.ast_context.resolve_type(*ctype).kind
+                    },
+                    _ => unreachable!("Found cast other than explicit cast"),
+                };
+                let (first_vector_inner, first_vector_len) = match first_vector {
+                    CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
+                        (&self.ast_context.c_types[ctype], len)
+                    },
+                    _ => unreachable!("Found type other than vector"),
+                };
+                let (second_vector_inner, second_vector_len) = match second_vector {
+                    CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
+                        (&self.ast_context.c_types[ctype], len)
+                    },
+                    _ => unreachable!("Found type other than vector"),
+                };
+
+                if first_vector_inner.kind != second_vector_inner.kind {
+                    return Err("Unsupported shuffle vector with different vector kinds".into());
+                }
+                if first_vector_len != second_vector_len {
+                    return Err("Unsupported shuffle vector with different vector lengths".into());
+                }
+
+                let masked_expr_id = child_expr_ids[2];
+                let masked_expr = &self.ast_context.c_exprs[&masked_expr_id].kind;
+
+                // Need to unmask which looks like this: 0 + (((mask) >> 0) & 0x3)
+                let mask_expr_id = match masked_expr {
+                    CExprKind::Binary(_, Add, _, rhs_expr_id, None, None) =>
+                        match self.ast_context.c_exprs[&rhs_expr_id].kind {
+                            CExprKind::Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
+                                match self.ast_context.c_exprs[&lhs_expr_id].kind {
+                                    CExprKind::Binary(_, ShiftRight, lhs_expr_id, _, None, None) => {
+                                        lhs_expr_id
+                                    },
+                                    _ => unreachable!("Found unknown mask format"),
+                                }
+                            },
+                            _ => unreachable!("Found unknown mask format"),
+                        },
+                    _ => unreachable!("Found unknown mask format"),
+                };
+
+                let stmt = match (&first_vector_inner.kind, first_vector_len) {
+                    (CTypeKind::Float, 4) => mk().call_expr(mk().ident_expr("_mm_shuffle_ps"), vec![] as Vec<P<Expr>>),
+                    ref e => unimplemented!("// {:?}", e),
+                };
+                let val = if use_ == ExprUse::Used {
+                    unimplemented!(); // FIXME
+                } else {
+                    self.panic("No value for unused shuffle vector return")
+                };
+
+                Ok(WithStmts {
+                    stmts: vec![mk().expr_stmt(stmt)],
+                    val: val,
+                })
+            },
             CExprKind::ConvertVector(..) => Err(format!("convert vector not supported")),
 
             CExprKind::UnaryType(_ty, kind, opt_expr, arg_ty) => {
