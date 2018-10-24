@@ -2644,12 +2644,16 @@ impl Translation {
                                 }
                             },
                             _ => unreachable!("Found unknown mask format"),
-                        },
+                        }
                     _ => unreachable!("Found unknown mask format"),
                 };
+                let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
+                let second_param = self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
+                let third_param = self.convert_expr(ExprUse::Used, mask_expr_id, is_static, decay_ref)?;
+                let params = vec![first_param.val, second_param.val, third_param.val];
 
                 let stmt = match (&first_vector_inner.kind, first_vector_len) {
-                    (CTypeKind::Float, 4) => mk().call_expr(mk().ident_expr("_mm_shuffle_ps"), vec![] as Vec<P<Expr>>),
+                    (CTypeKind::Float, 4) => mk().call_expr(mk().ident_expr("_mm_shuffle_ps"), params),
                     ref e => unimplemented!("// {:?}", e),
                 };
                 let val = if use_ == ExprUse::Used {
@@ -2660,7 +2664,7 @@ impl Translation {
 
                 Ok(WithStmts {
                     stmts: vec![mk().expr_stmt(stmt)],
-                    val: val,
+                    val,
                 })
             },
             CExprKind::ConvertVector(..) => Err(format!("convert vector not supported")),
