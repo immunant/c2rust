@@ -257,7 +257,7 @@ impl<'a> Stream<'a> {
                         Err(e) => fail!("invalid regex: {}", e),
                     };
                     // Then, add ^ ... $ so the regex has to match the entire item name
-                    let r = Regex::new(&format!("^{}$", s.as_str())).unwrap();
+                    let r = Regex::new(&format!("^({})$", s.as_str())).unwrap();
                     Ok(Filter::Name(r))
                 },
 
