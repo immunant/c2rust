@@ -1361,6 +1361,15 @@ impl CfgBuilder {
             ),
 
             CStmtKind::Expr(expr) => {
+                // This case typically happens in macros from system headers.
+                // We simply inline the common statement at this point rather
+                // than to try and create new control-flow blocks.
+                if let CExprKind::Unary(_, UnOp::Extension, sube, _) = translator.ast_context[expr].kind {
+                    if let CExprKind::Statements(_, stmtid) = translator.ast_context[sube].kind {
+                        return self.convert_stmt_help(translator, stmtid, wip)
+                    }
+                }
+
                 wip.extend(translator.convert_expr(ExprUse::Unused, expr, false, DecayRef::Default)?.stmts);
 
                 // If we can tell the expression is going to diverge, there is no falling through to
