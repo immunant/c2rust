@@ -15,7 +15,7 @@ Although we do strive to improve translated code quality as much as possible, th
 is ultimately to produce a 1-1 translation into Rust. Therefore, the resulting output will never be
 completely idiomatic.
 
-Fortunately, the C2Rust project does not solely consist of a translator. There are two other major
+Since unsafe "C code in Rust" isn't the final goal, the C2Rust project isn't just a translator. There are two other major
 components: a refactoring tool & cross checking plugin. These two tools can be used side by side to
 incrementally idiomize and validate that your Rust code functions just like the original C, respectively.
 
