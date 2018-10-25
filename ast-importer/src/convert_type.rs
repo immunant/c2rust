@@ -141,7 +141,12 @@ impl TypeConverter {
 
             // Function pointers are translated to Option applied to the function type
             // in order to support NULL function pointers natively
-            CTypeKind::Function(ret, ref params, is_var, is_noreturn) => {
+            CTypeKind::Function(ret, ref params, is_var, is_noreturn, has_proto) => {
+
+                if !has_proto {
+                    return Err(format!("Unable to convert function pointer type without prototype"))
+                }
+
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
                 let param = mk().angle_bracketed_param_types(vec![fn_ty]);
@@ -243,7 +248,7 @@ impl TypeConverter {
 
             CTypeKind::Attributed(ty, _) => self.convert(ctxt, ty.ctype),
 
-            CTypeKind::Function(ret, ref params, is_var, is_noreturn) => {
+            CTypeKind::Function(ret, ref params, is_var, is_noreturn, true) => {
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
                 Ok(fn_ty)

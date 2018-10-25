@@ -946,7 +946,7 @@ impl Translation {
         if let CDeclKind::Function { ref parameters, typ, .. } = self.ast_context.index(main_id).kind {
 
             let ret: CTypeKind = match self.ast_context.resolve_type(typ).kind {
-                CTypeKind::Function(ret, _, _, _) => self.ast_context.resolve_type(ret.ctype).kind.clone(),
+                CTypeKind::Function(ret, _, _, _, _) => self.ast_context.resolve_type(ret.ctype).kind.clone(),
                 ref k => return Err(format!("Type of main function {:?} was not a function type, got {:?}", main_id, k))
             };
 
@@ -1290,7 +1290,7 @@ impl Translation {
                 }
 
                 let (ret, is_var): (Option<CQualTypeId>, bool) = match self.ast_context.resolve_type(typ).kind {
-                    CTypeKind::Function(ret, _, is_var, is_noreturn) => (if is_noreturn { None } else { Some(ret) }, is_var),
+                    CTypeKind::Function(ret, _, is_var, is_noreturn, _) => (if is_noreturn { None } else { Some(ret) }, is_var),
                     ref k => return Err(format!("Type of function {:?} was not a function type, got {:?}", decl_id, k))
                 };
 
@@ -2239,7 +2239,7 @@ impl Translation {
         match self.ast_context.resolve_type(ctypeid).kind {
             CTypeKind::Pointer(CQualTypeId { ctype, .. }) => {
                 match self.ast_context.resolve_type(ctype).kind {
-                    CTypeKind::Function(_, _, _, _) => {
+                    CTypeKind::Function(..) => {
                         // Fn pointers need to be type annotated if null
                         if initializer.is_none() {
                             return true;
@@ -2293,7 +2293,7 @@ impl Translation {
             CTypeKind::Struct(_) |
             CTypeKind::Union(_) |
             CTypeKind::Enum(_) => false,
-            CTypeKind::Function(_, _, _, _) => unreachable!("Can't have a function directly as a type"),
+            CTypeKind::Function(..) => unreachable!("Can't have a function directly as a type"),
             CTypeKind::Typedef(_) => unreachable!("Typedef should be expanded though resolve_type"),
             _ => true,
         }
@@ -3111,7 +3111,7 @@ impl Translation {
         let fn_ty = &self.ast_context.c_types[&fn_expr.kind.get_type().unwrap()];
         if let CTypeKind::Pointer(qual_ty) = fn_ty.kind {
             match self.ast_context.c_types[&qual_ty.ctype].kind {
-                CTypeKind::Function(_, _, is_variadic, _) => is_variadic,
+                CTypeKind::Function(_, _, is_variadic, _, _) => is_variadic,
                 _ => false,
             }
         } else {

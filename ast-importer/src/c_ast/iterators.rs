@@ -214,7 +214,7 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
             for x in cnt { res.push(x.into()) }
             res
         },
-        Function(ret, ref params, _, _) => {
+        Function(ret, ref params, _, _, _) => {
             let mut res = intos![ret.ctype];
             for p in params { res.push(p.ctype.into()) }
             res
