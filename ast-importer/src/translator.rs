@@ -2586,8 +2586,11 @@ impl Translation {
             CExprKind::ShuffleVector(_, ref child_expr_ids) => {
                 use c_ast::BinOp::{Add, BitAnd, ShiftRight};
 
-                if child_expr_ids.len() != 6 {
-                    return Err("Unsupported shuffle vector without six input params".into());
+                // There are three shuffle vector functions which are actually functions, not superbuiltins/macros,
+                // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm_shuffle_pi16
+
+                if child_expr_ids.len() != 4 && child_expr_ids.len() != 6 && child_expr_ids.len() != 10 && child_expr_ids.len() != 18 {
+                    return Err("Unsupported shuffle vector without four or six input params".into());
                 };
 
                 // TODO: May need to handle implicit casts of input vectors..?
@@ -2650,16 +2653,51 @@ impl Translation {
                 let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
                 let second_param = self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
                 let third_param = self.convert_expr(ExprUse::Used, mask_expr_id, is_static, decay_ref)?;
-                let params = vec![first_param.val, second_param.val, third_param.val];
+                let mut params = vec![first_param.val];
 
-                let stmt = match (&first_vector_inner.kind, first_vector_len) {
-                    (CTypeKind::Float, 4) => mk().call_expr(mk().ident_expr("_mm_shuffle_ps"), params),
+                // _mm256_shuffle_epi32 doesn't take a second param, but the expr is still there for some reason
+                if child_expr_ids.len() == 10 && first_vector_inner.kind == CTypeKind::Int && *first_vector_len == 8 {
+                } else {
+                    params.push(second_param.val);
+                }
+
+                params.push(third_param.val);
+
+                // REVIEW: two params not three: _mm_shuffle_epi32
+                // _mm_shufflehi_epi16, _mm_shufflelo_epi16, _mm256_shuffle_epi32,
+                // _mm256_shufflehi_epi16, _mm256_shufflelo_epi16
+
+                // Permutations seem to be:
+                // (vec, vec, imm8)
+                // (vec, vec)
+                // (vec, imm8)
+
+                // _mm_shuffle_ps: (vec, vec, imm8 x 4)
+                // _mm_shuffle_pd: ? (not 6)
+
+                let shuffle_fn_name = match (&first_vector_inner.kind, first_vector_len) {
+                    (CTypeKind::Float, 4) => "_mm_shuffle_ps",
+                    (CTypeKind::Double, 2) => "_mm_shuffle_pd",
+                    (CTypeKind::Float, 8) => "_mm256_shuffle_ps",
+                    (CTypeKind::Double, 4) => "_mm256_shuffle_pd",
+                    (CTypeKind::Int, 8) => "_mm256_shuffle_epi32",
                     ref e => unimplemented!("// {:?}", e),
                 };
+                let stmt = mk().call_expr(mk().ident_expr(shuffle_fn_name), params);
                 let val = if use_ == ExprUse::Used {
                     unimplemented!(); // FIXME
                 } else {
                     self.panic("No value for unused shuffle vector return")
+                };
+
+                self.import_simd_function(shuffle_fn_name)?;
+
+                // Some functions call other functions:
+                match shuffle_fn_name {
+                    "_mm256_shuffle_epi32" => {
+                        self.import_simd_function("_mm256_undefined_si256")?;
+                    },
+                    _ => {},
                 };
 
                 Ok(WithStmts {
@@ -3354,6 +3392,23 @@ impl Translation {
                 Err(format!("va_copy not supported - currently va_list and va_arg are supported")),
             "__builtin_va_end" =>
                 Err(format!("va_end not supported - currently va_list and va_arg are supported")),
+
+            // One shuffle vector actually calls a real builtin:
+            "__builtin_ia32_pshufw" => {
+                self.import_simd_function("_mm_shuffle_pi16")?;
+
+                let lhs = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
+                let rhs = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
+                let call = mk().call_expr(mk().ident_expr("_mm_shuffle_pi16"), vec![lhs.val, rhs.val]);
+                let stmt = mk().expr_stmt(call);
+                let val = if use_ == ExprUse::Used {
+                    unimplemented!(); // FIXME
+                } else {
+                    self.panic("No value for unused shuffle vector return")
+                };
+
+                Ok(WithStmts { stmts: vec![stmt], val })
+            },
 
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
