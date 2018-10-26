@@ -2716,19 +2716,22 @@ impl Translation {
                     },
                     e => return Err(format!("Unknown shuffle vector signature: {:?}", e)),
                 };
-                let call = mk().call_expr(mk().ident_expr(shuffle_fn_name), params);
-                let val = if use_ == ExprUse::Used {
-                    call.clone()
-                } else {
-                    self.panic("No value for unused shuffle vector return")
-                };
 
                 self.import_simd_function(shuffle_fn_name)?;
 
-                Ok(WithStmts {
-                    stmts: vec![mk().expr_stmt(call)],
-                    val,
-                })
+                let call = mk().call_expr(mk().ident_expr(shuffle_fn_name), params);
+
+                if use_ == ExprUse::Used {
+                    Ok(WithStmts {
+                        stmts: Vec::new(),
+                        val: call,
+                    })
+                } else {
+                    Ok(WithStmts {
+                        stmts: vec![mk().expr_stmt(call)],
+                        val: self.panic("No value for unused shuffle vector return"),
+                    })
+                }
             },
             CExprKind::ConvertVector(..) => Err(format!("convert vector not supported")),
 
@@ -3425,16 +3428,19 @@ impl Translation {
                 let lhs = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
                 let rhs = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
                 let call = mk().call_expr(mk().ident_expr("_mm_shuffle_pi16"), vec![lhs.val, rhs.val]);
-                let val = if use_ == ExprUse::Used {
-                    call.clone()
+
+                if use_ == ExprUse::Used {
+                    Ok(WithStmts {
+                        stmts: Vec::new(),
+                        val: call,
+                    })
                 } else {
-                    self.panic("No value for unused shuffle vector return")
-                };
-                let stmt = mk().expr_stmt(call);
-
-                Ok(WithStmts { stmts: vec![stmt], val })
+                    Ok(WithStmts {
+                        stmts: vec![mk().expr_stmt(call)],
+                        val: self.panic("No value for unused shuffle vector return"),
+                    })
+                }
             },
-
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }
@@ -3592,6 +3598,15 @@ impl Translation {
         } else {
             self.convert_expr(use_, expr, is_static, decay_ref)?
         };
+
+        // Shuffle Vector "function" builtins will add a cast which is unecessary
+        // for translation purposes
+        // TODO: on __builtin_ia32_pshufw as well
+        if let CExprKind::ShuffleVector(..) = self.ast_context[expr].kind {
+            if is_explicit && kind == CastKind::BitCast {
+                return Ok(val);
+            }
+        }
 
         match kind {
             CastKind::BitCast => {
