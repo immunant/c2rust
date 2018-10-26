@@ -81,6 +81,7 @@ pub fn find_first<P, T>(st: &CommandState,
 pub trait DriverCtxtExt<'tcx> {
     /// Get the `ty::Ty` computed for a node.
     fn node_type(&self, id: NodeId) -> Ty<'tcx>;
+    fn opt_node_type(&self, id: NodeId) -> Option<Ty<'tcx>>;
     /// Get the `ty::Ty` computed for a node, taking into account any adjustments that were applied.
     fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx>;
 
@@ -118,6 +119,13 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
         let tables = self.ty_ctxt().typeck_tables_of(parent);
         let hir_id = self.hir_map().node_to_hir_id(id);
         tables.node_id_to_type(hir_id)
+    }
+
+    fn opt_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
+        let parent = self.hir_map().get_parent_did(id);
+        let tables = self.ty_ctxt().typeck_tables_of(parent);
+        let hir_id = self.hir_map().node_to_hir_id(id);
+        tables.node_id_to_type_opt(hir_id)
     }
 
     fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx> {
