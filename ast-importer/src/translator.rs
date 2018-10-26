@@ -373,6 +373,10 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         t.ast_context.c_main = None;
     }
 
+    if t.tcfg.reorganize_definitions {
+        t.features.borrow_mut().insert("custom_attribute");
+    }
+
     // Headers often pull in declarations that are unused;
     // we simplify the translator output by omitting those.
     t.ast_context.prune_unused_decls();
@@ -632,7 +636,7 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
     }
 
     mk().vis("pub")
-        .call_attr("cfg", vec![format!("not(source_header = \"{}\")", file_path_str)])
+        .str_attr("header_src", file_path_str)
         .module(mod_name, items)
 }
 
