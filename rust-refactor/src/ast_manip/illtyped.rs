@@ -13,53 +13,53 @@ use driver;
 
 pub trait IlltypedFolder<'tcx> {
     /// Called on each expr `e` whose `actual` type doesn't match the `expected` type propagated
-    /// down from its parent.
+    /// down from its parent.  Implementations should attempt to correct `e` to an expr that has
+    /// type `expected`.
     #[allow(unused)]
-    fn fold_expr(&mut self,
-                 e: P<Expr>,
-                 actual: ty::Ty<'tcx>,
-                 expected: ty::Ty<'tcx>) -> P<Expr> {
+    fn fix_expr(&mut self,
+                e: P<Expr>,
+                actual: ty::Ty<'tcx>,
+                expected: ty::Ty<'tcx>) -> P<Expr> {
         e
     }
 
     /// Called on each expr `e` that is the subject of an invalid cast: `e` has type `actual`,
-    /// which cannot be cast to `target`.
+    /// which cannot be cast to `target`.  Implementations should attempt to correct `e` to an expr
+    /// that has a type castable to `target`.
     ///
-    /// This is distinct from `fold_expr` because the rewritten `e` doesn't need to be an exact
-    /// match for `target`/`expected` - it can be anything that's castable to `target` instead.
-    /// But it still dispatches to `fold_expr` by default, since transforming `e` to have type
+    /// The default implementation dispatches to `fix_expr`, since fixing `e` to have type exactly
     /// `target` will certainly make the cast succeed.
-    fn fold_expr_cast(&mut self,
-                      e: P<Expr>,
-                      actual: ty::Ty<'tcx>,
-                      target: ty::Ty<'tcx>) -> P<Expr> {
-        self.fold_expr(e, actual, target)
+    fn fix_expr_cast(&mut self,
+                     e: P<Expr>,
+                     actual: ty::Ty<'tcx>,
+                     target: ty::Ty<'tcx>) -> P<Expr> {
+        self.fix_expr(e, actual, target)
     }
 
     /// Called on each expr `e` that contains a subexpr whose actual type doesn't match the
     /// expected type propagated down from `e`.
-    fn fold_expr_parent(&mut self, e: P<Expr>) -> P<Expr> {
+    fn fix_expr_parent(&mut self, e: P<Expr>) -> P<Expr> {
         e
     }
 }
 
 impl<'a, 'tcx, F: IlltypedFolder<'tcx>> IlltypedFolder<'tcx> for &'a mut F {
-    fn fold_expr(&mut self,
-                 e: P<Expr>,
-                 actual: ty::Ty<'tcx>,
-                 expected: ty::Ty<'tcx>) -> P<Expr> {
-        <F as IlltypedFolder>::fold_expr(self, e, actual, expected)
+    fn fix_expr(&mut self,
+                e: P<Expr>,
+                actual: ty::Ty<'tcx>,
+                expected: ty::Ty<'tcx>) -> P<Expr> {
+        <F as IlltypedFolder>::fix_expr(self, e, actual, expected)
     }
 
-    fn fold_expr_cast(&mut self,
-                      e: P<Expr>,
-                      actual: ty::Ty<'tcx>,
-                      target: ty::Ty<'tcx>) -> P<Expr> {
-        <F as IlltypedFolder>::fold_expr_cast(self, e, actual, target)
+    fn fix_expr_cast(&mut self,
+                     e: P<Expr>,
+                     actual: ty::Ty<'tcx>,
+                     target: ty::Ty<'tcx>) -> P<Expr> {
+        <F as IlltypedFolder>::fix_expr_cast(self, e, actual, target)
     }
 
-    fn fold_expr_parent(&mut self, e: P<Expr>) -> P<Expr> {
-        <F as IlltypedFolder>::fold_expr_parent(self, e)
+    fn fix_expr_parent(&mut self, e: P<Expr>) -> P<Expr> {
+        <F as IlltypedFolder>::fix_expr_parent(self, e)
     }
 }
 
@@ -81,7 +81,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
                 if let Some(actual_ty) = cx.opt_node_type(sub_e.id) {
                     if actual_ty != expected_ty {
                         illtyped.set(true);
-                        return inner.borrow_mut().fold_expr(sub_e, actual_ty, expected_ty);
+                        return inner.borrow_mut().fix_expr(sub_e, actual_ty, expected_ty);
                     }
                 }
                 sub_e
@@ -89,7 +89,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
             let ensure_cast = |sub_e: P<Expr>, target_ty| {
                 if let Some(actual_ty) = cx.opt_node_type(sub_e.id) {
                     illtyped.set(true);
-                    return inner.borrow_mut().fold_expr(sub_e, actual_ty, target_ty);
+                    return inner.borrow_mut().fix_expr_cast(sub_e, actual_ty, target_ty);
                 }
                 sub_e
             };
@@ -279,7 +279,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
         });
 
         if illtyped.get() {
-            self.inner.fold_expr_parent(e)
+            self.inner.fix_expr_parent(e)
         } else {
             e
         }
