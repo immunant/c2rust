@@ -19,8 +19,8 @@ Since unsafe "C code in Rust" isn't the final goal, the C2Rust project isn't jus
 components: a refactoring tool & cross checking plugin. These two tools can be used side by side to
 incrementally idiomize and validate that your Rust code functions just like the original C, respectively.
 
-In the end you should have safer, more idiomatic, Rust code. However, this process cannot be
-completely automated and sometimes requires a user's input.
+In the end you should have safer, more idiomatic, Rust code. Our ultimate goal is to automate as much
+of this process as possible, but refactoring is currently a manual process.
 
 ## Translation
 
