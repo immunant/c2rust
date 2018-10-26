@@ -110,6 +110,11 @@ impl RefactorState {
     }
 
 
+    pub fn session(&self) -> &Session {
+        &self.session
+    }
+
+
     fn load_crate_inner(&self) -> Crate {
         let bits = Phase1Bits::from_session_reparse(&self.session);
         bits.into_crate()

@@ -1,19 +1,23 @@
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use rustc::hir::def_id::DefId;
-use rustc::ty::TyKind;
+use rustc::ty::{self, TyKind};
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
+use syntax::parse::PResult;
+use syntax::parse::parser::Parser;
+use syntax::parse::token::{Token, BinOpToken};
 use syntax::print::pprust;
 use syntax::ptr::P;
 use smallvec::SmallVec;
 
 use api::*;
 use ast_manip::lr_expr::{self, fold_exprs_with_context};
-use command::{CommandState, Registry};
+use command::{Command, CommandState, RefactorState, Registry, TypeckLoopResult};
 use driver::{self, Phase};
+use reflect;
 use transform::Transform;
-
+use ast_manip::illtyped::{IlltypedFolder, fold_illtyped};
 
 /// Change the type of function arguments.  All `target` args will have their types changed to
 /// `new_ty`.  Values passed for those arguments will be converted with `wrap`, and uses of those
@@ -593,6 +597,136 @@ impl Transform for BitcastRetype {
 }
 
 
+/// Fix type errors by applying type-based rewrite rules to ill-typed expressions.  This pass is
+/// designed for cleaning up type errors introduced when changing type annotations with a pass such
+/// as `rewrite_ty`.  Typically the rules should be customized based on the type change that was
+/// performed.
+pub struct TypeFixRules {
+    /// A sequence of rules for fixing type errors.  Each rule has the form `"ectx, actual_ty,
+    /// expected_ty => cast_expr"`.
+    ///
+    ///  - `ectx` is one of `rval`, `lval`, `lval_mut`, or `*`, and determines in what kinds of
+    ///    expression contexts the rule applies.
+    ///  - `actual_ty` is a pattern to be matched against the (reflected) actual expression type.
+    ///  - `expected_ty` is a pattern to be matched against the (reflected) expected expression
+    ///    type.
+    ///  - `cast_expr` is a template for generating a cast expression.
+    ///
+    /// For expressions in context `ectx`, whose actual type matches `actual_ty` and whose
+    /// expected type matches `expected_ty` (and where actual != expected), the expr is substituted
+    /// into `cast_expr` to replace the original expr with one of the expected type.  During
+    /// substitution, `cast_expr` has access to variable captured from both `actual_ty` and
+    /// `expected_ty`, as well as `__old` containing the original (ill-typed) expression.
+    pub rules: Vec<String>,
+}
+
+struct Rule {
+    #[allow(unused)]
+    ectx: Option<lr_expr::Context>,
+    actual_ty: P<Ty>,
+    expected_ty: P<Ty>,
+    cast_expr: P<Expr>,
+}
+
+fn parse_rule<'a>(p: &mut Parser<'a>) -> PResult<'a, Rule> {
+    let ectx = if p.eat(&Token::Ident(Ident::from_str("rval"), false)) {
+        Some(lr_expr::Context::Rvalue)
+    } else if p.eat(&Token::Ident(Ident::from_str("lval"), false)) {
+        Some(lr_expr::Context::Lvalue)
+    } else if p.eat(&Token::Ident(Ident::from_str("lval_mut"), false)) {
+        Some(lr_expr::Context::LvalueMut)
+    } else {
+        p.expect(&Token::BinOp(BinOpToken::Star))?;
+        None
+    };
+    p.expect(&Token::Comma)?;
+
+    let actual_ty = p.parse_ty()?;
+    p.expect(&Token::Comma)?;
+
+    let expected_ty = p.parse_ty()?;
+
+    p.expect(&Token::FatArrow)?;
+
+    let cast_expr = p.parse_expr()?;
+
+    p.expect(&Token::Eof)?;
+
+    Ok(Rule { ectx, actual_ty, expected_ty, cast_expr })
+}
+
+impl Command for TypeFixRules {
+    fn run(&mut self, state: &mut RefactorState) {
+        let rules = self.rules.iter()
+            .map(|s| driver::run_parser(state.session(), s, parse_rule))
+            .collect::<Vec<_>>();
+
+        state.run_typeck_loop(|krate, st, cx| {
+            info!("Starting retyping iteration");
+            let mut inserted = 0;
+            let krate = fold_illtyped(cx, krate, TypeFixRulesFolder {
+                st, cx,
+                rules: &rules,
+                num_inserted_casts: &mut inserted,
+            });
+            if inserted > 0 {
+                TypeckLoopResult::Iterate(krate)
+            } else {
+                TypeckLoopResult::Finished(krate)
+            }
+        }).expect("Could not retype crate!");
+    }
+}
+
+struct TypeFixRulesFolder<'a, 'tcx: 'a> {
+    st: &'a CommandState,
+    cx: &'a driver::Ctxt<'a, 'tcx>,
+    rules: &'a [Rule],
+
+    num_inserted_casts: &'a mut u32,
+}
+
+impl<'a, 'tcx> IlltypedFolder<'tcx> for TypeFixRulesFolder<'a, 'tcx> {
+    fn fix_expr(&mut self,
+                e: P<Expr>,
+                actual: ty::Ty<'tcx>,
+                expected: ty::Ty<'tcx>) -> P<Expr> {
+        let actual_ty_ast = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), actual);
+        let expected_ty_ast = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), expected);
+        info!("looking for rule matching {:?}, {:?}", actual_ty_ast, expected_ty_ast);
+
+        for r in self.rules {
+            /* TODO
+            if !r.ectx.map_or(true, |rule_ectx| rule_ectx == self.ectx) {
+                info!("wrong ectx: {:?} != {:?}", r.ectx, self.ectx);
+                continue;
+            }
+            */
+
+            let mut mcx = MatchCtxt::new(self.st, self.cx);
+            if let Err(e) = mcx.try_match(&r.actual_ty, &actual_ty_ast) {
+                info!("error matching actual {:?} with {:?}: {:?}",
+                      r.actual_ty, actual_ty_ast, e);
+                continue;
+            }
+            if let Err(e) = mcx.try_match(&r.expected_ty, &expected_ty_ast) {
+                info!("error matching expected {:?} with {:?}: {:?}",
+                      r.expected_ty, expected_ty_ast, e);
+                continue;
+            }
+
+            let mut bnd = mcx.bindings;
+            bnd.add_expr("__old", e);
+            info!("rewriting with bindings {:?}", bnd);
+            *self.num_inserted_casts += 1;
+            return r.cast_expr.clone().subst(self.st, self.cx, &bnd);
+        }
+
+        e
+    }
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -620,4 +754,6 @@ pub fn register_commands(reg: &mut Registry) {
         pat: args[0].clone(),
         repl: args[1].clone(),
     }));
+
+    reg.register("type_fix_rules", |args| Box::new(TypeFixRules { rules: args.to_owned() }));
 }
