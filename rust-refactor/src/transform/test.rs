@@ -2,13 +2,17 @@
 
 use std::collections::{HashSet, HashMap};
 use std::str::FromStr;
-use syntax::ast::{Crate, Ty};
+use syntax::ast::*;
 use syntax::ptr::P;
+use rustc::hir;
+use rustc::ty::{self, TyCtxt, ParamEnv};
+use rustc::ty::subst::Substs;
 
 use api::*;
 use command::{RefactorState, CommandState, Command, Registry, TypeckLoopResult};
-use driver;
+use driver::{self, Phase};
 use transform::Transform;
+use util::HirDefExt;
 
 
 /// `2 -> 1 + 1`.  Useful for testing the rewriter's handling of operator precedence.  The `1 + 1`
@@ -113,6 +117,115 @@ impl Command for TestTypeckLoop {
 }
 
 
+/// Inspect the details of each Call expression.  Used to debug
+/// `api::DriverCtxtExt::opt_callee_info`.
+pub struct TestDebugCallees;
+
+impl Transform for TestDebugCallees {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        visit_nodes(&krate, |e: &Expr| {
+            let tcx = cx.ty_ctxt();
+            let hir_map = cx.hir_map();
+
+            let parent = hir_map.get_parent(e.id);
+            let parent_body = match_or!([hir_map.maybe_body_owned_by(parent)]
+                                        Some(x) => x; return);
+            let tables = tcx.body_tables(parent_body);
+            let tdds = tables.type_dependent_defs();
+
+            fn maybe_info<T: ::std::fmt::Debug>(desc: &str, x: Option<T>) {
+                if let Some(x) = x {
+                    info!("    {}: {:?}", desc, x);
+                }
+            }
+
+            fn describe_ty<'a, 'tcx: 'a>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
+                                         desc: &str,
+                                         ty: ty::Ty<'tcx>,
+                                         substs: Option<&'tcx Substs<'tcx>>) {
+                info!("    {}: {:?}", desc, ty);
+                if let Some(substs) = substs {
+                    info!("      subst: {:?}",
+                          tcx.subst_and_normalize_erasing_regions(
+                              substs, ParamEnv::empty(), &ty));
+                }
+                if ty.is_fn() {
+                    let sig = ty.fn_sig(tcx);
+                    info!("      fn sig: {:?}", sig);
+                    info!("      input tys: {:?}", sig.inputs());
+                    info!("      input tys (skip): {:?}", sig.skip_binder().inputs());
+                    info!("      anonymized: {:?}", tcx.anonymize_late_bound_regions(&sig));
+                    info!("      erased: {:?}", tcx.erase_late_bound_regions(&sig));
+                    if let Some(substs) = substs {
+                        let sig2 = tcx.subst_and_normalize_erasing_regions(
+                            substs, ParamEnv::empty(),
+                            &tcx.erase_late_bound_regions(&sig));
+                        info!("      sig + erase + subst: {:?}", sig2);
+                        info!("      input tys: {:?}", sig2.inputs());
+                    }
+                }
+            };
+
+            let describe = |e: &Expr| {
+                info!("    expr: {:?}", e);
+                let hir_id = hir_map.node_to_hir_id(e.id);
+                info!("    hir id: {:?}", hir_id);
+
+                if let Some(hir::Node::Expr(hir_expr)) = hir_map.find(e.id) {
+                    info!("    hir expr: {:?}", hir_expr);
+                    maybe_info("ty", tables.expr_ty_opt(hir_expr));
+                    maybe_info("adj ty", tables.expr_ty_adjusted_opt(hir_expr));
+                }
+
+                let opt_substs = tables.node_substs_opt(hir_id);
+                maybe_info("substs", opt_substs);
+
+                if let Some(did) = cx.try_resolve_expr(e) {
+                    info!("    resolution: {:?}", did);
+                    describe_ty(tcx, "resolved ty", tcx.type_of(did), opt_substs);
+                }
+
+                if let Some(tdd) = tdds.get(hir_id) {
+                    info!("    tdd: {:?}", tdd);
+                    if let Some(did) = tdd.opt_def_id() {
+                        info!("    tdd id: {:?}", did);
+                        describe_ty(tcx, "tdd ty", tcx.type_of(did), opt_substs);
+                    }
+                }
+            };
+
+            match e.node {
+                ExprKind::Call(ref func, _) => {
+                    info!("at plain call {:?}", e);
+                    info!("  call info:");
+                    describe(e);
+                    info!("  func info:");
+                    describe(func);
+                },
+
+                ExprKind::MethodCall(_, _) => {
+                    info!("at method call {:?}", e);
+                    info!("  call info:");
+                    describe(e);
+                },
+
+                ExprKind::Binary(_, _, _) => {
+                    info!("at binary op {:?}", e);
+                    describe(e);
+                },
+
+                _ => {},
+            }
+        });
+        krate
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -145,4 +258,6 @@ pub fn register_commands(reg: &mut Registry) {
     });
 
     reg.register("test_typeck_loop", |_| Box::new(TestTypeckLoop));
+
+    reg.register("test_debug_callees", |_args| mk(TestDebugCallees));
 }
