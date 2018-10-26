@@ -2577,14 +2577,7 @@ impl Translation {
 
         match self.ast_context.c_exprs[&expr_ids[0]].kind {
             // Need to unmask which looks like this most of the time: 0 + (((mask) >> 0) & 0x3):
-            Binary(_, Add, _, rhs_expr_id, None, None) => //match self.ast_context.c_exprs[&rhs_expr_id].kind {
-                self.get_shuffle_vector_mask(&[rhs_expr_id]),
-                // Binary(_, BitAnd, lhs_expr_id, _, None, None) => match self.ast_context.c_exprs[&lhs_expr_id].kind {
-                //     Binary(_, ShiftRight, lhs_expr_id, _, None, None) => lhs_expr_id,
-                //     _ => unreachable!("Found unknown mask format"),
-                // },
-                // _ => unreachable!("Found unknown mask format"),
-            // },
+            Binary(_, Add, _, rhs_expr_id, None, None) => self.get_shuffle_vector_mask(&[rhs_expr_id]),
             // Sometimes there is a mask like this: ((mask) >> 0) & 0x3:
             Binary(_, BitAnd, lhs_expr_id, _, None, None) => match self.ast_context.c_exprs[&lhs_expr_id].kind {
                 Binary(_, ShiftRight, lhs_expr_id, _, None, None) => lhs_expr_id,
@@ -2611,6 +2604,8 @@ impl Translation {
             CExprKind::BadExpr => Err(format!("convert_expr: expression kind not supported")),
             CExprKind::ShuffleVector(_, ref child_expr_ids) => {
                 use c_ast::CTypeKind::{Double, Float, Int, Short};
+                use c_ast::CExprKind::Literal;
+                use c_ast::CLiteral::Integer;
 
                 // There are three shuffle vector functions which are actually functions, not superbuiltins/macros,
                 // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm_shuffle_pi16
@@ -2625,8 +2620,15 @@ impl Translation {
                 let second_expr_id = child_expr_ids[1];
                 let first_expr = &self.ast_context.c_exprs[&first_expr_id].kind;
                 let second_expr = &self.ast_context.c_exprs[&second_expr_id].kind;
+
+                // There is some internal explicit casting which is okay for us to strip off
                 let (first_vector_inner, first_expr_id, first_vector_len) = match first_expr {
                     CExprKind::ExplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
+                        let expr_id = match &self.ast_context.c_exprs[&expr_id].kind {
+                            CExprKind::ExplicitCast(_, expr_id, _, _, _) => expr_id,
+                            ref e => unreachable!("Found cast other than explicit cast: {:?}", e),
+                        };
+
                         match &self.ast_context.resolve_type(*ctype).kind {
                             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                                 (&self.ast_context.c_types[ctype], expr_id, len)
@@ -2638,6 +2640,15 @@ impl Translation {
                 };
                 let (second_vector_inner, second_expr_id, second_vector_len) = match second_expr {
                     CExprKind::ExplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
+                        let expr_id = match &self.ast_context.c_exprs[&expr_id].kind {
+                            CExprKind::ExplicitCast(_, expr_id, _, _, _) => expr_id,
+                            // The expr_id wont be used in this case (the function only has one
+                            // vector param, not two, despite the following type match), so it's
+                            // okay to provide a dummy here
+                            CExprKind::Call(..) => expr_id,
+                            _ => unreachable!("Found cast other than explicit cast"),
+                        };
+
                         match &self.ast_context.resolve_type(*ctype).kind {
                             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                                 (&self.ast_context.c_types[ctype], expr_id, len)
@@ -2668,15 +2679,13 @@ impl Translation {
                     // _mm_shuffle_epi32
                     (6, Int, 4) |
                     // _mm_shufflehi_epi16, _mm_shufflelo_epi16
-                    (10, Short, 8) => {},
+                    (10, Short, 8) |
+                    // _mm256_shufflehi_epi16, _mm256_shufflelo_epi16
+                    (18, Short, 16) => {},
                     _ => params.push(second_param.val),
                 }
 
                 params.push(third_param.val);
-
-                // REVIEW: two params not three:
-                // _mm_shufflelo_epi16,
-                // _mm256_shufflehi_epi16, _mm256_shufflelo_epi16
 
                 let shuffle_fn_name = match (&first_vector_inner.kind, first_vector_len) {
                     (Float, 4) => "_mm_shuffle_ps",
@@ -2686,13 +2695,30 @@ impl Translation {
                     (Int, 4) => "_mm_shuffle_epi32",
                     (Int, 8) => "_mm256_shuffle_epi32",
                     (Short, 8) => {
-                        "_mm_shufflehi_epi16" // FIXME: or "_mm_shufflelo_epi16"
+                        // _mm_shufflehi_epi16 mask params start with const int,
+                        // _mm_shufflelo_epi16 does not
+                        let expr_id = &child_expr_ids[2];
+                        if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context.c_exprs[expr_id].kind {
+                            "_mm_shufflehi_epi16"
+                        } else {
+                            "_mm_shufflelo_epi16"
+                        }
                     },
-                    ref e => unimplemented!("Unknown shuffle vector: {:?}", e),
+                    (Short, 16) => {
+                        // _mm256_shufflehi_epi16 mask params start with const int,
+                        // _mm256_shufflelo_epi16 does not
+                        let expr_id = &child_expr_ids[2];
+                        if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context.c_exprs[expr_id].kind {
+                            "_mm256_shufflehi_epi16"
+                        } else {
+                            "_mm256_shufflelo_epi16"
+                        }
+                    },
+                    e => return Err(format!("Unknown shuffle vector signature: {:?}", e)),
                 };
-                let stmt = mk().call_expr(mk().ident_expr(shuffle_fn_name), params);
+                let call = mk().call_expr(mk().ident_expr(shuffle_fn_name), params);
                 let val = if use_ == ExprUse::Used {
-                    unimplemented!(); // FIXME
+                    call.clone()
                 } else {
                     self.panic("No value for unused shuffle vector return")
                 };
@@ -2700,7 +2726,7 @@ impl Translation {
                 self.import_simd_function(shuffle_fn_name)?;
 
                 Ok(WithStmts {
-                    stmts: vec![mk().expr_stmt(stmt)],
+                    stmts: vec![mk().expr_stmt(call)],
                     val,
                 })
             },
@@ -3399,12 +3425,12 @@ impl Translation {
                 let lhs = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
                 let rhs = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
                 let call = mk().call_expr(mk().ident_expr("_mm_shuffle_pi16"), vec![lhs.val, rhs.val]);
-                let stmt = mk().expr_stmt(call);
                 let val = if use_ == ExprUse::Used {
-                    unimplemented!(); // FIXME
+                    call.clone()
                 } else {
                     self.panic("No value for unused shuffle vector return")
                 };
+                let stmt = mk().expr_stmt(call);
 
                 Ok(WithStmts { stmts: vec![stmt], val })
             },
