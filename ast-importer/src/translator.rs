@@ -2589,6 +2589,29 @@ impl Translation {
         }
     }
 
+    pub fn strip_vector_explicit_cast(&self, expr_id: CExprId) -> (&CTypeKind, CExprId, usize) {
+        match self.ast_context.c_exprs[&expr_id].kind {
+            CExprKind::ExplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
+                let expr_id = match &self.ast_context.c_exprs[&expr_id].kind {
+                    CExprKind::ExplicitCast(_, expr_id, _, _, _) => *expr_id,
+                    // The expr_id wont be used in this case (the function only has one
+                    // vector param, not two, despite the following type match), so it's
+                    // okay to provide a dummy here
+                    CExprKind::Call(..) => expr_id,
+                    _ => unreachable!("Found cast other than explicit cast"),
+                };
+
+                match &self.ast_context.resolve_type(ctype).kind {
+                    CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
+                        (&self.ast_context.c_types[ctype].kind, expr_id, *len)
+                    },
+                    _ => unreachable!("Found type other than vector"),
+                }
+            },
+            _ => unreachable!("Found cast other than explicit cast"),
+        }
+    }
+
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
     /// to run before the expression.
     ///
@@ -2608,72 +2631,31 @@ impl Translation {
                 use c_ast::CLiteral::Integer;
 
                 // There are three shuffle vector functions which are actually functions, not superbuiltins/macros,
-                // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm_shuffle_pi16
+                // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm256_shuffle_epi8
 
                 if ![4, 6, 10, 18].contains(&child_expr_ids.len()) {
                     return Err(format!("Unsupported shuffle vector without 4, 6, 10, or 18 input params: {}", child_expr_ids.len()));
                 };
 
-                // TODO: May need to handle implicit casts of input vectors..?
-
-                let first_expr_id = child_expr_ids[0];
-                let second_expr_id = child_expr_ids[1];
-                let first_expr = &self.ast_context.c_exprs[&first_expr_id].kind;
-                let second_expr = &self.ast_context.c_exprs[&second_expr_id].kind;
-
                 // There is some internal explicit casting which is okay for us to strip off
-                let (first_vector_inner, first_expr_id, first_vector_len) = match first_expr {
-                    CExprKind::ExplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
-                        let expr_id = match &self.ast_context.c_exprs[&expr_id].kind {
-                            CExprKind::ExplicitCast(_, expr_id, _, _, _) => expr_id,
-                            ref e => unreachable!("Found cast other than explicit cast: {:?}", e),
-                        };
+                let (first_vec, first_expr_id, first_vec_len) = self.strip_vector_explicit_cast(child_expr_ids[0]);
+                let (second_vec, second_expr_id, second_vec_len) = self.strip_vector_explicit_cast(child_expr_ids[1]);
 
-                        match &self.ast_context.resolve_type(*ctype).kind {
-                            CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
-                                (&self.ast_context.c_types[ctype], expr_id, len)
-                            },
-                            _ => unreachable!("Found type other than vector"),
-                        }
-                    },
-                    _ => unreachable!("Found cast other than explicit cast"),
-                };
-                let (second_vector_inner, second_expr_id, second_vector_len) = match second_expr {
-                    CExprKind::ExplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
-                        let expr_id = match &self.ast_context.c_exprs[&expr_id].kind {
-                            CExprKind::ExplicitCast(_, expr_id, _, _, _) => expr_id,
-                            // The expr_id wont be used in this case (the function only has one
-                            // vector param, not two, despite the following type match), so it's
-                            // okay to provide a dummy here
-                            CExprKind::Call(..) => expr_id,
-                            _ => unreachable!("Found cast other than explicit cast"),
-                        };
-
-                        match &self.ast_context.resolve_type(*ctype).kind {
-                            CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
-                                (&self.ast_context.c_types[ctype], expr_id, len)
-                            },
-                            _ => unreachable!("Found type other than vector"),
-                        }
-                    },
-                    _ => unreachable!("Found cast other than explicit cast"),
-                };
-
-                if first_vector_inner.kind != second_vector_inner.kind {
+                if first_vec != second_vec {
                     return Err("Unsupported shuffle vector with different vector kinds".into());
                 }
-                if first_vector_len != second_vector_len {
+                if first_vec_len != second_vec_len {
                     return Err("Unsupported shuffle vector with different vector lengths".into());
                 }
 
                 let mask_expr_id = self.get_shuffle_vector_mask(&child_expr_ids[2..]);
-                let first_param = self.convert_expr(ExprUse::Used, *first_expr_id, is_static, decay_ref)?;
-                let second_param = self.convert_expr(ExprUse::Used, *second_expr_id, is_static, decay_ref)?;
+                let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
+                let second_param = self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
                 let third_param = self.convert_expr(ExprUse::Used, mask_expr_id, is_static, decay_ref)?;
                 let mut params = vec![first_param.val];
 
                 // Some don't take a second param, but the expr is still there for some reason
-                match (child_expr_ids.len(), &first_vector_inner.kind, first_vector_len) {
+                match (child_expr_ids.len(), &first_vec, first_vec_len) {
                     // _mm256_shuffle_epi32
                     (10, Int, 8) |
                     // _mm_shuffle_epi32
@@ -2687,7 +2669,7 @@ impl Translation {
 
                 params.push(third_param.val);
 
-                let shuffle_fn_name = match (&first_vector_inner.kind, first_vector_len) {
+                let shuffle_fn_name = match (&first_vec, first_vec_len) {
                     (Float, 4) => "_mm_shuffle_ps",
                     (Float, 8) => "_mm256_shuffle_ps",
                     (Double, 2) => "_mm_shuffle_pd",
@@ -3425,9 +3407,10 @@ impl Translation {
             "__builtin_ia32_pshufw" => {
                 self.import_simd_function("_mm_shuffle_pi16")?;
 
-                let lhs = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-                let rhs = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
-                let call = mk().call_expr(mk().ident_expr("_mm_shuffle_pi16"), vec![lhs.val, rhs.val]);
+                let (_, first_param, _) = self.strip_vector_explicit_cast(args[0]);
+                let first_param = self.convert_expr(ExprUse::Used, first_param, is_static, decay_ref)?;
+                let second_param = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
+                let call = mk().call_expr(mk().ident_expr("_mm_shuffle_pi16"), vec![first_param.val, second_param.val]);
 
                 if use_ == ExprUse::Used {
                     Ok(WithStmts {
@@ -3599,7 +3582,7 @@ impl Translation {
             self.convert_expr(use_, expr, is_static, decay_ref)?
         };
 
-        // Shuffle Vector "function" builtins will add a cast which is unecessary
+        // Shuffle Vector "function" builtins will add a cast which is unnecessary
         // for translation purposes
         // TODO: on __builtin_ia32_pshufw as well
         if let CExprKind::ShuffleVector(..) = self.ast_context[expr].kind {
