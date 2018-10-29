@@ -3407,9 +3407,15 @@ impl Translation {
             "__builtin_ia32_pshufw" => {
                 self.import_simd_function("_mm_shuffle_pi16")?;
 
-                let (_, first_param, _) = self.strip_vector_explicit_cast(args[0]);
-                let first_param = self.convert_expr(ExprUse::Used, first_param, is_static, decay_ref)?;
-                let second_param = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
+                let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
+                let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
+                let second_expr_id = match self.ast_context.c_exprs[&args[1]].kind {
+                    // For some reason there seems to be an incorrect implicit cast here to char
+                    // it's possible the builtin takes a char even though the function takes an int
+                    CExprKind::ImplicitCast(_, expr_id, CastKind::IntegralCast, _, _) => expr_id,
+                    _ => args[1],
+                };
+                let second_param = self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
                 let call = mk().call_expr(mk().ident_expr("_mm_shuffle_pi16"), vec![first_param.val, second_param.val]);
 
                 if use_ == ExprUse::Used {
