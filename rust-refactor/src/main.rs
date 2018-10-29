@@ -6,6 +6,7 @@ extern crate idiomize;
 extern crate syntax;
 extern crate rustc;
 extern crate rustc_data_structures;
+extern crate rust_ast_builder;
 
 use std::collections::HashSet;
 use std::str::FromStr;
@@ -18,7 +19,7 @@ use idiomize::{
     plugin, select, analysis, print_spans, reflect
 };
 
-use idiomize::util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 
 

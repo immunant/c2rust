@@ -5,7 +5,7 @@ use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
 use ast_manip::AstEquiv;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 
 /// A set of bindings, mapping names to AST fragments.

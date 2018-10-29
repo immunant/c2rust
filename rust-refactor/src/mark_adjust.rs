@@ -14,7 +14,7 @@ use command::CommandState;
 use command::{Registry, DriverCommand, RefactorState, FuncCommand};
 use driver::{self, Phase};
 use util::HirDefExt;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 
 /// Find all nodes that refer to marked nodes.

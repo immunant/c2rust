@@ -10,7 +10,7 @@ use loops::*;
 use c_ast;
 use c_ast::*;
 use clang_ast::LRValue;
-use rust_ast::{mk, Builder};
+use rust_ast_builder::{mk, Builder};
 use rust_ast::comment_store::CommentStore;
 use rust_ast::item_store::ItemStore;
 use c_ast::iterators::{DFExpr, SomeId};
@@ -637,7 +637,7 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
 
     mk().vis("pub")
         .str_attr("header_src", file_path_str)
-        .module(mod_name, items)
+        .mod_item(mod_name, mk().mod_(items))
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations

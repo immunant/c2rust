@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use command::{Registry, DriverCommand};
 use driver::Phase;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 
 pub mod labeled_ty;

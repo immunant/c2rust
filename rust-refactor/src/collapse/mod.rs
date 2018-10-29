@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use syntax::attr;
 use syntax::ast::*;
 use syntax::source_map::Span;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 mod cfg_attr;
 mod mac_table;

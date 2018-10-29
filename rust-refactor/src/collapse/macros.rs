@@ -7,13 +7,13 @@ use syntax::ptr::P;
 use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::{self, TokenStream, ThinTokenStream, TokenTree, Delimited};
 use smallvec::SmallVec;
+use rust_ast_builder::mk;
 
 use super::mac_table::{MacTable, InvocId, InvocKind};
 use super::nt_match::{self, NtMatch};
 use super::root_callsite_span;
 
 use ast_manip::{Fold, ListNodeIds};
-use ast_manip::make_ast::mk;
 use ast_manip::AstEquiv;
 
 

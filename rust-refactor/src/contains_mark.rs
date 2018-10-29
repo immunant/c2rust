@@ -5,7 +5,7 @@ use syntax::visit::{self, Visitor};
 
 use ast_manip::Visit;
 use command::CommandState;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 
 

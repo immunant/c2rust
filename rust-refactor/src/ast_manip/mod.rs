@@ -33,6 +33,5 @@ pub mod ast_map;
 pub mod fn_edit;
 pub mod illtyped;
 pub mod lr_expr;
-pub mod make_ast;
 pub mod number_nodes;
 pub mod util;

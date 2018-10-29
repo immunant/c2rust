@@ -15,7 +15,7 @@ use syntax::ast::{Path, QSelf};
 pub use ast_manip::*;
 pub use ast_manip::fn_edit::{fold_fns, fold_fns_multi};
 pub use ast_manip::lr_expr::fold_expr_with_context;
-pub use ast_manip::make_ast::mk;
+pub use rust_ast_builder::mk;
 pub use driver::{parse_expr, parse_pat, parse_ty, parse_stmts, parse_items};
 pub use matcher::{MatchCtxt, Bindings, BindingType, Subst};
 pub use matcher::{fold_match, fold_match_with};

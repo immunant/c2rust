@@ -23,7 +23,7 @@ use node_map::NodeMap;
 use rewrite;
 use rewrite::files;
 use span_fix;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 
 /// Extra nodes that were parsed from strings while running a transformation pass.  During

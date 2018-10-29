@@ -6,7 +6,7 @@ use command::{CommandState, Registry};
 use contains_mark::contains_mark;
 use driver::{self, Phase};
 use transform::Transform;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 
 fn make_init_mcx<'a, 'tcx>(st: &'a CommandState,

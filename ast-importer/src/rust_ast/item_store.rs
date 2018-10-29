@@ -1,5 +1,5 @@
 use indexmap::{IndexMap, IndexSet};
-use rust_ast::{mk, Builder};
+use rust_ast_builder::{mk, Builder};
 use syntax::ast::{Item, ForeignItem};
 use syntax::ptr::P;
 

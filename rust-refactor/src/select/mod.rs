@@ -17,7 +17,7 @@ use command::{Registry, DriverCommand};
 use driver::{self, Phase};
 use pick_node::NodeKind;
 use resolve;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 pub use self::filter::ItemLikeKind;
 
