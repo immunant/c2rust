@@ -1,5 +1,5 @@
 use c_ast::*;
-use rust_ast::mk;
+use rust_ast_builder::mk;
 use syntax::ast::*;
 use syntax::ptr::P;
 use std::ops::Index;

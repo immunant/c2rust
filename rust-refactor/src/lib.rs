@@ -21,6 +21,7 @@ extern crate rustc_codegen_utils;
 extern crate syntax;
 extern crate syntax_ext;
 extern crate syntax_pos;
+extern crate rust_ast_builder;
 
 #[macro_use] mod macros;
 

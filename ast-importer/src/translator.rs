@@ -10,7 +10,7 @@ use loops::*;
 use c_ast;
 use c_ast::*;
 use clang_ast::LRValue;
-use rust_ast::{mk, Builder};
+use rust_ast_builder::{mk, Builder};
 use rust_ast::comment_store::CommentStore;
 use rust_ast::item_store::ItemStore;
 use c_ast::iterators::{DFExpr, SomeId};

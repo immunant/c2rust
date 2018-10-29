@@ -21,7 +21,7 @@ use api::*;
 use command::{CommandState, Registry, DriverCommand};
 use driver::{self, Phase};
 use type_map;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 pub fn register_commands(reg: &mut Registry) {
     reg.register("ownership_annotate", |args| {

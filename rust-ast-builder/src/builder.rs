@@ -1,17 +1,17 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
-use std::rc::Rc;
-use rustc::hir;
-use rustc_target::spec::abi::Abi;
-use syntax::ThinVec;
 use syntax::ast::*;
-use syntax::parse::token::{self, Token, DelimToken};
-use syntax::ptr::P;
+use syntax::ThinVec;
 use syntax::source_map::{DUMMY_SP, Spanned, Span, dummy_spanned};
-use syntax::symbol::keywords;
+use syntax::parse::token::{self, Token, DelimToken};
+use syntax::attr::{mk_attr_inner};
+use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder, ThinTokenStream};
+use syntax::symbol::keywords;
+use std::rc::Rc;
+use rustc_target::spec::abi::{lookup, Abi};
+use rustc::hir;
 
-use util::IntoSymbol;
-
+use into_symbol::IntoSymbol;
 
 pub trait Make<T> {
     fn make(self, mk: &Builder) -> T;
@@ -36,15 +36,29 @@ impl<S: IntoSymbol> Make<Ident> for S {
     }
 }
 
+impl<L: Make<Ident>> Make<Label> for L {
+    fn make(self, mk: &Builder) -> Label {
+        Label { ident: self.make(mk) }
+    }
+}
+
 
 impl<'a> Make<Visibility> for &'a str {
     fn make(self, _mk: &Builder) -> Visibility {
-        let node = match self {
+        let kind = match self {
             "pub" => VisibilityKind::Public,
             "priv" | "" | "inherit" => VisibilityKind::Inherited,
+            "crate" => VisibilityKind::Crate(CrateSugar::JustCrate),
+            "pub(crate)" => VisibilityKind::Crate(CrateSugar::PubCrate),
             _ => panic!("unrecognized string for Visibility: {:?}", self),
         };
-        dummy_spanned(node)
+        dummy_spanned(kind)
+    }
+}
+
+impl<'a> Make<Abi> for &'a str {
+    fn make(self, _mk: &Builder) -> Abi {
+        lookup(self).expect(&format!("unrecognized string for Abi: {:?}", self))
     }
 }
 
@@ -153,7 +167,6 @@ impl<I: Make<Ident>> Make<PathSegment> for I {
     }
 }
 
-
 impl<S: Make<PathSegment>> Make<Path> for Vec<S> {
     fn make(self, mk: &Builder) -> Path {
         Path {
@@ -206,8 +219,25 @@ impl Make<GenericArg> for Lifetime {
     }
 }
 
+impl Make<NestedMetaItemKind> for MetaItem {
+    fn make(self, _mk: &Builder) -> NestedMetaItemKind {
+        NestedMetaItemKind::MetaItem(self)
+    }
+}
 
-#[derive(Clone)]
+impl Make<NestedMetaItemKind> for Lit {
+    fn make(self, _mk: &Builder) -> NestedMetaItemKind {
+        NestedMetaItemKind::Literal(self)
+    }
+}
+
+impl Make<MetaItemKind> for Lit {
+    fn make(self, _mk: &Builder) -> MetaItemKind {
+        MetaItemKind::NameValue(self)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Builder {
     // The builder holds a set of "modifiers", such as visibility and mutability.  Functions for
     // building AST nodes don't take arguments of these types, but instead use any applicable
@@ -378,7 +408,7 @@ impl Builder {
                 }
 
                 let argument: Ident = argument.make(&self);
-                builder.push(Token::Ident(argument, false));
+                builder.push(Token::from_ast_ident(argument));
             }
 
             builder.push(Token::CloseDelim(DelimToken::Paren));
@@ -456,13 +486,20 @@ impl Builder {
         path.make(&self)
     }
 
+    pub fn anon_const<E>(self, expr: E) -> AnonConst
+        where E: Make<P<Expr>> {
+        AnonConst {
+            id: DUMMY_NODE_ID,
+            value: expr.make(&self),
+        }
+    }
+
     pub fn spanned<T, U: Make<T>>(self, x: U) -> Spanned<T> {
         Spanned {
             node: x.make(&self),
             span: self.span,
         }
     }
-
 
     // Exprs
     // These are sorted in the same order as the corresponding ExprKind variants, with additional
@@ -662,7 +699,7 @@ impl Builder {
     pub fn repeat_expr<E, N>(self, expr: E, n: N) -> P<Expr>
         where E: Make<P<Expr>>, N: Make<P<Expr>> {
         let expr = expr.make(&self);
-        let n = AnonConst { id: DUMMY_NODE_ID, value: n.make(&self) };
+        let n = mk().anon_const(n.make(&self));
         P(Expr {
             id: self.id,
             node: ExprKind::Repeat(expr, n),
@@ -1017,7 +1054,7 @@ impl Builder {
     pub fn array_ty<T, E>(self, ty: T, len: E) -> P<Ty>
         where T: Make<P<Ty>>, E: Make<P<Expr>> {
         let ty = ty.make(&self);
-        let len = AnonConst { id: DUMMY_NODE_ID, value: len.make(&self) };
+        let len = mk().anon_const(len.make(&self));
         P(Ty {
             id: self.id,
             node: TyKind::Array(ty, len),
@@ -1393,6 +1430,24 @@ impl Builder {
                    ItemKind::Use(P(use_tree)))
     }
 
+    pub fn use_multiple_item<Pa, I>(self, path: Pa, inner: Vec<I>) -> P<Item>
+        where Pa: Make<Path>, I: Make<Ident>,
+    {
+        let path = path.make(&self);
+        let inner_trees = inner.into_iter().map(|i| (UseTree {
+            span: DUMMY_SP,
+            prefix: Path::from_ident(i.make(&self)),
+            kind: UseTreeKind::Simple(None, DUMMY_NODE_ID, DUMMY_NODE_ID)
+        }, DUMMY_NODE_ID)).collect();
+        let use_tree = UseTree {
+            span: DUMMY_SP,
+            prefix: path,
+            kind: UseTreeKind::Nested(inner_trees),
+        };
+        Self::item(keywords::Invalid.ident(), self.attrs, self.vis, self.span, self.id,
+                   ItemKind::Use(P(use_tree)))
+    }
+
     pub fn foreign_items(self, items: Vec<ForeignItem>) -> P<Item>
     {
         let fgn_mod = ForeignMod { abi: self.abi, items };
@@ -1400,6 +1455,18 @@ impl Builder {
                    ItemKind::ForeignMod(fgn_mod))
     }
 
+    pub fn module<I, T>(self, name: I, items: T) -> P<Item>
+        where I: Make<Ident>, T: Make<Vec<P<Item>>> {
+
+        let name = name.make(&self);
+        let items = items.make(&self);
+        let module = Mod {
+            inner: DUMMY_SP,
+            items: items,
+            inline: true,
+        };
+        Self::item(name, self.attrs, self.vis, self.span, self.id, ItemKind::Mod(module))
+    }
 
     // Impl Items
 
@@ -1550,6 +1617,45 @@ impl Builder {
             is_sugared_doc: false,
             span: self.span,
         }
+    }
+
+    pub fn meta_item_attr(mut self, style: AttrStyle, meta_item: MetaItem) -> Self
+    {
+        let mut attr = mk_attr_inner(DUMMY_SP, AttrId(0), meta_item);
+        attr.style = style;
+        self.attrs.push(attr);
+        self
+    }
+
+    pub fn meta_item<I,K>(self, path: I, kind: K) -> MetaItem
+        where I: Make<Path>, K: Make<MetaItemKind> {
+
+        let path = path.make(&self);
+        let kind = kind.make(&self);
+        MetaItem {
+            ident: path,
+            node: kind,
+            span: DUMMY_SP,
+        }
+    }
+
+    pub fn nested_meta_item<K>(self, kind: K) -> NestedMetaItem
+        where K: Make<NestedMetaItemKind>
+     {
+        let kind = kind.make(&self);
+        dummy_spanned(kind)
+    }
+
+    // Convert the current internal list of outer attributes
+    // into a vector of inner attributes, e.g.:
+    // `#[foo]` => `#![foo]`
+    pub fn as_inner_attrs(self) -> Vec<Attribute> {
+        self.attrs.into_iter().map(|outer_attr| {
+            Attribute {
+                style: AttrStyle::Inner,
+                ..outer_attr
+            }
+        }).collect::<Vec<Attribute>>()
     }
 
     pub fn mac<Pa, Ts>(self, path: Pa, tts: Ts, delim: MacDelimiter) -> Mac

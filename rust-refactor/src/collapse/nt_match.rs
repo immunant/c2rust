@@ -9,9 +9,9 @@ use rustc_target::spec::abi::Abi;
 
 use std::rc::Rc;
 use syntax::ptr::P;
+use rust_ast_builder::mk;
 
 use ast_manip::{MaybeGetNodeId, GetSpan};
-use ast_manip::make_ast::mk;
 
 
 pub struct Ctxt {

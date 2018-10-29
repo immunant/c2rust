@@ -39,7 +39,7 @@ use serde_json;
 use translator::*;
 use with_stmts::WithStmts;
 use c_ast::*;
-use rust_ast::mk;
+use rust_ast_builder::mk;
 
 pub mod relooper;
 pub mod structures;

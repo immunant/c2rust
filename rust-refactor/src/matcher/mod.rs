@@ -51,7 +51,7 @@ use ast_manip::util::PatternSymbol;
 use command::CommandState;
 use driver;
 use reflect;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 mod bindings;
 mod impls;

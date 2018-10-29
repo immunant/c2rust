@@ -50,6 +50,7 @@ dependencies = [
  "libc 0.2.36 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rust_ast_builder 0.1.0",
 ]
 
 [[package]]
@@ -107,6 +108,10 @@ dependencies = [
 name = "regex-syntax"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "rust_ast_builder"
+version = "0.1.0"
 
 [[package]]
 name = "thread_local"

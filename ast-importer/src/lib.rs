@@ -8,6 +8,7 @@ extern crate dtoa;
 extern crate serde;
 extern crate serde_json;
 extern crate rustc;
+extern crate rust_ast_builder;
 
 pub mod renamer;
 pub mod clang_ast;

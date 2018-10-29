@@ -7,7 +7,7 @@ use api::*;
 use command::{CommandState, Registry};
 use driver;
 use transform::Transform;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 use util::HirDefExt;
 
 

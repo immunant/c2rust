@@ -38,15 +38,15 @@ use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::ThinTokenStream;
 use smallvec::SmallVec;
+use rust_ast_builder::mk;
 
 use api::DriverCtxtExt;
 use ast_manip::Fold;
-use ast_manip::make_ast::mk;
 use ast_manip::util::{PatternSymbol, macro_name};
 use command::CommandState;
 use driver;
 use matcher::Bindings;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 use util::Lone;
 
 

@@ -26,7 +26,7 @@ use interact::WrapSender;
 use interact::{plain_backend, vim8_backend};
 use interact::worker::{self, ToWorker};
 use pick_node;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 use super::MarkInfo;
 

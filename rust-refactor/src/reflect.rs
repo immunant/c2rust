@@ -10,8 +10,7 @@ use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
 use syntax::symbol::keywords;
 use rustc::middle::cstore::{ExternCrate, ExternCrateSource};
-
-use ast_manip::make_ast::mk;
+use rust_ast_builder::mk;
 use command::{Registry, DriverCommand};
 use driver::Phase;
 

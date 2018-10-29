@@ -1,0 +1,6 @@
+[package]
+name = "rust_ast_builder"
+version = "0.1.0"
+authors = ["Eric Mertens <emertens@galois.com>"]
+
+[dependencies]

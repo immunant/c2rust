@@ -9,11 +9,10 @@ use syntax::symbol::Symbol;
 use smallvec::SmallVec;
 
 use api::*;
-use ast_manip::make_ast::{mk, Make};
+use rust_ast_builder::{mk, Make, IntoSymbol};
 use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
-use util::IntoSymbol;
 use util::HirDefExt;
 use util::Lone;
 
