@@ -43,13 +43,37 @@ unsupported features.
 
 There are three ways to build the C2Rust project:
 
-1. In the provided vagrant environment. See the [vagrant README](vagrant/README.md)
-2. In the provided docker environment. See the [docker README](docker/README.md)
-3. Building directly on a macOS or Linux host. The previous two options automatically install all pre-requisites during provisioning. With this option, prerequisites must be installed manually. 
-    - If you are on a Debian-based OS, you can run `provision_deb.sh` to do so. 
-    - If you are on macOS, install the Xcode command-line tools (e.g., `xcode-select --install`) and [homebrew](https://brew.sh/) first. Then run `provision_mac.sh`.
-   
-*NOTE*: The translator supports both macOS and Linux. Other features, such as cross checking the functionality between C and Rust code, are currently limited to Linux hosts. 
+#### Vagrant
+
+In the provided vagrant environment. See the [vagrant README](vagrant/README.md)
+
+#### Docker
+
+In the provided docker environment. See the [docker README](docker/README.md)
+
+#### Manually
+
+The previous two options automatically install all pre-requisites during provisioning. With this option, prerequistics must be installed manually on a macOS or Linux system.
+
+1) If you are on a Debian-based OS, you can run `scripts/provision_deb.sh` to do so. 
+
+2) If you are on macOS, install the Xcode command-line tools (e.g., `xcode-select --install`) and [homebrew](https://brew.sh/) first. Then run `scripts/provision_mac.sh`.
+
+3) If you prefer to install dependencies yourself, or are using a non Debian-based Linux OS, our dependencies are as follows:
+    - cmake >= 3.9.1
+    - dirmngr
+    - curl
+    - git
+    - gnupg2
+    - gperf
+    - htop
+    - ninja
+    - unzip
+    - clang 5.0+
+    - intercept-build or bear - see section on `compile_commands.json` generation
+    - python-dev
+    - python 3.6+
+    - [python dependencies](scripts/requirements.txt)
 
 ### Building
 
@@ -139,7 +163,7 @@ to the original C. More information on the tool can be found [here](cross-checks
 
 ## FAQ
 
-> Are there release binaries? Can I install c2rust with Cargo?
+> Are there release binaries? Can I install C2Rust with Cargo?
 
 We are currently looking into combining the `ast-extractor` and `ast-importer` translator
 components so that release binaries and/or a `cargo install c2rust` installation might be possible.
@@ -148,6 +172,10 @@ components so that release binaries and/or a `cargo install c2rust` installation
 
 We do not support cross compiling raw translated code. However, in the future, it may be possible
 for the refactoring tool to ease some of these pains.
+
+> What platforms can C2Rust be run on?
+
+The translator and refactoring tool support both macOS and Linux. Other features, such as cross checking the functionality between C and Rust code, are currently limited to Linux hosts. 
 
 ## Acknowledgements and Licensing
 
