@@ -15,7 +15,7 @@ apt-get update -qq
 apt-get install -qq --install-recommends dirmngr
 apt-get install -qq bear build-essential clang-5.0 cmake curl \
     git gnupg2 gperf htop ninja-build python-dev \
-    software-properties-common tmux unzip vim
+    software-properties-common unzip
 
 update-alternatives --install /usr/bin/clang clang /usr/bin/clang-5.0 100
 update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-5.0 100
