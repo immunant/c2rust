@@ -8,7 +8,7 @@ use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder, ThinTokenStream};
 use syntax::symbol::keywords;
 use std::rc::Rc;
-use rustc_target::spec::abi::{lookup, Abi};
+use rustc_target::spec::abi::{self, Abi};
 use rustc::hir;
 
 use into_symbol::IntoSymbol;
@@ -58,7 +58,7 @@ impl<'a> Make<Visibility> for &'a str {
 
 impl<'a> Make<Abi> for &'a str {
     fn make(self, _mk: &Builder) -> Abi {
-        lookup(self).expect(&format!("unrecognized string for Abi: {:?}", self))
+        abi::lookup(self).expect(&format!("unrecognized string for Abi: {:?}", self))
     }
 }
 
@@ -1453,19 +1453,6 @@ impl Builder {
         let fgn_mod = ForeignMod { abi: self.abi, items };
         Self::item(keywords::Invalid.ident(), self.attrs, self.vis, self.span, self.id,
                    ItemKind::ForeignMod(fgn_mod))
-    }
-
-    pub fn module<I, T>(self, name: I, items: T) -> P<Item>
-        where I: Make<Ident>, T: Make<Vec<P<Item>>> {
-
-        let name = name.make(&self);
-        let items = items.make(&self);
-        let module = Mod {
-            inner: DUMMY_SP,
-            items: items,
-            inline: true,
-        };
-        Self::item(name, self.attrs, self.vis, self.span, self.id, ItemKind::Mod(module))
     }
 
     // Impl Items

@@ -637,7 +637,7 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
 
     mk().vis("pub")
         .str_attr("header_src", file_path_str)
-        .module(mod_name, items)
+        .mod_item(mod_name, mk().mod_(items))
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations
