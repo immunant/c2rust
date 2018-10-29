@@ -249,8 +249,8 @@ fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> 
         mk().path_segment(""),
         mk().path_segment("std"),
         mk().path_segment("mem"),
-        mk().path_segment_with_params("transmute",
-                                      mk().angle_bracketed_param_types(type_args)),
+        mk().path_segment_with_args("transmute",
+                                      mk().angle_bracketed_args(type_args)),
     ];
     mk().call_expr(mk().path_expr(path), vec![expr])
 }
@@ -807,7 +807,7 @@ impl Translation {
         let macro_msg = vec![
             Token::interpolated(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit(msg)))),
         ].into_iter().collect::<TokenStream>();
-        mk().mac_expr(mk().mac(vec![macro_name], macro_msg))
+        mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
     }
 
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
@@ -980,9 +980,9 @@ impl Translation {
 
                 stmts.push(mk().local_stmt(P(mk().local(
                     mk().mutbl().ident_pat("args"),
-                    Some(mk().path_ty(vec![mk().path_segment_with_params(
+                    Some(mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
-                        mk().angle_bracketed_param_types(
+                        mk().angle_bracketed_args(
                             vec![mk().mutbl().ptr_ty(
                                 mk().path_ty(vec!["libc","c_char"])
                             )]
@@ -1058,9 +1058,9 @@ impl Translation {
 
                 stmts.push(mk().local_stmt(P(mk().local(
                     mk().mutbl().ident_pat("vars"),
-                    Some(mk().path_ty(vec![mk().path_segment_with_params(
+                    Some(mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
-                        mk().angle_bracketed_param_types(
+                        mk().angle_bracketed_args(
                             vec![mk().mutbl().ptr_ty(
                                 mk().path_ty(vec!["libc","c_char"])
                             )]
@@ -1087,6 +1087,7 @@ impl Translation {
                                     Token::Comma,
                                     Token::from_ast_ident(mk().ident("var_value")),
                                 ].into_iter().collect::<TokenStream>(),
+                                MacDelimiter::Parenthesis,
                             )))
                         ))),
                         mk().semi_stmt(mk().method_call_expr(
@@ -1858,7 +1859,7 @@ impl Translation {
             push_expr(&mut tokens, mk().lit_expr(mk().str_lit("volatile")));
         }
 
-        let mac = mk().mac(vec!["asm"], tokens.into_iter().collect::<TokenStream>());
+        let mac = mk().mac(vec!["asm"], tokens.into_iter().collect::<TokenStream>(), MacDelimiter::Parenthesis);
         let mac = mk().mac_expr(mac);
         let mac = mk().span(span).expr_stmt(mac);
         stmts.push(mac);
@@ -2319,7 +2320,7 @@ impl Translation {
         let ty = if let CTypeKind::VariableArray(mut elt, _) = self.ast_context.resolve_type(typ.ctype).kind {
             elt = self.variable_array_base_type(elt);
             let ty = self.convert_type(elt)?;
-            mk().path_ty(vec![mk().path_segment_with_params("Vec", mk().angle_bracketed_param_types(vec![ty]))])
+            mk().path_ty(vec![mk().path_segment_with_args("Vec", mk().angle_bracketed_args(vec![ty]))])
         } else {
             self.convert_type(typ.ctype)?
         };
@@ -2413,8 +2414,8 @@ impl Translation {
             path_parts.push(mk().path_segment(elt))
         }
         let elt_ty = self.convert_type(lhs_type.ctype)?;
-        let ty_params = mk().angle_bracketed_param_types(vec![elt_ty]);
-        let elt = mk().path_segment_with_params("read_volatile", ty_params);
+        let ty_params = mk().angle_bracketed_args(vec![elt_ty]);
+        let elt = mk().path_segment_with_args("read_volatile", ty_params);
         path_parts.push(elt);
 
         let read_volatile_expr = mk().path_expr(path_parts);
@@ -2424,6 +2425,7 @@ impl Translation {
     /// If the referenced expression is a DeclRef inside an Unary or ImplicitCast node, return
     /// the type of the referenced declaration. Returns `Err` in all other cases. See
     /// See https://github.com/GaloisInc/C2Rust/issues/32 for more details on this quirk.
+    /*
     fn get_declref_type(&self, expr_id: CExprId) -> Result<(Option<Qualifiers>, CTypeId), &str> {
         // Using nested function to avoid exposing the level parameter
         fn _get_declref_type(ast_context: &TypedAstContext, expr_id: CExprId, level: u32) -> Result<(Option<Qualifiers>, CTypeId), &str> {
@@ -2453,6 +2455,7 @@ impl Translation {
 
         _get_declref_type(&self.ast_context, expr_id, 0)
     }
+    */
 
     // Compute the offset multiplier for variable length array indexing
     // Rust type: usize
@@ -2538,11 +2541,11 @@ impl Translation {
         } else {
             let ty = self.convert_type(type_id)?;
             let name = "size_of";
-            let params = mk().angle_bracketed_param_types(vec![ty]);
+            let params = mk().angle_bracketed_args(vec![ty]);
             let path = vec![mk().path_segment(""),
                             mk().path_segment("std"),
                             mk().path_segment("mem"),
-                            mk().path_segment_with_params(name, params)];
+                            mk().path_segment_with_args(name, params)];
             let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
             Ok(WithStmts::new(call))
         }
@@ -2560,8 +2563,8 @@ impl Translation {
         let path = vec![mk().path_segment(""),
                         mk().path_segment("std"),
                         mk().path_segment("mem"),
-                        mk().path_segment_with_params(name,
-                                                      mk().angle_bracketed_param_types(tys)),
+                        mk().path_segment_with_args(name,
+                                                      mk().angle_bracketed_args(tys)),
         ];
         let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
         Ok(WithStmts::new(call))
@@ -3097,9 +3100,9 @@ impl Translation {
                     let ty = self.convert_type(ty.ctype)?;
 
                     Ok(val.map(|va| {
-                        let path = mk().path_segment_with_params(
+                        let path = mk().path_segment_with_args(
                             mk().ident("arg"),
-                            mk().angle_bracketed_param_types(vec![ty]));
+                            mk().angle_bracketed_args(vec![ty]));
                         mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>)
                     }))
 

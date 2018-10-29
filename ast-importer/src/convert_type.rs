@@ -149,8 +149,8 @@ impl TypeConverter {
 
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
-                let param = mk().angle_bracketed_param_types(vec![fn_ty]);
-                let optn_ty = mk().path_ty(vec![mk().path_segment_with_params("Option", param)]);
+                let param = mk().angle_bracketed_args(vec![fn_ty]);
+                let optn_ty = mk().path_ty(vec![mk().path_segment_with_args("Option", param)]);
                 return Ok(optn_ty)
             }
 

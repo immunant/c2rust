@@ -7,6 +7,7 @@ extern crate dtoa;
 #[macro_use] extern crate indexmap;
 extern crate serde;
 extern crate serde_json;
+extern crate rustc;
 
 pub mod renamer;
 pub mod clang_ast;
