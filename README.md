@@ -74,6 +74,7 @@ The previous two options automatically install all pre-requisites during provisi
     - python-dev
     - python 3.6+
     - [python dependencies](scripts/requirements.txt)
+    - rustfmt
 
 ### Building
 
