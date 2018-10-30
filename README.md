@@ -22,7 +22,7 @@ incrementally idiomize and validate that your Rust code functions just like the 
 In the end you should have safer, more idiomatic, Rust code. Our ultimate goal is to automate as much
 of this process as possible, but refactoring is currently a manual process.
 
-## Translation
+## Translating C to Rust
 
 The `ast-exporter` extracts from a C file the abstract syntax tree and type information produced by
 Clang and serializes it into CBOR files. The `ast-importer` consumes these CBOR files and generates
