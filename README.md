@@ -55,11 +55,11 @@ In the provided docker environment. See the [docker README](docker/README.md)
 
 The previous two options automatically install all pre-requisites during provisioning. With this option, prerequistics must be installed manually on a macOS or Linux system.
 
-1) If you are on a Debian-based OS, you can run `scripts/provision_deb.sh` to do so. 
+* If you are on a Debian-based OS, you can run `scripts/provision_deb.sh` to do so. 
 
-2) If you are on macOS, install the Xcode command-line tools (e.g., `xcode-select --install`) and [homebrew](https://brew.sh/) first. Then run `scripts/provision_mac.sh`.
+* If you are on macOS, install the Xcode command-line tools (e.g., `xcode-select --install`) and [homebrew](https://brew.sh/) first. Then run `scripts/provision_mac.sh`.
 
-3) If you prefer to install dependencies yourself, or are using a non Debian-based Linux OS, our dependencies are as follows:
+* If you prefer to install dependencies yourself, or are using a non Debian-based Linux OS, our dependencies are as follows:
     - cmake >= 3.9.1
     - dirmngr
     - curl
@@ -74,7 +74,8 @@ The previous two options automatically install all pre-requisites during provisi
     - python-dev
     - python 3.6+
     - [python dependencies](scripts/requirements.txt)
-    - rustfmt
+    - rustc [version](rust-toolchain)
+    - rustfmt-preview component for the above rustc version
 
 ### Building
 
@@ -160,7 +161,7 @@ More detailed information on the tool can be found [here](rust-refactor).
 Cross checking consists of plugins for both Rust and Clang. These plugins allow you to use
 one of a couple different backends to compare runs of your C and Rust executables. This helps
 you ensure that any idiomization of your Rust code still produces equivalent functionality
-to the original C. More information on the tool can be found [here](cross-checks).
+to the original C. More information on the tool can be found [here](docs/cross-check-tutorial.md).
 
 ## FAQ
 
