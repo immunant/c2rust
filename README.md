@@ -149,7 +149,7 @@ source files mentioned in the previously generated
 
     $ scripts/transpile.py ./compile_commands.json
 
-## Refactoring
+## Refactoring Rust code
 
 The refactoring tool, idiomize, has different passes to idiomize translated Rust code.
 Some of the passes are run on idividual files and some on an entire Cargo build directory.
