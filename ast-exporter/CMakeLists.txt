@@ -51,7 +51,7 @@ find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS} ${CLANG_DEFINITIONS})
 
-add_definitions(-DCLANG_BIN_PATH="${CLANG_INSTALL_PREFIX}/bin")
+add_definitions(-DCLANG_BIN_PATH="${LLVM_INSTALL_PREFIX}/bin")
 add_definitions(-DCLANG_LIBDIR_SUFFIX="${LLVM_LIBDIR_SUFFIX}")
 add_definitions(-DCLANG_VERSION_STRING="${LLVM_PACKAGE_VERSION}")
 
