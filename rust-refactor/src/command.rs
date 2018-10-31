@@ -2,10 +2,11 @@
 
 use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
+use std::iter;
 use std::rc::Rc;
 use std::mem;
 use rustc::session::Session;
-use syntax::ast::{NodeId, Crate, Mod};
+use syntax::ast::{NodeId, Crate, CRATE_NODE_ID, Mod};
 use syntax::ast::{Expr, Pat, Ty, Stmt, Item};
 use syntax::source_map::DUMMY_SP;
 use syntax::source_map::FileLoader;
@@ -131,6 +132,8 @@ impl RefactorState {
 
         self.node_map = NodeMap::new();
         self.node_map.init(self.krate.list_node_ids().into_iter());
+        // Special case: CRATE_NODE_ID doesn't actually appear anywhere in the AST.
+        self.node_map.init(iter::once(CRATE_NODE_ID));
         self.marks = HashSet::new();
     }
 
@@ -178,6 +181,7 @@ impl RefactorState {
             let (mac_table, matched_ids) =
                 collapse::collect_macro_invocations(&unexpanded, &expanded);
             self.node_map.add_edges(&matched_ids);
+            self.node_map.add_edges(&[(CRATE_NODE_ID, CRATE_NODE_ID)]);
             let cfg_attr_info = collapse::collect_cfg_attrs(&unexpanded);
             collapse::match_nonterminal_ids(&mut self.node_map, &mac_table);
 
@@ -210,6 +214,7 @@ impl RefactorState {
             let new_krate = collapse::collapse_injected(new_krate);
             let (new_krate, matched_ids) = collapse::collapse_macros(new_krate, &mac_table);
             self.node_map.add_edges(&matched_ids);
+            self.node_map.add_edges(&[(CRATE_NODE_ID, CRATE_NODE_ID)]);
 
             let cfg_attr_info = self.node_map.transfer_map(cfg_attr_info);
             let new_krate = collapse::restore_cfg_attrs(new_krate, cfg_attr_info);
