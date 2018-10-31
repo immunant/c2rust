@@ -663,11 +663,24 @@ impl Command for TypeFixRules {
 
         state.run_typeck_loop(|krate, st, cx| {
             info!("Starting retyping iteration");
+
+            let mut lr_map = HashMap::new();
+            let krate = lr_expr::fold_exprs_with_context(krate, |e, ectx| {
+                // This crate was just expanded (inside run_typeck_loop), so all nodes should be
+                // numbered.
+                assert!(e.id != DUMMY_NODE_ID);
+                if ectx != lr_expr::Context::Rvalue {
+                    lr_map.insert(e.id, ectx);
+                }
+                e
+            });
+
             let mut inserted = 0;
             let krate = fold_illtyped(cx, krate, TypeFixRulesFolder {
                 st, cx,
                 rules: &rules,
                 num_inserted_casts: &mut inserted,
+                lr_map: &lr_map,
             });
             if inserted > 0 {
                 TypeckLoopResult::Iterate(krate)
@@ -684,6 +697,7 @@ struct TypeFixRulesFolder<'a, 'tcx: 'a> {
     rules: &'a [Rule],
 
     num_inserted_casts: &'a mut u32,
+    lr_map: &'a HashMap<NodeId, lr_expr::Context>,
 }
 
 impl<'a, 'tcx> IlltypedFolder<'tcx> for TypeFixRulesFolder<'a, 'tcx> {
@@ -691,26 +705,26 @@ impl<'a, 'tcx> IlltypedFolder<'tcx> for TypeFixRulesFolder<'a, 'tcx> {
                 e: P<Expr>,
                 actual: ty::Ty<'tcx>,
                 expected: ty::Ty<'tcx>) -> P<Expr> {
+        let ectx = self.lr_map.get(&e.id).cloned().unwrap_or(lr_expr::Context::Rvalue);
         let actual_ty_ast = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), actual);
         let expected_ty_ast = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), expected);
-        info!("looking for rule matching {:?}, {:?}", actual_ty_ast, expected_ty_ast);
+        debug!("looking for rule matching {:?}, {:?}, {:?}", ectx, actual_ty_ast, expected_ty_ast);
+
 
         for r in self.rules {
-            /* TODO
-            if !r.ectx.map_or(true, |rule_ectx| rule_ectx == self.ectx) {
-                info!("wrong ectx: {:?} != {:?}", r.ectx, self.ectx);
+            if !r.ectx.map_or(true, |rule_ectx| rule_ectx == ectx) {
+                trace!("wrong ectx: {:?} != {:?}", r.ectx, ectx);
                 continue;
             }
-            */
 
             let mut mcx = MatchCtxt::new(self.st, self.cx);
             if let Err(e) = mcx.try_match(&r.actual_ty, &actual_ty_ast) {
-                info!("error matching actual {:?} with {:?}: {:?}",
+                trace!("error matching actual {:?} with {:?}: {:?}",
                       r.actual_ty, actual_ty_ast, e);
                 continue;
             }
             if let Err(e) = mcx.try_match(&r.expected_ty, &expected_ty_ast) {
-                info!("error matching expected {:?} with {:?}: {:?}",
+                trace!("error matching expected {:?} with {:?}: {:?}",
                       r.expected_ty, expected_ty_ast, e);
                 continue;
             }
