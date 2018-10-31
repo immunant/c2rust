@@ -65,12 +65,12 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
 
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
-        .write_to_file(out_path.join("bindings.rs"))
+        .write_to_file(out_dir.join("bindings.rs"))
         .expect("Couldn't write bindings!");
     cppbindings
-        .write_to_file(out_path.join("cppbindings.rs"))
+        .write_to_file(out_dir.join("cppbindings.rs"))
         .expect("Couldn't write cppbindings!");
 
 }
@@ -113,7 +113,6 @@ fn build_ast_exporter(llvm_lib: &str, llvm_config: &str) {
 
     let dst = Config::new("../ast-exporter")
         .generator("Ninja")
-        .no_build_target(true)
         .out_dir("../dependencies")
 
         // General CMake variables
@@ -125,7 +124,7 @@ fn build_ast_exporter(llvm_lib: &str, llvm_config: &str) {
         .define("Clang_DIR",          &format!("{}/cmake/clang", llvm_lib))
 
         // What to build
-        .build_arg("clangAstExporter")
+        .build_target("clangAstExporter")
         .build();
 
     let out_dir = dst.display();
