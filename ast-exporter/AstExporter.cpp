@@ -8,6 +8,7 @@
 #include <cstdlib>
 
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Path.h"
 // Declares clang::SyntaxOnlyAction.
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/CommonOptionsParser.h"
@@ -1680,13 +1681,24 @@ static std::vector<const char *>augment_argv(int argc, const char *argv[]) {
         // needs special handling in the Rust version (e.g., varargs functions)
         "-extra-arg=-DC2RUST=1",
     };
-    
+
+    // Build a -resource-dir argument based on the path to the system clang
+    // binary. Without this, ClangTool builds the resource directory from the
+    // path to the tool (in this case, the binary running the AST Exporter).
+    SmallString<128> P("-extra-arg=-resource-dir " CLANG_BIN_PATH);
+    llvm::sys::path::append(P, "..", Twine("lib") + CLANG_LIBDIR_SUFFIX,
+                            "clang", CLANG_VERSION_STRING);
+    std::string resource_dir = P.str();
+    char *resource_dir_cstr = new char [resource_dir.length()+1];
+    strncpy(resource_dir_cstr, resource_dir.c_str(), resource_dir.length()+1);
+
     auto argv_ = std::vector<const char*>();
-    argv_.reserve(argc + size(extras) + 1);
+    argv_.reserve(argc + size(extras) + 2);
     
     auto pusher = std::back_inserter(argv_);
     std::copy_n(argv, argc, pusher);
     std::copy_n(extras, size(extras), pusher);
+    *pusher++ = resource_dir_cstr;
     *pusher++ = nullptr; // The value of argv[argc] is guaranteed to be a null pointer.
     
     return argv_;
