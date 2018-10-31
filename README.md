@@ -154,7 +154,8 @@ source files mentioned in the previously generated
 
 The refactoring tool, idiomize, has different passes to idiomize translated Rust code.
 Some of the passes are run on idividual files and some on an entire Cargo build directory.
-More detailed information on the tool can be found [here](rust-refactor).
+This tool is in its early phases and still under development. 
+More detailed information on it can be found [here](rust-refactor).
 
 ## Cross Checking
 
