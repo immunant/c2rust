@@ -2,6 +2,7 @@ use std::cell::{Cell, RefCell};
 use rustc::hir;
 use rustc::hir::def::Def;
 use rustc::ty;
+use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
@@ -69,40 +70,58 @@ struct FoldIlltyped<'a, 'tcx, F> {
     inner: F,
 }
 
+impl<'a, 'tcx, F: IlltypedFolder<'tcx>> FoldIlltyped<'a, 'tcx, F> {
+    fn ensure(&mut self,
+              sub_e: P<Expr>,
+              expected_ty: ty::Ty<'tcx>,
+              illtyped: Option<&Cell<bool>>) -> P<Expr> {
+        if let Some(actual_ty) = self.cx.opt_node_type(sub_e.id) {
+            if actual_ty != expected_ty {
+                illtyped.map(|i| i.set(true));
+                return self.inner.fix_expr(sub_e, actual_ty, expected_ty);
+            }
+        }
+        sub_e
+    }
+
+    fn ensure_cast(&mut self,
+                   sub_e: P<Expr>,
+                   target_ty: ty::Ty<'tcx>,
+                   illtyped: Option<&Cell<bool>>) -> P<Expr> {
+        if let Some(actual_ty) = self.cx.opt_node_type(sub_e.id) {
+            illtyped.map(|i| i.set(true));
+            return self.inner.fix_expr_cast(sub_e, actual_ty, target_ty);
+        }
+        sub_e
+    }
+}
+
 impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
     fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
+        let cx = self.cx;
+        let this = RefCell::new(self);
+
         let illtyped = Cell::new(false);
+        let ensure = |sub_e, expected_ty| {
+            this.borrow_mut().ensure(sub_e, expected_ty, Some(&illtyped))
+        };
+        let ensure_cast = |sub_e, target_ty| {
+            this.borrow_mut().ensure_cast(sub_e, target_ty, Some(&illtyped))
+        };
+
         let e = e.map(|e| {
-            let e = fold::noop_fold_expr(e, self);
+            let e = fold::noop_fold_expr(e, &mut **this.borrow_mut());
 
-            let cx = self.cx;
-            let inner = RefCell::new(&mut self.inner);
-            let ensure = |sub_e: P<Expr>, expected_ty| {
-                if let Some(actual_ty) = cx.opt_node_type(sub_e.id) {
-                    if actual_ty != expected_ty {
-                        illtyped.set(true);
-                        return inner.borrow_mut().fix_expr(sub_e, actual_ty, expected_ty);
-                    }
-                }
-                sub_e
-            };
-            let ensure_cast = |sub_e: P<Expr>, target_ty| {
-                if let Some(actual_ty) = cx.opt_node_type(sub_e.id) {
-                    illtyped.set(true);
-                    return inner.borrow_mut().fix_expr_cast(sub_e, actual_ty, target_ty);
-                }
-                sub_e
-            };
 
-            let ty = match self.cx.opt_node_type(e.id) {
+            let ty = match cx.opt_node_type(e.id) {
                 Some(x) => x,
                 None => return e,
             };
 
             // We need the whole `Expr` to do this lookup, so it can't happen inside the match.
-            let opt_fn_sig = self.cx.opt_callee_fn_sig(&e);
+            let opt_fn_sig = cx.opt_callee_fn_sig(&e);
 
-            let tcx = self.cx.ty_ctxt();
+            let tcx = cx.ty_ctxt();
 
             let node = match e.node {
                 ExprKind::Box(content) => {
@@ -167,9 +186,9 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
                     // Check if the cast is erroneous.  We do this by looking up the subexpression
                     // (yes, the subexpression) in the `cast_kinds` table - if there's nothing
                     // there, it's not a valid cast.
-                    let parent = self.cx.hir_map().get_parent_did(sub_e.id);
-                    let tables = self.cx.ty_ctxt().typeck_tables_of(parent);
-                    let hir_id = self.cx.hir_map().node_to_hir_id(sub_e.id);
+                    let parent = cx.hir_map().get_parent_did(sub_e.id);
+                    let tables = cx.ty_ctxt().typeck_tables_of(parent);
+                    let hir_id = cx.hir_map().node_to_hir_id(sub_e.id);
                     if tables.cast_kinds().get(hir_id).is_none() {
                         ExprKind::Cast(ensure_cast(sub_e, ty), target)
                     } else {
@@ -185,7 +204,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
                     ExprKind::If(ensure(cond, tcx.mk_bool()), tr, fl)
                 }
                 ExprKind::IfLet(pats, expr, tr, fl) => {
-                    let expr = if let Some(pat_ty) = self.cx.opt_node_type(pats[0].id) {
+                    let expr = if let Some(pat_ty) = cx.opt_node_type(pats[0].id) {
                         ensure(expr, pat_ty)
                     } else {
                         expr
@@ -198,7 +217,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
                     ExprKind::While(ensure(cond, tcx.mk_bool()), body, opt_label)
                 }
                 ExprKind::WhileLet(pats, expr, body, opt_label) => {
-                    let expr = if let Some(pat_ty) = self.cx.opt_node_type(pats[0].id) {
+                    let expr = if let Some(pat_ty) = cx.opt_node_type(pats[0].id) {
                         ensure(expr, pat_ty)
                     } else {
                         expr
@@ -232,12 +251,12 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
                     ExprKind::Async(capture_clause, node_id, body)
                 }
                 ExprKind::Assign(el, er) => {
-                    let lhs_ty = self.cx.node_type(el.id);
+                    let lhs_ty = cx.node_type(el.id);
                     ExprKind::Assign(el, ensure(er, lhs_ty))
                 }
                 ExprKind::AssignOp(op, el, er) => {
                     // TODO: need cases for arith/bitwise, shift, &&/||, and a check for overloads
-                    let lhs_ty = self.cx.node_type(el.id);
+                    let lhs_ty = cx.node_type(el.id);
                     ExprKind::AssignOp(op, el, ensure(er, lhs_ty))
                 }
                 ExprKind::Field(el, ident) => {
@@ -266,7 +285,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
                 ExprKind::Mac(mac) => ExprKind::Mac(mac),
                 ExprKind::Struct(path, fields, maybe_expr) => {
                     let (fields, maybe_expr) = handle_struct(
-                        self.cx, e.id, ty, fields, maybe_expr, |e, ty| ensure(e, ty));
+                        cx, e.id, ty, fields, maybe_expr, |e, ty| ensure(e, ty));
                     ExprKind::Struct(path, fields, maybe_expr)
                 },
                 ExprKind::Paren(ex) => ExprKind::Paren(ex),
@@ -279,10 +298,45 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
         });
 
         if illtyped.get() {
-            self.inner.fix_expr_parent(e)
+            this.borrow_mut().inner.fix_expr_parent(e)
         } else {
             e
         }
+    }
+
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+        fold::noop_fold_item(i, self).move_map(|i| i.map(|mut i| {
+            i.node = match i.node {
+                ItemKind::Static(ty, mutbl, expr) => {
+                    let did = self.cx.node_def_id(i.id);
+                    let expected_ty = self.cx.ty_ctxt().type_of(did);
+                    info!("STATIC: expected ty {:?}, expr {:?}", expected_ty, expr);
+
+                    let tcx = self.cx.ty_ctxt();
+                    let node_id = tcx.hir.as_local_node_id(did).unwrap();
+                    match tcx.hir.get(node_id) {
+                        hir::Node::Item(item) => {
+                            match item.node {
+                                hir::ItemKind::Static(ref t, ..) => info!("  - ty hir = {:?}", t),
+                                _ => {},
+                            }
+                        },
+                        _ => {},
+                    }
+
+                    let expr = self.ensure(expr, expected_ty, None);
+                    ItemKind::Static(ty, mutbl, expr)
+                },
+                ItemKind::Const(ty, expr) => {
+                    let did = self.cx.node_def_id(i.id);
+                    let expected_ty = self.cx.ty_ctxt().type_of(did);
+                    let expr = self.ensure(expr, expected_ty, None);
+                    ItemKind::Const(ty, expr)
+                },
+                n => n,
+            };
+            i
+        }))
     }
 }
 
