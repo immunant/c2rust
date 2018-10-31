@@ -1,6 +1,8 @@
 import json
+import hashlib
 import os
 import shlex
+import shutil
 import sys
 from plumbum.cmd import mv, mkdir, rename, sed, rustc, cargo, rm
 from plumbum import local
@@ -208,6 +210,27 @@ def run_idiomize(args, mode='inplace'):
             idiomize[full_args]()
 
 
+class RefactorHash:
+    def __init__(self, cmd, src_path):
+        h = hashlib.sha256()
+
+        with open(cmd.executable, 'rb') as f:
+            h.update(f.read())
+
+        with open(src_path, 'rb') as f:
+            h.update(f.read())
+
+        self.hash = h.digest()
+        self.hex = h.hexdigest()
+
+    def extend(self, s):
+        h = hashlib.sha256(self.hash)
+        h.update(s.encode('utf-8'))
+        self.hash = h.digest()
+        self.hex = h.hexdigest()
+
+
+
 def main():
     os.chdir(RFK_DIR)
     print('in %s' % RFK_DIR)
@@ -230,10 +253,20 @@ def main():
 
 
     # Refactor
+    src_path = os.path.join(RFK_DIR, 'rust/src/robotfindskitten.rs')
+    rf_hash = RefactorHash(idiomize, src_path)
     for refactor_str in REFACTORINGS:
         refactor_args = shlex.split(refactor_str)
-        print('REFACTOR: %r' % (refactor_args,))
-        run_idiomize(refactor_args)
+        rf_hash.extend(refactor_str)
+
+        cache_path = '%s.%s' % (src_path, rf_hash.hex)
+        if os.path.isfile(cache_path):
+            print('CACHED: %r' % (refactor_args,))
+            shutil.copy(cache_path, src_path)
+        else:
+            print('REFACTOR: %r' % (refactor_args,))
+            run_idiomize(refactor_args)
+            shutil.copy(src_path, cache_path)
 
 
 if __name__ == '__main__':
