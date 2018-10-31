@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.11)
+cmake_minimum_required(VERSION 3.9.1)
 
 
 #################################################
@@ -42,7 +42,11 @@ add_dependencies(tinycbor tinycbor_build)
 # LLVM/Clang                                    #
 #################################################
 find_package(LLVM REQUIRED CONFIG)
-find_package(CLANG REQUIRED CONFIG)
+
+# Debian and Ubuntu's clang cmake files are broken, so we can't use the package
+# here. We already have to manually order the link against the clang libs in
+# ast-importer/build.rs, so that's not so bad.
+# find_package(Clang REQUIRED CONFIG)
 
 include_directories(${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS} ${CLANG_DEFINITIONS})
@@ -53,6 +57,9 @@ add_definitions(-DCLANG_VERSION_STRING="${LLVM_PACKAGE_VERSION}")
 
 set(LLVM_LINK_COMPONENTS support)
 
+# LLVM is not always built with RTTI, we don't need it either.
+set(CMAKE_CXX_FLAGS "-fno-rtti")
+set(CMAKE_CXX_FLAGS "-fPIC")
 
 #################################################
 # AST Exporter                                  #
@@ -81,7 +88,7 @@ target_link_libraries(ast-exporter PRIVATE
 )
 
 # The library
-add_library(clangAstExporter MODULE
+add_library(clangAstExporter STATIC
   AstExporter.cpp
   FloatingLexer.cpp
   ExportResult.cpp
