@@ -23,7 +23,7 @@ ExternalProject_Add(tinycbor_build
             URL ${TINYCBOR_URL}
             URL_HASH MD5=${TINYCBOR_MD5}
             CONFIGURE_COMMAND ""
-            BUILD_COMMAND make --quiet prefix=${TINYCBOR_PREFIX} -j${NUM_PROCS}
+            BUILD_COMMAND make --quiet prefix=${TINYCBOR_PREFIX} -j${NUM_PROCS} CFLAGS=-fPIC
             INSTALL_COMMAND make --quiet prefix=${TINYCBOR_PREFIX} install 
             # work around https://github.com/intel/tinycbor/issues/136
             TEST_COMMAND cp ${TINYCBOR_VERSION_H} ${TINYCBOR_PREFIX}/include/
@@ -58,8 +58,7 @@ add_definitions(-DCLANG_VERSION_STRING="${LLVM_PACKAGE_VERSION}")
 set(LLVM_LINK_COMPONENTS support)
 
 # LLVM is not always built with RTTI, we don't need it either.
-set(CMAKE_CXX_FLAGS "-fno-rtti")
-set(CMAKE_CXX_FLAGS "-fPIC")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 
 #################################################
 # AST Exporter                                  #
