@@ -22,36 +22,19 @@ REFACTORINGS = [
         'struct_assign_to_update',
         'struct_merge_updates',
 
-        '''
-            select target 'item(messages); mark(array); desc(match_ty(*mut __t));' ;
-            rewrite_expr '__e as marked!(*mut __t)' '__e' ;
-            rewrite_ty 'marked!(*mut __t)' '*const __t' ;
-            rewrite_expr 'def!(messages, array)[__e]'
-                'def!(messages, array)[__e] as *mut libc::c_char'
-        ''',
+        # Phase ordering:
+        #  1. Convert printf-style functions to use format macros.  This means
+        #     string arguments to formatting are now typechecked.
+        #  2. Retype `ver` and `messages` to &str.  Fixing up the resulting
+        #     errors depends on having proper typechecking of `ver` and
+        #     `messages` uses.  After this, we can make `ver` and `messages`
+        #     into non-mut statics.
+        #  3. Collect remaining mut statics into `struct State`.  This is
+        #     easier if we've already removed `mut` from all the immutable
+        #     statics.
 
-        # We can't make these immutable until we remove all raw pointers from
-        # their types.  *const and *mut are not `Sync`, which is required for
-        # all immutable statics.  (Presumably anything goes for mutable
-        # statics, since they're unsafe to access anyway.)
-        #'''
-        #    select target 'crate; child(static && name("ver|messages"));' ;
-        #    set_mutability imm
-        #''',
 
-        '''
-            select target 'crate; child(static && mut);' ;
-            static_collect_to_struct State S
-        ''',
-        '''
-            select target 'crate; desc(fn && !name("main"));' ;
-            set_visibility ''
-        ''',
-        '''
-            select target 'crate; child(static && name("S"));' ;
-            select user 'crate; desc(fn && !name("main"));' mark='user' ;
-            static_to_local_ref
-        ''',
+        # Replace printf/printw/etc with formatting macros.
 
         '''
             select target 'crate; desc(foreign_mod);' ;
@@ -171,8 +154,8 @@ REFACTORINGS = [
 
         '''
             select target 'item(messages); mark(parent);
-                child(ty); desc(match_ty(*const libc::c_char));' ;
-            rewrite_ty 'marked!(*const libc::c_char)' "&'static str" ;
+                child(ty); desc(match_ty(*mut libc::c_char));' ;
+            rewrite_ty 'marked!(*mut libc::c_char)' "&'static str" ;
             delete_marks target ;
             select target 'marked(parent); desc(match_expr(__e as __t));' ;
             rewrite_expr 'marked!(__e as __t)' '__e' ;
@@ -183,6 +166,28 @@ REFACTORINGS = [
             type_fix_rules
                 '*, &str, *const __t => __old.as_ptr()'
                 '*, &str, *mut __t => __old.as_ptr() as *mut __t' ;
+        ''',
+
+        '''
+            select target 'crate; child(static && name("ver|messages"));' ;
+            set_mutability imm
+        ''',
+
+
+        # Collect mutable statics into a single struct
+
+        '''
+            select target 'crate; child(static && mut);' ;
+            static_collect_to_struct State S
+        ''',
+        '''
+            select target 'crate; desc(fn && !name("main"));' ;
+            set_visibility ''
+        ''',
+        '''
+            select target 'crate; child(static && name("S"));' ;
+            select user 'crate; desc(fn && !name("main"));' ;
+            static_to_local_ref
         ''',
 ]
 
