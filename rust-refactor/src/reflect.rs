@@ -1,8 +1,10 @@
 //! Functions for building AST representations of higher-level values.
 use rustc::hir;
+use rustc::hir::map::Map as HirMap;
 use rustc::hir::Node;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::map::definitions::DefPathData;
+use rustc::mir::interpret::ConstValue;
 use rustc::ty::{self, TyCtxt, GenericParamDefKind};
 use rustc::ty::subst::Subst;
 use syntax::ast::*;
@@ -48,7 +50,10 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         Str => mk().ident_ty("str"),
         Array(ty, len) => mk().array_ty(
             reflect_tcx_ty(tcx, ty),
-            mk().lit_expr(mk().int_lit(len.unwrap_usize(tcx) as u128, "usize"))
+            match len.val {
+                ConstValue::Unevaluated(did, _substs) => anon_const_to_expr(&tcx.hir, did),
+                _ => mk().lit_expr(mk().int_lit(len.unwrap_usize(tcx) as u128, "usize")),
+            },
         ),
         Slice(ty) => mk().slice_ty(reflect_tcx_ty(tcx, ty)),
         RawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(reflect_tcx_ty(tcx, mty.ty)),
@@ -73,6 +78,29 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         },
         Infer(_) => mk().infer_ty(),
         Error => mk().infer_ty(), // unsupported
+    }
+}
+
+fn anon_const_to_expr(hir_map: &HirMap, def_id: DefId) -> P<Expr> {
+    let node = hir_map.get_if_local(def_id).unwrap();
+    let ac = expect!([node] Node::AnonConst(ac) => ac);
+    let body_id = ac.body;
+    let body = hir_map.krate().body(body_id);
+    hir_expr_to_expr(&body.value)
+}
+
+fn hir_expr_to_expr(e: &hir::Expr) -> P<Expr> {
+    use rustc::hir::ExprKind::*;
+    match e.node {
+        Binary(op, ref a, ref b) => {
+            let op: BinOpKind = op.node.into();
+            mk().binary_expr(op, hir_expr_to_expr(a), hir_expr_to_expr(b))
+        },
+        Unary(op, ref a) => {
+            mk().unary_expr(op.as_str(), hir_expr_to_expr(a))
+        },
+        Lit(ref l) => mk().lit_expr(l),
+        ref k => panic!("unsupported variant in hir_expr_to_expr: {:?}", k),
     }
 }
 
