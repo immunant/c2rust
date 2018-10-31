@@ -9,7 +9,6 @@ use command::{CommandState, Registry};
 use driver;
 use transform::Transform;
 use rust_ast_builder::IntoSymbol;
-use util::Lone;
 use util::dataflow;
 use util::HirDefExt;
 
@@ -21,9 +20,6 @@ pub struct CollectToStruct {
 
 impl Transform for CollectToStruct {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        let static_pat: P<Item> = parse_items(cx.session(), "static __x: __t = __init;").lone();
-
-
         // Map from Symbol (the name) to the DefId of the old `static`.
         let mut old_statics = HashMap::new();
 
@@ -31,23 +27,28 @@ impl Transform for CollectToStruct {
             let mut matches = Vec::new();
             let mut insert_point = None;
 
-            while let Some(bnd) = curs.advance_until_match(
-                    |i| MatchCtxt::from_match(st, cx, &static_pat, &i)
-                            .ok().map(|mcx| mcx.bindings)) {
+            while let Some((ident, ty, init)) = curs.advance_until_match(
+                    |i| match_or!([i.node] ItemKind::Static(ref ty, _, ref init) =>
+                                  Some((i.ident, ty.clone(), init.clone())); None)) {
                 if !st.marked(curs.next().id, "target") {
                     curs.advance();
                     continue;
                 }
-                info!("found {:?}: {:?}", bnd.ident("__x"), bnd.ty("__t"));
+                info!("found {:?}: {:?}", ident, ty);
 
                 // Record this static
-                old_statics.insert(bnd.ident("__x").name,
+                old_statics.insert(ident.name,
                                    cx.node_def_id(curs.next().id));
 
                 if insert_point.is_none() {
                     insert_point = Some(curs.mark());
                 }
                 curs.remove();
+
+                let mut bnd = Bindings::new();
+                bnd.add_ident("__x", ident);
+                bnd.add_ty("__t", ty);
+                bnd.add_expr("__init", init);
                 matches.push(bnd);
             }
 
