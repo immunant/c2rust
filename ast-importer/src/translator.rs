@@ -4913,11 +4913,12 @@ impl Translation {
                     (CTypeKind::Float, 8) => "__m256",
                     (CTypeKind::Double, 2) => "__m128d",
                     (CTypeKind::Double, 4) => "__m256d",
-                    (CTypeKind::LongLong, 2) => "__m128i",
                     (CTypeKind::LongLong, 4) => "__m256i",
-                    (CTypeKind::LongLong, 1) => "__m64",
-                    (CTypeKind::Int, 4) => "__m128i",
+                    (CTypeKind::LongLong, 2) |
+                    (CTypeKind::Char, 16) |
+                    (CTypeKind::Int, 4) |
                     (CTypeKind::Short, 8) => "__m128i",
+                    (CTypeKind::LongLong, 1) |
                     (CTypeKind::Int, 2) => "__m64",
                     (kind, len) => unimplemented!("Unknown vector type: {:?} x {}", kind, len),
                 };
