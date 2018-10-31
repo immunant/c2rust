@@ -83,6 +83,10 @@ pub enum Error {
     /// A `typed!` macro failed to match because the target's type did not match the type pattern.
     WrongType,
 
+    /// A `typed!` macro failed to match because the type of the target expression was not
+    /// available.
+    TypeUnavailable,
+
     BadSpecialPattern(Symbol),
 }
 
@@ -380,7 +384,8 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         p.expect(&Token::Comma).unwrap();
         let ty_pattern = p.parse_ty().unwrap();
 
-        let tcx_ty = self.cx.node_type(target.get_node_id());
+        let tcx_ty = self.cx.opt_node_type(target.get_node_id())
+            .ok_or(Error::TypeUnavailable)?;
         let ast_ty = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), tcx_ty);
 
         if self.try_match(&ty_pattern, &ast_ty).is_err() {
