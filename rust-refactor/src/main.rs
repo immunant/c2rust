@@ -356,7 +356,7 @@ fn main_impl(opts: Options) {
 }
 
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
 
     let args = std::env::args().collect::<Vec<_>>();
     let opts = match parse_opts(args) {
