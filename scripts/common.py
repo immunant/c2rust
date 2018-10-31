@@ -132,8 +132,7 @@ add_subdirectory(ast-exporter)
             if args.debug:
                 build_type = 'debug'
 
-        self.AST_IMPO = "ast-importer/target.{}/{}/ast_importer".format(
-            self.HOST_SUFFIX, build_type)
+        self.AST_IMPO = "ast-importer/target/{}/ast_importer".format(build_type)
         self.AST_IMPO = os.path.join(self.ROOT_DIR, self.AST_IMPO)
 
     @staticmethod

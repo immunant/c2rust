@@ -51,16 +51,25 @@ class TestOutcome(Enum):
     UnexpectedSuccess = "unexpected successes"
 
 
-class CborFile:
-    def __init__(self, path: str, enable_relooper: bool = False,
-                 disallow_current_block: bool = False) -> None:
+class CStaticLibrary:
+    def __init__(self, path: str, link_name: str,
+                 obj_files: List[str]) -> None:
         self.path = path
-        self.enable_relooper = enable_relooper
-        self.disallow_current_block = disallow_current_block
+        self.link_name = link_name
+        self.obj_files = obj_files
 
-    def translate(self) -> RustFile:
-        c_file_path, _ = os.path.splitext(self.path)
-        extensionless_file, _ = os.path.splitext(c_file_path)
+
+class CFile:
+    def __init__(self, path: str, flags: Set[str] = None) -> None:
+        if not flags:
+            flags = set()
+
+        self.path = path
+        self.enable_relooper = "enable_relooper" in flags
+        self.disallow_current_block = "disallow_current_block" in flags
+
+    def translate(self, extra_args: List[str] = []) -> RustFile:
+        extensionless_file, _ = os.path.splitext(self.path)
 
         # help plumbum find rust
         ld_lib_path = get_rust_toolchain_libpath()
@@ -70,10 +79,14 @@ class CborFile:
         # run the importer
         ast_importer = get_cmd_or_die(c.AST_IMPO)
 
+        # TODO: Add this back into the ast exporter rust lib
+        # extra_args = ["-extra-arg={}".format(arg) for arg in extra_args]
+
         args = [
             self.path,
             "--prefix-function-names",
             "rust_",
+            # *extra_args
         ]
 
         if self.enable_relooper:
@@ -97,44 +110,6 @@ class CborFile:
             raise NonZeroReturn(stderr)
 
         return RustFile(extensionless_file + ".rs")
-
-
-class CStaticLibrary:
-    def __init__(self, path: str, link_name: str,
-                 obj_files: List[str]) -> None:
-        self.path = path
-        self.link_name = link_name
-        self.obj_files = obj_files
-
-
-class CFile:
-    def __init__(self, path: str, flags: Set[str] = None) -> None:
-        if not flags:
-            flags = set()
-
-        self.path = path
-        self.enable_relooper = "enable_relooper" in flags
-        self.disallow_current_block = "disallow_current_block" in flags
-
-    def export(self, extra_args: List[str] = []) -> CborFile:
-        ast_exporter = get_cmd_or_die(c.AST_EXPO)
-
-        extra_args = ["-extra-arg={}".format(arg) for arg in extra_args]
-
-        # run the exporter
-        args = [self.path, *extra_args]
-
-        # log the command in a format that's easy to re-run
-        logging.debug("export command:\n %s", str(ast_exporter[args]))
-        retcode, stdout, stderr = ast_exporter[args].run(retcode=None)
-
-        logging.debug("stdout:\n%s", stdout)
-
-        if retcode != 0:
-            raise NonZeroReturn(stderr)
-
-        return CborFile(self.path + ".cbor", self.enable_relooper,
-                        self.disallow_current_block)
 
 
 def build_static_library(c_files: Iterable[CFile],
@@ -347,10 +322,13 @@ class TestDirectory:
         self.generated_files["c_lib"].append(static_library)
         self.generated_files["c_obj"].extend(static_library.obj_files)
 
-        # .c -> .c.cbor
+        rust_file_builder = RustFileBuilder()
+        rust_file_builder.add_features(["libc", "extern_types", "simd_ffi", "stdsimd", "const_transmute"])
+
+        # .c -> .rs
         for c_file in self.c_files:
             _, c_file_short = os.path.split(c_file.path)
-            description = "{}: exporting the C file into CBOR...".format(
+            description = "{}: translating the C file into Rust...".format(
                 c_file_short)
 
             # Run the step
@@ -359,33 +337,10 @@ class TestDirectory:
             self._generate_cc_db(c_file.path)
 
             try:
-                cbor_file = c_file.export(extra_args=["-march=native"])
-            except NonZeroReturn as exception:
-                self.print_status(Colors.FAIL, "FAILED", "export " +
-                                  c_file_short)
-                sys.stdout.write('\n')
-                sys.stdout.write(str(exception))
-
-                outcomes.append(TestOutcome.UnexpectedFailure)
-                continue
-
-            self.generated_files["cbor"].append(cbor_file)
-
-        rust_file_builder = RustFileBuilder()
-        rust_file_builder.add_features(["libc", "extern_types", "simd_ffi", "stdsimd", "const_transmute"])
-
-        # .cbor -> .rs
-        for cbor_file in self.generated_files["cbor"]:
-            _, cbor_file_short = os.path.split(cbor_file.path)
-            description = "{}: translate the CBOR...".format(cbor_file_short)
-
-            self.print_status(Colors.WARNING, "RUNNING", description)
-
-            try:
-                translated_rust_file = cbor_file.translate()
+                translated_rust_file = c_file.translate(extra_args=["-march=native"])
             except NonZeroReturn as exception:
                 self.print_status(Colors.FAIL, "FAILED", "translate " +
-                                  cbor_file_short)
+                                  c_file_short)
                 sys.stdout.write('\n')
                 sys.stdout.write(str(exception))
 
@@ -593,7 +548,7 @@ def main() -> None:
     logging.debug("args: %s", " ".join(sys.argv))
 
     # check that the binaries have been built first
-    bins = [c.AST_EXPO, c.AST_IMPO]
+    bins = [c.AST_IMPO]
     for b in bins:
         if not os.path.isfile(b):
             msg = b + " not found; run build_translator.py first?"
