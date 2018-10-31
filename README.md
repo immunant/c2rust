@@ -2,24 +2,28 @@
 
 [![Build Status](https://travis-ci.org/immunant/c2rust.svg?branch=master)](https://travis-ci.org/immunant/c2rust)
 
-## Why should you migrate your C code to Rust?
+## What is C2Rust?
 
-Rust is well known to be able to enforce many memory safety properties that C cannot. C2Rust's goal is to
-automate much of the migration process from C to Rust, and to provide assistance where it cannot be automated.
+The C2Rust project aims to help you migrate C99 compliant codebases into Rust. It consists of
+three major components: a C to Rust translator, a Rust code refactoring tool, as well as Clang
+& Rust cross checking plugins.
 
-A common complaint we hear goes something like this:
+The translator takes a C source file and produces a 1-1 translation into Rust. Although we do
+strive to improve translated code quality as much as possible, this means that the resulting
+output will never be completely idiomatic or safe. However, since unsafe "C code in Rust"
+isn't the final goal, the C2Rust project also provides a tool to improve and refactor this code.
 
-> I translated my C code, but the output is just as unsafe and not very idiomatic!
+Idiomize is a code refactoring tool we are developing to take that unsafe translated code and
+incrementally convert it into safer Rust. This may require user input to do, as it is not always
+possible to statically determine the perfect approach. Once you start improving the safety of
+your translated code base, you'll still want to check that it still provides identical functionality.
 
-Although we do strive to improve translated code quality as much as possible, the goal of the translator
-is ultimately to produce a 1-1 translation into Rust. Therefore, the resulting output will never be
-completely idiomatic.
+The cross checking plugins allow you to execute both your original C and refactored Rust code to
+determine whether or not functionality has been preserved. Since refactoring should be incremental,
+you should be able to easily undo a change if the cross checker shows that something is amiss
+between the two runs.
 
-Since unsafe "C code in Rust" isn't the final goal, the C2Rust project isn't just a translator. There are two other major
-components: a refactoring tool & cross checking plugin. These two tools can be used side by side to
-incrementally idiomize and validate that your Rust code functions just like the original C, respectively.
-
-In the end you should have safer, more idiomatic, Rust code. Our ultimate goal is to automate as much
+In the end you should have safer, more idiomatic, Rust code. We hope to automate as much
 of this process as possible, but refactoring is currently a manual process.
 
 ## Translating C to Rust
