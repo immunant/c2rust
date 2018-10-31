@@ -31,7 +31,6 @@ pub use self::remove_paren::remove_paren;
 // Modules with more complex APIs are left as `pub`.
 pub mod ast_map;
 pub mod fn_edit;
-pub mod illtyped;
 pub mod lr_expr;
 pub mod number_nodes;
 pub mod util;

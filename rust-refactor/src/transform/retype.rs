@@ -15,9 +15,9 @@ use api::*;
 use ast_manip::lr_expr::{self, fold_exprs_with_context};
 use command::{Command, CommandState, RefactorState, Registry, TypeckLoopResult};
 use driver::{self, Phase};
+use illtyped::{IlltypedFolder, fold_illtyped};
 use reflect;
 use transform::Transform;
-use ast_manip::illtyped::{IlltypedFolder, fold_illtyped};
 
 /// Change the type of function arguments.  All `target` args will have their types changed to
 /// `new_ty`.  Values passed for those arguments will be converted with `wrap`, and uses of those

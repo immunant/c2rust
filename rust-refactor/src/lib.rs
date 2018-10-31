@@ -37,6 +37,7 @@ pub mod span_fix;
 pub mod pick_node;
 
 pub mod path_edit;
+pub mod illtyped;
 pub mod api;
 pub mod contains_mark;
 pub mod reflect;
