@@ -14,7 +14,7 @@ fn main() {
 
     // Find where the (already built) LLVM lib dir is
     let llvm_lib_dir: String = env::var("LLVM_LIB_DIR").ok().or_else(|| {
-        let output = Command::new(llvm_config)
+        let output = Command::new(&llvm_config)
                         .arg("--libdir")
                         .output();
 
@@ -29,7 +29,7 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
     );
 
     // Build the exporter library and link it (and its dependencies) in
-    build_ast_exporter(&llvm_lib_dir, llvm_config);
+    build_ast_exporter(&llvm_lib_dir, &llvm_config);
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
@@ -76,22 +76,24 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
 }
 
 /// Search for an available llvm-config binary in PATH
-fn find_llvm_config() -> &'static str {
-    [
-        "llvm-config-7.0",
-        "llvm-config-6.1",
-        "llvm-config-6.0",
-    ].iter().find_map(|c| {
-        if Command::new(c)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .is_ok() {
-            Some(*c)
-        } else {
-            None
-        }
-    }).unwrap_or("llvm-config")
+fn find_llvm_config() -> String {
+    env::var("LLVM_CONFIG_PATH").ok().or({
+        [
+            "llvm-config-7.0",
+            "llvm-config-6.1",
+            "llvm-config-6.0",
+        ].iter().find_map(|c| {
+            if Command::new(c)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .is_ok() {
+                    Some(String::from(*c))
+                } else {
+                    None
+                }
+        })
+    }).unwrap_or(String::from("llvm-config"))
 }
 
 
