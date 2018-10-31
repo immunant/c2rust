@@ -97,14 +97,14 @@ def configure_and_build_llvm(args: str) -> None:
                      "-DLLVM_TARGETS_TO_BUILD=X86",
                      "-DLLVM_INCLUDE_UTILS=1",
                      "-DLLVM_BUILD_UTILS=1",
-                     "-DBUILD_SHARED_LIBS=1",
+                     "-DLLVM_BUILD_LLVM_DYLIB=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
                      "-DTINYCBOR_PREFIX={}".format(c.CBOR_PREFIX)]
             invoke(cmake[cargs])
         else:
             logging.debug("found existing ninja.build, not running cmake")
 
-        ninja_args = ['ast-exporter']
+        ninja_args = ['libLLVM.dylib', 'libclang.dylib']
         ninja_args += ['FileCheck', 'count', 'not']
         if args.with_clang:
             ninja_args.append('clang')
@@ -282,7 +282,7 @@ def _main():
 
     download_llvm_sources()
 
-    integrate_ast_exporter()
+    # integrate_ast_exporter()
 
     configure_and_build_llvm(args)
 
