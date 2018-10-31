@@ -1,0 +1,10 @@
+[package]
+name = "c2rust_runtime"
+version = "0.1.0"
+authors = ["Stuart Pernsteiner <spernsteiner@galois.com>"]
+
+[dependencies]
+
+[lib]
+name = "c2rust_runtime"
+path = "src/lib.rs"
