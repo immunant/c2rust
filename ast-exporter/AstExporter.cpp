@@ -34,6 +34,10 @@ using namespace clang::tooling;
 
 #define DEBUG_TYPE "ast-exporter"
 
+#ifndef LLVM_DEBUG
+#define LLVM_DEBUG DEBUG
+#endif
+
 using std::string;
 using clang::QualType;
 using clang::ASTContext;
@@ -284,8 +288,8 @@ public:
     // instances. Note: we could handle both cases by overriding `VisitFunctionType`
     // instead of the current two-function solution.
     void VisitFunctionProtoType(const FunctionProtoType *T) {
-        DEBUG(dbgs() << "Visit ");
-        DEBUG(T->dump());
+        LLVM_DEBUG(dbgs() << "Visit ");
+        LLVM_DEBUG(T->dump());
 
         encodeType(T, TagFunctionType, [T, this](CborEncoder *local) {
             CborEncoder arrayEncoder;
@@ -635,8 +639,8 @@ class TranslateASTVisitor final
 
       bool VisitDeclStmt(DeclStmt *DS) {
 
-          DEBUG(dbgs() << "Visit ");
-          DEBUG(DS->dumpColor());
+          LLVM_DEBUG(dbgs() << "Visit ");
+          LLVM_DEBUG(DS->dumpColor());
 
           // We copy only canonical decls and VarDecl's that are extern/local. For more on the
           // latter, see the comment at the top of `VisitVarDecl`
@@ -1038,10 +1042,10 @@ class TranslateASTVisitor final
           // TraverseDecl below.
           if (isExported(DRE, TagDeclRefExpr)) return true;
           
-          DEBUG(dbgs() << "Visiting ");
-          DEBUG(DRE->dumpColor());
-          DEBUG(DRE->getDecl()->getType()->dump());
-          DEBUG(DRE->getType()->dump());
+          LLVM_DEBUG(dbgs() << "Visiting ");
+          LLVM_DEBUG(DRE->dumpColor());
+          LLVM_DEBUG(DRE->getDecl()->getType()->dump());
+          LLVM_DEBUG(DRE->getType()->dump());
           
           auto decl = DRE->getDecl()->getCanonicalDecl();
           
