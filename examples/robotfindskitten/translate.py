@@ -18,6 +18,11 @@ import transpile
 # List of rust-refactor commands to run.
 
 REFACTORINGS = [
+        '''
+            select target 'crate;' ;
+            create_item 'extern crate c2rust_runtime;' inside
+        ''',
+
         'wrapping_arith_to_normal',
         'struct_assign_to_update',
         'struct_merge_updates',
@@ -174,6 +179,63 @@ REFACTORINGS = [
         ''',
 
 
+        # Convert `screen` to a memory-safe array
+
+        '''
+            select target 'crate; child(static && name("screen")); child(ty);' ;
+            rewrite_ty 'marked!(*mut *mut __t)'
+                '*mut ::c2rust_runtime::CBlockPtr<__t>' ;
+            type_fix_rules
+                'rval, *mut __t, ::c2rust_runtime::CBlockPtr<__u> =>
+                    unsafe { ::c2rust_runtime::CBlockPtr::from_ptr(__old) }'
+                'rval, *mut __t, *mut __u => __old as *mut __u'
+                ;
+            rewrite_expr
+                '*typed!(__e, ::c2rust_runtime::block_ptr::CBlockOffset<__t>)'
+                '*__e.as_mut()' ;
+        ''',
+
+        '''
+            select target 'crate; child(static && name("screen")); child(ty);' ;
+            rewrite_ty 'marked!(*mut __t)'
+                '::c2rust_runtime::CBlockPtr<__t>' ;
+            type_fix_rules
+                'rval, *mut __t, ::c2rust_runtime::CBlockPtr<__u> =>
+                    unsafe { ::c2rust_runtime::CBlockPtr::from_ptr(__old) }'
+                'rval, *mut __t, *mut __u => __old as *mut __u'
+                ;
+            rewrite_expr
+                '*typed!(__e, ::c2rust_runtime::block_ptr::CBlockOffset<__t>)'
+                '*__e.as_mut()' ;
+        ''',
+
+        '''
+            rewrite_expr 'malloc(__e) as *mut __t as *mut __u' 'malloc(__e) as *mut __u' ;
+            rewrite_expr
+                '::c2rust_runtime::CBlockPtr::from_ptr(malloc(__e) as *mut __t)'
+                '::c2rust_runtime::CBlockPtr::alloc(
+                    __e as usize / ::std::mem::size_of::<__t>())'
+                ;
+        ''',
+
+        '''
+            rewrite_ty '::c2rust_runtime::CBlockPtr<__t>' '::c2rust_runtime::CArray<__t>' ;
+            rewrite_expr
+                '::c2rust_runtime::CBlockPtr::from_ptr'
+                '::c2rust_runtime::CArray::from_ptr' ;
+            rewrite_expr
+                '::c2rust_runtime::CBlockPtr::alloc'
+                '::c2rust_runtime::CArray::alloc' ;
+            rewrite_expr
+                'typed!(__e, ::c2rust_runtime::CArray<__t>).offset(__f)'
+                '__e.offset_mut(__f)' ;
+            rewrite_expr
+                'typed!(__e, ::c2rust_runtime::CArray<__t>).offset_mut(__f).as_mut()'
+                '&mut __e[__f as usize]' ;
+            rewrite_expr '*&mut __e' '__e' ;
+        ''',
+
+
         # Collect mutable statics into a single struct
 
         '''
@@ -201,7 +263,10 @@ def run_idiomize(args, mode='inplace'):
             '--', 'src/robotfindskitten.rs', '--crate-type=dylib',
             '-L{rust_libdir}/rustlib/{triple}/lib/'.format(
                 rust_libdir=get_rust_toolchain_libpath(),
-                triple=get_host_triplet())]
+                triple=get_host_triplet()),
+            # TODO use target.HOST_SUFFIX here
+            '-L{rref_dir}/runtime/target/debug'.format(
+                rref_dir=config.RREF_DIR)]
 
     ld_lib_path = get_rust_toolchain_libpath()
 

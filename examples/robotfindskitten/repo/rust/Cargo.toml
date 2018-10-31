@@ -9,3 +9,4 @@ name = "robotfindskitten"
 path = "src/robotfindskitten.rs"
 
 [dependencies]
+c2rust_runtime = { path = "../../../../rust-refactor/runtime" }
