@@ -120,6 +120,7 @@ fn build_ast_exporter(llvm_lib: &str, llvm_config: &str) {
 
         // Where to find LLVM/Clang CMake files
         .define("LLVM_DIR",           &format!("{}/cmake/llvm",  llvm_lib))
+        .define("Clang_DIR",          &format!("{}/cmake/clang", llvm_lib))
 
         // What to build
         .build_arg("clangAstExporter")
