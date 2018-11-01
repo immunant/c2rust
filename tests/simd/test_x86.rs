@@ -1,6 +1,6 @@
 extern crate libc;
 
-use x86::{ShuffleVectors, rust_unpack_128_2x128, rust_zero_init_all, rust_call_all, rust_call_all_used};
+use x86::{ShuffleVectors, VectorInitLists, rust_unpack_128_2x128, rust_zero_init_all, rust_call_all, rust_call_all_used, rust_vector_init_lists, rust_vector_init_lists_used};
 
 #[cfg(target_arch = "x86")]
 use std::arch::x86::{__m128i, _mm_setzero_si128, _mm_set_epi32};
@@ -19,6 +19,12 @@ extern "C" {
 
     #[no_mangle]
     fn call_all_used() -> ShuffleVectors;
+
+    #[no_mangle]
+    fn vector_init_lists() -> VectorInitLists;
+
+    #[no_mangle]
+    fn vector_init_lists_used() -> VectorInitLists;
 }
 
 static UNSAFETY_ERROR: &str = "Prevented unsafe calling of SIMD functions when architecture support doesn't exist";
@@ -30,6 +36,7 @@ macro_rules! cmp_vector_fields {
             let other_vec: $typ = unsafe { transmute($other.$field) };
 
             if self_vec != other_vec {
+                eprintln!("({:?}) != ({:?})", self_vec, other_vec);
                 return false
             }
         )+
@@ -115,6 +122,41 @@ pub fn test_shuffle_vectors() {
     let c2 = unsafe { call_all_used() };
     let r1 = unsafe { rust_call_all() };
     let r2 = unsafe { rust_call_all_used() };
+
+    assert_eq!(c1, r1);
+    assert_eq!(c2, r2);
+}
+
+impl PartialEq for VectorInitLists {
+    fn eq(&self, other: &VectorInitLists) -> bool {
+        cmp_vector_fields!(self, other: [
+            a: (f32, f32, f32, f32),
+            b: (f32, f32, f32, f32, f32, f32, f32, f32),
+            c: (f64, f64),
+            d: (f64, f64, f64, f64),
+            e: (i64, i64),
+            f: (i64, i64, i64, i64),
+        ]);
+
+        return true;
+    }
+}
+
+impl Debug for VectorInitLists {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "VectorInitLists {{ .. }}")
+    }
+}
+
+pub fn test_vector_init_lists() {
+    assert!(is_x86_feature_detected!("sse"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse2"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("avx"), UNSAFETY_ERROR);
+
+    let c1 = unsafe { vector_init_lists() };
+    let c2 = unsafe { vector_init_lists_used() };
+    let r1 = unsafe { rust_vector_init_lists() };
+    let r2 = unsafe { rust_vector_init_lists_used() };
 
     assert_eq!(c1, r1);
     assert_eq!(c2, r2);

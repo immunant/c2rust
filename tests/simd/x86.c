@@ -15,6 +15,15 @@ typedef struct {
     __m256i n;
 } ShuffleVectors;
 
+typedef struct {
+    __m128 a;
+    __m256 b;
+    __m128d c;
+    __m256d d;
+    __m128i e;
+    __m256i f;
+} VectorInitLists;
+
 void unpack_128_2x128(__m128i data, __m128i* data_lo, __m128i* data_hi)
 {
     *data_lo = _mm_unpacklo_epi8 (data, _mm_setzero_si128());
@@ -110,4 +119,32 @@ ShuffleVectors call_all_used(void) {
     };
 
     return sv;
+}
+
+VectorInitLists vector_init_lists(void) {
+    VectorInitLists il = {
+        {1.3f, 2.3f, 3.4f, 4.4f},
+        {2.2f, 4.4f, 5.6f, 4.3f, 6.7f, 6.6f, 5.5f, 8.8f},
+        {2.2, 4.4},
+        {2.2, 3.3, 4.4, 5.5},
+        {45LL, 32LL},
+        {12LL, 34LL, 56LL, 78LL},
+    };
+
+    return il;
+}
+
+VectorInitLists vector_init_lists_used(void) {
+    __m128 a = {1.3f, 2.3f, 3.4f, 4.4f};
+    __m256 b = {2.2f, 4.4f, 5.6f, 4.3f, 6.7f, 6.6f, 5.5f, 8.8f};
+    __m128d c = {2.2, 4.4};
+    __m256d d = {2.2, 3.3, 4.4, 5.5};
+    __m128i e = {45LL, 32LL};
+    __m256i f = {12LL, 34LL, 56LL, 78LL};
+
+    VectorInitLists il = {
+        a, b, c, d, e, f,
+    };
+
+    return il;
 }

@@ -3210,6 +3210,54 @@ impl Translation {
                         let mut x = self.convert_expr(ExprUse::Used, *id, is_static, decay_ref);
                         Ok(x.unwrap())
                     }
+                    CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
+                        let fn_call_name = match (&self.ast_context.c_types[&ctype].kind, len) {
+                            (CTypeKind::Float, 4) => "_mm_setr_ps",
+                            (CTypeKind::Float, 8) => "_mm256_setr_ps",
+                            (CTypeKind::Double, 2) => "_mm_setr_pd",
+                            (CTypeKind::Double, 4) => "_mm256_setr_pd",
+                            (CTypeKind::LongLong, 2) => "_mm_set_epi64x",
+                            (CTypeKind::LongLong, 4) => "_mm256_setr_epi64x",
+                            (CTypeKind::Char, 8) => "_mm_setr_pi8",
+                            (CTypeKind::Char, 16) => "_mm_setr_epi8",
+                            (CTypeKind::Char, 32) => "_mm256_setr_epi8",
+                            (CTypeKind::Int, 2) => "_mm_setr_pi32",
+                            (CTypeKind::Int, 4) => "_mm_setr_epi32",
+                            (CTypeKind::Int, 8) => "_mm256_setr_epi32",
+                            (CTypeKind::Short, 4) => "_mm_setr_pi16",
+                            (CTypeKind::Short, 8) => "_mm_setr_epi16",
+                            (CTypeKind::Short, 16) => "_mm256_setr_epi16",
+                            ref e => return Err(format!("Unknown vector init list: {:?}", e)),
+                        };
+
+                        self.import_simd_function(fn_call_name)?;
+
+                        let mut params: Vec<P<Expr>> = vec![];
+
+                        for param_id in ids {
+                            params.push(self.convert_expr(use_, *param_id, is_static, decay_ref)?.val);
+                        }
+
+                        // rust is missing support for _mm_setr_epi64x, so we have to use
+                        // the reverse arguments for _mm_set_epi64x
+                        if fn_call_name == "_mm_set_epi64x" {
+                            params.reverse();
+                        }
+
+                        let call = mk().call_expr(mk().ident_expr(fn_call_name), params);
+
+                        if use_ == ExprUse::Used {
+                            Ok(WithStmts {
+                                stmts: Vec::new(),
+                                val: call,
+                            })
+                        } else {
+                            Ok(WithStmts {
+                                stmts: vec![mk().expr_stmt(call)],
+                                val: self.panic("No value for unused shuffle vector return"),
+                            })
+                        }
+                    }
                     ref t => {
                         Err(format!("Init list not implemented for {:?}", t))
                     }
