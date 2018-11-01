@@ -22,7 +22,7 @@ export RUST_BACKTRACE=1
 # export refactor='../../target/debug/idiomize -P ../.. -p plugin_stub -r alongside'
 export idiomize_bin='../../target/debug/idiomize'
 export refactor="$idiomize_bin  -r alongside"
-export rustflags="-L $rust_dir/lib/rustlib/$triple/lib"
+export rustflags=""
 
 ( cd $1; ./run.sh; )
 if ! [ -f $1/no-rustfmt ]; then
