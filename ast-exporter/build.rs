@@ -4,7 +4,7 @@ extern crate cmake;
 
 use std::env;
 use std::process::{Command, Stdio};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use cmake::Config;
 
 // Use `cargo build -vv` to get detailed output on this script's progress.
@@ -41,7 +41,7 @@ fn find_llvm_config() -> String {
 }
 
 fn find_llvm_libdir(llvm_config: &str) -> String {
-    env::var("LLVM_LIB_DIR").ok().or_else(|| {
+    let path_str = env::var("LLVM_LIB_DIR").ok().or_else(|| {
         let output = Command::new(&llvm_config)
                         .arg("--libdir")
                         .output();
@@ -54,7 +54,8 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
 
   $ export LLVM_LIB_DIR=/usr/local/opt/llvm/lib
 "
-    )
+    );
+    String::from(Path::new(&path_str).canonicalize().unwrap().to_string_lossy())
 }
 
 fn generate_bindings() {
