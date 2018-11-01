@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 /// This module provides translation for SIMD operations and expressions.
 
 use super::*;
@@ -133,6 +134,9 @@ impl Translation {
         Ok(false)
     }
 
+    /// Generate an implementation of builtin_ia32_pshufw that calls out to `_mm_shuffle_pi16`.
+    /// This shuffle operation is unique in clang in that it is implemented with an actual
+    /// built-in function.
     pub fn convert_builtin_ia32_pshufw(
         &self,
         use_: ExprUse,
