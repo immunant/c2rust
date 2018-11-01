@@ -36,11 +36,10 @@ The previous two options automatically install all prerequisites during provisio
     - git
     - gnupg2
     - gperf
-    - htop
     - ninja
     - unzip
     - clang 5.0+
-    - intercept-build or bear - see section on `compile_commands.json` generation
+    - intercept-build or bear - see why [here](#generating-compile_commandsjson-files)
     - python-dev
     - python 3.6+
     - [python dependencies](scripts/requirements.txt)
@@ -65,12 +64,10 @@ Tests are found in the [`tests`](tests) folder. If you build the translator succ
 
 This basically tests that the original C file and translated Rust file produce the same output when compiled and run. More details about tests are in [this README](tests/README.md).
 
- [0]: docs/building-ast-exporter.md
-
 # Translating C to Rust
 
 The translator is driven by a `compile_commands.json` file. This is a [standard](https://clang.llvm.org/docs/JSONCompilationDatabase.html) way to capture compiler invocations and is used by many other tools. The best way to [generate 
- `compile_commands.json` files](#generating) depends on your build system. 
+ `compile_commands.json` files](#generating-compile_commandsjson-files) depends on your build system. 
 
     $ ./scripts/transpile.py path/to/compile_commands.json
 
@@ -130,7 +127,7 @@ directory.
 
 > Are there release binaries? Can I install C2Rust with Cargo?
 
-Hope to release binaries that you can `cargo install` soon(tm).
+We hope to release binaries that you can `cargo install` soon(tm).
 
 > I translated code on platform X but it didn't work correctly on platform Y
 
@@ -140,10 +137,16 @@ We run the C preprocessor before translation to Rust. This specializes the code 
 
 The translator and refactoring tool support both macOS and Linux. Other features, such as cross checking the functionality between C and Rust code, are currently limited to Linux hosts. 
 
-## Acknowledgements and Licensing
+
+# Contact
+To report issues with the translation, please use our Issue Tracker.
+
+The development team can be reached by email at c2rust@immunant.com.
+
+# Acknowledgements and Licensing
 
 This material is available under the BSD-3 style license as found in the
-`LICENSE` file.
+[LICENSE](LICENSE) file.
 
 The C2Rust translator is inspired by Jamey Sharp's [Corrode](https://github.com/jameysharp/corrode) translator. We rely on 
 [Emscripten](https://github.com/kripken/emscripten)'s 
