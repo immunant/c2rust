@@ -1,17 +1,17 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
-use rustc::hir;
-use rustc_target::spec::abi::Abi;
-// use syntax::abi::Abi;
 use syntax::ast::*;
-use syntax::codemap::{DUMMY_SP, Spanned, Span, dummy_spanned};
+use syntax::ThinVec;
+use syntax::source_map::{DUMMY_SP, Spanned, Span, dummy_spanned};
 use syntax::parse::token::{self, Token, DelimToken};
+use syntax::attr::{mk_attr_inner};
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder, ThinTokenStream};
 use syntax::symbol::keywords;
 use std::rc::Rc;
+use rustc_target::spec::abi::{self, Abi};
+use rustc::hir;
 
-use util::IntoSymbol;
-
+use into_symbol::IntoSymbol;
 
 pub trait Make<T> {
     fn make(self, mk: &Builder) -> T;
@@ -36,15 +36,29 @@ impl<S: IntoSymbol> Make<Ident> for S {
     }
 }
 
+impl<L: Make<Ident>> Make<Label> for L {
+    fn make(self, mk: &Builder) -> Label {
+        Label { ident: self.make(mk) }
+    }
+}
+
 
 impl<'a> Make<Visibility> for &'a str {
     fn make(self, _mk: &Builder) -> Visibility {
-        let node = match self {
+        let kind = match self {
             "pub" => VisibilityKind::Public,
             "priv" | "" | "inherit" => VisibilityKind::Inherited,
+            "crate" => VisibilityKind::Crate(CrateSugar::JustCrate),
+            "pub(crate)" => VisibilityKind::Crate(CrateSugar::PubCrate),
             _ => panic!("unrecognized string for Visibility: {:?}", self),
         };
-        dummy_spanned(node)
+        dummy_spanned(kind)
+    }
+}
+
+impl<'a> Make<Abi> for &'a str {
+    fn make(self, _mk: &Builder) -> Abi {
+        abi::lookup(self).expect(&format!("unrecognized string for Abi: {:?}", self))
     }
 }
 
@@ -148,11 +162,10 @@ impl<I: Make<Ident>> Make<PathSegment> for I {
     fn make(self, mk: &Builder) -> PathSegment {
         PathSegment {
             ident: self.make(mk),
-            parameters: None,
+            args: None,
         }
     }
 }
-
 
 impl<S: Make<PathSegment>> Make<Path> for Vec<S> {
     fn make(self, mk: &Builder) -> Path {
@@ -182,20 +195,49 @@ impl Make<TokenTree> for Token {
     }
 }
 
-impl Make<PathParameters> for AngleBracketedParameterData {
-    fn make(self, _mk: &Builder) -> PathParameters {
+impl Make<GenericArgs> for AngleBracketedArgs {
+    fn make(self, _mk: &Builder) -> GenericArgs {
         AngleBracketed(self)
     }
 }
 
-impl Make<PathParameters> for ParenthesizedParameterData {
-    fn make(self, _mk: &Builder) -> PathParameters {
+impl Make<GenericArgs> for ParenthesisedArgs {
+    fn make(self, _mk: &Builder) -> GenericArgs {
         Parenthesized(self)
     }
 }
 
+impl Make<GenericArg> for P<Ty> {
+    fn make(self, _mk: &Builder) -> GenericArg {
+        GenericArg::Type(self)
+    }
+}
 
-#[derive(Clone)]
+impl Make<GenericArg> for Lifetime {
+    fn make(self, _mk: &Builder) -> GenericArg {
+        GenericArg::Lifetime(self)
+    }
+}
+
+impl Make<NestedMetaItemKind> for MetaItem {
+    fn make(self, _mk: &Builder) -> NestedMetaItemKind {
+        NestedMetaItemKind::MetaItem(self)
+    }
+}
+
+impl Make<NestedMetaItemKind> for Lit {
+    fn make(self, _mk: &Builder) -> NestedMetaItemKind {
+        NestedMetaItemKind::Literal(self)
+    }
+}
+
+impl Make<MetaItemKind> for Lit {
+    fn make(self, _mk: &Builder) -> MetaItemKind {
+        MetaItemKind::NameValue(self)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Builder {
     // The builder holds a set of "modifiers", such as visibility and mutability.  Functions for
     // building AST nodes don't take arguments of these types, but instead use any applicable
@@ -366,7 +408,7 @@ impl Builder {
                 }
 
                 let argument: Ident = argument.make(&self);
-                builder.push(Token::Ident(argument, false));
+                builder.push(Token::from_ast_ident(argument));
             }
 
             builder.push(Token::CloseDelim(DelimToken::Paren));
@@ -390,37 +432,41 @@ impl Builder {
 
     // Path segments with parameters
 
-    pub fn path_segment_with_params<I,P>(self, identifier: I, parameters: P) -> PathSegment
-        where I: Make<Ident>, P: Make<PathParameters> {
+    pub fn path_segment_with_args<I,P>(self, identifier: I, args: P) -> PathSegment
+        where I: Make<Ident>, P: Make<GenericArgs> {
         let identifier = identifier.make(&self);
-        let parameters = parameters.make(&self);
+        let args = args.make(&self);
         PathSegment {
             ident: identifier,
-            parameters: Some(P(parameters)),
+            args: Some(P(args)),
         }
     }
 
-    pub fn parenthesized_param_types<Ps>(self, params: Ps) -> ParenthesizedParameterData
-        where Ps: Make<Vec<P<Ty>>> {
+    pub fn parenthesized_args<Ts>(self, tys: Ts) -> ParenthesisedArgs
+        where Ts: Make<Vec<P<Ty>>> {
 
-        let params = params.make(&self);
-        ParenthesizedParameterData {
+        let tys = tys.make(&self);
+        ParenthesisedArgs {
             span: self.span,
-            inputs: params,
+            inputs: tys,
             output: None,
         }
     }
 
-    pub fn angle_bracketed_param_types<Ps>(self, params: Ps) -> AngleBracketedParameterData
-        where Ps: Make<Vec<P<Ty>>> {
+    pub fn angle_bracketed_args<A>(self, args: Vec<A>) -> AngleBracketedArgs
+        where A: Make<GenericArg> {
 
-        let params = params.make(&self);
-        AngleBracketedParameterData {
+        let args = args.into_iter().map(|arg| arg.make(&self)).collect();
+        AngleBracketedArgs {
             span: self.span,
-            lifetimes: vec![],
-            types: params,
+            args: args,
             bindings: vec![],
         }
+    }
+
+    pub fn generic_arg<A>(self, arg: A) -> GenericArg
+            where A: Make<GenericArg> {
+        arg.make(&self)
     }
 
     // Simple nodes
@@ -440,13 +486,29 @@ impl Builder {
         path.make(&self)
     }
 
+    pub fn abs_path<Pa>(self, path: Pa) -> Path
+        where Pa: Make<Path> {
+        let mut p = path.make(&self);
+        if !p.segments.get(0).map_or(false, |s| s.ident.name == keywords::CrateRoot.name()) {
+            p.segments.insert(0, keywords::CrateRoot.ident().make(&self));
+        }
+        p
+    }
+
+    pub fn anon_const<E>(self, expr: E) -> AnonConst
+        where E: Make<P<Expr>> {
+        AnonConst {
+            id: DUMMY_NODE_ID,
+            value: expr.make(&self),
+        }
+    }
+
     pub fn spanned<T, U: Make<T>>(self, x: U) -> Spanned<T> {
         Spanned {
             node: x.make(&self),
             span: self.span,
         }
     }
-
 
     // Exprs
     // These are sorted in the same order as the corresponding ExprKind variants, with additional
@@ -588,6 +650,18 @@ impl Builder {
         })
     }
 
+    pub fn labelled_block_expr<B, L>(self, blk: B, lbl: L) -> P<Expr>
+        where B: Make<P<Block>>, L: Make<Label> {
+        let blk = blk.make(&self);
+        let lbl = lbl.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Block(blk, Some(lbl)),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
     pub fn assign_expr<E1, E2>(self, lhs: E1, rhs: E2) -> P<Expr>
         where E1: Make<P<Expr>>, E2: Make<P<Expr>> {
         let lhs = lhs.make(&self);
@@ -646,7 +720,7 @@ impl Builder {
     pub fn repeat_expr<E, N>(self, expr: E, n: N) -> P<Expr>
         where E: Make<P<Expr>>, N: Make<P<Expr>> {
         let expr = expr.make(&self);
-        let n = AnonConst { id: DUMMY_NODE_ID, value: n.make(&self) };
+        let n = mk().anon_const(n.make(&self));
         P(Expr {
             id: self.id,
             node: ExprKind::Repeat(expr, n),
@@ -759,7 +833,7 @@ impl Builder {
     pub fn arm<Pa, E>(self, pats: Vec<Pa>, guard: Option<E>, body: E) -> Arm
         where E: Make<P<Expr>>, Pa: Make<P<Pat>> {
         let pats = pats.into_iter().map(|pat| pat.make(&self)).collect();
-        let guard = guard.map(|g| g.make(&self));
+        let guard = guard.map(|g| Guard::If(g.make(&self)));
         let body = body.make(&self);
         Arm {
             attrs: self.attrs.into(),
@@ -1001,7 +1075,7 @@ impl Builder {
     pub fn array_ty<T, E>(self, ty: T, len: E) -> P<Ty>
         where T: Make<P<Ty>>, E: Make<P<Expr>> {
         let ty = ty.make(&self);
-        let len = AnonConst { id: DUMMY_NODE_ID, value: len.make(&self) };
+        let len = mk().anon_const(len.make(&self));
         P(Ty {
             id: self.id,
             node: TyKind::Array(ty, len),
@@ -1202,11 +1276,15 @@ impl Builder {
         let name = name.make(&self);
         let decl = decl.make(&self);
         let block = block.make(&self);
+        let header = FnHeader {
+            unsafety: self.unsafety,
+            asyncness: IsAsync::NotAsync,
+            constness: dummy_spanned(self.constness),
+            abi: self.abi,
+        };
         Self::item(name, self.attrs, self.vis, self.span, self.id,
                    ItemKind::Fn(decl,
-                                self.unsafety,
-                                dummy_spanned(self.constness),
-                                self.abi,
+                                header,
                                 self.generics,
                                 block))
     }
@@ -1276,6 +1354,23 @@ impl Builder {
         let name = name.make(&self);
         let kind = ItemKind::Ty(ty, self.generics);
         Self::item(name, self.attrs, self.vis, self.span, self.id, kind)
+    }
+
+    pub fn mod_item<I>(self, name: I, m: Mod) -> P<Item>
+            where I: Make<Ident> {
+        let name = name.make(&self);
+        let kind = ItemKind::Mod(m);
+        Self::item(name, self.attrs, self.vis, self.span, self.id, kind)
+    }
+
+    pub fn mod_<I>(self, items: Vec<I>) -> Mod
+            where I: Make<P<Item>> {
+        let items = items.into_iter().map(|i| i.make(&self)).collect();
+        Mod {
+            inner: self.span,
+            items,
+            inline: true,
+        }
     }
 
     pub fn mac_item<M>(self, mac: M) -> P<Item>
@@ -1356,13 +1451,30 @@ impl Builder {
                    ItemKind::Use(P(use_tree)))
     }
 
+    pub fn use_multiple_item<Pa, I>(self, path: Pa, inner: Vec<I>) -> P<Item>
+        where Pa: Make<Path>, I: Make<Ident>,
+    {
+        let path = path.make(&self);
+        let inner_trees = inner.into_iter().map(|i| (UseTree {
+            span: DUMMY_SP,
+            prefix: Path::from_ident(i.make(&self)),
+            kind: UseTreeKind::Simple(None, DUMMY_NODE_ID, DUMMY_NODE_ID)
+        }, DUMMY_NODE_ID)).collect();
+        let use_tree = UseTree {
+            span: DUMMY_SP,
+            prefix: path,
+            kind: UseTreeKind::Nested(inner_trees),
+        };
+        Self::item(keywords::Invalid.ident(), self.attrs, self.vis, self.span, self.id,
+                   ItemKind::Use(P(use_tree)))
+    }
+
     pub fn foreign_items(self, items: Vec<ForeignItem>) -> P<Item>
     {
         let fgn_mod = ForeignMod { abi: self.abi, items };
         Self::item(keywords::Invalid.ident(), self.attrs, self.vis, self.span, self.id,
                    ItemKind::ForeignMod(fgn_mod))
     }
-
 
     // Impl Items
 
@@ -1462,6 +1574,23 @@ impl Builder {
         })
     }
 
+    pub fn label<L>(self, lbl: L) -> Label
+         where L: Make<Label> {
+         lbl.make(&self)
+    }
+
+    pub fn break_expr_value<L,E>(self, label: Option<L>, value: Option<E>) -> P<Expr>
+        where L: Make<Label>, E: Make<P<Expr>> {
+        let label = label.map(|l| l.make(&self));
+        let value = value.map(|v| v.make(&self));
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Break(label, value),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
     pub fn arg<T, Pt>(self, ty: T, pat: Pt) -> Arg
         where T: Make<P<Ty>>, Pt: Make<P<Pat>> {
         let ty = ty.make(&self);
@@ -1480,15 +1609,15 @@ impl Builder {
         Arg::from_self(eself, ident)
     }
 
-    pub fn ty_param<I>(self, ident: I) -> TyParam
+    pub fn ty_param<I>(self, ident: I) -> GenericParam
         where I: Make<Ident> {
         let ident = ident.make(&self);
-        TyParam {
+        GenericParam {
             attrs: self.attrs.into(),
             ident: ident,
             id: self.id,
             bounds: vec![],
-            default: None,
+            kind: GenericParamKind::Type { default: None },
         }
     }
 
@@ -1513,6 +1642,45 @@ impl Builder {
             is_sugared_doc: false,
             span: self.span,
         }
+    }
+
+    pub fn meta_item_attr(mut self, style: AttrStyle, meta_item: MetaItem) -> Self
+    {
+        let mut attr = mk_attr_inner(DUMMY_SP, AttrId(0), meta_item);
+        attr.style = style;
+        self.attrs.push(attr);
+        self
+    }
+
+    pub fn meta_item<I,K>(self, path: I, kind: K) -> MetaItem
+        where I: Make<Path>, K: Make<MetaItemKind> {
+
+        let path = path.make(&self);
+        let kind = kind.make(&self);
+        MetaItem {
+            ident: path,
+            node: kind,
+            span: DUMMY_SP,
+        }
+    }
+
+    pub fn nested_meta_item<K>(self, kind: K) -> NestedMetaItem
+        where K: Make<NestedMetaItemKind>
+     {
+        let kind = kind.make(&self);
+        dummy_spanned(kind)
+    }
+
+    // Convert the current internal list of outer attributes
+    // into a vector of inner attributes, e.g.:
+    // `#[foo]` => `#![foo]`
+    pub fn as_inner_attrs(self) -> Vec<Attribute> {
+        self.attrs.into_iter().map(|outer_attr| {
+            Attribute {
+                style: AttrStyle::Inner,
+                ..outer_attr
+            }
+        }).collect::<Vec<Attribute>>()
     }
 
     pub fn mac<Pa, Ts>(self, path: Pa, tts: Ts, delim: MacDelimiter) -> Mac
@@ -1586,7 +1754,7 @@ impl Builder {
         let body = body.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Closure(capture, mov, decl, body, DUMMY_SP),
+            node: ExprKind::Closure(capture, IsAsync::NotAsync, mov, decl, body, DUMMY_SP),
             span: self.span,
             attrs: self.attrs.into(),
         })

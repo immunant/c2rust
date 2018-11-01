@@ -17,9 +17,11 @@ extern crate rustc_metadata;
 extern crate rustc_resolve;
 extern crate rustc_target;
 extern crate rustc_codegen_utils;
+#[macro_use] extern crate smallvec;
 extern crate syntax;
 extern crate syntax_ext;
 extern crate syntax_pos;
+extern crate rust_ast_builder;
 
 #[macro_use] mod macros;
 
@@ -35,6 +37,7 @@ pub mod span_fix;
 pub mod pick_node;
 
 pub mod path_edit;
+pub mod illtyped;
 pub mod api;
 pub mod contains_mark;
 pub mod reflect;
@@ -44,7 +47,6 @@ pub mod resolve;
 pub mod matcher;
 
 pub mod driver;
-pub mod recheck;
 pub mod collapse;
 pub mod node_map;
 

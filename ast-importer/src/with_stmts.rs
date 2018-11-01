@@ -1,5 +1,5 @@
 use syntax::ast::{Stmt, Block, Expr};
-use rust_ast::mk;
+use rust_ast_builder::mk;
 use syntax::ptr::P;
 
 #[derive(Debug)]

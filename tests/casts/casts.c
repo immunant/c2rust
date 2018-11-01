@@ -1,6 +1,6 @@
 #include <stdlib.h>
 
-void cast_stuff() {
+void cast_stuff(void) {
         int inta[10] = {0};
         int *intp = 0;
         const int *cintp = 0;

@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use syntax::attr;
 use syntax::ast::*;
-use syntax::codemap::Span;
-use util::IntoSymbol;
+use syntax::source_map::Span;
+use rust_ast_builder::IntoSymbol;
 
 mod cfg_attr;
 mod mac_table;

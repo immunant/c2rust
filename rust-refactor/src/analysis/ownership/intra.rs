@@ -2,8 +2,9 @@
 
 use rustc::hir::def_id::DefId;
 use rustc::mir::*;
-use rustc::ty::{Ty, TypeVariants};
-use rustc_data_structures::indexed_vec::{IndexVec, Idx};
+use rustc::mir::tcx::PlaceTy;
+use rustc::ty::{Ty, TyKind};
+use rustc_data_structures::indexed_vec::IndexVec;
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
@@ -14,7 +15,7 @@ use super::context::{Ctxt, Instantiation};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Label<'tcx> {
-    /// Most `TypeVariants` get no constructor.
+    /// Most `TyKind` get no constructor.
     None,
 
     /// Pointers and references get a permission annotation.
@@ -24,7 +25,7 @@ enum Label<'tcx> {
     /// which can be arbitrary.
     Ptr(Perm<'tcx>),
 
-    /// `TyFnDef` ought to be labeled with something like an extra set of `Substs`, but for
+    /// `FnDef` ought to be labeled with something like an extra set of `Substs`, but for
     /// permissions instead of type/lifetimes.  However, every one of those `Substs` would simply
     /// consist of a list of sequentially numbered `InstVar`s.  So instead we store an index into
     /// the `insts` table, which can be used to reconstruct the permission arguments, and also
@@ -183,14 +184,14 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 ref mut next_inst_var, ref mut insts, .. } = *self;
         ilcx.label(ty, &mut |ty| {
             match ty.sty {
-                TypeVariants::TyRef(_, _, _) |
-                TypeVariants::TyRawPtr(_) => {
+                TyKind::Ref(_, _, _) |
+                TyKind::RawPtr(_) => {
                     let v = Var(*next_local_var);
                     *next_local_var += 1;
                     Label::Ptr(Perm::LocalVar(v))
                 },
 
-                TypeVariants::TyFnDef(def_id, _) => {
+                TyKind::FnDef(def_id, _) => {
                     let (func, var) = cx.variant_summ(def_id);
                     let num_vars = func.num_sig_vars;
 
@@ -234,6 +235,13 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
             Place::Static(ref s) => (self.static_ty(s.def_id), Perm::move_(), None),
 
+            Place::Promoted(ref _p) => {
+                // TODO: test this
+                let pty = lv.ty(self.mir, self.cx.tcx);
+                let ty = expect!([pty] PlaceTy::Ty { ty } => ty);
+                (self.local_ty(ty), Perm::read(), None)
+            },
+
             Place::Projection(ref p) => {
                 let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&p.base);
 
@@ -265,12 +273,12 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
     fn field_lty(&mut self, base_ty: ITy<'tcx>, v: usize, f: Field) -> ITy<'tcx> {
         match base_ty.ty.sty {
-            TypeVariants::TyAdt(adt, _substs) => {
+            TyKind::Adt(adt, _substs) => {
                 let field_def = &adt.variants[v].fields[f.index()];
                 let poly_ty = self.static_ty(field_def.did);
                 self.ilcx.subst(poly_ty, &base_ty.args)
             },
-            TypeVariants::TyTuple(_tys_) => base_ty.args[f.index()],
+            TyKind::Tuple(_tys_) => base_ty.args[f.index()],
             _ => unimplemented!(),
         }
     }
@@ -334,7 +342,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                         }
                         (tuple_ty, Perm::move_())
                     },
-                    AggregateKind::Adt(adt, disr, _substs, union_variant) => {
+                    AggregateKind::Adt(adt, disr, _substs, _annot, union_variant) => {
                         let adt_ty = self.local_ty(ty);
 
                         if let Some(union_variant) = union_variant {
@@ -431,7 +439,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
             let inst1 = &self.insts[idx1];
             let inst2 = &self.insts[idx2];
             assert!(inst1.callee == inst2.callee,
-                    "impossible - tried to unify unequal TyFnDefs ({:?} != {:?})",
+                    "impossible - tried to unify unequal FnDefs ({:?} != {:?})",
                     inst1.callee, inst2.callee);
 
             if inst1.first_inst_var == inst2.first_inst_var {
@@ -454,7 +462,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
     fn ty_fn_sig(&mut self, ty: ITy<'tcx>) -> IFnSig<'tcx> {
         match ty.ty.sty {
-            TypeVariants::TyFnDef(did, _substs) => {
+            TyKind::FnDef(did, _substs) => {
                 let idx = expect!([ty.label] Label::FnDef(idx) => idx);
                 let var_base = self.insts[idx].first_inst_var;
 
@@ -466,7 +474,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                         Some(PermVar::Sig(v)) => Label::Ptr(Perm::InstVar(Var(var_base + v.0))),
                         Some(_) => panic!("found non-Sig PermVar in sig"),
                         None => Label::None,
-                        // There's no way to write a TyFnDef type in a function signature, so it's
+                        // There's no way to write a FnDef type in a function signature, so it's
                         // reasonable to have no cases output `Label::FnDef`.
                     }
                 };
@@ -480,14 +488,14 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 }
             },
 
-            TypeVariants::TyFnPtr(_) => {
+            TyKind::FnPtr(_) => {
                 FnSig {
                     inputs: &ty.args[.. ty.args.len() - 1],
                     output: ty.args[ty.args.len() - 1],
                 }
             },
 
-            TypeVariants::TyClosure(_, _) => unimplemented!(),
+            TyKind::Closure(_, _) => unimplemented!(),
 
             _ => panic!("expected FnDef, FnPtr, or Closure"),
         }
@@ -508,7 +516,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                     eprintln!("    {:?}: {:?}", lv, lv_ty);
                     eprintln!("    ^-- {:?}: {:?}", rv, rv_ty);
                 },
-                StatementKind::ReadForMatch { .. } |
+                StatementKind::FakeRead(..) |
                 StatementKind::SetDiscriminant { .. } |
                 StatementKind::StorageLive(_) |
                 StatementKind::StorageDead(_) |
@@ -517,7 +525,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 StatementKind::InlineAsm { .. } |
                 StatementKind::Validate(..) |
                 StatementKind::EndRegion(_) |
-                StatementKind::UserAssertTy { .. } |
+                StatementKind::AscribeUserType(..) |
                 StatementKind::Nop => {},
             }
         }

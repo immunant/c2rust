@@ -1,11 +1,14 @@
 use std::rc::Rc;
-use syntax::ast::*;
 use rustc_target::spec::abi::Abi;
-use syntax::codemap::{Span, Spanned};
-use syntax::ext::hygiene::SyntaxContext;
+use smallvec::SmallVec;
+use syntax::ThinVec;
+use syntax::ast::*;
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
+use syntax::source_map::{Span, Spanned};
+use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
+use syntax_pos::hygiene::SyntaxContext;
+
 
 pub trait ListNodeIds {
     fn list_node_ids(&self) -> Vec<NodeId> {
@@ -50,6 +53,12 @@ impl<T: ListNodeIds> ListNodeIds for [T] {
 }
 
 impl<T: ListNodeIds> ListNodeIds for Vec<T> {
+    fn add_node_ids(&self, ids: &mut Vec<NodeId>) {
+        <[T] as ListNodeIds>::add_node_ids(self, ids)
+    }
+}
+
+impl<T: ListNodeIds> ListNodeIds for SmallVec<[T; 1]> {
     fn add_node_ids(&self, ids: &mut Vec<NodeId>) {
         <[T] as ListNodeIds>::add_node_ids(self, ids)
     }

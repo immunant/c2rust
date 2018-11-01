@@ -1,11 +1,11 @@
 //! `Fold` trait for AST types that can be folded over.
 use syntax::ast::*;
-use syntax::codemap::Span;
 use syntax::fold::Folder;
 use syntax::ptr::P;
 use syntax::parse::token::{Token, Nonterminal};
+use syntax::source_map::Span;
 use syntax::tokenstream::{TokenTree, TokenStream};
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 
 
@@ -68,24 +68,31 @@ gen_folder_impls! {
             list_item: NestedMetaItem
         ) -> NestedMetaItem { ... }
         fn fold_meta_item(&mut self, meta_item: MetaItem) -> MetaItem { ... }
-        fn fold_foreign_item(&mut self, ni: ForeignItem) -> SmallVector<ForeignItem> { ... }
-        fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> { ... }
-        fn fold_item_simple(&mut self, i: Item) -> Item { ... }
+        fn fold_use_tree(&mut self, use_tree: UseTree) -> UseTree { ... }
+        fn fold_foreign_item(&mut self, ni: ForeignItem) -> SmallVec<[ForeignItem; 1]> { ... }
+        //fn fold_foreign_item_simple(&mut self, ni: ForeignItem) -> ForeignItem { ... }
+        fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> { ... }
+        //fn fold_item_simple(&mut self, i: Item) -> Item { ... }
         fn fold_struct_field(&mut self, sf: StructField) -> StructField { ... }
         fn fold_item_kind(&mut self, i: ItemKind) -> ItemKind { ... }
-        fn fold_trait_item(&mut self, i: TraitItem) -> SmallVector<TraitItem> { ... }
-        fn fold_impl_item(&mut self, i: ImplItem) -> SmallVector<ImplItem> { ... }
+        fn fold_trait_item(&mut self, i: TraitItem) -> SmallVec<[TraitItem; 1]> { ... }
+        fn fold_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> { ... }
         fn fold_fn_decl(&mut self, d: P<FnDecl>) -> P<FnDecl> { ... }
+        fn fold_asyncness(&mut self, a: IsAsync) -> IsAsync { ... }
         fn fold_block(&mut self, b: P<Block>) -> P<Block> { ... }
-        fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> { ... }
+        fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> { ... }
         fn fold_arm(&mut self, a: Arm) -> Arm { ... }
+        fn fold_guard(&mut self, g: Guard) -> Guard { ... }
         fn fold_pat(&mut self, p: P<Pat>) -> P<Pat> { ... }
+        fn fold_anon_const(&mut self, c: AnonConst) -> AnonConst { ... }
         fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> { ... }
         fn fold_range_end(&mut self, re: RangeEnd) -> RangeEnd { ... }
         // Skip this method.  We already have an impl for P<Expr>, from fold_expr above
         //fn fold_opt_expr(&mut self, e: P<Expr>) -> Option<P<Expr>> { ... }
         //fn fold_exprs(&mut self, es: Vec<P<Expr>>) -> Vec<P<Expr>> { ... }
+        fn fold_generic_arg(&mut self, arg: GenericArg) -> GenericArg { ... }
         fn fold_ty(&mut self, t: P<Ty>) -> P<Ty> { ... }
+        fn fold_lifetime(&mut self, l: Lifetime) -> Lifetime { ... }
         fn fold_ty_binding(&mut self, t: TypeBinding) -> TypeBinding { ... }
         fn fold_mod(&mut self, m: Mod) -> Mod { ... }
         fn fold_foreign_mod(&mut self, nm: ForeignMod) -> ForeignMod { ... }
@@ -94,40 +101,38 @@ gen_folder_impls! {
         fn fold_ident(&mut self, i: Ident) -> Ident { ... }
         fn fold_usize(&mut self, i: usize) -> usize { ... }
         fn fold_path(&mut self, p: Path) -> Path { ... }
-        fn fold_path_parameters(&mut self, p: PathParameters) -> PathParameters { ... }
+        //fn fold_qpath(&mut self, qs: Option<QSelf>, p: Path) -> (Option<QSelf>, Path) { ... } 
+        fn fold_generic_args(&mut self, p: GenericArgs) -> GenericArgs { ... }
         fn fold_angle_bracketed_parameter_data(
             &mut self, 
-            p: AngleBracketedParameterData
-        ) -> AngleBracketedParameterData { ... }
+            p: AngleBracketedArgs
+        ) -> AngleBracketedArgs { ... }
         fn fold_parenthesized_parameter_data(
             &mut self, 
-            p: ParenthesizedParameterData
-        ) -> ParenthesizedParameterData { ... }
+            p: ParenthesisedArgs
+        ) -> ParenthesisedArgs { ... }
         fn fold_local(&mut self, l: P<Local>) -> P<Local> { ... }
         fn fold_mac(&mut self, _mac: Mac) -> Mac { ... }
-        // fn fold_lifetime(&mut self, l: Lifetime) -> Lifetime { ... }
-        // fn fold_lifetime_def(&mut self, l: LifetimeDef) -> LifetimeDef { ... }
+        fn fold_macro_def(&mut self, def: MacroDef) -> MacroDef { ... }
+        fn fold_label(&mut self, label: Label) -> Label { ... }
         fn fold_attribute(&mut self, at: Attribute) -> Option<Attribute> { ... }
         fn fold_arg(&mut self, a: Arg) -> Arg { ... }
         fn fold_generics(&mut self, generics: Generics) -> Generics { ... }
         fn fold_trait_ref(&mut self, p: TraitRef) -> TraitRef { ... }
         fn fold_poly_trait_ref(&mut self, p: PolyTraitRef) -> PolyTraitRef { ... }
         fn fold_variant_data(&mut self, vdata: VariantData) -> VariantData { ... }
-        //fn fold_lifetimes(&mut self, lts: Vec<Lifetime>) -> Vec<Lifetime> { ... }
-        //fn fold_lifetime_defs(&mut self, lts: Vec<LifetimeDef>) -> Vec<LifetimeDef> { ... }
-        fn fold_ty_param(&mut self, tp: TyParam) -> TyParam { ... }
-        //fn fold_ty_params(&mut self, tps: Vec<TyParam>) -> Vec<TyParam> { ... }
+        fn fold_generic_param(&mut self, param: GenericParam) -> GenericParam { ... }
+        //fn fold_generic_params(&mut self, params: Vec<GenericParam>) -> Vec<GenericParam> { ... }
         fn fold_tt(&mut self, tt: TokenTree) -> TokenTree { ... }
         fn fold_tts(&mut self, tts: TokenStream) -> TokenStream { ... }
         fn fold_token(&mut self, t: Token) -> Token { ... }
         fn fold_interpolated(&mut self, nt: Nonterminal) -> Nonterminal { ... }
-        //fn fold_opt_lifetime(&mut self, o_lt: Option<Lifetime>) -> Option<Lifetime> { ... }
         //fn fold_opt_bounds(
         //    &mut self, 
-        //    b: Option<TyParamBounds>
-        //) -> Option<TyParamBounds> { ... }
-        //fn fold_bounds(&mut self, b: TyParamBounds) -> TyParamBounds { ... }
-        fn fold_ty_param_bound(&mut self, tpb: TyParamBound) -> TyParamBound { ... }
+        //    b: Option<GenericBounds>
+        //) -> Option<GenericBounds> { ... }
+        //fn fold_bounds(&mut self, b: GenericBounds) -> GenericBounds { ... }
+        fn fold_param_bound(&mut self, tpb: GenericBound) -> GenericBound { ... }
         fn fold_mt(&mut self, mt: MutTy) -> MutTy { ... }
         fn fold_field(&mut self, field: Field) -> Field { ... }
         fn fold_where_clause(&mut self, where_clause: WhereClause) -> WhereClause { ... }

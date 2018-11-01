@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::codemap::Span;
+use syntax::source_map::Span;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
@@ -14,7 +14,7 @@ use reflect;
 use select::{Filter, AnyPattern};
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum AnyNode<'ast> {
     Item(&'ast Item),
     TraitItem(&'ast TraitItem),
@@ -64,6 +64,28 @@ impl<'ast> AnyNode<'ast> {
             AnyNode::Item(i) => Some(&i.vis),
             AnyNode::ImplItem(i) => Some(&i.vis),
             AnyNode::ForeignItem(i) => Some(&i.vis),
+            _ => None,
+        }
+    }
+
+    pub fn mutbl(&self) -> Option<Mutability> {
+        match *self {
+            AnyNode::Item(i) => match i.node {
+                ItemKind::Static(_, mutbl, _) => Some(mutbl),
+                _ => None,
+            },
+            AnyNode::ForeignItem(fi) => match fi.node {
+                ForeignItemKind::Static(_, is_mut) =>
+                    Some(if is_mut { Mutability::Mutable } else { Mutability::Immutable }),
+                _ => None,
+            },
+            AnyNode::Pat(p) => match p.node {
+                PatKind::Ident(mode, _, _) => match mode {
+                    BindingMode::ByRef(mutbl) => Some(mutbl),
+                    BindingMode::ByValue(mutbl) => Some(mutbl),
+                },
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -118,14 +140,15 @@ pub enum ItemLikeKind {
     ForeignMod,
     GlobalAsm,
     Ty,
+    Existential,
     Enum,
     Struct,
     Union,
     Trait,
+    TraitAlias,
     Impl,
     Mac,
     MacroDef,
-    TraitAlias,
 }
 
 impl FromStr for ItemLikeKind {
@@ -142,10 +165,12 @@ impl FromStr for ItemLikeKind {
             "foreign_mod" => Ok(ItemLikeKind::ForeignMod),
             "global_asm" => Ok(ItemLikeKind::GlobalAsm),
             "ty" => Ok(ItemLikeKind::Ty),
+            "existential" => Ok(ItemLikeKind::Existential),
             "enum" => Ok(ItemLikeKind::Enum),
             "struct" => Ok(ItemLikeKind::Struct),
             "union" => Ok(ItemLikeKind::Union),
             "trait" => Ok(ItemLikeKind::Trait),
+            "trait_alias" => Ok(ItemLikeKind::TraitAlias),
             "impl" => Ok(ItemLikeKind::Impl),
             "mac" => Ok(ItemLikeKind::Mac),
             "macro_def" => Ok(ItemLikeKind::MacroDef),
@@ -167,14 +192,15 @@ impl ItemLikeKind {
             ItemKind::ForeignMod(..) => ItemLikeKind::ForeignMod,
             ItemKind::GlobalAsm(..) => ItemLikeKind::GlobalAsm,
             ItemKind::Ty(..) => ItemLikeKind::Ty,
+            ItemKind::Existential(..) => ItemLikeKind::Existential,
             ItemKind::Enum(..) => ItemLikeKind::Enum,
             ItemKind::Struct(..) => ItemLikeKind::Struct,
             ItemKind::Union(..) => ItemLikeKind::Union,
             ItemKind::Trait(..) => ItemLikeKind::Trait,
+            ItemKind::TraitAlias(..) => ItemLikeKind::TraitAlias,
             ItemKind::Impl(..) => ItemLikeKind::Impl,
             ItemKind::Mac(..) => ItemLikeKind::Mac,
             ItemKind::MacroDef(..) => ItemLikeKind::MacroDef,
-            ItemKind::TraitAlias(..) => ItemLikeKind::TraitAlias,
         }
     }
 
@@ -192,6 +218,7 @@ impl ItemLikeKind {
             ImplItemKind::Const(..) => ItemLikeKind::Const,
             ImplItemKind::Method(..) => ItemLikeKind::Fn,
             ImplItemKind::Type(..) => ItemLikeKind::Ty,
+            ImplItemKind::Existential(..) => ItemLikeKind::Existential,
             ImplItemKind::Macro(..) => ItemLikeKind::Mac,
         }
     }
@@ -214,7 +241,10 @@ pub fn matches_filter(st: &CommandState,
     match *filter {
         Filter::Kind(k) => k.contains(node.kind()),
         Filter::ItemKind(k) => node.itemlike_kind().map_or(false, |nk| nk == k),
-        Filter::Public => node.vis().map_or(false, |v| v.node == VisibilityKind::Public),
+        Filter::Public => node.vis()
+            .map_or(false, |v| matches!([v.node] VisibilityKind::Public)),
+        Filter::Mutable => node.mutbl()
+            .map_or(false, |m| m == Mutability::Mutable),
         Filter::Name(ref re) => node.name().map_or(false, |n| re.is_match(&n.as_str())),
         Filter::PathPrefix(drop_segs, ref expect_path) => {
             if !reflect::can_reflect_path(cx.hir_map(), node.id()) {
@@ -401,6 +431,12 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
     }
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
+        // Make sure we visit foreign function args as Arg
+        if let ForeignItemKind::Fn(ref decl, _) = x.node {
+            for arg in &decl.inputs {
+                (self.func)(AnyNode::Arg(arg));
+            }
+        }
         (self.func)(AnyNode::ForeignItem(x));
         visit::walk_foreign_item(self, x);
     }

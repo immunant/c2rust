@@ -18,8 +18,9 @@
 use syntax;
 use syntax::ast::{Arm, Expr, ExprKind, LitIntType, Pat, Stmt, StmtKind, Lit, LitKind};
 use syntax::ptr::P;
-use syntax::codemap::{DUMMY_SP};
+use syntax_pos::DUMMY_SP;
 use c_ast::CLabelId;
+use c_ast::iterators::{DFExpr, SomeId};
 use std::ops::Index;
 use syntax::print::pprust;
 use std::io;
@@ -39,8 +40,7 @@ use serde_json;
 use translator::*;
 use with_stmts::WithStmts;
 use c_ast::*;
-use c_ast::iterators::{DFExpr, SomeId};
-use rust_ast::mk;
+use rust_ast_builder::mk;
 
 pub mod relooper;
 pub mod structures;
@@ -1520,7 +1520,25 @@ impl CfgBuilder {
                 Ok(next_lbl.map(|l| self.new_wip_block(l)))
             },
 
-            CStmtKind::Expr(expr) => {
+            CStmtKind::Expr(expr) => 'case_blk: {
+                // This case typically happens in macros from system headers.
+                // We simply inline the common statement at this point rather
+                // than to try and create new control-flow blocks.
+                if let CExprKind::Unary(_, UnOp::Extension, sube, _) = translator.ast_context[expr].kind {
+                    if let CExprKind::Statements(_, stmtid) = translator.ast_context[sube].kind {
+                        let comp_entry = self.fresh_label();
+                        self.add_wip_block(wip, Jump(comp_entry));
+                        let next_lbl = self.convert_stmt_help(
+                            translator,
+                            stmtid,
+                            in_tail,
+                            comp_entry
+                        )?;
+
+                        break 'case_blk Ok(next_lbl.map(|l| self.new_wip_block(l)));
+                    }
+                }
+
                 wip.extend(translator.convert_expr(ExprUse::Unused, expr, false, DecayRef::Default)?.stmts);
 
                 // If we can tell the expression is going to diverge, there is no falling through to
@@ -1714,7 +1732,7 @@ impl CfgBuilder {
 
                     _ => {
                         if let Expr { node: ExprKind::Break(Some(ref blbl), None), .. } = **other {
-                            if *blbl == mk().label(brk_lbl.pretty_print()) {
+                            if blbl.ident == mk().label(brk_lbl.pretty_print()).ident {
                                 return true;
                             }
                         }

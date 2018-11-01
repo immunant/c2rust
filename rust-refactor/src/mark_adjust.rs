@@ -2,7 +2,8 @@
 use std::str::FromStr;
 use rustc::hir;
 use rustc::hir::def::Def;
-use rustc::ty::TypeVariants;
+use rustc::ty::TyKind;
+use syntax::ast;
 use syntax::ast::*;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
@@ -13,7 +14,7 @@ use command::CommandState;
 use command::{Registry, DriverCommand, RefactorState, FuncCommand};
 use driver::{self, Phase};
 use util::HirDefExt;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 
 /// Find all nodes that refer to marked nodes.
@@ -54,7 +55,7 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
     // path_edit.rs), but this should be sufficient for now.
     fn visit_expr(&mut self, x: &'s Expr) {
         let hir = if let Some(node) = self.cx.hir_map().find(x.id) {
-            expect!([node] hir::map::NodeExpr(y) => y)
+            expect!([node] hir::Node::Expr(y) => y)
         } else {
             visit::walk_expr(self, x);
             return;
@@ -62,15 +63,15 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
 
         match x.node {
             ExprKind::Path(_, _) => {
-                expect!([hir.node] hir::ExprPath(ref hp) => {
-                    info!("looking at ExprPath {:?}", x);
+                expect!([hir.node] hir::ExprKind::Path(ref hp) => {
+                    info!("looking at ExprKind::Path {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             },
 
             ExprKind::Struct(_, _, _) => {
-                expect!([hir.node] hir::ExprStruct(ref hp, _, _) => {
-                    info!("looking at ExprStruct {:?}", x);
+                expect!([hir.node] hir::ExprKind::Struct(ref hp, _, _) => {
+                    info!("looking at ExprKind::Struct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             },
@@ -83,8 +84,8 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
 
     fn visit_pat(&mut self, x: &'s Pat) {
         let hir = if let Some(node) = self.cx.hir_map().find(x.id) {
-            expect!([node] hir::map::NodePat(y) => y,
-                           hir::map::NodeBinding(y) => y)
+            expect!([node] hir::Node::Pat(y) => y,
+                           hir::Node::Binding(y) => y)
         } else {
             visit::walk_pat(self, x);
             return;
@@ -120,15 +121,15 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
 
     fn visit_ty(&mut self, x: &'s Ty) {
         let hir = if let Some(node) = self.cx.hir_map().find(x.id) {
-            expect!([node] hir::map::NodeTy(y) => y)
+            expect!([node] hir::Node::Ty(y) => y)
         } else {
             visit::walk_ty(self, x);
             return;
         };
 
         match x.node {
-            TyKind::Path(_, _) => {
-                expect!([hir.node] hir::TyPath(ref hp) => {
+            ast::TyKind::Path(_, _) => {
+                expect!([hir.node] hir::TyKind::Path(ref hp) => {
                     info!("looking at TyPath {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
@@ -186,7 +187,7 @@ pub fn find_field_uses<T: Visit>(target: &T,
 
                 // Use the adjusted type to catch field accesses through autoderef.
                 let ty = cx.adjusted_node_type(obj.id);
-                let def = match_or!([ty.sty] TypeVariants::TyAdt(def, _) => def; return);
+                let def = match_or!([ty.sty] TyKind::Adt(def, _) => def; return);
                 if let Some(id) = cx.hir_map().as_local_node_id(def.did) {
                     if st.marked(id, label) {
                         st.add_mark(e.id, label);
@@ -299,7 +300,7 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
     // marked module or crate.
     if st.marked(CRATE_NODE_ID, label) {
         for i in &st.krate().module.items {
-            if i.vis.node == VisibilityKind::Public {
+            if let VisibilityKind::Public = i.vis.node {
                 st.add_mark(i.id, label);
             }
         }
@@ -309,7 +310,7 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
         if st.marked(i.id, label) {
             if let ItemKind::Mod(ref m) = i.node {
                 for i in &m.items {
-                    if i.vis.node == VisibilityKind::Public {
+                    if let VisibilityKind::Public = i.vis.node {
                         st.add_mark(i.id, label);
                     }
                 }

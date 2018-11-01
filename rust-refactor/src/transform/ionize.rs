@@ -4,13 +4,12 @@ use command::{CommandState, Registry};
 use driver::{self, Phase, parse_impl_items};
 use reflect::reflect_def_path;
 use rustc::hir::def_id::DefId;
-use rustc::ty::TypeVariants;
+use rustc::ty::TyKind;
 use std::collections::HashSet;
 use std::fmt::Display;
 use syntax::ast::*;
 use syntax::fold::Folder;
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
 use transform::Transform;
 
 pub struct Ionize {
@@ -101,7 +100,7 @@ impl Transform for Ionize {
 
             let ty0 = cx.adjusted_node_type(val.id);
             match ty0.sty {
-                TypeVariants::TyAdt(ref adt, _) if targets.contains(&adt.did) => {
+                TyKind::Adt(ref adt, _) if targets.contains(&adt.did) => {
 
                     let (_qself, mut path) = reflect_def_path(cx.ty_ctxt(), adt.did);
                     path.segments.push(mk().path_segment(field));
@@ -142,7 +141,7 @@ impl Transform for Ionize {
         let krate = fold_nodes(krate, |i: P<Item>| {
             match cx.hir_map().opt_local_def_id(i.id) {
                 Some(ref def_id) if targets.contains(def_id) => {}
-                _ => return SmallVector::one(i)
+                _ => return smallvec![i]
             }
 
             if let ItemKind::Union(VariantData::Struct(ref fields, _), _) = i.node {
@@ -170,7 +169,7 @@ impl Transform for Ionize {
                 let enum_ = mk().enum_item(i.ident, enum_variants);
 
 
-                SmallVector::many(vec![impl_, enum_])
+                smallvec![impl_, enum_]
             } else {
                 panic!("ionize: Marked target not a union")
             }

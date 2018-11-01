@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
+use syntax::ThinVec;
 use syntax::ast::*;
-use syntax::codemap::{Span, SyntaxContext};
+use syntax::source_map::{Span, SyntaxContext};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
-use syntax::tokenstream::{TokenTree, Delimited, TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
 use rustc_target::spec::abi::Abi;
 
 use std::rc::Rc;
 use syntax::attr;
-use syntax::codemap::Spanned;
+use syntax::source_map::Spanned;
 use syntax::ptr::P;
 use syntax::visit::Visitor;
 
@@ -118,16 +119,17 @@ impl<'a> Visit for MacNodeRef<'a> {
 }
 
 
-/// Unique identifier of a macro invocation.  We can't use `NodeId`s for this because `Mac` nodes
-/// exist only in the unexpanded AST, where all IDs are DUMMY, and we can't use `Mark`s because we
-/// have no way to obtain the mark for a macro that expands to one of its arguments unmodified.
+/// Unique identifier of a macro invocation.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct InvocId(pub u32);
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum InvocKind<'ast> {
     Mac(&'ast Mac),
     ItemAttr(&'ast Item),
+    /// This is the generated item part of a `#[derive]`'s output.  The `InvocId` points to the
+    /// originating `ItemAttr`.
+    Derive(InvocId),
 }
 
 pub struct MacInfo<'ast> {
@@ -166,7 +168,7 @@ pub fn collect_macro_invocations<'ast>(unexpanded: &'ast Crate,
     // first `inj_count` items are the injected prelude and crate imports.
     let (crate_names, has_prelude) = super::injected_items(unexpanded);
     let inj_count = crate_names.len() + if has_prelude { 1 } else { 0 };
-    collect_macros_seq(&unexpanded.module.items[..], 
+    collect_macros_seq(&unexpanded.module.items[..],
                        &expanded.module.items[inj_count..],
                        &mut ctxt);
     (ctxt.table, ctxt.matched_node_ids)
@@ -211,16 +213,16 @@ impl<'a> Ctxt<'a> {
                             new: NodeId) {
         self.matched_node_ids.push((old, new));
     }
-}
 
-fn record_one_macro<'a>(old_id: NodeId,
+    fn record_one_macro(&mut self,
+                        old_id: NodeId,
                         invoc_kind: InvocKind<'a>,
-                        expanded: MacNodeRef<'a>,
-                        cx: &mut Ctxt<'a>) {
-    let invoc_id = cx.next_id();
-    trace!("new {:?} from macro {:?} - collect matching {:?}", invoc_id, old_id, expanded.id());
-    cx.record_macro_with_id(invoc_id, invoc_kind, expanded);
-    cx.record_node_id_match(old_id, expanded.id());
+                        expanded: MacNodeRef<'a>) {
+        let invoc_id = self.next_id();
+        trace!("new {:?} from macro {:?} - collect matching {:?}", invoc_id, old_id, expanded.id());
+        self.record_macro_with_id(invoc_id, invoc_kind, expanded);
+        self.record_node_id_match(old_id, expanded.id());
+    }
 }
 
 fn is_macro_generated(sp: Span) -> bool {
@@ -248,7 +250,13 @@ fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'
                 trace!("  collect {:?} at {:?}", new.get_node_id(), new.get_span());
 
                 // The node came from `invoc`, so consume and record the node.
-                cx.record_macro_with_id(invoc_id, invoc, new.as_mac_node_ref());
+                if let Some(child_invoc) = get_child_invoc(
+                        invoc, invoc_id, new.as_mac_node_ref()) {
+                    let child_invoc_id = cx.next_id();
+                    cx.record_macro_with_id(child_invoc_id, child_invoc, new.as_mac_node_ref());
+                } else {
+                    cx.record_macro_with_id(invoc_id, invoc, new.as_mac_node_ref());
+                }
                 cx.record_node_id_match(old.get_node_id(), new.get_node_id());
                 j += 1;
             }
@@ -268,6 +276,22 @@ fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'
 
     assert!(j == new_seq.len(),
             "impossible: too many items in expanded sequence");
+}
+
+fn get_child_invoc<'a>(invoc: InvocKind<'a>,
+                       id: InvocId,
+                       new: MacNodeRef<'a>) -> Option<InvocKind<'a>> {
+    match invoc {
+        InvocKind::ItemAttr(..) => {
+            if let MacNodeRef::Item(i) = new {
+                if attr::contains_name(&i.attrs, "automatically_derived") {
+                    return Some(InvocKind::Derive(id));
+                }
+            }
+        },
+        _ => {},
+    }
+    None
 }
 
 

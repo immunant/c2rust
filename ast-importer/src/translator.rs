@@ -1,6 +1,6 @@
 use syntax::{with_globals, ast};
 use syntax::ast::*;
-use syntax::codemap::Span;
+use syntax_pos::{DUMMY_SP, Span};
 use syntax::tokenstream::{TokenStream};
 use syntax::parse::token::{Token,Nonterminal};
 use renamer::Renamer;
@@ -9,7 +9,7 @@ use loops::*;
 use c_ast;
 use c_ast::*;
 use clang_ast::LRValue;
-use rust_ast::{mk, Builder};
+use rust_ast_builder::{mk, Builder};
 use rust_ast::comment_store::CommentStore;
 use rust_ast::item_store::ItemStore;
 use c_ast::iterators::{DFExpr, SomeId};
@@ -249,8 +249,8 @@ fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> 
         mk().path_segment(""),
         mk().path_segment("std"),
         mk().path_segment("mem"),
-        mk().path_segment_with_params("transmute",
-                                      mk().angle_bracketed_param_types(type_args)),
+        mk().path_segment_with_args("transmute",
+                                      mk().angle_bracketed_args(type_args)),
     ];
     mk().call_expr(mk().path_expr(path), vec![expr])
 }
@@ -373,6 +373,10 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
         t.ast_context.c_main = None;
     }
 
+    if t.tcfg.reorganize_definitions {
+        t.features.borrow_mut().insert("custom_attribute");
+    }
+
     // Headers often pull in declarations that are unused;
     // we simplify the translator output by omitting those.
     t.ast_context.prune_unused_decls();
@@ -464,11 +468,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 _ => false,
             };
             if needs_export {
-                // Rust 1.29 has iterator flatten which would work here
-                let decl_file_path = match decl.loc.as_ref().map(|loc| &loc.file_path) {
-                    Some(Some(s)) => Some(s),
-                    _ => None,
-                };
+                let decl_file_path = decl.loc.as_ref().map(|loc| &loc.file_path).into_iter().flatten().next();
                 let main_file_path = t.tcfg.main_file.as_ref();
 
                 if t.tcfg.reorganize_definitions && decl_file_path != main_file_path {
@@ -636,8 +636,8 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
     }
 
     mk().vis("pub")
-        .call_attr("cfg", vec![format!("not(source_header = \"{}\")", file_path_str)])
-        .module(mod_name, items)
+        .str_attr("header_src", file_path_str)
+        .mod_item(mod_name, mk().mod_(items))
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations
@@ -807,13 +807,36 @@ impl Translation {
         let macro_msg = vec![
             Token::interpolated(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit(msg)))),
         ].into_iter().collect::<TokenStream>();
-        mk().mac_expr(mk().mac(vec![macro_name], macro_msg))
+        mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
     }
 
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
         if self.tcfg.cross_checks {
             mk.call_attr("cross_check", args)
         } else { mk }
+    }
+
+    fn static_initializer_is_unsafe(&self, expr_id: Option<CExprId>) -> bool {
+        let expr_id = match expr_id {
+            Some(expr_id) => expr_id,
+            None => return false,
+        };
+
+        let iter = DFExpr::new(&self.ast_context, expr_id.into());
+
+        for i in iter {
+            let expr_id = match i {
+                SomeId::Expr(expr_id) => expr_id,
+                _ => unreachable!("Found static initializer type other than expr"),
+            };
+
+            match self.ast_context[expr_id].kind {
+                CExprKind::DeclRef(_, _, LRValue::LValue) => return true,
+                _ => {},
+            }
+        }
+
+        false
     }
 
     fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
@@ -904,7 +927,7 @@ impl Translation {
         let sectioned_static_initializers = self.sectioned_static_initializers.replace(Vec::new());
 
         let fn_name = self.renamer.borrow_mut().pick_name("run_static_initializers");
-        let fn_ty = FunctionRetTy::Ty(mk().tuple_ty(vec![] as Vec<P<Ty>>));
+        let fn_ty = FunctionRetTy::Default(DUMMY_SP);
         let fn_decl = mk().fn_decl(vec![], fn_ty, false);
         let fn_block = mk().block(sectioned_static_initializers);
         let fn_attributes = self.mk_cross_check(mk(), vec!["none"]);
@@ -927,13 +950,13 @@ impl Translation {
         if let CDeclKind::Function { ref parameters, typ, .. } = self.ast_context.index(main_id).kind {
 
             let ret: CTypeKind = match self.ast_context.resolve_type(typ).kind {
-                CTypeKind::Function(ret, _, _, _) => self.ast_context.resolve_type(ret.ctype).kind.clone(),
+                CTypeKind::Function(ret, _, _, _, _) => self.ast_context.resolve_type(ret.ctype).kind.clone(),
                 ref k => return Err(format!("Type of main function {:?} was not a function type, got {:?}", main_id, k))
             };
 
             let decl = mk().fn_decl(
                 vec![],
-                FunctionRetTy::Ty(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
+                FunctionRetTy::Default(DUMMY_SP),
                 false
             );
 
@@ -957,9 +980,9 @@ impl Translation {
 
                 stmts.push(mk().local_stmt(P(mk().local(
                     mk().mutbl().ident_pat("args"),
-                    Some(mk().path_ty(vec![mk().path_segment_with_params(
+                    Some(mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
-                        mk().angle_bracketed_param_types(
+                        mk().angle_bracketed_args(
                             vec![mk().mutbl().ptr_ty(
                                 mk().path_ty(vec!["libc","c_char"])
                             )]
@@ -1035,9 +1058,9 @@ impl Translation {
 
                 stmts.push(mk().local_stmt(P(mk().local(
                     mk().mutbl().ident_pat("vars"),
-                    Some(mk().path_ty(vec![mk().path_segment_with_params(
+                    Some(mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
-                        mk().angle_bracketed_param_types(
+                        mk().angle_bracketed_args(
                             vec![mk().mutbl().ptr_ty(
                                 mk().path_ty(vec!["libc","c_char"])
                             )]
@@ -1064,6 +1087,7 @@ impl Translation {
                                     Token::Comma,
                                     Token::from_ast_ident(mk().ident("var_value")),
                                 ].into_iter().collect::<TokenStream>(),
+                                MacDelimiter::Parenthesis,
                             )))
                         ))),
                         mk().semi_stmt(mk().method_call_expr(
@@ -1271,7 +1295,7 @@ impl Translation {
                 }
 
                 let (ret, is_var): (Option<CQualTypeId>, bool) = match self.ast_context.resolve_type(typ).kind {
-                    CTypeKind::Function(ret, _, is_var, is_noreturn) => (if is_noreturn { None } else { Some(ret) }, is_var),
+                    CTypeKind::Function(ret, _, is_var, is_noreturn, _) => (if is_noreturn { None } else { Some(ret) }, is_var),
                     ref k => return Err(format!("Type of function {:?} was not a function type, got {:?}", decl_id, k))
                 };
 
@@ -1365,10 +1389,15 @@ impl Translation {
                 } else {
                     let (ty, _, init) = self.convert_variable(initializer, typ, is_static)?;
 
-                    let mut init = init?;
-                    init.stmts.push(mk().expr_stmt(init.val));
-                    let init = mk().unsafe_().block(init.stmts);
-                    let mut init = mk().block_expr(init);
+                    let init = if self.static_initializer_is_unsafe(initializer) {
+                        let mut init = init?;
+                        init.stmts.push(mk().expr_stmt(init.val));
+                        let init = mk().unsafe_().block(init.stmts);
+
+                        mk().block_expr(init)
+                    } else {
+                        init?.val
+                    };
 
                     // Force mutability due to the potential for raw pointers occuring in the type
                     // and because we're assigning to these variables in the external initializer
@@ -1386,11 +1415,15 @@ impl Translation {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, _, init) = self.convert_variable(initializer, typ, true)?;
 
-                // Conservatively assume that some aspect of the initializer is unsafe
-                let mut init = init?;
-                init.stmts.push(mk().expr_stmt(init.val));
-                let init = mk().unsafe_().block(init.stmts);
-                let mut init = mk().block_expr(init);
+                let mut init = if self.static_initializer_is_unsafe(initializer) {
+                    let mut init = init?;
+                    init.stmts.push(mk().expr_stmt(init.val));
+                    let init = mk().unsafe_().block(init.stmts);
+
+                    mk().block_expr(init)
+                } else {
+                    init?.val
+                };
 
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
@@ -1531,7 +1564,15 @@ impl Translation {
                 Some(return_type) => self.convert_type(return_type.ctype)?,
                 None => mk().never_ty(),
             };
-            let ret = FunctionRetTy::Ty(ret);
+            let is_void_ret = return_type.map(|qty| self.ast_context[qty.ctype].kind == CTypeKind::Void).unwrap_or(false);
+
+            // If a return type is void, we should instead omit the unit type return,
+            // -> (), to be more idiomatic
+            let ret = if is_void_ret {
+                FunctionRetTy::Default(DUMMY_SP)
+            } else {
+                FunctionRetTy::Ty(ret)
+            };
 
             let decl = mk().fn_decl(args, ret, is_variadic);
 
@@ -1732,12 +1773,22 @@ impl Translation {
                         res.append(&mut self.convert_stmt(*stmt)?)
                     }
 
-                    Ok(vec![mk().expr_stmt(mk().block_expr(stmts_block(res)))])
+                    Ok(vec![mk().span(s).expr_stmt(mk().block_expr(stmts_block(res)))])
                 })
             },
 
-            CStmtKind::Expr(expr) =>
-                Ok(self.convert_expr(ExprUse::Unused, expr, false, DecayRef::Default)?.stmts),
+            CStmtKind::Expr(expr) => {
+                let mut stmts = self.convert_expr(ExprUse::Unused, expr, false, DecayRef::Default)?.stmts;
+
+                // Attach comments to the first statement generated
+                // Expression conversion doesn't handle comments so
+                // the span should always be available for us to override
+                if !stmts.is_empty() && stmts[0].span == DUMMY_SP {
+                    stmts[0].span = s
+                }
+
+                Ok(stmts)
+            }
 
             CStmtKind::Break => {
                 let mut loop_ = self.loops.current_loop_mut();
@@ -1831,7 +1882,7 @@ impl Translation {
             push_expr(&mut tokens, mk().lit_expr(mk().str_lit("volatile")));
         }
 
-        let mac = mk().mac(vec!["asm"], tokens.into_iter().collect::<TokenStream>());
+        let mac = mk().mac(vec!["asm"], tokens.into_iter().collect::<TokenStream>(), MacDelimiter::Parenthesis);
         let mac = mk().mac_expr(mac);
         let mac = mk().span(span).expr_stmt(mac);
         stmts.push(mac);
@@ -2216,7 +2267,7 @@ impl Translation {
         match self.ast_context.resolve_type(ctypeid).kind {
             CTypeKind::Pointer(CQualTypeId { ctype, .. }) => {
                 match self.ast_context.resolve_type(ctype).kind {
-                    CTypeKind::Function(_, _, _, _) => {
+                    CTypeKind::Function(..) => {
                         // Fn pointers need to be type annotated if null
                         if initializer.is_none() {
                             return true;
@@ -2270,7 +2321,7 @@ impl Translation {
             CTypeKind::Struct(_) |
             CTypeKind::Union(_) |
             CTypeKind::Enum(_) => false,
-            CTypeKind::Function(_, _, _, _) => unreachable!("Can't have a function directly as a type"),
+            CTypeKind::Function(..) => unreachable!("Can't have a function directly as a type"),
             CTypeKind::Typedef(_) => unreachable!("Typedef should be expanded though resolve_type"),
             _ => true,
         }
@@ -2292,7 +2343,7 @@ impl Translation {
         let ty = if let CTypeKind::VariableArray(mut elt, _) = self.ast_context.resolve_type(typ.ctype).kind {
             elt = self.variable_array_base_type(elt);
             let ty = self.convert_type(elt)?;
-            mk().path_ty(vec![mk().path_segment_with_params("Vec", mk().angle_bracketed_param_types(vec![ty]))])
+            mk().path_ty(vec![mk().path_segment_with_args("Vec", mk().angle_bracketed_args(vec![ty]))])
         } else {
             self.convert_type(typ.ctype)?
         };
@@ -2386,8 +2437,8 @@ impl Translation {
             path_parts.push(mk().path_segment(elt))
         }
         let elt_ty = self.convert_type(lhs_type.ctype)?;
-        let ty_params = mk().angle_bracketed_param_types(vec![elt_ty]);
-        let elt = mk().path_segment_with_params("read_volatile", ty_params);
+        let ty_params = mk().angle_bracketed_args(vec![elt_ty]);
+        let elt = mk().path_segment_with_args("read_volatile", ty_params);
         path_parts.push(elt);
 
         let read_volatile_expr = mk().path_expr(path_parts);
@@ -2397,6 +2448,7 @@ impl Translation {
     /// If the referenced expression is a DeclRef inside an Unary or ImplicitCast node, return
     /// the type of the referenced declaration. Returns `Err` in all other cases. See
     /// See https://github.com/GaloisInc/C2Rust/issues/32 for more details on this quirk.
+    /*
     fn get_declref_type(&self, expr_id: CExprId) -> Result<(Option<Qualifiers>, CTypeId), &str> {
         // Using nested function to avoid exposing the level parameter
         fn _get_declref_type(ast_context: &TypedAstContext, expr_id: CExprId, level: u32) -> Result<(Option<Qualifiers>, CTypeId), &str> {
@@ -2426,6 +2478,7 @@ impl Translation {
 
         _get_declref_type(&self.ast_context, expr_id, 0)
     }
+    */
 
     // Compute the offset multiplier for variable length array indexing
     // Rust type: usize
@@ -2511,11 +2564,11 @@ impl Translation {
         } else {
             let ty = self.convert_type(type_id)?;
             let name = "size_of";
-            let params = mk().angle_bracketed_param_types(vec![ty]);
+            let params = mk().angle_bracketed_args(vec![ty]);
             let path = vec![mk().path_segment(""),
                             mk().path_segment("std"),
                             mk().path_segment("mem"),
-                            mk().path_segment_with_params(name, params)];
+                            mk().path_segment_with_args(name, params)];
             let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
             Ok(WithStmts::new(call))
         }
@@ -2533,11 +2586,60 @@ impl Translation {
         let path = vec![mk().path_segment(""),
                         mk().path_segment("std"),
                         mk().path_segment("mem"),
-                        mk().path_segment_with_params(name,
-                                                      mk().angle_bracketed_param_types(tys)),
+                        mk().path_segment_with_args(name,
+                                                      mk().angle_bracketed_args(tys)),
         ];
         let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
         Ok(WithStmts::new(call))
+    }
+
+    /// This function takes the expr ids belonging to a shuffle vector "super builtin" call,
+    /// excluding the first two (which are always vector exprs). These exprs contain mathematical
+    /// offsets applied to a mask expr (or are otherwise a numeric constant) which we'd like to extract.
+    pub fn get_shuffle_vector_mask(&self, expr_ids: &[CExprId]) -> CExprId {
+        use c_ast::BinOp::{Add, BitAnd, ShiftRight};
+        use c_ast::CExprKind::{Binary, Literal};
+        use c_ast::CLiteral::Integer;
+
+        match self.ast_context.c_exprs[&expr_ids[0]].kind {
+            // Need to unmask which looks like this most of the time: X + (((mask) >> Y) & Z):
+            Binary(_, Add, _, rhs_expr_id, None, None) => self.get_shuffle_vector_mask(&[rhs_expr_id]),
+            // Sometimes there is a mask like this: ((mask) >> X) & Y:
+            Binary(_, BitAnd, lhs_expr_id, _, None, None) => match self.ast_context.c_exprs[&lhs_expr_id].kind {
+                Binary(_, ShiftRight, lhs_expr_id, _, None, None) => lhs_expr_id,
+                _ => unreachable!("Found unknown mask format"),
+            },
+            // Sometimes you find a constant and the mask is used further down the expr list
+            Literal(_, Integer(0, IntBase::Dec)) => self.get_shuffle_vector_mask(&[expr_ids[4]]),
+            ref e => unreachable!("Found unknown mask format: {:?}", e),
+        }
+    }
+
+    /// Vectors tend to have casts to and from internal types. This is problematic for shuffle vectors
+    /// in particular which are usually macros ontop of a builtin call. Although one of these casts
+    /// is likely redundant (external type), the other is not (internal type). We remove both of the
+    /// casts for simplicity and readability
+    pub fn strip_vector_explicit_cast(&self, expr_id: CExprId) -> (&CTypeKind, CExprId, usize) {
+        match self.ast_context.c_exprs[&expr_id].kind {
+            CExprKind::ExplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
+                let expr_id = match &self.ast_context.c_exprs[&expr_id].kind {
+                    CExprKind::ExplicitCast(_, expr_id, _, _, _) => *expr_id,
+                    // The expr_id wont be used in this case (the function only has one
+                    // vector param, not two, despite the following type match), so it's
+                    // okay to provide a dummy here
+                    CExprKind::Call(..) => expr_id,
+                    _ => unreachable!("Found cast other than explicit cast"),
+                };
+
+                match &self.ast_context.resolve_type(ctype).kind {
+                    CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
+                        (&self.ast_context.c_types[ctype].kind, expr_id, *len)
+                    },
+                    _ => unreachable!("Found type other than vector"),
+                }
+            },
+            _ => unreachable!("Found cast other than explicit cast"),
+        }
     }
 
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
@@ -2553,7 +2655,96 @@ impl Translation {
         match self.ast_context[expr_id].kind {
             CExprKind::DesignatedInitExpr(..) => Err(format!("Unexpected designated init expr")),
             CExprKind::BadExpr => Err(format!("convert_expr: expression kind not supported")),
-            CExprKind::ShuffleVector(..) => Err(format!("shuffle vector not supported")),
+            CExprKind::ShuffleVector(_, ref child_expr_ids) => {
+                use c_ast::CTypeKind::{Double, Float, Int, Short};
+                use c_ast::CExprKind::Literal;
+                use c_ast::CLiteral::Integer;
+
+                // There are three shuffle vector functions which are actually functions, not superbuiltins/macros,
+                // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm256_shuffle_epi8
+
+                if ![4, 6, 10, 18].contains(&child_expr_ids.len()) {
+                    return Err(format!("Unsupported shuffle vector without 4, 6, 10, or 18 input params: {}", child_expr_ids.len()));
+                };
+
+                // There is some internal explicit casting which is okay for us to strip off
+                let (first_vec, first_expr_id, first_vec_len) = self.strip_vector_explicit_cast(child_expr_ids[0]);
+                let (second_vec, second_expr_id, second_vec_len) = self.strip_vector_explicit_cast(child_expr_ids[1]);
+
+                if first_vec != second_vec {
+                    return Err("Unsupported shuffle vector with different vector kinds".into());
+                }
+                if first_vec_len != second_vec_len {
+                    return Err("Unsupported shuffle vector with different vector lengths".into());
+                }
+
+                let mask_expr_id = self.get_shuffle_vector_mask(&child_expr_ids[2..]);
+                let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
+                let second_param = self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
+                let third_param = self.convert_expr(ExprUse::Used, mask_expr_id, is_static, decay_ref)?;
+                let mut params = vec![first_param.val];
+
+                // Some don't take a second param, but the expr is still there for some reason
+                match (child_expr_ids.len(), &first_vec, first_vec_len) {
+                    // _mm256_shuffle_epi32
+                    (10, Int, 8) |
+                    // _mm_shuffle_epi32
+                    (6, Int, 4) |
+                    // _mm_shufflehi_epi16, _mm_shufflelo_epi16
+                    (10, Short, 8) |
+                    // _mm256_shufflehi_epi16, _mm256_shufflelo_epi16
+                    (18, Short, 16) => {},
+                    _ => params.push(second_param.val),
+                }
+
+                params.push(third_param.val);
+
+                let shuffle_fn_name = match (&first_vec, first_vec_len) {
+                    (Float, 4) => "_mm_shuffle_ps",
+                    (Float, 8) => "_mm256_shuffle_ps",
+                    (Double, 2) => "_mm_shuffle_pd",
+                    (Double, 4) => "_mm256_shuffle_pd",
+                    (Int, 4) => "_mm_shuffle_epi32",
+                    (Int, 8) => "_mm256_shuffle_epi32",
+                    (Short, 8) => {
+                        // _mm_shufflehi_epi16 mask params start with const int,
+                        // _mm_shufflelo_epi16 does not
+                        let expr_id = &child_expr_ids[2];
+                        if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context.c_exprs[expr_id].kind {
+                            "_mm_shufflehi_epi16"
+                        } else {
+                            "_mm_shufflelo_epi16"
+                        }
+                    },
+                    (Short, 16) => {
+                        // _mm256_shufflehi_epi16 mask params start with const int,
+                        // _mm256_shufflelo_epi16 does not
+                        let expr_id = &child_expr_ids[2];
+                        if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context.c_exprs[expr_id].kind {
+                            "_mm256_shufflehi_epi16"
+                        } else {
+                            "_mm256_shufflelo_epi16"
+                        }
+                    },
+                    e => return Err(format!("Unknown shuffle vector signature: {:?}", e)),
+                };
+
+                self.import_simd_function(shuffle_fn_name)?;
+
+                let call = mk().call_expr(mk().ident_expr(shuffle_fn_name), params);
+
+                if use_ == ExprUse::Used {
+                    Ok(WithStmts {
+                        stmts: Vec::new(),
+                        val: call,
+                    })
+                } else {
+                    Ok(WithStmts {
+                        stmts: vec![mk().expr_stmt(call)],
+                        val: self.panic("No value for unused shuffle vector return"),
+                    })
+                }
+            },
             CExprKind::ConvertVector(..) => Err(format!("convert vector not supported")),
 
             CExprKind::UnaryType(_ty, kind, opt_expr, arg_ty) => {
@@ -3049,6 +3240,54 @@ impl Translation {
                         let mut x = self.convert_expr(ExprUse::Used, *id, is_static, decay_ref);
                         Ok(x.unwrap())
                     }
+                    CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
+                        let fn_call_name = match (&self.ast_context.c_types[&ctype].kind, len) {
+                            (CTypeKind::Float, 4) => "_mm_setr_ps",
+                            (CTypeKind::Float, 8) => "_mm256_setr_ps",
+                            (CTypeKind::Double, 2) => "_mm_setr_pd",
+                            (CTypeKind::Double, 4) => "_mm256_setr_pd",
+                            (CTypeKind::LongLong, 2) => "_mm_set_epi64x",
+                            (CTypeKind::LongLong, 4) => "_mm256_setr_epi64x",
+                            (CTypeKind::Char, 8) => "_mm_setr_pi8",
+                            (CTypeKind::Char, 16) => "_mm_setr_epi8",
+                            (CTypeKind::Char, 32) => "_mm256_setr_epi8",
+                            (CTypeKind::Int, 2) => "_mm_setr_pi32",
+                            (CTypeKind::Int, 4) => "_mm_setr_epi32",
+                            (CTypeKind::Int, 8) => "_mm256_setr_epi32",
+                            (CTypeKind::Short, 4) => "_mm_setr_pi16",
+                            (CTypeKind::Short, 8) => "_mm_setr_epi16",
+                            (CTypeKind::Short, 16) => "_mm256_setr_epi16",
+                            ref e => return Err(format!("Unknown vector init list: {:?}", e)),
+                        };
+
+                        self.import_simd_function(fn_call_name)?;
+
+                        let mut params: Vec<P<Expr>> = vec![];
+
+                        for param_id in ids {
+                            params.push(self.convert_expr(use_, *param_id, is_static, decay_ref)?.val);
+                        }
+
+                        // rust is missing support for _mm_setr_epi64x, so we have to use
+                        // the reverse arguments for _mm_set_epi64x
+                        if fn_call_name == "_mm_set_epi64x" {
+                            params.reverse();
+                        }
+
+                        let call = mk().call_expr(mk().ident_expr(fn_call_name), params);
+
+                        if use_ == ExprUse::Used {
+                            Ok(WithStmts {
+                                stmts: Vec::new(),
+                                val: call,
+                            })
+                        } else {
+                            Ok(WithStmts {
+                                stmts: vec![mk().expr_stmt(call)],
+                                val: self.panic("No value for unused shuffle vector return"),
+                            })
+                        }
+                    }
                     ref t => {
                         Err(format!("Init list not implemented for {:?}", t))
                     }
@@ -3070,9 +3309,9 @@ impl Translation {
                     let ty = self.convert_type(ty.ctype)?;
 
                     Ok(val.map(|va| {
-                        let path = mk().path_segment_with_params(
+                        let path = mk().path_segment_with_args(
                             mk().ident("arg"),
-                            mk().angle_bracketed_param_types(vec![ty]));
+                            mk().angle_bracketed_args(vec![ty]));
                         mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>)
                     }))
 
@@ -3088,7 +3327,7 @@ impl Translation {
         let fn_ty = &self.ast_context.c_types[&fn_expr.kind.get_type().unwrap()];
         if let CTypeKind::Pointer(qual_ty) = fn_ty.kind {
             match self.ast_context.c_types[&qual_ty.ctype].kind {
-                CTypeKind::Function(_, _, is_variadic, _) => is_variadic,
+                CTypeKind::Function(_, _, is_variadic, _, _) => is_variadic,
                 _ => false,
             }
         } else {
@@ -3242,6 +3481,33 @@ impl Translation {
             "__builtin_va_end" =>
                 Err(format!("va_end not supported - currently va_list and va_arg are supported")),
 
+            // One shuffle vector actually calls a real builtin:
+            "__builtin_ia32_pshufw" => {
+                self.import_simd_function("_mm_shuffle_pi16")?;
+
+                let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
+                let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
+                let second_expr_id = match self.ast_context.c_exprs[&args[1]].kind {
+                    // For some reason there seems to be an incorrect implicit cast here to char
+                    // it's possible the builtin takes a char even though the function takes an int
+                    CExprKind::ImplicitCast(_, expr_id, CastKind::IntegralCast, _, _) => expr_id,
+                    _ => args[1],
+                };
+                let second_param = self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
+                let call = mk().call_expr(mk().ident_expr("_mm_shuffle_pi16"), vec![first_param.val, second_param.val]);
+
+                if use_ == ExprUse::Used {
+                    Ok(WithStmts {
+                        stmts: Vec::new(),
+                        val: call,
+                    })
+                } else {
+                    Ok(WithStmts {
+                        stmts: vec![mk().expr_stmt(call)],
+                        val: self.panic("No value for unused shuffle vector return"),
+                    })
+                }
+            },
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }
@@ -3295,7 +3561,7 @@ impl Translation {
         fn as_semi_break_stmt(stmt: &ast::Stmt, lbl: &cfg::Label) -> Option<Option<P<ast::Expr>>> {
             if let ast::Stmt { node: ast::StmtKind::Semi(ref expr), .. } = *stmt {
                 if let ast::Expr { node: ast::ExprKind::Break(Some(ref blbl), ref ret_val), .. } = **expr {
-                    if *blbl == mk().label(lbl.pretty_print()) {
+                    if blbl.ident == mk().label(lbl.pretty_print()).ident {
                         return Some(ret_val.clone())
                     }
                 }
@@ -3309,7 +3575,7 @@ impl Translation {
                 let n = substmt_ids.len();
                 let result_id = substmt_ids[n - 1];
 
-                if self.tcfg.reloop_cfgs {
+                if self.tcfg.reloop_cfgs || self.function_requires_relooper(substmt_ids) {
 
                     let name = format!("<stmt-expr_{:?}>", compound_stmt_id);
                     let lbl = cfg::Label::FromC(compound_stmt_id);
@@ -3401,46 +3667,18 @@ impl Translation {
             self.convert_expr(use_, expr, is_static, decay_ref)?
         };
 
+        // Shuffle Vector "function" builtins will add a cast which is unnecessary
+        // for translation purposes
+        // TODO: on __builtin_ia32_pshufw as well
+        if let CExprKind::ShuffleVector(..) = self.ast_context[expr].kind {
+            if is_explicit && kind == CastKind::BitCast {
+                return Ok(val);
+            }
+        }
+
         match kind {
             CastKind::BitCast => {
                 val.result_map(|x| {
-                    // TODO: Detect cast from mutable to constant pointer to same type
-
-                    // Special cases
-                    if let Ok((source_quals, source_ty_id)) = self.get_declref_type(expr) {
-                        let source_ty = self.convert_type(source_ty_id)?;
-                        let target_ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
-                        if let &CTypeKind::Pointer(qual_type_id) = target_ty_kind {
-                            let target_ty = self.convert_type(qual_type_id.ctype)?;
-
-                            // Detect a quirk where the bitcast is superfluous.
-                            // See this issue: https://github.com/GaloisInc/C2Rust/issues/32
-                            if target_ty == source_ty {
-                                // Don't skip the cast if we're going from const to mutable
-                                if source_quals.map_or(true, |x| !x.is_const) || ty.qualifiers.is_const {
-                                    return Ok(x)
-                                }
-                            }
-
-                            let quals_agree = if let Some(sq) = source_quals {
-                                sq == qual_type_id.qualifiers
-                            } else { false };
-                            // Detect bitcasts from array-of-T to slice-of-T
-                            if let TyKind::Slice(ref tgt_elem_ty) = target_ty.node {
-                                if let TyKind::Array(ref src_elem_ty, _) = source_ty.node {
-                                    if tgt_elem_ty == src_elem_ty {
-                                        if quals_agree {
-                                            return Ok(x)
-                                        } else {
-                                            // FIXME: handle mismatched qualifiers
-                                            panic!("Cannot handle mismatched qualifiers yet.")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
                     let source_ty_id = self.ast_context[expr].kind.get_type().ok_or_else(|| format!("bad source type"))?;
 
                     if self.ast_context.is_function_pointer(ty.ctype) ||
@@ -4754,11 +4992,12 @@ impl Translation {
                     (CTypeKind::Float, 8) => "__m256",
                     (CTypeKind::Double, 2) => "__m128d",
                     (CTypeKind::Double, 4) => "__m256d",
-                    (CTypeKind::LongLong, 2) => "__m128i",
                     (CTypeKind::LongLong, 4) => "__m256i",
-                    (CTypeKind::LongLong, 1) => "__m64",
-                    (CTypeKind::Int, 4) => "__m128i",
+                    (CTypeKind::LongLong, 2) |
+                    (CTypeKind::Char, 16) |
+                    (CTypeKind::Int, 4) |
                     (CTypeKind::Short, 8) => "__m128i",
+                    (CTypeKind::LongLong, 1) |
                     (CTypeKind::Int, 2) => "__m64",
                     (kind, len) => unimplemented!("Unknown vector type: {:?} x {}", kind, len),
                 };

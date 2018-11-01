@@ -27,7 +27,7 @@
 //!    that `def!` pattern will be used instead.  (This provides an easy way to take advantage of
 //!    surrounding `use` items to produce more convenient paths.)
 
-use rustc::hir::map::Node;
+use rustc::hir::Node;
 use rustc::hir::def_id::DefId;
 use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item, ImplItem};
 use syntax::ast::Mac;
@@ -37,16 +37,16 @@ use syntax::parse::token::Token;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::ThinTokenStream;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
+use rust_ast_builder::mk;
 
 use api::DriverCtxtExt;
 use ast_manip::Fold;
-use ast_manip::make_ast::mk;
 use ast_manip::util::{PatternSymbol, macro_name};
 use command::CommandState;
 use driver;
 use matcher::Bindings;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 use util::Lone;
 
 
@@ -68,10 +68,10 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
             let node = match_or!([self.cx.hir_map().find(node_id)] Some(x) => x;
                                  continue);
             let node_name = match node {
-                Node::NodeItem(i) => i.name,
-                Node::NodeForeignItem(i) => i.name,
-                Node::NodeTraitItem(i) => i.name,
-                Node::NodeImplItem(i) => i.name,
+                Node::Item(i) => i.name,
+                Node::ForeignItem(i) => i.name,
+                Node::TraitItem(i) => i.ident.name,
+                Node::ImplItem(i) => i.ident.name,
                 _ => continue,
             };
             if node_name != name {
@@ -181,20 +181,20 @@ impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
         fold::noop_fold_ty(ty, self)
     }
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(stmt) = s.pattern_symbol().and_then(|sym| self.bindings.get_stmt(sym)) {
-            SmallVector::one(stmt.clone())
+            smallvec![stmt.clone()]
         } else if let Some(stmts) = s.pattern_symbol()
                 .and_then(|sym| self.bindings.get_multi_stmt(sym)) {
-            SmallVector::many(stmts.clone())
+            SmallVec::from_vec(stmts.clone())
         } else {
             fold::noop_fold_stmt(s, self)
         }
     }
 
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         if let Some(item) = i.pattern_symbol().and_then(|sym| self.bindings.get_item(sym)) {
-            SmallVector::one(item.clone())
+            smallvec![item.clone()]
         } else {
             fold::noop_fold_item(i, self)
         }

@@ -10,7 +10,7 @@ int identity(x)
     return x;
 }
 
-void implicit_int()
+void implicit_int(void)
 {
     // assign to t using the address-of operator
     my_fn *t = &identity;                    // 't: my_fn: fn(libc::c_int) -> libc::c_int'

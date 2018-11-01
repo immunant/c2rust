@@ -70,9 +70,6 @@ path = "${libfakechecks_sys_path}"
 # Template for the crate root lib.rs file
 LIB_RS_TEMPLATE = """\
 #![feature(libc)]
-#![feature(const_ptr_null)]
-#![feature(offset_to)]
-#![feature(const_ptr_null_mut)]
 #![feature(extern_types)]
 #![feature(asm)]
 #![feature(ptr_wrapping_offset_from)]
@@ -83,6 +80,10 @@ LIB_RS_TEMPLATE = """\
 #![allow(dead_code)]
 #![allow(mutable_transmutes)]
 #![allow(unused_mut)]
+
+% if reorganize_definitions:
+#![feature(custom_attribute)]
+% endif
 
 % if cross_checks:
 #![feature(plugin, custom_attribute)]
@@ -172,7 +173,8 @@ def ensure_code_compiled_with_clang(cc_db: List[dict]) -> None:
 
 def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
                       main_module: str, cross_checks: bool,
-                      use_fakechecks: bool, cross_check_config: List[str]):
+                      reorganize_definitions: bool, use_fakechecks: bool,
+                      cross_check_config: List[str]):
     build_dir = os.path.join(dest_dir, "c2rust-build")
 
     # don't remove existing project files; they may have user edits
@@ -225,6 +227,7 @@ def write_build_files(dest_dir: str, modules: List[Tuple[str, bool]],
             lib_rs.write(tmpl.render(
                 main_module=main_module,
                 cross_checks=cross_checks,
+                reorganize_definitions=reorganize_definitions,
                 use_fakechecks=use_fakechecks,
                 plugin_args=plugin_args,
                 modules=template_modules))
@@ -368,6 +371,7 @@ def transpile_files(cc_db: TextIO,
                           modules,
                           main_module_for_build_files,
                           cross_checks,
+                          reorganize_definitions,
                           use_fakechecks,
                           cross_check_config)
 

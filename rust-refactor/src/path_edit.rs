@@ -65,7 +65,7 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
 
     pub fn alter_expr_path(&mut self, e: P<Expr>, hir: &hir::Expr) -> P<Expr> {
         match hir.node {
-            hir::ExprPath(ref qpath) => e.map(|e| {
+            hir::ExprKind::Path(ref qpath) => e.map(|e| {
                 unpack!([e.node] ExprKind::Path(qself, path));
                 let (new_qself, new_path) = self.handle_qpath(e.id, qself, path, qpath);
                 Expr {
@@ -74,7 +74,7 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
                 }
             }),
 
-            hir::ExprStruct(ref qpath, _, _) => e.map(|e| {
+            hir::ExprKind::Struct(ref qpath, _, _) => e.map(|e| {
                 // Bail out early if it's not really a path type in the original AST.
                 match e.node {
                     // Technically still a struct expression, but the struct to use is referenced
@@ -99,7 +99,7 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
 
     pub fn alter_ty_path(&mut self, t: P<Ty>, hir: &hir::Ty) -> P<Ty> {
         match hir.node {
-            hir::TyPath(ref qpath) => t.map(|t| {
+            hir::TyKind::Path(ref qpath) => t.map(|t| {
                 // Bail out early if it's not really a path type in the original AST.
                 match t.node {
                     TyKind::ImplicitSelf => return t,
@@ -152,7 +152,7 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
                             path: Path,
                             hir_ty: &hir::Ty) -> (Option<QSelf>, Path) {
         match hir_ty.node {
-            hir::TyPath(ref qpath) => {
+            hir::TyKind::Path(ref qpath) => {
                 self.handle_qpath(id, qself, path, qpath)
             },
 
@@ -183,8 +183,8 @@ impl<'a, 'tcx, F> Folder for ResolvedPathFolder<'a, 'tcx, F>
         let p = match self.cx.hir_map().find(p.id) {
             Some(node) => {
                 let hir = expect!([node]
-                                  hir::map::NodePat(pat) => pat,
-                                  hir::map::NodeBinding(pat) => pat);
+                                  hir::Node::Pat(pat) => pat,
+                                  hir::Node::Binding(pat) => pat);
 
                 self.alter_pat_path(p, hir)
             },
@@ -198,7 +198,7 @@ impl<'a, 'tcx, F> Folder for ResolvedPathFolder<'a, 'tcx, F>
         let e = match self.cx.hir_map().find(e.id) {
             Some(node) => {
                 let hir = expect!([node]
-                                  hir::map::NodeExpr(expr) => expr);
+                                  hir::Node::Expr(expr) => expr);
 
                 self.alter_expr_path(e, hir)
             },
@@ -212,7 +212,7 @@ impl<'a, 'tcx, F> Folder for ResolvedPathFolder<'a, 'tcx, F>
         let t = match self.cx.hir_map().find(t.id) {
             Some(node) => {
                 let hir = expect!([node]
-                                  hir::map::NodeTy(ty) => ty);
+                                  hir::Node::Ty(ty) => ty);
 
                 self.alter_ty_path(t, hir)
             },

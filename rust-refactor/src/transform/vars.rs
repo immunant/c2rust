@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::mem;
 use rustc::hir::def_id::LOCAL_CRATE;
 use rustc::hir::HirId;
-use rustc::ty::TypeVariants;
+use rustc::ty::TyKind;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
@@ -390,11 +390,11 @@ impl Transform for UninitToDefault {
             let init = l.init.as_ref().unwrap().clone();
             let ty = cx.node_type(init.id);
             let new_init_lit = match ty.sty {
-                TypeVariants::TyBool => mk().bool_lit(false),
-                TypeVariants::TyChar => mk().char_lit('\0'),
-                TypeVariants::TyInt(ity) => mk().int_lit(0, ity),
-                TypeVariants::TyUint(uty) => mk().int_lit(0, uty),
-                TypeVariants::TyFloat(fty) => mk().float_lit("0", fty),
+                TyKind::Bool => mk().bool_lit(false),
+                TyKind::Char => mk().char_lit('\0'),
+                TyKind::Int(ity) => mk().int_lit(0, ity),
+                TyKind::Uint(uty) => mk().int_lit(0, uty),
+                TyKind::Float(fty) => mk().float_lit("0", fty),
                 _ => return l,
             };
             l.map(|l| {

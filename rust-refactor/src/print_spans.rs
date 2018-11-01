@@ -1,7 +1,7 @@
 //! Debug command for printing the span of every major AST node.
 use syntax;
 use syntax::ast::*;
-use syntax::codemap::{CodeMap, Span, DUMMY_SP};
+use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::print::pprust;
 use syntax::visit::Visitor;
 
@@ -11,7 +11,7 @@ use driver::Phase;
 
 
 struct PrintSpanVisitor<'a> {
-    cm: &'a CodeMap,
+    cm: &'a SourceMap,
 }
 
 impl<'a> PrintSpanVisitor<'a> {
@@ -20,7 +20,7 @@ impl<'a> PrintSpanVisitor<'a> {
     }
 }
 
-pub fn span_desc(cm: &CodeMap, span: Span) -> String {
+pub fn span_desc(cm: &SourceMap, span: Span) -> String {
     if span == DUMMY_SP {
         return "DUMMY_SP".to_owned();
     }
@@ -76,12 +76,12 @@ impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
 }
 
 /// Print the spans of all major nodes in `x`.
-pub fn print_spans<T: Visit>(x: &T, cm: &CodeMap) {
+pub fn print_spans<T: Visit>(x: &T, cm: &SourceMap) {
     x.visit(&mut PrintSpanVisitor { cm: cm });
 }
 
 
-pub fn print_one_span<T: Visit>(id: usize, root: &T, cm: &CodeMap, msg: &str) {
+pub fn print_one_span<T: Visit>(id: usize, root: &T, cm: &SourceMap, msg: &str) {
     let mut found = false;
     visit_nodes(root, |i: &Item| {
         if i.id == NodeId::new(id) {
@@ -98,7 +98,7 @@ pub fn print_one_span<T: Visit>(id: usize, root: &T, cm: &CodeMap, msg: &str) {
 pub fn register_commands(reg: &mut Registry) {
     reg.register("print_spans", |_args| {
         Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
-            print_spans(&st.krate() as &Crate, cx.session().codemap());
+            print_spans(&st.krate() as &Crate, cx.session().source_map());
         }))
     });
 }

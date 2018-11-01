@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, SyncSender, Receiver};
 use std::thread;
 use syntax::ast::*;
-use syntax::codemap::{FileLoader, RealFileLoader};
-use syntax::codemap::{FileMap, Span};
+use syntax::source_map::{FileLoader, RealFileLoader};
+use syntax::source_map::{SourceFile, Span};
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 use syntax_pos::FileName;
@@ -26,7 +26,7 @@ use interact::WrapSender;
 use interact::{plain_backend, vim8_backend};
 use interact::worker::{self, ToWorker};
 use pick_node;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 
 use super::MarkInfo;
 
@@ -45,7 +45,7 @@ impl InteractState {
            to_client: SyncSender<ToClient>) -> InteractState {
 
         let to_client2 = to_client.clone();
-        let rw_handler = move |fm: Rc<FileMap>, s: &str| {
+        let rw_handler = move |fm: Rc<SourceFile>, s: &str| {
             info!("got new text for {:?}", fm.name);
             let filename = match &fm.name {
                 &FileName::Real(ref pathbuf) => pathbuf.to_str().unwrap().to_owned(),
@@ -111,8 +111,8 @@ impl InteractState {
                         .unwrap_or_else(
                             || panic!("no {:?} node at {}:{}:{}", kind, file, line, col));
 
-                    let lo = cx.session().codemap().lookup_char_pos(info.span.lo());
-                    let hi = cx.session().codemap().lookup_char_pos(info.span.hi());
+                    let lo = cx.session().source_map().lookup_char_pos(info.span.lo());
+                    let hi = cx.session().source_map().lookup_char_pos(info.span.hi());
                     let file = filename_to_str(&lo.file.name);
                     (info.id,
                      MarkInfo {
@@ -147,8 +147,8 @@ impl InteractState {
 
                 let msg = self.run_compiler(driver::Phase::Phase2, |_krate, cx| {
                     let span = cx.hir_map().span(id);
-                    let lo = cx.session().codemap().lookup_char_pos(span.lo());
-                    let hi = cx.session().codemap().lookup_char_pos(span.hi());
+                    let lo = cx.session().source_map().lookup_char_pos(span.lo());
+                    let hi = cx.session().source_map().lookup_char_pos(span.hi());
                     let file = filename_to_str(&lo.file.name);
                     let info = MarkInfo {
                         id: id.as_usize(),
@@ -211,8 +211,8 @@ fn collect_mark_infos(marks: &HashSet<(NodeId, Symbol)>,
     for &(id, label) in marks {
         let info = infos.entry(id).or_insert_with(|| {
             let span = span_map[&id];
-            let lo = cx.session().codemap().lookup_char_pos(span.lo());
-            let hi = cx.session().codemap().lookup_char_pos(span.hi());
+            let lo = cx.session().source_map().lookup_char_pos(span.lo());
+            let hi = cx.session().source_map().lookup_char_pos(span.hi());
             let file = filename_to_str(&lo.file.name);
 
             MarkInfo {

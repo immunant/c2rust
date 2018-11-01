@@ -20,8 +20,8 @@ use syntax::ast::{
     UnsafeSource,
 };
 use syntax::ast::DUMMY_NODE_ID;
-use syntax::codemap::CodeMap;
-use syntax::codemap::{FileLoader, RealFileLoader};
+use syntax::source_map::SourceMap;
+use syntax::source_map::{FileLoader, RealFileLoader};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::{self, PResult};
 use syntax::parse::token::Token;
@@ -150,9 +150,9 @@ impl Phase1Bits {
     /// tables.  So if you actually plan to run the compiler after calling `reset()`, the new
     /// `krate` passed here should satisfy a few properties:
     ///
-    ///  1. The crate must have been parsed under the same `CodeMap` used by `session`.  Spans'
-    ///     `hi` and `lo` byte positions are indices into the `CodeMap` used for parsing, so
-    ///     transferring those spans to a different `CodeMap` produces nonsensical results.
+    ///  1. The crate must have been parsed under the same `SourceMap` used by `session`.  Spans'
+    ///     `hi` and `lo` byte positions are indices into the `SourceMap` used for parsing, so
+    ///     transferring those spans to a different `SourceMap` produces nonsensical results.
     ///
     ///  2. The crate must not contain any paths starting with `$crate` from a non-empty
     ///     `SyntaxCtxt`.  These types of paths appear during macro expansion, and can only be
@@ -215,11 +215,27 @@ impl Phase1Bits {
 }
 
 
+/// Sysroot adjustment: if the sysroot is unset, and args[0] is an absolute path, use args[0] to
+/// infer a sysroot.  Rustc's own sysroot detection (filesearch::get_or_default_sysroot) uses
+/// env::current_exe, which will point to idiomize, not rustc.
+fn maybe_set_sysroot(mut sopts: Options, args: &[String]) -> Options {
+    if sopts.maybe_sysroot.is_none() && args.len() > 0 {
+        let p = Path::new(&args[0]);
+        if p.is_absolute() {
+            if let Some(sysroot) = p.parent().and_then(|p| p.parent()) {
+                sopts.maybe_sysroot = Some(sysroot.to_owned());
+            }
+        }
+    }
+    sopts
+}
+
 pub fn run_compiler_to_phase1(args: &[String],
                               file_loader: Option<Box<FileLoader+Sync+Send>>) -> Phase1Bits {
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
     let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
+    let sopts = maybe_set_sysroot(sopts, args);
     let out_dir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
     let output = matches.opt_str("o").map(|o| PathBuf::from(&o));
 
@@ -284,7 +300,8 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
         return func(krate, cx);
     }
 
-    driver::phase_3_run_analysis_passes(
+    let mut result = None;
+    let _ = driver::phase_3_run_analysis_passes(
         &*codegen_backend,
         &control,
         &session, &cstore, hir_map, expand_result.analysis, expand_result.resolutions,
@@ -292,10 +309,12 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
         |tcx, _analysis, _incremental_hashes_map, _result| {
             if phase == Phase::Phase3 {
                 let cx = Ctxt::new_phase_3(&session, &cstore, &tcx.hir, tcx, &arenas.interner);
-                return func(krate, cx);
+                result = Some(func(krate, cx));
+                return;
             }
             unreachable!();
-        }).unwrap()
+        });
+    result.unwrap()
 }
 
 /// Run the compiler with some command line `args`.  Stops compiling and invokes the callback
@@ -318,6 +337,7 @@ pub fn build_session_from_args(args: &[String],
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
     let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
+    let sopts = maybe_set_sysroot(sopts, args);
 
     assert!(matches.free.len() == 1,
            "expected exactly one input file");
@@ -333,20 +353,17 @@ fn build_session(sopts: Options,
     // Corresponds roughly to `run_compiler`.
     let descriptions = rustc_driver::diagnostics_registry();
     let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
-    // Note: `codemap` is expected to be an `Lrc<CodeMap>`, which is an alias for `Rc<CodeMap>`.
-    // If this ever changes, we'll need a new trick to obtain the `CodeMap` in `rebuild_session`.
-    let codemap = Rc::new(CodeMap::with_file_loader(file_loader, sopts.file_path_mapping()));
-    // Put a dummy file at the beginning of the codemap, so that no real `Span` will accidentally
+    // Note: `source_map` is expected to be an `Lrc<SourceMap>`, which is an alias for `Rc<SourceMap>`.
+    // If this ever changes, we'll need a new trick to obtain the `SourceMap` in `rebuild_session`.
+    let source_map = Rc::new(SourceMap::with_file_loader(file_loader, sopts.file_path_mapping()));
+    // Put a dummy file at the beginning of the source_map, so that no real `Span` will accidentally
     // collide with `DUMMY_SP` (which is `0 .. 0`).
-    {
-        let fm = codemap.new_filemap(FileName::Custom("<dummy>".to_string()), " ".to_string());
-        fm.next_line(fm.start_pos);
-    }
+    source_map.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
 
     let emitter_dest = None;
 
-    let sess = session::build_session_with_codemap(
-        sopts, in_path, descriptions, codemap, emitter_dest
+    let sess = session::build_session_with_source_map(
+        sopts, in_path, descriptions, source_map, emitter_dest
     );
 
     let codegen_backend = rustc_driver::get_codegen_backend(&sess);
@@ -355,27 +372,27 @@ fn build_session(sopts: Options,
     (sess, cstore, codegen_backend)
 }
 
-/// Build a new session from an existing one.  This uses the same `CodeMap`, so spans will be
+/// Build a new session from an existing one.  This uses the same `SourceMap`, so spans will be
 /// compatible across both sessions.
 fn rebuild_session(old_session: &Session) -> (Session, CStore, Box<CodegenBackend>) {
     let descriptions = rustc_driver::diagnostics_registry();
 
-    // We happen to know that the `&CodeMap` we get from `old_session.codemap()` is inside an `Rc`
+    // We happen to know that the `&SourceMap` we get from `old_session.source_map()` is inside an `Rc`
     // pointer, so we can clone that `Rc` with a little unsafe code.
-    let codemap = unsafe {
-        let temp_rc = ManuallyDrop::new(Rc::from_raw(old_session.codemap()));
-        let codemap = (*temp_rc).clone();
+    let source_map = unsafe {
+        let temp_rc = ManuallyDrop::new(Rc::from_raw(old_session.source_map()));
+        let source_map = (*temp_rc).clone();
         mem::forget(temp_rc);
-        codemap
+        source_map
     };
 
     let emitter_dest = None;
 
-    let session = session::build_session_with_codemap(
+    let session = session::build_session_with_source_map(
         old_session.opts.clone(),
         old_session.local_crate_source_file.clone(),
         descriptions,
-        codemap,
+        source_map,
         emitter_dest,
     );
 
@@ -554,9 +571,8 @@ pub fn try_run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> Op
 
 
 /// Create a span whose text is `s`.  Note this is somewhat expensive, as it adds a new dummy file
-/// to the `CodeMap` on every call.
-pub fn make_span_for_text(cm: &CodeMap, s: &str) -> Span {
-    let fm = cm.new_filemap(FileName::Custom("<text>".to_string()), s.to_string());
-    fm.next_line(fm.start_pos);
+/// to the `SourceMap` on every call.
+pub fn make_span_for_text(cm: &SourceMap, s: &str) -> Span {
+    let fm = cm.new_source_file(FileName::Custom("<text>".to_string()), s.to_string());
     Span::new(fm.start_pos, fm.end_pos, SyntaxContext::empty())
 }

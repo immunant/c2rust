@@ -1,4 +1,5 @@
 #![feature(rustc_private)]
+#![feature(label_break_value)]
 extern crate serde_cbor;
 extern crate syntax;
 extern crate syntax_pos;
@@ -7,6 +8,8 @@ extern crate dtoa;
 #[macro_use] extern crate indexmap;
 extern crate serde;
 extern crate serde_json;
+extern crate rustc;
+extern crate rust_ast_builder;
 
 pub mod renamer;
 pub mod clang_ast;

@@ -1,196 +1,87 @@
 //! This module contains some AST folds for fixing up span information.  There are a few sources of
 //! bogus spans, which cause major confusion during rewriting.
 //!
-//!  - Macro expansion.  The expansion of the macro has its span set to the macro definition.  It's
-//!    much more convenient to have the span of the expansion point to the invocation instead.
 //!  - `format!`.  The expansion of `format!("...", x)` copies the span of the expression `x` to a
 //!    number of other nodes, such as `&x`, the `__arg0` pattern used to match `x`, and the
 //!    reference to `std::fmt::Display::fmt` used to format `x`.  We'd like to detect all of these
 //!    bogus spans and reset them.
 
-use rustc::session::Session;
+use std::mem;
+use smallvec::SmallVec;
 use syntax::ast::*;
-use syntax::attr;
-use syntax::codemap::{Span, CodeMap};
+use syntax::source_map::{Span, DUMMY_SP};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
-use syntax_pos::FileName;
 use syntax_pos::hygiene::SyntaxContext;
 
-use ast_manip::{AstEquiv, Fold};
-use ast_manip::util::{with_span_text, extended_span};
-use driver;
-use util::Lone;
+use ast_manip::Fold;
+use ast_manip::util::extended_span;
 
 
-/// Folder for fixing expansions of `format!` and related macros.  It remembers the span in use on
-/// entry to the macro expansion, and applies that same span to all nodes inside, except for
-/// `Expr`s copied from the macro arguments.
-struct FixFormat<'a> {
-    sess: &'a Session,
-    codemap: &'a CodeMap,
-    current_expansion: Option<Span>,
+/// Folder for fixing expansions of `format!`.  `format!(..., foo)` generates an expression `&foo`,
+/// and gives it the same span as `foo` itself (notably, *not* a macro generated span), which
+/// causes problems for us later on.  This folder detects nodes like `&foo` and gives them a
+/// macro-generated span to fix the problem.
+struct FixFormat {
+    /// The span of the most recent ancestor `Expr`.
+    parent_span: Span,
+    /// Are we currently inside (the macro-generated part of) a `format!` invocation?
+    in_format: bool,
 }
 
-impl<'a> Folder for FixFormat<'a> {
+impl FixFormat {
+    fn descend<F, R>(&mut self, in_format: bool, cur_span: Span, f: F) -> R
+            where F: FnOnce(&mut Self) -> R {
+        let old_in_format = mem::replace(&mut self.in_format, in_format);
+        let old_parent_span = mem::replace(&mut self.parent_span, cur_span);
+        let r = f(self);
+        self.in_format = old_in_format;
+        self.parent_span = old_parent_span;
+        r
+    }
+
+    /// Check if we should set `in_format` when descending into this expr.  Note that this doesn't
+    /// need to fire for *every* `format!`-generated expr - it just needs to fire somewhere above
+    /// the spliced-in arguments (`foo`).
+    fn is_format_entry(&self, e: &Expr) -> bool {
+        // We're looking for the `match` that `format!` uses for unpacking its arguments.  We
+        // recognize it by its span: it's macro-generated, but the "macro definition" actually
+        // points to the format string, which lies inside the macro invocation itself.
+
+        if !matches!([e.node] ExprKind::Match(..)) {
+            return false;
+        }
+
+        if e.span.ctxt() == SyntaxContext::empty() {
+            return false;
+        }
+
+        e.span.source_callsite().contains(e.span)
+    }
+}
+
+impl Folder for FixFormat {
     fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
-        let old_ce = self.current_expansion;
-        if self.current_expansion.is_none() {
-            // Check if this is the top of a `format!` expansion.
-            let lo = self.codemap.lookup_byte_offset(e.span.lo());
-            if let &FileName::Macros(_) = &lo.fm.name {
-                self.current_expansion = Some(e.span)
-            }
+        if self.in_format &&
+           e.span.ctxt() == SyntaxContext::empty() &&
+           matches!([e.node] ExprKind::AddrOf(..)) {
+            trace!("EXITING format! at {:?}", e);
+            // Current node is the `&foo`.  We need to change its span.  On recursing into `foo`,
+            // we are no longer inside a `format!` invocation.
+            let new_span = self.parent_span;
+            self.descend(false, e.span, |this| e.map(|e| {
+                let mut e = fold::noop_fold_expr(e, this);
+                e.span = new_span;
+                e
+            }))
+        } else if !self.in_format && self.is_format_entry(&e) {
+            trace!("ENTERING format! at {:?}", e);
+            self.descend(true, e.span, |this| e.map(|e| fold::noop_fold_expr(e, this)))
         } else {
-            // Check if we are exiting the current expansion, traversing into a copy of a macro
-            // argument expression.
-            let current_expansion = self.current_expansion.unwrap();
-            if e.span.ctxt() != current_expansion.ctxt() &&
-               e.span.ctxt() == current_expansion.source_callsite().ctxt() {
-                // The current node at least *claims* to be a macro argument.  But `format!`
-                // applies the argument's span to all kinds of random nodes, so we have to
-                // validate the span info by parsing the indicated text and comparing `e` to
-                // the resulting `Expr`.
-
-                // TODO: Behavior is a litte weird if the argument is another `format!()`.  In
-                // something like `format!("{}", format!("{}", 12345))`, we set `current_expansion`
-                // on entry to the outer `format!`, and don't clear it until we get to the `12345`
-                // argument.  The inner `format!` essentially gets treated as if it were part of
-                // the outer one.  Not a big problem at the moment, but it is a little odd.
-                let mut parsed = None;
-                with_span_text(self.codemap, e.span, |s| {
-                    parsed = Some(driver::parse_expr(self.sess, s));
-                });
-                if let Some(parsed) = parsed {
-                    if parsed.ast_equiv(&e) {
-                        self.current_expansion = None;
-                    }
-                }
-            }
-        }
-        let result = e.map(|e| fold::noop_fold_expr(e, self));
-        self.current_expansion = old_ce;
-        result
-    }
-
-    fn new_span(&mut self, sp: Span) -> Span {
-        if let Some(span) = self.current_expansion {
-            span
-        } else {
-            sp
+            let in_format = self.in_format;
+            self.descend(in_format, e.span, |this| e.map(|e| fold::noop_fold_expr(e, this)))
         }
     }
-
-    fn fold_mac(&mut self, mac: Mac) -> Mac {
-        fold::noop_fold_mac(mac, self)
-    }
-}
-
-
-/// Folder for fixing up spans of macro expansions.  When we enter a particular macro expansion, we
-/// set the span of the topmost node in the expansion to the span of the macro invocation.
-///
-/// Note that this span adjustment discards the `SyntaxContext` for the topmost node in each macro
-/// expansion.  In general, discarding `SyntaxContext`s is a bad idea - resolution relies on them
-/// to interpret `$crate`, feature gate checking consults them to determine where unstable features
-/// are allowed, and there are likely others.  Here, we are hoping that the "important" spans are
-/// in some subtree of the macro expansion, not the very top-level node.  For `$crate`, this is
-/// certainly the case (a macro can't expand to a lone `Ident`), and in practice, feature gate /
-/// `#[allow_internal_unstable]` checks seem to work that way as well.
-///
-/// TODO: Between this and rewriting, we don't correctly handle macros that expand into multiple
-/// items (or multiple statements, foreign items, etc).  If a macro expands to two items, for
-/// example, and the surrounding mod gets reprinted, then since each item's span points to the
-/// entire macro invocation, we would splice in the macro invocation text twice.  Ideally,
-/// rewriting should splice in the macro expansion if it can find all the generated items
-/// side-by-side, and otherwise reprint each (remaining) item individually.
-struct FixMacros {
-    in_macro: bool,
-}
-
-fn invocation_span(span: Span) -> Span {
-    let mut span = span;
-    while span.ctxt() != SyntaxContext::empty() {
-        let new_span = span.source_callsite();
-        assert!(new_span != span);
-        span = new_span;
-    }
-    span
-}
-
-impl Folder for FixMacros {
-    fn fold_expr(&mut self, mut e: P<Expr>) -> P<Expr> {
-        let was_in_macro = self.in_macro;
-        self.in_macro = e.span.ctxt() != SyntaxContext::empty();
-
-        let old_span = e.span;
-        // Clear all macro spans in the node and its children.
-        e = e.map(|e| fold::noop_fold_expr(e, self));
-
-        if !was_in_macro && self.in_macro {
-            // This is the topmost node in a macro expansion.  Set its span to the span of the
-            // macro invocation.
-
-            e = e.map(|e| Expr {
-                span: invocation_span(old_span),
-                .. e
-            });
-        }
-
-        self.in_macro = was_in_macro;
-
-        e
-    }
-
-    fn fold_stmt(&mut self, mut s: Stmt) -> SmallVector<Stmt> {
-        let was_in_macro = self.in_macro;
-        self.in_macro = s.span.ctxt() != SyntaxContext::empty();
-
-        let old_span = s.span;
-        // Clear all macro spans in the node and its children.
-        s = fold::noop_fold_stmt(s, self).lone();
-
-        if !was_in_macro && self.in_macro {
-            // This is the topmost node in a macro expansion.  Set its span to the span of the
-            // macro invocation.
-
-            s = Stmt {
-                span: invocation_span(old_span),
-                .. s
-            };
-        }
-
-        self.in_macro = was_in_macro;
-
-        SmallVector::one(s)
-    }
-
-    fn fold_item(&mut self, mut i: P<Item>) -> SmallVector<P<Item>> {
-        let was_in_macro = self.in_macro;
-        self.in_macro = i.span.ctxt() != SyntaxContext::empty();
-
-        let old_span = i.span;
-        // Clear all macro spans in the node and its children.
-        i = fold::noop_fold_item(i, self).lone();
-
-        if !was_in_macro && self.in_macro {
-            // This is the topmost node in a macro expansion.  Set its span to the span of the
-            // macro invocation.
-
-            i = i.map(|i| Item {
-                span: invocation_span(old_span),
-                .. i
-            });
-        }
-
-        self.in_macro = was_in_macro;
-
-        SmallVector::one(i)
-    }
-
-    // TODO: Eventually we should extend this to work on the remaining node types where macros can
-    // appear (Pat, Ty, and the Item-likes).
 
     fn fold_mac(&mut self, mac: Mac) -> Mac {
         fold::noop_fold_mac(mac, self)
@@ -203,7 +94,7 @@ impl Folder for FixMacros {
 struct FixAttrs;
 
 impl Folder for FixAttrs {
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let new_span = extended_span(i.span, &i.attrs);
         let i =
             if new_span != i.span {
@@ -214,7 +105,7 @@ impl Folder for FixAttrs {
         fold::noop_fold_item(i, self)
     }
 
-    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVector<ForeignItem> {
+    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         let new_span = extended_span(fi.span, &fi.attrs);
         let fi =
             if new_span != fi.span {
@@ -231,103 +122,14 @@ impl Folder for FixAttrs {
 }
 
 
-/// Fix up spans of `#[derive(..)]`-generated items.  For some reason it sets the item spans to the
-/// span of the trait name (`Clone`, `Copy`, etc.) with empty SyntaxContext.
-struct FixDerivedImpls {
-    stack: Vec<DeriveInfo>,
-}
-
-struct DeriveInfo {
-    /// The original span of the item, which is equal to the span of the trait name in the original
-    /// `#[derive(..)]`.
-    outer_span: Span,
-    /// The span used for (some) nodes within the `#[derive]`-generated code, which has a
-    /// SyntaxContext indicating macro-generated code.
-    inner_span: Span,
-}
-
-impl Folder for FixDerivedImpls {
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
-        if !attr::contains_name(&i.attrs, "automatically_derived") {
-            return fold::noop_fold_item(i, self);
-        }
-
-        let inner_span = match i.node {
-            ItemKind::Impl(_, _, _, _, _, ref ty, _) => ty.span,
-            _ => panic!("unsupported: #[automatically_derived] on an item that's not an impl"),
-        };
-        let outer_span = i.span;
-        self.stack.push(DeriveInfo { outer_span, inner_span });
-
-        let result = fold::noop_fold_item(i, self);
-
-        self.stack.pop();
-        result
-    }
-
-    fn new_span(&mut self, sp: Span) -> Span {
-        if let Some(info) = self.stack.last() {
-            if sp == info.outer_span {
-                return info.inner_span;
-            }
-        }
-        sp
-    }
-
-    fn fold_mac(&mut self, mac: Mac) -> Mac {
-        fold::noop_fold_mac(mac, self)
-    }
-}
-
-
-pub fn fix_format<T: Fold>(sess: &Session, node: T) -> <T as Fold>::Result {
+pub fn fix_format<T: Fold>(node: T) -> <T as Fold>::Result {
     let mut fix_format = FixFormat {
-        sess: sess,
-        codemap: sess.codemap(),
-        current_expansion: None,
+        parent_span: DUMMY_SP,
+        in_format: false,
     };
     node.fold(&mut fix_format)
 }
 
-pub fn fix_macros<T: Fold>(node: T) -> <T as Fold>::Result {
-    let mut fix_macros = FixMacros {
-        in_macro: false,
-    };
-    node.fold(&mut fix_macros)
-}
-
-pub fn fix_derived_impls<T: Fold>(node: T) -> <T as Fold>::Result {
-    // `#[derive]`-generated items are the exception to our normal macro handling.  We want to
-    // treat the entire item as non-rewritable / macro-generated.  `FixDerivedImpls` reverses the
-    // work of FixMacros, setting the item's span to one with a non-empty SyntaxContext, and also
-    // updates some internal spans that for some reason get set by `rustc` to match the invocation
-    // span.
-    node.fold(&mut FixDerivedImpls { stack: Vec::new() })
-}
-
 pub fn fix_attr_spans<T: Fold>(node: T) -> <T as Fold>::Result {
     node.fold(&mut FixAttrs)
-}
-
-pub fn fix_spans<T: Fold<Result=T>>(sess: &Session, node: T) -> T {
-    let mut fix_format = FixFormat {
-        sess: sess,
-        codemap: sess.codemap(),
-        current_expansion: None,
-    };
-    let node = node.fold(&mut fix_format);
-
-    let mut fix_macros = FixMacros {
-        in_macro: false,
-    };
-    let node = node.fold(&mut fix_macros);
-
-    // `#[derive]`-generated items are the exception to our normal macro handling.  We want to
-    // treat the entire item as non-rewritable / macro-generated.  `FixDerivedImpls` reverses the
-    // work of FixMacros, setting the item's span to one with a non-empty SyntaxContext, and also
-    // updates some internal spans that for some reason get set by `rustc` to match the invocation
-    // span.
-    let node = node.fold(&mut FixDerivedImpls { stack: Vec::new() });
-
-    node
 }

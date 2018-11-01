@@ -1,17 +1,23 @@
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use rustc::hir::def_id::DefId;
-use rustc::ty::TypeVariants;
+use rustc::ty::{self, TyKind};
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
+use syntax::parse::PResult;
+use syntax::parse::parser::Parser;
+use syntax::parse::token::{Token, BinOpToken};
+use syntax::print::pprust;
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 
 use api::*;
-use command::{CommandState, Registry};
+use ast_manip::lr_expr::{self, fold_exprs_with_context};
+use command::{Command, CommandState, RefactorState, Registry, TypeckLoopResult};
 use driver::{self, Phase};
+use illtyped::{IlltypedFolder, fold_illtyped};
+use reflect;
 use transform::Transform;
-
 
 /// Change the type of function arguments.  All `target` args will have their types changed to
 /// `new_ty`.  Values passed for those arguments will be converted with `wrap`, and uses of those
@@ -176,6 +182,135 @@ impl Transform for RetypeReturn {
 }
 
 
+/// Change the types of marked statics to `new_ty`.  Uses `conv_rval`, `conv_lval`, and
+/// `conv_lval_mut` to adapt uses of marked statics so that the program remains well-typed.  Each
+/// `conv` expression is an expr template that adapts an expression `__new` of type `new_ty` to an
+/// rvalue, (immutable) lvalue, or mutable lvalue expression of the static's original type.  As a
+/// special case, values assigned into the static (including its initial value) are handled using
+/// the `rev_conv_assign` template, which should adapt an expression `__old` of the static's
+/// original type to `new_ty`.
+///
+/// `conv_lval_mut` can be omitted if the static is not mutable (or is never accessed mutably).
+/// `rev_conv_assign` can be omitted if the static is not mutable or if it is acceptable to handle
+/// assignments by assigning into `conv_lval_mut` (i.e., transforming `s = e` into
+/// `conv_lval_mut(s) = e` instead of `s = rev_conv_assign(e)`).
+pub struct RetypeStatic {
+    pub new_ty: String,
+    pub rev_conv_assign: String,
+    pub conv_rval: String,
+    pub conv_lval: String,
+    pub conv_lval_mut: Option<String>,
+}
+
+impl Transform for RetypeStatic {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        // (1) Change the types of marked statics, and update their initializer expressions.
+
+        let new_ty = parse_ty(cx.session(), &self.new_ty);
+        let rev_conv_assign = st.parse_expr(cx, &self.rev_conv_assign);
+        let conv_rval = st.parse_expr(cx, &self.conv_rval);
+        let conv_lval = st.parse_expr(cx, &self.conv_lval);
+        let conv_lval_mut = self.conv_lval_mut.as_ref().map(|src| st.parse_expr(cx, src));
+
+        // Modified statics, by DefId.
+        let mut mod_statics: HashSet<DefId> = HashSet::new();
+
+        let krate = fold_nodes(krate, |i: P<Item>| {
+            if !st.marked(i.id, "target") {
+                return smallvec![i];
+            }
+
+            smallvec![i.map(|mut i| {
+                match i.node {
+                    ItemKind::Static(ref mut ty, _, ref mut init) => {
+                        *ty = new_ty.clone();
+                        let mut bnd = Bindings::new();
+                        bnd.add_expr("__old", init.clone());
+                        *init = rev_conv_assign.clone().subst(st, cx, &bnd);
+                        mod_statics.insert(cx.node_def_id(i.id));
+                    },
+                    _ => {},
+                }
+                i
+            })]
+        });
+
+        let krate = fold_nodes(krate, |mut fi: ForeignItem| {
+            if !st.marked(fi.id, "target") {
+                return smallvec![fi];
+            }
+
+            match fi.node {
+                ForeignItemKind::Static(ref mut ty, _) => {
+                    *ty = new_ty.clone();
+                    mod_statics.insert(cx.node_def_id(fi.id));
+                },
+                _ => {},
+            }
+            smallvec![fi]
+        });
+
+        // (2) Handle assignments into modified statics.  This is its own step because it's hard to
+        // do inside `fold_exprs_with_context`.
+
+        // Track IDs of exprs that were handled by this step, so the next step doesn't try to do
+        // its own thing with them.  Note we assume the input AST is properly numbered.
+        let mut handled_ids: HashSet<NodeId> = HashSet::new();
+
+        let krate = fold_nodes(krate, |e: P<Expr>| {
+            if !matches!([e.node] ExprKind::Assign(..), ExprKind::AssignOp(..)) {
+                return e;
+            }
+
+            e.map(|mut e| {
+                match e.node {
+                    ExprKind::Assign(ref lhs, ref mut rhs) |
+                    ExprKind::AssignOp(_, ref lhs, ref mut rhs) => {
+                        if cx.try_resolve_expr(lhs)
+                             .map_or(false, |did| mod_statics.contains(&did)) {
+                            let mut bnd = Bindings::new();
+                            bnd.add_expr("__old", rhs.clone());
+                            *rhs = rev_conv_assign.clone().subst(st, cx, &bnd);
+                            handled_ids.insert(lhs.id);
+                        }
+                    },
+                    _ => {},
+                }
+                e
+            })
+        });
+
+        // (3) Rewrite use sites of modified statics.
+
+        let krate = fold_exprs_with_context(krate, |e, ectx| {
+            if !matches!([e.node] ExprKind::Path(..)) ||
+               handled_ids.contains(&e.id) ||
+               !cx.try_resolve_expr(&e).map_or(false, |did| mod_statics.contains(&did)) {
+                return e;
+            }
+
+            let mut bnd = Bindings::new();
+            bnd.add_expr("__new", e.clone());
+            match ectx {
+                lr_expr::Context::Rvalue => conv_rval.clone().subst(st, cx, &bnd),
+                lr_expr::Context::Lvalue => conv_lval.clone().subst(st, cx, &bnd),
+                lr_expr::Context::LvalueMut =>
+                    conv_lval_mut.clone().unwrap_or_else(
+                        || panic!("need conv_lval_mut to handle LvalueMut expression `{}`",
+                                  pprust::expr_to_string(&e)))
+                        .subst(st, cx, &bnd),
+            }
+        });
+
+        krate
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
+
 /// Rewrite types in the crate to types that are transmute-compatible with the original.
 /// Automatically inserts `transmute` calls as needed to make the types line up after rewriting.
 ///
@@ -197,11 +332,11 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
 
     impl<F> Folder for ChangeTypeFolder<F>
             where F: FnMut(&P<Ty>) -> Option<P<Ty>> {
-        fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+        fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
             let i = if matches!([i.node] ItemKind::Fn(..)) {
                 i.map(|mut i| {
                     let mut fd = expect!([i.node]
-                                         ItemKind::Fn(ref fd, _, _ ,_ ,_ ,_) =>
+                                         ItemKind::Fn(ref fd, _, _, _) =>
                                          fd.clone().into_inner());
 
                     for (j, arg) in fd.inputs.iter_mut().enumerate() {
@@ -234,7 +369,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
                     }
 
                     match i.node {
-                        ItemKind::Fn(ref mut fd_ptr, _, _, _, _, _) => {
+                        ItemKind::Fn(ref mut fd_ptr, _, _, _) => {
                             *fd_ptr = P(fd);
                         },
                         _ => panic!("expected ItemKind::Fn"),
@@ -348,7 +483,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
                 ExprKind::Field(ref obj, ref name) => {
                     let ty = cx.adjusted_node_type(obj.id);
                     match ty.sty {
-                        TypeVariants::TyAdt(adt, _) => {
+                        TyKind::Adt(adt, _) => {
                             let did = adt.non_enum_variant().fields
                               .iter()
                               .find(|f| f.ident == *name)
@@ -462,6 +597,150 @@ impl Transform for BitcastRetype {
 }
 
 
+/// Fix type errors by applying type-based rewrite rules to ill-typed expressions.  This pass is
+/// designed for cleaning up type errors introduced when changing type annotations with a pass such
+/// as `rewrite_ty`.  Typically the rules should be customized based on the type change that was
+/// performed.
+pub struct TypeFixRules {
+    /// A sequence of rules for fixing type errors.  Each rule has the form `"ectx, actual_ty,
+    /// expected_ty => cast_expr"`.
+    ///
+    ///  - `ectx` is one of `rval`, `lval`, `lval_mut`, or `*`, and determines in what kinds of
+    ///    expression contexts the rule applies.
+    ///  - `actual_ty` is a pattern to be matched against the (reflected) actual expression type.
+    ///  - `expected_ty` is a pattern to be matched against the (reflected) expected expression
+    ///    type.
+    ///  - `cast_expr` is a template for generating a cast expression.
+    ///
+    /// For expressions in context `ectx`, whose actual type matches `actual_ty` and whose
+    /// expected type matches `expected_ty` (and where actual != expected), the expr is substituted
+    /// into `cast_expr` to replace the original expr with one of the expected type.  During
+    /// substitution, `cast_expr` has access to variable captured from both `actual_ty` and
+    /// `expected_ty`, as well as `__old` containing the original (ill-typed) expression.
+    pub rules: Vec<String>,
+}
+
+struct Rule {
+    #[allow(unused)]
+    ectx: Option<lr_expr::Context>,
+    actual_ty: P<Ty>,
+    expected_ty: P<Ty>,
+    cast_expr: P<Expr>,
+}
+
+fn parse_rule<'a>(p: &mut Parser<'a>) -> PResult<'a, Rule> {
+    let ectx = if p.eat(&Token::Ident(Ident::from_str("rval"), false)) {
+        Some(lr_expr::Context::Rvalue)
+    } else if p.eat(&Token::Ident(Ident::from_str("lval"), false)) {
+        Some(lr_expr::Context::Lvalue)
+    } else if p.eat(&Token::Ident(Ident::from_str("lval_mut"), false)) {
+        Some(lr_expr::Context::LvalueMut)
+    } else {
+        p.expect(&Token::BinOp(BinOpToken::Star))?;
+        None
+    };
+    p.expect(&Token::Comma)?;
+
+    let actual_ty = p.parse_ty()?;
+    p.expect(&Token::Comma)?;
+
+    let expected_ty = p.parse_ty()?;
+
+    p.expect(&Token::FatArrow)?;
+
+    let cast_expr = p.parse_expr()?;
+
+    p.expect(&Token::Eof)?;
+
+    Ok(Rule { ectx, actual_ty, expected_ty, cast_expr })
+}
+
+impl Command for TypeFixRules {
+    fn run(&mut self, state: &mut RefactorState) {
+        let rules = self.rules.iter()
+            .map(|s| driver::run_parser(state.session(), s, parse_rule))
+            .collect::<Vec<_>>();
+
+        state.run_typeck_loop(|krate, st, cx| {
+            info!("Starting retyping iteration");
+
+            let mut lr_map = HashMap::new();
+            let krate = lr_expr::fold_exprs_with_context(krate, |e, ectx| {
+                // This crate was just expanded (inside run_typeck_loop), so all nodes should be
+                // numbered.
+                assert!(e.id != DUMMY_NODE_ID);
+                if ectx != lr_expr::Context::Rvalue {
+                    lr_map.insert(e.id, ectx);
+                }
+                e
+            });
+
+            let mut inserted = 0;
+            let krate = fold_illtyped(cx, krate, TypeFixRulesFolder {
+                st, cx,
+                rules: &rules,
+                num_inserted_casts: &mut inserted,
+                lr_map: &lr_map,
+            });
+            if inserted > 0 {
+                TypeckLoopResult::Iterate(krate)
+            } else {
+                TypeckLoopResult::Finished(krate)
+            }
+        }).expect("Could not retype crate!");
+    }
+}
+
+struct TypeFixRulesFolder<'a, 'tcx: 'a> {
+    st: &'a CommandState,
+    cx: &'a driver::Ctxt<'a, 'tcx>,
+    rules: &'a [Rule],
+
+    num_inserted_casts: &'a mut u32,
+    lr_map: &'a HashMap<NodeId, lr_expr::Context>,
+}
+
+impl<'a, 'tcx> IlltypedFolder<'tcx> for TypeFixRulesFolder<'a, 'tcx> {
+    fn fix_expr(&mut self,
+                e: P<Expr>,
+                actual: ty::Ty<'tcx>,
+                expected: ty::Ty<'tcx>) -> P<Expr> {
+        let ectx = self.lr_map.get(&e.id).cloned().unwrap_or(lr_expr::Context::Rvalue);
+        let actual_ty_ast = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), actual);
+        let expected_ty_ast = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), expected);
+        debug!("looking for rule matching {:?}, {:?}, {:?}", ectx, actual_ty_ast, expected_ty_ast);
+
+
+        for r in self.rules {
+            if !r.ectx.map_or(true, |rule_ectx| rule_ectx == ectx) {
+                trace!("wrong ectx: {:?} != {:?}", r.ectx, ectx);
+                continue;
+            }
+
+            let mut mcx = MatchCtxt::new(self.st, self.cx);
+            if let Err(e) = mcx.try_match(&r.actual_ty, &actual_ty_ast) {
+                trace!("error matching actual {:?} with {:?}: {:?}",
+                      r.actual_ty, actual_ty_ast, e);
+                continue;
+            }
+            if let Err(e) = mcx.try_match(&r.expected_ty, &expected_ty_ast) {
+                trace!("error matching expected {:?} with {:?}: {:?}",
+                      r.expected_ty, expected_ty_ast, e);
+                continue;
+            }
+
+            let mut bnd = mcx.bindings;
+            bnd.add_expr("__old", e);
+            info!("rewriting with bindings {:?}", bnd);
+            *self.num_inserted_casts += 1;
+            return r.cast_expr.clone().subst(self.st, self.cx, &bnd);
+        }
+
+        e
+    }
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -477,8 +756,18 @@ pub fn register_commands(reg: &mut Registry) {
         unwrap: args[2].clone(),
     }));
 
+    reg.register("retype_static", |args| mk(RetypeStatic {
+        new_ty: args[0].clone(),
+        rev_conv_assign: args[1].clone(),
+        conv_rval: args[2].clone(),
+        conv_lval: args[3].clone(),
+        conv_lval_mut: args.get(4).cloned(),
+    }));
+
     reg.register("bitcast_retype", |args| mk(BitcastRetype {
         pat: args[0].clone(),
         repl: args[1].clone(),
     }));
+
+    reg.register("type_fix_rules", |args| Box::new(TypeFixRules { rules: args.to_owned() }));
 }

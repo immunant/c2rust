@@ -237,6 +237,10 @@ impl<'a> Stream<'a> {
                     Ok(Filter::Public)
                 },
 
+                "mut" => {
+                    Ok(Filter::Mutable)
+                },
+
                 "name" => {
                     let mut inner = self.parens()?;
                     let lit = inner.lit()?;
@@ -253,7 +257,7 @@ impl<'a> Stream<'a> {
                         Err(e) => fail!("invalid regex: {}", e),
                     };
                     // Then, add ^ ... $ so the regex has to match the entire item name
-                    let r = Regex::new(&format!("^{}$", s.as_str())).unwrap();
+                    let r = Regex::new(&format!("^({})$", s.as_str())).unwrap();
                     Ok(Filter::Name(r))
                 },
 
@@ -441,11 +445,11 @@ impl<'a> Stream<'a> {
 
 
 pub fn parse(sess: &Session, src: &str) -> Vec<SelectOp> {
-    let fm = sess.codemap().new_filemap(FileName::Macros("select".to_owned()),
-                                        src.to_owned());
+    let fm = sess.source_map().new_source_file(FileName::Macros("select".to_owned()),
+                                               src.to_owned());
     eprintln!("src = {:?}", src);
     eprintln!("fm = {:?}", fm);
-    let ts = parse::filemap_to_stream(&sess.parse_sess, fm, None);
+    let ts = parse::source_file_to_stream(&sess.parse_sess, fm, None);
     eprintln!("tokens = {:?}", ts);
 
     let mut stream = Stream::new(&sess.parse_sess, ts.into_trees().collect());

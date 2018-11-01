@@ -4,7 +4,6 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::util::small_vector::SmallVector;
 
 use api::*;
 use ast_manip::fn_edit::{visit_fns, FnKind};
@@ -192,9 +191,9 @@ impl Transform for CanonicalizeStructs {
             };
 
             if should_remove {
-                SmallVector::new()
+                smallvec![]
             } else {
-                SmallVector::one(i)
+                smallvec![i]
             }
         });
 
@@ -213,9 +212,9 @@ impl Transform for CanonicalizeStructs {
             };
 
             if should_remove {
-                SmallVector::new()
+                smallvec![]
             } else {
-                SmallVector::one(i)
+                smallvec![i]
             }
         });
 

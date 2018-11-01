@@ -1,19 +1,19 @@
 use std::collections::{HashMap, HashSet, BTreeMap};
 use syntax::ast::*;
 use syntax::attr;
-use syntax::codemap::{Span, BytePos};
+use syntax::source_map::{Span, BytePos};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::{self, TokenStream, ThinTokenStream, TokenTree, Delimited};
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
+use rust_ast_builder::mk;
 
 use super::mac_table::{MacTable, InvocId, InvocKind};
 use super::nt_match::{self, NtMatch};
 use super::root_callsite_span;
 
 use ast_manip::{Fold, ListNodeIds};
-use ast_manip::make_ast::mk;
 use ast_manip::AstEquiv;
 
 
@@ -108,7 +108,7 @@ impl<'a> Folder for CollapseMacros<'a> {
         fold::noop_fold_ty(t, self)
     }
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(info) = self.mac_table.get(s.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_stmt()
@@ -120,10 +120,10 @@ impl<'a> Folder for CollapseMacros<'a> {
                     let new_s = mk().id(s.id).span(root_callsite_span(s.span)).mac_stmt(mac);
                     self.record_matched_ids(s.id, new_s.id);
                     trace!("collapse: {:?} -> {:?}", s, new_s);
-                    return SmallVector::one(new_s);
+                    return smallvec![new_s];
                 } else {
                     trace!("collapse (duplicate): {:?} -> /**/", s);
-                    return SmallVector::new();
+                    return smallvec![];
                 }
             } else {
                 warn!("bad macro kind for stmt: {:?}", info.invoc);
@@ -132,7 +132,7 @@ impl<'a> Folder for CollapseMacros<'a> {
         fold::noop_fold_stmt(s, self)
     }
 
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         if let Some(info) = self.mac_table.get(i.id) {
             match info.invoc {
                 InvocKind::Mac(mac) => {
@@ -145,30 +145,28 @@ impl<'a> Folder for CollapseMacros<'a> {
                         let new_i = mk().id(i.id).span(root_callsite_span(i.span)).mac_item(mac);
                         trace!("collapse: {:?} -> {:?}", i, new_i);
                         self.record_matched_ids(i.id, new_i.id);
-                        return SmallVector::one(new_i);
+                        return smallvec![new_i];
                     } else {
                         trace!("collapse (duplicate): {:?} -> /**/", i);
-                        return SmallVector::new();
+                        return smallvec![];
                     }
                 },
-                InvocKind::ItemAttr(it) => {
-                    if !self.seen_invocs.contains(&info.id) {
-                        self.seen_invocs.insert(info.id);
-                        trace!("ItemAttr: return original: {:?}", i);
-                        let i = i.map(|i| restore_attrs(i, it));
-                        self.record_matched_ids(i.id, i.id);
-                        return SmallVector::one(i);
-                    } else {
-                        trace!("ItemAttr: drop (generated): {:?} -> /**/", i);
-                        return SmallVector::new();
-                    }
+                InvocKind::ItemAttr(orig_i) => {
+                    trace!("ItemAttr: return original: {:?}", i);
+                    let i = i.map(|i| restore_attrs(i, orig_i));
+                    self.record_matched_ids(i.id, i.id);
+                    return smallvec![i];
+                },
+                InvocKind::Derive(_parent_invoc_id) => {
+                    trace!("ItemAttr: drop (generated): {:?} -> /**/", i);
+                    return smallvec![];
                 },
             }
         }
         fold::noop_fold_item(i, self)
     }
 
-    fn fold_impl_item(&mut self, ii: ImplItem) -> SmallVector<ImplItem> {
+    fn fold_impl_item(&mut self, ii: ImplItem) -> SmallVec<[ImplItem; 1]> {
         if let Some(info) = self.mac_table.get(ii.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_impl_item()
@@ -181,10 +179,10 @@ impl<'a> Folder for CollapseMacros<'a> {
                         .mac_impl_item(mac);
                     trace!("collapse: {:?} -> {:?}", ii, new_ii);
                     self.record_matched_ids(ii.id, new_ii.id);
-                    return SmallVector::one(new_ii);
+                    return smallvec![new_ii];
                 } else {
                     trace!("collapse (duplicate): {:?} -> /**/", ii);
-                    return SmallVector::new();
+                    return smallvec![];
                 }
             } else {
                 warn!("bad macro kind for impl item: {:?}", info.invoc);
@@ -193,7 +191,7 @@ impl<'a> Folder for CollapseMacros<'a> {
         fold::noop_fold_impl_item(ii, self)
     }
 
-    fn fold_trait_item(&mut self, ti: TraitItem) -> SmallVector<TraitItem> {
+    fn fold_trait_item(&mut self, ti: TraitItem) -> SmallVec<[TraitItem; 1]> {
         if let Some(info) = self.mac_table.get(ti.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_trait_item()
@@ -206,10 +204,10 @@ impl<'a> Folder for CollapseMacros<'a> {
                         .mac_trait_item(mac);
                     trace!("collapse: {:?} -> {:?}", ti, new_ti);
                     self.record_matched_ids(ti.id, new_ti.id);
-                    return SmallVector::one(new_ti);
+                    return smallvec![new_ti];
                 } else {
                     trace!("collapse (duplicate): {:?} -> /**/", ti);
-                    return SmallVector::new();
+                    return smallvec![];
                 }
             } else {
                 warn!("bad macro kind for trait item: {:?}", info.invoc);
@@ -218,7 +216,7 @@ impl<'a> Folder for CollapseMacros<'a> {
         fold::noop_fold_trait_item(ti, self)
     }
 
-    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVector<ForeignItem> {
+    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         if let Some(info) = self.mac_table.get(fi.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_foreign_item()
@@ -231,10 +229,10 @@ impl<'a> Folder for CollapseMacros<'a> {
                         .mac_foreign_item(mac);
                     trace!("collapse: {:?} -> {:?}", fi, new_fi);
                     self.record_matched_ids(fi.id, new_fi.id);
-                    return SmallVector::one(new_fi);
+                    return smallvec![new_fi];
                 } else {
                     trace!("collapse (duplicate): {:?} -> /**/", fi);
-                    return SmallVector::new();
+                    return smallvec![];
                 }
             } else {
                 warn!("bad macro kind for trait item: {:?}", info.invoc);
@@ -422,7 +420,7 @@ impl<'a> Folder for ReplaceTokens<'a> {
         fold::noop_fold_ty(t, self)
     }
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVector<Stmt> {
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(invoc_id) = self.mac_table.get(s.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut s = s;
@@ -431,52 +429,52 @@ impl<'a> Folder for ReplaceTokens<'a> {
                     mac.node.tts = new_tts;
                     (mac, style, attrs)
                 });
-                return SmallVector::one(Stmt { node: StmtKind::Mac(mac), ..s });
+                return smallvec![Stmt { node: StmtKind::Mac(mac), ..s }];
             }
         }
         fold::noop_fold_stmt(s, self)
     }
 
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>> {
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         if let Some(invoc_id) = self.mac_table.get(i.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
-                return SmallVector::one(i.map(|mut i| {
+                return smallvec![i.map(|mut i| {
                     expect!([i.node] ItemKind::Mac(ref mut mac) => mac.node.tts = new_tts);
                     i
-                }));
+                })];
             }
         }
         fold::noop_fold_item(i, self)
     }
 
-    fn fold_impl_item(&mut self, ii: ImplItem) -> SmallVector<ImplItem> {
+    fn fold_impl_item(&mut self, ii: ImplItem) -> SmallVec<[ImplItem; 1]> {
         if let Some(invoc_id) = self.mac_table.get(ii.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut ii = ii;
                 expect!([ii.node] ImplItemKind::Macro(ref mut mac) => mac.node.tts = new_tts);
-                return SmallVector::one(ii);
+                return smallvec![ii];
             }
         }
         fold::noop_fold_impl_item(ii, self)
     }
 
-    fn fold_trait_item(&mut self, ti: TraitItem) -> SmallVector<TraitItem> {
+    fn fold_trait_item(&mut self, ti: TraitItem) -> SmallVec<[TraitItem; 1]> {
         if let Some(invoc_id) = self.mac_table.get(ti.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut ti = ti;
                 expect!([ti.node] TraitItemKind::Macro(ref mut mac) => mac.node.tts = new_tts);
-                return SmallVector::one(ti);
+                return smallvec![ti];
             }
         }
         fold::noop_fold_trait_item(ti, self)
     }
 
-    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVector<ForeignItem> {
+    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         if let Some(invoc_id) = self.mac_table.get(fi.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut fi = fi;
                 expect!([fi.node] ForeignItemKind::Macro(ref mut mac) => mac.node.tts = new_tts);
-                return SmallVector::one(fi);
+                return smallvec![fi];
             }
         }
         fold::noop_fold_foreign_item(fi, self)

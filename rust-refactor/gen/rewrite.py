@@ -467,7 +467,14 @@ def do_recover_children_impl(d):
     yield '  }'
     yield '  fn recover_node_and_children(reparsed: &Self, new: &Self, mut rcx: RewriteCtxtRef) {'
     if impl_recover:
-        yield '    if recover(reparsed, new, rcx.borrow()) {'
+        yield '    if recover(None, reparsed, new, rcx.borrow()) {'
+        yield '      return;'
+        yield '    }'
+    yield '    <Self as RecoverChildren>::recover_children(reparsed, new, rcx);'
+    yield '  }'
+    yield '  fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, mut rcx: RewriteCtxtRef) {'
+    if impl_recover:
+        yield '    if recover(Some(old_span), reparsed, new, rcx.borrow()) {'
         yield '      return;'
         yield '    }'
     yield '    <Self as RecoverChildren>::recover_children(reparsed, new, rcx);'

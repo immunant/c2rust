@@ -196,7 +196,7 @@ impl TypedAstContext {
         };
 
         match self.index(pointed_id).kind {
-            CTypeKind::Function(_, _, _, no_return) => no_return,
+            CTypeKind::Function(_, _, _, no_return, _) => no_return,
             _ => false,
         }
     }
@@ -1026,8 +1026,8 @@ pub enum CTypeKind {
     //
     // Note a function taking no arguments should have one `void` argument. Functions without any
     // arguments and in K&R format.
-    // Flags: is_variable_argument, is_noreturn
-    Function(CQualTypeId, Vec<CQualTypeId>, bool, bool),
+    // Flags: is_variable_argument, is_noreturn, has prototype
+    Function(CQualTypeId, Vec<CQualTypeId>, bool, bool, bool),
 
     // Type definition type (6.7.7)
     Typedef(CTypedefId),

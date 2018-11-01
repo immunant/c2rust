@@ -142,7 +142,7 @@ def build_static_library(c_files: Iterable[CFile],
     os.chdir(output_path)
 
     # create .o files
-    args = ["-c", "-fPIC"]
+    args = ["-c", "-fPIC", "-march=native"]
 
     args.extend(c_file.path for c_file in c_files)
 

@@ -4,7 +4,7 @@ use std::collections::hash_map::Entry;
 use std::mem;
 use std::ops::Bound::Included;
 use syntax::ast::{NodeId, AttrId, DUMMY_NODE_ID};
-use syntax::codemap::symbol::Symbol;
+use syntax::source_map::symbol::Symbol;
 
 
 pub const DUMMY_ATTR_ID: AttrId = AttrId(!0);

@@ -61,6 +61,7 @@ transform_modules! {
     ionize,
     items,
     linkage,
+    literals,
     ownership,
     retype,
     rewrite,

@@ -2,7 +2,7 @@
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
+use smallvec::SmallVec;
 use syntax::util::move_map::MoveMap;
 
 use ast_manip::Fold;
@@ -81,7 +81,7 @@ gen_fold_node_impl! {
 gen_fold_node_impl! {
     node = P<Item>;
     folder = ItemNodeFolder;
-    fn fold_item(&mut self, i: P<Item>) -> SmallVector<P<Item>>;
+    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]>;
     walk = fold::noop_fold_item(i, self);
     map = i.move_flat_map(|i| (self.callback)(i));
 }
@@ -89,7 +89,7 @@ gen_fold_node_impl! {
 gen_fold_node_impl! {
     node = ImplItem;
     folder = ImplItemNodeFolder;
-    fn fold_impl_item(&mut self, i: ImplItem) -> SmallVector<ImplItem>;
+    fn fold_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]>;
     walk = fold::noop_fold_impl_item(i, self);
     map = i.move_flat_map(|i| (self.callback)(i));
 }
@@ -124,6 +124,14 @@ gen_fold_node_impl! {
     fn fold_foreign_mod(&mut self, nm: ForeignMod) -> ForeignMod;
     walk = fold::noop_fold_foreign_mod(nm, self);
     map = (self.callback)(nm);
+}
+
+gen_fold_node_impl! {
+    node = ForeignItem;
+    folder = ForeignItemNodeFolder;
+    fn fold_foreign_item(&mut self, ni: ForeignItem) -> SmallVec<[ForeignItem; 1]>;
+    walk = fold::noop_fold_foreign_item(ni, self);
+    map = ni.move_flat_map(|ni| (self.callback)(ni));
 }
 
 /// Rewrite nodes of the callback's argument type within `target`.  This function performs a

@@ -5,7 +5,7 @@
 use std::fmt;
 use std::marker::PhantomData;
 use arena::SyncDroplessArena;
-use rustc::ty::{Ty, TypeVariants};
+use rustc::ty::{Ty, TyKind};
 
 use type_map;
 
@@ -17,14 +17,14 @@ use type_map;
 ///
 /// Labeled types have to mimic the tree structure of the underlying `Ty`, so that each type
 /// constructor in the tree can have its own label.  But maintaining a custom copy of
-/// `TypeVariants` would be annoying, so instead, we let labeled types form arbitrary trees, and
+/// `TyKind` would be annoying, so instead, we let labeled types form arbitrary trees, and
 /// make the `LabeledTyCtxt` responsible for making those trees match the `Ty`'s structure.
 #[derive(Clone, PartialEq, Eq)]
 pub struct LabeledTyS<'tcx, L: 'tcx> {
     /// The underlying type.
     pub ty: Ty<'tcx>,
     /// The arguments of this type constructor.  The number and meaning of these arguments depends
-    /// on which type constructor this is (specifically, which `TypeVariants` variant is used for
+    /// on which type constructor this is (specifically, which `TyKind` variant is used for
     /// `self.ty.sty`).
     pub args: &'tcx [LabeledTy<'tcx, L>],
     /// The label for the current type constructor.
@@ -88,64 +88,65 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
     /// Label a `Ty` using a callback.  The callback runs at every type constructor to produce a
     /// label for that node in the tree.
     pub fn label<F: FnMut(Ty<'tcx>) -> L>(&self, ty: Ty<'tcx>, f: &mut F) -> LabeledTy<'tcx, L> {
-        use rustc::ty::TypeVariants::*;
+        use rustc::ty::TyKind::*;
         let label = f(ty);
         match ty.sty {
             // Types with no arguments
-            TyBool |
-            TyChar |
-            TyInt(_) |
-            TyUint(_) |
-            TyFloat(_) |
-            TyStr |
-            TyNever => self.mk(ty, &[], label),
+            Bool |
+            Char |
+            Int(_) |
+            Uint(_) |
+            Float(_) |
+            Str |
+            Foreign(_) |
+            Never => self.mk(ty, &[], label),
 
             // Types with arguments
-            TyAdt(_, substs) => {
+            Adt(_, substs) => {
                 let args = substs.types().map(|t| self.label(t, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             },
-            TyArray(elem, _) => {
+            Array(elem, _) => {
                 let args = [self.label(elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             },
-            TySlice(elem) => {
+            Slice(elem) => {
                 let args = [self.label(elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             },
-            TyRawPtr(mty) => {
+            RawPtr(mty) => {
                 let args = [self.label(mty.ty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             },
-            TyRef(_, mty, _) => {
+            Ref(_, mty, _) => {
                 let args = [self.label(mty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             },
-            TyFnDef(_, substs) => {
+            FnDef(_, substs) => {
                 let args = substs.types().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             },
-            TyFnPtr(ref sig) => {
+            FnPtr(ref sig) => {
                 let args = sig.skip_binder().inputs_and_output.iter()
                     .map(|ty| self.label(ty, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             },
-            TyTuple(ref elems) => {
+            Tuple(ref elems) => {
                 let args = elems.iter().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             },
 
             // Types that aren't actually supported by this code yet
-            TyDynamic(..) |
-            TyClosure(..) |
-            TyGenerator(..) |
-            TyGeneratorWitness(..) |
-            TyProjection(..) |
-            TyAnon(..) |
-            TyParam(..) |
-            TyInfer(..) |
-            TyForeign(..) |
-            TyError => self.mk(ty, &[], label),
+            Dynamic(..) |
+            Closure(..) |
+            Generator(..) |
+            GeneratorWitness(..) |
+            Projection(..) |
+            UnnormalizedProjection(..) |
+            Opaque(..) |
+            Param(..) |
+            Infer(..) |
+            Error => self.mk(ty, &[], label),
         }
     }
 
@@ -158,7 +159,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
     }
 
 
-    /// Substitute in arguments for any type parameter references (`TyParam`) in a labeled type.
+    /// Substitute in arguments for any type parameter references (`Param`) in a labeled type.
     /// Panics if `lty` contains a reference to a type parameter that is past the end of `substs`
     /// (usually this means the caller is providing the wrong list of type arguments as `substs`).
     ///
@@ -170,7 +171,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
                  lty: LabeledTy<'tcx, L>,
                  substs: &[LabeledTy<'tcx, L>]) -> LabeledTy<'tcx, L> {
         match lty.ty.sty {
-            TypeVariants::TyParam(ref tp) => {
+            TyKind::Param(ref tp) => {
                 substs[tp.idx as usize]
             },
             _ => self.mk(lty.ty, self.subst_slice(lty.args, substs), lty.label.clone()),
@@ -204,7 +205,7 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
 
 
 impl<'tcx, L: fmt::Debug> type_map::Type for LabeledTy<'tcx, L> {
-    fn sty(&self) -> &TypeVariants {
+    fn sty(&self) -> &TyKind {
         &self.ty.sty
     }
 

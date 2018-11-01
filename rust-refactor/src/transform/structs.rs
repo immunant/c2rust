@@ -1,12 +1,12 @@
+use rustc::ty;
 use syntax::ast::*;
 use syntax::ptr::P;
-use syntax::util::small_vector::SmallVector;
 
 use api::*;
 use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
-use util::IntoSymbol;
+use rust_ast_builder::IntoSymbol;
 use util::HirDefExt;
 
 
@@ -20,9 +20,9 @@ impl Transform for AssignToUpdate {
         fold_match(st, cx, pat, krate, |orig, mut bnd| {
             let x = bnd.expr("__x").clone();
 
-            let struct_def_id = match cx.node_type(x.id).ty_to_def_id() {
-                Some(x) => x,
-                None => return orig,
+            let struct_def_id = match cx.node_type(x.id).sty {
+                ty::TyKind::Adt(ref def, _) => def.did,
+                _ => return orig,
             };
             let struct_path = cx.def_path(struct_def_id);
 
@@ -104,20 +104,20 @@ impl Transform for Rename {
         // Find the struct definition and rename it.
         let krate = fold_nodes(krate, |i: P<Item>| {
             if target_def_id.is_some() || !st.marked(i.id, "target") {
-                return SmallVector::one(i);
+                return smallvec![i];
             }
 
             // Make sure this is actually a struct declaration, and not, say, the target
             // declaration's containing module.
-            match_or!([struct_item_id(&i)] Some(x) => x; return SmallVector::one(i));
+            match_or!([struct_item_id(&i)] Some(x) => x; return smallvec![i]);
             target_def_id = Some(cx.node_def_id(i.id));
 
-            SmallVector::one(i.map(|i| {
+            smallvec![i.map(|i| {
                 Item {
                     ident: new_ident.clone(),
                     .. i
                 }
-            }))
+            })]
         });
 
         // Find uses of the struct and rewrite them.  We need to check everywhere a Path may
