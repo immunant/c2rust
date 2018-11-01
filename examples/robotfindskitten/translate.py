@@ -259,14 +259,7 @@ REFACTORINGS = [
 idiomize = get_cmd_or_die(config.RREF_BIN)
 
 def run_idiomize(args, mode='inplace'):
-    full_args = ['-r', mode] + args + [
-            '--', 'src/robotfindskitten.rs', '--crate-type=dylib',
-            '-L{rust_libdir}/rustlib/{triple}/lib/'.format(
-                rust_libdir=get_rust_toolchain_libpath(),
-                triple=get_host_triplet()),
-            # TODO use target.HOST_SUFFIX here
-            '-L{rref_dir}/runtime/target/debug'.format(
-                rref_dir=config.RREF_DIR)]
+    full_args = ['-r', mode, '--cargo'] + args
 
     ld_lib_path = get_rust_toolchain_libpath()
 

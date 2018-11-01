@@ -14,7 +14,7 @@ use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
 use rust_ast_builder::IntoSymbol;
-use util::HirDefExt;
+use util::{HirDefExt, Lone};
 
 
 /// Turn free functions into methods in an impl.  
@@ -636,6 +636,102 @@ impl Transform for WrapApi {
 }
 
 
+/// Replace all instances of `pat` with calls to a new function whose name and signature is given
+/// by `sig`.  Example:
+///
+/// Input:
+///
+///     1 + 2
+///
+/// After running `abstract 'add(x: u32, y: u32) -> u32' 'x + y'`:
+///
+///     add(1, 2)
+///
+///     // Elsewhere:
+///     fn add(x: u32, y: u32) -> u32 { x + y }
+///
+/// All type and value parameter names in `sig` act as bindings when matching `pat`.  The captured
+/// exprs and types are passed as parameters when building the new call expression.  The body of
+/// the function is `body`, if provided, otherwise `pat` itself.
+///
+/// Non-ident patterns in `sig` are not supported.  It is also an error for any type parameter's
+/// name to collide with any value parameter.
+///
+/// If matching with `pat` fails to capture expressions for any of the value parameters of `sig`,
+/// it is an error.  If it fails to capture for a type parameter, the parameter is filled in with
+/// `_` (infer).
+struct Abstract {
+    sig: String,
+    pat: String,
+    body: Option<String>,
+}
+
+impl Transform for Abstract {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let pat = parse_expr(cx.session(), &self.pat);
+
+        let func_src = format!("unsafe fn {} {{\n    {}\n}}",
+                               self.sig, self.body.as_ref().unwrap_or(&self.pat));
+        let func: P<Item> = parse_items(cx.session(), &func_src).lone();
+
+        // Build the call expression template
+
+        let mut value_args = Vec::new();
+        let mut type_args = Vec::new();
+        {
+            let (decl, generics) = expect!([func.node]
+                    ItemKind::Fn(ref decl, _, ref gen, _) => (decl, gen));
+            for arg in &decl.inputs {
+                let name = expect!([arg.pat.node] PatKind::Ident(_, ident, _) => ident);
+                value_args.push(name);
+            }
+            for param in &generics.params {
+                if let GenericParamKind::Type { .. } = param.kind {
+                    type_args.push(param.ident);
+                }
+            }
+        }
+
+        let aba = mk().angle_bracketed_args(
+            type_args.iter().map(|name| mk().ident_ty(name)).collect());
+        let seg = mk().path_segment_with_args(func.ident, aba);
+        let call_expr = mk().call_expr(
+            mk().path_expr(mk().abs_path(vec![seg])),
+            value_args.iter().map(|name| mk().ident_expr(name)).collect());
+
+        // Search and replace
+
+        let mut init_mcx = MatchCtxt::new(st, cx);
+        for name in &value_args {
+            init_mcx.set_type(name.name, BindingType::Expr);
+        }
+        for name in &type_args {
+            init_mcx.set_type(name.name, BindingType::Ty);
+        }
+
+        let krate = fold_match_with(init_mcx, pat, krate, |_ast, mut bnd| {
+            for name in &type_args {
+                if bnd.get_ty(name.name).is_none() {
+                    bnd.add_ty(name.name, mk().infer_ty());
+                }
+            }
+            call_expr.clone().subst(st, cx, &bnd)
+        });
+
+        // Add the function definition to the crate
+
+        let mut krate = krate;
+        krate.module.items.push(func);
+
+        krate
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -645,4 +741,9 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("sink_unsafe", |_args| mk(SinkUnsafe));
     reg.register("wrap_extern", |_args| mk(WrapExtern));
     reg.register("wrap_api", |_args| mk(WrapApi));
+    reg.register("abstract", |args| mk(Abstract {
+        sig: args[0].clone(),
+        pat: args[1].clone(),
+        body: args.get(2).cloned(),
+    }));
 }

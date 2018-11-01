@@ -215,11 +215,27 @@ impl Phase1Bits {
 }
 
 
+/// Sysroot adjustment: if the sysroot is unset, and args[0] is an absolute path, use args[0] to
+/// infer a sysroot.  Rustc's own sysroot detection (filesearch::get_or_default_sysroot) uses
+/// env::current_exe, which will point to idiomize, not rustc.
+fn maybe_set_sysroot(mut sopts: Options, args: &[String]) -> Options {
+    if sopts.maybe_sysroot.is_none() && args.len() > 0 {
+        let p = Path::new(&args[0]);
+        if p.is_absolute() {
+            if let Some(sysroot) = p.parent().and_then(|p| p.parent()) {
+                sopts.maybe_sysroot = Some(sysroot.to_owned());
+            }
+        }
+    }
+    sopts
+}
+
 pub fn run_compiler_to_phase1(args: &[String],
                               file_loader: Option<Box<FileLoader+Sync+Send>>) -> Phase1Bits {
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
     let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
+    let sopts = maybe_set_sysroot(sopts, args);
     let out_dir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
     let output = matches.opt_str("o").map(|o| PathBuf::from(&o));
 
@@ -321,6 +337,7 @@ pub fn build_session_from_args(args: &[String],
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
     let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
+    let sopts = maybe_set_sysroot(sopts, args);
 
     assert!(matches.free.len() == 1,
            "expected exactly one input file");
