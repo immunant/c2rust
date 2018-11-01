@@ -1,7 +1,6 @@
-/// This module provides translation for SIMD 
+/// This module provides translation for SIMD operations and expressions.
 
 use super::*;
-
 
 /// As of rustc 1.29, rust is known to be missing some SIMD functions.
 /// See https://github.com/rust-lang-nursery/stdsimd/issues/579
@@ -60,8 +59,10 @@ static SIMD_X86_64_ONLY: [&str; 11] = [
 
 impl Translation {
 
-    pub 
-    fn import_simd_typedef(&self, name: &str) -> bool {
+    /// Given the name of a typedef check if its one of the SIMD types.
+    /// This function returns `true` when the name of the type is one that
+    /// it knows how to implement and no further translation should be done.
+    pub fn import_simd_typedef(&self, name: &str) -> bool {
         match name {
             // Public API SIMD typedefs:
             "__m128i" | "__m128" | "__m128d" | "__m64" | "__m256" | "__m256d" | "__m256i" => {
@@ -96,6 +97,8 @@ impl Translation {
         }
     }
 
+    /// Determine if a particular function name is an SIMD primitive. If so an appropriate
+    /// use statement is generated, `true` is returned, and no further processing will need to be done.
     pub fn import_simd_function(&self, name: &str) -> Result<bool, String> {
         if name.starts_with("_mm") {
             // REVIEW: This will do a linear lookup against all SIMD fns. Could use a lazy static hashset
@@ -167,6 +170,8 @@ impl Translation {
         }
     }
 
+    /// Generate a zero value to be used for initialization of a given vector type. The type
+    /// is specified with the underlying element type and the number of elements in the vector.
     pub fn implicit_vector_default(&self, ctype: CTypeId, len: usize) -> Result<P<Expr>, String> {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
@@ -197,6 +202,7 @@ impl Translation {
         Ok(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>))
     }
 
+    /// Translate a list initializer corresponding to a vector type.
     pub fn vector_list_initializer(
         &self,
         use_: ExprUse,
