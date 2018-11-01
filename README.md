@@ -1,63 +1,25 @@
-# C2Rust
-
 [![Build Status](https://travis-ci.org/immunant/c2rust.svg?branch=master)](https://travis-ci.org/immunant/c2rust)
 
-## What is C2Rust?
+# What is C2Rust?
 
-The C2Rust project aims to help you migrate C99 compliant codebases into Rust. It consists of
-three major components: a C to Rust translator, a Rust code refactoring tool, as well as Clang
-& Rust cross checking plugins.
+C2Rust helps you migrate C99 compliant codebases into Rust. It provides:
+- a C to Rust translator, 
+- a Rust code refactoring tool, and
+- a way to cross-check the C code against the new Rust code.
 
-The translator takes a C source file and produces a 1-1 translation into Rust. Although we do
-strive to improve translated code quality as much as possible, this means that the resulting
-output will never be completely idiomatic or safe. However, since unsafe "C code in Rust"
-isn't the final goal, the C2Rust project also provides a tool to improve and refactor this code.
+The translator (or transpiler), produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to produce code that is functionally identical to the input C code. Generating safe or idomatic Rust is *not* a goal for the translator. Rather, we think the best approach is to gradually clean up the translator using supplementary tools. To that end, we are building a refactoring tool (`idiomize`) - see the `rust-refactor` directory for details.
+Some refactoring will have to be done by hand which may introduce errors. We provide plugins for `clang` and `rustc` so that you can compile and run two binaries and check that they behave the same (at the level of function calls).
+See details in the `cross-checks` directory and in the cross checking [tutorial](docs/cross-check-tutorial.md).
 
-Idiomize is a code refactoring tool we are developing to take that unsafe translated code and
-incrementally convert it into safer Rust. This may require user input to do, as it is not always
-possible to statically determine the perfect approach. Once you start improving the safety of
-your translated code base, you'll still want to check that it still provides identical functionality.
-
-The cross checking plugins allow you to execute both your original C and refactored Rust code to
-determine whether or not functionality has been preserved. Since refactoring should be incremental,
-you should be able to easily undo a change if the cross checker shows that something is amiss
-between the two runs.
-
-In the end you should have safer, more idiomatic, Rust code. We hope to automate as much
-of this process as possible, but refactoring is currently a manual process.
-
-## Translating C to Rust
-
-The `ast-exporter` extracts from a C file the abstract syntax tree and type information produced by
-Clang and serializes it into CBOR files. The `ast-importer` consumes these CBOR files and generates
-Rust source code preserving the semantics (as understood under C99) of the initial C program.
-
-The translated Rust files will not depend directly on each other like
-normal Rust modules. They will export and import functions through the C
-API. These modules can be compiled together into a single static Rust
-library.
-
-There are several [known limitations](docs/known-limitations.md)
-in this translator. Some of these restrictions come from limitations of
-Rust and others come from complexities of the features themselves. The
-translator will attempt to skip function definitions that use
-unsupported features.
-
-### Setting up a build environment
+# Setting up a development environment
 
 There are three ways to build the C2Rust project:
 
-#### Vagrant
+- Using **Vagrant**. See our [vagrant README](vagrant/README.md).
+- Using **Docker**. See our [docker README](docker/README.md).
+- **Manually**, as explained below.
 
-In the provided vagrant environment. See the [vagrant README](vagrant/README.md)
-
-#### Docker
-
-In the provided docker environment. See the [docker README](docker/README.md)
-
-#### Manually
-
-The previous two options automatically install all pre-requisites during provisioning. With this option, prerequistics must be installed manually on a macOS or Linux system.
+The previous two options automatically install all prerequisites during provisioning. You can also provision a macOS or Linux system manually.
 
 * If you are on a Debian-based OS, you can run `scripts/provision_deb.sh` to do so. 
 
@@ -81,33 +43,42 @@ The previous two options automatically install all pre-requisites during provisi
     - rustc [version](rust-toolchain)
     - rustfmt-preview component for the above rustc version
 
-### Building
+# Building
 
-These two projects have some large dependencies (namely parts of LLVM and Clang). If 
-you've installed the necessary tools, the following should build the `ast-exporter`, 
-`ast-importer`, and all of their dependencies, automatically pulling them in if 
-necessary.
-
-Building from scratch takes on the order of 30 minutes. The script has been tested on recent versions of macOS and Ubuntu.
+Building from scratch takes a little while. The script has been tested on recent versions of macOS and Ubuntu.
 
     $ ./scripts/build_translator.py
 
-To manually build the `ast-exporter`, check out [these build instructions][0]. To manually build the
-`ast-importer`, check out [its README](ast-importer/README.md).
+To use the cross checking functionality, add the following option.
 
-### Testing
+    $ ./scripts/build_translator.py --with-clang
 
-Tests are found in the [`tests`](tests) folder. If both the `ast-exporter` and `ast-importer` are
-built, you should be able to run the tests with:
+# Testing (Optional)
+
+Tests are found in the [`tests`](tests) folder. If you build the translator successfully, you should be able to run the tests with:
 
     $ ./scripts/test_translator.py tests
 
-This basically tests that the original C file and translated Rust file produce the same output when
-compiled and run. More details about tests are in [this README](tests/README.md).
+This basically tests that the original C file and translated Rust file produce the same output when compiled and run. More details about tests are in [this README](tests/README.md).
 
  [0]: docs/building-ast-exporter.md
 
-### Using the translator
+# Translating C to Rust
+
+Once everything is set up, simply run:
+
+    $ ./scripts/transpile.py path/to/compile_commands.json
+
+<!-- TODO: shorten explanation for compile_commands.json -->
+<!-- TODO: explain transpiler options (cargo.toml, binary, library, etc.) -->
+
+The translated Rust files will not depend directly on each other like
+normal Rust modules. They will export and import functions through the C
+API. These modules can be compiled together into a single static Rust
+library.
+
+There are several [known limitations](docs/known-limitations.md)
+in this translator. The translator will attempt to skip function definitions that use unsupported features.
 
 The C2Rust translation process relies on Clang to parse and type-check
 input C files. For Clang to do this, it needs to know information that is
@@ -120,7 +91,7 @@ either `cmake`, `intercept-build`, or `bear` (Linux only).
 It may be a good idea to remove optimizations(`-OX`) from the compile commands
 file, as there are optimization builtins which we do not support translating.
 
-#### Generating `compile_commands.json` with `cmake`
+## Generating `compile_commands.json` with `cmake`
 
 When creating the initial build directory with cmake specify
 `-DCMAKE_EXPORT_COMPILE_COMMANDS=1`. This only works on projects
@@ -146,27 +117,14 @@ directory.
     $ ./configure CC=clang
     $ bear make
 
-#### Translating source files
 
-The `transpile.py` script will automatically translate all of the C
-source files mentioned in the previously generated
-`compile_commands.json`.
-
-    $ scripts/transpile.py ./compile_commands.json
-
-## Refactoring Rust code
-
-The refactoring tool, idiomize, has different passes to idiomize translated Rust code.
-Some of the passes are run on idividual files and some on an entire Cargo build directory.
-This tool is in its early phases and still under development. 
-More detailed information on it can be found [here](rust-refactor).
 
 ## Cross Checking
 
 Cross checking consists of plugins for both Rust and Clang. These plugins allow you to use
 one of a couple different backends to compare runs of your C and Rust executables. This helps
 you ensure that any idiomization of your Rust code still produces equivalent functionality
-to the original C. More information on the tool can be found [here](docs/cross-check-tutorial.md).
+to the original C. 
 
 ## FAQ
 
