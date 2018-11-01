@@ -10,7 +10,7 @@ extern crate rustc_data_structures;
 extern crate rust_ast_builder;
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use cargo::util::paths;
 use syntax::ast::NodeId;
@@ -307,17 +307,36 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     })
 }
 
-fn get_rustc_executable(path: &Path) -> String {
+/// Try to find the rustup installation that provides the rustc at the given path.  The input path
+/// should be normalized already.
+fn get_rustup_path(rustc: &Path) -> Option<PathBuf> {
     use std::ffi::OsStr;
+    use std::fs;
+
+    // `rustc` is already normalized, which resolves the `rustc` -> `rustup` symlink if one is
+    // present.
+    if rustc.file_name() == Some(OsStr::new("rustup")) {
+        return Some(rustc.to_owned());
+    }
+
+    // Otherwise, check for a rustup binary installed alongside rustc.  If they're the same size,
+    // we assume they're the same file (hardlinked or copied).
+    let rustup = rustc.with_file_name("rustup");
+    let rustc_meta = fs::metadata(&rustc).ok()?;
+    let rustup_meta = fs::metadata(&rustup).ok()?;
+    if rustc_meta.len() == rustup_meta.len() {
+        return Some(rustup);
+    }
+
+    None
+}
+
+fn get_rustc_executable(path: &Path) -> String {
     use std::process::{Command, Stdio};
 
     let resolved = paths::resolve_executable(path).unwrap();
-
-    // `resolve_executable` gives an absolute path, including resolving symlinks.  So if `path`
-    // points to a rustc that is actually a symlink to rustup, we can detect it by looking at
-    // `resolved`.
-    if resolved.file_name() == Some(OsStr::new("rustup")) {
-        let proc = Command::new(resolved).arg("which").arg("rustc")
+    if let Some(rustup_path) = get_rustup_path(&resolved) {
+        let proc = Command::new(rustup_path).arg("which").arg("rustc")
             .stdout(Stdio::piped())
             .spawn().unwrap();
         let output = proc.wait_with_output().unwrap();
