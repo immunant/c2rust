@@ -140,7 +140,9 @@ def build_ast_importer(debug: bool):
     with pb.local.cwd(os.path.join(c.ROOT_DIR, "ast-importer")):
         # use different target dirs for different hosts
         target_dir = "target." + c.HOST_SUFFIX
-        with pb.local.env(CARGO_TARGET_DIR=target_dir):
+        llvm_lib_dir = os.path.join(c.LLVM_BLD, "lib")
+        with pb.local.env(CARGO_TARGET_DIR=target_dir,
+                          LLVM_LIB_DIR=llvm_lib_dir):
             # build with custom rust toolchain
             invoke(cargo, "+" + c.CUSTOM_RUST_NAME, *build_flags)
 
@@ -263,6 +265,7 @@ def _main():
         shutil.rmtree(c.LLVM_SRC, ignore_errors=True)
         shutil.rmtree(c.LLVM_BLD, ignore_errors=True)
         shutil.rmtree(c.DEPS_DIR, ignore_errors=True)
+        shutil.rmtree(c.AST_IMPO_BLD, ignore_errors=True)
 
     # prerequisites
     if not have_rust_toolchain(c.CUSTOM_RUST_NAME):

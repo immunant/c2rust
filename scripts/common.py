@@ -134,6 +134,7 @@ add_subdirectory(ast-exporter)
 
         self.AST_IMPO = "ast-importer/target/{}/ast_importer".format(build_type)
         self.AST_IMPO = os.path.join(self.ROOT_DIR, self.AST_IMPO)
+        self.AST_IMPO_BLD = os.path.join(self.ROOT_DIR, "ast-importer/target")
 
     @staticmethod
     def add_args(parser: argparse.ArgumentParser):
