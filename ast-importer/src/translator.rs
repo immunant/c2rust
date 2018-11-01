@@ -1760,12 +1760,22 @@ impl Translation {
                         res.append(&mut self.convert_stmt(*stmt)?)
                     }
 
-                    Ok(vec![mk().expr_stmt(mk().block_expr(stmts_block(res)))])
+                    Ok(vec![mk().span(s).expr_stmt(mk().block_expr(stmts_block(res)))])
                 })
             },
 
-            CStmtKind::Expr(expr) =>
-                Ok(self.convert_expr(ExprUse::Unused, expr, false, DecayRef::Default)?.stmts),
+            CStmtKind::Expr(expr) => {
+                let mut stmts = self.convert_expr(ExprUse::Unused, expr, false, DecayRef::Default)?.stmts;
+
+                // Attach comments to the first statement generated
+                // Expression conversion doesn't handle comments so
+                // the span should always be available for us to override
+                if !stmts.is_empty() && stmts[0].span == DUMMY_SP {
+                    stmts[0].span = s
+                }
+
+                Ok(stmts)
+            }
 
             CStmtKind::Break => {
                 let mut loop_ = self.loops.current_loop_mut();
@@ -3337,7 +3347,7 @@ impl Translation {
                 let n = substmt_ids.len();
                 let result_id = substmt_ids[n - 1];
 
-                if self.tcfg.reloop_cfgs {
+                if self.tcfg.reloop_cfgs || self.function_requires_relooper(substmt_ids) {
 
                     let name = format!("<stmt-expr_{:?}>", compound_stmt_id);
 
