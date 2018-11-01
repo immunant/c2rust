@@ -12,6 +12,7 @@ getopts = "0.2.14"
 regex = "0.2.2"
 ena = "0.7.3"
 rust_ast_builder = { path = "../rust-ast-builder" }
+cargo = "0.30.0"
 
 [lib]
 name = "idiomize"

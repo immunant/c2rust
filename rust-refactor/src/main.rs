@@ -1,4 +1,5 @@
 #![feature(rustc_private)]
+extern crate cargo;
 extern crate env_logger;
 extern crate getopts;
 extern crate idiomize;
@@ -9,7 +10,9 @@ extern crate rustc_data_structures;
 extern crate rust_ast_builder;
 
 use std::collections::HashSet;
-use std::str::FromStr;
+use std::path::Path;
+use std::str::{self, FromStr};
+use cargo::util::paths;
 use syntax::ast::NodeId;
 use rustc::ty;
 use rustc_data_structures::sync::Lock;
@@ -44,10 +47,16 @@ struct Command {
     args: Vec<String>,
 }
 
+#[derive(Clone, Debug)]
+enum RustcArgSource {
+    CmdLine(Vec<String>),
+    Cargo,
+}
+
 struct Options {
     rewrite_mode: rewrite::files::RewriteMode,
     commands: Vec<Command>,
-    rustc_args: Vec<String>,
+    rustc_args: RustcArgSource,
     cursors: Vec<Cursor>,
     marks: Vec<Mark>,
 
@@ -91,24 +100,27 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     opts.opt("P", "",
         "search dir for plugins",
         "DIR", HasArg::Yes, Occur::Multi);
+    opts.opt("", "cargo",
+        "get rustc arguments from cargo",
+        "", HasArg::No, Occur::Optional);
 
+
+    let mut rustc_args = None;
 
     // Separate idiomize args from rustc args
-    let (local_args, mut rustc_args) = match find(&argv, "--") {
+    let local_args = match find(&argv, "--") {
         Some(idx) => {
             let mut argv = argv;
-            let rest = argv.split_off(idx);
-            (argv, rest)
+            let mut rest = argv.split_off(idx);
+            // Replace "--" with the full path to rustc
+            rest[0] = get_rustc_executable(Path::new("rustc"));
+            rustc_args = Some(RustcArgSource::CmdLine(rest));
+            argv
         },
         None => {
-            info!("Expected `--` followed by rustc arguments");
-            print_usage(&argv[0], &opts);
-            return None;
+            argv
         },
     };
-
-    // Replace "--" with the program name
-    rustc_args[0] = "rustc".to_owned();
 
 
     // Parse idiomize args
@@ -240,6 +252,25 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     let plugin_dirs = m.opt_strs("P").to_owned();
 
 
+    // Handle --cargo
+    if m.opt_present("cargo") {
+        if rustc_args.is_some() {
+            println!("can't combine --cargo with explicit rustc args");
+            print_usage(prog, &opts);
+            return None;
+        }
+        rustc_args = Some(RustcArgSource::Cargo);
+    }
+
+    // Get final rustc_args value
+    if rustc_args.is_none() {
+        println!("must either provide rustc arguments or set --cargo");
+        print_usage(prog, &opts);
+        return None;
+    }
+    let rustc_args = rustc_args.unwrap();
+
+
     // Parse command names + args
     let mut commands = Vec::new();
     let mut cur_command = None;
@@ -276,6 +307,134 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     })
 }
 
+fn get_rustc_executable(path: &Path) -> String {
+    use std::ffi::OsStr;
+    use std::process::{Command, Stdio};
+
+    let resolved = paths::resolve_executable(path).unwrap();
+
+    // `resolve_executable` gives an absolute path, including resolving symlinks.  So if `path`
+    // points to a rustc that is actually a symlink to rustup, we can detect it by looking at
+    // `resolved`.
+    if resolved.file_name() == Some(OsStr::new("rustup")) {
+        let proc = Command::new(resolved).arg("which").arg("rustc")
+            .stdout(Stdio::piped())
+            .spawn().unwrap();
+        let output = proc.wait_with_output().unwrap();
+        assert!(output.status.success());
+        let s = str::from_utf8(&output.stdout).unwrap();
+        return s.trim().to_owned();
+    }
+
+    resolved.to_str().unwrap().to_owned()
+}
+
+fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
+    use std::sync::{Arc, Mutex};
+    use cargo::Config;
+    use cargo::core::{Workspace, PackageId, Target};
+    use cargo::core::compiler::{CompileMode, Executor, DefaultExecutor, Context, Unit};
+    use cargo::core::manifest::TargetKind;
+    use cargo::ops;
+    use cargo::ops::CompileOptions;
+    use cargo::util::{ProcessBuilder, CargoResult};
+    use cargo::util::important_paths::find_root_manifest_for_wd;
+
+    match src {
+        RustcArgSource::CmdLine(strs) => return strs,
+        RustcArgSource::Cargo => {},
+    }
+
+    let config = Config::default().unwrap();
+    let mode = CompileMode::Check { test: false };
+    let compile_opts = CompileOptions::new(&config, mode).unwrap();
+
+    let manifest_path = find_root_manifest_for_wd(config.cwd()).unwrap();
+    let ws = Workspace::new(&manifest_path, &config).unwrap();
+
+    struct LoggingExecutor {
+        default: DefaultExecutor,
+        target_pkg: PackageId,
+        pkg_args: Mutex<Option<Vec<String>>>,
+    }
+
+    impl LoggingExecutor {
+        fn maybe_record_cmd(&self,
+                            cmd: &ProcessBuilder,
+                            id: &PackageId,
+                            target: &Target) {
+            if id != &self.target_pkg {
+                return;
+            }
+
+            let mut g = self.pkg_args.lock().unwrap();
+            match target.kind() {
+                // `lib` builds take priority.  Otherwise, take the first available bin.
+                &TargetKind::Lib(_) => {},
+                &TargetKind::Bin if g.is_none() => {},
+                _ => return,
+            }
+
+            let args = cmd.get_args().iter()
+                .map(|os| os.to_str().unwrap().to_owned())
+                .collect();
+            *g = Some(args);
+        }
+    }
+
+    impl Executor for LoggingExecutor {
+        fn init(&self, cx: &Context, unit: &Unit) {
+            self.default.init(cx, unit);
+        }
+
+        fn exec(&self,
+                cmd: ProcessBuilder,
+                id: &PackageId,
+                target: &Target,
+                mode: CompileMode) -> CargoResult<()> {
+            self.maybe_record_cmd(&cmd, id, target);
+            self.default.exec(cmd, id, target, mode)
+        }
+
+        fn exec_json(&self,
+                     cmd: ProcessBuilder,
+                     id: &PackageId,
+                     target: &Target,
+                     mode: CompileMode,
+                     handle_stdout: &mut FnMut(&str) -> CargoResult<()>,
+                     handle_stderr: &mut FnMut(&str) -> CargoResult<()>) -> CargoResult<()> {
+            self.maybe_record_cmd(&cmd, id, target);
+            self.default.exec_json(cmd, id, target, mode, handle_stdout, handle_stderr)
+        }
+
+        fn force_rebuild(&self, unit: &Unit) -> bool {
+            if unit.pkg.package_id() == &self.target_pkg {
+                return true;
+            }
+            self.default.force_rebuild(unit)
+        }
+    }
+
+    let exec = Arc::new(LoggingExecutor {
+        default: DefaultExecutor,
+        target_pkg: ws.current().unwrap().package_id().clone(),
+        pkg_args: Mutex::new(None),
+    });
+    let exec_dyn: Arc<Executor> = exec.clone();
+
+    ops::compile_with_exec(&ws, &compile_opts, &exec_dyn).unwrap();
+
+    let g = exec.pkg_args.lock().unwrap();
+    let opt_args = g.as_ref().unwrap();
+
+    let mut args = Vec::with_capacity(1 + opt_args.len());
+    let rustc = config.rustc(Some(&ws)).unwrap();
+    args.push(get_rustc_executable(&rustc.path));
+    args.extend(opt_args.iter().cloned());
+    info!("cargo-provided rustc args = {:?}", args);
+    args
+}
+
 fn main_impl(opts: Options) {
     let mut marks = HashSet::new();
     for m in &opts.marks {
@@ -283,8 +442,10 @@ fn main_impl(opts: Options) {
         marks.insert((NodeId::new(m.id), label));
     }
 
+    let rustc_args = get_rustc_arg_strings(opts.rustc_args.clone());
+
     if opts.cursors.len() > 0 {
-        driver::run_compiler(&opts.rustc_args, None, driver::Phase::Phase2, |krate, cx| {
+        driver::run_compiler(&rustc_args, None, driver::Phase::Phase2, |krate, cx| {
             for c in &opts.cursors {
                 let kind_result = c.kind.clone().map_or(Ok(pick_node::NodeKind::Any),
                                                         |s| pick_node::NodeKind::from_str(&s));
@@ -330,7 +491,7 @@ fn main_impl(opts: Options) {
 
     if opts.commands.len() == 1 && opts.commands[0].name == "interact" {
         interact::interact_command(&opts.commands[0].args,
-                                   opts.rustc_args,
+                                   rustc_args,
                                    cmd_reg);
     } else {
         let rewrite_mode = opts.rewrite_mode;
@@ -339,7 +500,7 @@ fn main_impl(opts: Options) {
         });
 
         let mut state = command::RefactorState::from_rustc_args(
-            &opts.rustc_args, cmd_reg, Some(rw_handler), None, marks);
+            &rustc_args, cmd_reg, Some(rw_handler), None, marks);
 
         state.load_crate();
 
