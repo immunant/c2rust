@@ -2580,6 +2580,55 @@ impl Translation {
         Ok(WithStmts::new(call))
     }
 
+    /// This function takes the expr ids belonging to a shuffle vector "super builtin" call,
+    /// excluding the first two (which are always vector exprs). These exprs contain mathematical
+    /// offsets applied to a mask expr (or are otherwise a numeric constant) which we'd like to extract.
+    pub fn get_shuffle_vector_mask(&self, expr_ids: &[CExprId]) -> CExprId {
+        use c_ast::BinOp::{Add, BitAnd, ShiftRight};
+        use c_ast::CExprKind::{Binary, Literal};
+        use c_ast::CLiteral::Integer;
+
+        match self.ast_context.c_exprs[&expr_ids[0]].kind {
+            // Need to unmask which looks like this most of the time: X + (((mask) >> Y) & Z):
+            Binary(_, Add, _, rhs_expr_id, None, None) => self.get_shuffle_vector_mask(&[rhs_expr_id]),
+            // Sometimes there is a mask like this: ((mask) >> X) & Y:
+            Binary(_, BitAnd, lhs_expr_id, _, None, None) => match self.ast_context.c_exprs[&lhs_expr_id].kind {
+                Binary(_, ShiftRight, lhs_expr_id, _, None, None) => lhs_expr_id,
+                _ => unreachable!("Found unknown mask format"),
+            },
+            // Sometimes you find a constant and the mask is used further down the expr list
+            Literal(_, Integer(0, IntBase::Dec)) => self.get_shuffle_vector_mask(&[expr_ids[4]]),
+            ref e => unreachable!("Found unknown mask format: {:?}", e),
+        }
+    }
+
+    /// Vectors tend to have casts to and from internal types. This is problematic for shuffle vectors
+    /// in particular which are usually macros ontop of a builtin call. Although one of these casts
+    /// is likely redundant (external type), the other is not (internal type). We remove both of the
+    /// casts for simplicity and readability
+    pub fn strip_vector_explicit_cast(&self, expr_id: CExprId) -> (&CTypeKind, CExprId, usize) {
+        match self.ast_context.c_exprs[&expr_id].kind {
+            CExprKind::ExplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
+                let expr_id = match &self.ast_context.c_exprs[&expr_id].kind {
+                    CExprKind::ExplicitCast(_, expr_id, _, _, _) => *expr_id,
+                    // The expr_id wont be used in this case (the function only has one
+                    // vector param, not two, despite the following type match), so it's
+                    // okay to provide a dummy here
+                    CExprKind::Call(..) => expr_id,
+                    _ => unreachable!("Found cast other than explicit cast"),
+                };
+
+                match &self.ast_context.resolve_type(ctype).kind {
+                    CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
+                        (&self.ast_context.c_types[ctype].kind, expr_id, *len)
+                    },
+                    _ => unreachable!("Found type other than vector"),
+                }
+            },
+            _ => unreachable!("Found cast other than explicit cast"),
+        }
+    }
+
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
     /// to run before the expression.
     ///
@@ -2593,7 +2642,96 @@ impl Translation {
         match self.ast_context[expr_id].kind {
             CExprKind::DesignatedInitExpr(..) => Err(format!("Unexpected designated init expr")),
             CExprKind::BadExpr => Err(format!("convert_expr: expression kind not supported")),
-            CExprKind::ShuffleVector(..) => Err(format!("shuffle vector not supported")),
+            CExprKind::ShuffleVector(_, ref child_expr_ids) => {
+                use c_ast::CTypeKind::{Double, Float, Int, Short};
+                use c_ast::CExprKind::Literal;
+                use c_ast::CLiteral::Integer;
+
+                // There are three shuffle vector functions which are actually functions, not superbuiltins/macros,
+                // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm256_shuffle_epi8
+
+                if ![4, 6, 10, 18].contains(&child_expr_ids.len()) {
+                    return Err(format!("Unsupported shuffle vector without 4, 6, 10, or 18 input params: {}", child_expr_ids.len()));
+                };
+
+                // There is some internal explicit casting which is okay for us to strip off
+                let (first_vec, first_expr_id, first_vec_len) = self.strip_vector_explicit_cast(child_expr_ids[0]);
+                let (second_vec, second_expr_id, second_vec_len) = self.strip_vector_explicit_cast(child_expr_ids[1]);
+
+                if first_vec != second_vec {
+                    return Err("Unsupported shuffle vector with different vector kinds".into());
+                }
+                if first_vec_len != second_vec_len {
+                    return Err("Unsupported shuffle vector with different vector lengths".into());
+                }
+
+                let mask_expr_id = self.get_shuffle_vector_mask(&child_expr_ids[2..]);
+                let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
+                let second_param = self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
+                let third_param = self.convert_expr(ExprUse::Used, mask_expr_id, is_static, decay_ref)?;
+                let mut params = vec![first_param.val];
+
+                // Some don't take a second param, but the expr is still there for some reason
+                match (child_expr_ids.len(), &first_vec, first_vec_len) {
+                    // _mm256_shuffle_epi32
+                    (10, Int, 8) |
+                    // _mm_shuffle_epi32
+                    (6, Int, 4) |
+                    // _mm_shufflehi_epi16, _mm_shufflelo_epi16
+                    (10, Short, 8) |
+                    // _mm256_shufflehi_epi16, _mm256_shufflelo_epi16
+                    (18, Short, 16) => {},
+                    _ => params.push(second_param.val),
+                }
+
+                params.push(third_param.val);
+
+                let shuffle_fn_name = match (&first_vec, first_vec_len) {
+                    (Float, 4) => "_mm_shuffle_ps",
+                    (Float, 8) => "_mm256_shuffle_ps",
+                    (Double, 2) => "_mm_shuffle_pd",
+                    (Double, 4) => "_mm256_shuffle_pd",
+                    (Int, 4) => "_mm_shuffle_epi32",
+                    (Int, 8) => "_mm256_shuffle_epi32",
+                    (Short, 8) => {
+                        // _mm_shufflehi_epi16 mask params start with const int,
+                        // _mm_shufflelo_epi16 does not
+                        let expr_id = &child_expr_ids[2];
+                        if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context.c_exprs[expr_id].kind {
+                            "_mm_shufflehi_epi16"
+                        } else {
+                            "_mm_shufflelo_epi16"
+                        }
+                    },
+                    (Short, 16) => {
+                        // _mm256_shufflehi_epi16 mask params start with const int,
+                        // _mm256_shufflelo_epi16 does not
+                        let expr_id = &child_expr_ids[2];
+                        if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context.c_exprs[expr_id].kind {
+                            "_mm256_shufflehi_epi16"
+                        } else {
+                            "_mm256_shufflelo_epi16"
+                        }
+                    },
+                    e => return Err(format!("Unknown shuffle vector signature: {:?}", e)),
+                };
+
+                self.import_simd_function(shuffle_fn_name)?;
+
+                let call = mk().call_expr(mk().ident_expr(shuffle_fn_name), params);
+
+                if use_ == ExprUse::Used {
+                    Ok(WithStmts {
+                        stmts: Vec::new(),
+                        val: call,
+                    })
+                } else {
+                    Ok(WithStmts {
+                        stmts: vec![mk().expr_stmt(call)],
+                        val: self.panic("No value for unused shuffle vector return"),
+                    })
+                }
+            },
             CExprKind::ConvertVector(..) => Err(format!("convert vector not supported")),
 
             CExprKind::UnaryType(_ty, kind, opt_expr, arg_ty) => {
@@ -3089,6 +3227,54 @@ impl Translation {
                         let mut x = self.convert_expr(ExprUse::Used, *id, is_static, decay_ref);
                         Ok(x.unwrap())
                     }
+                    CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
+                        let fn_call_name = match (&self.ast_context.c_types[&ctype].kind, len) {
+                            (CTypeKind::Float, 4) => "_mm_setr_ps",
+                            (CTypeKind::Float, 8) => "_mm256_setr_ps",
+                            (CTypeKind::Double, 2) => "_mm_setr_pd",
+                            (CTypeKind::Double, 4) => "_mm256_setr_pd",
+                            (CTypeKind::LongLong, 2) => "_mm_set_epi64x",
+                            (CTypeKind::LongLong, 4) => "_mm256_setr_epi64x",
+                            (CTypeKind::Char, 8) => "_mm_setr_pi8",
+                            (CTypeKind::Char, 16) => "_mm_setr_epi8",
+                            (CTypeKind::Char, 32) => "_mm256_setr_epi8",
+                            (CTypeKind::Int, 2) => "_mm_setr_pi32",
+                            (CTypeKind::Int, 4) => "_mm_setr_epi32",
+                            (CTypeKind::Int, 8) => "_mm256_setr_epi32",
+                            (CTypeKind::Short, 4) => "_mm_setr_pi16",
+                            (CTypeKind::Short, 8) => "_mm_setr_epi16",
+                            (CTypeKind::Short, 16) => "_mm256_setr_epi16",
+                            ref e => return Err(format!("Unknown vector init list: {:?}", e)),
+                        };
+
+                        self.import_simd_function(fn_call_name)?;
+
+                        let mut params: Vec<P<Expr>> = vec![];
+
+                        for param_id in ids {
+                            params.push(self.convert_expr(use_, *param_id, is_static, decay_ref)?.val);
+                        }
+
+                        // rust is missing support for _mm_setr_epi64x, so we have to use
+                        // the reverse arguments for _mm_set_epi64x
+                        if fn_call_name == "_mm_set_epi64x" {
+                            params.reverse();
+                        }
+
+                        let call = mk().call_expr(mk().ident_expr(fn_call_name), params);
+
+                        if use_ == ExprUse::Used {
+                            Ok(WithStmts {
+                                stmts: Vec::new(),
+                                val: call,
+                            })
+                        } else {
+                            Ok(WithStmts {
+                                stmts: vec![mk().expr_stmt(call)],
+                                val: self.panic("No value for unused shuffle vector return"),
+                            })
+                        }
+                    }
                     ref t => {
                         Err(format!("Init list not implemented for {:?}", t))
                     }
@@ -3282,6 +3468,33 @@ impl Translation {
             "__builtin_va_end" =>
                 Err(format!("va_end not supported - currently va_list and va_arg are supported")),
 
+            // One shuffle vector actually calls a real builtin:
+            "__builtin_ia32_pshufw" => {
+                self.import_simd_function("_mm_shuffle_pi16")?;
+
+                let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
+                let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
+                let second_expr_id = match self.ast_context.c_exprs[&args[1]].kind {
+                    // For some reason there seems to be an incorrect implicit cast here to char
+                    // it's possible the builtin takes a char even though the function takes an int
+                    CExprKind::ImplicitCast(_, expr_id, CastKind::IntegralCast, _, _) => expr_id,
+                    _ => args[1],
+                };
+                let second_param = self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
+                let call = mk().call_expr(mk().ident_expr("_mm_shuffle_pi16"), vec![first_param.val, second_param.val]);
+
+                if use_ == ExprUse::Used {
+                    Ok(WithStmts {
+                        stmts: Vec::new(),
+                        val: call,
+                    })
+                } else {
+                    Ok(WithStmts {
+                        stmts: vec![mk().expr_stmt(call)],
+                        val: self.panic("No value for unused shuffle vector return"),
+                    })
+                }
+            },
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }
@@ -3439,6 +3652,15 @@ impl Translation {
         } else {
             self.convert_expr(use_, expr, is_static, decay_ref)?
         };
+
+        // Shuffle Vector "function" builtins will add a cast which is unnecessary
+        // for translation purposes
+        // TODO: on __builtin_ia32_pshufw as well
+        if let CExprKind::ShuffleVector(..) = self.ast_context[expr].kind {
+            if is_explicit && kind == CastKind::BitCast {
+                return Ok(val);
+            }
+        }
 
         match kind {
             CastKind::BitCast => {
@@ -4756,11 +4978,12 @@ impl Translation {
                     (CTypeKind::Float, 8) => "__m256",
                     (CTypeKind::Double, 2) => "__m128d",
                     (CTypeKind::Double, 4) => "__m256d",
-                    (CTypeKind::LongLong, 2) => "__m128i",
                     (CTypeKind::LongLong, 4) => "__m256i",
-                    (CTypeKind::LongLong, 1) => "__m64",
-                    (CTypeKind::Int, 4) => "__m128i",
+                    (CTypeKind::LongLong, 2) |
+                    (CTypeKind::Char, 16) |
+                    (CTypeKind::Int, 4) |
                     (CTypeKind::Short, 8) => "__m128i",
+                    (CTypeKind::LongLong, 1) |
                     (CTypeKind::Int, 2) => "__m64",
                     (kind, len) => unimplemented!("Unknown vector type: {:?} x {}", kind, len),
                 };
