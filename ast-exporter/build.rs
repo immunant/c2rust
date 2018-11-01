@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 use std::path::PathBuf;
 use cmake::Config;
 
-// Use `cargo build -vv` to get detailed output on what this script's progress.
+// Use `cargo build -vv` to get detailed output on this script's progress.
 
 fn main() {
     let llvm_config = find_llvm_config();
