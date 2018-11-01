@@ -77,7 +77,6 @@ class Config:
                             'llvm-{ver}/build.'.format(ver=LLVM_VER))
     LLVM_BLD += HOST_SUFFIX
     LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
-    AST_EXPO = os.path.join(LLVM_BLD, "bin/ast-exporter")
 
     CLANG_XCHECK_PLUGIN_SRC = os.path.join(CROSS_CHECKS_DIR,
                                            "c-checks", "clang-plugin")
@@ -132,9 +131,9 @@ add_subdirectory(ast-exporter)
             if args.debug:
                 build_type = 'debug'
 
-        self.AST_IMPO = "ast-importer/target/{}/ast_importer".format(build_type)
-        self.AST_IMPO = os.path.join(self.ROOT_DIR, self.AST_IMPO)
-        self.AST_IMPO_BLD = os.path.join(self.ROOT_DIR, "ast-importer/target")
+        self.TRANSPILER = "transpiler/target/{}/transpiler".format(build_type)
+        self.TRANSPILER = os.path.join(self.ROOT_DIR, self.TRANSPILER)
+        self.TRANSPILER_BLD = os.path.join(self.ROOT_DIR, "transpiler/target")
 
     @staticmethod
     def add_args(parser: argparse.ArgumentParser):

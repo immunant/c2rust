@@ -130,14 +130,14 @@ def update_cmakelists(filepath):
         logging.debug("added commands to %s", filepath)
 
 
-def build_ast_importer(debug: bool):
+def build_transpiler(debug: bool):
     cargo = get_cmd_or_die("cargo")
     build_flags = ["build"]
 
     if not debug:
         build_flags.append("--release")
 
-    with pb.local.cwd(os.path.join(c.ROOT_DIR, "ast-importer")):
+    with pb.local.cwd(os.path.join(c.ROOT_DIR, "transpiler")):
         # use different target dirs for different hosts
         target_dir = "target." + c.HOST_SUFFIX
         llvm_lib_dir = os.path.join(c.LLVM_BLD, "lib")
@@ -265,7 +265,7 @@ def _main():
         shutil.rmtree(c.LLVM_SRC, ignore_errors=True)
         shutil.rmtree(c.LLVM_BLD, ignore_errors=True)
         shutil.rmtree(c.DEPS_DIR, ignore_errors=True)
-        shutil.rmtree(c.AST_IMPO_BLD, ignore_errors=True)
+        shutil.rmtree(c.TRANSPILER_BLD, ignore_errors=True)
 
     # prerequisites
     if not have_rust_toolchain(c.CUSTOM_RUST_NAME):
@@ -292,7 +292,7 @@ def _main():
 
     configure_and_build_llvm(args)
 
-    build_ast_importer(args.debug)
+    build_transpiler(args.debug)
 
 
 if __name__ == "__main__":

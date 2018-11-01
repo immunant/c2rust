@@ -43,9 +43,9 @@ add_dependencies(tinycbor tinycbor_build)
 #################################################
 find_package(LLVM REQUIRED CONFIG)
 
-# Debian and Ubuntu's clang cmake files are broken, so we can't require the package
-# here. We already have to manually order the link against the clang libs in
-# ast-importer/build.rs, so that's not so bad.
+# Debian and Ubuntu's clang cmake files are broken, so we can't require the
+# package here. We already have to manually order the link against the clang
+# libs in build.rs, so that's not so bad.
 find_package(Clang CONFIG)
 
 include_directories(${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})

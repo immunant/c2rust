@@ -77,8 +77,7 @@ minimal_cc_db = """ \
 
 
 def _test_minimal(code_snippet: str) -> bool:
-    ast_expo = get_cmd_or_die(c.AST_EXPO)
-    ast_impo = get_cmd_or_die(c.AST_IMPO)
+    transpiler = get_cmd_or_die(c.TRANSPILER)
 
     tempdir = tempfile.gettempdir()
     cfile = os.path.join(tempdir, "test.c")
@@ -90,10 +89,6 @@ def _test_minimal(code_snippet: str) -> bool:
     with open(cc_json, 'w') as fh:
         fh.write(minimal_cc_db)
 
-    cborfile = cfile + '.cbor'
-
-    invoke(ast_expo[cfile])
-
     ld_lib_path = get_rust_toolchain_libpath()
 
     # don't overwrite existing ld lib path if any...
@@ -102,12 +97,12 @@ def _test_minimal(code_snippet: str) -> bool:
 
     args = []
     args += ['--ddump-untyped-clang-ast']
-    args += [cborfile]
+    args += [cfile]
 
     # import ast
     with pb.local.env(RUST_BACKTRACE='1',
                       LD_LIBRARY_PATH=ld_lib_path):
-        invoke(ast_impo, args)
+        invoke(transpiler, args)
 
     return True  # if we get this far, test passed
 
@@ -224,7 +219,7 @@ def main() -> None:
     logging.debug("args: %s", " ".join(sys.argv))
 
     # check that the binaries have been built first
-    bins = [c.AST_EXPO, c.AST_IMPO]
+    bins = [c.TRANSPILER]
     for b in bins:
         if not os.path.isfile(b):
             msg = b + " not found; run build_translator.py first?"

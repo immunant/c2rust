@@ -76,8 +76,8 @@ class CFile:
         if 'LD_LIBRARY_PATH' in pb.local.env:
             ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
-        # run the importer
-        ast_importer = get_cmd_or_die(c.AST_IMPO)
+        # run the transpiler
+        transpiler = get_cmd_or_die(c.TRANSPILER)
 
         # TODO: Add this back into the ast exporter rust lib
         # extra_args = ["-extra-arg={}".format(arg) for arg in extra_args]
@@ -99,9 +99,9 @@ class CFile:
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
             # log the command in a format that's easy to re-run
             translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
-            translation_cmd += str(ast_importer[args])
+            translation_cmd += str(transpiler[args])
             logging.debug("translation command:\n %s", translation_cmd)
-            retcode, stdout, stderr = (ast_importer[args]).run(
+            retcode, stdout, stderr = (transpiler[args]).run(
                 retcode=None)
 
         logging.debug("stdout:\n%s", stdout)
@@ -548,7 +548,7 @@ def main() -> None:
     logging.debug("args: %s", " ".join(sys.argv))
 
     # check that the binaries have been built first
-    bins = [c.AST_IMPO]
+    bins = [c.TRANSPILER]
     for b in bins:
         if not os.path.isfile(b):
             msg = b + " not found; run build_translator.py first?"

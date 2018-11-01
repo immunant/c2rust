@@ -1,7 +1,11 @@
 [package]
-name = "ast_importer"
+name = "transpiler"
 version = "0.1.0"
-authors = ["Eric Mertens <emertens@galois.com>", "Alec Theriault <atheriault@galois.com>"]
+authors = [
+  "Eric Mertens <emertens@galois.com>",
+  "Alec Theriault <atheriault@galois.com>",
+  "Stephen Crane <sjc@immunant.com>",
+]
 
 [dependencies]
 serde_cbor = "0.9"

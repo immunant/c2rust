@@ -194,7 +194,7 @@ def add_mods(path: str):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    importer_args = [
+    transpiler_args = [
         "--reduce-type-annotations",
     ]
 
@@ -203,7 +203,7 @@ if __name__ == "__main__":
     with open(COMPILE_COMMANDS, 'r') as cc_json:
         transpile_files(cc_json, filter=lambda f: args.filter in f,
                         emit_build_files=False, verbose=True,
-                        extra_impo_args=importer_args, reorganize_definitions=True)
+                        extra_transpiler_args=transpiler_args, reorganize_definitions=True)
 
     # Move and rename tmux.rs to main.rs
     move(TMUX_RS, MAIN_RS)

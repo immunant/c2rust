@@ -47,9 +47,9 @@ def main(xcheck: bool, snudown: str):
     # make sure the snudown submodule is checked out and up to date
     # update_or_init_submodule(snudown)
 
-    # the macOS and Linux builds of the ast-importer alias each other
+    # the macOS and Linux builds of the transpiler alias each other
     if not is_elf_exe(config.AST_EXPO) and not on_mac():
-        msg = "ast-importer was built for macOS;"
+        msg = "transpiler was built for macOS;"
         msg += " please run build_translator.py and retry."
         die(msg)
 
@@ -71,7 +71,7 @@ def main(xcheck: bool, snudown: str):
     with open(cmds_json_path, "r") as cmds_json:
         transpile.transpile_files(cmds_json,
                                   filter=None,
-                                  extra_impo_args=[],
+                                  extra_transpiler_args=[],
                                   emit_build_files=True,
                                   main_module_for_build_files=None,
                                   cross_checks=xcheck,

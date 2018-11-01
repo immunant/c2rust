@@ -127,7 +127,7 @@ def main():
     # `//` for now.
     sed['-i', '-e', 's.///\+.//.g', local.path('rust/src') // '*.rs']()
 
-    # 2. ast-importer omits _i8 annotation on the translations of certain
+    # 2. transpiler omits _i8 annotation on the translations of certain
     # string literals in places where the type can't be inferred.
     sed['-i', '-e', r'/errno_str:/s/&\[\([0-9]\+\),/\&[\1i8,/',
             'rust/src/strerror_override.rs']()

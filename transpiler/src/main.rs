@@ -1,20 +1,20 @@
 #[macro_use]
 extern crate clap;
-extern crate ast_importer;
+extern crate transpiler;
 extern crate ast_exporter;
 
 use std::io::stdout;
 use std::io::prelude::*;
 use std::fs::{File, canonicalize};
 use std::path::{Path, PathBuf};
-use ast_importer::c_ast::*;
-use ast_importer::c_ast::Printer;
-use ast_importer::translator::{ReplaceMode,TranslationConfig};
+use transpiler::c_ast::*;
+use transpiler::c_ast::Printer;
+use transpiler::translator::{ReplaceMode,TranslationConfig};
 use clap::{Arg, App};
 
 
 fn main() {
-    let matches = App::new("AST Importer")
+    let matches = App::new("C2Rust Transpiler")
         .version("0.1.0")
         .author(crate_authors!())
 
@@ -220,7 +220,7 @@ fn main() {
 
     // Perform the translation
 
-    let translated_string = ast_importer::translator::translate(typed_context, tcfg);
+    let translated_string = transpiler::translator::translate(typed_context, tcfg);
     let output_path = get_output_path(&c_path, matches.value_of("output-file"));
 
     let mut file = match File::create(output_path) {
