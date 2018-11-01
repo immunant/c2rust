@@ -1,7 +1,7 @@
-/// This module implements the translation of main functions in C.
-/// Translating main requires us to wrap the C implementation to
-/// a helper that can be called from a generated main function in
-/// Rust.
+//! This module implements the translation of main functions in C.
+//! Translating main requires us to wrap the C implementation to
+//! a helper that can be called from a generated main function in
+//! Rust.
 
 use super::*;
 

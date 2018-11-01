@@ -1,5 +1,5 @@
 #![deny(missing_docs)]
-/// This module provides basic support for converting inline assembly statements.
+//! This module provides basic support for converting inline assembly statements.
 
 use super::*;
 

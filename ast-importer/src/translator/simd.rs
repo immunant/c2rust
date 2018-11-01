@@ -1,5 +1,5 @@
 #![deny(missing_docs)]
-/// This module provides translation for SIMD operations and expressions.
+//! This module provides translation for SIMD operations and expressions.
 
 use super::*;
 
