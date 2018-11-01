@@ -2570,25 +2570,32 @@ impl Translation {
         Ok(WithStmts::new(call))
     }
 
+    /// This function takes the expr ids belonging to a shuffle vector "super builtin" call,
+    /// excluding the first two (which are always vector exprs). These exprs contain mathematical
+    /// offsets applied to a mask expr (or are otherwise a numeric constant) which we'd like to extract.
     pub fn get_shuffle_vector_mask(&self, expr_ids: &[CExprId]) -> CExprId {
         use c_ast::BinOp::{Add, BitAnd, ShiftRight};
         use c_ast::CExprKind::{Binary, Literal};
         use c_ast::CLiteral::Integer;
 
         match self.ast_context.c_exprs[&expr_ids[0]].kind {
-            // Need to unmask which looks like this most of the time: 0 + (((mask) >> 0) & 0x3):
+            // Need to unmask which looks like this most of the time: X + (((mask) >> Y) & Z):
             Binary(_, Add, _, rhs_expr_id, None, None) => self.get_shuffle_vector_mask(&[rhs_expr_id]),
-            // Sometimes there is a mask like this: ((mask) >> 0) & 0x3:
+            // Sometimes there is a mask like this: ((mask) >> X) & Y:
             Binary(_, BitAnd, lhs_expr_id, _, None, None) => match self.ast_context.c_exprs[&lhs_expr_id].kind {
                 Binary(_, ShiftRight, lhs_expr_id, _, None, None) => lhs_expr_id,
                 _ => unreachable!("Found unknown mask format"),
             },
-            // Sometimes you find a constant and the mask is used further down
+            // Sometimes you find a constant and the mask is used further down the expr list
             Literal(_, Integer(0, IntBase::Dec)) => self.get_shuffle_vector_mask(&[expr_ids[4]]),
             ref e => unreachable!("Found unknown mask format: {:?}", e),
         }
     }
 
+    /// Vectors tend to have casts to and from internal types. This is problematic for shuffle vectors
+    /// in particular which are usually macros ontop of a builtin call. Although one of these casts
+    /// is likely redundant (external type), the other is not (internal type). We remove both of the
+    /// casts for simplicity and readability
     pub fn strip_vector_explicit_cast(&self, expr_id: CExprId) -> (&CTypeKind, CExprId, usize) {
         match self.ast_context.c_exprs[&expr_id].kind {
             CExprKind::ExplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
