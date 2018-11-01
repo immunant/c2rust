@@ -25,7 +25,7 @@ use c_ast::*;
 use c_ast::iterators::{DFExpr, SomeId};
 use c_ast;
 use cfg;
-use clang_ast::LRValue;
+use ast_exporter::clang_ast::LRValue;
 use convert_type::TypeConverter;
 use loops::*;
 use renamer::Renamer;

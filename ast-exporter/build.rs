@@ -12,67 +12,11 @@ use cmake::Config;
 fn main() {
     let llvm_config = find_llvm_config();
 
-    // Find where the (already built) LLVM lib dir is
-    let llvm_lib_dir: String = env::var("LLVM_LIB_DIR").ok().or_else(|| {
-        let output = Command::new(&llvm_config)
-                        .arg("--libdir")
-                        .output();
+    // Build the exporter library and link it (and its dependencies)
+    build_native(&llvm_config);
 
-        output.ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-    }).expect(
-"
-Couldn't find LLVM lib dir. Try setting the `LLVM_LIB_DIR` environment
-variable or make sure `llvm-config` is on $PATH then re-build. For example:
-
-  $ export LLVM_LIB_DIR=/usr/local/opt/llvm/lib
-"
-    );
-
-    // Build the exporter library and link it (and its dependencies) in
-    build_ast_exporter(&llvm_lib_dir, &llvm_config);
-
-    // The bindgen::Builder is the main entry point
-    // to bindgen, and lets you build up options for
-    // the resulting bindings.
-    let bindings = bindgen::Builder::default()
-        // Do not generate unstable Rust code that
-        // requires a nightly rustc and enabling
-        // unstable features.
-        // .no_unstable_rust()
-        // The input header we would like to generate
-        // bindings for.
-        .header("../ast-exporter/ast_tags.hpp")
-        .generate_comments(true)
-        .derive_default(true)
-        .rustified_enum("ASTEntryTag")
-        .rustified_enum("TypeTag")
-        .rustified_enum("StringTypeTag")
-
-        // Finish the builder and generate the bindings.
-        .generate()
-        // Unwrap the Result and panic on failure.
-        .expect("Unable to generate bindings");
-
-    let cppbindings = bindgen::Builder::default()
-        .header("../ast-exporter/ExportResult.hpp")
-        .whitelist_type("ExportResult")
-        .generate_comments(true)
-        .derive_default(true)
-        // Finish the builder and generate the bindings.
-        .generate()
-        // Unwrap the Result and panic on failure.
-        .expect("Unable to generate bindings");
-
-
-    // Write the bindings to the $OUT_DIR/bindings.rs file.
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    bindings
-        .write_to_file(out_dir.join("bindings.rs"))
-        .expect("Couldn't write bindings!");
-    cppbindings
-        .write_to_file(out_dir.join("cppbindings.rs"))
-        .expect("Couldn't write cppbindings!");
-
+    // Generate ast_tags and ExportResult bindings
+    generate_bindings();
 }
 
 /// Search for an available llvm-config binary in PATH
@@ -96,7 +40,66 @@ fn find_llvm_config() -> String {
     }).unwrap_or(String::from("llvm-config"))
 }
 
+fn find_llvm_libdir(llvm_config: &str) -> String {
+    env::var("LLVM_LIB_DIR").ok().or_else(|| {
+        let output = Command::new(&llvm_config)
+                        .arg("--libdir")
+                        .output();
 
+        output.ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    }).expect(
+"
+Couldn't find LLVM lib dir. Try setting the `LLVM_LIB_DIR` environment
+variable or make sure `llvm-config` is on $PATH then re-build. For example:
+
+  $ export LLVM_LIB_DIR=/usr/local/opt/llvm/lib
+"
+    )
+}
+
+fn generate_bindings() {
+    // The bindgen::Builder is the main entry point
+    // to bindgen, and lets you build up options for
+    // the resulting bindings.
+    let bindings = bindgen::Builder::default()
+        // Do not generate unstable Rust code that
+        // requires a nightly rustc and enabling
+        // unstable features.
+        // .no_unstable_rust()
+        // The input header we would like to generate
+        // bindings for.
+        .header("src/ast_tags.hpp")
+        .generate_comments(true)
+        .derive_default(true)
+        .rustified_enum("ASTEntryTag")
+        .rustified_enum("TypeTag")
+        .rustified_enum("StringTypeTag")
+
+        // Finish the builder and generate the bindings.
+        .generate()
+        // Unwrap the Result and panic on failure.
+        .expect("Unable to generate bindings");
+
+    let cppbindings = bindgen::Builder::default()
+        .header("src/ExportResult.hpp")
+        .whitelist_type("ExportResult")
+        .generate_comments(true)
+        .derive_default(true)
+        // Finish the builder and generate the bindings.
+        .generate()
+        // Unwrap the Result and panic on failure.
+        .expect("Unable to generate bindings");
+
+
+    // Write the bindings to the $OUT_DIR/bindings.rs file.
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    bindings
+        .write_to_file(out_dir.join("bindings.rs"))
+        .expect("Couldn't write bindings!");
+    cppbindings
+        .write_to_file(out_dir.join("cppbindings.rs"))
+        .expect("Couldn't write cppbindings!");
+}
 
 /** Call out to CMake, build the exporter library, and tell cargo where to look for it.
   * Note that `CMAKE_BUILD_TYPE` gets implicitly determined:
@@ -104,16 +107,17 @@ fn find_llvm_config() -> String {
   *   - if `opt-level=0`                              then `CMAKE_BUILD_TYPE=Debug`
   *   - if `opt-level={1,2,3}` and not `debug=false`, then `CMAKE_BUILD_TYPE=RelWithDebInfo`
   */
-fn build_ast_exporter(llvm_lib: &str, llvm_config: &str) {
+fn build_native(llvm_config: &str) {
+    // Find where the (already built) LLVM lib dir is
+    let llvm_lib = find_llvm_libdir(llvm_config);
 
     // This is where the C++ source lives.
     // Note that `rerun-if-changed` does not recursively check directories!
-    println!("cargo:rerun-if-changed=../ast-exporter");
-    println!("cargo:rerun-if-changed=../ast-exporter/*");
+    // println!("cargo:rerun-if-changed=../ast-exporter");
+    // println!("cargo:rerun-if-changed=../ast-exporter/*");
 
-    let dst = Config::new("../ast-exporter")
+    let dst = Config::new("src")
         .generator("Ninja")
-        .out_dir("../dependencies")
 
         // General CMake variables
         .define("CMAKE_C_COMPILER",   "clang")

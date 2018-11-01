@@ -1,10 +1,28 @@
+#![allow(non_camel_case_types)]
+extern crate libc;
+extern crate serde_cbor;
+
+use serde_cbor::{Value, from_slice};
 use std::collections::HashMap;
 use std::ffi::{CString,CStr};
+use std::io::Error;
+use std::path::Path;
 use std::slice;
-use libc;
 
+pub mod clang_ast;
 
-pub fn get_ast_cbors(c_files: &[&str]) -> HashMap<String, Vec<u8>> {
+pub fn get_untyped_ast(file_path: &Path) -> Result<clang_ast::AstContext, Error> {
+    let cbors = get_ast_cbors(&[file_path.to_str().unwrap()]);
+    let buffer = cbors.values().next().unwrap();
+    let items: Value = from_slice(&buffer[..]).unwrap();
+
+    match clang_ast::process(items) {
+        Ok(cxt) => Ok(cxt),
+        Err(e) => panic!("{:#?}", e),
+    }
+}
+
+fn get_ast_cbors(c_files: &[&str]) -> HashMap<String, Vec<u8>> {
     let mut res = 0;
 
     let mut args_owned = vec![CString::new("ast_extractor").unwrap()];
@@ -27,7 +45,6 @@ pub fn get_ast_cbors(c_files: &[&str]) -> HashMap<String, Vec<u8>> {
 
 include!(concat!(env!("OUT_DIR"), "/cppbindings.rs"));
 
-#[link(name = "clangAstExporter")]
 extern "C" {
     // ExportResult *ast_extractor(int argc, char *argv[]);
     #[no_mangle]

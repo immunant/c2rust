@@ -1,20 +1,16 @@
 #[macro_use]
 extern crate clap;
-extern crate serde_cbor;
 extern crate ast_importer;
+extern crate ast_exporter;
 
-use std::io::{Error, stdout};
+use std::io::stdout;
 use std::io::prelude::*;
 use std::fs::{File, canonicalize};
 use std::path::{Path, PathBuf};
-use ast_importer::clang_ast::process;
 use ast_importer::c_ast::*;
 use ast_importer::c_ast::Printer;
-use ast_importer::clang_ast::AstContext;
 use ast_importer::translator::{ReplaceMode,TranslationConfig};
-use ast_importer::exporter;
 use clap::{Arg, App};
-use serde_cbor::{Value, from_slice};
 
 
 fn main() {
@@ -185,7 +181,7 @@ fn main() {
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
 
     // Extract the untyped AST from the CBOR file
-    let untyped_context = match parse_untyped_ast(&c_path) {
+    let untyped_context = match ast_exporter::get_untyped_ast(&c_path) {
         Err(e) => panic!("{:#?}", e),
         Ok(cxt) => cxt,
     };
@@ -254,16 +250,4 @@ fn get_output_path(input_file: &Path, specified_path: Option<&str>) -> PathBuf {
     path_buf.set_file_name(file_name);
     path_buf.set_extension("rs");
     path_buf
-}
-
-fn parse_untyped_ast(file_path: &Path) -> Result<AstContext, Error> {
-
-    let cbors = exporter::get_ast_cbors(&[file_path.to_str().unwrap()]);
-    let buffer = cbors.values().next().unwrap();
-    let items: Value = from_slice(&buffer[..]).unwrap();
-
-    match process(items) {
-        Ok(cxt) => Ok(cxt),
-        Err(e) => panic!("{:#?}", e),
-    }
 }

@@ -1,4 +1,4 @@
-use clang_ast::LRValue;
+use ast_exporter::clang_ast::LRValue;
 use std::collections::{HashMap,HashSet,BTreeMap};
 use indexmap::IndexMap;
 use std::ops::Index;

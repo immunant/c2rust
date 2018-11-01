@@ -1,0 +1,14 @@
+[package]
+name = "ast_exporter"
+version = "0.1.0"
+authors = ["Stephen Crane <sjc@immunant.com>"]
+links = "clangAstExporter"
+
+[dependencies]
+libc = "0.2"
+serde = "1.0"
+serde_cbor = "0.9"
+
+[build-dependencies]
+bindgen="0.37"
+cmake = "0.1"

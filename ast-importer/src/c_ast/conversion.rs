@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::vec::Vec;
 use c_ast::*;
-use clang_ast::*;
+use ast_exporter::clang_ast::*;
 use serde_cbor::Value;
 
 
