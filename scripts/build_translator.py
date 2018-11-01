@@ -104,7 +104,10 @@ def configure_and_build_llvm(args: str) -> None:
         else:
             logging.debug("found existing ninja.build, not running cmake")
 
-        ninja_args = ['libLLVM.dylib', 'libclang.dylib']
+        if on_mac():
+            ninja_args = ['libLLVM.dylib', 'libclang.dylib']
+        else:
+            ninja_args = ['libLLVM-6.0.so', 'libclang.so']
         ninja_args += ['FileCheck', 'count', 'not']
         if args.with_clang:
             ninja_args.append('clang')
