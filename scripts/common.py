@@ -73,10 +73,11 @@ class Config:
     LLVM_PUBKEY = "scripts/llvm-{ver}-key.asc".format(ver=LLVM_VER)
     LLVM_PUBKEY = os.path.join(ROOT_DIR, LLVM_PUBKEY)
     LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
-    LLVM_BLD = os.path.join(DEPS_DIR,
-                            'llvm-{ver}/build.'.format(ver=LLVM_VER))
-    LLVM_BLD += HOST_SUFFIX
-    LLVM_BIN = os.path.join(LLVM_BLD, 'bin')
+    LLVM_BLD = os.path.join(
+        DEPS_DIR, 'llvm-{ver}/build.{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
+    LLVM_INSTALL = os.path.join(
+        DEPS_DIR, 'llvm-{ver}/install.{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
+    LLVM_BIN = os.path.join(LLVM_INSTALL, 'bin')
 
     CLANG_XCHECK_PLUGIN_SRC = os.path.join(CROSS_CHECKS_DIR,
                                            "c-checks", "clang-plugin")

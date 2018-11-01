@@ -91,6 +91,7 @@ def configure_and_build_llvm(args: str) -> None:
                      "-Wno-dev",
                      "-DCMAKE_C_COMPILER=clang",
                      "-DCMAKE_CXX_COMPILER=clang++",
+                     "-DCMAKE_INSTALL_PREFIX=" + c.LLVM_INSTALL,
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
@@ -104,13 +105,7 @@ def configure_and_build_llvm(args: str) -> None:
         else:
             logging.debug("found existing ninja.build, not running cmake")
 
-        if on_mac():
-            ninja_args = ['libLLVM.dylib', 'libclang.dylib']
-        else:
-            ninja_args = ['libLLVM-6.0.so', 'libclang.so']
-        ninja_args += ['FileCheck', 'count', 'not']
-        if args.with_clang:
-            ninja_args.append('clang')
+        ninja_args = ['install']
         invoke(ninja, *ninja_args)
 
 
@@ -222,9 +217,6 @@ def _parse_args():
     parser.add_argument('-c', '--clean-all', default=False,
                         action='store_true', dest='clean_all',
                         help='clean everything before building')
-    parser.add_argument('--with-clang', default=False,
-                        action='store_true', dest='with_clang',
-                        help='build clang with this tool')
     parser.add_argument('--without-assertions', default=True,
                         action='store_false', dest='assertions',
                         help='build the tool and clang without assertions')
