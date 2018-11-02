@@ -13,16 +13,17 @@ use cmake::Config;
 fn main() {
     let llvm_config = find_llvm_config();
 
-    if let Err(e) = check_versions(&llvm_config) {
-        eprintln!("{}", e);
-        process::exit(1);
-    }
-
     // Build the exporter library and link it (and its dependencies)
     build_native(&llvm_config);
 
     // Generate ast_tags and ExportResult bindings
-    generate_bindings();
+    generate_bindings().err().map(|e| {
+        eprintln!("{}", e);
+        check_clang_version(&llvm_config).err().map(|ver_e| {
+            eprintln!("{}", ver_e);
+        });
+        process::exit(1);
+    });
 }
 
 /// Search for an available llvm-config binary in PATH
@@ -64,7 +65,7 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
     String::from(Path::new(&path_str).canonicalize().unwrap().to_string_lossy())
 }
 
-fn check_versions(_llvm_config: &str) -> Result<(), String> {
+fn check_clang_version(_llvm_config: &str) -> Result<(), String> {
     // Check that bindgen is using the same version of libclang and the clang
     // invocation that it pulls -isystem from. See Bindings::generate() for the
     // -isystem construction.
@@ -99,7 +100,7 @@ binary.",
     Ok(())
 }
 
-fn generate_bindings() {
+fn generate_bindings() -> Result<(), &'static str> {
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
     // the resulting bindings.
@@ -119,8 +120,7 @@ fn generate_bindings() {
 
         // Finish the builder and generate the bindings.
         .generate()
-        // Unwrap the Result and panic on failure.
-        .expect("Unable to generate bindings");
+        .or(Err("Unable to generate AST bindings"))?;
 
     let cppbindings = bindgen::Builder::default()
         .header("src/ExportResult.hpp")
@@ -129,8 +129,7 @@ fn generate_bindings() {
         .derive_default(true)
         // Finish the builder and generate the bindings.
         .generate()
-        // Unwrap the Result and panic on failure.
-        .expect("Unable to generate bindings");
+        .or(Err("Unable to generate ExportResult bindings"))?;
 
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
@@ -141,6 +140,8 @@ fn generate_bindings() {
     cppbindings
         .write_to_file(out_dir.join("cppbindings.rs"))
         .expect("Couldn't write cppbindings!");
+
+    Ok(())
 }
 
 /** Call out to CMake, build the exporter library, and tell cargo where to look for it.
