@@ -1,11 +1,12 @@
 extern crate libc;
 
 use x86::{ShuffleVectors, VectorInitLists, rust_unpack_128_2x128, rust_zero_init_all, rust_call_all, rust_call_all_used, rust_vector_init_lists, rust_vector_init_lists_used};
+use x86::{rust_static_m128, rust_static_m256, rust_static_m128d, rust_static_m256d, rust_static_m128i, rust_static_m256i};
 
 #[cfg(target_arch = "x86")]
-use std::arch::x86::{__m128i, _mm_setzero_si128, _mm_set_epi32};
+use std::arch::x86::{__m128, __m128i, __m128d, __m256, __m256d, __m256i, _mm_setzero_si128, _mm_set_epi32};
 #[cfg(target_arch = "x86_64")]
-use std::arch::x86_64::{__m128i, _mm_setzero_si128, _mm_set_epi32};
+use std::arch::x86_64::{__m128, __m128i, __m128d, __m256, __m256d, __m256i, _mm_setzero_si128, _mm_set_epi32};
 use std::mem::transmute;
 use std::fmt::{Debug, Formatter, Error};
 
@@ -25,6 +26,24 @@ extern "C" {
 
     #[no_mangle]
     fn vector_init_lists_used() -> VectorInitLists;
+
+    #[no_mangle]
+    static static_m128: __m128;
+
+    #[no_mangle]
+    static static_m256: __m256;
+
+    #[no_mangle]
+    static static_m128d: __m128d;
+
+    #[no_mangle]
+    static static_m256d: __m256d;
+
+    #[no_mangle]
+    static static_m128i: __m128i;
+
+    #[no_mangle]
+    static static_m256i: __m256i;
 }
 
 static UNSAFETY_ERROR: &str = "Prevented unsafe calling of SIMD functions when architecture support doesn't exist";
@@ -161,4 +180,35 @@ pub fn test_vector_init_lists() {
 
     assert_eq!(c1, r1);
     assert_eq!(c2, r2);
+}
+
+pub fn test_static_init_lists() {
+    assert!(is_x86_feature_detected!("sse"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse2"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("avx"), UNSAFETY_ERROR);
+
+    // These should have been transmuted due to being in statics
+    let rust_static_init_lists = unsafe {
+        VectorInitLists {
+            a: rust_static_m128,
+            b: rust_static_m256,
+            c: rust_static_m128d,
+            d: rust_static_m256d,
+            e: rust_static_m128i,
+            f: rust_static_m256i,
+        }
+    };
+
+    let static_init_lists = unsafe {
+        VectorInitLists {
+            a: static_m128,
+            b: static_m256,
+            c: static_m128d,
+            d: static_m256d,
+            e: static_m128i,
+            f: static_m256i,
+        }
+    };
+
+    assert_eq!(static_init_lists, rust_static_init_lists);
 }

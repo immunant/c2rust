@@ -770,6 +770,11 @@ impl Translation {
 
             match self.ast_context[expr_id].kind {
                 CExprKind::DeclRef(_, _, LRValue::LValue) => return true,
+                CExprKind::InitList(CQualTypeId { ctype, .. }, ..) => {
+                    if let CTypeKind::Vector(..) = self.ast_context.resolve_type(ctype).kind {
+                        return true
+                    }
+                },
                 _ => {},
             }
         }

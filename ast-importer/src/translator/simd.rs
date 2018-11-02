@@ -222,27 +222,6 @@ impl Translation {
         ctype: CTypeId,
         len: usize,
     ) -> Result<WithStmts<P<Expr>>, String> {
-        let fn_call_name = match (&self.ast_context.c_types[&ctype].kind, len) {
-            (Float, 4) => "_mm_setr_ps",
-            (Float, 8) => "_mm256_setr_ps",
-            (Double, 2) => "_mm_setr_pd",
-            (Double, 4) => "_mm256_setr_pd",
-            (LongLong, 2) => "_mm_set_epi64x",
-            (LongLong, 4) => "_mm256_setr_epi64x",
-            (Char, 8) => "_mm_setr_pi8",
-            (Char, 16) => "_mm_setr_epi8",
-            (Char, 32) => "_mm256_setr_epi8",
-            (Int, 2) => "_mm_setr_pi32",
-            (Int, 4) => "_mm_setr_epi32",
-            (Int, 8) => "_mm256_setr_epi32",
-            (Short, 4) => "_mm_setr_pi16",
-            (Short, 8) => "_mm_setr_epi16",
-            (Short, 16) => "_mm256_setr_epi16",
-            ref e => return Err(format!("Unknown vector init list: {:?}", e)),
-        };
-
-        self.import_simd_function(fn_call_name)?;
-
         let mut params: Vec<P<Expr>> = vec![];
 
         for param_id in ids {
@@ -252,13 +231,45 @@ impl Translation {
             );
         }
 
-        // rust is missing support for _mm_setr_epi64x, so we have to use
-        // the reverse arguments for _mm_set_epi64x
-        if fn_call_name == "_mm_set_epi64x" {
-            params.reverse();
-        }
+        // When used in a static, we cannot call the standard functions since they
+        // are not const and so we are forced to transmute
+        let call = if is_static {
+            let tuple = mk().tuple_expr(params);
+            let transmute = transmute_expr(mk().infer_ty(), mk().infer_ty(), tuple);
 
-        let call = mk().call_expr(mk().ident_expr(fn_call_name), params);
+            self.features.borrow_mut().insert("const_transmute");
+
+            transmute
+        } else {
+            let fn_call_name = match (&self.ast_context.c_types[&ctype].kind, len) {
+                (Float, 4) => "_mm_setr_ps",
+                (Float, 8) => "_mm256_setr_ps",
+                (Double, 2) => "_mm_setr_pd",
+                (Double, 4) => "_mm256_setr_pd",
+                (LongLong, 2) => "_mm_set_epi64x",
+                (LongLong, 4) => "_mm256_setr_epi64x",
+                (Char, 8) => "_mm_setr_pi8",
+                (Char, 16) => "_mm_setr_epi8",
+                (Char, 32) => "_mm256_setr_epi8",
+                (Int, 2) => "_mm_setr_pi32",
+                (Int, 4) => "_mm_setr_epi32",
+                (Int, 8) => "_mm256_setr_epi32",
+                (Short, 4) => "_mm_setr_pi16",
+                (Short, 8) => "_mm_setr_epi16",
+                (Short, 16) => "_mm256_setr_epi16",
+                ref e => return Err(format!("Unknown vector init list: {:?}", e)),
+            };
+
+            self.import_simd_function(fn_call_name)?;
+
+            // rust is missing support for _mm_setr_epi64x, so we have to use
+            // the reverse arguments for _mm_set_epi64x
+            if fn_call_name == "_mm_set_epi64x" {
+                params.reverse();
+            }
+
+            mk().call_expr(mk().ident_expr(fn_call_name), params)
+        };
 
         if use_ == ExprUse::Used {
             Ok(WithStmts {
@@ -367,7 +378,7 @@ impl Translation {
         };
 
         // According to https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
-        // _mm_shuffle_ps taking an u32 instead of an i32 (like the rest of the vector imm8 fields)
+        // _mm_shuffle_ps taking an u32 instead of an i32 (like the rest of the vector mask fields)
         // is a bug, and so we need to add a cast for it to work properly
         if shuffle_fn_name == "_mm_shuffle_ps" {
             params.push(mk().cast_expr(third_param.val, mk().ident_ty("u32")));

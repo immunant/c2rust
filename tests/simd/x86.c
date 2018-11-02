@@ -150,3 +150,10 @@ VectorInitLists vector_init_lists_used(void) {
 
     return il;
 }
+
+__m128 static_m128 = {1.3f, 2.3f, 3.4f, 4.4f};
+__m256 static_m256 = {2.2f, 4.4f, 5.6f, 4.3f, 6.7f, 6.6f, 5.5f, 8.8f};
+__m128d static_m128d = {2.2, 4.4};
+__m256d static_m256d = {2.2, 3.3, 4.4, 5.5};
+__m128i static_m128i = {45LL, 32LL};
+__m256i static_m256i = {12LL, 34LL, 56LL, 78LL};
