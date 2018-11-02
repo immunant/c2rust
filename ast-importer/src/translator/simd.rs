@@ -3,6 +3,12 @@
 
 use super::*;
 
+use c_ast::BinOp::{Add, BitAnd, ShiftRight};
+use c_ast::CastKind::IntegralCast;
+use c_ast::CExprKind::{Binary, Call, Conditional, ExplicitCast, ImplicitCast, Literal};
+use c_ast::CLiteral::Integer;
+use c_ast::CTypeKind::{Char, Double, Float, Int, LongLong, Short};
+
 /// As of rustc 1.29, rust is known to be missing some SIMD functions.
 /// See https://github.com/rust-lang-nursery/stdsimd/issues/579
 static MISSING_SIMD_FUNCTIONS: [&str; 36] = [
@@ -151,7 +157,7 @@ impl Translation {
         let second_expr_id = match self.ast_context.c_exprs[&args[1]].kind {
             // For some reason there seems to be an incorrect implicit cast here to char
             // it's possible the builtin takes a char even though the function takes an int
-            CExprKind::ImplicitCast(_, expr_id, CastKind::IntegralCast, _, _) => expr_id,
+            ImplicitCast(_, expr_id, CastKind::IntegralCast, _, _) => expr_id,
             _ => args[1],
         };
         let second_param =
@@ -180,13 +186,13 @@ impl Translation {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
         let fn_name = match (&self.ast_context[ctype].kind, len) {
-            (CTypeKind::Float, 4) => "_mm_setzero_ps",
-            (CTypeKind::Float, 8) => "_mm256_setzero_ps",
-            (CTypeKind::Double, 2) => "_mm_setzero_pd",
-            (CTypeKind::Double, 4) => "_mm256_setzero_pd",
-            (CTypeKind::LongLong, 2) => "_mm_setzero_si128",
-            (CTypeKind::LongLong, 4) => "_mm256_setzero_si256",
-            (CTypeKind::LongLong, 1) => {
+            (Float, 4) => "_mm_setzero_ps",
+            (Float, 8) => "_mm256_setzero_ps",
+            (Double, 2) => "_mm_setzero_pd",
+            (Double, 4) => "_mm256_setzero_pd",
+            (LongLong, 2) => "_mm_setzero_si128",
+            (LongLong, 4) => "_mm256_setzero_si256",
+            (LongLong, 1) => {
                 // __m64 is still unstable as of rust 1.29
                 self.features.borrow_mut().insert("stdsimd");
 
@@ -217,21 +223,21 @@ impl Translation {
         len: usize,
     ) -> Result<WithStmts<P<Expr>>, String> {
         let fn_call_name = match (&self.ast_context.c_types[&ctype].kind, len) {
-            (CTypeKind::Float, 4) => "_mm_setr_ps",
-            (CTypeKind::Float, 8) => "_mm256_setr_ps",
-            (CTypeKind::Double, 2) => "_mm_setr_pd",
-            (CTypeKind::Double, 4) => "_mm256_setr_pd",
-            (CTypeKind::LongLong, 2) => "_mm_set_epi64x",
-            (CTypeKind::LongLong, 4) => "_mm256_setr_epi64x",
-            (CTypeKind::Char, 8) => "_mm_setr_pi8",
-            (CTypeKind::Char, 16) => "_mm_setr_epi8",
-            (CTypeKind::Char, 32) => "_mm256_setr_epi8",
-            (CTypeKind::Int, 2) => "_mm_setr_pi32",
-            (CTypeKind::Int, 4) => "_mm_setr_epi32",
-            (CTypeKind::Int, 8) => "_mm256_setr_epi32",
-            (CTypeKind::Short, 4) => "_mm_setr_pi16",
-            (CTypeKind::Short, 8) => "_mm_setr_epi16",
-            (CTypeKind::Short, 16) => "_mm256_setr_epi16",
+            (Float, 4) => "_mm_setr_ps",
+            (Float, 8) => "_mm256_setr_ps",
+            (Double, 2) => "_mm_setr_pd",
+            (Double, 4) => "_mm256_setr_pd",
+            (LongLong, 2) => "_mm_set_epi64x",
+            (LongLong, 4) => "_mm256_setr_epi64x",
+            (Char, 8) => "_mm_setr_pi8",
+            (Char, 16) => "_mm_setr_epi8",
+            (Char, 32) => "_mm256_setr_epi8",
+            (Int, 2) => "_mm_setr_pi32",
+            (Int, 4) => "_mm_setr_epi32",
+            (Int, 8) => "_mm256_setr_epi32",
+            (Short, 4) => "_mm_setr_pi16",
+            (Short, 8) => "_mm_setr_epi16",
+            (Short, 16) => "_mm256_setr_epi16",
             ref e => return Err(format!("Unknown vector init list: {:?}", e)),
         };
 
@@ -268,7 +274,7 @@ impl Translation {
     }
 
     /// Convert a shuffle operation into the equivalent Rust SIMD library calls.
-    /// 
+    ///
     /// Because clang implements some shuffle operations as macros around intrinsic
     /// shuffle functions, this translation works to find the high-level shuffle
     /// call corresponding to the low-level one found in the C AST.
@@ -279,10 +285,6 @@ impl Translation {
         decay_ref: DecayRef,
         child_expr_ids: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, String> {
-        use c_ast::CExprKind::Literal;
-        use c_ast::CLiteral::Integer;
-        use c_ast::CTypeKind::{Double, Float, Int, Short};
-
         // There are three shuffle vector functions which are actually functions, not superbuiltins/macros,
         // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm256_shuffle_epi8
 
@@ -306,7 +308,7 @@ impl Translation {
             return Err("Unsupported shuffle vector with different vector lengths".into());
         }
 
-        let mask_expr_id = self.get_shuffle_vector_mask(&child_expr_ids[2..]);
+        let mask_expr_id = self.get_shuffle_vector_mask(&child_expr_ids[2..])?;
         let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
         let second_param =
             self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
@@ -315,16 +317,21 @@ impl Translation {
 
         // Some don't take a second param, but the expr is still there for some reason
         match (child_expr_ids.len(), &first_vec, first_vec_len) {
-                    // _mm256_shuffle_epi32
-                    (10, Int, 8) |
-                    // _mm_shuffle_epi32
-                    (6, Int, 4) |
-                    // _mm_shufflehi_epi16, _mm_shufflelo_epi16
-                    (10, Short, 8) |
-                    // _mm256_shufflehi_epi16, _mm256_shufflelo_epi16
-                    (18, Short, 16) => {},
-                    _ => params.push(second_param.val),
-                }
+            // _mm256_shuffle_epi32
+            (10, Int, 8) |
+            // _mm_shuffle_epi32
+            (6, Int, 4) |
+            // _mm_shufflehi_epi16, _mm_shufflelo_epi16
+            (10, Short, 8) |
+            // _mm256_shufflehi_epi16, _mm256_shufflelo_epi16
+            (18, Short, 16) => {},
+            // _mm_slli_si128
+            (18, Char, 16) => {
+                params.pop();
+                params.push(second_param.val);
+            },
+            _ => params.push(second_param.val),
+        }
 
         params.push(third_param.val);
 
@@ -335,6 +342,7 @@ impl Translation {
             (Double, 4) => "_mm256_shuffle_pd",
             (Int, 4) => "_mm_shuffle_epi32",
             (Int, 8) => "_mm256_shuffle_epi32",
+            (Char, 16) => "_mm_slli_si128",
             (Short, 8) => {
                 // _mm_shufflehi_epi16 mask params start with const int,
                 // _mm_shufflelo_epi16 does not
@@ -345,7 +353,7 @@ impl Translation {
                 } else {
                     "_mm_shufflelo_epi16"
                 }
-            }
+            },
             (Short, 16) => {
                 // _mm256_shufflehi_epi16 mask params start with const int,
                 // _mm256_shufflelo_epi16 does not
@@ -356,7 +364,7 @@ impl Translation {
                 } else {
                     "_mm256_shufflelo_epi16"
                 }
-            }
+            },
             e => return Err(format!("Unknown shuffle vector signature: {:?}", e)),
         };
 
@@ -383,13 +391,13 @@ impl Translation {
     /// casts for simplicity and readability
     fn strip_vector_explicit_cast(&self, expr_id: CExprId) -> (&CTypeKind, CExprId, usize) {
         match self.ast_context.c_exprs[&expr_id].kind {
-            CExprKind::ExplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
+            ExplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
                 let expr_id = match &self.ast_context.c_exprs[&expr_id].kind {
-                    CExprKind::ExplicitCast(_, expr_id, _, _, _) => *expr_id,
+                    ExplicitCast(_, expr_id, _, _, _) => *expr_id,
                     // The expr_id wont be used in this case (the function only has one
                     // vector param, not two, despite the following type match), so it's
                     // okay to provide a dummy here
-                    CExprKind::Call(..) => expr_id,
+                    Call(..) => expr_id,
                     _ => unreachable!("Found cast other than explicit cast"),
                 };
 
@@ -407,26 +415,38 @@ impl Translation {
     /// This function takes the expr ids belonging to a shuffle vector "super builtin" call,
     /// excluding the first two (which are always vector exprs). These exprs contain mathematical
     /// offsets applied to a mask expr (or are otherwise a numeric constant) which we'd like to extract.
-    fn get_shuffle_vector_mask(&self, expr_ids: &[CExprId]) -> CExprId {
-        use c_ast::BinOp::{Add, BitAnd, ShiftRight};
-        use c_ast::CExprKind::{Binary, Literal};
-        use c_ast::CLiteral::Integer;
-
+    fn get_shuffle_vector_mask(&self, expr_ids: &[CExprId]) -> Result<CExprId, String> {
         match self.ast_context.c_exprs[&expr_ids[0]].kind {
             // Need to unmask which looks like this most of the time: X + (((mask) >> Y) & Z):
-            Binary(_, Add, _, rhs_expr_id, None, None) => {
-                self.get_shuffle_vector_mask(&[rhs_expr_id])
-            }
+            Binary(_, Add, _, rhs_expr_id, None, None) =>
+                self.get_shuffle_vector_mask(&[rhs_expr_id]),
             // Sometimes there is a mask like this: ((mask) >> X) & Y:
             Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
                 match self.ast_context.c_exprs[&lhs_expr_id].kind {
-                    Binary(_, ShiftRight, lhs_expr_id, _, None, None) => lhs_expr_id,
-                    _ => unreachable!("Found unknown mask format"),
+                    Binary(_, ShiftRight, lhs_expr_id, _, None, None) => Ok(lhs_expr_id),
+                    ref e => Err(format!("Found unknown mask format: {:?}", e)),
                 }
             }
             // Sometimes you find a constant and the mask is used further down the expr list
             Literal(_, Integer(0, IntBase::Dec)) => self.get_shuffle_vector_mask(&[expr_ids[4]]),
-            ref e => unreachable!("Found unknown mask format: {:?}", e),
+            // format: (char)(mask) & A) ?  B : C - (char)(mask)
+            Conditional(_, lhs_expr_id, _, _) => {
+                match self.ast_context.c_exprs[&lhs_expr_id].kind {
+                    Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
+                        match self.ast_context.c_exprs[&lhs_expr_id].kind {
+                            ImplicitCast(_, expr_id, IntegralCast, _, _) => {
+                                match self.ast_context.c_exprs[&expr_id].kind {
+                                    ExplicitCast(_, expr_id, IntegralCast, _, _) => Ok(expr_id),
+                                    ref e => Err(format!("Found unknown mask format: {:?}", e))
+                                }
+                            },
+                            ref e => Err(format!("Found unknown mask format: {:?}", e)),
+                        }
+                    },
+                    ref e => Err(format!("Found unknown mask format: {:?}", e)),
+                }
+            },
+            ref e => Err(format!("Found unknown mask format: {:?}", e)),
         }
     }
 }

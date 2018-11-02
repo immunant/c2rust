@@ -60,6 +60,7 @@ impl PartialEq for ShuffleVectors {
             l: u64,
             m: u128,
             n: (u128, u128),
+            o: u128,
         ]);
 
         return true;
