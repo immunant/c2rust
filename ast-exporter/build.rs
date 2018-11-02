@@ -154,18 +154,7 @@ fn build_native(llvm_config: &str) {
     // Find where the (already built) LLVM lib dir is
     let llvm_lib = find_llvm_libdir(llvm_config);
 
-    // This is where the C++ source lives.
-    // Note that `rerun-if-changed` does not recursively check directories!
-    // println!("cargo:rerun-if-changed=../ast-exporter");
-    // println!("cargo:rerun-if-changed=../ast-exporter/*");
-
     let dst = Config::new("src")
-        .generator("Ninja")
-
-        // General CMake variables
-        .define("CMAKE_C_COMPILER",   "clang")
-        .define("CMAKE_CXX_COMPILER", "clang++")
-
         // Where to find LLVM/Clang CMake files
         .define("LLVM_DIR",           &format!("{}/cmake/llvm",  llvm_lib))
         .define("Clang_DIR",          &format!("{}/cmake/clang", llvm_lib))
