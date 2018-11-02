@@ -135,7 +135,7 @@ def build_transpiler(debug: bool):
     with pb.local.cwd(os.path.join(c.ROOT_DIR, "transpiler")):
         # use different target dirs for different hosts
         target_dir = "target." + c.HOST_SUFFIX
-        llvm_lib_dir = os.path.join(c.LLVM_BLD, "lib")
+        llvm_lib_dir = os.path.join(c.LLVM_INSTALL, "lib")
         with pb.local.env(CARGO_TARGET_DIR=target_dir,
                           LLVM_LIB_DIR=llvm_lib_dir):
             # build with custom rust toolchain
