@@ -258,7 +258,7 @@ fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> 
 pub fn stmts_block(mut stmts: Vec<Stmt>) -> P<Block> {
     if stmts.len() == 1 {
         if let StmtKind::Expr(ref e) = stmts[0].node {
-            if let ExprKind::Block(ref b, _) = e.node {
+            if let ExprKind::Block(ref b, None) = e.node {
                 return b.clone()
             }
         }
