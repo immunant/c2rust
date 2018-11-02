@@ -1,9 +1,10 @@
 #![feature(iterator_find_map)]
 extern crate bindgen;
 extern crate cmake;
+extern crate clang_sys;
 
 use std::env;
-use std::process::{Command, Stdio};
+use std::process::{self, Command, Stdio};
 use std::path::{Path, PathBuf};
 use cmake::Config;
 
@@ -11,6 +12,11 @@ use cmake::Config;
 
 fn main() {
     let llvm_config = find_llvm_config();
+
+    if let Err(e) = check_versions(&llvm_config) {
+        eprintln!("{}", e);
+        process::exit(1);
+    }
 
     // Build the exporter library and link it (and its dependencies)
     build_native(&llvm_config);
@@ -56,6 +62,41 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
 "
     );
     String::from(Path::new(&path_str).canonicalize().unwrap().to_string_lossy())
+}
+
+fn check_versions(_llvm_config: &str) -> Result<(), String> {
+    // Check that bindgen is using the same version of libclang and the clang
+    // invocation that it pulls -isystem from. See Bindings::generate() for the
+    // -isystem construction.
+    if let Some(clang) = clang_sys::support::Clang::find(None, &[]) {
+        let libclang_version = bindgen::clang_version().parsed.ok_or("Could not parse version of libclang in bindgen")?;
+        let clang_version = clang.version.ok_or("Could not parse version of clang executable in clang-sys")?;
+        let libclang_version_str = format!(
+            "{}.{}",
+            libclang_version.0,
+            libclang_version.1,
+        );
+        let clang_version_str = format!(
+            "{}.{}",
+            clang_version.Major,
+            clang_version.Minor,
+        );
+        if libclang_version.0 != clang_version.Major as u32
+            || libclang_version.1 != clang_version.Minor as u32 {
+                return Err(format!(
+                    "
+Bindgen requires a matching libclang and clang installation. Bindgen is using
+libclang version ({libclang}) which does not match the autodetected clang
+version ({clang}). If you have clang version {libclang} installed, please set
+the `CLANG_PATH` environment variable to the path of this version of the clang
+binary.",
+                    libclang=libclang_version_str,
+                    clang=clang_version_str,
+                ));
+            }
+    }
+
+    Ok(())
 }
 
 fn generate_bindings() {
