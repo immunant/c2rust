@@ -1,36 +1,40 @@
-use syntax::{with_globals, ast};
-use syntax::ast::*;
-use syntax_pos::{DUMMY_SP, Span};
-use syntax::tokenstream::{TokenStream};
-use syntax::parse::token::{Token,Nonterminal};
-use std::collections::{HashMap,HashSet};
-use renamer::Renamer;
-use convert_type::TypeConverter;
-use loops::*;
-use c_ast;
-use c_ast::*;
-use clang_ast::LRValue;
-use rust_ast_builder::{mk, Builder};
-use rust_ast::comment_store::CommentStore;
-use rust_ast::item_store::ItemStore;
-use c_ast::iterators::{DFExpr, SomeId};
-use syntax::ptr::*;
-use syntax::print::pprust::*;
-use std::ops::Index;
 use std::cell::RefCell;
-use std::char;
-use std::mem;
-use dtoa;
-use with_stmts::WithStmts;
-use rust_ast::traverse::Traversal;
-use std::io;
+use std::collections::{HashMap,HashSet};
+use std::{char,io,mem};
+use std::ops::Index;
 use std::path::{self, PathBuf};
+
+use dtoa;
+
 use indexmap::IndexMap;
 
+use syntax::ast::*;
+use syntax::parse::token::{Token,Nonterminal};
+use syntax::print::pprust::*;
+use syntax::ptr::*;
+use syntax::tokenstream::{TokenStream};
+use syntax::{with_globals, ast};
+use syntax_pos::{DUMMY_SP, Span};
+
+use rust_ast::comment_store::CommentStore;
+use rust_ast::item_store::ItemStore;
+use rust_ast::traverse::Traversal;
+use rust_ast_builder::{mk, Builder};
+
+use c_ast::*;
+use c_ast::iterators::{DFExpr, SomeId};
+use c_ast;
 use cfg;
+use clang_ast::LRValue;
+use convert_type::TypeConverter;
+use loops::*;
+use renamer::Renamer;
+use with_stmts::WithStmts;
 
 mod assembly;
+mod builtins;
 mod main_function;
+mod named_references;
 mod operators;
 mod simd;
 
@@ -2180,7 +2184,7 @@ impl Translation {
     /// In the case that `use_` is `ExprUse::Unused`, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
-    pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool, mut decay_ref: DecayRef) -> Result<WithStmts<P<Expr>>, String> {
+    pub fn convert_expr(&self, use_: ExprUse, expr_id: CExprId, is_static: bool, decay_ref: DecayRef) -> Result<WithStmts<P<Expr>>, String> {
         match self.ast_context[expr_id].kind {
             CExprKind::DesignatedInitExpr(..) => Err(format!("Unexpected designated init expr")),
             CExprKind::BadExpr => Err(format!("convert_expr: expression kind not supported")),
@@ -2628,199 +2632,6 @@ impl Translation {
         } else {
             false
         }
-    }
-
-    fn convert_builtin(
-        &self,
-        fexp: CExprId,
-        args: &[CExprId],
-        use_: ExprUse,
-        is_static: bool,
-    ) -> Result<WithStmts<P<Expr>>, String> {
-
-        let decl_id =
-            match self.ast_context[fexp].kind {
-                CExprKind::DeclRef(_, decl_id, _) => decl_id,
-                _ => return Err(format!("Expected declref when processing builtin")),
-            };
-
-        let builtin_name: &str =
-            match self.ast_context[decl_id].kind {
-                CDeclKind::Function { ref name, .. } => name,
-                _ => return Err(format!("Expected function when processing builtin")),
-            };
-        let decay_ref = DecayRef::Default;
-
-        match builtin_name {
-            "__builtin_huge_valf" =>
-                Ok(WithStmts::new(mk().path_expr(vec!["","std","f32","INFINITY"]))),
-            "__builtin_huge_val" | "__builtin_huge_vall"=>
-                Ok(WithStmts::new(mk().path_expr(vec!["","std","f64","INFINITY"]))),
-            "__builtin_inff" =>
-                Ok(WithStmts::new(mk().path_expr(vec!["","std","f32","INFINITY"]))),
-            "__builtin_inf" | "__builtin_infl" =>
-                Ok(WithStmts::new(mk().path_expr(vec!["","std","f64","INFINITY"]))),
-            "__builtin_nanf" =>
-                Ok(WithStmts::new(mk().path_expr(vec!["","std","f32","NAN"]))),
-            "__builtin_nan" =>
-                Ok(WithStmts::new(mk().path_expr(vec!["","std","f64","NAN"]))),
-            "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
-                let val = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-                Ok(val.map(|x| {
-                    let zeros = mk().method_call_expr(x, "leading_zeros", vec![] as Vec<P<Expr>>);
-                    mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
-                }))
-            }
-            "__builtin_ctz" | "__builtin_ctzl" | "__builtin_ctzll" => {
-                let val = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-                Ok(val.map(|x| {
-                    let zeros = mk().method_call_expr(x, "trailing_zeros", vec![] as Vec<P<Expr>>);
-                    mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
-                }))
-            }
-            "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
-                let val = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-                Ok(val.map(|x|
-                    mk().method_call_expr(x, "swap_bytes", vec![] as Vec<P<Expr>>)
-                ))
-            }
-            "__builtin_fabs" | "__builtin_fabsf" | "__builtin_fabsl" => {
-                let val = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-                Ok(val.map(|x|
-                    mk().method_call_expr(x, "abs", vec![] as Vec<P<Expr>>)
-                ))
-            }
-            "__builtin_expect" =>
-                self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref),
-
-            "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
-                let val = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-                Ok(val.map(|x| {
-                    let zeros = mk().method_call_expr(x, "count_ones", vec![] as Vec<P<Expr>>);
-                    mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
-                }))
-            }
-            "__builtin_bzero" => {
-                let ptr_stmts = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-                let n_stmts = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
-                let write_bytes = mk().path_expr(vec!["", "std", "ptr", "write_bytes"]);
-                let zero = mk().lit_expr(mk().int_lit(0, "u8"));
-                Ok(ptr_stmts.and_then(|ptr| n_stmts.map(|n| {
-                    mk().call_expr(write_bytes, vec![ptr, zero, n])
-                })))
-            }
-
-            // If the target does not support data prefetch, the address expression is evaluated if
-            // it includes side effects but no other code is generated and GCC does not issue a warning.
-            // void __builtin_prefetch (const void *addr, ...);
-            "__builtin_prefetch" => {
-                self.convert_expr(ExprUse::Unused, args[0], is_static, decay_ref)
-            }
-
-            // This built-in is translated directly to memcpy as defined in the libc crate
-            "__builtin_memcpy" => {
-                let memcpy = mk().path_expr(vec!["","libc","memcpy"]);
-                let mut dst = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-                let mut src = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
-                let mut len = self.convert_expr(ExprUse::Used, args[2], is_static, decay_ref)?;
-                let size_t = mk().path_ty(vec!["libc","size_t"]);
-                let len1 = mk().cast_expr(len.val, size_t);
-                let memcpy_expr = mk().call_expr(memcpy, vec![dst.val, src.val, len1]);
-
-                let mut stmts = dst.stmts;
-                stmts.append(&mut src.stmts);
-                stmts.append(&mut len.stmts);
-
-                let val = match use_ {
-                    ExprUse::Used => memcpy_expr,
-                    ExprUse::Unused => {
-                        stmts.push(mk().semi_stmt(memcpy_expr));
-                        self.panic("__builtin_memcpy not used")
-                    }
-                };
-
-                Ok(WithStmts { stmts, val })
-            }
-
-            "__builtin_add_overflow" | "__builtin_sadd_overflow" |
-            "__builtin_saddl_overflow" | "__builtin_saddll_overflow" |
-            "__builtin_uadd_overflow" | "__builtin_uaddl_overflow" |
-            "__builtin_uaddll_overflow" => {
-                self.convert_overflow_arith("overflowing_add", args, is_static, decay_ref)
-            }
-
-            "__builtin_sub_overflow" | "__builtin_ssub_overflow" |
-            "__builtin_ssubl_overflow" | "__builtin_ssubll_overflow" |
-            "__builtin_usub_overflow" | "__builtin_usubl_overflow" |
-            "__builtin_usubll_overflow" => {
-                self.convert_overflow_arith("overflowing_sub", args, is_static, decay_ref)
-            }
-
-            "__builtin_mul_overflow" | "__builtin_smul_overflow" |
-            "__builtin_smull_overflow" | "__builtin_smulll_overflow" |
-            "__builtin_umul_overflow" | "__builtin_umull_overflow" |
-            "__builtin_umulll_overflow" => {
-                self.convert_overflow_arith("overflowing_mul", args, is_static, decay_ref)
-            }
-
-            // Should be safe to always return 0 here.  "A return of 0 does not indicate that the
-            // value is *not* a constant, but merely that GCC cannot prove it is a constant with
-            // the specified value of the -O option. "
-            "__builtin_constant_p" =>
-                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(0, "")))),
-
-            "__builtin_va_start" =>
-                Err(format!("va_start not supported - currently va_list and va_arg are supported")),
-            "__builtin_va_copy" =>
-                Err(format!("va_copy not supported - currently va_list and va_arg are supported")),
-            "__builtin_va_end" =>
-                Err(format!("va_end not supported - currently va_list and va_arg are supported")),
-
-            // One shuffle vector actually calls a real builtin:
-            "__builtin_ia32_pshufw" => {
-                self.convert_builtin_ia32_pshufw(use_, is_static, decay_ref, args)
-            },
-            _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
-        }
-    }
-
-    // This translation logic handles converting code that uses
-    // https://gcc.gnu.org/onlinedocs/gcc/Integer-Overflow-Builtins.html
-    fn convert_overflow_arith(
-        &self,
-        method_name: &str,
-        args: &[CExprId],
-        is_static: bool,
-        decay_ref: DecayRef
-    ) -> Result<WithStmts<P<Expr>>, String> {
-        let a = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-        let mut b = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
-        let mut c = self.convert_expr(ExprUse::Used, args[2], is_static, decay_ref)?;
-
-        let overflowing = mk().method_call_expr(a.val, method_name, vec![b.val]);
-        let sum_name = self.renamer.borrow_mut().fresh();
-        let over_name = self.renamer.borrow_mut().fresh();
-        let overflow_let = mk().local_stmt(P(
-            mk().local(
-                mk().tuple_pat(vec![
-                    mk().ident_pat(&sum_name),
-                    mk().ident_pat(over_name.clone())]),
-                None as Option<P<Ty>>,
-                Some(overflowing)
-            )));
-
-        let out_assign = mk().assign_expr(
-            mk().unary_expr(ast::UnOp::Deref, c.val),
-            mk().ident_expr(&sum_name)
-        );
-
-        let mut stmts = a.stmts;
-        stmts.append(&mut b.stmts);
-        stmts.append(&mut c.stmts);
-        stmts.push(overflow_let);
-        stmts.push(mk().expr_stmt(out_assign));
-
-        Ok(WithStmts{ stmts, val: mk().ident_expr(over_name) })
     }
 
     fn convert_statement_expression(
@@ -3394,110 +3205,6 @@ impl Translation {
         self.zero_inits.borrow_mut().insert(decl_id, init.clone());
         init
     }
-
-
-    /// Get back a Rust lvalue corresponding to the expression passed in.
-    ///
-    /// Do not use the output lvalue expression more than once.
-    pub fn name_reference_write(
-        &self,
-        reference: CExprId,
-    ) -> Result<WithStmts<P<Expr>>, String> {
-        self.name_reference(reference, false)
-            .map(|ws| ws.map(|(lvalue, _)| lvalue))
-    }
-
-    /// Get back a Rust (lvalue, rvalue) pair corresponding to the expression passed in.
-    ///
-    /// You may reuse either of these expressions.
-    pub fn name_reference_write_read(
-        &self,
-        reference: CExprId,
-    ) -> Result<WithStmts<(P<Expr>, P<Expr>)>, String> {
-        let msg: &str = "When called with `uses_read = true`, `name_reference` should always \
-                       return an rvalue (something from which to read the memory location)";
-
-        self.name_reference(reference, true)
-            .map(|ws| ws.map(|(lvalue, rvalue)| (lvalue, rvalue.expect(msg))))
-    }
-
-    /// This function transforms an expression that should refer to a memory location (a C lvalue)
-    /// into a Rust lvalue for writing to that location.
-    ///
-    /// When called with `uses_read`, this function returns an rvalue too. The rvalue can be used to
-    /// read multiple times without duplicating side-effects.
-    ///
-    /// NOTE: Use `name_reference_write` or `name_reference_write_read` instead of calling this
-    ///       directly.
-    fn name_reference(
-        &self,
-        reference: CExprId,
-        uses_read: bool,
-    ) -> Result<WithStmts<(P<Expr>, Option<P<Expr>>)>, String> {
-        let reference_ty = self.ast_context.index(reference).kind.get_qual_type().ok_or_else(|| format!("bad reference type"))?;
-        let WithStmts {
-            val: reference,
-            mut stmts,
-        } = self.convert_expr(ExprUse::Used, reference, false, DecayRef::Default)?;
-
-        /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
-        fn is_lvalue(e: &Expr) -> bool {
-            match e.node {
-                ExprKind::Path(..) |
-                ExprKind::Unary(ast::UnOp::Deref, _) |
-                ExprKind::Field(..) |
-                ExprKind::Index(..) => true,
-                _ => false,
-            }
-        }
-
-        // Check if something is a side-effect free Rust lvalue.
-        fn is_simple_lvalue(e: &Expr) -> bool {
-            match e.node {
-                ExprKind::Path(..) => true,
-                ExprKind::Unary(ast::UnOp::Deref, ref e) |
-                ExprKind::Field(ref e, _) |
-                ExprKind::Index(ref e, _) => is_simple_lvalue(e),
-                _ => false,
-            }
-        }
-
-        // Given the LHS access to a variable, produce the RHS one
-        let read = |write: P<Expr>| -> Result<P<Expr>, String> {
-            if reference_ty.qualifiers.is_volatile {
-                self.volatile_read(&write, reference_ty)
-            } else {
-                Ok(write)
-            }
-        };
-
-        if !uses_read && is_lvalue(&*reference) {
-            Ok(WithStmts { stmts, val: (reference, None) })
-        } else if is_simple_lvalue(&*reference) {
-            Ok(WithStmts { stmts, val: (reference.clone(), Some(read(reference)?)) })
-        } else {
-            // This is the case where we explicitly need to factor out possible side-effects.
-
-            let ptr_name = self.renamer.borrow_mut().fresh();
-
-            // let ref mut p = lhs;
-            let compute_ref =
-                mk().local_stmt(
-                    P(mk().local(mk().mutbl().ident_ref_pat(&ptr_name),
-                                 None as Option<P<Ty>>,
-                                 Some(reference)))
-                );
-            stmts.push(compute_ref);
-
-            let write = mk().unary_expr(ast::UnOp::Deref, mk().ident_expr(&ptr_name));
-
-            Ok(WithStmts {
-                stmts,
-                val: (write.clone(), Some(read(write)?)),
-            })
-        }
-    }
-
 
     /// Convert a boolean expression to a boolean for use in && or || or if
     fn match_bool(&self, target: bool, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
