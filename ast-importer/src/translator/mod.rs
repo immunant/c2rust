@@ -489,7 +489,6 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
 
             items.push(initializer_fn);
             items.push(initializer_static);
-            t.use_feature("used");
         }
 
         // pass all converted items to the Rust pretty printer
@@ -2372,7 +2371,7 @@ impl Translation {
                 }
             },
 
-            CExprKind::Binary(type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) => 
+            CExprKind::Binary(type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) =>
                 self.convert_binary_expr(use_, is_static, decay_ref, type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id),
 
             CExprKind::ArraySubscript(_, ref lhs, ref rhs, _) => {

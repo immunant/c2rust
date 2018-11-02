@@ -157,7 +157,7 @@ impl Translation {
         let second_expr_id = match self.ast_context.c_exprs[&args[1]].kind {
             // For some reason there seems to be an incorrect implicit cast here to char
             // it's possible the builtin takes a char even though the function takes an int
-            ImplicitCast(_, expr_id, CastKind::IntegralCast, _, _) => expr_id,
+            ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
             _ => args[1],
         };
         let second_param =
