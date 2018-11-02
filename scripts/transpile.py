@@ -73,6 +73,7 @@ LIB_RS_TEMPLATE = """\
 #![feature(extern_types)]
 #![feature(asm)]
 #![feature(ptr_wrapping_offset_from)]
+#![feature(const_slice_as_ptr)]
 
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
