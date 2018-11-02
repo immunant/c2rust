@@ -1,4 +1,3 @@
-#![feature(iterator_find_map)]
 extern crate bindgen;
 extern crate cmake;
 extern crate clang_sys;
