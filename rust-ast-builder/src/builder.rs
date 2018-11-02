@@ -924,7 +924,7 @@ impl Builder {
                 // The else branch in libsyntax must be one of these three cases,
                 // otherwise we have to manually add the block around the else expression
                 match e.node {
-                    ExprKind::If{..} | ExprKind::IfLet{..} | ExprKind::Block{..} => e,
+                    ExprKind::If{..} | ExprKind::IfLet{..} | ExprKind::Block(_,None) => e,
                     _ => mk().block_expr(mk().block(vec![mk().expr_stmt(e)])),
                 }
             });
