@@ -1,32 +1,11 @@
-///! This is a transform for reorganizing definitions from a translated c2rust project.
-///!
-///! The main goal of this transform is unpollute the translated library from redefinitions.
-///! What the c2rust transpiler does, is redefine every declaration from a header wherever that
-///! header is included. Like so:
-///! ```
-///! mod buffer {
-///!     struct buffer_t {
-///!        data: i32,
-///!     }
-///! }
-///! mod foo {
-///!     struct buffer_t {
-///!        data: i32,
-///!     }
-///! }
-///! ```
-///! ...
 use rustc::session::Session;
 use smallvec::SmallVec;
 use std::collections::{HashMap, HashSet};
 use syntax::ast::*;
-use syntax::parse::token::Lit::Str_;
-use syntax::parse::token::Token::Literal;
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
 use syntax::source_map::{dummy_spanned, SyntaxContext, DUMMY_SP};
 use syntax::symbol::keywords;
-use syntax::tokenstream::*;
 use syntax::visit::{self, Visitor};
 use transform::Transform;
 
@@ -35,35 +14,59 @@ use ast_manip::AstEquiv;
 use command::{CommandState, Registry};
 use driver::{self, Phase};
 
+/// This is a transform for reorganizing definitions from a translated c2rust project.
+///
+/// The main goal of this transform is unpollute the translated project from redefinitions.
+/// Essentially what will happen is there will be a project like:
+/// ```
+/// mod buffer {
+///     #[header_src="/some/path/buffer.h"]
+///     mod buffer_h {
+///         struct buffer_t {
+///            data: i32,
+///         }
+///     }
+/// }
+/// ```
+/// This will then turn into:
+/// ```
+/// mod buffer {
+///     struct buffer_t {
+///        data: i32,
+///     }
+/// }
+/// ```
 pub struct ReorganizeModules;
 
-pub struct ModuleInformation<'a, 'tcx: 'a, 'st> {
-    // Mapping for fast item lookup, stops the need of having to search the entire Crate.
+/// Holds the information of the current `Crate`, which includes a `HashMap` to look up Items
+/// quickly, as well as other members that hold important information.
+pub struct CrateInformation<'a, 'tcx: 'a, 'st> {
+    /// Mapping for fast item lookup, stops the need of having to search the entire Crate.
     item_map: HashMap<NodeId, Item>,
 
-    // Maps a *to be moved Item to the destination module id
-    // * meaning items that pass the `is_std` and `has_source_header` check
+    /// Maps a *to_be_moved `Item` to the "destination module" id
+    /// * meaning items that pass the `is_std` and `has_source_header` check
     item_to_dest_module: HashMap<NodeId, NodeId>,
 
-    // This is used for mapping modules that need to be created to a new node id
-    // e.g.: "stdlib" -> `NodeId`
+    /// This is used for mapping modules that need to be created to a new node id
+    /// e.g.: "stdlib" -> `NodeId`
     new_modules: HashMap<Ident, NodeId>,
 
-    // Set of module `NodeId`'s where "old" module items will be sent to
+    /// Set of module `NodeId`'s where "old" module items will be sent to
     possible_destination_modules: HashSet<NodeId>,
 
-    // Old path NodeId -> (New Path, Destination module id)
+    /// Old path NodeId -> (New Path, Destination module id)
     path_mapping: HashMap<NodeId, (Path, NodeId)>,
 
     cx: &'a driver::Ctxt<'a, 'tcx>,
     st: &'st CommandState,
 }
 
-impl<'a, 'tcx, 'st> ModuleInformation<'a, 'tcx, 'st> {
+impl<'a, 'tcx, 'st> CrateInformation<'a, 'tcx, 'st> {
     fn new(cx: &'a driver::Ctxt<'a, 'tcx>, st: &'st CommandState) -> Self {
         let mut new_modules = HashMap::new();
         new_modules.insert(Ident::from_str("stdlib"), st.next_node_id());
-        ModuleInformation {
+        CrateInformation {
             item_map: HashMap::new(),
             item_to_dest_module: HashMap::new(),
             new_modules,
@@ -74,13 +77,13 @@ impl<'a, 'tcx, 'st> ModuleInformation<'a, 'tcx, 'st> {
         }
     }
 
+    /// Iterates through the Crate, to find any potentential "destination modules",
+    /// if one is found it is inserted into `possible_destination_modules`.
+    /// Also since we iterate through the items, it is a good place to insert everything
+    /// into `item_map`.
     fn find_destination_modules(&mut self, krate: &Crate) {
         // visit all the modules, and find potential destination module canidates
         // also build up the item map here
-        //
-        // TODO: move this into its own method
-        // possible names:
-        // find_destination_modules?
         visit_nodes(krate, |i: &Item| {
             match i.node {
                 ItemKind::Mod(_) => {
@@ -110,20 +113,18 @@ impl<'a, 'tcx, 'st> ModuleInformation<'a, 'tcx, 'st> {
         });
     }
 
-    // We should match possible modules together:
-    // test.rs should get the content of module test_h.
-    // So the hashmap should be something like "Test" => ModInfo { ..., "test_h"}
-    //
-    // TODO: Better variable naming; naming is too confusing.
+    /// In this function we try to match an item to a destination module,
+    /// once we have a match, the NodeId and the Ident of the module is returned.
     fn find_destination_id(
         &mut self,
         item_to_process: &NodeId,
         old_module: &Item, // Parent of `item_to_process`
     ) -> (NodeId, Ident) {
-        // `old_mod` is an `Item` type
-        let mut node_id = DUMMY_NODE_ID;
-        let mut ident = Ident::from_str("");
-        let mut found = false;
+        if is_std(&old_module.attrs) {
+            let node_id = *self.new_modules.get(&Ident::from_str("stdlib")).unwrap();
+            let ident = Ident::from_str("stdlib");
+            return (node_id, ident);
+        }
 
         // iterate through the set of possible destinations and try to find a possible match
         for dest_module_id in self.possible_destination_modules.iter() {
@@ -141,34 +142,28 @@ impl<'a, 'tcx, 'st> ModuleInformation<'a, 'tcx, 'st> {
                     .as_str()
                     .contains(&*dest_module_ident.as_str())
                 {
-                    node_id = dest_module.id;
-                    ident = dest_module_ident;
-                    found = true;
+                    let node_id = dest_module.id;
+                    let ident = dest_module_ident;
+                    return (node_id, ident);
                 }
             }
         }
 
-        if !self.item_to_dest_module.contains_key(item_to_process) && !found {
-            let new_modules = self.new_modules.clone();
-            if let Some(mod_id) = new_modules.get(&old_module.ident) {
-                node_id = *mod_id;
-                ident = old_module.ident;
-            } else {
-                let new_id = self.st.next_node_id();
-                self.new_modules.insert(old_module.ident, new_id);
-                node_id = new_id;
-                ident = old_module.ident;
-            }
+        if !self.item_to_dest_module.contains_key(item_to_process) {
+            let new_modules = &mut self.new_modules;
+            let state = &self.st;
+            let node_id = *new_modules
+                .entry(old_module.ident)
+                .or_insert_with(|| state.next_node_id());
+            let ident = old_module.ident;
+            return (node_id, ident);
         }
-        if is_std(&old_module.attrs) {
-            node_id = *self.new_modules.get(&Ident::from_str("stdlib")).unwrap();
-            ident = Ident::from_str("stdlib");
-        }
-        (node_id, ident)
+        // the function should never reach this point
+        (DUMMY_NODE_ID, Ident::from_str(""))
     }
 
-    // `clean_module_items` should iterate through item_to_dest_module, and if the Node has a similar `Item` within
-    // the destination module do not insert it into to the vector of NodeId's.
+    /// Iterates through `item_to_dest_mod`, and creates a reverse mapping of that HashMap
+    /// `dest_node_id` -> `Vec<items_to_get_inserted>`
     fn create_dest_mod_map(&self) -> HashMap<NodeId, Vec<NodeId>> {
         let mut dest_mod_to_items: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
         for (item_id, dest_mod_id) in self.item_to_dest_module.iter() {
@@ -183,7 +178,8 @@ impl<'a, 'tcx, 'st> ModuleInformation<'a, 'tcx, 'st> {
         dest_mod_to_items
     }
 
-    fn extend_crate_and_insert(
+    /// This function extends the Crate by inserting the "new modules".
+    fn extend_crate(
         &mut self,
         krate: Crate,
         dest_mod_to_items: &HashMap<NodeId, Vec<NodeId>>,
@@ -232,7 +228,17 @@ impl<'a, 'tcx, 'st> ModuleInformation<'a, 'tcx, 'st> {
             }
         }
 
-        // Now that the items have
+        krate
+    }
+
+    /// Inserts the items into the corresponding "destination_module".
+    fn insert_items_into_dest(
+        &mut self,
+        krate: Crate,
+        dest_mod_to_items: &HashMap<NodeId, Vec<NodeId>>,
+    ) -> Crate {
+        // This is where items get inserted into the corresponding
+        // "destination module"
         self.item_map.clear();
         let krate = fold_nodes(krate, |pi: P<Item>| {
             if has_source_header(&pi.attrs) || is_std(&pi.attrs) {
@@ -240,11 +246,11 @@ impl<'a, 'tcx, 'st> ModuleInformation<'a, 'tcx, 'st> {
             }
             let mut v = smallvec![];
 
-            match pi.node.clone() {
+            match pi.node {
                 ItemKind::Mod(ref m) => {
-                    let i = pi.clone().map(|i|{
+                    let i = pi.clone().map(|i| {
                         let mut m = m.clone();
-                         if let Some(new_item_ids) = dest_mod_to_items.get(&i.id) {
+                        if let Some(new_item_ids) = dest_mod_to_items.get(&i.id) {
                             for new_item_id in new_item_ids.iter() {
                                 if let Some(mut new_item) = self.item_map.get_mut(new_item_id) {
                                     let mut found = false;
@@ -257,13 +263,7 @@ impl<'a, 'tcx, 'st> ModuleInformation<'a, 'tcx, 'st> {
                                         // of those items matches an item already in the module
                                         // delete it.
                                         if let ItemKind::ForeignMod(ref mut fm) = new_item.node {
-                                            fm.items.retain(|fm_item| {
-                                                let mut result = true;
-                                                if fm_item.ident == item.ident {
-                                                    result = false;
-                                                }
-                                                result
-                                            });
+                                            fm.items.retain(|fm_item| fm_item.ident != item.ident);
                                         }
                                     }
 
@@ -273,22 +273,13 @@ impl<'a, 'tcx, 'st> ModuleInformation<'a, 'tcx, 'st> {
                                 }
                             }
                         }
-                        /*
-                        if let Some(new_item_ids) = dest_mod_to_items.get(&i.id) {
-                            for new_item_id in new_item_ids.iter() {
-                                if let Some(mut new_item) = self.item_map.get_mut(new_item_id) {
-                                    m.items.push(P(new_item.clone()));
-                                }
-                            }
-                        }
-                        */
                         Item {
                             node: ItemKind::Mod(m),
                             ..i
                         }
                     });
                     v.push(i);
-                },
+                }
                 _ => {
                     v.push(pi.clone());
                 }
@@ -296,12 +287,11 @@ impl<'a, 'tcx, 'st> ModuleInformation<'a, 'tcx, 'st> {
             self.item_map.insert(pi.id, pi.clone().into_inner());
             v
         });
-
         krate
     }
 }
 
-impl<'ast, 'a, 'tcx, 'st> Visitor<'ast> for ModuleInformation<'a, 'tcx, 'st> {
+impl<'ast, 'a, 'tcx, 'st> Visitor<'ast> for CrateInformation<'a, 'tcx, 'st> {
     // Match the modules, using a mapping like:
     // NodeId -> NodeId
     // The key is the id of the old item to be moved, and the value is the NodeId of the module
@@ -309,11 +299,7 @@ impl<'ast, 'a, 'tcx, 'st> Visitor<'ast> for ModuleInformation<'a, 'tcx, 'st> {
     fn visit_item(&mut self, old_module: &'ast Item) {
         match old_module.node {
             ItemKind::Mod(ref m) => {
-                // All C standard library headers are going to be put into this arbitrary
-                // NodeId location.
                 for module_item in m.items.iter() {
-                    // TODO:
-                    // * Update path_mapping so we get the dest_module_id
                     let (dest_module_id, ident) =
                         self.find_destination_id(&module_item.id, &old_module);
                     self.item_to_dest_module
@@ -321,7 +307,6 @@ impl<'ast, 'a, 'tcx, 'st> Visitor<'ast> for ModuleInformation<'a, 'tcx, 'st> {
 
                     // Update the path_mapping to have the respective dest module id and the new
                     // path.
-                    // TODO: If the dest module and path are the same what should happen?
                     for (path, dummy_node_id) in self.path_mapping.values_mut() {
                         for segment in &mut path.segments {
                             // Check to see if a segment within the path is getting moved.
@@ -344,31 +329,36 @@ impl<'ast, 'a, 'tcx, 'st> Visitor<'ast> for ModuleInformation<'a, 'tcx, 'st> {
     }
 }
 
+// TODO: Try and clean up all the clones.
 impl Transform for ReorganizeModules {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        let mut mod_info = ModuleInformation::new(cx, st);
+        let mut krate_info = CrateInformation::new(cx, st);
 
-        mod_info.find_destination_modules(&krate);
+        krate_info.find_destination_modules(&krate);
 
-        krate.visit(&mut mod_info);
+        krate.visit(&mut krate_info);
 
         // `dest_mod_to_items`:
         // NodeId -> vec<NodeId>
         // The mapping is the destination module's `NodeId` to the items needing to be added to it.
-        let dest_mod_to_items = mod_info.create_dest_mod_map();
+        let dest_mod_to_items = krate_info.create_dest_mod_map();
 
-        // insert a new module for the C standard headers
-        let krate = mod_info.extend_crate_and_insert(krate, &dest_mod_to_items);
+        // insert a new modules into the Crate
+        let krate = krate_info.extend_crate(krate, &dest_mod_to_items);
 
+        // insert all the items marked as to be moved, into the proper
+        // "destination module"
+        let krate = krate_info.insert_items_into_dest(krate, &dest_mod_to_items);
 
-        // This is where the "old module" items get moved into the "new modules"
-        // The items left in dest_mod_to_items are the `brand new` modules going to be inserted into
-        // the crate, like `stdlib`.
+        // This is where a bulk of the duplication removal happens, as well as path clean up.
+        // 1. Paths are updated, meaning either removed or changed to match module change.
+        //      And then reinserted with the new set of prefixes.
+        // 2. Removes duplicates from `ForeignMod`'s, and the Duplicate Items.
         let krate = fold_nodes(krate, |pi: P<Item>| {
             let mut v = smallvec![];
-            match pi.node.clone() {
+            match pi.node {
                 ItemKind::Mod(ref m) => {
-                    let i = pi.map(|i| {
+                    let i = pi.clone().map(|i| {
                         let mut m = m.clone();
 
                         // This iteration goes through the module items and finds use statements,
@@ -376,14 +366,14 @@ impl Transform for ReorganizeModules {
                         // module name.
                         let mut seen_paths: HashMap<Ident, HashSet<Ident>> = HashMap::new();
                         m.items = m.items.iter().filter_map(|item| {
-                            if let Some((_, dest_module_id)) = mod_info.path_mapping.get(&item.id) {
+                            if let Some((_, dest_module_id)) = krate_info.path_mapping.get(&item.id) {
                                 if i.id == *dest_module_id {
                                     return None;
                                 }
                             }
                             let m_id = item.id.clone();
                             if let ItemKind::Use(ref mut ut) = item.clone().node {
-                                if let Some((new_path, _)) = mod_info.path_mapping.get(&m_id) {
+                                if let Some((new_path, _)) = krate_info.path_mapping.get(&m_id) {
                                     ut.prefix = new_path.clone();
                                     // In some modules there are multiple nested use statements that may
                                     // import differing prefixes, but also duplicate prefixes. So what
@@ -423,8 +413,8 @@ impl Transform for ReorganizeModules {
                                                     seen_paths.insert(mod_name.ident, prefixes);
                                                 }
                                             } else {
-                                                // one item use statements like: `use libc;` can be
-                                                // returned
+                                                // one item use statements like: `use libc;`
+                                                // can be returned
                                                 return Some(P(Item {
                                                     node: ItemKind::Use(ut.clone()),
                                                     ..item.clone().into_inner()
@@ -439,15 +429,16 @@ impl Transform for ReorganizeModules {
                             Some(item.clone())
                         }).collect();
 
+                        // Duplicate Items are deleted here
                         let seen_item_ids =
                             m.items.iter().map(|item| item.id).collect::<HashSet<_>>();
-
                         let mut deleted_item_ids = HashSet::new();
+                        // TODO: Use a function for `filter_map`
                         m.items = m.items.iter_mut().filter_map(|m_item| {
                             for item_id in &seen_item_ids {
-                                if let Some(item) = mod_info.item_map.get(&item_id) {
+                                if let Some(item) = krate_info.item_map.get(&item_id) {
                                     if item.id != m_item.id {
-                                        // Items that are the "same" are deleted here
+                                        // TODO: Clean this up
                                         let m_item_copy = m_item.clone();
                                         let m_id = m_item.id;
                                         let item_id = item.id;
@@ -456,8 +447,8 @@ impl Transform for ReorganizeModules {
                                                 fm.items.retain(|fm_item| {
                                                     let mut result = true;
                                                     for fm2_item in fm2.items.iter() {
-                                                        if fm_item.node.ast_equiv(&fm2_item.node) && !deleted_item_ids.contains(&fm2_item.id)
-                                                            && fm_item.ident == fm2_item.ident {
+                                                        // Make a `compare_items` for foreign items?
+                                                        if compare_foreign_items(&fm_item, &fm2_item) && !deleted_item_ids.contains(&fm2_item.id) {
                                                             deleted_item_ids.insert(fm_item.id);
                                                             result = false;
                                                         }
@@ -480,20 +471,12 @@ impl Transform for ReorganizeModules {
                         // Here is where the seen_paths map is read, and turned into paths
                         // [foo_h] -> [item, item2, item3] turns into `use foo_h::{item, item2, item3};`
                         // And that ast is pushed into the module
-                        let item_idents: Vec<Ident> =
-                            m.items.iter().map(|item| item.ident).collect();
+                        let item_idents: HashSet<Ident> =
+                            m.items.iter().map(|item| item.ident).collect::<HashSet<_>>();
                         for (mod_name, mut prefixes) in seen_paths.iter_mut() {
                             let mut items: Vec<Ident> = prefixes.iter().map(|i| i).cloned().collect();
                             let mod_prefix = Path::from_ident(*mod_name);
-                            prefixes.retain(|prefix| {
-                                let mut result = true;
-                                for ident in item_idents.iter() {
-                                    if *ident == *prefix {
-                                        result = false;
-                                    }
-                                }
-                                result
-                            });
+                            prefixes.retain(|prefix| !item_idents.contains(&*prefix));
                             let use_stmt = mk().use_multiple_item(mod_prefix, items);
                             m.items.push(use_stmt);
                         }
@@ -508,7 +491,7 @@ impl Transform for ReorganizeModules {
                     return v;
                 }
                 _ => {
-                    v.push(pi);
+                    v.push(pi.clone());
                     return v;
                 }
             }
@@ -531,9 +514,12 @@ fn path_to_ident(path: &Path) -> Ident {
     Ident::from_str(&path.to_string())
 }
 
-// Compares an item, in mulitiple ways to see if they are the same
-// TODO:
-// * Check to see where exactly ast_equiv fails.
+fn compare_foreign_items(fm_item: &ForeignItem, fm_item2: &ForeignItem) -> bool {
+    fm_item.node.ast_equiv(&fm_item2.node) && fm_item.ident == fm_item2.ident
+}
+
+/// Compares an item not only using `ast_equiv`, but also in a variety of different ways
+/// to handle different cases where an item may be equivalent but not caught by `ast_equiv`.
 fn compare_items(new_item: &Item, module_item: &Item) -> bool {
     if new_item.node.ast_equiv(&module_item.node) && new_item.ident == module_item.ident {
         return true;
@@ -592,84 +578,29 @@ fn compare_items(new_item: &Item, module_item: &Item) -> bool {
     false
 }
 
-// This function is a check to ensure that the modules, we remove are ones translated.
-// What this function is looking for is the ident, 'source_header'.
-// Every translated file, that were translated with the correct option, should have:
-// `#[cfg(not(source_header = "/some/path"))]`
+/// A check that goes through an `Item`'s attributes, and if the module
+/// has `#[header_src = "/some/path"]` the function return true.
 fn has_source_header(attrs: &Vec<Attribute>) -> bool {
-    // Recurse down the `TokenTree` till the `Token` is reached,
-    // if the token contains an Ident with `source_tree`, this should be a translated
-    // `old module` then.
-    fn parse_token_tree(tree: &TokenTree, is_source_header: &mut bool) {
-        match tree {
-            TokenTree::Delimited(_, delimited) => {
-                let stream = delimited.stream();
-                stream.map(|tree| {
-                    parse_token_tree(&tree, is_source_header);
-                    tree
-                });
-            }
-            TokenTree::Token(_, token) => {
-                if token.is_ident() {
-                    let (ident, _) = token.ident().unwrap();
-                    if ident.as_str().contains("header_src") {
-                        *is_source_header = true;
-                    }
-                }
-            }
+    attrs.into_iter().any(|attr| {
+        if let Some(meta) = attr.meta() {
+            return meta.check_name("header_src");
         }
-    }
-
-    let mut is_source_header = false;
-    for attr in attrs {
-        let tokens = attr.tokens.clone();
-        tokens.map(|tree| {
-            parse_token_tree(&tree, &mut is_source_header);
-            tree
-        });
-    }
-    is_source_header
+        false
+    })
 }
 
+/// A check that goes through an `Item`'s attributes, and if the module
+/// has "/usr/include" in the path like: `#[header_src = "/usr/include/stdlib.h"]`
+/// then function return true.
 fn is_std(attrs: &Vec<Attribute>) -> bool {
-    // Recurse down the `TokenTree` till the `Token` is reached,
-    // if the token contains an Ident with `source_tree`, this should be a translated
-    // `old module` then.
-    fn parse_token_tree(tree: &TokenTree, is_std: &mut bool) {
-        match tree {
-            TokenTree::Delimited(_, delimited) => {
-                let stream = delimited.stream();
-                stream.map(|tree| {
-                    parse_token_tree(&tree, is_std);
-                    tree
-                });
+    attrs.into_iter().any(|attr| {
+        if let Some(meta) = attr.meta() {
+            if let Some(value_str) = meta.value_str() {
+                return value_str.as_str().contains("/usr/include");
             }
-            TokenTree::Token(_, token) => match token {
-                Literal(lit, _) => match lit {
-                    Str_(name) => {
-                        if name.as_str().contains("/usr/include")
-                            || name.as_str().contains("stddef")
-                            || name.as_str().contains("vararg")
-                        {
-                            *is_std = true;
-                        }
-                    }
-                    _ => {}
-                },
-                _ => {}
-            },
         }
-    }
-
-    let mut is_std = false;
-    for attr in attrs {
-        let tokens = attr.tokens.clone();
-        tokens.map(|tree| {
-            parse_token_tree(&tree, &mut is_std);
-            tree
-        });
-    }
-    is_std
+        false
+    })
 }
 
 pub fn register_commands(reg: &mut Registry) {

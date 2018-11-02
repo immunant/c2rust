@@ -1509,6 +1509,7 @@ impl Builder {
                           self.generics, self.span, self.id, kind)
     }
 
+
     // Foreign Items
 
     fn foreign_item(name: Ident, attrs: Vec<Attribute>, vis: Visibility,
