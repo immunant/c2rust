@@ -1124,7 +1124,7 @@ impl CfgBuilder {
                     None => None,
                 };
 
-                let WithStmts { stmts, val: ret_val } = with_stmts_opt(val);
+                let WithStmts { stmts, val: ret_val } = WithStmts::with_stmts_opt(val);
                 wip.extend(stmts);
                 wip.push_stmt(mk().expr_stmt(mk().return_expr(ret_val)));
 

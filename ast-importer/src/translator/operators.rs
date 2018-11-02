@@ -2,6 +2,14 @@
 
 use super::*;
 
+fn neg_expr(arg: P<Expr>) -> P<Expr> {
+    mk().unary_expr(ast::UnOp::Neg, arg)
+}
+
+fn wrapping_neg_expr(arg: P<Expr>) -> P<Expr> {
+    mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<P<Expr>>)
+}
+
 impl Translation {
     pub fn convert_binary_expr(
         &self,
