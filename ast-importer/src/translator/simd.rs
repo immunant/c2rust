@@ -333,8 +333,6 @@ impl Translation {
             _ => params.push(second_param.val),
         }
 
-        params.push(third_param.val);
-
         let shuffle_fn_name = match (&first_vec, first_vec_len) {
             (Float, 4) => "_mm_shuffle_ps",
             (Float, 8) => "_mm256_shuffle_ps",
@@ -367,6 +365,15 @@ impl Translation {
             },
             e => return Err(format!("Unknown shuffle vector signature: {:?}", e)),
         };
+
+        // According to https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
+        // _mm_shuffle_ps taking an u32 instead of an i32 (like the rest of the vector imm8 fields)
+        // is a bug, and so we need to add a cast for it to work properly
+        if shuffle_fn_name == "_mm_shuffle_ps" {
+            params.push(mk().cast_expr(third_param.val, mk().ident_ty("u32")));
+        } else {
+            params.push(third_param.val);
+        }
 
         self.import_simd_function(shuffle_fn_name)?;
 
@@ -429,7 +436,7 @@ impl Translation {
             }
             // Sometimes you find a constant and the mask is used further down the expr list
             Literal(_, Integer(0, IntBase::Dec)) => self.get_shuffle_vector_mask(&[expr_ids[4]]),
-            // format: (char)(mask) & A) ?  B : C - (char)(mask)
+            // format: ((char)(mask) & A) ?  B : C - (char)(mask)
             Conditional(_, lhs_expr_id, _, _) => {
                 match self.ast_context.c_exprs[&lhs_expr_id].kind {
                     Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
