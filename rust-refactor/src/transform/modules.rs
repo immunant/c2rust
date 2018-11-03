@@ -2,9 +2,10 @@ use rustc::session::Session;
 use smallvec::SmallVec;
 use std::collections::{HashMap, HashSet};
 use syntax::ast::*;
+use syntax::attr;
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
-use syntax::source_map::{dummy_spanned, SyntaxContext, DUMMY_SP};
+use syntax::source_map::{dummy_spanned, DUMMY_SP};
 use syntax::symbol::keywords;
 use syntax::visit::{self, Visitor};
 use transform::Transform;
@@ -89,22 +90,6 @@ impl<'a, 'tcx, 'st> CrateInformation<'a, 'tcx, 'st> {
                 ItemKind::Mod(_) => {
                     if !has_source_header(&i.attrs) && !is_std(&i.attrs) {
                         self.possible_destination_modules.insert(i.id);
-                    }
-                }
-                // TODO:
-                // * This can probably be done without using DUMMY_NODE_ID's
-                ItemKind::Use(ref ut) => {
-                    // Don't insert any "dummy" spanned use statements
-                    if i.span.ctxt() == SyntaxContext::empty() {
-                        let mut prefix = ut.prefix.clone();
-
-                        if prefix.segments.len() > 1 {
-                            prefix.segments.retain(|segment| {
-                                segment.ident.name != keywords::Super.name()
-                                    && segment.ident.name != keywords::SelfValue.name()
-                            });
-                        }
-                        self.path_mapping.insert(i.id, (prefix, DUMMY_NODE_ID));
                     }
                 }
                 _ => {}
@@ -305,20 +290,41 @@ impl<'ast, 'a, 'tcx, 'st> Visitor<'ast> for CrateInformation<'a, 'tcx, 'st> {
                     self.item_to_dest_module
                         .insert(module_item.id, dest_module_id);
 
-                    // Update the path_mapping to have the respective dest module id and the new
-                    // path.
-                    for (path, dummy_node_id) in self.path_mapping.values_mut() {
-                        for segment in &mut path.segments {
-                            // Check to see if a segment within the path is getting moved.
-                            // example_h -> example
-                            // DUMMY_NODE_ID -> actual destination module id
-                            //
-                            // TODO: put the whole match for paths here from new,
-                            // I can insert into path_mapping here.
-                            if segment.ident == old_module.ident {
-                                segment.ident = ident;
-                                *dummy_node_id = dest_module_id;
-                            }
+                    for item in self.item_map.values() {
+                        match item.node {
+                            ItemKind::Use(ref ut) => {
+                                if let Some((prefix, dest_id)) = self.path_mapping.get_mut(&item.id) {
+                                    // Check to see if a segment within the path is getting moved.
+                                    // example_h -> example
+                                    // DUMMY_NODE_ID -> actual destination module id
+                                    for segment in &mut prefix.segments {
+                                        if segment.ident == old_module.ident {
+                                            segment.ident = ident;
+                                            *dest_id = dest_module_id;
+                                        }
+                                    }
+                                }
+
+                                if !self.path_mapping.contains_key(&item.id) {
+                                    let mut prefix = ut.prefix.clone();
+                                    if prefix.segments.len() > 1 {
+                                        prefix.segments.retain(|segment| {
+                                            segment.ident.name != keywords::Super.name()
+                                                && segment.ident.name != keywords::SelfValue.name()
+                                        });
+                                    }
+
+                                    let mut dest_id = item.id.clone();
+                                    for segment in &mut prefix.segments {
+                                        if segment.ident == old_module.ident {
+                                            segment.ident = ident;
+                                            dest_id = dest_module_id;
+                                        }
+                                    }
+                                    self.path_mapping.insert(item.id.clone(), (prefix, dest_id));
+                                }
+                            },
+                            _ => {}
                         }
                     }
                 }
@@ -581,12 +587,7 @@ fn compare_items(new_item: &Item, module_item: &Item) -> bool {
 /// A check that goes through an `Item`'s attributes, and if the module
 /// has `#[header_src = "/some/path"]` the function return true.
 fn has_source_header(attrs: &Vec<Attribute>) -> bool {
-    attrs.into_iter().any(|attr| {
-        if let Some(meta) = attr.meta() {
-            return meta.check_name("header_src");
-        }
-        false
-    })
+    attr::contains_name(attrs, "header_src")
 }
 
 /// A check that goes through an `Item`'s attributes, and if the module
