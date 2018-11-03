@@ -15,55 +15,40 @@ See details in the `cross-checks` directory and in the cross checking [tutorial]
 
 To learn more, check out our [RustConf'18](https://www.youtube.com/watch?v=WEsR0Vv7jhg) talk on YouTube and try the C2Rust translator online at [www.c2rust.com](https://www.c2rust.com).
 
-# Setting up a development environment
+# Installation
 
-There are three ways to build the C2Rust project:
+## Prerequisites
 
-- Using **Vagrant**. See our [vagrant README](vagrant/README.md).
-- Using **Docker**. See our [docker README](docker/README.md).
-- **Manually**, as explained below.
+C2Rust requires LLVM 6 or 7 and its corresponding libraries and clang compiler. These prerequisites may be installed with the following commands, depending on your platform:
+**Ubuntu 16.04 & 18.04:**
 
-The previous two options automatically install all prerequisites during provisioning. You can also provision a macOS or Linux system manually.
+    apt install build-essential llvm-6.0 clang-6.0 libclang-6.0-dev
 
-* If you are on a Debian-based OS, you can run `scripts/provision_deb.sh` to do so. 
 
-* If you are on macOS, install the Xcode command-line tools (e.g., `xcode-select --install`) and [homebrew](https://brew.sh/) first. Then run `scripts/provision_mac.sh`.
+**Arch Linux:** 
 
-* If you prefer to install dependencies yourself, or are using a non Debian-based Linux OS, our dependencies are as follows:
-    - cmake >= 3.9.1
-    - dirmngr
-    - curl
-    - git
-    - gnupg2
-    - gperf
-    - ninja
-    - unzip
-    - clang 5.0+
-    - intercept-build or bear - see why [here](#generating-compile_commandsjson-files)
-    - python-dev
-    - python 3.6+
-    - [python dependencies](scripts/requirements.txt)
-    - rustc [version](rust-toolchain)
-    - rustfmt-preview component for the above rustc version
-    - libssl (development library, dependency of the refactoring tool)
+    pacman -S base-devel llvm clang
 
-# Building
 
-Building from scratch takes a little while. The script has been tested on recent versions of macOS and Ubuntu.
+**OS X:** XCode command-line tools and recent LLVM (we recommend the Homebrew version) are required.
 
-    $ ./scripts/build_translator.py
+    xcode-select --install
+    brew install llvm
 
-To use the cross checking functionality, add the following option.
 
-    $ ./scripts/build_translator.py --with-clang
+A rust installation with cargo is also required on all platforms, see: [rustup](https://rustup.rs/).
 
-# Testing (Optional)
 
-Tests are found in the [`tests`](tests) folder. If you build the translator successfully, you should be able to run the tests with:
+## Building C2Rust
 
-    $ ./scripts/test_translator.py tests
+    $ cd transpiler
+    $ cargo build
 
-This basically tests that the original C file and translated Rust file produce the same output when compiled and run. More details about tests are in [this README](tests/README.md).
+On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:
+
+    $ LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo build
+
+If you have trouble with cargo build, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
 
 # Translating C to Rust
 
