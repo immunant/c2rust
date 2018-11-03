@@ -55,9 +55,9 @@ ShuffleVectors call_all(void) {
 
         // Super builtins:
         _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 2, 1, 0)),
-        _mm_shuffle_pd(b, b, _MM_SHUFFLE(3, 2, 3, 2)),
+        _mm_shuffle_pd(b, b, (1 << 1 | 1 << 0)),
         _mm256_shuffle_ps(d, d, _MM_SHUFFLE(1, 2, 2, 1)),
-        _mm256_shuffle_pd(e, e, _MM_SHUFFLE(0, 2, 1, 3)),
+        _mm256_shuffle_pd(e, e, (1 << 3 | 1 << 2 | 0 << 1 | 0 << 0)),
         _mm_shuffle_epi32(f, _MM_SHUFFLE(1, 0, 0, 1)),
         _mm_shufflehi_epi16(f, _MM_SHUFFLE(0, 1, 2, 3)),
         _mm_shufflelo_epi16(f, _MM_SHUFFLE(3, 2, 3, 1)),
@@ -100,9 +100,9 @@ ShuffleVectors call_all_used(void) {
 
     // Super builtins:
     b = _mm_shuffle_ps(aa, aa, _MM_SHUFFLE(3, 2, 1, 0));
-    c = _mm_shuffle_pd(bb, bb, _MM_SHUFFLE(3, 2, 3, 2));
+    c = _mm_shuffle_pd(bb, bb, (1 << 1 | 1 << 0));
     d = _mm256_shuffle_ps(dd, dd, _MM_SHUFFLE(1, 2, 2, 1));
-    e = _mm256_shuffle_pd(ee, ee, _MM_SHUFFLE(0, 2, 1, 3));
+    e = _mm256_shuffle_pd(ee, ee, (1 << 3 | 1 << 2 | 0 << 1 | 0 << 0));
     f = _mm_shuffle_epi32(ff, _MM_SHUFFLE(1, 0, 0, 1));
     g = _mm_shufflehi_epi16(f, _MM_SHUFFLE(0, 1, 2, 3));
     h = _mm_shufflelo_epi16(g, _MM_SHUFFLE(3, 2, 3, 1));
