@@ -134,10 +134,8 @@ def build_transpiler(debug: bool):
 
     with pb.local.cwd(os.path.join(c.ROOT_DIR, "transpiler")):
         # use different target dirs for different hosts
-        target_dir = "target." + c.HOST_SUFFIX
         llvm_lib_dir = os.path.join(c.LLVM_INSTALL, "lib")
-        with pb.local.env(CARGO_TARGET_DIR=target_dir,
-                          LLVM_LIB_DIR=llvm_lib_dir):
+        with pb.local.env(LLVM_LIB_DIR=llvm_lib_dir):
             # build with custom rust toolchain
             invoke(cargo, "+" + c.CUSTOM_RUST_NAME, *build_flags)
 
@@ -252,12 +250,6 @@ def _main():
         die(err)
 
     args = _parse_args()
-    if args.clean_all:
-        logging.info("cleaning all dependencies and previous built files")
-        shutil.rmtree(c.LLVM_SRC, ignore_errors=True)
-        shutil.rmtree(c.LLVM_BLD, ignore_errors=True)
-        shutil.rmtree(c.DEPS_DIR, ignore_errors=True)
-        shutil.rmtree(c.TRANSPILER_BLD, ignore_errors=True)
 
     # prerequisites
     if not have_rust_toolchain(c.CUSTOM_RUST_NAME):
@@ -268,6 +260,15 @@ def _main():
     # NOTE: it seems safe to disable this check since we now
     # that we use a rust-toolchain file for rustc versioning.
     # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
+
+    if args.clean_all:
+        logging.info("cleaning all dependencies and previous built files")
+        shutil.rmtree(c.LLVM_SRC, ignore_errors=True)
+        shutil.rmtree(c.LLVM_BLD, ignore_errors=True)
+        shutil.rmtree(c.DEPS_DIR, ignore_errors=True)
+        cargo = get_cmd_or_die("cargo")
+        with pb.local.cwd(os.path.join(c.ROOT_DIR, "transpiler")):
+            invoke(cargo, "clean")
 
     ensure_dir(c.LLVM_BLD)
     ensure_dir(c.DEPS_DIR)

@@ -134,7 +134,6 @@ add_subdirectory(ast-exporter)
 
         self.TRANSPILER = "transpiler/target/{}/transpiler".format(build_type)
         self.TRANSPILER = os.path.join(self.ROOT_DIR, self.TRANSPILER)
-        self.TRANSPILER_BLD = os.path.join(self.ROOT_DIR, "transpiler/target." + self.HOST_SUFFIX)
 
     @staticmethod
     def add_args(parser: argparse.ArgumentParser):
