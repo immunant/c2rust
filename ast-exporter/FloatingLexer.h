@@ -8,6 +8,7 @@
 #ifndef FloatingLexer_hpp
 #define FloatingLexer_hpp
 
+#include <cstring>
 #include <string>
 
 std::string matchFloatingLiteral(const char * prefix);
