@@ -52,10 +52,10 @@ class TestOutcome(Enum):
 
 
 class CborFile:
-    def __init__(self, path: str, enable_relooper: bool = False,
+    def __init__(self, path: str, enable_incremental_relooper: bool = True,
                  disallow_current_block: bool = False) -> None:
         self.path = path
-        self.enable_relooper = enable_relooper
+        self.enable_incremental_relooper = enable_incremental_relooper
         self.disallow_current_block = disallow_current_block
 
     def translate(self) -> RustFile:
@@ -76,10 +76,8 @@ class CborFile:
             "rust_",
         ]
 
-        if self.enable_relooper:
-            args.append("--reloop-cfgs")
-            #  args.append("--use-c-loop-info")
-            #  args.append("--use-c-multiple-info")
+        if not self.enable_incremental_relooper:
+            args.append("--no-incremental-relooper")
         if self.disallow_current_block:
             args.append("--fail-on-multiple")
 
@@ -113,8 +111,7 @@ class CFile:
             flags = set()
 
         self.path = path
-        self.enable_relooper = "enable_relooper" in flags
-        self.disallow_current_block = "disallow_current_block" in flags
+        self.disallow_current_block = "allow_current_block" not in flags
 
     def export(self) -> CborFile:
         ast_exporter = get_cmd_or_die(c.AST_EXPO)
@@ -131,8 +128,7 @@ class CFile:
         if retcode != 0:
             raise NonZeroReturn(stderr)
 
-        return CborFile(self.path + ".cbor", self.enable_relooper,
-                        self.disallow_current_block)
+        return CborFile(self.path + ".cbor", True, self.disallow_current_block)
 
 
 def build_static_library(c_files: Iterable[CFile],

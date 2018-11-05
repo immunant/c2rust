@@ -26,7 +26,6 @@ use c_ast;
 use cfg;
 use clang_ast::LRValue;
 use convert_type::TypeConverter;
-use loops::*;
 use renamer::Renamer;
 use with_stmts::WithStmts;
 
@@ -86,7 +85,6 @@ pub enum ReplaceMode {
 /// Configuration settings for the translation process
 #[derive(Debug)]
 pub struct TranslationConfig {
-    pub reloop_cfgs: bool,
     pub incremental_relooper: bool,
     pub fail_on_multiple: bool,
     pub dump_function_cfgs: bool,
@@ -126,7 +124,6 @@ pub struct Translation {
     // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
     renamer: RefCell<Renamer<CDeclId>>,
-    loops: LoopContext,
     zero_inits: RefCell<IndexMap<CDeclId, Result<P<Expr>, String>>>,
 
     // Comment support
@@ -138,14 +135,6 @@ pub struct Translation {
 
     // Mod names to try to stop collisions from happening
     mod_names: RefCell<IndexMap<String, PathBuf>>,
-}
-
-
-fn sequence_option<A,E>(x: Option<Result<A,E>>) -> Result<Option<A>, E> {
-    match x {
-        None => Ok(None),
-        Some(o) => Ok(Some(o?)),
-    }
 }
 
 fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
@@ -723,7 +712,6 @@ impl Translation {
                 // prelude names
                 "drop", "Some", "None", "Ok", "Err",
             ])),
-            loops: LoopContext::new(),
             zero_inits: RefCell::new(IndexMap::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
@@ -1372,107 +1360,9 @@ impl Translation {
 
         // Function body scope
         self.with_scope(|| {
-            if self.tcfg.reloop_cfgs || self.function_requires_relooper(body_ids) {
-                let (graph, store) = cfg::Cfg::from_stmts(self, body_ids, ret)?;
-                self.convert_cfg(name, graph, store, IndexSet::new(), true)
-            } else {
-                let mut res = vec![];
-                for &stmt in body_ids {
-                    res.append(&mut self.convert_stmt(stmt)?)
-                }
-                Ok(res)
-            }
+            let (graph, store) = cfg::Cfg::from_stmts(self, body_ids, ret)?;
+            self.convert_cfg(name, graph, store, IndexSet::new(), true)
         })
-    }
-
-    fn convert_stmt(&self, stmt_id: CStmtId) -> Result<Vec<Stmt>, String> {
-        let s = {
-            let stmt_cmt = self.comment_context.borrow_mut().remove_stmt_comment(stmt_id);
-            self.comment_store.borrow_mut().add_comment_lines(stmt_cmt)
-        };
-
-        match self.ast_context.index(stmt_id).kind {
-            CStmtKind::Empty => Ok(vec![]),
-
-            CStmtKind::Decls(ref decls) => {
-                let mut res = vec![];
-                for decl in decls {
-                    res.append(&mut self.convert_decl_stmt(*decl)?)
-                }
-                Ok(res)
-            },
-
-            CStmtKind::Return(expr) =>
-                self.convert_return_stmt(s, expr),
-
-            CStmtKind::If { scrutinee, true_variant, false_variant } =>
-                self.convert_if_stmt(s, scrutinee, true_variant, false_variant),
-
-            CStmtKind::While { condition, body } =>
-                self.convert_while_stmt(s, condition, body),
-
-            CStmtKind::DoWhile { body, condition } =>
-                self.convert_do_stmt(s, body, condition),
-
-            CStmtKind::ForLoop { init, condition, increment, body } =>
-                self.convert_for_stmt(s, init, condition, increment, body),
-
-            CStmtKind::Compound(ref stmts) => {
-                self.with_scope(|| {
-                    let mut res = vec![];
-                    for stmt in stmts {
-                        res.append(&mut self.convert_stmt(*stmt)?)
-                    }
-
-                    Ok(vec![mk().span(s).expr_stmt(mk().block_expr(stmts_block(res)))])
-                })
-            },
-
-            CStmtKind::Expr(expr) => {
-                let mut stmts = self.convert_expr(ExprUse::Unused, expr, false, DecayRef::Default)?.stmts;
-
-                // Attach comments to the first statement generated
-                // Expression conversion doesn't handle comments so
-                // the span should always be available for us to override
-                if !stmts.is_empty() && stmts[0].span == DUMMY_SP {
-                    stmts[0].span = s
-                }
-
-                Ok(stmts)
-            }
-
-            CStmtKind::Break => {
-                let mut loop_ = self.loops.current_loop_mut();
-                loop_.has_break = true;
-                let loop_label = loop_.get_or_create_label(&self.loops).to_owned();
-                Ok(vec![mk().span(s).expr_stmt(mk().break_expr(Some(loop_label)))])
-            },
-
-            CStmtKind::Continue => {
-                let mut loop_ = self.loops.current_loop_mut();
-                loop_.has_continue = true;
-                match loop_.loop_type {
-                    LoopType::While => {
-                        // We can translate C continue in a while loop
-                        // directly to Rust's continue
-                        let loop_label = loop_.get_or_create_label(&self.loops).to_owned();
-                        Ok(vec![mk().span(s).expr_stmt(mk().continue_expr(Some(loop_label)))])
-                    },
-                    _ => {
-                        // We translate all other C continue statements
-                        // to a break from the inner body loop
-                        let body_label = loop_.get_or_create_body_label(&self.loops).to_owned();
-                        Ok(vec![mk().span(s).expr_stmt(mk().break_expr(Some(body_label)))])
-                    },
-                }
-            },
-
-            CStmtKind::Asm{is_volatile, ref asm, ref inputs, ref outputs, ref clobbers} => {
-                self.convert_asm(s, is_volatile, asm, inputs, outputs, clobbers)
-            }
-
-            ref stmt => Err(format!("convert_stmt {:?}", stmt)),
-        }
     }
 
     /// Convert a C expression to a rust boolean expression
@@ -1535,133 +1425,6 @@ impl Translation {
                 Ok(val.map(|e| self.match_bool(target, ty_id, e)))
             }
         }
-    }
-
-    fn convert_while_stmt(&self, span: Span, cond_id: CExprId, body_id: CStmtId) -> Result<Vec<Stmt>, String> {
-        let cond = self.convert_condition(true, cond_id, false)?;
-
-        self.loops.push_loop(LoopType::While);
-        let body_res = self.convert_stmt(body_id);
-        let loop_ = self.loops.pop_loop();
-        let body = body_res?;
-
-        let rust_cond = cond.to_expr();
-        let rust_body = stmts_block(body);
-
-        Ok(vec![mk().span(span).expr_stmt(mk().while_expr(rust_cond, rust_body, loop_.label))])
-    }
-
-    fn convert_do_stmt(&self, span: Span, body_id: CStmtId, cond_id: CExprId) -> Result<Vec<Stmt>, String> {
-        let cond = self.convert_condition(false, cond_id, false)?;
-        self.loops.push_loop(LoopType::DoWhile);
-        let body_res = self.convert_stmt(body_id);
-        let mut loop_ = self.loops.pop_loop();
-        let mut body = body_res?;
-
-        // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
-        let mut body = match loop_.body_label {
-            Some(ref l) => {
-                assert!(loop_.has_continue, "Expected do/while loop with body label to contain continue statement");
-                body.push(mk().semi_stmt(mk().break_expr(Some(l))));
-                vec![mk().expr_stmt(mk().loop_expr(stmts_block(body), Some(l)))]
-            },
-            None => body,
-        };
-
-        let rust_cond = cond.to_expr();
-        let loop_label = loop_.get_or_create_label(&self.loops).to_owned();
-        let break_stmt = mk().semi_stmt(mk().break_expr(Some(loop_label)));
-
-        // if (!cond) { break 'loopN; }
-        body.push(mk().expr_stmt(mk().ifte_expr(rust_cond, mk().block(vec![break_stmt]), None as Option<P<Expr>>)));
-
-        let rust_body = stmts_block(body);
-
-        Ok(vec![mk().span(span).semi_stmt(mk().loop_expr(rust_body, loop_.label))])
-    }
-
-    fn convert_for_stmt(
-        &self,
-        span: Span,
-        init_id: Option<CStmtId>,
-        cond_id: Option<CExprId>,
-        inc_id: Option<CExprId>,
-        body_id: CStmtId,
-    ) -> Result<Vec<Stmt>, String> {
-
-        // Open new scope for the for loop initializer
-        self.with_scope(|| {
-            let mut init = match init_id {
-                Some(i) => self.convert_stmt(i)?,
-                None => vec![],
-            };
-
-            let mut inc = match inc_id {
-                Some(i) => self.convert_expr(ExprUse::Unused, i, false, DecayRef::Default)?.stmts,
-                None => vec![],
-            };
-
-            self.loops.push_loop(LoopType::For);
-            let body_res = self.convert_stmt(body_id);
-            let loop_ = self.loops.pop_loop();
-            let mut body = body_res?;
-
-            // Wrap the body in a 'body: loop { ...; break 'body } loop if needed
-            let mut body = match loop_.body_label {
-                Some(ref l) => {
-                    assert!(loop_.has_continue, "Expected for loop with body label to contain continue statement");
-                    body.push(mk().semi_stmt(mk().break_expr(Some(l))));
-                    vec![mk().expr_stmt(mk().loop_expr(stmts_block(body), Some(l)))]
-                },
-                None => body,
-            };
-            body.append(&mut inc);
-
-            let body_block = stmts_block(body);
-
-            let looper = match cond_id {
-                None => mk().loop_expr(body_block, loop_.label), // loop
-                Some(i) => mk().while_expr(self.convert_condition(true, i, false)?.to_expr(), body_block, loop_.label), // while
-            };
-
-            init.push(mk().expr_stmt(looper));
-
-            Ok(vec![mk().span(span).expr_stmt(mk().block_expr(mk().block(init)))])
-        })
-    }
-
-    fn convert_if_stmt(
-        &self,
-        span: Span,
-        cond_id: CExprId,
-        then_id: CStmtId,
-        else_id: Option<CStmtId>
-    ) -> Result<Vec<Stmt>, String> {
-        let mut cond = self.convert_condition(true, cond_id, false)?;
-        let then_stmts = stmts_block(self.convert_stmt(then_id)?);
-        let else_stmts = match else_id {
-            None => None,
-            Some(x) => {
-                let stmt = self.convert_stmt(x)?;
-                Some(mk().block_expr(stmts_block(stmt)))
-            }
-        };
-
-        let ifte = mk().ifte_expr(cond.val, then_stmts, else_stmts);
-        cond.stmts.push(mk().span(span).semi_stmt(ifte));
-        Ok(cond.stmts)
-    }
-
-    fn convert_return_stmt(&self, span: Span, result_id: Option<CExprId>) -> Result<Vec<Stmt>, String> {
-        let val: Option<WithStmts<P<Expr>>> =
-            sequence_option(result_id
-                .map(|i| self.convert_expr(ExprUse::Used, i, false, DecayRef::Default))
-            )?;
-        let mut ws = WithStmts::with_stmts_opt(val);
-        let ret = mk().span(span).expr_stmt(mk().return_expr(ws.val));
-
-        ws.stmts.push(ret);
-        Ok(ws.stmts)
     }
 
     pub fn convert_decl_stmt(&self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
@@ -2492,63 +2255,41 @@ impl Translation {
         match self.ast_context[compound_stmt_id].kind {
             CStmtKind::Compound(ref substmt_ids) if !substmt_ids.is_empty() => {
 
-                let n = substmt_ids.len();
-                let result_id = substmt_ids[n - 1];
+            let n = substmt_ids.len();
+            let result_id = substmt_ids[n - 1];
 
-                if self.tcfg.reloop_cfgs || self.function_requires_relooper(substmt_ids) {
 
-                    let name = format!("<stmt-expr_{:?}>", compound_stmt_id);
-                    let lbl = cfg::Label::FromC(compound_stmt_id);
+                let name = format!("<stmt-expr_{:?}>", compound_stmt_id);
+                let lbl = cfg::Label::FromC(compound_stmt_id);
 
-                    let mut stmts = match self.ast_context[result_id].kind {
-                        CStmtKind::Expr(expr_id) => {
-                            let ret = cfg::ImplicitReturnType::StmtExpr(use_, expr_id, is_static, lbl);
-                            self.convert_function_body(&name, &substmt_ids[0 .. (n-1)], ret)?
-                        }
-
-                        _ => self.convert_function_body(&name, &substmt_ids, cfg::ImplicitReturnType::Void)?,
-                    };
-
-                    if let Some(stmt) = stmts.pop() {
-                        match as_semi_break_stmt(&stmt, &lbl) {
-                            Some(val) => return Ok(WithStmts::new(mk().block_expr({
-                                match val {
-                                    None => mk().block(stmts),
-                                    Some(val) => WithStmts { stmts, val }.to_block()
-                                }
-                            }))),
-                            _ => {
-                                self.use_feature("label_break_value");
-                                stmts.push(stmt)
-                            },
-                        }
+                let mut stmts = match self.ast_context[result_id].kind {
+                    CStmtKind::Expr(expr_id) => {
+                        let ret = cfg::ImplicitReturnType::StmtExpr(use_, expr_id, is_static, lbl);
+                        self.convert_function_body(&name, &substmt_ids[0 .. (n-1)], ret)?
                     }
 
-                    let block_body = mk().block(stmts);
-                    let block: P<Expr> = mk().labelled_block_expr(block_body, lbl.pretty_print());
+                    _ => self.convert_function_body(&name, &substmt_ids, cfg::ImplicitReturnType::Void)?,
+                };
 
-                    Ok(WithStmts::new(block))
-                } else {
-
-                    let mut stmts = vec![];
-
-                    for &substmt_id in &substmt_ids[0..n - 1] {
-                        stmts.append(&mut self.convert_stmt(substmt_id)?);
-                    }
-
-                    match self.ast_context[result_id].kind {
-                        CStmtKind::Expr(expr_id) => {
-                            let mut result = self.convert_expr(use_, expr_id, is_static, DecayRef::Default)?;
-                            stmts.append(&mut result.stmts);
-                            Ok(WithStmts { stmts, val: result.val })
-                        }
-
+                if let Some(stmt) = stmts.pop() {
+                    match as_semi_break_stmt(&stmt, &lbl) {
+                        Some(val) => return Ok(WithStmts::new(mk().block_expr({
+                            match val {
+                                None => mk().block(stmts),
+                                Some(val) => WithStmts { stmts, val }.to_block()
+                            }
+                        }))),
                         _ => {
-                            stmts.append(&mut self.convert_stmt(result_id)?);
-                            Ok(WithStmts { stmts, val: self.panic("Void statement expression")})
-                        }
+                            self.use_feature("label_break_value");
+                            stmts.push(stmt)
+                        },
                     }
                 }
+
+                let block_body = mk().block(stmts);
+                let block: P<Expr> = mk().labelled_block_expr(block_body, lbl.pretty_print());
+
+                Ok(WithStmts::new(block))
             }
             _ => {
                 if let ExprUse::Unused = use_ {
@@ -2983,21 +2724,6 @@ impl Translation {
         let result = f();
         self.renamer.borrow_mut().drop_scope();
         result
-    }
-
-    /// This predicate checks for control-flow statements under a declaration
-    /// that will require relooper to be enabled to be handled.
-    fn function_requires_relooper(&self, stmt_ids: &[CStmtId]) -> bool {
-        stmt_ids
-        .iter()
-        .flat_map(|&stmt_id| DFExpr::new(&self.ast_context, stmt_id.into()))
-        .flat_map(SomeId::stmt)
-        .any(|x| {
-            match self.ast_context[x].kind {
-                CStmtKind::Goto(..) | CStmtKind::Label(..) | CStmtKind::Switch{..} => true,
-                _ => false,
-            }
-        })
     }
 
     /// If we're trying to organize item definitions into submodules, add them to a module

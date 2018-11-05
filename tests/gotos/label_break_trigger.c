@@ -1,4 +1,4 @@
-//! enable_relooper, disallow_current_block
+//! enable_relooper
 
 // This function doesn't do anything interesting, so we aren't checking its
 // intputs or outputs. However, it does have interesting control flow, so

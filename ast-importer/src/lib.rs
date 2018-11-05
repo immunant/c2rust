@@ -14,7 +14,6 @@ extern crate rust_ast_builder;
 pub mod renamer;
 pub mod clang_ast;
 pub mod convert_type;
-pub mod loops;
 pub mod translator;
 pub mod c_ast;
 pub mod rust_ast;

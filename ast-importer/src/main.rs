@@ -32,7 +32,6 @@ fn main() {
             .takes_value(false))
         .arg(Arg::with_name("fail-on-multiple")
              .long("fail-on-multiple")
-             .requires("reloop-cfgs")
              .help("Fail to translate if we ever need 'current_block'")
              .takes_value(false))
 
@@ -59,10 +58,6 @@ fn main() {
             .takes_value(false))
 
         // CFG/Relooper related
-        .arg(Arg::with_name("reloop-cfgs")
-            .long("reloop-cfgs")
-            .help("Translate ALL function bodies using a CFG/Relooper approach")
-            .takes_value(false))
         .arg(Arg::with_name("no-incremental-relooper")
             .long("no-incremental-relooper")
             .help("Disable relooping function bodies incrementally")
@@ -146,11 +141,11 @@ fn main() {
              .takes_value(false))
         .get_matches();
 
+
     // Build a TranslationConfig from the command line
     let cbor_path = canonicalize(Path::new(matches.value_of("INPUT").unwrap())).unwrap();
     let tcfg = TranslationConfig {
         fail_on_error:          matches.is_present("fail-on-error"),
-        reloop_cfgs:            matches.is_present("reloop-cfgs"),
         incremental_relooper:   !matches.is_present("no-incremental-relooper"),
         fail_on_multiple:       matches.is_present("fail-on-multiple"),
         dump_function_cfgs:     matches.is_present("dump-function-cfgs"),

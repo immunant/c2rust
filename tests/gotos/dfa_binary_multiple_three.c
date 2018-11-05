@@ -1,4 +1,4 @@
-//! enable_relooper, disallow_current_block
+//! enable_relooper
 
 // It is straightforward to draw a DFA that accepts only ('\0'-terminated)
 // binary strings that correspond to binary numbers divisible by 3. This is a

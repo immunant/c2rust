@@ -1,4 +1,4 @@
-//! enable_relooper, disallow_current_block
+//! enable_relooper
 
 int stmt_expr_func(int y) {
 

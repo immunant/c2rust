@@ -1,4 +1,4 @@
-//! enable_relooper, disallow_current_block
+//! enable_relooper
 
 // This shoud translate to straightforward one-armed if's
 int early_returns(int a) {
