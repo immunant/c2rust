@@ -918,11 +918,11 @@ impl ConversionContext {
 
                 ASTEntryTag::TagFloatingLiteral if expected_ty & (EXPR | STMT) != 0 => {
                     let value = node.extras[0].as_f64().expect("Expected float literal value");
-
+                    let c_str = node.extras[1].as_string().expect("Expected float literal string").to_owned();
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty_old);
 
-                    let floating_literal = CExprKind::Literal(ty, CLiteral::Floating(value));
+                    let floating_literal = CExprKind::Literal(ty, CLiteral::Floating(value, c_str));
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, floating_literal);
                 }

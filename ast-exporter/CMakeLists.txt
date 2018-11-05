@@ -36,6 +36,7 @@ add_dependencies(tinycbor tinycbor_build)
 
 add_clang_executable(ast-exporter
   AstExporter.cpp
+  FloatingLexer.cpp
   )
 
 # PRIVATE was added to make ast-exporter build with LLVM 6.0. Keyword

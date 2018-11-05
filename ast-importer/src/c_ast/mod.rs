@@ -824,7 +824,7 @@ pub enum IntBase {
 pub enum CLiteral {
     Integer(u64, IntBase), // value and base
     Character(u64),
-    Floating(f64),
+    Floating(f64, String),
     String(Vec<u8>, u8), // Literal bytes and unit byte width
 }
 
@@ -834,7 +834,7 @@ impl CLiteral {
         match *self{
             CLiteral::Integer(x, _) => x != 0u64,
             CLiteral::Character(x) => x != 0u64,
-            CLiteral::Floating(x) => x != 0f64,
+            CLiteral::Floating(x, _) => x != 0f64,
             _ => true
 
         }

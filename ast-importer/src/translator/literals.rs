@@ -91,10 +91,15 @@ impl Translation {
                 Ok(WithStmts::new(expr))
             }
 
-            CLiteral::Floating(val) => {
+            CLiteral::Floating(val, ref c_str) => {
                 let mut bytes: Vec<u8> = vec![];
-                dtoa::write(&mut bytes, val).unwrap();
-                let str = String::from_utf8(bytes).unwrap();
+                let str = if c_str.is_empty() {
+                    dtoa::write(&mut bytes, val).unwrap();
+                    String::from_utf8(bytes).unwrap()
+                } else {
+                    c_str.to_owned()
+                };
+
                 let float_ty = match self.ast_context.resolve_type(ty.ctype).kind {
                     CTypeKind::LongDouble => FloatTy::F64,
                     CTypeKind::Double => FloatTy::F64,

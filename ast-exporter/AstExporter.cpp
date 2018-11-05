@@ -23,6 +23,7 @@
 
 #include <tinycbor/cbor.h>
 #include "ast_tags.hpp"
+#include "FloatingLexer.h"
 
 using namespace llvm;
 using namespace clang;
@@ -34,13 +35,15 @@ using std::string;
 using clang::QualType;
 using clang::ASTContext;
 
-// Encode a string object assuming that it is valid UTF-8 encoded text
-static void cbor_encode_string(CborEncoder *encoder, const std::string &str) {
-    auto ptr = str.data();
-    auto len = str.size();
-    cbor_encode_text_string(encoder, ptr, len);
+namespace {
+    // Encode a string object assuming that it is valid UTF-8 encoded text
+    void cbor_encode_string(CborEncoder *encoder, const std::string &str) {
+        auto ptr = str.data();
+        auto len = str.size();
+        cbor_encode_text_string(encoder, ptr, len);
+    }
 }
-
+    
 class TranslateASTVisitor;
 
 class TypeEncoder final : public TypeVisitor<TypeEncoder>
@@ -1403,11 +1406,17 @@ class TranslateASTVisitor final
       }
       
       bool VisitFloatingLiteral(clang::FloatingLiteral *L) {
+
+          auto& sourceManager = Context->getSourceManager();
+          auto prefix = sourceManager.getCharacterData(L->getLocation());
+          auto lexeme = matchFloatingLiteral(prefix);
+          
           std::vector<void*> childIds;
           encode_entry(L, TagFloatingLiteral, childIds,
-                       [L](CborEncoder *array){
+                       [L, &lexeme](CborEncoder *array){
                            auto lit = L->getValueAsApproximateDouble();
                            cbor_encode_double(array, lit);
+                           cbor_encode_string(array, lexeme);
                        });
           return true;
       }
