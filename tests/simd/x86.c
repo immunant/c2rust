@@ -8,7 +8,7 @@ typedef struct {
     __m128d c;
     __m256 d;
     __m256d e;
-    __m128i f, g, h;
+    __m128i f, g, h, o;
     __m256i i, j, k;
     __m64 l;
     __m128i m;
@@ -54,13 +54,14 @@ ShuffleVectors call_all(void) {
         _mm_shuffle_pi16(c, _MM_SHUFFLE(0, 1, 2, 3)),
 
         // Super builtins:
-        _mm_shuffle_ps(a, a, 1U),
-        _mm_shuffle_pd(b, b, _MM_SHUFFLE(3, 2, 3, 2)),
+        _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 2, 1, 0)),
+        _mm_shuffle_pd(b, b, (1 << 1 | 1 << 0)),
         _mm256_shuffle_ps(d, d, _MM_SHUFFLE(1, 2, 2, 1)),
-        _mm256_shuffle_pd(e, e, _MM_SHUFFLE(0, 2, 1, 3)),
+        _mm256_shuffle_pd(e, e, (1 << 3 | 1 << 2 | 0 << 1 | 0 << 0)),
         _mm_shuffle_epi32(f, _MM_SHUFFLE(1, 0, 0, 1)),
         _mm_shufflehi_epi16(f, _MM_SHUFFLE(0, 1, 2, 3)),
         _mm_shufflelo_epi16(f, _MM_SHUFFLE(3, 2, 3, 1)),
+        _mm_slli_si128(f, 2),
         _mm256_shuffle_epi32(g, _MM_SHUFFLE(0, 3, 2, 0)),
         _mm256_shufflehi_epi16(g, _MM_SHUFFLE(1, 2, 3, 3)),
         _mm256_shufflelo_epi16(g, _MM_SHUFFLE(2, 3, 2, 3)),
@@ -88,7 +89,7 @@ ShuffleVectors call_all_used(void) {
     __m128d c;
     __m256 d;
     __m256d e;
-    __m128i f, g, h;
+    __m128i f, g, h, o;
     __m256i i, j, k;
     __m64 l;
     __m128i m;
@@ -98,16 +99,17 @@ ShuffleVectors call_all_used(void) {
     a = _mm_shuffle_pi16(cc, _MM_SHUFFLE(0, 1, 2, 3));
 
     // Super builtins:
-    b = _mm_shuffle_ps(aa, aa, 1U);
-    c = _mm_shuffle_pd(bb, bb, _MM_SHUFFLE(3, 2, 3, 2));
+    b = _mm_shuffle_ps(aa, aa, _MM_SHUFFLE(3, 2, 1, 0));
+    c = _mm_shuffle_pd(bb, bb, (1 << 1 | 1 << 0));
     d = _mm256_shuffle_ps(dd, dd, _MM_SHUFFLE(1, 2, 2, 1));
-    e = _mm256_shuffle_pd(ee, ee, _MM_SHUFFLE(0, 2, 1, 3));
+    e = _mm256_shuffle_pd(ee, ee, (1 << 3 | 1 << 2 | 0 << 1 | 0 << 0));
     f = _mm_shuffle_epi32(ff, _MM_SHUFFLE(1, 0, 0, 1));
     g = _mm_shufflehi_epi16(f, _MM_SHUFFLE(0, 1, 2, 3));
     h = _mm_shufflelo_epi16(g, _MM_SHUFFLE(3, 2, 3, 1));
     i = _mm256_shuffle_epi32(gg, _MM_SHUFFLE(0, 3, 2, 0));
     j = _mm256_shufflehi_epi16(gg, _MM_SHUFFLE(1, 2, 3, 3));
     k = _mm256_shufflelo_epi16(gg, _MM_SHUFFLE(2, 3, 2, 3));
+    o = _mm_slli_si128(g, 2);
 
     // Functions:
     l = _mm_shuffle_pi8(cc, cc);
@@ -115,7 +117,7 @@ ShuffleVectors call_all_used(void) {
     n = _mm256_shuffle_epi8(gg, gg);
 
     ShuffleVectors sv = {
-        a, b, c, d, e, f, g, h, i, j, k, l, m, n,
+        a, b, c, d, e, f, g, h, o, i, j, k, l, m, n,
     };
 
     return sv;
@@ -148,3 +150,10 @@ VectorInitLists vector_init_lists_used(void) {
 
     return il;
 }
+
+__m128 static_m128 = {1.3f, 2.3f, 3.4f, 4.4f};
+__m256 static_m256 = {2.2f, 4.4f, 5.6f, 4.3f, 6.7f, 6.6f, 5.5f, 8.8f};
+__m128d static_m128d = {2.2, 4.4};
+__m256d static_m256d = {2.2, 3.3, 4.4, 5.5};
+__m128i static_m128i = {45LL, 32LL};
+__m256i static_m256i = {12LL, 34LL, 56LL, 78LL};

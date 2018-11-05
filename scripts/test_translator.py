@@ -376,6 +376,7 @@ class TestDirectory:
             "used",
             "simd_ffi",
             "stdsimd",
+            "const_transmute",
             "label_break_value"
         ])
 

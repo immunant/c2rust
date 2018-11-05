@@ -57,4 +57,11 @@ impl WithStmts<P<Expr>> {
         self.stmts.push(mk().expr_stmt(self.val));
         mk().block(self.stmts)
     }
+
+    pub fn with_stmts_opt<T>(opt: Option<WithStmts<T>>) -> WithStmts<Option<T>> {
+        match opt {
+            None => WithStmts::new(None),
+            Some(x) => WithStmts { stmts: x.stmts, val: Some(x.val) },
+        }
+    }
 }
