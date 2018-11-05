@@ -59,6 +59,9 @@ pub struct CrateInformation<'a, 'tcx: 'a, 'st> {
     /// Old path NodeId -> (New Path, Destination module id)
     path_mapping: HashMap<NodeId, (Path, NodeId)>,
 
+    /// Helper, to expedite the look up of paths
+    path_ids: HashSet<NodeId>,
+
     cx: &'a driver::Ctxt<'a, 'tcx>,
     st: &'st CommandState,
 }
@@ -72,6 +75,7 @@ impl<'a, 'tcx, 'st> CrateInformation<'a, 'tcx, 'st> {
             item_to_dest_module: HashMap::new(),
             new_modules,
             path_mapping: HashMap::new(),
+            path_ids: HashSet::new(),
             possible_destination_modules: HashSet::new(),
             cx,
             st,
@@ -91,7 +95,10 @@ impl<'a, 'tcx, 'st> CrateInformation<'a, 'tcx, 'st> {
                     if !has_source_header(&i.attrs) && !is_std(&i.attrs) {
                         self.possible_destination_modules.insert(i.id);
                     }
-                }
+                },
+                ItemKind::Use(_) => {
+                    self.path_ids.insert(i.id.clone());
+                },
                 _ => {}
             }
             self.item_map.insert(i.id, i.clone());
@@ -290,10 +297,10 @@ impl<'ast, 'a, 'tcx, 'st> Visitor<'ast> for CrateInformation<'a, 'tcx, 'st> {
                     self.item_to_dest_module
                         .insert(module_item.id, dest_module_id);
 
-                    for item in self.item_map.values() {
-                        match item.node {
-                            ItemKind::Use(ref ut) => {
-                                if let Some((prefix, dest_id)) = self.path_mapping.get_mut(&item.id) {
+                    for use_id in self.path_ids.iter() {
+                        if let Some(item) = self.item_map.get(&use_id) {
+                            if let ItemKind::Use(ref ut) = item.node {
+                                if let Some((prefix, dest_id)) = self.path_mapping.get_mut(&use_id) {
                                     // Check to see if a segment within the path is getting moved.
                                     // example_h -> example
                                     // DUMMY_NODE_ID -> actual destination module id
@@ -305,8 +312,10 @@ impl<'ast, 'a, 'tcx, 'st> Visitor<'ast> for CrateInformation<'a, 'tcx, 'st> {
                                     }
                                 }
 
-                                if !self.path_mapping.contains_key(&item.id) {
+                                if !self.path_mapping.contains_key(&use_id) {
                                     let mut prefix = ut.prefix.clone();
+
+                                    // Remove super and self from the paths
                                     if prefix.segments.len() > 1 {
                                         prefix.segments.retain(|segment| {
                                             segment.ident.name != keywords::Super.name()
@@ -314,17 +323,16 @@ impl<'ast, 'a, 'tcx, 'st> Visitor<'ast> for CrateInformation<'a, 'tcx, 'st> {
                                         });
                                     }
 
-                                    let mut dest_id = item.id.clone();
+                                    let mut dest_id = use_id.clone();
                                     for segment in &mut prefix.segments {
                                         if segment.ident == old_module.ident {
                                             segment.ident = ident;
                                             dest_id = dest_module_id;
                                         }
                                     }
-                                    self.path_mapping.insert(item.id.clone(), (prefix, dest_id));
+                                    self.path_mapping.insert(use_id.clone(), (prefix, dest_id));
                                 }
-                            },
-                            _ => {}
+                            }
                         }
                     }
                 }
@@ -482,8 +490,12 @@ impl Transform for ReorganizeModules {
                         for (mod_name, mut prefixes) in seen_paths.iter_mut() {
                             let mut items: Vec<Ident> = prefixes.iter().map(|i| i).cloned().collect();
                             let mod_prefix = Path::from_ident(*mod_name);
+
+                            // Removes duplicates from the nested use statement
                             prefixes.retain(|prefix| !item_idents.contains(&*prefix));
+
                             let use_stmt = mk().use_multiple_item(mod_prefix, items);
+
                             m.items.push(use_stmt);
                         }
 
