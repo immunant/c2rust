@@ -25,8 +25,8 @@ class RustFile:
     def __init__(self, path: str) -> None:
         self.path = path
 
-    def compile(self, crate_type: CrateType,
-                save_output: bool = False) -> Optional[LocalCommand]:
+    def compile(self, crate_type: CrateType, save_output: bool = False,
+                extra_args: List[str] = []) -> Optional[LocalCommand]:
         current_dir, _ = os.path.split(self.path)
         extensionless_file, _ = os.path.splitext(self.path)
 
@@ -35,6 +35,7 @@ class RustFile:
             "--crate-type={}".format(crate_type.value),
             "-L",
             current_dir,
+            *extra_args,
         ]
 
         if save_output:
