@@ -2,6 +2,8 @@
 #include <emmintrin.h>
 #include <immintrin.h>
 
+// Our travis-ci machines don't support AVX2 so we conditionally compile those bits out
+
 typedef struct {
     __m64 a;
     __m128 b;
@@ -9,10 +11,14 @@ typedef struct {
     __m256 d;
     __m256d e;
     __m128i f, g, h, o;
+#ifdef __AVX2__
     __m256i i, j, k;
+#endif
     __m64 l;
     __m128i m;
+#ifdef __AVX2__
     __m256i n;
+#endif
 } ShuffleVectors;
 
 typedef struct {
@@ -55,21 +61,24 @@ ShuffleVectors call_all(void) {
 
         // Super builtins:
         _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 2, 1, 0)),
-        _mm_shuffle_pd(b, b, _MM_SHUFFLE(3, 2, 3, 2)),
+        _mm_shuffle_pd(b, b, (1 << 1 | 1 << 0)),
         _mm256_shuffle_ps(d, d, _MM_SHUFFLE(1, 2, 2, 1)),
-        _mm256_shuffle_pd(e, e, _MM_SHUFFLE(0, 2, 1, 3)),
+        _mm256_shuffle_pd(e, e, (1 << 3 | 1 << 2 | 0 << 1 | 0 << 0)),
         _mm_shuffle_epi32(f, _MM_SHUFFLE(1, 0, 0, 1)),
         _mm_shufflehi_epi16(f, _MM_SHUFFLE(0, 1, 2, 3)),
         _mm_shufflelo_epi16(f, _MM_SHUFFLE(3, 2, 3, 1)),
         _mm_slli_si128(f, 2),
+#ifdef __AVX2__
         _mm256_shuffle_epi32(g, _MM_SHUFFLE(0, 3, 2, 0)),
         _mm256_shufflehi_epi16(g, _MM_SHUFFLE(1, 2, 3, 3)),
         _mm256_shufflelo_epi16(g, _MM_SHUFFLE(2, 3, 2, 3)),
-
+#endif
         // Functions:
         _mm_shuffle_pi8(c, c),
         _mm_shuffle_epi8(f, f),
+#ifdef __AVX2__
         _mm256_shuffle_epi8(g, g),
+#endif
     };
 
     return sv;
@@ -100,24 +109,37 @@ ShuffleVectors call_all_used(void) {
 
     // Super builtins:
     b = _mm_shuffle_ps(aa, aa, _MM_SHUFFLE(3, 2, 1, 0));
-    c = _mm_shuffle_pd(bb, bb, _MM_SHUFFLE(3, 2, 3, 2));
+    c = _mm_shuffle_pd(bb, bb, (1 << 1 | 1 << 0));
     d = _mm256_shuffle_ps(dd, dd, _MM_SHUFFLE(1, 2, 2, 1));
-    e = _mm256_shuffle_pd(ee, ee, _MM_SHUFFLE(0, 2, 1, 3));
+    e = _mm256_shuffle_pd(ee, ee, (1 << 3 | 1 << 2 | 0 << 1 | 0 << 0));
     f = _mm_shuffle_epi32(ff, _MM_SHUFFLE(1, 0, 0, 1));
     g = _mm_shufflehi_epi16(f, _MM_SHUFFLE(0, 1, 2, 3));
     h = _mm_shufflelo_epi16(g, _MM_SHUFFLE(3, 2, 3, 1));
+#ifdef __AVX2__
     i = _mm256_shuffle_epi32(gg, _MM_SHUFFLE(0, 3, 2, 0));
     j = _mm256_shufflehi_epi16(gg, _MM_SHUFFLE(1, 2, 3, 3));
     k = _mm256_shufflelo_epi16(gg, _MM_SHUFFLE(2, 3, 2, 3));
+#endif
     o = _mm_slli_si128(g, 2);
 
     // Functions:
     l = _mm_shuffle_pi8(cc, cc);
     m = _mm_shuffle_epi8(ff, ff);
+#ifdef __AVX2__
     n = _mm256_shuffle_epi8(gg, gg);
+#endif
 
     ShuffleVectors sv = {
-        a, b, c, d, e, f, g, h, o, i, j, k, l, m, n,
+        a, b, c, d, e, f, g, h, o,
+
+#ifdef __AVX2__
+        i, j, k,
+#endif
+        l, m,
+
+#ifdef __AVX2__
+        n,
+#endif
     };
 
     return sv;

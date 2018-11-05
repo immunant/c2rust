@@ -116,11 +116,13 @@ class CFile:
         self.enable_relooper = "enable_relooper" in flags
         self.disallow_current_block = "disallow_current_block" in flags
 
-    def export(self) -> CborFile:
+    def export(self, extra_args: List[str] = []) -> CborFile:
         ast_exporter = get_cmd_or_die(c.AST_EXPO)
 
+        extra_args = ["-extra-arg={}".format(arg) for arg in extra_args]
+
         # run the exporter
-        args = [self.path]
+        args = [self.path, *extra_args]
 
         # log the command in a format that's easy to re-run
         logging.debug("export command:\n %s", str(ast_exporter[args]))
@@ -357,7 +359,7 @@ class TestDirectory:
             self._generate_cc_db(c_file.path)
 
             try:
-                cbor_file = c_file.export()
+                cbor_file = c_file.export(extra_args=["-march=native"])
             except NonZeroReturn as exception:
                 self.print_status(Colors.FAIL, "FAILED", "export " +
                                   c_file_short)
@@ -407,7 +409,8 @@ class TestDirectory:
 
             if not test_file.pass_expected:
                 try:
-                    test_file.compile(CrateType.Library, save_output=False)
+                    test_file.compile(CrateType.Library, save_output=False,
+                                      extra_args=["-C", "target-cpu=native"])
 
                     self.print_status(Colors.FAIL, "OK",
                                       "Unexpected success {}".format(file_name))
@@ -452,7 +455,8 @@ class TestDirectory:
 
         # Try and build test binary
         try:
-            main = main_file.compile(CrateType.Binary, save_output=True)
+            main = main_file.compile(CrateType.Binary, save_output=True,
+                                     extra_args=["-C", "target-cpu=native"])
         except NonZeroReturn as exception:
             _, main_file_path_short = os.path.split(main_file.path)
 
