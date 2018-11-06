@@ -268,6 +268,67 @@ impl Transform for SetMutability {
 }
 
 
+/// Set unsafety of all marked items.
+pub struct SetUnsafety {
+    unsafe_str: String,
+}
+
+impl Transform for SetUnsafety {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+        let unsafety = <&str as Make<Unsafety>>::make(&self.unsafe_str, &mk());
+
+        struct SetUnsafetyFolder<'a> {
+            st: &'a CommandState,
+            unsafety: Unsafety,
+        }
+
+        impl<'a> Folder for SetUnsafetyFolder<'a> {
+            fn fold_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+                if self.st.marked(i.id, "target") {
+                    i = i.map(|mut i| {
+                        match i.node {
+                            ItemKind::Fn(_, ref mut header, _, _) =>
+                                header.unsafety = self.unsafety,
+                            ItemKind::Trait(_, ref mut unsafety, _, _, _) =>
+                                *unsafety = self.unsafety,
+                            ItemKind::Impl(ref mut unsafety, _, _, _, _, _, _) =>
+                                *unsafety = self.unsafety,
+                            _ => {},
+                        }
+                        i
+                    });
+                }
+                fold::noop_fold_item(i, self)
+            }
+
+            fn fold_trait_item(&mut self, mut i: TraitItem) -> SmallVec<[TraitItem; 1]> {
+                if self.st.marked(i.id, "target") {
+                    match i.node {
+                        TraitItemKind::Method(ref mut sig, _) =>
+                            sig.header.unsafety = self.unsafety,
+                        _ => {},
+                    }
+                }
+                fold::noop_fold_trait_item(i, self)
+            }
+
+            fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+                if self.st.marked(i.id, "target") {
+                    match i.node {
+                        ImplItemKind::Method(ref mut sig, _) =>
+                            sig.header.unsafety = self.unsafety,
+                        _ => {},
+                    }
+                }
+                fold::noop_fold_impl_item(i, self)
+            }
+        }
+
+        krate.fold(&mut SetUnsafetyFolder { st, unsafety })
+    }
+}
+
+
 pub struct CreateItem {
     header: String,
     pos: String,
@@ -404,6 +465,10 @@ pub fn register_commands(reg: &mut Registry) {
 
     reg.register("set_mutability", |args| mk(SetMutability {
         mut_str: args[0].clone(),
+    }));
+
+    reg.register("set_unsafety", |args| mk(SetUnsafety {
+        unsafe_str: args[0].clone(),
     }));
 
     reg.register("create_item", |args| mk(CreateItem {
