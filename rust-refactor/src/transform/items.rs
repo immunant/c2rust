@@ -285,15 +285,13 @@ impl Transform for CreateItem {
         };
 
         let items = st.parse_items(cx, &format!("{}", self.header));
-        assert!(items.len() == 1, "expected a single item");
-        let item = items.lone();
 
 
         struct CreateFolder<'a> {
             st: &'a CommandState,
             mark: Symbol,
             inside: bool,
-            item: P<Item>,
+            items: Vec<P<Item>>,
         }
 
         impl<'a> CreateFolder<'a> {
@@ -309,7 +307,7 @@ impl Transform for CreateItem {
                         // after the injected std and prelude items, because inserting before an
                         // item with `DUMMY_SP` confuses sequence rewriting.
                         if !skip_dummy || i.span != DUMMY_SP {
-                            items.push(self.item.clone());
+                            items.extend(self.items.iter().cloned());
                             insert_inside = false;
                         }
                     }
@@ -317,13 +315,13 @@ impl Transform for CreateItem {
                     let insert = !self.inside && self.st.marked(i.id, self.mark);
                     items.push(i);
                     if insert {
-                        items.push(self.item.clone());
+                        items.extend(self.items.iter().cloned());
                     }
                 }
 
                 if insert_inside {
                     // There were no acceptable items, so add it at the end.
-                    items.push(self.item.clone());
+                    items.extend(self.items.iter().cloned());
                 }
 
                 Mod { items, ..m }
@@ -367,14 +365,14 @@ impl Transform for CreateItem {
                     let mut stmts = Vec::with_capacity(b.stmts.len());
 
                     if self.inside && self.st.marked(b.id, self.mark) {
-                        stmts.push(mk().item_stmt(&self.item));
+                        stmts.extend(self.items.iter().cloned().map(|i| mk().item_stmt(i)));
                     }
 
                     for s in b.stmts {
                         let insert = !self.inside && self.st.marked(s.id, self.mark);
                         stmts.push(s);
                         if insert {
-                            stmts.push(mk().item_stmt(&self.item));
+                            stmts.extend(self.items.iter().cloned().map(|i| mk().item_stmt(i)));
                         }
                     }
 
@@ -384,7 +382,7 @@ impl Transform for CreateItem {
             }
         }
 
-        krate.fold(&mut CreateFolder { st, mark, inside, item })
+        krate.fold(&mut CreateFolder { st, mark, inside, items })
     }
 }
 
