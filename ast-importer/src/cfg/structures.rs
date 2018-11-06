@@ -252,8 +252,8 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
                         }
 
                         &StructureLabel::GoTo(to) => Err(format!(
-                            "Not a valid exit: {:?} (GoTo isn't falling through)",
-                            to
+                            "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
+                            to, next
                         )),
                     }
                 };

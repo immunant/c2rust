@@ -25,8 +25,11 @@ use indexmap::{IndexMap, IndexSet};
 /// Modifies the `body_blocks`, `follow_blocks`, and `follow_entries` to try to get all of the
 /// `desired_body` labels into the body. If it is not possible to do this, returns `false` (and the
 /// mutable references passed in cannot be used).
+///
+/// Also return `false` if the loop body ends up having follow blocks pointing into it.
 pub fn match_loop_body(
     mut desired_body: IndexSet<Label>,
+    strict_reachable_from: &IndexMap<Label, IndexSet<Label>>,
     body_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
     follow_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
     follow_entries: &mut IndexSet<Label>,
@@ -52,7 +55,13 @@ pub fn match_loop_body(
         }
     }
 
-    desired_body.is_empty()
+    desired_body.is_empty() && body_blocks.keys().all(|body_lbl| {
+        // check that no body block can be reached from a block _not_ in the loop
+        match strict_reachable_from.get(body_lbl) {
+            None => true,
+            Some(reachable_froms) => reachable_froms.iter().all(|lbl| body_blocks.contains_key(lbl))
+        }
+    })
 }
 
 
