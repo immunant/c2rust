@@ -95,6 +95,7 @@ impl Serialize for Label {
 
 /// These labels identify _structure_ basic blocks in a structure CFG.
 #[derive(Clone,Debug)]
+#[allow(missing_docs)]
 pub enum StructureLabel<S> {
     GoTo(Label),
     ExitTo(Label),
@@ -474,12 +475,6 @@ impl<L: Serialize + Ord + Hash, St: Serialize> Serialize for Cfg<L, St> {
         st.serialize_field("nodes", &self.nodes)?;
         st.end()
     }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum ExitStyle {
-    Continue,
-    Break,
 }
 
 /// Reaching the end of a body without encountering a `return` means different things depending on
@@ -1674,7 +1669,7 @@ impl CfgBuilder {
                 Ok(Some(wip))
             }
         };
-        let out_wip: Option<WipBlock> = out_wip?; // Type inference help...
+        let out_wip: Option<WipBlock> = out_wip?; // This statement exists to help type inference...
 
         let out_end = self.fresh_label();
         let out_wip: Option<WipBlock> = out_wip.map(|w| {
@@ -1683,166 +1678,14 @@ impl CfgBuilder {
         });
 
 
-        // Is the CFG for this statement self contained (so can we reloop it immediately)
+        // Is the CFG for this statement self contained so can we reloop it immediately?
         if translator.tcfg.incremental_relooper && self.per_stmt_stack.last().unwrap().is_contained(&self.c_label_to_goto, self.currently_live.last().unwrap()) {
-
-            // Close off the `wip` using a `break` terminator
-            let brk_lbl: Label = self.fresh_label();
-
-
-            let (tail_expr, use_brk_lbl) = match in_tail {
-                Some(ImplicitReturnType::Main) => (
-                    mk().return_expr(Some(mk().lit_expr(mk().int_lit(0, "")))),
-                    false,
-                ),
-
-                Some(ImplicitReturnType::Void) => (
-                    mk().return_expr(None as Option<P<Expr>>),
-                    false,
-                ),
-
-                _ => (
-                    mk().break_expr_value(
-                        Some(brk_lbl.pretty_print()),
-                        None as Option<P<Expr>>,
-                    ),
-                    true,
-                )
-            };
-
-            let is_tail_expr = |other: &P<Expr>| -> bool {
-                match in_tail {
-                    Some(ImplicitReturnType::Main) => {
-                        if let Expr { node: ExprKind::Ret(Some(ref zero)), .. } = **other {
-                            if let Expr { node: ExprKind::Lit(ref lit), .. } = **zero {
-                                if let Lit { node: LitKind::Int(0, LitIntType::Unsuffixed), .. } = **lit {
-                                    return true;
-                                }
-                            }
-                        }
-                        false
-                    }
-
-                    Some(ImplicitReturnType::Void) => {
-                        if let Expr { node: ExprKind::Ret(None), .. } = **other {
-                            return true;
-                        }
-                        false
-                    },
-
-                    _ => {
-                        if let Expr { node: ExprKind::Break(Some(ref blbl), None), .. } = **other {
-                            if blbl.ident == mk().label(brk_lbl.pretty_print()).ident {
-                                return true;
-                            }
-                        }
-                        false
-                    }
-                }
-            };
-
-            let fallthrough_id: Option<Label> = out_wip.map(|mut w| {
-                w.push_stmt(mk().semi_stmt(tail_expr.clone()));
-                let id = w.label;
-                self.add_wip_block(w, GenTerminator::End);
-                id
-            });
-
-            let last_per_stmt = self.per_stmt_stack.pop().unwrap();
-            let stmt_id = last_per_stmt.stmt_id.unwrap_or(CStmtId(0));
-//            println!("Stmt: {:?} {:#?}", stmt_id, translator.ast_context.index(stmt_id));
-
-            // Make a CFG from the PerStmt.
-            let (graph, store, live_in) = last_per_stmt.into_cfg();
-            let has_fallthrough: bool = if let Some(fid) = fallthrough_id {
-                graph.nodes.contains_key(&fid)
-            } else {
-                false
-            };
-            let next_lbl = if has_fallthrough { Some(self.fresh_label()) } else { None };
-
-
-            // Run relooper
-            let mut stmts = translator.convert_cfg(
-                &format!("<substmt_{:?}>", stmt_id),
-                graph,
-                store,
-                live_in,
-                false,
-            )?;
-
-
-            let is_trailing_break = |stmt: &Stmt| -> bool {
-                if let Stmt { node: StmtKind::Semi(ref expr), .. } = *stmt {
-                    return is_tail_expr(expr);
-                }
-                false
-            };
-
-
-            // returns whether we need the labelled block wrap
-            let rejig_last_stmt = move |stmt: Stmt| -> (bool, Vec<Stmt>) {
-                if is_trailing_break(&stmt) {
-                    (false, vec![])
-                } else {
-                    let new_stmt: Option<Stmt> = if let Stmt { node: StmtKind::Expr(ref expr), id, span } = &stmt {
-                        if let Expr { node: ExprKind::If(ref cond, ref body, ref els), id: id1, span: span1, ref attrs } = **expr {
-                            if let Some(ref els) = els {
-                                if let Expr { node: ExprKind::Block(ref blk, None), .. } = **els {
-                                    if blk.stmts.len() == 1 && is_trailing_break(&blk.stmts[0]) {
-                                        Some(Stmt {
-                                            node: StmtKind::Expr(
-                                                P(Expr {
-                                                    node: ExprKind::If(
-                                                        cond.clone(),
-                                                        body.clone(),
-                                                        None,
-                                                    ),
-                                                    id: id1,
-                                                    span: span1,
-                                                    attrs: attrs.clone(),
-                                                })
-                                            ),
-                                            id: *id,
-                                            span: *span,
-                                        })
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-                    (new_stmt.is_none(), vec![new_stmt.unwrap_or(stmt)])
-                }
-            };
-
-
-            if let Some(stmt) = stmts.pop() {
-                let (need_block, new_stmts) = rejig_last_stmt(stmt);
-                stmts.extend(new_stmts);
-
-                if has_fallthrough && need_block && use_brk_lbl {
-                    translator.use_feature("label_break_value");
-                    let block_body = mk().block(stmts);
-                    let block: P<Expr> = mk().labelled_block_expr(block_body, brk_lbl.pretty_print());
-                    stmts = vec![mk().expr_stmt(block)]
-                }
-            }
-
-            let mut flattened_wip = self.new_wip_block(entry);
-            flattened_wip.extend(stmts);
-            self.add_wip_block(flattened_wip, if let Some(l) = next_lbl { GenTerminator::Jump(l) } else { GenTerminator::End });
-
-            Ok(next_lbl)
+            self.incrementally_reloop_subgraph(
+                translator,
+                in_tail,
+                entry,
+                out_wip,
+            )
         } else {
             let last_per_stmt = self.per_stmt_stack.pop().unwrap();
             self.per_stmt_stack.last_mut().unwrap()
@@ -1855,6 +1698,176 @@ impl CfgBuilder {
             }))
         }
     }
+
+    /// While we are building a control-flow graph, there are times when we can easily tell that the
+    /// set of blocks we've just added form a closed subgraph (closed in the sense that there are no
+    /// edges point into or out of the subgraph, save for the initial entry point). In these cases,
+    /// we can run the subgraph through relooper and replace the subgraph with one basic block
+    /// containing the Rust statements relooper came up with.
+    ///
+    /// This incremental approach is a win for a couple reasons:
+    ///
+    ///   * we end up running relooper more, but we run it on small CFGs where it performs much better
+    ///   * the Rust output is less likely to change drastically if we tweak the C input
+    ///
+    fn incrementally_reloop_subgraph(
+        &mut self,
+        translator: &Translation,
+
+        // Are we in tail position (does the function end with this statement)?
+        in_tail: Option<ImplicitReturnType>,
+
+        // Entry label
+        entry: Label,
+
+        // Exit WIP
+        out_wip: Option<WipBlock>,
+    ) -> Result<Option<Label>, String> {
+
+        // Close off the `wip` using a `break` terminator
+        let brk_lbl: Label = self.fresh_label();
+
+
+        let (tail_expr, use_brk_lbl) = match in_tail {
+            Some(ImplicitReturnType::Main) => (
+                mk().return_expr(Some(mk().lit_expr(mk().int_lit(0, "")))),
+                false,
+            ),
+
+            Some(ImplicitReturnType::Void) => (
+                mk().return_expr(None as Option<P<Expr>>),
+                false,
+            ),
+
+            _ => (
+                mk().break_expr_value(
+                    Some(brk_lbl.pretty_print()),
+                    None as Option<P<Expr>>,
+                ),
+                true,
+            )
+        };
+
+        let is_idempotent_tail_expr = move |stmt: &Stmt| -> bool {
+            let tail_expr = if let Stmt { node: StmtKind::Semi(ref expr), .. } = *stmt {
+                expr
+            } else {
+                return false
+            };
+            match in_tail {
+                Some(ImplicitReturnType::Main) => {
+                    if let Expr { node: ExprKind::Ret(Some(ref zero)), .. } = **tail_expr {
+                        if let Expr { node: ExprKind::Lit(ref lit), .. } = **zero {
+                            if let Lit { node: LitKind::Int(0, LitIntType::Unsuffixed), .. } = **lit {
+                                return true;
+                            }
+                        }
+                    }
+                    false
+                }
+
+                Some(ImplicitReturnType::Void) => {
+                    if let Expr { node: ExprKind::Ret(None), .. } = **tail_expr {
+                        return true;
+                    }
+                    false
+                },
+
+                _ => {
+                    if let Expr { node: ExprKind::Break(Some(ref blbl), None), .. } = **tail_expr {
+                        if blbl.ident == mk().label(brk_lbl.pretty_print()).ident {
+                            return true;
+                        }
+                    }
+                    false
+                }
+            }
+        };
+
+        let fallthrough_id: Option<Label> = out_wip.map(|mut w| {
+            w.push_stmt(mk().semi_stmt(tail_expr.clone()));
+            let id = w.label;
+            self.add_wip_block(w, GenTerminator::End);
+            id
+        });
+
+        let last_per_stmt = self.per_stmt_stack.pop().unwrap();
+        let stmt_id = last_per_stmt.stmt_id.unwrap_or(CStmtId(0));
+//            println!("Stmt: {:?} {:#?}", stmt_id, translator.ast_context.index(stmt_id));
+
+        // Make a CFG from the PerStmt.
+        let (graph, store, live_in) = last_per_stmt.into_cfg();
+        let has_fallthrough: bool = if let Some(fid) = fallthrough_id {
+            graph.nodes.contains_key(&fid)
+        } else {
+            false
+        };
+        let next_lbl = if has_fallthrough { Some(self.fresh_label()) } else { None };
+
+
+        // Run relooper
+        let mut stmts = translator.convert_cfg(
+            &format!("<substmt_{:?}>", stmt_id),
+            graph,
+            store,
+            live_in,
+            false,
+        )?;
+
+
+        if let Some(stmt) = stmts.pop() {
+            let need_block: bool = 'need_block: {
+
+                // If the very last stmt in our relooped output is a return/break, we can just
+                // remove that statement. We additionally know that there is definitely no need
+                // to label a block (if we were in that mode in the first place).
+                if is_idempotent_tail_expr(&stmt) {
+                    break 'need_block false;
+                }
+
+                // The next case is a peculiar one: it targets the last stmt in the relooped
+                // output when that last stmt is a two armed if and the `else` branch contains
+                // only a return/break.
+                if let Stmt { node: StmtKind::Expr(ref expr), .. } = &stmt {
+                    if let Expr { node: ExprKind::If(ref cond, ref body, ref els), .. } = **expr {
+                        if let Some(ref els) = els {
+                            if let Expr { node: ExprKind::Block(ref blk, None), .. } = **els {
+                                if blk.stmts.len() == 1 && is_idempotent_tail_expr(&blk.stmts[0]) {
+                                    stmts.push(Stmt {
+                                        node: StmtKind::Expr(P(Expr {
+                                            node: ExprKind::If(cond.clone(), body.clone(), None),
+                                            ..(**expr).clone()
+                                        })),
+                                        ..stmt.clone()
+                                    });
+                                    break 'need_block false;
+                                }
+                            }
+                        }
+                    }
+                };
+
+                // In all other cases, we give up and accept that we can't get rid of the last
+                // stmt and that we might need a block label.
+                stmts.push(stmt);
+                true
+            };
+
+            if has_fallthrough && need_block && use_brk_lbl {
+                translator.use_feature("label_break_value");
+                let block_body = mk().block(stmts);
+                let block: P<Expr> = mk().labelled_block_expr(block_body, brk_lbl.pretty_print());
+                stmts = vec![mk().expr_stmt(block)]
+            }
+        }
+
+        let mut flattened_wip = self.new_wip_block(entry);
+        flattened_wip.extend(stmts);
+        let term = if let Some(l) = next_lbl { GenTerminator::Jump(l) } else { GenTerminator::End };
+        self.add_wip_block(flattened_wip, term);
+
+        Ok(next_lbl)
+    }
 }
 
 
@@ -1866,6 +1879,7 @@ impl CfgBuilder {
 /// ```
 impl Cfg<Label,StmtOrDecl> {
 
+    /// Write out a JSON representation of the control flow graph
     pub fn dump_json_graph(
         &self,
         store: &DeclStmtStore,
@@ -1879,6 +1893,7 @@ impl Cfg<Label,StmtOrDecl> {
         Ok(())
     }
 
+    /// Write out a `.dot` representation of the control flow graph
     pub fn dump_dot_graph(
         &self,
         ctx: &TypedAstContext,

@@ -58,14 +58,32 @@ pub fn structured_cfg(
     Ok(stmts)
 }
 
+/// Ways of exiting from a loop body
+#[derive(Copy, Clone, Debug)]
+pub enum ExitStyle {
+    /// Jumps to the beginning of the loop body
+    Continue,
+
+    /// Jumps to the end of the loop body
+    Break,
+}
 
 /// This is precisely what we need to construct structured statements
 pub trait StructuredStatement: Sized {
+
+    /// An expression
     type E;
+
+    /// A pattern
     type P;
+
+    /// A label
     type L;
+
+    /// An unstructured regular statement
     type S;
 
+    /// An empty statement
     fn empty() -> Self;
 
     /// Project a single statement into a structured statement
@@ -110,7 +128,8 @@ pub trait StructuredStatement: Sized {
 }
 
 
-/// AST corresponding to `StructuredStatement` trait
+/// Defunctionalized version of `StructuredStatement` trait
+#[allow(missing_docs)]
 pub enum StructuredAST<E, P, L, S> {
     Empty,
     Singleton(S),
