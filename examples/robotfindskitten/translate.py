@@ -24,8 +24,50 @@ REFACTORINGS = [
         ''',
 
         'wrapping_arith_to_normal',
+
+
+        # The two ugly expressions below are the result of expanding some
+        # ncurses macros.  We turn them into actual calls to their non-macro
+        # implementations so it's easier to manipulate them later.
+        '''
+            select target 'crate; child(foreign_mod);' ;
+            create_item '
+                extern "C" {
+                    fn wattr_get(win: *mut WINDOW, attrs: *mut attr_t,
+                        pair: *mut libc::c_short, opts: *mut libc::c_void) -> libc::c_int;
+                    fn wattrset(win: *mut WINDOW, attrs: libc::c_int) -> libc::c_int;
+                }
+            ' after ;
+            create_item 'mod ncurses {}' after ;
+
+            rewrite_expr '
+                if !(__win as *const libc::c_void).is_null() {
+                    if !(&mut __attrs as *mut attr_t as *const libc::c_void).is_null() {
+                        __attrs = (*__win)._attrs
+                    } else {
+                    };
+                    if !(&mut __pair as *mut libc::c_short as *const libc::c_void).is_null() {
+                        __pair = (((*__win)._attrs as libc::c_ulong
+                            & (((1u32 << 8i32)) - 1u32 << 0i32 + 8i32) as libc::c_ulong)
+                            >> 8i32) as libc::c_int as libc::c_short
+                    } else {
+                    };
+                } else {
+                }
+            ' 'wattr_get(__win, &mut __attrs, &mut __pair, ::std::ptr::null_mut())' ;
+
+            rewrite_expr '
+                if !(__win as *const libc::c_void).is_null() {
+                    (*__win)._attrs = __attrs
+                } else {
+                }
+            ' 'wattrset(__win, __attrs as libc::c_int)' ;
+        ''',
+
+
         'struct_assign_to_update',
         'struct_merge_updates',
+
 
         # Phase ordering:
         #  1. Convert printf-style functions to use format macros.  This means
@@ -41,20 +83,16 @@ REFACTORINGS = [
 
         # Replace printf/printw/etc with formatting macros.
 
-        '''
-            select target 'crate; desc(foreign_mod);' ;
-            create_item 'mod ncurses {}' after
-        ''',
-
-
         r'''
             select target 'crate; desc(mod && name("ncurses"));' ;
             create_item '
                 macro_rules! printw {
                     ($($args:tt)*) => {
-                        ::printw(b"%s\0" as *const u8 as *const libc::c_char,
-                                 ::std::ffi::CString::new(format!($($args)*))
-                                    .unwrap().as_ptr())
+                        unsafe {
+                            ::printw(b"%s\0" as *const u8 as *const libc::c_char,
+                                     ::std::ffi::CString::new(format!($($args)*))
+                                        .unwrap().as_ptr())
+                        }
                     };
                 }
             ' after
@@ -84,9 +122,11 @@ REFACTORINGS = [
             create_item '
                 macro_rules! mvprintw {
                     ($y:expr, $x:expr, $($args:tt)*) => {
-                        ::mvprintw($y, $x, b"%s\0" as *const u8 as *const libc::c_char,
-                                 ::std::ffi::CString::new(format!($($args)*))
-                                    .unwrap().as_ptr())
+                        unsafe {
+                            ::mvprintw($y, $x, b"%s\0" as *const u8 as *const libc::c_char,
+                                     ::std::ffi::CString::new(format!($($args)*))
+                                        .unwrap().as_ptr())
+                        }
                     };
                 }
             ' after
@@ -250,6 +290,113 @@ REFACTORINGS = [
             select target 'crate; child(static && name("S"));' ;
             select user 'crate; desc(fn && !name("main"));' ;
             static_to_local_ref
+        ''',
+
+
+        # Define safe wrappers for ncurses functions
+
+        '''
+            abstract 'lines() -> libc::c_int' 'LINES' ;
+            abstract 'cols() -> libc::c_int' 'COLS' ;
+
+            abstract 'initscr_()' 'initscr()' '{ initscr(); }' ;
+            abstract 'nonl_() -> libc::c_int' 'nonl()' ;
+            abstract 'noecho_() -> libc::c_int' 'noecho()' ;
+            abstract 'cbreak_() -> libc::c_int' 'cbreak()' ;
+            abstract 'has_colors_() -> bool' 'has_colors()' ;
+            abstract 'start_color_() -> libc::c_int' 'start_color()' ;
+            abstract 'endwin_() -> libc::c_int' 'endwin()' ;
+
+            abstract 'refresh() -> libc::c_int' 'wrefresh(stdscr)' ;
+            abstract 'move_(y: libc::c_int, x: libc::c_int) -> libc::c_int'
+                'wmove(stdscr, y, x)' ;
+            abstract 'clear() -> libc::c_int' 'wclear(stdscr)' ;
+            abstract 'clrtoeol() -> libc::c_int' 'wclrtoeol(stdscr)' ;
+            abstract 'getch() -> libc::c_int' 'wgetch(stdscr)' ;
+            abstract 'addch(ch: chtype) -> libc::c_int' 'waddch(stdscr, ch)' ;
+            abstract 'addnstr(str: &[u8], n: libc::c_int) -> libc::c_int'
+                'waddnstr(stdscr, str as *const u8 as *const libc::c_char, n)'
+                'waddnstr(stdscr, str.as_ptr() as *const libc::c_char, n)' ;
+            abstract
+                'attr_get(attrs: &mut attr_t, pair: &mut libc::c_short) -> libc::c_int'
+                'wattr_get(stdscr, attrs, pair, __e)'
+                'wattr_get(stdscr, attrs, pair, ::std::ptr::null_mut())' ;
+            abstract
+                'attrset(attrs: libc::c_int) -> libc::c_int'
+                'wattrset(stdscr, attrs)' ;
+
+            abstract 'init_pair_(pair: libc::c_short,
+                                 f: libc::c_short,
+                                 b: libc::c_short) -> libc::c_int'
+                'init_pair(pair, f, b)' ;
+
+
+            select target 'item(ncurses);' ;
+            create_item '
+                #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+                pub enum WindowToken {
+                    StdScr,
+                    CurScr,
+                }
+
+                impl WindowToken {
+                    pub fn as_ptr(self) -> *mut ::WINDOW {
+                        match self {
+                            WindowToken::StdScr => unsafe { ::stdscr },
+                            WindowToken::CurScr => unsafe { ::curscr },
+                        }
+                    }
+                }
+            ' inside ;
+
+            rewrite_expr 'stdscr' 'ncurses::WindowToken::StdScr.as_ptr()' ;
+            rewrite_expr 'curscr' 'ncurses::WindowToken::CurScr.as_ptr()' ;
+
+            abstract 'keypad_(win: ncurses::WindowToken, bf: bool) -> libc::c_int'
+                'keypad(win.as_ptr(), bf)' ;
+            abstract 'intrflush_(win: ncurses::WindowToken, bf: bool) -> libc::c_int'
+                'intrflush(win.as_ptr(), bf)' ;
+            abstract 'wrefresh_(win: ncurses::WindowToken) -> libc::c_int'
+                'wrefresh(win.as_ptr())' ;
+
+            copy_marks new target ;
+            sink_unsafe ;
+        ''',
+
+
+        # Use safe alternatives to libc calls
+
+        '''
+            rewrite_expr 'sleep(__e)'
+                '::std::thread::sleep(
+                    ::std::time::Duration::from_secs(__e as u64))' ;
+
+            select target 'crate;' ;
+            create_item 'extern crate rand;' inside ;
+
+            rewrite_expr 'rand()'
+                '(::rand::random::<libc::c_uint>() >> 1) as libc::c_int' ;
+            rewrite_expr 'srand(__e)' '()' ;
+
+            rewrite_expr 'atoi(__e)'
+                '<libc::c_int as ::std::str::FromStr>::from_str(
+                    ::std::ffi::CStr::from_ptr(__e).to_str().unwrap()).unwrap()' ;
+            clear_marks ;
+            select target 'item(atoi);' ;
+            delete_items ;
+
+            rewrite_expr 'exit(__e)' '::std::process::exit(__e as i32)' ;
+        ''',
+
+        # We can't make `signal` safe, so give it an unsafe block.
+        '''
+            rewrite_expr 'signal(__e, __f)' 'unsafe { signal(__e, __f) }' ;
+        ''',
+
+        # Mark all functions as safe, except for main_0.
+        '''
+            select target 'crate; desc(fn && !name("main_0"));' ;
+            set_unsafety safe ;
         ''',
 ]
 
