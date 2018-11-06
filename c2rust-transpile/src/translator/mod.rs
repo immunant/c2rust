@@ -333,8 +333,6 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> Strin
             }
         }
 
-        // Helper function that returns true if there is either a matching typedef or its
-        // corresponding struct/union/enum
         fn contains(prenamed_decls: &IndexMap<CDeclId, CDeclId>, decl_id: &CDeclId) -> bool {
             (prenamed_decls.contains_key(decl_id) ||
              prenamed_decls.values().find(|id| *id == decl_id).is_some())
