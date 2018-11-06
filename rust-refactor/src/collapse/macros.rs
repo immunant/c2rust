@@ -264,7 +264,10 @@ fn restore_attrs(mut new: Item, old: &Item) -> Item {
 
     // Remove #[rustc_copy_clone_marker], if it's present
     new.attrs.retain(|attr| {
-        !attr.check_name("rustc_copy_clone_marker")
+        !attr.check_name("rustc_copy_clone_marker") &&
+        // TODO: don't erase user-written #[structural_match] attrs
+        // (It can be written explicitly, but is also inserted by #[derive(Eq)].)
+        !attr.check_name("structural_match")
     });
 
     new
