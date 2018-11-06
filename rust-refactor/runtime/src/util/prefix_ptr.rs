@@ -1,5 +1,6 @@
 use std::alloc::{self, Layout};
 use std::cmp;
+use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Deref;
@@ -9,13 +10,18 @@ use util::Nullable;
 
 
 /// A pointer to zero or more `T`, with the allocated data prefixed by metadata of type `M`.
-#[derive(Debug)]
 pub struct PrefixPtr<T, M>(*mut T, PhantomData<M>);
 impl<T, M> Clone for PrefixPtr<T, M> {
     fn clone(&self) -> PrefixPtr<T, M> { *self }
 }
 impl<T, M> Copy for PrefixPtr<T, M> {}
 unsafe impl<T, M> Nullable for PrefixPtr<T, M> {}
+
+impl<T, M> fmt::Debug for PrefixPtr<T, M> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{:?}", self.0)
+    }
+}
 
 impl<T, M> PrefixPtr<T, M> {
     /// Calculate the alignment of the allocation, which needs to hold elements of both type `T`
@@ -29,7 +35,7 @@ impl<T, M> PrefixPtr<T, M> {
     fn prefix_bytes() -> usize {
         let align = Self::align();
         let meta_size = mem::size_of::<M>();
-        (meta_size + align - 1) & !align
+        (meta_size + align - 1) & !(align - 1)
     }
 
     /// Calculate the size in bytes of an allocation for `len` `T`s, including the space for the
