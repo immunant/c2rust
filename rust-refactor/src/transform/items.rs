@@ -448,6 +448,41 @@ impl Transform for CreateItem {
 }
 
 
+/// Remove all items marked `target` from their containing modules or blocks.
+pub struct DeleteItems;
+
+impl Transform for DeleteItems {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+        let mark = "target".into_symbol();
+
+        struct DeleteFolder<'a> {
+            st: &'a CommandState,
+            mark: Symbol,
+        }
+
+        impl<'a> Folder for DeleteFolder<'a> {
+            fn fold_mod(&mut self, mut m: Mod) -> Mod {
+                m.items.retain(|i| !self.st.marked(i.id, self.mark));
+                fold::noop_fold_mod(m, self)
+            }
+
+            fn fold_block(&mut self, b: P<Block>) -> P<Block> {
+                let b = b.map(|mut b| {
+                    b.stmts.retain(|s| match s.node {
+                        StmtKind::Item(ref i) => !self.st.marked(i.id, self.mark),
+                        _ => true,
+                    });
+                    b
+                });
+                fold::noop_fold_block(b, self)
+            }
+        }
+
+        krate.fold(&mut DeleteFolder { st, mark })
+    }
+}
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -477,5 +512,7 @@ pub fn register_commands(reg: &mut Registry) {
         mark: args.get(2).map(|s| (s as &str).into_symbol())
             .unwrap_or_else(|| "target".into_symbol()),
     }));
+
+    reg.register("delete_items", |_args| mk(DeleteItems));
 }
 
