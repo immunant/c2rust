@@ -1219,6 +1219,11 @@ class TranslateASTVisitor final
               for (auto x : def->fields()) {
                   childIds.push_back(x->getCanonicalDecl());
               }
+              // Since the, RecordDecl D, isn't the complete definition,
+              // the actual location should be given. This should handle opaque
+              // types.
+              auto loc = def->getLocation();
+              D->setLocation(loc);
           }
 
           auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;

@@ -50,6 +50,10 @@ pub struct TypedAstContext {
     pub parents: HashMap<CDeclId, CDeclId>, // record fields and enum constants
 
     pub comments: Vec<Located<String>>,
+
+    // The key is the typedef decl being squashed away,
+    // and the value is the decl id to the corresponding structure
+    pub prenamed_decls: HashMap<CDeclId, CDeclId>,
 }
 
 /// Comments associated with a typed AST context
@@ -73,6 +77,7 @@ impl TypedAstContext {
             parents: HashMap::new(),
 
             comments: vec![],
+            prenamed_decls: HashMap::new(),
         }
     }
 

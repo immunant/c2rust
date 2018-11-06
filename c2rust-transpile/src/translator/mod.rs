@@ -332,7 +332,6 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
     with_globals(|| {
         // Identify typedefs that name unnamed types and collapse the two declarations
         // into a single name and declaration, eliminating the typedef altogether.
-        let mut prenamed_decls: IndexSet<CDeclId> = IndexSet::new();
         for (&decl_id, decl) in &t.ast_context.c_decls {
             if let CDeclKind::Typedef { ref name, typ, .. } = decl.kind {
                 if let Some(subdecl_id) = t.ast_context.resolve_type(typ.ctype).kind.as_underlying_decl() {
@@ -351,9 +350,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                         _ => false,
                     };
 
-                    if is_unnamed && !prenamed_decls.contains(&subdecl_id) {
-                        prenamed_decls.insert(decl_id);
-                        prenamed_decls.insert(subdecl_id);
+                    if is_unnamed && !t.ast_context.prenamed_decls.values().find(|decl_id| *decl_id == &subdecl_id).is_some() {
+                        t.ast_context.prenamed_decls.insert(decl_id, subdecl_id);
 
                         t.type_converter.borrow_mut().declare_decl_name(decl_id, name);
                         t.type_converter.borrow_mut().alias_decl_name(subdecl_id, decl_id);
@@ -362,10 +360,17 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             }
         }
 
+        // Helper function that returns true if there is either a matching typedef or it's
+        // corresponding struct/union/enum
+        fn contains(prenamed_decls: &HashMap<CDeclId, CDeclId>, decl_id: &CDeclId) -> bool {
+            (prenamed_decls.contains_key(decl_id) ||
+             prenamed_decls.values().find(|id| *id == decl_id).is_some())
+        }
+
         // Populate renamer with top-level names
         for (&decl_id, decl) in &t.ast_context.c_decls {
             let decl_name = match decl.kind {
-                _ if prenamed_decls.contains(&decl_id) => Name::NoName,
+                _ if contains(&t.ast_context.prenamed_decls, &decl_id) => Name::NoName,
                 CDeclKind::Struct { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
                 CDeclKind::Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
                 CDeclKind::Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
@@ -392,7 +397,9 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                 CDeclKind::EnumConstant { .. } => true,
                 CDeclKind::Union { .. } => true,
                 CDeclKind::Typedef { .. } =>
-                    !prenamed_decls.contains(&decl_id),
+                    // Only check the key as opposed to `contains` because the key should be the
+                    // typedef id
+                    !t.ast_context.prenamed_decls.contains_key(&decl_id),
                 _ => false,
             };
             if needs_export {
@@ -2772,6 +2779,11 @@ impl Translation {
             Typedef(decl_id) |
             Union(decl_id) |
             Struct(decl_id) => {
+                let mut decl_id = decl_id.clone();
+                // if the `decl` has been "squashed", get the corresponding `decl_id`
+                if self.ast_context.prenamed_decls.contains_key(&decl_id) {
+                    decl_id = *self.ast_context.prenamed_decls.get(&decl_id).unwrap();
+                }
                 let decl = &self.ast_context.c_decls[&decl_id];
                 let decl_loc = &decl.loc.as_ref().unwrap();
 
