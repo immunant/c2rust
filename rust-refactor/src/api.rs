@@ -124,6 +124,9 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
     fn opt_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
         let parent_node = self.hir_map().get_parent(id);
         let parent = self.hir_map().opt_local_def_id(parent_node)?;
+        if !self.ty_ctxt().has_typeck_tables(parent) {
+            return None;
+        }
         let tables = self.ty_ctxt().typeck_tables_of(parent);
         let hir_id = self.hir_map().node_to_hir_id(id);
         tables.node_id_to_type_opt(hir_id)
