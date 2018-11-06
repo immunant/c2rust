@@ -1473,7 +1473,8 @@ impl ConversionContext {
                     let name = node.extras[0].as_string().expect("A field needs a name").to_owned();
                     let typ_id = node.type_id.expect("Expected to find type on field declaration");
                     let typ = self.visit_qualified_type(typ_id);
-                    let field = CDeclKind::Field { name, typ };
+                    let bitfield_width = node.extras[1].as_u64();
+                    let field = CDeclKind::Field { name, typ, bitfield_width };
                     self.add_decl(new_id, located(node, field));
                     self.processed_nodes.insert(new_id, FIELD_DECL);
                 }

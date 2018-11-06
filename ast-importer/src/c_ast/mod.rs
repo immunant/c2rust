@@ -526,6 +526,7 @@ pub enum CDeclKind {
     Field {
         name: String,
         typ: CQualTypeId,
+        bitfield_width: Option<u64>,
     },
 }
 

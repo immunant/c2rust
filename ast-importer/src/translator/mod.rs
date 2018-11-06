@@ -914,7 +914,7 @@ impl Translation {
                 let mut field_entries = vec![];
                 for &x in fields {
                     match self.ast_context.index(x).kind {
-                        CDeclKind::Field { ref name, typ } => {
+                        CDeclKind::Field { ref name, typ, .. } => {
                             let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
                             let typ = self.convert_type(typ.ctype)?;
                             field_entries.push(mk().span(s).pub_().struct_field(name, typ))
@@ -961,7 +961,7 @@ impl Translation {
                 for &x in fields {
                     let field_decl = self.ast_context.index(x);
                     match field_decl.kind {
-                        CDeclKind::Field { ref name, typ } => {
+                        CDeclKind::Field { ref name, typ, .. } => {
                             let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
                             let typ = self.convert_type(typ.ctype)?;
                             field_syns.push(mk().span(s).pub_().struct_field(name, typ))
@@ -2413,7 +2413,7 @@ impl Translation {
             CExprKind::CompoundLiteral(_, val) =>
                 self.convert_expr(use_, val, is_static, decay_ref),
 
-            CExprKind::InitList(ty, ref ids, opt_union_field_id, _) => 
+            CExprKind::InitList(ty, ref ids, opt_union_field_id, _) =>
                 self.convert_init_list(use_, is_static, decay_ref, ty, ids, opt_union_field_id),
 
             CExprKind::ImplicitValueInit(ty) =>

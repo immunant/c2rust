@@ -85,7 +85,7 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b")")?;
                 Ok(())
             }
-            
+
             Some(&CExprKind::UnaryType(_, kind, opt_expr, arg_ty)) => {
                 let kind_str = match kind {
                     UnTypeOp::SizeOf => b"sizeof(".as_ref(),
@@ -266,7 +266,7 @@ impl<W: Write> Printer<W> {
             _ => unimplemented!("Printer::print_lit"),
         }
     }
-    
+
     pub fn print_stmt(&mut self, stmt_id: CStmtId, newline: bool, pad: bool, context: &TypedAstContext) -> Result<()> {
         if pad {
             self.pad()?;
@@ -574,7 +574,7 @@ impl<W: Write> Printer<W> {
                 Ok(())
             },
 
-            Some(&CDeclKind::Field { ref name, typ }) => {
+            Some(&CDeclKind::Field { ref name, typ, .. }) => {
                 self.writer.write_fmt(format_args!("{}: ", &name))?;
                 self.print_qtype(typ, None, context)?;
                 if newline {
