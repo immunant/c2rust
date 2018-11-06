@@ -1,7 +1,10 @@
 [package]
 name = "ast_exporter"
 version = "0.1.0"
-authors = ["Stephen Crane <sjc@immunant.com>"]
+authors = [
+        "Eric Mertens <emertens@galois.com>",
+        "Alec Theriault <atheriault@galois.com>",
+]
 links = "clangAstExporter"
 
 [dependencies]
@@ -10,6 +13,6 @@ serde = "1.0"
 serde_cbor = "0.9"
 
 [build-dependencies]
-bindgen="0.37"
+bindgen = "0.37"
 cmake = "0.1"
 clang-sys = "0.23"
