@@ -173,9 +173,26 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
                     }
                 },
                 ExprKind::Binary(binop, lhs, rhs) => {
-                    // TODO: need cases for arith + bitwise, shift, comparison, &&/||, and a check
-                    // for overloads
-                    ExprKind::Binary(binop, lhs, rhs)
+                    use syntax::ast::BinOpKind::*;
+                    // TODO: check for overloads
+                    match binop.node {
+                        Add | Sub | Mul | Div | Rem |
+                        BitXor | BitAnd | BitOr =>
+                            ExprKind::Binary(binop, ensure(lhs, ty), ensure(rhs, ty)),
+                        Eq | Lt | Le | Ne | Ge | Gt => {
+                            if let Some(lhs_ty) = cx.opt_node_type(lhs.id) {
+                                ExprKind::Binary(binop, lhs, ensure(rhs, lhs_ty))
+                            } else if let Some(rhs_ty) = cx.opt_node_type(rhs.id) {
+                                ExprKind::Binary(binop, ensure(lhs, rhs_ty), rhs)
+                            } else {
+                                ExprKind::Binary(binop, lhs, rhs)
+                            }
+                        },
+                        Shl | Shr =>
+                            ExprKind::Binary(binop, ensure(lhs, ty), rhs),
+                        And | Or =>
+                            ExprKind::Binary(binop, ensure(lhs, ty), ensure(rhs, ty)),
+                    }
                 }
                 ExprKind::Unary(binop, ohs) => {
                     // TODO: need cases for deref, neg/not, and a check for overloads
@@ -263,9 +280,8 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
                     ExprKind::Field(el, ident)
                 }
                 ExprKind::Index(el, er) => {
-                    // TODO: normal case
                     // TODO: check for overloads
-                    ExprKind::Index(el, er)
+                    ExprKind::Index(el, ensure(er, tcx.mk_mach_uint(UintTy::Usize)))
                 }
                 ExprKind::Range(e1, e2, lim) => {
                     // TODO: e1 & e2 should have the same type if both present
