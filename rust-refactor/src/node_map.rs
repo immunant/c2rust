@@ -93,8 +93,14 @@ impl NodeMap {
         for &(old_id, label) in marks {
             let lo = (old_id, NodeId::from_u32(0));
             let hi = (old_id, NodeId::from_u32(!0));
+            let mut empty = true;
             for &(_, new_id) in self.pending_edges.range((Included(&lo), Included(&hi))) {
+                debug!("  {:?}: {:?} -> {:?}", label, old_id, new_id);
                 new_marks.insert((new_id, label));
+                empty = false;
+            }
+            if empty {
+                debug!("  {:?}: {:?} -> DROPPED", label, old_id);
             }
         }
         new_marks
