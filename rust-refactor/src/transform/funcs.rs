@@ -672,7 +672,8 @@ impl Transform for Abstract {
 
         let func_src = format!("unsafe fn {} {{\n    {}\n}}",
                                self.sig, self.body.as_ref().unwrap_or(&self.pat));
-        let func: P<Item> = parse_items(cx.session(), &func_src).lone();
+        let func: P<Item> = st.parse_items(cx, &func_src).lone();
+        st.add_mark(func.id, "new");
 
         // Build the call expression template
 

@@ -14,7 +14,6 @@ use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
 use util::HirDefExt;
-use util::Lone;
 
 
 /// Rename items using regex match and replace.
@@ -346,6 +345,10 @@ impl Transform for CreateItem {
         };
 
         let items = st.parse_items(cx, &format!("{}", self.header));
+
+        for i in &items {
+            st.add_mark(i.id, "new");
+        }
 
 
         struct CreateFolder<'a> {
