@@ -98,7 +98,7 @@ def configure_and_build_llvm(args: str) -> None:
                      "-DLLVM_TARGETS_TO_BUILD=X86",
                      "-DLLVM_INCLUDE_UTILS=1",
                      "-DLLVM_BUILD_UTILS=1",
-                     "-DLLVM_BUILD_LLVM_DYLIB=1",
+                     "-DLLVM_LINK_LLVM_DYLIB=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
                      "-DTINYCBOR_PREFIX={}".format(c.CBOR_PREFIX)]
             invoke(cmake[cargs])

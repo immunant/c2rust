@@ -3,6 +3,7 @@ extern crate cmake;
 extern crate clang_sys;
 
 use std::env;
+use std::ffi::OsStr;
 use std::process::{self, Command, Stdio};
 use std::path::{Path, PathBuf};
 use cmake::Config;
@@ -10,61 +11,22 @@ use cmake::Config;
 // Use `cargo build -vv` to get detailed output on this script's progress.
 
 fn main() {
-    let llvm_config = find_llvm_config();
+    let llvm_info = LLVMInfo::new();
 
     // Build the exporter library and link it (and its dependencies)
-    build_native(&llvm_config);
+    build_native(&llvm_info);
 
     // Generate ast_tags and ExportResult bindings
-    generate_bindings().err().map(|e| {
+    if let Err(e) = generate_bindings() {
         eprintln!("{}", e);
-        check_clang_version(&llvm_config).err().map(|ver_e| {
-            eprintln!("{}", ver_e);
-        });
+        if let Err(e) = check_clang_version() {
+            eprintln!("{}", e);
+        }
         process::exit(1);
-    });
+    }
 }
 
-/// Search for an available llvm-config binary in PATH
-fn find_llvm_config() -> String {
-    env::var("LLVM_CONFIG_PATH").ok().or({
-        [
-            "llvm-config-7.0",
-            "llvm-config-6.1",
-            "llvm-config-6.0",
-        ].iter().find_map(|c| {
-            if Command::new(c)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .is_ok() {
-                    Some(String::from(*c))
-                } else {
-                    None
-                }
-        })
-    }).unwrap_or(String::from("llvm-config"))
-}
-
-fn find_llvm_libdir(llvm_config: &str) -> String {
-    let path_str = env::var("LLVM_LIB_DIR").ok().or_else(|| {
-        let output = Command::new(&llvm_config)
-                        .arg("--libdir")
-                        .output();
-
-        output.ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-    }).expect(
-"
-Couldn't find LLVM lib dir. Try setting the `LLVM_LIB_DIR` environment
-variable or make sure `llvm-config` is on $PATH then re-build. For example:
-
-  $ export LLVM_LIB_DIR=/usr/local/opt/llvm/lib
-"
-    );
-    String::from(Path::new(&path_str).canonicalize().unwrap().to_string_lossy())
-}
-
-fn check_clang_version(_llvm_config: &str) -> Result<(), String> {
+fn check_clang_version() -> Result<(), String> {
     // Check that bindgen is using the same version of libclang and the clang
     // invocation that it pulls -isystem from. See Bindings::generate() for the
     // -isystem construction.
@@ -143,15 +105,15 @@ fn generate_bindings() -> Result<(), &'static str> {
     Ok(())
 }
 
-/** Call out to CMake, build the exporter library, and tell cargo where to look for it.
-  * Note that `CMAKE_BUILD_TYPE` gets implicitly determined:
-  *
-  *   - if `opt-level=0`                              then `CMAKE_BUILD_TYPE=Debug`
-  *   - if `opt-level={1,2,3}` and not `debug=false`, then `CMAKE_BUILD_TYPE=RelWithDebInfo`
-  */
-fn build_native(llvm_config: &str) {
+/// Call out to CMake, build the exporter library, and tell cargo where to look
+/// for it.  Note that `CMAKE_BUILD_TYPE` gets implicitly determined by the
+/// cmake crate according to the following:
+///
+///   - if `opt-level=0`                              then `CMAKE_BUILD_TYPE=Debug`
+///   - if `opt-level={1,2,3}` and not `debug=false`, then `CMAKE_BUILD_TYPE=RelWithDebInfo`
+fn build_native(llvm_info: &LLVMInfo) {
     // Find where the (already built) LLVM lib dir is
-    let llvm_lib = find_llvm_libdir(llvm_config);
+    let llvm_lib = &llvm_info.lib_dir;
 
     let dst = Config::new("src")
         // Where to find LLVM/Clang CMake files
@@ -173,46 +135,154 @@ fn build_native(llvm_config: &str) {
     println!("cargo:rustc-link-search={}/build", out_dir);
     println!("cargo:rustc-link-lib=static={}", "clangAstExporter");
 
-    // Link against these Clang libs and libLLVM.so. The ordering here is
-    // important! Libraries must be listed before their dependencies when
-    // statically linking.
+    // Link against these Clang libs. The ordering here is important! Libraries
+    // must be listed before their dependencies when statically linking.
     println!("cargo:rustc-link-search={}", llvm_lib);
-    for lib in vec![
-      "clangTooling",
-      "clangFrontend",
-      "clangASTMatchers",
-      "clangParse",
-      "clangSerialization",
-      "clangSema",
-      "clangEdit",
-      "clangAnalysis",
-      "clangDriver",
-      "clangFormat",
-      "clangToolingCore",
-      "clangAST",
-      "clangRewrite",
-      "clangLex",
-      "clangBasic",
-      "LLVM",
+    for lib in &[
+        "clangTooling",
+        "clangFrontend",
+        "clangASTMatchers",
+        "clangParse",
+        "clangSerialization",
+        "clangSema",
+        "clangEdit",
+        "clangAnalysis",
+        "clangDriver",
+        "clangFormat",
+        "clangToolingCore",
+        "clangAST",
+        "clangRewrite",
+        "clangLex",
+        "clangBasic",
     ] {
         println!("cargo:rustc-link-lib={}", lib);
     }
 
-    // Dynamically link against any system libraries required by LLVM.
-    let system_libs = env::var("LLVM_SYSTEM_LIBS").or_else(|_| {
-        Command::new(llvm_config)
-            .arg("--system-libs")
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-    }).unwrap_or(String::new());
-    for lib in system_libs.split_whitespace() {
-        println!("cargo:rustc-link-lib={}", lib.trim_left_matches("-l"));
+    if llvm_info.static_mode {
+        for lib in &llvm_info.static_libs {
+            // IMPORTANT: We cannot specify static= here because rustc will
+            // reorder those libs before the clang libs above which don't have
+            // static or dylib.
+            println!("cargo:rustc-link-lib={}", lib);
+        }
+
+        // Dynamically link against any system libraries required if statically
+        // linking against LLVM.
+        for lib in &llvm_info.system_libs {
+            println!("cargo:rustc-link-lib={}", lib);
+        }
+    } else {
+        // link against libLLVM DSO
+        println!("cargo:rustc-link-lib=dylib=LLVM");
     }
 
-    // Dynamically link against the C++ std library.
+    // Link against the C++ std library.
     if cfg!(target_os = "macos") {
         println!("cargo:rustc-link-lib=c++");
     } else {
         println!("cargo:rustc-link-lib=stdc++");
+    }
+}
+
+/// Holds information about LLVM paths we have found
+struct LLVMInfo {
+    /// LLVM lib dir containing libclang* and libLLVM* libraries
+    pub lib_dir: String,
+
+    /// System libraries required to statically link against LLVM
+    pub system_libs: Vec<String>,
+
+    /// List of static LLVM libs we need to link against
+    pub static_libs: Vec<String>,
+
+    pub static_mode: bool,
+}
+
+impl LLVMInfo {
+    fn new() -> Self {
+        fn find_llvm_config() -> Option<String> {
+            // Explicitly provided path in LLVM_CONFIG_PATH
+            env::var("LLVM_CONFIG_PATH").ok()
+            // Relative to LLVM_LIB_DIR
+                .or(env::var("LLVM_LIB_DIR").ok().map(|d| {
+                    String::from(
+                        Path::new(&d)
+                            .join("../bin/llvm-config")
+                            .canonicalize()
+                            .unwrap()
+                            .to_string_lossy()
+                    )
+                }))
+            // In PATH
+                .or([
+                    "llvm-config-7.0",
+                    "llvm-config-6.1",
+                    "llvm-config-6.0",
+                    "llvm-config",
+                ].iter().find_map(|c| {
+                    if Command::new(c)
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .spawn()
+                        .is_ok() {
+                            Some(String::from(*c))
+                        } else {
+                            None
+                        }
+                }))
+        }
+
+        /// Invoke discovered `llvm-config`, if any, with the specified argument.
+        fn invoke_llvm_config<I, S>(llvm_config: Option<&String>, args: I) -> Option<String>
+        where I: IntoIterator<Item = S>, S: AsRef<OsStr> {
+            llvm_config.and_then(|c| {
+                Command::new(c)
+                    .args(args)
+                    .output()
+                    .ok()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            })
+        }
+
+        let llvm_config = find_llvm_config();
+        let lib_dir = {
+            let path_str = env::var("LLVM_LIB_DIR").ok().or(
+                invoke_llvm_config(llvm_config.as_ref(), &["--libdir"])
+            ).expect(
+                "
+Couldn't find LLVM lib dir. Try setting the `LLVM_LIB_DIR` environment
+variable or make sure `llvm-config` is on $PATH then re-build. For example:
+
+  $ export LLVM_LIB_DIR=/usr/local/opt/llvm/lib
+"
+            );
+            String::from(Path::new(&path_str).canonicalize().unwrap().to_string_lossy())
+        };
+        let system_libs = env::var("LLVM_SYSTEM_LIBS")
+            .ok()
+            .or(invoke_llvm_config(llvm_config.as_ref(), &["--system-libs", "--link-static"]))
+            .unwrap_or(String::new())
+            .split_whitespace()
+            .map(|lib| String::from(lib.trim_left_matches("-l")))
+            .collect();
+
+        let static_mode = invoke_llvm_config(llvm_config.as_ref(), &["--shared-mode"])
+            .map_or(false, |c| c == "static");
+
+        let static_libs = invoke_llvm_config(llvm_config.as_ref(), &[
+            "--libs", "--link-static",
+            "MC", "MCParser", "Support", "Option", "BitReader", "ProfileData", "BinaryFormat", "Core",
+        ])
+            .unwrap_or(String::new())
+            .split_whitespace()
+            .map(|lib| String::from(lib.trim_left_matches("-l")))
+            .collect();
+
+        Self {
+            lib_dir,
+            system_libs,
+            static_libs,
+            static_mode,
+        }
     }
 }
