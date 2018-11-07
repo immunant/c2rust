@@ -16,7 +16,7 @@ ExternalProject_Add(tinycbor_build
             URL ${TINYCBOR_URL}
             URL_HASH MD5=${TINYCBOR_MD5}
             CONFIGURE_COMMAND ""
-            BUILD_COMMAND make prefix=${TINYCBOR_PREFIX} CFLAGS=-fPIC
+            BUILD_COMMAND make --quiet prefix=${TINYCBOR_PREFIX} CFLAGS=-fPIC
             INSTALL_COMMAND make --quiet prefix=${TINYCBOR_PREFIX} install 
             # work around https://github.com/intel/tinycbor/issues/136
             TEST_COMMAND cp ${TINYCBOR_VERSION_H} ${TINYCBOR_PREFIX}/include/
