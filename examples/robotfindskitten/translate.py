@@ -389,8 +389,9 @@ REFACTORINGS = [
         ''',
         '''
             select target 'crate; child(static && name("S"));' ;
-            select user 'crate; desc(fn && !name("main"));' ;
-            static_to_local_ref
+            select user 'crate; desc(fn && !name("main|main_0"));' ;
+            static_to_local_ref ;
+            static_to_local ;
         ''',
 
 
@@ -438,11 +439,58 @@ REFACTORINGS = [
         ''',
 
 
+        # Retype main_0's argv, and replace main
 
-        # Mark all functions as safe, except for main_0.
         '''
-            select target 'crate; desc(fn && !name("main_0"));' ;
-            set_unsafety safe ;
+            select target 'item(main);' ;
+            create_item '
+                fn main() {
+                    // Collect argv into a vector.
+                    let mut args_owned: Vec<::std::ffi::CString> = Vec::new();
+                    for arg in ::std::env::args() {
+                        args_owned.push(::std::ffi::CString::new(arg).unwrap());
+                    }
+
+                    // Now that the length is known, we can build a CArray.
+                    let mut args: ::c2rust_runtime::CArray<Option<&::std::ffi::CStr>> =
+                        ::c2rust_runtime::CArray::alloc(args_owned.len() + 1);
+                    for i in 0 .. args_owned.len() {
+                        args[i] = Some(&args_owned[i]);
+                    }
+                    // The last element of `args` remains `None`.
+
+                    unsafe {
+                        ::std::process::exit(main_0(
+                            (args.len() - 1) as libc::c_int,
+                            args) as i32);
+                    }
+                }
+            ' after ;
+            delete_items ;
+            clear_marks ;
+
+            select target 'item(main);' ;
+            create_item '
+                fn opt_c_str_to_ptr(x: Option<&::std::ffi::CStr>) -> *const libc::c_char {
+                    match x {
+                        None => ::std::ptr::null(),
+                        Some(x) => x.as_ptr(),
+                    }
+                }
+            ' after ;
+            clear_marks ;
+
+            select target
+                'item(main_0); child(arg && name("argv")); child(ty);' ;
+            rewrite_ty 'marked!(*mut *mut libc::c_char)'
+                '::c2rust_runtime::CArray<Option<&::std::ffi::CStr>>' ;
+            delete_marks target ;
+
+            type_fix_rules
+                '*, ::c2rust_runtime::array::CArrayOffset<__t>, __u => *__old'
+                '*, ::std::option::Option<&::std::ffi::CStr>, *const i8 =>
+                    opt_c_str_to_ptr(__old)'
+                ;
         ''',
 
 
@@ -463,6 +511,9 @@ REFACTORINGS = [
                 '::std::ffi::CStr::from_ptr(
                     cast!(typed!(__e, &[u8; __f]))).to_str()'
                 "Some(::std::str::from_utf8(__e).unwrap().trim_end_matches('\0'))" ;
+            rewrite_expr
+                '::std::ffi::CStr::from_ptr(cast!(opt_c_str_to_ptr(__e)))'
+                '__e.unwrap()' ;
 
             select target
                 'crate; desc(match_expr(::std::str::from_utf8(__e))); desc(expr);' ;
@@ -474,6 +525,20 @@ REFACTORINGS = [
                 '::std::str::from_utf8(__e.as_bytes())'
                 'Some(__e)' ;
 
+        ''',
+
+        '''
+            rewrite_expr
+                '::c2rust_runtime::CArray::from_ptr(cast!(0))'
+                '::c2rust_runtime::CArray::empty()' ;
+        ''',
+
+
+        # Mark all functions as safe and clean up unsafe blocks
+        '''
+            select target 'crate; desc(fn);' ;
+            set_unsafety safe ;
+            fix_unused_unsafe ;
         ''',
 ]
 
