@@ -53,10 +53,18 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
                         _ => panic!("expected PatKind::Ident or PatKind::Path"),
                     };
                 let (new_qself, new_path) = self.handle_qpath(p.id, qself, path, qpath);
-                Pat {
-                    node: PatKind::Path(new_qself, new_path),
-                    .. p
-                }
+
+                // If it's a single-element path like `None`, emit PatKind::Ident instead of
+                // PatKind::Path.  The parser treats `None` as an Ident, so if we emit Paths
+                // instead, we run into "new and reparsed ASTs don't match" during rewriting.
+                let node = if new_qself.is_none() && new_path.segments.len() == 1 {
+                    PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
+                                   new_path.segments[0].ident, None)
+                } else {
+                    PatKind::Path(new_qself, new_path)
+                };
+
+                Pat { node, .. p }
             }),
 
             _ => p
