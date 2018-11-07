@@ -158,7 +158,7 @@ fn build_native(llvm_info: &LLVMInfo) {
         println!("cargo:rustc-link-lib={}", lib);
     }
 
-    if llvm_info.static_mode {
+    if llvm_info.link_statically {
         for lib in &llvm_info.static_libs {
             // IMPORTANT: We cannot specify static= here because rustc will
             // reorder those libs before the clang libs above which don't have
@@ -189,13 +189,14 @@ struct LLVMInfo {
     /// LLVM lib dir containing libclang* and libLLVM* libraries
     pub lib_dir: String,
 
-    /// System libraries required to statically link against LLVM
-    pub system_libs: Vec<String>,
+    /// Must we statically link against libLLVM? Default is false.
+    pub link_statically: bool,
 
-    /// List of static LLVM libs we need to link against
+    /// List of libs we need if linking against LLVM statically
     pub static_libs: Vec<String>,
 
-    pub static_mode: bool,
+    /// System libraries required to statically link against LLVM
+    pub system_libs: Vec<String>,
 }
 
 impl LLVMInfo {
@@ -232,22 +233,28 @@ impl LLVMInfo {
                 }))
         }
 
-        /// Invoke discovered `llvm-config`, if any, with the specified argument.
-        fn invoke_llvm_config<I, S>(llvm_config: Option<&String>, args: I) -> Option<String>
+        /// Invoke given `command`, if any, with the specified arguments.
+        fn invoke_command<I, S>(command: Option<&String>, args: I) -> Option<String>
         where I: IntoIterator<Item = S>, S: AsRef<OsStr> {
-            llvm_config.and_then(|c| {
+            command.and_then(|c| {
                 Command::new(c)
                     .args(args)
                     .output()
                     .ok()
-                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                    .and_then(|output| {
+                        if output.status.success() {
+                            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+                        } else {
+                            None
+                        }
+                    })
             })
         }
 
         let llvm_config = find_llvm_config();
         let lib_dir = {
             let path_str = env::var("LLVM_LIB_DIR").ok().or(
-                invoke_llvm_config(llvm_config.as_ref(), &["--libdir"])
+                invoke_command(llvm_config.as_ref(), &["--libdir"])
             ).expect(
                 "
 Couldn't find LLVM lib dir. Try setting the `LLVM_LIB_DIR` environment
@@ -260,16 +267,67 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
         };
         let system_libs = env::var("LLVM_SYSTEM_LIBS")
             .ok()
-            .or(invoke_llvm_config(llvm_config.as_ref(), &["--system-libs", "--link-static"]))
+            .or(invoke_command(llvm_config.as_ref(), &["--system-libs", "--link-static"]))
             .unwrap_or(String::new())
             .split_whitespace()
             .map(|lib| String::from(lib.trim_left_matches("-l")))
             .collect();
 
-        let static_mode = invoke_llvm_config(llvm_config.as_ref(), &["--shared-mode"])
-            .map_or(false, |c| c == "static");
+        let llvm_dylib = invoke_command(llvm_config.as_ref(), &["--libs", "--link-shared"]);
 
-        let static_libs = invoke_llvm_config(llvm_config.as_ref(), &[
+        // <sysroot>/lib/rustlib/<target>/lib/ contains a libLLVM DSO for the
+        // rust compiler. On MacOS, this lib is named libLLVM.dylib, which will
+        // always conflict with the dylib we are trying to link against. On
+        // Linux we generally will not hit this issue because the prebuilt lib
+        // includes the `svn` suffix. This would conflict with a source build
+        // from master, however.
+        // 
+        // We check here if the lib we want to link against will conflict with
+        // the rustlib version. If so we can't dynamically link against libLLVM.
+        let conflicts_with_rustlib_llvm = {
+            if let Some(llvm_dylib) = llvm_dylib.as_ref() {
+                let dylib_suffix = {
+                    if cfg!(target_os = "macos") {
+                        ".dylib"
+                    } else {
+                        ".so"
+                    } // Windows is not supported
+                };
+                let mut dylib_file = String::from("lib");
+                dylib_file.push_str(llvm_dylib.trim_left_matches("-l"));
+                dylib_file.push_str(dylib_suffix);
+                let sysroot = invoke_command(
+                    env::var("RUSTC").ok().as_ref(),
+                    &["--print=sysroot"],
+                ).unwrap();
+
+                // Does <sysroot>/lib/rustlib/<target>/lib/<dylib_file> exist?
+                let mut libllvm_path = PathBuf::new();
+                libllvm_path.push(sysroot);
+                libllvm_path.push("lib/rustlib");
+                libllvm_path.push(env::var("TARGET").unwrap());
+                libllvm_path.push("lib");
+                libllvm_path.push(dylib_file);
+
+                libllvm_path.as_path().exists()
+            } else {
+                false
+            }
+        };
+
+        let link_statically = {
+            let args = if conflicts_with_rustlib_llvm {
+                vec!["--shared-mode", "--ignore-libllvm"]
+            } else {
+                vec!["--shared-mode"]
+            };
+            invoke_command(llvm_config.as_ref(), &args)
+                .map_or(false, |c| c == "static")
+        };
+
+        // If we do need to statically link against libLLVM, construct the list
+        // of libs.
+        let static_libs = invoke_command(llvm_config.as_ref(), &[
             "--libs", "--link-static",
             "MC", "MCParser", "Support", "Option", "BitReader", "ProfileData", "BinaryFormat", "Core",
         ])
@@ -280,9 +338,9 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
 
         Self {
             lib_dir,
-            system_libs,
+            link_statically,
             static_libs,
-            static_mode,
+            system_libs,
         }
     }
 }
