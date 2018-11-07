@@ -305,6 +305,91 @@ impl Transform for Localize {
 }
 
 
+/// Replace marked statics with local variable declarations, one in each function that uses the
+/// static.
+struct StaticToLocal;
+
+impl Transform for StaticToLocal {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        // (1) Collect all marked statics.
+
+        struct StaticInfo {
+            name: Ident,
+            ty: P<Ty>,
+            mutbl: Mutability,
+            expr: P<Expr>,
+        }
+        let mut statics = HashMap::new();
+
+        let krate = fold_nodes(krate, |i: P<Item>| {
+            if !st.marked(i.id, "target") {
+                return smallvec![i];
+            }
+
+            match i.node {
+                ItemKind::Static(ref ty, mutbl, ref expr) => {
+                    let def_id = cx.node_def_id(i.id);
+                    statics.insert(def_id, StaticInfo {
+                        name: i.ident.clone(),
+                        ty: ty.clone(),
+                        mutbl: mutbl,
+                        expr: expr.clone(),
+                    });
+                    return smallvec![];
+                },
+                _ => {},
+            }
+
+            smallvec![i]
+        });
+
+
+        // (2) Add a new local to every function that uses a marked static.
+
+        let krate = fold_fns(krate, |mut fl| {
+            // Figure out which statics (if any) this function uses.
+            let mut ref_ids = HashSet::new();
+            let mut refs = Vec::new();
+            fl.block = fold_resolved_paths(fl.block, cx, |qself, path, def| {
+                if let Some(def_id) = def.opt_def_id() {
+                    if ref_ids.insert(def_id) {
+                        if let Some(info) = statics.get(&def_id) {
+                            refs.push(info);
+                        }
+                    }
+                }
+                (qself, path)
+            });
+
+            if refs.len() == 0 {
+                return fl;
+            }
+
+            refs.sort_by_key(|info| info.name.name);
+
+            fl.block = fl.block.map(|b| b.map(|mut b| {
+                let mut new_stmts = Vec::with_capacity(refs.len() + b.stmts.len());
+
+                for &info in &refs {
+                    let pat = mk().set_mutbl(info.mutbl).ident_pat(info.name);
+                    let local = mk().local(pat, Some(info.ty.clone()), Some(info.expr.clone()));
+                    let stmt = mk().local_stmt(P(local));
+                    new_stmts.push(stmt);
+                }
+
+                new_stmts.extend(b.stmts.into_iter());
+                b.stmts = new_stmts;
+                b
+            }));
+
+            fl
+        });
+
+        krate
+    }
+}
+
+
 
 
 pub fn register_commands(reg: &mut Registry) {
@@ -315,4 +400,5 @@ pub fn register_commands(reg: &mut Registry) {
         instance_name: args[1].clone(),
     }));
     reg.register("static_to_local_ref", |_args| mk(Localize));
+    reg.register("static_to_local", |_args| mk(StaticToLocal));
 }
