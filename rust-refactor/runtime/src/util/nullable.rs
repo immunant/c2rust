@@ -1,3 +1,6 @@
+use std::rc::Rc;
+use std::sync::Arc;
+
 /// Marker trait for types for which a bit pattern of all zeros represents a valid instance of the
 /// type.
 pub unsafe trait Nullable {}
@@ -19,3 +22,11 @@ impl_nullable! {
 
 unsafe impl<T> Nullable for *const T {}
 unsafe impl<T> Nullable for *mut T {}
+
+unsafe impl<'a, T: ?Sized> Nullable for Option<&'a T> {}
+unsafe impl<'a, T: ?Sized> Nullable for Option<&'a mut T> {}
+unsafe impl<T: ?Sized> Nullable for Option<Box<T>> {}
+unsafe impl<T: ?Sized> Nullable for Option<Rc<T>> {}
+unsafe impl<T: ?Sized> Nullable for Option<Arc<T>> {}
+unsafe impl<T> Nullable for Option<Vec<T>> {}
+unsafe impl Nullable for Option<String> {}
