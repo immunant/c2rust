@@ -28,6 +28,8 @@
 //!  * `typed!(x, ty)`: Matches an `Expr` or `Ty` whose resolved type matches `ty`.  Specifically,
 //!    the resolved type of the node is converted back to an AST using the `reflect` module, and
 //!    the new AST is matched against `ty`.
+//!
+//!  * `cast!(x)`: Matches the `Expr`s `x`, `x as __t`, `x as __t as __t`, etc.
 
 use std::collections::hash_map::HashMap;
 use std::cmp;
@@ -41,7 +43,7 @@ use syntax::parse::PResult;
 use syntax::parse::parser::Parser;
 use syntax::parse::token::Token;
 use syntax::ptr::P;
-use syntax::tokenstream::ThinTokenStream;
+use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::move_map::MoveMap;
 use smallvec::SmallVec;
 
@@ -393,6 +395,29 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         }
 
         self.try_match(&pattern, target)
+    }
+
+    pub fn do_cast<F>(&mut self, tts: &ThinTokenStream, func: F, target: &Expr) -> Result<()>
+            where F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, P<Expr>> {
+        let ts: TokenStream = tts.clone().into();
+        let pattern = driver::run_parser_tts(self.cx.session(), ts.into_trees().collect(), func);
+
+        let mut target = target;
+        loop {
+            // Try to match `pattern` with `target`.  On error, if `target` is a cast expression,
+            // try again underneath the cast.
+            let old_bnd = self.bindings.clone();
+            let err = match self.try_match::<Expr>(&pattern, target) {
+                Ok(()) => return Ok(()),
+                Err(err) => err,
+            };
+            self.bindings = old_bnd;
+
+            target = match target.node {
+                ExprKind::Cast(ref e, _) => e,
+                _ => return Err(err),
+            };
+        }
     }
 }
 

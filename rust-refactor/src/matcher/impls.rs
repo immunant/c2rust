@@ -55,6 +55,9 @@ impl TryMatch for Expr {
                 "typed" => mcx.do_typed(&mac.node.tts,
                                         |p| p.parse_expr().map(|p| p.into_inner()),
                                         target),
+                "cast" => mcx.do_cast(&mac.node.tts,
+                                      |p| p.parse_expr(),
+                                      target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
         }
