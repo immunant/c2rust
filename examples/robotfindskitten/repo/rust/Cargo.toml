@@ -11,6 +11,7 @@ path = "src/robotfindskitten.rs"
 [dependencies]
 c2rust_runtime = { path = "../../../../rust-refactor/runtime" }
 rand = "0.5.5"
+pancurses = "0.16.0"
 
 [profile.dev]
 incremental = false

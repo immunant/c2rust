@@ -276,6 +276,92 @@ REFACTORINGS = [
         ''',
 
 
+        # Convert ncurses calls into pancurses Window methods
+        '''
+            select target 'crate;' ;
+            create_item 'extern crate pancurses;' inside ;
+        ''',
+
+        '''
+            select target 'crate;' ;
+            create_item 'static mut win: Option<::pancurses::Window> = None;' inside ;
+        ''',
+
+        '''
+            select target 'item(initialize_ncurses);' ;
+            create_item '
+                fn encode_input(inp: Option<::pancurses::Input>) -> libc::c_int {
+                    use ::pancurses::Input::*;
+                    let inp = match inp {
+                        Some(x) => x,
+                        None => return -1,
+                    };
+                    match inp {
+                        // TODO: unicode inputs in the range 256 .. 512 can
+                        // collide with ncurses special keycodes
+                        Character(c) => c as u32 as libc::c_int,
+                        Unknown(i) => i,
+                        special => {
+                            let idx = ::pancurses::SPECIAL_KEY_CODES.iter()
+                                .position(|&k| k == special).unwrap();
+                            let code = idx as i32 + ::pancurses::KEY_OFFSET;
+                            if code > ::pancurses::KEY_F15 {
+                                code + 48
+                            } else {
+                                code
+                            }
+                        },
+                    }
+                }
+            ' after ;
+        ''',
+
+        # Pure laziness: we write just `win` in all these replacement
+        # templates, then replace it with `win.unwrap()` at the end.
+        '''
+            rewrite_expr 'LINES' 'win.get_max_y()' ;
+            rewrite_expr 'COLS' 'win.get_max_x()' ;
+
+            rewrite_expr 'nonl' '::pancurses::nonl' ;
+            rewrite_expr 'noecho' '::pancurses::noecho' ;
+            rewrite_expr 'cbreak' '::pancurses::cbreak' ;
+            rewrite_expr 'has_colors' '::pancurses::has_colors' ;
+            rewrite_expr 'start_color' '::pancurses::start_color' ;
+            rewrite_expr 'endwin' '::pancurses::endwin' ;
+            rewrite_expr 'init_pair' '::pancurses::init_pair' ;
+
+            rewrite_expr 'wrefresh(stdscr)' 'win.refresh()' ;
+            rewrite_expr 'wrefresh(curscr)' 'win.refresh()' ;
+            rewrite_expr 'keypad(stdscr, __bf)' 'win.keypad(__bf)' ;
+            rewrite_expr 'wmove(stdscr, __my, __mx)' 'win.mv(__my, __mx)' ;
+            rewrite_expr 'wclear(stdscr)' 'win.clear()' ;
+            rewrite_expr 'wclrtoeol(stdscr)' 'win.clrtoeol()' ;
+            rewrite_expr 'wgetch(stdscr)' '::encode_input(win.getch())' ;
+            rewrite_expr 'waddch(stdscr, __ch)' 'win.addch(__ch)' ;
+            rewrite_expr
+                'waddnstr(stdscr, __str as *const u8 as *const libc::c_char, __n)'
+                'win.addnstr(::std::str::from_utf8(__str).unwrap(), __n as usize)' ;
+            rewrite_expr
+                'wattr_get(stdscr, __attrs, __pair, __e)'
+                '{
+                    let tmp = win.attrget();
+                    *__attrs = tmp.0;
+                    *__pair = tmp.1;
+                    0
+                }' ;
+            rewrite_expr
+                'wattrset(stdscr, __attrs)'
+                'win.attrset(__attrs as ::pancurses::chtype)' ;
+
+            rewrite_expr 'intrflush(__e, __f)' '0' ;
+
+            rewrite_expr 'win' 'win.as_ref().unwrap()' ;
+
+            rewrite_expr 'initscr()' 'win = Some(::pancurses::initscr())' ;
+        ''',
+
+
+
         # Collect mutable statics into a single struct
 
         '''
@@ -290,77 +376,6 @@ REFACTORINGS = [
             select target 'crate; child(static && name("S"));' ;
             select user 'crate; desc(fn && !name("main"));' ;
             static_to_local_ref
-        ''',
-
-
-        # Define safe wrappers for ncurses functions
-
-        '''
-            abstract 'lines() -> libc::c_int' 'LINES' ;
-            abstract 'cols() -> libc::c_int' 'COLS' ;
-
-            abstract 'initscr_()' 'initscr()' '{ initscr(); }' ;
-            abstract 'nonl_() -> libc::c_int' 'nonl()' ;
-            abstract 'noecho_() -> libc::c_int' 'noecho()' ;
-            abstract 'cbreak_() -> libc::c_int' 'cbreak()' ;
-            abstract 'has_colors_() -> bool' 'has_colors()' ;
-            abstract 'start_color_() -> libc::c_int' 'start_color()' ;
-            abstract 'endwin_() -> libc::c_int' 'endwin()' ;
-
-            abstract 'refresh() -> libc::c_int' 'wrefresh(stdscr)' ;
-            abstract 'move_(y: libc::c_int, x: libc::c_int) -> libc::c_int'
-                'wmove(stdscr, y, x)' ;
-            abstract 'clear() -> libc::c_int' 'wclear(stdscr)' ;
-            abstract 'clrtoeol() -> libc::c_int' 'wclrtoeol(stdscr)' ;
-            abstract 'getch() -> libc::c_int' 'wgetch(stdscr)' ;
-            abstract 'addch(ch: chtype) -> libc::c_int' 'waddch(stdscr, ch)' ;
-            abstract 'addnstr(str: &[u8], n: libc::c_int) -> libc::c_int'
-                'waddnstr(stdscr, str as *const u8 as *const libc::c_char, n)'
-                'waddnstr(stdscr, str.as_ptr() as *const libc::c_char, n)' ;
-            abstract
-                'attr_get(attrs: &mut attr_t, pair: &mut libc::c_short) -> libc::c_int'
-                'wattr_get(stdscr, attrs, pair, __e)'
-                'wattr_get(stdscr, attrs, pair, ::std::ptr::null_mut())' ;
-            abstract
-                'attrset(attrs: libc::c_int) -> libc::c_int'
-                'wattrset(stdscr, attrs)' ;
-
-            abstract 'init_pair_(pair: libc::c_short,
-                                 f: libc::c_short,
-                                 b: libc::c_short) -> libc::c_int'
-                'init_pair(pair, f, b)' ;
-
-
-            select target 'item(ncurses);' ;
-            create_item '
-                #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-                pub enum WindowToken {
-                    StdScr,
-                    CurScr,
-                }
-
-                impl WindowToken {
-                    pub fn as_ptr(self) -> *mut ::WINDOW {
-                        match self {
-                            WindowToken::StdScr => unsafe { ::stdscr },
-                            WindowToken::CurScr => unsafe { ::curscr },
-                        }
-                    }
-                }
-            ' inside ;
-
-            rewrite_expr 'stdscr' 'ncurses::WindowToken::StdScr.as_ptr()' ;
-            rewrite_expr 'curscr' 'ncurses::WindowToken::CurScr.as_ptr()' ;
-
-            abstract 'keypad_(win: ncurses::WindowToken, bf: bool) -> libc::c_int'
-                'keypad(win.as_ptr(), bf)' ;
-            abstract 'intrflush_(win: ncurses::WindowToken, bf: bool) -> libc::c_int'
-                'intrflush(win.as_ptr(), bf)' ;
-            abstract 'wrefresh_(win: ncurses::WindowToken) -> libc::c_int'
-                'wrefresh(win.as_ptr())' ;
-
-            copy_marks new target ;
-            sink_unsafe ;
         ''',
 
 
