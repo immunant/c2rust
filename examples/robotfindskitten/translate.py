@@ -310,7 +310,7 @@ REFACTORINGS = [
         # templates, then replace it with `win.unwrap()` at the end.
 
         # Wholesale replacement of fmt_printw and fmt_mvprintw.
-        '''
+        r'''
             select target 'item(fmt_printw);' ;
             create_item '
                 fn fmt_printw(args: ::std::fmt::Arguments) -> libc::c_int {
@@ -355,7 +355,8 @@ REFACTORINGS = [
             rewrite_expr 'waddch(stdscr, __ch)' 'win.addch(__ch)' ;
             rewrite_expr
                 'waddnstr(stdscr, __str as *const u8 as *const libc::c_char, __n)'
-                'win.addnstr(::std::str::from_utf8(__str).unwrap(), __n as usize)' ;
+                "win.addnstr(::std::str::from_utf8(__str).unwrap().trim_end_matches('\0'),
+                             __n as usize)" ;
             rewrite_expr
                 'wattr_get(stdscr, __attrs, __pair, __e)'
                 '{
@@ -374,7 +375,6 @@ REFACTORINGS = [
 
             rewrite_expr 'initscr()' 'win = Some(::pancurses::initscr())' ;
         ''',
-
 
 
         # Collect mutable statics into a single struct
@@ -423,10 +423,57 @@ REFACTORINGS = [
             rewrite_expr 'signal(__e, __f)' 'unsafe { signal(__e, __f) }' ;
         ''',
 
+
+        # Retype the string argument of `message`
+        '''
+            select target
+                'item(message); child(arg); child(match_ty(*mut libc::c_char));' ;
+            rewrite_ty 'marked!(*mut libc::c_char)' '&str' ;
+            delete_marks target ;
+            type_fix_rules
+                '*, &str, *const __t =>
+                    ::std::ffi::CString::new(__old.to_owned()).unwrap().as_ptr()'
+                '*, *mut __t, &str =>
+                    unsafe { ::std::ffi::CStr::from_ptr(__old).to_str().unwrap() }' ;
+        ''',
+
+
+
         # Mark all functions as safe, except for main_0.
         '''
             select target 'crate; desc(fn && !name("main_0"));' ;
             set_unsafety safe ;
+        ''',
+
+
+        # Clean up str -> CStr -> str conversions
+        r'''
+            rewrite_expr
+                '::std::ffi::CStr::from_ptr(
+                    cast!(typed!(__e, ::std::ffi::CString).as_ptr()))'
+                '__e' ;
+            rewrite_expr
+                '::std::ffi::CString::new(__e).unwrap().to_str()'
+                'Some(&__e)' ;
+            rewrite_expr
+                '::std::ffi::CStr::from_ptr(
+                    cast!(typed!(__e, &str).as_ptr())).to_str()'
+                "Some(__e.trim_end_matches('\0'))" ;
+            rewrite_expr
+                '::std::ffi::CStr::from_ptr(
+                    cast!(typed!(__e, &[u8; __f]))).to_str()'
+                "Some(::std::str::from_utf8(__e).unwrap().trim_end_matches('\0'))" ;
+
+            select target
+                'crate; desc(match_expr(::std::str::from_utf8(__e))); desc(expr);' ;
+            bytestr_to_str ;
+            type_fix_rules '*, &str, &[u8] => __old.as_bytes()' ;
+            clear_marks ;
+
+            rewrite_expr
+                '::std::str::from_utf8(__e.as_bytes())'
+                'Some(__e)' ;
+
         ''',
 ]
 
