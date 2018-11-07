@@ -4,7 +4,6 @@ use std::str::FromStr;
 use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
-use syntax::symbol::Symbol;
 use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::TokenTree;
 
@@ -12,50 +11,19 @@ use api::*;
 use command::{CommandState, Registry};
 use driver;
 use transform::Transform;
-use rust_ast_builder::IntoSymbol;
 
 
-/// Replace uses of a target function with invocations of a macro.
-pub struct FuncToMacro {
-    macro_name: Symbol,
-}
-
-impl Transform for FuncToMacro {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
-        fold_nodes(krate, |e: P<Expr>| {
-            if !st.marked(e.id, "target") {
-                return e;
-            }
-
-            let args = match e.into_inner().node {
-                ExprKind::Call(_, args) => args,
-                ExprKind::MethodCall(_, args) => args,
-                _ => panic!("expected Call or MethodCall"),
-            };
-
-            let mut tts = Vec::new();
-            for (i, arg) in args.into_iter().enumerate() {
-                if i > 0 {
-                    tts.push(TokenTree::Token(DUMMY_SP, Token::Comma));
-                }
-                tts.push(TokenTree::Token(arg.span, Token::interpolated(
-                            Nonterminal::NtExpr(arg))));
-            }
-
-            mk().mac_expr(mk().mac(vec![self.macro_name], tts, MacDelimiter::Parenthesis))
-        })
-    }
-}
-
-
-/// Translate formatting function arguments from `printf` style to `format!` style.
+/// Translate `printf`-style format strings and arguments into a Rust `format_args!` invocation.
+/// Note that this will likely introduce type errors, and should be followed up with a specific
+/// rewrite to replace each affected function with a wrapper taking `std::fmt::Arguments`.
 ///
 /// Note that this works only on functions, not macros.  At each function call, if an argument is
 /// marked, that argument will be treated as a format string, with all subsequent arguments as its
-/// format arguments.  Both the format string and its arguments will be modified by this command.
-pub struct ConvertFormatString;
+/// format arguments.  The format string and arguments will all be removed from the callsite and
+/// replaced with the new `format_args!` invocation.
+pub struct ConvertFormatArgs;
 
-impl Transform for ConvertFormatString {
+impl Transform for ConvertFormatArgs {
     fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
         fold_nodes(krate, |e: P<Expr>| {
             let fmt_idx = match e.node {
@@ -116,13 +84,21 @@ impl Transform for ConvertFormatString {
             info!("old fmt str expr: {:?}", old_fmt_str_expr);
             info!("new fmt str expr: {:?}", new_fmt_str_expr);
 
-            let mut new_args = args[..fmt_idx].to_owned();
-            new_args.push(new_fmt_str_expr);
+            let mut macro_tts: Vec<TokenTree> = Vec::new();
+            let expr_tt = |e: P<Expr>| TokenTree::Token(e.span, Token::interpolated(
+                    Nonterminal::NtExpr(e)));
+            macro_tts.push(expr_tt(new_fmt_str_expr));
             for (i, arg) in args[fmt_idx + 1 ..].iter().enumerate() {
                 if let Some(cast) = casts.get(&i) {
-                    new_args.push(cast.apply(arg.clone()));
+                    let tt = expr_tt(cast.apply(arg.clone()));
+                    macro_tts.push(TokenTree::Token(DUMMY_SP, Token::Comma));
+                    macro_tts.push(tt);
                 }
             }
+            let mac = mk().mac(vec!["format_args"], macro_tts, MacDelimiter::Parenthesis);
+
+            let mut new_args = args[..fmt_idx].to_owned();
+            new_args.push(mk().mac_expr(mac));
 
             mk().id(st.transfer_marks(e.id)).call_expr(func, new_args)
         })
@@ -157,7 +133,9 @@ impl CastType {
                     mk().path_expr(mk().abs_path(vec!["std", "ffi", "CStr", "from_ptr"])),
                     vec![e]);
                 let s = mk().method_call_expr(cs, "to_str", Vec::<P<Expr>>::new());
-                mk().method_call_expr(s, "unwrap", Vec::<P<Expr>>::new())
+                let call = mk().method_call_expr(s, "unwrap", Vec::<P<Expr>>::new());
+                let b = mk().unsafe_().block(vec![mk().expr_stmt(call)]);
+                mk().block_expr(b)
             },
         }
     }
@@ -351,9 +329,5 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
-    reg.register("func_to_macro", |args| mk(FuncToMacro {
-        macro_name: (&args[0]).into_symbol(),
-    }));
-
-    reg.register("convert_format_string", |_args| mk(ConvertFormatString));
+    reg.register("convert_format_args", |_args| mk(ConvertFormatArgs));
 }

@@ -81,92 +81,82 @@ REFACTORINGS = [
         #     statics.
 
 
-        # Replace printf/printw/etc with formatting macros.
+        # Replace printf/printw/etc with uses of formatting macros.
 
         r'''
-            select target 'crate; desc(mod && name("ncurses"));' ;
-            create_item '
-                macro_rules! printw {
-                    ($($args:tt)*) => {
-                        unsafe {
-                            ::printw(b"%s\0" as *const u8 as *const libc::c_char,
-                                     ::std::ffi::CString::new(format!($($args)*))
-                                        .unwrap().as_ptr())
-                        }
-                    };
-                }
-            ' after
-        ''',
-        '''
-            select printw 'item(printw);' ;
+            select func 'item(printw);' ;
 
-            copy_marks printw fmt_arg ;
+            copy_marks func fmt_arg ;
             mark_arg_uses 0 fmt_arg ;
 
             select fmt_str 'marked(fmt_arg); desc(expr && !match_expr(__e as __t));' ;
 
-            copy_marks printw calls ;
-            mark_callers calls ;
-
             rename_marks fmt_arg target ;
-            convert_format_string ;
-            delete_marks target ;
+            convert_format_args ;
 
-            rename_marks calls target ;
-            func_to_macro printw ;
+            clear_marks ;
+
+            select target 'crate; desc(mod && name("ncurses"));' ;
+            create_item '
+                fn fmt_printw(args: ::std::fmt::Arguments) -> libc::c_int {
+                    unsafe {
+                        ::printw(b"%s\0" as *const u8 as *const libc::c_char,
+                                 ::std::ffi::CString::new(format!("{}", args))
+                                     .unwrap().as_ptr())
+                    }
+                }
+            ' after ;
+            rewrite_expr 'printw' 'fmt_printw' ;
         ''',
-
 
         r'''
-            select target 'crate; desc(item && name("printw"));' ;
-            create_item '
-                macro_rules! mvprintw {
-                    ($y:expr, $x:expr, $($args:tt)*) => {
-                        unsafe {
-                            ::mvprintw($y, $x, b"%s\0" as *const u8 as *const libc::c_char,
-                                     ::std::ffi::CString::new(format!($($args)*))
-                                        .unwrap().as_ptr())
-                        }
-                    };
-                }
-            ' after
-        ''',
-        '''
-            select mvprintw 'item(mvprintw);' ;
+            select func 'item(mvprintw);' ;
 
-            copy_marks mvprintw fmt_arg ;
+            copy_marks func fmt_arg ;
             mark_arg_uses 2 fmt_arg ;
 
             select fmt_str 'marked(fmt_arg); desc(expr && !match_expr(__e as __t));' ;
 
-            copy_marks mvprintw calls ;
-            mark_callers calls ;
-
             rename_marks fmt_arg target ;
-            convert_format_string ;
-            delete_marks target ;
+            convert_format_args ;
 
-            rename_marks calls target ;
-            func_to_macro mvprintw ;
+            clear_marks ;
+
+            select target 'crate; desc(mod && name("ncurses"));' ;
+            create_item '
+                fn fmt_mvprintw(y: libc::c_int, x: libc::c_int,
+                                args: ::std::fmt::Arguments) -> libc::c_int {
+                    unsafe {
+                        ::mvprintw(y, x, b"%s\0" as *const u8 as *const libc::c_char,
+                                 ::std::ffi::CString::new(format!("{}", args))
+                                     .unwrap().as_ptr())
+                    }
+                }
+            ' after ;
+            rewrite_expr 'mvprintw' 'fmt_mvprintw' ;
         ''',
 
-        '''
-            select printf 'item(printf);' ;
+        r'''
+            select func 'item(printf);' ;
 
-            copy_marks printf fmt_arg ;
+            copy_marks func fmt_arg ;
             mark_arg_uses 0 fmt_arg ;
 
             select fmt_str 'marked(fmt_arg); desc(expr && !match_expr(__e as __t));' ;
 
-            copy_marks printf calls ;
-            mark_callers calls ;
-
             rename_marks fmt_arg target ;
-            convert_format_string ;
-            delete_marks target ;
+            convert_format_args ;
 
-            rename_marks calls target ;
-            func_to_macro print ;
+            clear_marks ;
+
+            select target 'crate; desc(mod && name("ncurses"));' ;
+            create_item '
+                fn fmt_printf(args: ::std::fmt::Arguments) -> libc::c_int {
+                    print!("{}", args);
+                    0
+                }
+            ' after ;
+            rewrite_expr 'printf' 'fmt_printf' ;
         ''',
 
 
@@ -318,7 +308,32 @@ REFACTORINGS = [
 
         # Pure laziness: we write just `win` in all these replacement
         # templates, then replace it with `win.unwrap()` at the end.
+
+        # Wholesale replacement of fmt_printw and fmt_mvprintw.
         '''
+            select target 'item(fmt_printw);' ;
+            create_item '
+                fn fmt_printw(args: ::std::fmt::Arguments) -> libc::c_int {
+                    unsafe {
+                        win.printw(&format!("{}", args))
+                    }
+                }
+            ' after ;
+            delete_items ;
+            clear_marks ;
+
+            select target 'item(fmt_mvprintw);' ;
+            create_item '
+                fn fmt_mvprintw(y: libc::c_int, x: libc::c_int,
+                                args: ::std::fmt::Arguments) -> libc::c_int {
+                    unsafe {
+                        win.mvprintw(y, x, &format!("{}", args))
+                    }
+                }
+            ' after ;
+            delete_items ;
+            clear_marks ;
+
             rewrite_expr 'LINES' 'win.get_max_y()' ;
             rewrite_expr 'COLS' 'win.get_max_x()' ;
 

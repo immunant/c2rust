@@ -444,6 +444,10 @@ impl Transform for CreateItem {
                 });
                 fold::noop_fold_block(b, self)
             }
+
+            fn fold_mac(&mut self, mac: Mac) -> Mac {
+                fold::noop_fold_mac(mac, self)
+            }
         }
 
         krate.fold(&mut CreateFolder { st, mark, inside, items })

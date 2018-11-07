@@ -8,5 +8,5 @@ fi
 $refactor \
     select target 'crate; desc(fn && name("printf"));' \; \
     mark_arg_uses 0 target \; \
-    convert_format_string \
+    convert_format_args \
     -- old.rs $rustflags
