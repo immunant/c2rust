@@ -45,8 +45,7 @@ pub struct CrateInformation<'a, 'tcx: 'a, 'st> {
     /// Mapping for fast item lookup, stops the need of having to search the entire Crate.
     item_map: HashMap<NodeId, Item>,
 
-    /// Maps a *to_be_moved `Item` to the "destination module" id
-    /// * meaning items that pass the `is_std` and `has_source_header` check
+    /// Maps a header declaration item id to a new destination module id.
     item_to_dest_module: HashMap<NodeId, NodeId>,
 
     /// This is used for mapping modules that need to be created to a new node id
@@ -367,7 +366,8 @@ impl Transform for ReorganizeModules {
         // This is where a bulk of the duplication removal happens, as well as path clean up.
         // 1. Paths are updated, meaning either removed or changed to match module change.
         //      And then reinserted with the new set of prefixes.
-        // 2. Removes duplicates from `ForeignMod`'s, and the Duplicate Items.
+        // 2. Removes duplicates from `ForeignMod`'s
+        // 3. Also removes duplicate `Item`'s found within a module.
         let krate = fold_nodes(krate, |pi: P<Item>| {
             let mut v = smallvec![];
             match pi.node {
@@ -605,6 +605,8 @@ fn has_source_header(attrs: &Vec<Attribute>) -> bool {
 /// A check that goes through an `Item`'s attributes, and if the module
 /// has "/usr/include" in the path like: `#[header_src = "/usr/include/stdlib.h"]`
 /// then function return true.
+// TODO: In macOS mojave the system headers aren't in `/usr/include` anymore,
+// so this needs to be updated.
 fn is_std(attrs: &Vec<Attribute>) -> bool {
     attrs.into_iter().any(|attr| {
         if let Some(meta) = attr.meta() {

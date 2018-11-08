@@ -360,7 +360,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             }
         }
 
-        // Helper function that returns true if there is either a matching typedef or it's
+        // Helper function that returns true if there is either a matching typedef or its
         // corresponding struct/union/enum
         fn contains(prenamed_decls: &HashMap<CDeclId, CDeclId>, decl_id: &CDeclId) -> bool {
             (prenamed_decls.contains_key(decl_id) ||
