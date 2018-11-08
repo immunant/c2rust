@@ -108,7 +108,7 @@ fn main() {
 
         // End-user
         .arg(Arg::with_name("INPUT")
-            .help("Sets the input CBOR file to use")
+            .help("Input C file")
             .required(true)
             .index(1))
         .arg(Arg::with_name("invalid-code")
