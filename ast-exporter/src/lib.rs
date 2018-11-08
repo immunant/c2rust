@@ -5,7 +5,7 @@ extern crate serde_cbor;
 use serde_cbor::{Value, from_slice};
 use std::collections::HashMap;
 use std::ffi::{CString,CStr};
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 use std::path::Path;
 use std::slice;
 
@@ -13,12 +13,13 @@ pub mod clang_ast;
 
 pub fn get_untyped_ast(file_path: &Path) -> Result<clang_ast::AstContext, Error> {
     let cbors = get_ast_cbors(&[file_path.to_str().unwrap()]);
-    let buffer = cbors.values().next().unwrap();
+    let buffer = cbors.values().next()
+        .ok_or(Error::new(ErrorKind::InvalidData, "Could not parse input file"))?;
     let items: Value = from_slice(&buffer[..]).unwrap();
 
     match clang_ast::process(items) {
         Ok(cxt) => Ok(cxt),
-        Err(e) => panic!("{:#?}", e),
+        Err(e) => Err(Error::new(ErrorKind::InvalidData, format!("{:}", e))),
     }
 }
 

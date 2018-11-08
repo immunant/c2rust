@@ -7,6 +7,7 @@ use std::io::stdout;
 use std::io::prelude::*;
 use std::fs::{File, canonicalize};
 use std::path::{Path, PathBuf};
+use std::process;
 use transpiler::c_ast::*;
 use transpiler::c_ast::Printer;
 use transpiler::translator::{ReplaceMode,TranslationConfig};
@@ -182,7 +183,10 @@ fn main() {
 
     // Extract the untyped AST from the CBOR file
     let untyped_context = match ast_exporter::get_untyped_ast(&c_path) {
-        Err(e) => panic!("{:#?}", e),
+        Err(e) => {
+            eprintln!("Error: {:}", e);
+            process::exit(1);
+        }
         Ok(cxt) => cxt,
     };
 
