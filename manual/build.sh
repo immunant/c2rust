@@ -35,6 +35,10 @@ emptysection examples.md Examples
 emptysection translator.md Translator
 
 
+genfile c2rust-refactor-commands.md \
+    python3 ../c2rust-refactor/doc/gen_command_docs.py
+
+
 # Actually build the HTML docs.
 mdbook build
 

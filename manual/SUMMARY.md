@@ -15,6 +15,7 @@
     - [backends](cross-checks/rust-checks/backends/README.md)
     - [clang-plugin](cross-checks/c-checks/clang-plugin/README.md)
 - [Refactoring Tool](c2rust-refactor/README.md)
+    - [Commands](_generated/c2rust-refactor-commands.md)
     - [Ownership analysis](c2rust-refactor/src/analysis/ownership/README.md)
 - [Examples](_generated/examples.md):
     - [json-c](examples/json-c/README.md)
