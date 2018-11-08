@@ -12,7 +12,7 @@ from common import *
 import transpile
 
 
-# List of rust-refactor commands to run.
+# List of c2rust-refactor commands to run.
 
 def mk_select(script, mark='target'):
     return ['select', mark, script]
@@ -56,9 +56,9 @@ REFACTORINGS = [
 
 
 
-idiomize = get_cmd_or_die(config.RREF_BIN)
+refactor = get_cmd_or_die(config.RREF_BIN)
 
-def run_idiomize(args, mode='inplace'):
+def run_refactor(args, mode='inplace'):
     full_args = ['-r', mode] + args + [
             '--', 'src/lib.rs', '--crate-type=dylib',
             '--crate-name=json_c',
@@ -76,7 +76,7 @@ def run_idiomize(args, mode='inplace'):
     with local.env(RUST_BACKTRACE='1',
                    LD_LIBRARY_PATH=ld_lib_path):
         with local.cwd(os.path.join(JSON_C_DIR, 'rust')):
-            idiomize[full_args]()
+            refactor[full_args]()
 
 
 def main():
@@ -135,7 +135,7 @@ def main():
 
     for refactor_args in REFACTORINGS:
         print('REFACTOR: %r' % (refactor_args,))
-        run_idiomize(refactor_args)
+        run_refactor(refactor_args)
 
 
 if __name__ == '__main__':

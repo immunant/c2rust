@@ -7,7 +7,7 @@ C2Rust helps you migrate C99-compliant code to Rust. It provides:
 - a Rust code refactoring tool, and
 - a way to cross-check the C code against the new Rust code.
 
-The translator (or transpiler), produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to produce code that is functionally identical to the input C code. Generating safe or idomatic Rust is *not* a goal for the translator. Rather, we think the best approach is to gradually clean up the translator using dedicated refactoring tools. See the `rust-refactor` directory to learn about the `idiomize` tool that we are working on.
+The translator (or transpiler), produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to produce code that is functionally identical to the input C code. Generating safe or idomatic Rust is *not* a goal for the translator. Rather, we think the best approach is to gradually clean up the translator using dedicated refactoring tools. See the `c2rust-refactor` directory to learn about the `c2rust-refactor` tool that we are working on.
 Some refactoring will have to be done by hand which may introduce errors. We provide plugins for `clang` and `rustc` so you can compile and run two binaries and check that they behave identically (at the level of function calls).
 See details in the `cross-checks` directory and in the cross checking [tutorial](docs/cross-check-tutorial.md). Here's the big picture:
 
@@ -42,7 +42,7 @@ A rust installation with cargo is also required on all platforms, see: [rustup](
 
 ## Building C2Rust
 
-    $ cd transpiler
+    $ cd c2rust-transpile
     $ cargo build
 
 On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:

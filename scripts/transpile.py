@@ -267,8 +267,7 @@ def transpile_files(cc_db: TextIO,
                     reloop_cfgs: bool = True,
                     reorganize_definitions: bool = False) -> bool:
     """
-    run the ast-exporter and transpiler on all C files
-    in a compile commands database.
+    run the transpiler on all C files in a compile commands database.
     """
     rustfmt = os.path.join(get_rust_toolchain_binpath(), "rustfmt")
     rustfmt = get_cmd_or_die(rustfmt)

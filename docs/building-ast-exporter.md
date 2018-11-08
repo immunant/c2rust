@@ -1,6 +1,6 @@
 **NOTE:** On macOS and Linux, you can use `build_translator.py` to perform these steps.
 
-Building the ast-exporter currently requires an LLVM project checkout.
+Building the c2rust-ast-exporter currently requires an LLVM project checkout.
 I haven't sliced the portion of the CMake build system that LLVM uses
 to build its tools. These instruction use the directory `~/clang-llvm`
 because the tutorial does.
@@ -26,11 +26,11 @@ cd clang/tools
 git clone http://llvm.org/git/clang-tools-extra.git extra
 ```
 
-Here's where I added the ast-exporter source directory to the llvm build tree.
+Here's where I added the c2rust-ast-exporter source directory to the llvm build tree.
 
 ```
 $ cd ~/clang-llvm/llvm/tools/clang/tools/extra
-$ echo 'add_subdirectory(ast-exporter)' >> CMakeLists.txt
+$ echo 'add_subdirectory(c2rust-ast-exporter)' >> CMakeLists.txt
 $ ln -s $PATH_TO_ast_exporter
 ```
 
@@ -46,7 +46,7 @@ cmake -G Ninja ../llvm -DLLVM_BUILD_TESTS=ON  # Enable tests; default is off.
 ninja
 ninja check       # Test LLVM only. (optional)
 ninja clang-test  # Test Clang only. (optional)
-ninja ast-exporter
+ninja c2rust-ast-exporter
 ```
 
 Building with XCode
@@ -64,4 +64,4 @@ $ open LLVM.xcodeproj
 Debugging the AST Exporter
 ===========================
 
-The `ast-exporter` uses [LLVMs debug macros](http://llvm.org/docs/ProgrammersManual.html#the-debug-macro-and-debug-option). To enable debug output add `-debug-only=ast-exporter` to the command line invocation.
+The `c2rust-ast-exporter` uses [LLVMs debug macros](http://llvm.org/docs/ProgrammersManual.html#the-debug-macro-and-debug-option). To enable debug output add `-debug-only=c2rust-ast-exporter` to the command line invocation.

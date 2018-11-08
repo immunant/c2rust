@@ -1,0 +1,9 @@
+/c2rust-refactor
+/c2rust-refactor.d
+__pycache__/
+*.inc.rs
+/target/
+/*.so
+*.new
+
+!/tests/

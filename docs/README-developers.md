@@ -34,7 +34,7 @@ The previous two options automatically install all prerequisites during provisio
 
 The quickest way to build the C2Rust transpiler is with LLVM and clang system libraries (LLVM 6 and 7 are currently supported). If you have `libLLVM.so` and the `libclang` libraries (`libclangAST.a`, `libclangTooling.a`, etc. or their shared variants) installed, you can build the transpiler with:
 
-    $ cd transpiler
+    $ cd c2rust-transpile
     $ cargo build
     
 You can customize the location where the build system will look for LLVM using the following environment variables at compile time:
@@ -49,7 +49,7 @@ C2Rust (indirectly) uses the [clang-sys](https://crates.io/crates/clang-sys) cra
 
 # Building dependencies from source
 
-To develop on components that interact with LLVM, we recommend building against a local copy of LLVM. This will ensure that you have debug symbols and IDE integration for both LLVM and C2Rust. However, building C2Rust from source with LLVM takes a while. For a shorter build that links against prebuilt LLVM and clang system libraries, you should be able to `cargo build` in the `transpiler` directory (see the general [README](README.md)).
+To develop on components that interact with LLVM, we recommend building against a local copy of LLVM. This will ensure that you have debug symbols and IDE integration for both LLVM and C2Rust. However, building C2Rust from source with LLVM takes a while. For a shorter build that links against prebuilt LLVM and clang system libraries, you should be able to `cargo build` in the `c2rust-transpile` directory (see the general [README](README.md)).
 
 The following from source full build script has been tested on recent versions of macOS and Ubuntu:
 

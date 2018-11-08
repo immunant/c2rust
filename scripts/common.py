@@ -40,7 +40,7 @@ class Config:
     ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
     ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
     DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
-    RREF_DIR = os.path.join(ROOT_DIR, 'rust-refactor')
+    RREF_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
     CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
     REMON_SUBMOD_DIR = os.path.join(CROSS_CHECKS_DIR, 'ReMon')
     LIBFAKECHECKS_DIR = os.path.join(CROSS_CHECKS_DIR, "libfakechecks")
@@ -87,7 +87,7 @@ class Config:
 
     MIN_PLUMBUM_VERSION = (1, 6, 3)
     CMAKELISTS_COMMANDS = """
-add_subdirectory(ast-exporter)
+add_subdirectory(c2rust-ast-exporter)
 """.format(prefix=CBOR_PREFIX)  # nopep8
     CC_DB_JSON = "compile_commands.json"
 
@@ -96,7 +96,7 @@ add_subdirectory(ast-exporter)
     CUSTOM_RUST_RUSTC_VERSION = "rustc 1.31.0-nightly (1dceaddfb 2018-10-17)"
 
     RREF_BIN = os.path.join(RREF_DIR,
-            'target.{suffix}/release/idiomize'.format(suffix=HOST_SUFFIX))
+            'target.{suffix}/release/c2rust-refactor'.format(suffix=HOST_SUFFIX))
 
     def __init__(self):
         self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER) 
@@ -132,7 +132,7 @@ add_subdirectory(ast-exporter)
             if args.debug:
                 build_type = 'debug'
 
-        self.TRANSPILER = "transpiler/target/{}/transpiler".format(build_type)
+        self.TRANSPILER = "c2rust-transpile/target/{}/c2rust-transpile".format(build_type)
         self.TRANSPILER = os.path.join(self.ROOT_DIR, self.TRANSPILER)
 
     @staticmethod
@@ -450,9 +450,9 @@ def export_ast_from(ast_expo: pb.commands.BaseCommand,
                     cc_db_path: str,
                     **kwargs) -> str:
     """
-    run ast-exporter for a single compiler invocation.
+    run c2rust-ast-exporter for a single compiler invocation.
 
-    :param ast_expo: command object representing ast-exporter
+    :param ast_expo: command object representing c2rust-ast-exporter
     :param cc_db_path: path/to/compile_commands.json
     :return: path to generated cbor file.
     """
@@ -467,12 +467,12 @@ def export_ast_from(ast_expo: pb.commands.BaseCommand,
     if not os.path.isfile(filepath):
         die("missing file " + filepath)
     try:
-        # prepare ast-exporter arguments
+        # prepare c2rust-ast-exporter arguments
         cc_db_dir = os.path.dirname(cc_db_path)
         args = ["-p", cc_db_dir, filepath]
         # this is required to locate system libraries
 
-        # run ast-exporter
+        # run c2rust-ast-exporter
         logging.info("exporting ast from %s", os.path.basename(filename))
         # log the command in a format that's easy to re-run
         export_cmd = str(ast_expo[args])

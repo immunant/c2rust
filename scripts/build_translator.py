@@ -112,7 +112,7 @@ def configure_and_build_llvm(args: str) -> None:
 def update_cmakelists(filepath):
     if not os.path.isfile(filepath):
         die("not found: " + filepath, errno.ENOENT)
-    indicator = "add_subdirectory(ast-exporter)"
+    indicator = "add_subdirectory(c2rust-ast-exporter)"
 
     with open(filepath, "r") as handle:
         cmakelists = handle.readlines()
@@ -132,7 +132,7 @@ def build_transpiler(debug: bool):
     if not debug:
         build_flags.append("--release")
 
-    with pb.local.cwd(os.path.join(c.ROOT_DIR, "transpiler")):
+    with pb.local.cwd(os.path.join(c.ROOT_DIR, "c2rust-transpile")):
         # use different target dirs for different hosts
         llvm_config = os.path.join(c.LLVM_INSTALL, "bin/llvm-config")
         with pb.local.env(LLVM_CONFIG_PATH=llvm_config):
@@ -178,12 +178,12 @@ def build_a_bear():
 
 def integrate_ast_exporter():
     """
-    link ast-exporter into $LLVM_SRC/tools/clang/tools/extra
+    link c2rust-ast-exporter into $LLVM_SRC/tools/clang/tools/extra
     """
-    abs_src = os.path.join(c.ROOT_DIR, "ast-exporter")
-    src = "../../../../../../../ast-exporter"
+    abs_src = os.path.join(c.ROOT_DIR, "c2rust-ast-exporter")
+    src = "../../../../../../../c2rust-ast-exporter"
     exporter_dest = os.path.join(
-        c.LLVM_SRC, "tools/clang/tools/extra/ast-exporter")
+        c.LLVM_SRC, "tools/clang/tools/extra/c2rust-ast-exporter")
     clang_tools_extra = os.path.abspath(
         os.path.join(exporter_dest, os.pardir))
     # NOTE: `os.path.exists` returns False on broken symlinks,
@@ -267,7 +267,7 @@ def _main():
         shutil.rmtree(c.LLVM_BLD, ignore_errors=True)
         shutil.rmtree(c.DEPS_DIR, ignore_errors=True)
         cargo = get_cmd_or_die("cargo")
-        with pb.local.cwd(os.path.join(c.ROOT_DIR, "transpiler")):
+        with pb.local.cwd(os.path.join(c.ROOT_DIR, "c2rust-transpile")):
             invoke(cargo, "clean")
 
     ensure_dir(c.LLVM_BLD)
