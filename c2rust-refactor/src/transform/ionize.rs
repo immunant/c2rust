@@ -12,6 +12,17 @@ use syntax::fold::Folder;
 use syntax::ptr::P;
 use transform::Transform;
 
+/// # `ionize` Command
+/// 
+/// Usage: `ionize`
+/// 
+/// Marks: `target`
+/// 
+/// Convert each union marked `target` to a type-safe Rust enum.  The generated
+/// enums will have `as_variant` and `as_variant_mut` methods for each union field,
+/// which panic if the enum is not the named variant.  Also updates assignments to
+/// union variables to assign one of the new enum variants, and updates uses of
+/// union fields to call the new methods instead.
 pub struct Ionize {
 
 }

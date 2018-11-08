@@ -9,8 +9,17 @@ use driver;
 use transform::Transform;
 
 
-/// Convert marked `LitKind::ByteStr` exprs to `LitKind::Str`.  (Note the mark must be on the
-/// literal expression, since there's no way to mark the literal itself.)
+/// # `bytestr_to_str` Command
+/// 
+/// Usage: `bytestr_to_str`
+/// 
+/// Marks: `target`
+/// 
+/// Convert bytestring literal expressions marked `target` to string literal
+/// expressions.
+/// 
+/// Note the mark must be placed on the expression, as it is currently difficult to
+/// mark a literal node.
 pub struct ByteStrToStr;
 
 impl Transform for ByteStrToStr {
@@ -41,7 +50,17 @@ impl Transform for ByteStrToStr {
 }
 
 
-/// Remove a trailing "\0" from marked ByteStr and Str literal exprs.
+/// # `remove_null_terminator` Command
+/// 
+/// Usage: `remove_null_terminator`
+/// 
+/// Marks: `target`
+/// 
+/// Remove a trailing `\0` character from marked string and bytestring literal
+/// expressions.
+/// 
+/// Note the mark must be placed on the expression, as it is currently difficult to
+/// mark a literal node.
 pub struct RemoveNullTerminator;
 
 impl Transform for RemoveNullTerminator {

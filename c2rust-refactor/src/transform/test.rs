@@ -15,8 +15,13 @@ use transform::Transform;
 use util::HirDefExt;
 
 
-/// `2 -> 1 + 1`.  Useful for testing the rewriter's handling of operator precedence.  The `1 + 1`
-/// may or may not need enclosing parens, depending on the context.
+/// # `test_one_plus_one` Command
+/// 
+/// Test command - not intended for general use.
+/// 
+/// Usage: `test_one_plus_one`
+/// 
+/// Replace the expression `2` with `1 + 1` everywhere it appears.
 pub struct OnePlusOne;
 
 impl Transform for OnePlusOne {
@@ -27,8 +32,13 @@ impl Transform for OnePlusOne {
 }
 
 
-/// `f(x) -> x + 1`.  Useful for testing the rewriter's handling of operator precedence.  The `x`
-/// may or may not need enclosing parens, depending on what type of expression it is.
+/// # `test_f_plus_one` Command
+/// 
+/// Test command - not intended for general use.
+/// 
+/// Usage: `test_f_plus_one`
+/// 
+/// Replace the expression `f(__x)` with `__x + 1` everywhere it appears.
 pub struct FPlusOne;
 
 impl Transform for FPlusOne {
@@ -39,6 +49,13 @@ impl Transform for FPlusOne {
 }
 
 
+/// # `test_replace_stmts` Command
+/// 
+/// Test command - not intended for general use.
+/// 
+/// Usage: `test_replace_stmts OLD NEW`
+/// 
+/// Replace statement(s) `OLD` with `NEW` everywhere it appears.
 pub struct ReplaceStmts(pub String, pub String);
 
 impl Transform for ReplaceStmts {
@@ -49,6 +66,17 @@ impl Transform for ReplaceStmts {
 }
 
 
+/// # `test_insert_remove_args` Command
+/// 
+/// Test command - not intended for general use.
+/// 
+/// Usage: `test_insert_remove_args INS REM`
+/// 
+/// In each function marked `target`, insert new arguments at each index listed in
+/// `INS` (a comma-separated list of integers), then delete the arguments whose
+/// original indices are listed in `REM`.
+/// 
+/// This is used for testing sequence rewriting of `fn` argument lists.
 pub struct InsertRemoveArgs {
     insert_idxs: HashMap<usize, usize>,
     remove_idxs: HashSet<usize>,
@@ -98,7 +126,14 @@ impl Transform for InsertRemoveArgs {
 }
 
 
-/// Command for testing basic `run_typeck_loop` functionality.
+/// # `test_typeck_loop` Command
+/// 
+/// Test command - not intended for general use.
+/// 
+/// Usage: `test_typeck_loop`
+/// 
+/// Runs a no-op typechecking loop for three iterations.  Used to test the typechecking loop and
+/// AST re-analysis code.
 pub struct TestTypeckLoop;
 
 impl Command for TestTypeckLoop {
@@ -117,6 +152,12 @@ impl Command for TestTypeckLoop {
 }
 
 
+/// # `test_debug_callees` Command
+/// 
+/// Test command - not intended for general use.
+/// 
+/// Usage: `test_debug_callees`
+/// 
 /// Inspect the details of each Call expression.  Used to debug
 /// `api::DriverCtxtExt::opt_callee_info`.
 pub struct TestDebugCallees;

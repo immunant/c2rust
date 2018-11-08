@@ -95,10 +95,22 @@ pub fn print_one_span<T: Visit>(id: usize, root: &T, cm: &SourceMap, msg: &str) 
 }
 
 
-pub fn register_commands(reg: &mut Registry) {
+/// # `print_spans` Command
+/// 
+/// Test command - not intended for general use.
+/// 
+/// Usage: `print_spans`
+/// 
+/// Print IDs, spans, and pretty-printed source for all
+/// exprs, pats, tys, stmts, and items.
+fn register_print_spans(reg: &mut Registry) {
     reg.register("print_spans", |_args| {
         Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
             print_spans(&st.krate() as &Crate, cx.session().source_map());
         }))
     });
+}
+
+pub fn register_commands(reg: &mut Registry) {
+    register_print_spans(reg);
 }

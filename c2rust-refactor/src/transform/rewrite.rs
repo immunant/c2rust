@@ -36,6 +36,36 @@ fn make_init_mcx<'a, 'tcx>(st: &'a CommandState,
 }
 
 
+/// # `rewrite_expr` Command
+/// 
+/// Usage: `rewrite_expr PAT REPL [FILTER]`
+/// 
+/// Marks: reads `FILTER`, if set; may read other marks depending on `PAT`
+/// 
+/// For every expression in the crate matching `PAT`, replace it with `REPL`.
+/// `PAT` and `REPL` are both Rust expressions.  `PAT` can use placeholders to
+/// capture nodes from the matched AST, and `REPL` can refer to those same
+/// placeholders to substitute in the captured nodes.  See the `matcher` module for
+/// details on AST pattern matching.
+/// 
+/// If `FILTER` is provided, only expressions marked `FILTER` will be rewritten.
+/// This usage is obsolete - change `PAT` to `marked!(PAT, FILTER)` to get the same
+/// behavior.
+/// 
+/// Example:
+/// 
+///     fn double(x: i32) -> i32 {
+///         x * 2
+///     }
+/// 
+/// After running `rewrite_expr '__e * 2' '__e + __e'`:
+/// 
+///     fn double(x: i32) -> i32 {
+///         x + x
+///     }
+/// 
+/// Here `__e * 2` matches `x * 2`, capturing `x` as `__e`.  Then `x` is
+/// substituted for `__e` in `__e + __e`, producing the final expression `x + x`.
 pub struct RewriteExpr {
     pub pat: String,
     pub repl: String,
@@ -64,6 +94,24 @@ impl Transform for RewriteExpr {
 }
 
 
+/// # `rewrite_ty` Command
+/// 
+/// Usage: `rewrite_ty PAT REPL [FILTER]`
+/// 
+/// Marks: reads `FILTER`, if set; may read other marks depending on `PAT`
+/// 
+/// For every type in the crate matching `PAT`, replace it with `REPL`.  `PAT` and
+/// `REPL` are both Rust types.  `PAT` can use placeholders to capture nodes from
+/// the matched AST, and `REPL` can refer to those same placeholders to substitute
+/// in the captured nodes.  See the `matcher` module for details on AST pattern
+/// matching.
+/// 
+/// If `FILTER` is provided, only expressions marked `FILTER` will be rewritten.
+/// This usage is obsolete - change `PAT` to `marked!(PAT, FILTER)` to get the same
+/// behavior.
+/// 
+/// See the documentation for `rewrite_expr` for an example of this style of
+/// rewriting.
 pub struct RewriteTy {
     pub pat: String,
     pub repl: String,

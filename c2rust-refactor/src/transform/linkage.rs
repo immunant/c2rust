@@ -13,20 +13,47 @@ use transform::Transform;
 use util::HirDefExt;
 
 
-/// Find this pattern:
-///
-/// ```text
-/// mod a {
-///     #[no_mangle] fn f() { ... }
-/// }
-///
-/// mod b {
-///     extern "C" { fn f(); }
-///     fn g() { ... f() ... }
-/// }
-/// ```
-///
-/// And remove the indirection, replacing the call `f()` with `::a::f()`.
+/// # `link_funcs` Command
+/// 
+/// Usage: `link_funcs`
+/// 
+/// Link up function declarations and definitions with matching symbols across
+/// modules.  For every foreign `fn` whose symbol matches a `fn` definition
+/// elsewhere in the program, it replaces all uses of the foreign `fn` with a
+/// direct call of the `fn` definition, and deletes the foreign `fn`.
+/// 
+/// Example:
+/// 
+///     mod a {
+///         #[no_mangle]
+///         unsafe extern "C" fn foo() { ... }
+///     }
+/// 
+///     mod b {
+///         extern "C" {
+///             // This resolves to `a::foo` during linking.
+///             fn foo();
+///         }
+/// 
+///         unsafe fn use_foo() {
+///             foo();
+///         }
+///     }
+/// 
+/// After running `link_funcs`:
+/// 
+///     mod a {
+///         #[no_mangle]
+///         unsafe extern "C" fn foo() { ... }
+///     }
+/// 
+///     mod b {
+///         // 1. Foreign fn `foo` has been deleted
+///         unsafe fn use_foo() {
+///             // 2. `use_foo` now calls `foo` directly
+///             ::a::foo();
+///         }
+///     }
 pub struct LinkFuncs;
 
 impl Transform for LinkFuncs {
@@ -85,19 +112,40 @@ impl Transform for LinkFuncs {
 }
 
 
-/// Find this pattern:
-///
-/// ```text
-/// mod a {
-///     struct Foo { ... }
-/// }
-///
-/// mod b {
-///     enum Foo {}     // incomplete type
-/// }
-/// ```
-///
-/// And replace all uses of `b::Foo` with `a::Foo`.
+/// # `link_incomplete_types` Command
+/// 
+/// Usage: `link_incomplete_types`
+/// 
+/// Link up type declarations and definitions with matching names across modules.
+/// For every foreign type whose name matches a type definition elsewhere in the
+/// program, it replaces all uses of the foreign type with the type definition, and
+/// deletes the foreign type.
+/// 
+/// Example:
+/// 
+///     mod a {
+///         struct Foo { ... }
+///     }
+/// 
+///     mod b {
+///         extern "C" {
+///             type Foo;
+///         }
+/// 
+///         unsafe fn use_foo(x: &Foo) { ... }
+///     }
+/// 
+/// After running `link_funcs`:
+/// 
+///     mod a {
+///         struct Foo { ... }
+///     }
+/// 
+///     mod b {
+///         // 1. Foreign fn `Foo` has been deleted
+///         // 2. `use_foo` now references `Foo` directly
+///         unsafe fn use_foo(x: &::a::Foo) { ... }
+///     }
 pub struct LinkIncompleteTypes;
 
 impl Transform for LinkIncompleteTypes {
@@ -153,7 +201,45 @@ impl Transform for LinkIncompleteTypes {
 }
 
 
-/// Replace identically-named structs with a canonical (`target`-marked) version.
+/// # `canonicalize_structs` Command
+/// 
+/// Usage: `canonicalize_structs`
+/// 
+/// Marks: `target`
+/// 
+/// For each type definition marked `target`, delete all other type definitions
+/// with the same name, and replace their uses with uses of the `target` type.
+/// 
+/// This only works when all the identically-named types have the same definition, 
+/// such as when all are generated from `#include`s of the same C header.
+/// 
+/// Example:
+/// 
+///     mod a {
+///         pub struct Foo { ... }  // Foo: target
+///     }
+/// 
+///     mod b {
+///         struct Foo { ... }  // same as ::a::Foo
+/// 
+///         unsafe fn use_foo(x: &Foo) { ... }
+///     }
+/// 
+/// After running `link_funcs`:
+/// 
+///     mod a {
+///         pub struct Foo { ... }
+///     }
+/// 
+///     mod b {
+///         // 1. `struct Foo` has been deleted
+///         // 2. `use_foo` now references `::a::Foo` directly
+///         unsafe fn use_foo(x: &::a::Foo) { ... }
+///     }
+/// 
+/// Note that this transform does not check or adjust item visibility.  If the
+/// `target` type is not visible throughout the crate, this may introduce compile
+/// errors.
 pub struct CanonicalizeStructs;
 
 impl Transform for CanonicalizeStructs {

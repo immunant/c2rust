@@ -282,7 +282,14 @@ pub fn pick_node_at_loc(krate: &Crate,
     pick_node(krate, kind, pos)
 }
 
-/// Implementation of the `pick_node` command.
+/// # `pick_node` Command
+/// 
+/// Test command - not intended for general use.
+/// 
+/// Usage: `pick_node KIND FILE LINE COL`
+/// 
+/// Find a node of kind `KIND` at location `FILE:LINE:COL`.
+/// If successful, logs the node's ID and span at level `info`.
 pub fn pick_node_command(krate: &Crate, cx: &driver::Ctxt, args: &[String]) {
     let kind = NodeKind::from_str(&args[0]).unwrap();
     let file = &args[1];

@@ -15,6 +15,14 @@ use transform::Transform;
 use rustc::middle::cstore::CrateStore;
 
 
+/// # `let_x_uninitialized` Command
+/// 
+/// Obsolete - the translator now does this automatically.
+/// 
+/// Usage: `let_x_uninitialized`
+/// 
+/// For each local variable that is uninitialized (`let x;`), add
+/// `mem::uninitialized()` as an initializer expression.
 pub struct LetXUninitialized;
 
 impl Transform for LetXUninitialized {
@@ -30,9 +38,18 @@ impl Transform for LetXUninitialized {
 }
 
 
-/// Move declarations of the form `let x;` or `let x = uninitialized();` into the deepest enclosing
-/// block where `x` is used.  The restriction on the RHS ensures that we don't reorder side
-/// effects.
+/// # `sink_lets` Command
+/// 
+/// Obsolete - works around translator problems that no longer exist.
+/// 
+/// Usage: `sink_lets`
+/// 
+/// For each local variable with a trivial initializer, move the local's
+/// declaration to the innermost block containing all its uses.
+/// 
+/// "Trivial" is currently defined as no initializer (`let x;`) or a call to
+/// `mem::uninitialized()`.  This transform requires trivial assignments to avoid
+/// reordering side effects.
 pub struct SinkLets;
 
 impl Transform for SinkLets {
@@ -225,10 +242,14 @@ fn is_uninit_call(cx: &driver::Ctxt, e: &Expr) -> bool {
 
 
 
-/// Fold `let x; ...; x = 10;` into `...; let x = 10;`, if there are no intervening uses of `x`.
-///
-/// This pass only takes effect when the `let` and the assignment are in the same block.  Running
-/// `SinkLets` first will move `let`s into the correct block if it is legal to do so.
+/// # `fold_let_assign` Command
+/// 
+/// Obsolete - works around translator problems that no longer exist.
+/// 
+/// Usage: `fold_let_assign`
+/// 
+/// Fold together `let`s with no initializer and subsequent assignments.  For
+/// example, replace `let x; x = 10;` with `let x = 10;`.
 pub struct FoldLetAssign;
 
 impl Transform for FoldLetAssign {
@@ -377,7 +398,14 @@ impl Transform for FoldLetAssign {
 }
 
 
-/// Replace `let x = uninitialized()` with `let x = 0` or a similarly appropriate default value.
+/// # `uninit_to_default` Command
+/// 
+/// Obsolete - works around translator problems that no longer exist.
+/// 
+/// Usage: `uninit_to_default`
+/// 
+/// In local variable initializers, replace `mem::uninitialized()` with an
+/// appropriate default value of the variable's type.
 pub struct UninitToDefault;
 
 impl Transform for UninitToDefault {

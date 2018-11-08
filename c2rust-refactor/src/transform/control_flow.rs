@@ -6,6 +6,13 @@ use driver;
 use transform::Transform;
 
 
+/// # `reconstruct_while` Command
+/// 
+/// Obsolete - the translator now does this automatically.
+/// 
+/// Usage: `reconstruct_while`
+/// 
+/// Replaces all instances of `loop { if !cond { break; } ... }` with `while` loops.
 pub struct ReconstructWhile;
 
 impl Transform for ReconstructWhile {
@@ -30,6 +37,12 @@ impl Transform for ReconstructWhile {
 }
 
 
+/// # `reconstruct_for_loops` Command
+/// 
+/// Usage: `reconstruct_for_range`
+/// 
+/// Replaces `i = start; while i < end { ...; i += step; }` with
+/// `for i in (start .. end).step_by(step) { ...; }`.
 pub struct ReconstructForRange;
 
 impl Transform for ReconstructForRange {
@@ -83,6 +96,11 @@ fn is_one_lit(l: &Lit) -> bool {
 }
 
 
+/// # `remove_unused_labels` Command
+/// 
+/// Usage: `remove_unused_labels`
+/// 
+/// Removes loop labels that are not used in a named `break` or `continue`.
 pub struct RemoveUnusedLabels;
 
 fn remove_unused_labels_from_loop_kind(krate: Crate,

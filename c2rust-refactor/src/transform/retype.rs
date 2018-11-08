@@ -19,9 +19,20 @@ use illtyped::{IlltypedFolder, fold_illtyped};
 use reflect;
 use transform::Transform;
 
-/// Change the type of function arguments.  All `target` args will have their types changed to
-/// `new_ty`.  Values passed for those arguments will be converted with `wrap`, and uses of those
-/// arguments inside the modified functions will be converted with `unwrap`.
+/// # `retype_argument` Command
+/// 
+/// Usage: `retype_argument NEW_TY WRAP UNWRAP`
+/// 
+/// Marks: `target`
+/// 
+/// For each argument marked `target`, change the type of the argument to `NEW_TY`,
+/// and use `WRAP` and `UNWRAP` to convert values to and from the original type of
+/// the argument at call sites and within the function body.
+/// 
+/// `WRAP` should contain an expression placeholder `__old`, and should convert
+/// `__old` from the argument's original type to `NEW_TY`.
+/// `UNWRAP` should contain an expression placeholder `__new`, and should perform
+/// the opposite conversion.
 pub struct RetypeArgument {
     pub new_ty: String,
     pub wrap: String,
@@ -117,9 +128,20 @@ impl Transform for RetypeArgument {
 }
 
 
-/// Change function return types.  All `target` fns will have their return types changed to
-/// `new_ty`.  Return/output expressions inside the function will be converted with `wrap`, and
-/// calls to the function will be converted with `unwrap`.
+/// # `retype_return` Command
+/// 
+/// Usage: `retype_return NEW_TY WRAP UNWRAP`
+/// 
+/// Marks: `target`
+/// 
+/// For each function marked `target`, change the return type of the function to
+/// `NEW_TY`, and use `WRAP` and `UNWRAP` to convert values to and from the
+/// original type of the argument at call sites and within the function body.
+/// 
+/// `WRAP` should contain an expression placeholder `__old`, and should convert
+/// `__old` from the function's original return type to `NEW_TY`.
+/// `UNWRAP` should contain an expression placeholder `__new`, and should perform
+/// the opposite conversion.
 pub struct RetypeReturn {
     pub new_ty: String,
     pub wrap: String,
@@ -182,18 +204,29 @@ impl Transform for RetypeReturn {
 }
 
 
-/// Change the types of marked statics to `new_ty`.  Uses `conv_rval`, `conv_lval`, and
-/// `conv_lval_mut` to adapt uses of marked statics so that the program remains well-typed.  Each
-/// `conv` expression is an expr template that adapts an expression `__new` of type `new_ty` to an
-/// rvalue, (immutable) lvalue, or mutable lvalue expression of the static's original type.  As a
-/// special case, values assigned into the static (including its initial value) are handled using
-/// the `rev_conv_assign` template, which should adapt an expression `__old` of the static's
-/// original type to `new_ty`.
-///
-/// `conv_lval_mut` can be omitted if the static is not mutable (or is never accessed mutably).
-/// `rev_conv_assign` can be omitted if the static is not mutable or if it is acceptable to handle
-/// assignments by assigning into `conv_lval_mut` (i.e., transforming `s = e` into
-/// `conv_lval_mut(s) = e` instead of `s = rev_conv_assign(e)`).
+/// # `retype_static` Command
+/// 
+/// Usage: `retype_static NEW_TY REV_CONV_ASSIGN CONV_RVAL CONV_LVAL [CONV_LVAL_MUT]`
+/// 
+/// Marks: `target`
+/// 
+/// For each static marked `target`, change the type of the static to `NEW_TY`,
+/// using the remaining arguments (which are all all expression templates) to
+/// convert between the old and new types at the definition and use sites.
+/// 
+/// The expression arguments are used as follows:
+/// 
+///  * `REV_CONV_ASSIGN`: In direct assignments to the static and in its
+///    initializer expression, the original assigned value is wrapped (as `__old`)
+///    in `REV_CONV_ASSIGN` to produce a value of type `NEW_TY`.
+///  * `CONV_RVAL`: In rvalue contexts, the static is wrapped (as `__new`) in
+///    `CONV_RVAL` to produce a value of the static's old type.
+///  * `CONV_LVAL` and `CONV_LVAL_MUT` are similar to `CONV_RVAL`, but for
+///    immutable and mutable lvalue contexts respectively.  Especially for
+///    `CONV_LVAL_MUT`, the result of wrapping should be an lvalue expression (such
+///    as a dereference or field access), not a temporary, as otherwise updates to
+///    the static could be lost.  `CONV_LVAL_MUT` is not required for immutable
+///    statics, which cannot appear in mutable lvalue contexts.
 pub struct RetypeStatic {
     pub new_ty: String,
     pub rev_conv_assign: String,
@@ -313,7 +346,7 @@ impl Transform for RetypeStatic {
 
 /// Rewrite types in the crate to types that are transmute-compatible with the original.
 /// Automatically inserts `transmute` calls as needed to make the types line up after rewriting.
-///
+/// 
 /// This function currently handles only direct function calls.  Creation and use of function
 /// pointers is not handled correctly yet.
 pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, retype: F) -> Crate
@@ -559,9 +592,18 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
 }
 
 
-/// Replace types in signatures, fields, and globals.  The new types must be identical in
-/// representation to the old types, as all conversions between old and new types will be done with
-/// `transmute`.
+/// # `bitcast_retype` Command
+/// 
+/// Usage: `bitcast_retype PAT REPL`
+/// 
+/// Marks: may read marks depending on `PAT`
+/// 
+/// For every type in the crate matching `PAT`, change the type to `REPL`.  `PAT`
+/// and `REPL` are types, and can use placeholders in the manner of `rewrite_ty`.
+/// For each definitions whose type has changed, it also inserts `mem::transmute`
+/// calls at each use of the definition to fix discrepancies between the old and
+/// new types.  (This implies that the original type and its replacement must be
+/// transmutable to each other.)
 pub struct BitcastRetype {
     pub pat: String,
     pub repl: String,
@@ -597,26 +639,26 @@ impl Transform for BitcastRetype {
 }
 
 
-/// Fix type errors by applying type-based rewrite rules to ill-typed expressions.  This pass is
-/// designed for cleaning up type errors introduced when changing type annotations with a pass such
-/// as `rewrite_ty`.  Typically the rules should be customized based on the type change that was
-/// performed.
+/// # `type_fix_rules` Command
+/// 
+/// Usage: `type_fix_rules RULE...`
+/// 
+/// Attempts to fix type errors in the crate using the provided rules.  Each rule
+/// has the form `"ectx, actual_ty, expected_ty => cast_expr"`.
+/// 
+///  - `ectx` is one of `rval`, `lval`, `lval_mut`, or `*`, and determines in what kinds of
+///    expression contexts the rule applies.
+///  - `actual_ty` is a pattern to be matched against the (reflected) actual expression type.
+///  - `expected_ty` is a pattern to be matched against the (reflected) expected expression
+///    type.
+///  - `cast_expr` is a template for generating a cast expression.
+/// 
+/// For expressions in context `ectx`, whose actual type matches `actual_ty` and whose
+/// expected type matches `expected_ty` (and where actual != expected), the expr is substituted
+/// into `cast_expr` to replace the original expr with one of the expected type.  During
+/// substitution, `cast_expr` has access to variables captured from both `actual_ty` and
+/// `expected_ty`, as well as `__old` containing the original (ill-typed) expression.
 pub struct TypeFixRules {
-    /// A sequence of rules for fixing type errors.  Each rule has the form `"ectx, actual_ty,
-    /// expected_ty => cast_expr"`.
-    ///
-    ///  - `ectx` is one of `rval`, `lval`, `lval_mut`, or `*`, and determines in what kinds of
-    ///    expression contexts the rule applies.
-    ///  - `actual_ty` is a pattern to be matched against the (reflected) actual expression type.
-    ///  - `expected_ty` is a pattern to be matched against the (reflected) expected expression
-    ///    type.
-    ///  - `cast_expr` is a template for generating a cast expression.
-    ///
-    /// For expressions in context `ectx`, whose actual type matches `actual_ty` and whose
-    /// expected type matches `expected_ty` (and where actual != expected), the expr is substituted
-    /// into `cast_expr` to replace the original expr with one of the expected type.  During
-    /// substitution, `cast_expr` has access to variable captured from both `actual_ty` and
-    /// `expected_ty`, as well as `__old` containing the original (ill-typed) expression.
     pub rules: Vec<String>,
 }
 
