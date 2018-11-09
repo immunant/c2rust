@@ -26,7 +26,7 @@ C2Rust requires LLVM 6 or 7 and its corresponding libraries and clang compiler. 
         apt install build-essential llvm-6.0 clang-6.0 libclang-6.0-dev
 
 
-- **Arch Linux:** 
+- **Arch Linux:**
 
         pacman -S base-devel llvm clang
 

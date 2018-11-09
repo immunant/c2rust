@@ -8,7 +8,7 @@ There are three ways to build the C2Rust project:
 
 The previous two options automatically install all prerequisites during provisioning. You can also provision a macOS or Linux system manually.
 
-* If you are on a Debian-based OS, you can run `scripts/provision_deb.sh` to do so. 
+* If you are on a Debian-based OS, you can run `scripts/provision_deb.sh` to do so.
 
 * If you are on macOS, install the Xcode command-line tools (e.g., `xcode-select --install`) and [homebrew](https://brew.sh/) first. Then run `scripts/provision_mac.sh`.
 
@@ -36,7 +36,7 @@ The quickest way to build the C2Rust transpiler is with LLVM and clang system li
 
     $ cd c2rust-transpile
     $ cargo build
-    
+
 You can customize the location where the build system will look for LLVM using the following environment variables at compile time:
 
 - `LLVM_CONFIG_PATH` = Path to the `llvm-config` tool of the LLVM installation

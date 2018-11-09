@@ -281,7 +281,7 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
         // Linux we generally will not hit this issue because the prebuilt lib
         // includes the `svn` suffix. This would conflict with a source build
         // from master, however.
-        // 
+        //
         // We check here if the lib we want to link against will conflict with
         // the rustlib version. If so we can't dynamically link against libLLVM.
         let conflicts_with_rustlib_llvm = {

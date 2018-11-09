@@ -4,4 +4,4 @@ c2rust-transpile is used in concert with c2rust-ast-exporter to translate C code
 
 ## Building
 
-Then run `cargo build` in `$C2RUST_ROOT/c2rust-transpile`. 
+Then run `cargo build` in `$C2RUST_ROOT/c2rust-transpile`.
