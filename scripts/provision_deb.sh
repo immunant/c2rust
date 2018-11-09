@@ -13,15 +13,15 @@ SCRIPT_DIR="$(dirname "$0")"
 apt-get update -qq
 # dirmngr is required for gnupg2 key retrieval
 apt-get install -qq --install-recommends dirmngr
-apt-get install -qq bear build-essential clang-5.0 cmake curl \
+apt-get install -qq bear build-essential clang-6.0 cmake curl \
     git gnupg2 gperf htop ninja-build python-dev \
     software-properties-common unzip libssl-dev
 
-update-alternatives --install /usr/bin/clang clang /usr/bin/clang-5.0 100
-update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-5.0 100
-# update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-5.0 100
+update-alternatives --install /usr/bin/clang clang /usr/bin/clang-6.0 100
+update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-6.0 100
+# update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-6.0 100
 
-# Install python3.6 and packages
+# Install python3 and packages
 apt-get install -qq python3-pip
 pip3 install --no-cache-dir --disable-pip-version-check -r $SCRIPT_DIR/requirements.txt
 
