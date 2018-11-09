@@ -1,3 +1,4 @@
+import argparse
 import json
 import hashlib
 import os
@@ -584,6 +585,12 @@ class RefactorHash:
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    config.add_args(ap)
+    args = ap.parse_args()
+    config.update_args(args)
+
+
     os.chdir(RFK_DIR)
     print('in %s' % RFK_DIR)
 
