@@ -15,7 +15,7 @@ from common import *
 import transpile
 
 
-# List of rust-refactor commands to run.
+# List of c2rust-refactor commands to run.
 
 REFACTORINGS = [
         '''
@@ -545,9 +545,9 @@ REFACTORINGS = [
 
 
 
-idiomize = get_cmd_or_die(config.RREF_BIN)
+refactor = get_cmd_or_die(config.RREF_BIN)
 
-def run_idiomize(args, mode='inplace'):
+def run_refactor(args, mode='inplace'):
     full_args = ['-r', mode, '--cargo'] + args
 
     ld_lib_path = get_rust_toolchain_libpath()
@@ -559,7 +559,7 @@ def run_idiomize(args, mode='inplace'):
     with local.env(RUST_BACKTRACE='1',
                    LD_LIBRARY_PATH=ld_lib_path):
         with local.cwd(os.path.join(RFK_DIR, 'rust')):
-            idiomize[full_args]()
+            refactor[full_args]()
 
 
 class RefactorHash:
@@ -606,7 +606,7 @@ def main():
 
     # Refactor
     src_path = os.path.join(RFK_DIR, 'rust/src/robotfindskitten.rs')
-    rf_hash = RefactorHash(idiomize, src_path)
+    rf_hash = RefactorHash(refactor, src_path)
     for refactor_str in REFACTORINGS:
         refactor_args = shlex.split(refactor_str)
         rf_hash.extend(refactor_str)
@@ -617,7 +617,7 @@ def main():
             shutil.copy(cache_path, src_path)
         else:
             print('REFACTOR: %r' % (refactor_args,))
-            run_idiomize(refactor_args)
+            run_refactor(refactor_args)
             shutil.copy(src_path, cache_path)
 
 

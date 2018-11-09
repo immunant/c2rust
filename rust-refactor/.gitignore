@@ -1,9 +1,0 @@
-/idiomize
-/idiomize.d
-__pycache__/
-*.inc.rs
-/target/
-/*.so
-*.new
-
-!/tests/

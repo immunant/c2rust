@@ -91,30 +91,28 @@ def configure_and_build_llvm(args: str) -> None:
                      "-Wno-dev",
                      "-DCMAKE_C_COMPILER=clang",
                      "-DCMAKE_CXX_COMPILER=clang++",
+                     "-DCMAKE_INSTALL_PREFIX=" + c.LLVM_INSTALL,
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
                      "-DLLVM_TARGETS_TO_BUILD=X86",
                      "-DLLVM_INCLUDE_UTILS=1",
                      "-DLLVM_BUILD_UTILS=1",
-                     "-DBUILD_SHARED_LIBS=1",
+                     "-DLLVM_LINK_LLVM_DYLIB=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
                      "-DTINYCBOR_PREFIX={}".format(c.CBOR_PREFIX)]
             invoke(cmake[cargs])
         else:
             logging.debug("found existing ninja.build, not running cmake")
 
-        ninja_args = ['ast-exporter']
-        ninja_args += ['FileCheck', 'count', 'not']
-        if args.with_clang:
-            ninja_args.append('clang')
+        ninja_args = ['install']
         invoke(ninja, *ninja_args)
 
 
 def update_cmakelists(filepath):
     if not os.path.isfile(filepath):
         die("not found: " + filepath, errno.ENOENT)
-    indicator = "add_subdirectory(ast-exporter)"
+    indicator = "add_subdirectory(c2rust-ast-exporter)"
 
     with open(filepath, "r") as handle:
         cmakelists = handle.readlines()
@@ -127,17 +125,17 @@ def update_cmakelists(filepath):
         logging.debug("added commands to %s", filepath)
 
 
-def build_ast_importer(debug: bool):
+def build_transpiler(debug: bool):
     cargo = get_cmd_or_die("cargo")
     build_flags = ["build"]
 
     if not debug:
         build_flags.append("--release")
 
-    with pb.local.cwd(os.path.join(c.ROOT_DIR, "ast-importer")):
+    with pb.local.cwd(os.path.join(c.ROOT_DIR, "c2rust-transpile")):
         # use different target dirs for different hosts
-        target_dir = "target." + c.HOST_SUFFIX
-        with pb.local.env(CARGO_TARGET_DIR=target_dir):
+        llvm_config = os.path.join(c.LLVM_INSTALL, "bin/llvm-config")
+        with pb.local.env(LLVM_CONFIG_PATH=llvm_config):
             # build with custom rust toolchain
             invoke(cargo, "+" + c.CUSTOM_RUST_NAME, *build_flags)
 
@@ -180,12 +178,12 @@ def build_a_bear():
 
 def integrate_ast_exporter():
     """
-    link ast-exporter into $LLVM_SRC/tools/clang/tools/extra
+    link c2rust-ast-exporter into $LLVM_SRC/tools/clang/tools/extra
     """
-    abs_src = os.path.join(c.ROOT_DIR, "ast-exporter")
-    src = "../../../../../../../ast-exporter"
+    abs_src = os.path.join(c.ROOT_DIR, "c2rust-ast-exporter")
+    src = "../../../../../../../c2rust-ast-exporter"
     exporter_dest = os.path.join(
-        c.LLVM_SRC, "tools/clang/tools/extra/ast-exporter")
+        c.LLVM_SRC, "tools/clang/tools/extra/c2rust-ast-exporter")
     clang_tools_extra = os.path.abspath(
         os.path.join(exporter_dest, os.pardir))
     # NOTE: `os.path.exists` returns False on broken symlinks,
@@ -217,9 +215,6 @@ def _parse_args():
     parser.add_argument('-c', '--clean-all', default=False,
                         action='store_true', dest='clean_all',
                         help='clean everything before building')
-    parser.add_argument('--with-clang', default=False,
-                        action='store_true', dest='with_clang',
-                        help='build clang with this tool')
     parser.add_argument('--without-assertions', default=True,
                         action='store_false', dest='assertions',
                         help='build the tool and clang without assertions')
@@ -255,11 +250,6 @@ def _main():
         die(err)
 
     args = _parse_args()
-    if args.clean_all:
-        logging.info("cleaning all dependencies and previous built files")
-        shutil.rmtree(c.LLVM_SRC, ignore_errors=True)
-        shutil.rmtree(c.LLVM_BLD, ignore_errors=True)
-        shutil.rmtree(c.DEPS_DIR, ignore_errors=True)
 
     # prerequisites
     if not have_rust_toolchain(c.CUSTOM_RUST_NAME):
@@ -270,6 +260,15 @@ def _main():
     # NOTE: it seems safe to disable this check since we now
     # that we use a rust-toolchain file for rustc versioning.
     # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
+
+    if args.clean_all:
+        logging.info("cleaning all dependencies and previous built files")
+        shutil.rmtree(c.LLVM_SRC, ignore_errors=True)
+        shutil.rmtree(c.LLVM_BLD, ignore_errors=True)
+        shutil.rmtree(c.DEPS_DIR, ignore_errors=True)
+        cargo = get_cmd_or_die("cargo")
+        with pb.local.cwd(os.path.join(c.ROOT_DIR, "c2rust-transpile")):
+            invoke(cargo, "clean")
 
     ensure_dir(c.LLVM_BLD)
     ensure_dir(c.DEPS_DIR)
@@ -282,11 +281,11 @@ def _main():
 
     download_llvm_sources()
 
-    integrate_ast_exporter()
+    # integrate_ast_exporter()
 
     configure_and_build_llvm(args)
 
-    build_ast_importer(args.debug)
+    build_transpiler(args.debug)
 
 
 if __name__ == "__main__":

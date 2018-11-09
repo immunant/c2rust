@@ -17,7 +17,7 @@ done
 SCRIPT_DIR="$(dirname "$0")"
 export HOMEBREW_NO_AUTO_UPDATE=1
 
-hb_packages=(python cmake ninja gpg ccache)
+hb_packages=(python cmake ninja gpg ccache llvm)
 for item in "${hb_packages[@]}"; do
   brew info "${item}" | grep --quiet 'Not installed' && brew install "${item}"
 done
