@@ -11,13 +11,14 @@ use std::process;
 use c2rust_transpile::c_ast::*;
 use c2rust_transpile::c_ast::Printer;
 use c2rust_transpile::translator::{ReplaceMode,TranslationConfig};
-use clap::{Arg, App};
+use clap::{Arg, App, AppSettings};
 
 
 fn main() {
     let matches = App::new("C2Rust Transpiler")
         .version("0.1.0")
         .author(crate_authors!())
+        .setting(AppSettings::TrailingVarArg)
 
         // Testing related
         .arg(Arg::with_name("prefix-function-names")
@@ -138,10 +139,18 @@ fn main() {
              .long("reorganize-definitions")
              .help("Output file in such a way that the refactoring tool can deduplicate code")
              .takes_value(false))
+
+        .arg(Arg::with_name("extra-clang-args")
+             .help("Extra arguments to pass to clang frontend during parsing the input C file")
+             .multiple(true))
         .get_matches();
 
     // Build a TranslationConfig from the command line
     let c_path = canonicalize(Path::new(matches.value_of("INPUT").unwrap())).unwrap();
+    let extra_args: Vec<&str> = match matches.values_of("extra-clang-args") {
+        Some(args) => args.collect(),
+        None => Vec::new(),
+    };
     let tcfg = TranslationConfig {
         fail_on_error:          matches.is_present("fail-on-error"),
         reloop_cfgs:            matches.is_present("reloop-cfgs"),
@@ -182,7 +191,7 @@ fn main() {
     let pretty_typed_context = matches.is_present("pretty-typed-clang-ast");
 
     // Extract the untyped AST from the CBOR file
-    let untyped_context = match c2rust_ast_exporter::get_untyped_ast(&c_path) {
+    let untyped_context = match c2rust_ast_exporter::get_untyped_ast(&c_path, &extra_args) {
         Err(e) => {
             eprintln!("Error: {:}", e);
             process::exit(1);

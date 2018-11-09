@@ -79,14 +79,10 @@ class CFile:
         # run the transpiler
         transpiler = get_cmd_or_die(c.TRANSPILER)
 
-        # TODO: Add this back into the ast exporter rust lib
-        # extra_args = ["-extra-arg={}".format(arg) for arg in extra_args]
-
         args = [
             self.path,
             "--prefix-function-names",
             "rust_",
-            # *extra_args
         ]
 
         if self.enable_relooper:
@@ -95,6 +91,9 @@ class CFile:
             #  args.append("--use-c-multiple-info")
         if self.disallow_current_block:
             args.append("--fail-on-multiple")
+
+        args.append("--")
+        args.extend(extra_args)
 
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
             # log the command in a format that's easy to re-run
