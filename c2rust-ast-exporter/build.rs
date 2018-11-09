@@ -315,7 +315,7 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
             }
         };
 
-        let link_statically = {
+        let link_statically = cfg!(feature="llvm-static") || {
             let args = if conflicts_with_rustlib_llvm {
                 vec!["--shared-mode", "--ignore-libllvm"]
             } else {

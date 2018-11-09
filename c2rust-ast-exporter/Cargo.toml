@@ -16,3 +16,9 @@ serde_cbor = "0.9"
 bindgen = "0.37"
 cmake = "0.1"
 clang-sys = "0.23"
+
+[features]
+default = []
+
+# Force static linking of LLVM
+llvm-static = []
