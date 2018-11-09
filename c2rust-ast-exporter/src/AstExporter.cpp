@@ -1682,9 +1682,9 @@ static std::vector<const char *>augment_argv(int argc, const char *argv[]) {
         "-extra-arg=-DC2RUST=1",
     };
 
-    // Build a -resource-dir argument based on the path to the system clang
-    // binary. Without this, ClangTool builds the resource directory from the
-    // path to the tool (in this case, the binary running the AST Exporter).
+    // Build a -resource-dir argument based on the path to the linked clang
+    // installation. Without this, ClangTool builds the resource directory from
+    // the path to the tool (in this case, the binary running the AST Exporter).
     SmallString<128> P("-extra-arg=-resource-dir=" CLANG_BIN_PATH);
     llvm::sys::path::append(P, "..", Twine("lib") + CLANG_LIBDIR_SUFFIX,
                             "clang", CLANG_VERSION_STRING);

@@ -18,6 +18,7 @@ from common import (
     setup_logging,
     die,
     ensure_dir,
+    on_mac,
 )
 from enum import Enum
 from rust_file import (
@@ -95,6 +96,14 @@ class CFile:
         args.append("--")
         args.extend(extra_args)
 
+        # Add -isysroot on MacOS to get SDK directory
+        if on_mac():
+            try:
+                xcrun = pb.local["xcrun"]
+                args.append("-isysroot" + xcrun("--show-sdk-path").strip())
+            except pb.CommandNotFound:
+                pass
+
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
             # log the command in a format that's easy to re-run
             translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
@@ -103,7 +112,8 @@ class CFile:
             retcode, stdout, stderr = (transpiler[args]).run(
                 retcode=None)
 
-        logging.debug("stdout:\n%s", stdout)
+            logging.debug("stdout:\n%s", stdout)
+            logging.debug("stderr:\n%s", stderr)
 
         if retcode != 0:
             raise NonZeroReturn(stderr)
