@@ -62,5 +62,5 @@ Tests are found in the [`tests`](tests) folder. If you build the translator succ
 
     $ ./scripts/test_translator.py tests
 
-This basically tests that the original C file and translated Rust file produce the same output when compiled and run. More details about tests are in [this README](tests/README.md).
+This basically tests that the original C file and translated Rust file produce the same output when compiled and run. More details about tests are in [this README](../tests/README.md).
 
