@@ -5,6 +5,10 @@
 // TODO: See if union bitfields are supportable or not
 // FIXME: size_of won't call the bitfield struct with required generic params, same
 // for variable bindings: `let foo: Foo` should be `let foo: Foo<[u8; X]>`
+// TODO: We can generate static bitfields in a slightly less nice, but safe, way:
+// static mut bitfield: BitField<[u8; X]> = BitField([A, B, C, D]); Either we figure
+// out what bits to assign here, or else we reuse the local var version but ensure that
+// static bitfields get sectioned off
 
 use c_ast::{CExprId, CQualTypeId};
 use c2rust_ast_builder::mk;
@@ -24,12 +28,17 @@ type FieldNameType = (String, CQualTypeId);
 
 impl Translation {
     /// Here we output a macro invocation to generate bitfield data that looks like this:
+    ///
+    /// ```no_run
     /// bitfield! {
+    ///     #[repr(C)]
+    ///     #[derive(Copy, Clone)]
     ///     pub struct Foo([u8]);
     ///     int_size, field, set_field: end_idx, start_idx;
     ///     int_size2, field2, set_field2: end_idx2, start_idx2;
-    ///     ...
+    ///     // ...
     /// }
+    /// ```
     pub fn convert_bitfield_struct_decl(&self, name: String, span: Span, field_info: Vec<FieldNameTypeWidth>, is_packed: bool, manual_alignment: Option<u64>) -> ConvertedDecl {
         let u8_slice = mk().span(DUMMY_SP).struct_field("", mk().slice_ty(mk().ident_ty("u8")));
         let reprs = vec![simple_metaitem("C")];
@@ -77,10 +86,23 @@ impl Translation {
         unimplemented!()
     }
 
+    /// Here we output a block to generate a struct literal initializer in.
+    /// It looks like this in locals:
+    ///
+    /// ```no_run
+    /// {
+    ///     let mut foo = Foo([0; PLATFORM_BYTE_SIZE]);
+    ///     foo.set_field(123);
+    ///     foo.set_field2(456);
+    ///     // ...
+    ///     foo
+    /// }
+    /// ```
+    ///
+    /// and in statics:
     /// TODO
     pub fn convert_bitfield_struct_literal(&self, name: String, field_ids: &[CExprId], field_info: Vec<FieldNameType>, platform_byte_size: u64, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
         // REVIEW: statics? Likely need to const_transmute byte array?
-        // TODO: Derive Copy, Clone?
         let variable_name = format!("{}_bf", name.clone());
         let struct_ident = mk().ident_expr(variable_name.clone());
         let lit_zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
@@ -95,14 +117,10 @@ impl Translation {
         stmts.push(mk().local_stmt(local_variable));
 
         // Specified record fields
-        for (i, &field_id) in field_ids.iter().enumerate() {
-            let &(ref field_name, _) = &field_info[i];
-            let mut x = self.convert_expr(ExprUse::Used, field_id, is_static, DecayRef::Default)?;
-
+        for (&field_id, (field_name, _)) in field_ids.iter().zip(field_info) {
+            let expr = self.convert_expr(ExprUse::Used, field_id, is_static, DecayRef::Default)?;
             let setter_call_name = format!("set_{}", field_name);
-            let call_params = vec![
-                x.val
-            ];
+            let call_params = vec![expr.val];
             let method_call = mk().method_call_expr(struct_ident.clone(), setter_call_name, call_params);
 
             stmts.push(mk().expr_stmt(method_call));
@@ -118,10 +136,9 @@ impl Translation {
         stmts.push(mk().expr_stmt(struct_ident));
 
         let val = mk().block_expr(mk().block(stmts));
-        let stmts = vec![];
 
         Ok(WithStmts {
-            stmts,
+            stmts: Vec::new(),
             val,
         })
     }
