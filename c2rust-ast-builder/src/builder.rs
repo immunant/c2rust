@@ -42,6 +42,11 @@ impl<L: Make<Ident>> Make<Label> for L {
     }
 }
 
+impl<'a> Make<Path> for &'a str {
+    fn make(self, mk: &Builder) -> Path {
+        vec![self].make(mk)
+    }
+}
 
 impl<'a> Make<Visibility> for &'a str {
     fn make(self, _mk: &Builder) -> Visibility {

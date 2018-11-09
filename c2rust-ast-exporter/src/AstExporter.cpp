@@ -1213,6 +1213,7 @@ class TranslateASTVisitor final
           }
 
           auto def = D->getDefinition();
+          auto byteSize = 0;
 
           std::vector<void*> childIds;
           if (def) {
@@ -1224,12 +1225,15 @@ class TranslateASTVisitor final
               // types.
               auto loc = def->getLocation();
               D->setLocation(loc);
+
+              const ASTRecordLayout &layout = this->Context->getASTRecordLayout(def);
+              byteSize = layout.getSize().getQuantity();
           }
 
           auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;
 
           encode_entry(D, tag, childIds, QualType(),
-          [D,def, this](CborEncoder *local){
+          [D,def,byteSize](CborEncoder *local){
 
               // 1. Encode name or null
               auto name = D->getNameAsString();
@@ -1265,6 +1269,9 @@ class TranslateASTVisitor final
               } else {
                   cbor_encode_null(local);
               }
+
+              // 6. Encode the platform specific size of this record
+              cbor_encode_uint(local, byteSize);
           });
 
           return true;

@@ -31,6 +31,7 @@ use renamer::Renamer;
 use with_stmts::WithStmts;
 
 mod assembly;
+mod bitfields;
 mod builtins;
 mod literals;
 mod main_function;
@@ -682,7 +683,7 @@ pub enum ExprUse {
 /// Foreign items are called out specially because we'll combine all of them
 /// into a single extern block at the end of translation.
 #[derive(Debug)]
-enum ConvertedDecl {
+pub enum ConvertedDecl {
     ForeignItem(ForeignItem),
     Item(P<Item>),
     NoItem,
@@ -905,18 +906,32 @@ impl<'c> Translation<'c> {
 
             CDeclKind::Struct { fields: Some(ref fields), is_packed, manual_alignment, max_field_alignment, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+                let mut has_bitfields = false;
 
                 // Gather up all the field names and field types
                 let mut field_entries = vec![];
+                let mut field_info = Vec::new();
+
                 for &x in fields {
                     match self.ast_context.index(x).kind {
-                        CDeclKind::Field { ref name, typ, .. } => {
+                        CDeclKind::Field { ref name, typ, bitfield_width } => {
                             let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
                             let typ = self.convert_type(typ.ctype)?;
-                            field_entries.push(mk().span(s).pub_().struct_field(name, typ))
+
+                            has_bitfields |= bitfield_width.is_some();
+
+                            if has_bitfields {
+                                field_info.push((name, typ, bitfield_width));
+                            } else {
+                                field_entries.push(mk().span(s).pub_().struct_field(name, typ))
+                            }
                         }
                         _ => return Err(format!("Found non-field in record field list")),
                     }
+                }
+
+                if has_bitfields {
+                    return Ok(self.convert_bitfield_struct_decl(name, s, field_info, is_packed, manual_alignment));
                 }
 
                 fn simple_metaitem(name: &str) -> ast::NestedMetaItem {

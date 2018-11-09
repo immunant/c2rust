@@ -287,6 +287,7 @@ impl<'c> Translation<'c> {
         struct_id: CRecordId,
         ids: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, String> {
+        let mut has_bitfields = false;
         let field_decls = match self.ast_context.index(struct_id).kind {
             CDeclKind::Struct { ref fields, .. } => {
                 let mut fieldnames = vec![];
@@ -302,7 +303,9 @@ impl<'c> Translation<'c> {
                         .borrow()
                         .resolve_field_name(Some(struct_id), x)
                         .unwrap();
-                    if let CDeclKind::Field { typ, .. } = self.ast_context.index(x).kind {
+                    if let CDeclKind::Field { typ, bitfield_width, .. } = self.ast_context.index(x).kind {
+                        has_bitfields |= bitfield_width.is_some();
+
                         fieldnames.push((name, typ));
                     } else {
                         panic!("Struct field decl type mismatch")
@@ -319,6 +322,10 @@ impl<'c> Translation<'c> {
             .borrow()
             .resolve_decl_name(struct_id)
             .unwrap();
+
+        if has_bitfields {
+            return self.convert_bitfield_struct_literal(struct_name, ids, field_decls);
+        }
 
         let mut stmts: Vec<Stmt> = vec![];
         let mut fields: Vec<Field> = vec![];

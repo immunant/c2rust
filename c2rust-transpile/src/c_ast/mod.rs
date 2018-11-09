@@ -520,6 +520,7 @@ pub enum CDeclKind {
         is_packed: bool,
         manual_alignment: Option<u64>,
         max_field_alignment: Option<u64>,
+        platform_byte_size: u64,
     },
 
     // Union
