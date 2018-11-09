@@ -3,15 +3,17 @@
 //! requires the use of the bitfield crate.
 
 // TODO: See if union bitfields are supportable or not
+// FIXME: size_of won't call the bitfield struct with required generic params, same
+// for variable bindings: `let foo: Foo` should be `let foo: Foo<[u8; X]>`
 
 use c_ast::{CExprId, CQualTypeId};
 use c2rust_ast_builder::mk;
-use syntax::ast::{Expr, MacDelimiter, Ty, LitIntType};
+use syntax::ast::{AttrStyle, Expr, MacDelimiter, MetaItemKind, Ty, LitIntType};
 use syntax::ext::quote::rt::Span;
 use syntax::parse::token::{Nonterminal, Token};
 use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
-use translator::{Translation, ConvertedDecl};
+use translator::{DecayRef, ExprUse, Translation, ConvertedDecl, simple_metaitem};
 use with_stmts::WithStmts;
 
 use super::DUMMY_SP; // TODO: Remove
@@ -29,10 +31,14 @@ impl Translation {
     ///     ...
     /// }
     pub fn convert_bitfield_struct_decl(&self, name: String, span: Span, field_info: Vec<FieldNameTypeWidth>, is_packed: bool, manual_alignment: Option<u64>) -> ConvertedDecl {
-         // FIXME: spans
-
         let u8_slice = mk().span(DUMMY_SP).struct_field("", mk().slice_ty(mk().ident_ty("u8")));
-        let struct_item = Nonterminal::NtItem(mk().pub_().tuple_struct_item(name, vec![u8_slice]));
+        let reprs = vec![simple_metaitem("C")];
+        let repr_meta_item = mk().meta_item("repr", MetaItemKind::List(reprs));
+        let repr_attr = mk().meta_item_attr(AttrStyle::Outer, repr_meta_item);
+        let derives = vec![simple_metaitem("Copy"), simple_metaitem("Clone")];
+        let derive_meta_item = mk().meta_item("derive", MetaItemKind::List(derives));
+        let attrs = repr_attr.meta_item_attr(AttrStyle::Outer, derive_meta_item);
+        let struct_item = Nonterminal::NtItem(attrs.pub_().tuple_struct_item(name, vec![u8_slice]));
 
         let mut macro_body = Vec::with_capacity(1 + field_info.len() * 10);
 
@@ -72,28 +78,48 @@ impl Translation {
     }
 
     /// TODO
-    pub fn convert_bitfield_struct_literal(&self, name: String, field_ids: &[CExprId], field_info: Vec<FieldNameType>) -> Result<WithStmts<P<Expr>>, String> {
-        // REVIEW: drop explicit ty (since it's not necessary) instead of infer_ty?
+    pub fn convert_bitfield_struct_literal(&self, name: String, field_ids: &[CExprId], field_info: Vec<FieldNameType>, platform_byte_size: u64, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
         // REVIEW: statics? Likely need to const_transmute byte array?
-        let tmp_name = format!("{}_bitfield", name);
+        // TODO: Derive Copy, Clone?
+        let variable_name = format!("{}_bf", name.clone());
+        let struct_ident = mk().ident_expr(variable_name.clone());
         let lit_zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
-        let lit_bitwidth = mk().lit_expr(mk().int_lit(3, LitIntType::Unsuffixed));
+        let lit_bitwidth = mk().lit_expr(mk().int_lit(platform_byte_size as u128, LitIntType::Unsuffixed));
         let zero_init = vec![mk().repeat_expr(lit_zero, lit_bitwidth)];
+        let tuple_struct_init = mk().call_expr(mk().ident_expr(name), zero_init);
+        let local_pat = mk().mutbl().ident_pat(variable_name);
+        let local_variable = P(mk().local(local_pat, None as Option<P<Ty>>, Some(tuple_struct_init)));
+
         let mut stmts = Vec::with_capacity(field_info.len() + 2);
-        stmts.push(
-            mk().item_stmt(
-                mk().pub_().const_item(tmp_name.clone(), mk().infer_ty(),
-                    mk().call_expr(mk().ident_expr(name), zero_init)))
-        );
-        for (name, ty) in field_info {
-            let setter_call_name = format!("set_{}", name);
-            let tmp_name_ident = mk().ident_expr(tmp_name.clone());
-            let call_params = Vec::new() as Vec<P<Expr>>;
-            stmts.push(mk().expr_stmt(mk().method_call_expr(tmp_name_ident, setter_call_name, call_params)))
+
+        stmts.push(mk().local_stmt(local_variable));
+
+        // Specified record fields
+        for (i, &field_id) in field_ids.iter().enumerate() {
+            let &(ref field_name, _) = &field_info[i];
+            let mut x = self.convert_expr(ExprUse::Used, field_id, is_static, DecayRef::Default)?;
+
+            let setter_call_name = format!("set_{}", field_name);
+            let call_params = vec![
+                x.val
+            ];
+            let method_call = mk().method_call_expr(struct_ident.clone(), setter_call_name, call_params);
+
+            stmts.push(mk().expr_stmt(method_call));
         }
-        stmts.push(mk().expr_stmt(mk().ident_expr(tmp_name)));
+
+        // REVIEW: ommitted record fields? Might be fine to leave them as they will be zero'd?
+        // Pad out remaining omitted record fields
+        // for i in ids.len()..fields.len() {
+        //     let &(ref field_name, ty) = &field_decls[i];
+        //     fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, is_static)?));
+        // }
+
+        stmts.push(mk().expr_stmt(struct_ident));
+
         let val = mk().block_expr(mk().block(stmts));
         let stmts = vec![];
+
         Ok(WithStmts {
             stmts,
             val,

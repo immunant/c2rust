@@ -288,8 +288,8 @@ impl<'c> Translation<'c> {
         ids: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, String> {
         let mut has_bitfields = false;
-        let field_decls = match self.ast_context.index(struct_id).kind {
-            CDeclKind::Struct { ref fields, .. } => {
+        let (field_decls, platform_byte_size) = match self.ast_context.index(struct_id).kind {
+            CDeclKind::Struct { ref fields, platform_byte_size, .. } => {
                 let mut fieldnames = vec![];
 
                 let fields = match fields {
@@ -312,7 +312,7 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                fieldnames
+                (fieldnames, platform_byte_size)
             }
             _ => panic!("Struct literal declaration mismatch"),
         };
@@ -324,7 +324,7 @@ impl<'c> Translation<'c> {
             .unwrap();
 
         if has_bitfields {
-            return self.convert_bitfield_struct_literal(struct_name, ids, field_decls);
+            return self.convert_bitfield_struct_literal(struct_name, ids, field_decls, platform_byte_size, is_static);
         }
 
         let mut stmts: Vec<Stmt> = vec![];

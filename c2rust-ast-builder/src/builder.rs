@@ -1704,6 +1704,7 @@ impl Builder {
         }
     }
 
+    /// Create a local variable
     pub fn local<V, T, E>(self, pat: V, ty: Option<T>, init: Option<E>) -> Local
         where V: Make<P<Pat>>, T: Make<P<Ty>>, E: Make<P<Expr>> {
         let pat = pat.make(&self);

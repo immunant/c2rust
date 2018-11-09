@@ -132,6 +132,12 @@ pub struct Translation<'c> {
     mod_names: RefCell<IndexMap<String, PathBuf>>,
 }
 
+fn simple_metaitem(name: &str) -> NestedMetaItem {
+    let meta_item = mk().meta_item(vec![name], MetaItemKind::Word);
+
+    mk().nested_meta_item(NestedMetaItemKind::MetaItem(meta_item))
+}
+
 fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
     let opt_literal_val = match val.node {
         ExprKind::Lit(ref l) => match l.node {
@@ -932,12 +938,6 @@ impl<'c> Translation<'c> {
 
                 if has_bitfields {
                     return Ok(self.convert_bitfield_struct_decl(name, s, field_info, is_packed, manual_alignment));
-                }
-
-                fn simple_metaitem(name: &str) -> ast::NestedMetaItem {
-                    mk().nested_meta_item(
-                        NestedMetaItemKind::MetaItem(
-                            mk().meta_item(vec![name], MetaItemKind::Word)))
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
