@@ -209,23 +209,25 @@ impl<'st> CrateInformation<'st> {
                             },
                         };
 
+                        let old_items: HashSet<Ident> = m.items.iter().map(|item| item.ident)
+                            .collect::<HashSet<_>>();
+
                         for new_item_id in new_item_ids.iter() {
                             // `get_mut` is used to remove duplicates from incoming
                             // `ForeignMod`'s
-                            // TODO: investigate why there is a panic here when just unwrapping.
+                            // TODO:
+                            //  * Utilize `remove` as opposed to `get`, so  there won't be a need for
+                            // a clone.
+                            //  * Investigate why there is a panic here when just unwrapping.
                             if let Some(new_item) = self.item_map.get_mut(new_item_id) {
                                 let mut found = false;
-                                for item in m.items.iter() {
-                                    if compare_items(&new_item, &item) {
-                                        found = true;
-                                    }
 
-                                    // this check looks through the Foreign Items, and if one
-                                    // of those items matches an item already in the module
-                                    // delete it.
-                                    if let ItemKind::ForeignMod(ref mut fm) = new_item.node {
-                                        fm.items.retain(|fm_item| fm_item.ident != item.ident);
-                                    }
+                                if old_items.contains(&new_item.ident) {
+                                    found = true;
+                                }
+
+                                if let ItemKind::ForeignMod(ref mut fm) = new_item.node {
+                                    fm.items.retain(|fm_item| !old_items.contains(&fm_item.ident));
                                 }
 
                                 if !found {
@@ -407,7 +409,7 @@ impl Transform for ReorganizeModules {
                             Some(item)
                         }).collect();
 
-                        // Duplicate Items are deleted here
+
                         let seen_item_ids =
                             m.items.iter().map(|item| item.id).collect::<HashSet<_>>();
                         let mut deleted_item_ids = HashSet::new();
@@ -438,6 +440,8 @@ impl Transform for ReorganizeModules {
                             Some(module_item)
                         }).collect();
 
+                        // TODO: instead of iterating through items twice, use a hashmap and
+                        // utilize indexing to get O(n)
                         m.items = m.items.into_iter().filter_map(|module_item| {
                             for item_id in &seen_item_ids {
                                 let item = krate_info.item_map.get(&item_id)
@@ -490,6 +494,9 @@ impl Transform for ReorganizeModules {
     }
 }
 
+// TODO:
+// There may be issues with multi-segment paths, if there is it probably best
+// to use `Vec<PathSegment>` instead.
 fn path_to_ident(path: &Path) -> Ident {
     Ident::from_str(&path.to_string())
 }
