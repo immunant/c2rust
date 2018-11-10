@@ -265,8 +265,10 @@ impl RefactorState {
         let args = args.iter().map(|s| s.as_ref().to_owned()).collect::<Vec<_>>();
         info!("running command: {} {:?}", cmd, args);
 
-        let mut cmd = self.cmd_reg.get_command(cmd, &args);
-        cmd.run(self);
+        match self.cmd_reg.get_command(cmd, &args) {
+            Ok(mut cmd) => cmd.run(self),
+            Err(err) => eprintln!("Error: {}", err),
+        }
     }
 
 
@@ -456,10 +458,12 @@ impl Registry {
         self.commands.insert(name.to_owned(), Box::new(builder));
     }
 
-    pub fn get_command(&mut self, name: &str, args: &[String]) -> Box<Command> {
-        let builder = self.commands.get_mut(name)
-            .unwrap_or_else(|| panic!("no such command: {}", name));
-        builder(args)
+    pub fn get_command(&mut self, name: &str, args: &[String]) -> Result<Box<Command>, String> {
+        let builder = match self.commands.get_mut(name) {
+            Some(command) => command,
+            None => return Err(format!("This is not a valid command: {:#?}", name)),
+        };
+        Ok(builder(args))
     }
 }
 
