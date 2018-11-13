@@ -47,12 +47,6 @@ def main(xcheck: bool, snudown: str):
     # make sure the snudown submodule is checked out and up to date
     # update_or_init_submodule(snudown)
 
-    # the macOS and Linux builds of the transpiler alias each other
-    if not is_elf_exe(config.AST_EXPO) and not on_mac():
-        msg = "transpiler was built for macOS;"
-        msg += " please run build_translator.py and retry."
-        die(msg)
-
     generate_html_entries_header(snudown)
 
     bldr = CompileCommandsBuilder()
