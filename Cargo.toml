@@ -8,4 +8,5 @@ members = [
 ]
 exclude = [
     "cross-checks/rust-checks",
+    "examples",
 ]
