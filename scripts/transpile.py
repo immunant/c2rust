@@ -49,13 +49,13 @@ crate-type = ["staticlib"]
 % endif
 
 % if cross_checks:
-[dependencies.cross-check-plugin]
+[dependencies.c2rust-xcheck-plugin]
 path = "${plugin_path}"
 
-[dependencies.cross-check-derive]
+[dependencies.c2rust-xcheck-derive]
 path = "${derive_path}"
 
-[dependencies.cross-check-runtime]
+[dependencies.c2rust-xcheck-runtime]
 path = "${runtime_path}"
 features = ["libc-hash", "fixed-length-array-hash"]
 
