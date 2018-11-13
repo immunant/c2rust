@@ -1,0 +1,8 @@
+[package]
+name = "c2rust"
+version = "0.1.0"
+authors = ["Stephen Crane <sjc@immunant.com>"]
+edition = "2018"
+
+[dependencies]
+clap = {version = "~2.32.0", features = ["yaml"]}
