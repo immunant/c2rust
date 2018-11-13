@@ -3,7 +3,7 @@ extern crate clap;
 use clap::{App, SubCommand};
 use std::env;
 use std::ffi::OsStr;
-use std::process::Command;
+use std::process::{Command, exit};
 
 fn main() {
     let subcommand_yamls = [
@@ -39,13 +39,17 @@ where
         ld_library_path = format!("{}:{}", ld_library_path, old_library_path);
     }
 
+    // Assumes the subcommand executable is in the same directory as this driver
+    // program.
     let cmd_path = std::env::current_exe().expect("Cannot get current executable path");
     let mut cmd_path = cmd_path.as_path().canonicalize().unwrap();
     cmd_path.pop(); // remove current executable
     cmd_path.push(format!("c2rust-{}", subcommand));
-    Command::new(cmd_path.into_os_string())
-        .args(args)
-        .env("LD_LIBRARY_PATH", ld_library_path)
-        .spawn()
-        .expect("SubCommand failed to start");
+    exit(Command::new(cmd_path.into_os_string())
+         .args(args)
+         .env("LD_LIBRARY_PATH", ld_library_path)
+         .status()
+         .expect("SubCommand failed to start")
+         .code()
+         .unwrap_or(-1));
 }
