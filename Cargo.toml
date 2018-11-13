@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "c2rust-transpile",
+    "c2rust-refactor",
+    "c2rust-ast-builder",
+    "c2rust-ast-exporter",
+]
