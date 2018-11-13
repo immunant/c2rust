@@ -95,7 +95,7 @@ add_subdirectory(c2rust-ast-exporter)
     # output of `rustup run $CUSTOM_RUST_NAME -- rustc --version`
     CUSTOM_RUST_RUSTC_VERSION = "rustc 1.31.0-nightly (1dceaddfb 2018-10-17)"
 
-    RREF_BIN = os.path.join(RREF_DIR,
+    RREF_BIN = os.path.join(ROOT_DIR,
             'target.{suffix}/release/c2rust-refactor'.format(suffix=HOST_SUFFIX))
 
     def __init__(self):
@@ -132,7 +132,7 @@ add_subdirectory(c2rust-ast-exporter)
             if args.debug:
                 build_type = 'debug'
 
-        self.TRANSPILER = "c2rust-transpile/target/{}/c2rust-transpile".format(build_type)
+        self.TRANSPILER = "target/{}/c2rust-transpile".format(build_type)
         self.TRANSPILER = os.path.join(self.ROOT_DIR, self.TRANSPILER)
 
     @staticmethod

@@ -37,7 +37,7 @@ def get_testcases(directory: str) -> List[str]:
 
 
 def run_tests(testcases: List[str]) -> None:
-    ipath = os.path.join(c.RREF_DIR, "target/debug/c2rust-refactor")
+    ipath = os.path.join(c.ROOT_DIR, "target/debug/c2rust-refactor")
     # refactor = '{ip} -P ../.. -p plugin_stub -r alongside'.format(ip=ipath)
     # NOTE:PL: I removed the plugin options (-P, -p) to get the tests to run.
     refactor = '{ip} -r alongside'.format(ip=ipath)
@@ -97,7 +97,7 @@ def main():
     # ensure_rustfmt_version()
     test_dir = os.path.join(c.RREF_DIR, "tests")
     assert os.path.isdir(test_dir), "test dir missing: " + test_dir
-    refactor_binary = os.path.join(c.RREF_DIR, "target/debug/c2rust-refactor")
+    refactor_binary = os.path.join(c.ROOT_DIR, "target/debug/c2rust-refactor")
     if not os.path.isfile(refactor_binary):
         die("build refactor binary first. expected: " + refactor_binary)
 
