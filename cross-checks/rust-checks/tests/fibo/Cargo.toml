@@ -3,15 +3,15 @@ name = "fibo"
 version = "0.1.0"
 authors = ["Andrei Homescu <ah@immunant.com>"]
 
-[dependencies.cross-check-plugin]
+[dependencies.c2rust-xcheck-plugin]
 path = "../../rustc-plugin"
 features = []
 
-[dependencies.cross-check-derive]
+[dependencies.c2rust-xcheck-derive]
 path = "../../derive-macros"
 
-[dependencies.cross-check-runtime]
+[dependencies.c2rust-xcheck-runtime]
 path = "../../runtime"
 
-[dependencies.xcheck-dlsym]
+[dependencies.c2rust-xcheck-dlsym]
 path = "../../backends/xcheck-dlsym"

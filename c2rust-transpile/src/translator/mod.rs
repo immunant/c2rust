@@ -619,7 +619,7 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
                 xcheck_plugin_args.push(mk().nested_meta_item(file_item));
             }
             let xcheck_plugin_item = mk().meta_item(
-                vec!["cross_check_plugin"],
+                vec!["c2rust_xcheck_plugin"],
                 MetaItemKind::List(xcheck_plugin_args),
             );
             let plugin_args = vec![mk().nested_meta_item(xcheck_plugin_item)];
@@ -636,9 +636,9 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
         s.print_item(&mk().extern_crate_item("libc", None))?;
         if t.tcfg.cross_checks {
             s.print_item(&mk().single_attr("macro_use")
-                .extern_crate_item("cross_check_derive", None))?;
+                .extern_crate_item("c2rust_xcheck_derive", None))?;
             s.print_item(&mk().single_attr("macro_use")
-                .extern_crate_item("cross_check_runtime", None))?;
+                .extern_crate_item("c2rust_xcheck_runtime", None))?;
             // When cross-checking, always use the system allocator
             let sys_alloc_path = vec!["", "std", "alloc", "System"];
             s.print_item(&mk().single_attr("global_allocator")

@@ -12,7 +12,7 @@ extern crate serde_yaml;
 #[macro_use]
 extern crate smallvec;
 
-extern crate cross_check_config as xcfg;
+extern crate c2rust_xcheck_config as xcfg;
 
 use rustc_plugin::Registry;
 
@@ -96,7 +96,7 @@ impl CrossCheckBuilder for xcfg::XCheckType {
         };
         quote_stmt!(cx, {
             #[allow(unused_imports)]
-            use cross_check_runtime::xcheck::$tag;
+            use c2rust_xcheck_runtime::xcheck::$tag;
             cross_check_iter!($check.into_iter())
         })
     }
@@ -204,11 +204,11 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
            scope_stack: xcfg::scopes::ScopeStack,
            skip_first_scope: bool) -> CrossChecker<'a, 'cx, 'exp> {
         let default_ahasher = {
-            let q = quote_ty!(cx, ::cross_check_runtime::hash::jodyhash::JodyHasher);
+            let q = quote_ty!(cx, ::c2rust_xcheck_runtime::hash::jodyhash::JodyHasher);
             q.to_tokens(cx)
         };
         let default_shasher = {
-            let q = quote_ty!(cx, ::cross_check_runtime::hash::simple::SimpleHasher);
+            let q = quote_ty!(cx, ::c2rust_xcheck_runtime::hash::simple::SimpleHasher);
             q.to_tokens(cx)
         };
         CrossChecker {
@@ -261,7 +261,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     let (ahasher, shasher) = self.get_hasher_pair();
                     quote_expr!(self.cx, {
                         #[allow(unused_imports)]
-                        use cross_check_runtime::hash::CrossCheckHash as XCH;
+                        use c2rust_xcheck_runtime::hash::CrossCheckHash as XCH;
                         let val_ref = &$ident;
                         $pre_hash_stmts
                         let hash = XCH::cross_check_hash::<$ahasher, $shasher>(val_ref);
@@ -349,7 +349,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 let (ahasher, shasher) = self.get_hasher_pair();
                 quote_expr!(self.cx, {
                     #[allow(unused_imports)]
-                    use cross_check_runtime::hash::CrossCheckHash as XCH;
+                    use c2rust_xcheck_runtime::hash::CrossCheckHash as XCH;
                     let val_ref = &__c2rust_fn_result;
                     $pre_hash_stmts
                     let hash = XCH::cross_check_hash::<$ahasher, $shasher>(val_ref);
@@ -423,18 +423,18 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             // TODO: emit warning
             quote_expr!(self.cx, {
                 if _depth == 0 {
-                    ::cross_check_runtime::hash::LEAF_RECORD_HASH
+                    ::c2rust_xcheck_runtime::hash::LEAF_RECORD_HASH
                 } else {
-                    ::cross_check_runtime::hash::ANY_UNION_HASH
+                    ::c2rust_xcheck_runtime::hash::ANY_UNION_HASH
                 }
             })
         };
         quote_item!(self.cx,
-            impl ::cross_check_runtime::hash::CrossCheckHash for $union_ident {
+            impl ::c2rust_xcheck_runtime::hash::CrossCheckHash for $union_ident {
                 #[inline]
                 fn cross_check_hash_depth<HA, HS>(&self, _depth: usize) -> u64
-                        where HA: ::cross_check_runtime::hash::CrossCheckHasher,
-                              HS: ::cross_check_runtime::hash::CrossCheckHasher {
+                        where HA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
+                              HS: ::c2rust_xcheck_runtime::hash::CrossCheckHasher {
                     $hash_body
                 }
             }
@@ -461,7 +461,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             #[link_section = $hash_fn_section]
             pub unsafe extern "C" fn $hash_fn(x: *mut $ty_ident, depth: usize) -> u64 {
                 #[allow(unused_imports)]
-                use ::cross_check_runtime::hash::CrossCheckHash;
+                use ::c2rust_xcheck_runtime::hash::CrossCheckHash;
                 (*x).cross_check_hash_depth::<$ahasher, $shasher>(depth)
             }
         ).expect(&format!("unable to implement C ABI hash function for type '{}'",
@@ -752,11 +752,11 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                 let hash_fn_name = format!("__c2rust_hash_{}_{}", ty_name, ty_suffix);
                 let hash_fn = ast::Ident::from_str(&hash_fn_name);
                 let hash_impl_item = quote_item!(self.cx,
-                    impl ::cross_check_runtime::hash::CrossCheckHash for $ty_name {
+                    impl ::c2rust_xcheck_runtime::hash::CrossCheckHash for $ty_name {
                         #[inline]
                         fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-                                where HA: ::cross_check_runtime::hash::CrossCheckHasher,
-                                      HS: ::cross_check_runtime::hash::CrossCheckHasher {
+                                where HA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
+                                      HS: ::c2rust_xcheck_runtime::hash::CrossCheckHasher {
                             extern {
                                 #[no_mangle]
                                 fn $hash_fn(_: *const $ty_name, _: usize) -> u64;
@@ -808,7 +808,7 @@ impl CrossCheckExpander {
             .expect("could not parse default config");
 
         // Parse arguments of the form
-        // #[plugin(cross_check_plugin(config_file = "..."))]
+        // #[plugin(c2rust_xcheck_plugin(config_file = "..."))]
         let fl = RealFileLoader;
         args.iter()
             .filter(|nmi| nmi.check_name("config_file"))

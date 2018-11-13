@@ -1,5 +1,5 @@
 [package]
-name = "fakechecks-zstd"
+name = "c2rust-xcheck-fakechecks-zstd"
 version = "0.1.0"
 authors = ["Andrei Homescu <ah@immunant.com>"]
 

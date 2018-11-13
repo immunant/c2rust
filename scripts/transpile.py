@@ -60,7 +60,7 @@ path = "${runtime_path}"
 features = ["libc-hash", "fixed-length-array-hash"]
 
 %if use_fakechecks:
-[dependencies.libfakechecks-sys]
+[dependencies.c2rust-xchecks-libfakechecks-sys]
 path = "${libfakechecks_sys_path}"
 %endif
 
@@ -88,11 +88,11 @@ LIB_RS_TEMPLATE = """\
 
 % if cross_checks:
 #![feature(plugin, custom_attribute)]
-#![plugin(cross_check_plugin(${plugin_args}))]
+#![plugin(c2rust_xcheck_plugin(${plugin_args}))]
 #![cross_check(yes)]
 
-#[macro_use] extern crate cross_check_derive;
-#[macro_use] extern crate cross_check_runtime;
+#[macro_use] extern crate c2rust_xcheck_derive;
+#[macro_use] extern crate c2rust_xcheck_runtime;
 
 #[global_allocator]
 static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
@@ -100,7 +100,7 @@ static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
 
 extern crate libc;
 % if use_fakechecks:
-extern crate libfakechecks_sys;
+extern crate c2rust_xcheck_libfakechecks_sys;
 %endif
 
 % for (module_name, module_path, line_prefix) in modules:

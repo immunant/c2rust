@@ -5,7 +5,7 @@ extern crate synstructure;
 #[macro_use]
 extern crate quote;
 
-extern crate cross_check_config as xcfg;
+extern crate c2rust_xcheck_config as xcfg;
 
 fn get_cross_check_args(attrs: &[syn::Attribute]) -> Option<xcfg::attr::ArgList> {
     attrs.iter()
@@ -42,7 +42,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
             // Default implementation
             quote! {
                 #[allow(unused_imports)]
-                use cross_check_runtime::hash::CrossCheckHash;
+                use c2rust_xcheck_runtime::hash::CrossCheckHash;
                 h.write_u64(#f.cross_check_hash_depth::<#ahasher, #shasher>(_depth - 1));
             }
         })
@@ -80,7 +80,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         let hasher = top_args.get_ident_arg("field_hasher", ahasher);
         quote! {
             if _depth == 0 {
-                ::cross_check_runtime::hash::LEAF_RECORD_HASH
+                ::c2rust_xcheck_runtime::hash::LEAF_RECORD_HASH
             } else {
                 #[allow(unused_mut)]
                 let mut h = #hasher::default();
@@ -89,10 +89,10 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
             }
         }
     });
-    s.bound_impl("::cross_check_runtime::hash::CrossCheckHash", quote! {
+    s.bound_impl("::c2rust_xcheck_runtime::hash::CrossCheckHash", quote! {
         fn cross_check_hash_depth<__XCHA, __XCHS>(&self, _depth: usize) -> u64
-                where __XCHA: ::cross_check_runtime::hash::CrossCheckHasher,
-                      __XCHS: ::cross_check_runtime::hash::CrossCheckHasher {
+                where __XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
+                      __XCHS: ::c2rust_xcheck_runtime::hash::CrossCheckHasher {
             #[allow(unused_imports)]
             use std::hash::Hasher;
             #hash_code

@@ -7,15 +7,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "cfg-if"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
-name = "cross-check-config"
+name = "c2rust-xcheck-config"
 version = "0.1.0"
 dependencies = [
  "globset 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.27 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.27 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_yaml 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -23,35 +19,46 @@ dependencies = [
 ]
 
 [[package]]
-name = "cross-check-derive"
+name = "c2rust-xcheck-derive"
 version = "0.1.0"
 dependencies = [
- "cross-check-config 0.1.0",
+ "c2rust-xcheck-config 0.1.0",
  "quote 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 0.11.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "synstructure 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
-name = "cross-check-plugin"
+name = "c2rust-xcheck-dlsym"
+version = "0.1.0"
+
+[[package]]
+name = "c2rust-xcheck-plugin"
 version = "0.1.0"
 dependencies = [
- "cross-check-config 0.1.0",
+ "c2rust-xcheck-config 0.1.0",
  "matches 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.27 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_yaml 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
-name = "cross-check-runtime"
+name = "c2rust-xcheck-runtime"
 version = "0.1.0"
+
+[[package]]
+name = "cfg-if"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "fibo"
 version = "0.1.0"
 dependencies = [
- "cross-check-derive 0.1.0",
- "cross-check-plugin 0.1.0",
- "cross-check-runtime 0.1.0",
- "xcheck-dlsym 0.1.0",
+ "c2rust-xcheck-derive 0.1.0",
+ "c2rust-xcheck-dlsym 0.1.0",
+ "c2rust-xcheck-plugin 0.1.0",
+ "c2rust-xcheck-runtime 0.1.0",
 ]
 
 [[package]]
@@ -235,10 +242,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "void"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
-name = "xcheck-dlsym"
-version = "0.1.0"
 
 [[package]]
 name = "yaml-rust"

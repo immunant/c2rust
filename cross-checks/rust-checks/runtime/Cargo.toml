@@ -1,5 +1,5 @@
 [package]
-name = "cross-check-runtime"
+name = "c2rust-xcheck-runtime"
 version = "0.1.0"
 authors = ["Andrei Homescu <ah@immunant.com>"]
 readme = "README.md"

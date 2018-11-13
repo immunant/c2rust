@@ -52,13 +52,13 @@ Building Rust code with cross-checks is simpler that C code, and only requires a
 to `Cargo.toml` and the main Rust source file. Add the following to your `Cargo.toml` file 
 (replacing `$C2RUST` to the actual path to this repository):
 ```TOML
-[dependencies.cross-check-plugin]
+[dependencies.c2rust-xcheck-plugin]
 path = "$C2RUST/cross-checks/rust-checks/rustc-plugin"
 
-[dependencies.cross-check-derive]
+[dependencies.c2rust-xcheck-derive]
 path = "$C2RUST/cross-checks/rust-checks/derive-macros"
 
-[dependencies.cross-check-runtime]
+[dependencies.c2rust-xcheck-runtime]
 path = "$C2RUST/cross-checks/rust-checks/runtime"
 features = ["libc-hash", "fixed-length-array-hash"]
 ```
@@ -67,11 +67,11 @@ and this preamble to your `lib.rs` or `main.rs`:
 #![feature(plugin, custom_attribute)]
 #![cross_check(yes)]
 
-#[macro_use] extern crate cross_check_derive;
-#[macro_use] extern crate cross_check_runtime;
+#[macro_use] extern crate c2rust_xcheck_derive;
+#[macro_use] extern crate c2rust_xcheck_runtime;
 ```
 
-You may also add `#![plugin(cross_check_plugin(...))]` to pass additional arguments to the cross-checking plugin.
+You may also add `#![plugin(c2rust_xcheck_plugin(...))]` to pass additional arguments to the cross-checking plugin.
 
 ### Cross-check configuration
 Cross-checks can be customized at a fine granularity using [cross-check configuration files or inline attributes](cross-check-config.md).
