@@ -9,7 +9,7 @@ authors = [
 
 [dependencies]
 serde_cbor = "0.9"
-clap = "2.32"
+clap = {version = "~2.32.0", features = ["yaml"]}
 dtoa = "0.4.2"
 serde = "1.0"
 serde_json = "1.0"
