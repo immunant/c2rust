@@ -56,6 +56,11 @@ pub enum SelectOp {
 
     /// `filter(f)`: Filter the set of selected nodes, keeping only nodes that match filter `f`.
     Filter(Filter),
+
+    /// `first`: Select the first (lowest `NodeId`) of the selected nodes.
+    First,
+    /// `last`: Select the last (highest `NodeId`) of the selected nodes.
+    Last,
 }
 
 
@@ -168,6 +173,14 @@ pub fn run_select<S: IntoSymbol>(st: &CommandState,
 
             SelectOp::Filter(ref filt) => {
                 sel = visitor::filter(st, cx, &st.krate(), sel, filt);
+            },
+
+            SelectOp::First => {
+                sel = sel.into_iter().min().into_iter().collect();
+            },
+
+            SelectOp::Last => {
+                sel = sel.into_iter().max().into_iter().collect();
             },
         }
     }
