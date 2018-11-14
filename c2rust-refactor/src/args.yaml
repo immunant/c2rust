@@ -1,0 +1,68 @@
+name: refactor
+version: 0.1.0
+author: |
+  - The C2Rust Project Developers <c2rust@immunant.com>
+  - Stuart Pernsteiner <spernsteiner@galois.com>
+about: A refactoring tool for Rust programs, aimed at removing unsafety from automatically-generated Rust code.
+settings:
+  TrailingVarArg
+args:
+  - rewrite-mode:
+      short: r
+      long: rewrite-mode
+      possible_values:
+        - print
+        - inplace
+        - alongside
+        - diff
+      default_value: print
+      help: "output rewritten code"
+      takes_value: true
+      value_name: MODE
+  - cursor:
+      short: c
+      long: cursor
+      help: "a cursor position, used to filter some rewrite operations"
+      takes_value: true
+      value_name: "FILE:LINE:COL[:LABEL[:KIND]]"
+      number_of_values: 1
+      multiple: true
+  - mark:
+      short: m
+      long: mark
+      help: "a marked node indicated by its ID, and a label for that mark"
+      takes_value: true
+      value_name: "ID[:LABEL]"
+      number_of_values: 1
+      multiple: true
+  - plugin-name:
+      short: p
+      long: plugin-name
+      help: "name of a plugin to load"
+      takes_value: true
+      value_name: "PLUGIN"
+      number_of_values: 1
+      multiple: true
+  - plugin-dir:
+      short: P
+      long: plugin-dir
+      help: "search dir for plugins"
+      takes_value: true
+      value_name: "PLUGIN_DIR"
+      number_of_values: 1
+      multiple: true
+  - cargo:
+      long: cargo
+      help: "get rustc arguments from cargo"
+      takes_value: false
+      conflicts_with: rustc-args
+  - transforms:
+      help: Refactoring transformations
+      takes_value: true
+      multiple: true
+      required: true
+  - rustc-args:
+      help: Arguments to pass to rustc
+      takes_value: true
+      multiple: true
+      last: true

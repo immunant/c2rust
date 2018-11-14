@@ -1,7 +1,7 @@
 #![feature(rustc_private)]
 extern crate cargo;
 extern crate env_logger;
-extern crate getopts;
+#[macro_use] extern crate clap;
 extern crate c2rust_refactor;
 #[macro_use] extern crate log;
 extern crate syntax;
@@ -64,83 +64,13 @@ struct Options {
     plugin_dirs: Vec<String>,
 }
 
-fn find<T: PartialEq<U>, U: ?Sized>(xs: &[T], x: &U) -> Option<usize> {
-    for i in 0 .. xs.len() {
-        if &xs[i] == x {
-            return Some(i);
-        }
-    }
-    None
-}
-
-fn print_usage(prog: &str, opts: &getopts::Options) {
-    let brief = format!("Usage: {} [options] transform [args...] -- [rustc args...]", prog);
-    print!("{}", opts.usage(&brief));
-}
-
-fn parse_opts(argv: Vec<String>) -> Option<Options> {
-    use getopts::{HasArg, Occur};
-    let mut opts = getopts::Options::new();
-    opts.opt("r", "rewrite-mode",
-        "output rewritten code `inplace`, `alongside` the original, \
-           or `print` to screen? (default: print)",
-        "MODE", HasArg::Yes, Occur::Optional);
-    opts.opt("c", "cursor",
-        "a cursor position, used to filter some rewrite operations",
-        "FILE:LINE:COL[:LABEL[:KIND]]", HasArg::Yes, Occur::Multi);
-    opts.opt("m", "mark",
-        "a marked node indicated by its ID, and a label for that mark",
-        "ID[:LABEL]", HasArg::Yes, Occur::Multi);
-    opts.opt("h", "help",
-        "display usage information",
-        "", HasArg::No, Occur::Optional);
-    opts.opt("p", "",
-        "name of a plugin to load",
-        "PLUGIN", HasArg::Yes, Occur::Multi);
-    opts.opt("P", "",
-        "search dir for plugins",
-        "DIR", HasArg::Yes, Occur::Multi);
-    opts.opt("", "cargo",
-        "get rustc arguments from cargo",
-        "", HasArg::No, Occur::Optional);
-
-
-    let mut rustc_args = None;
-
-    // Separate c2rust-refactor args from rustc args
-    let local_args = match find(&argv, "--") {
-        Some(idx) => {
-            let mut argv = argv;
-            let mut rest = argv.split_off(idx);
-            // Replace "--" with the full path to rustc
-            rest[0] = get_rustc_executable(Path::new("rustc"));
-            rustc_args = Some(RustcArgSource::CmdLine(rest));
-            argv
-        },
-        None => {
-            argv
-        },
-    };
-
-
-    // Parse c2rust-refactor args
-    let prog = &local_args[0];
-
-    let m = match opts.parse(&local_args[1..]) {
-        Ok(m) => m,
-        Err(e) => {
-            info!("{}", e.to_string());
-            return None;
-        },
-    };
-
-    if m.opt_present("h") {
-        print_usage(prog, &opts);
-        return None;
-    }
+fn parse_opts() -> Option<Options> {
+    use clap::App;
+    let yaml = load_yaml!("args.yaml");
+    let args = App::from_yaml(yaml).get_matches();
 
     // Parse rewrite mode
-    let rewrite_mode = match m.opt_str("rewrite-mode") {
+    let rewrite_mode = match args.value_of("rewrite-mode") {
         Some(mode_str) => match &mode_str as &str {
             "inplace" => rewrite::files::RewriteMode::InPlace,
             "alongside" => rewrite::files::RewriteMode::Alongside,
@@ -155,7 +85,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     };
 
     // Parse cursors
-    let cursor_strs = m.opt_strs("cursor");
+    let cursor_strs = args.values_of_lossy("cursor").unwrap_or(vec![]);
     let mut cursors = Vec::with_capacity(cursor_strs.len());
     for s in &cursor_strs {
         let mut parts = s.split(':');
@@ -215,7 +145,7 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
     }
 
     // Parse marks
-    let mark_strs = m.opt_strs("mark");
+    let mark_strs = args.values_of_lossy("mark").unwrap_or(vec![]);
     let mut marks = Vec::with_capacity(mark_strs.len());
     for s in &mark_strs {
         let mut parts = s.split(':');
@@ -248,34 +178,28 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
 
 
     // Get plugin options
-    let plugins = m.opt_strs("p").to_owned();
-    let plugin_dirs = m.opt_strs("P").to_owned();
+    let plugins = args.values_of_lossy("plugin-name").unwrap_or(vec![]);
+    let plugin_dirs = args.values_of_lossy("plugin-dir").unwrap_or(vec![]);
 
 
-    // Handle --cargo
-    if m.opt_present("cargo") {
-        if rustc_args.is_some() {
-            println!("can't combine --cargo with explicit rustc args");
-            print_usage(prog, &opts);
-            return None;
+    // Handle --cargo and rustc-args
+    let rustc_args = match args.values_of_lossy("rustc-args").as_mut() {
+        Some(extra_args) => {
+            let mut args = vec!(get_rustc_executable(Path::new("rustc")));
+            args.append(extra_args);
+            RustcArgSource::CmdLine(args)
         }
-        rustc_args = Some(RustcArgSource::Cargo);
-    }
-
-    // Get final rustc_args value
-    if rustc_args.is_none() {
-        println!("must either provide rustc arguments or set --cargo");
-        print_usage(prog, &opts);
-        return None;
-    }
-    let rustc_args = rustc_args.unwrap();
-
+        None => {
+            assert!(args.is_present("cargo"));
+            RustcArgSource::Cargo
+        }
+    };
 
     // Parse command names + args
     let mut commands = Vec::new();
     let mut cur_command = None;
-    for arg in m.free {
-        if &arg == ";" {
+    for arg in args.values_of("transforms").unwrap() {
+        if arg == ";" {
             if let Some(cmd) = cur_command.take() {
                 commands.push(cmd);
             } else {
@@ -284,11 +208,11 @@ fn parse_opts(argv: Vec<String>) -> Option<Options> {
             }
         } else if cur_command.is_none() {
             cur_command = Some(Command {
-                name: arg,
+                name: arg.to_string(),
                 args: Vec::new(),
             });
         } else {
-            cur_command.as_mut().unwrap().args.push(arg);
+            cur_command.as_mut().unwrap().args.push(arg.to_string());
         }
     }
     if let Some(cmd) = cur_command.take() {
@@ -538,8 +462,7 @@ fn main_impl(opts: Options) {
 fn main() {
     env_logger::init();
 
-    let args = std::env::args().collect::<Vec<_>>();
-    let opts = match parse_opts(args) {
+    let opts = match parse_opts() {
         Some(x) => x,
         None => return,
     };

@@ -11,11 +11,11 @@ build = "build.rs"
 diff = "0.1.10"
 json = "0.11.8"
 libc = "0.2.28"
-getopts = "0.2.14"
 regex = "0.2.2"
 ena = "0.7.3"
 c2rust-ast-builder = { path = "../c2rust-ast-builder" }
 cargo = "0.30.0"
+clap = {version = "~2.32.0", features = ["yaml"]}
 
 [lib]
 name = "c2rust_refactor"
