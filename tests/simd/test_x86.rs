@@ -1,3 +1,4 @@
+//! xfail
 extern crate libc;
 
 use x86::{ShuffleVectors, VectorInitLists, rust_unpack_128_2x128, rust_zero_init_all, rust_call_all, rust_call_all_used, rust_vector_init_lists, rust_vector_init_lists_used};
