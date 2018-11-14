@@ -1,6 +1,6 @@
 #[macro_use(crate_version, crate_authors, load_yaml)]
 extern crate clap;
-use clap::{App, SubCommand};
+use clap::{App, AppSettings, SubCommand};
 use std::env;
 use std::ffi::OsStr;
 use std::process::{Command, exit};
@@ -12,10 +12,8 @@ fn main() {
     let matches = App::new("C2Rust")
         .version(crate_version!())
         .author(crate_authors!(", "))
-        .subcommands(subcommand_yamls.iter().map(|yaml| {
-            SubCommand::from_yaml(yaml)
-                .about("Translate C code to equivalent Rust code")
-        }))
+        .setting(AppSettings::SubcommandRequiredElseHelp)
+        .subcommands(subcommand_yamls.iter().map(|yaml| SubCommand::from_yaml(yaml)))
         .get_matches();
 
     let mut os_args = env::args_os();
@@ -25,7 +23,10 @@ fn main() {
         (Some(arg_name), Some(subcommand)) if arg_name == subcommand => {
             invoke_subcommand(&subcommand, os_args);
         }
-        _ => panic!("Could not match subcommand"),
+        _ => {
+            eprintln!("{:?}", arg_name);
+            panic!("Could not match subcommand");
+        }
     };
 }
 
