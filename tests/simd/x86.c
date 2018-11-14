@@ -59,7 +59,7 @@ ShuffleVectors call_all(void) {
         // Actual Builtin:
         _mm_shuffle_pi16(c, _MM_SHUFFLE(0, 1, 2, 3)),
 
-        // Super builtins:
+        // Super builtins(in LLVM 6, but actual in 7):
         _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 2, 1, 0)),
         _mm_shuffle_pd(b, b, (1 << 1 | 1 << 0)),
         _mm256_shuffle_ps(d, d, _MM_SHUFFLE(1, 2, 2, 1)),
@@ -107,7 +107,7 @@ ShuffleVectors call_all_used(void) {
     // Actual Builtin:
     a = _mm_shuffle_pi16(cc, _MM_SHUFFLE(0, 1, 2, 3));
 
-    // Super builtins:
+    // Super builtins(in LLVM 6, but actual in 7):
     b = _mm_shuffle_ps(aa, aa, _MM_SHUFFLE(3, 2, 1, 0));
     c = _mm_shuffle_pd(bb, bb, (1 << 1 | 1 << 0));
     d = _mm256_shuffle_ps(dd, dd, _MM_SHUFFLE(1, 2, 2, 1));

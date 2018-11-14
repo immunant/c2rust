@@ -4,7 +4,7 @@
 use super::*;
 
 use c_ast::BinOp::{Add, BitAnd, ShiftRight};
-use c_ast::CastKind::IntegralCast;
+use c_ast::CastKind::{BitCast, IntegralCast};
 use c_ast::CExprKind::{Binary, Call, Conditional, ExplicitCast, ImplicitCast, Literal};
 use c_ast::CLiteral::Integer;
 use c_ast::CTypeKind::{Char, Double, Float, Int, LongLong, Short};
@@ -140,17 +140,17 @@ impl Translation {
         Ok(false)
     }
 
-    /// Generate an implementation of builtin_ia32_pshufw that calls out to `_mm_shuffle_pi16`.
-    /// This shuffle operation is unique in clang in that it is implemented with an actual
-    /// built-in function.
-    pub fn convert_builtin_ia32_pshufw(
+    /// Generate a call to a rust SIMD function based on a builtin function. LLVM 6 only supports one of these
+    /// but LLVM 7 converts a bunch more
+    pub fn convert_simd_builtin(
         &self,
+        fn_name: &str,
         use_: ExprUse,
         is_static: bool,
         decay_ref: DecayRef,
         args: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, String> {
-        self.import_simd_function("_mm_shuffle_pi16")?;
+        self.import_simd_function(fn_name)?;
 
         let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
         let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
@@ -158,52 +158,33 @@ impl Translation {
             // For some reason there seems to be an incorrect implicit cast here to char
             // it's possible the builtin takes a char even though the function takes an int
             ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
+            ExplicitCast(_, _, BitCast, _, _) => {
+                let (_, expr_id, _) = self.strip_vector_explicit_cast(args[1]);
+
+                expr_id
+            },
             _ => args[1],
         };
-        let second_param =
-            self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
-        let call = mk().call_expr(
-            mk().ident_expr("_mm_shuffle_pi16"),
-            vec![first_param.val, second_param.val],
-        );
+        let second_param = self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
+        let third_expr_id = args.get(2);
+        let mut call_params = vec![first_param.val, second_param.val];
 
-        if use_ == ExprUse::Used {
-            Ok(WithStmts {
-                stmts: Vec::new(),
-                val: call,
-            })
-        } else {
-            Ok(WithStmts {
-                stmts: vec![mk().expr_stmt(call)],
-                val: self.panic("No value for unused shuffle vector return"),
-            })
+        if let Some(&third_expr_id) = third_expr_id {
+            let third_param = self.convert_expr(ExprUse::Used, third_expr_id, is_static, decay_ref)?;
+
+            // According to https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
+            // _mm_shuffle_ps taking an u32 instead of an i32 (like the rest of the vector mask fields)
+            // is a bug, and so we need to add a cast for it to work properly
+            if fn_name == "_mm_shuffle_ps" {
+                call_params.push(mk().cast_expr(third_param.val, mk().ident_ty("u32")));
+            } else {
+                call_params.push(third_param.val);
+            }
         }
-    }
 
-    /// Generate an implementation of builtin_ia32_shufps that calls out to `_mm_shuffle_ps`.
-    /// Like builtin_ia32_pshufw, this shuffle operation calls an actual buitlin in LLVM 7
-    pub fn convert_builtin_ia32_shufps(
-        &self,
-        use_: ExprUse,
-        is_static: bool,
-        decay_ref: DecayRef,
-        args: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, String> {
-        self.import_simd_function("_mm_shuffle_ps")?;
-
-        let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
-        let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
-        let second_expr_id = match self.ast_context.c_exprs[&args[1]].kind {
-            // For some reason there seems to be an incorrect implicit cast here to char
-            // it's possible the builtin takes a char even though the function takes an int
-            ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
-            _ => args[1],
-        };
-        let second_param =
-            self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
         let call = mk().call_expr(
-            mk().ident_expr("_mm_shuffle_ps"),
-            vec![first_param.val, second_param.val],
+            mk().ident_expr(fn_name),
+            call_params,
         );
 
         if use_ == ExprUse::Used {

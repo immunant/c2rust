@@ -137,12 +137,31 @@ impl Translation {
                 "va_end not supported - currently va_list and va_arg are supported"
             )),
 
-            // Two shuffle vectors actually call a real builtin:
+            // In LLVM 6 this first one is the only true SIMD builtin, LLVM 7 converted a bunch more after it:
             "__builtin_ia32_pshufw" =>
-                self.convert_builtin_ia32_pshufw(use_, is_static, decay_ref, args),
-            // LLVM 7 only, on some systems
+                self.convert_simd_builtin("_mm_shuffle_pi16", use_, is_static, decay_ref, args),
             "__builtin_ia32_shufps" =>
-                self.convert_builtin_ia32_shufps(use_, is_static, decay_ref, args),
+                self.convert_simd_builtin("_mm_shuffle_ps", use_, is_static, decay_ref, args),
+            "__builtin_ia32_shufpd" =>
+                self.convert_simd_builtin("_mm_shuffle_pd", use_, is_static, decay_ref, args),
+            "__builtin_ia32_shufps256" =>
+                self.convert_simd_builtin("_mm256_shuffle_ps", use_, is_static, decay_ref, args),
+            "__builtin_ia32_shufpd256" =>
+                self.convert_simd_builtin("_mm256_shuffle_pd", use_, is_static, decay_ref, args),
+            "__builtin_ia32_pshufd" =>
+                self.convert_simd_builtin("_mm_shuffle_epi32", use_, is_static, decay_ref, args),
+            "__builtin_ia32_pshufhw" =>
+                self.convert_simd_builtin("_mm_shufflehi_epi16", use_, is_static, decay_ref, args),
+            "__builtin_ia32_pshuflw" =>
+                self.convert_simd_builtin("_mm_shufflelo_epi16", use_, is_static, decay_ref, args),
+            "__builtin_ia32_pslldqi128_byteshift" =>
+                self.convert_simd_builtin("_mm_slli_si128", use_, is_static, decay_ref, args),
+            "__builtin_ia32_pshufd256" =>
+                self.convert_simd_builtin("_mm256_shuffle_epi32", use_, is_static, decay_ref, args),
+            "__builtin_ia32_pshufhw256" =>
+                self.convert_simd_builtin("_mm256_shufflehi_epi16", use_, is_static, decay_ref, args),
+            "__builtin_ia32_pshuflw256" =>
+                self.convert_simd_builtin("_mm256_shufflelo_epi16", use_, is_static, decay_ref, args),
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }
