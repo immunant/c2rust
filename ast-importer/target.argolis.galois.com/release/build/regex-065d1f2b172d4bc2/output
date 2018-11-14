@@ -1,2 +1,0 @@
-cargo:rustc-cfg=regex_runtime_teddy_ssse3
-cargo:rustc-cfg=regex_runtime_teddy_avx2
