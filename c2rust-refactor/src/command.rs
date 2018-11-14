@@ -261,14 +261,12 @@ impl RefactorState {
 
 
     /// Invoke a registered command with the given command name and arguments.
-    pub fn run<S: AsRef<str>>(&mut self, cmd: &str, args: &[S]) {
+    pub fn run<S: AsRef<str>>(&mut self, cmd: &str, args: &[S]) -> Result<(), String> {
         let args = args.iter().map(|s| s.as_ref().to_owned()).collect::<Vec<_>>();
         info!("running command: {} {:?}", cmd, args);
 
-        match self.cmd_reg.get_command(cmd, &args) {
-            Ok(mut cmd) => cmd.run(self),
-            Err(err) => eprintln!("Error: {}", err),
-        }
+        self.cmd_reg.get_command(cmd, &args)?;
+        Ok(())
     }
 
 
@@ -461,7 +459,7 @@ impl Registry {
     pub fn get_command(&mut self, name: &str, args: &[String]) -> Result<Box<Command>, String> {
         let builder = match self.commands.get_mut(name) {
             Some(command) => command,
-            None => return Err(format!("This is not a valid command: {:#?}", name)),
+            None => return Err(format!("Invalid command: {:#?}", name)),
         };
         Ok(builder(args))
     }
