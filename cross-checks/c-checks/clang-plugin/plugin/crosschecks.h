@@ -155,7 +155,11 @@ struct HashFunction {
             rv_ty = ctx.getPointerType(rv_ty);
             rv = new (ctx) UnaryOperator(arg, UO_AddrOf, rv_ty,
                                          VK_RValue, OK_Ordinary,
+#if CLANG_VERSION_MAJOR >= 7
+                                         SourceLocation(), false);
+#else
                                          SourceLocation());
+#endif
         } else {
             rv = ImplicitCastExpr::Create(ctx, rv_ty, ck, arg, nullptr, VK_RValue);
         }
@@ -328,7 +332,11 @@ private:
                 arg_ref_rv = new (ctx) UnaryOperator(arg_ref_lv, UO_AddrOf,
                                                      ctx.getPointerType(arg_ref_lv->getType()),
                                                      VK_RValue, OK_Ordinary,
+#if CLANG_VERSION_MAJOR >= 7
+                                                     SourceLocation(), false);
+#else
                                                      SourceLocation());
+#endif
                 break;
 
             // *arg
@@ -336,7 +344,11 @@ private:
                 arg_ref_rv = new (ctx) UnaryOperator(arg_ref_lv, UO_Deref,
                                                      arg_ref_lv->getType()->getPointeeType(),
                                                      VK_RValue, OK_Ordinary,
+#if CLANG_VERSION_MAJOR >= 7
+                                                     SourceLocation(), false);
+#else
                                                      SourceLocation());
+#endif
                 break;
 
             default:
