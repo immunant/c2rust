@@ -1,6 +1,9 @@
 name: transpile
 version: 0.1.0
-author: The C2Rust Project Developers, Eric Mertens, Alec Theriault
+author: |
+  - The C2Rust Project Developers <c2rust@immunant.com>
+  - Eric Mertens <emertens@galois.com>
+  - Alec Theriault <atheriault@galois.com>
 about: Translate C code to equivalent Rust code
 settings:
   TrailingVarArg
