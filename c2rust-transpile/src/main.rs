@@ -15,7 +15,7 @@ use clap::App;
 
 
 fn main() {
-    let yaml = load_yaml!("transpile.yaml");
+    let yaml = load_yaml!("args.yaml");
     let matches = App::from_yaml(yaml)
         .get_matches();
 

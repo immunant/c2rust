@@ -51,16 +51,7 @@ class Config:
     # use an install prefix unique to the host
     CBOR_PREFIX += HOST_SUFFIX
 
-    BEAR_URL = "https://codeload.github.com/rizsotto/Bear/tar.gz/2.3.11"
-    BEAR_ARCHIVE = os.path.join(DEPS_DIR, "Bear-2.3.11.tar.gz")
-    BEAR_SRC = os.path.basename(BEAR_ARCHIVE).replace(".tar.gz", "")
-    BEAR_SRC = os.path.join(DEPS_DIR, BEAR_SRC)
-    BEAR_PREFIX = os.path.join(DEPS_DIR, "Bear.")
-    # use an install prefix unique to the host
-    BEAR_PREFIX += HOST_SUFFIX
-    BEAR_BIN = os.path.join(BEAR_PREFIX, "bin/bear")
-
-    LLVM_VER = "6.0.1"
+    LLVM_VER = "7.0.0"
     # make the build directory unique to the hostname such that
     # building inside a vagrant/docker environment uses a different
     # folder than building directly on the host.
@@ -69,14 +60,16 @@ class Config:
         'http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz',
     ]
-    # See http://releases.llvm.org/download.html#6.0.0
+    # See http://releases.llvm.org/download.html#7.0.0
     LLVM_PUBKEY = "scripts/llvm-{ver}-key.asc".format(ver=LLVM_VER)
     LLVM_PUBKEY = os.path.join(ROOT_DIR, LLVM_PUBKEY)
     LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
     LLVM_BLD = os.path.join(
-        DEPS_DIR, 'llvm-{ver}/build.{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
+        DEPS_DIR,
+        'llvm-{ver}/build.{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
     LLVM_INSTALL = os.path.join(
-        DEPS_DIR, 'llvm-{ver}/install.{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
+        DEPS_DIR,
+        'llvm-{ver}/install.{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
     LLVM_BIN = os.path.join(LLVM_INSTALL, 'bin')
 
     CLANG_XCHECK_PLUGIN_SRC = os.path.join(CROSS_CHECKS_DIR,
@@ -95,8 +88,10 @@ add_subdirectory(c2rust-ast-exporter)
     # output of `rustup run $CUSTOM_RUST_NAME -- rustc --version`
     CUSTOM_RUST_RUSTC_VERSION = "rustc 1.31.0-nightly (1dceaddfb 2018-10-17)"
 
-    RREF_BIN = os.path.join(ROOT_DIR,
-            'target.{suffix}/release/c2rust-refactor'.format(suffix=HOST_SUFFIX))
+    RREF_BIN = os.path.join(
+            ROOT_DIR,
+            'target.{suffix}/release/c2rust-refactor'.format(
+                suffix=HOST_SUFFIX))
 
     def __init__(self):
         self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER) 
@@ -198,6 +193,13 @@ def _get_rust_toolchain_path(dirtype: str) -> str:
     emsg = "custom rust compiler lib path missing: " + libpath
     assert os.path.isdir(libpath), emsg
     return libpath
+
+
+def on_x86() -> bool:
+    """
+    return true on x86-based hosts.
+    """
+    return platform.uname().machine in ['x86_64', 'i386', 'i686' 'amd64']
 
 
 def on_mac() -> bool:
@@ -561,11 +563,11 @@ def check_sig(afile: str, asigfile: str) -> None:
 def download_archive(aurl: str, afile: str, asig: str = None):
     curl = get_cmd_or_die("curl")
 
-    def _download_helper(url: str, file: str):
-        if not os.path.isfile(file):
-            logging.info("downloading %s", os.path.basename(afile))
+    def _download_helper(url: str, ofile: str):
+        if not os.path.isfile(ofile):
+            logging.info("downloading %s", os.path.basename(ofile))
             follow_redirs = "-L"
-            curl(url, follow_redirs, "--max-redirs", "20", "-o", file)
+            curl(url, follow_redirs, "--max-redirs", "20", "-o", ofile)
 
     _download_helper(aurl, afile)
 

@@ -220,6 +220,9 @@ impl LLVMInfo {
                     "llvm-config-6.1",
                     "llvm-config-6.0",
                     "llvm-config",
+
+                    // Homebrew install location on MacOS
+                    "/usr/local/opt/llvm/bin/llvm-config",
                 ].iter().find_map(|c| {
                     if Command::new(c)
                         .stdout(Stdio::null())

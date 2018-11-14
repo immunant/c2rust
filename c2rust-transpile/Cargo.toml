@@ -2,9 +2,9 @@
 name = "c2rust-transpile"
 version = "0.1.0"
 authors = [
+  "The C2Rust Project Developers <c2rust@immunant.com>",
   "Eric Mertens <emertens@galois.com>",
   "Alec Theriault <atheriault@galois.com>",
-  "Stephen Crane <sjc@immunant.com>",
 ]
 
 [dependencies]

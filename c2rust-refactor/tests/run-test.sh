@@ -20,7 +20,7 @@ export RUST_BACKTRACE=1
 # PL: I  removed the plugin-related arguments since its not clear that
 # they are necessary to correctly run the regression test suite.
 # export refactor='../../target/debug/c2rust-refactor -P ../.. -p plugin_stub -r alongside'
-export refactor_bin='../../target/debug/c2rust-refactor'
+export refactor_bin='../../../target/debug/c2rust-refactor'
 export refactor="$refactor_bin  -r alongside"
 export rustflags=""
 
