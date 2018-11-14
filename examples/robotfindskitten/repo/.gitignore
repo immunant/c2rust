@@ -1,0 +1,11 @@
+/config.h
+/config.status
+/configure.lineno
+/libtool
+/stamp-h1
+
+Makefile
+.deps
+*.o
+/src/robotfindskitten
+
