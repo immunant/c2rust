@@ -6,3 +6,6 @@ edition = "2018"
 
 [dependencies]
 clap = {version = "~2.32.0", features = ["yaml"]}
+c2rust-transpile = { path = "../c2rust-transpile" }
+c2rust-refactor = { path = "../c2rust-refactor" }
+
