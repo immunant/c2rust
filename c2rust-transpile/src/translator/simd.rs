@@ -487,4 +487,32 @@ impl Translation {
             ref e => Err(format!("Found unknown mask format: {:?}", e)),
         }
     }
+
+    /// Determine whether or not the expr in question is a SIMD call value being casted,
+    /// as the builtin definition will add a superfluous cast for our purposes
+    pub fn casting_simd_builtin_call(&self, expr_id: CExprId, is_explicit: bool, kind: CastKind) -> bool {
+        use self::CastKind::BuiltinFnToFnPtr;
+
+        match self.ast_context.c_exprs[&expr_id].kind {
+            CExprKind::ShuffleVector(..) => is_explicit && kind == CastKind::BitCast,
+            CExprKind::Call(_, fn_id, _) => {
+                let fn_expr = &self.ast_context[fn_id].kind;
+
+                if let CExprKind::ImplicitCast(_, expr_id, BuiltinFnToFnPtr, _, _) = fn_expr {
+                    let expr = &self.ast_context.c_exprs[expr_id].kind;
+
+                    if let CExprKind::DeclRef(_, decl_id, _) = expr {
+                        let decl = &self.ast_context[*decl_id].kind;
+
+                        if let CDeclKind::Function{ ref name, .. } = decl {
+                            return name.starts_with("__builtin_ia32_");
+                        }
+                    }
+                }
+
+                false
+            },
+            _ => false,
+        }
+    }
 }
