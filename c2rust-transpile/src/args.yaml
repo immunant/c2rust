@@ -127,3 +127,4 @@ args:
   - extra-clang-args:
       help: Extra arguments to pass to clang frontend during parsing the input C file
       takes_value: true
+      multiple: true
