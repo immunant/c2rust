@@ -265,7 +265,8 @@ impl RefactorState {
         let args = args.iter().map(|s| s.as_ref().to_owned()).collect::<Vec<_>>();
         info!("running command: {} {:?}", cmd, args);
 
-        self.cmd_reg.get_command(cmd, &args)?;
+        let mut cmd = self.cmd_reg.get_command(cmd, &args)?;
+        cmd.run(self);
         Ok(())
     }
 
