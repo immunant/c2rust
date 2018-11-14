@@ -8,6 +8,7 @@ use std::process::{Command, exit};
 fn main() {
     let subcommand_yamls = [
         load_yaml!("../../c2rust-transpile/src/args.yaml"),
+        load_yaml!("../../c2rust-refactor/src/args.yaml"),
     ];
     let matches = App::new("C2Rust")
         .version(crate_version!())

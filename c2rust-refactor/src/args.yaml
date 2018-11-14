@@ -5,7 +5,7 @@ author: |
   - Stuart Pernsteiner <spernsteiner@galois.com>
 about: A refactoring tool for Rust programs, aimed at removing unsafety from automatically-generated Rust code.
 settings:
-  TrailingVarArg
+  - TrailingVarArg
 args:
   - rewrite-mode:
       short: r
@@ -66,3 +66,4 @@ args:
       takes_value: true
       multiple: true
       last: true
+      required_unless: cargo
