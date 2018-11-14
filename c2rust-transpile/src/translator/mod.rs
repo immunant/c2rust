@@ -2547,6 +2547,27 @@ impl Translation {
         }
     }
 
+    /// Determine whether or not the expr in question is a SIMD value being casted,
+    /// as the builtin definition will add superfluous casts for our purposes
+    fn casting_simd_builtin_call(&self, expr_id: CExprId, is_explicit: bool, kind: CastKind) -> bool {
+        match self.ast_context.c_exprs[&expr_id].kind {
+            CExprKind::ShuffleVector(..) => is_explicit && kind == CastKind::BitCast,
+            CExprKind::Call(_, fn_id, _) => {
+                let fn_expr = &self.ast_context[fn_id].kind;
+                if let CExprKind::ImplicitCast(_, expr_id, CastKind::BuiltinFnToFnPtr, _, _) = fn_expr {
+                    if let CExprKind::DeclRef(_, decl_id, _) = self.ast_context.c_exprs[expr_id].kind {
+                        if let CDeclKind::Function{ ref name, .. } = self.ast_context[decl_id].kind {
+                            return name.starts_with("__builtin_ia32_");
+                        }
+                    }
+                }
+
+                false
+            },
+            _ => false,
+        }
+    }
+
     fn convert_cast(
         &self,
         use_: ExprUse,
@@ -2573,13 +2594,10 @@ impl Translation {
             self.convert_expr(use_, expr, is_static, decay_ref)?
         };
 
-        // Shuffle Vector "function" builtins will add a cast which is unnecessary
-        // for translation purposes
-        // TODO: on __builtin_ia32_pshufw as well
-        if let CExprKind::ShuffleVector(..) = self.ast_context[expr].kind {
-            if is_explicit && kind == CastKind::BitCast {
-                return Ok(val);
-            }
+        // Shuffle Vector "function" builtins will add a cast to the output of the
+        // builtin call which is unnecessary for translation purposes
+        if self.casting_simd_builtin_call(expr, is_explicit, kind) {
+            return Ok(val);
         }
 
         match kind {
