@@ -49,3 +49,4 @@ $refactor_bin -r inplace \
     -- old_new.rs $rustflags
 
 cp old_new.rs old.new
+rm old_new.rs
