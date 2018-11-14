@@ -137,10 +137,12 @@ impl Translation {
                 "va_end not supported - currently va_list and va_arg are supported"
             )),
 
-            // One shuffle vector actually calls a real builtin:
-            "__builtin_ia32_pshufw" => {
-                self.convert_builtin_ia32_pshufw(use_, is_static, decay_ref, args)
-            }
+            // Two shuffle vectors actually call a real builtin:
+            "__builtin_ia32_pshufw" =>
+                self.convert_builtin_ia32_pshufw(use_, is_static, decay_ref, args),
+            // LLVM 7 only, on some systems
+            "__builtin_ia32_shufps" =>
+                self.convert_builtin_ia32_shufps(use_, is_static, decay_ref, args),
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }

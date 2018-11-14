@@ -180,6 +180,45 @@ impl Translation {
         }
     }
 
+    /// Generate an implementation of builtin_ia32_shufps that calls out to `_mm_shuffle_ps`.
+    /// Like builtin_ia32_pshufw, this shuffle operation calls an actual buitlin in LLVM 7
+    pub fn convert_builtin_ia32_shufps(
+        &self,
+        use_: ExprUse,
+        is_static: bool,
+        decay_ref: DecayRef,
+        args: &[CExprId],
+    ) -> Result<WithStmts<P<Expr>>, String> {
+        self.import_simd_function("_mm_shuffle_ps")?;
+
+        let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
+        let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
+        let second_expr_id = match self.ast_context.c_exprs[&args[1]].kind {
+            // For some reason there seems to be an incorrect implicit cast here to char
+            // it's possible the builtin takes a char even though the function takes an int
+            ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
+            _ => args[1],
+        };
+        let second_param =
+            self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
+        let call = mk().call_expr(
+            mk().ident_expr("_mm_shuffle_ps"),
+            vec![first_param.val, second_param.val],
+        );
+
+        if use_ == ExprUse::Used {
+            Ok(WithStmts {
+                stmts: Vec::new(),
+                val: call,
+            })
+        } else {
+            Ok(WithStmts {
+                stmts: vec![mk().expr_stmt(call)],
+                val: self.panic("No value for unused shuffle vector return"),
+            })
+        }
+    }
+
     /// Generate a zero value to be used for initialization of a given vector type. The type
     /// is specified with the underlying element type and the number of elements in the vector.
     pub fn implicit_vector_default(&self, ctype: CTypeId, len: usize) -> Result<P<Expr>, String> {
