@@ -8,6 +8,7 @@
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTMutationListener.h"
 #include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Basic/Version.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaConsumer.h"
 #include "llvm/ADT/TinyPtrVector.h"
