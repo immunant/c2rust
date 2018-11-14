@@ -1,0 +1,10 @@
+dyld: Library not loaded: @rpath/librustc_driver-24c541af763bde9e.dylib
+  Referenced from: /Users/emertens/Source/c2rust/c2rust/rust-refactor/tests/convert_format_string/../../target/debug/idiomize
+  Reason: image not found
+./run.sh: line 6:  3787 Abort trap: 6           $refactor select target 'crate; desc(fn && name("printf"));' \; mark_arg_uses 0 target \; convert_format_string -- old.rs $rustflags
+dyld: Library not loaded: @rpath/libsyntax-331179c28f072788.dylib
+  Referenced from: /Users/emertens/.cargo/bin/rustfmt
+  Reason: no suitable image found.  Did find:
+	/Users/emertens/install/rust/build/x86_64-apple-darwin/stage2/lib/libsyntax-331179c28f072788.dylib: stat() failed with errno=20
+./run-test.sh: line 11:  3788 Abort trap: 6           rustfmt $1/old.rs.new
+diff: convert_format_string//old.rs.new: No such file or directory

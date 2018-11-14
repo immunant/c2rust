@@ -1,15 +1,15 @@
 #![feature(plugin, custom_attribute)]
-#![plugin(cross_check_plugin)]
+#![plugin(c2rust_xcheck_plugin)]
 #![cross_check(none)]
 
 #[macro_use]
-extern crate cross_check_runtime;
+extern crate c2rust_xcheck_runtime;
 
 mod xcheck;
 pub use xcheck::rb_xcheck; // Export rb_xcheck for the runtime
 
 use xcheck::{expect_xcheck, expect_no_xchecks};
-use cross_check_runtime::xcheck::{FUNCTION_ENTRY_TAG, FUNCTION_ARG_TAG, FUNCTION_EXIT_TAG};
+use c2rust_xcheck_runtime::xcheck::{FUNCTION_ENTRY_TAG, FUNCTION_ARG_TAG, FUNCTION_EXIT_TAG};
 
 #[test]
 fn test_entry() {

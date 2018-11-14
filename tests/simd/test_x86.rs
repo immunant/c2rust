@@ -10,6 +10,8 @@ use std::arch::x86_64::{__m128, __m128i, __m128d, __m256, __m256d, __m256i, _mm_
 use std::mem::transmute;
 use std::fmt::{Debug, Formatter, Error};
 
+// Our travis-ci machines don't support AVX2 so we conditionally compile those bits out
+
 #[link(name = "test")]
 extern "C" {
     #[no_mangle]
@@ -49,14 +51,19 @@ extern "C" {
 static UNSAFETY_ERROR: &str = "Prevented unsafe calling of SIMD functions when architecture support doesn't exist";
 
 macro_rules! cmp_vector_fields {
-    ($this: ident, $other: ident: [$($field: ident : $typ: ty),+,]) => {
+    ($this: ident, $other: ident: [
+        $($(#[$attrs:meta])* $field: ident : $typ: ty),+,
+    ]) => {
         $(
-            let self_vec: $typ = unsafe { transmute($this.$field) };
-            let other_vec: $typ = unsafe { transmute($other.$field) };
+            $(#[$attrs])*
+            {
+                let self_vec: $typ = unsafe { transmute($this.$field) };
+                let other_vec: $typ = unsafe { transmute($other.$field) };
 
-            if self_vec != other_vec {
-                eprintln!("({:?}) != ({:?})", self_vec, other_vec);
-                return false
+                if self_vec != other_vec {
+                    eprintln!("fields {}: ({:?}) != ({:?})", stringify!($field), self_vec, other_vec);
+                    return false
+                }
             }
         )+
     };
@@ -73,11 +80,15 @@ impl PartialEq for ShuffleVectors {
             f: u128,
             g: u128,
             h: u128,
+            #[cfg(target_feature = "avx2")]
             i: (u128, u128),
+            #[cfg(target_feature = "avx2")]
             j: (u128, u128),
+            #[cfg(target_feature = "avx2")]
             k: (u128, u128),
             l: u64,
             m: u128,
+            #[cfg(target_feature = "avx2")]
             n: (u128, u128),
             o: u128,
         ]);
@@ -136,7 +147,6 @@ pub fn test_zero_initializers() {
 pub fn test_shuffle_vectors() {
     assert!(is_x86_feature_detected!("sse4.2"), UNSAFETY_ERROR);
     assert!(is_x86_feature_detected!("ssse3"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("avx2"), UNSAFETY_ERROR);
 
     let c1 = unsafe { call_all() };
     let c2 = unsafe { call_all_used() };

@@ -339,7 +339,11 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunction &func,
         auto param_deref_lv =
             new (ctx) UnaryOperator(param_ref_lv, UO_Deref, pointee.orig_ty,
                                     VK_LValue, OK_Ordinary,
+#if CLANG_VERSION_MAJOR >= 7
+                                    SourceLocation(), false);
+#else
                                     SourceLocation());
+#endif
         auto param_deref_rv = pointee.forward_argument(param_deref_lv, ctx);
         auto param_depth = get_depth(fn_decl, true, ctx);
         auto param_hash_call =
@@ -421,7 +425,12 @@ void CrossCheckInserter::build_array_hash_function(const HashFunction &func,
         // i++
         auto i_incr = new (ctx) UnaryOperator(i_var_lv, UO_PostInc,
                                               i_ty, VK_RValue, OK_Ordinary,
+#if CLANG_VERSION_MAJOR >= 7
+                                              SourceLocation(),
+                                              num_elements.isMaxValue());
+#else
                                               SourceLocation());
+#endif
         // Loop body: __c2rust_hasher_H_update(hasher, __c2rust_hash_T(x[i]));
         assert(!element.orig_ty->isIncompleteType() &&
                "Attempting to dereference incomplete type");

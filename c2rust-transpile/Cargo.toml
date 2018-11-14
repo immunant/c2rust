@@ -1,0 +1,23 @@
+[package]
+name = "c2rust-transpile"
+version = "0.1.0"
+authors = [
+  "The C2Rust Project Developers <c2rust@immunant.com>",
+  "Eric Mertens <emertens@galois.com>",
+  "Alec Theriault <atheriault@galois.com>",
+]
+
+[dependencies]
+serde_cbor = "0.9"
+clap = {version = "~2.32.0", features = ["yaml"]}
+dtoa = "0.4.2"
+serde = "1.0"
+serde_json = "1.0"
+indexmap = { version = "1.0.1", features = ["serde-1"] }
+c2rust-ast-builder = { path = "../c2rust-ast-builder" }
+libc = "0.2"
+c2rust-ast-exporter = { path = "../c2rust-ast-exporter" }
+
+[features]
+# Force static linking of LLVM
+llvm-static = ["c2rust-ast-exporter/llvm-static"]

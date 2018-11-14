@@ -1,5 +1,5 @@
 [package]
-name = "libfakechecks-sys"
+name = "c2rust-xcheck-libfakechecks-sys"
 version = "0.1.0"
 authors = ["Andrei Homescu <ah@immunant.com>"]
 description = "Native bindings to the fakechecks library"

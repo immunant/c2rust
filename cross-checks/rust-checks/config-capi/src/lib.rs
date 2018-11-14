@@ -2,7 +2,7 @@
 extern crate serde;
 extern crate serde_yaml;
 
-extern crate cross_check_config as xcfg;
+extern crate c2rust_xcheck_config as xcfg;
 
 use std::os::raw::{c_char, c_uint};
 use std::mem;

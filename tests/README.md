@@ -67,9 +67,9 @@ $ ./scripts/test_translator.py --help
 
 This `test` directory contains regression, feature, and unit tests. A test directory goes through the following set of steps:
 
-  1. A `compile_commands.json` file is created for the Clang plugin in `ast-exporter` to recognize its C source input
+  1. A `compile_commands.json` file is created for the Clang plugin in `c2rust-ast-exporter` to recognize its C source input
 
-  2. This JSON and the C source file are fed to the `ast-exporter` to produce a CBOR file of the Clang type-annotated abstract syntax tree.
+  2. This JSON and the C source file are fed to the `c2rust-ast-exporter` to produce a CBOR file of the Clang type-annotated abstract syntax tree.
 
   3. This CBOR file is fed to the `ast-importer` to produce a Rust source file supposedly preserving the semantics of the initial C source file.
 

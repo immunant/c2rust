@@ -1,0 +1,12 @@
+/Users/emertens/Source/c2rust/c2rust/ast-importer/target.argolis.galois.com/release/deps/libmemchr-472d20bfacc135d7.rlib: /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/lib.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/c.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/fallback.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/iter.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/naive.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/x86/mod.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/x86/avx.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/x86/sse2.rs
+
+/Users/emertens/Source/c2rust/c2rust/ast-importer/target.argolis.galois.com/release/deps/memchr-472d20bfacc135d7.d: /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/lib.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/c.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/fallback.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/iter.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/naive.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/x86/mod.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/x86/avx.rs /Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/x86/sse2.rs
+
+/Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/lib.rs:
+/Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/c.rs:
+/Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/fallback.rs:
+/Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/iter.rs:
+/Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/naive.rs:
+/Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/x86/mod.rs:
+/Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/x86/avx.rs:
+/Users/emertens/.cargo/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.1/src/x86/sse2.rs:

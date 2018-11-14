@@ -1,5 +1,5 @@
 [package]
-name = "cross-check-config-capi"
+name = "c2rust-xcheck-config-capi"
 version = "0.1.0"
 authors = ["Andrei Homescu <ah@immunant.com>"]
 
@@ -9,5 +9,4 @@ crate-type = ["staticlib"]
 [dependencies]
 serde = { version = "1.0", features = ["rc"] }
 serde_yaml = "0.7"
-
-cross-check-config = { path = "../config", features = ["scopes"] }
+c2rust-xcheck-config = { path = "../config", features = ["scopes"] }

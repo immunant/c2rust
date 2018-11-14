@@ -1,0 +1,1 @@
+{"rustc":1919004625207031245,"features":"[]","target":4944179213620976468,"profile":3515853926593532548,"path":4820456077575211582,"deps":[["bindgen v0.37.4","bindgen",8090691027553377310]],"local":[{"MtimeBased":[[1540328149,968915531],".fingerprint/ast_importer-e7847093b365d8cb/dep-build-script-build_script_build-e7847093b365d8cb"]}],"rustflags":[],"edition":"Edition2015"}

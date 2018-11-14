@@ -49,18 +49,18 @@ crate-type = ["staticlib"]
 % endif
 
 % if cross_checks:
-[dependencies.cross-check-plugin]
+[dependencies.c2rust-xcheck-plugin]
 path = "${plugin_path}"
 
-[dependencies.cross-check-derive]
+[dependencies.c2rust-xcheck-derive]
 path = "${derive_path}"
 
-[dependencies.cross-check-runtime]
+[dependencies.c2rust-xcheck-runtime]
 path = "${runtime_path}"
 features = ["libc-hash", "fixed-length-array-hash"]
 
 %if use_fakechecks:
-[dependencies.libfakechecks-sys]
+[dependencies.c2rust-xchecks-libfakechecks-sys]
 path = "${libfakechecks_sys_path}"
 %endif
 
@@ -89,11 +89,11 @@ LIB_RS_TEMPLATE = """\
 
 % if cross_checks:
 #![feature(plugin, custom_attribute)]
-#![plugin(cross_check_plugin(${plugin_args}))]
+#![plugin(c2rust_xcheck_plugin(${plugin_args}))]
 #![cross_check(yes)]
 
-#[macro_use] extern crate cross_check_derive;
-#[macro_use] extern crate cross_check_runtime;
+#[macro_use] extern crate c2rust_xcheck_derive;
+#[macro_use] extern crate c2rust_xcheck_runtime;
 
 #[global_allocator]
 static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
@@ -101,7 +101,7 @@ static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
 
 extern crate libc;
 % if use_fakechecks:
-extern crate libfakechecks_sys;
+extern crate c2rust_xcheck_libfakechecks_sys;
 %endif
 
 % for (module_name, module_path, line_prefix) in modules:
@@ -256,7 +256,7 @@ def check_main_module(main_module: str, cc_db: TextIO):
 
 def transpile_files(cc_db: TextIO,
                     filter: Optional[Callable[[str], bool]] = None,
-                    extra_impo_args: List[str] = [],
+                    extra_transpiler_args: List[str] = [],
                     import_only: bool = False,
                     verbose: bool = False,
                     emit_build_files: bool = True,
@@ -268,13 +268,11 @@ def transpile_files(cc_db: TextIO,
                     incremental_relooper: bool = True,
                     reorganize_definitions: bool = False) -> bool:
     """
-    run the ast-exporter and ast-importer on all C files
-    in a compile commands database.
+    run the transpiler on all C files in a compile commands database.
     """
     rustfmt = os.path.join(get_rust_toolchain_binpath(), "rustfmt")
     rustfmt = get_cmd_or_die(rustfmt)
-    ast_expo = get_cmd_or_die(c.AST_EXPO)
-    ast_impo = get_cmd_or_die(c.AST_IMPO)
+    transpiler = get_cmd_or_die(c.TRANSPILER)
     cc_db_name = cc_db.name
     cc_db = json.load(cc_db)
 
@@ -299,26 +297,21 @@ def transpile_files(cc_db: TextIO,
                 "or the equivalent version on your host.")
         die(emsg, errno.ENOENT)
 
-    impo_args = ['--translate-entry']
+    transpiler_args = ['--translate-entry']
     if emit_build_files or emit_modules:
-        impo_args.append('--emit-module')
+        transpiler_args.append('--emit-module')
     if cross_checks:
-        impo_args.append('--cross-checks')
+        transpiler_args.append('--cross-checks')
         for ccc in cross_check_config:
-            impo_args.append('--cross-check-config')
-            impo_args.append(ccc)
+            transpiler_args.append('--cross-check-config')
+            transpiler_args.append(ccc)
     if not incremental_relooper:
-        impo_args.append('--no-incremental-relooper')
+        transpiler_args.append('--no-incremental-relooper')
     if reorganize_definitions:
-        impo_args.append('--reorganize-definitions')
+        transpiler_args.append('--reorganize-definitions')
 
     def transpile_single(cmd) -> Tuple[str, int, str, str, str]:
-
-        if import_only:
-            cbor_file = os.path.join(cmd['directory'], cmd['file'] + ".cbor")
-        else:
-            cbor_file = export_ast_from(ast_expo, cc_db_name, **cmd)
-        assert os.path.isfile(cbor_file), "missing: " + cbor_file
+        c_file = os.path.join(cmd['directory'], cmd['file'])
 
         ld_lib_path = get_rust_toolchain_libpath()
 
@@ -330,33 +323,32 @@ def transpile_files(cc_db: TextIO,
         with pb.local.env(RUST_BACKTRACE='1',
                           LD_LIBRARY_PATH=ld_lib_path):
             file_basename = os.path.basename(cmd['file'])
-            cbor_basename = os.path.basename(cbor_file)
-            logging.info(" importing ast from %s", cbor_basename)
+            logging.info(" transpiling from %s", file_basename)
             translation_cmd = "RUST_BACKTRACE=1 \\\n"
             translation_cmd += "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
             translation_cmd += str(
-                ast_impo[cbor_file, impo_args, extra_impo_args])
+                transpiler[c_file, transpiler_args, extra_transpiler_args])
             logging.debug("translation command:\n %s", translation_cmd)
             try:
-                ast_impo_cmd = ast_impo[cbor_file, impo_args, extra_impo_args]
-                # NOTE: this will log ast-importer output but not in color
-                retcode, stdout, importer_warnings = ast_impo_cmd.run()
-                if importer_warnings:
+                transpiler_cmd = transpiler[c_file, transpiler_args, extra_transpiler_args]
+                # NOTE: this will log transpiler output but not in color
+                retcode, stdout, transpiler_warnings = transpiler_cmd.run()
+                if transpiler_warnings:
                     if verbose:
-                        logging.warning(importer_warnings)
+                        logging.warning(transpiler_warnings)
                     else:
-                        logging.debug(importer_warnings)
+                        logging.debug(transpiler_warnings)
 
-                e = "Expected file suffix `.c.cbor`; actual: " + cbor_basename
-                assert cbor_file.endswith(".c.cbor"), e
-                rust_file = cbor_file[:-7] + ".rs"
+                e = "Expected file suffix `.c`; actual: " + c_file
+                assert c_file.endswith(".c"), e
+                rust_file = c_file[:-2] + ".rs"
                 path, file_name = os.path.split(rust_file)
                 file_name = file_name.replace('-', '_')
                 rust_file = os.path.join(path, file_name)
 
                 rustfmt(rust_file)
 
-                return (file_basename, retcode, stdout, importer_warnings,
+                return (file_basename, retcode, stdout, transpiler_warnings,
                         os.path.abspath(rust_file))
             except pb.ProcessExecutionError as pee:
                 return (file_basename, pee.retcode, pee.stdout, pee.stderr,
@@ -423,9 +415,9 @@ def parse_args() -> argparse.Namespace:
     # parser.add_argument('-j', '--jobs', type=int, dest="jobs",
     #                     default=multiprocessing.cpu_count(),
     #                     help='max number of concurrent jobs')
-    parser.add_argument('-a', '--importer-arg', dest="extra_impo_args",
+    parser.add_argument('-a', '--transpiler-arg', dest="extra_transpiler_args",
                         default=[], action='append',
-                        help='extra arguments for ast-importer')
+                        help='extra arguments for transpiler')
     parser.add_argument('-e', '--emit-build-files',
                         default=False, action='store_true',
                         help='emit Rust build files, i.e., Cargo.toml '
@@ -473,7 +465,7 @@ def main():
     c.update_args(args)
     transpile_files(cc_db=args.commands_json,
                     filter=lambda f: args.filter in f,
-                    extra_impo_args=args.extra_impo_args,
+                    extra_transpiler_args=args.extra_transpiler_args,
                     import_only=args.import_only,
                     verbose=args.verbose,
                     emit_build_files=args.emit_build_files,

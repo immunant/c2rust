@@ -1,0 +1,125 @@
+name: transpile
+version: 0.1.0
+author: |
+  - The C2Rust Project Developers <c2rust@immunant.com>
+  - Eric Mertens <emertens@galois.com>
+  - Alec Theriault <atheriault@galois.com>
+about: Translate C code to equivalent Rust code
+settings:
+  - TrailingVarArg
+args:
+  - prefix-function-names:
+      long: prefix-function-names
+      help: Adds a prefix to all function names. Generally only useful for testing
+      takes_value: true
+  - translate-entry:
+      long: translate-entry
+      help: Creates an entry point that calls the C main function
+      takes_value: false
+
+  - dump-untyped-clang-ast:
+      long: dump-untyped-clang-ast
+      help: Prints out CBOR based Clang AST
+      takes_value: false
+  - dump-typed-clang-ast:
+      long: dump-typed-clang-ast
+      help: Prints out the parsed typed Clang AST
+      takes_value: false
+  - pretty-typed-clang-ast:
+      long: pretty-typed-clang-ast
+      help: Pretty-prints out the parsed typed Clang AST
+      takes_value: false
+  - translate-asm:
+      long: translate-asm
+      help: Translate inline assembly without translating the assembly fragment
+      takes_value: false
+  - translate-valist:
+      long: translate-valist
+      help: Translate uses of va_list, requires custom rustc
+      takes_value: false
+
+  - no-incremental-relooper:
+      long: no-incremental-relooper
+      help: Disable relooping function bodies incrementally
+      takes_value: false
+  - no-simplify-structures:
+      long: no-simplify-structures
+      help: Do not run a pass to simplify structures
+      takes_value: false
+  - ignore-c-loop-info:
+      long: ignore-c-loop-info
+      help: Don't keep/use information about C loops
+      takes_value: false
+  - ignore-c-multiple-info:
+      long: ignore-c-multiple-info
+      help: Don't keep/use information about C branches
+      takes_value: false
+  - dump-function-cfgs:
+      long: ddump-function-cfgs
+      help: Dumps into files DOT visualizations of the CFGs of every function
+      takes_value: false
+  - json-function-cfgs:
+      long: json-function-cfgs
+      help: Dumps into files JSON visualizations of the CFGs of every function
+      takes_value: false
+  - dump-cfgs-liveness:
+      long: ddump-cfgs-liveness
+      help: Dump into the DOT file visualizations liveness information
+      requires: dump-function-cfgs
+      takes_value: false
+  - dump-structures:
+      long: ddump-structures
+      help: Dumps out to STDERR the intermediate structures produced by relooper
+      takes_value: false
+  - debug-labels:
+      long: ddebug-labels
+      help: Generate readable 'current_block' values in relooper
+      takes_value: false
+
+  - cross-checks:
+      long: cross-checks
+      help: Enable cross-checks
+      takes_value: false
+  - cross-check-config:
+      long: cross-check-config
+      help: Add the given configuration files to the top-level cross_check(...) attribute
+      requires: cross-checks
+      multiple: true
+      takes_value: true
+
+  - INPUT:
+      help: Input C file
+      required: true
+      index: 1
+  - invalid-code:
+      long: invalid-code
+      help: How to handle violated invariants or invalid code
+      possible_values:
+        - panic
+        - compile_error
+      default_value: compile_error
+  - emit-module:
+      long: emit-module
+      help: Emit the .rs file as a module instead of a crate, excluding the crate preamble
+      takes_value: false
+  - fail-on-error:
+      long: fail-on-error
+      help: Fail to translate a module when a portion is not able to be translated
+      takes_value: false
+  - reduce-type-annotations:
+      long: reduce-type-annotations
+      help: Reduces the number of explicit type annotations where it should be safe to do so
+      takes_value: false
+  - output-file:
+      long: output
+      short: o
+      help: Write the output to a specified file
+      takes_value: true
+  - reorganize-definitions:
+      long: reorganize-definitions
+      help: Output file in such a way that the refactoring tool can deduplicate code
+      takes_value: false
+  - extra-clang-args:
+      help: Extra arguments to pass to clang frontend during parsing the input C file
+      takes_value: true
+      multiple: true

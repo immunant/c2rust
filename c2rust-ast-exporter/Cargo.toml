@@ -1,0 +1,24 @@
+[package]
+name = "c2rust-ast-exporter"
+version = "0.1.0"
+authors = [
+        "Eric Mertens <emertens@galois.com>",
+        "Alec Theriault <atheriault@galois.com>",
+]
+links = "clangAstExporter"
+
+[dependencies]
+libc = "0.2"
+serde = "1.0"
+serde_cbor = "0.9"
+
+[build-dependencies]
+bindgen = "0.37"
+cmake = "0.1"
+clang-sys = "0.23"
+
+[features]
+default = []
+
+# Force static linking of LLVM
+llvm-static = []

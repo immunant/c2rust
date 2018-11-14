@@ -7,7 +7,7 @@ C2Rust helps you migrate C99-compliant code to Rust. It provides:
 - a Rust code refactoring tool, and
 - a way to cross-check the C code against the new Rust code.
 
-The translator (or transpiler), produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to produce code that is functionally identical to the input C code. Generating safe or idomatic Rust is *not* a goal for the translator. Rather, we think the best approach is to gradually clean up the translator using dedicated refactoring tools. See the `rust-refactor` directory to learn about the `idiomize` tool that we are working on.
+The translator (or transpiler), produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to produce code that is functionally identical to the input C code. Generating safe or idomatic Rust is *not* a goal for the translator. Rather, we think the best approach is to gradually clean up the translator using dedicated refactoring tools. See the `c2rust-refactor` directory to learn about the `c2rust-refactor` tool that we are working on.
 Some refactoring will have to be done by hand which may introduce errors. We provide plugins for `clang` and `rustc` so you can compile and run two binaries and check that they behave identically (at the level of function calls).
 See details in the `cross-checks` directory and in the cross checking [tutorial](docs/cross-check-tutorial.md). Here's the big picture:
 
@@ -15,55 +15,40 @@ See details in the `cross-checks` directory and in the cross checking [tutorial]
 
 To learn more, check out our [RustConf'18](https://www.youtube.com/watch?v=WEsR0Vv7jhg) talk on YouTube and try the C2Rust translator online at [www.c2rust.com](https://www.c2rust.com).
 
-# Setting up a development environment
+# Installation
 
-There are three ways to build the C2Rust project:
+## Prerequisites
 
-- Using **Vagrant**. See our [vagrant README](vagrant/README.md).
-- Using **Docker**. See our [docker README](docker/README.md).
-- **Manually**, as explained below.
+C2Rust requires LLVM 6 or 7 and its corresponding libraries and clang compiler. Python 3.4 or later and CMake 3.4.3 or later are also required. These prerequisites may be installed with the following commands, depending on your platform:
 
-The previous two options automatically install all prerequisites during provisioning. You can also provision a macOS or Linux system manually.
+- **Ubuntu 16.04, 18.04 & 18.10:**
 
-* If you are on a Debian-based OS, you can run `scripts/provision_deb.sh` to do so. 
+        apt install build-essential llvm-6.0 clang-6.0 libclang-6.0-dev cmake
 
-* If you are on macOS, install the Xcode command-line tools (e.g., `xcode-select --install`) and [homebrew](https://brew.sh/) first. Then run `scripts/provision_mac.sh`.
+- **Arch Linux:**
 
-* If you prefer to install dependencies yourself, or are using a non Debian-based Linux OS, our dependencies are as follows:
-    - cmake >= 3.9.1
-    - dirmngr
-    - curl
-    - git
-    - gnupg2
-    - gperf
-    - ninja
-    - unzip
-    - clang 5.0+
-    - intercept-build or bear - see why [here](#generating-compile_commandsjson-files)
-    - python-dev
-    - python 3.6+
-    - [python dependencies](scripts/requirements.txt)
-    - rustc [version](rust-toolchain)
-    - rustfmt-preview component for the above rustc version
-    - libssl (development library, dependency of the refactoring tool)
+        pacman -S base-devel llvm clang cmake
 
-# Building
 
-Building from scratch takes a little while. The script has been tested on recent versions of macOS and Ubuntu.
+- **OS X:** (XCode command-line tools and recent LLVM (we recommend the Homebrew version) are required.)
 
-    $ ./scripts/build_translator.py
+        xcode-select --install
+        brew install llvm python3 cmake
 
-To use the cross checking functionality, add the following option.
 
-    $ ./scripts/build_translator.py --with-clang
+A rust installation with cargo is also required on all platforms, see: [rustup](https://rustup.rs/).
 
-# Testing (Optional)
 
-Tests are found in the [`tests`](tests) folder. If you build the translator successfully, you should be able to run the tests with:
+## Building C2Rust
 
-    $ ./scripts/test_translator.py tests
+    $ cd c2rust-transpile
+    $ cargo build
 
-This basically tests that the original C file and translated Rust file produce the same output when compiled and run. More details about tests are in [this README](tests/README.md).
+On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:
+
+    $ LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo build
+
+If you have trouble with cargo build, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
 
 # Translating C to Rust
 

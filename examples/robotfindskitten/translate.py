@@ -1,3 +1,4 @@
+import argparse
 import json
 import hashlib
 import os
@@ -15,7 +16,7 @@ from common import *
 import transpile
 
 
-# List of rust-refactor commands to run.
+# List of c2rust-refactor commands to run.
 
 REFACTORINGS = [
         '''
@@ -24,8 +25,50 @@ REFACTORINGS = [
         ''',
 
         'wrapping_arith_to_normal',
+
+
+        # The two ugly expressions below are the result of expanding some
+        # ncurses macros.  We turn them into actual calls to their non-macro
+        # implementations so it's easier to manipulate them later.
+        '''
+            select target 'crate; child(foreign_mod);' ;
+            create_item '
+                extern "C" {
+                    fn wattr_get(win: *mut WINDOW, attrs: *mut attr_t,
+                        pair: *mut libc::c_short, opts: *mut libc::c_void) -> libc::c_int;
+                    fn wattrset(win: *mut WINDOW, attrs: libc::c_int) -> libc::c_int;
+                }
+            ' after ;
+            create_item 'mod ncurses {}' after ;
+
+            rewrite_expr '
+                if !(__win as *const libc::c_void).is_null() {
+                    if !(&mut __attrs as *mut attr_t as *const libc::c_void).is_null() {
+                        __attrs = (*__win)._attrs
+                    } else {
+                    };
+                    if !(&mut __pair as *mut libc::c_short as *const libc::c_void).is_null() {
+                        __pair = (((*__win)._attrs as libc::c_ulong
+                            & (((1u32 << 8i32)) - 1u32 << 0i32 + 8i32) as libc::c_ulong)
+                            >> 8i32) as libc::c_int as libc::c_short
+                    } else {
+                    };
+                } else {
+                }
+            ' 'wattr_get(__win, &mut __attrs, &mut __pair, ::std::ptr::null_mut())' ;
+
+            rewrite_expr '
+                if !(__win as *const libc::c_void).is_null() {
+                    (*__win)._attrs = __attrs
+                } else {
+                }
+            ' 'wattrset(__win, __attrs as libc::c_int)' ;
+        ''',
+
+
         'struct_assign_to_update',
         'struct_merge_updates',
+
 
         # Phase ordering:
         #  1. Convert printf-style functions to use format macros.  This means
@@ -39,94 +82,82 @@ REFACTORINGS = [
         #     statics.
 
 
-        # Replace printf/printw/etc with formatting macros.
-
-        '''
-            select target 'crate; desc(foreign_mod);' ;
-            create_item 'mod ncurses {}' after
-        ''',
-
+        # Replace printf/printw/etc with uses of formatting macros.
 
         r'''
-            select target 'crate; desc(mod && name("ncurses"));' ;
-            create_item '
-                macro_rules! printw {
-                    ($($args:tt)*) => {
-                        ::printw(b"%s\0" as *const u8 as *const libc::c_char,
-                                 ::std::ffi::CString::new(format!($($args)*))
-                                    .unwrap().as_ptr())
-                    };
-                }
-            ' after
-        ''',
-        '''
-            select printw 'item(printw);' ;
+            select func 'item(printw);' ;
 
-            copy_marks printw fmt_arg ;
+            copy_marks func fmt_arg ;
             mark_arg_uses 0 fmt_arg ;
 
             select fmt_str 'marked(fmt_arg); desc(expr && !match_expr(__e as __t));' ;
 
-            copy_marks printw calls ;
-            mark_callers calls ;
-
             rename_marks fmt_arg target ;
-            convert_format_string ;
-            delete_marks target ;
+            convert_format_args ;
 
-            rename_marks calls target ;
-            func_to_macro printw ;
+            clear_marks ;
+
+            select target 'crate; desc(mod && name("ncurses"));' ;
+            create_item '
+                fn fmt_printw(args: ::std::fmt::Arguments) -> libc::c_int {
+                    unsafe {
+                        ::printw(b"%s\0" as *const u8 as *const libc::c_char,
+                                 ::std::ffi::CString::new(format!("{}", args))
+                                     .unwrap().as_ptr())
+                    }
+                }
+            ' after ;
+            rewrite_expr 'printw' 'fmt_printw' ;
         ''',
-
 
         r'''
-            select target 'crate; desc(item && name("printw"));' ;
-            create_item '
-                macro_rules! mvprintw {
-                    ($y:expr, $x:expr, $($args:tt)*) => {
-                        ::mvprintw($y, $x, b"%s\0" as *const u8 as *const libc::c_char,
-                                 ::std::ffi::CString::new(format!($($args)*))
-                                    .unwrap().as_ptr())
-                    };
-                }
-            ' after
-        ''',
-        '''
-            select mvprintw 'item(mvprintw);' ;
+            select func 'item(mvprintw);' ;
 
-            copy_marks mvprintw fmt_arg ;
+            copy_marks func fmt_arg ;
             mark_arg_uses 2 fmt_arg ;
 
             select fmt_str 'marked(fmt_arg); desc(expr && !match_expr(__e as __t));' ;
 
-            copy_marks mvprintw calls ;
-            mark_callers calls ;
-
             rename_marks fmt_arg target ;
-            convert_format_string ;
-            delete_marks target ;
+            convert_format_args ;
 
-            rename_marks calls target ;
-            func_to_macro mvprintw ;
+            clear_marks ;
+
+            select target 'crate; desc(mod && name("ncurses"));' ;
+            create_item '
+                fn fmt_mvprintw(y: libc::c_int, x: libc::c_int,
+                                args: ::std::fmt::Arguments) -> libc::c_int {
+                    unsafe {
+                        ::mvprintw(y, x, b"%s\0" as *const u8 as *const libc::c_char,
+                                 ::std::ffi::CString::new(format!("{}", args))
+                                     .unwrap().as_ptr())
+                    }
+                }
+            ' after ;
+            rewrite_expr 'mvprintw' 'fmt_mvprintw' ;
         ''',
 
-        '''
-            select printf 'item(printf);' ;
+        r'''
+            select func 'item(printf);' ;
 
-            copy_marks printf fmt_arg ;
+            copy_marks func fmt_arg ;
             mark_arg_uses 0 fmt_arg ;
 
             select fmt_str 'marked(fmt_arg); desc(expr && !match_expr(__e as __t));' ;
 
-            copy_marks printf calls ;
-            mark_callers calls ;
-
             rename_marks fmt_arg target ;
-            convert_format_string ;
-            delete_marks target ;
+            convert_format_args ;
 
-            rename_marks calls target ;
-            func_to_macro print ;
+            clear_marks ;
+
+            select target 'crate; desc(mod && name("ncurses"));' ;
+            create_item '
+                fn fmt_printf(args: ::std::fmt::Arguments) -> libc::c_int {
+                    print!("{}", args);
+                    0
+                }
+            ' after ;
+            rewrite_expr 'printf' 'fmt_printf' ;
         ''',
 
 
@@ -236,6 +267,117 @@ REFACTORINGS = [
         ''',
 
 
+        # Convert ncurses calls into pancurses Window methods
+        '''
+            select target 'crate;' ;
+            create_item 'extern crate pancurses;' inside ;
+        ''',
+
+        '''
+            select target 'crate;' ;
+            create_item 'static mut win: Option<::pancurses::Window> = None;' inside ;
+        ''',
+
+        '''
+            select target 'item(initialize_ncurses);' ;
+            create_item '
+                fn encode_input(inp: Option<::pancurses::Input>) -> libc::c_int {
+                    use ::pancurses::Input::*;
+                    let inp = match inp {
+                        Some(x) => x,
+                        None => return -1,
+                    };
+                    match inp {
+                        // TODO: unicode inputs in the range 256 .. 512 can
+                        // collide with ncurses special keycodes
+                        Character(c) => c as u32 as libc::c_int,
+                        Unknown(i) => i,
+                        special => {
+                            let idx = ::pancurses::SPECIAL_KEY_CODES.iter()
+                                .position(|&k| k == special).unwrap();
+                            let code = idx as i32 + ::pancurses::KEY_OFFSET;
+                            if code > ::pancurses::KEY_F15 {
+                                code + 48
+                            } else {
+                                code
+                            }
+                        },
+                    }
+                }
+            ' after ;
+        ''',
+
+        # Pure laziness: we write just `win` in all these replacement
+        # templates, then replace it with `win.unwrap()` at the end.
+
+        # Wholesale replacement of fmt_printw and fmt_mvprintw.
+        r'''
+            select target 'item(fmt_printw);' ;
+            create_item '
+                fn fmt_printw(args: ::std::fmt::Arguments) -> libc::c_int {
+                    unsafe {
+                        win.printw(&format!("{}", args))
+                    }
+                }
+            ' after ;
+            delete_items ;
+            clear_marks ;
+
+            select target 'item(fmt_mvprintw);' ;
+            create_item '
+                fn fmt_mvprintw(y: libc::c_int, x: libc::c_int,
+                                args: ::std::fmt::Arguments) -> libc::c_int {
+                    unsafe {
+                        win.mvprintw(y, x, &format!("{}", args))
+                    }
+                }
+            ' after ;
+            delete_items ;
+            clear_marks ;
+
+            rewrite_expr 'LINES' 'win.get_max_y()' ;
+            rewrite_expr 'COLS' 'win.get_max_x()' ;
+
+            rewrite_expr 'nonl' '::pancurses::nonl' ;
+            rewrite_expr 'noecho' '::pancurses::noecho' ;
+            rewrite_expr 'cbreak' '::pancurses::cbreak' ;
+            rewrite_expr 'has_colors' '::pancurses::has_colors' ;
+            rewrite_expr 'start_color' '::pancurses::start_color' ;
+            rewrite_expr 'endwin' '::pancurses::endwin' ;
+            rewrite_expr 'init_pair' '::pancurses::init_pair' ;
+
+            rewrite_expr 'wrefresh(stdscr)' 'win.refresh()' ;
+            rewrite_expr 'wrefresh(curscr)' 'win.refresh()' ;
+            rewrite_expr 'keypad(stdscr, __bf)' 'win.keypad(__bf)' ;
+            rewrite_expr 'wmove(stdscr, __my, __mx)' 'win.mv(__my, __mx)' ;
+            rewrite_expr 'wclear(stdscr)' 'win.clear()' ;
+            rewrite_expr 'wclrtoeol(stdscr)' 'win.clrtoeol()' ;
+            rewrite_expr 'wgetch(stdscr)' '::encode_input(win.getch())' ;
+            rewrite_expr 'waddch(stdscr, __ch)' 'win.addch(__ch)' ;
+            rewrite_expr
+                'waddnstr(stdscr, __str as *const u8 as *const libc::c_char, __n)'
+                "win.addnstr(::std::str::from_utf8(__str).unwrap().trim_end_matches('\0'),
+                             __n as usize)" ;
+            rewrite_expr
+                'wattr_get(stdscr, __attrs, __pair, __e)'
+                '{
+                    let tmp = win.attrget();
+                    *__attrs = tmp.0;
+                    *__pair = tmp.1;
+                    0
+                }' ;
+            rewrite_expr
+                'wattrset(stdscr, __attrs)'
+                'win.attrset(__attrs as ::pancurses::chtype)' ;
+
+            rewrite_expr 'intrflush(__e, __f)' '0' ;
+
+            rewrite_expr 'win' 'win.as_ref().unwrap()' ;
+
+            rewrite_expr 'initscr()' 'win = Some(::pancurses::initscr())' ;
+        ''',
+
+
         # Collect mutable statics into a single struct
 
         '''
@@ -248,17 +390,165 @@ REFACTORINGS = [
         ''',
         '''
             select target 'crate; child(static && name("S"));' ;
-            select user 'crate; desc(fn && !name("main"));' ;
-            static_to_local_ref
+            select user 'crate; desc(fn && !name("main|main_0"));' ;
+            static_to_local_ref ;
+            static_to_local ;
+        ''',
+
+
+        # Use safe alternatives to libc calls
+
+        '''
+            rewrite_expr 'sleep(__e)'
+                '::std::thread::sleep(
+                    ::std::time::Duration::from_secs(__e as u64))' ;
+
+            select target 'crate;' ;
+            create_item 'extern crate rand;' inside ;
+
+            rewrite_expr 'rand()'
+                '(::rand::random::<libc::c_uint>() >> 1) as libc::c_int' ;
+            rewrite_expr 'srand(__e)' '()' ;
+
+            rewrite_expr 'atoi(__e)'
+                '<libc::c_int as ::std::str::FromStr>::from_str(
+                    ::std::ffi::CStr::from_ptr(__e).to_str().unwrap()).unwrap()' ;
+            clear_marks ;
+            select target 'item(atoi);' ;
+            delete_items ;
+
+            rewrite_expr 'exit(__e)' '::std::process::exit(__e as i32)' ;
+        ''',
+
+        # We can't make `signal` safe, so give it an unsafe block.
+        '''
+            rewrite_expr 'signal(__e, __f)' 'unsafe { signal(__e, __f) }' ;
+        ''',
+
+
+        # Retype the string argument of `message`
+        '''
+            select target
+                'item(message); child(arg); child(match_ty(*mut libc::c_char));' ;
+            rewrite_ty 'marked!(*mut libc::c_char)' '&str' ;
+            delete_marks target ;
+            type_fix_rules
+                '*, &str, *const __t =>
+                    ::std::ffi::CString::new(__old.to_owned()).unwrap().as_ptr()'
+                '*, *mut __t, &str =>
+                    unsafe { ::std::ffi::CStr::from_ptr(__old).to_str().unwrap() }' ;
+        ''',
+
+
+        # Retype main_0's argv, and replace main
+
+        '''
+            select target 'item(main);' ;
+            create_item '
+                fn main() {
+                    // Collect argv into a vector.
+                    let mut args_owned: Vec<::std::ffi::CString> = Vec::new();
+                    for arg in ::std::env::args() {
+                        args_owned.push(::std::ffi::CString::new(arg).unwrap());
+                    }
+
+                    // Now that the length is known, we can build a CArray.
+                    let mut args: ::c2rust_runtime::CArray<Option<&::std::ffi::CStr>> =
+                        ::c2rust_runtime::CArray::alloc(args_owned.len() + 1);
+                    for i in 0 .. args_owned.len() {
+                        args[i] = Some(&args_owned[i]);
+                    }
+                    // The last element of `args` remains `None`.
+
+                    unsafe {
+                        ::std::process::exit(main_0(
+                            (args.len() - 1) as libc::c_int,
+                            args) as i32);
+                    }
+                }
+            ' after ;
+            delete_items ;
+            clear_marks ;
+
+            select target 'item(main);' ;
+            create_item '
+                fn opt_c_str_to_ptr(x: Option<&::std::ffi::CStr>) -> *const libc::c_char {
+                    match x {
+                        None => ::std::ptr::null(),
+                        Some(x) => x.as_ptr(),
+                    }
+                }
+            ' after ;
+            clear_marks ;
+
+            select target
+                'item(main_0); child(arg && name("argv")); child(ty);' ;
+            rewrite_ty 'marked!(*mut *mut libc::c_char)'
+                '::c2rust_runtime::CArray<Option<&::std::ffi::CStr>>' ;
+            delete_marks target ;
+
+            type_fix_rules
+                '*, ::c2rust_runtime::array::CArrayOffset<__t>, __u => *__old'
+                '*, ::std::option::Option<&::std::ffi::CStr>, *const i8 =>
+                    opt_c_str_to_ptr(__old)'
+                ;
+        ''',
+
+
+        # Clean up str -> CStr -> str conversions
+        r'''
+            rewrite_expr
+                '::std::ffi::CStr::from_ptr(
+                    cast!(typed!(__e, ::std::ffi::CString).as_ptr()))'
+                '__e' ;
+            rewrite_expr
+                '::std::ffi::CString::new(__e).unwrap().to_str()'
+                'Some(&__e)' ;
+            rewrite_expr
+                '::std::ffi::CStr::from_ptr(
+                    cast!(typed!(__e, &str).as_ptr())).to_str()'
+                "Some(__e.trim_end_matches('\0'))" ;
+            rewrite_expr
+                '::std::ffi::CStr::from_ptr(
+                    cast!(typed!(__e, &[u8; __f]))).to_str()'
+                "Some(::std::str::from_utf8(__e).unwrap().trim_end_matches('\0'))" ;
+            rewrite_expr
+                '::std::ffi::CStr::from_ptr(cast!(opt_c_str_to_ptr(__e)))'
+                '__e.unwrap()' ;
+
+            select target
+                'crate; desc(match_expr(::std::str::from_utf8(__e))); desc(expr);' ;
+            bytestr_to_str ;
+            type_fix_rules '*, &str, &[u8] => __old.as_bytes()' ;
+            clear_marks ;
+
+            rewrite_expr
+                '::std::str::from_utf8(__e.as_bytes())'
+                'Some(__e)' ;
+
+        ''',
+
+        '''
+            rewrite_expr
+                '::c2rust_runtime::CArray::from_ptr(cast!(0))'
+                '::c2rust_runtime::CArray::empty()' ;
+        ''',
+
+
+        # Mark all functions as safe and clean up unsafe blocks
+        '''
+            select target 'crate; desc(fn);' ;
+            set_unsafety safe ;
+            fix_unused_unsafe ;
         ''',
 ]
 
 
 
 
-idiomize = get_cmd_or_die(config.RREF_BIN)
+refactor = get_cmd_or_die(config.RREF_BIN)
 
-def run_idiomize(args, mode='inplace'):
+def run_refactor(args, mode='inplace'):
     full_args = ['-r', mode, '--cargo'] + args
 
     ld_lib_path = get_rust_toolchain_libpath()
@@ -270,7 +560,7 @@ def run_idiomize(args, mode='inplace'):
     with local.env(RUST_BACKTRACE='1',
                    LD_LIBRARY_PATH=ld_lib_path):
         with local.cwd(os.path.join(RFK_DIR, 'rust')):
-            idiomize[full_args]()
+            refactor[full_args]()
 
 
 class RefactorHash:
@@ -295,6 +585,12 @@ class RefactorHash:
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    config.add_args(ap)
+    args = ap.parse_args()
+    config.update_args(args)
+
+
     os.chdir(RFK_DIR)
     print('in %s' % RFK_DIR)
 
@@ -317,7 +613,7 @@ def main():
 
     # Refactor
     src_path = os.path.join(RFK_DIR, 'rust/src/robotfindskitten.rs')
-    rf_hash = RefactorHash(idiomize, src_path)
+    rf_hash = RefactorHash(refactor, src_path)
     for refactor_str in REFACTORINGS:
         refactor_args = shlex.split(refactor_str)
         rf_hash.extend(refactor_str)
@@ -328,7 +624,7 @@ def main():
             shutil.copy(cache_path, src_path)
         else:
             print('REFACTOR: %r' % (refactor_args,))
-            run_idiomize(refactor_args)
+            run_refactor(refactor_args)
             shutil.copy(src_path, cache_path)
 
 

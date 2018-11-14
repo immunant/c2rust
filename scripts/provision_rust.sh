@@ -24,6 +24,6 @@ fi
 # make rust environment available for commands below 
 source ~/.cargo/env
 
-# required for idiomize tests
+# required for c2rust-refactor tests
 # rustup run $RUST_VER cargo install --force rustfmt
 rustup component add rustfmt-preview

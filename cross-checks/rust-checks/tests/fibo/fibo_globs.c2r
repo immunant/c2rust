@@ -22,8 +22,8 @@
       //entry: none
       all_args: { fixed: 0x3456 }
       //all_args: { custom: "foo(&n)" }
-      //ahasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
-      //shasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
+      //ahasher: "::c2rust_xcheck_runtime::hash::djb2::Djb2Hasher"
+      //shasher: "::c2rust_xcheck_runtime::hash::djb2::Djb2Hasher"
       return: default
       exit: default
 
@@ -37,8 +37,8 @@
     - item: struct
       name: FiboArg
       disable_xchecks: false
-      //ahasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
-      //shasher: "::cross_check_runtime::hash::djb2::Djb2Hasher"
+      //ahasher: "::c2rust_xcheck_runtime::hash::djb2::Djb2Hasher"
+      //shasher: "::c2rust_xcheck_runtime::hash::djb2::Djb2Hasher"
       //fields:
         //0: { fixed: 0x123456 }
         //1: none

@@ -1,0 +1,490 @@
+This is a patch to `rustfmt` that adds a `clean_parens` option, which removes
+unnecessary parentheses in exprs.  I originally wrote this because the rewriter
+in `c2rust-refactor` would insert unnecessary parentheses around (at least) every
+splice point, and this seemed like the easiest way to clean it up.  The
+approach taken here involves some ugly hacks (see the `ExprKind::Paren` case
+below), so it's probably not suitable for upstreaming in its current form.  I
+think this patch is now obsolete, thanks to improvemens in the `c2rust-refactor`
+rewriter, but I'm leaving a copy here anyway in case it turns out to be useful.
+
+
+commit 2cb27c07a1899ea2e1ac35b3e89b3d99629a09d9
+parent 3b6a5fa881b2400dd93383cca056bfde784869a8
+Author: Stuart Pernsteiner <spernsteiner@galois.com>
+Date:   Tue Jul 25 11:26:55 2017 -0400
+
+    add clean_parens option to remove unnecessary parens from exprs
+
+diff --git a/src/config.rs b/src/config.rs
+index 30d79cd..c9ed59d 100644
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -620,6 +620,7 @@ create_config! {
+     multiline_match_arm_forces_block: bool, false,
+         "Force multiline match arm bodies to be wrapped in a block";
+     merge_derives: bool, true, "Merge multiple `#[derive(...)]` into a single one";
++    clean_parens: bool, false, "Remove unnecessary parentheses from expressions.";
+ }
+ 
+ #[cfg(test)]
+diff --git a/src/lib.rs b/src/lib.rs
+index ee231e2..5783e34 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -74,6 +74,7 @@ mod macros;
+ mod patterns;
+ mod summary;
+ mod vertical;
++mod parens;
+ 
+ /// Spanned returns a span including attributes, if available.
+ pub trait Spanned {
+@@ -700,7 +701,7 @@ impl fmt::Display for FormatReport {
+ 
+ // Formatting which depends on the AST.
+ fn format_ast<F>(
+-    krate: &ast::Crate,
++    krate: ast::Crate,
+     parse_session: &mut ParseSess,
+     main_file: &Path,
+     config: &Config,
+@@ -713,10 +714,12 @@ where
+     // diff mode: check if any files are differing
+     let mut has_diff = false;
+ 
++    let krate = if config.clean_parens() { parens::clean_parens(krate) } else { krate };
++
+     // We always skip children for the "Plain" write mode, since there is
+     // nothing to distinguish the nested module contents.
+     let skip_children = config.skip_children() || config.write_mode() == config::WriteMode::Plain;
+-    for (path, module) in modules::list_files(krate, parse_session.codemap()) {
++    for (path, module) in modules::list_files(&krate, parse_session.codemap()) {
+         if skip_children && path.as_path() != main_file {
+             continue;
+         }
+@@ -919,7 +922,7 @@ pub fn format_input<T: Write>(
+     let mut report = FormatReport::new();
+ 
+     match format_ast(
+-        &krate,
++        krate,
+         &mut parse_session,
+         &main_file,
+         config,
+diff --git a/src/parens.rs b/src/parens.rs
+new file mode 100644
+index 0000000..16ef895
+--- /dev/null
++++ b/src/parens.rs
+@@ -0,0 +1,411 @@
++use syntax::ast::*;
++use syntax::codemap::{Spanned, BytePos};
++use syntax::fold::{self, Folder};
++use syntax::ptr::P;
++use syntax::util::move_map::MoveMap;
++use syntax::util::parser::{self, AssocOp, Fixity};
++
++struct ParenFold;
++
++fn deep_node(e: &Expr) -> &ExprKind {
++    match e.node {
++        ExprKind::Paren(ref e) => deep_node(e),
++        ref node => node,
++    }
++}
++
++fn cond_prec(e: &Expr) -> i8 {
++    let needs_paren = match e.node {
++        // These cases need parens due to the parse error observed in #26461: `if return {}`
++        // parses as the erroneous construct `if (return {})`, not `if (return) {}`.
++        ExprKind::Closure(..) |
++        ExprKind::Ret(..) |
++        ExprKind::Break(..) => true,
++
++        _ => parser::contains_exterior_struct_lit(e),
++    };
++
++    if needs_paren {
++        parser::PREC_FORCE_PAREN
++    } else {
++        parser::PREC_RESET
++    }
++}
++
++impl ParenFold {
++    fn fold_expr_prec(&mut self, orig: &P<Expr>, prec: i8) -> P<Expr> {
++        let new_node = match orig.node {
++            ExprKind::Paren(ref e) => {
++                // The interesting case.  Decide if we should keep this `Paren` node, or replace it
++                // with its subexpression.
++                let needs_paren = parser::expr_precedence(e) < prec;
++
++                let can_remove =
++                    // Don't discard parens that have attrs attached to them, since we don't know
++                    // what the attr might do.
++                    orig.attrs.len() == 0 &&
++                    // Don't discard parens with extra text (inline comments) inside the parens.
++                    // Otherwise we would lose the comment entirely.
++                    // TODO: ignore whitespace for purposes of this check
++                    orig.span.lo + BytePos(1) == e.span.lo &&
++                    e.span.hi + BytePos(1) == orig.span.hi;
++
++                if !needs_paren && can_remove {
++                    let e = self.fold_expr_prec(e, prec);
++                    return e.map(|mut e| {
++                        // This is a bit of a hack.  The rest of `rustfmt` consults node spans to
++                        // find text that falls between the nodes themselves, such as inline
++                        // comments.  We adjust the span of the returned node so that the parens
++                        // themselves are tracked as part of the node and don't get picked up as
++                        // inter-node text.
++                        e.span = orig.span;
++                        e
++                    });
++                } else {
++                    ExprKind::Paren(
++                        self.fold_expr_prec(e, parser::PREC_PAREN),
++                        )
++                }
++            },
++
++            ExprKind::Box(ref e) =>
++                ExprKind::Box(
++                    self.fold_expr_prec(e, parser::PREC_PREFIX),
++                    ),
++
++            ExprKind::InPlace(ref place, ref e) => {
++                let prec = AssocOp::Inplace.precedence() as i8;
++                ExprKind::InPlace(
++                    self.fold_expr_prec(place, prec + 1),
++                    self.fold_expr_prec(e, prec),
++                    )
++            },
++
++            ExprKind::Array(ref es) =>
++                ExprKind::Array(
++                    self.fold_expr_list_prec(es, parser::PREC_RESET),
++                    ),
++
++            ExprKind::Call(ref func, ref args) => {
++                let func_prec = match *deep_node(func) {
++                    ExprKind::Field(..) |
++                    ExprKind::TupField(..) => parser::PREC_FORCE_PAREN,
++                    _ => parser::PREC_POSTFIX,
++                };
++                ExprKind::Call(
++                    self.fold_expr_prec(func, func_prec),
++                    self.fold_expr_list_prec(args, parser::PREC_RESET),
++                    )
++            },
++
++            ExprKind::MethodCall(ref seg, ref args) =>
++                ExprKind::MethodCall(
++                    PathSegment {
++                        identifier: self.fold_ident(seg.identifier),
++                        span: self.new_span(seg.span),
++                        parameters: seg.parameters.as_ref().map(|ps| {
++                            ps.clone().map(|ps| self.fold_path_parameters(ps))
++                        }),
++                    },
++                    args.iter().enumerate().map(|(i, e)| {
++                        if i == 0 {
++                            self.fold_expr_prec(e, parser::PREC_POSTFIX)
++                        } else {
++                            self.fold_expr_prec(e, parser::PREC_RESET)
++                        }
++                    }).collect(),
++                    ),
++
++            ExprKind::Tup(ref es) =>
++                ExprKind::Tup(
++                    self.fold_expr_list_prec(es, parser::PREC_RESET)
++                    ),
++
++            ExprKind::Binary(ref op, ref a, ref b) => {
++                let assoc_op = AssocOp::from_ast_binop(op.node);
++                let prec = assoc_op.precedence() as i8;
++                let fixity = assoc_op.fixity();
++
++                let (left_prec, right_prec) = match fixity {
++                    Fixity::Left => (prec, prec + 1),
++                    Fixity::Right => (prec + 1, prec),
++                    Fixity::None => (prec + 1, prec + 1),
++                };
++
++                ExprKind::Binary(
++                    op.clone(),
++                    self.fold_expr_prec(a, left_prec),
++                    self.fold_expr_prec(b, right_prec),
++                    )
++            },
++
++            ExprKind::Unary(ref op, ref a) =>
++                ExprKind::Unary(
++                    op.clone(),
++                    self.fold_expr_prec(a, parser::PREC_PREFIX),
++                    ),
++
++            ExprKind::Lit(ref l) =>
++                ExprKind::Lit(l.clone()),
++
++            ExprKind::Cast(ref e, ref ty) => {
++                let prec = AssocOp::As.precedence() as i8;
++                ExprKind::Cast(
++                    self.fold_expr_prec(e, prec),
++                    self.fold_ty(ty.clone()),
++                    )
++            },
++
++            ExprKind::Type(ref e, ref ty) => {
++                let prec = AssocOp::Colon.precedence() as i8;
++                ExprKind::Type(
++                    self.fold_expr_prec(e, prec),
++                    self.fold_ty(ty.clone()),
++                    )
++            },
++
++            ExprKind::If(ref cond, ref then, ref opt_else) =>
++                ExprKind::If(
++                    self.fold_expr_prec(cond, cond_prec(cond)),
++                    self.fold_block(then.clone()),
++                    opt_else.clone().map(|x| self.fold_expr(x)),
++                    ),
++
++            ExprKind::IfLet(ref pat, ref e, ref then, ref opt_else) =>
++                ExprKind::IfLet(
++                    self.fold_pat(pat.clone()),
++                    self.fold_expr_prec(e, cond_prec(e)),
++                    self.fold_block(then.clone()),
++                    opt_else.clone().map(|x| self.fold_expr(x)),
++                    ),
++
++            ExprKind::While(ref cond, ref body, ref opt_label) =>
++                ExprKind::While(
++                    self.fold_expr_prec(cond, cond_prec(cond)),
++                    self.fold_block(body.clone()),
++                    opt_label.as_ref().map(|x| Spanned {
++                        node: self.fold_ident(x.node),
++                        span: self.new_span(x.span),
++                    }),
++                    ),
++
++            ExprKind::WhileLet(ref pat, ref e, ref body, ref opt_label) =>
++                ExprKind::WhileLet(
++                    self.fold_pat(pat.clone()),
++                    self.fold_expr_prec(e, cond_prec(e)),
++                    self.fold_block(body.clone()),
++                    opt_label.as_ref().map(|x| Spanned {
++                        node: self.fold_ident(x.node),
++                        span: self.new_span(x.span),
++                    }),
++                    ),
++
++            ExprKind::ForLoop(ref pat, ref iter, ref body, ref opt_label) =>
++                ExprKind::ForLoop(
++                    self.fold_pat(pat.clone()),
++                    self.fold_expr_prec(iter, cond_prec(iter)),
++                    self.fold_block(body.clone()),
++                    opt_label.as_ref().map(|x| Spanned {
++                        node: self.fold_ident(x.node),
++                        span: self.new_span(x.span),
++                    }),
++                    ),
++
++            ExprKind::Loop(ref body, ref opt_label) =>
++                ExprKind::Loop(
++                    self.fold_block(body.clone()),
++                    opt_label.as_ref().map(|x| Spanned {
++                        node: self.fold_ident(x.node),
++                        span: self.new_span(x.span),
++                    }),
++                    ),
++
++            ExprKind::Match(ref e, ref arms) =>
++                ExprKind::Match(
++                    self.fold_expr_prec(e, cond_prec(e)),
++                    arms.clone().move_map(|x| self.fold_arm(x)),
++                    ),
++
++            ExprKind::Closure(ref cap, ref decl, ref body, ref span) =>
++                ExprKind::Closure(
++                    cap.clone(),
++                    self.fold_fn_decl(decl.clone()),
++                    self.fold_expr_prec(body, parser::PREC_CLOSURE),
++                    self.new_span(span.clone()),
++                    ),
++
++            ExprKind::Block(ref b) =>
++                ExprKind::Block(
++                    self.fold_block(b.clone()),
++                    ),
++
++            ExprKind::Catch(ref b) =>
++                ExprKind::Catch(
++                    self.fold_block(b.clone()),
++                    ),
++
++            ExprKind::Assign(ref lhs, ref rhs) => {
++                let prec = AssocOp::Assign.precedence() as i8;
++                ExprKind::Assign(
++                    self.fold_expr_prec(lhs, prec + 1),
++                    self.fold_expr_prec(rhs, prec),
++                    )
++            },
++
++            ExprKind::AssignOp(ref op, ref lhs, ref rhs) => {
++                let prec = AssocOp::Assign.precedence() as i8;
++                ExprKind::AssignOp(
++                    op.clone(),
++                    self.fold_expr_prec(lhs, prec + 1),
++                    self.fold_expr_prec(rhs, prec),
++                    )
++            },
++
++            ExprKind::Field(ref obj, ref field) =>
++                ExprKind::Field(
++                    self.fold_expr_prec(obj, parser::PREC_POSTFIX),
++                    Spanned {
++                        node: self.fold_ident(field.node),
++                        span: self.new_span(field.span),
++                    },
++                    ),
++
++            ExprKind::TupField(ref obj, ref field) =>
++                ExprKind::TupField(
++                    self.fold_expr_prec(obj, parser::PREC_POSTFIX),
++                    Spanned {
++                        node: field.node,
++                        span: self.new_span(field.span),
++                    },
++                    ),
++
++            ExprKind::Index(ref arr, ref idx) =>
++                ExprKind::Index(
++                    self.fold_expr_prec(arr, parser::PREC_POSTFIX),
++                    self.fold_expr_prec(idx, parser::PREC_RESET),
++                    ),
++
++            ExprKind::Range(ref opt_lo, ref opt_hi, ref limits) => {
++                // Special case for `Range`.  `AssocOp` claims that `Range` has higher precedence
++                // than `Assign`, but `x .. x = x` gives a parse error instead of `(x .. x) = x`.
++                // Here we use a fake precedence value so that any child with lower precedence than
++                // a "normal" binop gets parenthesized.  (`LOr` is the lowest-precedence binop.)
++                let fake_prec = AssocOp::LOr.precedence() as i8;
++                ExprKind::Range(
++                    opt_lo.as_ref().map(|e| self.fold_expr_prec(e, fake_prec)),
++                    opt_hi.as_ref().map(|e| self.fold_expr_prec(e, fake_prec)),
++                    limits.clone(),
++                    )
++            },
++
++            ExprKind::Path(ref opt_qself, ref path) =>
++                ExprKind::Path(
++                    opt_qself.as_ref().map(|qself| {
++                        QSelf {
++                            ty: self.fold_ty(qself.ty.clone()),
++                            position: qself.position,
++                        }
++                    }),
++                    self.fold_path(path.clone()),
++                    ),
++
++            ExprKind::AddrOf(ref mutbl, ref e) =>
++                ExprKind::AddrOf(
++                    mutbl.clone(),
++                    self.fold_expr_prec(e, parser::PREC_PREFIX),
++                    ),
++
++            ExprKind::Break(ref opt_label, ref opt_e) =>
++                ExprKind::Break(
++                    opt_label.as_ref().map(|x| Spanned {
++                        node: self.fold_ident(x.node),
++                        span: self.new_span(x.span),
++                    }),
++                    opt_e.as_ref().map(|e| self.fold_expr_prec(e, parser::PREC_JUMP)),
++                    ),
++
++            ExprKind::Continue(ref opt_label) =>
++                ExprKind::Continue(
++                    opt_label.as_ref().map(|x| Spanned {
++                        node: self.fold_ident(x.node),
++                        span: self.new_span(x.span),
++                    }),
++                    ),
++
++            ExprKind::Ret(ref opt_e) =>
++                ExprKind::Ret(
++                    opt_e.as_ref().map(|e| self.fold_expr_prec(e, parser::PREC_JUMP)),
++                    ),
++
++            ExprKind::InlineAsm(ref asm) =>
++                ExprKind::InlineAsm(
++                    asm.clone().map(|asm| {
++                        InlineAsm {
++                            inputs: asm.inputs.iter().map(|&(c, ref input)| {
++                                (c, self.fold_expr_prec(input, parser::PREC_RESET))
++                            }).collect(),
++                            outputs: asm.outputs.iter().map(|out| {
++                                InlineAsmOutput {
++                                    constraint: out.constraint,
++                                    expr: self.fold_expr_prec(&out.expr, parser::PREC_RESET),
++                                    is_rw: out.is_rw,
++                                    is_indirect: out.is_indirect,
++                                }
++                            }).collect(),
++                            ..asm
++                        }
++                    }),
++                    ),
++
++            ExprKind::Mac(ref mac) =>
++                ExprKind::Mac(
++                    self.fold_mac(mac.clone()),
++                    ),
++
++            ExprKind::Struct(ref path, ref fields, ref base) =>
++                ExprKind::Struct(
++                    self.fold_path(path.clone()),
++                    fields.iter().map(|f| self.fold_field(f.clone())).collect(),
++                    base.as_ref().map(|e| self.fold_expr_prec(e, parser::PREC_RESET)),
++                    ),
++
++            ExprKind::Repeat(ref e, ref count) =>
++                ExprKind::Repeat(
++                    self.fold_expr_prec(e, parser::PREC_RESET),
++                    self.fold_expr_prec(count, parser::PREC_RESET),
++                    ),
++
++            ExprKind::Try(ref e) =>
++                ExprKind::Try(
++                    self.fold_expr_prec(e, parser::PREC_POSTFIX),
++                    ),
++        };
++
++        P(Expr {
++            id: orig.id,
++            node: new_node,
++            span: orig.span,
++            attrs: orig.attrs.clone(),
++        })
++    }
++
++    fn fold_expr_list_prec(&mut self, es: &[P<Expr>], prec: i8) -> Vec<P<Expr>> {
++        es.iter()
++          .map(|e| self.fold_expr_prec(e, prec))
++          .collect()
++    }
++}
++
++impl Folder for ParenFold {
++    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
++        self.fold_expr_prec(&e, parser::PREC_RESET)
++    }
++
++    fn fold_mac(&mut self, m: Mac) -> Mac {
++        fold::noop_fold_mac(m, self)
++    }
++}
++
++pub fn clean_parens(krate: Crate) -> Crate {
++    ParenFold.fold_crate(krate)
++}

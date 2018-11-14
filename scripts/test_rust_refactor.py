@@ -37,7 +37,7 @@ def get_testcases(directory: str) -> List[str]:
 
 
 def run_tests(testcases: List[str]) -> None:
-    ipath = os.path.join(c.RREF_DIR, "target/debug/idiomize")
+    ipath = os.path.join(c.ROOT_DIR, "target/debug/c2rust-refactor")
     # refactor = '{ip} -P ../.. -p plugin_stub -r alongside'.format(ip=ipath)
     # NOTE:PL: I removed the plugin options (-P, -p) to get the tests to run.
     refactor = '{ip} -r alongside'.format(ip=ipath)
@@ -52,7 +52,7 @@ def run_tests(testcases: List[str]) -> None:
                                  triplet=get_host_triplet())
 
     with pb.local.env(RUST_BACKTRACE='1',
-                      RUST_LOG="idiomize=info",
+                      RUST_LOG="c2rust_refactor=info",
                       LD_LIBRARY_PATH=ld_lib_path,
                       not_LD_LIBRARY_PATH=ld_lib_path,
                       refactor=refactor,
@@ -93,13 +93,13 @@ def main():
     # NOTE: it seems safe to disable this check since we now
     # that we use a rust-toolchain file for rustc versioning.
     # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
-    # TODO: update rustfmt version check once idiomize bitrot has been fixed
+    # TODO: update rustfmt version check once c2rust-refactor bitrot has been fixed
     # ensure_rustfmt_version()
     test_dir = os.path.join(c.RREF_DIR, "tests")
     assert os.path.isdir(test_dir), "test dir missing: " + test_dir
-    idiomize_binary = os.path.join(c.RREF_DIR, "target/debug/idiomize")
-    if not os.path.isfile(idiomize_binary):
-        die("build idiomize binary first. expected: " + idiomize_binary)
+    refactor_binary = os.path.join(c.ROOT_DIR, "target/debug/c2rust-refactor")
+    if not os.path.isfile(refactor_binary):
+        die("build refactor binary first. expected: " + refactor_binary)
 
     testcases = get_testcases(test_dir)
     run_tests(sorted(testcases))

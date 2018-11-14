@@ -37,9 +37,9 @@ def build_clang_plugin(args: str) -> None:
             "config-capi-target")
     config_lib_path = os.path.join(cargo_target_dir,
             "debug" if args.debug else "release",
-            "libcross_check_config_capi.a")
+            "libc2rust_xcheck_config_capi.a")
     with pb.local.cwd(config_capi_src_dir):
-        cargo_args = ["build", "--package", "cross-check-config-capi"]
+        cargo_args = ["build", "--package", "c2rust-xcheck-config-capi"]
         if not args.debug:
             cargo_args.append("--release")
         with pb.local.env(CARGO_TARGET_DIR=cargo_target_dir):

@@ -8,20 +8,20 @@ To use the compiler plugin, you need to take several steps.
 First, add the plugin as a Cargo dependency to your `Cargo.toml` file:
 ```
 [dependencies]
-cross-check-plugin = { path = ".../C2Rust/cross-checks/rust-checks/rustc-plugin" }
-cross-check-derive = { path = ".../C2Rust/cross-checks/rust-checks/derive-macros" }
-cross-check-runtime = { path = ".../C2Rust/cross-checks/rust-checks/runtime" }
+c2rust-xcheck-plugin = { path = ".../C2Rust/cross-checks/rust-checks/rustc-plugin" }
+c2rust-xcheck-derive = { path = ".../C2Rust/cross-checks/rust-checks/derive-macros" }
+c2rust-xcheck-runtime = { path = ".../C2Rust/cross-checks/rust-checks/runtime" }
 ```
 with `...` as the full path to the C2Rust repository.
 Next, add the following preamble to your `main.rs` or `lib.rs` file:
 ```rust
 #![feature(plugin)]
-#![plugin(cross_check_plugin)]
+#![plugin(c2rust_xcheck_plugin)]
 
 #[macro_use]
-extern crate cross_check_derive;
+extern crate c2rust_xcheck_derive;
 #[macro_use]
-extern crate cross_check_runtime;
+extern crate c2rust_xcheck_runtime;
 ```
 
 ## Cross-checker options

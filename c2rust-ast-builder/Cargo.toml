@@ -1,0 +1,6 @@
+[package]
+name = "c2rust-ast-builder"
+version = "0.1.0"
+authors = ["Eric Mertens <emertens@galois.com>"]
+
+[dependencies]

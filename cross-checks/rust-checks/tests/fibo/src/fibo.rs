@@ -22,13 +22,13 @@ fn foo(v: &u64) -> u64 {
 }
 
 fn tch<XCHA, XCHS, S, F>(h: &mut XCHA, _: &S, field: F, _: usize)
-        where XCHA: ::cross_check_runtime::hash::CrossCheckHasher,
+        where XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
               F: ::std::borrow::Borrow<String> {
     h.write_u64(field.borrow().parse::<u64>().unwrap());
 }
 
 //#[cross_check(none)]
-//#[cross_check(yes, ahasher="::cross_check_runtime::hash::djb2::Djb2Hasher", shasher="::cross_check_runtime::hash::djb2::Djb2Hasher")]
+//#[cross_check(yes, ahasher="::c2rust_xcheck_runtime::hash::djb2::Djb2Hasher", shasher="::c2rust_xcheck_runtime::hash::djb2::Djb2Hasher")]
 //#[cross_check(yes, args(n(default)))]
 #[cross_check(yes, all_args(fixed=0x234), args())]
 pub fn fibo(n: u64) -> u64 {
