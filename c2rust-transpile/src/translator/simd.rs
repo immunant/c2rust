@@ -140,8 +140,8 @@ impl Translation {
         Ok(false)
     }
 
-    /// Generate a call to a rust SIMD function based on a builtin function. LLVM 6 only supports one of these
-    /// but LLVM 7 converts a bunch more
+    /// Generate a call to a rust SIMD function based on a builtin function. Clang 6 only supports one of these
+    /// but clang 7 converts a bunch more from "super builtins"
     pub fn convert_simd_builtin(
         &self,
         fn_name: &str,

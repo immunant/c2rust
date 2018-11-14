@@ -137,7 +137,7 @@ impl Translation {
                 "va_end not supported - currently va_list and va_arg are supported"
             )),
 
-            // In LLVM 6 this first one is the only true SIMD builtin, LLVM 7 converted a bunch more after it:
+            // In clang 6 this first one is the only true SIMD builtin, clang 7 converted a bunch more after it:
             "__builtin_ia32_pshufw" =>
                 self.convert_simd_builtin("_mm_shuffle_pi16", use_, is_static, decay_ref, args),
             "__builtin_ia32_shufps" =>
