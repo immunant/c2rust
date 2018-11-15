@@ -14,7 +14,7 @@ No params are strictly required at this time.
 
 ## Required Importer Params
 
-Pass the `--translate-entry` flag to the importer so that a valid rust main function is generated when translating `main.c`, but not the library `lil.c`. The relooper flag `--reloop-cfgs` is also required to generate certain portions of code.
+Pass the `--translate-entry` flag to the importer so that a valid rust main function is generated when translating `main.c`, but not the library `lil.c`.
 
 ## Linking
 

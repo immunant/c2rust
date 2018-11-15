@@ -16,6 +16,8 @@
 //!     the loop, the more likely we are to have a jump table right after the loop.
 //!
 
+#![deny(missing_docs)]
+
 use super::*;
 use indexmap::{IndexMap, IndexSet};
 
@@ -23,8 +25,11 @@ use indexmap::{IndexMap, IndexSet};
 /// Modifies the `body_blocks`, `follow_blocks`, and `follow_entries` to try to get all of the
 /// `desired_body` labels into the body. If it is not possible to do this, returns `false` (and the
 /// mutable references passed in cannot be used).
+///
+/// Also return `false` if the loop body ends up having follow blocks pointing into it.
 pub fn match_loop_body(
     mut desired_body: IndexSet<Label>,
+    strict_reachable_from: &IndexMap<Label, IndexSet<Label>>,
     body_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
     follow_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
     follow_entries: &mut IndexSet<Label>,
@@ -50,7 +55,13 @@ pub fn match_loop_body(
         }
     }
 
-    desired_body.is_empty()
+    desired_body.is_empty() && body_blocks.keys().all(|body_lbl| {
+        // check that no body block can be reached from a block _not_ in the loop
+        match strict_reachable_from.get(body_lbl) {
+            None => true,
+            Some(reachable_froms) => reachable_froms.iter().all(|lbl| body_blocks.contains_key(lbl))
+        }
+    })
 }
 
 
@@ -102,17 +113,21 @@ pub fn heuristic_loop_body(
 pub struct LoopId(u64);
 
 impl LoopId {
+
+    /// Create a new loop id from (presumably) fresh number.
     pub fn new(id: u64) -> LoopId {
         LoopId(id)
     }
 
+    /// Turn the loop id into an identifier. Note that there one needs to add on a tick mark for
+    /// this to be usable as a loop label.
     pub fn pretty_print(&self) -> String {
         let &LoopId(loop_id) = self;
         format!("l_{}", loop_id)
     }
 }
 
-/// Information about loops in a CFG.
+/// Stores information about loops in a CFG.
 #[derive(Clone,Debug)]
 pub struct LoopInfo<Lbl: Hash + Eq> {
     /// Given a node, find the tightest enclosing loop
@@ -123,8 +138,16 @@ pub struct LoopInfo<Lbl: Hash + Eq> {
 }
 
 impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
+
+    #[allow(missing_docs)]
     pub fn new() -> Self {
         LoopInfo { node_loops: IndexMap::new(), loops: IndexMap::new() }
+    }
+
+    /// Merge the information from another `LoopInfo` into this `LoopInfo`
+    pub fn absorb(&mut self, other: LoopInfo<Lbl>) {
+        self.node_loops.extend(other.node_loops);
+        self.loops.extend(other.loops);
     }
 
     /// Find the smallest possible loop that contains all of the items
@@ -186,6 +209,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         loop_ids
     }
 
+    /// Get all of the nodes contained in a given loop
     pub fn get_loop_contents<'a>(&'a self, id: LoopId) -> &'a IndexSet<Lbl> {
         &self.loops
             .get(&id)

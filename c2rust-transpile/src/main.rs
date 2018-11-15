@@ -27,7 +27,7 @@ fn main() {
     };
     let tcfg = TranslationConfig {
         fail_on_error:          matches.is_present("fail-on-error"),
-        reloop_cfgs:            matches.is_present("reloop-cfgs"),
+        incremental_relooper:   !matches.is_present("no-incremental-relooper"),
         fail_on_multiple:       matches.is_present("fail-on-multiple"),
         dump_function_cfgs:     matches.is_present("dump-function-cfgs"),
         json_function_cfgs:     matches.is_present("json-function-cfgs"),

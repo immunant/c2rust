@@ -1,4 +1,4 @@
-//! enable_relooper, disallow_current_block
+//! enable_relooper
 
 void foo(int a) {
     switch (a) {

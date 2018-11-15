@@ -1,4 +1,5 @@
 #![feature(rustc_private)]
+#![feature(label_break_value)]
 extern crate serde_cbor;
 extern crate syntax;
 extern crate syntax_pos;
@@ -13,7 +14,6 @@ extern crate c2rust_ast_builder;
 
 pub mod renamer;
 pub mod convert_type;
-pub mod loops;
 pub mod translator;
 pub mod c_ast;
 pub mod rust_ast;

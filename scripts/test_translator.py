@@ -58,15 +58,15 @@ class CStaticLibrary:
         self.path = path
         self.link_name = link_name
         self.obj_files = obj_files
-
-
 class CFile:
+
+
     def __init__(self, path: str, flags: Set[str] = None) -> None:
         if not flags:
             flags = set()
 
         self.path = path
-        self.enable_relooper = "enable_relooper" in flags
+        self.enable_incremental_relooper = "incremental_relooper" in flags
         self.disallow_current_block = "disallow_current_block" in flags
 
     def translate(self, extra_args: List[str] = []) -> RustFile:
@@ -86,10 +86,8 @@ class CFile:
             "rust_",
         ]
 
-        if self.enable_relooper:
-            args.append("--reloop-cfgs")
-            #  args.append("--use-c-loop-info")
-            #  args.append("--use-c-multiple-info")
+        if not self.enable_incremental_relooper:
+            args.append("--no-incremental-relooper")
         if self.disallow_current_block:
             args.append("--fail-on-multiple")
 
@@ -119,6 +117,12 @@ class CFile:
             raise NonZeroReturn(stderr)
 
         return RustFile(extensionless_file + ".rs")
+
+
+        if retcode != 0:
+            raise NonZeroReturn(stderr)
+
+        return CborFile(self.path + ".cbor", True, self.disallow_current_block)
 
 
 def build_static_library(c_files: Iterable[CFile],

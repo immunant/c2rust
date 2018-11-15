@@ -9,7 +9,8 @@ pub fn structured_cfg(
     root: &Vec<Structure<StmtOrComment>>,
     comment_store: &mut comment_store::CommentStore,
     current_block: P<Expr>,
-    debug_labels: bool
+    debug_labels: bool,
+    cut_out_trailing_ret: bool,
 ) -> Result<Vec<Stmt>, String> {
 
 
@@ -34,35 +35,55 @@ pub fn structured_cfg(
 
     // If the very last statement in the vector is a `return`, we can either cut it out or replace
     // it with the returned value.
-    match stmts.last().cloned() {
-        Some(Stmt { node: StmtKind::Expr(ref ret), .. }) |
-        Some(Stmt { node: StmtKind::Semi(ref ret), .. }) => {
-            match ret.node {
-                ExprKind::Ret(None) => {
-                    stmts.pop();
+    if cut_out_trailing_ret {
+        match stmts.last().cloned() {
+            Some(Stmt { node: StmtKind::Expr(ref ret), .. }) |
+            Some(Stmt { node: StmtKind::Semi(ref ret), .. }) => {
+                match ret.node {
+                    ExprKind::Ret(None) => {
+                        stmts.pop();
+                    }
+                    // TODO: why does libsyntax print a ';' after this even if it is 'Expr' and not 'Semi'
+                    //                ExprKind::Ret(Some(ref e)) => {
+                    //                    stmts.pop();
+                    //                    stmts.push(mk().expr_stmt(e));
+                    //                }
+                    _ => {}
                 }
-                // TODO: why does libsyntax print a ';' after this even if it is 'Expr' and not 'Semi'
-//                ExprKind::Ret(Some(ref e)) => {
-//                    stmts.pop();
-//                    stmts.push(mk().expr_stmt(e));
-//                }
-                _ => { }
             }
+            _ => {}
         }
-        _ => { }
     }
 
     Ok(stmts)
 }
 
+/// Ways of exiting from a loop body
+#[derive(Copy, Clone, Debug)]
+pub enum ExitStyle {
+    /// Jumps to the beginning of the loop body
+    Continue,
+
+    /// Jumps to the end of the loop body
+    Break,
+}
 
 /// This is precisely what we need to construct structured statements
 pub trait StructuredStatement: Sized {
+
+    /// An expression
     type E;
+
+    /// A pattern
     type P;
+
+    /// A label
     type L;
+
+    /// An unstructured regular statement
     type S;
 
+    /// An empty statement
     fn empty() -> Self;
 
     /// Project a single statement into a structured statement
@@ -107,7 +128,8 @@ pub trait StructuredStatement: Sized {
 }
 
 
-/// AST corresponding to `StructuredStatement` trait
+/// Defunctionalized version of `StructuredStatement` trait
+#[allow(missing_docs)]
 pub enum StructuredAST<E, P, L, S> {
     Empty,
     Singleton(S),
@@ -230,8 +252,8 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
                         }
 
                         &StructureLabel::GoTo(to) => Err(format!(
-                            "Not a valid exit: {:?} (GoTo isn't falling through)",
-                            to
+                            "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
+                            to, next
                         )),
                     }
                 };

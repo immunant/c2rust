@@ -1,4 +1,4 @@
-//! enable_relooper, disallow_current_block
+//! enable_relooper
 
 int stmt_expr_func(int y) {
 
@@ -8,6 +8,7 @@ int stmt_expr_func(int y) {
     switch (y) {
       case 0: z += 3;
       case 1: goto lbl;
+      case 2: return -42;
       default: z += 6; 
     };
 
