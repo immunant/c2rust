@@ -452,7 +452,14 @@ fn main_impl(opts: Options) {
             if &cmd.name == "interact" {
                 panic!("`interact` must be the only command");
             } else {
-                state.run(&cmd.name, &cmd.args);
+                match state.run(&cmd.name, &cmd.args) {
+                    Ok(_)=> {},
+                    Err(e) => {
+                        eprintln!("{:?}", e);
+                        std::process::exit(1);
+                    }
+
+                }
             }
         }
 

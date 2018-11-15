@@ -170,7 +170,14 @@ impl InteractState {
             RunCommand { name, args } => {
                 info!("running command {} with args {:?}", name, args);
                 self.state.load_crate();
-                self.state.run(&name, &args);
+                match self.state.run(&name, &args) {
+                    Ok(_)=> {},
+                    Err(e) => {
+                        eprintln!("{:?}", e);
+                        panic!("Invalid command.");
+                    }
+
+                }
                 self.state.save_crate();
             },
 
