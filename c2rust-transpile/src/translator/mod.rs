@@ -937,7 +937,7 @@ impl<'c> Translation<'c> {
                 }
 
                 if has_bitfields {
-                    return Ok(self.convert_bitfield_struct_decl(name, s, field_info, is_packed, manual_alignment));
+                    return self.convert_bitfield_struct_decl(name, s, field_info);
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];

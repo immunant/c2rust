@@ -12,10 +12,11 @@
 
 use c_ast::{CExprId, CQualTypeId};
 use c2rust_ast_builder::mk;
-use syntax::ast::{AttrStyle, Expr, MacDelimiter, MetaItemKind, Ty, LitIntType};
+use syntax::ast::{AttrStyle, Expr, MacDelimiter, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitKind, StrStyle, Ty, LitIntType};
 use syntax::ext::quote::rt::Span;
 use syntax::parse::token::{Nonterminal, Token};
 use syntax::ptr::P;
+use syntax::source_map::symbol::Symbol;
 use syntax::tokenstream::TokenTree;
 use syntax_pos::DUMMY_SP;
 use translator::{DecayRef, ExprUse, Translation, ConvertedDecl, simple_metaitem};
@@ -24,6 +25,21 @@ use with_stmts::WithStmts;
 /// (name, type, bitfield_width)
 type FieldNameTypeWidth = (String, P<Ty>, Option<u64>, u64);
 type FieldNameType = (String, CQualTypeId);
+
+const PACKED_STRUCT_CRATE: bool = true;
+
+fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
+    let meta_item = mk().meta_item(
+        vec![lhs],
+        MetaItemKind::NameValue(Lit {
+            span: DUMMY_SP,
+            node: LitKind::Str(Symbol::intern(rhs), StrStyle::Cooked)
+        }),
+    );
+
+    mk().nested_meta_item(NestedMetaItemKind::MetaItem(meta_item))
+}
+
 
 impl Translation {
     /// Here we output a macro invocation to generate bitfield data that looks like this:
@@ -38,7 +54,61 @@ impl Translation {
     ///     // ...
     /// }
     /// ```
-    pub fn convert_bitfield_struct_decl(&self, name: String, span: Span, field_info: Vec<FieldNameTypeWidth>, is_packed: bool, manual_alignment: Option<u64>) -> ConvertedDecl {
+    pub fn convert_bitfield_struct_decl(&self, name: String, span: Span, field_info: Vec<FieldNameTypeWidth>) -> Result<ConvertedDecl, String> {
+        if PACKED_STRUCT_CRATE {
+            let mut item_store = self.item_store.borrow_mut();
+
+            item_store.uses
+                .get_mut(vec!["packed_struct".into()])
+                .insert("PackedStruct");
+            item_store.uses
+                .get_mut(vec!["packed_struct_codegen".into()])
+                .insert("PackedStruct");
+
+            let mut field_entries = Vec::with_capacity(field_info.len());
+
+            for (field_name, ty, bitfield_width, bit_index) in field_info {
+                // Bitfield widths of 0 should just be markers for clang,
+                // we shouldn't need to explicitly handle it ourselves
+                if let Some(0) = bitfield_width {
+                    continue
+                }
+
+                // Figure out what's the smallest byte int that can hold this bitfield width
+                // This is required by packed_struct as you cannot currently use arbitrary sized
+                // ints for fields like C lets you do..
+                // REVIEW: What about signed int fields?
+                let base_ty = match bitfield_width {
+                    Some(w) if w <= 8 => mk().ident_ty("u8"),
+                    Some(w) if w <= 16 => mk().ident_ty("u16"),
+                    Some(w) if w <= 32 => mk().ident_ty("u32"),
+                    Some(w) if w <= 64 => mk().ident_ty("u64"),
+                    Some(w) if w <= 128 => mk().ident_ty("u128"),
+                    Some(_) => return Err("Unsupported bitfield width found greater than 128 bits".into()),
+                    None => ty,
+                };
+                let bit_struct_name = format!("Bits{}", bitfield_width.unwrap_or(0)); // FIXME: 0
+                let field_generic_tys = mk().angle_bracketed_args(vec![base_ty, mk().ident_ty(bit_struct_name)]);
+                let field_ty = mk().path_segment_with_args("Integer", field_generic_tys);
+                let field = mk().struct_field(field_name, mk().path_ty(vec![field_ty]));
+
+                field_entries.push(field);
+            }
+
+            // REVIEW: little endian support?
+            let packed_struct_items = vec![assigment_metaitem("bit_numbering", "msb0"), assigment_metaitem("endian", "msb")];
+            let packed_struct_attr = mk().meta_item("packed_struct", MetaItemKind::List(packed_struct_items));
+
+            let item = mk()
+                .span(span)
+                .pub_()
+                .call_attr("derive", vec!["Copy", "Clone", "PackedStruct"])
+                .meta_item_attr(AttrStyle::Outer, packed_struct_attr)
+                .struct_item(name, field_entries);
+
+            return Ok(ConvertedDecl::Item(item));
+        }
+
         let u8_slice = mk().span(DUMMY_SP).struct_field("", mk().slice_ty(mk().ident_ty("u8")));
         let reprs = vec![simple_metaitem("C")];
         let repr_meta_item = mk().meta_item("repr", MetaItemKind::List(reprs));
@@ -77,7 +147,7 @@ impl Translation {
 
         let mac = mk().mac(mk().path("bitfield"), macro_body, MacDelimiter::Brace);
 
-        ConvertedDecl::Item(mk().span(span).mac_item(mac))
+        Ok(ConvertedDecl::Item(mk().span(span).mac_item(mac)))
     }
 
     /// Here we output a block to generate a struct literal initializer in.
