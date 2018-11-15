@@ -1477,7 +1477,8 @@ impl ConversionContext {
                     let typ_id = node.type_id.expect("Expected to find type on field declaration");
                     let typ = self.visit_qualified_type(typ_id);
                     let bitfield_width = node.extras[1].as_u64();
-                    let field = CDeclKind::Field { name, typ, bitfield_width };
+                    let bit_offset = node.extras[2].as_u64().expect("Did not find field bit offset");
+                    let field = CDeclKind::Field { name, typ, bitfield_width, bit_offset };
                     self.add_decl(new_id, located(node, field));
                     self.processed_nodes.insert(new_id, FIELD_DECL);
                 }

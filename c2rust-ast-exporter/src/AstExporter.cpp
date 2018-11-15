@@ -1343,16 +1343,25 @@ class TranslateASTVisitor final
 
           std::vector<void*> childIds;
           auto t = D->getType();
+          auto record = D->getParent();
+          const ASTRecordLayout &layout = this->Context->getASTRecordLayout(record);
+          auto index = D->getFieldIndex();
+          auto bitOffset = layout.getFieldOffset(index);
           encode_entry(D, TagFieldDecl, childIds, t,
-                             [D, this](CborEncoder *array) {
+                             [D, this, bitOffset](CborEncoder *array) {
+                                 // 1. Encode field name
                                  auto name = D->getNameAsString();
                                  cbor_encode_string(array, name);
 
+                                 // 2. Encode bitfield width if any
                                  if (D->isBitField()) {
                                      cbor_encode_uint(array, D->getBitWidthValue(*this->Context));
                                  } else {
                                      cbor_encode_null(array);
                                  };
+
+                                 // 3. Encode bit offset in its record
+                                 cbor_encode_uint(array, bitOffset);
                              });
 
           // This might be the only occurence of this type in the translation unit

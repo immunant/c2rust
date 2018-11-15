@@ -534,6 +534,7 @@ pub enum CDeclKind {
         name: String,
         typ: CQualTypeId,
         bitfield_width: Option<u64>,
+        bit_offset: u64,
     },
 }
 

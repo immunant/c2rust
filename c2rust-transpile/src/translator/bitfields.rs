@@ -17,13 +17,12 @@ use syntax::ext::quote::rt::Span;
 use syntax::parse::token::{Nonterminal, Token};
 use syntax::ptr::P;
 use syntax::tokenstream::TokenTree;
+use syntax_pos::DUMMY_SP;
 use translator::{DecayRef, ExprUse, Translation, ConvertedDecl, simple_metaitem};
 use with_stmts::WithStmts;
 
-use super::DUMMY_SP; // TODO: Remove
-
 /// (name, type, bitfield_width)
-type FieldNameTypeWidth = (String, P<Ty>, Option<u64>);
+type FieldNameTypeWidth = (String, P<Ty>, Option<u64>, u64);
 type FieldNameType = (String, CQualTypeId);
 
 impl Translation {
@@ -34,8 +33,8 @@ impl Translation {
     ///     #[repr(C)]
     ///     #[derive(Copy, Clone)]
     ///     pub struct Foo([u8]);
-    ///     int_size, field, set_field: end_idx, start_idx;
-    ///     int_size2, field2, set_field2: end_idx2, start_idx2;
+    ///     pub int_size, field, set_field: end_idx, start_idx;
+    ///     pub int_size2, field2, set_field2: end_idx2, start_idx2;
     ///     // ...
     /// }
     /// ```
@@ -53,13 +52,14 @@ impl Translation {
 
         macro_body.push(TokenTree::Token(DUMMY_SP, Token::interpolated(struct_item)));
 
-        for (name, ty, bitfield_width) in field_info {
-            // bitfield_width.unwrap(); // FIXME: Need to handle non bitfield case
+        for (name, ty, bitfield_width, bit_index) in field_info {
+            let start = bit_index as u128;
+            let end = start + bitfield_width.unwrap_or(0) as u128; // FIXME
             let ty_item = Nonterminal::NtTy(ty);
             let setter_ident = Nonterminal::NtIdent(mk().ident(format!("set_{}", name)), false);
             let getter_ident = Nonterminal::NtIdent(mk().ident(name), false);
-            let start_idx = Nonterminal::NtLiteral(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))); // FIXME
-            let end_idx = Nonterminal::NtLiteral(mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed))); // FIXME
+            let start_idx = Nonterminal::NtLiteral(mk().lit_expr(mk().int_lit(start, LitIntType::Unsuffixed)));
+            let end_idx = Nonterminal::NtLiteral(mk().lit_expr(mk().int_lit(end, LitIntType::Unsuffixed)));
 
             macro_body.extend_from_slice(&[
                 TokenTree::Token(DUMMY_SP, Token::interpolated(ty_item)),
@@ -78,12 +78,6 @@ impl Translation {
         let mac = mk().mac(mk().path("bitfield"), macro_body, MacDelimiter::Brace);
 
         ConvertedDecl::Item(mk().span(span).mac_item(mac))
-    }
-
-    // REVIEW: Can bitfields be packed? Might need to take that into account
-    /// Determine the (platform specific!) byte size of the bitfield struct
-    fn determine_struct_total_byte_size(&self, field_info: &[FieldNameTypeWidth]) -> u64 {
-        unimplemented!()
     }
 
     /// Here we output a block to generate a struct literal initializer in.
