@@ -22,8 +22,9 @@ fn foo(v: &u64) -> u64 {
 }
 
 fn tch<XCHA, XCHS, S, F>(h: &mut XCHA, _: &S, field: F, _: usize)
-        where XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
-              F: ::std::borrow::Borrow<String> {
+    where XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
+          F: ::std::borrow::Borrow<String>
+{
     h.write_u64(field.borrow().parse::<u64>().unwrap());
 }
 

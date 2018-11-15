@@ -66,7 +66,8 @@ impl CrossCheckBuilder for xcfg::XCheckType {
     // #[cross_check(id = 0x12345678)]
     fn build_xcheck<F>(&self, cx: &ExtCtxt, exp: &CrossCheckExpander,
                        tag_str: &str, val_ref_str: &str, f: F) -> Option<ast::Stmt>
-            where F: FnOnce(ast::Ident, Vec<ast::Stmt>) -> P<ast::Expr> {
+        where F: FnOnce(ast::Ident, Vec<ast::Stmt>) -> P<ast::Expr>
+    {
         let tag = ast::Ident::from_str(tag_str);
         let check = match *self {
             xcfg::XCheckType::Default => f(tag, vec![]),
@@ -433,8 +434,9 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             impl ::c2rust_xcheck_runtime::hash::CrossCheckHash for $union_ident {
                 #[inline]
                 fn cross_check_hash_depth<HA, HS>(&self, _depth: usize) -> u64
-                        where HA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
-                              HS: ::c2rust_xcheck_runtime::hash::CrossCheckHasher {
+                    where HA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
+                          HS: ::c2rust_xcheck_runtime::hash::CrossCheckHasher
+                {
                     $hash_body
                 }
             }
@@ -755,8 +757,9 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                     impl ::c2rust_xcheck_runtime::hash::CrossCheckHash for $ty_name {
                         #[inline]
                         fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-                                where HA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
-                                      HS: ::c2rust_xcheck_runtime::hash::CrossCheckHasher {
+                            where HA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
+                                  HS: ::c2rust_xcheck_runtime::hash::CrossCheckHasher
+                        {
                             extern {
                                 #[no_mangle]
                                 fn $hash_fn(_: *const $ty_name, _: usize) -> u64;

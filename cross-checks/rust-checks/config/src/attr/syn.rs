@@ -11,7 +11,8 @@ impl<'a> ArgValue<'a> {
 
 impl<'a> ArgList<'a> {
     pub fn get_ident_arg<D>(&self, arg: &str, default: D) -> syn::Ident
-            where syn::Ident: ::std::convert::From<D> {
+        where syn::Ident: ::std::convert::From<D>
+    {
         self.0.get(arg).map_or_else(|| syn::Ident::from(default),
                                     ArgValue::get_str_ident)
     }

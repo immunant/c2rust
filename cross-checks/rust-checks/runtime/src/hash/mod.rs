@@ -37,24 +37,31 @@ pub trait CrossCheckHasher: Hasher + Default {
 pub trait CrossCheckHash {
     #[inline]
     fn cross_check_hash<HA, HS>(&self) -> Option<u64>
-            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher
+    {
         Some(self.cross_check_hash_depth::<HA, HS>(MAX_DEPTH))
     }
 
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-            where HA: CrossCheckHasher, HS: CrossCheckHasher;
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher;
 }
 
 impl CrossCheckHash for ! {
     #[inline]
     fn cross_check_hash<HA, HS>(&self) -> Option<u64>
-            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher
+    {
         panic!("Attempted to CrossCheckHash a 'never' value")
     }
 
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, _depth: usize) -> u64
-            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher
+    {
         panic!("Attempted to CrossCheckHash a 'never' value")
     }
 }
@@ -62,13 +69,17 @@ impl CrossCheckHash for ! {
 impl CrossCheckHash for () {
     #[inline]
     fn cross_check_hash<HA, HS>(&self) -> Option<u64>
-            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher
+    {
         None
     }
 
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, _depth: usize) -> u64
-            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher
+    {
         panic!("Attempted to CrossCheckHash a unit value")
     }
 }
@@ -86,7 +97,9 @@ macro_rules! impl_primitive_hash {
         impl CrossCheckHash for $in_ty {
             #[inline]
             fn cross_check_hash_depth<HA, HS>(&self, _: usize) -> u64
-                    where HA: CrossCheckHasher, HS: CrossCheckHasher {
+                where HA: CrossCheckHasher,
+                      HS: CrossCheckHasher
+            {
                 // FIXME: this is pretty slow, but has the advantage that
                 // the size of the value is rolled into the hash, which
                 // roughly approximates rolling the type into the hash
@@ -136,7 +149,9 @@ pub const ANY_UNION_HASH:    u64 = 0x6e6f696e55796e41_u64; // "AnyUnion" in ASCI
 impl<'a, T: CrossCheckHash> CrossCheckHash for [T] {
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher
+    {
         if depth == 0 {
             LEAF_ARRAY_HASH
         } else {
@@ -154,7 +169,9 @@ impl<'a, T: CrossCheckHash> CrossCheckHash for [T] {
 impl<'a, T: ?Sized + CrossCheckHash> CrossCheckHash for &'a T {
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher
+    {
         if depth == 0 {
             CrossCheckHash::cross_check_hash_depth::<HA, HS>(&LEAF_REFERENCE_VALUE, 1)
         } else {
@@ -167,7 +184,9 @@ impl<'a, T: ?Sized + CrossCheckHash> CrossCheckHash for &'a T {
 impl<'a, T: ?Sized + CrossCheckHash> CrossCheckHash for &'a mut T {
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher
+    {
         if depth == 0 {
             CrossCheckHash::cross_check_hash_depth::<HA, HS>(&LEAF_REFERENCE_VALUE, 1)
         } else {
@@ -209,7 +228,9 @@ fn try_pointer<'a, T: ?Sized>(p: *const T) -> Option<&'a T> {
 // Hash implementation for raw pointers
 impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *const T {
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher
+    {
         let r = try_pointer(*self);
         match (r, depth) {
             (None, _) => NULL_POINTER_HASH,
@@ -221,7 +242,9 @@ impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *const T {
 
 impl<T: ?Sized + CrossCheckHash> CrossCheckHash for *mut T {
     fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher
+    {
         let r = try_pointer(*self);
         match (r, depth) {
             (None, _) => NULL_POINTER_HASH,
@@ -236,7 +259,9 @@ macro_rules! impl_fnopt_hash {
         impl <Ret, $($arg),*> CrossCheckHash for $($pfx)* fn($($arg),*) -> Ret {
             #[inline]
             fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-                    where HA: CrossCheckHasher, HS: CrossCheckHasher {
+                where HA: CrossCheckHasher,
+                      HS: CrossCheckHasher
+            {
                 if depth == 0 {
                     LEAF_POINTER_HASH
                 } else {
@@ -248,7 +273,9 @@ macro_rules! impl_fnopt_hash {
         impl <Ret, $($arg),*> CrossCheckHash for Option<$($pfx)* fn($($arg),*) -> Ret> {
             #[inline]
             fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-                    where HA: CrossCheckHasher, HS: CrossCheckHasher {
+                where HA: CrossCheckHasher,
+                      HS: CrossCheckHasher
+            {
                 if let &Some(ref func) = self {
                     // Due to C's decay rules, we don't decrease the depth here,
                     // since function values can decay to function pointers,
@@ -264,7 +291,9 @@ macro_rules! impl_fnopt_hash {
         impl <Ret, $($arg),+> CrossCheckHash for $($pfx)* fn($($arg),+, ...) -> Ret {
             #[inline]
             fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-                    where HA: CrossCheckHasher, HS: CrossCheckHasher {
+                where HA: CrossCheckHasher,
+                      HS: CrossCheckHasher
+            {
                 if depth == 0 {
                     LEAF_POINTER_HASH
                 } else {
@@ -276,7 +305,9 @@ macro_rules! impl_fnopt_hash {
         impl <Ret, $($arg),+> CrossCheckHash for Option<$($pfx)* fn($($arg),+, ...) -> Ret> {
             #[inline]
             fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-                    where HA: CrossCheckHasher, HS: CrossCheckHasher {
+                where HA: CrossCheckHasher,
+                      HS: CrossCheckHasher
+            {
                 if let &Some(ref func) = self {
                     // Due to C's decay rules, we don't decrease the depth here,
                     // since function values can decay to function pointers,
@@ -324,7 +355,9 @@ macro_rules! impl_array_hash {
         impl<T: CrossCheckHash> CrossCheckHash for [T; $N] {
             #[inline]
             fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-                    where HA: CrossCheckHasher, HS: CrossCheckHasher {
+                where HA: CrossCheckHasher,
+                      HS: CrossCheckHasher
+            {
                 self[..].cross_check_hash_depth::<HA, HS>(depth)
             }
         }
@@ -353,8 +386,9 @@ macro_rules! cross_check_hash_array {
         impl $crate::hash::CrossCheckHash for [$ET; $N] {
             #[inline]
             fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-                    where HA: $crate::hash::CrossCheckHasher,
-                          HS: $crate::hash::CrossCheckHasher {
+                where HA: $crate::hash::CrossCheckHasher,
+                      HS: $crate::hash::CrossCheckHasher
+            {
                 self[..].cross_check_hash_depth::<HA, HS>(depth)
             }
         }
@@ -365,13 +399,17 @@ macro_rules! cross_check_hash_array {
 impl CrossCheckHash for libc::c_void {
     #[inline]
     fn cross_check_hash<HA, HS>(&self) -> Option<u64>
-            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher
+    {
         None
     }
 
     #[inline]
     fn cross_check_hash_depth<HA, HS>(&self, _depth: usize) -> u64
-            where HA: CrossCheckHasher, HS: CrossCheckHasher {
+        where HA: CrossCheckHasher,
+              HS: CrossCheckHasher
+    {
         // FIXME: this returns the correct value for a void*
         // parent pointer, but is wrong for a void-typed
         // structure field or array element

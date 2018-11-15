@@ -134,7 +134,8 @@ fn test_fixed_hash() {
 fn test_custom_field_hash() {
     fn custom_hash<XCHA, XCHS, S, F>(h: &mut XCHA, _: &S, field: F, _: usize)
         where XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
-              F: ::std::borrow::Borrow<u64> {
+              F: ::std::borrow::Borrow<u64>
+    {
         assert_eq!(*field.borrow(), 0x12345678);
         h.write_u64(0x0f0f0f0f0f0f0f0f)
     }
@@ -151,7 +152,8 @@ fn test_custom_field_hash() {
 fn test_custom_hash_skip() {
     fn custom_hash<XCHA, XCHS, S, F>(_: &mut XCHA, _: &S, field: F, _: usize)
         where XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
-              F: ::std::borrow::Borrow<u64> {
+              F: ::std::borrow::Borrow<u64>
+    {
         assert_eq!(*field.borrow(), 0x12345678);
     }
     test_struct!([]
