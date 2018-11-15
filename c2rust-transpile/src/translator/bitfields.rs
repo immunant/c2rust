@@ -59,8 +59,8 @@ impl Translation {
             let mut item_store = self.item_store.borrow_mut();
 
             item_store.uses
-                .get_mut(vec!["packed_struct".into()])
-                .insert("PackedStruct");
+                .get_mut(vec!["packed_struct".into(), "prelude".into()])
+                .insert("Integer");
             item_store.uses
                 .get_mut(vec!["packed_struct_codegen".into()])
                 .insert("PackedStruct");
@@ -73,6 +73,8 @@ impl Translation {
                 if let Some(0) = bitfield_width {
                     continue
                 }
+
+                let bit_width = bitfield_width.unwrap_or(1); // FIXME: non 1 for non bitfields
 
                 // Figure out what's the smallest byte int that can hold this bitfield width
                 // This is required by packed_struct as you cannot currently use arbitrary sized
@@ -87,17 +89,29 @@ impl Translation {
                     Some(_) => return Err("Unsupported bitfield width found greater than 128 bits".into()),
                     None => ty,
                 };
-                let bit_struct_name = format!("Bits{}", bitfield_width.unwrap_or(0)); // FIXME: 0
-                let field_generic_tys = mk().angle_bracketed_args(vec![base_ty, mk().ident_ty(bit_struct_name)]);
+                let bit_struct_name = format!("Bits{}", bit_width);
+                let field_generic_tys = mk().angle_bracketed_args(vec![base_ty, mk().ident_ty(bit_struct_name.clone())]);
                 let field_ty = mk().path_segment_with_args("Integer", field_generic_tys);
-                let field = mk().struct_field(field_name, mk().path_ty(vec![field_ty]));
+                let bit_range = format!("{}..={}", bit_index, bit_index + bit_width - 1);
+                let field_attr_items = vec![assigment_metaitem("bits", &bit_range)];
+                let field_attr = mk().meta_item("packed_field", MetaItemKind::List(field_attr_items));
+                let field = mk()
+                    .meta_item_attr(AttrStyle::Outer, field_attr)
+                    .struct_field(field_name, mk().path_ty(vec![field_ty]));
+
+                item_store.uses
+                    .get_mut(vec!["packed_struct".into(), "prelude".into(), "packed_bits".into()])
+                    .insert(bit_struct_name);
 
                 field_entries.push(field);
             }
 
-            // REVIEW: little endian support?
-            let packed_struct_items = vec![assigment_metaitem("bit_numbering", "msb0"), assigment_metaitem("endian", "msb")];
-            let packed_struct_attr = mk().meta_item("packed_struct", MetaItemKind::List(packed_struct_items));
+            // TODO: little endian support?
+            let packed_struct_attr_items = vec![
+                assigment_metaitem("bit_numbering", "msb0"),
+                assigment_metaitem("endian", "msb")
+            ];
+            let packed_struct_attr = mk().meta_item("packed_struct", MetaItemKind::List(packed_struct_attr_items));
 
             let item = mk()
                 .span(span)
