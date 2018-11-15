@@ -15,6 +15,7 @@ args:
         - inplace
         - alongside
         - diff
+        - json
       default_value: print
       help: "output rewritten code"
       takes_value: true
