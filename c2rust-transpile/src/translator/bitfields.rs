@@ -54,7 +54,7 @@ impl Translation {
 
         for (name, ty, bitfield_width, bit_index) in field_info {
             let start = bit_index as u128;
-            let end = start + bitfield_width.unwrap_or(0) as u128; // FIXME
+            let end = start + bitfield_width.unwrap_or(1) as u128 - 1; // FIXME
             let ty_item = Nonterminal::NtTy(ty);
             let setter_ident = Nonterminal::NtIdent(mk().ident(format!("set_{}", name)), false);
             let getter_ident = Nonterminal::NtIdent(mk().ident(name), false);
