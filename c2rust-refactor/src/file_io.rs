@@ -1,10 +1,14 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io;
+use std::mem;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use json::{self, JsonValue};
 use syntax::source_map::{SourceMap, SourceFile, FileLoader};
+use syntax::source_map::{Span, DUMMY_SP};
+use syntax_pos::hygiene::SyntaxContext;
 
 use rewrite::{self, TextRewrite};
 
@@ -32,6 +36,7 @@ pub enum OutputMode {
     Alongside,
     Print,
     PrintDiff,
+    Json,
 }
 
 impl OutputMode {
@@ -46,11 +51,16 @@ impl OutputMode {
             _ => None,
         }
     }
+
+    fn write_rewrites_json(self) -> bool {
+        self == OutputMode::Json
+    }
 }
 
 
 struct RealState {
     rewrite_counter: usize,
+    rewrites_json: Vec<JsonValue>,
     file_state: HashMap<PathBuf, String>,
 }
 
@@ -58,6 +68,7 @@ impl RealState {
     fn new() -> RealState {
         RealState {
             rewrite_counter: 0,
+            rewrites_json: Vec::new(),
             file_state: HashMap::new(),
         }
     }
@@ -80,6 +91,11 @@ impl RealFileIO {
 impl FileIO for RealFileIO {
     fn end_rewrite(&self, _sm: &SourceMap) -> io::Result<()> {
         let mut state = self.state.lock().unwrap();
+        if self.output_mode.write_rewrites_json() {
+            let js = mem::replace(&mut state.rewrites_json, Vec::new());
+            let s = json::stringify_pretty(JsonValue::Array(js), 2);
+            fs::write(Path::new(&format!("rewrites.{}.json", state.rewrite_counter)), s)?;
+        }
         state.rewrite_counter += 1;
         Ok(())
     }
@@ -117,6 +133,7 @@ impl FileIO for RealFileIO {
                 println!("+++ new/{}", path.display());
                 rewrite::files::print_diff(&old_s, s);
             },
+            OutputMode::Json => {},     // Handled in end_rewrite
         }
 
         {
@@ -138,9 +155,28 @@ impl FileIO for RealFileIO {
     }
 
     fn save_rewrites(&self,
-                     _sm: &SourceMap,
-                     _sf: &SourceFile,
-                     _rws: &[TextRewrite]) -> io::Result<()> {
+                     sm: &SourceMap,
+                     sf: &SourceFile,
+                     rws: &[TextRewrite]) -> io::Result<()> {
+        if !self.output_mode.write_rewrites_json() {
+            return Ok(())
+        }
+
+
+        let mut state = self.state.lock().unwrap();
+
+        // We want to buffer the rewrites so we can emit a single `rewrites.json` at the end
+        // instead of making one per modified file.  However, it's hard to safely buffer the
+        // TextRewrites themselves, since they contain Spans, and Spans are (possibly) indexes into
+        // a thread-local interner.  So we actually convert the rewrites to json here, and buffer
+        // the json instead.
+        let rw = rewrite::TextRewrite {
+            old_span: DUMMY_SP,
+            new_span: Span::new(sf.start_pos, sf.end_pos, SyntaxContext::empty()),
+            rewrites: rws.to_owned(),
+            adjust: rewrite::TextAdjust::None,
+        };
+        state.rewrites_json.push(rewrite::json::encode_rewrite(sm, &rw));
         Ok(())
     }
 }

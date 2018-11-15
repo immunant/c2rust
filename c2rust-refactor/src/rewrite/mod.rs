@@ -69,6 +69,7 @@ use driver;
 
 mod cleanup;
 pub mod files;
+pub mod json;
 
 mod base;
 mod strategy;

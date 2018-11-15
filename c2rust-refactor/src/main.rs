@@ -77,6 +77,7 @@ fn parse_opts() -> Option<Options> {
             "alongside" => file_io::OutputMode::Alongside,
             "print" => file_io::OutputMode::Print,
             "diff" => file_io::OutputMode::PrintDiff,
+            "json" => file_io::OutputMode::Json,
             _ => {
                 info!("Unknown rewrite mode: {}", mode_str);
                 return None;
