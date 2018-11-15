@@ -12,14 +12,15 @@ extern crate c2rust_ast_builder;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
+use std::sync::Arc;
 use cargo::util::paths;
 use syntax::ast::NodeId;
 use rustc::ty;
 use rustc_data_structures::sync::Lock;
 
 use c2rust_refactor::{
-    driver, transform, rewrite, pick_node, interact, command, mark_adjust,
-    plugin, select, analysis, print_spans, reflect
+    driver, transform, pick_node, interact, command, mark_adjust,
+    plugin, select, analysis, print_spans, reflect, file_io,
 };
 
 use c2rust_ast_builder::IntoSymbol;
@@ -54,7 +55,7 @@ enum RustcArgSource {
 }
 
 struct Options {
-    rewrite_mode: rewrite::files::RewriteMode,
+    rewrite_mode: file_io::OutputMode,
     commands: Vec<Command>,
     rustc_args: RustcArgSource,
     cursors: Vec<Cursor>,
@@ -72,16 +73,16 @@ fn parse_opts() -> Option<Options> {
     // Parse rewrite mode
     let rewrite_mode = match args.value_of("rewrite-mode") {
         Some(mode_str) => match &mode_str as &str {
-            "inplace" => rewrite::files::RewriteMode::InPlace,
-            "alongside" => rewrite::files::RewriteMode::Alongside,
-            "print" => rewrite::files::RewriteMode::Print,
-            "diff" => rewrite::files::RewriteMode::PrintDiff,
+            "inplace" => file_io::OutputMode::InPlace,
+            "alongside" => file_io::OutputMode::Alongside,
+            "print" => file_io::OutputMode::Print,
+            "diff" => file_io::OutputMode::PrintDiff,
             _ => {
                 info!("Unknown rewrite mode: {}", mode_str);
                 return None;
             },
         },
-        None => rewrite::files::RewriteMode::Print,
+        None => file_io::OutputMode::Print,
     };
 
     // Parse cursors
@@ -437,13 +438,12 @@ fn main_impl(opts: Options) {
                                    rustc_args,
                                    cmd_reg);
     } else {
-        let rewrite_mode = opts.rewrite_mode;
-        let rw_handler = Box::new(move |fm, s: &str| {
-            rewrite::files::rewrite_mode_callback(rewrite_mode, fm, s);
-        });
-
         let mut state = command::RefactorState::from_rustc_args(
-            &rustc_args, cmd_reg, Some(rw_handler), None, marks);
+            &rustc_args,
+            cmd_reg,
+            Arc::new(file_io::RealFileIO::new(opts.rewrite_mode)),
+            marks,
+        );
 
         state.load_crate();
 

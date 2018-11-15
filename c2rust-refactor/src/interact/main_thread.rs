@@ -6,14 +6,13 @@ use std::fs;
 use std::io;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, SyncSender, Receiver};
 use std::thread;
 use syntax::ast::*;
 use syntax::source_map::{FileLoader, RealFileLoader};
-use syntax::source_map::{SourceFile, Span};
+use syntax::source_map::{SourceMap, SourceFile, Span};
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 use syntax_pos::FileName;
@@ -21,11 +20,13 @@ use syntax_pos::FileName;
 use ast_manip::{GetNodeId, GetSpan, Visit};
 use command::{self, RefactorState};
 use driver;
+use file_io::FileIO;
 use interact::{ToServer, ToClient};
 use interact::WrapSender;
 use interact::{plain_backend, vim8_backend};
 use interact::worker::{self, ToWorker};
 use pick_node;
+use rewrite::TextRewrite;
 use c2rust_ast_builder::IntoSymbol;
 
 use super::MarkInfo;
@@ -44,29 +45,16 @@ impl InteractState {
            to_worker: SyncSender<ToWorker>,
            to_client: SyncSender<ToClient>) -> InteractState {
 
-        let to_client2 = to_client.clone();
-        let rw_handler = move |fm: Rc<SourceFile>, s: &str| {
-            info!("got new text for {:?}", fm.name);
-            let filename = match &fm.name {
-                &FileName::Real(ref pathbuf) => pathbuf.to_str().unwrap().to_owned(),
-                _ => return,
-            };
-
-            to_client2.send(ToClient::NewBufferText {
-                file: filename,
-                content: s.to_owned(),
-            }).unwrap();
-        };
-
         let buffers_available = Arc::new(Mutex::new(HashSet::new()));
 
-        let file_loader = Box::new(InteractiveFileLoader {
+        let file_io = Arc::new(InteractiveFileIO {
             buffers_available: buffers_available.clone(),
             to_worker: to_worker.clone(),
+            to_client: to_client.clone(),
         });
 
         let state = RefactorState::from_rustc_args(
-            &rustc_args, registry, Some(Box::new(rw_handler)), Some(file_loader), HashSet::new());
+            &rustc_args, registry, file_io, HashSet::new());
 
         InteractState { to_client, buffers_available, state }
     }
@@ -259,18 +247,19 @@ pub fn interact_command(args: &[String],
 
 
 #[derive(Clone)]
-struct InteractiveFileLoader {
+struct InteractiveFileIO {
     buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
     to_worker: SyncSender<ToWorker>,
+    to_client: SyncSender<ToClient>,
 }
 
-impl FileLoader for InteractiveFileLoader {
+impl FileIO for InteractiveFileIO {
     fn file_exists(&self, path: &Path) -> bool {
-        RealFileLoader.file_exists(path)
+        fs::metadata(path).is_ok()
     }
 
-    fn abs_path(&self, path: &Path) -> Option<PathBuf> {
-        RealFileLoader.abs_path(path)
+    fn abs_path(&self, path: &Path) -> io::Result<PathBuf> {
+        fs::canonicalize(path)
     }
 
     fn read_file(&self, path: &Path) -> io::Result<String> {
@@ -287,6 +276,26 @@ impl FileLoader for InteractiveFileLoader {
         } else {
             RealFileLoader.read_file(&canon)
         }
+    }
+
+    fn write_file(&self, path: &Path, s: &str) -> io::Result<()> {
+        let path = fs::canonicalize(path)?;
+        self.to_client.send(ToClient::NewBufferText {
+            file: path.to_str().unwrap().to_owned(),
+            content: s.to_owned(),
+        }).unwrap();
+        Ok(())
+    }
+
+    fn end_rewrite(&self, _sm: &SourceMap) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn save_rewrites(&self,
+                     _sm: &SourceMap,
+                     _sf: &SourceFile,
+                     _rws: &[TextRewrite]) -> io::Result<()> {
+        Ok(())
     }
 }
 

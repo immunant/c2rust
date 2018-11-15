@@ -3,14 +3,12 @@
 use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::iter;
-use std::rc::Rc;
 use std::mem;
+use std::sync::Arc;
 use rustc::session::Session;
 use syntax::ast::{NodeId, Crate, CRATE_NODE_ID, Mod};
 use syntax::ast::{Expr, Pat, Ty, Stmt, Item};
 use syntax::source_map::DUMMY_SP;
-use syntax::source_map::FileLoader;
-use syntax::source_map::SourceFile;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::visit::Visitor;
@@ -20,6 +18,7 @@ use ast_manip::ast_map::map_ast_into;
 use ast_manip::number_nodes::{number_nodes, number_nodes_with, NodeIdCounter, reset_node_ids};
 use collapse;
 use driver::{self, Phase, Phase1Bits};
+use file_io::{FileIO, ArcFileIO};
 use node_map::NodeMap;
 use rewrite;
 use rewrite::files;
@@ -56,7 +55,7 @@ impl Visit for ParsedNodes {
 /// Stores the overall state of the refactoring process, which can be read and updated by
 /// `Command`s.
 pub struct RefactorState {
-    rewrite_handler: Option<Box<FnMut(Rc<SourceFile>, &str)>>,
+    file_io: Arc<FileIO+Sync+Send>,
     cmd_reg: Registry,
     session: Session,
 
@@ -82,10 +81,10 @@ pub struct RefactorState {
 impl RefactorState {
     pub fn new(session: Session,
                cmd_reg: Registry,
-               rewrite_handler: Option<Box<FnMut(Rc<SourceFile>, &str)>>,
+               file_io: Arc<FileIO+Sync+Send>,
                marks: HashSet<(NodeId, Symbol)>) -> RefactorState {
         RefactorState {
-            rewrite_handler,
+            file_io,
             cmd_reg,
             session,
 
@@ -103,11 +102,11 @@ impl RefactorState {
 
     pub fn from_rustc_args(rustc_args: &[String],
                            cmd_reg: Registry,
-                           rewrite_handler: Option<Box<FnMut(Rc<SourceFile>, &str)>>,
-                           file_loader: Option<Box<FileLoader+Sync+Send>>,
+                           file_io: Arc<FileIO+Sync+Send>,
                            marks: HashSet<(NodeId, Symbol)>) -> RefactorState {
-        let session = driver::build_session_from_args(rustc_args, file_loader);
-        Self::new(session, cmd_reg, rewrite_handler, marks)
+        let session = driver::build_session_from_args(
+            rustc_args, Some(Box::new(ArcFileIO(file_io.clone()))));
+        Self::new(session, cmd_reg, file_io, marks)
     }
 
 
@@ -153,11 +152,8 @@ impl RefactorState {
             if rws.len() == 0 {
                 info!("(no files to rewrite)");
             } else {
-                if let Some(ref mut handler) = self.rewrite_handler {
-                    files::rewrite_files_with(self.session.source_map(),
-                                              &rws,
-                                              |fm, s| handler(fm, s));
-                }
+                files::rewrite_files_with(
+                    self.session.source_map(), &rws, &*self.file_io).unwrap();
             }
         }
 
