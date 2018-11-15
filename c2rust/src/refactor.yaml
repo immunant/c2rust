@@ -20,6 +20,9 @@ args:
       help: "output rewritten code"
       takes_value: true
       value_name: MODE
+      multiple: true
+      number_of_values: 1
+      value_delimiter: ','
   - cursor:
       short: c
       long: cursor

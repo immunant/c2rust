@@ -75,14 +75,14 @@ impl RealState {
 }
 
 pub struct RealFileIO {
-    output_mode: OutputMode,
+    output_modes: Vec<OutputMode>,
     state: Mutex<RealState>,
 }
 
 impl RealFileIO {
-    pub fn new(mode: OutputMode) -> RealFileIO {
+    pub fn new(modes: Vec<OutputMode>) -> RealFileIO {
         RealFileIO {
-            output_mode: mode,
+            output_modes: modes,
             state: Mutex::new(RealState::new()),
         }
     }
@@ -91,7 +91,7 @@ impl RealFileIO {
 impl FileIO for RealFileIO {
     fn end_rewrite(&self, _sm: &SourceMap) -> io::Result<()> {
         let mut state = self.state.lock().unwrap();
-        if self.output_mode.write_rewrites_json() {
+        if self.output_modes.iter().any(|&mode| mode.write_rewrites_json()) {
             let js = mem::replace(&mut state.rewrites_json, Vec::new());
             let s = json::stringify_pretty(JsonValue::Array(js), 2);
             fs::write(Path::new(&format!("rewrites.{}.json", state.rewrite_counter)), s)?;
@@ -120,32 +120,38 @@ impl FileIO for RealFileIO {
 
     fn write_file(&self, path: &Path, s: &str) -> io::Result<()> {
         // Handling for specific cases
-        match self.output_mode {
-            OutputMode::InPlace => {},      // Will write output below
-            OutputMode::Alongside => {},    // Will write output below
-            OutputMode::Print => {
-                println!(" ==== {:?} ====\n{}\n =========", path, s);
-            },
-            OutputMode::PrintDiff => {
-                let old_s = self.read_file(path)?;
-                println!();
-                println!("--- old/{}", path.display());
-                println!("+++ new/{}", path.display());
-                rewrite::files::print_diff(&old_s, s);
-            },
-            OutputMode::Json => {},     // Handled in end_rewrite
+        for &mode in &self.output_modes {
+            match mode {
+                OutputMode::InPlace => {},      // Will write output below
+                OutputMode::Alongside => {},    // Will write output below
+                OutputMode::Print => {
+                    println!(" ==== {:?} ====\n{}\n =========", path, s);
+                },
+                OutputMode::PrintDiff => {
+                    let old_s = self.read_file(path)?;
+                    println!();
+                    println!("--- old/{}", path.display());
+                    println!("+++ new/{}", path.display());
+                    rewrite::files::print_diff(&old_s, s);
+                },
+                OutputMode::Json => {},     // Handled in end_rewrite
+            }
         }
 
         {
             let mut state = self.state.lock().unwrap();
 
             // Common handling
-            if let Some(dest) = self.output_mode.write_dest(path) {
-                info!("writing to {:?}", dest);
-                fs::write(&dest, s)?;
+            for &mode in &self.output_modes {
+                if let Some(dest) = mode.write_dest(path) {
+                    info!("writing to {:?}", dest);
+                    fs::write(&dest, s)?;
+                }
             }
 
-            if !self.output_mode.overwrites() {
+            if !self.output_modes.iter().any(|&mode| mode.overwrites()) {
+                // None of the modes actually updated the original file, so we need to record the
+                // new content internally.
                 let abs_path = fs::canonicalize(path)?;
                 state.file_state.insert(abs_path, s.to_owned());
             }
@@ -158,7 +164,7 @@ impl FileIO for RealFileIO {
                      sm: &SourceMap,
                      sf: &SourceFile,
                      rws: &[TextRewrite]) -> io::Result<()> {
-        if !self.output_mode.write_rewrites_json() {
+        if !self.output_modes.iter().any(|&mode| mode.write_rewrites_json()) {
             return Ok(())
         }
 

@@ -22,19 +22,16 @@ fn main() {
 
 fn parse_opts(args: &ArgMatches) -> Option<Options> {
     // Parse rewrite mode
-    let rewrite_mode = match args.value_of("rewrite-mode") {
-        Some(mode_str) => match &mode_str as &str {
+    let rewrite_modes = match args.values_of("rewrite-mode") {
+        Some(values) => values.map(|s| match s {
             "inplace" => file_io::OutputMode::InPlace,
             "alongside" => file_io::OutputMode::Alongside,
             "print" => file_io::OutputMode::Print,
             "diff" => file_io::OutputMode::PrintDiff,
             "json" => file_io::OutputMode::Json,
-            _ => {
-                info!("Unknown rewrite mode: {}", mode_str);
-                return None;
-            },
-        },
-        None => file_io::OutputMode::Print,
+            _ => unreachable!(),
+        }).collect(),
+        None => vec![file_io::OutputMode::Print],
     };
 
     // Parse cursors
@@ -163,7 +160,7 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
 
 
     Some(Options {
-        rewrite_mode,
+        rewrite_modes,
         commands,
         rustc_args,
         cursors,
