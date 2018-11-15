@@ -531,7 +531,7 @@ fn main_impl(opts: Options) {
                     Ok(_)=> {},
                     Err(e) => {
                         eprintln!("{:?}", e);
-                        panic!("Invalid command.");
+                        std::process::exit(1);
                     }
 
                 }
