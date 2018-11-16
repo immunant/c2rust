@@ -269,21 +269,6 @@ impl Builder {
         }
     }
 
-    pub fn new_with_id(id: NodeId) -> Builder {
-        Builder {
-            vis: dummy_spanned(VisibilityKind::Inherited),
-            mutbl: Mutability::Immutable,
-            generics: Generics::default(),
-            unsafety: Unsafety::Normal,
-            constness: Constness::NotConst,
-            abi: Abi::Rust,
-            attrs: Vec::new(),
-            span: DUMMY_SP,
-            id,
-        }
-    }
-
-
     // Modifier updates.
 
     pub fn vis<V: Make<Visibility>>(self, vis: V) -> Self {
@@ -1777,10 +1762,6 @@ impl Builder {
 
 pub fn mk() -> Builder {
     Builder::new()
-}
-
-pub fn mk_with_id(id: NodeId) -> Builder {
-    Builder::new_with_id(id)
 }
 
 /// Detect a cast that would create a syntax error when it was the left

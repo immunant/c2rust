@@ -175,7 +175,7 @@ impl<'st> CrateInformation<'st> {
                 .collect();
 
             if let Some(ident) = inverse_map.get(dest_mod_id) {
-                let new_item = mk_with_id(*dest_mod_id).mod_item(ident, mk().mod_(items));
+                let new_item = mk().id(*dest_mod_id).mod_item(ident, mk().mod_(items));
                 krate.module.items.push(new_item);
             }
         }
@@ -271,17 +271,7 @@ impl<'ast, 'st> Visitor<'ast> for CrateInformation<'st> {
                             _ => unreachable!(),
                         };
 
-                        self.path_mapping.entry(*use_id).and_modify(|(prefix, dest_id)| {
-                            // Check to see if a segment within the path is getting moved.
-                            // example_h -> example
-                            // DUMMY_NODE_ID -> actual destination module id
-                            for segment in &mut prefix.segments {
-                                if segment.ident == old_module.ident {
-                                    segment.ident = ident;
-                                    *dest_id = dest_module_id;
-                                }
-                            }
-                        }).or_insert_with(|| {
+                        let (prefix, dest_id) = self.path_mapping.entry(*use_id).or_insert_with(|| {
                             let mut prefix = ut.prefix.clone();
 
                             // Remove super and self from the paths
@@ -291,16 +281,18 @@ impl<'ast, 'st> Visitor<'ast> for CrateInformation<'st> {
                                         && segment.ident.name != keywords::SelfValue.name()
                                 });
                             }
-
-                            let mut dest_id = *use_id;
-                            for segment in &mut prefix.segments {
-                                if segment.ident == old_module.ident {
-                                    segment.ident = ident;
-                                    dest_id = dest_module_id;
-                                }
-                            }
-                            (prefix, dest_id)
+                            (prefix, *use_id)
                         });
+
+                        // Check to see if a segment within the path is getting moved.
+                        // example_h -> example
+                        // DUMMY_NODE_ID -> actual destination module id
+                        for segment in &mut prefix.segments {
+                            if segment.ident == old_module.ident {
+                                segment.ident = ident;
+                                *dest_id = dest_module_id;
+                            }
+                        }
                     }
                 }
             }
