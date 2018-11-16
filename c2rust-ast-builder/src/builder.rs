@@ -650,6 +650,18 @@ impl Builder {
         })
     }
 
+    pub fn labelled_block_expr<B, L>(self, blk: B, lbl: L) -> P<Expr>
+        where B: Make<P<Block>>, L: Make<Label> {
+        let blk = blk.make(&self);
+        let lbl = lbl.make(&self);
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Block(blk, Some(lbl)),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
+        })
+    }
+
     pub fn assign_expr<E1, E2>(self, lhs: E1, rhs: E2) -> P<Expr>
         where E1: Make<P<Expr>>, E2: Make<P<Expr>> {
         let lhs = lhs.make(&self);
@@ -912,7 +924,7 @@ impl Builder {
                 // The else branch in libsyntax must be one of these three cases,
                 // otherwise we have to manually add the block around the else expression
                 match e.node {
-                    ExprKind::If{..} | ExprKind::IfLet{..} | ExprKind::Block{..} => e,
+                    ExprKind::If{..} | ExprKind::IfLet{..} | ExprKind::Block(_,None) => e,
                     _ => mk().block_expr(mk().block(vec![mk().expr_stmt(e)])),
                 }
             });
@@ -1559,6 +1571,23 @@ impl Builder {
             },
             span: self.span,
             recovered: false,
+        })
+    }
+
+    pub fn label<L>(self, lbl: L) -> Label
+         where L: Make<Label> {
+         lbl.make(&self)
+    }
+
+    pub fn break_expr_value<L,E>(self, label: Option<L>, value: Option<E>) -> P<Expr>
+        where L: Make<Label>, E: Make<P<Expr>> {
+        let label = label.map(|l| l.make(&self));
+        let value = value.map(|v| v.make(&self));
+        P(Expr {
+            id: DUMMY_NODE_ID,
+            node: ExprKind::Break(label, value),
+            span: DUMMY_SP,
+            attrs: self.attrs.into(),
         })
     }
 

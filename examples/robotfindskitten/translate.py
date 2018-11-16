@@ -546,9 +546,8 @@ REFACTORINGS = [
 
 
 
-refactor = get_cmd_or_die(config.RREF_BIN)
 
-def run_refactor(args, mode='inplace'):
+def run_refactor(refactor, args, mode='inplace'):
     full_args = ['-r', mode, '--cargo'] + args
 
     ld_lib_path = get_rust_toolchain_libpath()
@@ -590,6 +589,8 @@ def main():
     args = ap.parse_args()
     config.update_args(args)
 
+    refactor = get_cmd_or_die(config.RREF_BIN)
+
 
     os.chdir(RFK_DIR)
     print('in %s' % RFK_DIR)
@@ -624,7 +625,7 @@ def main():
             shutil.copy(cache_path, src_path)
         else:
             print('REFACTOR: %r' % (refactor_args,))
-            run_refactor(refactor_args)
+            run_refactor(refactor, refactor_args)
             shutil.copy(src_path, cache_path)
 
 

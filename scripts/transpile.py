@@ -74,6 +74,7 @@ LIB_RS_TEMPLATE = """\
 #![feature(asm)]
 #![feature(ptr_wrapping_offset_from)]
 #![feature(const_slice_as_ptr)]
+#![feature(label_break_value)]
 
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
@@ -264,7 +265,7 @@ def transpile_files(cc_db: TextIO,
                     cross_checks: bool = False,
                     use_fakechecks: bool = False,
                     cross_check_config: List[str] = [],
-                    reloop_cfgs: bool = True,
+                    incremental_relooper: bool = True,
                     reorganize_definitions: bool = False) -> bool:
     """
     run the transpiler on all C files in a compile commands database.
@@ -304,8 +305,8 @@ def transpile_files(cc_db: TextIO,
         for ccc in cross_check_config:
             transpiler_args.append('--cross-check-config')
             transpiler_args.append(ccc)
-    if reloop_cfgs:
-        transpiler_args.append('--reloop-cfgs')
+    if not incremental_relooper:
+        transpiler_args.append('--no-incremental-relooper')
     if reorganize_definitions:
         transpiler_args.append('--reorganize-definitions')
 
@@ -437,10 +438,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-X', '--cross-check-config',
                         default=[], action='append',
                         help='cross-check configuration file(s)')
-    parser.add_argument('--reloop-cfgs', '--no-reloop-cfgs', nargs=0,
-                        default=True, dest="reloop_cfgs",
+    parser.add_argument('--incremental-relooper', '--no-incremental-relooper', nargs=0,
+                        default=True, dest="incremental_relooper",
                         action=NegateAction,
-                        help='enable (disable) relooper; enabled by '
+                        help='enable (disable) incremental relooper; enabled by '
                              'default')
     parser.add_argument('-r', '--reorganize-definitions',
                         default=False, action='store_true',
@@ -472,7 +473,7 @@ def main():
                     cross_checks=args.cross_checks,
                     use_fakechecks=args.use_fakechecks,
                     cross_check_config=args.cross_check_config,
-                    reloop_cfgs=args.reloop_cfgs,
+                    incremental_relooper=args.incremental_relooper,
                     reorganize_definitions=args.reorganize_definitions)
 
     logging.info("success")

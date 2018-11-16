@@ -1,77 +1,20 @@
 //! Code for applying `TextRewrite`s to the actual source files.
 use std::collections::{HashMap, VecDeque};
-use std::fs::File;
-use std::io::Write;
-use std::rc::Rc;
+use std::io;
 use diff;
 use syntax::source_map::{SourceMap, SourceFile};
 use syntax_pos::{BytePos, FileName};
 
+use file_io::FileIO;
 use rewrite::{TextRewrite, TextAdjust};
 use rewrite::cleanup::cleanup_rewrites;
 
 
-/// Enum for specifying what to do with the updated source file contents.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum RewriteMode {
-    /// Overwrite the old text in-place.
-    InPlace,
-    /// Put the new text in a file alongside the old one (`foo.rs.new`).
-    Alongside,
-    /// Print the new text to the console instead of saving it.
-    Print,
-    /// Print the diff between the old and new versions.
-    PrintDiff,
-}
-
-/// Apply a sequence of rewrites to the source code, handling the results as specified by `mode`.
-pub fn rewrite_files(cm: &SourceMap, rewrites: &[TextRewrite], mode: RewriteMode) {
-    rewrite_files_with(cm, rewrites, |fm, s| {
-        rewrite_mode_callback(mode, fm, s);
-    });
-}
-
-/// Implementation of the provided rewrite modes, for use in a `rewrite_files_with` callback.
-pub fn rewrite_mode_callback(mode: RewriteMode,
-                             fm: Rc<SourceFile>,
-                             s: &str) {
-    let filename = match fm.name {
-        FileName::Macros(_) => return,
-        FileName::Real(ref path) => path.as_path().clone(),
-        _ => panic!("Attempted to rewrite a virtual file"),
-    };
-
-    match mode {
-        RewriteMode::InPlace => {
-            info!("writing to {:?}", filename);
-            let mut f = File::create(&filename).unwrap();
-            f.write_all(s.as_bytes()).unwrap();
-        },
-        RewriteMode::Alongside => {
-            let new_path = filename.with_extension("new");
-            info!("writing to {:?}", new_path);
-            let mut f = File::create(&new_path).unwrap();
-            f.write_all(s.as_bytes()).unwrap();
-        },
-        RewriteMode::Print => {
-            println!(" ==== {:?} ====\n{}\n =========", filename, s);
-        },
-        RewriteMode::PrintDiff => {
-            let old_s = fm.src.as_ref()
-                .unwrap_or_else(|| panic!("source of file {} is not available",
-                                          filename.display()));
-            println!();
-            println!("--- old/{}", filename.display());
-            println!("+++ new/{}", filename.display());
-            print_diff(old_s, s);
-        },
-    }
-}
-
 /// Apply a sequence of rewrites to the source code, handling the results by passing the new text
 /// to `callback` along with the `SourceFile` describing the original source file.
-pub fn rewrite_files_with<F>(cm: &SourceMap, rewrites: &[TextRewrite], mut callback: F)
-        where F: FnMut(Rc<SourceFile>, &str) {
+pub fn rewrite_files_with(cm: &SourceMap,
+                          rewrites: &[TextRewrite],
+                          io: &FileIO) -> io::Result<()> {
     let mut by_file = HashMap::new();
 
     for rw in rewrites {
@@ -81,11 +24,24 @@ pub fn rewrite_files_with<F>(cm: &SourceMap, rewrites: &[TextRewrite], mut callb
     }
 
     for (_, (rewrites, fm)) in by_file {
+        let path = match fm.name {
+            FileName::Real(ref path) => path,
+            _ => {
+                warn!("can't rewrite virtual file {:?}", fm.name);
+                continue;
+            },
+        };
+
+        io.save_rewrites(cm, &fm, &rewrites)?;
         let mut buf = String::new();
         let rewrites = cleanup_rewrites(cm, rewrites);
         rewrite_range(cm, fm.start_pos, fm.end_pos, &rewrites, &mut |s| buf.push_str(s));
-        callback(fm, &buf);
+        io.write_file(path, &buf)?;
     }
+
+    io.end_rewrite(cm)?;
+
+    Ok(())
 }
 
 #[allow(dead_code)] // Helper function for debugging
@@ -162,7 +118,7 @@ fn emit_chunk<F: FnMut(&str)>(cm: &SourceMap,
 
 
 /// Print a unified diff between lines of `s1` and lines of `s2`.
-fn print_diff(s1: &str, s2: &str) {
+pub fn print_diff(s1: &str, s2: &str) {
     enum State {
         /// We're not in a hunk, just keeping `buf` populated with `CONTEXT` lines of history.
         History,

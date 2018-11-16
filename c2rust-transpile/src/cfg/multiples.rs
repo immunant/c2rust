@@ -44,7 +44,8 @@
 //!     }
 //! };
 //! ```
-//!
+
+#![deny(missing_docs)]
 
 use super::*;
 use indexmap::{IndexMap, IndexSet};
@@ -64,8 +65,15 @@ pub struct MultipleInfo<Lbl: Hash + Ord> {
 }
 
 impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
+
+    #[allow(missing_docs)]
     pub fn new() -> Self {
         MultipleInfo { multiples: IndexMap::new() }
+    }
+
+    /// Merge the information from another `MultipleInfo` into this `MultipleInfo`
+    pub fn absorb(&mut self, other: MultipleInfo<Lbl>) {
+        self.multiples.extend(other.multiples);
     }
 
     /// Rewrite nodes to take into account a node remapping. Note that the remapping is usually
@@ -109,6 +117,7 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
         }
     }
 
+    /// Look up the multiple, if there is one, which corresponds to the given set of entry labels.
     pub fn get_multiple<'a>(
         &'a self, entries: &BTreeSet<Lbl>
     ) -> Option<&'a (Lbl, IndexMap<Lbl, IndexSet<Lbl>>)> {

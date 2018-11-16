@@ -1,4 +1,4 @@
-//! enable_relooper, disallow_current_block
+//! enable_relooper
 
 // This shoud translate to a straightforward `match`.
 int idiomatic_switch(int x) {

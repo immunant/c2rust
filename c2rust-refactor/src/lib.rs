@@ -51,6 +51,7 @@ pub mod collapse;
 pub mod node_map;
 
 pub mod command;
+pub mod file_io;
 pub mod interact;
 pub mod plugin;
 
