@@ -269,7 +269,6 @@ impl Builder {
         }
     }
 
-
     // Modifier updates.
 
     pub fn vis<V: Make<Visibility>>(self, vis: V) -> Self {

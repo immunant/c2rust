@@ -4,6 +4,7 @@
 )]
 extern crate arena;
 extern crate ena;
+extern crate indexmap;
 extern crate libc;
 extern crate diff;
 #[macro_use] extern crate json;
