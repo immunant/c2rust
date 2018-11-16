@@ -910,7 +910,14 @@ impl<'c> Translation<'c> {
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
 
-            CDeclKind::Struct { fields: Some(ref fields), is_packed, manual_alignment, max_field_alignment, .. } => {
+            CDeclKind::Struct {
+                fields: Some(ref fields),
+                is_packed,
+                manual_alignment,
+                max_field_alignment,
+                platform_byte_size,
+                ..
+            } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
                 let mut has_bitfields = false;
 
@@ -937,7 +944,7 @@ impl<'c> Translation<'c> {
                 }
 
                 if has_bitfields {
-                    return self.convert_bitfield_struct_decl(name, s, field_info);
+                    return self.convert_bitfield_struct_decl(name, platform_byte_size, s, field_info);
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
@@ -2429,7 +2436,7 @@ impl<'c> Translation<'c> {
                             return Ok(val)
                         }
                     }
-                }                
+                }
 
                 let is_const = pointee.qualifiers.is_const;
 

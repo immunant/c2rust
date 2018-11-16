@@ -54,7 +54,13 @@ impl Translation {
     ///     // ...
     /// }
     /// ```
-    pub fn convert_bitfield_struct_decl(&self, name: String, span: Span, field_info: Vec<FieldNameTypeWidth>) -> Result<ConvertedDecl, String> {
+    pub fn convert_bitfield_struct_decl(
+        &self,
+        name: String,
+        platform_byte_size: u64,
+        span: Span,
+        field_info: Vec<FieldNameTypeWidth>,
+    ) -> Result<ConvertedDecl, String> {
         if PACKED_STRUCT_CRATE {
             let mut item_store = self.item_store.borrow_mut();
 
@@ -64,6 +70,10 @@ impl Translation {
             item_store.uses
                 .get_mut(vec!["packed_struct_codegen".into()])
                 .insert("PackedStruct");
+            // TODO: Trait needed for pack() calls:
+            // item_store.uses
+            //     .get_mut(vec!["packed_struct".into()])
+            //     .insert("PackedStruct");
 
             let mut field_entries = Vec::with_capacity(field_info.len());
 
@@ -106,10 +116,17 @@ impl Translation {
                 field_entries.push(field);
             }
 
-            // TODO: little endian support?
+            #[cfg(target_endian = "little")]
+            let (bit_endian, endian) = ("lsb0", "msb");
+
+            // Big endian untested
+            #[cfg(target_endian = "big")]
+            let (bit_endian, endian) = ("msb0", "lsb");
+
             let packed_struct_attr_items = vec![
-                assigment_metaitem("bit_numbering", "msb0"),
-                assigment_metaitem("endian", "msb")
+                assigment_metaitem("bit_numbering", bit_endian),
+                assigment_metaitem("endian", endian),
+                assigment_metaitem("size_bytes", &platform_byte_size.to_string()),
             ];
             let packed_struct_attr = mk().meta_item("packed_struct", MetaItemKind::List(packed_struct_attr_items));
 
@@ -180,6 +197,35 @@ impl Translation {
     /// and in statics:
     /// TODO
     pub fn convert_bitfield_struct_literal(&self, name: String, field_ids: &[CExprId], field_info: Vec<FieldNameType>, platform_byte_size: u64, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
+        // REVIEW: statics?
+        if PACKED_STRUCT_CRATE {
+            let mut stmts = Vec::with_capacity(field_ids.len());
+            let mut fields = Vec::with_capacity(field_ids.len());
+
+            // Specified record fields
+            for (&field_id, (field_name, _)) in field_ids.iter().zip(field_info) {
+                let mut expr = self.convert_expr(ExprUse::Used, field_id, is_static, DecayRef::Default)?;
+
+                // REVIEW: Maybe need to downcast large int sizes to smaller bit sizes
+                stmts.append(&mut expr.stmts);
+
+                let field = mk().method_call_expr(expr.val, "into", Vec::new() as Vec<P<Expr>>);
+
+                fields.push(mk().field(field_name, field));
+            }
+
+            // TODO: Pad out remaining omitted record fields
+            // for i in ids.len()..fields.len() {
+            //     let &(ref field_name, ty) = &field_decls[i];
+            //     fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, is_static)?));
+            // }
+
+            return Ok(WithStmts {
+                stmts,
+                val: mk().struct_expr(vec![mk().path_segment(name)], fields),
+            })
+        }
+
         // REVIEW: statics? Likely need to const_transmute byte array?
         let variable_name = format!("{}_bf", name.clone());
         let struct_ident = mk().ident_expr(variable_name.clone());
