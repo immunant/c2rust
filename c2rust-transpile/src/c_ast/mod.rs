@@ -53,7 +53,7 @@ pub struct TypedAstContext {
 
     // The key is the typedef decl being squashed away,
     // and the value is the decl id to the corresponding structure
-    pub prenamed_decls: HashMap<CDeclId, CDeclId>,
+    pub prenamed_decls: IndexMap<CDeclId, CDeclId>,
 }
 
 /// Comments associated with a typed AST context
@@ -77,7 +77,7 @@ impl TypedAstContext {
             parents: HashMap::new(),
 
             comments: vec![],
-            prenamed_decls: HashMap::new(),
+            prenamed_decls: IndexMap::new(),
         }
     }
 
