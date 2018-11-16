@@ -306,6 +306,12 @@ impl<'c> Translation<'c> {
                     if let CDeclKind::Field { typ, bitfield_width, .. } = self.ast_context.index(x).kind {
                         has_bitfields |= bitfield_width.is_some();
 
+                        // Bitfield widths of 0 should just be markers for clang,
+                        // we shouldn't need to explicitly handle it ourselves
+                        if let Some(0) = bitfield_width {
+                            continue;
+                        }
+
                         fieldnames.push((name, typ));
                     } else {
                         panic!("Struct field decl type mismatch")

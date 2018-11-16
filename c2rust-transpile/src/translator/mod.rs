@@ -927,14 +927,14 @@ impl<'c> Translation<'c> {
 
                 for &x in fields {
                     match self.ast_context.index(x).kind {
-                        CDeclKind::Field { ref name, typ, bitfield_width, bit_offset } => {
+                        CDeclKind::Field { ref name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth } => {
                             let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
                             let typ = self.convert_type(typ.ctype)?;
 
                             has_bitfields |= bitfield_width.is_some();
 
                             if has_bitfields {
-                                field_info.push((name, typ, bitfield_width, bit_offset));
+                                field_info.push((name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth));
                             } else {
                                 field_entries.push(mk().span(s).pub_().struct_field(name, typ))
                             }

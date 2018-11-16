@@ -1347,8 +1347,9 @@ class TranslateASTVisitor final
           const ASTRecordLayout &layout = this->Context->getASTRecordLayout(record);
           auto index = D->getFieldIndex();
           auto bitOffset = layout.getFieldOffset(index);
+          auto bitWidth = this->Context->getTypeSize(t);
           encode_entry(D, TagFieldDecl, childIds, t,
-                             [D, this, bitOffset](CborEncoder *array) {
+                             [D, this, bitOffset, bitWidth](CborEncoder *array) {
                                  // 1. Encode field name
                                  auto name = D->getNameAsString();
                                  cbor_encode_string(array, name);
@@ -1362,6 +1363,9 @@ class TranslateASTVisitor final
 
                                  // 3. Encode bit offset in its record
                                  cbor_encode_uint(array, bitOffset);
+
+                                 // 4. Encode the type's full bit width (even if a bitfield)
+                                 cbor_encode_uint(array, bitWidth);
                              });
 
           // This might be the only occurence of this type in the translation unit

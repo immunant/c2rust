@@ -22,8 +22,8 @@ use syntax_pos::DUMMY_SP;
 use translator::{DecayRef, ExprUse, Translation, ConvertedDecl, simple_metaitem};
 use with_stmts::WithStmts;
 
-/// (name, type, bitfield_width)
-type FieldNameTypeWidth = (String, P<Ty>, Option<u64>, u64);
+/// (name, type, bitfield_width, platform_bit_offset, platform_type_bitwidth)
+type FieldNameTypeWidth = (String, P<Ty>, Option<u64>, u64, u64);
 type FieldNameType = (String, CQualTypeId);
 
 const PACKED_STRUCT_CRATE: bool = true;
@@ -77,37 +77,37 @@ impl Translation {
 
             let mut field_entries = Vec::with_capacity(field_info.len());
 
-            for (field_name, ty, bitfield_width, bit_index) in field_info {
+            for (field_name, ty, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
                 // Bitfield widths of 0 should just be markers for clang,
                 // we shouldn't need to explicitly handle it ourselves
                 if let Some(0) = bitfield_width {
                     continue
                 }
 
-                let bit_width = bitfield_width.unwrap_or(1); // FIXME: non 1 for non bitfields
+                let bit_width = bitfield_width.unwrap_or(platform_ty_bitwidth);
 
                 // Figure out what's the smallest byte int that can hold this bitfield width
                 // This is required by packed_struct as you cannot currently use arbitrary sized
                 // ints for fields like C lets you do..
                 // REVIEW: What about signed int fields?
-                let base_ty = match bitfield_width {
-                    Some(w) if w <= 8 => mk().ident_ty("u8"),
-                    Some(w) if w <= 16 => mk().ident_ty("u16"),
-                    Some(w) if w <= 32 => mk().ident_ty("u32"),
-                    Some(w) if w <= 64 => mk().ident_ty("u64"),
-                    Some(w) if w <= 128 => mk().ident_ty("u128"),
-                    Some(_) => return Err("Unsupported bitfield width found greater than 128 bits".into()),
-                    None => ty,
+                let base_ty = match bit_width {
+                    0..=8 => mk().ident_ty("u8"),
+                    9..=16 => mk().ident_ty("u16"),
+                    17..=32 => mk().ident_ty("u32"),
+                    33..=64 => mk().ident_ty("u64"),
+                    65..=128 => mk().ident_ty("u128"),
+                    _ => return Err("Unsupported bitfield width found greater than 128 bits".into()),
                 };
                 let bit_struct_name = format!("Bits{}", bit_width);
-                let field_generic_tys = mk().angle_bracketed_args(vec![base_ty, mk().ident_ty(bit_struct_name.clone())]);
-                let field_ty = mk().path_segment_with_args("Integer", field_generic_tys);
+                // let field_generic_tys = mk().angle_bracketed_args(vec![base_ty, mk().ident_ty(bit_struct_name.clone())]);
+                // let field_ty = mk().path_segment_with_args("Integer", field_generic_tys);
                 let bit_range = format!("{}..={}", bit_index, bit_index + bit_width - 1);
                 let field_attr_items = vec![assigment_metaitem("bits", &bit_range)];
                 let field_attr = mk().meta_item("packed_field", MetaItemKind::List(field_attr_items));
                 let field = mk()
                     .meta_item_attr(AttrStyle::Outer, field_attr)
-                    .struct_field(field_name, mk().path_ty(vec![field_ty]));
+                    // .struct_field(field_name, mk().path_ty(vec![field_ty]));
+                    .struct_field(field_name, base_ty);
 
                 item_store.uses
                     .get_mut(vec!["packed_struct".into(), "prelude".into(), "packed_bits".into()])
@@ -153,9 +153,9 @@ impl Translation {
 
         macro_body.push(TokenTree::Token(DUMMY_SP, Token::interpolated(struct_item)));
 
-        for (name, ty, bitfield_width, bit_index) in field_info {
+        for (name, ty, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
             let start = bit_index as u128;
-            let end = start + bitfield_width.unwrap_or(1) as u128 - 1; // FIXME
+            let end = start + bitfield_width.unwrap_or(platform_ty_bitwidth) as u128 - 1;
             let ty_item = Nonterminal::NtTy(ty);
             let setter_ident = Nonterminal::NtIdent(mk().ident(format!("set_{}", name)), false);
             let getter_ident = Nonterminal::NtIdent(mk().ident(name), false);
@@ -249,13 +249,6 @@ impl Translation {
 
             stmts.push(mk().expr_stmt(method_call));
         }
-
-        // REVIEW: ommitted record fields? Might be fine to leave them as they will be zero'd?
-        // Pad out remaining omitted record fields
-        // for i in ids.len()..fields.len() {
-        //     let &(ref field_name, ty) = &field_decls[i];
-        //     fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, is_static)?));
-        // }
 
         stmts.push(mk().expr_stmt(struct_ident));
 
