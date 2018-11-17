@@ -59,6 +59,9 @@ pub struct CrateInformation<'st> {
     /// Helper, to expedite the look up of paths
     path_ids: HashSet<NodeId>,
 
+    old_path_info: HashMap<Ident, HashSet<Ident>>,
+    new_path_info: HashMap<Ident, HashSet<Ident>>,
+
     st: &'st CommandState,
 }
 
@@ -70,9 +73,11 @@ impl<'st> CrateInformation<'st> {
             item_map: HashMap::new(),
             item_to_dest_module: HashMap::new(),
             new_modules,
+            possible_destination_modules: HashSet::new(),
             path_mapping: HashMap::new(),
             path_ids: HashSet::new(),
-            possible_destination_modules: HashSet::new(),
+            old_path_info: HashMap::new(),
+            new_path_info: HashMap::new(),
             st,
         }
     }
@@ -209,8 +214,22 @@ impl<'st> CrateInformation<'st> {
                             },
                         };
 
-                        let old_items: HashSet<Ident> = m.items.iter().map(|item| item.ident)
-                            .collect::<HashSet<_>>();
+                        // TODO: Avoid this clone
+                        let mod_items = m.items.clone();
+                        let old_items: HashMap<Ident, &P<Item>> = mod_items.iter().filter_map(|item| {
+                            if item.ident.as_str().is_empty() {
+                                return None;
+                            }
+                            Some((item.ident, item))
+                        }).collect();
+
+                        let foreign_mods: Vec<&P<Item>> = mod_items.iter().filter_map(|item| {
+                            match item.node {
+                                ItemKind::ForeignMod(_) => {},
+                                _ => return None
+                            }
+                            Some(item)
+                        }).collect();
 
                         for new_item_id in new_item_ids.iter() {
                             // `get_mut` is used to remove duplicates from incoming
@@ -220,18 +239,49 @@ impl<'st> CrateInformation<'st> {
                             // a clone.
                             //  * Investigate why there is a panic here when just unwrapping.
                             if let Some(new_item) = self.item_map.get_mut(new_item_id) {
-                                let mut found = false;
-
-                                if old_items.contains(&new_item.ident) {
-                                    found = true;
+                                let mut use_stmt = false;
+                                // Since `Use` statements do not have `Ident`'s,
+                                // it is necessary to iterate through all the module's items
+                                // and compare.
+                                if let ItemKind::Use(_) = new_item.node {
+                                    let mut found = false;
+                                    for mod_item in m.items.iter() {
+                                        if compare_items(&mod_item, &new_item) {
+                                            found = true;
+                                        }
+                                    }
+                                    if !found {
+                                        m.items.push(P(new_item.clone()));
+                                    }
+                                    use_stmt = true;
                                 }
 
-                                if let ItemKind::ForeignMod(ref mut fm) = new_item.node {
-                                    fm.items.retain(|fm_item| !old_items.contains(&fm_item.ident));
-                                }
+                                if !use_stmt {
+                                    let mut found = false;
+                                    let mut is_fm = false;
 
-                                if !found {
-                                    m.items.push(P(new_item.clone()));
+                                    if let ItemKind::ForeignMod(ref mut fm) = new_item.node {
+                                        fm.items.retain(|fm_item| !old_items.contains_key(&fm_item.ident));
+                                        is_fm = true;
+                                    }
+
+                                    if is_fm {
+                                        for foreign_mod in foreign_mods.iter() {
+                                            if compare_items(&foreign_mod, &new_item) {
+                                                found = true;
+                                            }
+                                        }
+                                    }
+
+                                    if let Some(old_item) = old_items.get(&new_item.ident) {
+                                        if compare_items(&old_item, &new_item) {
+                                            found = true;
+                                        }
+                                    }
+
+                                    if !found {
+                                        m.items.push(P(new_item.clone()));
+                                    }
                                 }
                             }
                         }
@@ -247,6 +297,60 @@ impl<'st> CrateInformation<'st> {
         });
         krate
     }
+
+    /// Removes any declarations that also have a definition within the Crate.
+    fn remove_declarations(&mut self, krate: Crate) -> Crate {
+        let mut old_path_info = HashMap::new();
+        let mut new_path_info = HashMap::new();
+
+        let mut idents = HashMap::new();
+        for parent in krate.module.items.iter() {
+            match parent.node {
+                ItemKind::Mod(ref m) => {
+                    for item in m.items.iter() {
+                        idents.insert(item.ident, parent.ident.clone());
+                    }
+                },
+                _ => {}
+            }
+        }
+        let krate = fold_nodes(krate, |pi: P<Item>| {
+            let pi = pi.map(|mut i| {
+                match i.node {
+                    ItemKind::Mod(ref mut m) => {
+                        let parent_ident = i.ident.clone();
+                        for mod_item in m.items.iter_mut() {
+                            if let ItemKind::ForeignMod(ref mut fm) = mod_item.node {
+                                fm.items.retain(|fm_item| {
+                                    if idents.contains_key(&fm_item.ident) {
+                                        let new_parent_ident = idents[&fm_item.ident];
+                                        old_path_info.insert(fm_item.ident, parent_ident);
+                                        new_path_info.insert(fm_item.ident, new_parent_ident);
+                                        return false;
+                                    }
+                                    true
+                                });
+                            }
+                        }
+                    },
+                    _ => {}
+                }
+                i
+            });
+            smallvec![pi]
+        });
+
+        for (ident, mod_ident) in old_path_info.iter() {
+            self.old_path_info.entry(*mod_ident).or_insert_with(HashSet::new).insert(*ident);
+        }
+
+        for (ident, mod_ident) in new_path_info.iter() {
+            self.new_path_info.entry(*mod_ident).or_insert_with(HashSet::new).insert(*ident);
+        }
+
+
+        krate
+    }
 }
 
 impl<'ast, 'st> Visitor<'ast> for CrateInformation<'st> {
@@ -255,48 +359,50 @@ impl<'ast, 'st> Visitor<'ast> for CrateInformation<'st> {
     // The key is the id of the old item to be moved, and the value is the NodeId of the module
     // the item will be moved to.
     fn visit_item(&mut self, old_module: &'ast Item) {
-        match old_module.node {
-            ItemKind::Mod(ref m) => {
-                for module_item in m.items.iter() {
-                    let (dest_module_id, ident) =
-                        self.find_destination_id(&module_item.id, &old_module);
-                    self.item_to_dest_module
-                        .insert(module_item.id, dest_module_id);
+        if has_source_header(&old_module.attrs) {
+            match old_module.node {
+                ItemKind::Mod(ref m) => {
+                    for module_item in m.items.iter() {
+                        let (dest_module_id, ident) =
+                            self.find_destination_id(&module_item.id, &old_module);
+                        self.item_to_dest_module
+                            .insert(module_item.id, dest_module_id);
 
-                    for use_id in self.path_ids.iter() {
-                        let item = self.item_map.get(&use_id)
-                            .unwrap_or_else(|| panic!("There should be an item here: {:#?}", use_id));
-                        let ut = match item.node {
-                            ItemKind::Use(ref ut) => ut,
-                            _ => unreachable!(),
-                        };
+                        for use_id in self.path_ids.iter() {
+                            let item = self.item_map.get(&use_id)
+                                .unwrap_or_else(|| panic!("There should be an item here: {:#?}", use_id));
+                            let ut = match item.node {
+                                ItemKind::Use(ref ut) => ut,
+                                _ => unreachable!(),
+                            };
 
-                        let (prefix, dest_id) = self.path_mapping.entry(*use_id).or_insert_with(|| {
-                            let mut prefix = ut.prefix.clone();
+                            let (prefix, dest_id) = self.path_mapping.entry(*use_id).or_insert_with(|| {
+                                let mut prefix = ut.prefix.clone();
 
-                            // Remove super and self from the paths
-                            if prefix.segments.len() > 1 {
-                                prefix.segments.retain(|segment| {
-                                    segment.ident.name != keywords::Super.name()
-                                        && segment.ident.name != keywords::SelfValue.name()
-                                });
-                            }
-                            (prefix, *use_id)
-                        });
+                                // Remove super and self from the paths
+                                if prefix.segments.len() > 1 {
+                                    prefix.segments.retain(|segment| {
+                                        segment.ident.name != keywords::Super.name()
+                                            && segment.ident.name != keywords::SelfValue.name()
+                                    });
+                                }
+                                (prefix, *use_id)
+                            });
 
-                        // Check to see if a segment within the path is getting moved.
-                        // example_h -> example
-                        // DUMMY_NODE_ID -> actual destination module id
-                        for segment in &mut prefix.segments {
-                            if segment.ident == old_module.ident {
-                                segment.ident = ident;
-                                *dest_id = dest_module_id;
+                            // Check to see if a segment within the path is getting moved.
+                            // example_h -> example
+                            // DUMMY_NODE_ID -> actual destination module id
+                            for segment in &mut prefix.segments {
+                                if segment.ident == old_module.ident {
+                                    segment.ident = ident;
+                                    *dest_id = dest_module_id;
+                                }
                             }
                         }
                     }
-                }
+                },
+                _ => {}
             }
-            _ => {}
         }
         visit::walk_item(self, old_module);
     }
@@ -321,6 +427,8 @@ impl Transform for ReorganizeModules {
         // insert all the items marked as to be moved, into the proper
         // "destination module"
         let krate = krate_info.insert_items_into_dest(krate, &dest_mod_to_items);
+
+        let krate = krate_info.remove_declarations(krate);
 
         // This is where a bulk of the duplication removal happens, as well as path clean up.
         // 1. Paths are updated, meaning either removed or changed to match module change.
@@ -361,29 +469,24 @@ impl Transform for ReorganizeModules {
                                     //  3. delete the nested use statement.
                                     match ut.kind {
                                         UseTreeKind::Nested(ref use_trees) => {
-                                            let mut prefixes = HashSet::new();
+                                            let mut segments = HashSet::new();
                                             for (use_tree, _) in use_trees {
-                                                prefixes.insert(path_to_ident(&use_tree.prefix));
+                                                segments.insert(path_to_ident(&use_tree.prefix));
                                             }
 
-                                            seen_paths.entry(path_to_ident(&ut.prefix)).and_modify(|set_of_prefixes| {
-                                                set_of_prefixes.extend(prefixes.clone().into_iter());
+                                            seen_paths.entry(path_to_ident(&ut.prefix)).and_modify(|set_of_segments| {
+                                                set_of_segments.extend(segments.clone().into_iter());
                                             }).or_insert_with(|| {
-                                                prefixes
+                                                segments
                                             });
                                         },
                                         UseTreeKind::Simple(..) => {
                                             if ut.prefix.segments.len() > 1 {
                                                 let mod_name = ut.prefix.segments.first().unwrap();
-                                                let prefix = ut.prefix.segments.last().unwrap();
+                                                let segment = ut.prefix.segments.last().unwrap();
 
-                                                seen_paths.entry(mod_name.ident).and_modify(|set_of_prefixes| {
-                                                    set_of_prefixes.insert(prefix.ident);
-                                                }).or_insert_with(|| {
-                                                    let mut prefixes = HashSet::new();
-                                                    prefixes.insert(prefix.ident);
-                                                    prefixes
-                                                });
+                                                let set_of_segments = seen_paths.entry(mod_name.ident).or_insert_with(HashSet::new);
+                                                set_of_segments.insert(segment.ident);
                                             } else {
                                                 // one item use statements like: `use libc;`
                                                 // can be returned
@@ -401,7 +504,6 @@ impl Transform for ReorganizeModules {
                             Some(item)
                         }).collect();
 
-
                         let seen_item_ids =
                             m.items.iter().map(|item| item.id).collect::<HashSet<_>>();
                         let mut deleted_item_ids = HashSet::new();
@@ -414,10 +516,12 @@ impl Transform for ReorganizeModules {
                                 if item.id != module_item.id {
                                     if let ItemKind::ForeignMod(ref mut foreign_mod) = module_item.node {
                                         if let ItemKind::ForeignMod(ref other_foreign_mod) = item.node {
+                                            let other_items: HashMap<Ident, &ForeignItem> = other_foreign_mod.items.iter()
+                                                .map(|i| (i.ident, i)).collect::<HashMap<_, _>>();
+
                                             foreign_mod.items.retain(|foreign_item| {
                                                 let mut result = true;
-                                                for other_item in other_foreign_mod.items.iter() {
-                                                    // Make a `compare_items` for foreign items?
+                                                if let Some(other_item) = other_items.get(&foreign_item.ident) {
                                                     if compare_foreign_items(&foreign_item, &other_item) && !deleted_item_ids.contains(&other_item.id) {
                                                         deleted_item_ids.insert(foreign_item.id);
                                                         result = false;
@@ -454,6 +558,8 @@ impl Transform for ReorganizeModules {
                             Some(module_item)
                         }).collect();
 
+                        clean_paths(&mut seen_paths, &krate_info, &i.ident);
+
                         // Here is where the seen_paths map is read, and turned into paths
                         // [foo_h] -> [item, item2, item3] turns into `use foo_h::{item, item2, item3};`
                         // And that ast is pushed into the module
@@ -483,6 +589,27 @@ impl Transform for ReorganizeModules {
 
     fn min_phase(&self) -> Phase {
         Phase::Phase3
+    }
+}
+
+fn clean_paths(seen_paths: &mut HashMap<Ident, HashSet<Ident>> , krate_info: &CrateInformation, current_mod_name: &Ident) {
+    let mut new_path_info = krate_info.new_path_info.clone();
+    for (module_name, set_of_segments) in seen_paths.iter_mut() {
+        if let Some(segments_to_remove) = krate_info.old_path_info.get(&module_name) {
+            let copy = set_of_segments.clone();
+            let diff = copy.into_iter().filter(|k| !segments_to_remove.contains(k)).collect();
+            *set_of_segments = diff;
+        }
+
+        if let Some(segments_to_add) = new_path_info.remove(&module_name) {
+            set_of_segments.extend(segments_to_add.iter());
+        }
+    }
+
+    for (module_name, segments_to_add) in new_path_info.iter() {
+        if current_mod_name != module_name {
+            seen_paths.insert(*module_name, segments_to_add.clone());
+        }
     }
 }
 
