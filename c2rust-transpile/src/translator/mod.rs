@@ -929,13 +929,14 @@ impl<'c> Translation<'c> {
                     match self.ast_context.index(x).kind {
                         CDeclKind::Field { ref name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth } => {
                             let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
-                            let typ = self.convert_type(typ.ctype)?;
 
                             has_bitfields |= bitfield_width.is_some();
 
                             if has_bitfields {
-                                field_info.push((name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth));
+                                field_info.push((name, bitfield_width, platform_bit_offset, platform_type_bitwidth));
                             } else {
+                                let typ = self.convert_type(typ.ctype)?;
+
                                 field_entries.push(mk().span(s).pub_().struct_field(name, typ))
                             }
                         }
@@ -2639,7 +2640,11 @@ impl<'c> Translation<'c> {
 
                 let fields: Result<Vec<Field>, String> = fields
                     .into_iter()
-                    .map(|field_id: &CFieldId| -> Result<Field, String> {
+                    .filter(|&&field_id| match self.ast_context[field_id].kind {
+                        CDeclKind::Field { bitfield_width: Some(0), .. } => false,
+                        _ => true,
+                    })
+                    .map(|field_id| -> Result<Field, String> {
                         let name = self.type_converter.borrow().resolve_field_name(Some(decl_id), *field_id).unwrap();
 
                         match self.ast_context.index(*field_id).kind {

@@ -303,16 +303,10 @@ impl<'c> Translation<'c> {
                         .borrow()
                         .resolve_field_name(Some(struct_id), x)
                         .unwrap();
-                    if let CDeclKind::Field { typ, bitfield_width, .. } = self.ast_context.index(x).kind {
+                    if let CDeclKind::Field { typ, bitfield_width, platform_type_bitwidth, .. } = self.ast_context.index(x).kind {
                         has_bitfields |= bitfield_width.is_some();
 
-                        // Bitfield widths of 0 should just be markers for clang,
-                        // we shouldn't need to explicitly handle it ourselves
-                        if let Some(0) = bitfield_width {
-                            continue;
-                        }
-
-                        fieldnames.push((name, typ));
+                        fieldnames.push((name, typ, bitfield_width, platform_type_bitwidth));
                     } else {
                         panic!("Struct field decl type mismatch")
                     }
@@ -339,7 +333,7 @@ impl<'c> Translation<'c> {
         // Add specified record fields
         for i in 0usize..ids.len() {
             let v = ids[i];
-            let &(ref field_name, _) = &field_decls[i];
+            let &(ref field_name, _, _, _) = &field_decls[i];
 
             let mut x = self.convert_expr(ctx.used(), v)?;
             stmts.append(&mut x.stmts);

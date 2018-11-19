@@ -22,9 +22,10 @@ use syntax_pos::DUMMY_SP;
 use translator::{DecayRef, ExprUse, Translation, ConvertedDecl, simple_metaitem};
 use with_stmts::WithStmts;
 
-/// (name, type, bitfield_width, platform_bit_offset, platform_type_bitwidth)
-type FieldNameTypeWidth = (String, P<Ty>, Option<u64>, u64, u64);
-type FieldNameType = (String, CQualTypeId);
+/// (name, bitfield_width, platform_bit_offset, platform_type_bitwidth)
+type NameWidthOffset = (String, Option<u64>, u64, u64);
+/// (name, type, bitfield_width, platform_type_bitwidth)
+type NameTypeWidth = (String, CQualTypeId, Option<u64>, u64);
 
 const PACKED_STRUCT_CRATE: bool = true;
 
@@ -40,6 +41,20 @@ fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
     mk().nested_meta_item(NestedMetaItemKind::MetaItem(meta_item))
 }
 
+/// Figure out what's the smallest byte int that can hold this bitfield width
+/// This is required by packed_struct as you cannot currently use arbitrary sized
+/// ints for fields like C lets you do..
+fn get_ty_from_bit_width(bit_width: u64) -> Result<P<Ty>, &'static str> {
+    // REVIEW: What about signed int fields?
+    match bit_width {
+        0..=8 => Ok(mk().ident_ty("u8")),
+        9..=16 => Ok(mk().ident_ty("u16")),
+        17..=32 => Ok(mk().ident_ty("u32")),
+        33..=64 => Ok(mk().ident_ty("u64")),
+        65..=128 => Ok(mk().ident_ty("u128")),
+        _ => Err("Unsupported bitfield width found greater than 128 bits"),
+    }
+}
 
 impl Translation {
     /// Here we output a macro invocation to generate bitfield data that looks like this:
@@ -54,12 +69,13 @@ impl Translation {
     ///     // ...
     /// }
     /// ```
+    /// FIXME
     pub fn convert_bitfield_struct_decl(
         &self,
         name: String,
         platform_byte_size: u64,
         span: Span,
-        field_info: Vec<FieldNameTypeWidth>,
+        field_info: Vec<NameWidthOffset>,
     ) -> Result<ConvertedDecl, String> {
         if PACKED_STRUCT_CRATE {
             let mut item_store = self.item_store.borrow_mut();
@@ -77,7 +93,7 @@ impl Translation {
 
             let mut field_entries = Vec::with_capacity(field_info.len());
 
-            for (field_name, ty, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
+            for (field_name, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
                 // Bitfield widths of 0 should just be markers for clang,
                 // we shouldn't need to explicitly handle it ourselves
                 if let Some(0) = bitfield_width {
@@ -85,19 +101,7 @@ impl Translation {
                 }
 
                 let bit_width = bitfield_width.unwrap_or(platform_ty_bitwidth);
-
-                // Figure out what's the smallest byte int that can hold this bitfield width
-                // This is required by packed_struct as you cannot currently use arbitrary sized
-                // ints for fields like C lets you do..
-                // REVIEW: What about signed int fields?
-                let base_ty = match bit_width {
-                    0..=8 => mk().ident_ty("u8"),
-                    9..=16 => mk().ident_ty("u16"),
-                    17..=32 => mk().ident_ty("u32"),
-                    33..=64 => mk().ident_ty("u64"),
-                    65..=128 => mk().ident_ty("u128"),
-                    _ => return Err("Unsupported bitfield width found greater than 128 bits".into()),
-                };
+                let base_ty = get_ty_from_bit_width(bit_width)?;
                 let bit_struct_name = format!("Bits{}", bit_width);
                 // let field_generic_tys = mk().angle_bracketed_args(vec![base_ty, mk().ident_ty(bit_struct_name.clone())]);
                 // let field_ty = mk().path_segment_with_args("Integer", field_generic_tys);
@@ -153,10 +157,10 @@ impl Translation {
 
         macro_body.push(TokenTree::Token(DUMMY_SP, Token::interpolated(struct_item)));
 
-        for (name, ty, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
+        for (name, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
             let start = bit_index as u128;
             let end = start + bitfield_width.unwrap_or(platform_ty_bitwidth) as u128 - 1;
-            let ty_item = Nonterminal::NtTy(ty);
+            let ty_item = Nonterminal::NtTy(mk().never_ty());
             let setter_ident = Nonterminal::NtIdent(mk().ident(format!("set_{}", name)), false);
             let getter_ident = Nonterminal::NtIdent(mk().ident(name), false);
             let start_idx = Nonterminal::NtLiteral(mk().lit_expr(mk().int_lit(start, LitIntType::Unsuffixed)));
@@ -184,6 +188,8 @@ impl Translation {
     /// Here we output a block to generate a struct literal initializer in.
     /// It looks like this in locals:
     ///
+    /// FIXME
+    ///
     /// ```no_run
     /// {
     ///     let mut foo = Foo([0; PLATFORM_BYTE_SIZE]);
@@ -196,29 +202,38 @@ impl Translation {
     ///
     /// and in statics:
     /// TODO
-    pub fn convert_bitfield_struct_literal(&self, name: String, field_ids: &[CExprId], field_info: Vec<FieldNameType>, platform_byte_size: u64, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
+    pub fn convert_bitfield_struct_literal(&self, name: String, field_ids: &[CExprId], field_info: Vec<NameTypeWidth>, platform_byte_size: u64, is_static: bool) -> Result<WithStmts<P<Expr>>, String> {
         // REVIEW: statics?
         if PACKED_STRUCT_CRATE {
             let mut stmts = Vec::with_capacity(field_ids.len());
             let mut fields = Vec::with_capacity(field_ids.len());
 
             // Specified record fields
-            for (&field_id, (field_name, _)) in field_ids.iter().zip(field_info) {
+            for (&field_id, (field_name, _, bitfield_width, platform_type_bitwidth)) in field_ids.iter().zip(field_info.iter()) {
+                // Bitfield widths of 0 should just be markers for clang,
+                // we shouldn't need to explicitly handle it ourselves
+                if let Some(0) = bitfield_width {
+                    continue;
+                }
+
+                let bitwidth = bitfield_width.unwrap_or(*platform_type_bitwidth);
+                // With some type analysis, we could skip this cast sometimes
+                let cast_ty = get_ty_from_bit_width(bitwidth)?;
+
                 let mut expr = self.convert_expr(ExprUse::Used, field_id, is_static, DecayRef::Default)?;
 
-                // REVIEW: Maybe need to downcast large int sizes to smaller bit sizes
                 stmts.append(&mut expr.stmts);
 
-                let field = mk().method_call_expr(expr.val, "into", Vec::new() as Vec<P<Expr>>);
+                let cast = mk().cast_expr(expr.val, cast_ty);
+                // let field = mk().method_call_expr(cast, "into", Vec::new() as Vec<P<Expr>>);
 
-                fields.push(mk().field(field_name, field));
+                fields.push(mk().field(field_name, cast));
             }
 
-            // TODO: Pad out remaining omitted record fields
-            // for i in ids.len()..fields.len() {
-            //     let &(ref field_name, ty) = &field_decls[i];
-            //     fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, is_static)?));
-            // }
+            // Pad out remaining omitted record fields
+            for (field_name, ty, _, _) in field_info[field_ids.len()..].iter() {
+                fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, is_static)?));
+            }
 
             return Ok(WithStmts {
                 stmts,
@@ -241,7 +256,7 @@ impl Translation {
         stmts.push(mk().local_stmt(local_variable));
 
         // Specified record fields
-        for (&field_id, (field_name, _)) in field_ids.iter().zip(field_info) {
+        for (&field_id, (field_name, _, _, _)) in field_ids.iter().zip(field_info) {
             let expr = self.convert_expr(ExprUse::Used, field_id, is_static, DecayRef::Default)?;
             let setter_call_name = format!("set_{}", field_name);
             let call_params = vec![expr.val];
