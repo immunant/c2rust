@@ -10,6 +10,7 @@ import literate.diff
 import literate.format
 import literate.parse
 import literate.refactor
+import literate.render
 
 
 def build_arg_parser():
@@ -86,6 +87,10 @@ def do_render(args):
     blocks = literate.format.format_files(blocks)
 
     with open(args.output, 'w') as f:
+        f.write('<style>')
+        f.write(literate.render.get_styles())
+        f.write('</style>')
+
         for b in blocks:
             if isinstance(b, literate.refactor.Text):
                 for line in b.lines:
@@ -95,11 +100,11 @@ def do_render(args):
                 for line in b.raw:
                     f.write(line)
                 f.write('```\n\n')
-                diff_text = literate.diff.render_diff(b.files)
-                if not diff_text.isspace():
-                    f.write('<details><summary>Diff</summary>\n```diff\n')
+                diff_text = literate.render.render_diff(b.files)
+                if diff_text is not None:
+                    f.write('<details><summary>Diff</summary>\n')
                     f.write(diff_text)
-                    f.write('\n```\n<hr></details>\n\n')
+                    f.write('\n<hr></details>\n\n')
             else:
                 raise TypeError('expected Text or ScriptDiff, got %s' % (type(b),))
 
