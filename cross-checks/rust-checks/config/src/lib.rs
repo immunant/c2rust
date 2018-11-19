@@ -429,10 +429,15 @@ impl Config {
     }
 }
 
-pub fn parse_string(s: &str) -> Result<Config, String> {
+#[derive(Debug)]
+pub enum Error {
+    YAML(serde_yaml::Error),
+}
+
+pub fn parse_string(s: &str) -> Result<Config, Error> {
     serde_yaml::from_str::<RootConfig>(s)
-        .map_err(|e| format!("serde_yaml error: {}", e))
-        .map(|root| Config::new(root))
+        .map_err(Error::YAML)
+        .map(Config::new)
 }
 
 #[cfg(test)]
