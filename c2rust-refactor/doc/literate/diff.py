@@ -158,7 +158,7 @@ def diff_len(blocks):
 # changes between a pair of old and new texts.  The result is a list of
 # Context, Change, and Intra blocks that covers the entirety of both inputs.
 
-def diff_lines(old, new):
+def diff_lines(old_lines, new_lines):
     '''Compute a diff of `old` and `new`, and yield a sequence of (old_line,
     new_line, old_detail, new_detail).  `line` is a boolean indicating whether
     there is a line present in the old/new file, and `detail` is a list of
@@ -171,9 +171,6 @@ def diff_lines(old, new):
     - (True, True, [...], [...]): Changed line, modified via the indicated
       intraline insertions and deletions.
     '''
-    old_lines = old.splitlines(keepends=True)
-    new_lines = new.splitlines(keepends=True)
-
     # We buffer up to two previous result tuples.  This lets us handle
     # intraline change markers, and in particular, the nasty '-+?' case, where
     # we don't find out that we're in an intraline change ('?') until we've
@@ -246,6 +243,96 @@ def diff_lines(old, new):
     while buf:
         yield buf.popleft()
 
+def adjust_blocks(old_lines, new_lines, diff):
+    '''Adjust the output of `diff_lines` to turn this:
+
+         fn f() {
+           ...
+        +}
+        +fn g() {
+        +  ...
+         }
+
+    into this:
+
+         fn f() {
+           ...
+         }
+        +fn g() {
+        +  ...
+        +}
+    '''
+    # Specifically: at the end of every run of insertions or deletions, if the
+    # first context line after the run consists of solely a '}' character (with
+    # whitespace), then we scan from the top of the run for an identical
+    # inserted line.  If found, we change the earlier line from an insertion to
+    # context, and change the context line to an insertion.
+
+    mode = None
+    buf = []
+    buf_start = None
+
+    old_i = -1
+    new_i = -1
+
+    for dl in diff:
+        old_line, new_line, old_detail, new_detail = dl
+        if old_line and not new_line:
+            new_mode = 'del'
+            old_i += 1
+        elif not old_line and new_line:
+            new_mode = 'ins'
+            new_i += 1
+        else:
+            new_mode = None
+            old_i += 1
+            new_i += 1
+
+        if new_mode != mode:
+            if new_mode is None:
+                # Switching from ins or del mode to context mode.  If the
+                # current line is a '}', we try to do the block adjustment.
+                check_lines = new_lines if mode == 'ins' else old_lines
+                i = new_i if mode == 'ins' else old_i
+                if check_lines[i].strip() == '}':
+                    # Yield everything from buf, while scanning for an earlier
+                    # matching line.
+                    found_dl = None
+                    for j, buf_dl in enumerate(buf):
+                        if check_lines[buf_start + j] == check_lines[i]:
+                            found_dl = buf_dl
+                            yield (True, True, None, None)
+                            # We're stopping early, so yield the remaining
+                            # elements.
+                            yield from buf[j + 1:]
+                            break
+                        else:
+                            yield buf_dl
+                    if found_dl:
+                        yield found_dl
+                    else:
+                        yield (True, True, None, None)
+                else:
+                    yield from buf
+                    yield dl
+                mode = None
+                buf = []
+                buf_start = None
+                # We already yielded the correct info, so don't fall through to
+                # the default logic.
+                continue
+            else:
+                if mode is not None:
+                    yield from buf
+                mode = new_mode
+                buf = []
+                buf_start = new_i if mode == 'ins' else old_i
+
+        if mode is None:
+            yield dl
+        else:
+            buf.append(dl)
+
 def compute_diff(old, new):
     '''Build a diff between `old` and `new`.  The result is a list of
     blocks.'''
@@ -279,7 +366,13 @@ def compute_diff(old, new):
             flush()
             in_context = new_in_context
 
-    for old_line, new_line, old_detail, new_detail in diff_lines(old, new):
+    old_lines = old.splitlines(keepends=True)
+    new_lines = new.splitlines(keepends=True)
+
+    dls_iter = diff_lines(old_lines, new_lines)
+    dls_iter = adjust_blocks(old_lines, new_lines, dls_iter)
+
+    for old_line, new_line, old_detail, new_detail in dls_iter:
         if not old_line or not new_line:
             # Insertion or deletion
             maybe_flush(False)
