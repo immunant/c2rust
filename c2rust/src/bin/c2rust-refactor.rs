@@ -29,6 +29,7 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
             "print" => file_io::OutputMode::Print,
             "diff" => file_io::OutputMode::PrintDiff,
             "json" => file_io::OutputMode::Json,
+            "marks" => file_io::OutputMode::Marks,
             _ => unreachable!(),
         }).collect(),
         None => vec![file_io::OutputMode::Print],

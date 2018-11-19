@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::mem;
@@ -6,9 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use json::{self, JsonValue};
-use syntax::ast::NodeId;
+use syntax::ast::*;
 use syntax::source_map::{SourceMap, SourceFile, FileLoader};
 use syntax::source_map::{Span, DUMMY_SP};
+use syntax::symbol::Symbol;
 use syntax_pos::hygiene::SyntaxContext;
 
 use rewrite::{self, TextRewrite};
@@ -30,6 +31,11 @@ pub trait FileIO {
                      sf: &SourceFile,
                      rws: &[TextRewrite],
                      nodes: &[(Span, NodeId)]) -> io::Result<()> { Ok(()) }
+    fn save_marks(&self,
+                  krate: &Crate,
+                  sm: &SourceMap,
+                  node_id_map: &HashMap<NodeId, NodeId>,
+                  marks: &HashSet<(NodeId, Symbol)>) -> io::Result<()> { Ok(()) }
 }
 
 
@@ -40,6 +46,7 @@ pub enum OutputMode {
     Print,
     PrintDiff,
     Json,
+    Marks,
 }
 
 impl OutputMode {
@@ -57,6 +64,10 @@ impl OutputMode {
 
     fn write_rewrites_json(self) -> bool {
         self == OutputMode::Json
+    }
+
+    fn write_marks_json(self) -> bool {
+        self == OutputMode::Marks
     }
 }
 
@@ -138,6 +149,7 @@ impl FileIO for RealFileIO {
                     rewrite::files::print_diff(&old_s, s);
                 },
                 OutputMode::Json => {},     // Handled in end_rewrite
+                OutputMode::Marks => {},    // Handled in save_marks
             }
         }
 
@@ -169,7 +181,7 @@ impl FileIO for RealFileIO {
                      rws: &[TextRewrite],
                      nodes: &[(Span, NodeId)]) -> io::Result<()> {
         if !self.output_modes.iter().any(|&mode| mode.write_rewrites_json()) {
-            return Ok(())
+            return Ok(());
         }
 
 
@@ -189,6 +201,20 @@ impl FileIO for RealFileIO {
         };
         state.rewrites_json.push(rewrite::json::encode_rewrite(sm, &rw));
         Ok(())
+    }
+
+    fn save_marks(&self,
+                  krate: &Crate,
+                  _sm: &SourceMap,
+                  node_id_map: &HashMap<NodeId, NodeId>,
+                  marks: &HashSet<(NodeId, Symbol)>) -> io::Result<()> {
+        if !self.output_modes.iter().any(|&mode| mode.write_marks_json()) {
+            return Ok(());
+        }
+
+        let s = rewrite::json::stringify_marks(krate, node_id_map, marks);
+        let state = self.state.lock().unwrap();
+        fs::write(Path::new(&format!("marks.{}.json", state.rewrite_counter)), s)
     }
 }
 

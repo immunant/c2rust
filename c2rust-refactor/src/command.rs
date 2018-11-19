@@ -175,6 +175,9 @@ impl RefactorState {
         let new = &self.krate;
         let node_id_map = self.node_map.clone().into_inner();
 
+        self.file_io.save_marks(
+            new, self.session.source_map(), &node_id_map, &self.marks).unwrap();
+
         let rw = rewrite::rewrite(&self.session, old, new, node_id_map, |map| {
             map_ast_into(&self.parsed_nodes, map);
         });

@@ -16,6 +16,7 @@ args:
         - alongside
         - diff
         - json
+        - marks
       default_value: print
       help: "output rewritten code"
       takes_value: true
