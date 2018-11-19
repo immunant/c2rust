@@ -1916,19 +1916,34 @@ impl<'c> Translation<'c> {
 
             let val = mk().binary_expr(BinOpKind::Mul, lhs, rhs);
 
-            Ok(WithStmts { stmts, val })
-
-        } else {
-            let ty = self.convert_type(type_id)?;
-            let name = "size_of";
-            let params = mk().angle_bracketed_args(vec![ty]);
-            let path = vec![mk().path_segment(""),
-                            mk().path_segment("std"),
-                            mk().path_segment("mem"),
-                            mk().path_segment_with_args(name, params)];
-            let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
-            Ok(WithStmts::new(call))
+            return Ok(WithStmts { stmts, val })
         }
+
+        if let CTypeKind::Struct(record_id) = type_kind {
+            let record_kind = &self.ast_context[*record_id].kind;
+
+            if let CDeclKind::Struct { fields: Some(ref fields), platform_byte_size, .. } = record_kind {
+                let has_bitfields = fields.iter().any(|field_id| match self.ast_context[*field_id].kind {
+                    CDeclKind::Field { bitfield_width: Some(_), .. } => true,
+                    _ => unreachable!(),
+                });
+
+                if has_bitfields {
+                    return Ok(self.compute_size_of_bitfield_struct(*platform_byte_size))
+                }
+            }
+        }
+
+        let ty = self.convert_type(type_id)?;
+        let name = "size_of";
+        let params = mk().angle_bracketed_args(vec![ty]);
+        let path = vec![mk().path_segment(""),
+                        mk().path_segment("std"),
+                        mk().path_segment("mem"),
+                        mk().path_segment_with_args(name, params)];
+        let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
+
+        Ok(WithStmts::new(call))
     }
 
     pub fn compute_align_of_type(&self, mut type_id: CTypeId)

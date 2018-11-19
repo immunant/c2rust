@@ -274,4 +274,28 @@ impl Translation {
             val,
         })
     }
+
+    /// Generates a literal size in bytes of the bitfield struct for the current platform.
+    /// This is because we cannot call std::mem::size_of on the bitfield struct itself, which may
+    /// have a different size representation than in its compact byte array form (at runtime).
+    /// It may be possible to generate a zero initialized byte array at runtime and call
+    /// std::mem::size_of_val() on it, however we're taking the more straightforward and less
+    /// boilerplated approach for now. This alternate approach would look something like this:
+    ///
+    /// ```no_run
+    /// let bitfield_size = {
+    ///     // Or manually default init every field
+    ///     let zeroed: bitfield_struct = unsafe { zerod() };
+    ///     let byte_array = bitfield_struct.packed();
+    ///
+    ///     // or byte_array.len()?
+    ///     std::mem::size_of_val(&byte_array);
+    /// };
+    /// ```
+    pub fn compute_size_of_bitfield_struct(&self, platform_byte_size: u64) -> WithStmts<P<Expr>> {
+        let int_lit = mk().int_lit(platform_byte_size as u128, LitIntType::Unsuffixed);
+        let int_expr = mk().lit_expr(int_lit);
+
+        WithStmts::new(int_expr)
+    }
 }
