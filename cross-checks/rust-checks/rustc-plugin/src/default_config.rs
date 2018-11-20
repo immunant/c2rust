@@ -1,5 +1,5 @@
 
-pub const DEFAULT_CONFIG: &str = r###"
+pub(crate) const DEFAULT_CONFIG: &str = r###"
 ---
 - file: "*.rs"
   priority: -1000000
