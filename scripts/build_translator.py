@@ -73,7 +73,6 @@ def configure_and_build_llvm(args: str) -> None:
     """
     run cmake as needed to generate ninja buildfiles. then run ninja.
     """
-    ninja = get_cmd_or_die("ninja")
     # Possible values are Release, Debug, RelWithDebInfo and MinSizeRel
     build_type = "Debug" if args.debug else "RelWithDebInfo"
     ninja_build_file = os.path.join(c.LLVM_BLD, "build.ninja")
@@ -87,26 +86,44 @@ def configure_and_build_llvm(args: str) -> None:
         if run_cmake:
             cmake = get_cmd_or_die("cmake")
             max_link_jobs = est_parallel_link_jobs()
+            generator = "Xcode" if args.xcode else "Ninja"
             assertions = "1" if args.assertions else "0"
-            cargs = ["-G", "Ninja", c.LLVM_SRC,
+            ast_ext_dir = "-DLLVM_EXTERNAL_C2RUST_AST_EXPORTER_SOURCE_DIR={}"
+            ast_ext_dir = ast_ext_dir.format(c.AST_EXPO_SRC_DIR)
+            clang_include_dirs = "-DCLANG_INCLUDE_DIRS=" + \
+                os.path.join(c.LLVM_SRC, "tools/clang/include")
+            clang_include_dirs = clang_include_dirs +  \
+                ";" + os.path.join(c.LLVM_BLD, "tools/clang/include")
+            cargs = ["-G", generator, c.LLVM_SRC,
                      "-Wno-dev",
                      "-DCMAKE_C_COMPILER=clang",
                      "-DCMAKE_CXX_COMPILER=clang++",
                      "-DCMAKE_INSTALL_PREFIX=" + c.LLVM_INSTALL,
                      "-DCMAKE_BUILD_TYPE=" + build_type,
+                     "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
-                     "-DLLVM_INCLUDE_UTILS=1",
-                     "-DLLVM_BUILD_UTILS=1",
-                     "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
+                     "-DLLVM_EXTERNAL_PROJECTS=c2rust-ast-exporter",
+                     "-DLLVM_DIR={}".format(c.LLVM_CFG_DIR),
+                     clang_include_dirs,
+                     ast_ext_dir]
+
             if on_x86():  # speed up builds on x86 hosts
                 cargs.append("-DLLVM_TARGETS_TO_BUILD=X86")
             invoke(cmake[cargs])
         else:
             logging.debug("found existing ninja.build, not running cmake")
 
-        ninja_args = ['install']
-        invoke(ninja, *ninja_args)
+        if args.xcode:
+            xcodebuild = get_cmd_or_die("xcodebuild")
+            # xcodebuild_args = ['-target', 'install']
+            xcodebuild_args = ['-target', 'c2rust-ast-exporter']
+            invoke(xcodebuild)
+        else:
+            ninja = get_cmd_or_die("ninja")
+            # ninja_args = ['install']
+            ninja_args = ['c2rust-ast-exporter']
+            invoke(ninja, *ninja_args)
 
 
 def build_transpiler(debug: bool):
@@ -136,8 +153,15 @@ def _parse_args():
     parser.add_argument('--without-assertions', default=True,
                         action='store_false', dest='assertions',
                         help='build the tool and clang without assertions')
+    parser.add_argument('-x', '--xcode', default=False,
+                        action='store_true', dest='xcode',
+                        help='generate Xcode project files (macOS only)')
     c.add_args(parser)
     args = parser.parse_args()
+
+    if not on_mac() and args.xcode:
+        die("-x/--xcode option requires macOS host.")
+
     c.update_args(args)
     return args
 
