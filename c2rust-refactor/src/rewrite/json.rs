@@ -1,3 +1,4 @@
+use syntax::ast::NodeId;
 use syntax::source_map::{SourceMap, Span};
 use json::{self, JsonValue};
 
@@ -15,6 +16,8 @@ impl<'a> Encoder<'a> {
             "new_span" => self.encode_span(r.new_span),
             "rewrites" => JsonValue::Array(
                 r.rewrites.iter().map(|r| self.encode_rewrite(r)).collect()),
+            "nodes" => JsonValue::Array(
+                r.nodes.iter().map(|&(span, id)| self.encode_node(span, id)).collect()),
             "adjust" => self.encode_adjust(r.adjust),
         }
     }
@@ -29,6 +32,13 @@ impl<'a> Encoder<'a> {
             "lo" => lo.pos.0,
             "hi" => hi.pos.0,
             "src" => src,
+        }
+    }
+
+    fn encode_node(&self, sp: Span, id: NodeId) -> JsonValue {
+        object! {
+            "span" => self.encode_span(sp),
+            "id" => id.as_usize(),
         }
     }
 
@@ -56,4 +66,3 @@ pub fn stringify_rewrite(sm: &SourceMap, r: &TextRewrite) -> String {
 pub fn stringify_rewrites(sm: &SourceMap, rs: &[TextRewrite]) -> String {
     json::stringify_pretty(encode_rewrites(sm, rs), 2)
 }
-

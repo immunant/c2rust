@@ -148,6 +148,8 @@ import re
 from textwrap import indent, dedent
 
 from ast import *
+from get_node_id import has_get_node_id_impl
+from get_span import has_get_span_impl
 from util import *
 
 
@@ -275,6 +277,19 @@ def get_rewrite_strategies(d):
 
     return strats
 
+@linewise
+def do_record_node_span(d, span_node, id_node, rcx):
+    has_id = has_get_node_id_impl(d)
+    has_span = has_get_span_impl(d)
+    if not has_id or not has_span:
+        return
+
+    yield '{'
+    yield '  let span = %s.get_span();' % span_node
+    yield '  let id = %s.get_node_id();' % id_node
+    yield '  %s.record_node_span(span, id);' % rcx
+    yield '}'
+
 
 @linewise
 def do_rewrite_impl(d):
@@ -397,6 +412,10 @@ def do_recursive_impl(d):
         yield '#[allow(unused)]'
         yield 'impl Recursive for %s {' % d.name
         yield '  fn recursive(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {'
+        # Record `new`'s ID at `old`'s span.  A successful `recursive` rewrite
+        # means that `old` and `new` are identical, and `old`'s text is a valid
+        # rendering of `new`.
+        yield indent(do_record_node_span(d, 'old', 'new', 'rcx'), '    ')
         yield '    true'
         yield '  }'
         yield '}'
@@ -404,6 +423,9 @@ def do_recursive_impl(d):
     yield '#[allow(unused)]'
     yield 'impl Recursive for %s {' % d.name
     yield '  fn recursive(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {'
+    # Optimistically record the span.  If match in `do_recursive_body` fails,
+    # the caller will rewind `rcx`, removing the recorded span.
+    yield indent(do_record_node_span(d, 'old', 'new', 'rcx'), '    ')
     yield indent(do_recursive_body(d, 'old', 'new'), '    ')
     yield '  }'
     yield '}'
@@ -464,6 +486,7 @@ def do_recover_children_impl(d):
     yield '#[allow(unused)]'
     yield 'impl RecoverChildren for %s {' % d.name
     yield '  fn recover_children(reparsed: &Self, new: &Self, mut rcx: RewriteCtxtRef) {'
+    yield indent(do_record_node_span(d, 'reparsed', 'new', 'rcx'), '    ')
     yield indent(do_recover_children_match(d), '    ')
     yield '  }'
     yield '  fn recover_node_and_children(reparsed: &Self, new: &Self, mut rcx: RewriteCtxtRef) {'

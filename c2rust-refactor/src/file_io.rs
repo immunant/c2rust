@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use json::{self, JsonValue};
+use syntax::ast::NodeId;
 use syntax::source_map::{SourceMap, SourceFile, FileLoader};
 use syntax::source_map::{Span, DUMMY_SP};
 use syntax_pos::hygiene::SyntaxContext;
@@ -13,11 +14,12 @@ use syntax_pos::hygiene::SyntaxContext;
 use rewrite::{self, TextRewrite};
 
 
+#[allow(unused_variables)]
 pub trait FileIO {
     /// Called to indicate the end of a rewriting operation.  Any `save_file` or `save_rewrites`
     /// operations since the previous `end_rewrite` (or since the construction of the `FileIO`
     /// object) are part of the logical rewrite.
-    fn end_rewrite(&self, sm: &SourceMap) -> io::Result<()>;
+    fn end_rewrite(&self, sm: &SourceMap) -> io::Result<()> { Ok(()) }
 
     fn file_exists(&self, path: &Path) -> bool;
     fn abs_path(&self, path: &Path) -> io::Result<PathBuf>;
@@ -26,7 +28,8 @@ pub trait FileIO {
     fn save_rewrites(&self,
                      sm: &SourceMap,
                      sf: &SourceFile,
-                     rws: &[TextRewrite]) -> io::Result<()>;
+                     rws: &[TextRewrite],
+                     nodes: &[(Span, NodeId)]) -> io::Result<()> { Ok(()) }
 }
 
 
@@ -163,7 +166,8 @@ impl FileIO for RealFileIO {
     fn save_rewrites(&self,
                      sm: &SourceMap,
                      sf: &SourceFile,
-                     rws: &[TextRewrite]) -> io::Result<()> {
+                     rws: &[TextRewrite],
+                     nodes: &[(Span, NodeId)]) -> io::Result<()> {
         if !self.output_modes.iter().any(|&mode| mode.write_rewrites_json()) {
             return Ok(())
         }
@@ -180,6 +184,7 @@ impl FileIO for RealFileIO {
             old_span: DUMMY_SP,
             new_span: Span::new(sf.start_pos, sf.end_pos, SyntaxContext::empty()),
             rewrites: rws.to_owned(),
+            nodes: nodes.to_owned(),
             adjust: rewrite::TextAdjust::None,
         };
         state.rewrites_json.push(rewrite::json::encode_rewrite(sm, &rw));

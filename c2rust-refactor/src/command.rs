@@ -162,15 +162,11 @@ impl RefactorState {
             let node_map = mem::replace(&mut self.node_map, NodeMap::new());
             let node_id_map = node_map.into_inner();
 
-            let rws = rewrite::rewrite(&self.session, &old, &new, node_id_map, |map| {
+            let rw = rewrite::rewrite(&self.session, &old, &new, node_id_map, |map| {
                 map_ast_into(&self.parsed_nodes, map);
             });
-            if rws.len() == 0 {
-                info!("(no files to rewrite)");
-            } else {
-                files::rewrite_files_with(
-                    self.session.source_map(), &rws, &*self.file_io).unwrap();
-            }
+            files::rewrite_files_with(
+                self.session.source_map(), &rw, &*self.file_io).unwrap();
         }
 
         // We already cleared most of the fields in the block above.

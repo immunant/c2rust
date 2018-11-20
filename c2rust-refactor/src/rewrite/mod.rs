@@ -63,7 +63,7 @@ use syntax::ast::*;
 use syntax::source_map::{Span, DUMMY_SP};
 use syntax::util::parser;
 
-use ast_manip::Visit;
+use ast_manip::{GetSpan, Visit};
 use ast_manip::ast_map::{AstMap, map_ast};
 use driver;
 
@@ -87,8 +87,26 @@ pub enum TextAdjust {
 pub struct TextRewrite {
     pub old_span: Span,
     pub new_span: Span,
+    /// Additional rewrites to apply after replacing the `old_span` text with the `new_span` text.
     pub rewrites: Vec<TextRewrite>,
+    /// Locations of nodes within the new text.  The `Span` is a subspan of `new_span`, while the
+    /// `NodeId` is the ID of the new node.
+    pub nodes: Vec<(Span, NodeId)>,
     pub adjust: TextAdjust,
+}
+
+impl TextRewrite {
+    pub fn new(old_span: Span, new_span: Span) -> TextRewrite {
+        Self::adjusted(old_span, new_span, TextAdjust::None)
+    }
+
+    pub fn adjusted(old_span: Span, new_span: Span, adjust: TextAdjust) -> TextRewrite {
+        TextRewrite {
+            old_span, new_span, adjust,
+            rewrites: Vec::new(),
+            nodes: Vec::new(),
+        }
+    }
 }
 
 
@@ -210,12 +228,10 @@ impl<'s> RewriteCtxt<'s> {
         id.map_id(self)
     }
 
-    pub fn with_rewrites<'b>(&'b mut self,
-                             rewrites: &'b mut Vec<TextRewrite>)
-                             -> RewriteCtxtRef<'s, 'b> {
+    pub fn enter<'b>(&'b mut self, rw: &'b mut TextRewrite) -> RewriteCtxtRef<'s, 'b> {
         RewriteCtxtRef {
-            rewrites: rewrites,
             cx: self,
+            rw,
         }
     }
 
@@ -232,8 +248,8 @@ impl<'s> RewriteCtxt<'s> {
 
 
 pub struct RewriteCtxtRef<'s: 'a, 'a> {
-    rewrites: &'a mut Vec<TextRewrite>,
     cx: &'a mut RewriteCtxt<'s>,
+    rw: &'a mut TextRewrite,
 }
 
 impl<'s, 'a> Deref for RewriteCtxtRef<'s, 'a> {
@@ -253,62 +269,58 @@ impl<'s, 'a> DerefMut for RewriteCtxtRef<'s, 'a> {
 impl<'s, 'a> RewriteCtxtRef<'s, 'a> {
     pub fn borrow<'b>(&'b mut self) -> RewriteCtxtRef<'s, 'b> {
         RewriteCtxtRef {
-            rewrites: self.rewrites,
             cx: self.cx,
+            rw: self.rw,
         }
     }
 
-    pub fn with_rewrites<'b>(&'b mut self,
-                             rewrites: &'b mut Vec<TextRewrite>)
-                             -> RewriteCtxtRef<'s, 'b> {
+    pub fn enter<'b>(&'b mut self, rw: &'b mut TextRewrite) -> RewriteCtxtRef<'s, 'b> {
         RewriteCtxtRef {
-            rewrites: rewrites,
             cx: self.cx,
+            rw,
         }
     }
 
-    pub fn mark(&self) -> usize {
-        self.rewrites.len()
+    pub fn mark(&self) -> (usize, usize) {
+        (self.rw.rewrites.len(),
+         self.rw.nodes.len())
     }
 
-    pub fn rewind(&mut self, mark: usize) {
-        self.rewrites.truncate(mark);
+    pub fn rewind(&mut self, mark: (usize, usize)) {
+        self.rw.rewrites.truncate(mark.0);
+        self.rw.nodes.truncate(mark.1);
     }
 
-    pub fn record(&mut self,
-                  old_span: Span,
-                  new_span: Span,
-                  rewrites: Vec<TextRewrite>,
-                  adjust: TextAdjust) {
-        self.rewrites.push(TextRewrite {
-            old_span: old_span,
-            new_span: new_span,
-            rewrites: rewrites,
-            adjust: adjust,
-        });
+    pub fn record(&mut self, rw: TextRewrite) {
+        self.rw.rewrites.push(rw);
     }
 
     pub fn record_text(&mut self,
                        old_span: Span,
                        text: &str) {
         let new_span = self.text_span(text);
-        self.record(old_span, new_span, Vec::new(), TextAdjust::None);
+        self.record(TextRewrite::new(old_span, new_span));
+    }
+
+    pub fn record_node_span(&mut self, span: Span, id: NodeId) {
+        self.rw.nodes.push((span, id));
     }
 }
 
 
-pub fn rewrite<'s, T: Rewrite+Visit>(sess: &Session,
-                                     old: &'s T,
-                                     new: &T,
-                                     node_id_map: HashMap<NodeId, NodeId>,
-                                     map_extra_ast: impl FnOnce(&mut AstMap<'s>))
-                                     -> Vec<TextRewrite> {
+pub fn rewrite<'s, T>(sess: &Session,
+                      old: &'s T,
+                      new: &T,
+                      node_id_map: HashMap<NodeId, NodeId>,
+                      map_extra_ast: impl FnOnce(&mut AstMap<'s>))
+                      -> TextRewrite
+        where T: Rewrite+Visit+GetSpan {
     let mut map = map_ast(old);
     map_extra_ast(&mut map);
 
+    let mut rw = TextRewrite::new(DUMMY_SP, old.get_span());
     let mut rcx = RewriteCtxt::new(sess, map, node_id_map);
-    let mut rewrites = Vec::new();
-    let ok = Rewrite::rewrite(old, new, rcx.with_rewrites(&mut rewrites));
+    let ok = Rewrite::rewrite(old, new, rcx.enter(&mut rw));
     assert!(ok, "rewriting did not complete");
-    rewrites
+    rw
 }
