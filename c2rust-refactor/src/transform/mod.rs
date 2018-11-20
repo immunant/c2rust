@@ -62,6 +62,7 @@ transform_modules! {
     items,
     linkage,
     literals,
+    modules,
     ownership,
     retype,
     rewrite,
