@@ -196,6 +196,12 @@ impl<'st> CrateInformation<'st> {
         // This is where items get inserted into the corresponding
         // "destination module"
         self.item_map.clear();
+
+        let mut item_map = HashMap::new();
+        visit_nodes(&krate, |i: &Item| {
+            item_map.insert(i.id, i.clone());
+        });
+
         let krate = fold_nodes(krate, |pi: P<Item>| {
             if has_source_header(&pi.attrs) || is_std(&pi.attrs) {
                 return SmallVec::new();
@@ -231,6 +237,15 @@ impl<'st> CrateInformation<'st> {
                             Some(item)
                         }).collect();
 
+                        let use_stmts: Vec<&P<Item>> = mod_items.iter().filter_map(|item| {
+                            match item.node {
+                                ItemKind::Use(_) => {},
+                                _ => return None
+                            }
+                            Some(item)
+                        }).collect();
+
+
                         for new_item_id in new_item_ids.iter() {
                             // `get_mut` is used to remove duplicates from incoming
                             // `ForeignMod`'s
@@ -238,25 +253,25 @@ impl<'st> CrateInformation<'st> {
                             //  * Utilize `remove` as opposed to `get`, so  there won't be a need for
                             // a clone.
                             //  * Investigate why there is a panic here when just unwrapping.
-                            if let Some(new_item) = self.item_map.get_mut(new_item_id) {
-                                let mut use_stmt = false;
+                            if let Some(new_item) = item_map.get_mut(new_item_id) {
+                                let mut is_use_stmt = false;
                                 // Since `Use` statements do not have `Ident`'s,
                                 // it is necessary to iterate through all the module's items
                                 // and compare.
                                 if let ItemKind::Use(_) = new_item.node {
                                     let mut found = false;
-                                    for mod_item in m.items.iter() {
-                                        if compare_items(&mod_item, &new_item) {
+                                    for use_stmt in use_stmts.iter() {
+                                        if compare_items(&use_stmt, &new_item) {
                                             found = true;
                                         }
                                     }
                                     if !found {
                                         m.items.push(P(new_item.clone()));
                                     }
-                                    use_stmt = true;
+                                    is_use_stmt = true;
                                 }
 
-                                if !use_stmt {
+                                if !is_use_stmt {
                                     let mut found = false;
                                     let mut is_fm = false;
 
@@ -347,7 +362,6 @@ impl<'st> CrateInformation<'st> {
         for (ident, mod_ident) in new_path_info.iter() {
             self.new_path_info.entry(*mod_ident).or_insert_with(HashSet::new).insert(*ident);
         }
-
 
         krate
     }
@@ -441,10 +455,12 @@ impl Transform for ReorganizeModules {
                 i.node = match i.node {
                     ItemKind::Mod(ref m) => {
                         let mut m = m.clone();
+
                         // This iteration goes through the module items and finds use statements,
                         // and either removes use statements or modifies them to have correct the
                         // module name.
                         let mut seen_paths: HashMap<Ident, HashSet<Ident>> = HashMap::new();
+                        let mut new_paths = HashSet::new();
                         m.items = m.items.into_iter().filter_map(|item| {
                             // Removes use statements that are no longer needed in a module
                             if let Some((_, dest_module_id)) = krate_info.path_mapping.get(&item.id) {
@@ -470,15 +486,30 @@ impl Transform for ReorganizeModules {
                                     match ut.kind {
                                         UseTreeKind::Nested(ref use_trees) => {
                                             let mut segments = HashSet::new();
-                                            for (use_tree, _) in use_trees {
-                                                segments.insert(path_to_ident(&use_tree.prefix));
+
+                                            let mod_prefix = path_to_ident(&ut.prefix);
+                                            // This is a check to see if the use statement is:
+                                            // `use Super::{item, item2};`
+                                            // If it is we are going to seperate the nested
+                                            // statement to be N simple statements, N being the
+                                            // number of nested segements.
+                                            if mod_prefix.name == keywords::Super.name() ||
+                                                mod_prefix.name == keywords::SelfValue.name() {
+                                                for (use_tree, _) in use_trees {
+                                                    new_paths.insert(path_to_ident(&use_tree.prefix));
+                                                }
+                                            } else {
+                                                for (use_tree, _) in use_trees {
+                                                    segments.insert(path_to_ident(&use_tree.prefix));
+                                                }
+
+                                                seen_paths.entry(mod_prefix).and_modify(|set_of_segments| {
+                                                    set_of_segments.extend(segments.clone().into_iter());
+                                                }).or_insert_with(|| {
+                                                    segments
+                                                });
                                             }
 
-                                            seen_paths.entry(path_to_ident(&ut.prefix)).and_modify(|set_of_segments| {
-                                                set_of_segments.extend(segments.clone().into_iter());
-                                            }).or_insert_with(|| {
-                                                segments
-                                            });
                                         },
                                         UseTreeKind::Simple(..) => {
                                             if ut.prefix.segments.len() > 1 {
@@ -503,6 +534,14 @@ impl Transform for ReorganizeModules {
                             }
                             Some(item)
                         }).collect();
+
+                        for new_path in &new_paths {
+                            let path = mk().use_item(Path::from_ident(*new_path), None as Option<Ident>);
+                            // If the path isn't already in a path insert it.
+                            if seen_paths.values().any(|set_of_segments| set_of_segments.contains(new_path)) {
+                                m.items.push(path);
+                            }
+                        }
 
                         let seen_item_ids =
                             m.items.iter().map(|item| item.id).collect::<HashSet<_>>();
