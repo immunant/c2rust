@@ -46,9 +46,11 @@ pub mod relooper;
 pub mod structures;
 pub mod loops;
 pub mod multiples;
+mod inc_cleanup;
 
 use cfg::loops::*;
 use cfg::multiples::*;
+use cfg::inc_cleanup::IncCleanup;
 
 /// These labels identify basic blocks in a regular CFG.
 #[derive(Copy,Clone,PartialEq,Eq,PartialOrd,Ord,Debug,Hash)]
@@ -1699,6 +1701,7 @@ impl CfgBuilder {
         }
     }
 
+
     /// While we are building a control-flow graph, there are times when we can easily tell that the
     /// set of blocks we've just added form a closed subgraph (closed in the sense that there are no
     /// edges point into or out of the subgraph, save for the initial entry point). In these cases,
@@ -1727,7 +1730,6 @@ impl CfgBuilder {
         // Close off the `wip` using a `break` terminator
         let brk_lbl: Label = self.fresh_label();
 
-
         let (tail_expr, use_brk_lbl) = match in_tail {
             Some(ImplicitReturnType::Main) => (
                 mk().return_expr(Some(mk().lit_expr(mk().int_lit(0, "")))),
@@ -1748,42 +1750,6 @@ impl CfgBuilder {
             )
         };
 
-        let is_idempotent_tail_expr = move |stmt: &Stmt| -> bool {
-            let tail_expr = if let Stmt { node: StmtKind::Semi(ref expr), .. } = *stmt {
-                expr
-            } else {
-                return false
-            };
-            match in_tail {
-                Some(ImplicitReturnType::Main) => {
-                    if let Expr { node: ExprKind::Ret(Some(ref zero)), .. } = **tail_expr {
-                        if let Expr { node: ExprKind::Lit(ref lit), .. } = **zero {
-                            if let Lit { node: LitKind::Int(0, LitIntType::Unsuffixed), .. } = **lit {
-                                return true;
-                            }
-                        }
-                    }
-                    false
-                }
-
-                Some(ImplicitReturnType::Void) => {
-                    if let Expr { node: ExprKind::Ret(None), .. } = **tail_expr {
-                        return true;
-                    }
-                    false
-                },
-
-                _ => {
-                    if let Expr { node: ExprKind::Break(Some(ref blbl), None), .. } = **tail_expr {
-                        if blbl.ident == mk().label(brk_lbl.pretty_print()).ident {
-                            return true;
-                        }
-                    }
-                    false
-                }
-            }
-        };
-
         let fallthrough_id: Option<Label> = out_wip.map(|mut w| {
             w.push_stmt(mk().semi_stmt(tail_expr.clone()));
             let id = w.label;
@@ -1793,7 +1759,6 @@ impl CfgBuilder {
 
         let last_per_stmt = self.per_stmt_stack.pop().unwrap();
         let stmt_id = last_per_stmt.stmt_id.unwrap_or(CStmtId(0));
-//            println!("Stmt: {:?} {:#?}", stmt_id, translator.ast_context.index(stmt_id));
 
         // Make a CFG from the PerStmt.
         let (graph, store, live_in) = last_per_stmt.into_cfg();
@@ -1814,51 +1779,14 @@ impl CfgBuilder {
             false,
         )?;
 
-
-        if let Some(stmt) = stmts.pop() {
-            let need_block: bool = 'need_block: {
-
-                // If the very last stmt in our relooped output is a return/break, we can just
-                // remove that statement. We additionally know that there is definitely no need
-                // to label a block (if we were in that mode in the first place).
-                if is_idempotent_tail_expr(&stmt) {
-                    break 'need_block false;
-                }
-
-                // The next case is a peculiar one: it targets the last stmt in the relooped
-                // output when that last stmt is a two armed if and the `else` branch contains
-                // only a return/break.
-                if let Stmt { node: StmtKind::Expr(ref expr), .. } = &stmt {
-                    if let Expr { node: ExprKind::If(ref cond, ref body, ref els), .. } = **expr {
-                        if let Some(ref els) = els {
-                            if let Expr { node: ExprKind::Block(ref blk, None), .. } = **els {
-                                if blk.stmts.len() == 1 && is_idempotent_tail_expr(&blk.stmts[0]) {
-                                    stmts.push(Stmt {
-                                        node: StmtKind::Expr(P(Expr {
-                                            node: ExprKind::If(cond.clone(), body.clone(), None),
-                                            ..(**expr).clone()
-                                        })),
-                                        ..stmt.clone()
-                                    });
-                                    break 'need_block false;
-                                }
-                            }
-                        }
-                    }
-                };
-
-                // In all other cases, we give up and accept that we can't get rid of the last
-                // stmt and that we might need a block label.
-                stmts.push(stmt);
-                true
-            };
-
-            if has_fallthrough && need_block && use_brk_lbl {
-                translator.use_feature("label_break_value");
-                let block_body = mk().block(stmts);
-                let block: P<Expr> = mk().labelled_block_expr(block_body, brk_lbl.pretty_print());
-                stmts = vec![mk().expr_stmt(block)]
-            }
+        // Remove unnecessary break statements
+        let need_block = IncCleanup::new(in_tail, brk_lbl).stmts_need_block(&mut stmts);
+        
+        if has_fallthrough && need_block && use_brk_lbl {
+            translator.use_feature("label_break_value");
+            let block_body = mk().block(stmts);
+            let block: P<Expr> = mk().labelled_block_expr(block_body, brk_lbl.pretty_print());
+            stmts = vec![mk().expr_stmt(block)]
         }
 
         let mut flattened_wip = self.new_wip_block(entry);
