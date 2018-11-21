@@ -46,7 +46,9 @@ class Config:
     LIBFAKECHECKS_DIR = os.path.join(CROSS_CHECKS_DIR, "libfakechecks")
     LIBCLEVRBUF_DIR = os.path.join(REMON_SUBMOD_DIR, "libclevrbuf")
     EXAMPLES_DIR = os.path.join(ROOT_DIR, 'examples')
-    AST_EXPO_SRC_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-exporter/src')
+    AST_EXPO_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-exporter')
+    AST_EXPO_SRC_DIR = os.path.join(AST_EXPO_DIR, 'src')
+    AST_EXPO_PRJ_DIR = os.path.join(AST_EXPO_DIR, 'xcode')
 
     CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
     # use an install prefix unique to the host

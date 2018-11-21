@@ -69,7 +69,7 @@ def download_llvm_sources():
                 os.rename(c.LLVM_ARCHIVE_DIRS[2], "extra")
 
 
-def configure_and_build_llvm(args: str) -> None:
+def configure_and_build_llvm(args) -> None:
     """
     run cmake as needed to generate ninja buildfiles. then run ninja.
     """
@@ -77,7 +77,7 @@ def configure_and_build_llvm(args: str) -> None:
     build_type = "Debug" if args.debug else "RelWithDebInfo"
     ninja_build_file = os.path.join(c.LLVM_BLD, "build.ninja")
     with pb.local.cwd(c.LLVM_BLD):
-        if os.path.isfile(ninja_build_file):
+        if os.path.isfile(ninja_build_file) and not args.xcode:
             prev_build_type = get_ninja_build_type(ninja_build_file)
             run_cmake = prev_build_type != build_type
         else:
@@ -86,15 +86,10 @@ def configure_and_build_llvm(args: str) -> None:
         if run_cmake:
             cmake = get_cmd_or_die("cmake")
             max_link_jobs = est_parallel_link_jobs()
-            generator = "Xcode" if args.xcode else "Ninja"
             assertions = "1" if args.assertions else "0"
             ast_ext_dir = "-DLLVM_EXTERNAL_C2RUST_AST_EXPORTER_SOURCE_DIR={}"
             ast_ext_dir = ast_ext_dir.format(c.AST_EXPO_SRC_DIR)
-            clang_include_dirs = "-DCLANG_INCLUDE_DIRS=" + \
-                os.path.join(c.LLVM_SRC, "tools/clang/include")
-            clang_include_dirs = clang_include_dirs +  \
-                ";" + os.path.join(c.LLVM_BLD, "tools/clang/include")
-            cargs = ["-G", generator, c.LLVM_SRC,
+            cargs = ["-G", "Ninja", c.LLVM_SRC,
                      "-Wno-dev",
                      "-DCMAKE_C_COMPILER=clang",
                      "-DCMAKE_CXX_COMPILER=clang++",
@@ -104,38 +99,53 @@ def configure_and_build_llvm(args: str) -> None:
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
                      "-DLLVM_EXTERNAL_PROJECTS=c2rust-ast-exporter",
-                     "-DLLVM_DIR={}".format(c.LLVM_CFG_DIR),
-                     clang_include_dirs,
                      ast_ext_dir]
 
             if on_x86():  # speed up builds on x86 hosts
                 cargs.append("-DLLVM_TARGETS_TO_BUILD=X86")
             invoke(cmake[cargs])
+
+            # NOTE: we only generate Xcode project files for IDE support
+            # and don't build with them since the cargo build.rs files
+            # rely on cmake to build native code.
+            if args.xcode:
+                cargs[1] = "Xcode"
+                # output Xcode project files in a separate dir
+                with pb.local.cwd(c.AST_EXPO_PRJ_DIR):
+                    invoke(cmake[cargs])
         else:
             logging.debug("found existing ninja.build, not running cmake")
 
-        if args.xcode:
-            xcodebuild = get_cmd_or_die("xcodebuild")
-            xcodebuild_args = ['-target', 'c2rust-ast-exporter']
-            xcodebuild_args += ['-target', 'llvm-config']
-            invoke(xcodebuild)
-        else:
-            ninja = get_cmd_or_die("ninja")
-            ninja_args = ['c2rust-ast-exporter', 'llvm-config']
-            invoke(ninja, *ninja_args)
+        # if args.xcode:
+        #     xcodebuild = get_cmd_or_die("xcodebuild")
+        #     xc_conf_args = ['-configuration', build_type]
+        #     xc_args = xc_conf_args + ['-target', 'llvm-config']
+        #     invoke(xcodebuild, *xc_args)
+        #     xc_args = xc_conf_args + ['-target', 'c2rust-ast-exporter']
+        #     invoke(xcodebuild, *xc_args)
+        ninja = get_cmd_or_die("ninja")
+        ninja_args = ['c2rust-ast-exporter', 'llvm-config']
+        invoke(ninja, *ninja_args)
 
 
-def build_transpiler(debug: bool):
+def build_transpiler(args):
     cargo = get_cmd_or_die("cargo")
     build_flags = ["build", "--features", "llvm-static"]
 
-    if not debug:
+    if not args.debug:
         build_flags.append("--release")
 
+    llvm_config = os.path.join(c.LLVM_BLD, "bin/llvm-config")
+    assert os.path.isfile(llvm_config), "missing binary: " + llvm_config
+
+    # HACK(perl): `llvm-config --system-libs` does what we want but
+    # doesn't seem to work unless we actually install our LLVM build.
+    if on_mac():
+        llvm_system_libs = "-lz -lcurses -lm -lxml2"
+    else:  # linux
+        llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm -lxml2"
+
     with pb.local.cwd(os.path.join(c.ROOT_DIR, "c2rust-transpile")):
-        # use different target dirs for different hosts
-        llvm_config = os.path.join(c.LLVM_BLD, "bin/llvm-config")
-        llvm_system_libs = "-lz -lrt -ldl -ltinfo -lpthread -lm -lxml2"
         with pb.local.env(LLVM_CONFIG_PATH=llvm_config,
                           LLVM_SYSTEM_LIBS=llvm_system_libs):
             # build with custom rust toolchain
@@ -209,6 +219,7 @@ def _main():
         shutil.rmtree(c.LLVM_SRC, ignore_errors=True)
         shutil.rmtree(c.LLVM_BLD, ignore_errors=True)
         shutil.rmtree(c.DEPS_DIR, ignore_errors=True)
+        shutil.rmtree(c.AST_EXPO_PRJ_DIR, ignore_errors=True)
         cargo = get_cmd_or_die("cargo")
         with pb.local.cwd(os.path.join(c.ROOT_DIR, "c2rust-transpile")):
             invoke(cargo, "clean")
@@ -221,7 +232,7 @@ def _main():
 
     configure_and_build_llvm(args)
 
-    build_transpiler(args.debug)
+    build_transpiler(args)
 
 
 if __name__ == "__main__":
