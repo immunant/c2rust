@@ -44,9 +44,12 @@ set(AST_EXPORTER_BIN_SRCS
 if( PROJECT_NAME STREQUAL "LLVM" )
   # We are building in-tree, we can use LLVM cmake functions
 
+  add_definitions(-DCLANG_BIN_PATH="${CMAKE_INSTALL_PREFIX}/bin")
+  add_definitions(-DCLANG_VERSION_STRING="${PACKAGE_VERSION}")
+
   set(LLVM_OPTIONAL_SOURCES Main.cpp)
-  add_clang_executable(c2rust-ast-exporter ${AST_EXPORTER_BIN_SRCS})
-  add_clang_library(clangAstExporter ${AST_EXPORTER_SRCS})
+  add_clang_executable(c2rust-ast-exporter ${AST_EXPORTER_BIN_SRCS} DEPENDS clang-headers)
+  add_clang_library(clangAstExporter ${AST_EXPORTER_SRCS} DEPENDS clang-headers)
 
   set(LLVM_LINK_COMPONENTS support)
 else()
@@ -65,7 +68,6 @@ else()
   else()
     add_definitions(-DCLANG_BIN_PATH="${LLVM_INSTALL_PREFIX}/bin")
   endif()
-  add_definitions(-DCLANG_LIBDIR_SUFFIX="${LLVM_LIBDIR_SUFFIX}")
   add_definitions(-DCLANG_VERSION_STRING="${LLVM_PACKAGE_VERSION}")
 
   set(LLVM_LINK_COMPONENTS support)
@@ -79,6 +81,8 @@ else()
   # The library
   add_library(clangAstExporter STATIC ${AST_EXPORTER_SRCS})
 endif()
+
+add_definitions(-DCLANG_LIBDIR_SUFFIX="${LLVM_LIBDIR_SUFFIX}")
 
 set_target_properties(c2rust-ast-exporter PROPERTIES
   CXX_STANDARD 11
