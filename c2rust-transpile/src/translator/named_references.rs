@@ -4,7 +4,7 @@
 
 use super::*;
 
-impl Translation {
+impl<'c> Translation<'c> {
     /// Get back a Rust lvalue corresponding to the expression passed in.
     ///
     /// Do not use the output lvalue expression more than once.

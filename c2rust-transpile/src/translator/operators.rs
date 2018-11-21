@@ -10,7 +10,7 @@ fn wrapping_neg_expr(arg: P<Expr>) -> P<Expr> {
     mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<P<Expr>>)
 }
 
-impl Translation {
+impl<'c> Translation<'c> {
     pub fn convert_binary_expr(
         &self,
         use_: ExprUse,
