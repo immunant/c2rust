@@ -21,7 +21,3 @@ clap = {version = "~2.32.0", features = ["yaml"]}
 [lib]
 name = "c2rust_refactor"
 path = "src/lib.rs"
-
-[[bin]]
-name = "c2rust-refactor"
-doc = false

@@ -3,7 +3,7 @@
 
 use super::*;
 
-impl Translation {
+impl<'c> Translation<'c> {
     /// Convert a call to a builtin function to a Rust expression
     pub fn convert_builtin(
         &self,

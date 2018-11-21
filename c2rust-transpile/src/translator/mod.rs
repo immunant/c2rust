@@ -20,6 +20,7 @@ use rust_ast::item_store::ItemStore;
 use rust_ast::traverse::Traversal;
 use c2rust_ast_builder::{mk, Builder};
 
+use TranspilerConfig;
 use c_ast::*;
 use c_ast::iterators::{DFExpr, SomeId};
 use c_ast;
@@ -82,39 +83,11 @@ pub enum ReplaceMode {
     Extern,
 }
 
-/// Configuration settings for the translation process
-#[derive(Debug)]
-pub struct TranslationConfig {
-    pub incremental_relooper: bool,
-    pub fail_on_multiple: bool,
-    pub dump_function_cfgs: bool,
-    pub json_function_cfgs: bool,
-    pub dump_cfg_liveness: bool,
-    pub dump_structures: bool,
-    pub debug_relooper_labels: bool,
-    pub cross_checks: bool,
-    pub cross_check_configs: Vec<String>,
-    pub prefix_function_names: Option<String>,
-    pub translate_asm: bool,
-    pub translate_entry: bool,
-    pub use_c_loop_info: bool,
-    pub use_c_multiple_info: bool,
-    pub simplify_structures: bool,
-    pub panic_on_translator_failure: bool,
-    pub emit_module: bool,
-    pub main_file: Option<PathBuf>,
-    pub fail_on_error: bool,
-    pub replace_unsupported_decls: ReplaceMode,
-    pub translate_valist: bool,
-    pub reduce_type_annotations: bool,
-    pub reorganize_definitions: bool,
-}
-
-pub struct Translation {
+pub struct Translation<'c> {
 
     // Translation environment
     pub ast_context: TypedAstContext,
-    pub tcfg: TranslationConfig,
+    pub tcfg: &'c TranspilerConfig,
 
     // Accumulated outputs
     pub features: RefCell<IndexSet<&'static str>>,
@@ -285,7 +258,7 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: &path::Path)
     file_path
 }
 
-pub fn translate_failure(tcfg: &TranslationConfig, msg: &str) {
+pub fn translate_failure(tcfg: &TranspilerConfig, msg: &str) {
     if tcfg.fail_on_error {
         panic!("{}", msg)
     } else {
@@ -293,7 +266,7 @@ pub fn translate_failure(tcfg: &TranslationConfig, msg: &str) {
     }
 }
 
-pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> String {
+pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> String {
 
     let mut t = Translation::new(ast_context, tcfg);
 
@@ -404,15 +377,15 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
             };
             if needs_export {
                 let decl_file_path = decl.loc.as_ref().map(|loc| &loc.file_path).into_iter().flatten().next();
-                let main_file_path = t.tcfg.main_file.as_ref();
+                let main_file_path = &t.tcfg.main_file;
 
-                if t.tcfg.reorganize_definitions && decl_file_path != main_file_path {
+                if t.tcfg.reorganize_definitions && decl_file_path != Some(main_file_path) {
                     t.generate_submodule_imports(decl_id, decl_file_path);
                 }
 
                 match t.convert_decl(true, decl_id) {
                     Ok(ConvertedDecl::Item(item)) => t.insert_item(item, decl_file_path, main_file_path),
-                    Ok(ConvertedDecl::ForeignItem(item)) => t.insert_foreign_item(item, decl_file_path, main_file_path),
+                    Ok(ConvertedDecl::ForeignItem(item)) => t.insert_foreign_item(item, decl_file_path, &main_file_path),
                     Ok(ConvertedDecl::NoItem) => {},
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
@@ -437,9 +410,9 @@ pub fn translate(ast_context: TypedAstContext, tcfg: TranslationConfig) -> Strin
                     Some(Some(s)) => Some(s),
                     _ => None,
                 };
-                let main_file_path = t.tcfg.main_file.as_ref();
+                let main_file_path = &t.tcfg.main_file;
 
-                if t.tcfg.reorganize_definitions && decl_file_path != main_file_path {
+                if t.tcfg.reorganize_definitions && decl_file_path != Some(main_file_path) {
                     t.generate_submodule_imports(*top_id, decl_file_path);
                 }
 
@@ -688,8 +661,8 @@ enum ConvertedDecl {
     NoItem,
 }
 
-impl Translation {
-    pub fn new(mut ast_context: TypedAstContext, tcfg: TranslationConfig) -> Translation {
+impl<'c> Translation<'c> {
+    pub fn new(mut ast_context: TypedAstContext, tcfg: &'c TranspilerConfig) -> Self {
         let comment_context = RefCell::new(CommentContext::new(&mut ast_context));
         let mut type_converter = TypeConverter::new();
 
@@ -2732,8 +2705,8 @@ impl Translation {
 
     /// If we're trying to organize item definitions into submodules, add them to a module
     /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
-    fn insert_item(&self, item: P<Item>, decl_file_path: Option<&PathBuf>, main_file_path: Option<&PathBuf>) {
-        if self.tcfg.reorganize_definitions && decl_file_path.expect("There should be a decl file path.") != main_file_path.unwrap() {
+    fn insert_item(&self, item: P<Item>, decl_file_path: Option<&PathBuf>, main_file_path: &PathBuf) {
+        if self.tcfg.reorganize_definitions && decl_file_path.expect("There should be a decl file path.") != main_file_path {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
             let mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
 
@@ -2745,8 +2718,8 @@ impl Translation {
 
     /// If we're trying to organize foreign item definitions into submodules, add them to a module
     /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
-    fn insert_foreign_item(&self, item: ForeignItem, decl_file_path: Option<&PathBuf>, main_file_path: Option<&PathBuf>) {
-        if self.tcfg.reorganize_definitions && decl_file_path.unwrap() != main_file_path.unwrap() {
+    fn insert_foreign_item(&self, item: ForeignItem, decl_file_path: Option<&PathBuf>, main_file_path: &PathBuf) {
+        if self.tcfg.reorganize_definitions && decl_file_path.unwrap() != main_file_path {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
             let mod_block_items = mod_blocks.entry(decl_file_path.unwrap().clone()).or_insert(ItemStore::new());
 
@@ -2796,18 +2769,21 @@ impl Translation {
                 let ident_name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 // Either the decl lives in the parent module, or else in a sibling submodule
-                if decl_loc.file_path == self.tcfg.main_file {
-                    store.uses
-                        .get_mut(vec!["super".into()])
-                        .insert(ident_name);
-                } else {
-                    let file_path = decl_loc.file_path.as_ref().unwrap();
-                    let file_name = clean_path(&self.mod_names, &file_path);
+                match decl_loc.file_path {
+                    Some(ref decl_path) if decl_path == &self.tcfg.main_file => {
+                        store.uses
+                            .get_mut(vec!["super".into()])
+                            .insert(ident_name);
+                    }
+                    _ => {
+                        let file_path = decl_loc.file_path.as_ref().unwrap();
+                        let file_name = clean_path(&self.mod_names, &file_path);
 
-                    store.uses
-                        .get_mut(vec!["super".into(), file_name])
-                        .insert(ident_name);
-                }
+                        store.uses
+                            .get_mut(vec!["super".into(), file_name])
+                            .insert(ident_name);
+                    }
+                };
             },
             Function(CQualTypeId { ctype, .. }, ref params, ..) => {
                 // Return Type
