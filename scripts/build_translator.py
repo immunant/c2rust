@@ -124,7 +124,7 @@ def configure_and_build_llvm(args) -> None:
         #     xc_args = xc_conf_args + ['-target', 'c2rust-ast-exporter']
         #     invoke(xcodebuild, *xc_args)
         ninja = get_cmd_or_die("ninja")
-        ninja_args = ['c2rust-ast-exporter', 'llvm-config']
+        ninja_args = ['c2rust-ast-exporter', 'llvm-config', 'install-clang-headers']
         invoke(ninja, *ninja_args)
 
 
