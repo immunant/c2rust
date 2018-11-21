@@ -29,14 +29,14 @@ def format_files_in_temp_dir(blocks, temp_dir):
         else:
             raise TypeError('expected Text or ScriptDiff, got %s' % (type(b),))
 
-        fmt_files = {}
-        for f, (old, new) in b.files.items():
+        fmt_text = {}
+        for f, (old, new) in b.text.items():
             print('running rustfmt for %s' % f)
             fmt_old = format_text_in_file(old, path)
             fmt_new = format_text_in_file(new, path)
-            fmt_files[f] = (fmt_old, fmt_new)
+            fmt_text[f] = (fmt_old, fmt_new)
 
-        result.append(refactor.ScriptDiff(b.commands, b.raw, fmt_files))
+        result.append(refactor.ScriptDiff(b.commands, b.raw, fmt_text, b.nodes, b.marks))
 
     return result
 

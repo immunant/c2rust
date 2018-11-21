@@ -6,7 +6,6 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../../scripts'))
 from common import config
 
-import literate.diff
 import literate.format
 import literate.parse
 import literate.refactor
@@ -91,6 +90,7 @@ def do_render(args):
         f.write(literate.render.get_styles())
         f.write('</style>')
 
+        diff_idx = 0
         for b in blocks:
             if isinstance(b, literate.refactor.Text):
                 for line in b.lines:
@@ -100,11 +100,13 @@ def do_render(args):
                 for line in b.raw:
                     f.write(line)
                 f.write('```\n\n')
-                diff_text = literate.render.render_diff(b.files)
+                print('rendering diff #%d' % (diff_idx + 1))
+                diff_text = literate.render.render_diff(b.text, b.nodes, b.marks)
                 if diff_text is not None:
-                    f.write('<details><summary>Diff</summary>\n')
+                    f.write('<details><summary>Diff #%d</summary>\n' % (diff_idx + 1))
                     f.write(diff_text)
                     f.write('\n<hr></details>\n\n')
+                diff_idx += 1
             else:
                 raise TypeError('expected Text or ScriptDiff, got %s' % (type(b),))
 

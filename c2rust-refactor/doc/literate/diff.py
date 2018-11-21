@@ -5,164 +5,33 @@ import pygments.lexers
 import pygments.token
 import re
 
+from literate.annot import Span, merge_annot
+from literate.file import File, Diff, Hunk, OutputLine
 
-class Span:
-    '''A range of indices, `start <= i < end`.'''
-    __slots__ = ('start', 'end')
 
-    def __init__(self, start, end):
-        assert start <= end
-        self.start = start
-        self.end = end
+RUN_RE = re.compile(r'(.)\1*')
 
-    def is_empty(self):
-        return self.end == self.start
-
-    def __len__(self):
-        return self.end - self.start
-
-    def __iter__(self):
-        return iter(range(self.start, self.end))
-
-    def __contains__(self, i):
-        return self.start <= i < self.end
-
-    def overlaps(self, other):
-        '''Returns `True` if the two spans have at least one index in
-        common.'''
-        return other.start < self.end and self.start < other.end
-
-    def overlaps_ends(self, other):
-        '''Returns `True` if the spans overlap or touch at their endpoints.'''
-        return other.start <= self.end and self.start <= other.end
-
-    def intersect(self, other):
-        '''Return the intersection of two spans.  Raises an exception if `not
-        self.overlaps_ends(other)`.'''
-        return Span(max(self.start, other.start), min(self.end, other.end))
-
-    def contains(self, other):
-        return self.start <= other.start and other.end <= self.end
-
-    def __add__(self, x):
-        return Span(self.start + x, self.end + x)
-
-    def __sub__(self, x):
-        return Span(self.start - x, self.end - x)
-
-    def __str__(self):
-        return 'Span(%d, %d)' % (self.start, self.end)
-
-    def __repr__(self):
-        return self.__str__()
-
-    def copy(self):
-        return Span(self.start, self.end)
-
-def simplify_spans(ss):
-    '''Simplify a list of spans by merging adjacent or overlapping spans
-    together.
-
-    Unlike most functions in this module, `simplify_spans` can handle inputs
-    where the spans are overlapping (but they still must be sorted by start
-    position).'''
+def parse_intra_annot(s):
+    '''Parse an `ndiff` detail (`?`) line and convert it to an annotation
+    indicating intraline edits (`'ins'`, `'del'`, or `'chg'`) in the previous
+    line's text.'''
     spans = []
-    def merge(s):
-        if len(spans) == 0:
-            spans.append(s)
-            return
-
-        last = spans[-1]
-        if s.start <= last.end:
-            last.end = max(last.end, s.end)
-        else:
-            spans.append(s)
-
-    for s in ss:
-        merge(s)
+    for m in RUN_RE.finditer(s):
+        c = m.group(1)
+        label = {
+                '+': 'ins',
+                '-': 'del',
+                '^': 'chg',
+                }.get(c)
+        if label is not None:
+            spans.append(Span(m.start(), m.end(), label))
     return spans
 
-def merge_spans(ss1, ss2):
-    '''Merge two lists of spans into a single list.'''
-    simplify_input = []
-
-    # Merge ss1 and ss2 into a single list ordered by `start`.  The result is
-    # not valid for most purposes because it may contain overlapping spans, so
-    # we run it through `simplify` at the end to clean it up.
-    i = 0
-    j = 0
-    while i < len(ss1) and j < len(ss2):
-        if ss1[i].start < ss2[j].start:
-            simplify_input.append(ss1[i])
-            i += 1
-        else:
-            simplify_input.append(ss2[j])
-            j += 1
-
-    simplify_input.extend(ss1[i:])
-    simplify_input.extend(ss2[j:])
-
-    print('presimplify: ', simplify_input)
-
-    return simplify_spans(simplify_input)
-
-
-NON_SPACE_RE = re.compile(r'[^ \n]+')
-
-def detail_spans(s):
-    i = 0
-    spans = []
-    while True:
-        m = NON_SPACE_RE.search(s, i)
-        if not m:
-            break
-        spans.append(Span(m.start(), m.end()))
-        i = m.end()
-
-    return spans
-
-
-# A "diff" (according to this module) is a list of Context, Change, and Intra
-# blocks, all non-overlapping, and covering the entirety of some range of old
-# and new lines with no gaps.
-
-# A block of context lines.  `old_lines` is a span of indices (0-based) into
-# the old text; `new_lines` is indices in the new text.  Both have the same
-# length, and the indicated lines have identical content.
-Context = namedtuple('Context', ('old_lines', 'new_lines'))
-# A block of changed lines.  `old_lines` and `new_lines` are spans, as in
-# `Context`, but may differ in length and may refer to lines with unequal
-# contents.
-Change = namedtuple('Change', ('old_lines', 'new_lines'))
-# A single line with intraline changes.  `old_line` and `new_line` are line
-# numbers in the old/new text.  `del_spans` are spans of characters deleted
-# from the old line; `ins_spans` are characters inserted in the new line.
-Intra = namedtuple('Intra', ('old_line', 'new_line', 'del_spans', 'ins_spans'))
-
-def block_len(b):
-    if isinstance(b, Context):
-        return len(b.old_lines)
-    elif isinstance(b, Change):
-        return max(len(b.old_lines), len(b.new_lines))
-    elif isinstance(b, Intra):
-        return 1
-    else:
-        raise TypeError('expected block, but got %s' % (type(b),))
-
-def diff_len(blocks):
-    return sum(block_len(b) for b in blocks)
-
-
-
-# Basic diff construction.  This code is responsible for computing the actual
-# changes between a pair of old and new texts.  The result is a list of
-# Context, Change, and Intra blocks that covers the entirety of both inputs.
-
-def diff_lines(old_lines, new_lines):
+def diff_lines(old_lines: [str], new_lines: [str]):
     '''Compute a diff of `old` and `new`, and yield a sequence of (old_line,
-    new_line, old_detail, new_detail).  `line` is a boolean indicating whether
-    there is a line present in the old/new file, and `detail` is a list of
-    intraline edits.
+    new_line, old_detail, new_detail).  Each `line` is a boolean indicating
+    whether there is a line present in the old/new file, and `detail` is an
+    intraline edit annotation (see `parse_intra_annot`).
 
     Possible outputs:
     - (True, True, None, None): Unmodified/context line
@@ -210,7 +79,7 @@ def diff_lines(old_lines, new_lines):
             buf.append((False, True, None, None))
 
         elif prefix == '? ':
-            detail = detail_spans(dl[2:])
+            detail = parse_intra_annot(dl[2:])
 
             # Add this detail to the previous buffered line.  We may also need
             # to merge a pair of previous '-' and '+' lines, if we didn't
@@ -243,7 +112,7 @@ def diff_lines(old_lines, new_lines):
     while buf:
         yield buf.popleft()
 
-def adjust_blocks(old_lines, new_lines, diff):
+def adjust_closing_brace(old_lines: [str], new_lines: [str], diff):
     '''Adjust the output of `diff_lines` to turn this:
 
          fn f() {
@@ -333,303 +202,188 @@ def adjust_blocks(old_lines, new_lines, diff):
         else:
             buf.append(dl)
 
-def compute_diff(old, new):
-    '''Build a diff between `old` and `new`.  The result is a list of
-    blocks.'''
-    in_context = True
-    old_start = 0
-    old_end = 0
-    new_start = 0
-    new_end = 0
+def diff_files(f1: File, f2: File) -> Diff:
+    '''Diff two files, returning a `Diff` between them and also setting the
+    `intra` annotation on the lines of both files.'''
+    dls = diff_lines(f1.line_text, f2.line_text)
+    dls = adjust_closing_brace(f1.line_text, f2.line_text, dls)
 
-    blocks = []
+    diff_blocks = []
+    # Is the current span a change span?  (Or is it context?)
+    changed = True
+
+    old_start = 0
+    old_cur = 0
+    new_start = 0
+    new_cur = 0
 
     def flush():
-        nonlocal old_start, old_end, new_start, new_end
-        if old_start == old_end and new_start == new_end:
-            return
+        nonlocal old_start, new_start
+        if old_cur - old_start > 0 or new_cur - new_start > 0:
+            diff_blocks.append((changed,
+                Span(old_start, old_cur),
+                Span(new_start, new_cur)))
+        old_start = old_cur
+        new_start = new_cur
 
-        if in_context:
-            ctor = Context
-        else:
-            ctor = Change
-
-        blocks.append(ctor(
-            Span(old_start, old_end),
-            Span(new_start, new_end)))
-        old_start = old_end
-        new_start = new_end
-
-    def maybe_flush(new_in_context):
-        nonlocal in_context
-        if in_context != new_in_context:
+    for old_line, new_line, old_detail, new_detail in dls:
+        next_changed = not (old_line and new_line and
+                old_detail is None and new_detail is None)
+        has_intra = old_detail is not None or new_detail is not None
+        if next_changed != changed:
             flush()
-            in_context = new_in_context
 
-    old_lines = old.splitlines(keepends=True)
-    new_lines = new.splitlines(keepends=True)
-
-    dls_iter = diff_lines(old_lines, new_lines)
-    dls_iter = adjust_blocks(old_lines, new_lines, dls_iter)
-
-    for old_line, new_line, old_detail, new_detail in dls_iter:
-        if not old_line or not new_line:
-            # Insertion or deletion
-            maybe_flush(False)
-            if old_line:
-                old_end += 1
-            if new_line:
-                new_end += 1
-        elif old_detail is not None or new_detail is not None:
-            # Intraline change
+        if has_intra:
+            # Emit each `intra` line as its own block, to ensure they're
+            # aligned in the output.
             flush()
-            blocks.append(Intra(old_start, new_start, old_detail, new_detail))
-            old_end += 1
-            old_start = old_end
-            new_end += 1
-            new_start = new_end
-        else:
-            # Context line
-            maybe_flush(True)
-            old_end += 1
-            new_end += 1
+            if old_detail is not None:
+                f1.lines[old_cur].set_intra(old_detail)
+            if new_detail is not None:
+                f2.lines[new_cur].set_intra(new_detail)
+            flush()
 
-    flush()
-    return blocks
+        if old_line:
+            old_cur += 1
+        if new_line:
+            new_cur += 1
+        changed = next_changed
+
+    if old_cur - old_start > 0 and new_cur - new_start > 0:
+        diff_blocks.append((changed,
+            Span(old_start, old_cur),
+            Span(new_start, new_cur)))
+
+    return Diff(f1, f2, diff_blocks)
 
 
-
-# Diff-line manipulation.  This code is used for determining which parts of the
-# diff are visible and which are hidden.  It operates on lists of spans of
-# "diff lines", where a diff line is a line as it will appear in the final
-# two-column diff, consisting of an old line and a corresponding new line.
-# (Either side's line may be missing, in the case of a Change block where
-# `old_lines` and `new_lines` have different lengths.)
-#
-# Note that this code never explicitly constructs the two-column diff - it
-# merely uses the two-column diff's line numbers to identify sections of the
-# output.
-
-def dl_change_spans(blocks):
-    '''Return a list of spans of diff lines (0-based) covering all Change and
-    Intra blocks.'''
-    spans = []
-    # Diff lines covered by the most recent run of `Change` and `Intra` blocks.
-    # This can be empty if the most recent block was a `Context`.
-    cur = Span(0, 0)
-
-    for b in blocks:
-        if isinstance(b, Context):
-            if not cur.is_empty():
-                spans.append(cur.copy())
-            cur.end += len(b.old_lines)
-            cur.start = cur.end
-        elif isinstance(b, Change):
-            cur.end += max(len(b.old_lines), len(b.new_lines))
-        elif isinstance(b, Intra):
-            cur.end += 1
-        else:
-            raise TypeError('expected block, but got %s' % (type(b),))
-
-    if not cur.is_empty():
-        spans.append(cur)
-    return spans
-
-def dl_unchanged_spans_inner(blocks, keep_spans, old):
-    pos = 0
+def context_annot(blocks: [(bool, Span, Span)], new: bool, context_lines: int) -> [Span]:
+    '''Generate an annotation of the old or new file's lines, indicating which
+    lines are changes or context for changes (within `context_lines`
+    distance).'''
     result = []
-    i = 0
 
-    for b in blocks:
-        if isinstance(b, Context):
-            s = b.old_lines if old else b.new_lines
+    for (changed, old_span, new_span) in blocks:
+        if not changed:
+            continue
 
-            while i < len(keep_spans) and keep_spans[i].end <= s.start:
-                i += 1
+        span = new_span if new else old_span
+        context_span = Span(span.start - context_lines,
+                span.end + context_lines)
 
-            offset = s.start - pos
-            for keep in keep_spans[i:]:
-                if not keep.overlaps(s):
-                    break
-                overlap = keep.intersect(s)
-                result.append(overlap - offset)
-
-        pos += block_len(b)
+        if len(result) > 0 and context_span.start <= result[-1].end:
+            result[-1].end = context_span.end
+        else:
+            result.append(context_span)
 
     return result
 
-def dl_unchanged_spans(blocks, old_spans, new_spans):
-    '''Generate a list of diff line spans that covers all context lines whose
-    old line falls within one of the `old_spans` or whose new line falls within
-    one of the `new_spans`.  This is useful for forcing certain unchanged lines
-    to appear in the diff, even when they're outside the context range of any
-    changes.'''
-    return merge_spans(
-            dl_unchanged_spans_inner(blocks, old_spans, True),
-            dl_unchanged_spans_inner(blocks, new_spans, False))
+def filter_unchanged(blocks: [(bool, Span, Span)],
+        old_filt: [Span], new_filt: [Span]) -> [(bool, Span, Span)]:
+    '''Filter `blocks`, keeping changed blocks along with any portions of
+    unchanged blocks that fall within `old_filt` or `new_filt`.  The result is
+    formatted like `Diff.blocks` but blocks may not be contiguous and may not
+    cover the entire old/new file.'''
+    result = []
 
-def dl_add_context(spans, context_lines, diff_end):
-    '''Given a list of diff-line spans, expand each one by `context_lines` in
-    both directions.  `diff_end` should be the number of lines in the diff -
-    after expansion, spans will be truncated if they exceed this limit.'''
-    new_spans = []
+    old_i = 0
+    new_i = 0
 
-    for s in spans:
-        ctx = Span(s.start - context_lines, s.end + context_lines)
-        ctx.start = max(0, ctx.start)
-        ctx.end = min(diff_end, ctx.end)
+    print('old filter: %s\n new filter: %s' % (old_filt, new_filt))
 
-        if len(new_spans) == 0:
-            new_spans.append(ctx)
+    for changed, old_span, new_span in blocks:
+        if changed:
+            result.append((changed, old_span, new_span))
             continue
 
-        prev = new_spans[-1]
-        # Note ctx.start is never less than prev.start, since they both had
-        # context_lines subtracted and went through the same processing above.
-        # Similarly, ctx.end is always >= prev.end, assuming the input is
-        # well-formed (sorted and nonoverlapping).
-        assert ctx.start >= prev.start and ctx.end >= prev.end
-        if ctx.start in prev:
-            prev.end = ctx.end
-        else:
-            new_spans.append(ctx)
+        assert len(old_span) == len(new_span)
 
-    return new_spans
+        # Subspans of the current block that we should keep.
+        old_keep = []
+        new_keep = []
 
-def split_hunks(blocks):
-    '''Given a list of possibly non-contiguous blocks, split it into a list of
-    contiguous diff hunks.'''
-    old_pos = 0
-    new_pos = 0
+        while old_i < len(old_filt):
+            s = old_filt[old_i]
+            if s.overlaps(old_span):
+                old_keep.append(s.intersect(old_span) - old_span.start)
+            if s.end > old_span.end:
+                # `s` extends past the end of `old_span`, potentially into the
+                # next block's `old_span`.  Keep it around for the next block
+                # to see.
+                break
+            old_i += 1
+
+        while new_i < len(new_filt):
+            s = new_filt[new_i]
+            if s.overlaps(new_span):
+                new_keep.append(s.intersect(new_span) - new_span.start)
+            if s.end > new_span.end:
+                break
+            new_i += 1
+
+        keep = merge_annot(old_keep, new_keep)
+        print('from %s / %s, keep %s' % (old_span, new_span, keep))
+        for s in keep:
+            result.append((False, s + old_span.start, s + new_span.start))
+
+    return result
+
+def split_hunks(blocks: [(bool, Span, Span)]) -> [Hunk]:
+    '''Split the output of `filter_unchanged` into hunks, anywhere there's a
+    gap in the old or new line numbers.'''
+    last_old = 0
+    last_new = 0
     cur = []
     hunks = []
 
+    def flush():
+        nonlocal cur
+        if len(cur) > 0:
+            hunks.append(Hunk(cur))
+        cur = []
+
     for b in blocks:
-        if isinstance(b, (Context, Change)):
-            old_span = b.old_lines
-            new_span = b.new_lines
-        elif isinstance(b, Intra):
-            old_span = Span(b.old_line, b.old_line + 1)
-            new_span = Span(b.new_line, b.new_line + 1)
-        else:
-            raise TypeError('expected block, but got %s' % (type(b),))
-
-        if old_span.start != old_pos or new_span.start != new_pos:
-            if len(cur) > 0:
-                hunks.append(cur)
-            cur = []
-
+        changed, old_span, new_span = b
+        if old_span.start != last_old or new_span.start != last_new:
+            flush()
         cur.append(b)
+        last_old = old_span.end
+        last_new = new_span.end
 
-        old_pos = old_span.end
-        new_pos = new_span.end
-
-    if len(cur) > 0:
-        hunks.append(cur)
+    flush()
     return hunks
 
-def dl_filter_blocks(blocks, spans):
-    '''Filter a diff, extracting only those parts that are covered by one of
-    the diff line spans in `spans`.  Since the resulting diff is likely
-    non-contiguous, this function automatically splits the result into
-    hunks.'''
-    i = 0
-    pos = 0
+def build_diff_hunks(d: Diff):
+    '''Build a list of output hunks, and assign it to `d.hunks`.
 
-    # List of new blocks.  Blocks in this list aren't guaranteed to be
-    # contiguous.
-    new_blocks = []
+    If `d.old_file` or `d.new_file` has a `keep_lines` annotation, all
+    annotated lines will be kept as additional context.'''
+    keep_old = context_annot(d.blocks, False, 5)
+    # TODO: keep_lines
 
-    for b in blocks:
-        block_span = Span(pos, pos + block_len(b))
+    keep_new = context_annot(d.blocks, True, 5)
+    # TODO: keep_lines
 
-        while i < len(spans) and spans[i].end <= block_span.start:
-            i += 1
-
-        if i < len(spans) and spans[i].contains(block_span):
-            # Common case: the whole block is inside the filter span.
-            new_blocks.append(b)
-            pos += len(block_span)
-            continue
-
-        for s in spans[i:]:
-            if s.is_empty():
-                continue
-            if not s.overlaps(block_span):
-                break
-            # `overlap` is a span relative to the block itself - its endpoints
-            # are in the range 0 .. block_len(b).
-            overlap = s.intersect(block_span) - block_span.start
-            print('intersect %s with %s -> %s (%s)' % (s, block_span, overlap +
-                block_span.start, overlap))
-
-            if isinstance(b, Context):
-                new_blocks.append(Context(
-                    overlap + b.old_lines.start,
-                    overlap + b.new_lines.start))
-            elif isinstance(b, Change):
-                new_blocks.append(Change(
-                    (overlap + b.old_lines.start).intersect(b.old_lines),
-                    (overlap + b.new_lines.start).intersect(b.new_lines)))
-            elif isinstance(b, Intra):
-                # Impossible: `Intra` is only one line, so if any part of it
-                # `intersect`s the filter span, then the whole thing is inside
-                # and should have been caught by the fast path above.
-                assert False, 'unreachable'
-            else:
-                assert False, 'unreachable'
-
-        pos += len(block_span)
-
-    return split_hunks(new_blocks)
+    blocks = filter_unchanged(d.blocks, keep_old, keep_new)
+    hunks = split_hunks(blocks)
+    d.set_hunks(hunks)
 
 
+def hunk_output_lines(h: Hunk) -> [OutputLine]:
+    result = []
+    for changed, old_span, new_span in h.blocks:
+        common_lines = min(len(old_span), len(new_span))
+        for i in range(common_lines):
+            result.append(OutputLine(changed, old_span.start + i, new_span.start + i))
+        for i in range(common_lines, len(old_span)):
+            result.append(OutputLine(changed, old_span.start + i, None))
+        for i in range(common_lines, len(new_span)):
+            result.append(OutputLine(changed, None, new_span.start + i))
+    return result
 
-# Main entry point
-
-def build_diff(old, new, context_lines=5, keep_old=[], keep_new=[]):
-    '''Construct a diff between `old` and `new`, with `context_lines` of
-    context around each change.  Also keep context lines where the old line
-    falls in `keep_old` and/or the new line falls in `keep_new`.  The output is
-    a list of hunks, where each hunk is a list of contiguous blocks.'''
-    blocks = compute_diff(old, new)
-    changes = dl_change_spans(blocks)
-    changes_ctx = dl_add_context(changes, context_lines, diff_len(blocks))
-    hunks = dl_filter_blocks(blocks, changes_ctx)
-    return hunks
-
-
-
-def test_dl(blocks):
-    from pprint import pprint
-    print('--------------')
-    changes = dl_change_spans(blocks)
-    pprint(('changes', changes))
-    changes = dl_add_context(changes, 5, diff_len(blocks))
-    pprint(('changes2', changes))
-    keep = dl_unchanged_ranges(blocks, [
-        Span(100, 200),
-        Span(700, 720),
-    ], [])
-    pprint(('keep', keep))
-    spans = merge_spans(changes, keep)
-    pprint(('spans', spans))
-    hunks = dl_filter_blocks(blocks, spans)
-    pprint(('hunks', hunks))
-
-
-
-def render_diff(files):
-    file_names = sorted(files.keys())
-    parts = []
-    for f in file_names:
-        old, new = files[f]
-        test_dl(compute_diff(old, new))
-        parts.extend(difflib.unified_diff(
-            old.splitlines(keepends=True),
-            new.splitlines(keepends=True),
-            fromfile='old/%s' % f,
-            tofile='new/%s' % f))
-        parts.append('\n\n')
-
-    return ''.join(parts)
+def build_output_lines(d: Diff):
+    '''Build a list of two-column output lines for each hunk of `d`, and set
+    the `Hunk.output_lines` fields.'''
+    for h in d.hunks:
+        output_lines = hunk_output_lines(h)
+        h.set_output_lines(output_lines)
