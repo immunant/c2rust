@@ -116,13 +116,12 @@ def configure_and_build_llvm(args: str) -> None:
 
         if args.xcode:
             xcodebuild = get_cmd_or_die("xcodebuild")
-            # xcodebuild_args = ['-target', 'install']
             xcodebuild_args = ['-target', 'c2rust-ast-exporter']
+            xcodebuild_args += ['-target', 'llvm-config']
             invoke(xcodebuild)
         else:
             ninja = get_cmd_or_die("ninja")
-            # ninja_args = ['install']
-            ninja_args = ['c2rust-ast-exporter']
+            ninja_args = ['c2rust-ast-exporter', 'llvm-config']
             invoke(ninja, *ninja_args)
 
 
@@ -135,7 +134,7 @@ def build_transpiler(debug: bool):
 
     with pb.local.cwd(os.path.join(c.ROOT_DIR, "c2rust-transpile")):
         # use different target dirs for different hosts
-        llvm_config = os.path.join(c.LLVM_INSTALL, "bin/llvm-config")
+        llvm_config = os.path.join(c.LLVM_BLD, "bin/llvm-config")
         with pb.local.env(LLVM_CONFIG_PATH=llvm_config):
             # build with custom rust toolchain
             invoke(cargo, "+" + c.CUSTOM_RUST_NAME, *build_flags)
