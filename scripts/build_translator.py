@@ -98,6 +98,7 @@ def configure_and_build_llvm(args: str) -> None:
                      "-Wno-dev",
                      "-DCMAKE_C_COMPILER=clang",
                      "-DCMAKE_CXX_COMPILER=clang++",
+                     "-DLLVM_ENABLE_ZLIB=OFF",
                      "-DCMAKE_INSTALL_PREFIX=" + c.LLVM_INSTALL,
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
