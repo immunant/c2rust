@@ -6,6 +6,7 @@ members = [
     "c2rust-ast-builder",
     "c2rust-ast-exporter",
     "manual/preprocessors",
+	"c2rust-bitfields",
 ]
 exclude = [
     "cross-checks/rust-checks",

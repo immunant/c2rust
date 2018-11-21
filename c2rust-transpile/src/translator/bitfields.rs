@@ -285,7 +285,7 @@ impl Translation {
     /// ```no_run
     /// let bitfield_size = {
     ///     // Or manually default init every field
-    ///     let zeroed: bitfield_struct = unsafe { zerod() };
+    ///     let zeroed: bitfield_struct = unsafe { std::mem::zeroed() };
     ///     let byte_array = bitfield_struct.packed();
     ///
     ///     // or byte_array.len()?
