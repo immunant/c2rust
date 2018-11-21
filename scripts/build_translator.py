@@ -136,7 +136,9 @@ def build_transpiler(debug: bool):
     with pb.local.cwd(os.path.join(c.ROOT_DIR, "c2rust-transpile")):
         # use different target dirs for different hosts
         llvm_config = os.path.join(c.LLVM_BLD, "bin/llvm-config")
-        with pb.local.env(LLVM_CONFIG_PATH=llvm_config):
+        llvm_system_libs = "-lz -lrt -ldl -ltinfo -lpthread -lm -lxml2"
+        with pb.local.env(LLVM_CONFIG_PATH=llvm_config,
+                          LLVM_SYSTEM_LIBS=llvm_system_libs):
             # build with custom rust toolchain
             invoke(cargo, "+" + c.CUSTOM_RUST_NAME, *build_flags)
 
