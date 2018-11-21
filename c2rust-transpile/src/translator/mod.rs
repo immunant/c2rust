@@ -354,7 +354,19 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> Strin
             };
             match decl_name {
                 Name::NoName => (),
-                Name::AnonymousType => { t.type_converter.borrow_mut().declare_decl_name(decl_id, "unnamed"); }
+                Name::AnonymousType => {
+                    let mut name: String = "unnamed".to_string();
+                    // Different modules may contain an decl, `unnamed`,
+                    // but be completely different decls. This causes issues on the `reorganize_modules` transform
+                    // in the `c2rust-refactor` tool. Mainly having multiple `unnamed` decls
+                    // in one module.
+                    if t.tcfg.reorganize_definitions {
+                        let decl_file_path = decl.loc.as_ref().map(|loc| &loc.file_path).into_iter().flatten().next();
+                        let mod_name = format!("_{}", clean_path(&t.mod_names, &decl_file_path.unwrap()));
+                        name.push_str(&mod_name);
+                    }
+                    t.type_converter.borrow_mut().declare_decl_name(decl_id, &name);
+                }
                 Name::TypeName(name) => { t.type_converter.borrow_mut().declare_decl_name(decl_id, name); }
                 Name::VarName(name) => { t.renamer.borrow_mut().insert(decl_id, &name); }
             }
