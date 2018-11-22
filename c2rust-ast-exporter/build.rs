@@ -88,6 +88,7 @@ fn generate_bindings() -> Result<(), &'static str> {
         .whitelist_type("ExportResult")
         .generate_comments(true)
         .derive_default(true)
+        .clang_arg("-std=c++11")
         // Finish the builder and generate the bindings.
         .generate()
         .or(Err("Unable to generate ExportResult bindings"))?;
