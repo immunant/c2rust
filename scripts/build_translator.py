@@ -98,7 +98,6 @@ def configure_and_build_llvm(args) -> None:
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
-                     "-DLLVM_EXTERNAL_PROJECTS=c2rust-ast-exporter",
                      ast_ext_dir]
 
             if on_x86():  # speed up builds on x86 hosts
