@@ -22,13 +22,13 @@ ExternalProject_Add(tinycbor_build
             # work around https://github.com/intel/tinycbor/issues/136
             TEST_COMMAND cp ${TINYCBOR_VERSION_H} <INSTALL_DIR>/include/
             BUILD_IN_SOURCE 1
-            BUILD_BYPRODUCTS lib/libtinycbor.a
+            BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/lib/libtinycbor.a
 )
 
 include_directories(${CMAKE_BINARY_DIR}/include)
 
 add_library(tinycbor STATIC IMPORTED)
-set_target_properties(tinycbor PROPERTIES IMPORTED_LOCATION lib/libtinycbor.a)
+set_target_properties(tinycbor PROPERTIES IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/lib/libtinycbor.a)
 add_dependencies(tinycbor tinycbor_build)
 
 set(AST_EXPORTER_SRCS
