@@ -122,7 +122,6 @@ fn build_native(llvm_info: &LLVMInfo) {
 
         // What to build
         .build_target("clangAstExporter")
-        .cxxflag("-std=c++11")
         .build();
 
     let out_dir = dst.display();
