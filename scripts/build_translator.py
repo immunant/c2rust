@@ -167,7 +167,7 @@ def build_transpiler(args):
     else:  # linux
         llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm -lxml2"
 
-    with pb.local.cwd(os.path.join(c.ROOT_DIR, "c2rust-transpile")):
+    with pb.local.cwd(c.ROOT_DIR):
         with pb.local.env(LLVM_CONFIG_PATH=llvm_config,
                           LLVM_SYSTEM_LIBS=llvm_system_libs):
             # build with custom rust toolchain
@@ -243,7 +243,7 @@ def _main():
         shutil.rmtree(c.DEPS_DIR, ignore_errors=True)
         shutil.rmtree(c.AST_EXPO_PRJ_DIR, ignore_errors=True)
         cargo = get_cmd_or_die("cargo")
-        with pb.local.cwd(os.path.join(c.ROOT_DIR, "c2rust-transpile")):
+        with pb.local.cwd(c.ROOT_DIR):
             invoke(cargo, "clean")
 
     ensure_dir(c.LLVM_BLD)
