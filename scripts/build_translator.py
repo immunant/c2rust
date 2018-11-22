@@ -168,9 +168,12 @@ def build_transpiler(args):
     else:  # linux
         llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm -lxml2"
 
+    llvm_libdir = os.path.join(c.LLVM_BLD, "lib")
+
     with pb.local.cwd(c.ROOT_DIR):
         with pb.local.env(LLVM_CONFIG_PATH=llvm_config,
-                          LLVM_SYSTEM_LIBS=llvm_system_libs):
+                          LLVM_SYSTEM_LIBS=llvm_system_libs,
+                          C2RUST_AST_EXPORTER_LIB_DIR=llvm_libdir):
             # build with custom rust toolchain
             invoke(cargo, "+" + c.CUSTOM_RUST_NAME, *build_flags)
 

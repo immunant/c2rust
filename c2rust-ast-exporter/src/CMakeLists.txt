@@ -13,21 +13,22 @@ set(TINYCBOR_VERSION_H "${TINYCBOR_PREFIX}/src/tinycbor_build/src/tinycbor-versi
 include(ExternalProject)
 ExternalProject_Add(tinycbor_build
             PREFIX ${TINYCBOR_PREFIX}
+            INSTALL_DIR ${CMAKE_BINARY_DIR}
             URL ${TINYCBOR_URL}
             URL_HASH MD5=${TINYCBOR_MD5}
             CONFIGURE_COMMAND ""
-            BUILD_COMMAND make --quiet prefix=${TINYCBOR_PREFIX} CFLAGS=-fPIC
-            INSTALL_COMMAND make --quiet prefix=${TINYCBOR_PREFIX} install
+            BUILD_COMMAND make --quiet prefix=<INSTALL_DIR> CFLAGS=-fPIC
+            INSTALL_COMMAND make --quiet prefix=<INSTALL_DIR> install
             # work around https://github.com/intel/tinycbor/issues/136
-            TEST_COMMAND cp ${TINYCBOR_VERSION_H} ${TINYCBOR_PREFIX}/include/
+            TEST_COMMAND cp ${TINYCBOR_VERSION_H} <INSTALL_DIR>/include/
             BUILD_IN_SOURCE 1
-            BUILD_BYPRODUCTS ${TINYCBOR_PREFIX}/lib/libtinycbor.a
+            BUILD_BYPRODUCTS lib/libtinycbor.a
 )
 
-include_directories(${TINYCBOR_PREFIX}/include)
+include_directories(${CMAKE_BINARY_DIR}/include)
 
 add_library(tinycbor STATIC IMPORTED)
-set_target_properties(tinycbor PROPERTIES IMPORTED_LOCATION ${TINYCBOR_PREFIX}/lib/libtinycbor.a)
+set_target_properties(tinycbor PROPERTIES IMPORTED_LOCATION lib/libtinycbor.a)
 add_dependencies(tinycbor tinycbor_build)
 
 set(AST_EXPORTER_SRCS

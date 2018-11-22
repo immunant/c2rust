@@ -116,25 +116,31 @@ fn build_native(llvm_info: &LLVMInfo) {
     // Find where the (already built) LLVM lib dir is
     let llvm_lib = &llvm_info.lib_dir;
 
-    let dst = Config::new("src")
-        // Where to find LLVM/Clang CMake files
-        .define("LLVM_DIR",           &format!("{}/cmake/llvm",  llvm_lib))
-        .define("Clang_DIR",          &format!("{}/cmake/clang", llvm_lib))
+    match env::var("C2RUST_AST_EXPORTER_LIB_DIR") {
+        Ok(libdir) => {
+            println!("cargo:rustc-link-search={}", libdir);
+        }
+        _ => {
+            // Build libclangAstExporter.a with cmake
+            let dst = Config::new("src")
+            // Where to find LLVM/Clang CMake files
+                .define("LLVM_DIR",           &format!("{}/cmake/llvm",  llvm_lib))
+                .define("Clang_DIR",          &format!("{}/cmake/clang", llvm_lib))
+            // What to build
+                .build_target("clangAstExporter")
+                .build();
 
-        // What to build
-        .build_target("clangAstExporter")
-        .build();
+            let out_dir = dst.display();
 
-    let out_dir = dst.display();
+            // Set up search path for newly built tinycbor.a and libclangAstExporter.a
+            println!("cargo:rustc-link-search={}/build/lib", out_dir);
+            println!("cargo:rustc-link-search={}/build", out_dir);
+        }
+    };
 
-
-    // Statically link against static TinyCBOR lib
-    println!("cargo:rustc-link-search={}/build/tinycbor/lib", out_dir);
+    // Statically link against 'clangAstExporter' which requires 'tinycbor'
     println!("cargo:rustc-link-lib=static=tinycbor");
-
-    // Statically link against 'clangAstExporter'
-    println!("cargo:rustc-link-search={}/build", out_dir);
-    println!("cargo:rustc-link-lib=static={}", "clangAstExporter");
+    println!("cargo:rustc-link-lib=static=clangAstExporter");
 
     // Link against these Clang libs. The ordering here is important! Libraries
     // must be listed before their dependencies when statically linking.
