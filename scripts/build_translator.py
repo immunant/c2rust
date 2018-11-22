@@ -69,6 +69,29 @@ def download_llvm_sources():
                 os.rename(c.LLVM_ARCHIVE_DIRS[2], "extra")
 
 
+def update_cmakelists():
+    """
+    Even though we build the ast-exporter out-of-tree, we still need 
+    it to be treated as if it was in a subdirectory of clang to pick
+    up the required clang headers, etc.
+    """
+    filepath = os.path.join(c.LLVM_SRC, 'tools/clang/CMakeLists.txt')
+    command = "add_clang_subdirectory(c2rust-ast-exporter)"
+    if not os.path.isfile(filepath):
+        die("not found: " + filepath, errno.ENOENT)
+
+    # did we add the required command already?
+    with open(filepath, "r") as handle:
+        cmakelists = handle.readlines()
+        add_commands = not any([command in l for l in cmakelists])
+        logging.debug("add commands to %s: %s", filepath, add_commands)
+
+    if add_commands:
+        with open(filepath, "a+") as handle:
+            handle.writelines(command)
+        logging.debug("added commands to %s", filepath)
+
+
 def configure_and_build_llvm(args) -> None:
     """
     run cmake as needed to generate ninja buildfiles. then run ninja.
@@ -228,6 +251,8 @@ def _main():
     git_ignore_dir(c.DEPS_DIR)
 
     download_llvm_sources()
+
+    update_cmakelists()
 
     configure_and_build_llvm(args)
 
