@@ -45,6 +45,21 @@ impl IncCleanup {
                     ExprKind::Ret(..) | ExprKind::Break(..) => {
                         need_block = false
                     }
+
+                    ExprKind::Match(_, ref mut cases) => {
+                        // Block label will be needed if any of the arms need it
+                        need_block = false;
+                        for case in cases {
+                            match case.body.node {
+                                ExprKind::Block(ref mut blk, _) => {
+                                    if self.stmts_need_block(&mut blk.stmts) {
+                                        need_block = true
+                                    }
+                                }
+                                _ => need_block = true, // Safe fallback
+                            }
+                        }
+                    }
                     _ => (),
                 }
             }
