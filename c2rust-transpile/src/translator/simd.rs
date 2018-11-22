@@ -64,7 +64,7 @@ static SIMD_X86_64_ONLY: [&str; 11] = [
     "_mm_stream_si64",
 ];
 
-impl Translation {
+impl<'c> Translation<'c> {
 
     /// Given the name of a typedef check if its one of the SIMD types.
     /// This function returns `true` when the name of the type is one that

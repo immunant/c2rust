@@ -30,44 +30,56 @@ add_library(tinycbor STATIC IMPORTED)
 set_target_properties(tinycbor PROPERTIES IMPORTED_LOCATION ${TINYCBOR_PREFIX}/lib/libtinycbor.a)
 add_dependencies(tinycbor tinycbor_build)
 
-
-#################################################
-# LLVM/Clang                                    #
-#################################################
-find_package(LLVM REQUIRED CONFIG)
-
-# Debian and Ubuntu's clang cmake files are broken, so we can't require the
-# package here. We already have to manually order the link against the clang
-# libs in build.rs, so that's not so bad.
-find_package(Clang CONFIG)
-
-include_directories(${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
-add_definitions(${LLVM_DEFINITIONS} ${CLANG_DEFINITIONS})
-
-if(Clang_FOUND)
-  add_definitions(-DCLANG_BIN_PATH="${CLANG_INSTALL_PREFIX}/bin")
-else()
-  add_definitions(-DCLANG_BIN_PATH="${LLVM_INSTALL_PREFIX}/bin")
-endif()
-add_definitions(-DCLANG_LIBDIR_SUFFIX="${LLVM_LIBDIR_SUFFIX}")
-add_definitions(-DCLANG_VERSION_STRING="${LLVM_PACKAGE_VERSION}")
-
-set(LLVM_LINK_COMPONENTS support)
-
-# LLVM is not always built with RTTI, we don't need it either.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
-
-#################################################
-# AST Exporter                                  #
-#################################################
-
-# The executable
-add_executable(c2rust-ast-exporter
+set(AST_EXPORTER_SRCS
   AstExporter.cpp
   FloatingLexer.cpp
   ExportResult.cpp
+  )
+
+set(AST_EXPORTER_BIN_SRCS
+  ${AST_EXPORTER_SRCS}
   Main.cpp
   )
+
+if( PROJECT_NAME STREQUAL "LLVM" )
+  # We are building in-tree, we can use LLVM cmake functions
+
+  set(LLVM_OPTIONAL_SOURCES Main.cpp)
+  add_clang_executable(c2rust-ast-exporter ${AST_EXPORTER_BIN_SRCS})
+  add_clang_library(clangAstExporter ${AST_EXPORTER_SRCS})
+
+  set(LLVM_LINK_COMPONENTS support)
+else()
+  find_package(LLVM REQUIRED CONFIG)
+
+  # Debian and Ubuntu's clang cmake files are broken, so we can't require the
+  # package here. We already have to manually order the link against the clang
+  # libs in build.rs, so that's not so bad.
+  find_package(Clang CONFIG)
+
+  include_directories(${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
+  add_definitions(${LLVM_DEFINITIONS} ${CLANG_DEFINITIONS})
+
+  if(Clang_FOUND)
+    add_definitions(-DCLANG_BIN_PATH="${CLANG_INSTALL_PREFIX}/bin")
+  else()
+    add_definitions(-DCLANG_BIN_PATH="${LLVM_INSTALL_PREFIX}/bin")
+  endif()
+  add_definitions(-DCLANG_LIBDIR_SUFFIX="${LLVM_LIBDIR_SUFFIX}")
+  add_definitions(-DCLANG_VERSION_STRING="${LLVM_PACKAGE_VERSION}")
+
+  set(LLVM_LINK_COMPONENTS support)
+
+  # LLVM is not always built with RTTI, we don't need it either.
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
+
+  # The executable
+  add_executable(c2rust-ast-exporter ${AST_EXPORTER_BIN_SRCS})
+
+  # The library
+  add_library(clangAstExporter STATIC ${AST_EXPORTER_SRCS})
+endif()
+
 set_target_properties(c2rust-ast-exporter PROPERTIES
   CXX_STANDARD 11
   CXX_EXTENSIONS OFF
@@ -81,14 +93,8 @@ target_link_libraries(c2rust-ast-exporter PRIVATE
   clangBasic
   clangASTMatchers
   tinycbor
-)
-
-# The library
-add_library(clangAstExporter STATIC
-  AstExporter.cpp
-  FloatingLexer.cpp
-  ExportResult.cpp
   )
+
 set_target_properties(clangAstExporter PROPERTIES
   CXX_STANDARD 11
   CXX_EXTENSIONS OFF
@@ -100,5 +106,4 @@ target_link_libraries(clangAstExporter PRIVATE
   clangBasic
   clangASTMatchers
   tinycbor
-)
-
+  )

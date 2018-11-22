@@ -3,7 +3,7 @@
 
 use super::*;
 
-impl Translation {
+impl<'c> Translation<'c> {
     /// Convert an inline-assembly statement into one or more Rust statements.
     /// If inline assembly translation is not enabled this will result in an
     /// error message instead of a conversion. Because the inline assembly syntax

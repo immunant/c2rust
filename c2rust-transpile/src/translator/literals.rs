@@ -4,7 +4,7 @@
 
 use super::*;
 
-impl Translation {
+impl<'c> Translation<'c> {
     /// Generate an integer literal corresponding to the given type, value, and base.
     pub fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> P<Expr> {
         // Note that C doesn't have anything smaller than integer literals

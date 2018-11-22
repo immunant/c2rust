@@ -5,7 +5,7 @@
 
 use super::*;
 
-impl Translation {
+impl<'c> Translation<'c> {
     pub fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, String> {
         if let CDeclKind::Function { ref parameters, typ, .. } = self.ast_context.index(main_id).kind {
 
