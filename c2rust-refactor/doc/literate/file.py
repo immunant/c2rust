@@ -103,6 +103,10 @@ class File:
         # each point in the file.
         self.mark_annot = None
 
+        # Maps marked node IDs to sets of labels added, removed, and kept
+        # unchanged during refactoring.
+        self.mark_labels = None
+
         # The formatted text of the file.
         self.text = None
 
@@ -129,6 +133,7 @@ class File:
                 self.unformatted, self.unformatted_nodes, self.raw_marks)
         c.marks = self.marks
         c.mark_annot = self.mark_annot
+        c.mark_labels = self.mark_labels
         c.text = self.text
         c.fmt_map = self.fmt_map
         c.fmt_map_index = self.fmt_map_index
@@ -151,6 +156,10 @@ class File:
     def set_mark_annot(self, mark_annot):
         assert self.mark_annot is None
         self.mark_annot = mark_annot
+
+    def set_mark_labels(self, mark_labels):
+        assert self.mark_labels is None
+        self.mark_labels = mark_labels
 
     def set_fmt_map(self, fmt_map, fmt_map_index):
         assert self.fmt_map is None

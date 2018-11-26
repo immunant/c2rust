@@ -1,4 +1,5 @@
 from collections import namedtuple
+import html
 import pygments.formatters
 import pygments.lexers
 import pygments.token
@@ -11,14 +12,53 @@ import literate.highlight
 import literate.marks
 
 
-def render_line(line):
+def mark_class(f: File, node_id: int) -> str:
+    added, removed, kept = f.mark_labels.get(node_id, ((), (), ()))
+
+    if len(added) == 0 and len(removed) == 0:
+        return 'kept'
+    elif len(added) > 0 and len(removed) == 0 and len(kept) == 0:
+        return 'ins'
+    elif len(removed) > 0 and len(added) == 0 and len(kept) == 0:
+        return 'del'
+    else:
+        return 'chg'
+
+def mark_desc(f: File, node_id: int) -> str:
+    m = f.marks[node_id]
+
+    if m.id == 0xffffffff:
+        id_str = '#DUMMY'
+    elif (m.id & 0x80000000) != 0:
+        id_str = '#NEW-%d' % (m.id & ~0x80000000)
+    else:
+        id_str = '#%d' % m.id
+
+    if m.name is not None and m.name != '':
+        mark_str = '%s %s "%s"' % (m.kind, id_str, m.name)
+    else:
+        mark_str = '%s %s' % (m.kind, id_str)
+
+    added, removed, kept = f.mark_labels.get(node_id, ((), (), ()))
     parts = []
-    def start_span(label, convert=lambda s: s):
-        if label is not None:
-            parts.append('<span class="%s">' % (convert(label),))
-    def end_span(label):
-        if label is not None:
-            parts.append('</span>')
+    if len(added) > 0:
+        parts.append('added %s' % ', '.join(repr(l) for l in added))
+    if len(removed) > 0:
+        parts.append('removed %s' % ', '.join(repr(l) for l in removed))
+    if len(kept) > 0:
+        parts.append('kept %s' % ', '.join(repr(l) for l in kept))
+
+    return '%s: %s' % (mark_str, '; '.join(parts))
+
+def render_line(line, f):
+    parts = []
+    def mark_marker(m, start):
+        if start:
+            sym = '&#x25b6'
+        else:
+            sym = '&#x25c0'
+        parts.append('<a class="mark-%s" title="%s">%s</a>' %
+                (mark_class(f, m), html.escape(mark_desc(f, m)), sym))
 
 
     if line.intra is not None:
@@ -47,8 +87,8 @@ def render_line(line):
     last_pos = 0
 
     if line.hunk_start_marks:
-        for m in line.hunk_start_marks:
-            parts.append('<a class="mark-start" title="%d">&#x25b6</a>' % m)
+        for m in sorted(line.hunk_start_marks):
+            mark_marker(m, True)
 
             # These hunk-start markers often appear before the whitespace
             # of indented lines.  To avoid throwing off the indentation, we let
@@ -71,12 +111,12 @@ def render_line(line):
 
         kind, label = p.label
 
-        if kind == 'm_s':
-            for m in label:
-                parts.append('<a class="mark-start" title="%d">&#x25b6</a>' % m)
+        if kind in 'm_s':
+            for m in sorted(label):
+                mark_marker(m, True)
         elif kind == 'm_e':
-            for m in label:
-                parts.append('<a class="mark-end" title="%d">&#x25c0</a>' % m)
+            for m in sorted(label):
+                mark_marker(m, False)
         elif kind == 'i_s':
             parts.append('<span class="diff-intra-%s">' % label)
         elif kind == 'i_e':
@@ -93,8 +133,8 @@ def render_line(line):
         parts.append(line.text[last_pos:])
 
     if line.hunk_end_marks:
-        for m in line.hunk_end_marks:
-            parts.append('<a class="mark-end" title="%d">&#x25c0</a>' % m)
+        for m in sorted(line.hunk_end_marks):
+            mark_marker(m, False)
 
     return ''.join(parts)
 
@@ -110,6 +150,7 @@ def make_diff(f1: File, f2: File) -> Diff:
     literate.diff.build_diff_hunks(d)
     literate.diff.build_output_lines(d)
     literate.marks.init_hunk_boundary_marks(d)
+    literate.marks.init_mark_status(d)
     return d
 
 def render_diff(old_cs, new_cs):
@@ -149,7 +190,7 @@ def render_diff(old_cs, new_cs):
                     parts.append('<td class="line-num %s">%d</td>' %
                             (old_cls, ol.old_line + 1))
                     parts.append('<td class="%s"><pre>' % old_cls)
-                    parts.append(render_line(old.lines[ol.old_line]))
+                    parts.append(render_line(old.lines[ol.old_line], old))
                     parts.append('</pre></td>')
                 else:
                     parts.append('<td></td><td></td>')
@@ -158,7 +199,7 @@ def render_diff(old_cs, new_cs):
                     parts.append('<td class="line-num %s">%d</td>' %
                             (new_cls, ol.new_line + 1))
                     parts.append('<td class="%s"><pre>' % new_cls)
-                    parts.append(render_line(new.lines[ol.new_line]))
+                    parts.append(render_line(new.lines[ol.new_line], new))
                     parts.append('</pre></td>')
                 else:
                     parts.append('<td></td><td></td>')
@@ -192,8 +233,10 @@ def get_styles(fmt=None):
 
     parts.append('.marked { background-color: #222255; }')
 
-    parts.append('.mark-start { color: #3366cc; }')
-    parts.append('.mark-end { color: #3366cc; }')
+    parts.append('.mark-kept { color: #3366cc; }')
+    parts.append('.mark-ins { color: #33cc66; }')
+    parts.append('.mark-del { color: #cc3366; }')
+    parts.append('.mark-chg { color: #cccc66; }')
 
     # Colors for light-background color schemes, like `friendly`
     #parts.append('.diff-old { background-color: #ffcccc; }')

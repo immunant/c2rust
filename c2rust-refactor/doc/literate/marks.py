@@ -126,3 +126,35 @@ def init_hunk_boundary_marks(d: Diff):
         changed, old_lines, new_lines = h.blocks[-1]
         init_hunk_end_marks(d.old_file, old_lines)
         init_hunk_end_marks(d.new_file, new_lines)
+
+
+def diff_labels(l1, l2):
+    l1 = set(l1)
+    l2 = set(l2)
+    added = l2 - l1
+    removed = l1 - l2
+    kept = l1 & l2
+    return (sorted(added), sorted(removed), sorted(kept))
+
+def init_mark_status(d: Diff):
+    old_marks = dict((m.orig_id, m) for m in d.old_file.marks.values())
+    new_marks = dict((m.orig_id, m) for m in d.new_file.marks.values())
+
+    old_labels = {}
+    for m in d.old_file.marks.values():
+        if m.orig_id in new_marks:
+            old_labels[m.id] = diff_labels(m.labels, new_marks[m.orig_id].labels)
+        else:
+            old_labels[m.id] = ((), sorted(m.labels), ())
+    d.old_file.set_mark_labels(old_labels)
+
+    new_labels = {}
+    for m in d.new_file.marks.values():
+        if m.orig_id in old_marks:
+            new_labels[m.id] = diff_labels(old_marks[m.orig_id].labels, m.labels)
+            print('label diff for %s (vs %s): %s' % (m.labels,
+                old_marks[m.orig_id].labels, new_labels[m.id]))
+        else:
+            new_labels[m.id] = (sorted(m.labels), (), ())
+    d.new_file.set_mark_labels(new_labels)
+
