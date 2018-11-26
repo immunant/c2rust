@@ -166,11 +166,11 @@ def build_transpiler(args):
     if on_mac():
         llvm_system_libs = "-lz -lcurses -lm -lxml2"
     else:  # linux
-        llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm -lxml2"
+        llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm"
 
     llvm_libdir = os.path.join(c.LLVM_BLD, "lib")
 
-    with pb.local.cwd(c.ROOT_DIR):
+    with pb.local.cwd(c.C2RUST_DIR):
         with pb.local.env(LLVM_CONFIG_PATH=llvm_config,
                           LLVM_SYSTEM_LIBS=llvm_system_libs,
                           C2RUST_AST_EXPORTER_LIB_DIR=llvm_libdir):
