@@ -145,9 +145,16 @@ def configure_and_build_llvm(args) -> None:
         #     invoke(xcodebuild, *xc_args)
         #     xc_args = xc_conf_args + ['-target', 'c2rust-ast-exporter']
         #     invoke(xcodebuild, *xc_args)
+
+        # We must install headers here so our clang tool can reference
+        # compiler-internal headers such as stddef.h. This reference is
+        # relative to LLVM_INSTALL/bin, which MUST exist for the relative
+        # reference to be valid. To force this, we also install llvm-config,
+        # since we are building and using it for other purposes.
         ninja = get_cmd_or_die("ninja")
-        ninja_args = ['c2rust-ast-exporter', 'clangAstExporter',  
-            'llvm-config', 'install-clang-headers']
+        ninja_args = ['c2rust-ast-exporter', 'clangAstExporter',
+                      'llvm-config', 'tools/llvm-config/install',
+                      'install-clang-headers']
         invoke(ninja, *ninja_args)
 
 
