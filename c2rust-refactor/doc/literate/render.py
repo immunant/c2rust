@@ -5,8 +5,10 @@ import pygments.token
 
 from literate.annot import Span, fill_annot, cut_annot
 from literate.file import File, Diff
+from literate.points import Point, map_points, merge_points, annot_starts, annot_ends
 import literate.diff
 import literate.highlight
+import literate.marks
 
 
 def render_line(line):
@@ -20,46 +22,80 @@ def render_line(line):
 
 
     if line.intra is not None:
-        intra = fill_annot(line.intra, len(line.text))
+        intra_start = annot_starts(line.intra)
+        intra_end = annot_ends(line.intra)
     else:
-        intra = [Span(0, len(line.text), None)]
-    highlight = fill_annot(line.highlight, len(line.text))
+        intra_start = []
+        intra_end = []
 
-    for (intra_span, sub_highlight) in cut_annot(highlight, intra):
-        start_span(intra_span.label, lambda s: 'diff-intra-%s' % s)
+    highlight_start = annot_starts(line.highlight)
+    highlight_end = annot_ends(line.highlight)
 
-        for highlight_span in sub_highlight:
-            hl = highlight_span.label
-            hl = None if hl in (pygments.token.Token, pygments.token.Text) else hl
-            start_span(hl, lambda s: pygments.token.STANDARD_TYPES.get(s))
+    marks_start = line.mark_starts
+    marks_end = line.mark_ends
 
-            start = highlight_span.start + intra_span.start
-            end = highlight_span.end + intra_span.start
 
-            parts.append(line.text[start : end])
+    events = merge_points(
+            map_points(highlight_end, lambda l: ('hl_e', l)),
+            map_points(intra_end, lambda l: ('i_e', l)),
+            map_points(marks_end, lambda l: ('m_e', l)),
+            map_points(marks_start, lambda l: ('m_s', l)),
+            map_points(intra_start, lambda l: ('i_s', l)),
+            map_points(highlight_start, lambda l: ('hl_s', l)),
+            )
 
-            end_span(hl)
+    last_pos = 0
 
-        end_span(intra_span.label)
+    for p in events:
+        if p.pos > last_pos:
+            if p.pos == len(line.text) and line.text.endswith('\n'):
+                # Avoid emitting a \n followed by a .mark-end indicator, which
+                # would force the <pre> onto two lines.
+                parts.append(line.text[last_pos : -1])
+            else:
+                parts.append(line.text[last_pos : p.pos])
+        last_pos = p.pos
+
+        kind, label = p.label
+
+        if kind == 'm_s':
+            for m in label:
+                parts.append('<a class="mark-start" title="%d">&#x25b6</a>' % m)
+        elif kind == 'm_e':
+            for m in label:
+                parts.append('<a class="mark-end" title="%d">&#x25c0</a>' % m)
+        elif kind == 'i_s':
+            parts.append('<span class="diff-intra-%s">' % label)
+        elif kind == 'i_e':
+            parts.append('</span>')
+        elif kind == 'hl_s':
+            if label not in (pygments.token.Token, pygments.token.Text):
+                parts.append('<span class="%s">' %
+                        pygments.token.STANDARD_TYPES.get(label))
+        elif kind == 'hl_e':
+            if label not in (pygments.token.Token, pygments.token.Text):
+                parts.append('</span>')
+
+    if len(line.text) > last_pos:
+        parts.append(line.text[last_pos:])
 
     return ''.join(parts)
 
-def make_file(path: str, text: str, nodes, marks_) -> File:
-    f = File(path, text)
-    literate.highlight.highlight_file(f)
-    # TODO: marks
-    return f
+def prepare_files(files: [File]):
+    for f in files:
+        literate.highlight.highlight_file(f)
+        literate.marks.mark_file(f)
 
 def make_diff(f1: File, f2: File) -> Diff:
-    d = literate.diff.diff_files(f1, f2)
+    d = literate.diff.diff_files(f1.copy(), f2.copy())
     from pprint import pprint
     pprint(d.blocks)
     literate.diff.build_diff_hunks(d)
     literate.diff.build_output_lines(d)
     return d
 
-def render_diff(files, nodes, marks_):
-    file_names = sorted(files.keys())
+def render_diff(old_cs, new_cs):
+    file_names = sorted(new_cs.files.keys())
     empty = True
 
     parts = []
@@ -68,9 +104,11 @@ def render_diff(files, nodes, marks_):
     parts.append('<col width="50"><col><col width="50"><col>')
     parts.append('</colgroup>\n')
     for f in file_names:
-        old = make_file(f, files[f][0], nodes[f][0], marks_[0])
-        new = make_file(f, files[f][1], nodes[f][1], marks_[1])
-        diff = make_diff(old, new)
+        # `make_diff` copies the files, then updates the copies.  We want
+        # references to the new copies only.
+        diff = make_diff(old_cs.files[f], new_cs.files[f])
+        old = diff.old_file
+        new = diff.new_file
 
         if len(diff.hunks) > 0:
             empty = False
@@ -133,6 +171,11 @@ def get_styles(fmt=None):
     parts.append('.diff-intra-del { border: solid 1px #cc0000; }')
     parts.append('.diff-intra-chg { border: solid 1px #cccc00; }')
     parts.append('.diff-intra-ins { border: solid 1px #00cc00; }')
+
+    parts.append('.marked { background-color: #222255; }')
+
+    parts.append('.mark-start { color: #3366cc; }')
+    parts.append('.mark-end { color: #3366cc; }')
 
     # Colors for light-background color schemes, like `friendly`
     #parts.append('.diff-old { background-color: #ffcccc; }')

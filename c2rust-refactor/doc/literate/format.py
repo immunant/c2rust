@@ -1,11 +1,13 @@
 '''Run `rustfmt` on before-and-after file contents, to produce nicer looking
 diffs.'''
+import difflib
 import os
 import tempfile
 
 from plumbum.cmd import rustfmt
 
-from literate import refactor
+from literate.annot import Span
+from literate.file import File
 
 def format_text_in_file(text, path):
     with open(path, 'w') as f:
@@ -16,31 +18,28 @@ def format_text_in_file(text, path):
     with open(path, 'r') as f:
         return f.read()
 
-def format_files_in_temp_dir(blocks, temp_dir):
-    path = os.path.join(temp_dir, 'fmt.rs')
-
-    result = []
-    for b in blocks:
-        if isinstance(b, refactor.Text):
-            result.append(b)
-            continue
-        elif isinstance(b, refactor.ScriptDiff):
-            pass # handled below
-        else:
-            raise TypeError('expected Text or ScriptDiff, got %s' % (type(b),))
+def format_files(all_files: [File]):
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, 'fmt.rs')
+        print('formatting files in %s' % path)
 
         fmt_text = {}
-        for f, (old, new) in b.text.items():
-            print('running rustfmt for %s' % f)
-            fmt_old = format_text_in_file(old, path)
-            fmt_new = format_text_in_file(new, path)
-            fmt_text[f] = (fmt_old, fmt_new)
+        for f in all_files:
+            print('running rustfmt for %s (%x)' % (f.path, id(f)))
+            f.set_formatted(format_text_in_file(f.unformatted, path))
 
-        result.append(refactor.ScriptDiff(b.commands, b.raw, fmt_text, b.nodes, b.marks))
 
-    return result
+def init_fmt_map(f: File):
+    '''Initialize a `File`'s `fmt_map` field, which describes the mapping from
+    unformatted text positions to formatted ones.'''
+    matching_spans = []
+    sm = difflib.SequenceMatcher(a=f.unformatted, b=f.text)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == 'equal':
+            matching_spans.append((Span(i1, i2), j1))
 
-def format_files(blocks):
-    with tempfile.TemporaryDirectory() as td:
-        return format_files_in_temp_dir(blocks, td)
+    fmt_map_index = [s.start for s, pos in matching_spans]
+
+    f.set_fmt_map(matching_spans, fmt_map_index)
+
 

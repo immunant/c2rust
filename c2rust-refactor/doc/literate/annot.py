@@ -73,11 +73,15 @@ def cut_annot(orig: [Span], cut: [Span]) -> [(Span, [Span])]:
     pieces = []
 
     for cut_span in cut:
-        while i < len(orig) and orig[i].end <= cut_span.start:
-            i += 1
         acc = []
-        while i < len(orig) and orig[i].start < cut_span.end:
-            acc.append(orig[i].intersect(cut_span) - cut_span.start)
+        while i < len(orig):
+            s = orig[i]
+            if s.overlaps(cut_span):
+                acc.append(s.intersect(cut_span) - cut_span.start)
+            if s.end > cut_span.end:
+                # `s` extends past the end of `cut_span`, potentially into the
+                # next `cut_span`.  Keep it around for the next iteration.
+                break
             i += 1
         pieces.append((cut_span, acc))
 
@@ -127,7 +131,7 @@ def fill_annot(a: [Span], end: int, start=0, label=None) -> [Span]:
         result.append(Span(last_pos, end, label))
     return result
 
-def zip_annot(a1: [Span], a2: [Span]) -> [Span]:
+def zip_annot(a1: [Span], a2: [Span], f=lambda l1, l2: (l1, l2)) -> [Span]:
     '''Zip together two annotations, returning an annotation that labels each
     position with a pair `(l1, l2)`, where `l1` is the position's label in `a1`
     and `l2` is its label in `a2`.  Only positions with labels in both `a1` and
@@ -135,5 +139,7 @@ def zip_annot(a1: [Span], a2: [Span]) -> [Span]:
     result = []
     for s2, ss1 in cut_annot(a1, a2):
         for s1 in ss1:
-            result.append(Span(s1.start, s1.end, (s1.label, s2.label)))
+            start = s1.start + s2.start
+            end = s1.end + s2.start
+            result.append(Span(start, end, f(s1.label, s2.label)))
     return result

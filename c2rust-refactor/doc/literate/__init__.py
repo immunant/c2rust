@@ -82,8 +82,10 @@ def do_exec(args):
 def do_render(args):
     with open(args.input) as f:
         blocks = literate.parse.parse_blocks(f)
-    blocks = literate.refactor.run_refactor_scripts(args, blocks)
-    blocks = literate.format.format_files(blocks)
+    blocks, all_files = literate.refactor.run_refactor_scripts(args, blocks)
+    literate.format.format_files(all_files)
+
+    literate.render.prepare_files(all_files)
 
     with open(args.output, 'w') as f:
         f.write('<style>')
@@ -101,7 +103,7 @@ def do_render(args):
                     f.write(line)
                 f.write('```\n\n')
                 print('rendering diff #%d' % (diff_idx + 1))
-                diff_text = literate.render.render_diff(b.text, b.nodes, b.marks)
+                diff_text = literate.render.render_diff(b.old, b.new)
                 if diff_text is not None:
                     f.write('<details><summary>Diff #%d</summary>\n' % (diff_idx + 1))
                     f.write(diff_text)

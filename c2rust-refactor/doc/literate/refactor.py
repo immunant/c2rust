@@ -8,8 +8,8 @@ from plumbum import local, FG
 from plumbum.cmd import cargo
 from common import *
 
+from literate.file import File
 from literate import parse
-#import literate.marks
 
 
 def combine_script_blocks(blocks):
@@ -182,7 +182,9 @@ def apply_rewrites(span, rws, nodes):
 
 
 Text = parse.Text
-ScriptDiff = namedtuple('ScriptDiff', ('commands', 'raw', 'text', 'nodes', 'marks'))
+ScriptDiff = namedtuple('ScriptDiff', ('commands', 'raw', 'old', 'new'))
+
+CrateState = namedtuple('CrateState', ('files', 'marks'))
 
 def run_refactor_scripts(args, blocks):
     '''Run all refactoring commands in `blocks`, returning a new list of blocks
@@ -192,11 +194,8 @@ def run_refactor_scripts(args, blocks):
     run_refactor(args.project_dir, all_cmds)
 
     result = []
-    prev_text = {}
-    # The "old" node map for the first file is always empty, but that's okay
-    # because we only use it to look up marks, and the mark list is also always
-    # empty.
-    prev_nodes = {}
+    all_files = []
+    prev_files = {}
     prev_marks = []
     for i, b in enumerate(blocks):
         rw_idx = script_output.get(i)
@@ -209,26 +208,8 @@ def run_refactor_scripts(args, blocks):
         with open(os.path.join(args.project_dir, 'rewrites.%d.json' % rw_idx)) as f:
             rws = json.load(f)
 
-        text = {}
-        nodes = {}
-        for rw in rws:
-            path = rw['new_span']['file']
-            if path not in prev_text:
-                old_text = rw['new_span']['src']
-            else:
-                old_text = prev_text[path]
-            if path not in prev_nodes:
-                old_nodes = []
-            else:
-                old_nodes = prev_nodes[path]
-            new_text, new_nodes = apply_rewrites(rw['new_span'], rw['rewrites'], rw['nodes'])
-            for lo, hi, n in new_nodes:
-                print(' ** new node: %d @ %s .. %s = %r' % (
-                    n, lo, hi, new_text[lo:hi]))
-            text[path] = (old_text, new_text)
-            nodes[path] = (old_nodes, new_nodes)
-            prev_text[path] = new_text
-            prev_nodes[path] = new_nodes
+
+        # Handle marks and create the `CrateState`s, with no `files` yet.
 
         if len(b.commands) > 0 and b.commands[-1] == ['commit']:
             # `commit` saves the previous marks before clearing, but we
@@ -238,12 +219,33 @@ def run_refactor_scripts(args, blocks):
             cur_marks = []
         else:
             with open(os.path.join(args.project_dir, 'marks.%d.json' % rw_idx)) as f:
-                j = json.load(f)
-            #cur_marks = literate.marks.parse_marks(j)
-            cur_marks = None #TODO
+                cur_marks = json.load(f)
 
-        result.append(ScriptDiff(b.commands, b.raw,
-            text, nodes, (prev_marks, cur_marks)))
+        old = CrateState({}, prev_marks)
+        new = CrateState({}, cur_marks)
+
         prev_marks = cur_marks
 
-    return result
+
+        # Look at the rewrites and use them to add `File`s to `old` and `new`.
+
+        for rw in rws:
+            path = rw['new_span']['file']
+
+            if path not in prev_files:
+                text = rw['new_span']['src']
+                nodes = []
+                old.files[path] = File(path, text, nodes, [])
+                all_files.append(old.files[path])
+            else:
+                old.files[path] = prev_files[path]
+
+            text, nodes = apply_rewrites(rw['new_span'], rw['rewrites'], rw['nodes'])
+            new.files[path] = File(path, text, nodes, cur_marks)
+            all_files.append(new.files[path])
+            prev_files[path] = new.files[path]
+
+        result.append(ScriptDiff(b.commands, b.raw, old, new))
+        prev_marks = cur_marks
+
+    return result, all_files

@@ -12,7 +12,7 @@ def highlight_file(f: File):
     # Annotate the entire file
     lexer = pygments.lexers.get_lexer_by_name('rust')
     raw_annot = []
-    for start, token, token_text in lexer.get_tokens_unprocessed(f.raw):
+    for start, token, token_text in lexer.get_tokens_unprocessed(f.text):
         if token == pygments.token.Whitespace:
             continue
         raw_annot.append(Span(start, start + len(token_text), token))
