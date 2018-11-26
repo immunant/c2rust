@@ -13,21 +13,22 @@ set(TINYCBOR_VERSION_H "${TINYCBOR_PREFIX}/src/tinycbor_build/src/tinycbor-versi
 include(ExternalProject)
 ExternalProject_Add(tinycbor_build
             PREFIX ${TINYCBOR_PREFIX}
+            INSTALL_DIR ${CMAKE_BINARY_DIR}
             URL ${TINYCBOR_URL}
             URL_HASH MD5=${TINYCBOR_MD5}
             CONFIGURE_COMMAND ""
-            BUILD_COMMAND make --quiet prefix=${TINYCBOR_PREFIX} CFLAGS=-fPIC
-            INSTALL_COMMAND make --quiet prefix=${TINYCBOR_PREFIX} install
+            BUILD_COMMAND make --quiet prefix=<INSTALL_DIR> CFLAGS=-fPIC
+            INSTALL_COMMAND make --quiet prefix=<INSTALL_DIR> install
             # work around https://github.com/intel/tinycbor/issues/136
-            TEST_COMMAND cp ${TINYCBOR_VERSION_H} ${TINYCBOR_PREFIX}/include/
+            TEST_COMMAND cp ${TINYCBOR_VERSION_H} <INSTALL_DIR>/include/
             BUILD_IN_SOURCE 1
-            BUILD_BYPRODUCTS ${TINYCBOR_PREFIX}/lib/libtinycbor.a
+            BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/lib/libtinycbor.a
 )
 
-include_directories(${TINYCBOR_PREFIX}/include)
+include_directories(${CMAKE_BINARY_DIR}/include)
 
 add_library(tinycbor STATIC IMPORTED)
-set_target_properties(tinycbor PROPERTIES IMPORTED_LOCATION ${TINYCBOR_PREFIX}/lib/libtinycbor.a)
+set_target_properties(tinycbor PROPERTIES IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/lib/libtinycbor.a)
 add_dependencies(tinycbor tinycbor_build)
 
 set(AST_EXPORTER_SRCS
@@ -44,9 +45,12 @@ set(AST_EXPORTER_BIN_SRCS
 if( PROJECT_NAME STREQUAL "LLVM" )
   # We are building in-tree, we can use LLVM cmake functions
 
+  add_definitions(-DCLANG_BIN_PATH="${CMAKE_INSTALL_PREFIX}/bin")
+  add_definitions(-DCLANG_VERSION_STRING="${PACKAGE_VERSION}")
+
   set(LLVM_OPTIONAL_SOURCES Main.cpp)
-  add_clang_executable(c2rust-ast-exporter ${AST_EXPORTER_BIN_SRCS})
-  add_clang_library(clangAstExporter ${AST_EXPORTER_SRCS})
+  add_clang_executable(c2rust-ast-exporter ${AST_EXPORTER_BIN_SRCS} DEPENDS clang-headers)
+  add_clang_library(clangAstExporter ${AST_EXPORTER_SRCS} DEPENDS clang-headers)
 
   set(LLVM_LINK_COMPONENTS support)
 else()
@@ -65,7 +69,6 @@ else()
   else()
     add_definitions(-DCLANG_BIN_PATH="${LLVM_INSTALL_PREFIX}/bin")
   endif()
-  add_definitions(-DCLANG_LIBDIR_SUFFIX="${LLVM_LIBDIR_SUFFIX}")
   add_definitions(-DCLANG_VERSION_STRING="${LLVM_PACKAGE_VERSION}")
 
   set(LLVM_LINK_COMPONENTS support)
@@ -79,6 +82,8 @@ else()
   # The library
   add_library(clangAstExporter STATIC ${AST_EXPORTER_SRCS})
 endif()
+
+add_definitions(-DCLANG_LIBDIR_SUFFIX="${LLVM_LIBDIR_SUFFIX}")
 
 set_target_properties(c2rust-ast-exporter PROPERTIES
   CXX_STANDARD 11
