@@ -4,7 +4,8 @@ extern crate syn;
 
 use proc_macro::{Span, TokenStream};
 use quote::quote;
-use syn::{Attribute, DeriveInput, Fields, Ident, ItemStruct, Lit, Meta, NestedMeta, Type, parse_macro_input};
+use syn::{Attribute, DeriveInput, Field, Fields, Ident, ItemStruct, Lit, Meta, NestedMeta, Path, PathArguments, PathSegment, Token, TypePath, parse_macro_input};
+use syn::punctuated::Punctuated;
 
 #[derive(Debug)]
 struct BFFieldAttr {
@@ -15,10 +16,9 @@ struct BFFieldAttr {
 }
 
 fn parse_bitfield_attr(attr: &Attribute) -> (String, String, String) {
-    println!("attrs: {}", attr.tts);
-    let mut name = None as Option<String>;
-    let mut ty = None as Option<String>;
-    let mut bits = None as Option<String>;
+    let mut name = None;
+    let mut ty = None;
+    let mut bits = None;
 
     if let Meta::List(meta_list) = attr.interpret_meta().unwrap() {
         for nested_meta in meta_list.nested {
@@ -47,6 +47,32 @@ fn parse_bitfield_attr(attr: &Attribute) -> (String, String, String) {
     (name.unwrap(), ty.unwrap(), bits.unwrap())
 }
 
+fn filter_and_parse_fields(field: &Field) -> Vec<BFFieldAttr> {
+    let attrs: Vec<_> = field.attrs.iter().filter(|attr|
+        attr.path
+            .segments
+            .last()
+            .unwrap()
+            .value()
+            .ident == "bitfield"
+    ).collect();
+
+    if attrs.len() == 0 {
+        return Vec::new();
+    }
+
+    attrs.iter().map(|attr| {
+        let (name, ty, bits) = parse_bitfield_attr(attr);
+
+        BFFieldAttr {
+            field_name: field.ident.clone().unwrap(),
+            name,
+            ty,
+            bits,
+        }
+    }).collect()
+}
+
 #[proc_macro_derive(BitfieldStruct, attributes(bitfield))]
 pub fn bitfield_struct(input: TokenStream) -> TokenStream {
     println!("{}", input);
@@ -57,29 +83,34 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
         Fields::Named(named_fields) => named_fields.named,
         _ => panic!("Unnamed bitfield fields are not currently supported"),
     };
-    let bitfields: Vec<BFFieldAttr> = fields.iter().flat_map(|field| {
-        let attrs: Vec<_> = field.attrs.iter().filter(|attr|
-            attr.path.segments.last().unwrap().value().ident == "bitfield"
-        ).collect();
+    let bitfields: Vec<BFFieldAttr> = fields.iter().flat_map(filter_and_parse_fields).collect();
+    let field_types: Vec<_> = bitfields.iter().map(|field| {
+        let leading_colon = if field.ty.starts_with("::") {
+            Some(Token![::]([Span::call_site().into(), Span::call_site().into()]))
+        } else {
+            None
+        };
 
-        if attrs.len() == 0 {
-            return Vec::new();
+        let mut segments = Punctuated::new();
+        let mut segement_strings = field.ty.split("::").peekable();
+
+        while let Some(segment_string) = segement_strings.next() {
+            segments.push_value(PathSegment {
+                ident: Ident::new(segment_string, Span::call_site().into()),
+                arguments: PathArguments::None,
+            });
+
+            if segement_strings.peek().is_some() {
+                segments.push_punct(Token![::]([Span::call_site().into(), Span::call_site().into()]));
+            }
         }
 
-        attrs.iter().map(|attr| {
-            let (name, ty, bits) = parse_bitfield_attr(attr);
-
-            BFFieldAttr {
-                field_name: field.ident.clone().unwrap(),
-                name,
-                ty,
-                bits,
-            }
-        }).collect()
+        Path {
+            leading_colon,
+            segments,
+        }
     }).collect();
-
-    println!("{:?}", bitfields);
-
+    let field_types2 = field_types.clone();
     let field_names: Vec<_> = bitfields.iter().map(|field| Ident::new(&field.name, Span::call_site().into())).collect();
     let field_name_setters: Vec<_> = field_names.iter().map(|field_ident| {
         let span = Span::call_site().into();
@@ -91,10 +122,10 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
     let q = quote! {
         impl #struct_ident {
             #(
-                pub fn #field_name_setters(&self) {
+                pub fn #field_name_setters(&self, setter: #field_types) {
                 }
 
-                pub fn #field_names(&self) -> u64 {
+                pub fn #field_names(&self) -> #field_types2 {
                     42
                 }
             )*
