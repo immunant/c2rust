@@ -1,7 +1,7 @@
 from collections import namedtuple
 
-from literate.annot import Span, fill_annot, zip_annot, cut_annot
-from literate.file import File
+from literate.annot import Span, fill_annot, zip_annot, cut_annot, lookup_span
+from literate.file import File, Diff
 from literate.points import Point, cut_points, annot_to_deltas
 
 
@@ -95,3 +95,34 @@ def mark_file(f: File):
     f.set_mark_annot(annot)
 
     init_line_mark_bounds(f)
+
+
+def init_hunk_start_marks(f: File, lines: Span):
+    if lines.start >= len(f.lines):
+        return
+    line = lines.start
+    char = f.line_annot[line].start
+    mark_span = lookup_span(f.mark_annot, char,
+            include_start=True, include_end=False)
+    if mark_span is not None and len(mark_span.label) > 0:
+        f.lines[line].set_hunk_start_marks(mark_span.label)
+
+def init_hunk_end_marks(f: File, lines: Span):
+    if lines.end <= 0:
+        return
+    line = lines.end - 1
+    char = f.line_annot[line].end
+    mark_span = lookup_span(f.mark_annot, char,
+            include_start=False, include_end=True)
+    if mark_span is not None and len(mark_span.label) > 0:
+        f.lines[line].set_hunk_end_marks(mark_span.label)
+
+def init_hunk_boundary_marks(d: Diff):
+    for h in d.hunks:
+        changed, old_lines, new_lines = h.blocks[0]
+        init_hunk_start_marks(d.old_file, old_lines)
+        init_hunk_start_marks(d.new_file, new_lines)
+
+        changed, old_lines, new_lines = h.blocks[-1]
+        init_hunk_end_marks(d.old_file, old_lines)
+        init_hunk_end_marks(d.new_file, new_lines)

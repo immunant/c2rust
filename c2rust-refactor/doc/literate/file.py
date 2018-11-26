@@ -28,11 +28,12 @@ class Line:
         # with a set of node IDs.
         self.mark_starts = None
         self.mark_ends = None
-        # Similar to mark_bounds, but taking diff hunk start/end positions into
-        # account.  Specifically, it may include additional marks at the hunk
-        # boundaries, meant to show the user any marked nodes that include the
-        # start/end of the hunk.
-        self.diff_mark_bounds = None
+        # Sets of node IDs for marks that are present at the start of the line
+        # (when it's the start of a hunk) or the end of a line (when it's the
+        # end of a hunk).  These remain `None` for lines not at the start/end
+        # of a hunk, or where there are no marks covering a hunk boundary.
+        self.hunk_start_marks = None
+        self.hunk_end_marks = None
 
     def copy(self):
         c = Line(self.text)
@@ -41,7 +42,8 @@ class Line:
         c.marks = self.marks
         c.mark_starts = self.mark_starts
         c.mark_ends = self.mark_ends
-        c.diff_mark_bounds = self.diff_mark_bounds
+        c.hunk_start_marks = self.hunk_start_marks
+        c.hunk_end_marks = self.hunk_end_marks
         return c
 
     def set_highlight(self, highlight):
@@ -64,9 +66,13 @@ class Line:
         assert self.mark_ends is None
         self.mark_ends = mark_ends
 
-    def set_diff_mark_bounds(self, diff_mark_bounds):
-        assert self.diff_mark_bounds is None
-        self.diff_mark_bounds = diff_mark_bounds
+    def set_hunk_start_marks(self, hunk_start_marks):
+        assert self.hunk_start_marks is None
+        self.hunk_start_marks = hunk_start_marks
+
+    def set_hunk_end_marks(self, hunk_end_marks):
+        assert self.hunk_end_marks is None
+        self.hunk_end_marks = hunk_end_marks
 
 
 class File:

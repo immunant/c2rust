@@ -143,3 +143,16 @@ def zip_annot(a1: [Span], a2: [Span], f=lambda l1, l2: (l1, l2)) -> [Span]:
             end = s1.end + s2.start
             result.append(Span(start, end, f(s1.label, s2.label)))
     return result
+
+def lookup_span(a: [Span], pos: int,
+        include_start=True, include_end=False) -> Span:
+    '''Get the span in `a` containing `pos`, or `None` if there is no such
+    span.'''
+    # `bisect` doesn't support a key function, so we just do a linear scan.
+    for s in a:
+        if s.end > pos or (include_end and s.end == pos):
+            if s.start < pos or (include_start and s.start == pos):
+                return s
+            else:
+                return None
+    return None

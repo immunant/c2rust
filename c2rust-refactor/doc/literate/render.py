@@ -46,6 +46,19 @@ def render_line(line):
 
     last_pos = 0
 
+    if line.hunk_start_marks:
+        for m in line.hunk_start_marks:
+            parts.append('<a class="mark-start" title="%d">&#x25b6</a>' % m)
+
+            # These hunk-start markers often appear before the whitespace
+            # of indented lines.  To avoid throwing off the indentation, we let
+            # them "eat up" as much whitespace as is available.  Any start/end
+            # events in the eaten whitespace will be pushed back until after
+            # the markers.  (Hopefully there are not many events inside a
+            # purely whitespace span.)
+            if last_pos < len(line.text) and line.text[last_pos] == ' ':
+                last_pos += 1
+
     for p in events:
         if p.pos > last_pos:
             if p.pos == len(line.text) and line.text.endswith('\n'):
@@ -79,6 +92,10 @@ def render_line(line):
     if len(line.text) > last_pos:
         parts.append(line.text[last_pos:])
 
+    if line.hunk_end_marks:
+        for m in line.hunk_end_marks:
+            parts.append('<a class="mark-end" title="%d">&#x25c0</a>' % m)
+
     return ''.join(parts)
 
 def prepare_files(files: [File]):
@@ -92,6 +109,7 @@ def make_diff(f1: File, f2: File) -> Diff:
     pprint(d.blocks)
     literate.diff.build_diff_hunks(d)
     literate.diff.build_output_lines(d)
+    literate.marks.init_hunk_boundary_marks(d)
     return d
 
 def render_diff(old_cs, new_cs):
