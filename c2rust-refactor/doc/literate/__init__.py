@@ -56,7 +56,6 @@ def do_extract(args):
             if l.strip() == 'commit ;':
                 sys.stdout.write('\n')
 
-
 def do_exec(args):
     with open(args.input) as f:
         blocks = literate.parse.parse_blocks(f)

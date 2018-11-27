@@ -1,5 +1,4 @@
-'''Refactor command invocations.  Turns `Script` blocks from the input into
-`ScriptDiff` blocks that include before-and-after file contents.'''
+'''`c2rust-refactor` command invocation and output parsing.'''
 from collections import namedtuple
 import os
 import sys
@@ -13,18 +12,22 @@ from literate import parse
 
 
 def combine_script_blocks(blocks):
-    '''Combine all refactoring commands into a single list, inserting `write`
+    '''Given a list of `Text` and `Script` blocks from the `parse` module,
+    combine all refactoring commands into a single list, inserting `write`
     commands to record intermediate states.  Returns the combined command list,
     along with a dict mapping each script block's index in the input to the
     index where its output will appear (for use in finding
     "rewrite.N.json").'''
     script_output = {}
+    # Index (`N`) of the most recent `rewrite.N.json`.
     last_output = -1
     all_cmds = []
 
-    def emit(cmd):
+    def emit(cmd: [str]):
         nonlocal last_output
         if cmd[0] in ('write', 'commit'):
+            # This handles the `write` commands we inject in the loop below, as
+            # well as any `write` or `commit` commands in the original script.
             last_output += 1
         all_cmds.append(cmd)
 
@@ -35,6 +38,9 @@ def combine_script_blocks(blocks):
             for c in b.commands:
                 emit(c)
 
+            # We need a snapshot of the state as of the end of the block, so if
+            # it doesn't end with `write` or `commit`, we inject an additional
+            # `write` ourselves.
             if len(b.commands) == 0 or b.commands[-1][0] not in ('write', 'commit'):
                 emit(['write'])
             assert last_output != -1
@@ -45,7 +51,7 @@ def combine_script_blocks(blocks):
 
     return all_cmds, script_output
 
-def run_refactor(work_dir, cmds, mode='json,marks,alongside'):
+def run_refactor(work_dir, cmds: [[str]], mode='json,marks,alongside'):
     refactor = get_cmd_or_die(config.RREF_BIN)
 
     args = ['-r', mode, '--cargo']
@@ -63,20 +69,22 @@ def run_refactor(work_dir, cmds, mode='json,marks,alongside'):
                    LD_LIBRARY_PATH=ld_lib_path):
         with local.cwd(work_dir):
             print('running %s in %s with %d cmds...' % (refactor, work_dir, len(cmds)))
-            #refactor[args]()
+            refactor[args]()
             print('  refactoring done')
 
 
 def subspan_src(span, lo, hi):
+    '''Get the source text of the subspan of JSON `span` that ranges from `lo
+    .. hi`.'''
     assert span['lo'] <= lo
     assert hi <= span['hi']
     start = span['lo']
     return span['src'][lo - start : hi - start]
 
 def apply_rewrites(span, rws, nodes):
-    '''Given a span and a forest of rewrites to apply to that span, return the
-    rewritten text for that span, along with a list of node spans in the output
-    text.'''
+    '''Given a "new" span and its corresponding rewrites and nodes, return the
+    rewritten text for that span along with a list of all node spans in the
+    output (including those from recursive rewrites).'''
 
     # Design:
     #
@@ -184,8 +192,6 @@ def apply_rewrites(span, rws, nodes):
 Text = parse.Text
 ScriptDiff = namedtuple('ScriptDiff', ('commands', 'raw', 'old', 'new'))
 
-CrateState = namedtuple('CrateState', ('files', 'marks'))
-
 def run_refactor_scripts(args, blocks):
     '''Run all refactoring commands in `blocks`, returning a new list of blocks
     where each `Script` is replaced by a `ScriptDiff`, which includes the old
@@ -209,7 +215,8 @@ def run_refactor_scripts(args, blocks):
             rws = json.load(f)
 
 
-        # Handle marks and create the `CrateState`s, with no `files` yet.
+        # Handle marks first, so `cur_marks` is available for `File`
+        # construction.
 
         if len(b.commands) > 0 and b.commands[-1] == ['commit']:
             # `commit` saves the previous marks before clearing, but we
@@ -221,13 +228,12 @@ def run_refactor_scripts(args, blocks):
             with open(os.path.join(args.project_dir, 'marks.%d.json' % rw_idx)) as f:
                 cur_marks = json.load(f)
 
-        old = CrateState({}, prev_marks)
-        new = CrateState({}, cur_marks)
-
         prev_marks = cur_marks
 
 
         # Look at the rewrites and use them to add `File`s to `old` and `new`.
+        old = {}
+        new = {}
 
         for rw in rws:
             path = rw['new_span']['file']
@@ -235,15 +241,16 @@ def run_refactor_scripts(args, blocks):
             if path not in prev_files:
                 text = rw['new_span']['src']
                 nodes = []
-                old.files[path] = File(path, text, nodes, [])
-                all_files.append(old.files[path])
+                old[path] = File(path, text, nodes, [])
+                all_files.append(old[path])
             else:
-                old.files[path] = prev_files[path]
+                old[path] = prev_files[path]
 
             text, nodes = apply_rewrites(rw['new_span'], rw['rewrites'], rw['nodes'])
-            new.files[path] = File(path, text, nodes, cur_marks)
-            all_files.append(new.files[path])
-            prev_files[path] = new.files[path]
+
+            new[path] = File(path, text, nodes, cur_marks)
+            all_files.append(new[path])
+            prev_files[path] = new[path]
 
         result.append(ScriptDiff(b.commands, b.raw, old, new))
         prev_marks = cur_marks

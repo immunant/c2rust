@@ -1,3 +1,10 @@
+'''
+Labeled points.
+
+This is similar to the `annot` module, but works with individual points instead
+of spans.
+'''
+
 from literate.annot import Span
 
 class Point:
@@ -24,9 +31,13 @@ class Point:
         return Point(self.pos, self.label)
 
 def annot_starts(annot: [Span]) -> [Point]:
+    '''Get the start point of each span in `annot`, labeled with the span's
+    original label.'''
     return [Point(s.start, s.label) for s in annot]
 
 def annot_ends(annot: [Span]) -> [Point]:
+    '''Get the end point of each span in `annot`, labeled with the span's
+    original label.'''
     return [Point(s.end, s.label) for s in annot]
 
 def annot_to_deltas(annot: [Span]) -> [Point]:
@@ -37,16 +48,23 @@ def annot_to_deltas(annot: [Span]) -> [Point]:
 
     result = []
 
+    # The first span's start and the last span's end are special cases, since
+    # they have no previous/next span to compare against.
     first = annot[0]
     result.append(Point(first.start, (None, first.label)))
 
     for (s1, s2) in zip(annot, annot[1:]):
         if s1.end == s2.start:
+            # These spans are adjacent.  Record a transition directly from one
+            # to the next at their shared boundary.
             result.append(Point(s1.end, (s1.label, s2.label)))
         else:
+            # There is a gap between spans.  Record transitions to `None` and
+            # back.
             result.append(Point(s1.end, (s1.label, None)))
             result.append(Point(s2.start, (None, s2.label)))
 
+    # Note this works even when `len(annot) == 1` and thus `last is first`.
     last = annot[-1]
     result.append(Point(last.end, (last.label, None)))
 
@@ -108,6 +126,12 @@ def cut_points(orig: [Point], cut: [Span],
         def emit(p):
             acc.append(p - cut_span.start)
 
+        # In order, handle:
+        #  1. Points strictly before `cut_span`
+        #  2. Points at `cut_span.start`
+        #  3. Points strictly within `cut_span`
+        #  4. Points at `cut_span.end` (only if `include_end` is `True`)
+
         while i < len(orig) and orig[i].pos < cut_span.start:
             i += 1
 
@@ -126,8 +150,10 @@ def cut_points(orig: [Point], cut: [Span],
                 emit(orig[i])
                 i += 1
             if include_start:
-                # Rewind, in case the current span's end overlaps with the next
-                # span's start.  This lets the points appear in both pieces.
+                # Rewind, so the same points can be processed by the next
+                # iteration.  When `include_start` and `include_end` are both
+                # set, and two spans are adjacent (`span1.end == span2.start`),
+                # we want the points on the boundary to appear in both pieces.
                 i = saved_i
 
         pieces.append((cut_span, acc))

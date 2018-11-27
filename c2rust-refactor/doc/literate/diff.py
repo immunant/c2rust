@@ -5,33 +5,35 @@ import pygments.lexers
 import pygments.token
 import re
 
-from literate.annot import Span, merge_annot
+from literate.annot import Span, merge_annot, SpanMerger
 from literate.file import File, Diff, Hunk, OutputLine
 
 
-RUN_RE = re.compile(r'(.)\1*')
+# Regex for finding runs of identical non-space characters
+RUN_RE = re.compile(r'([^ \n])\1*')
 
 def parse_intra_annot(s):
     '''Parse an `ndiff` detail (`?`) line and convert it to an annotation
-    indicating intraline edits (`'ins'`, `'del'`, or `'chg'`) in the previous
-    line's text.'''
+    indicating intraline edits in the text of the preceding line.  The
+    annotation labels inserted, deleted, and changed characters with `'ins'`,
+    `'del'`, and `'chg'` respectively.'''
     spans = []
     for m in RUN_RE.finditer(s):
         c = m.group(1)
+        # Map the symbols used by `ndiff` to something more meaningful.
         label = {
                 '+': 'ins',
                 '-': 'del',
                 '^': 'chg',
-                }.get(c)
-        if label is not None:
-            spans.append(Span(m.start(), m.end(), label))
+                }[c]
+        spans.append(Span(m.start(), m.end(), label))
     return spans
 
 def diff_lines(old_lines: [str], new_lines: [str]):
     '''Compute a diff of `old` and `new`, and yield a sequence of (old_line,
     new_line, old_detail, new_detail).  Each `line` is a boolean indicating
-    whether there is a line present in the old/new file, and `detail` is an
-    intraline edit annotation (see `parse_intra_annot`).
+    whether there is a line present in the old/new file, and each `detail` is
+    an intraline edit annotation (see `parse_intra_annot`).
 
     Possible outputs:
     - (True, True, None, None): Unmodified/context line
@@ -109,6 +111,7 @@ def diff_lines(old_lines: [str], new_lines: [str]):
                 # bogus (True, False, [...], None) entry will never be yielded.
                 buf.append((True, False, detail, None))
 
+    # Flush any remaining buffered entries.
     while buf:
         yield buf.popleft()
 
@@ -202,23 +205,32 @@ def adjust_closing_brace(old_lines: [str], new_lines: [str], diff):
         else:
             buf.append(dl)
 
+    # There are no more lines, so there can't be a `}` line following `buf` to
+    # trigger our heuristic.  That means we can blindly dump everything in
+    # `buf`.
+    yield from buf
+
 def diff_files(f1: File, f2: File) -> Diff:
     '''Diff two files, returning a `Diff` between them and also setting the
     `intra` annotation on the lines of both files.'''
     dls = diff_lines(f1.line_text, f2.line_text)
     dls = adjust_closing_brace(f1.line_text, f2.line_text, dls)
 
+    # Accumulator for diff blocks.
     diff_blocks = []
-    # Is the current span a change span?  (Or is it context?)
-    changed = True
 
+    # Start and current position of the current block.
     old_start = 0
     old_cur = 0
     new_start = 0
     new_cur = 0
+    # Is the current block a change?  (If not, it's context.)
+    changed = True
 
     def flush():
         nonlocal old_start, new_start
+        # This check means we can blindly call `flush()` without worrying about
+        # cluttering the output with zero-length blocks.
         if old_cur - old_start > 0 or new_cur - new_start > 0:
             diff_blocks.append((changed,
                 Span(old_start, old_cur),
@@ -249,10 +261,7 @@ def diff_files(f1: File, f2: File) -> Diff:
             new_cur += 1
         changed = next_changed
 
-    if old_cur - old_start > 0 and new_cur - new_start > 0:
-        diff_blocks.append((changed,
-            Span(old_start, old_cur),
-            Span(new_start, new_cur)))
+    flush()
 
     return Diff(f1, f2, diff_blocks)
 
@@ -261,22 +270,18 @@ def context_annot(blocks: [(bool, Span, Span)], new: bool, context_lines: int) -
     '''Generate an annotation of the old or new file's lines, indicating which
     lines are changes or context for changes (within `context_lines`
     distance).'''
-    result = []
+    result = SpanMerger()
 
     for (changed, old_span, new_span) in blocks:
         if not changed:
             continue
 
         span = new_span if new else old_span
-        context_span = Span(span.start - context_lines,
-                span.end + context_lines)
+        result.add(Span(
+            span.start - context_lines,
+            span.end + context_lines))
 
-        if len(result) > 0 and context_span.start <= result[-1].end:
-            result[-1].end = context_span.end
-        else:
-            result.append(context_span)
-
-    return result
+    return result.finish()
 
 def filter_unchanged(blocks: [(bool, Span, Span)],
         old_filt: [Span], new_filt: [Span]) -> [(bool, Span, Span)]:
@@ -289,16 +294,18 @@ def filter_unchanged(blocks: [(bool, Span, Span)],
     old_i = 0
     new_i = 0
 
-    print('old filter: %s\n new filter: %s' % (old_filt, new_filt))
-
     for changed, old_span, new_span in blocks:
         if changed:
             result.append((changed, old_span, new_span))
             continue
 
+        # In unchanged blocks, the old and new text are identical, so the spans
+        # should contain the same number of lines.
         assert len(old_span) == len(new_span)
 
-        # Subspans of the current block that we should keep.
+        # Subspans of the current block that we should keep.  In these
+        # annotations, position 0 represents the start of the block and
+        # `len(old_span)` / `len(new_span)` represents its end.
         old_keep = []
         new_keep = []
 
@@ -322,7 +329,6 @@ def filter_unchanged(blocks: [(bool, Span, Span)],
             new_i += 1
 
         keep = merge_annot(old_keep, new_keep)
-        print('from %s / %s, keep %s' % (old_span, new_span, keep))
         for s in keep:
             result.append((False, s + old_span.start, s + new_span.start))
 
@@ -375,7 +381,7 @@ def hunk_output_lines(h: Hunk) -> [OutputLine]:
     result = []
     for changed, old_span, new_span in h.blocks:
         common_lines = min(len(old_span), len(new_span))
-        for i in range(common_lines):
+        for i in range(0, common_lines):
             result.append(OutputLine(changed, old_span.start + i, new_span.start + i))
         for i in range(common_lines, len(old_span)):
             result.append(OutputLine(changed, old_span.start + i, None))

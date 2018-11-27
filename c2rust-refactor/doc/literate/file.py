@@ -18,25 +18,31 @@ class Line:
         self.text = text
         # Syntax highlighting.  Annotation data is a pygments token.
         self.highlight = None
-        # Intraline edits.  Annotation data is `True`, indicating that the
-        # annotated substring was inserted/deleted by an intraline edit.
+        # Intraline edits.  Annotation data is one of `'ins'`, `'del'`, or
+        # `'chg'`, indicating that the annotated substring was inserted,
+        # deleted, or changed by an intraline edit.
         self.intra = None
-        # Marked node text.  Annotation data is a set of NodeIds, indicating
-        # which of the nodes overlapping the position have at least one mark.
+        # Marked node text.  Annotates each `text` position with a set of node
+        # IDs, indicating nodes that overlap the position and have at least one
+        # mark.
         self.marks = None
-        # Points where marks begin or end.  Each is a list of points, labeled
-        # with a set of node IDs.
+        # Points where marked nodess begin or end.  Each is a list of `Point`s,
+        # labeled with a set of node IDs (as in `marks`).  These are kept
+        # separate so they can be handled at different points in
+        # `render.render_line`'s event ordering.
         self.mark_starts = None
         self.mark_ends = None
         # Sets of node IDs for marks that are present at the start of the line
         # (when it's the start of a hunk) or the end of a line (when it's the
         # end of a hunk).  These remain `None` for lines not at the start/end
-        # of a hunk, or where there are no marks covering a hunk boundary.
+        # of a hunk, or where there are no marks that cross the hunk boundary.
         self.hunk_start_marks = None
         self.hunk_end_marks = None
 
     def copy(self):
         c = Line(self.text)
+        # Shallow copy is fine for all fields, since the values are expected to
+        # be immutable once the field is initialized.
         c.highlight = self.highlight
         c.intra = self.intra
         c.marks = self.marks
@@ -117,7 +123,10 @@ class File:
         # Info about the insertions/deletions performed during formatting.
         # This is constructed on demand.  It's used to map the span endpoints
         # from `raw_nodes`, which are always relative to the `unformatted`
-        # text, to positions relative to `text`.
+        # text, to positions relative to `text`.  This is lazily initialized
+        # during `fmt_map_lookup`, since it requires a somewhat expensive
+        # character-by-character diff of `text` and `unformatted`, and is only
+        # needed if the crate contains at least one mark.
         self.fmt_map = None
         self.fmt_map_index = None
 
@@ -135,6 +144,10 @@ class File:
     def copy(self):
         c = File(self.path,
                 self.unformatted, self.unformatted_nodes, self.raw_marks)
+        # Shallow copy is fine for everything except `lines`, which can have
+        # additional fields initialized at any time.  Thanks to this, the
+        # copied file is totally independent of the original (assuming values
+        # in initialized fields are never mutated).
         c.marks = self.marks
         c.mark_annot = self.mark_annot
         c.mark_labels = self.mark_labels
@@ -148,6 +161,9 @@ class File:
         return c
 
     def set_formatted(self, text):
+        '''Provide formatted text for this file.  This also initializes other
+        fields that are derived from the formatted text, particularly
+        `lines`.'''
         assert self.text is None
         self.text = text
         self.lines = [Line(l) for l in text.splitlines(keepends=True)]
@@ -197,19 +213,23 @@ class File:
             return self.fmt_map[i - 1]
 
     def fmt_map_translate(self, unformatted_pos: int) -> int:
+        '''Translate an unformatted text position to a corresponding position
+        in the formatted text.'''
+        # TODO: When `unformatted_pos` lies inside of text that was deleted
+        # during formatting, this code probably produces bad results.  But only
+        # whitespace and the occasional punctuation should ever get deleted by
+        # rustfmt, and those usually do not contain the endpoints of marked
+        # nodes, which is the main use case for this function.
         span, new_start = self.fmt_map_lookup(unformatted_pos)
         delta = unformatted_pos - span.start
-        print('translate: %d -> %s, %d -> delta %d -> %d' %
-                (unformatted_pos, span, new_start, delta, new_start +
-                    min(delta, len(span))))
         if delta > len(span):
             delta = len(span)
         return new_start + delta
 
 class Diff:
     '''Maps related lines between old and new files.  Note that this class does
-    *not* include intraline diff info - that is exposed as line annotations on
-    the `File`.'''
+    *not* include intraline diff info - that is exposed as annotations on the
+    `File`s' `Line`s.'''
     def __init__(self, old_file, new_file, blocks):
         self.old_file = old_file
         self.new_file = new_file
@@ -227,7 +247,7 @@ class Hunk:
     '''A single diff hunk for output.'''
     def __init__(self, blocks):
         # Formatted identically to `Diff.blocks`, but it may not cover the
-        # entirety of the old and new files.
+        # entirety of the old and new files.  (It's still contiguous, though.)
         self.blocks = blocks
         # A list of output lines in the hunk.
         self.output_lines = None
@@ -238,6 +258,6 @@ class Hunk:
 
 # A line of the two-column output.  `changed` is a boolean indicating whether
 # this line is an insertion/deletion/change or context.  `old_line` and
-# `new_line` are the lines to display from the old/new file, and can be `None`
-# for unbalanced insertions/deletions.
+# `new_line` are the indexes of lines to display from the old/new file, and can
+# be `None` in cases of unbalanced insertions/deletions.
 OutputLine = namedtuple('OutputLine', ('changed', 'old_line', 'new_line'))

@@ -3,10 +3,17 @@ script into commands.'''
 from collections import namedtuple
 import shlex
 
+# A block of unprocessed Markdown text, represented as a list of lines with
+# '\n' terminators intact.
 Text = namedtuple('Text', ('lines',))
+# A block of refactoring script.  `commands` is the refactoring commands, as a
+# list of lists of arguments.  `raw` is the raw text as a list of lines, not
+# including the `'```refactor'` ... `'```'` delimiters.
 Script = namedtuple('Script', ('commands', 'raw'))
 
-def split_commands(code):
+def split_commands(code: str) -> [[str]]:
+    '''Parse a string as a sequence of shell words, then split those words into
+    refactoring commands on `';'` separators.'''
     words = shlex.split(code)
     acc = []
     cmds = []

@@ -1,13 +1,27 @@
 from collections import namedtuple
 
-from literate.annot import Span, fill_annot, zip_annot, cut_annot, lookup_span
+from literate.annot import Span, fill_annot, zip_annot, cut_annot, \
+        lookup_span, SpanMerger
 from literate.file import File, Diff
 from literate.points import Point, cut_points, annot_to_deltas
 
 
+# This is the same info contained in a `marks.json` entry, just slightly more
+# convenient to access.
+# - `id`: The node ID of the marked node
+# - `orig_id`: The "original node ID" reported by `c2rust-refactor`.  This is
+#   used to identify nodes across refactoring steps, so we can detect when a
+#   mark is left unchanged even if nodes got renumbered.
+# - `labels`: A list of strings, giving the labels applied to the marked node.
+# - `kind`: A string describing the kind of node that was marked.  `"item"`,
+#   `"expr"`, `"stmt"`, etc.
+# - `name`: The name of the marked node.  May be `None` or the empty string.
+#   This is mainly useful on item nodes.
 Mark = namedtuple('Mark', ('id', 'orig_id', 'labels', 'kind', 'name'))
 
 def convert_marks(marks: [dict]) -> {int: Mark}:
+    '''Convert a list of `marks.json` entries to `Mark` objects, and build a
+    dict mapping each `Mark`'s `id` to the `Mark` itself.'''
     result = {}
     for m in marks:
         if len(m['labels']) == 0:
@@ -22,9 +36,11 @@ def convert_marks(marks: [dict]) -> {int: Mark}:
                 )
     return result
 
-def marks_annot(f: File) -> [Span]:
-    '''Annotate the entire file text with sets of NodeIds, indicating the
-    marked nodes overlapping each location.'''
+def build_mark_annot(f: File) -> [Span]:
+    '''Build an annotation on the entire file, labeled with sets of NodeIds
+    indicating the marked nodes overlapping each source location.'''
+    # We start with one big annotation that labels the entire file with the
+    # empty set, and zip it with an annotation for each marked node in turn.
     empty = frozenset()
     annot = [Span(0, len(f.text), empty)]
 
@@ -32,12 +48,10 @@ def marks_annot(f: File) -> [Span]:
         if node_id not in f.marks:
             continue
 
+        # `unformatted_nodes` uses source locations in the unformatted text,
+        # which we need to translate to locations in the formatted text.
         start = f.fmt_map_translate(u_start)
         end = f.fmt_map_translate(u_end)
-
-        print('mapped span %d..%d (%r) to %d..%d (%r)' %
-                (u_start, u_end, f.unformatted[u_start : u_end],
-                    start, end, f.text[start : end]))
 
         node_annot = fill_annot([Span(start, end, frozenset((node_id,)))], 
                 len(f.text), label=empty)
@@ -45,19 +59,17 @@ def marks_annot(f: File) -> [Span]:
 
     return annot
 
-# For mark bounds, we'd really like to label *positions*, not spans.  So we use
-# a bit of a hack: we store the original span's start and end positions in the
-# label, and compare them to the start and end positions during rendering.
-# This lets us detect if we are actually looking at a cut-up subspan of the
-# original, in which case the started/ended sets may not actually apply to the
-# cut span's endpoints.
-MarkBoundsLabel = namedtuple('MarkBoundsLabel',
-        ('marks_started', 'orig_start', 'marks_ended', 'orig_end'))
 
 def init_line_mark_bounds(f: File):
+    '''Initialize the `mark_starts` and `mark_ends` fields of the `Line`s in
+    `f`.'''
+    # We just build `mark_starts` and `mark_ends` point lists for the entire
+    # file, and cut them up for the individual lines at the end.
     file_starts = []
     file_ends = []
 
+    # Get a `point` for each change in `mark_annot`, indicating the sets of
+    # overlapping marks before and after that point.
     for p in annot_to_deltas(f.mark_annot):
         old, new = p.label
         if old is None and new is None:
@@ -86,11 +98,13 @@ def init_line_mark_bounds(f: File):
         f.lines[line_span.label].set_mark_ends(line_ends)
 
 def mark_file(f: File):
-    from pprint import pprint
+    '''Process marks for a file, initializing `File.marks`, `File.mark_annot`,
+    `Line.mark_starts`, and `Line.mark_ends` fields.'''
     f.set_marks(convert_marks(f.raw_marks))
 
     # Annotate file with sets of marks
-    annot = marks_annot(f)
+    annot = build_mark_annot(f)
+    # Filter out spans labeled with the empty set.
     annot = [s for s in annot if len(s.label) > 0]
     f.set_mark_annot(annot)
 
@@ -98,26 +112,34 @@ def mark_file(f: File):
 
 
 def init_hunk_start_marks(f: File, lines: Span):
+    '''Set `Line.hunk_start_marks` on the first line in `lines` to the set of
+    marked nodes that overlap its start.'''
     if lines.start >= len(f.lines):
         return
     line = lines.start
     char = f.line_annot[line].start
+    # Figure out which marks cover the start position of the first line.
     mark_span = lookup_span(f.mark_annot, char,
             include_start=True, include_end=False)
     if mark_span is not None and len(mark_span.label) > 0:
         f.lines[line].set_hunk_start_marks(mark_span.label)
 
 def init_hunk_end_marks(f: File, lines: Span):
+    '''Set `Line.hunk_end_marks` on the last line in `lines` to the set of
+    marked nodes that overlap its end.'''
     if lines.end <= 0:
         return
     line = lines.end - 1
     char = f.line_annot[line].end
+    # Figure out which marks cover the end position of the last line.
     mark_span = lookup_span(f.mark_annot, char,
             include_start=False, include_end=True)
     if mark_span is not None and len(mark_span.label) > 0:
         f.lines[line].set_hunk_end_marks(mark_span.label)
 
 def init_hunk_boundary_marks(d: Diff):
+    '''Initialize `Line.hunk_start_marks` and/or `Line.hunk_end_marks` for
+    lines at the start/end of each hunk in `d`.'''
     for h in d.hunks:
         changed, old_lines, new_lines = h.blocks[0]
         init_hunk_start_marks(d.old_file, old_lines)
@@ -129,6 +151,8 @@ def init_hunk_boundary_marks(d: Diff):
 
 
 def diff_labels(l1, l2):
+    '''Diff two collections of labels, producing lists of labels added, labels
+    removed, and labels kept.'''
     l1 = set(l1)
     l2 = set(l2)
     added = l2 - l1
@@ -136,15 +160,21 @@ def diff_labels(l1, l2):
     kept = l1 & l2
     return (sorted(added), sorted(removed), sorted(kept))
 
-def init_mark_status(d: Diff):
+def init_mark_labels(d: Diff):
+    '''Diff the marks present in `d.old_files` and `d.new_files`, and use that
+    to initialize `File.mark_labels` for both files.'''
     old_marks = dict((m.orig_id, m) for m in d.old_file.marks.values())
     new_marks = dict((m.orig_id, m) for m in d.new_file.marks.values())
 
     old_labels = {}
     for m in d.old_file.marks.values():
         if m.orig_id in new_marks:
+            # There is a corresponding node marked in the new file.  Diff `m`'s
+            # labels with the ones for that new node.
             old_labels[m.id] = diff_labels(m.labels, new_marks[m.orig_id].labels)
         else:
+            # There is no corresponding node - the node (and its mark) must
+            # have been deleted.
             old_labels[m.id] = ((), sorted(m.labels), ())
     d.old_file.set_mark_labels(old_labels)
 
@@ -152,19 +182,22 @@ def init_mark_status(d: Diff):
     for m in d.new_file.marks.values():
         if m.orig_id in old_marks:
             new_labels[m.id] = diff_labels(old_marks[m.orig_id].labels, m.labels)
-            print('label diff for %s (vs %s): %s' % (m.labels,
-                old_marks[m.orig_id].labels, new_labels[m.id]))
         else:
             new_labels[m.id] = (sorted(m.labels), (), ())
     d.new_file.set_mark_labels(new_labels)
 
 
 def init_file_keep_mark_lines(f: File):
+    '''Initialize `f.keep_mark_lines` with an annotation covering the start of
+    each node where a mark was added or removed.'''
+    # Figure out which marks were changed - text for these will be kept in the
+    # output even if it's not part of any hunk's context.
     keep_marks = set()
     for node_id, (added, removed, kept) in f.mark_labels.items():
         if len(added) > 0 or len(removed) > 0:
             keep_marks.add(node_id)
 
+    # Get the start line for each kept mark.
     keep_start_lines = set()
     for u_start, u_end, node_id in f.unformatted_nodes:
         if node_id not in keep_marks:
@@ -173,18 +206,17 @@ def init_file_keep_mark_lines(f: File):
         line_span = lookup_span(f.line_annot, start)
         keep_start_lines.add(line_span.label)
 
-    keep_lines = []
-    def add(s):
-        if len(keep_lines) > 0 and s.start in keep_lines[-1]:
-            keep_lines[-1].end = max(keep_lines[-1].end, s.end)
-        else:
-            keep_lines.append(s)
-
+    # Label a region around each mark's start line.
+    keep_lines = SpanMerger()
     for start in sorted(keep_start_lines):
-        add(Span(start - 3, start + 6))
+        keep_lines.add(Span(start - 3, start + 6))
 
-    f.set_keep_mark_lines(keep_lines)
+    f.set_keep_mark_lines(keep_lines.finish())
 
 def init_keep_mark_lines(d: Diff):
+    '''Initialize `f.keep_mark_lines` for the old and new files of `d`.
+
+    The two files are processed independently, but it relies on information
+    derived from previous diff processing (namely, `File.mark_labels`).'''
     init_file_keep_mark_lines(d.old_file)
     init_file_keep_mark_lines(d.new_file)

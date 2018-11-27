@@ -13,6 +13,7 @@ import literate.marks
 
 
 def mark_class(f: File, node_id: int) -> str:
+    '''Get the CSS class suffix to use for `node_id`'s mark indicator.'''
     added, removed, kept = f.mark_labels.get(node_id, ((), (), ()))
 
     if len(added) == 0 and len(removed) == 0:
@@ -25,6 +26,12 @@ def mark_class(f: File, node_id: int) -> str:
         return 'chg'
 
 def mark_desc(f: File, node_id: int) -> str:
+    '''Get a user-facing description of the mark on `node_id`.
+
+    The returned descriptions look like:
+
+        item #123: added 'foo'; removed 'bar', 'baz'; kept 'target'
+    '''
     m = f.marks[node_id]
 
     if m.id == 0xffffffff:
@@ -51,9 +58,13 @@ def mark_desc(f: File, node_id: int) -> str:
     return '%s: %s' % (mark_str, '; '.join(parts))
 
 def render_line(line, f):
+    '''Render HTML output for a single line of a file.  `f` should be the file
+    containing `line`.'''
     parts = []
 
-    def mark_marker(m, start):
+    # Helpers for adding common types of parts, such as span start/end tags.
+
+    def mark_arrow(m, start):
         if start:
             sym = '&#x25b6'
         else:
@@ -63,6 +74,10 @@ def render_line(line, f):
 
     def emit_text(start, end):
         if end == len(line.text) and line.text.endswith('\n'):
+            # Avoid emitting the line's trailing `\n`.  It normally gets
+            # ignored by the browser, but sometimes we emit a mark indicator
+            # afterward, which we'd like to stay on the same line when
+            # possible.
             end = end - 1
         if end > start:
             parts.append(line.text[start : end])
@@ -73,6 +88,10 @@ def render_line(line, f):
     def end_span():
         parts.append('</span>')
 
+
+    # Build a list of "events", which are places where we should insert markup
+    # tags into the text of the line.  `events` is a list of `Point`s, each
+    # labeled with details of the tag to be inserted at the point.
 
     if line.intra is not None:
         intra_start = annot_starts(line.intra)
@@ -87,7 +106,11 @@ def render_line(line, f):
     marks_start = line.mark_starts
     marks_end = line.mark_ends
 
-
+    # `merge_points` is deliberately biased: when multiple input points have
+    # the same position, the ones from the earlier input list appear first.  We
+    # put the arguments in this specific order to ensure proper nesting.
+    # FIXME: Doesn't actually work.  Particularly, `intra` spans may overlap
+    # mark starts/ends.
     events = merge_points(
             map_points(highlight_end, lambda l: ('hl_e', l)),
             map_points(intra_end, lambda l: ('i_e', l)),
@@ -97,6 +120,10 @@ def render_line(line, f):
             map_points(highlight_start, lambda l: ('hl_s', l)),
             )
 
+
+    # Build up the output text.  We emit special tags at each point in
+    # `events`, and otherwise emit substrings from `line.text`.
+
     last_pos = 0
 
     if line.hunk_start_marks:
@@ -104,14 +131,14 @@ def render_line(line, f):
         # ascending, in hopes that higher-numbered labels enclose
         # lower-numbered ones.  There's no guarantee, of course.
         for m in sorted(line.hunk_start_marks, reverse=True):
-            mark_marker(m, True)
+            mark_arrow(m, True)
 
-            # These hunk-start markers often appear before the whitespace
-            # of indented lines.  To avoid throwing off the indentation, we let
-            # them "eat up" as much whitespace as is available.  Any start/end
-            # events in the eaten whitespace will be pushed back until after
-            # the markers.  (Hopefully there are not many events inside a
-            # purely whitespace span.)
+            # These hunk-start mark indicators often appear before the
+            # whitespace of indented lines.  To avoid throwing off the
+            # indentation, we let them "eat up" as much whitespace as is
+            # available.  Any start/end events in the eaten whitespace will be
+            # pushed back until after the marks.  (Hopefully there are not many
+            # events inside a purely whitespace span.)
             if last_pos < len(line.text) and line.text[last_pos] == ' ':
                 last_pos += 1
 
@@ -124,10 +151,10 @@ def render_line(line, f):
 
         if kind in 'm_s':
             for m in sorted(label, reverse=True):
-                mark_marker(m, True)
+                mark_arrow(m, True)
         elif kind == 'm_e':
             for m in sorted(label):
-                mark_marker(m, False)
+                mark_arrow(m, False)
         elif kind == 'i_s':
             start_span('diff-intra-%s' % label)
         elif kind == 'i_e':
@@ -144,28 +171,35 @@ def render_line(line, f):
 
     if line.hunk_end_marks:
         for m in sorted(line.hunk_end_marks):
-            mark_marker(m, False)
+            mark_arrow(m, False)
 
     return ''.join(parts)
 
 def prepare_files(files: [File]):
-    for f in files:
+    '''Run single-file initialization steps on each file in `files`.'''
+    for i, f in enumerate(files):
+        print('preparing file %d (%s)' % (i, f.path))
         literate.highlight.highlight_file(f)
         literate.marks.mark_file(f)
 
 def make_diff(f1: File, f2: File) -> Diff:
+    '''Construct a diff between two files, and run diff initialization
+    steps.'''
+    print('  diffing file %s' % f1.path)
     d = literate.diff.diff_files(f1.copy(), f2.copy())
-    from pprint import pprint
-    pprint(d.blocks)
-    literate.marks.init_mark_status(d)
+    literate.marks.init_mark_labels(d)
     literate.marks.init_keep_mark_lines(d)
     literate.diff.build_diff_hunks(d)
     literate.diff.build_output_lines(d)
     literate.marks.init_hunk_boundary_marks(d)
     return d
 
-def render_diff(old_cs, new_cs):
-    file_names = sorted(new_cs.files.keys())
+def render_diff(old_files, new_files) -> str:
+    '''Render a diff between each file in `new_files` and the corresponding one
+    in `old_files`.  The result is either a string of HTML source, or `None` if
+    nothing changed.'''
+    file_names = sorted(new_files.keys())
+    # Is the diff empty?
     empty = True
 
     parts = []
@@ -176,7 +210,7 @@ def render_diff(old_cs, new_cs):
     for f in file_names:
         # `make_diff` copies the files, then updates the copies.  We want
         # references to the new copies only.
-        diff = make_diff(old_cs.files[f], new_cs.files[f])
+        diff = make_diff(old_files[f], new_files[f])
         old = diff.old_file
         new = diff.new_file
 
@@ -225,7 +259,8 @@ def render_diff(old_cs, new_cs):
     return ''.join(parts)
 
 
-def get_styles(fmt=None):
+def get_styles(fmt=None) -> str:
+    '''Return CSS styles for displaying generated diffs.'''
     fmt = fmt or pygments.formatters.get_formatter_by_name(
             'html', nowrap=True, style='monokai')
 

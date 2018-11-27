@@ -10,6 +10,8 @@ from literate.annot import Span
 from literate.file import File
 
 def format_text_in_file(text, path):
+    '''Run `rustfmt` on `text`, using `path` as a temporary file.  Returns the
+    formatted text.'''
     with open(path, 'w') as f:
         f.write(text)
 
@@ -19,13 +21,14 @@ def format_text_in_file(text, path):
         return f.read()
 
 def format_files(all_files: [File]):
+    '''Format the `unformatted` text of every file in `all_files`, and set the
+    formatted text for each one.'''
     with tempfile.TemporaryDirectory() as td:
         path = os.path.join(td, 'fmt.rs')
-        print('formatting files in %s' % path)
 
         fmt_text = {}
-        for f in all_files:
-            print('running rustfmt for %s (%x)' % (f.path, id(f)))
+        for i, f in enumerate(all_files):
+            print('formatting file %d (%s)' % (i, f.path))
             f.set_formatted(format_text_in_file(f.unformatted, path))
 
 

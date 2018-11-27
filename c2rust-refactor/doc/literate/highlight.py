@@ -1,10 +1,9 @@
-import pygments.formatters
 import pygments.lexers
 import pygments.token
 
-
 from literate.annot import Span, cut_annot
 from literate.file import File
+
 
 def highlight_file(f: File):
     '''Run syntax highlighting on `f`, setting the `highlight` annotation for
