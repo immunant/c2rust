@@ -8,7 +8,6 @@ set(TINYCBOR_URL "https://github.com/intel/tinycbor/archive/v0.5.2.tar.gz"
     CACHE STRING "tinycbor download URL")
 set(TINYCBOR_MD5 "58d3a934bb0c7ca7378d560121a952d4" CACHE STRING "tinycbor archive md5 sum")
 set(TINYCBOR_PREFIX "${CMAKE_BINARY_DIR}/tinycbor" CACHE STRING "tinycbor install prefix")
-set(TINYCBOR_VERSION_H "${TINYCBOR_PREFIX}/src/tinycbor_build/src/tinycbor-version.h")
 
 include(ExternalProject)
 ExternalProject_Add(tinycbor_build
