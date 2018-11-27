@@ -160,3 +160,32 @@ def cut_points(orig: [Point], cut: [Span],
 
     return pieces
 
+def cut_annot_at_points(orig: [Span], cut: [Point]) -> [Span]:
+    '''Cut the spans of annotation `orig` at each point in `cut`.  The
+    resulting annotation applies all the same labels to the same regions as in
+    `orig`, but any span that previously crossed a `cut` point is broken into
+    two or more consecutive subspans.'''
+    result = []
+    def emit(s):
+        # Filter out any zero-length spans.  This should only happen when two
+        # points in `cut` occupy the same position.
+        if len(s) > 0:
+            result.append(s)
+
+    i = 0
+    for span in orig:
+        # Skip points that lie strictly before `span`.
+        while i < len(cut) and cut[i].pos <= span.start:
+            i += 1
+
+        # For each point that lies inside `span`, emit the subspan before the
+        # point, then check for additional cut points in the subspan after the
+        # point.
+        while i < len(cut) and cut[i].pos < span.end:
+            emit(Span(span.start, cut[i].pos, span.label))
+            span = Span(cut[i].pos, span.end, span.label)
+            i += 1
+
+        emit(span)
+
+    return result

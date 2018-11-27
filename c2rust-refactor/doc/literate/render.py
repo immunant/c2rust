@@ -6,7 +6,8 @@ import pygments.token
 
 from literate.annot import Span, fill_annot, cut_annot
 from literate.file import File, Diff
-from literate.points import Point, map_points, merge_points, annot_starts, annot_ends
+from literate.points import Point, map_points, merge_points, \
+        annot_starts, annot_ends, cut_annot_at_points
 import literate.diff
 import literate.highlight
 import literate.marks
@@ -93,31 +94,42 @@ def render_line(line, f):
     # tags into the text of the line.  `events` is a list of `Point`s, each
     # labeled with details of the tag to be inserted at the point.
 
-    if line.intra is not None:
-        intra_start = annot_starts(line.intra)
-        intra_end = annot_ends(line.intra)
-    else:
-        intra_start = []
-        intra_end = []
+    # We rely on the bias of `merge_points` (when two input sequences have
+    # points at the same position, the ones from the first input appear first)
+    # to establish an ordering between different event types and ensure proper
+    # nesting of HTML tags.
+    #
+    # The most interesting case here is for `line.intra`.  The CSS for
+    # intraline edit markers uses a `border` attribute, which means a pair of
+    # adjacent intraline edit spans is visibly distinct from a single longer
+    # span.  (This is unlike `highlight`, whose CSS only sets text color.)  We
+    # deliberately break intraline edit spans around mark indicators, but
+    # otherwise try to keep them intact.
 
-    highlight_start = annot_starts(line.highlight)
-    highlight_end = annot_ends(line.highlight)
+    events = []
 
-    marks_start = line.mark_starts
-    marks_end = line.mark_ends
-
-    # `merge_points` is deliberately biased: when multiple input points have
-    # the same position, the ones from the earlier input list appear first.  We
-    # put the arguments in this specific order to ensure proper nesting.
-    # FIXME: Doesn't actually work.  Particularly, `intra` spans may overlap
-    # mark starts/ends.
+    # Mark starts and ends.
     events = merge_points(
-            map_points(highlight_end, lambda l: ('hl_e', l)),
-            map_points(intra_end, lambda l: ('i_e', l)),
-            map_points(marks_end, lambda l: ('m_e', l)),
-            map_points(marks_start, lambda l: ('m_s', l)),
-            map_points(intra_start, lambda l: ('i_s', l)),
-            map_points(highlight_start, lambda l: ('hl_s', l)),
+            map_points(line.mark_ends, lambda l: ('m_e', l)),
+            events,
+            map_points(line.mark_starts, lambda l: ('m_s', l)),
+            )
+
+    # Intraline edits.
+    if line.intra is not None:
+        intra = cut_annot_at_points(line.intra, events)
+        events = merge_points(
+                map_points(annot_ends(intra), lambda l: ('i_e', l)),
+                events,
+                map_points(annot_starts(intra), lambda l: ('i_s', l)),
+                )
+
+    # Syntax highlighting.
+    highlight = cut_annot_at_points(line.highlight, events)
+    events = merge_points(
+            map_points(annot_ends(highlight), lambda l: ('hl_e', l)),
+            events,
+            map_points(annot_starts(highlight), lambda l: ('hl_s', l)),
             )
 
 
