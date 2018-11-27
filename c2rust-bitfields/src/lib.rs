@@ -145,30 +145,18 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
     let q = quote! {
         impl #struct_ident {
             #(
-                pub fn #method_name_setters(&mut self, val: #field_type_setters) {
-                    let field = self.#field_names;
+                pub fn #method_name_setters(&mut self, int: #field_type_setters) {
+                    let mut field = &mut self.#field_names;
                     let (lhs_bit, rhs_bit) = #field_bit_info;
-                    let bit_width = rhs_bit - lhs_bit;
-                    // let byte_index = field.len() - bit_width / 8;
-                    let start_byte_index = lhs_bit / 8;
-                    let end_byte_index = rhs_bit / 8;
 
-                    // Fits in a single byte
-                    if start_byte_index == end_byte_index {
-                        let mut byte = field[start_byte_index];
+                    for (i, bit_index) in (lhs_bit..=rhs_bit).enumerate() {
+                        let byte_index = bit_index / 8;
+                        let mut byte = &mut field[byte_index];
+                        let bit = 1 << i;
+                        let read_bit = int & bit;
 
-                        for bit_pos in 7..=0 {
-                            let bit = val;
-
-                            // byte;
-
-                            // bit_width -= 1;
-                        }
-
-                        return
+                        *byte |= read_bit as u8;
                     }
-
-                    // TODO: Multi byte
                 }
 
                 pub fn #method_names(&self) -> #field_types {

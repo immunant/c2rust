@@ -9,18 +9,6 @@ extern "C" {
     fn check_compact_date(_: *const CompactDate) -> u32;
 }
 
-// *** Dumping AST Record Layout
-//         0 | struct date
-//     0:0-4 |   unsigned char d
-//     1:0-3 |   unsigned char m
-//         2 |   unsigned short y
-//           | [sizeof=4, align=2]
-// struct CompactDate {
-//     unsigned char d: 5;
-//     unsigned char m: 4;
-//     unsigned short y;
-// };
-
 #[repr(C, align(2))]
 #[derive(BitfieldStruct, Copy, Clone)]
 struct CompactDate {
@@ -47,7 +35,6 @@ fn test_compact_date() {
 
     assert_eq!(date.d(), 31);
     assert_eq!(date.m(), 12);
-
     assert_eq!(date.y, 2014);
 
     // Test C byte compatibility
