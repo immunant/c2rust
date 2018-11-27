@@ -278,7 +278,7 @@ def get_styles(fmt=None) -> str:
 
     parts = []
     parts.append('table.highlight { width: 800px; table-layout: fixed; }')
-    parts.append('.highlight td { overflow-wrap: break-all; }')
+    parts.append('.highlight td { overflow-wrap: break-word; }')
     parts.append('.highlight td.line-num { text-align: right; }')
     parts.append('.highlight pre { display: inline; white-space: pre-wrap; }')
 
