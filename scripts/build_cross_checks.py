@@ -60,13 +60,17 @@ def build_clang_plugin(args: str) -> None:
             cmake = get_cmd_or_die("cmake")
             max_link_jobs = est_parallel_link_jobs()
             cargs = ["-G", "Ninja", c.CLANG_XCHECK_PLUGIN_SRC,
-                     "-DLLVM_DIR={}/lib/cmake/llvm".format(c.LLVM_BLD),
-                     "-DClang_DIR={}/lib/cmake/clang".format(c.LLVM_BLD),
-                     "-DLLVM_EXTERNAL_LIT={}/bin/llvm-lit".format(c.LLVM_BLD),
                      "-DXCHECK_CONFIG_LIB={}".format(config_lib_path),
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DBUILD_SHARED_LIBS=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
+            if args.with_c2rust_clang:
+                cargs.extend(["-DLLVM_DIR={}/lib/cmake/llvm".format(c.LLVM_BLD),
+                              "-DClang_DIR={}/lib/cmake/clang".format(c.LLVM_BLD),
+                              "-DLLVM_EXTERNAL_LIT={}/bin/llvm-lit".format(c.LLVM_BLD)])
+            else:
+                # Some distros, e.g., Arch, Ubuntu, ship llvm-lit as /usr/bin/lit
+                cargs.append("-DLLVM_EXTERNAL_LIT={}".format(pb.local['lit']))
             invoke(cmake[cargs])
         else:
             logging.debug("found existing ninja.build, not running cmake")
@@ -86,6 +90,10 @@ def _parse_args():
     parser.add_argument('-d', '--debug', default=False,
                         action='store_true', dest='debug',
                         help=dhelp)
+    lhelp = 'build clang plugin against our C2Rust clang instead of the system one'
+    parser.add_argument('--with-c2rust-clang', default=False,
+                        action='store_true', dest='with_c2rust_clang',
+                        help=lhelp)
     return parser.parse_args()
 
 
