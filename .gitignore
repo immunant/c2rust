@@ -16,6 +16,9 @@ llvm.build*
 **/Cargo.lock
 .python-version
 
+# xcode-project
+c2rust-ast-exporter/xcode/
+
 # cross-checks
 /cross-checks/c-checks/clang-plugin/build
 /cross-checks/libfakechecks/*.o
