@@ -5,8 +5,9 @@ import pygments.lexers
 import pygments.token
 import re
 
-from literate.annot import Span, merge_annot, SpanMerger
-from literate.file import File, Diff, Hunk, OutputLine
+from literate.annot import Span, merge_annot, SpanMerger, fill_annot
+from literate.file import File, Line, Diff, Hunk, OutputLine
+from literate.points import Point, cut_annot_at_points
 
 
 # Regex for finding runs of identical non-space characters
@@ -210,6 +211,75 @@ def adjust_closing_brace(old_lines: [str], new_lines: [str], diff):
     # `buf`.
     yield from buf
 
+WORD_BREAK_RE = re.compile(r'\b')
+
+def token_annot(line: Line) -> [Span]:
+    '''Annotate the tokens of `l`.  Each token (and some sub-token strings)
+    gets a separate span.  This is a helper function for
+    `calc_tokenized_intra`.'''
+    annot = fill_annot(line.highlight, len(line.text))
+
+    # Special cases: treat word boundaries inside strings and comments as token
+    # breaks.  This essentially gives us the behavior of `git`'s `--word-diff`
+    # feature.
+    extra_cuts = []
+    for span in annot:
+        # We don't handle String subtypes (only String itself) because we don't
+        # want to break up `\x00` and similar escapes.
+        if span.label == pygments.token.String or \
+                span.label in pygments.token.Comment:
+            text = line.text[span.start : span.end]
+            for m in WORD_BREAK_RE.finditer(text):
+                extra_cuts.append(Point(span.start + m.start()))
+
+    return cut_annot_at_points(annot, extra_cuts)
+
+def calc_tokenized_intra(l1: Line, l2: Line) -> ([Span], [Span]):
+    '''Calculate token-based intraline edit annotations for `l1` and `l2`.
+
+    `difflib.ndiff` does a pretty good job of matching up similar lines, but it
+    computes intraline changes character-by-character, which often produces bad
+    results.  For example, it might turn `unsafe` into `malloc` by replacing
+    `uns` -> `m` and `fe` -> `lloc`, instead of doing `unsafe` -> `malloc` in
+    one go.
+
+    Here we calculate some intraline edits that are easier to read, using the
+    tokenization provided by `pygments` to align edit boundaries to the
+    boundaries of source tokens.'''
+    annot1 = token_annot(l1)
+    annot2 = token_annot(l2)
+
+    tokens1 = [l1.text[s.start : s.end] for s in annot1]
+    tokens2 = [l2.text[s.start : s.end] for s in annot2]
+
+    intra1 = []
+    intra2 = []
+
+    sm = difflib.SequenceMatcher(a=tokens1, b=tokens2)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == 'equal':
+            continue
+
+        while i1 < i2 and tokens1[i1].isspace():
+            i1 += 1
+        while i2 > i1 and tokens1[i2 - 1].isspace():
+            i2 -= 1
+
+        while j1 < j2 and tokens2[j1].isspace():
+            j1 += 1
+        while j2 > j1 and tokens2[j2 - 1].isspace():
+            j2 -= 1
+
+        if i1 != i2:
+            intra1.append(Span(annot1[i1].start, annot1[i2 - 1].end,
+                'chg' if tag == 'replace' else 'del'))
+
+        if j1 != j2:
+            intra2.append(Span(annot2[j1].start, annot2[j2 - 1].end,
+                'chg' if tag == 'replace' else 'ins'))
+
+    return (intra1, intra2)
+
 def diff_files(f1: File, f2: File) -> Diff:
     '''Diff two files, returning a `Diff` between them and also setting the
     `intra` annotation on the lines of both files.'''
@@ -249,10 +319,12 @@ def diff_files(f1: File, f2: File) -> Diff:
             # Emit each `intra` line as its own block, to ensure they're
             # aligned in the output.
             flush()
-            if old_detail is not None:
-                f1.lines[old_cur].set_intra(old_detail)
-            if new_detail is not None:
-                f2.lines[new_cur].set_intra(new_detail)
+            intra1, intra2 = calc_tokenized_intra(
+                    f1.lines[old_cur], f2.lines[new_cur])
+            if len(intra1) > 0:
+                f1.lines[old_cur].set_intra(intra1)
+            if len(intra2) > 0:
+                f2.lines[new_cur].set_intra(intra2)
             flush()
 
         if old_line:
