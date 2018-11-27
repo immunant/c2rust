@@ -158,3 +158,33 @@ def init_mark_status(d: Diff):
             new_labels[m.id] = (sorted(m.labels), (), ())
     d.new_file.set_mark_labels(new_labels)
 
+
+def init_file_keep_mark_lines(f: File):
+    keep_marks = set()
+    for node_id, (added, removed, kept) in f.mark_labels.items():
+        if len(added) > 0 or len(removed) > 0:
+            keep_marks.add(node_id)
+
+    keep_start_lines = set()
+    for u_start, u_end, node_id in f.unformatted_nodes:
+        if node_id not in keep_marks:
+            continue
+        start = f.fmt_map_translate(u_start)
+        line_span = lookup_span(f.line_annot, start)
+        keep_start_lines.add(line_span.label)
+
+    keep_lines = []
+    def add(s):
+        if len(keep_lines) > 0 and s.start in keep_lines[-1]:
+            keep_lines[-1].end = max(keep_lines[-1].end, s.end)
+        else:
+            keep_lines.append(s)
+
+    for start in sorted(keep_start_lines):
+        add(Span(start - 3, start + 6))
+
+    f.set_keep_mark_lines(keep_lines)
+
+def init_keep_mark_lines(d: Diff):
+    init_file_keep_mark_lines(d.old_file)
+    init_file_keep_mark_lines(d.new_file)

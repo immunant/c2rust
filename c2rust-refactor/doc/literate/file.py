@@ -107,6 +107,10 @@ class File:
         # unchanged during refactoring.
         self.mark_labels = None
 
+        # An annotation indicating lines to keep due to marks being
+        # inserted/removed nearby.
+        self.keep_mark_lines = None
+
         # The formatted text of the file.
         self.text = None
 
@@ -134,6 +138,7 @@ class File:
         c.marks = self.marks
         c.mark_annot = self.mark_annot
         c.mark_labels = self.mark_labels
+        c.keep_mark_lines = self.keep_mark_lines
         c.text = self.text
         c.fmt_map = self.fmt_map
         c.fmt_map_index = self.fmt_map_index
@@ -160,6 +165,10 @@ class File:
     def set_mark_labels(self, mark_labels):
         assert self.mark_labels is None
         self.mark_labels = mark_labels
+
+    def set_keep_mark_lines(self, keep_mark_lines):
+        assert self.keep_mark_lines is None
+        self.keep_mark_lines = keep_mark_lines
 
     def set_fmt_map(self, fmt_map, fmt_map_index):
         assert self.fmt_map is None

@@ -356,13 +356,15 @@ def split_hunks(blocks: [(bool, Span, Span)]) -> [Hunk]:
 def build_diff_hunks(d: Diff):
     '''Build a list of output hunks, and assign it to `d.hunks`.
 
-    If `d.old_file` or `d.new_file` has a `keep_lines` annotation, all
+    If `d.old_file` or `d.new_file` has a `keep_mark_lines` annotation, all
     annotated lines will be kept as additional context.'''
     keep_old = context_annot(d.blocks, False, 5)
-    # TODO: keep_lines
+    if d.old_file.keep_mark_lines is not None:
+        keep_old = merge_annot(keep_old, d.old_file.keep_mark_lines)
 
     keep_new = context_annot(d.blocks, True, 5)
-    # TODO: keep_lines
+    if d.new_file.keep_mark_lines is not None:
+        keep_new = merge_annot(keep_new, d.new_file.keep_mark_lines)
 
     blocks = filter_unchanged(d.blocks, keep_old, keep_new)
     hunks = split_hunks(blocks)

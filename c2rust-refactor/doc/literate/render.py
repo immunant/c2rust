@@ -52,6 +52,7 @@ def mark_desc(f: File, node_id: int) -> str:
 
 def render_line(line, f):
     parts = []
+
     def mark_marker(m, start):
         if start:
             sym = '&#x25b6'
@@ -59,6 +60,18 @@ def render_line(line, f):
             sym = '&#x25c0'
         parts.append('<a class="mark-%s" title="%s">%s</a>' %
                 (mark_class(f, m), html.escape(mark_desc(f, m)), sym))
+
+    def emit_text(start, end):
+        if end == len(line.text) and line.text.endswith('\n'):
+            end = end - 1
+        if end > start:
+            parts.append(line.text[start : end])
+
+    def start_span(cls):
+        parts.append('<span class="%s">' % cls)
+
+    def end_span():
+        parts.append('</span>')
 
 
     if line.intra is not None:
@@ -87,7 +100,10 @@ def render_line(line, f):
     last_pos = 0
 
     if line.hunk_start_marks:
-        for m in sorted(line.hunk_start_marks):
+        # We sort all starting labels descending and all ending labels
+        # ascending, in hopes that higher-numbered labels enclose
+        # lower-numbered ones.  There's no guarantee, of course.
+        for m in sorted(line.hunk_start_marks, reverse=True):
             mark_marker(m, True)
 
             # These hunk-start markers often appear before the whitespace
@@ -101,36 +117,30 @@ def render_line(line, f):
 
     for p in events:
         if p.pos > last_pos:
-            if p.pos == len(line.text) and line.text.endswith('\n'):
-                # Avoid emitting a \n followed by a .mark-end indicator, which
-                # would force the <pre> onto two lines.
-                parts.append(line.text[last_pos : -1])
-            else:
-                parts.append(line.text[last_pos : p.pos])
+            emit_text(last_pos, p.pos)
         last_pos = p.pos
 
         kind, label = p.label
 
         if kind in 'm_s':
-            for m in sorted(label):
+            for m in sorted(label, reverse=True):
                 mark_marker(m, True)
         elif kind == 'm_e':
             for m in sorted(label):
                 mark_marker(m, False)
         elif kind == 'i_s':
-            parts.append('<span class="diff-intra-%s">' % label)
+            start_span('diff-intra-%s' % label)
         elif kind == 'i_e':
-            parts.append('</span>')
+            end_span()
         elif kind == 'hl_s':
             if label not in (pygments.token.Token, pygments.token.Text):
-                parts.append('<span class="%s">' %
-                        pygments.token.STANDARD_TYPES.get(label))
+                start_span(pygments.token.STANDARD_TYPES.get(label))
         elif kind == 'hl_e':
             if label not in (pygments.token.Token, pygments.token.Text):
-                parts.append('</span>')
+                end_span()
 
     if len(line.text) > last_pos:
-        parts.append(line.text[last_pos:])
+        emit_text(last_pos, len(line.text))
 
     if line.hunk_end_marks:
         for m in sorted(line.hunk_end_marks):
@@ -147,10 +157,11 @@ def make_diff(f1: File, f2: File) -> Diff:
     d = literate.diff.diff_files(f1.copy(), f2.copy())
     from pprint import pprint
     pprint(d.blocks)
+    literate.marks.init_mark_status(d)
+    literate.marks.init_keep_mark_lines(d)
     literate.diff.build_diff_hunks(d)
     literate.diff.build_output_lines(d)
     literate.marks.init_hunk_boundary_marks(d)
-    literate.marks.init_mark_status(d)
     return d
 
 def render_diff(old_cs, new_cs):
@@ -231,12 +242,11 @@ def get_styles(fmt=None):
     parts.append('.diff-intra-chg { border: solid 1px #cccc00; }')
     parts.append('.diff-intra-ins { border: solid 1px #00cc00; }')
 
-    parts.append('.marked { background-color: #222255; }')
-
-    parts.append('.mark-kept { color: #3366cc; }')
-    parts.append('.mark-ins { color: #33cc66; }')
-    parts.append('.mark-del { color: #cc3366; }')
-    parts.append('.mark-chg { color: #cccc66; }')
+    # Monokai colors for mark indicators (taken from pygments.styles.monokai)
+    parts.append('.mark-kept { color: #66d9ef; border: solid 1px; }')
+    parts.append('.mark-ins { color: #a6e22e; border: solid 1px; }')
+    parts.append('.mark-del { color: #f92672; border: solid 1px; }')
+    parts.append('.mark-chg { color: #e6db74; border: solid 1px; }')
 
     # Colors for light-background color schemes, like `friendly`
     #parts.append('.diff-old { background-color: #ffcccc; }')
