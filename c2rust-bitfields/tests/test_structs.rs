@@ -7,6 +7,7 @@ use std::mem::transmute;
 #[link(name = "test")]
 extern "C" {
     fn check_compact_date(_: *const CompactDate) -> u32;
+    fn assign_compact_date_day(_: *mut CompactDate, _: u8);
 }
 
 #[repr(C, align(2))]
@@ -24,7 +25,6 @@ struct CompactDate {
 #[test]
 fn test_compact_date() {
     let mut date = CompactDate {
-        // first two bytes in this order
         d_m: [0; 2],
         y: 2014,
     };
@@ -47,4 +47,35 @@ fn test_compact_date() {
     unsafe {
         assert_eq!(check_compact_date(&date), 1);
     }
+}
+
+#[test]
+fn test_overflow() {
+    let mut date = CompactDate {
+        d_m: [0; 2],
+        y: 2014,
+    };
+
+    date.set_d(31);
+
+    assert_eq!(date.d(), 31);
+
+    date.set_d(32);
+
+    assert_eq!(date.d(), 0);
+
+    date.set_d(255);
+
+    assert_eq!(date.d(), 0);
+
+    // Double check C's overflow
+    date.set_d(31);
+
+    assert_eq!(date.d(), 31);
+
+    unsafe {
+        assign_compact_date_day(&mut date, 32);
+    }
+
+    assert_eq!(date.d(), 0);
 }

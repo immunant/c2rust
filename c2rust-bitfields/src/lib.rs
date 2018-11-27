@@ -121,6 +121,7 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
     let field_types: Vec<_> = bitfields.iter().map(parse_bitfield_ty_path).collect();
     let field_types2 = field_types.clone();
     let field_type_setters = field_types.clone();
+    let field_type_setters2 = field_types.clone();
     let method_names: Vec<_> = bitfields.iter().map(|field| Ident::new(&field.name, Span::call_site().into())).collect();
     let field_names: Vec<_> = bitfields.iter().map(|field| &field.field_name).collect();
     let field_names2 = field_names.clone();
@@ -141,13 +142,17 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
     let field_bit_info2 = field_bit_info.clone();
 
     // TODO: Field visibility determined by struct field visibility?
-    // TODO: Add generic doc strings
     let q = quote! {
         impl #struct_ident {
             #(
+                /// This method allows you to write to a bitfield with a value
                 pub fn #method_name_setters(&mut self, int: #field_type_setters) {
                     let mut field = &mut self.#field_names;
                     let (lhs_bit, rhs_bit) = #field_bit_info;
+
+                    // Check for overflow, which C defines to 0 the bitfield
+                    let min_overflow_val = 1 << (rhs_bit - lhs_bit + 1);
+                    let zeroing = int >= min_overflow_val as #field_type_setters2;
 
                     for (i, bit_index) in (lhs_bit..=rhs_bit).enumerate() {
                         let byte_index = bit_index / 8;
@@ -155,10 +160,15 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
                         let bit = 1 << i;
                         let read_bit = int & bit;
 
-                        *byte |= read_bit as u8;
+                        if zeroing {
+                            *byte &= !bit as u8;
+                        } else {
+                            *byte |= read_bit as u8;
+                        }
                     }
                 }
 
+                /// This method allows you to read from a bitfield to a value
                 pub fn #method_names(&self) -> #field_types {
                     let field = self.#field_names2;
                     let (lhs_bit, rhs_bit) = #field_bit_info2;

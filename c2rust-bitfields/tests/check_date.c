@@ -36,3 +36,7 @@ unsigned int check_compact_date(compact_date const* date) {
 
     return 1;
 }
+
+void assign_compact_date_day(compact_date* date, unsigned char day) {
+    date->d = day;
+}
