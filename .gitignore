@@ -1,5 +1,3 @@
-llvm.src/*
-llvm.build*
 *.tar.xz
 *.tar.xz.sig
 *.tar.gz
@@ -15,6 +13,9 @@ llvm.build*
 **/compile_commands.json
 **/Cargo.lock
 .python-version
+
+# xcode-project
+c2rust-ast-exporter/xcode/
 
 # cross-checks
 /cross-checks/c-checks/clang-plugin/build

@@ -133,6 +133,7 @@ def configure_and_build_llvm(args) -> None:
             if args.xcode:
                 cargs[1] = "Xcode"
                 # output Xcode project files in a separate dir
+                ensure_dir(c.AST_EXPO_PRJ_DIR)
                 with pb.local.cwd(c.AST_EXPO_PRJ_DIR):
                     invoke(cmake[cargs])
         else:
@@ -249,9 +250,6 @@ def _main():
 
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])
-    # NOTE: it seems safe to disable this check since we now
-    # that we use a rust-toolchain file for rustc versioning.
-    # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
 
     if args.clean_all:
         logging.info("cleaning all dependencies and previous built files")

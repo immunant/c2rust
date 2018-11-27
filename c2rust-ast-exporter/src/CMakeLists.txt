@@ -4,11 +4,10 @@ cmake_minimum_required(VERSION 3.4.3)
 #################################################
 # TinyCBOR                                      #
 #################################################
-set(TINYCBOR_URL "https://github.com/intel/tinycbor/archive/v0.5.1.tar.gz"
+set(TINYCBOR_URL "https://github.com/intel/tinycbor/archive/v0.5.2.tar.gz"
     CACHE STRING "tinycbor download URL")
-set(TINYCBOR_MD5 "7b4fd204441cc24a9c50b3b4b92c97fd" CACHE STRING "tinycbor archive md5 sum")
+set(TINYCBOR_MD5 "58d3a934bb0c7ca7378d560121a952d4" CACHE STRING "tinycbor archive md5 sum")
 set(TINYCBOR_PREFIX "${CMAKE_BINARY_DIR}/tinycbor" CACHE STRING "tinycbor install prefix")
-set(TINYCBOR_VERSION_H "${TINYCBOR_PREFIX}/src/tinycbor_build/src/tinycbor-version.h")
 
 include(ExternalProject)
 ExternalProject_Add(tinycbor_build
@@ -18,9 +17,7 @@ ExternalProject_Add(tinycbor_build
             URL_HASH MD5=${TINYCBOR_MD5}
             CONFIGURE_COMMAND ""
             BUILD_COMMAND make --quiet prefix=<INSTALL_DIR> CFLAGS=-fPIC
-            INSTALL_COMMAND make --quiet prefix=<INSTALL_DIR> install
-            # work around https://github.com/intel/tinycbor/issues/136
-            TEST_COMMAND cp ${TINYCBOR_VERSION_H} <INSTALL_DIR>/include/
+            INSTALL_COMMAND make --quiet prefix=<INSTALL_DIR> install            
             BUILD_IN_SOURCE 1
             BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/lib/libtinycbor.a
 )
