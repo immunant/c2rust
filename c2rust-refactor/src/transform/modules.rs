@@ -604,6 +604,7 @@ impl Transform for ReorganizeModules {
                         // And that ast is pushed into the module
                         let item_idents: HashSet<Ident> =
                             m.items.iter().map(|item| item.ident).collect::<HashSet<_>>();
+                        let mut use_items = Vec::new();
                         for (mod_name, mut prefixes) in seen_paths.iter_mut() {
                             let mut items: Vec<Ident> = prefixes.iter().map(|i| i).cloned().collect();
                             let mod_prefix = Path::from_ident(*mod_name);
@@ -611,9 +612,11 @@ impl Transform for ReorganizeModules {
                             // Removes duplicates from the nested use statement
                             prefixes.retain(|prefix| !item_idents.contains(&*prefix));
 
-                            let use_stmt = mk().use_multiple_item(mod_prefix, items);
-                            m.items.push(use_stmt);
+                            use_items.push(mk().use_multiple_item(mod_prefix, items));
                         }
+                        // Put the use stmts at the top
+                        use_items.append(&mut m.items);
+                        m.items = use_items;
                         ItemKind::Mod(m)
                     },
                     n => n,
