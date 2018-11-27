@@ -155,7 +155,9 @@ def configure_and_build_llvm(args) -> None:
         ninja_args = ['c2rust-ast-exporter', 'clangAstExporter',
                       'llvm-config', 'tools/llvm-config/install',
                       'install-clang-headers',
-                      'FileCheck']
+                      'FileCheck', 'count', 'not']
+        if args.with_clang:
+            ninja_args.append('clang')
         invoke(ninja, *ninja_args)
 
 
@@ -195,6 +197,9 @@ def _parse_args():
     parser.add_argument('-c', '--clean-all', default=False,
                         action='store_true', dest='clean_all',
                         help='clean everything before building')
+    parser.add_argument('--with-clang', default=False,
+                        action='store_true', dest='with_clang',
+                        help='build clang with this tool')
     parser.add_argument('--without-assertions', default=True,
                         action='store_false', dest='assertions',
                         help='build the tool and clang without assertions')
