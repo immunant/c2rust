@@ -4,6 +4,11 @@ extern crate libc;
 use c2rust_bitfields::BitfieldStruct;
 use std::mem::transmute;
 
+#[link(name = "test")]
+extern "C" {
+    fn check_compact_date(_: *const CompactDate) -> u32;
+}
+
 // *** Dumping AST Record Layout
 //         0 | struct date
 //     0:0-4 |   unsigned char d
@@ -30,31 +35,29 @@ struct CompactDate {
 
 #[test]
 fn test_compact_date() {
-    // let mut date = CompactDate {
-    //     d_m: [0; 2],
-    //     y: 2014,
-    // };
     let mut date = CompactDate {
-        d_m: [0b00001100, 0b00011111],
+        // first two bytes in this order
+        d_m: [0; 2],
         y: 2014,
     };
 
-    date.set_d(14);
-    date.set_m(14);
+    date.set_d(31);
+    date.set_m(12);
     date.y = 2014;
 
-    assert_eq!(date.d(), 42);
-    assert_eq!(date.m(), 42);
+    assert_eq!(date.d(), 31);
+    assert_eq!(date.m(), 12);
 
-    // assert_eq!(date.d(), 31);
-    // assert_eq!(date.m(), 12);
     assert_eq!(date.y, 2014);
 
-    // Test byte compatibility: 00000111110111100000110000011111
+    // Test C byte compatibility
     let date_bytes: [u8; 4] = unsafe { transmute(date) };
 
-    assert_eq!(date_bytes, [0b00000111, 0b11011110, 0b00001100, 0b00011111]);
+    assert_eq!(date_bytes, [0b00011111, 0b00001100, 0b11011110, 0b00000111]);
+    // 00011111 | 00001100 | 11011110 | 00000111
+    //    --31- |     -12- | -2014--> | <--2014-
 
-    // 00000111 | 11011110 | 00001100 | 00011111
-    // -2014--> | <--2014- |     -12- |    --31-
+    unsafe {
+        assert_eq!(check_compact_date(&date), 1);
+    }
 }

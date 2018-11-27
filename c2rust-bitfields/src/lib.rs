@@ -1,4 +1,4 @@
-#![recursion_limit="128"]
+#![recursion_limit="256"]
 
 extern crate proc_macro;
 extern crate quote;
@@ -119,9 +119,11 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
     };
     let bitfields: Vec<BFFieldAttr> = fields.iter().flat_map(filter_and_parse_fields).collect();
     let field_types: Vec<_> = bitfields.iter().map(parse_bitfield_ty_path).collect();
+    let field_types2 = field_types.clone();
     let field_type_setters = field_types.clone();
     let method_names: Vec<_> = bitfields.iter().map(|field| Ident::new(&field.name, Span::call_site().into())).collect();
-    let field_name: Vec<_> = bitfields.iter().map(|field| &field.field_name).collect();
+    let field_names: Vec<_> = bitfields.iter().map(|field| &field.field_name).collect();
+    let field_names2 = field_names.clone();
     let method_name_setters: Vec<_> = method_names.iter().map(|field_ident| {
         let span = Span::call_site().into();
         let setter_name = &format!("set_{}", field_ident);
@@ -136,6 +138,7 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
 
         quote! { (#lhs, #rhs) }
     }).collect();
+    let field_bit_info2 = field_bit_info.clone();
 
     // TODO: Field visibility determined by struct field visibility?
     // TODO: Add generic doc strings
@@ -143,7 +146,7 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
         impl #struct_ident {
             #(
                 pub fn #method_name_setters(&mut self, val: #field_type_setters) {
-                    let field = self.#field_name;
+                    let field = self.#field_names;
                     let (lhs_bit, rhs_bit) = #field_bit_info;
                     let bit_width = rhs_bit - lhs_bit;
                     // let byte_index = field.len() - bit_width / 8;
@@ -169,7 +172,20 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
                 }
 
                 pub fn #method_names(&self) -> #field_types {
-                    42
+                    let field = self.#field_names2;
+                    let (lhs_bit, rhs_bit) = #field_bit_info2;
+                    let mut val = 0;
+
+                    for bit_index in lhs_bit..=rhs_bit {
+                        let byte_index = bit_index / 8;
+                        let byte = field[byte_index];
+                        let bit = 1 << (bit_index % 8);
+                        let read_bit = byte & bit;
+
+                        val |= read_bit as #field_types2;
+                    }
+
+                    val
                 }
             )*
         }
