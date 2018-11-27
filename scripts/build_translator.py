@@ -145,9 +145,19 @@ def configure_and_build_llvm(args) -> None:
         #     invoke(xcodebuild, *xc_args)
         #     xc_args = xc_conf_args + ['-target', 'c2rust-ast-exporter']
         #     invoke(xcodebuild, *xc_args)
+
+        # We must install headers here so our clang tool can reference
+        # compiler-internal headers such as stddef.h. This reference is
+        # relative to LLVM_INSTALL/bin, which MUST exist for the relative
+        # reference to be valid. To force this, we also install llvm-config,
+        # since we are building and using it for other purposes.
         ninja = get_cmd_or_die("ninja")
-        ninja_args = ['c2rust-ast-exporter', 'clangAstExporter',  
-            'llvm-config', 'install-clang-headers']
+        ninja_args = ['c2rust-ast-exporter', 'clangAstExporter',
+                      'llvm-config', 'tools/llvm-config/install',
+                      'install-clang-headers',
+                      'FileCheck', 'count', 'not']
+        if args.with_clang:
+            ninja_args.append('clang')
         invoke(ninja, *ninja_args)
 
 
@@ -166,11 +176,11 @@ def build_transpiler(args):
     if on_mac():
         llvm_system_libs = "-lz -lcurses -lm -lxml2"
     else:  # linux
-        llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm -lxml2"
+        llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm"
 
     llvm_libdir = os.path.join(c.LLVM_BLD, "lib")
 
-    with pb.local.cwd(c.ROOT_DIR):
+    with pb.local.cwd(c.C2RUST_DIR):
         with pb.local.env(LLVM_CONFIG_PATH=llvm_config,
                           LLVM_SYSTEM_LIBS=llvm_system_libs,
                           C2RUST_AST_EXPORTER_LIB_DIR=llvm_libdir):
@@ -187,6 +197,9 @@ def _parse_args():
     parser.add_argument('-c', '--clean-all', default=False,
                         action='store_true', dest='clean_all',
                         help='clean everything before building')
+    parser.add_argument('--with-clang', default=False,
+                        action='store_true', dest='with_clang',
+                        help='build clang with this tool')
     parser.add_argument('--without-assertions', default=True,
                         action='store_false', dest='assertions',
                         help='build the tool and clang without assertions')

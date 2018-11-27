@@ -41,6 +41,7 @@ class Config:
     ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
     DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
     RREF_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
+    C2RUST_DIR = os.path.join(ROOT_DIR, 'c2rust')
     CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
     REMON_SUBMOD_DIR = os.path.join(CROSS_CHECKS_DIR, 'ReMon')
     LIBFAKECHECKS_DIR = os.path.join(CROSS_CHECKS_DIR, "libfakechecks")
