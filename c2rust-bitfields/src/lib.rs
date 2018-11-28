@@ -1,4 +1,4 @@
-#![recursion_limit="256"]
+#![recursion_limit="512"]
 
 extern crate proc_macro;
 extern crate quote;
@@ -142,6 +142,7 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
     let field_bit_info2 = field_bit_info.clone();
 
     // TODO: Field visibility determined by struct field visibility?
+    // TODO: Signed ints?
     let q = quote! {
         impl #struct_ident {
             #(
@@ -158,12 +159,29 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
                         let byte_index = bit_index / 8;
                         let mut byte = &mut field[byte_index];
                         let bit = 1 << i;
-                        let read_bit = int & bit;
+                        let read_bit = (int & bit);
+
+                        // If the bit is in the leftmost byte, it needs to be
+                        // offset by the start position. Otherwise, it needs to
+                        // be offset to the bit index position relative to
+                        // the byte in question
+                        let adjusted_bit = if bit_index < 8 {
+                            read_bit << lhs_bit
+                        } else {
+                            let bit = if read_bit != 0 {
+                                1
+                            } else {
+                                0
+                            };
+
+                            bit << (bit_index % 8)
+                        };
 
                         if zeroing {
+                            // REVIEW: Does this need to be adjusted too?
                             *byte &= !bit as u8;
                         } else {
-                            *byte |= read_bit as u8;
+                            *byte |= adjusted_bit as u8;
                         }
                     }
                 }
