@@ -3,7 +3,7 @@ extern crate libc;
 
 use c2rust_bitfields::BitfieldStruct;
 use std::mem::{size_of, transmute};
-use libc::{c_uchar, c_ushort, c_ulong, c_uint, c_double};
+use libc::{c_uchar, c_short, c_ushort, c_ulong, c_uint, c_double};
 
 #[link(name = "test")]
 extern "C" {
@@ -11,6 +11,7 @@ extern "C" {
     fn assign_compact_date_day(_: *mut CompactDate, _: c_uchar);
     fn check_overlapping_byte_date(_: *const OverlappingByteDate, _: c_ulong, _: c_ushort, _: c_ushort) -> c_uint;
     fn check_unnamed_bitfield(_: *const UnnamedBitfield, _: c_ushort, _: c_ushort, _: c_double) -> c_uint;
+    fn check_signed_bitfields(_: *const SignedBitfields, _: c_short, _: c_ushort, _: c_short) -> c_uint;
 }
 
 // *** Dumping AST Record Layout
@@ -254,3 +255,62 @@ fn test_unnamed_bitfield() {
 
     assert_eq!(ret, 1);
 }
+
+// *** Dumping AST Record Layout
+//          0 | struct signed_bitfields
+//      0:0-3 |   short x
+//      0:4-8 |   unsigned short y
+//      1:1-5 |   short z
+//            | [sizeof=2, align=2]
+#[repr(C, align(2))]
+#[derive(BitfieldStruct, Copy, Clone)]
+struct SignedBitfields {
+    #[bitfield(name = "x", ty = "libc::c_short", bits = "0..=3")]
+    #[bitfield(name = "y", ty = "libc::c_ushort",bits = "4..=8")]
+    #[bitfield(name = "z", ty = "libc::c_short", bits = "9..=13")]
+    x_y_z: [u8; 2],
+}
+
+#[test]
+fn test_signed_bitfields() {
+    assert_eq!(size_of::<SignedBitfields>(), 2);
+
+    let mut signed_bitfields = SignedBitfields {
+        x_y_z: [0; 2],
+    };
+
+    signed_bitfields.set_x(6);
+    signed_bitfields.set_y(7);
+    signed_bitfields.set_z(13);
+
+    assert_eq!(signed_bitfields.x(), 6);
+    assert_eq!(signed_bitfields.y(), 7);
+    assert_eq!(signed_bitfields.z(), 13);
+
+    let ret = unsafe {
+        check_signed_bitfields(&signed_bitfields, 6, 7, 13)
+    };
+
+    assert_eq!(ret, 1);
+
+    signed_bitfields.set_x(-6);
+    signed_bitfields.set_y(5);
+    signed_bitfields.set_z(-13);
+
+    assert_eq!(signed_bitfields.x(), -6);
+    assert_eq!(signed_bitfields.y(), 5);
+    assert_eq!(signed_bitfields.z(), -13);
+
+    let bytes: [u8; 2] = unsafe { transmute(signed_bitfields) };
+
+    assert_eq!(bytes, [0b01011010, 0b00100110]);
+
+    let ret = unsafe {
+        check_signed_bitfields(&signed_bitfields, -6, 5, -13)
+    };
+
+    assert_eq!(ret, 1);
+}
+
+// TODO: Test single bit, signed & unsigned
+// TODO: Test signed underflow

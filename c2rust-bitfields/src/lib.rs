@@ -118,6 +118,9 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
     let bitfields: Vec<BFFieldAttr> = fields.iter().flat_map(filter_and_parse_fields).collect();
     let field_types: Vec<_> = bitfields.iter().map(parse_bitfield_ty_path).collect();
     let field_types2 = field_types.clone();
+    let field_types3 = field_types.clone();
+    let field_types4 = field_types.clone();
+    let field_types5 = field_types.clone();
     let field_type_setters = field_types.clone();
     let field_type_setters2 = field_types.clone();
     let method_names: Vec<_> = bitfields.iter().map(|field| Ident::new(&field.name, Span::call_site().into())).collect();
@@ -140,7 +143,6 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
     let field_bit_info2 = field_bit_info.clone();
 
     // TODO: Field visibility determined by struct field visibility?
-    // TODO: Signed ints?
     let q = quote! {
         impl #struct_ident {
             #(
@@ -164,6 +166,8 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
                     // Check for overflow, which C defines to 0 the bitfield
                     let min_overflow_val = 1 << (rhs_bit - lhs_bit + 1);
                     let zeroing = int >= min_overflow_val as #field_type_setters2;
+
+                    // TODO: Signed underflow? Same 0ing as overflow?
 
                     for (i, bit_index) in (lhs_bit..=rhs_bit).enumerate() {
                         let byte_index = bit_index / 8;
@@ -195,6 +199,28 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
                             let write_bit = 1 << i;
 
                             val |= write_bit as #field_types2;
+                        }
+                    }
+
+                    // If the int type is signed, and the leftmost bit
+                    // that can fit in the bitwidth is 1, we must 1-extend
+                    // so that it gets interpreted as a negative number
+                    if #field_types3::min_value() != 0 {
+                        let bit_width = rhs_bit - lhs_bit;
+                        let bit = 1 << bit_width;
+                        let read_bit = val & bit;
+
+                        if read_bit != 0 {
+                            #[cfg(not(feature = "no_std"))]
+                            let total_bit_size = ::std::mem::size_of::<#field_types4>() * 8;
+                            #[cfg(feature = "no_std")]
+                            let total_bit_size = ::core::mem::size_of::<#field_types5>() * 8;
+
+                            for bit_pos in bit_width..total_bit_size {
+                                let bit = 1 << bit_pos;
+
+                                val |= bit;
+                            }
                         }
                     }
 

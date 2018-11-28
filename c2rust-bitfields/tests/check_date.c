@@ -103,3 +103,31 @@ unsigned int check_unnamed_bitfield(unnamed_bitfield const* bf, unsigned short x
 
     return 1;
 }
+
+// *** Dumping AST Record Layout
+//          0 | struct signed_bitfields
+//      0:0-3 |   short x
+//      0:4-8 |   unsigned short y
+//      1:1-5 |   short z
+//            | [sizeof=2, align=2]
+typedef struct {
+    signed short x: 4;
+    unsigned short y: 5;
+    signed short z: 5;
+} signed_bitfields;
+
+unsigned int check_signed_bitfields(signed_bitfields const* bf, signed short x, unsigned short y, signed short z) {
+    if (bf->x != x) {
+        return 2;
+    }
+
+    if (bf->y != y) {
+        return 3;
+    }
+
+    if (bf->z != z) {
+        return 4;
+    }
+
+    return 1;
+}
