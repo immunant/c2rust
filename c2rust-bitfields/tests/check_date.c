@@ -73,3 +73,33 @@ unsigned int check_overlapping_byte_date(overlapping_byte_date const* date, unsi
 
     return 1;
 }
+
+// *** Dumping AST Record Layout
+//          0 | struct test
+//          0 |   double z
+//      8:0-4 |   unsigned short x
+//       10:- |   unsigned short
+//     10:0-8 |   unsigned short y
+//            | [sizeof=16, align=8]
+typedef struct {
+   double z;
+   unsigned short x: 5;
+   unsigned short: 0;
+   unsigned short y: 9;
+} unnamed_bitfield;
+
+unsigned int check_unnamed_bitfield(unnamed_bitfield const* bf, unsigned short x, unsigned short y, double z) {
+    if (bf->x != x) {
+        return 2;
+    }
+
+    if (bf->y != y) {
+        return 3;
+    }
+
+    if (bf->z != z) {
+        return 4;
+    }
+
+    return 1;
+}

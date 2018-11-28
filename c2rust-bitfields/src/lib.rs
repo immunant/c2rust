@@ -192,9 +192,9 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
                         let read_bit = byte & bit;
 
                         if read_bit != 0 {
-                            let actual_bit = 1 << i;
+                            let write_bit = 1 << i;
 
-                            val |= actual_bit as #field_types2;
+                            val |= write_bit as #field_types2;
                         }
                     }
 

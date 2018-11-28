@@ -3,13 +3,14 @@ extern crate libc;
 
 use c2rust_bitfields::BitfieldStruct;
 use std::mem::{size_of, transmute};
-use libc::{c_uchar, c_ushort, c_ulong, c_uint};
+use libc::{c_uchar, c_ushort, c_ulong, c_uint, c_double};
 
 #[link(name = "test")]
 extern "C" {
     fn check_compact_date(_: *const CompactDate) -> c_uint;
     fn assign_compact_date_day(_: *mut CompactDate, _: c_uchar);
     fn check_overlapping_byte_date(_: *const OverlappingByteDate, _: c_ulong, _: c_ushort, _: c_ushort) -> c_uint;
+    fn check_unnamed_bitfield(_: *const UnnamedBitfield, _: c_ushort, _: c_ushort, _: c_double) -> c_uint;
 }
 
 // *** Dumping AST Record Layout
@@ -69,7 +70,7 @@ fn test_compact_date2() {
     date.set_d(14);
     date.set_d(13);
 
-    // assert_eq!(date.d(), 13); // 15
+    assert_eq!(date.d(), 13);
     assert_eq!(date.m(), 0);
     assert_eq!(date.y, 2014);
 
@@ -209,4 +210,47 @@ fn test_overlapping_byte_date2() {
     let date_bytes: [u8; 8] = unsafe { transmute(date) };
 
     assert_eq!(date_bytes, [0b00001110, 0b00000001, 0b11100011, 0b00000111, 0b0, 0b0, 0b0, 0b0]);
+}
+
+// *** Dumping AST Record Layout
+//          0 | struct test
+//          0 |   double z
+//      8:0-4 |   unsigned short x
+//       10:- |   unsigned short
+//     10:0-8 |   unsigned short y
+//            | [sizeof=16, align=8]
+#[repr(C, align(8))]
+#[derive(BitfieldStruct, Copy, Clone)]
+struct UnnamedBitfield {
+    z: f64,
+    #[bitfield(name = "x", ty = "libc::c_ushort", bits = "0..=4")]
+    x: [u8; 1],
+    _pad: [u8; 1],
+    #[bitfield(name = "y", ty = "libc::c_ushort", bits = "0..=8")]
+    y: [u8; 2],
+}
+
+#[test]
+fn test_unnamed_bitfield() {
+    assert_eq!(size_of::<UnnamedBitfield>(), 16);
+
+    let mut unnamed_bitfield = UnnamedBitfield {
+        z: 0.,
+        x: [0; 1],
+        y: [0; 2],
+        _pad: [0; 1],
+    };
+
+    unnamed_bitfield.z = 3.14;
+    unnamed_bitfield.set_x(30);
+    unnamed_bitfield.set_y(505);
+
+    assert_eq!(unnamed_bitfield.x(), 30);
+    assert_eq!(unnamed_bitfield.y(), 505);
+
+    let ret = unsafe {
+        check_unnamed_bitfield(&unnamed_bitfield, 30, 505, 3.14)
+    };
+
+    assert_eq!(ret, 1);
 }
