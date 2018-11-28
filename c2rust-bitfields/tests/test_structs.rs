@@ -60,6 +60,28 @@ fn test_compact_date() {
 }
 
 #[test]
+fn test_compact_date2() {
+    let mut date = CompactDate {
+        d_m: [0; 2],
+        y: 2014,
+    };
+
+    date.set_d(14);
+    date.set_d(13);
+
+    // assert_eq!(date.d(), 13); // 15
+    assert_eq!(date.m(), 0);
+    assert_eq!(date.y, 2014);
+
+    // Test C byte compatibility
+    let date_bytes: [u8; 4] = unsafe { transmute(date) };
+
+    assert_eq!(date_bytes, [0b00001101, 0b00000000, 0b11011110, 0b00000111]);
+    // 00001101 | 00000000 | 11011110 | 00000111
+    //    --13- |     --m- | -2014--> | <--2014-
+}
+
+#[test]
 fn test_overflow() {
     let mut date = CompactDate {
         d_m: [0; 2],
@@ -88,6 +110,39 @@ fn test_overflow() {
     }
 
     assert_eq!(date.d(), 0);
+
+    let mut date2 = OverlappingByteDate {
+        d_m: [0; 2],
+        y: 2019,
+        _pad: [0; 4],
+    };
+
+    date2.set_d(32);
+    date2.set_m(52);
+
+    assert_eq!(date2.d(), 0);
+    assert_eq!(date2.m(), 0);
+    assert_eq!(date2.y, 2019);
+
+    date2.set_d(14);
+    date2.set_m(8);
+
+    date2.set_d(13);
+    date2.set_m(52);
+
+    assert_eq!(date2.d(), 13);
+    assert_eq!(date2.m(), 0);
+    assert_eq!(date2.y, 2019);
+
+    date2.set_d(14);
+    date2.set_m(8);
+
+    date2.set_d(45);
+    date2.set_m(9);
+
+    assert_eq!(date2.d(), 0);
+    assert_eq!(date2.m(), 9);
+    assert_eq!(date2.y, 2019);
 }
 
 // *** Dumping AST Record Layout
@@ -133,4 +188,25 @@ fn test_overlapping_byte_date() {
     };
 
     assert_eq!(ret, 1);
+}
+
+#[test]
+fn test_overlapping_byte_date2() {
+    let mut date = OverlappingByteDate {
+        d_m: [0; 2],
+        y: 0,
+        _pad: [0; 4],
+    };
+
+    date.y = 2019;
+    date.set_d(14);
+    date.set_m(8);
+
+    assert_eq!(date.d(), 14);
+    assert_eq!(date.m(), 8);
+    assert_eq!(date.y, 2019);
+
+    let date_bytes: [u8; 8] = unsafe { transmute(date) };
+
+    assert_eq!(date_bytes, [0b00001110, 0b00000001, 0b11100011, 0b00000111, 0b0, 0b0, 0b0, 0b0]);
 }

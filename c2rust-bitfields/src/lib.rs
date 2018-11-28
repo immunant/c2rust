@@ -109,8 +109,6 @@ fn parse_bitfield_ty_path(field: &BFFieldAttr) -> Path {
 
 #[proc_macro_derive(BitfieldStruct, attributes(bitfield))]
 pub fn bitfield_struct(input: TokenStream) -> TokenStream {
-    println!("{}", input);
-
     let struct_item = parse_macro_input!(input as ItemStruct);
     let struct_ident = struct_item.ident;
     let fields = match struct_item.fields {
@@ -187,13 +185,17 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
                     let (lhs_bit, rhs_bit) = #field_bit_info2;
                     let mut val = 0;
 
-                    for bit_index in lhs_bit..=rhs_bit {
+                    for (i, bit_index) in (lhs_bit..=rhs_bit).enumerate() {
                         let byte_index = bit_index / 8;
                         let byte = field[byte_index];
                         let bit = 1 << (bit_index % 8);
                         let read_bit = byte & bit;
 
-                        val |= read_bit as #field_types2;
+                        if read_bit != 0 {
+                            let actual_bit = 1 << i;
+
+                            val |= actual_bit as #field_types2;
+                        }
                     }
 
                     val
@@ -201,8 +203,6 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
             )*
         }
     };
-
-    println!("{}", q);
 
     q.into()
 }
