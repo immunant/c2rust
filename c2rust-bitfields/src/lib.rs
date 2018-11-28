@@ -148,6 +148,18 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
             #(
                 /// This method allows you to write to a bitfield with a value
                 pub fn #method_name_setters(&mut self, int: #field_type_setters) {
+                    fn zero_bit(byte: &mut u8, n_bit: u64) {
+                        let bit = 1 << n_bit;
+
+                        *byte &= !bit as u8;
+                    }
+
+                    fn one_bit(byte: &mut u8, n_bit: u64) {
+                        let bit = 1 << n_bit;
+
+                        *byte |= bit as u8;
+                    }
+
                     let mut field = &mut self.#field_names;
                     let (lhs_bit, rhs_bit) = #field_bit_info;
 
@@ -159,29 +171,12 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
                         let byte_index = bit_index / 8;
                         let mut byte = &mut field[byte_index];
                         let bit = 1 << i;
-                        let read_bit = (int & bit);
+                        let read_bit = int & bit;
 
-                        // If the bit is in the leftmost byte, it needs to be
-                        // offset by the start position. Otherwise, it needs to
-                        // be offset to the bit index position relative to
-                        // the byte in question
-                        let adjusted_bit = if bit_index < 8 {
-                            read_bit << lhs_bit
+                        if zeroing || read_bit == 0 {
+                            zero_bit(byte, (bit_index % 8) as u64);
                         } else {
-                            let bit = if read_bit != 0 {
-                                1
-                            } else {
-                                0
-                            };
-
-                            bit << (bit_index % 8)
-                        };
-
-                        if zeroing {
-                            // REVIEW: Does this need to be adjusted too?
-                            *byte &= !bit as u8;
-                        } else {
-                            *byte |= adjusted_bit as u8;
+                            one_bit(byte, (bit_index % 8) as u64);
                         }
                     }
                 }
