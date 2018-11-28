@@ -535,13 +535,6 @@ impl Transform for ReorganizeModules {
                             Some(item)
                         }).collect();
 
-                        for new_path in &new_paths {
-                            let path = mk().use_item(Path::from_ident(*new_path), None as Option<Ident>);
-                            // If the path isn't already in a path insert it.
-                            if seen_paths.values().any(|set_of_segments| set_of_segments.contains(new_path)) {
-                                m.items.push(path);
-                            }
-                        }
 
                         let seen_item_ids =
                             m.items.iter().map(|item| item.id).collect::<HashSet<_>>();
@@ -599,11 +592,46 @@ impl Transform for ReorganizeModules {
 
                         clean_paths(&mut seen_paths, &krate_info, &i.ident);
 
+                        fn already_in_use(path: &Ident, seen_paths: &HashMap<Ident, HashSet<Ident>>) -> bool {
+                            seen_paths.values().any(|set_of_segments| {
+                                set_of_segments.contains(path)
+                            })
+                        }
+
+                        let item_idents: HashSet<Ident> =
+                            m.items.iter().map(|item| item.ident).collect::<HashSet<_>>();
+
+                        let mod_items = m.items.clone();
+                        let use_stmts: Vec<&P<Item>> = mod_items.iter().filter_map(|item| {
+                            match item.node {
+                                ItemKind::Use(_) => {},
+                                _ => return None
+                            }
+                            Some(item)
+                        }).collect();
+
+                        // On occasions where there is a use statement:
+                        // `use super::{libc, foo};`.
+                        // This is where a the statement is seperated, and turned into simple
+                        // statements for every nested segment. The simple statements are
+                        // inserted if there is no other occurence of that statement within the module already.
+                        for new_path in &new_paths {
+                            if !item_idents.contains(new_path) && !already_in_use(new_path, &seen_paths){
+                                let path = mk().use_item(Path::from_ident(*new_path), None as Option<Ident>);
+                                if use_stmts.is_empty() {
+                                    m.items.push(path.clone());
+                                } else {
+                                    for use_stmt in &use_stmts {
+                                        if !compare_items(&path, use_stmt) {
+                                            m.items.push(path.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         // Here is where the seen_paths map is read, and turned into paths
                         // [foo_h] -> [item, item2, item3] turns into `use foo_h::{item, item2, item3};`
                         // And that ast is pushed into the module
-                        let item_idents: HashSet<Ident> =
-                            m.items.iter().map(|item| item.ident).collect::<HashSet<_>>();
                         let mut use_items = Vec::new();
                         for (mod_name, mut prefixes) in seen_paths.iter_mut() {
                             let mut items: Vec<Ident> = prefixes.iter().map(|i| i).cloned().collect();
