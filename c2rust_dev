@@ -1,9 +1,0 @@
-#!/bin/sh
-
-# this is the command to cargo run c2rust binaries built against LLVM sources
-# NOTE: to use this script, `build_transpiler.py` must be run first.
-LLVM_CONFIG_PATH=$PWD/dependencies/llvm-7.0.0/build.imac.local/bin/llvm-config \
-LLVM_SYSTEM_LIBS="-lz -lcurses -lm -lxml2" \
-C2RUST_AST_EXPORTER_LIB_DIR=$PWD/dependencies/llvm-7.0.0/build.imac.local/lib \
-RUST_BACKTRACE=1 \
-cargo run --bin c2rust --release --features llvm-static -- "$@"

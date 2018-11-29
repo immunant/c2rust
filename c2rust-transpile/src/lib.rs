@@ -7,6 +7,7 @@ extern crate rustc_target;
 extern crate dtoa;
 #[macro_use] extern crate indexmap;
 extern crate serde;
+#[macro_use] extern crate serde_derive;
 extern crate serde_json;
 extern crate libc;
 extern crate clap;
@@ -15,6 +16,7 @@ extern crate c2rust_ast_builder;
 
 use std::io::stdout;
 use std::io::prelude::*;
+use std::error::Error;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -70,7 +72,59 @@ pub struct TranspilerConfig {
 
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
-pub fn transpile(tcfg: TranspilerConfig, input_file: &Path, extra_clang_args: &[&str]) {
+pub fn transpile(tcfg: TranspilerConfig, compile_commands: &Path, extra_clang_args: &[&str]) {
+
+    println!("hello...");
+    let cmds = get_compile_commands(compile_commands).unwrap();
+    for cmd in cmds {
+        println!("item: {:?}", cmd);
+
+        match &cmd {
+            CompileCmd { directory: d, file: f, command: None, arguments: a, output: None} => {
+                let input_file_abs = d.join(f);
+                println!("item: {:?}", cmd);
+                transpile_single(tcfg, input_file_abs.as_path(), extra_clang_args);
+            },
+            _ => {
+                let reason = format!("unhandled compile cmd: {:?}", cmd);
+                panic!(reason);
+            }
+        }
+   }
+}
+
+#[derive(Deserialize, Debug)]
+struct CompileCmd {
+    /// The working directory of the compilation. All paths specified in the command
+    /// or file fields must be either absolute or relative to this directory.
+    directory: PathBuf,
+    /// The main translation unit source processed by this compilation step. This is
+    /// used by tools as the key into the compilation database. There can be multiple
+    /// command objects for the same file, for example if the same source file is compiled
+    /// with different configurations.
+    file: PathBuf,
+    /// The compile command executed. After JSON unescaping, this must be a valid command
+    /// to rerun the exact compilation step for the translation unit in the environment
+    /// the build system uses. Parameters use shell quoting and shell escaping of quotes,
+    /// with ‘"’ and ‘\’ being the only special characters. Shell expansion is not supported.
+    command: Option<String>,
+    /// The compile command executed as list of strings. Either arguments or command is required.
+    arguments: Vec<String>,
+    /// The name of the output created by this compilation step. This field is optional. It can
+    /// be used to distinguish different processing modes of the same input file.
+    output: Option<String>,
+}
+
+fn get_compile_commands(compile_commands: &Path) -> Result<Vec<CompileCmd>, Box<Error>> {
+    let f = File::open(compile_commands)?; // open read-only
+
+    // Read the JSON contents of the file as an instance of `Value`
+    let v = serde_json::from_reader(f)?;
+
+    Ok(v)
+}
+
+fn transpile_single(tcfg: TranspilerConfig, input_file: &Path, extra_clang_args: &[&str]) {
     // Extract the untyped AST from the CBOR file
     let untyped_context = match ast_exporter::get_untyped_ast(input_file, &extra_clang_args) {
         Err(e) => {

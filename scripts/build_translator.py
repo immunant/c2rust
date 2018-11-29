@@ -172,15 +172,12 @@ def build_transpiler(args):
     llvm_config = os.path.join(c.LLVM_BLD, "bin/llvm-config")
     assert os.path.isfile(llvm_config), "missing binary: " + llvm_config
 
-    # HACK(perl): `llvm-config --system-libs` does what we want but
-    # doesn't seem to work unless we actually install our LLVM build.
     if on_mac():
         llvm_system_libs = "-lz -lcurses -lm -lxml2"
     else:  # linux
         llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm"
 
     llvm_libdir = os.path.join(c.LLVM_BLD, "lib")
-
     with pb.local.cwd(c.C2RUST_DIR):
         with pb.local.env(LLVM_CONFIG_PATH=llvm_config,
                           LLVM_SYSTEM_LIBS=llvm_system_libs,
