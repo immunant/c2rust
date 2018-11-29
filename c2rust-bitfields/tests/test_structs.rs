@@ -362,7 +362,7 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), -8);
 
-    // Likewise -9 to -15 don't count as underflow
+    // However -9 to -15 don't count as underflow
     signed_bitfields.set_x(-9);
 
     assert_eq!(signed_bitfields.x(), 7);
@@ -395,4 +395,54 @@ fn test_signed_underflow_overflow() {
     assert_eq!(signed_bitfields.x(), 1);
 }
 
-// TODO: Test single bit, signed & unsigned
+// *** Dumping AST Record Layout
+//          0 | struct single_bits
+//      0:0-0 |   unsigned short x
+//      0:1-1 |   short y
+//            | [sizeof=2, align=2]
+#[repr(C, align(2))]
+#[derive(BitfieldStruct, Copy, Clone)]
+struct SingleBits {
+    #[bitfield(name = "x", ty = "libc::c_short", bits = "0..=0")]
+    #[bitfield(name = "y", ty = "libc::c_ushort",bits = "1..=1")]
+    x_y: [u8; 1],
+    _pad: [u8; 1],
+}
+
+#[test]
+fn test_single_bits() {
+    assert_eq!(size_of::<SingleBits>(), 2);
+
+    let mut single_bits = SingleBits {
+        x_y: [0; 1],
+        _pad: [0; 1],
+    };
+
+    single_bits.set_x(0);
+
+    assert_eq!(single_bits.x(), 0);
+
+    single_bits.set_x(-1);
+
+    assert_eq!(single_bits.x(), -1);
+
+    single_bits.set_x(1);
+
+    assert_eq!(single_bits.x(), -1);
+
+    single_bits.set_x(2);
+
+    assert_eq!(single_bits.x(), 0);
+
+    single_bits.set_y(0);
+
+    assert_eq!(single_bits.y(), 0);
+
+    single_bits.set_y(1);
+
+    assert_eq!(single_bits.y(), 1);
+
+    single_bits.set_y(2);
+
+    assert_eq!(single_bits.y(), 0);
+}
