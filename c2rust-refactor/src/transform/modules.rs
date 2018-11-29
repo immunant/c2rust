@@ -435,10 +435,10 @@ impl Transform for ReorganizeModules {
         // The mapping is the destination module's `NodeId` to the items needing to be added to it.
         let dest_mod_to_items = krate_info.create_dest_mod_map();
 
-        // insert a new modules into the Crate
+        // Insert a new modules into the Crate
         let krate = krate_info.extend_crate(krate, &dest_mod_to_items);
 
-        // insert all the items marked as to be moved, into the proper
+        // Insert all the items marked as to be moved, into the proper
         // "destination module"
         let krate = krate_info.insert_items_into_dest(krate, &dest_mod_to_items);
 
@@ -450,7 +450,6 @@ impl Transform for ReorganizeModules {
         // 2. Removes duplicates from `ForeignMod`'s
         // 3. Also removes duplicate `Item`'s found within a module.
         let krate = fold_nodes(krate, |pi: P<Item>| {
-            // let mut v = smallvec![];
             let pi = pi.map(|mut i| {
                 i.node = match i.node {
                     ItemKind::Mod(ref m) => {
@@ -577,7 +576,11 @@ impl Transform for ReorganizeModules {
                                 if item.id != module_item.id {
                                     let m_copy = module_item.clone();
                                     match module_item.node {
-                                        ItemKind::ForeignMod(_) => {},
+                                        ItemKind::ForeignMod(ref foreign_mod) => {
+                                            if foreign_mod.items.is_empty() {
+                                                return None;
+                                            }
+                                        },
                                         _ => {
                                             if compare_items(&item, &m_copy) && !deleted_item_ids.contains(&item.id) {
                                                 deleted_item_ids.insert(module_item.id);
@@ -590,7 +593,9 @@ impl Transform for ReorganizeModules {
                             Some(module_item)
                         }).collect();
 
-                        clean_paths(&mut seen_paths, &krate_info, &i.ident);
+                        // Update paths so the definitions can be used in path segments instead of
+                        // the declaration
+                        update_paths(&mut seen_paths, &krate_info, &i.ident);
 
                         fn already_in_use(path: &Ident, seen_paths: &HashMap<Ident, HashSet<Ident>>) -> bool {
                             seen_paths.values().any(|set_of_segments| {
@@ -662,7 +667,9 @@ impl Transform for ReorganizeModules {
     }
 }
 
-fn clean_paths(seen_paths: &mut HashMap<Ident, HashSet<Ident>> , krate_info: &CrateInformation, current_mod_name: &Ident) {
+/// Part of the removal of forward declarations, this updates use statements to correctly use
+/// definitions as opposed to the deleted declarations.
+fn update_paths(seen_paths: &mut HashMap<Ident, HashSet<Ident>> , krate_info: &CrateInformation, current_mod_name: &Ident) {
     let mut new_path_info = krate_info.new_path_info.clone();
     for (module_name, set_of_segments) in seen_paths.iter_mut() {
         if let Some(segments_to_remove) = krate_info.old_path_info.get(&module_name) {
@@ -690,6 +697,7 @@ fn path_to_ident(path: &Path) -> Ident {
     Ident::from_str(&path.to_string())
 }
 
+/// Compares two `ForeignItem`'s, and assures they are the same
 fn compare_foreign_items(fm_item: &ForeignItem, fm_item2: &ForeignItem) -> bool {
     fm_item.node.ast_equiv(&fm_item2.node) && fm_item.ident == fm_item2.ident
 }
