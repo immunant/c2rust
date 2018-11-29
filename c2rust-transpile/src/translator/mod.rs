@@ -37,6 +37,7 @@ mod main_function;
 mod named_references;
 mod operators;
 mod simd;
+mod variadic;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum DecayRef {
@@ -1158,11 +1159,13 @@ impl<'c> Translation<'c> {
         body: Option<CStmtId>,
     ) -> Result<ConvertedDecl, String> {
 
-        if is_variadic && body.is_some() {
-            let message = format!(
-                "Failed to translate {}; variadic function implementations not supported",
-                name);
+        if is_variadic {
+            if let Some(body_id) = body {
+                let message = format!(
+                "Failed to translate {}; variadic function implementations not supported. VaList ID {:?}",
+                name, self.well_formed_variadic(body_id));
             return Err(message);
+            }
         }
 
         self.with_scope(|| {
@@ -2191,23 +2194,8 @@ impl<'c> Translation<'c> {
             CExprKind::Statements(_, compound_stmt_id) =>
                 self.convert_statement_expression(use_, compound_stmt_id, is_static),
 
-            CExprKind::VAArg(ty, val_id) => {
-                if self.tcfg.translate_valist {
-                    // https://github.com/rust-lang/rust/pull/49878/files
-                    let val = self.convert_expr(ExprUse::Used, val_id, is_static, decay_ref)?;
-                    let ty = self.convert_type(ty.ctype)?;
-
-                    Ok(val.map(|va| {
-                        let path = mk().path_segment_with_args(
-                            mk().ident("arg"),
-                            mk().angle_bracketed_args(vec![ty]));
-                        mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>)
-                    }))
-
-                } else {
-                    Err(format!("Variable argument lists are not supported (requires --translate-valist)"))
-                }
-            }
+            CExprKind::VAArg(ty, val_id) =>
+                self.convert_vaarg(is_static, decay_ref, ty, val_id),
         }
     }
 
