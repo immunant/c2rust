@@ -9,7 +9,6 @@ from common import (
     config as c,
     get_cmd_or_die,
     die,
-    invoke,
     on_mac,
 )
 
@@ -41,13 +40,10 @@ def main():
             retcode = cargo[args] & pb.RETCODE(FG=True)
             if retcode != 0:
                 exit(retcode)
-            # run
-            # args = ["run", "--bin", "c2rust"] + args[1:] + ["--"]
-            # args += sys.argv[1:]
-            # cargo[args] & pb.FG(retcode=None)
 
-            c2rust = pb.local.get("../target/debug/c2rust")
-            c2rust[sys.argv[1:]] & pb.FG(retcode=None)
+    # we can run the output binary directly after `cargo build`
+    c2rust = pb.local.get("target/debug/c2rust")
+    c2rust[sys.argv[1:]] & pb.FG(retcode=None)
 
 
 if __name__ == "__main__":

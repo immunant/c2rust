@@ -83,7 +83,7 @@ pub fn transpile(tcfg: TranspilerConfig, compile_commands: &Path, extra_clang_ar
             CompileCmd { directory: d, file: f, command: None, arguments: a, output: None} => {
                 let input_file_abs = d.join(f);
                 println!("item: {:?}", cmd);
-                transpile_single(tcfg, input_file_abs.as_path(), extra_clang_args);
+                transpile_single(&tcfg, input_file_abs.as_path(), extra_clang_args);
             },
             _ => {
                 let reason = format!("unhandled compile cmd: {:?}", cmd);
@@ -124,7 +124,7 @@ fn get_compile_commands(compile_commands: &Path) -> Result<Vec<CompileCmd>, Box<
     Ok(v)
 }
 
-fn transpile_single(tcfg: TranspilerConfig, input_file: &Path, extra_clang_args: &[&str]) {
+fn transpile_single(tcfg: &TranspilerConfig, input_file: &Path, extra_clang_args: &[&str]) {
     // Extract the untyped AST from the CBOR file
     let untyped_context = match ast_exporter::get_untyped_ast(input_file, &extra_clang_args) {
         Err(e) => {
