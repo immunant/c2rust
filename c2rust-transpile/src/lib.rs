@@ -72,18 +72,15 @@ pub struct TranspilerConfig {
 
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
-pub fn transpile(tcfg: TranspilerConfig, compile_commands: &Path, extra_clang_args: &[&str]) {
-
-    println!("hello...");
-    let cmds = get_compile_commands(compile_commands).unwrap();
-    for cmd in cmds {
-        println!("item: {:?}", cmd);
-
-        match &cmd {
-            CompileCmd { directory: d, file: f, command: None, arguments: a, output: None} => {
+pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
+    let cmds = get_compile_commands(cc_db).unwrap();
+    for mut cmd in cmds {
+        match cmd {
+            CompileCmd { directory: d, file: f, command: None, arguments: _, output: None} => {
+                println!("transpiling {}", f.to_str().unwrap());
                 let input_file_abs = d.join(f);
-                println!("item: {:?}", cmd);
-                transpile_single(&tcfg, input_file_abs.as_path(), extra_clang_args);
+
+                transpile_single(&tcfg, input_file_abs.as_path(), cc_db, extra_clang_args);
             },
             _ => {
                 let reason = format!("unhandled compile cmd: {:?}", cmd);
@@ -124,9 +121,9 @@ fn get_compile_commands(compile_commands: &Path) -> Result<Vec<CompileCmd>, Box<
     Ok(v)
 }
 
-fn transpile_single(tcfg: &TranspilerConfig, input_file: &Path, extra_clang_args: &[&str]) {
+fn transpile_single(tcfg: &TranspilerConfig, input_file: &Path, cc_db: &Path, extra_clang_args: &[&str]) {
     // Extract the untyped AST from the CBOR file
-    let untyped_context = match ast_exporter::get_untyped_ast(input_file, &extra_clang_args) {
+    let untyped_context = match ast_exporter::get_untyped_ast(input_file, cc_db, extra_clang_args) {
         Err(e) => {
             eprintln!("Error: {:}", e);
             process::exit(1);

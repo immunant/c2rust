@@ -11,8 +11,8 @@ use std::slice;
 
 pub mod clang_ast;
 
-pub fn get_untyped_ast(file_path: &Path, extra_args: &[&str]) -> Result<clang_ast::AstContext, Error> {
-    let cbors = get_ast_cbors(&[file_path.to_str().unwrap()], extra_args);
+pub fn get_untyped_ast(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> Result<clang_ast::AstContext, Error> {
+    let cbors = get_ast_cbors(file_path, cc_db, extra_args);
     let buffer = cbors.values().next()
         .ok_or(Error::new(ErrorKind::InvalidData, "Could not parse input file"))?;
     let items: Value = from_slice(&buffer[..]).unwrap();
@@ -23,14 +23,13 @@ pub fn get_untyped_ast(file_path: &Path, extra_args: &[&str]) -> Result<clang_as
     }
 }
 
-fn get_ast_cbors(c_files: &[&str], extra_args: &[&str]) -> HashMap<String, Vec<u8>> {
+fn get_ast_cbors(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> HashMap<String, Vec<u8>> {
     let mut res = 0;
 
     let mut args_owned = vec![CString::new("ast_extractor").unwrap()];
-
-    for &c_file in c_files {
-        args_owned.push(CString::new(c_file).unwrap())
-    }
+    args_owned.push(CString::new(file_path.to_str().unwrap()).unwrap());
+    args_owned.push(CString::new("-p").unwrap());
+    args_owned.push(CString::new(cc_db.to_str().unwrap()).unwrap());
 
     for &arg in extra_args {
         args_owned.push(CString::new(["-extra-arg=", arg].join("")).unwrap())
