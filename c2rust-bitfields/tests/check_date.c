@@ -131,3 +131,9 @@ unsigned int check_signed_bitfields(signed_bitfields const* bf, signed short x, 
 
     return 1;
 }
+
+void assign_signed_bitfields(signed_bitfields* bf, signed short x, unsigned short y, signed short z) {
+    bf->x = x;
+    bf->y = y;
+    bf->z = z;
+}

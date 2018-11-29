@@ -118,9 +118,6 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
     let bitfields: Vec<BFFieldAttr> = fields.iter().flat_map(filter_and_parse_fields).collect();
     let field_types: Vec<_> = bitfields.iter().map(parse_bitfield_ty_path).collect();
     let field_types2 = field_types.clone();
-    let field_types3 = field_types.clone();
-    let field_types4 = field_types.clone();
-    let field_types5 = field_types.clone();
     let field_type_setters = field_types.clone();
     let field_type_setters2 = field_types.clone();
     let method_names: Vec<_> = bitfields.iter().map(|field| Ident::new(&field.name, Span::call_site().into())).collect();
@@ -164,10 +161,12 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
                     let (lhs_bit, rhs_bit) = #field_bit_info;
 
                     // Check for overflow, which C defines to 0 the bitfield
+                    // Note that for signed types, the gap between signed max value
+                    // and unsigned max value does not count as an overflow, even
+                    // though that range of values cannot be represented. Instead,
+                    // they are interpereted as their negative counterparts.
                     let min_overflow_val = 1 << (rhs_bit - lhs_bit + 1);
                     let zeroing = int >= min_overflow_val as #field_type_setters2;
-
-                    // TODO: Signed underflow? Same 0ing as overflow?
 
                     for (i, bit_index) in (lhs_bit..=rhs_bit).enumerate() {
                         let byte_index = bit_index / 8;
@@ -185,6 +184,8 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
 
                 /// This method allows you to read from a bitfield to a value
                 pub fn #method_names(&self) -> #field_types {
+                    type IntType = #field_types2;
+
                     let field = self.#field_names2;
                     let (lhs_bit, rhs_bit) = #field_bit_info2;
                     let mut val = 0;
@@ -198,23 +199,23 @@ pub fn bitfield_struct(input: TokenStream) -> TokenStream {
                         if read_bit != 0 {
                             let write_bit = 1 << i;
 
-                            val |= write_bit as #field_types2;
+                            val |= write_bit as IntType;
                         }
                     }
 
                     // If the int type is signed, and the leftmost bit
                     // that can fit in the bitwidth is 1, we must 1-extend
                     // so that it gets interpreted as a negative number
-                    if #field_types3::min_value() != 0 {
+                    if IntType::min_value() != 0 {
                         let bit_width = rhs_bit - lhs_bit;
                         let bit = 1 << bit_width;
                         let read_bit = val & bit;
 
                         if read_bit != 0 {
                             #[cfg(not(feature = "no_std"))]
-                            let total_bit_size = ::std::mem::size_of::<#field_types4>() * 8;
+                            let total_bit_size = ::std::mem::size_of::<IntType>() * 8;
                             #[cfg(feature = "no_std")]
-                            let total_bit_size = ::core::mem::size_of::<#field_types5>() * 8;
+                            let total_bit_size = ::core::mem::size_of::<IntType>() * 8;
 
                             for bit_pos in bit_width..total_bit_size {
                                 let bit = 1 << bit_pos;

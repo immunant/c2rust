@@ -12,6 +12,7 @@ extern "C" {
     fn check_overlapping_byte_date(_: *const OverlappingByteDate, _: c_ulong, _: c_ushort, _: c_ushort) -> c_uint;
     fn check_unnamed_bitfield(_: *const UnnamedBitfield, _: c_ushort, _: c_ushort, _: c_double) -> c_uint;
     fn check_signed_bitfields(_: *const SignedBitfields, _: c_short, _: c_ushort, _: c_short) -> c_uint;
+    fn assign_signed_bitfields(_: *mut SignedBitfields, _: c_short, _: c_ushort, _: c_short) -> c_uint;
 }
 
 // *** Dumping AST Record Layout
@@ -312,5 +313,86 @@ fn test_signed_bitfields() {
     assert_eq!(ret, 1);
 }
 
+#[test]
+fn test_signed_underflow_overflow() {
+    let mut signed_bitfields = SignedBitfields {
+        x_y_z: [0; 2],
+    };
+
+    // Overflow
+    signed_bitfields.set_x(7);
+
+    assert_eq!(signed_bitfields.x(), 7);
+
+    // Even though 8-15 cannot be represented, it does not count as
+    // overflow since they can be represented as negatives
+    signed_bitfields.set_x(8);
+
+    assert_eq!(signed_bitfields.x(), -8);
+
+    // C Sanity Check:
+    signed_bitfields.set_x(7);
+
+    assert_eq!(signed_bitfields.x(), 7);
+
+    unsafe {
+        assign_signed_bitfields(&mut signed_bitfields, 8, 31, 31);
+    }
+
+    assert_eq!(signed_bitfields.x(), -8);
+
+    // Values 16+ will still overflow like their unsigned counterparts
+    signed_bitfields.set_x(16);
+
+    assert_eq!(signed_bitfields.x(), 0);
+
+    // C Sanity Check:
+    signed_bitfields.set_x(7);
+
+    assert_eq!(signed_bitfields.x(), 7);
+
+    unsafe {
+        assign_signed_bitfields(&mut signed_bitfields, 16, 31, 31);
+    }
+
+    assert_eq!(signed_bitfields.x(), 0);
+
+    // Underflow
+    signed_bitfields.set_x(-8);
+
+    assert_eq!(signed_bitfields.x(), -8);
+
+    // Likewise -9 to -15 don't count as underflow
+    signed_bitfields.set_x(-9);
+
+    assert_eq!(signed_bitfields.x(), 7);
+
+    // C Sanity Check:
+    signed_bitfields.set_x(7);
+
+    assert_eq!(signed_bitfields.x(), 7);
+
+    unsafe {
+        assign_signed_bitfields(&mut signed_bitfields, -9, 31, 31);
+    }
+
+    assert_eq!(signed_bitfields.x(), 7);
+
+    // Values < -15 will not 0 on underflow apparently
+    signed_bitfields.set_x(-31);
+
+    assert_eq!(signed_bitfields.x(), 1);
+
+    // C Sanity Check:
+    signed_bitfields.set_x(7);
+
+    assert_eq!(signed_bitfields.x(), 7);
+
+    unsafe {
+        assign_signed_bitfields(&mut signed_bitfields, -31, 31, 31);
+    }
+
+    assert_eq!(signed_bitfields.x(), 1);
+}
+
 // TODO: Test single bit, signed & unsigned
-// TODO: Test signed underflow
