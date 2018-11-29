@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = [
         "Eric Mertens <emertens@galois.com>",
         "Alec Theriault <atheriault@galois.com>",
+        "The C2Rust Development Team <c2rust@immunant.com>",
 ]
 links = "clangAstExporter"
 
