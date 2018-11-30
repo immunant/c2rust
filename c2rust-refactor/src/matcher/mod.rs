@@ -21,26 +21,25 @@
 //!  * `marked!(x [, label])`: Matches `x` only if the node is marked with the given label.  The
 //!    label defaults to "target" if omitted.
 //!
-//!  * `def!(name [, label])`: Matches a path `Expr` or `Ty` that refers to a definition named
-//!    `name` and labeled with `label` (default: "target").  Note that this form uses only the
-//!    plain name of the definition, and relies on the label to find the specific def.
+//!  * `def!(path)`: Matches a path `Expr` or `Ty` that refers to a definition whose absolute path
+//!    is `path`.  Specifically, the path of the definition is converted back to an AST using the
+//!    `reflect` module, and the new AST is matched against `path`.
 //!
 //!  * `typed!(x, ty)`: Matches an `Expr` or `Ty` whose resolved type matches `ty`.  Specifically,
 //!    the resolved type of the node is converted back to an AST using the `reflect` module, and
 //!    the new AST is matched against `ty`.
 //!
-//!  * `cast!(x)`: Matches the `Expr`s `x`, `x as __t`, `x as __t as __t`, etc.
+//!  * `cast!(x)`: Matches the `Expr`s `x`, `x as __t`, `x as __t as __u`, etc.
 
 use std::collections::hash_map::HashMap;
 use std::cmp;
 use std::result;
 use rustc::hir::def_id::DefId;
-use rustc::hir::Node;
-use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Block};
+use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, Stmt, Block};
 use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};
 use syntax::parse::PResult;
-use syntax::parse::parser::Parser;
+use syntax::parse::parser::{Parser, PathStyle};
 use syntax::parse::token::Token;
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
@@ -311,42 +310,21 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     /// Core implementation of the `def!(...)` matching form.
     fn do_def_impl(&mut self,
                    tts: &ThinTokenStream,
-                   opt_def_id: Option<DefId>,
-                   target_path: Option<&Path>) -> Result<()> {
+                   style: PathStyle,
+                   opt_def_id: Option<DefId>) -> Result<()> {
         let mut p = Parser::new(&self.cx.session().parse_sess,
                                 tts.clone().into(),
                                 None, false, false);
-        let name = p.parse_ident().unwrap().name;
-        let label =
-            if p.eat(&Token::Comma) {
-                p.parse_ident().unwrap().name
-            } else {
-                "target".into_symbol()
-            };
+        let path_pattern = p.parse_path(style).unwrap();
 
         let def_id = match_or!([opt_def_id] Some(x) => x;
                                return Err(Error::DefMismatch));
-        let node_id = match_or!([self.cx.hir_map().as_local_node_id(def_id)] Some(x) => x;
-                                return Err(Error::DefMismatch));
-        if !self.st.marked(node_id, label) {
-            return Err(Error::DefMismatch);
-        }
+        // TODO: We currently ignore the QSelf.  This means `<S as T>::f` gets matched as just
+        // `T::f`.  This would be a little annoying to fix, since `parse_qpath` is private.
+        let (_qself, def_path) = reflect::reflect_def_path(self.cx.ty_ctxt(), def_id);
 
-        let node = match_or!([self.cx.hir_map().get_if_local(def_id)] Some(x) => x;
-                             return Err(Error::DefMismatch));
-        let node_name = match node {
-            Node::Item(i) => i.name,
-            Node::ForeignItem(i) => i.name,
-            Node::TraitItem(i) => i.ident.name,
-            Node::ImplItem(i) => i.ident.name,
-            _ => panic!("expected item-like"),
-        };
-        if node_name != name {
+        if self.try_match(&path_pattern, &def_path).is_err() {
             return Err(Error::DefMismatch);
-        }
-
-        if let Some(path) = target_path {
-            self.bindings.add_def_path(name, label, path.clone());
         }
 
         Ok(())
@@ -355,21 +333,13 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     /// Handle the `def!(...)` matching form for exprs.
     pub fn do_def_expr(&mut self, tts: &ThinTokenStream, target: &Expr) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_expr(target);
-        let opt_path = match target.node {
-            ExprKind::Path(None, ref p) => Some(p),
-            _ => None,
-        };
-        self.do_def_impl(tts, opt_def_id, opt_path)
+        self.do_def_impl(tts, PathStyle::Expr, opt_def_id)
     }
 
     /// Handle the `def!(...)` matching form for exprs.
     pub fn do_def_ty(&mut self, tts: &ThinTokenStream, target: &Ty) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_ty(target);
-        let opt_path = match target.node {
-            TyKind::Path(None, ref p) => Some(p),
-            _ => None,
-        };
-        self.do_def_impl(tts, opt_def_id, opt_path)
+        self.do_def_impl(tts, PathStyle::Type, opt_def_id)
     }
 
     /// Handle the `typed!(...)` matching form.
