@@ -12,7 +12,8 @@ extern "C" {
     fn check_overlapping_byte_date(_: *const OverlappingByteDate, _: c_ulong, _: c_ushort, _: c_ushort) -> c_uint;
     fn check_unnamed_bitfield(_: *const UnnamedBitfield, _: c_ushort, _: c_ushort, _: c_double) -> c_uint;
     fn check_signed_bitfields(_: *const SignedBitfields, _: c_short, _: c_ushort, _: c_short) -> c_uint;
-    fn assign_signed_bitfields(_: *mut SignedBitfields, _: c_short, _: c_ushort, _: c_short) -> c_uint;
+    fn assign_signed_bitfields(_: *mut SignedBitfields, _: c_short, _: c_ushort, _: c_short);
+    fn check_three_byte_date(_: *const ThreeByteDate, _: c_uchar, _: c_uchar, _: c_ushort) -> c_uint;
 }
 
 // *** Dumping AST Record Layout
@@ -27,8 +28,8 @@ struct CompactDate {
     // Compact combination of d + m
     // which can't be accessed via ptr in C anyway
     // so we combine the fields into one:
-    #[bitfield(name = "d", ty = "libc::c_ulong", bits = "0..=4")]
-    #[bitfield(name = "m", ty = "libc::c_ushort", bits = "8..=11")]
+    #[bitfield(name = "d", ty = "libc::c_uchar", bits = "0..=4")]
+    #[bitfield(name = "m", ty = "libc::c_uchar", bits = "8..=11")]
     d_m: [u8; 2],
     y: u16,
 }
@@ -403,8 +404,8 @@ fn test_signed_underflow_overflow() {
 #[repr(C, align(2))]
 #[derive(BitfieldStruct, Copy, Clone)]
 struct SingleBits {
-    #[bitfield(name = "x", ty = "libc::c_short", bits = "0..=0")]
-    #[bitfield(name = "y", ty = "libc::c_ushort",bits = "1..=1")]
+    #[bitfield(name = "x", ty = "libc::c_ushort", bits = "0..=0")]
+    #[bitfield(name = "y", ty = "libc::c_short",bits = "1..=1")]
     x_y: [u8; 1],
     _pad: [u8; 1],
 }
@@ -418,31 +419,68 @@ fn test_single_bits() {
         _pad: [0; 1],
     };
 
-    single_bits.set_x(0);
-
-    assert_eq!(single_bits.x(), 0);
-
-    single_bits.set_x(-1);
-
-    assert_eq!(single_bits.x(), -1);
-
-    single_bits.set_x(1);
-
-    assert_eq!(single_bits.x(), -1);
-
-    single_bits.set_x(2);
-
-    assert_eq!(single_bits.x(), 0);
-
     single_bits.set_y(0);
 
     assert_eq!(single_bits.y(), 0);
 
     single_bits.set_y(1);
 
-    assert_eq!(single_bits.y(), 1);
+    assert_eq!(single_bits.y(), -1);
+
+    single_bits.set_y(1);
+
+    assert_eq!(single_bits.y(), -1);
 
     single_bits.set_y(2);
 
     assert_eq!(single_bits.y(), 0);
+
+    single_bits.set_x(0);
+
+    assert_eq!(single_bits.x(), 0);
+
+    single_bits.set_x(1);
+
+    assert_eq!(single_bits.x(), 1);
+
+    single_bits.set_x(2);
+
+    assert_eq!(single_bits.x(), 0);
+}
+
+// *** Dumping AST Record Layout
+//          0 | struct three_byte_date
+//      0:0-4 |   unsigned char d
+//      0:5-8 |   unsigned char m
+//     1:1-15 |   unsigned short y
+//            | [sizeof=3, align=1]
+#[repr(C, align(1))]
+#[derive(BitfieldStruct)]
+struct ThreeByteDate {
+    #[bitfield(name = "day", ty = "libc::c_uchar", bits = "0..=4")]
+    #[bitfield(name = "month", ty = "libc::c_uchar", bits = "5..=8")]
+    #[bitfield(name = "year", ty = "libc::c_ushort", bits = "9..=23")]
+    day_month_year: [u8; 3]
+}
+
+#[test]
+fn test_three_byte_date() {
+    let mut date = ThreeByteDate {
+        day_month_year: [0; 3]
+    };
+
+    date.set_day(18);
+    date.set_month(7);
+    date.set_year(2000);
+
+    assert_eq!(date.day_month_year, [0b11110010, 0b10100000, 0b00001111], "{:?}", date.day_month_year);
+    assert_eq!(date.day(), 18);
+    assert_eq!(date.month(), 7);
+    assert_eq!(date.year(), 2000);
+
+    let ret = unsafe {
+        check_three_byte_date(&date, 18, 7, 2000)
+    };
+
+    assert_eq!(ret, 1);
 }

@@ -137,3 +137,31 @@ void assign_signed_bitfields(signed_bitfields* bf, signed short x, unsigned shor
     bf->y = y;
     bf->z = z;
 }
+
+// *** Dumping AST Record Layout
+//          0 | struct three_byte_date
+//      0:0-4 |   unsigned char d
+//      0:5-8 |   unsigned char m
+//     1:1-15 |   unsigned short y
+//            | [sizeof=3, align=1]
+typedef struct {
+    unsigned char day: 5;
+    unsigned char month: 4;
+    unsigned short year: 15;
+} __attribute((packed)) three_byte_date;
+
+unsigned int check_three_byte_date(three_byte_date const* bf, unsigned char day, unsigned char month, unsigned short year) {
+    if (bf->day != day) {
+        return 2;
+    }
+
+    if (bf->month != month) {
+        return 3;
+    }
+
+    if (bf->year != year) {
+        return 4;
+    }
+
+    return 1;
+}
