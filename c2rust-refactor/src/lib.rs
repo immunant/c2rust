@@ -381,6 +381,8 @@ fn main_impl(opts: Options) {
 }
 
 pub fn lib_main(opts: Options) {
+    env_logger::init();
+
     ty::tls::GCX_PTR.set(&Lock::new(0), || {
         syntax::with_globals(move || {
             main_impl(opts);
