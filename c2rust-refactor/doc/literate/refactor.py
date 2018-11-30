@@ -2,7 +2,9 @@
 import bisect
 from collections import namedtuple
 import os
+import shlex
 import sys
+import tempfile
 
 from plumbum import local, FG
 from plumbum.cmd import cargo
@@ -12,66 +14,235 @@ from literate.file import File
 from literate import parse
 
 
-def combine_script_blocks(blocks):
-    '''Given a list of `Text` and `Script` blocks from the `parse` module,
-    combine all refactoring commands into a single list, inserting `write`
-    commands to record intermediate states.  Returns the combined command list,
-    along with a dict mapping each script block's index in the input to the
-    index where its output will appear (for use in finding
-    "rewrite.N.json").'''
-    script_output = {}
-    # Index (`N`) of the most recent `rewrite.N.json`.
-    last_output = -1
-    all_cmds = []
+# A real crate, identified by its project directory.  We handle these using the
+# `--cargo` flag of `c2rust-refactor`.
+RealCrate = namedtuple('RealCrate', ('dir',))
+# A temporary crate, built from some source text.  We handle these by writing
+# the text to a temp file and passing explicit `rustc` arguments.
+TempCrate = namedtuple('TempCrate', ('text',))
 
-    def emit(cmd: [str]):
-        nonlocal last_output
-        if cmd[0] in ('write', 'commit'):
-            # This handles the `write` commands we inject in the loop below, as
-            # well as any `write` or `commit` commands in the original script.
-            last_output += 1
-        all_cmds.append(cmd)
+# A simple TemporaryDirectory replacement, with just a `name` field.
+PermanentDirectory = namedtuple('PermanentDirectory', ('name',))
 
-    for i, b in enumerate(blocks):
-        if isinstance(b, parse.Text):
-            pass
-        elif isinstance(b, parse.Script):
-            for c in b.commands:
-                emit(c)
+ResultInfo = namedtuple('ResultInfo', (
+    # Keys in `RefactorState.results` where the (old, new) result pair should
+    # be stored.
+    'dests',
+    # `True` if this result is produced by a `commit` command, `False`
+    # otherwise (for `write`).
+    'is_commit',
+))
 
-            # We need a snapshot of the state as of the end of the block, so if
-            # it doesn't end with `write` or `commit`, we inject an additional
-            # `write` ourselves.
-            if len(b.commands) == 0 or b.commands[-1][0] not in ('write', 'commit'):
-                emit(['write'])
-            assert last_output != -1
-            script_output[i] = last_output
+FLAG_OPTS = {
+        'auto-revert',
+        }
+
+STR_OPTS = {
+        'diff-style',
+        }
+
+class RefactorState:
+    def __init__(self, args):
+        self.args = args
+
+        self.cur_crate = None
+        if args.project_dir is not None:
+            self.cur_crate = RealCrate(args.project_dir)
+
+        # Accumulator of refactoring commands to run.  We try to run all
+        # commands in one go for efficiency, and to avoid the need to keep
+        # track of rewritten files.
+        self.pending_cmds = []
+
+        # A `ResultInfo` for each refactoring result that will be produced by
+        # running `pending_cmds`.  That is, there is an entry in
+        # `pending_results` for each `commit` or `write` in `pending_cmds`.
+        self.pending_results = []
+
+        # A dict of refactoring results (pairs of old and new state), keyed on
+        # the `key` argument passed to `force_write`.
+        self.results = {}
+
+        # A list of all `File` objects that appear somewhere in `results`.
+        # Note that many `File`s appear twice in `results`, once as an old file
+        # and once as a new one.
+        self.all_files = []
+
+        # A dict of refactoring options, as key-value pairs.
+        self.options = {}
+
+    def flush(self):
+        if len(self.pending_cmds) == 0:
+            assert len(self.pending_results) == 0
+            return
+
+        work_dir = refactor_crate(self.cur_crate, self.pending_cmds)
+
+        rp = ResultProcessor(self.all_files, work_dir.name)
+        for i, info in enumerate(self.pending_results):
+            # `commit` saves the previous marks before clearing, but we
+            # actually want to pretend that the marks were cleared first, so
+            # that the next block doesn't get a bunch of random removed marks
+            # included in its diff.
+            clear_marks = info.is_commit
+
+            result = rp.next_result(clear_marks)
+            for k in info.dests:
+                self.results[k] = result
+
+        self.pending_cmds = []
+        self.pending_results = []
+
+    def add_command(self, cmd):
+        assert len(cmd) > 0
+        self.pending_cmds.append(cmd)
+        if cmd[0] == 'commit':
+            self.pending_results.append(ResultInfo([], True))
+        elif cmd[0] == 'write':
+            self.pending_results.append(ResultInfo([], False))
+
+    def add_commands(self, key, cmds):
+        '''Add a block of refactoring commands to run.  Once the commands are
+        actually run, the results will be stored under `key` in
+        `self.results`.'''
+
+        # Did `cmds` end with a command that writes out refactoring results?
+        last_wrote = False
+        for cmd in cmds:
+            self.add_command(cmd)
+            last_wrote = cmd[0] in ('commit', 'write')
+
+        if not last_wrote:
+            self.add_command(['write'])
+
+        self.pending_results[-1].dests.append(key)
+
+    def set_crate(self, crate):
+        self.flush()
+        self.cur_crate = crate
+
+    def reset(self):
+        self.flush()
+
+    def finish(self):
+        self.flush()
+        # Cause an error on further `add_commands`
+        self.pending_cmds = None
+        return self.results
+
+    def set_option(self, name, val):
+        if name.startswith('no-'):
+            name = name[3:]
+            assert name in FLAG_OPTS, \
+                    '`no-` prefix is only supported on flag options (option: %r)' % \
+                    name
+            assert val is None or val == '', \
+                    'flag options do not take values (option: %r; value: %r)' % \
+                    (name, val)
+            self.options[name] = False
+
+        elif name in FLAG_OPTS:
+            assert val is None or val == '', \
+                    'flag options do not take values (option: %r; value: %r)' % \
+                    (name, val)
+            self.options[name] = True
+
+        elif name in STR_OPTS:
+            self.options[name] = val
 
         else:
-            raise TypeError('expected Text or Script, got %s' % (type(b),))
+            assert False, \
+                    'unknown option %r' % name
 
-    return all_cmds, script_output
 
-def run_refactor(work_dir, cmds: [[str]], mode='json,marks,alongside'):
-    refactor = get_cmd_or_die(config.RREF_BIN)
+class ResultProcessor:
+    def __init__(self, all_files, dir_path):
+        self.all_files = all_files
+        self.dir_path = dir_path
 
-    args = ['-r', mode, '--cargo']
+        self.rw_index = 0
+        self.prev_files = {}
+        self.prev_marks = []
+
+    def next_result(self, clear_marks=False):
+        '''Load and process the next refactoring result.  If `clear_marks` is
+        set, the content of the `marks.json` file is ignored, as if the
+        refactoring process cleared all marks at the end.'''
+
+        with open(os.path.join(self.dir_path, 'rewrites.%d.json' % self.rw_index)) as f:
+            rws = json.load(f)
+
+        if clear_marks:
+            marks = []
+        else:
+            with open(os.path.join(self.dir_path, 'marks.%d.json' % self.rw_index)) as f:
+                marks = json.load(f)
+
+        old = {}
+        new = {}
+
+        for rw in rws:
+            path = rw['new_span']['file']
+
+            if path not in self.prev_files:
+                text = rw['new_span']['src']
+                nodes = []
+                old[path] = File(path, text, nodes, [])
+                self.all_files.append(old[path])
+            else:
+                old[path] = self.prev_files[path]
+
+            text, nodes = apply_rewrites(rw['new_span'], rw['rewrites'], rw['nodes'])
+
+            new[path] = File(path, text, nodes, marks)
+            self.all_files.append(new[path])
+            self.prev_files[path] = new[path]
+
+        self.prev_marks = marks
+        self.rw_index += 1
+
+        return (old, new)
+
+
+def refactor_crate(crate, cmds):
+    '''Run refactoring commands `cmds` on `crate`.  If `crate` is a
+    `TempCrate`, return the `TemporaryDirectory` where the refactoring was
+    done.  Otherwise, return `None`.'''
+    if isinstance(crate, RealCrate):
+        work_dir = PermanentDirectory(crate.dir)
+        pre_args, post_args = ['--cargo'], []
+    elif isinstance(crate, TempCrate):
+        work_dir = tempfile.TemporaryDirectory()
+        with open(os.path.join(work_dir.name, 'tmp.rs'), 'w') as f:
+            f.write(crate.text)
+        pre_args, post_args = [], ['--', os.path.join(work_dir.name, 'tmp.rs'),
+                '--crate-type', 'rlib']
+
+    all_args = ['-r', 'json,marks']
+    all_args.extend(pre_args)
     for cmd in cmds:
-        args.extend(cmd)
-        args.append(';')
+        all_args.extend(cmd)
+        all_args.append(';')
+    all_args.extend(post_args)
+
+
+    refactor = get_cmd_or_die(config.C2RUST_BIN)['refactor']
 
     ld_lib_path = get_rust_toolchain_libpath()
-
     # don't overwrite existing ld lib path if any...
     if 'LD_LIBRARY_PATH' in local.env:
         ld_lib_path += ':' + local.env['LD_LIBRARY_PATH']
 
     with local.env(RUST_BACKTRACE='1',
                    LD_LIBRARY_PATH=ld_lib_path):
-        with local.cwd(work_dir):
-            print('running %s in %s with %d cmds...' % (refactor, work_dir, len(cmds)))
-            refactor[args]()
+        with local.cwd(work_dir.name):
+            print('running %s in %s with %d cmds...' %
+                    (refactor, work_dir.name, len(cmds)))
+            refactor[all_args] & FG
             print('  refactoring done')
+
+
+    return work_dir
 
 
 class BisectRange:
@@ -199,75 +370,77 @@ def apply_rewrites(span, rws, nodes):
         new_lo, new_hi = node_ends[i]
         if new_lo is None or new_hi is None:
             print('warning: bad mapped range %s, %s for %s' % (new_lo, new_hi, n))
+            print('parent span is %s' % (span,))
         new_nodes.append((new_lo, new_hi, n['id']))
 
     return ''.join(parts), new_nodes
 
 
+# A Markdown code block (`literate.parse.Code`), augmented with the state of
+# the crate before and after running the contained refactoring scripts.
+RefactorCode = namedtuple('RefactorCode', ('attrs', 'lines', 'opts', 'old', 'new'))
+
+# Reexport for convenience
 Text = parse.Text
-ScriptDiff = namedtuple('ScriptDiff', ('commands', 'raw', 'old', 'new'))
+Code = parse.Code
+
+def split_commands(code: str) -> [[str]]:
+    '''Parse a string as a sequence of shell words, then split those words into
+    refactoring commands on `';'` separators.'''
+    words = shlex.split(code)
+    acc = []
+    cmds = []
+
+    for word in words:
+        if word == ';':
+            if len(acc) > 0:
+                cmds.append(acc)
+            acc = []
+        else:
+            acc.append(word)
+
+    if len(acc) > 0:
+        cmds.append(acc)
+
+    return cmds
 
 def run_refactor_scripts(args, blocks):
-    '''Run all refactoring commands in `blocks`, returning a new list of blocks
-    where each `Script` is replaced by a `ScriptDiff`, which includes the old
-    and new text of each file modified by the commands.'''
-    all_cmds, script_output = combine_script_blocks(blocks)
-    run_refactor(args.project_dir, all_cmds)
-
-    result = []
-    all_files = []
-    prev_files = {}
-    prev_marks = []
+    # Run all refactoring commands, and get the refactoring results.
+    rs = RefactorState(args)
+    block_opts = {}
     for i, b in enumerate(blocks):
-        rw_idx = script_output.get(i)
-        if rw_idx is None:
-            assert isinstance(b, parse.Text)
-            result.append(b)
+        if not isinstance(b, parse.Code):
             continue
 
-        assert isinstance(b, parse.Script)
-        with open(os.path.join(args.project_dir, 'rewrites.%d.json' % rw_idx)) as f:
-            rws = json.load(f)
+        if 'refactor' in b.attrs:
+            cmds = split_commands(''.join(b.lines))
+            rs.add_commands(i, cmds)
+            block_opts[i] = rs.options.copy()
 
+        if 'refactor-target' in b.attrs:
+            rs.set_crate(TempCrate(''.join(b.lines)))
 
-        # Handle marks first, so `cur_marks` is available for `File`
-        # construction.
+        if 'refactor-options' in b.attrs:
+            for line in b.lines:
+                line = line.strip()
+                if len(line) == 0 or line.startswith('#'):
+                    continue
+                key, _, value = line.partition('=')
+                rs.set_option(key.strip(), value.strip())
 
-        if len(b.commands) > 0 and b.commands[-1] == ['commit']:
-            # `commit` saves the previous marks before clearing, but we
-            # actually want to pretend that the marks were cleared first, so
-            # that the next block doesn't get a bunch of random removed marks
-            # included in its diff.
-            cur_marks = []
+        if rs.options.get('auto-revert', False):
+            rs.reset()
+
+    results = rs.finish()
+    all_files = rs.all_files
+
+    new_blocks = []
+    for i, b in enumerate(blocks):
+        if i in results:
+            old, new = results[i]
+            new_blocks.append(RefactorCode(b.attrs, b.lines,
+                block_opts[i], old, new))
         else:
-            with open(os.path.join(args.project_dir, 'marks.%d.json' % rw_idx)) as f:
-                cur_marks = json.load(f)
+            new_blocks.append(b)
 
-        prev_marks = cur_marks
-
-
-        # Look at the rewrites and use them to add `File`s to `old` and `new`.
-        old = {}
-        new = {}
-
-        for rw in rws:
-            path = rw['new_span']['file']
-
-            if path not in prev_files:
-                text = rw['new_span']['src']
-                nodes = []
-                old[path] = File(path, text, nodes, [])
-                all_files.append(old[path])
-            else:
-                old[path] = prev_files[path]
-
-            text, nodes = apply_rewrites(rw['new_span'], rw['rewrites'], rw['nodes'])
-
-            new[path] = File(path, text, nodes, cur_marks)
-            all_files.append(new[path])
-            prev_files[path] = new[path]
-
-        result.append(ScriptDiff(b.commands, b.raw, old, new))
-        prev_marks = cur_marks
-
-    return result, all_files
+    return new_blocks, all_files

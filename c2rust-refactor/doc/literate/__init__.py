@@ -96,13 +96,27 @@ def do_render(args):
             if isinstance(b, literate.refactor.Text):
                 for line in b.lines:
                     f.write(line)
-            elif isinstance(b, literate.refactor.ScriptDiff):
+            elif isinstance(b, literate.refactor.Code):
+                if 'hidden' not in b.attrs:
+                    remove_attrs = {'refactor-target', 'refactor-config'}
+                    filtered_attrs = [a for a in b.attrs if a not in remove_attrs]
+
+                    f.write('```%s\n' % ' '.join(filtered_attrs))
+                    for line in b.lines:
+                        f.write(line)
+                    f.write('```\n')
+            elif isinstance(b, literate.refactor.RefactorCode):
+                if 'hidden' in b.attrs:
+                    continue
+
                 f.write('```sh\n')
-                for line in b.raw:
+                for line in b.lines:
                     f.write(line)
                 f.write('```\n\n')
+
                 print('rendering diff #%d' % (diff_idx + 1))
-                diff_text = literate.render.render_diff(b.old, b.new)
+                print('  diff options: %s' % (b.opts,))
+                diff_text = literate.render.render_diff(b.old, b.new, b.opts)
                 if diff_text is not None:
                     f.write('<details><summary>Diff #%d</summary>\n' % (diff_idx + 1))
                     f.write(diff_text)

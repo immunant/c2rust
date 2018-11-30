@@ -194,19 +194,19 @@ def prepare_files(files: [File]):
         literate.highlight.highlight_file(f)
         literate.marks.mark_file(f)
 
-def make_diff(f1: File, f2: File) -> Diff:
+def make_diff(f1: File, f2: File, context_diff: bool) -> Diff:
     '''Construct a diff between two files, and run diff initialization
     steps.'''
     print('  diffing file %s' % f1.path)
     d = literate.diff.diff_files(f1.copy(), f2.copy())
     literate.marks.init_mark_labels(d)
     literate.marks.init_keep_mark_lines(d)
-    literate.diff.build_diff_hunks(d)
+    literate.diff.build_diff_hunks(d, context_diff)
     literate.diff.build_output_lines(d)
     literate.marks.init_hunk_boundary_marks(d)
     return d
 
-def render_diff(old_files, new_files) -> str:
+def render_diff(old_files, new_files, opts) -> str:
     '''Render a diff between each file in `new_files` and the corresponding one
     in `old_files`.  The result is either a string of HTML source, or `None` if
     nothing changed.'''
@@ -222,7 +222,8 @@ def render_diff(old_files, new_files) -> str:
     for f in file_names:
         # `make_diff` copies the files, then updates the copies.  We want
         # references to the new copies only.
-        diff = make_diff(old_files[f], new_files[f])
+        diff = make_diff(old_files[f], new_files[f],
+                opts.get('diff-style', 'context') == 'context')
         old = diff.old_file
         new = diff.new_file
 
