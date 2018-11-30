@@ -43,6 +43,13 @@ options.  This tool supports the following options:
    on `refactor` blocks.  This is useful for showing the effects of several
    different refactoring commands on the same initial code.
 
+ * `filename`: Display the filenames of rewritten files.  Default: `true`.
+   Disabling this is useful in combination with `refactor-target`, which causes
+   refactoring to run on temporary files with generated names.
+
+ * `collapse-diff`: Put the diff inside a `<details>` tag, causing browsers to
+   display it collapsed until the reader clicks on it.  Default: `true`.
+
  * `diff-style = full|context': Sets whether the rendered diff should display
    the full contents of the old and new files, or only changed portions and
    nearby context.  This is only meaningful on `refactor` blocks.  The default

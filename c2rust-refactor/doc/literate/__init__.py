@@ -111,9 +111,12 @@ def do_render(args):
                 print('  diff options: %s' % (b.opts,))
                 diff_text = literate.render.render_diff(b.old, b.new, b.opts)
                 if diff_text is not None:
-                    f.write('<details><summary>Diff #%d</summary>\n' % (diff_idx + 1))
+                    collapse = b.opts.get('collapse-diff', True)
+                    if collapse:
+                        f.write('<details><summary>Diff #%d</summary>\n' % (diff_idx + 1))
                     f.write(diff_text)
-                    f.write('\n<hr></details>\n\n')
+                    if collapse:
+                        f.write('\n<hr></details>\n\n')
                 diff_idx += 1
             else:
                 raise TypeError('expected Text or ScriptDiff, got %s' % (type(b),))

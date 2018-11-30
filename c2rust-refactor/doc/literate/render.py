@@ -219,7 +219,7 @@ def render_diff(old_files, new_files, opts) -> str:
     parts.append('<colgroup>')
     parts.append('<col width="50"><col><col width="50"><col>')
     parts.append('</colgroup>\n')
-    for f in file_names:
+    for file_idx, f in enumerate(file_names):
         # `make_diff` copies the files, then updates the copies.  We want
         # references to the new copies only.
         diff = make_diff(old_files[f], new_files[f],
@@ -230,7 +230,11 @@ def render_diff(old_files, new_files, opts) -> str:
         if len(diff.hunks) > 0:
             empty = False
 
-        parts.append('<tr><td colspan="4" class="filename">%s</td></tr>' % f)
+        if opts.get('filename', True):
+            parts.append('<tr><td colspan="4" class="filename">%s</td></tr>' % f)
+        else:
+            if file_idx > 0:
+                parts.append('<tr><td colspan="4"><hr></td></tr>')
 
         first = True
         for hunk in diff.hunks:

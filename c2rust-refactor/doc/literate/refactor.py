@@ -37,6 +37,8 @@ FLAG_OPTS = {
         'revert',
         'hidden',
         'refactor-target',
+        'filename',
+        'collapse-diff',
         }
 
 STR_OPTS = {
@@ -155,7 +157,10 @@ class RefactorState:
                 value = False
 
             if key in FLAG_OPTS:
-                if value == '':
+                if isinstance(value, bool):
+                    # It was set above by `no-` handling.
+                    pass
+                elif value == '':
                     value = True
                 elif value.lower() in FLAG_TRUTHY:
                     value = True
