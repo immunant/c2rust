@@ -6,7 +6,7 @@ use syntax::ptr::P;
 use syntax::symbol::keywords;
 use syntax::visit::{self, Visitor};
 use transform::Transform;
-use indexmap::{IndexSet};
+use indexmap::IndexSet;
 
 use api::*;
 use ast_manip::AstEquiv;
@@ -35,7 +35,7 @@ use driver::{self, Phase};
 ///     }
 /// }
 /// ```
-pub struct ReorganizeModules;
+pub struct ReorganizeDefinitions;
 
 /// Holds the information of the current `Crate`, which includes a `HashMap` to look up Items
 /// quickly, as well as other members that hold important information.
@@ -195,8 +195,6 @@ impl<'st> CrateInformation<'st> {
     ) -> Crate {
         // This is where items get inserted into the corresponding
         // "destination module"
-        self.item_map.clear();
-
         let mut item_map = HashMap::new();
         visit_nodes(&krate, |i: &Item| {
             item_map.insert(i.id, i.clone());
@@ -247,57 +245,46 @@ impl<'st> CrateInformation<'st> {
 
 
                         for new_item_id in new_item_ids.iter() {
-                            // `get_mut` is used to remove duplicates from incoming
-                            // `ForeignMod`'s
-                            // TODO:
-                            //  * Utilize `remove` as opposed to `get`, so  there won't be a need for
-                            // a clone.
-                            //  * Investigate why there is a panic here when just unwrapping.
-                            if let Some(new_item) = item_map.get_mut(new_item_id) {
-                                let mut is_use_stmt = false;
-                                // Since `Use` statements do not have `Ident`'s,
-                                // it is necessary to iterate through all the module's items
-                                // and compare.
-                                if let ItemKind::Use(_) = new_item.node {
-                                    let mut found = false;
-                                    for use_stmt in use_stmts.iter() {
+                            let mut new_item = item_map.remove(new_item_id)
+                                .unwrap_or_else(|| panic!("There should be a node here: {}", new_item_id));
+                            // Since `Use` statements do not have `Ident`'s,
+                            // it is necessary to iterate through all the module's items
+                            // and compare.
+                            let mut found = false;
+                            let mut is_use_stmt = false;
+                            match new_item.node {
+                                ItemKind::Use(_) => {
+                                    is_use_stmt = true;
+                                    for use_stmt in &use_stmts {
                                         if compare_items(&use_stmt, &new_item) {
                                             found = true;
                                         }
                                     }
-                                    if !found {
-                                        m.items.push(P(new_item.clone()));
-                                    }
-                                    is_use_stmt = true;
-                                }
+                                },
+                                ItemKind::ForeignMod(ref mut fm) => {
+                                    fm.items.retain(|fm_item| !old_items.contains_key(&fm_item.ident));
+                                },
+                                _ => {}
+                            }
 
-                                if !is_use_stmt {
-                                    let mut found = false;
-                                    let mut is_fm = false;
-
-                                    if let ItemKind::ForeignMod(ref mut fm) = new_item.node {
-                                        fm.items.retain(|fm_item| !old_items.contains_key(&fm_item.ident));
-                                        is_fm = true;
-                                    }
-
-                                    if is_fm {
-                                        for foreign_mod in foreign_mods.iter() {
-                                            if compare_items(&foreign_mod, &new_item) {
-                                                found = true;
-                                            }
-                                        }
-                                    }
-
-                                    if let Some(old_item) = old_items.get(&new_item.ident) {
-                                        if compare_items(&old_item, &new_item) {
-                                            found = true;
-                                        }
-                                    }
-
-                                    if !found {
-                                        m.items.push(P(new_item.clone()));
+                            // TODO:
+                            // When NLL releases, see if it's possible to put this in the match
+                            // above.
+                            if !is_use_stmt {
+                                for foreign_mod in foreign_mods.iter() {
+                                    if compare_items(&foreign_mod, &new_item) {
+                                        found = true;
                                     }
                                 }
+
+                                if let Some(old_item) = old_items.get(&new_item.ident) {
+                                    if compare_items(&old_item, &new_item) {
+                                        found = true;
+                                    }
+                                }
+                            }
+                            if !found {
+                                m.items.push(P(new_item));
                             }
                         }
                         ItemKind::Mod(m)
@@ -306,14 +293,12 @@ impl<'st> CrateInformation<'st> {
                 };
                 i
             });
-
-            self.item_map.insert(pi.id, pi.clone().into_inner());
             smallvec![pi]
         });
         krate
     }
 
-    /// Removes any declarations that also have a definition within the Crate.
+    /// Removes any forward declarations that also have a definition within the Crate.
     fn remove_declarations(&mut self, krate: Crate) -> Crate {
         let mut old_path_info = HashMap::new();
         let mut new_path_info = HashMap::new();
@@ -329,6 +314,7 @@ impl<'st> CrateInformation<'st> {
                 _ => {}
             }
         }
+        self.item_map.clear();
         let krate = fold_nodes(krate, |pi: P<Item>| {
             let pi = pi.map(|mut i| {
                 match i.node {
@@ -350,6 +336,7 @@ impl<'st> CrateInformation<'st> {
                     },
                     _ => {}
                 }
+                self.item_map.insert(i.id, i.clone());
                 i
             });
             smallvec![pi]
@@ -422,7 +409,7 @@ impl<'ast, 'st> Visitor<'ast> for CrateInformation<'st> {
     }
 }
 
-impl Transform for ReorganizeModules {
+impl Transform for ReorganizeDefinitions {
     fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
         let mut krate_info = CrateInformation::new(st);
 
@@ -534,7 +521,6 @@ impl Transform for ReorganizeModules {
                             Some(item)
                         }).collect();
 
-
                         let seen_item_ids =
                             m.items.iter().map(|item| item.id).collect::<HashSet<_>>();
                         let mut deleted_item_ids = HashSet::new();
@@ -597,11 +583,9 @@ impl Transform for ReorganizeModules {
                         // the declaration
                         update_paths(&mut seen_paths, &krate_info, &i.ident);
 
-                        fn already_in_use(path: &Ident, seen_paths: &HashMap<Ident, HashSet<Ident>>) -> bool {
-                            seen_paths.values().any(|set_of_segments| {
-                                set_of_segments.contains(path)
-                            })
-                        }
+                        let already_in_use = |path, seen_paths: &HashMap<Ident, HashSet<Ident>>| -> bool {
+                            seen_paths.values().any(|set_of_segments| set_of_segments.contains(path))
+                        };
 
                         let item_idents: HashSet<Ident> =
                             m.items.iter().map(|item| item.ident).collect::<HashSet<_>>();
@@ -621,7 +605,7 @@ impl Transform for ReorganizeModules {
                         // statements for every nested segment. The simple statements are
                         // inserted if there is no other occurence of that statement within the module already.
                         for new_path in &new_paths {
-                            if !item_idents.contains(new_path) && !already_in_use(new_path, &seen_paths){
+                            if !item_idents.contains(new_path) && !already_in_use(new_path, &seen_paths) {
                                 let path = mk().use_item(Path::from_ident(*new_path), None as Option<Ident>);
                                 if use_stmts.is_empty() {
                                     m.items.push(path.clone());
@@ -787,5 +771,5 @@ fn is_std(attrs: &Vec<Attribute>) -> bool {
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
-    reg.register("reorganize_modules", |_args| mk(ReorganizeModules))
+    reg.register("reorganize_definitions", |_args| mk(ReorganizeDefinitions))
 }

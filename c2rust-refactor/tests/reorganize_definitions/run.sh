@@ -6,5 +6,5 @@ if [ `uname` = 'Darwin' ]; then
 fi
 
 $refactor \
-    reorganize_modules \
+    reorganize_definitions \
     -- old.rs $rustflags
