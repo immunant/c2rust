@@ -324,7 +324,7 @@ impl<'c> Translation<'c> {
             .unwrap();
 
         if has_bitfields {
-            return self.convert_bitfield_struct_literal(struct_name, ids, field_decls, platform_byte_size, is_static);
+            return self.convert_bitfield_struct_literal(struct_name, ids, field_decls, platform_byte_size, ctx);
         }
 
         let mut stmts: Vec<Stmt> = vec![];
@@ -342,7 +342,7 @@ impl<'c> Translation<'c> {
 
         // Pad out remaining omitted record fields
         for i in ids.len()..fields.len() {
-            let &(ref field_name, ty) = &field_decls[i];
+            let &(ref field_name, ty, _, _) = &field_decls[i];
             fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, ctx.is_static)?));
         }
 
