@@ -99,6 +99,7 @@ pub struct MatchCtxt<'a, 'tcx: 'a> {
     pub types: HashMap<Symbol, bindings::Type>,
     st: &'a CommandState,
     cx: &'a driver::Ctxt<'a, 'tcx>,
+    pub debug: bool,
 }
 
 impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
@@ -109,6 +110,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             types: HashMap::new(),
             st: st,
             cx: cx,
+            debug: false,
         }
     }
 
@@ -323,6 +325,10 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         // `T::f`.  This would be a little annoying to fix, since `parse_qpath` is private.
         let (_qself, def_path) = reflect::reflect_def_path(self.cx.ty_ctxt(), def_id);
 
+        if self.debug {
+            eprintln!("def!(): trying to match pattern {:?} against AST {:?}",
+                      path_pattern, def_path);
+        }
         if self.try_match(&path_pattern, &def_path).is_err() {
             return Err(Error::DefMismatch);
         }
@@ -360,6 +366,10 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             .ok_or(Error::TypeUnavailable)?;
         let ast_ty = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), tcx_ty);
 
+        if self.debug {
+            eprintln!("typed!(): trying to match pattern {:?} against AST {:?}",
+                      ty_pattern, ast_ty);
+        }
         if self.try_match(&ty_pattern, &ast_ty).is_err() {
             return Err(Error::WrongType);
         }
