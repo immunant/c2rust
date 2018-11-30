@@ -2,10 +2,10 @@ use super::*;
 
 impl<'c> Translation<'c> {
 
-    pub fn convert_vaarg(&self, ty: CQualTypeId, val_id: CExprId) -> Result<WithStmts<P<Expr>>, String> {
+    pub fn convert_vaarg(&self, ctx: ExprContext, ty: CQualTypeId, val_id: CExprId) -> Result<WithStmts<P<Expr>>, String> {
         if self.tcfg.translate_valist {
             // https://github.com/rust-lang/rust/pull/49878/files
-            let val = self.convert_expr(ExprUse::Used, val_id, is_static, decay_ref)?;
+            let val = self.convert_expr(ctx.used(), val_id)?;
             let ty = self.convert_type(ty.ctype)?;
 
             Ok(val.map(|va| {

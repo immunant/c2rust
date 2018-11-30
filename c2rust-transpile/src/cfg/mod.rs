@@ -499,7 +499,7 @@ pub enum ImplicitReturnType {
     /// This is for handling statement expressions
     ///
     /// TODO: document
-    StmtExpr(ExprUse, CExprId, bool, Label),
+    StmtExpr(ExprContext, CExprId, Label),
 }
 
 /// A complete control-flow graph
@@ -508,6 +508,7 @@ impl Cfg<Label, StmtOrDecl> {
     /// Completely process a statement into a control flow graph.
     pub fn from_stmts(
         translator: &Translation,
+        ctx: ExprContext,
         stmt_ids: &[CStmtId],
         ret: ImplicitReturnType,
     ) -> Result<(Self, DeclStmtStore), String> {
@@ -533,7 +534,7 @@ impl Cfg<Label, StmtOrDecl> {
 
         translator.with_scope(|| -> Result<(), String> {
 
-            let body_exit = cfg_builder.convert_stmts_help(translator, stmt_ids, Some(ret), entry)?;
+            let body_exit = cfg_builder.convert_stmts_help(translator, ctx, stmt_ids, Some(ret), entry)?;
 
             if let Some(body_exit) = body_exit {
                 let mut wip = cfg_builder.new_wip_block(body_exit);
@@ -552,12 +553,10 @@ impl Cfg<Label, StmtOrDecl> {
                             translator.panic("Reached end of non-void function without returning");
                         wip.body.push(StmtOrDecl::Stmt(mk().semi_stmt(ret_expr)));
                     },
-                    ImplicitReturnType::StmtExpr(use_, expr_id, is_static, brk_label) => {
+                    ImplicitReturnType::StmtExpr(ctx, expr_id, brk_label) => {
                         let WithStmts { mut stmts, val } = translator.convert_expr(
-                            use_,
+                            ctx,
                             expr_id,
-                            is_static,
-                            DecayRef::Default,
                         )?;
 
                         wip.body.extend(stmts.into_iter().map(|s| StmtOrDecl::Stmt(s)));
@@ -1186,6 +1185,7 @@ impl CfgBuilder {
     fn convert_stmts_help(
         &mut self,
         translator: &Translation,
+        ctx: ExprContext,
         stmt_ids: &[CStmtId],     // C statements to translate
         in_tail: Option<ImplicitReturnType>,  // Are we in tail position (is there anything to fallthrough to)?
         entry: Label,             // Current WIP block
@@ -1198,7 +1198,7 @@ impl CfgBuilder {
             for stmt in stmt_ids {
                 let new_label: Label = lbl.unwrap_or(slf.fresh_label());
                 let sub_in_tail = in_tail.filter(|_| Some(stmt) == last);
-                lbl = slf.convert_stmt_help(translator, *stmt, sub_in_tail, new_label)?;
+                lbl = slf.convert_stmt_help(translator, ctx, *stmt, sub_in_tail, new_label)?;
             }
 
             Ok(lbl)
@@ -1217,6 +1217,7 @@ impl CfgBuilder {
     fn convert_stmt_help(
         &mut self,
         translator: &Translation,
+        ctx: ExprContext,
 
         // C statement to translate
         stmt_id: CStmtId,
@@ -1244,7 +1245,7 @@ impl CfgBuilder {
 
             CStmtKind::Decls(ref decls) => {
                 for decl in decls {
-                    let info = translator.convert_decl_stmt_info(*decl)?;
+                    let info = translator.convert_decl_stmt_info(ctx, *decl)?;
                     self.last_per_stmt_mut().decls_seen.store.insert(*decl, info);
 
                     // Add declaration comment into current block right before the declaration
@@ -1259,7 +1260,7 @@ impl CfgBuilder {
             }
 
             CStmtKind::Return(expr) => {
-                let val = match expr.map(|i| translator.convert_expr(ExprUse::Used, i, false, DecayRef::Default)) {
+                let val = match expr.map(|i| translator.convert_expr(ctx.used(), i)) {
                     Some(r) => Some(r?),
                     None => None,
                 };
@@ -1279,7 +1280,7 @@ impl CfgBuilder {
                 let else_entry = if false_variant.is_none() { next_entry } else { self.fresh_label() };
 
                 // Condition
-                let WithStmts { stmts, val } = translator.convert_condition(true, scrutinee, false)?;
+                let WithStmts { stmts, val } = translator.convert_condition(ctx, true, scrutinee)?;
                 let cond_val = translator.ast_context[scrutinee].kind.get_bool();
                 wip.extend(stmts);
                 self.add_wip_block(
@@ -1294,7 +1295,7 @@ impl CfgBuilder {
 
                 // Then case
                 self.open_arm(then_entry);
-                let then_stuff = self.convert_stmt_help(translator, true_variant, in_tail, then_entry)?;
+                let then_stuff = self.convert_stmt_help(translator, ctx, true_variant, in_tail, then_entry)?;
                 if let Some(then_end) = then_stuff {
                     let wip_then = self.new_wip_block(then_end);
                     self.add_wip_block(wip_then, Jump(next_entry));
@@ -1304,7 +1305,7 @@ impl CfgBuilder {
                 // Else case
                 self.open_arm(else_entry);
                 if let Some(false_var) = false_variant {
-                    let else_stuff = self.convert_stmt_help(translator, false_var, in_tail, else_entry)?;
+                    let else_stuff = self.convert_stmt_help(translator, ctx, false_var, in_tail, else_entry)?;
                     if let Some(else_end) = else_stuff {
                         let wip_else = self.new_wip_block(else_end);
                         self.add_wip_block(wip_else, Jump(next_entry));
@@ -1327,7 +1328,7 @@ impl CfgBuilder {
                 self.open_loop();
 
                 // Condition
-                let WithStmts { stmts, val } = translator.convert_condition(true, condition, false)?;
+                let WithStmts { stmts, val } = translator.convert_condition(ctx, true, condition)?;
                 let cond_val = translator.ast_context[condition].kind.get_bool();
                 let mut cond_wip = self.new_wip_block(cond_entry);
                 cond_wip.extend(stmts);
@@ -1346,7 +1347,7 @@ impl CfgBuilder {
                 self.break_labels.push(next_entry);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_help(translator, body_stmt, None, body_entry)?;
+                let body_stuff = self.convert_stmt_help(translator, ctx, body_stmt, None, body_entry)?;
                 if let Some(body_end) = body_stuff {
                     let wip_body = self.new_wip_block(body_end);
                     self.add_wip_block(wip_body, Jump(cond_entry));
@@ -1376,7 +1377,7 @@ impl CfgBuilder {
                 self.break_labels.push(next_entry);
                 self.continue_labels.push(cond_entry);
 
-                let body_stuff = self.convert_stmt_help(translator, body_stmt, None, body_entry)?;
+                let body_stuff = self.convert_stmt_help(translator, ctx, body_stmt, None, body_entry)?;
                 if let Some(body_end) = body_stuff {
                     let wip_body = self.new_wip_block(body_end);
                     self.add_wip_block(wip_body, Jump(cond_entry));
@@ -1388,7 +1389,7 @@ impl CfgBuilder {
                 self.continue_labels.pop();
 
                 // Condition
-                let WithStmts { stmts, val } = translator.convert_condition(true, condition, false)?;
+                let WithStmts { stmts, val } = translator.convert_condition(ctx, true, condition)?;
                 let cond_val = translator.ast_context[condition].kind.get_bool();
                 let mut cond_wip = self.new_wip_block(cond_entry);
                 cond_wip.extend(stmts);
@@ -1419,7 +1420,7 @@ impl CfgBuilder {
                     slf.add_wip_block(wip, Jump(init_entry));
                     let init_stuff: Option<Label> = match init {
                         None => Some(init_entry),
-                        Some(init) => slf.convert_stmt_help(translator, init, None, init_entry)?,
+                        Some(init) => slf.convert_stmt_help(translator, ctx, init, None, init_entry)?,
                     };
                     if let Some(init_end) = init_stuff {
                         let wip_init = slf.new_wip_block(init_end);
@@ -1430,7 +1431,7 @@ impl CfgBuilder {
 
                     // Condition
                     if let Some(cond) = condition {
-                        let WithStmts { stmts, val } = translator.convert_condition(true, cond, false)?;
+                        let WithStmts { stmts, val } = translator.convert_condition(ctx, true, cond)?;
                         let cond_val = translator.ast_context[cond].kind.get_bool();
                         let mut cond_wip = slf.new_wip_block(cond_entry);
                         cond_wip.extend(stmts);
@@ -1452,7 +1453,7 @@ impl CfgBuilder {
                     slf.break_labels.push(next_label);
                     slf.continue_labels.push(incr_entry);
 
-                    let body_stuff = slf.convert_stmt_help(translator, body, None, body_entry)?;
+                    let body_stuff = slf.convert_stmt_help(translator, ctx, body, None, body_entry)?;
 
                     if let Some(body_end) = body_stuff {
                         let wip_body = slf.new_wip_block(body_end);
@@ -1469,7 +1470,7 @@ impl CfgBuilder {
                         None => slf.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
                         Some(incr) => {
                           let incr_stmts = translator
-                                  .convert_expr(ExprUse::Unused, incr, false, DecayRef::Default)?
+                                  .convert_expr(ctx.unused(), incr)?
                                   .stmts;
                           let mut incr_wip = slf.new_wip_block(incr_entry);
                           incr_wip.extend(incr_stmts);
@@ -1492,7 +1493,7 @@ impl CfgBuilder {
                 self.last_per_stmt_mut().c_labels_defined.insert(stmt_id);
 
                 // Sub stmt
-                let sub_stmt_next = self.convert_stmt_help(translator, sub_stmt, in_tail, this_label)?;
+                let sub_stmt_next = self.convert_stmt_help(translator, ctx, sub_stmt, in_tail, this_label)?;
                 Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
             }
 
@@ -1509,6 +1510,7 @@ impl CfgBuilder {
                 self.add_wip_block(wip, Jump(comp_entry));
                 let next_lbl = self.convert_stmts_help(
                     translator,
+                    ctx,
                     comp_stmts.as_slice(),
                     in_tail,
                     comp_entry
@@ -1527,6 +1529,7 @@ impl CfgBuilder {
                         self.add_wip_block(wip, Jump(comp_entry));
                         let next_lbl = self.convert_stmt_help(
                             translator,
+                            ctx,
                             stmtid,
                             in_tail,
                             comp_entry
@@ -1536,7 +1539,7 @@ impl CfgBuilder {
                     }
                 }
 
-                wip.extend(translator.convert_expr(ExprUse::Unused, expr, false, DecayRef::Default)?.stmts);
+                wip.extend(translator.convert_expr(ctx.unused(), expr)?.stmts);
 
                 // If we can tell the expression is going to diverge, there is no falling through to
                 // the next block.
@@ -1601,7 +1604,7 @@ impl CfgBuilder {
                     .push((mk().lit_pat(branch), this_label));
 
                 // Sub stmt
-                let sub_stmt_next = self.convert_stmt_help(translator, sub_stmt, in_tail, this_label)?;
+                let sub_stmt_next = self.convert_stmt_help(translator, ctx, sub_stmt, in_tail, this_label)?;
                 Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
             }
 
@@ -1618,7 +1621,7 @@ impl CfgBuilder {
                     .get_or_insert(this_label);
 
                 // Sub stmt
-                let sub_stmt_next = self.convert_stmt_help(translator, sub_stmt, in_tail, this_label)?;
+                let sub_stmt_next = self.convert_stmt_help(translator, ctx, sub_stmt, in_tail, this_label)?;
                 Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
             }
 
@@ -1627,7 +1630,7 @@ impl CfgBuilder {
                 let body_label = self.fresh_label();
 
                 // Convert the condition
-                let WithStmts { stmts, val } = translator.convert_expr(ExprUse::Used, scrutinee, false, DecayRef::Default)?;
+                let WithStmts { stmts, val } = translator.convert_expr(ctx.used(), scrutinee)?;
                 wip.extend(stmts);
 
                 let wip_label = wip.label;
@@ -1640,7 +1643,7 @@ impl CfgBuilder {
                 self.break_labels.push(next_label);
                 self.switch_expr_cases.push(SwitchCases::default());
 
-                let body_stuff = self.convert_stmt_help(translator, switch_body, in_tail, body_label)?;
+                let body_stuff = self.convert_stmt_help(translator, ctx, switch_body, in_tail, body_label)?;
                 if let Some(body_end) = body_stuff {
                     let body_wip = self.new_wip_block(body_end);
                     self.add_wip_block(body_wip, Jump(next_label));
@@ -1667,7 +1670,7 @@ impl CfgBuilder {
             }
 
             CStmtKind::Asm { is_volatile, ref asm, ref inputs, ref outputs, ref clobbers } => {
-                wip.extend(translator.convert_asm(DUMMY_SP, is_volatile, asm, inputs, outputs, clobbers)?);
+                wip.extend(translator.convert_asm(ctx, DUMMY_SP, is_volatile, asm, inputs, outputs, clobbers)?);
                 Ok(Some(wip))
             }
         };

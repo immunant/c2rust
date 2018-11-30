@@ -8,8 +8,8 @@ impl<'c> Translation<'c> {
     /// Get back a Rust lvalue corresponding to the expression passed in.
     ///
     /// Do not use the output lvalue expression more than once.
-    pub fn name_reference_write(&self, reference: CExprId) -> Result<WithStmts<P<Expr>>, String> {
-        self.name_reference(reference, false)
+    pub fn name_reference_write(&self, ctx: ExprContext, reference: CExprId) -> Result<WithStmts<P<Expr>>, String> {
+        self.name_reference(ctx, reference, false)
             .map(|ws| ws.map(|(lvalue, _)| lvalue))
     }
 
@@ -18,12 +18,13 @@ impl<'c> Translation<'c> {
     /// You may reuse either of these expressions.
     pub fn name_reference_write_read(
         &self,
+        ctx: ExprContext,
         reference: CExprId,
     ) -> Result<WithStmts<(P<Expr>, P<Expr>)>, String> {
         let msg: &str = "When called with `uses_read = true`, `name_reference` should always \
                          return an rvalue (something from which to read the memory location)";
 
-        self.name_reference(reference, true)
+        self.name_reference(ctx, reference, true)
             .map(|ws| ws.map(|(lvalue, rvalue)| (lvalue, rvalue.expect(msg))))
     }
 
@@ -37,6 +38,7 @@ impl<'c> Translation<'c> {
     ///       directly.
     fn name_reference(
         &self,
+        ctx: ExprContext,
         reference: CExprId,
         uses_read: bool,
     ) -> Result<WithStmts<(P<Expr>, Option<P<Expr>>)>, String> {
@@ -49,7 +51,7 @@ impl<'c> Translation<'c> {
         let WithStmts {
             val: reference,
             mut stmts,
-        } = self.convert_expr(ExprUse::Used, reference, false, DecayRef::Default)?;
+        } = self.convert_expr(ctx.used(), reference)?;
 
         /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
         fn is_lvalue(e: &Expr) -> bool {

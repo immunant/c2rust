@@ -144,16 +144,14 @@ impl<'c> Translation<'c> {
     /// but clang 7 converts a bunch more from "super builtins"
     pub fn convert_simd_builtin(
         &self,
+        ctx: ExprContext,
         fn_name: &str,
-        use_: ExprUse,
-        is_static: bool,
-        decay_ref: DecayRef,
         args: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, String> {
         self.import_simd_function(fn_name)?;
 
         let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
-        let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
+        let first_param = self.convert_expr(ExprContext { use_: ExprUse::Used, ..ctx }, first_expr_id)?;
         let second_expr_id = match self.ast_context.c_exprs[&args[1]].kind {
             // For some reason there seems to be an incorrect implicit cast here to char
             // it's possible the builtin takes a char even though the function takes an int
@@ -165,12 +163,12 @@ impl<'c> Translation<'c> {
             },
             _ => args[1],
         };
-        let second_param = self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
+        let second_param = self.convert_expr(ctx.used(), second_expr_id)?;
         let third_expr_id = args.get(2);
         let mut call_params = vec![first_param.val, second_param.val];
 
         if let Some(&third_expr_id) = third_expr_id {
-            let third_param = self.convert_expr(ExprUse::Used, third_expr_id, is_static, decay_ref)?;
+            let third_param = self.convert_expr(ctx.used(), third_expr_id)?;
 
             // According to https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
             // _mm_shuffle_ps taking an u32 instead of an i32 (like the rest of the vector mask fields)
@@ -187,7 +185,7 @@ impl<'c> Translation<'c> {
             call_params,
         );
 
-        if use_ == ExprUse::Used {
+        if ctx.is_used() {
             Ok(WithStmts {
                 stmts: Vec::new(),
                 val: call,
@@ -235,9 +233,7 @@ impl<'c> Translation<'c> {
     /// Translate a list initializer corresponding to a vector type.
     pub fn vector_list_initializer(
         &self,
-        use_: ExprUse,
-        is_static: bool,
-        decay_ref: DecayRef,
+        ctx: ExprContext,
         ids: &[CExprId],
         ctype: CTypeId,
         len: usize,
@@ -246,14 +242,13 @@ impl<'c> Translation<'c> {
 
         for param_id in ids {
             params.push(
-                self.convert_expr(use_, *param_id, is_static, decay_ref)?
-                    .val,
+                self.convert_expr(ctx, *param_id)?.val,
             );
         }
 
         // When used in a static, we cannot call the standard functions since they
         // are not const and so we are forced to transmute
-        let call = if is_static {
+        let call = if ctx.is_static {
             let tuple = mk().tuple_expr(params);
             let transmute = transmute_expr(mk().infer_ty(), mk().infer_ty(), tuple);
 
@@ -291,7 +286,7 @@ impl<'c> Translation<'c> {
             mk().call_expr(mk().ident_expr(fn_call_name), params)
         };
 
-        if use_ == ExprUse::Used {
+        if ctx.is_used() {
             Ok(WithStmts {
                 stmts: Vec::new(),
                 val: call,
@@ -311,9 +306,7 @@ impl<'c> Translation<'c> {
     /// call corresponding to the low-level one found in the C AST.
     pub fn convert_shuffle_vector(
         &self,
-        use_: ExprUse,
-        is_static: bool,
-        decay_ref: DecayRef,
+        ctx: ExprContext,
         child_expr_ids: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, String> {
         // There are three shuffle vector functions which are actually functions, not superbuiltins/macros,
@@ -340,10 +333,10 @@ impl<'c> Translation<'c> {
         }
 
         let mask_expr_id = self.get_shuffle_vector_mask(&child_expr_ids[2..])?;
-        let first_param = self.convert_expr(ExprUse::Used, first_expr_id, is_static, decay_ref)?;
+        let first_param = self.convert_expr(ctx.used(), first_expr_id)?;
         let second_param =
-            self.convert_expr(ExprUse::Used, second_expr_id, is_static, decay_ref)?;
-        let third_param = self.convert_expr(ExprUse::Used, mask_expr_id, is_static, decay_ref)?;
+            self.convert_expr(ctx.used(), second_expr_id)?;
+        let third_param = self.convert_expr(ctx.used(), mask_expr_id)?;
         let mut params = vec![first_param.val];
 
         // Some don't take a second param, but the expr is still there for some reason
@@ -410,7 +403,7 @@ impl<'c> Translation<'c> {
 
         let call = mk().call_expr(mk().ident_expr(shuffle_fn_name), params);
 
-        if use_ == ExprUse::Used {
+        if ctx.is_used() {
             Ok(WithStmts {
                 stmts: Vec::new(),
                 val: call,

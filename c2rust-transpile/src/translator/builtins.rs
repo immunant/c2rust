@@ -7,10 +7,9 @@ impl<'c> Translation<'c> {
     /// Convert a call to a builtin function to a Rust expression
     pub fn convert_builtin(
         &self,
+        ctx: ExprContext,
         fexp: CExprId,
         args: &[CExprId],
-        use_: ExprUse,
-        is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, String> {
         let decl_id = match self.ast_context[fexp].kind {
             CExprKind::DeclRef(_, decl_id, _) => decl_id,
@@ -21,7 +20,6 @@ impl<'c> Translation<'c> {
             CDeclKind::Function { ref name, .. } => name,
             _ => return Err(format!("Expected function when processing builtin")),
         };
-        let decay_ref = DecayRef::Default;
 
         match builtin_name {
             "__builtin_huge_valf" => Ok(WithStmts::new(
@@ -43,39 +41,39 @@ impl<'c> Translation<'c> {
                 mk().path_expr(vec!["", "std", "f64", "NAN"]),
             )),
             "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
-                let val = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "leading_zeros", vec![] as Vec<P<Expr>>);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
             "__builtin_ctz" | "__builtin_ctzl" | "__builtin_ctzll" => {
-                let val = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "trailing_zeros", vec![] as Vec<P<Expr>>);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
             "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
-                let val = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| mk().method_call_expr(x, "swap_bytes", vec![] as Vec<P<Expr>>)))
             }
             "__builtin_fabs" | "__builtin_fabsf" | "__builtin_fabsl" => {
-                let val = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![] as Vec<P<Expr>>)))
             }
-            "__builtin_expect" => self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref),
+            "__builtin_expect" => self.convert_expr(ctx.used(), args[0]),
 
             "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
-                let val = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "count_ones", vec![] as Vec<P<Expr>>);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
             "__builtin_bzero" => {
-                let ptr_stmts = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-                let n_stmts = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
+                let ptr_stmts = self.convert_expr(ctx.used(), args[0])?;
+                let n_stmts = self.convert_expr(ctx.used(), args[1])?;
                 let write_bytes = mk().path_expr(vec!["", "std", "ptr", "write_bytes"]);
                 let zero = mk().lit_expr(mk().int_lit(0, "u8"));
                 Ok(ptr_stmts.and_then(|ptr| {
@@ -87,10 +85,10 @@ impl<'c> Translation<'c> {
             // it includes side effects but no other code is generated and GCC does not issue a warning.
             // void __builtin_prefetch (const void *addr, ...);
             "__builtin_prefetch" => {
-                self.convert_expr(ExprUse::Unused, args[0], is_static, decay_ref)
+                self.convert_expr(ctx.unused(), args[0])
             }
 
-            "__builtin_memcpy" => self.convert_memcpy(args, use_, is_static, decay_ref),
+            "__builtin_memcpy" => self.convert_memcpy(ctx, args),
 
             "__builtin_add_overflow"
             | "__builtin_sadd_overflow"
@@ -99,7 +97,7 @@ impl<'c> Translation<'c> {
             | "__builtin_uadd_overflow"
             | "__builtin_uaddl_overflow"
             | "__builtin_uaddll_overflow" => {
-                self.convert_overflow_arith("overflowing_add", args, is_static, decay_ref)
+                self.convert_overflow_arith(ctx, "overflowing_add", args)
             }
 
             "__builtin_sub_overflow"
@@ -109,7 +107,7 @@ impl<'c> Translation<'c> {
             | "__builtin_usub_overflow"
             | "__builtin_usubl_overflow"
             | "__builtin_usubll_overflow" => {
-                self.convert_overflow_arith("overflowing_sub", args, is_static, decay_ref)
+                self.convert_overflow_arith(ctx, "overflowing_sub", args)
             }
 
             "__builtin_mul_overflow"
@@ -119,7 +117,7 @@ impl<'c> Translation<'c> {
             | "__builtin_umul_overflow"
             | "__builtin_umull_overflow"
             | "__builtin_umulll_overflow" => {
-                self.convert_overflow_arith("overflowing_mul", args, is_static, decay_ref)
+                self.convert_overflow_arith(ctx, "overflowing_mul", args)
             }
 
             // Should be safe to always return 0 here.  "A return of 0 does not indicate that the
@@ -139,29 +137,29 @@ impl<'c> Translation<'c> {
 
             // In clang 6 this first one is the only true SIMD builtin, clang 7 converted a bunch more after it:
             "__builtin_ia32_pshufw" =>
-                self.convert_simd_builtin("_mm_shuffle_pi16", use_, is_static, decay_ref, args),
+                self.convert_simd_builtin(ctx, "_mm_shuffle_pi16", args),
             "__builtin_ia32_shufps" =>
-                self.convert_simd_builtin("_mm_shuffle_ps", use_, is_static, decay_ref, args),
+                self.convert_simd_builtin(ctx, "_mm_shuffle_ps", args),
             "__builtin_ia32_shufpd" =>
-                self.convert_simd_builtin("_mm_shuffle_pd", use_, is_static, decay_ref, args),
+                self.convert_simd_builtin(ctx, "_mm_shuffle_pd", args),
             "__builtin_ia32_shufps256" =>
-                self.convert_simd_builtin("_mm256_shuffle_ps", use_, is_static, decay_ref, args),
+                self.convert_simd_builtin(ctx, "_mm256_shuffle_ps", args),
             "__builtin_ia32_shufpd256" =>
-                self.convert_simd_builtin("_mm256_shuffle_pd", use_, is_static, decay_ref, args),
+                self.convert_simd_builtin(ctx, "_mm256_shuffle_pd", args),
             "__builtin_ia32_pshufd" =>
-                self.convert_simd_builtin("_mm_shuffle_epi32", use_, is_static, decay_ref, args),
+                self.convert_simd_builtin(ctx, "_mm_shuffle_epi32", args),
             "__builtin_ia32_pshufhw" =>
-                self.convert_simd_builtin("_mm_shufflehi_epi16", use_, is_static, decay_ref, args),
+                self.convert_simd_builtin(ctx, "_mm_shufflehi_epi16", args),
             "__builtin_ia32_pshuflw" =>
-                self.convert_simd_builtin("_mm_shufflelo_epi16", use_, is_static, decay_ref, args),
+                self.convert_simd_builtin(ctx, "_mm_shufflelo_epi16", args),
             "__builtin_ia32_pslldqi128_byteshift" =>
-                self.convert_simd_builtin("_mm_slli_si128", use_, is_static, decay_ref, args),
+                self.convert_simd_builtin(ctx, "_mm_slli_si128", args),
             "__builtin_ia32_pshufd256" =>
-                self.convert_simd_builtin("_mm256_shuffle_epi32", use_, is_static, decay_ref, args),
+                self.convert_simd_builtin(ctx, "_mm256_shuffle_epi32", args),
             "__builtin_ia32_pshufhw256" =>
-                self.convert_simd_builtin("_mm256_shufflehi_epi16", use_, is_static, decay_ref, args),
+                self.convert_simd_builtin(ctx, "_mm256_shufflehi_epi16", args),
             "__builtin_ia32_pshuflw256" =>
-                self.convert_simd_builtin("_mm256_shufflelo_epi16", use_, is_static, decay_ref, args),
+                self.convert_simd_builtin(ctx, "_mm256_shufflelo_epi16", args),
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }
@@ -170,14 +168,13 @@ impl<'c> Translation<'c> {
     // https://gcc.gnu.org/onlinedocs/gcc/Integer-Overflow-Builtins.html
     fn convert_overflow_arith(
         &self,
+        ctx: ExprContext,
         method_name: &str,
         args: &[CExprId],
-        is_static: bool,
-        decay_ref: DecayRef,
     ) -> Result<WithStmts<P<Expr>>, String> {
-        let a = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-        let mut b = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
-        let mut c = self.convert_expr(ExprUse::Used, args[2], is_static, decay_ref)?;
+        let a = self.convert_expr(ctx.used(), args[0])?;
+        let mut b = self.convert_expr(ctx.used(), args[1])?;
+        let mut c = self.convert_expr(ctx.used(), args[2])?;
 
         let overflowing = mk().method_call_expr(a.val, method_name, vec![b.val]);
         let sum_name = self.renamer.borrow_mut().fresh();
@@ -211,15 +208,13 @@ impl<'c> Translation<'c> {
     /// Convert a builtin_memcpy use by calling into libc's memcpy directly.
     fn convert_memcpy(
         &self,
+        ctx: ExprContext,
         args: &[CExprId],
-        use_: ExprUse,
-        is_static: bool,
-        decay_ref: DecayRef,
     ) -> Result<WithStmts<P<Expr>>, String> {
         let memcpy = mk().path_expr(vec!["", "libc", "memcpy"]);
-        let dst = self.convert_expr(ExprUse::Used, args[0], is_static, decay_ref)?;
-        let mut src = self.convert_expr(ExprUse::Used, args[1], is_static, decay_ref)?;
-        let mut len = self.convert_expr(ExprUse::Used, args[2], is_static, decay_ref)?;
+        let dst = self.convert_expr(ctx.used(), args[0])?;
+        let mut src = self.convert_expr(ctx.used(), args[1])?;
+        let mut len = self.convert_expr(ctx.used(), args[2])?;
         let size_t = mk().path_ty(vec!["libc", "size_t"]);
         let len1 = mk().cast_expr(len.val, size_t);
         let memcpy_expr = mk().call_expr(memcpy, vec![dst.val, src.val, len1]);
@@ -228,7 +223,7 @@ impl<'c> Translation<'c> {
         stmts.append(&mut src.stmts);
         stmts.append(&mut len.stmts);
 
-        let val = match use_ {
+        let val = match ctx.use_ {
             ExprUse::Used => memcpy_expr,
             ExprUse::Unused => {
                 stmts.push(mk().semi_stmt(memcpy_expr));
