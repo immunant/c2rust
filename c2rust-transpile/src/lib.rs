@@ -73,6 +73,23 @@ pub struct TranspilerConfig {
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
+
+    /* MacOS Mojave does not have `/usr/include` even if the command line
+     * tools are installed. The fix is to run the developer package:
+     * `macOS_SDK_headers_for_macOS_10.14.pkg` in
+     * `/Library/Developer/CommandLineTools/Packages`.
+     * Source https://forums.developer.apple.com/thread/104296 */
+    if cfg!(target_os = "macos") {
+        let usr_incl = Path::new("/usr/include");
+        if !usr_incl.exists() {
+            eprintln!("
+Directory `/usr/include` was not found! Please install the following package:
+/Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg
+ (or the equivalent version on your host.)");
+            return
+        }
+    }
+
     let cmds = get_compile_commands(cc_db).unwrap();
     for mut cmd in cmds {
         match cmd {
