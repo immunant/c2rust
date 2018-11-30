@@ -34,12 +34,17 @@ ResultInfo = namedtuple('ResultInfo', (
 ))
 
 FLAG_OPTS = {
-        'auto-revert',
+        'revert',
+        'hidden',
+        'refactor-target',
         }
 
 STR_OPTS = {
         'diff-style',
         }
+
+FLAG_TRUTHY = { '1', 'true', 'y', 'yes', 'on' }
+FLAG_FALSY = { '0', 'false', 'n', 'no', 'off' }
 
 class RefactorState:
     def __init__(self, args):
@@ -69,7 +74,7 @@ class RefactorState:
         self.all_files = []
 
         # A dict of refactoring options, as key-value pairs.
-        self.options = {}
+        self.global_opts = {}
 
     def flush(self):
         if len(self.pending_cmds) == 0:
@@ -130,29 +135,70 @@ class RefactorState:
         self.pending_cmds = None
         return self.results
 
-    def set_option(self, name, val):
-        if name.startswith('no-'):
-            name = name[3:]
-            assert name in FLAG_OPTS, \
-                    '`no-` prefix is only supported on flag options (option: %r)' % \
-                    name
-            assert val is None or val == '', \
-                    'flag options do not take values (option: %r; value: %r)' % \
-                    (name, val)
-            self.options[name] = False
+    def parse_block_options(self, attrs):
+        opts = self.global_opts.copy()
 
-        elif name in FLAG_OPTS:
-            assert val is None or val == '', \
-                    'flag options do not take values (option: %r; value: %r)' % \
-                    (name, val)
-            self.options[name] = True
+        remaining_attrs = []
 
-        elif name in STR_OPTS:
-            self.options[name] = val
+        for i, attr in enumerate(attrs):
+            key, _, value = attr.partition('=')
+            key, value = key.strip(), value.strip()
 
-        else:
-            assert False, \
-                    'unknown option %r' % name
+            if key.startswith('no-'):
+                assert key[3:] in FLAG_OPTS, \
+                        '`no-` prefix is only supported on flag options (option: %r)' % \
+                        (key,)
+                assert value == '', \
+                        'cannot mix value with `no-` prefix (option: %r, value: %r)' % \
+                        (key, value)
+                key = key[3:]
+                value = False
+
+            if key in FLAG_OPTS:
+                if value == '':
+                    value = True
+                elif value.lower() in FLAG_TRUTHY:
+                    value = True
+                elif value.lower() in FLAG_FALSY:
+                    value = False
+                else:
+                    raise ValueError('unknown value %r for flag option %r' %
+                            (value, key))
+
+            elif key in STR_OPTS:
+                # No conversion necessary
+                pass
+
+            elif i == 0 and value == '':
+                # The first option is normally expected to be a language name.
+                opts['_lang'] = key
+                remaining_attrs.append(attr)
+                continue
+
+            else:
+                print('warning: unknown option %r (value: %r)' % (key, value))
+                remaining_attrs.append(attr)
+                continue
+
+            opts[key] = value
+
+        opts['_attrs'] = remaining_attrs
+
+        return opts
+
+    def set_global_options(self, lines):
+        attrs = ['refactor-options']
+        for l in lines:
+            l = l.strip()
+            if l == '' or l.startswith('#'):
+                continue
+            attrs.append(l)
+        new_opts = self.parse_block_options(attrs)
+        print('parsed attrs %s as %s' % (attrs, new_opts))
+        del new_opts['_lang']
+        del new_opts['_attrs']
+        self.global_opts = new_opts
+
 
 
 class ResultProcessor:
@@ -412,34 +458,42 @@ def run_refactor_scripts(args, blocks):
         if not isinstance(b, parse.Code):
             continue
 
-        if 'refactor' in b.attrs:
+        opts = rs.parse_block_options(b.attrs)
+
+        if opts.get('_lang') == 'refactor':
             cmds = split_commands(''.join(b.lines))
             rs.add_commands(i, cmds)
-            block_opts[i] = rs.options.copy()
 
-        if 'refactor-target' in b.attrs:
+            if opts.get('revert', False):
+                rs.reset()
+
+        elif opts.get('_lang') == 'refactor-options':
+            rs.set_global_options(b.lines)
+
+        if opts.get('refactor-target', False):
             rs.set_crate(TempCrate(''.join(b.lines)))
 
-        if 'refactor-options' in b.attrs:
-            for line in b.lines:
-                line = line.strip()
-                if len(line) == 0 or line.startswith('#'):
-                    continue
-                key, _, value = line.partition('=')
-                rs.set_option(key.strip(), value.strip())
+        block_opts[i] = opts
 
-        if rs.options.get('auto-revert', False):
-            rs.reset()
 
     results = rs.finish()
     all_files = rs.all_files
 
     new_blocks = []
     for i, b in enumerate(blocks):
-        if i in results:
-            old, new = results[i]
-            new_blocks.append(RefactorCode(b.attrs, b.lines,
-                block_opts[i], old, new))
+        if i in block_opts:
+            opts = block_opts[i]
+            print('opts for block %d: %s' % (i, block_opts[i]))
+            print('  %r' % ''.join(b.lines))
+            if opts.get('hidden', False):
+                continue
+
+            if i in results:
+                old, new = results[i]
+                new_blocks.append(RefactorCode(opts['_attrs'], b.lines,
+                    opts, old, new))
+            else:
+                new_blocks.append(b)
         else:
             new_blocks.append(b)
 

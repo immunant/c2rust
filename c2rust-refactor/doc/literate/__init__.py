@@ -97,19 +97,12 @@ def do_render(args):
                 for line in b.lines:
                     f.write(line)
             elif isinstance(b, literate.refactor.Code):
-                if 'hidden' not in b.attrs:
-                    remove_attrs = {'refactor-target', 'refactor-config'}
-                    filtered_attrs = [a for a in b.attrs if a not in remove_attrs]
-
-                    f.write('```%s\n' % ' '.join(filtered_attrs))
-                    for line in b.lines:
-                        f.write(line)
-                    f.write('```\n')
+                f.write('```%s\n' % ' '.join(b.attrs))
+                for line in b.lines:
+                    f.write(line)
+                f.write('```\n')
             elif isinstance(b, literate.refactor.RefactorCode):
-                if 'hidden' in b.attrs:
-                    continue
-
-                f.write('```sh\n')
+                f.write('```sh %s\n' % ' '.join(b.attrs[1:]))
                 for line in b.lines:
                     f.write(line)
                 f.write('```\n\n')
