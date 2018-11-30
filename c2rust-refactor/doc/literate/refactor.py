@@ -420,8 +420,11 @@ def apply_rewrites(span, rws, nodes):
     for i, n in enumerate(nodes):
         new_lo, new_hi = node_ends[i]
         if new_lo is None or new_hi is None:
-            print('warning: bad mapped range %s, %s for %s' % (new_lo, new_hi, n))
-            print('parent span is %s' % (span,))
+            # Don't warn about nodes with dummy spans not getting updated
+            # endpoints.  Those nodes don't actually appear in the source code.
+            if n['span']['file'] != '<<dummy>>':
+                print('warning: bad mapped range %s, %s for %s' % (new_lo, new_hi, n))
+            continue
         new_nodes.append((new_lo, new_hi, n['id']))
 
     return ''.join(parts), new_nodes
