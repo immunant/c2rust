@@ -497,10 +497,26 @@ impl<F> Command for DriverCommand<F>
 }
 
 
-pub fn register_commands(reg: &mut Registry) {
+/// # `commit` Command
+/// 
+/// Usage: `commit`
+/// 
+/// Write the current crate to disk (by rewriting the original source files), then
+/// read it back in, clearing all mark.  This can be useful as a "checkpoint"
+/// between two sets of transformations, if applying both sets of changes at once
+/// proves to be too much for the rewriter.
+/// 
+/// This is only useful when the rewrite mode is `inplace`.  Otherwise the "write"
+/// part of the operation won't actually change the original source files, and the
+/// "read" part will revert the crate to its original form.
+fn register_commit(reg: &mut Registry) {
     reg.register("commit", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
         rs.save_crate();
         rs.load_crate();
         rs.clear_marks();
     })));
+}
+
+pub fn register_commands(reg: &mut Registry) {
+    register_commit(reg);
 }

@@ -1,0 +1,10 @@
+[book]
+title = "C2Rust Manual"
+src = "docs"
+
+[build]
+create-missing = false
+#preprocess = ["links", "index", "custom"]
+
+#[preprocessor.custom]
+#command = "python3 test.py"

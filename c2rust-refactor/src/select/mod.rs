@@ -179,7 +179,16 @@ pub fn run_select<S: IntoSymbol>(st: &CommandState,
 }
 
 
-pub fn register_commands(reg: &mut Registry) {
+/// # `select` Command
+/// 
+/// Usage: `select MARK SCRIPT`
+/// 
+/// Marks: sets `MARK`; may set/clear other marks depending on `SCRIPT`
+/// 
+/// Run node-selection script `SCRIPT`, and apply `MARK` to the nodes it selects.
+/// See `select::SelectOp`, `select::Filter`, and `select::parser` for details on
+/// select script syntax.
+fn register_select(reg: &mut Registry) {
     reg.register("select", |args| {
         let label = (&args[0]).into_symbol();
         let ops_str = args[1].clone();
@@ -189,7 +198,17 @@ pub fn register_commands(reg: &mut Registry) {
             run_select(st, cx, &ops, label);
         }))
     });
+}
 
+/// # `select_phase2` Command
+/// 
+/// Usage: `select_phase2 MARK SCRIPT`
+/// 
+/// Marks: sets `MARK`; may set/clear other marks depending on `SCRIPT`
+/// 
+/// Works like [`select`](#select), but stops the compiler's analyses before typechecking happens.
+/// This means type information will not available, and script commands that refer to it will fail.
+fn register_select_phase2(reg: &mut Registry) {
     reg.register("select_phase2", |args| {
         let label = (&args[0]).into_symbol();
         let ops_str = args[1].clone();
@@ -199,4 +218,10 @@ pub fn register_commands(reg: &mut Registry) {
             run_select(st, cx, &ops, label);
         }))
     });
+}
+
+pub fn register_commands(reg: &mut Registry) {
+    register_select(reg);
+    register_select_phase2(reg);
+
 }

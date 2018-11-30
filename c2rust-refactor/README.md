@@ -1,8 +1,7 @@
-# C2rust-Refactor
+# `c2rust-refactor`
 
 This is a refactoring tool for Rust programs, aimed at removing unsafety from
-automatically-generated Rust code and transforming it into a more idiomatic
-style.
+automatically-generated Rust code.
 
 
 ## Building
@@ -16,23 +15,23 @@ Build `c2rust-refactor` with `cargo build`.
 
 `c2rust-refactor` command line usage is as follows:
 
-    c2rust-refactor [c2rust-refactor flags] <command> [command args] -- <input file> [rustc flags]
+    c2rust-refactor [flags] <command> [command args] -- <input file> [rustc flags]
 
 Flags for `c2rust-refactor` are described by `c2rust-refactor --help`.
 
-Commands are not currently documented in a central location - grep the source
-for `register` to see what commands are currently implemented.  The required
-arguments (and marks) are usually documented in the comments on the command
-implementation.
+See [the command documentation](../_generated/c2rust-refactor-commands.md) for a list of commands,
+including complete usage and descriptions. 
+Multiple commands can be separated by an argument consisting of a single
+semicolon, as in `c2rust-refactor cmd1 arg1 \; cmd2 arg2`.
+(Note the semicolon needs to be escaped to prevent it from being interpreted by
+the shell.)
 
-All arguments after the `--` are passed to `rustc`.  Since `c2rust-refactor` runs
-`rustc` analysis passes up through typechecking, the provided flags must
-include any `-L` or `--extern` options needed to find external libraries.  In
-particular, `-L .../rust/build/<TRIPLE>/stage2/lib/rustlib/<TRIPLE>/lib` is
-usually required to find a compatible version of `libstd`.
-
-Note that you may also need to add `.../rust/build/<TRIPLE>/stage2/lib` to
-`LD_LIBRARY_PATH` in order to run `c2rust-refactor`.
+`c2rust-refactor` requires `rustc` command line arguments for the program to be
+refactored, so that it can use `rustc` to load and typecheck the source code.
+For projects built with `cargo`, pass the `--cargo` flag to `c2rust-refactor`
+and it will obtain the right arguments from `cargo` automatically.  Otherwise,
+you must provide the `rustc` arguments on the `c2rust-refactor` command line,
+following a `--` separator.
 
 
 ## Marks
@@ -42,32 +41,18 @@ For example, the `rename_struct` command requires that the user mark the
 declaration of the struct that should be renamed.
 
 Each mark associates a "label" with a specific AST node (identified by its
-`NodeId`).  Labels are used to distinguish different types of marks.  For
-example, when running the `func_to_method` command, which turns functions into
-methods in an inherent `impl`, the user must mark the functions to move with
-the `target` label and must mark the destination `impl` with the `dest` label.
+`NodeId`).  Labels are used to distinguish different types of marks, and a
+single node can have any number of marks with distinct labels.  For example,
+when running the `func_to_method` command, which turns functions into methods
+in an inherent `impl`, the user must mark the functions to move with the
+`target` label and must mark the destination `impl` with the `dest` label.
 Nodes marked with other labels will be ignored.  The set of labels recognized
-by a command is usually documented in the comments for that command; when
-unspecified, the default label is `target`.
+by a command is described in the command's documentation; by default, most
+commands that use marks operate on `target`.
 
-A single node can be marked with two labels at once, though this is not often
-useful.
-
-In command line usage, there are two ways to specify marks.
-
-The more common way to set a mark is to use the `-c` (`--cursor`) flag, which
-adds a mark at a specific position in the source code.  The `-c` flag takes
-colon-separated file, line, column, label, and node kind arguments, as in `-c
-test.rs:10:20:target:item`, and marks the node at the indicated position in the
-file.  If multiple nodes of the indicated kind overlap the indicated position,
-the deepest one in the AST will be selected.  If the label and/or kind
-arguments are omitted, they default to `target` and `any` respectively.  The
-other supported node kinds are defined in `src/pick_node.rs`.
-
-The other way to specify marks is to use the `-m` (`--mark`) flag, which takes
-colon-separated node ID and label arguments.  This form is more precise than
-`--cursor` but more difficult to use because node IDs are hard to predict.
-However, some commands print out node IDs, and the `-m` flag allows them to be
-passed back into `c2rust-refactor`.
-
-
+The most flexible way of marking nodes is by using the
+[`select`](../_generated/c2rust-refactor-commands.md#select) command.  See the command
+documentation and `src/select/mod.rs` for details.  Note that marks are not
+preserved across `c2rust-refactor` invocations, so you usually want to run
+`select` followed by the command of interest using the `;` separator mentioned
+above.
