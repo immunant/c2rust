@@ -1,4 +1,5 @@
 '''`c2rust-refactor` command invocation and output parsing.'''
+import bisect
 from collections import namedtuple
 import os
 import sys
@@ -73,6 +74,32 @@ def run_refactor(work_dir, cmds: [[str]], mode='json,marks,alongside'):
             print('  refactoring done')
 
 
+class BisectRange:
+    '''A sequence of items that can be queried to find every item `x` where
+    `start < f(x) < end`.'''
+    def __init__(self, xs, f):
+        keyed_vals = sorted(((x, f(x)) for x in xs), key=lambda x_fx: x_fx[1])
+        self.xs = [x for x, fx in keyed_vals]
+        self.fxs = [fx for x, fx in keyed_vals]
+
+    def iter_range(self, start, end, include_start=False, include_end=False):
+        if start is None:
+            i0 = 0
+        elif include_start:
+            i0 = bisect.bisect_left(self.fxs, start)
+        else:
+            i0 = bisect.bisect_right(self.fxs, start)
+
+        if end is None:
+            i1 = len(self.xs)
+        elif include_end:
+            i1 = bisect.bisect_right(self.fxs, end)
+        else:
+            i1 = bisect.bisect_left(self.fxs, end)
+
+        for i in range(i0, i1):
+            yield self.xs[i]
+
 def subspan_src(span, lo, hi):
     '''Get the source text of the subspan of JSON `span` that ranges from `lo
     .. hi`.'''
@@ -124,45 +151,35 @@ def apply_rewrites(span, rws, nodes):
     # calls, then add everything from `nodes`/`node_ends` when we're done.
     new_nodes = []
     # Index nodes by lo and hi position for fast lookups.
-    nodes_by_lo = sorted(range(len(nodes)), key=lambda i: nodes[i]['span']['lo'])
-    nodes_by_hi = sorted(range(len(nodes)), key=lambda i: nodes[i]['span']['hi'])
-    # Wrap in a list so we can pass it by reference
-    lo_idx = [0]
-    hi_idx = [0]
-
-    def indexed_nodes(end, nodes_by_x, x_idx, side, inclusive):
-        '''Yield `i, nodes[i]` for every node whose `side` endpoint is between
-        `old_pos` and `end`.'''
-        while x_idx[0] < len(nodes_by_x):
-            i = nodes_by_x[x_idx[0]]
-            n = nodes[i]
-            pos = n['span'][side]
-            if pos < end or (inclusive and pos == end):
-                yield i, n
-                x_idx[0] += 1
-            else:
-                break
+    nodes_by_lo = BisectRange(range(len(nodes)), f=lambda i: nodes[i]['span']['lo'])
+    nodes_by_hi = BisectRange(range(len(nodes)), f=lambda i: nodes[i]['span']['hi'])
 
     def emit(next_old_pos, text):
         nonlocal old_pos, new_pos
 
         if text is None:
-            # Reusing existing text.  Update `node_ends` with translated
-            # endpoint positions.
+            # Reusing existing text.  Translate node endpoind positions
+            # everywhere in the reused text.
             text = subspan_src(span, old_pos, next_old_pos)
-            offset = new_pos - old_pos
-            for i, n in indexed_nodes(next_old_pos, nodes_by_lo, lo_idx, 'lo', True):
-                node_ends[i][0] = n['span']['lo'] + offset
-            for i, n in indexed_nodes(next_old_pos, nodes_by_hi, hi_idx, 'hi', True):
-                node_ends[i][1] = n['span']['hi'] + offset
 
-        parts.append(text)
+            offset = new_pos - old_pos
+            for i in nodes_by_lo.iter_range(old_pos, next_old_pos,
+                    include_start=True, include_end=True):
+                node_ends[i][0] = nodes[i]['span']['lo'] + offset
+            for i in nodes_by_hi.iter_range(old_pos, next_old_pos,
+                    include_start=True, include_end=True):
+                node_ends[i][1] = nodes[i]['span']['hi'] + offset
+
+        if len(text) > 0:
+            parts.append(text)
         old_pos = next_old_pos
         new_pos += len(text)
 
     for rw in rws:
-        if old_pos < rw['old_span']['lo']:
-            emit(rw['old_span']['lo'], None)
+        # Note we "emit" the region from `old_pos` to `old_span.lo` even when
+        # it's empty.  This doesn't add any text, but it does update any node
+        # endpoints that fall exactly on `old_pos`/`old_span.lo`.
+        emit(rw['old_span']['lo'], None)
 
         if rw['adjust'] == 'parenthesize':
             emit(old_pos, '(')
@@ -174,9 +191,7 @@ def apply_rewrites(span, rws, nodes):
         if rw['adjust'] == 'parenthesize':
             emit(old_pos, ')')
 
-    if old_pos < span['hi']:
-        emit(span['hi'], None)
-
+    emit(span['hi'], None)
 
     new_text = ''.join(parts)
 
