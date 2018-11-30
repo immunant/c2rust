@@ -115,6 +115,7 @@ pub struct Translation<'c> {
     pub features: RefCell<IndexSet<&'static str>>,
     pub item_store: RefCell<ItemStore>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
+    extern_crates: RefCell<IndexSet<&'static str>>,
 
     // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
@@ -311,6 +312,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> Strin
     if t.tcfg.reorganize_definitions {
         t.features.borrow_mut().insert("custom_attribute");
     }
+
+    t.extern_crates.borrow_mut().insert("libc");
 
     // Headers often pull in declarations that are unused;
     // we simplify the translator output by omitting those.
@@ -635,8 +638,11 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
             }
         }
 
-        // Add `extern crate libc` to the top of the file
-        s.print_item(&mk().extern_crate_item("libc", None))?;
+        // Add `extern crate X;` to the top of the file
+        for crate_name in t.extern_crates.borrow().iter() {
+            s.print_item(&mk().extern_crate_item(*crate_name, None))?;
+        }
+
         if t.tcfg.cross_checks {
             s.print_item(&mk().single_attr("macro_use")
                 .extern_crate_item("c2rust_xcheck_derive", None))?;
@@ -732,6 +738,7 @@ impl<'c> Translation<'c> {
             sectioned_static_initializers: RefCell::new(Vec::new()),
             mod_blocks: RefCell::new(IndexMap::new()),
             mod_names: RefCell::new(IndexMap::new()),
+            extern_crates: RefCell::new(IndexSet::new()),
         }
     }
 

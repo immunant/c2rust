@@ -73,6 +73,8 @@ impl<'a> Translation<'a> {
         span: Span,
         field_info: Vec<NameWidthOffset>,
     ) -> Result<ConvertedDecl, String> {
+        self.extern_crates.borrow_mut().insert("c2rust_bitfields");
+
         let mut item_store = self.item_store.borrow_mut();
 
         item_store.uses
