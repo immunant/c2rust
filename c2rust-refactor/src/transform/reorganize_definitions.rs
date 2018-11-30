@@ -409,7 +409,7 @@ impl<'ast, 'st> Visitor<'ast> for CrateInformation<'st> {
     }
 }
 
-impl Transform for ReorganizeModules {
+impl Transform for ReorganizeDefinitions {
     fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
         let mut krate_info = CrateInformation::new(st);
 
