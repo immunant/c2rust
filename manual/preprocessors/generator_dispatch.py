@@ -2,6 +2,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 
 
 def quote(args):
@@ -14,9 +15,28 @@ def refactor_commands(args):
     import gen_command_docs
     return gen_command_docs.generate_commands()
 
+def literate(args):
+    # Redirect stdout to stderr for `literate`
+    real_stdout = sys.stdout
+    sys.stdout = sys.stderr
+
+    sys.path.append(os.path.join(os.path.dirname(__file__),
+        '../../c2rust-refactor/doc'))
+    with tempfile.TemporaryDirectory() as td:
+        cmd_args = ['render'] + args + [os.path.join(td, 'out.md')]
+        import literate
+        literate.main(cmd_args)
+        with open(os.path.join(td, 'out.md')) as f:
+            result = f.read()
+
+    sys.stdout = real_stdout
+    return result
+
+
 KNOWN_GENERATORS = {
         'quote': quote,
         'refactor_commands': refactor_commands,
+        'literate': literate,
         }
 
 
@@ -49,7 +69,8 @@ def main():
         # We support all renderers
         exit(0)
 
-    [context, book] = json.load(sys.stdin)
+    raw = sys.stdin.buffer.read()
+    [context, book] = json.loads(raw.decode('utf-8'))
     for section in book['sections']:
         replace_content(section)
     with open('tmp.json', 'w') as f:

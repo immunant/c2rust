@@ -13,20 +13,25 @@ import literate.render
 
 
 def build_arg_parser():
-    ap = argparse.ArgumentParser(
-            description='Process literate refactoring scripts.')
-
-    ap.add_argument('--project-dir', default='.',
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument('--project-dir', default='.',
             help='path to the project directory')
+    config.add_args(common)
+
+    ap = argparse.ArgumentParser(
+            description='Process literate refactoring scripts.',
+            parents=[common])
 
     subparsers = ap.add_subparsers(dest='cmd')
 
     sp = subparsers.add_parser('extract',
-            help='extract refactoring script from a Markdown file and print it')
+            help='extract refactoring script from a Markdown file and print it',
+            parents=[common])
     sp.add_argument('input', metavar='INPUT.md')
 
     sp = subparsers.add_parser('exec',
-            help='extract refactoring script and run it on the project directory')
+            help='extract refactoring script and run it on the project directory',
+            parents=[common])
     sp.add_argument('input', metavar='INPUT.md')
     sp.add_argument('--work-dir',
             help='copy the project into a work directory before refactoring'),
@@ -37,7 +42,8 @@ def build_arg_parser():
 
     sp = subparsers.add_parser('render',
             help='generate rendered Markdown, including a diff for every '
-                'refactoring step')
+                'refactoring step',
+            parents=[common])
     sp.add_argument('input', metavar='INPUT.md')
     sp.add_argument('output', metavar='OUTPUT.md')
 
@@ -123,7 +129,6 @@ def do_render(args):
 
 def main(argv):
     ap = build_arg_parser()
-    config.add_args(ap)
     args = ap.parse_args(argv)
     config.update_args(args)
 
