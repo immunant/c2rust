@@ -44,4 +44,6 @@ def parse_blocks(f):
         else:
             cur.append(line)
 
+    commit()
+
     return blocks
