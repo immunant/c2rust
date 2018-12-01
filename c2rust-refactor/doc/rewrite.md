@@ -445,13 +445,13 @@ We want to rewrite calls to `std::mem::transmute`, regardless of how those
 calls are written.  This is a perfect use case for `def!`:
 
 ```refactor
-rewrite_expr 'def!(::core::mem::transmute)(__e)' '__e.as_ref()'
+rewrite_expr 'def!(::std::intrinsics::transmute)(__e)' '__e.as_ref()'
 ```
 
 Now our rewrite catches all uses of `transmute`, whether they're written as
 `transmute(foo)`, `mem::transmute(foo)`, or even `::std::mem::transmute(foo)`.
 
-Notice that we refer to `transmute` as `core::mem::transmute`: this is the
+Notice that we refer to `transmute` as `std::mem::transmute`: this is the
 location of its original definition, which is re-exported in `std::mem`.  See
 the "`def!`: debugging match failures" section for an explanation of how we can
 discover this.
@@ -465,10 +465,10 @@ by filtering the input and output types with `typed!`:
 ```refactor
 rewrite_expr '
     typed!(
-        def!(::core::mem::transmute)(
+        def!(::std::intrinsics::transmute)(
             typed!(__e, *const __ty)
         ),
-        Option<&__ty>
+        ::std::option::Option<&__ty>
     )
 ' '__e.as_ref()'
 ```
@@ -500,9 +500,3 @@ Various other refactoring commands use the same pattern-matching engine as
    type error.
  * `select`'s `match_expr` and similar filters use syntax patterns to identify
    nodes to mark.
-
-
-[[TODO:
-(1) clarify Rust `match` patterns vs syntax patterns
-(2) use the word "AST" more often
-]]
