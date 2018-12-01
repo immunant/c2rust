@@ -9,6 +9,7 @@
 - [Refactoring Tool](c2rust-refactor/README.md)
     - [Commands](c2rust-refactor/commands.md)
     - [`rewrite_expr` tutorial](c2rust-refactor/rewrite-rendered.md)
+    - [Marks tutorial](c2rust-refactor/select-rendered.md)
     - [Ownership analysis](c2rust-refactor/src/analysis/ownership/README.md)
 - [Cross Checks](cross-checks/README.md)
     - [Tutorial](docs/cross-check-tutorial.md)
