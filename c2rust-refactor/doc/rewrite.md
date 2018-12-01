@@ -48,15 +48,15 @@ something:
 fn f() -> i32 { 123 }
 
 fn main() {
-    println!("1 + 1 = {}", 1 + 1);
-    println!("2 * 3 + 1 = {}", 2 * 3 + 1);
-    println!("4 + 5 + 1 = {}", 4 + 5 + 1);
-    println!("f() + 1 = {}", f() + 1);
+    println!("a = {}", 1 + 1);
+    println!("b = {}", 2 * 3 + 1);
+    println!("c = {}", 4 + 5 + 1);
+    println!("d = {}", f() + 1);
 }
 ```
 
 ```refactor
-rewrite_expr '__x + 1' '100'
+rewrite_expr '__x + 1' '11'
 ```
 
 In these examples, the `__x` metavariable matches (and binds) the expressions
@@ -71,7 +71,7 @@ code it matches is bound to the variable for later use.  Specifically,
 substitute in the matched code:
 
 ```refactor
-rewrite_expr '__x + 1' '2 * __x'
+rewrite_expr '__x + 1' '11 * __x'
 ```
 
 In each case, the expression bound by the `__x` metavariable is substituted
@@ -220,7 +220,7 @@ The `debug_match_expr` command exists to diagnose such problems.  It takes only
 a pattern, and prints information about attempts to match it at various points
 in the crate:
 
-```refactor
+```refactor hide-diff
 debug_match_expr 'def!(::std::collections::hash_map::HashMap::new)()'
 ```
 
