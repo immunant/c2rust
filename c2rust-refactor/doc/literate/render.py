@@ -311,5 +311,10 @@ def get_styles(fmt=None) -> str:
     #parts.append('.diff-intra-chg { border: solid 1px #888800; }')
     #parts.append('.diff-intra-ins { border: solid 1px #008800; }')
 
+    # Compatibility with manual/mdbook rendering
+    parts.append('.diff { font-size: 0.875em; }')
+    parts.append('.diff td { padding: 2px; }')
+    parts.append('table.diff tbody tr:nth-child(2n) { background: inherit; }')
+
     parts.append(fmt.get_style_defs('.highlight'))
     return '\n'.join(parts) + '\n'
