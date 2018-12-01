@@ -50,6 +50,9 @@ options.  This tool supports the following options:
  * `collapse-diff`: Put the diff inside a `<details>` tag, causing browsers to
    display it collapsed until the reader clicks on it.  Default: `true`.
 
+ * `hide-diff`: Omit the diff entirely, while still including the code block in
+   the output.
+
  * `diff-style = full|context': Sets whether the rendered diff should display
    the full contents of the old and new files, or only changed portions and
    nearby context.  This is only meaningful on `refactor` blocks.  The default

@@ -39,6 +39,7 @@ FLAG_OPTS = {
         'refactor-target',
         'filename',
         'collapse-diff',
+        'hide-diff',
         }
 
 STR_OPTS = {

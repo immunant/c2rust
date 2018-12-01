@@ -210,6 +210,10 @@ def render_diff(old_files, new_files, opts) -> str:
     '''Render a diff between each file in `new_files` and the corresponding one
     in `old_files`.  The result is either a string of HTML source, or `None` if
     nothing changed.'''
+
+    if opts.get('hide-diff', False):
+        return None
+
     file_names = sorted(new_files.keys())
     # Is the diff empty?
     empty = True
