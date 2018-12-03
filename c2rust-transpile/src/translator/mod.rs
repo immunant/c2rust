@@ -923,6 +923,7 @@ impl<'c> Translation<'c> {
                 manual_alignment,
                 max_field_alignment,
                 platform_byte_size,
+                platform_alignment,
                 ..
             } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
@@ -939,11 +940,11 @@ impl<'c> Translation<'c> {
 
                             has_bitfields |= bitfield_width.is_some();
 
-                            if has_bitfields {
-                                field_info.push((name, bitfield_width, platform_bit_offset, platform_type_bitwidth));
-                            } else {
-                                let typ = self.convert_type(typ.ctype)?;
+                            let typ = self.convert_type(typ.ctype)?;
 
+                            if has_bitfields {
+                                field_info.push((name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth));
+                            } else {
                                 field_entries.push(mk().span(s).pub_().struct_field(name, typ))
                             }
                         }
@@ -952,7 +953,7 @@ impl<'c> Translation<'c> {
                 }
 
                 if has_bitfields {
-                    return self.convert_bitfield_struct_decl(name, platform_byte_size, s, field_info);
+                    return self.convert_bitfield_struct_decl(name, platform_alignment, s, field_info);
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];

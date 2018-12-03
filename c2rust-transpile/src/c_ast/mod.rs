@@ -521,6 +521,7 @@ pub enum CDeclKind {
         manual_alignment: Option<u64>,
         max_field_alignment: Option<u64>,
         platform_byte_size: u64,
+        platform_alignment: u64,
     },
 
     // Union

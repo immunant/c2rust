@@ -12,7 +12,7 @@
 
 use c_ast::{CExprId, CQualTypeId};
 use c2rust_ast_builder::mk;
-use syntax::ast::{AttrStyle, Expr, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitKind, StrStyle, Ty};
+use syntax::ast::{AttrStyle, Expr, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StrStyle, Ty};
 use syntax::ext::quote::rt::Span;
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
@@ -21,7 +21,7 @@ use translator::{ExprContext, Translation, ConvertedDecl, simple_metaitem};
 use with_stmts::WithStmts;
 
 /// (name, bitfield_width, platform_bit_offset, platform_type_bitwidth)
-type NameWidthOffset = (String, Option<u64>, u64, u64);
+type NameWidthOffset = (String, P<Ty>, Option<u64>, u64, u64);
 /// (name, type, bitfield_width, platform_type_bitwidth)
 type NameTypeWidth = (String, CQualTypeId, Option<u64>, u64);
 
@@ -69,7 +69,7 @@ impl<'a> Translation<'a> {
     pub fn convert_bitfield_struct_decl(
         &self,
         name: String,
-        platform_byte_size: u64,
+        platform_alignment: u64,
         span: Span,
         field_info: Vec<NameWidthOffset>,
     ) -> Result<ConvertedDecl, String> {
@@ -83,36 +83,48 @@ impl<'a> Translation<'a> {
 
         let mut field_entries = Vec::with_capacity(field_info.len());
 
-        for (field_name, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
-            // Bitfield widths of 0 should just be markers for clang,
-            // we shouldn't need to explicitly handle it ourselves
-            if let Some(0) = bitfield_width {
-                continue
-            }
+        for (field_name, ty, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
+            let bitfield_width = match bitfield_width {
+                // Bitfield widths of 0 should just be markers for clang,
+                // we shouldn't need to explicitly handle it ourselves
+                Some(0) => continue,
+                None => {
+                    let field = mk().struct_field(field_name, ty);
 
-            let bit_width = bitfield_width.unwrap_or(platform_ty_bitwidth);
-            let base_ty = get_ty_from_bit_width(bit_width)?;
-            let bit_struct_name = format!("Bits{}", bit_width);
+                    field_entries.push(field);
+                    continue;
+                },
+                Some(bw) => bw,
+            };
+
+            // REVIEW: If a bitfield is unnamed (even if non 0), can we skip it?
+
+            // FIXME: len dep on total compressed size
+            let base_ty = mk().array_ty(
+                mk().ident_ty("u8"),
+                mk().lit_expr(mk().int_lit(bitfield_width as u128 / 8 + 1, LitIntType::Unsuffixed)),
+            );
             // let field_generic_tys = mk().angle_bracketed_args(vec![base_ty, mk().ident_ty(bit_struct_name.clone())]);
             // let field_ty = mk().path_segment_with_args("Integer", field_generic_tys);
-            let bit_range = format!("{}..={}", bit_index, bit_index + bit_width - 1);
-            let field_attr_items = vec![assigment_metaitem("bits", &bit_range)];
-            let field_attr = mk().meta_item("packed_field", MetaItemKind::List(field_attr_items));
+            let bit_range = format!("{}..={}", bit_index, bit_index + bitfield_width - 1);
+            let field_attr_items = vec![
+                assigment_metaitem("name", "FIXME"),
+                assigment_metaitem("ty", "FIXME"),
+                assigment_metaitem("bits", &bit_range),
+            ];
+            // TODO: May need more than one attr on the field
+            let field_attr = mk().meta_item("bitfield", MetaItemKind::List(field_attr_items));
             let field = mk()
                 .meta_item_attr(AttrStyle::Outer, field_attr)
                 // .struct_field(field_name, mk().path_ty(vec![field_ty]));
                 .struct_field(field_name, base_ty);
-
-            item_store.uses
-                .get_mut(vec!["packed_struct".into(), "prelude".into(), "packed_bits".into()])
-                .insert(bit_struct_name);
 
             field_entries.push(field);
         }
 
         let repr_items = vec![
             simple_metaitem("C"),
-            simple_metaitem(&format!("align({})", 'X')), // FIXME
+            simple_metaitem(&format!("align({})", platform_alignment)),
         ];
         let repr_attr = mk().meta_item("repr", MetaItemKind::List(repr_items));
 
@@ -143,7 +155,7 @@ impl<'a> Translation<'a> {
     ///
     /// and in statics:
     /// TODO
-    pub fn convert_bitfield_struct_literal(&self, name: String, field_ids: &[CExprId], field_info: Vec<NameTypeWidth>, platform_byte_size: u64, ctx: ExprContext) -> Result<WithStmts<P<Expr>>, String> {
+    pub fn convert_bitfield_struct_literal(&self, name: String, field_ids: &[CExprId], field_info: Vec<NameTypeWidth>, platform_alignment: u64, ctx: ExprContext) -> Result<WithStmts<P<Expr>>, String> {
         // REVIEW: statics?
         let mut stmts = Vec::with_capacity(field_ids.len());
         let mut fields = Vec::with_capacity(field_ids.len());

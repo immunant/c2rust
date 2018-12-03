@@ -1417,6 +1417,7 @@ impl ConversionContext {
                     let manual_alignment = expect_opt_u64(&node.extras[3]).expect("Expected struct alignment");
                     let max_field_alignment = expect_opt_u64(&node.extras[4]).expect("Expected struct field align");
                     let platform_byte_size = node.extras[5].as_u64().expect("Expected struct size");
+                    let platform_alignment = node.extras[6].as_u64().expect("Expected struct alignment");
 
                     let fields: Option<Vec<CDeclId>> =
                     if has_def {
@@ -1442,7 +1443,7 @@ impl ConversionContext {
                     }
 
                     let record = CDeclKind::Struct
-                        { name, fields, is_packed, manual_alignment, max_field_alignment, platform_byte_size };
+                        { name, fields, is_packed, manual_alignment, max_field_alignment, platform_byte_size, platform_alignment };
 
                     self.add_decl(new_id, located(node, record));
                     self.processed_nodes.insert(new_id, RECORD_DECL);
