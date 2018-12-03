@@ -83,3 +83,39 @@ the file.  In this example, all later refactoring blocks will produce full
 diffs, and will revert changes after processing.  Global options can still be
 overridden on specific blocks, so a block whose header reads `refactor
 diff-style=context no-revert` would work as before.
+
+
+
+# Internals
+
+The central data structure of `literate.py` is the `File` class, defined in
+`file.py`.  A `File` initially contains only basic information, like the raw
+file contents, but it is incrementally updated and annotated with additional
+information.  Part of this process involves constructing a `Diff` from two
+files, which provides information needed for additional annotation and eventual
+rendering. 
+
+The other essential data structures are lists of `Span`s (`annot.py`) and lists
+of `Point`s (`points.py`), which are used in various ways to annotate `File`s
+and their `Line`s.
+
+The overall process looks like this (drawn from `__init__.do_render`,
+`render.prepare_files`, and `render.make_diff`):
+
+ * Input parsing, which separates code blocks from non-code text (`parse.py`)
+ * Execution of the refactoring commands and processing of their outputs
+   (`refactor.py`).  This is the point where the `File` objects are created,
+   based on the refactoring outputs.
+ * Formatting of source files (`format.py`).  `c2rust-refactor` makes no
+   attempt to produce nicely-formatted output, so we need to run `rustfmt` on
+   the code to produce readable diffs.
+ * Syntax highlighting (`highlight.py`).  This mostly amounts to invoking
+   `pygments` and annotating the file with the results.
+ * Mark processing, to annotate files with the positions and information about
+   marked nodes (`marks.py`).
+ * `Diff` construction, for each matching pair of old and new files
+   (`diff.py`).  This step is partially interleaved with mark processing, as
+   some parts of mark processing require access to both files, while some parts
+   of diff construction depend on the locations of marks.  See
+   `render.make_diff` for specifics.
+ * Rendering of the final diff (`render.py`).
