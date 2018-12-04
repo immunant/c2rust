@@ -133,8 +133,9 @@ These affect the behavior of generated `Recursive` and `RecoverChildren` impls.
   same as in `#[prec=name]`.
 
 - `#[prec_left_of_binop=op]`, `#[prec_right_of_binop=op]`: Use the appropriate
-  precedence value for the left/right operand of a binary operator.  The
-  argument `op` should be the name of the field containing the binop.
+  precedence for the left/right operand of a binary operator. This should be a
+  `rewrite::ExprPrec` variant. The argument `op` should be the name of the
+  field containing the binop.
 
 - `#[prec_special=kind]`: Apply special parenthesization rules, in addition to
   normal precedence.  `kind` should be the name of a `rewrite::ExprPrec`
@@ -176,11 +177,11 @@ def field_prec_expr(f, first, suffix='1'):
     if left_of:
         # Refer to `op1` instead of `op`, to get the binop as it appear in the
         # new AST.
-        prec_val = 'binop_left_prec(%s)' % (left_of + suffix)
+        return 'binop_left_prec(%s)' % (left_of + suffix)
 
     right_of = f.attrs.get('prec_right_of_binop')
     if right_of:
-        prec_val = 'binop_right_prec(%s)' % (right_of + suffix)
+        return 'binop_right_prec(%s)' % (right_of + suffix)
 
     prec_first = f.attrs.get('prec_first')
     if first and prec_first:

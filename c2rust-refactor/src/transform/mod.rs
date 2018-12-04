@@ -52,6 +52,7 @@ macro_rules! transform_modules {
 }
 
 transform_modules! {
+    canonicalize_refs,
     char_literals,
     control_flow,
     externs,
