@@ -14,7 +14,7 @@ use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
 use c2rust_ast_builder::IntoSymbol;
-use util::{HirDefExt, Lone};
+use util::Lone;
 
 
 /// # `func_to_method` Command

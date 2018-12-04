@@ -13,7 +13,6 @@ use c2rust_ast_builder::{mk, Make, IntoSymbol};
 use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
-use util::HirDefExt;
 
 
 /// # `rename_regex` Command

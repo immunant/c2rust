@@ -8,7 +8,6 @@ use command::{CommandState, Registry};
 use driver;
 use transform::Transform;
 use c2rust_ast_builder::IntoSymbol;
-use util::HirDefExt;
 
 
 /// # `generalize_items` Command

@@ -13,7 +13,6 @@ use ast_manip::{Visit, visit_nodes};
 use command::CommandState;
 use command::{Registry, DriverCommand, RefactorState, FuncCommand};
 use driver::{self, Phase};
-use util::HirDefExt;
 use c2rust_ast_builder::IntoSymbol;
 
 

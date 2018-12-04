@@ -11,7 +11,6 @@ use driver::{self, Phase};
 use reflect;
 use resolve;
 use transform::Transform;
-use util::HirDefExt;
 
 
 

@@ -10,7 +10,6 @@ use ast_manip::fn_edit::{visit_fns, FnKind};
 use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
-use util::HirDefExt;
 
 
 /// # `link_funcs` Command
