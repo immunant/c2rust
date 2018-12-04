@@ -611,7 +611,7 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
             let mut xcheck_plugin_args: Vec<NestedMetaItem> = vec![];
             for config_file in &t.tcfg.cross_check_configs {
                 let file_lit = mk().str_lit(config_file);
-                let file_item = mk().meta_item(vec!["config_file"],file_lit.into_inner());
+                let file_item = mk().meta_item(vec!["config_file"], file_lit);
                 xcheck_plugin_args.push(mk().nested_meta_item(file_item));
             }
             let xcheck_plugin_item = mk().meta_item(
@@ -938,7 +938,7 @@ impl<'c> Translation<'c> {
                         vec!["align"],
                         MetaItemKind::List(
                             vec![mk().nested_meta_item(
-                                NestedMetaItemKind::Literal(lit.into_inner()))]));
+                                NestedMetaItemKind::Literal(lit))]));
                     reprs.push(mk().nested_meta_item(NestedMetaItemKind::MetaItem(inner)));
                 };
 

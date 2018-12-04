@@ -76,7 +76,7 @@ impl IncCleanup {
             Some(ImplicitReturnType::Main) => {
                 if let Expr { node: ExprKind::Ret(Some(ref zero)), .. } = **tail_expr {
                     if let Expr { node: ExprKind::Lit(ref lit), .. } = **zero {
-                        if let Lit { node: LitKind::Int(0, LitIntType::Unsuffixed), .. } = **lit {
+                        if let Lit { node: LitKind::Int(0, LitIntType::Unsuffixed), .. } = *lit {
                             return true;
                         }
                     }

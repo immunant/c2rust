@@ -161,6 +161,7 @@ impl<'a> Make<LitIntType> for UintTy {
 impl<I: Make<Ident>> Make<PathSegment> for I {
     fn make(self, mk: &Builder) -> PathSegment {
         PathSegment {
+            id: DUMMY_NODE_ID,
             ident: self.make(mk),
             args: None,
         }
@@ -436,6 +437,7 @@ impl Builder {
         let identifier = identifier.make(&self);
         let args = args.make(&self);
         PathSegment {
+            id: DUMMY_NODE_ID,
             ident: identifier,
             args: Some(P(args)),
         }
@@ -599,7 +601,7 @@ impl Builder {
     }
 
     pub fn lit_expr<L>(self, lit: L) -> P<Expr>
-        where L: Make<P<Lit>> {
+        where L: Make<Lit> {
         let lit = lit.make(&self);
         P(Expr {
             id: self.id,
@@ -846,69 +848,69 @@ impl Builder {
 
     // Literals
 
-    pub fn bytestr_lit(self, s: Vec<u8>) -> P<Lit> {
-        P(Lit {
+    pub fn bytestr_lit(self, s: Vec<u8>) -> Lit {
+        Lit {
             node: LitKind::ByteStr(Rc::new(s)),
             span: self.span,
-        })
+        }
     }
 
-    pub fn str_lit<S>(self, s: S) -> P<Lit>
+    pub fn str_lit<S>(self, s: S) -> Lit
         where S: IntoSymbol {
         let s = s.into_symbol();
-        P(Lit {
+        Lit {
             node: LitKind::Str(s, StrStyle::Cooked),
             span: self.span,
-        })
+        }
     }
 
-    pub fn byte_lit(self, b: u8) -> P<Lit> {
-        P(Lit {
+    pub fn byte_lit(self, b: u8) -> Lit {
+        Lit {
             node: LitKind::Byte(b),
             span: self.span,
-        })
+        }
     }
 
-    pub fn char_lit(self, c: char) -> P<Lit> {
-        P(Lit {
+    pub fn char_lit(self, c: char) -> Lit {
+        Lit {
             node: LitKind::Char(c),
             span: self.span,
-        })
+        }
     }
 
-    pub fn int_lit<T>(self, i: u128, ty: T) -> P<Lit>
+    pub fn int_lit<T>(self, i: u128, ty: T) -> Lit
         where T: Make<LitIntType> {
         let ty = ty.make(&self);
-        P(Lit {
+        Lit {
             node: LitKind::Int(i, ty),
             span: self.span,
-        })
+        }
     }
 
-    pub fn float_lit<S, T>(self, s: S, ty: T) -> P<Lit>
+    pub fn float_lit<S, T>(self, s: S, ty: T) -> Lit
         where S: IntoSymbol, T: Make<FloatTy> {
         let s = s.into_symbol();
         let ty = ty.make(&self);
-        P(Lit {
+        Lit {
             node: LitKind::Float(s, ty),
             span: self.span,
-        })
+        }
     }
 
-    pub fn float_unsuffixed_lit<S>(self, s: S) -> P<Lit>
+    pub fn float_unsuffixed_lit<S>(self, s: S) -> Lit
         where S: IntoSymbol {
         let s = s.into_symbol();
-        P(Lit {
+        Lit {
             node: LitKind::FloatUnsuffixed(s),
             span: self.span,
-        })
+        }
     }
 
-    pub fn bool_lit(self, b: bool) -> P<Lit> {
-        P(Lit {
+    pub fn bool_lit(self, b: bool) -> Lit {
+        Lit {
             node: LitKind::Bool(b),
             span: self.span,
-        })
+        }
     }
 
     pub fn ifte_expr<C, T, E>(self, cond: C, then_case: T, else_case: Option<E>) -> P<Expr>
