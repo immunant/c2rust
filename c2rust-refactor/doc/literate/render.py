@@ -172,10 +172,12 @@ def render_line(line, f):
         elif kind == 'i_e':
             end_span()
         elif kind == 'hl_s':
-            if label not in (pygments.token.Token, pygments.token.Text):
-                start_span(pygments.token.STANDARD_TYPES.get(label))
+            cls = literate.highlight.token_css_class(label)
+            if cls is not None:
+                start_span('hljs-%s' % cls)
         elif kind == 'hl_e':
-            if label not in (pygments.token.Token, pygments.token.Text):
+            cls = literate.highlight.token_css_class(label)
+            if cls is not None:
                 end_span()
 
     if len(line.text) > last_pos:
@@ -280,11 +282,8 @@ def render_diff(old_files, new_files, opts) -> str:
     return ''.join(parts)
 
 
-def get_styles(fmt=None) -> str:
+def get_styles() -> str:
     '''Return CSS styles for displaying generated diffs.'''
-    fmt = fmt or pygments.formatters.get_formatter_by_name(
-            'html', nowrap=True, style='monokai')
-
     parts = []
     parts.append('table.highlight { width: 800px; table-layout: fixed; }')
     parts.append('.highlight td { overflow-wrap: break-word; }')
@@ -316,5 +315,4 @@ def get_styles(fmt=None) -> str:
     parts.append('.diff td { padding: 2px; }')
     parts.append('table.diff tbody tr:nth-child(2n) { background: inherit; }')
 
-    parts.append(fmt.get_style_defs('.highlight'))
     return '\n'.join(parts) + '\n'
