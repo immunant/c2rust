@@ -291,8 +291,8 @@ def get_styles() -> str:
     parts.append('.highlight pre { display: inline; white-space: pre-wrap; }')
 
     # Diff highlight colors for use with `monokai` color scheme
-    parts.append('.diff-old { background-color: #550000; }')
-    parts.append('.diff-new { background-color: #004400; }')
+    parts.append('.diff-old { background-color: rgba(255, 0, 0, 0.25); }')
+    parts.append('.diff-new { background-color: rgba(0, 255, 0, 0.20); }')
     parts.append('.diff-intra-del { border: solid 1px #cc0000; }')
     parts.append('.diff-intra-chg { border: solid 1px #cccc00; }')
     parts.append('.diff-intra-ins { border: solid 1px #00cc00; }')
