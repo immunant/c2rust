@@ -355,9 +355,10 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             file_name = ploc.getFilename();
         } // FIXME: otherwise???
         if (file_name != last_file) {
-            xcfg_scope_stack_pop_multi(config_stack, pushed_files);
+            xcfg_scope_stack_pop_multi(config_stack.get(), pushed_files);
             auto file_scope =
-                xcfg_scope_stack_push_file(config_stack, config, file_name);
+                xcfg_scope_stack_push_file(config_stack.get(),
+                                           config.get(), file_name);
             pushed_files = (file_scope != nullptr) ? 1 : 0;
             last_file = file_name;
         }
@@ -386,13 +387,13 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             llvm::SmallVector<config::StringLenPtr, 16> pre_xcfg_slps;
             for (auto &s : pre_xcfg_strings)
                 pre_xcfg_slps.push_back(config::StringLenPtr{s});
-            auto func_cfg = xcfg_scope_stack_push_item(config_stack,
+            auto func_cfg = xcfg_scope_stack_push_item(config_stack.get(),
                                                        config::ITEM_KIND_FUNCTION,
                                                        file_name, func_name,
                                                        config::StringVec::from_vector(pre_xcfg_slps),
                                                        {});
             if (!xcfg_scope_enabled(func_cfg)) {
-                xcfg_scope_stack_pop(config_stack);
+                xcfg_scope_stack_pop(config_stack.get());
                 continue;
             }
 
@@ -589,7 +590,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
 
             // Cleanup
             // FIXME: this should be in a scope guard
-            xcfg_scope_stack_pop(config_stack);
+            xcfg_scope_stack_pop(config_stack.get());
         } else if (VarDecl *vd = dyn_cast<VarDecl>(d)) {
             global_vars.emplace(llvm_string_ref_to_sv(vd->getName()), vd);
         } else if (RecordDecl *rd = dyn_cast<RecordDecl>(d)) {
@@ -625,7 +626,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             }
         }
     }
-    xcfg_scope_stack_pop_multi(config_stack, pushed_files);
+    xcfg_scope_stack_pop_multi(config_stack.get(), pushed_files);
     return true;
 }
 
@@ -662,12 +663,13 @@ public:
 class CrossCheckInsertionAction : public PluginASTAction {
 private:
     bool disable_xchecks = false;
-    const config::Config *config = config::xcfg_config_new();
+    std::unique_ptr<const config::Config> config{config::xcfg_config_new()};
 
 protected:
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &ci,
                                                    llvm::StringRef) override {
-        return llvm::make_unique<CrossCheckInserter>(disable_xchecks, config);
+        return llvm::make_unique<CrossCheckInserter>(disable_xchecks,
+                                                     std::move(config));
     }
 
     bool ParseArgs(const CompilerInstance &ci,
@@ -704,7 +706,8 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
 
     // Parse the default configuration
     std::string_view default_config_sv{CrossCheckInserter::default_config};
-    config = xcfg_config_parse(config, default_config_sv);
+    auto new_config = xcfg_config_parse(config.release(), default_config_sv);
+    config.reset(new_config);
 
     auto config_files = parsed_args.getAllArgValues(OPT_config_files);
     for (auto &config_file : config_files) {
@@ -716,7 +719,8 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
         }
 
         config::StringLenPtr buf_slp{(*config_data)->getBuffer()};
-        config = xcfg_config_parse(config, buf_slp);
+        auto new_config = xcfg_config_parse(config.release(), buf_slp);
+        config.reset(new_config);
     }
     return true;
 }

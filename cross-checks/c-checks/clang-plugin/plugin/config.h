@@ -156,6 +156,41 @@ StringLenPtr xcfg_scope_struct_custom_hash(const ScopeConfig*);
 StringLenPtr xcfg_scope_struct_field_hasher(const ScopeConfig*);
 XCheck *xcfg_scope_struct_field(const ScopeConfig*, StringLenPtr);
 } // extern "C"
+
+struct Config {
+public:
+    // std::unique_ptr calls this
+    static inline void operator delete(void *ptr) {
+        if (ptr != nullptr)
+            xcfg_config_destroy(reinterpret_cast<Config*>(ptr));
+    }
+
+private:
+    // We should never construct one of these from C++
+    Config() = delete;
+    Config(const Config&) = delete;
+    Config(Config&&) = delete;
+    Config &operator=(const Config&) = delete;
+    Config &operator=(Config&&) = delete;
+};
+
+struct ScopeStack {
+public:
+    // std::unique_ptr calls this
+    static inline void operator delete(void *ptr) {
+        if (ptr != nullptr)
+            xcfg_scope_stack_destroy(reinterpret_cast<ScopeStack*>(ptr));
+    }
+
+private:
+    // We should never construct one of these from C++
+    ScopeStack() = delete;
+    ScopeStack(const ScopeStack&) = delete;
+    ScopeStack(ScopeStack&&) = delete;
+    ScopeStack &operator=(const ScopeStack&) = delete;
+    ScopeStack &operator=(ScopeStack&&) = delete;
+};
+
 } // namespace config
 
 // Our own wrapper over Rust's XCheckType values;
