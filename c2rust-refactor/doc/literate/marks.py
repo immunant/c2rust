@@ -118,9 +118,11 @@ def init_hunk_start_marks(f: File, lines: Span):
         return
     line = lines.start
     char = f.line_annot[line].start
-    # Figure out which marks cover the start position of the first line.
+    # Figure out which marks cover the start position of the first line.  Only
+    # marks that cross the line start count - ones that begin or end exactly at
+    # line start are not included.
     mark_span = lookup_span(f.mark_annot, char,
-            include_start=True, include_end=False)
+            include_start=False, include_end=False)
     if mark_span is not None and len(mark_span.label) > 0:
         f.lines[line].set_hunk_start_marks(mark_span.label)
 
@@ -133,7 +135,7 @@ def init_hunk_end_marks(f: File, lines: Span):
     char = f.line_annot[line].end
     # Figure out which marks cover the end position of the last line.
     mark_span = lookup_span(f.mark_annot, char,
-            include_start=False, include_end=True)
+            include_start=False, include_end=False)
     if mark_span is not None and len(mark_span.label) > 0:
         f.lines[line].set_hunk_end_marks(mark_span.label)
 
