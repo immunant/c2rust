@@ -125,15 +125,30 @@ impl<'c> Translation<'c> {
             // the specified value of the -O option. "
             "__builtin_constant_p" => Ok(WithStmts::new(mk().lit_expr(mk().int_lit(0, "")))),
 
-            "__builtin_va_start" => Err(format!(
-                "va_start not supported - currently va_list and va_arg are supported"
-            )),
+            "__builtin_va_start" => {
+                if ctx.is_unused() && args.len() == 2 {
+                    if let Some(va_id) = self.match_vastart(args[0]) {
+                        if ctx.is_va_decl(va_id) {
+                            return Ok(WithStmts::new(self.panic("va_start stub")))
+                        }
+                    }
+                }
+                Err(format!("Unsupported va_start"))
+            }
+            ,
             "__builtin_va_copy" => Err(format!(
-                "va_copy not supported - currently va_list and va_arg are supported"
+                "va_copy not supported"
             )),
-            "__builtin_va_end" => Err(format!(
-                "va_end not supported - currently va_list and va_arg are supported"
-            )),
+            "__builtin_va_end" => {
+                if ctx.is_unused() && args.len() == 1 {
+                    if let Some(va_id) = self.match_vaend(args[0]) {
+                        if ctx.is_va_decl(va_id) {
+                            return Ok(WithStmts::new(self.panic("va_end stub")))
+                        }
+                    }
+                }
+                Err(format!("Unsupported va_end"))
+            }
 
             // In clang 6 this first one is the only true SIMD builtin, clang 7 converted a bunch more after it:
             "__builtin_ia32_pshufw" =>

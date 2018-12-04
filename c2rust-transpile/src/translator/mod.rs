@@ -89,6 +89,7 @@ pub struct ExprContext {
     use_: ExprUse,
     is_static: bool,
     decay_ref: DecayRef,
+    va_decl: Option<CDeclId>,
 }
 
 impl ExprContext {
@@ -100,6 +101,7 @@ impl ExprContext {
     pub fn not_static(self) -> Self { ExprContext { is_static: false, .. self } }
     pub fn static_(self) -> Self { ExprContext { is_static: true, .. self } }
     pub fn set_static(self, is_static: bool) -> Self { ExprContext { is_static, .. self } }
+    pub fn is_va_decl(&self, decl_id: CDeclId) -> bool { Some(decl_id) == self.va_decl }
 }
 
 pub struct Translation<'c> {
@@ -288,7 +290,12 @@ pub fn translate_failure(tcfg: &TranspilerConfig, msg: &str) {
 pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> String {
 
     let mut t = Translation::new(ast_context, tcfg);
-    let ctx = ExprContext { use_: ExprUse::Unused, is_static: false, decay_ref: DecayRef::Default };
+    let ctx = ExprContext {
+        use_: ExprUse::Unused,
+        is_static: false,
+        decay_ref: DecayRef::Default,
+        va_decl: None,
+    };
 
     if !t.tcfg.translate_entry {
         t.ast_context.c_main = None;
@@ -878,6 +885,7 @@ impl<'c> Translation<'c> {
     }
 
     fn convert_decl(&self, ctx: ExprContext, toplevel: bool, decl_id: CDeclId) -> Result<ConvertedDecl, String> {
+
         let mut s = {
             let decl_cmt = self.comment_context.borrow_mut().remove_decl_comment(decl_id);
             self.comment_store.borrow_mut().add_comment_lines(decl_cmt)
@@ -1156,7 +1164,7 @@ impl<'c> Translation<'c> {
 
     fn convert_function(
         &self,
-        ctx: ExprContext,
+        mut ctx: ExprContext,
         span: Span,
         is_extern: bool,
         is_inline: bool,
@@ -1171,10 +1179,15 @@ impl<'c> Translation<'c> {
 
         if is_variadic {
             if let Some(body_id) = body {
-                let message = format!(
-                "Failed to translate {}; variadic function implementations not supported. VaList ID {:?}",
-                name, self.well_formed_variadic(body_id));
-            return Err(message);
+                match self.well_formed_variadic(body_id) {
+                    None =>
+                        return Err(format!(
+                            "Failed to translate {}; unsupported variadic function.", name)),
+                    Some(va_id) => {
+                        self.register_va_arg(va_id);
+                        ctx.va_decl = Some(va_id);
+                    }
+                }
             }
         }
 
@@ -1466,6 +1479,10 @@ impl<'c> Translation<'c> {
     }
 
     pub fn convert_decl_stmt_info(&self, ctx: ExprContext, decl_id: CDeclId) -> Result<cfg::DeclStmtInfo, String> {
+        if ctx.is_va_decl(decl_id) {
+            return Ok(cfg::DeclStmtInfo::empty())
+        }
+
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Variable { ref ident, is_static: true, is_extern: false, is_defn: true, initializer, typ, .. } => {
                 if self.static_initializer_is_uncompilable(initializer) {
