@@ -1,7 +1,7 @@
 ```refactor-options hidden
 revert
 diff-style = full
-no-filename
+no-show-filename
 no-collapse-diff
 ```
 

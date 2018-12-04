@@ -51,13 +51,23 @@ FLAG_OPTS = {
         'revert',
         'hidden',
         'refactor-target',
-        'filename',
+        'show-filename',
         'collapse-diff',
         'hide-diff',
         }
 
 STR_OPTS = {
         'diff-style',
+        }
+
+OPT_DEFAULTS = {
+        'revert': False,
+        'hidden': False,
+        'refactor-target': False,
+        'show-filename': True,
+        'collapse-diff': True,
+        'hide-diff': False,
+        'diff-style': 'context',
         }
 
 FLAG_TRUTHY = { '1', 'true', 'y', 'yes', 'on' }
@@ -105,7 +115,7 @@ class RefactorState:
         self.results = {}
         self.all_files = []
 
-        self.global_opts = {}
+        self.global_opts = OPT_DEFAULTS.copy()
 
     def flush(self):
         '''Process all pending commands, and clear the `pending_cmds`
@@ -172,8 +182,14 @@ class RefactorState:
     def parse_block_options(self, attrs: List[str]) -> Dict[str, Any]:
         '''Parse the attributes on a block to find any `literate`-specific
         options, merge those with the current global options, and return a dict
-        of all options that apply to the block.'''
+        of all options that apply to the block.
+
+        The result dict contains entries for every option in `FLAG_OPTS` and
+        `STR_OPTS`, plus special entries `_lang` (containing the initial
+        language attribute) and `_attrs` (containing any leftover unrecognized
+        attributes).'''
         opts = self.global_opts.copy()
+        opts['_lang'] = None
 
         remaining_attrs = []
 
@@ -220,6 +236,9 @@ class RefactorState:
                 remaining_attrs.append(attr)
                 continue
 
+            # If we got here, `key` is in `FLAG_OPTS` or `STR_OPTS`, which
+            # means it should at least have a default value in `opts` already.
+            assert key in opts
             opts[key] = value
 
         opts['_attrs'] = remaining_attrs
@@ -563,17 +582,17 @@ def run_refactor_scripts(args: argparse.Namespace,
 
         opts = rs.parse_block_options(b.attrs)
 
-        if opts.get('_lang') == 'refactor':
+        if opts['_lang'] == 'refactor':
             cmds = split_commands(''.join(b.lines))
             rs.add_commands(i, cmds)
 
-            if opts.get('revert', False):
+            if opts['revert']:
                 rs.reset()
 
-        elif opts.get('_lang') == 'refactor-options':
+        elif opts['_lang'] == 'refactor-options':
             rs.set_global_options(b.lines)
 
-        if opts.get('refactor-target', False):
+        if opts['refactor-target']:
             rs.set_crate(TempCrate(''.join(b.lines)))
 
         block_opts[i] = opts
@@ -588,7 +607,7 @@ def run_refactor_scripts(args: argparse.Namespace,
             opts = block_opts[i]
             print('opts for block %d: %s' % (i, block_opts[i]))
             print('  %r' % ''.join(b.lines))
-            if opts.get('hidden', False):
+            if opts['hidden']:
                 continue
 
             if i in results:

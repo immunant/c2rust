@@ -212,7 +212,7 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
     in `old_files`.  The result is either a string of HTML source, or `None` if
     nothing changed.'''
 
-    if opts.get('hide-diff', False):
+    if opts['hide-diff']:
         return None
 
     file_names = sorted(new_files.keys())
@@ -228,14 +228,14 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
         # `make_diff` copies the files, then updates the copies.  We want
         # references to the new copies only.
         diff = make_diff(old_files[f], new_files[f],
-                opts.get('diff-style', 'context') == 'context')
+                opts['diff-style'] == 'context')
         old = diff.old_file
         new = diff.new_file
 
         if len(diff.hunks) > 0:
             empty = False
 
-        if opts.get('filename', True):
+        if opts['show-filename']:
             parts.append('<tr><td colspan="4" class="filename">%s</td></tr>' % f)
         else:
             if file_idx > 0:

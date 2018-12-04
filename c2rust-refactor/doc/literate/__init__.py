@@ -118,7 +118,7 @@ def do_render(args: argparse.Namespace):
                 print('  diff options: %s' % (b.opts,))
                 diff_text = literate.render.render_diff(b.old, b.new, b.opts)
                 if diff_text is not None:
-                    collapse = b.opts.get('collapse-diff', True)
+                    collapse = b.opts['collapse-diff']
                     if collapse:
                         f.write('<details><summary>Diff #%d</summary>\n' % (diff_idx + 1))
                     f.write(diff_text)
