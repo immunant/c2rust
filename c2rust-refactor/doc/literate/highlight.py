@@ -1,3 +1,5 @@
+from typing import Optional
+
 import pygments.lexers
 import pygments.token
 from pygments.token import *
@@ -51,7 +53,7 @@ HIGHLIGHT_CLASSES = {
     Comment:                       'comment',
 }
 
-def token_css_class(tok):
+def token_css_class(tok: type(pygments.token.Token)) -> Optional[str]:
     '''Get the CSS class for a Pygments token type.'''
     # If the token is A.B.C, we first look for A.B.C, then A.B, then A.
     # Everything's a subtype of Token, so eventually we'll get a match.

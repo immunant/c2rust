@@ -2,6 +2,7 @@ import argparse
 import os
 import shutil
 import sys
+from typing import List
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../../scripts'))
 from common import config
@@ -12,7 +13,7 @@ import literate.refactor
 import literate.render
 
 
-def build_arg_parser():
+def build_arg_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument('--project-dir', default='.',
             help='path to the project directory')
@@ -49,7 +50,7 @@ def build_arg_parser():
 
     return ap
 
-def do_extract(args):
+def do_extract(args: argparse.Namespace):
     with open(args.input) as f:
         blocks = literate.parse.parse_blocks(f)
 
@@ -62,7 +63,7 @@ def do_extract(args):
             if l.strip() == 'commit ;':
                 sys.stdout.write('\n')
 
-def do_exec(args):
+def do_exec(args: argparse.Namespace):
     with open(args.input) as f:
         blocks = literate.parse.parse_blocks(f)
 
@@ -84,7 +85,7 @@ def do_exec(args):
 
     literate.refactor.run_refactor(work_dir, cmds, mode=args.rewrite_mode)
 
-def do_render(args):
+def do_render(args: argparse.Namespace):
     with open(args.input) as f:
         blocks = literate.parse.parse_blocks(f)
     blocks, all_files = literate.refactor.run_refactor_scripts(args, blocks)
@@ -127,7 +128,7 @@ def do_render(args):
             else:
                 raise TypeError('expected Text or ScriptDiff, got %s' % (type(b),))
 
-def main(argv):
+def main(argv: List[str]):
     ap = build_arg_parser()
     args = ap.parse_args(argv)
     config.update_args(args)

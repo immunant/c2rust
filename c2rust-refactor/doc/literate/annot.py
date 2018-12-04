@@ -9,41 +9,47 @@ overlap.  An annotation is used to assign different labels to different parts
 of the text.
 '''
 
-class Span:
+from typing import List, Tuple, Iterator, Iterable, Callable, Optional, Any, Generic, TypeVar
+
+T = TypeVar('T')
+U = TypeVar('U')
+V = TypeVar('V')
+
+class Span(Generic[T]):
     '''A range of indices, `start <= i < end`, with a label applied.'''
     __slots__ = ('start', 'end', 'label')
 
-    def __init__(self, start, end, label=None):
+    def __init__(self, start: int, end: int, label: T=None):
         assert start <= end
         self.start = start
         self.end = end
         self.label = label
 
-    def is_empty(self):
+    def is_empty(self) -> bool:
         return self.end == self.start
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.end - self.start
 
     # A `Span` works like `range(start, end)` for iteration purposes
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[int]:
         return iter(range(self.start, self.end))
 
-    def __contains__(self, i):
+    def __contains__(self, i: int) -> bool:
         '''Checks if index `i` falls within this span.'''
         return self.start <= i < self.end
 
-    def overlaps(self, other):
+    def overlaps(self, other: 'Span[Any]') -> bool:
         '''Returns `True` if the two spans have at least one index in
         common.'''
         return other.start < self.end and self.start < other.end
 
-    def overlaps_ends(self, other):
+    def overlaps_ends(self, other: 'Span[Any]') -> bool:
         '''Returns `True` if the spans overlap or touch at their endpoints.'''
         return other.start <= self.end and self.start <= other.end
 
-    def intersect(self, other):
+    def intersect(self, other: 'Span[Any]') -> 'Span[T]':
         '''Return the intersection of two spans.  Raises an exception if `not
         self.overlaps_ends(other)`.  The result has the same `label` as
         `self`.'''
@@ -52,26 +58,28 @@ class Span:
                 min(self.end, other.end),
                 self.label)
 
-    def contains(self, other):
+    def contains(self, other: 'Span[Any]'):
         '''Checks if span `other` is fully contained in `self`.'''
         return self.start <= other.start and other.end <= self.end
 
-    def __add__(self, x):
+    def __add__(self, x: int) -> 'Span[T]':
         return Span(self.start + x, self.end + x, self.label)
 
-    def __sub__(self, x):
+    def __sub__(self, x: int) -> 'Span[T]':
         return Span(self.start - x, self.end - x, self.label)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'Span(%d, %d, %r)' % (self.start, self.end, self.label)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
-    def copy(self):
+    def copy(self) -> 'Span[T]':
         return Span(self.start, self.end, self.label)
 
-def number_lines(lines: [str]) -> [Span]:
+Annot = List[Span[T]]
+
+def number_lines(lines: List[str]) -> Annot[int]:
     '''Given a sequence of lines, return an annotation on the overall text
     (`''.join(lines)`) that labels the text of each line with its index in
     `lines`.  The resulting annotation covers the entire text without gaps.'''
@@ -82,7 +90,7 @@ def number_lines(lines: [str]) -> [Span]:
         pos += len(l)
     return result
 
-def cut_annot(orig: [Span], cut: [Span]) -> [(Span, [Span])]:
+def cut_annot(orig: Annot[T], cut: Annot[U]) -> List[Tuple[Span[U], Annot[T]]]:
     '''Cut annotation `orig` into pieces, one for each span in `cut`.  Returns
     `len(cut)` pairs of (cut_span, annot), where `annot` is an annotation on
     the text that falls within `cut_span`.  The span positions in `annot` are
@@ -107,7 +115,7 @@ def cut_annot(orig: [Span], cut: [Span]) -> [(Span, [Span])]:
 
     return pieces
 
-def merge_annot(a1: [Span], a2: [Span]) -> [Span]:
+def merge_annot(a1: Annot[T], a2: Annot[U]) -> Annot[None]:
     '''Merge two annotations, producing one that includes all indices covered
     by either annotation.  The output spans will all have label `None`.'''
     result = SpanMerger()
@@ -128,7 +136,7 @@ def merge_annot(a1: [Span], a2: [Span]) -> [Span]:
 
     return result.finish()
 
-def fill_annot(a: [Span], end: int, start=0, label=None) -> [Span]:
+def fill_annot(a: Annot[T], end: int, start: int=0, label: T=None) -> Annot[T]:
     '''Fill in any unannotated regions in `a` with the label `label`.  The
     result is an annotation that covers every position in the range `start ..
     end`, using labels from `a` when available, and using `label` otherwise.'''
@@ -144,7 +152,8 @@ def fill_annot(a: [Span], end: int, start=0, label=None) -> [Span]:
         result.append(Span(last_pos, end, label))
     return result
 
-def zip_annot(a1: [Span], a2: [Span], f=lambda l1, l2: (l1, l2)) -> [Span]:
+def zip_annot(a1: Annot[T], a2: Annot[U],
+        f: Callable[[T, U], V]=lambda l1, l2: (l1, l2)) -> Annot[V]:
     '''Zip together two annotations, returning an annotation that labels each
     position with a pair `(l1, l2)`, where `l1` is the position's label in `a1`
     and `l2` is its label in `a2`.  Only positions with labels in both `a1` and
@@ -158,8 +167,8 @@ def zip_annot(a1: [Span], a2: [Span], f=lambda l1, l2: (l1, l2)) -> [Span]:
             result.append(Span(start, end, f(s1.label, s2.label)))
     return result
 
-def lookup_span(a: [Span], pos: int,
-        include_start=True, include_end=False) -> Span:
+def lookup_span(a: Annot[T], pos: int,
+        include_start: bool=True, include_end: bool=False) -> Optional[Span[T]]:
     '''Get the span in `a` that contains `pos`, or `None` if there is no such
     span.'''
     # `bisect` doesn't support a key function, so we just do a linear scan.
@@ -171,7 +180,7 @@ def lookup_span(a: [Span], pos: int,
                 return None
     return None
 
-class SpanMerger:
+class SpanMerger(Generic[T]):
     '''Helper for building a valid annotation from a sorted sequence of
     possibly-overlapping spans.
     
@@ -179,7 +188,7 @@ class SpanMerger:
     def __init__(self):
         self.acc = []
 
-    def add(self, span):
+    def add(self, span: Span[T]):
         '''Add `span` to the result sequnece, merging it with the previous span
         if it overlaps.  In case of overlap, the merged span retains the label
         of the first span provided with `add`.'''
@@ -188,11 +197,13 @@ class SpanMerger:
         else:
             self.acc.append(span)
 
-    def add_all(self, spans):
+    def add_all(self, spans: Iterable[Span[T]]):
         for s in spans:
             self.add(s)
 
-    def finish(self):
+    def finish(self) -> Annot[T]:
+        '''Get the annotation made from the merged spans.  The `SpanMerger`
+        should not be used further after calling this method.'''
         result = self.acc
         self.acc = None
         return result

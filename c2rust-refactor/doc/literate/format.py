@@ -3,13 +3,14 @@ diffs.'''
 import difflib
 import os
 import tempfile
+from typing import List
 
 from plumbum.cmd import rustfmt
 
 from literate.annot import Span
 from literate.file import File
 
-def format_text_in_file(text, path):
+def format_text_in_file(text: str, path: str) -> str:
     '''Run `rustfmt` on `text`, using `path` as a temporary file.  Returns the
     formatted text.'''
     with open(path, 'w') as f:
@@ -20,7 +21,7 @@ def format_text_in_file(text, path):
     with open(path, 'r') as f:
         return f.read()
 
-def format_files(all_files: [File]):
+def format_files(all_files: List[File]):
     '''Format the `unformatted` text of every file in `all_files`, and set the
     formatted text for each one.'''
     with tempfile.TemporaryDirectory() as td:

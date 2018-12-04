@@ -4,43 +4,48 @@ Labeled points.
 This is similar to the `annot` module, but works with individual points instead
 of spans.
 '''
+from typing import List, Tuple, Optional, Callable, Generic, TypeVar
 
-from literate.annot import Span
+from literate.annot import Span, Annot
 
-class Point:
+
+T = TypeVar('T')
+U = TypeVar('U')
+
+class Point(Generic[T]):
     '''An index in some sequence, with a label applied.'''
     __slots__ = ('pos', 'label')
 
-    def __init__(self, pos, label=None):
+    def __init__(self, pos: int, label: T=None):
         self.pos = pos
         self.label = label
 
-    def __add__(self, x):
+    def __add__(self, x: int) -> 'Point[T]':
         return Point(self.pos + x, self.label)
 
-    def __sub__(self, x):
+    def __sub__(self, x: int) -> 'Point[T]':
         return Point(self.pos - x, self.label)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'Point(%d, %r)' % (self.pos, self.label)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
-    def copy(self):
+    def copy(self) -> 'Point[T]':
         return Point(self.pos, self.label)
 
-def annot_starts(annot: [Span]) -> [Point]:
+def annot_starts(annot: Annot[T]) -> List[Point[T]]:
     '''Get the start point of each span in `annot`, labeled with the span's
     original label.'''
     return [Point(s.start, s.label) for s in annot]
 
-def annot_ends(annot: [Span]) -> [Point]:
+def annot_ends(annot: Annot[T]) -> List[Point[T]]:
     '''Get the end point of each span in `annot`, labeled with the span's
     original label.'''
     return [Point(s.end, s.label) for s in annot]
 
-def annot_to_deltas(annot: [Span]) -> [Point]:
+def annot_to_deltas(annot: Annot[T]) -> List[Point[Tuple[Optional[T], Optional[T]]]]:
     '''Turn an annotation into a list of points, where each point is on a span
     boundary and is labeled with the labels of the previous and next spans.'''
     if len(annot) == 0:
@@ -71,7 +76,8 @@ def annot_to_deltas(annot: [Span]) -> [Point]:
     return result
 
 
-def merge_points(p1: [Point], p2: [Point], *args) -> [Point]:
+def merge_points(p1: List[Point[T]], p2: List[Point[T]],
+        *args: List[Point[T]]) -> List[Point[T]]:
     '''Merge two (sorted) lists of points, returning a sorted result.  If `p1`
     and `p2` have points at the same position, the result will contain all the
     `p1` points at that position (in their original order), followed by all the
@@ -100,12 +106,12 @@ def merge_points(p1: [Point], p2: [Point], *args) -> [Point]:
 
     return result
 
-def map_points(ps: [Point], f) -> [Point]:
+def map_points(ps: List[Point[T]], f: Callable[[T], U]) -> List[Point[U]]:
     '''Map `f` over the labels of all points in `ps`.'''
     return [Point(p.pos, f(p.label)) for p in ps]
 
-def cut_points(orig: [Point], cut: [Span],
-        include_start=True, include_end=False) -> [(Span, [Point])]:
+def cut_points(orig: List[Point[T]], cut: Annot[U],
+        include_start: bool=True, include_end: bool=False) -> List[Tuple[Span[U], List[Point[T]]]]:
     '''Cut a list of points `orig` into pieces, one for each span in `Cut`.
     Returns `len(cut)` pairs of (cut_span, points), where `points` is a subset
     of `orig` that falls within `cut_span`.  Position 0 in `points` corresponds
@@ -160,7 +166,7 @@ def cut_points(orig: [Point], cut: [Span],
 
     return pieces
 
-def cut_annot_at_points(orig: [Span], cut: [Point]) -> [Span]:
+def cut_annot_at_points(orig: Annot[T], cut: List[Point[U]]) -> Annot[T]:
     '''Cut the spans of annotation `orig` at each point in `cut`.  The
     resulting annotation applies all the same labels to the same regions as in
     `orig`, but any span that previously crossed a `cut` point is broken into

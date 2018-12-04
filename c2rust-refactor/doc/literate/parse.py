@@ -1,19 +1,32 @@
 '''Input file parsing, to separate text from refactoring script and break the
 script into commands.'''
-from collections import namedtuple
-import shlex
+from typing import List, Union, NamedTuple
 
-# A block of unprocessed Markdown text, represented as a list of lines with
-# '\n' terminators intact.
-Text = namedtuple('Text', ('lines',))
-# A code block:
-#
-#       ```language,and-other,attrs
-#       code goes here...
-#       ```
-Code = namedtuple('Code', ('attrs', 'lines'))
+class Text(NamedTuple):
+    '''A block of unprocessed markdown.'''
 
-def parse_blocks(f):
+    lines: List[str]
+    '''The lines of markdown input, with `\n` terminators intact.'''
+
+class Code(NamedTuple):
+    '''A markdown fenced code block.
+
+        ```language and-other attrs
+        code goes here...
+        ```
+    '''
+
+    attrs: List[str]
+    '''The attributes from the opening line of the block, split on
+    whitespace.'''
+
+    lines: List[str]
+    '''The content of the block, not including the opening and closing
+    lines.'''
+
+Block = Union[Text, Code]
+
+def parse_blocks(f) -> List[Block]:
     '''Parse a sequence of `Text` and `Code` blocks out of an input Markdown
     file.'''
     blocks = []

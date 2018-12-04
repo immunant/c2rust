@@ -1,6 +1,6 @@
-from collections import namedtuple
+from typing import List, Tuple, Dict, Set, Optional, NamedTuple
 
-from literate.annot import Span, fill_annot, zip_annot, cut_annot, \
+from literate.annot import Span, Annot, fill_annot, zip_annot, cut_annot, \
         lookup_span, SpanMerger
 from literate.file import File, Diff
 from literate.points import Point, cut_points, annot_to_deltas
@@ -8,18 +8,33 @@ from literate.points import Point, cut_points, annot_to_deltas
 
 # This is the same info contained in a `marks.json` entry, just slightly more
 # convenient to access.
-# - `id`: The node ID of the marked node
-# - `orig_id`: The "original node ID" reported by `c2rust-refactor`.  This is
-#   used to identify nodes across refactoring steps, so we can detect when a
-#   mark is left unchanged even if nodes got renumbered.
-# - `labels`: A list of strings, giving the labels applied to the marked node.
-# - `kind`: A string describing the kind of node that was marked.  `"item"`,
-#   `"expr"`, `"stmt"`, etc.
-# - `name`: The name of the marked node.  May be `None` or the empty string.
-#   This is mainly useful on item nodes.
-Mark = namedtuple('Mark', ('id', 'orig_id', 'labels', 'kind', 'name'))
 
-def convert_marks(marks: [dict]) -> {int: Mark}:
+class Mark(NamedTuple):
+    '''This is the same info contained in a `marks.json` entry, just slightly
+    more convenient to access.'''
+
+    id: int
+    '''The node ID of the marked node'''
+
+    orig_id: int
+    '''The "original node ID" reported by `c2rust-refactor`.  This is used to
+    identify nodes across refactoring steps, so we can detect when a mark is
+    left unchanged even if nodes got renumbered.'''
+
+    labels: Set[str]
+    '''A list of strings, giving the labels applied to the marked node.'''
+
+    kind: str
+    '''A string describing the kind of node that was marked.  `"item"`,
+    `"expr"`, `"stmt"`, etc.'''
+
+    name: Optional[str]
+    '''The name of the marked node.  May be `None` or the empty string.  This
+    is mainly useful on item nodes.'''
+
+LabelChanges = Tuple[List[str], List[str], List[str]]
+
+def convert_marks(marks: List[Dict]) -> Dict[int, Mark]:
     '''Convert a list of `marks.json` entries to `Mark` objects, and build a
     dict mapping each `Mark`'s `id` to the `Mark` itself.'''
     result = {}
@@ -36,7 +51,7 @@ def convert_marks(marks: [dict]) -> {int: Mark}:
                 )
     return result
 
-def build_mark_annot(f: File) -> [Span]:
+def build_mark_annot(f: File) -> Annot[Set[int]]:
     '''Build an annotation on the entire file, labeled with sets of NodeIds
     indicating the marked nodes overlapping each source location.'''
     # We start with one big annotation that labels the entire file with the
@@ -76,9 +91,9 @@ def init_line_mark_bounds(f: File):
             continue
         elif old is None:
             started = new
-            ended = ()
+            ended = set()
         elif new is None:
-            started = ()
+            started = set()
             ended = old
         else:
             started = new - old
@@ -152,7 +167,7 @@ def init_hunk_boundary_marks(d: Diff):
         init_hunk_end_marks(d.new_file, new_lines)
 
 
-def diff_labels(l1, l2):
+def diff_labels(l1: Set[str], l2: Set[str]) -> LabelChanges:
     '''Diff two collections of labels, producing lists of labels added, labels
     removed, and labels kept.'''
     l1 = set(l1)
@@ -177,7 +192,7 @@ def init_mark_labels(d: Diff):
         else:
             # There is no corresponding node - the node (and its mark) must
             # have been deleted.
-            old_labels[m.id] = ((), sorted(m.labels), ())
+            old_labels[m.id] = ([], sorted(m.labels), [])
     d.old_file.set_mark_labels(old_labels)
 
     new_labels = {}
@@ -185,7 +200,7 @@ def init_mark_labels(d: Diff):
         if m.orig_id in old_marks:
             new_labels[m.id] = diff_labels(old_marks[m.orig_id].labels, m.labels)
         else:
-            new_labels[m.id] = (sorted(m.labels), (), ())
+            new_labels[m.id] = (sorted(m.labels), [], [])
     d.new_file.set_mark_labels(new_labels)
 
 

@@ -4,16 +4,17 @@ import pygments.formatters
 import pygments.lexers
 import pygments.token
 import re
+from typing import List, Tuple, Optional, Iterator, Iterable
 
-from literate.annot import Span, merge_annot, SpanMerger, fill_annot
-from literate.file import File, Line, Diff, Hunk, OutputLine
+from literate.annot import Span, Annot, merge_annot, SpanMerger, fill_annot
+from literate.file import File, Line, Diff, DiffBlock, Hunk, OutputLine
 from literate.points import Point, cut_annot_at_points
 
 
 # Regex for finding runs of identical non-space characters
 RUN_RE = re.compile(r'([^ \n])\1*')
 
-def parse_intra_annot(s):
+def parse_intra_annot(s: str) -> Annot[str]:
     '''Parse an `ndiff` detail (`?`) line and convert it to an annotation
     indicating intraline edits in the text of the preceding line.  The
     annotation labels inserted, deleted, and changed characters with `'ins'`,
@@ -30,7 +31,10 @@ def parse_intra_annot(s):
         spans.append(Span(m.start(), m.end(), label))
     return spans
 
-def diff_lines(old_lines: [str], new_lines: [str]):
+
+DiffLine = Tuple[bool, bool, Optional[Annot[str]], Optional[Annot[str]]]
+
+def diff_lines(old_lines: List[str], new_lines: List[str]) -> Iterator[DiffLine]:
     '''Compute a diff of `old` and `new`, and yield a sequence of (old_line,
     new_line, old_detail, new_detail).  Each `line` is a boolean indicating
     whether there is a line present in the old/new file, and each `detail` is
@@ -116,7 +120,8 @@ def diff_lines(old_lines: [str], new_lines: [str]):
     while buf:
         yield buf.popleft()
 
-def adjust_closing_brace(old_lines: [str], new_lines: [str], diff):
+def adjust_closing_brace(old_lines: List[str], new_lines: List[str],
+        diff: Iterable[DiffLine]) -> Iterator[DiffLine]:
     '''Adjust the output of `diff_lines` to turn this:
 
          fn f() {
@@ -213,7 +218,7 @@ def adjust_closing_brace(old_lines: [str], new_lines: [str], diff):
 
 WORD_BREAK_RE = re.compile(r'\b')
 
-def token_annot(line: Line) -> [Span]:
+def token_annot(line: Line) -> Annot[None]:
     '''Annotate the tokens of `l`.  Each token (and some sub-token strings)
     gets a separate span.  This is a helper function for
     `calc_tokenized_intra`.'''
@@ -234,7 +239,7 @@ def token_annot(line: Line) -> [Span]:
 
     return cut_annot_at_points(annot, extra_cuts)
 
-def calc_tokenized_intra(l1: Line, l2: Line) -> ([Span], [Span]):
+def calc_tokenized_intra(l1: Line, l2: Line) -> Tuple[Annot[str], Annot[str]]:
     '''Calculate token-based intraline edit annotations for `l1` and `l2`.
 
     `difflib.ndiff` does a pretty good job of matching up similar lines, but it
@@ -338,7 +343,7 @@ def diff_files(f1: File, f2: File) -> Diff:
     return Diff(f1, f2, diff_blocks)
 
 
-def context_annot(blocks: [(bool, Span, Span)], new: bool, context_lines: int) -> [Span]:
+def context_annot(blocks: List[DiffBlock], new: bool, context_lines: int) -> Annot[None]:
     '''Generate an annotation of the old or new file's lines, indicating which
     lines are changes or context for changes (within `context_lines`
     distance).'''
@@ -355,8 +360,8 @@ def context_annot(blocks: [(bool, Span, Span)], new: bool, context_lines: int) -
 
     return result.finish()
 
-def filter_unchanged(blocks: [(bool, Span, Span)],
-        old_filt: [Span], new_filt: [Span]) -> [(bool, Span, Span)]:
+def filter_unchanged(blocks: List[DiffBlock],
+        old_filt: Annot[None], new_filt: Annot[None]) -> List[DiffBlock]:
     '''Filter `blocks`, keeping changed blocks along with any portions of
     unchanged blocks that fall within `old_filt` or `new_filt`.  The result is
     formatted like `Diff.blocks` but blocks may not be contiguous and may not
@@ -406,7 +411,7 @@ def filter_unchanged(blocks: [(bool, Span, Span)],
 
     return result
 
-def split_hunks(blocks: [(bool, Span, Span)]) -> [Hunk]:
+def split_hunks(blocks: List[DiffBlock]) -> List[Hunk]:
     '''Split the output of `filter_unchanged` into hunks, anywhere there's a
     gap in the old or new line numbers.'''
     last_old = 0
@@ -431,7 +436,7 @@ def split_hunks(blocks: [(bool, Span, Span)]) -> [Hunk]:
     flush()
     return hunks
 
-def build_diff_hunks(d: Diff, context_diff=True):
+def build_diff_hunks(d: Diff, context_diff: bool=True):
     '''Build a list of output hunks, and assign it to `d.hunks`.
 
     If `d.old_file` or `d.new_file` has a `keep_mark_lines` annotation, all
@@ -454,7 +459,7 @@ def build_diff_hunks(d: Diff, context_diff=True):
     d.set_hunks(hunks)
 
 
-def hunk_output_lines(h: Hunk) -> [OutputLine]:
+def hunk_output_lines(h: Hunk) -> List[OutputLine]:
     result = []
     for changed, old_span, new_span in h.blocks:
         common_lines = min(len(old_span), len(new_span))

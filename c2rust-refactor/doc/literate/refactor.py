@@ -1,10 +1,12 @@
 '''`c2rust-refactor` command invocation and output parsing.'''
+import argparse
 import bisect
-from collections import namedtuple
 import os
 import shlex
 import sys
 import tempfile
+from typing import List, Tuple, Dict, Optional, Any, Union, Iterable, \
+        Callable, NamedTuple, Generic, TypeVar
 
 from plumbum import local, FG
 from plumbum.cmd import cargo
@@ -14,24 +16,36 @@ from literate.file import File
 from literate import parse
 
 
-# A real crate, identified by its project directory.  We handle these using the
-# `--cargo` flag of `c2rust-refactor`.
-RealCrate = namedtuple('RealCrate', ('dir',))
-# A temporary crate, built from some source text.  We handle these by writing
-# the text to a temp file and passing explicit `rustc` arguments.
-TempCrate = namedtuple('TempCrate', ('text',))
+class RealCrate(NamedTuple):
+    '''A real crate, identified by its Cargo project directory.'''
+    dir: str
 
-# A simple TemporaryDirectory replacement, with just a `name` field.
-PermanentDirectory = namedtuple('PermanentDirectory', ('name',))
+class TempCrate(NamedTuple):
+    '''A temporary crate, built from some source text.  We handle these by
+    writing the text to a temp file and passing explicit `rustc` arguments.'''
+    text: str
 
-ResultInfo = namedtuple('ResultInfo', (
-    # Keys in `RefactorState.results` where the (old, new) result pair should
-    # be stored.
-    'dests',
-    # `True` if this result is produced by a `commit` command, `False`
-    # otherwise (for `write`).
-    'is_commit',
-))
+AnyCrate = Union[RealCrate, TempCrate]
+
+
+class PermanentDirectory(NamedTuple):
+    '''A simple TemporaryDirectory replacement, with just a `name` field.'''
+    name: str
+
+AnyDirectory = Union[PermanentDirectory, tempfile.TemporaryDirectory]
+
+
+ResultKey = int
+
+class ResultInfo(NamedTuple):
+    dests: List[ResultKey]
+    '''Keys in `RefactorState.results` where the (old, new) result pair should
+    be stored.'''
+
+    is_commit: bool
+    '''`True` if this result is produced by a `commit` command, `False`
+    otherwise (for `write`).'''
+
 
 FLAG_OPTS = {
         'revert',
@@ -49,37 +63,53 @@ STR_OPTS = {
 FLAG_TRUTHY = { '1', 'true', 'y', 'yes', 'on' }
 FLAG_FALSY = { '0', 'false', 'n', 'no', 'off' }
 
+RefactorCommand = List[str]
+
 class RefactorState:
-    def __init__(self, args):
+    args: argparse.Namespace
+
+    cur_crate: Optional[AnyCrate]
+
+    '''Accumulator of refactoring commands to run.  We try to run all commands
+    in one go for efficiency, and to avoid the need to keep track of rewritten
+    files.'''
+    pending_cmds: List[RefactorCommand]
+
+    pending_results: List[ResultInfo]
+    '''A `ResultInfo` for each refactoring result that will be produced by
+    running `pending_cmds`.  That is, there is an entry in `pending_results`
+    for each `commit` or `write` in `pending_cmds`.'''
+
+    results: Dict[ResultKey, Tuple[Dict[str, File], Dict[str, File]]]
+    '''A dict of refactoring results (pairs of old and new files), keyed on the
+    `key` argument passed to `force_write`.'''
+
+    all_files: List[File]
+    '''A list of all `File` objects that appear somewhere in `results`.  Note
+    that many `File`s appear twice in `results`, once as an old file and once
+    as a new one.'''
+
+    global_opts: Dict[str, Any]
+    '''The current global refactoring options.'''
+
+    def __init__(self, args: argparse.Namespace):
         self.args = args
 
         self.cur_crate = None
         if args.project_dir is not None:
             self.cur_crate = RealCrate(args.project_dir)
 
-        # Accumulator of refactoring commands to run.  We try to run all
-        # commands in one go for efficiency, and to avoid the need to keep
-        # track of rewritten files.
         self.pending_cmds = []
-
-        # A `ResultInfo` for each refactoring result that will be produced by
-        # running `pending_cmds`.  That is, there is an entry in
-        # `pending_results` for each `commit` or `write` in `pending_cmds`.
         self.pending_results = []
 
-        # A dict of refactoring results (pairs of old and new state), keyed on
-        # the `key` argument passed to `force_write`.
         self.results = {}
-
-        # A list of all `File` objects that appear somewhere in `results`.
-        # Note that many `File`s appear twice in `results`, once as an old file
-        # and once as a new one.
         self.all_files = []
 
-        # A dict of refactoring options, as key-value pairs.
         self.global_opts = {}
 
     def flush(self):
+        '''Process all pending commands, and clear the `pending_cmds`
+        buffer.'''
         if len(self.pending_cmds) == 0:
             assert len(self.pending_results) == 0
             return
@@ -101,7 +131,8 @@ class RefactorState:
         self.pending_cmds = []
         self.pending_results = []
 
-    def add_command(self, cmd):
+    def add_command(self, cmd: RefactorCommand):
+        '''Add a single refactoring command to run.'''
         assert len(cmd) > 0
         self.pending_cmds.append(cmd)
         if cmd[0] == 'commit':
@@ -109,7 +140,7 @@ class RefactorState:
         elif cmd[0] == 'write':
             self.pending_results.append(ResultInfo([], False))
 
-    def add_commands(self, key, cmds):
+    def add_commands(self, key: ResultKey, cmds: Iterable[RefactorCommand]):
         '''Add a block of refactoring commands to run.  Once the commands are
         actually run, the results will be stored under `key` in
         `self.results`.'''
@@ -125,20 +156,23 @@ class RefactorState:
 
         self.pending_results[-1].dests.append(key)
 
-    def set_crate(self, crate):
+    def set_crate(self, crate: AnyCrate):
         self.flush()
         self.cur_crate = crate
 
     def reset(self):
         self.flush()
 
-    def finish(self):
+    def finish(self) -> Dict[ResultKey, Tuple[Dict[str, File], Dict[str, File]]]:
         self.flush()
         # Cause an error on further `add_commands`
         self.pending_cmds = None
         return self.results
 
-    def parse_block_options(self, attrs):
+    def parse_block_options(self, attrs: List[str]) -> Dict[str, Any]:
+        '''Parse the attributes on a block to find any `literate`-specific
+        options, merge those with the current global options, and return a dict
+        of all options that apply to the block.'''
         opts = self.global_opts.copy()
 
         remaining_attrs = []
@@ -192,7 +226,9 @@ class RefactorState:
 
         return opts
 
-    def set_global_options(self, lines):
+    def set_global_options(self, lines: List[str]):
+        '''Update the current global options by parsing the lines of a
+        `refactor-options` block.'''
         attrs = ['refactor-options']
         for l in lines:
             l = l.strip()
@@ -208,7 +244,7 @@ class RefactorState:
 
 
 class ResultProcessor:
-    def __init__(self, all_files, dir_path):
+    def __init__(self, all_files: List[File], dir_path: str):
         self.all_files = all_files
         self.dir_path = dir_path
 
@@ -216,7 +252,8 @@ class ResultProcessor:
         self.prev_files = {}
         self.prev_marks = []
 
-    def next_result(self, clear_marks=False):
+    def next_result(self, clear_marks: bool=False) -> \
+            Tuple[Dict[str, File], Dict[str, File]]:
         '''Load and process the next refactoring result.  If `clear_marks` is
         set, the content of the `marks.json` file is ignored, as if the
         refactoring process cleared all marks at the end.'''
@@ -256,7 +293,7 @@ class ResultProcessor:
         return (old, new)
 
 
-def refactor_crate(crate, cmds):
+def refactor_crate(crate: AnyCrate, cmds: List[RefactorCommand]):
     '''Run refactoring commands `cmds` on `crate`.  If `crate` is a
     `TempCrate`, return the `TemporaryDirectory` where the refactoring was
     done.  Otherwise, return `None`.'''
@@ -297,15 +334,18 @@ def refactor_crate(crate, cmds):
     return work_dir
 
 
-class BisectRange:
+T = TypeVar('T')
+
+class BisectRange(Generic[T]):
     '''A sequence of items that can be queried to find every item `x` where
     `start < f(x) < end`.'''
-    def __init__(self, xs, f):
+    def __init__(self, xs: Iterable[T], f: Callable[[T], int]):
         keyed_vals = sorted(((x, f(x)) for x in xs), key=lambda x_fx: x_fx[1])
         self.xs = [x for x, fx in keyed_vals]
         self.fxs = [fx for x, fx in keyed_vals]
 
-    def iter_range(self, start, end, include_start=False, include_end=False):
+    def iter_range(self, start: int, end: int,
+            include_start: bool=False, include_end: bool=False):
         if start is None:
             i0 = 0
         elif include_start:
@@ -323,7 +363,9 @@ class BisectRange:
         for i in range(i0, i1):
             yield self.xs[i]
 
-def subspan_src(span, lo, hi):
+JsonDict = Dict[str, Any]
+
+def subspan_src(span: JsonDict, lo: int, hi: int):
     '''Get the source text of the subspan of JSON `span` that ranges from `lo
     .. hi`.'''
     assert span['lo'] <= lo
@@ -331,7 +373,7 @@ def subspan_src(span, lo, hi):
     start = span['lo']
     return span['src'][lo - start : hi - start]
 
-def apply_rewrites(span, rws, nodes):
+def apply_rewrites(span: JsonDict, rws: List[JsonDict], nodes: List[JsonDict]):
     '''Given a "new" span and its corresponding rewrites and nodes, return the
     rewritten text for that span along with a list of all node spans in the
     output (including those from recursive rewrites).'''
@@ -377,7 +419,7 @@ def apply_rewrites(span, rws, nodes):
     nodes_by_lo = BisectRange(range(len(nodes)), f=lambda i: nodes[i]['span']['lo'])
     nodes_by_hi = BisectRange(range(len(nodes)), f=lambda i: nodes[i]['span']['hi'])
 
-    def emit(next_old_pos, text):
+    def emit(next_old_pos: int, text: Optional[str]):
         nonlocal old_pos, new_pos
 
         if text is None:
@@ -469,15 +511,28 @@ def apply_rewrites(span, rws, nodes):
     return ''.join(parts), new_nodes
 
 
-# A Markdown code block (`literate.parse.Code`), augmented with the state of
-# the crate before and after running the contained refactoring scripts.
-RefactorCode = namedtuple('RefactorCode', ('attrs', 'lines', 'opts', 'old', 'new'))
+class RefactorCode(NamedTuple):
+    '''A Markdown code block (like `literate.parse.Code`), augmented with the
+    state of the crate before and after running the contained refactoring
+    scripts.'''
+    attrs: List[str]
+    lines: List[str]
+
+    opts: Dict[str, Any]
+    '''Rendering options that apply to this block.'''
+
+    old: Dict[str, File]
+    '''The files of the project prior to this refactoring step.'''
+    new: Dict[str, File]
+    '''The files of the project following this refactoring step.'''
 
 # Reexport for convenience
 Text = parse.Text
 Code = parse.Code
 
-def split_commands(code: str) -> [[str]]:
+Block = Union[Text, Code, RefactorCode]
+
+def split_commands(code: str) -> List[RefactorCommand]:
     '''Parse a string as a sequence of shell words, then split those words into
     refactoring commands on `';'` separators.'''
     words = shlex.split(code)
@@ -497,7 +552,8 @@ def split_commands(code: str) -> [[str]]:
 
     return cmds
 
-def run_refactor_scripts(args, blocks):
+def run_refactor_scripts(args: argparse.Namespace,
+        blocks: List[parse.Block]) -> Tuple[List[Block], List[File]]:
     # Run all refactoring commands, and get the refactoring results.
     rs = RefactorState(args)
     block_opts = {}

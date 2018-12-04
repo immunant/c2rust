@@ -1,11 +1,9 @@
 from collections import namedtuple
 import html
-import pygments.formatters
-import pygments.lexers
-import pygments.token
+from typing import Dict, Optional, Any
 
 from literate.annot import Span, fill_annot, cut_annot
-from literate.file import File, Diff
+from literate.file import File, Line, Diff
 from literate.points import Point, map_points, merge_points, \
         annot_starts, annot_ends, cut_annot_at_points
 import literate.diff
@@ -58,7 +56,7 @@ def mark_desc(f: File, node_id: int) -> str:
 
     return '%s: %s' % (mark_str, '; '.join(parts))
 
-def render_line(line, f):
+def render_line(line: Line, f: File) -> str:
     '''Render HTML output for a single line of a file.  `f` should be the file
     containing `line`.'''
     parts = []
@@ -208,7 +206,8 @@ def make_diff(f1: File, f2: File, context_diff: bool) -> Diff:
     literate.marks.init_hunk_boundary_marks(d)
     return d
 
-def render_diff(old_files, new_files, opts) -> str:
+def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
+        opts: Dict[str, Any]) -> Optional[str]:
     '''Render a diff between each file in `new_files` and the corresponding one
     in `old_files`.  The result is either a string of HTML source, or `None` if
     nothing changed.'''
