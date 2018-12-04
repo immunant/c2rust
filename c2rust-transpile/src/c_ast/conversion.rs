@@ -1442,8 +1442,15 @@ impl ConversionContext {
                         }
                     }
 
-                    let record = CDeclKind::Struct
-                        { name, fields, is_packed, manual_alignment, max_field_alignment, platform_byte_size, platform_alignment };
+                    let record = CDeclKind::Struct {
+                        name,
+                        fields,
+                        is_packed,
+                        manual_alignment,
+                        max_field_alignment,
+                        platform_byte_size,
+                        platform_alignment,
+                    };
 
                     self.add_decl(new_id, located(node, record));
                     self.processed_nodes.insert(new_id, RECORD_DECL);
@@ -1479,7 +1486,7 @@ impl ConversionContext {
                     let typ = self.visit_qualified_type(typ_id);
                     let bitfield_width = node.extras[1].as_u64();
                     let platform_bit_offset = node.extras[2].as_u64().expect("Did not find field bit offset");
-                    let platform_type_bitwidth = node.extras[2].as_u64().expect("Did not find field bitwidth");
+                    let platform_type_bitwidth = node.extras[3].as_u64().expect("Did not find field bitwidth");
                     let field = CDeclKind::Field { name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth };
                     self.add_decl(new_id, located(node, field));
                     self.processed_nodes.insert(new_id, FIELD_DECL);

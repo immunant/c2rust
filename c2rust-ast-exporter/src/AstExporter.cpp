@@ -1214,6 +1214,7 @@ class TranslateASTVisitor final
 
           auto def = D->getDefinition();
           auto recordAlignment = 0;
+          auto byteSize = 0;
 
           std::vector<void*> childIds;
           if (def) {
@@ -1228,12 +1229,13 @@ class TranslateASTVisitor final
 
               const ASTRecordLayout &layout = this->Context->getASTRecordLayout(def);
               recordAlignment = layout.getAlignment().getQuantity();
+              byteSize = layout.getSize().getQuantity();
           }
 
           auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;
 
           encode_entry(D, tag, childIds, QualType(),
-          [D,def,recordAlignment](CborEncoder *local){
+          [D,def,recordAlignment,byteSize](CborEncoder *local){
 
               // 1. Encode name or null
               auto name = D->getNameAsString();
@@ -1275,6 +1277,9 @@ class TranslateASTVisitor final
 
               // 7. Encode the platform specific alignment of this record
               cbor_encode_uint(local, recordAlignment);
+
+              // 6. Encode the platform specific byte size of this record
+              cbor_encode_uint(local, byteSize);
           });
 
           return true;

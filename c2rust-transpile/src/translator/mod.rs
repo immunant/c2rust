@@ -942,18 +942,15 @@ impl<'c> Translation<'c> {
 
                             let typ = self.convert_type(typ.ctype)?;
 
-                            if has_bitfields {
-                                field_info.push((name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth));
-                            } else {
-                                field_entries.push(mk().span(s).pub_().struct_field(name, typ))
-                            }
+                            field_info.push((name.clone(), typ.clone(), bitfield_width, platform_bit_offset, platform_type_bitwidth));
+                            field_entries.push(mk().span(s).pub_().struct_field(name, typ));
                         }
                         _ => return Err(format!("Found non-field in record field list")),
                     }
                 }
 
                 if has_bitfields {
-                    return self.convert_bitfield_struct_decl(name, platform_alignment, s, field_info);
+                    return self.convert_bitfield_struct_decl(name, manual_alignment, platform_alignment, platform_byte_size, s, field_info);
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
