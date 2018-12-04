@@ -27,8 +27,8 @@ type NameTypeWidth = (String, CQualTypeId, Option<u64>, u64);
 
 #[derive(Debug)]
 enum FieldType {
-    BitfieldGroup(String, u64, Vec<()>),
-    Padding(u64),
+    BitfieldGroup { field_name: String, bytes: u64, attrs: Vec<(String, P<Ty>, String)> },
+    Padding { bytes: u64 },
     Regular(StructField),
 }
 
@@ -95,8 +95,9 @@ impl<'a> Translation<'a> {
         let mut reorganized_fields = Vec::new();
         let mut last_bitfield_group: Option<FieldType> = None;
         let mut next_byte_pos = 0;
+        let mut field_entries = Vec::with_capacity(field_info.len());
 
-        for (field_name, ty, bitfield_width, bit_index, platform_ty_bitwidth) in field_info.clone() {
+        for (field_name, ty, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
             println!("Found field {} w/ next_byte_pos: {}, bit_index: {}", field_name, next_byte_pos, bit_index);
 
             let bitfield_width = match bitfield_width {
@@ -121,7 +122,7 @@ impl<'a> Translation<'a> {
                     // Need to add padding first
                     // println!("bit_index: {} / 8 - next_byte_pos: {}", bit_index, next_byte_pos);
                     if byte_diff > 1 {
-                        reorganized_fields.push(FieldType::Padding(byte_diff));
+                        reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
                     }
 
                     let field = mk().struct_field(field_name, ty);
@@ -141,23 +142,37 @@ impl<'a> Translation<'a> {
             if bit_index / 8 > next_byte_pos {
                 let byte_diff = (bit_index / 8) - next_byte_pos;
 
-                if byte_diff > 1 {
-                    reorganized_fields.push(FieldType::Padding(byte_diff));
-                }
+                // println!("Hello?: {}", byte_diff);
+
+                // if byte_diff > 0 {
+                reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
+                // }
             }
 
             match last_bitfield_group {
-                Some(FieldType::BitfieldGroup(ref mut name, ref mut byte_width, ref mut bitfields)) => {
+                Some(FieldType::BitfieldGroup { field_name: ref mut name, ref mut bytes, ref mut attrs }) => {
                     name.push('_');
                     name.push_str(&field_name);
 
-                    *byte_width += (bitfield_width / 8) + 1;
+                    *bytes += bitfield_width / 8 + 1;
+
+                    let bit_range = format!("{}..={}", bit_index, bit_index + bitfield_width - 1);
+
+                    attrs.push((field_name.clone(), ty, bit_range));
                 },
                 Some(_) => unreachable!("Found last bitfield group which is not a group"),
                 None => {
                     let byte_pos = bitfield_width / 8 + 1;
+                    let bit_range = format!("{}..={}", bit_index, bit_index + bitfield_width - 1);
+                    let attr_info = vec![
+                        (field_name.clone(), ty, bit_range),
+                    ];
 
-                    last_bitfield_group = Some(FieldType::BitfieldGroup(field_name.clone(), byte_pos, Vec::new()));
+                    last_bitfield_group = Some(FieldType::BitfieldGroup {
+                        field_name,
+                        bytes: byte_pos,
+                        attrs: attr_info,
+                    });
                 },
             }
 
@@ -175,55 +190,60 @@ impl<'a> Translation<'a> {
 
         // Need to add padding to end if we haven't hit the expected total byte size
         if byte_diff > 1 {
-            reorganized_fields.push(FieldType::Padding(byte_diff));
+            reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
         }
 
         // End
-        println!("{:#?}", reorganized_fields);
+        // println!("{:#?}", reorganized_fields);
 
-        let mut field_entries = Vec::with_capacity(field_info.len());
+        let mut padding_count = 0;
 
-        for (field_name, ty, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
-            let bitfield_width = match bitfield_width {
-                // Bitfield widths of 0 should just be markers for clang,
-                // we shouldn't need to explicitly handle it ourselves
-                Some(0) => continue,
-                None => {
+        for field_type in reorganized_fields {
+            match field_type {
+                FieldType::BitfieldGroup { field_name, bytes, attrs } => {
+                    let ty = mk().array_ty(
+                        mk().ident_ty("u8"),
+                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                    );
+                    let mut field = mk();
+                    let field_attrs = attrs.iter().map(|attr| {
+                        let ty_str = match &attr.1.node {
+                            TyKind::Path(_, path) => format!("{}", path),
+                            _ => unreachable!("Found type other than path"),
+                        };
+                        let field_attr_items = vec![
+                            assigment_metaitem("name", &attr.0),
+                            assigment_metaitem("ty", &ty_str),
+                            assigment_metaitem("bits", &attr.2),
+                        ];
+
+                        mk().meta_item("bitfield", MetaItemKind::List(field_attr_items))
+                    });
+
+                    for field_attr in field_attrs {
+                        field = field.meta_item_attr(AttrStyle::Outer, field_attr);
+                    }
+
+                    field_entries.push(field.struct_field(field_name, ty));
+                },
+                FieldType::Padding { bytes } => {
+                    let field_name = if padding_count == 0 {
+                        "_pad".into()
+                    } else {
+                        format!("_pad{}", padding_count)
+                    };
+                    let ty = mk().array_ty(
+                        mk().ident_ty("u8"),
+                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                    );
                     let field = mk().struct_field(field_name, ty);
 
+                    padding_count += 1;
+
                     field_entries.push(field);
-                    continue;
                 },
-                Some(bw) => bw,
-            };
-
-            // REVIEW: If a bitfield is unnamed (even if non 0), can we skip it?
-
-            // FIXME: len dep on total compressed size
-            let base_ty = mk().array_ty(
-                mk().ident_ty("u8"),
-                mk().lit_expr(mk().int_lit(bitfield_width as u128 / 8 + 1, LitIntType::Unsuffixed)),
-            );
-            // let field_generic_tys = mk().angle_bracketed_args(vec![base_ty, mk().ident_ty(bit_struct_name.clone())]);
-            // let field_ty = mk().path_segment_with_args("Integer", field_generic_tys);
-            let bit_range = format!("{}..={}", bit_index, bit_index + bitfield_width - 1);
-            let ty_str = match &ty.node {
-                TyKind::Path(_, path) => format!("{}", path),
-                _ => unreachable!("Found type other than path"),
-            };
-            let field_attr_items = vec![
-                assigment_metaitem("name", &field_name),
-                assigment_metaitem("ty", &ty_str),
-                assigment_metaitem("bits", &bit_range),
-            ];
-            // TODO: May need more than one attr on the field
-            let field_attr = mk().meta_item("bitfield", MetaItemKind::List(field_attr_items));
-            let field = mk()
-                .meta_item_attr(AttrStyle::Outer, field_attr)
-                // .struct_field(field_name, mk().path_ty(vec![field_ty]));
-                .struct_field(field_name, base_ty);
-
-            field_entries.push(field);
+                FieldType::Regular(field) => field_entries.push(field),
+            }
         }
 
         let repr_items = vec![
@@ -235,7 +255,7 @@ impl<'a> Translation<'a> {
         let item = mk()
             .span(span)
             .pub_()
-            .call_attr("derive", vec!["Copy", "Clone", "BitfieldStruct"])
+            .call_attr("derive", vec!["BitfieldStruct", "Clone", "Copy"])
             .meta_item_attr(AttrStyle::Outer, repr_attr)
             .struct_item(name, field_entries);
 
