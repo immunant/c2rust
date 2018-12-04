@@ -77,15 +77,23 @@ impl<'c> Translation<'c> {
     pub fn convert_vaarg(&self, ctx: ExprContext, ty: CQualTypeId, val_id: CExprId) -> Result<WithStmts<P<Expr>>, String> {
         if self.tcfg.translate_valist {
             // https://github.com/rust-lang/rust/pull/49878/files
-            let val = self.convert_expr(ctx.used(), val_id)?;
-            let ty = self.convert_type(ty.ctype)?;
 
-            Ok(val.map(|va| {
-                let path = mk().path_segment_with_args(
-                    mk().ident("arg"),
-                    mk().angle_bracketed_args(vec![ty]));
-                mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>)
-            }))
+            match self.ast_context[val_id].kind {
+                CExprKind::ImplicitCast(_, subexpr, CastKind::ArrayToPointerDecay, _, _) => {
+                    let val = self.convert_expr(ctx.used(), subexpr)?;
+                    let ty = self.convert_type(ty.ctype)?;
+
+                    Ok(val.map(|va| {
+                        let path = mk().path_segment_with_args(
+                            mk().ident("arg"),
+                            mk().angle_bracketed_args(vec![ty]));
+                        mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>)
+                    }))
+                }
+                _ => return Err(format!("va_arg is expected to have an implicit cast")) 
+            }
+
+            
 
         } else {
             Err(format!("Variable argument lists are not supported (requires --translate-valist)"))
