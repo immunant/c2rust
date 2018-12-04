@@ -86,17 +86,17 @@ pub enum ReplaceMode {
 
 #[derive(Copy, Clone, Debug)]
 pub struct ExprContext {
-    use_: ExprUse,
+    used: bool,
     is_static: bool,
     decay_ref: DecayRef,
     va_decl: Option<CDeclId>,
 }
 
 impl ExprContext {
-    pub fn used(self) -> Self { ExprContext { use_: ExprUse::Used, .. self } }
-    pub fn unused(self) -> Self { ExprContext { use_: ExprUse::Unused, .. self } }
-    pub fn is_used(&self) -> bool { self.use_ == ExprUse::Used }
-    pub fn is_unused(&self) -> bool { self.use_ == ExprUse::Unused }
+    pub fn used(self) -> Self { ExprContext { used: true, .. self } }
+    pub fn unused(self) -> Self { ExprContext { used: false, .. self } }
+    pub fn is_used(&self) -> bool { self.used }
+    pub fn is_unused(&self) -> bool { !self.used }
     pub fn decay_ref(self) -> Self { ExprContext { decay_ref: DecayRef::Yes, .. self } }
     pub fn not_static(self) -> Self { ExprContext { is_static: false, .. self } }
     pub fn static_(self) -> Self { ExprContext { is_static: true, .. self } }
@@ -291,7 +291,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> Strin
 
     let mut t = Translation::new(ast_context, tcfg);
     let ctx = ExprContext {
-        use_: ExprUse::Unused,
+        used: true,
         is_static: false,
         decay_ref: DecayRef::Default,
         va_decl: None,
@@ -1933,7 +1933,7 @@ impl<'c> Translation<'c> {
     /// The `use_` argument informs us how the C expression we are translating is used in the C
     /// program. See `ExprUse` for more information.
     ///
-    /// In the case that `use_` is `ExprUse::Unused`, all side-effecting components will be in the
+    /// In the case that `use_` is unused, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
     pub fn convert_expr(&self, mut ctx: ExprContext, expr_id: CExprId) -> Result<WithStmts<P<Expr>>, String> {
@@ -2022,7 +2022,7 @@ impl<'c> Translation<'c> {
                 let lhs = self.convert_expr(ctx, lhs)?;
                 let rhs = self.convert_expr(ctx, rhs)?;
 
-                if ctx.use_ == ExprUse::Unused {
+                if ctx.is_unused() {
                     let then: P<Block> = mk().block(lhs.stmts);
                     let els: P<Expr> = mk().block_expr(mk().block(rhs.stmts));
 
@@ -2039,7 +2039,7 @@ impl<'c> Translation<'c> {
             },
 
             CExprKind::BinaryConditional(ty, lhs, rhs) => {
-                if ctx.use_ == ExprUse::Unused {
+                if ctx.is_unused() {
                     let mut lhs = self.convert_condition(ctx, false, lhs)?;
 
                     lhs.stmts.push(
@@ -2296,7 +2296,7 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new(block))
             }
             _ => {
-                if let ExprUse::Unused = ctx.use_ {
+                if ctx.is_unused()  {
                     let val = self.panic("Empty statement expression is not supposed to be used");
                     Ok(WithStmts { stmts: vec![], val })
                 } else {

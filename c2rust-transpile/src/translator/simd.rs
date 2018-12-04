@@ -151,7 +151,7 @@ impl<'c> Translation<'c> {
         self.import_simd_function(fn_name)?;
 
         let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
-        let first_param = self.convert_expr(ExprContext { use_: ExprUse::Used, ..ctx }, first_expr_id)?;
+        let first_param = self.convert_expr(ctx.used(), first_expr_id)?;
         let second_expr_id = match self.ast_context.c_exprs[&args[1]].kind {
             // For some reason there seems to be an incorrect implicit cast here to char
             // it's possible the builtin takes a char even though the function takes an int

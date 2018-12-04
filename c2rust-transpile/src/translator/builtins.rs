@@ -238,13 +238,13 @@ impl<'c> Translation<'c> {
         stmts.append(&mut src.stmts);
         stmts.append(&mut len.stmts);
 
-        let val = match ctx.use_ {
-            ExprUse::Used => memcpy_expr,
-            ExprUse::Unused => {
+        let val =
+            if ctx.is_used() {
+                memcpy_expr
+            } else {
                 stmts.push(mk().semi_stmt(memcpy_expr));
                 self.panic("__builtin_memcpy not used")
-            }
-        };
+            };
 
         Ok(WithStmts { stmts, val })
     }
