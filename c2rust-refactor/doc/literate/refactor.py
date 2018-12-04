@@ -386,12 +386,50 @@ def apply_rewrites(span, rws, nodes):
             text = subspan_src(span, old_pos, next_old_pos)
 
             offset = new_pos - old_pos
+            # These checks are carefully designed to give good results around
+            # insertions (where the replaced text has zero width).
+            #
+            # Suppose we have two spans, A from 0 .. 10 and B from 10 .. 20,
+            # and our only rewrites are two insertions at position 10, each
+            # inserting 5 characters.  The "correct" output is for A to cover
+            # the range 0 .. 10 and B to cover 20 .. 30 in the output text,
+            # with 10 .. 20 (the inserted text) being unannotated.
+            #
+            # We reach this case of `emit` three times: once for the reused
+            # text 0 .. 10 -> 0 .. 10 (old -> new indices), once for the empty
+            # string 10 .. 10 -> 15 .. 15 between the two rewrites, and once
+            # for 10 .. 20 -> 20 .. 30.
+            #
+            # Note we can't simply ignore the middle case by filtering out
+            # zero-width reuses, because there could be a zero-width reuse in
+            # between two non-zero-(old-)width rewrites.  And also note that we
+            # can't simply tweak `include_start` and `include_end` to get the
+            # result we want, because `A.hi` and `B.lo` both coincide with both
+            # the start and end positions of the middle case.
+            #
+            # Our solution is to include both ends in `iter_range`, but
+            # postprocess (the additional `if` inside the second loop) so that
+            # if the same old position is encountered multiple times, any `hi`
+            # endpoints at that old position stay at the new position
+            # corresponding to the first encounter, while any `lo` endpoints
+            # stay at the last encounter.  So in our example, `A.hi` is 10 from
+            # the first of the three cases, while `B.lo` is 20 from the last of
+            # them.
+            #
+            # For cases that aren't near zero-(old-)width insertions, this is
+            # all irrelevant: if the same old position is encountered multiple
+            # times, it must correspond to the same new position at each
+            # encounter, unless an insertion happened in between.
+
             for i in nodes_by_lo.iter_range(old_pos, next_old_pos,
                     include_start=True, include_end=True):
+                # Keep only the last result (always overwrite)
                 node_ends[i][0] = nodes[i]['span']['lo'] + offset
             for i in nodes_by_hi.iter_range(old_pos, next_old_pos,
                     include_start=True, include_end=True):
-                node_ends[i][1] = nodes[i]['span']['hi'] + offset
+                # Keep only the first result
+                if node_ends[i][1] is None:
+                    node_ends[i][1] = nodes[i]['span']['hi'] + offset
 
         if len(text) > 0:
             parts.append(text)
