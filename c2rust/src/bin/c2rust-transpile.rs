@@ -14,7 +14,7 @@ fn main() {
         .get_matches();
 
     // Build a TranspilerConfig from the command line
-    let c_path = Path::new(matches.value_of("INPUT").unwrap()).canonicalize().unwrap();
+    let cc_json_path = Path::new(matches.value_of("INPUT").unwrap()).canonicalize().unwrap();
     let extra_args: Vec<&str> = match matches.values_of("extra-clang-args") {
         Some(args) => args.collect(),
         None => Vec::new(),
@@ -47,8 +47,15 @@ fn main() {
         reduce_type_annotations:matches.is_present("reduce-type-annotations"),
         reorganize_definitions: matches.is_present("reorganize-definitions"),
         emit_module:            matches.is_present("emit-module"),
-        main_file:              c_path.with_extension(""),
-        output_file:            matches.value_of("output-file").map(|s| s.to_string()),
+        emit_build_files:       matches.is_present("emit-build-files"),
+        main_file: {
+            if matches.is_present("main-file") {
+                Some(Path::new(matches.value_of("main-file").unwrap()).canonicalize().unwrap())
+            } else {
+                None
+            }
+        },
+//        output_file:            matches.value_of("output-file").map(|s| s.to_string()),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
                 Some("panic") => true,
@@ -59,5 +66,5 @@ fn main() {
         replace_unsupported_decls: ReplaceMode::Extern,
     };
 
-    c2rust_transpile::transpile(tcfg, &c_path, &extra_args);
+    c2rust_transpile::transpile(tcfg, &cc_json_path, &extra_args);
 }

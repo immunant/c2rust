@@ -102,19 +102,27 @@ args:
       long: emit-module
       help: Emit the .rs file as a module instead of a crate, excluding the crate preamble
       takes_value: false
+  - emit-build-files:
+      long: emit-build-files
+      help: emit Rust build files, i.e., Cargo.toml for a library (or a binary if -m/--main is given
+      takes_value: false
   - fail-on-error:
       long: fail-on-error
       help: Fail to translate a module when a portion is not able to be translated
       takes_value: false
+  - main-file:
+      long: main-file
+      help: emit Rust build files for a binary using the main function in the specified translation unit (implies -e/--emit-build-files)
+      takes_value: true
   - reduce-type-annotations:
       long: reduce-type-annotations
       help: Reduces the number of explicit type annotations where it should be safe to do so
       takes_value: false
-  - output-file:
-      long: output
-      short: o
-      help: Write the output to a specified file
-      takes_value: true
+#  - output-file:
+#      long: output
+#      short: o
+#      help: Write the output to a specified file
+#      takes_value: true
   - reorganize-definitions:
       long: reorganize-definitions
       help: Output file in such a way that the refactoring tool can deduplicate code

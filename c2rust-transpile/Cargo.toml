@@ -18,6 +18,7 @@ indexmap = { version = "1.0.1", features = ["serde-1"] }
 c2rust-ast-builder = { path = "../c2rust-ast-builder" }
 libc = "0.2"
 c2rust-ast-exporter = { path = "../c2rust-ast-exporter" }
+handlebars = "1.1.0"
 
 [features]
 # Force static linking of LLVM

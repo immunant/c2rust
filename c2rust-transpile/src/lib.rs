@@ -27,6 +27,7 @@ use c2rust_ast_exporter as ast_exporter;
 
 pub mod renamer;
 pub mod convert_type;
+pub mod templates;
 pub mod translator;
 pub mod c_ast;
 pub mod rust_ast;
@@ -60,19 +61,29 @@ pub struct TranspilerConfig {
     pub simplify_structures: bool,
     pub panic_on_translator_failure: bool,
     pub emit_module: bool,
+    pub emit_build_files: bool,
     pub fail_on_error: bool,
     pub replace_unsupported_decls: ReplaceMode,
     pub translate_valist: bool,
     pub reduce_type_annotations: bool,
     pub reorganize_definitions: bool,
 
-    pub main_file: PathBuf,
-    pub output_file: Option<String>,
+    pub main_file: Option<PathBuf>,
 }
 
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
-pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
+pub fn transpile(mut tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
+
+    println!("{:?}", tcfg);
+
+    // TODO: we should probably just remove the translate_entry flag
+    tcfg.translate_entry = true;
+    if tcfg.emit_build_files {
+        tcfg.emit_module = true;
+
+        templates::emit_templates(&tcfg)
+    }
 
     /* MacOS Mojave does not have `/usr/include` even if the command line
      * tools are installed. The fix is to run the developer package:
@@ -138,9 +149,9 @@ fn get_compile_commands(compile_commands: &Path) -> Result<Vec<CompileCmd>, Box<
     Ok(v)
 }
 
-fn transpile_single(tcfg: &TranspilerConfig, input_file: &Path, cc_db: &Path, extra_clang_args: &[&str]) {
+fn transpile_single(tcfg: &TranspilerConfig, input_path: &Path, cc_db: &Path, extra_clang_args: &[&str]) {
     // Extract the untyped AST from the CBOR file
-    let untyped_context = match ast_exporter::get_untyped_ast(input_file, cc_db, extra_clang_args) {
+    let untyped_context = match ast_exporter::get_untyped_ast(input_path, cc_db, extra_clang_args) {
         Err(e) => {
             eprintln!("Error: {:}", e);
             process::exit(1);
@@ -171,8 +182,11 @@ fn transpile_single(tcfg: &TranspilerConfig, input_file: &Path, cc_db: &Path, ex
     }
 
     // Perform the translation
-    let translated_string = translator::translate(typed_context, &tcfg);
-    let output_path = get_output_path(&tcfg);
+    let main_file = input_path.with_extension("");
+    println!("extenzione: {:?}", main_file);
+    panic!("at the disco");
+    let translated_string = translator::translate(typed_context, &tcfg, main_file);
+    let output_path = get_output_path(input_path);
 
     let mut file = match File::create(output_path) {
         Ok(file) => file,
@@ -185,14 +199,8 @@ fn transpile_single(tcfg: &TranspilerConfig, input_file: &Path, cc_db: &Path, ex
     };
 }
 
-fn get_output_path(tcfg: &TranspilerConfig) -> PathBuf {
-    if let Some(output_file) = tcfg.output_file.as_ref() {
-        return Path::new(output_file).to_path_buf();
-    }
-
-    // main_file does not have an extension; set_extension will add an .rs
-    // extension
-    let mut path_buf = tcfg.main_file.clone();
+fn get_output_path(input_path: &Path) -> PathBuf {
+    let mut path_buf = PathBuf::from(input_path);
 
     // When an output file name is not explictly specified, we should convert files
     // with dashes to underscores, as they are not allowed in rust file names.
