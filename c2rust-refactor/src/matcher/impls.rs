@@ -76,10 +76,10 @@ impl TryMatch for Pat {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(&mac.node.tts,
-                                          |p| p.parse_pat().map(|p| p.into_inner()),
+                                          |p| p.parse_pat(None).map(|p| p.into_inner()),
                                           target),
                 "typed" => mcx.do_typed(&mac.node.tts,
-                                        |p| p.parse_pat().map(|p| p.into_inner()),
+                                        |p| p.parse_pat(None).map(|p| p.into_inner()),
                                         target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };

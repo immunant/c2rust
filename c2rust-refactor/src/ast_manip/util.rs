@@ -108,7 +108,7 @@ impl PatternSymbol for TraitItem {
 pub fn with_span_text<F: FnOnce(&str)>(cm: &SourceMap, span: Span, callback: F) -> bool {
     let lo = cm.lookup_byte_offset(span.lo());
     let hi = cm.lookup_byte_offset(span.hi());
-    let file_src = match lo.fm.src.as_ref() {
+    let file_src = match lo.sf.src.as_ref() {
         Some(x) => x,
         None => return false,
     };

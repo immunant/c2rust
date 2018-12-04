@@ -31,7 +31,7 @@ impl Transform for ByteStrToStr {
 
             e.map(|e| {
                 let node = match e.node {
-                    ExprKind::Lit(l) => ExprKind::Lit(l.map(|l| {
+                    ExprKind::Lit(l) => {
                         let node = match l.node {
                             LitKind::ByteStr(bs) => {
                                 let s = String::from_utf8((*bs).clone()).unwrap();
@@ -39,8 +39,8 @@ impl Transform for ByteStrToStr {
                             },
                             n => n,
                         };
-                        Lit { node, ..l }
-                    })),
+                        ExprKind::Lit(Lit { node, ..l })
+                    },
                     n => n,
                 };
                 Expr { node, ..e }
@@ -72,7 +72,7 @@ impl Transform for RemoveNullTerminator {
 
             e.map(|e| {
                 let node = match e.node {
-                    ExprKind::Lit(l) => ExprKind::Lit(l.map(|l| {
+                    ExprKind::Lit(l) => {
                         let node = match l.node {
                             LitKind::ByteStr(bs) => {
                                 if bs.last() == Some(&0) {
@@ -94,8 +94,8 @@ impl Transform for RemoveNullTerminator {
                             },
                             n => n,
                         };
-                        Lit { node, ..l }
-                    })),
+                        ExprKind::Lit(Lit { node, ..l })
+                    },
                     n => n,
                 };
                 Expr { node, ..e }

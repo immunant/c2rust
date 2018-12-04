@@ -76,6 +76,11 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 mk().ident_ty(param.name)
             }
         },
+        // `Bound` is "used only when preparing a trait query", so hopefully we never actually
+        // encouter one.
+        Bound(..) => mk().infer_ty(),   
+        // No idea what `Placeholder` is, but it sounds like something rustc-internal.
+        Placeholder(..) => mk().infer_ty(),
         Infer(_) => mk().infer_ty(),
         Error => mk().infer_ty(), // unsupported
     }
@@ -99,7 +104,7 @@ fn hir_expr_to_expr(e: &hir::Expr) -> P<Expr> {
         Unary(op, ref a) => {
             mk().unary_expr(op.as_str(), hir_expr_to_expr(a))
         },
-        Lit(ref l) => mk().lit_expr(l),
+        Lit(ref l) => mk().lit_expr((**l).clone()),
         ref k => panic!("unsupported variant in hir_expr_to_expr: {:?}", k),
     }
 }
@@ -298,6 +303,7 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         Node::AnonConst(_) |
         Node::Expr(_) |
         Node::Stmt(_) |
+        Node::PathSegment(_) |
         Node::Ty(_) |
         Node::TraitRef(_) |
         Node::Pat(_) |

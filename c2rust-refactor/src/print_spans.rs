@@ -28,7 +28,7 @@ pub fn span_desc(cm: &SourceMap, span: Span) -> String {
     let lo = cm.lookup_byte_offset(span.lo());
     let hi = cm.lookup_byte_offset(span.hi());
     let mut s = format!("{}: {} .. {} (raw = {:?} .. {:?})",
-                        lo.fm.name, lo.pos.0, hi.pos.0, span.lo(), span.hi());
+                        lo.sf.name, lo.pos.0, hi.pos.0, span.lo(), span.hi());
 
     let span2 = span.source_callsite();
     if span2 != span {
@@ -84,7 +84,7 @@ pub fn print_spans<T: Visit>(x: &T, cm: &SourceMap) {
 pub fn print_one_span<T: Visit>(id: usize, root: &T, cm: &SourceMap, msg: &str) {
     let mut found = false;
     visit_nodes(root, |i: &Item| {
-        if i.id == NodeId::new(id) {
+        if i.id == NodeId::from_usize(id) {
             info!("{:?}: {} ({})", i.id, span_desc(cm, i.span), msg);
             found = true;
         }
