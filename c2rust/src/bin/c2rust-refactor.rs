@@ -9,8 +9,6 @@ use clap::{App, ArgMatches};
 use c2rust_refactor::{file_io, RustcArgSource, Options, Cursor, Mark, Command};
 
 fn main() {
-    env_logger::init();
-
     let yaml = load_yaml!("../refactor.yaml");
     let args = App::from_yaml(yaml).get_matches();
 

@@ -36,13 +36,14 @@ C2Rust requires LLVM 6 or 7 and its corresponding libraries and clang compiler. 
         brew install llvm python3 cmake
 
 
-A rust installation with cargo is also required on all platforms, see: [rustup](https://rustup.rs/).
+A rust installation with [Rustup](https://rustup.rs/) is also required on all platforms.
 
 
 ## Building C2Rust
 
-    $ cd c2rust-transpile
-    $ cargo build
+    $ cargo build --release
+
+This builds the `c2rust` tool in the `target/release/` directory.
 
 On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:
 
@@ -52,8 +53,7 @@ If you have trouble with cargo build, the [developer docs](docs/README-developer
 
 # Translating C to Rust
 
-The translator is driven by a `compile_commands.json` file. This is a [standard](https://clang.llvm.org/docs/JSONCompilationDatabase.html) way to capture compiler invocations and is used by many other tools. The best way to [generate 
- `compile_commands.json` files](#generating-compile_commandsjson-files) depends on your build system. 
+The translation tool first needs to know the existing compiler commands used to build the C code. To provide this information, you will need to generate a [standard](https://clang.llvm.org/docs/JSONCompilationDatabase.html) `compile_commands.json` file. Many build systems can automatically generate this file, as it is used by many other tools, but see [below](#generating-compile_commandsjson-files) for recommendations on how to generate this file for common build processes.
 
     $ ./scripts/transpile.py path/to/compile_commands.json
 

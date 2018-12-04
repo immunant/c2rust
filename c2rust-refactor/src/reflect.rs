@@ -309,7 +309,14 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
 }
 
 
-pub fn register_commands(reg: &mut Registry) {
+/// # `test_reflect` Command
+/// 
+/// Test command - not intended for general use.
+/// 
+/// Usage: `test_reflect`
+/// 
+/// Applies path and ty reflection on every expr in the program.
+fn register_test_reflect(reg: &mut Registry) {
     reg.register("test_reflect", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             st.map_krate(|krate| {
@@ -345,4 +352,8 @@ pub fn register_commands(reg: &mut Registry) {
             });
         }))
     });
+}
+
+pub fn register_commands(reg: &mut Registry) {
+    register_test_reflect(reg);
 }

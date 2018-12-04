@@ -5,6 +5,14 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use transform::Transform;
 
+/// # `char_literals` Command
+/// 
+/// Obsolete - the translator now does this automatically.
+/// 
+/// Usage: `char_literals`
+/// 
+/// Replace integer literals cast to `libc::c_char` with actual char literals.
+/// For example, replaces `65 as libc::c_char` with `'A' as libc::c_char`.
 struct CharLits {
 }
 

@@ -138,6 +138,9 @@ pub enum ExprPrec {
     /// Callee position.  Parenthesize lower precedence, and also parenthesize struct and tuple
     /// field expressions (so the call is not mistaken for a method call).
     Callee(i8),
+    /// Left of < or <<. We have to parenthesize casts in this position because
+    /// the less than is interpreted as the start of generic arguments.
+    LeftLess(i8),
 }
 
 

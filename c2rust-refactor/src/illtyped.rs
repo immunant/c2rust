@@ -117,6 +117,9 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
                 Some(x) => x,
                 None => return e,
             };
+            if let ty::TyKind::Error = ty.sty {
+                return e;
+            }
 
             // We need the whole `Expr` to do this lookup, so it can't happen inside the match.
             let opt_fn_sig = cx.opt_callee_fn_sig(&e);

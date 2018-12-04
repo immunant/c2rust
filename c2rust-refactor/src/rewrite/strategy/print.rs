@@ -217,6 +217,11 @@ impl Splice for Expr {
                 ExprKind::Field(..) => true,
                 _ => prec.order() < min_prec,
             },
+            ExprPrec::LeftLess(min_prec) => match self.node {
+                ExprKind::Cast(..) |
+                ExprKind::Type(..) => true,
+                _ => prec.order() < min_prec,
+            }
         };
 
         if need_parens {

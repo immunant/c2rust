@@ -13,14 +13,34 @@ use driver;
 use transform::Transform;
 
 
-/// Translate `printf`-style format strings and arguments into a Rust `format_args!` invocation.
-/// Note that this will likely introduce type errors, and should be followed up with a specific
-/// rewrite to replace each affected function with a wrapper taking `std::fmt::Arguments`.
-///
-/// Note that this works only on functions, not macros.  At each function call, if an argument is
-/// marked, that argument will be treated as a format string, with all subsequent arguments as its
-/// format arguments.  The format string and arguments will all be removed from the callsite and
-/// replaced with the new `format_args!` invocation.
+/// # `convert_format_args` Command
+/// 
+/// Usage: `convert_format_args`
+/// 
+/// Marks: `target`
+/// 
+/// For each function call, if one of its argument expressions is marked `target`,
+/// then parse that argument as a `printf` format string, with the subsequent arguments as the
+/// format args.  Replace both the format string and the args with an invocation of the Rust
+/// `format_args!` macro.
+/// 
+/// This transformation applies casts to the remaining arguments to account for differences in
+/// argument conversion behavior between C-style and Rust-style string formatting.  However, it
+/// does not attempt to convert the `format_args!` output into something compatible with the
+/// original C function.  This results in a type error, so this pass should usually be followed up
+/// by an additional rewrite to change the function being called.
+/// 
+/// Example:
+/// 
+///     printf("hello %d\n", 123);
+/// 
+/// If the string `"hello %d\n"` is marked `target`, then running
+/// `convert_format_string` will replace this call with
+/// 
+///     printf(format_args!("hello {:}\n", 123 as i32));
+/// 
+/// At this point, it would be wise to replace the `printf` expression with a function that accepts
+/// the `std::fmt::Arguments` produced by `format_args!`.
 pub struct ConvertFormatArgs;
 
 impl Transform for ConvertFormatArgs {
