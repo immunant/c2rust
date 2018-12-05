@@ -22,10 +22,11 @@ use syntax_pos::DUMMY_SP;
 use translator::{ExprContext, Translation, ConvertedDecl, simple_metaitem};
 use with_stmts::WithStmts;
 
+use itertools::Itertools;
+use itertools::EitherOrBoth::{Both, Right};
+
 /// (name, type, bitfield_width, platform_bit_offset, platform_type_bitwidth)
-type NameWidthOffset = (String, P<Ty>, Option<u64>, u64, u64);
-/// (name, type, bitfield_width, platform_type_bitwidth)
-type NameTypeWidth = (String, CQualTypeId, Option<u64>, u64);
+type FieldInfo = (String, CQualTypeId, Option<u64>, u64, u64);
 
 #[derive(Debug)]
 enum FieldType {
@@ -46,61 +47,16 @@ fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
     mk().nested_meta_item(NestedMetaItemKind::MetaItem(meta_item))
 }
 
-/// Figure out what's the smallest byte int that can hold this bitfield width
-/// This is required by packed_struct as you cannot currently use arbitrary sized
-/// ints for fields like C lets you do..
-fn get_ty_from_bit_width(bit_width: u64) -> Result<P<Ty>, &'static str> {
-    // REVIEW: What about signed int fields?
-    match bit_width {
-        0..=8 => Ok(mk().ident_ty("u8")),
-        9..=16 => Ok(mk().ident_ty("u16")),
-        17..=32 => Ok(mk().ident_ty("u32")),
-        33..=64 => Ok(mk().ident_ty("u64")),
-        65..=128 => Ok(mk().ident_ty("u128")),
-        _ => Err("Unsupported bitfield width found greater than 128 bits"),
-    }
-}
-
 impl<'a> Translation<'a> {
-    /// Here we output a macro invocation to generate bitfield data that looks like this:
-    ///
-    /// ```no_run
-    /// bitfield! {
-    ///     #[repr(C)]
-    ///     #[derive(Copy, Clone)]
-    ///     pub struct Foo([u8]);
-    ///     pub int_size, field, set_field: end_idx, start_idx;
-    ///     pub int_size2, field2, set_field2: end_idx2, start_idx2;
-    ///     // ...
-    /// }
-    /// ```
     /// FIXME
-    pub fn convert_bitfield_struct_decl(
-        &self,
-        name: String,
-        manual_alignment: Option<u64>,
-        platform_alignment: u64,
-        platform_byte_size: u64,
-        span: Span,
-        field_info: Vec<NameWidthOffset>,
-    ) -> Result<ConvertedDecl, String> {
-        self.extern_crates.borrow_mut().insert("c2rust_bitfields");
-
-        let mut item_store = self.item_store.borrow_mut();
-
-        item_store.uses
-            .get_mut(vec!["c2rust_bitfields".into()])
-            .insert("BitfieldStruct");
-
-        // We need to clobber bitfields in consecutive bytes together (leaving
-        // regular fields alone) and add in padding as necessary
+    fn get_field_types(&self, field_info: Vec<FieldInfo>, platform_byte_size: u64) -> Result<Vec<FieldType>, String> {
         let mut reorganized_fields = Vec::new();
         let mut last_bitfield_group: Option<FieldType> = None;
         let mut next_byte_pos = 0;
-        let mut field_entries = Vec::with_capacity(field_info.len());
         let mut encountered_bytes = HashSet::new();
 
         for (field_name, ty, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
+            let ty = self.convert_type(ty.ctype)?;
             let bitfield_width = match bitfield_width {
                 // Bitfield widths of 0 should just be markers for clang,
                 // we shouldn't need to explicitly handle it ourselves
@@ -184,14 +140,14 @@ impl<'a> Translation<'a> {
                     }
 
                     let bit_range = format!("{}..={}", bit_index, bit_index + bitfield_width - 1);
-                    let attr_info = vec![
+                    let attrs = vec![
                         (field_name.clone(), ty, bit_range),
                     ];
 
                     last_bitfield_group = Some(FieldType::BitfieldGroup {
                         field_name,
                         bytes,
-                        attrs: attr_info,
+                        attrs,
                     });
                 },
             }
@@ -211,7 +167,44 @@ impl<'a> Translation<'a> {
             reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
         }
 
-        // End
+        Ok(reorganized_fields)
+    }
+
+
+    /// Here we output a macro invocation to generate bitfield data that looks like this:
+    ///
+    /// ```no_run
+    /// bitfield! {
+    ///     #[repr(C)]
+    ///     #[derive(Copy, Clone)]
+    ///     pub struct Foo([u8]);
+    ///     pub int_size, field, set_field: end_idx, start_idx;
+    ///     pub int_size2, field2, set_field2: end_idx2, start_idx2;
+    ///     // ...
+    /// }
+    /// ```
+    /// FIXME
+    pub fn convert_bitfield_struct_decl(
+        &self,
+        name: String,
+        manual_alignment: Option<u64>,
+        platform_alignment: u64,
+        platform_byte_size: u64,
+        span: Span,
+        field_info: Vec<FieldInfo>,
+    ) -> Result<ConvertedDecl, String> {
+        self.extern_crates.borrow_mut().insert("c2rust_bitfields");
+
+        let mut item_store = self.item_store.borrow_mut();
+
+        item_store.uses
+            .get_mut(vec!["c2rust_bitfields".into()])
+            .insert("BitfieldStruct");
+
+        let mut field_entries = Vec::with_capacity(field_info.len());
+        // We need to clobber bitfields in consecutive bytes together (leaving
+        // regular fields alone) and add in padding as necessary
+        let reorganized_fields = self.get_field_types(field_info, platform_byte_size)?;
 
         let mut padding_count = 0;
 
@@ -280,7 +273,7 @@ impl<'a> Translation<'a> {
     }
 
     /// Here we output a block to generate a struct literal initializer in.
-    /// It looks like this in locals:
+    /// It looks like this in locals and (sectioned) statics:
     ///
     /// FIXME
     ///
@@ -293,44 +286,108 @@ impl<'a> Translation<'a> {
     ///     foo
     /// }
     /// ```
-    ///
-    /// and in statics:
-    /// TODO
-    pub fn convert_bitfield_struct_literal(&self, name: String, field_ids: &[CExprId], field_info: Vec<NameTypeWidth>, ctx: ExprContext) -> Result<WithStmts<P<Expr>>, String> {
-        // REVIEW: statics?
-        let mut stmts = Vec::with_capacity(field_ids.len());
+    pub fn convert_bitfield_struct_literal(
+        &self,
+        name: String,
+        platform_byte_size: u64,
+        field_ids: &[CExprId],
+        field_info: Vec<FieldInfo>,
+        ctx: ExprContext,
+    ) -> Result<WithStmts<P<Expr>>, String> {
+        // REVIEW: statics? Could section them off
         let mut fields = Vec::with_capacity(field_ids.len());
+        let reorganized_fields = self.get_field_types(field_info.clone(), platform_byte_size)?;
+        let local_pat = mk().mutbl().ident_pat("init");
+        let mut padding_count = 0;
+        let mut stmts = Vec::new();
 
-        // Specified record fields
-        for (&field_id, (field_name, _, bitfield_width, platform_type_bitwidth)) in field_ids.iter().zip(field_info.iter()) {
-            // Bitfield widths of 0 should just be markers for clang,
-            // we shouldn't need to explicitly handle it ourselves
-            if let Some(0) = bitfield_width {
-                continue;
+        // Add in zero inits for both padding as well as bitfield groups
+        for field_type in reorganized_fields {
+            match field_type {
+                FieldType::BitfieldGroup { field_name, bytes, .. } => {
+                    let array_expr = mk().repeat_expr(
+                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                    );
+                    let field = mk().field(field_name, array_expr);
+
+                    fields.push(field);
+                },
+                FieldType::Padding { bytes } => {
+                    let field_name = if padding_count == 0 {
+                        "_pad".into()
+                    } else {
+                        format!("_pad{}", padding_count + 1)
+                    };
+                    let array_expr = mk().repeat_expr(
+                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                    );
+                    let field = mk().field(field_name, array_expr);
+
+                    padding_count += 1;
+
+                    fields.push(field);
+                },
+                FieldType::Regular(_) => {},
             }
-
-            let bitwidth = bitfield_width.unwrap_or(*platform_type_bitwidth);
-            // With some type analysis, we could skip this cast sometimes
-            let cast_ty = get_ty_from_bit_width(bitwidth)?;
-
-            let mut expr = self.convert_expr(ctx, field_id)?;
-
-            stmts.append(&mut expr.stmts);
-
-            let cast = mk().cast_expr(expr.val, cast_ty);
-            // let field = mk().method_call_expr(cast, "into", Vec::new() as Vec<P<Expr>>);
-
-            fields.push(mk().field(field_name, cast));
         }
 
-        // Pad out remaining omitted record fields
-        for (field_name, ty, _, _) in field_info[field_ids.len()..].iter() {
-            fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, ctx.is_static)?));
+        // Bitfield widths of 0 should just be markers for clang,
+        // we shouldn't need to explicitly handle it ourselves
+        let field_info_iter = field_info.iter().filter(|info| info.2 != Some(0));
+        let zipped_iter = field_ids.iter().zip_longest(field_info_iter);
+        let mut bitfield_inits = Vec::new();
+
+        // Specified record fields which are not bitfields need to be added
+        for item in zipped_iter {
+            match item {
+                Right((field_name, ty, bitfield_width, _, _)) => {
+                    println!("Right: {}, {:?}", field_name, bitfield_width);
+                    if bitfield_width.is_some() {
+                        continue;
+                    }
+
+                    fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, ctx.is_static)?));
+                },
+                Both(field_id, (field_name, _, bitfield_width, _, _)) => {
+                    let expr = self.convert_expr(ctx.used(), *field_id)?;
+
+                    if bitfield_width.is_some() {
+                        bitfield_inits.push((field_name, expr.val));
+
+                        continue;
+                    }
+
+                    fields.push(mk().field(field_name, expr.val));
+                },
+                _ => unreachable!(),
+            }
         }
+
+        let struct_expr = mk().struct_expr(name.as_str(), fields);
+        let local_variable = P(mk().local(local_pat, None as Option<P<Ty>>, Some(struct_expr)));
+
+        stmts.push(mk().local_stmt(local_variable));
+
+        // Now we must use the bitfield methods to initialize bitfields
+        for (field_name, val) in bitfield_inits {
+            let field_name_setter = format!("set_{}", field_name);
+            let struct_ident = mk().ident_expr("init");
+            let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
+
+            stmts.push(mk().expr_stmt(expr));
+        }
+
+        let struct_ident = mk().ident_expr("init");
+
+        stmts.push(mk().expr_stmt(struct_ident));
+
+        let val = mk().block_expr(mk().block(stmts));
 
         Ok(WithStmts {
-            stmts,
-            val: mk().struct_expr(vec![mk().path_segment(name)], fields),
+            stmts: Vec::new(),
+            val,
         })
     }
 }

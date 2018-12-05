@@ -12,6 +12,7 @@ extern crate libc;
 extern crate clap;
 extern crate c2rust_ast_exporter;
 extern crate c2rust_ast_builder;
+extern crate itertools;
 
 use std::io::stdout;
 use std::io::prelude::*;

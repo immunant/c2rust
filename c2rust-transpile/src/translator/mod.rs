@@ -940,9 +940,10 @@ impl<'c> Translation<'c> {
 
                             has_bitfields |= bitfield_width.is_some();
 
+                            field_info.push((name.clone(), typ.clone(), bitfield_width, platform_bit_offset, platform_type_bitwidth));
+
                             let typ = self.convert_type(typ.ctype)?;
 
-                            field_info.push((name.clone(), typ.clone(), bitfield_width, platform_bit_offset, platform_type_bitwidth));
                             field_entries.push(mk().span(s).pub_().struct_field(name, typ));
                         }
                         _ => return Err(format!("Found non-field in record field list")),
