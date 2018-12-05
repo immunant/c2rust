@@ -10,6 +10,8 @@
 // out what bits to assign here, or else we reuse the local var version but ensure that
 // static bitfields get sectioned off
 
+use std::collections::HashSet;
+
 use c_ast::{CExprId, CQualTypeId};
 use c2rust_ast_builder::mk;
 use syntax::ast::{AttrStyle, Expr, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StrStyle, StructField, Ty, TyKind};
@@ -96,10 +98,9 @@ impl<'a> Translation<'a> {
         let mut last_bitfield_group: Option<FieldType> = None;
         let mut next_byte_pos = 0;
         let mut field_entries = Vec::with_capacity(field_info.len());
+        let mut encountered_bytes = HashSet::new();
 
         for (field_name, ty, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
-            println!("Found field {} w/ next_byte_pos: {}, bit_index: {}", field_name, next_byte_pos, bit_index);
-
             let bitfield_width = match bitfield_width {
                 // Bitfield widths of 0 should just be markers for clang,
                 // we shouldn't need to explicitly handle it ourselves
@@ -120,7 +121,6 @@ impl<'a> Translation<'a> {
                     let byte_diff = bit_index / 8 - next_byte_pos;
 
                     // Need to add padding first
-                    // println!("bit_index: {} / 8 - next_byte_pos: {}", bit_index, next_byte_pos);
                     if byte_diff > 1 {
                         reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
                     }
@@ -129,7 +129,6 @@ impl<'a> Translation<'a> {
 
                     reorganized_fields.push(FieldType::Regular(field));
 
-                    println!("bit_index: {}, platform_ty_bitwidth: {}", bit_index, platform_ty_bitwidth);
                     next_byte_pos = (bit_index + platform_ty_bitwidth) / 8;
 
                     continue
@@ -138,11 +137,8 @@ impl<'a> Translation<'a> {
             };
 
             // Ensure we aren't looking at overlapping bits in the same byte
-            println!("Overlapping bits check: bit_index({}) / 8 - next_byte_pos({})", bit_index, next_byte_pos);
             if bit_index / 8 > next_byte_pos {
                 let byte_diff = (bit_index / 8) - next_byte_pos;
-
-                // println!("Hello?: {}", byte_diff);
 
                 // if byte_diff > 0 {
                 reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
@@ -154,7 +150,18 @@ impl<'a> Translation<'a> {
                     name.push('_');
                     name.push_str(&field_name);
 
-                    *bytes += bitfield_width / 8 + 1;
+                    let end_bit = bit_index + bitfield_width;
+
+                    // Add to the total byte size of the bitfield group only if
+                    // we have not already enountered this byte
+                    for bit in bit_index..end_bit {
+                        let byte = bit / 8;
+
+                        if !encountered_bytes.contains(&byte) {
+                            *bytes += 1;
+                            encountered_bytes.insert(byte);
+                        }
+                    }
 
                     let bit_range = format!("{}..={}", bit_index, bit_index + bitfield_width - 1);
 
@@ -162,7 +169,20 @@ impl<'a> Translation<'a> {
                 },
                 Some(_) => unreachable!("Found last bitfield group which is not a group"),
                 None => {
-                    let byte_pos = bitfield_width / 8 + 1;
+                    let mut bytes = 0;
+                    let end_bit = bit_index + bitfield_width;
+
+                    // Add to the total byte size of the bitfield group only if
+                    // we have not already enountered this byte
+                    for bit in bit_index..end_bit {
+                        let byte = bit / 8;
+
+                        if !encountered_bytes.contains(&byte) {
+                            bytes += 1;
+                            encountered_bytes.insert(byte);
+                        }
+                    }
+
                     let bit_range = format!("{}..={}", bit_index, bit_index + bitfield_width - 1);
                     let attr_info = vec![
                         (field_name.clone(), ty, bit_range),
@@ -170,13 +190,12 @@ impl<'a> Translation<'a> {
 
                     last_bitfield_group = Some(FieldType::BitfieldGroup {
                         field_name,
-                        bytes: byte_pos,
+                        bytes,
                         attrs: attr_info,
                     });
                 },
             }
 
-            println!("bit_index: {}, bitfield_width: {}", bit_index, bitfield_width);
             next_byte_pos = (bit_index + bitfield_width) / 8 + 1;
         }
 
@@ -185,16 +204,14 @@ impl<'a> Translation<'a> {
             reorganized_fields.push(field_group);
         }
 
-        println!("platform_byte_size: {}, next_byte_pos: {}", platform_byte_size, next_byte_pos);
         let byte_diff = platform_byte_size - next_byte_pos;
 
         // Need to add padding to end if we haven't hit the expected total byte size
-        if byte_diff > 1 {
+        if byte_diff > 0 {
             reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
         }
 
         // End
-        // println!("{:#?}", reorganized_fields);
 
         let mut padding_count = 0;
 
@@ -230,7 +247,7 @@ impl<'a> Translation<'a> {
                     let field_name = if padding_count == 0 {
                         "_pad".into()
                     } else {
-                        format!("_pad{}", padding_count)
+                        format!("_pad{}", padding_count + 1)
                     };
                     let ty = mk().array_ty(
                         mk().ident_ty("u8"),
