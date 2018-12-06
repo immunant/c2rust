@@ -4,7 +4,7 @@ src = "docs"
 
 [build]
 create-missing = false
-#preprocess = ["links", "index", "custom"]
+preprocess = ["links", "index", "include_md"]
 
-#[preprocessor.custom]
-#command = "python3 test.py"
+[preprocessor.include_md]
+command = "cargo run --bin mdbook-include_md --quiet --"
