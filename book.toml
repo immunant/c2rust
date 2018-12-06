@@ -1,0 +1,13 @@
+[book]
+title = "C2Rust Manual"
+src = "manual/"
+
+[build]
+create-missing = false
+preprocess = ["links", "index", "include_md", "refactor_commands"]
+
+[preprocessor.include_md]
+command = "cargo run --bin mdbook-include_md --quiet --"
+
+[preprocessor.refactor_commands]
+command = "python3 c2rust-refactor/doc/gen_command_docs.py"
