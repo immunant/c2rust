@@ -101,16 +101,25 @@ def generate_commands():
 
 
 # mdbook preprocessor string
+PREPROCESSOR_STRING_ESCAPED = '\\{{#refactor_commands}}'
 PREPROCESSOR_STRING = '{{#refactor_commands}}'
 
 
 def replace_content(section):
     if 'Chapter' not in section:
         return
+
     content = section['Chapter']['content']
+    content = content.replace(PREPROCESSOR_STRING_ESCAPED, '')
+
     if PREPROCESSOR_STRING in content:
         eprint('Replacing ' + PREPROCESSOR_STRING + ' with c2rust-refactor commands')
         section['Chapter']['content'] = content.replace(PREPROCESSOR_STRING, generate_commands())
+
+    # Replace the escaped string with the regular string in the renderered output
+    content = section['Chapter']['content']
+    section['Chapter']['content'] = content.replace(PREPROCESSOR_STRING_ESCAPED, PREPROCESSOR_STRING)
+
     for item in section['Chapter']['sub_items']:
         replace_content(item)
 
