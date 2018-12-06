@@ -5,6 +5,7 @@ authors = [
     "The C2Rust Project Developers <c2rust@immunant.com>",
     "Daniel Kolsoi <djk@immunant.com>",
 ]
+edition = "2018"
 
 [dependencies]
 syn = { version = "0.15", features = ["full"] }

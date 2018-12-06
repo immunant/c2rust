@@ -30,7 +30,7 @@ type FieldInfo = (String, CQualTypeId, Option<u64>, u64, u64);
 
 #[derive(Debug)]
 enum FieldType {
-    BitfieldGroup { field_name: String, bytes: u64, attrs: Vec<(String, P<Ty>, String)> },
+    BitfieldGroup { start_bit: u64, field_name: String, bytes: u64, attrs: Vec<(String, P<Ty>, String)> },
     Padding { bytes: u64 },
     Regular(StructField),
 }
@@ -81,7 +81,7 @@ impl<'a> Translation<'a> {
                         reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
                     }
 
-                    let field = mk().struct_field(field_name, ty);
+                    let field = mk().pub_().struct_field(field_name, ty);
 
                     reorganized_fields.push(FieldType::Regular(field));
 
@@ -102,7 +102,7 @@ impl<'a> Translation<'a> {
             }
 
             match last_bitfield_group {
-                Some(FieldType::BitfieldGroup { field_name: ref mut name, ref mut bytes, ref mut attrs }) => {
+                Some(FieldType::BitfieldGroup { start_bit, field_name: ref mut name, ref mut bytes, ref mut attrs }) => {
                     name.push('_');
                     name.push_str(&field_name);
 
@@ -119,7 +119,9 @@ impl<'a> Translation<'a> {
                         }
                     }
 
-                    let bit_range = format!("{}..={}", bit_index, bit_index + bitfield_width - 1);
+                    let bit_start = bit_index - start_bit;
+                    let bit_end = bit_start + bitfield_width - 1;
+                    let bit_range = format!("{}..={}", bit_start, bit_end);
 
                     attrs.push((field_name.clone(), ty, bit_range));
                 },
@@ -139,12 +141,13 @@ impl<'a> Translation<'a> {
                         }
                     }
 
-                    let bit_range = format!("{}..={}", bit_index, bit_index + bitfield_width - 1);
+                    let bit_range = format!("{}..={}", 0, bitfield_width - 1);
                     let attrs = vec![
                         (field_name.clone(), ty, bit_range),
                     ];
 
                     last_bitfield_group = Some(FieldType::BitfieldGroup {
+                        start_bit: bit_index,
                         field_name,
                         bytes,
                         attrs,
@@ -171,19 +174,16 @@ impl<'a> Translation<'a> {
     }
 
 
-    /// Here we output a macro invocation to generate bitfield data that looks like this:
+    /// Here we output a struct derive to generate bitfield data that looks like this:
     ///
     /// ```no_run
-    /// bitfield! {
-    ///     #[repr(C)]
-    ///     #[derive(Copy, Clone)]
-    ///     pub struct Foo([u8]);
-    ///     pub int_size, field, set_field: end_idx, start_idx;
-    ///     pub int_size2, field2, set_field2: end_idx2, start_idx2;
-    ///     // ...
+    /// #[derive(BitfieldStruct, Clone, Copy)]
+    /// #[repr(C, align(2))]
+    /// struct Foo {
+    ///     bf1_bf2: [u8; 2],
+    ///     non_bf: u64,
     /// }
     /// ```
-    /// FIXME
     pub fn convert_bitfield_struct_decl(
         &self,
         name: String,
@@ -210,7 +210,7 @@ impl<'a> Translation<'a> {
 
         for field_type in reorganized_fields {
             match field_type {
-                FieldType::BitfieldGroup { field_name, bytes, attrs } => {
+                FieldType::BitfieldGroup { start_bit: _, field_name, bytes, attrs } => {
                     let ty = mk().array_ty(
                         mk().ident_ty("u8"),
                         mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
@@ -234,7 +234,7 @@ impl<'a> Translation<'a> {
                         field = field.meta_item_attr(AttrStyle::Outer, field_attr);
                     }
 
-                    field_entries.push(field.struct_field(field_name, ty));
+                    field_entries.push(field.pub_().struct_field(field_name, ty));
                 },
                 FieldType::Padding { bytes } => {
                     let field_name = if padding_count == 0 {
@@ -246,7 +246,7 @@ impl<'a> Translation<'a> {
                         mk().ident_ty("u8"),
                         mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
                     );
-                    let field = mk().struct_field(field_name, ty);
+                    let field = mk().pub_().struct_field(field_name, ty);
 
                     padding_count += 1;
 
@@ -275,15 +275,15 @@ impl<'a> Translation<'a> {
     /// Here we output a block to generate a struct literal initializer in.
     /// It looks like this in locals and (sectioned) statics:
     ///
-    /// FIXME
-    ///
     /// ```no_run
     /// {
-    ///     let mut foo = Foo([0; PLATFORM_BYTE_SIZE]);
-    ///     foo.set_field(123);
-    ///     foo.set_field2(456);
-    ///     // ...
-    ///     foo
+    ///     let mut init = Foo {
+    ///         bf1_bf2: [0; 2],
+    ///         non_bf: 32,
+    ///     };
+    ///     init.set_bf1(123);
+    ///     init.set_bf2(45);
+    ///     init
     /// }
     /// ```
     pub fn convert_bitfield_struct_literal(
@@ -343,7 +343,6 @@ impl<'a> Translation<'a> {
         for item in zipped_iter {
             match item {
                 Right((field_name, ty, bitfield_width, _, _)) => {
-                    println!("Right: {}, {:?}", field_name, bitfield_width);
                     if bitfield_width.is_some() {
                         continue;
                     }
