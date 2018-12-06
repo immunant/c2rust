@@ -1,6 +1,9 @@
 # Building the manual
 
-1. `cargo install mdbook` (requires version 0.2.\*)
+1. `cargo install --git https://github.com/immunant/mdBook.git --branch
+   installable` (May require `--force` if you already have mdbook
+   installed. Requires custom changes to resolve symlinks, hopefully will be
+   merged into upstream soon)
 2. `mdbook build` in the root source directory
 3. The manual should now be available in the `book` subdirectory.
 
