@@ -2404,6 +2404,18 @@ impl<'c> Translation<'c> {
                     _ => panic!("Dereferencing a non-pointer"),
                 };
 
+                // Because va_list is defined as a single-element array in order for it to allocate
+                // memory as a local variable and to be a pointer as a function argument we would
+                // get spurious casts when trying to treat it like a VaList which has reference
+                // semantics.
+                if let CTypeKind::Struct(struct_id) = self.ast_context[pointee.ctype].kind {
+                    if let CDeclKind::Struct { name: Some(ref struct_name), .. } = self.ast_context[struct_id].kind {
+                        if struct_name == "__va_list_tag" {
+                            return Ok(val)
+                        }
+                    }
+                }                
+
                 let is_const = pointee.qualifiers.is_const;
 
                 match self.ast_context.index(expr).kind {
